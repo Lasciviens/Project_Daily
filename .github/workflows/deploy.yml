@@ -249,6 +249,7 @@ jobs:
         if: steps.fresh.outputs.go == 'true'
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
@@ -257,9 +258,9 @@ jobs:
           VITE_VAPID_PUBLIC_KEY:      ${{ secrets.VITE_VAPID_PUBLIC_KEY || vars.VITE_VAPID_PUBLIC_KEY }}
         run: |
           fatal=""
-          for v in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
-            [ -n "${!v}" ] || fatal="$fatal $v"
-          done
+          [ -n "$VITE_SUPABASE_URL" ] || fatal="$fatal VITE_SUPABASE_URL"
+          # The publishable key (sb_publishable_…) or, until it is set, the legacy anon key.
+          [ -n "$VITE_SUPABASE_PUBLISHABLE_KEY$VITE_SUPABASE_ANON_KEY" ] || fatal="$fatal VITE_SUPABASE_PUBLISHABLE_KEY"
           for v in VITE_TMDB_API_KEY VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
                    VITE_OXR_APP_ID VITE_VAPID_PUBLIC_KEY; do
             [ -n "${!v}" ] || echo "::warning::$v is empty — the feature that uses it will be dead in this deploy."
@@ -276,6 +277,7 @@ jobs:
         run: npm run build
         env:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}

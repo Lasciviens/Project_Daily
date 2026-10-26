@@ -129,7 +129,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     connection: 'The browser talks to Supabase directly with the signed-in session; edge functions use the platform-injected service role server-side. pg_cron runs the scheduled jobs.',
     endpoints: ['<project>.supabase.co/rest/v1', '/auth/v1', '/storage/v1', '/functions/v1'],
     auth: 'session', authNote: 'Anon key + the user\'s JWT in the browser; the service-role key exists only inside edge functions.',
-    secrets: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY (platform-injected)'],
+    secrets: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY (legacy: VITE_SUPABASE_ANON_KEY)', 'SUPABASE_SECRET_KEYS (platform-injected; legacy: SUPABASE_SERVICE_ROLE_KEY)'],
     direction: 'both', cadence: 'Every page, on demand (TanStack Query caching)',
     usedIn: [{ label: 'Everywhere', path: '/home' }, { label: 'Activity log', path: '/developer?tab=activity' }],
     cost: 'free-tier', limits: 'Free plan: 1 GB storage — over it the project goes read-only, so game media copies stop at an 850 MB guard (the Kobo inbox takes up to 100 MB, book covers 20 MB, sleep images 10 MB).',

@@ -47,6 +47,23 @@
 // it is kept online instead, and the result says so.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
+// <supabase-keys>
+// Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
+// dictionaries keyed by name; the legacy JWT keys are the fallback until the
+// owner switches them off (docs/backend/environment.md). Same in every
+// function (scripts/verify-supabase-keys.cjs).
+function supabaseKey(newVar: string, legacyVar: string): string {
+  try {
+    const keys = JSON.parse(Deno.env.get(newVar) ?? '{}') as Record<string, unknown>
+    const key = keys.default ?? Object.values(keys)[0]
+    if (typeof key === 'string' && key) return key
+  } catch { /* not set or not JSON: the legacy key */ }
+  return Deno.env.get(legacyVar) ?? ''
+}
+const serviceKey = () => supabaseKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+const publishableKey = () => supabaseKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+// </supabase-keys>
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type, apikey, x-client-info',
@@ -78,7 +95,7 @@ const DEVID = Deno.env.get('SCREENSCRAPER_DEVID') ?? ''
 const DEVPASSWORD = Deno.env.get('SCREENSCRAPER_DEVPASSWORD') ?? ''
 const SSID = Deno.env.get('SCREENSCRAPER_SSID') ?? ''
 const SSPASSWORD = Deno.env.get('SCREENSCRAPER_SSPASSWORD') ?? ''
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const SERVICE_KEY = serviceKey()
 const MEDIA_KEY = Deno.env.get('SCREENSCRAPER_MEDIA_KEY') || SERVICE_KEY
 const OWNER = Deno.env.get('HEVY_USER_ID') ?? ''
 const SECRETS = [DEVID, DEVPASSWORD, SSID, SSPASSWORD]

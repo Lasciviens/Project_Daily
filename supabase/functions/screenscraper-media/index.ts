@@ -39,13 +39,30 @@ const CORS = {
   'Access-Control-Expose-Headers': 'content-length, content-range, accept-ranges',
 }
 
+// <supabase-keys>
+// Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
+// dictionaries keyed by name; the legacy JWT keys are the fallback until the
+// owner switches them off (docs/backend/environment.md). Same in every
+// function (scripts/verify-supabase-keys.cjs).
+function supabaseKey(newVar: string, legacyVar: string): string {
+  try {
+    const keys = JSON.parse(Deno.env.get(newVar) ?? '{}') as Record<string, unknown>
+    const key = keys.default ?? Object.values(keys)[0]
+    if (typeof key === 'string' && key) return key
+  } catch { /* not set or not JSON: the legacy key */ }
+  return Deno.env.get(legacyVar) ?? ''
+}
+const serviceKey = () => supabaseKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+const publishableKey = () => supabaseKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+// </supabase-keys>
+
 const API = 'https://api.screenscraper.fr/api2'
 const SOFTNAME = 'lascisboard'
 const DEVID = Deno.env.get('SCREENSCRAPER_DEVID') ?? ''
 const DEVPASSWORD = Deno.env.get('SCREENSCRAPER_DEVPASSWORD') ?? ''
 const SSID = Deno.env.get('SCREENSCRAPER_SSID') ?? ''
 const SSPASSWORD = Deno.env.get('SCREENSCRAPER_SSPASSWORD') ?? ''
-const MEDIA_KEY = Deno.env.get('SCREENSCRAPER_MEDIA_KEY') || (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+const MEDIA_KEY = Deno.env.get('SCREENSCRAPER_MEDIA_KEY') || serviceKey()
 const TIMEOUT_MS = 30_000
 
 const text = (status: number, body: string, extra: Record<string, string> = {}) =>

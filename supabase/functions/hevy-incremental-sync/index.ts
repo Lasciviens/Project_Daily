@@ -1,6 +1,23 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
+// <supabase-keys>
+// Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
+// dictionaries keyed by name; the legacy JWT keys are the fallback until the
+// owner switches them off (docs/backend/environment.md). Same in every
+// function (scripts/verify-supabase-keys.cjs).
+function supabaseKey(newVar: string, legacyVar: string): string {
+  try {
+    const keys = JSON.parse(Deno.env.get(newVar) ?? '{}') as Record<string, unknown>
+    const key = keys.default ?? Object.values(keys)[0]
+    if (typeof key === 'string' && key) return key
+  } catch { /* not set or not JSON: the legacy key */ }
+  return Deno.env.get(legacyVar) ?? ''
+}
+const serviceKey = () => supabaseKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
+const publishableKey = () => supabaseKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+// </supabase-keys>
+
 // ── Inlined from the former _shared/hevySync.ts ─────────────────────────────
 // Kept as a per-function copy because Supabase Dashboard deploys don't bundle
 // sibling _shared/ files. If this Hevy upsert logic ever changes, update the
@@ -694,7 +711,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      serviceKey()
     )
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(
