@@ -2,7 +2,7 @@
 // the watches of one episode or movie as the screens show and pick them, and
 // rewatch rounds. Pure (scripts/verify-media-watches.cjs).
 
-import { formatDate } from '../../shared/utils/dateFormat'
+import { formatDate, toLocalDate, type DateValue } from '../../shared/utils/dateFormat'
 import { isUnknownWatchedAt } from './trakt/traktDates'
 
 export interface Watch {
@@ -50,18 +50,59 @@ export function watchDates(watches: readonly Watch[]): string {
 /** One watch: "Watched 08.01.2026", or "Watched · date unknown". */
 export const watchedOnce = (w: Watch) => (watchDate(w) === 'date unknown' ? 'Watched · date unknown' : `Watched ${watchDate(w)}`)
 
-/** A movie: "Watched 08.01.2026" or "3 watches · 12.10.2018 · 01.12.2024 · 08.01.2026". */
-export function watchSummary(watches: readonly Watch[]): string {
-  if (!watches.length) return ''
-  return watches.length === 1 ? watchedOnce(watches[0]) : `${watches.length} watches · ${watchDates(watches)}`
+/** What an episode row (or a movie) shows of its watches — `watchMark`. */
+export interface WatchMark {
+  /** Reads as watched (✓, tint): it has a watch — during a rewatch round, a watch of the round. */
+  done: boolean
+  /** The ×N counter from 2 watches — every watch ever, as many as its watch list holds; null below 2. */
+  counter: number | null
+  /** One watch: "Watched 12.10.2018" (2+ show the counter instead). */
+  line: string
+  /** The line reads as done (the success tone): outside a round only — during one, a watch is history, not status. */
+  lineDone: boolean
 }
 
-/** An episode row, one short line: "Watched 08.01.2026" or "3 watches · last 08.01.2026" (the list is in its sheet). */
-export function watchesLine(watches: readonly Watch[]): string {
-  if (!watches.length) return ''
-  if (watches.length === 1) return watchedOnce(watches[0])
-  const latest = sortWatches(watches)[watches.length - 1]
-  return `${watches.length} watches · last ${watchDate(latest)}`
+/**
+ * What a row shows of its watches (owner, 26.10.2026: "When re-watching, don't
+ * show everything green. Show a counter instead"). Outside a round: watched =
+ * done, one watch says its date, 2+ show ×N. During a round (`roundStartedAt`):
+ * done only with a watch of the round (`inRound`, the database's rule), the
+ * count stays every watch ever, and nothing reads green but the round's ✓.
+ */
+export function watchMark(watches: readonly Watch[], roundStartedAt?: string | null): WatchMark {
+  const n = watches.length
+  return {
+    done: n > 0 && (!roundStartedAt || watchedInRound(watches, roundStartedAt)),
+    counter: n >= 2 ? n : null,
+    line: n === 1 ? watchedOnce(watches[0]) : '',
+    lineDone: n === 1 && !roundStartedAt,
+  }
+}
+
+/**
+ * Watches in a time range, split by what was watched — "this week: 5 episodes
+ * · 1 film". Every watch counts on its own date; one on an unknown date (NULL,
+ * or the epoch) is in no range. `from` is in the range, `to` is the first
+ * moment after it (this week = Monday to next Monday); a bare 'yyyy-MM-dd' is
+ * local midnight.
+ */
+export function watchTally(
+  watches: readonly { kind: 'episode' | 'movie'; watched_at: string | null }[],
+  from: DateValue,
+  to: DateValue,
+): { total: number; episodes: number; movies: number } {
+  const start = toLocalDate(from)?.getTime() ?? NaN
+  const end = toLocalDate(to)?.getTime() ?? NaN
+  const out = { total: 0, episodes: 0, movies: 0 }
+  for (const w of watches) {
+    if (!w.watched_at || isUnknownWatchedAt(w.watched_at)) continue
+    const t = Date.parse(w.watched_at)
+    if (!(t >= start && t < end)) continue
+    out.total++
+    if (w.kind === 'movie') out.movies++
+    else out.episodes++
+  }
+  return out
 }
 
 export type WatchPick = 'latest' | 'first'
@@ -111,10 +152,15 @@ export function inRound(w: Watch, startedAt: string): boolean {
   return sec(w.watched_at) >= start || (w.source === 'app' && sec(w.created_at) >= start)
 }
 
+/** Watched in a round: at least one watch of the round. */
+export function watchedInRound(watches: readonly Watch[], startedAt: string): boolean {
+  return watches.some(w => inRound(w, startedAt))
+}
+
 /** The episodes done in a round ("SxE"): those with a watch of the round. */
 export function doneInRound(rows: { season_number: number; episode_number: number; watches?: readonly Watch[] }[], startedAt: string): Set<string> {
   const out = new Set<string>()
-  for (const r of rows) if (r.watches?.some(w => inRound(w, startedAt))) out.add(`${r.season_number}x${r.episode_number}`)
+  for (const r of rows) if (r.watches && watchedInRound(r.watches, startedAt)) out.add(`${r.season_number}x${r.episode_number}`)
   return out
 }
 
@@ -154,12 +200,25 @@ export function airedRegularEpisodes(details: {
   return out
 }
 
+type CountedRow = { season_number: number; episode_number: number; watched_at: string | null; repeat_count?: number | null; watches?: readonly Watch[] }
+
 /** Watches per episode ("SxE" → count). */
-export function watchCounts(rows: { season_number: number; episode_number: number; watched_at: string | null; repeat_count?: number | null; watches?: readonly Watch[] }[]): Map<string, number> {
+export function watchCounts(rows: readonly CountedRow[]): Map<string, number> {
   const out = new Map<string, number>()
   for (const r of rows) {
     if (r.watched_at == null) continue
     out.set(`${r.season_number}x${r.episode_number}`, r.watches?.length || 1 + Math.max(0, r.repeat_count ?? 0))
+  }
+  return out
+}
+
+/** A show's rewatches (its "N episodes rewatched" pill): episodes watched more than once, and their watches past the first. */
+export function rewatchTotals(rows: readonly CountedRow[]): { episodes: number; extraWatches: number } {
+  const out = { episodes: 0, extraWatches: 0 }
+  for (const n of watchCounts(rows).values()) {
+    if (n < 2) continue
+    out.episodes++
+    out.extraWatches += n - 1
   }
   return out
 }

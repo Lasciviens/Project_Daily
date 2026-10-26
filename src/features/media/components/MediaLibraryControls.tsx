@@ -4,7 +4,7 @@ import { SkipForward, Trash2, CheckCircle2, Heart, Repeat } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { withProgress } from '../../../shared/hooks/useMutationWithFeedback'
 import { haptic } from '../../../shared/utils/haptics'
-import { Button, SectionLabel, TonePill } from '../../../shared/ui'
+import { Button, SectionLabel, TonePill, Truncate } from '../../../shared/ui'
 import { STAGE_TONE, type Stage } from '../../../shared/theme/stage'
 import { useMarkEpisodeWatched, useWatchedEpisodes } from '../hooks/useWatchedEpisodes'
 import { episodeAirDates } from '../hooks/useTMDB'
@@ -16,10 +16,11 @@ import { useAddTV, useDeleteTV, useUpdateTV } from '../hooks/useTVSeries'
 import { useNextEpisode } from '../hooks/useNextEpisode'
 import { useAddMovieWatch, useMovieNotWatched, useStartRewatch, WAITS_FOR_TRAKT } from '../hooks/useWatches'
 import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
-import { airedRegularEpisodes, cacheWatches, isPlaceholder, rewatchStartRound, watchCounts } from '../watches'
+import { airedRegularEpisodes, cacheWatches, isPlaceholder, rewatchStartRound, rewatchTotals, watchCounts } from '../watches'
 import { PlanThisButton } from './PlanThisButton'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
+import { MovieWatchHistory } from './MovieWatchHistory'
 import { CinemaVisits } from './CinemaVisits'
 import { MovieWatchingInfo } from './MovieWatchingInfo'
 import { SeriesFinishedControls } from './SeriesFinishedControls'
@@ -130,10 +131,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
   const removeWaits = movieEntry
     ? !!movieEntry.watches?.some(w => isPlaceholder(w, traktWaits))
     : watchedRows.some(r => r.watches?.some(w => isPlaceholder(w, traktWaits)))
-  const rewatched = watchedRows.reduce((n, w) => {
-    const extra = Math.max(0, w.repeat_count ?? 0)
-    return extra > 0 ? { episodes: n.episodes + 1, extraPlays: n.extraPlays + extra } : n
-  }, { episodes: 0, extraPlays: 0 })
+  // Counted from the watches, like every row's ×N (watches.ts).
+  const rewatched = rewatchTotals(watchedRows)
   const qc = useQueryClient()
   const { ask, askMany, dialog } = useWatchedWhenPrompt()
   // "Spread over dates…" while completing: the Spread popup for this entry;
@@ -269,6 +268,9 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
     const have = new Set(watchedRows.map(w => `${w.season_number}x${w.episode_number}`))
     return aired.length > 0 && aired.every(e => have.has(`${e.season}x${e.episode}`))
   }
+  // A show on Watching or Paused with every aired episode watched and no round: watching it
+  // again starts here (161's app_start_rewatch — any title being watched may start one).
+  const canStartRewatch = !!tvEntry && (tvEntry.status === 'watching' || tvEntry.status === 'paused') && rewatchRound == null && allAiredWatched()
 
   async function handleStatusChange(status: MediaStatus) {
     if (status === 'completed' && rewatchRound != null) {
@@ -391,17 +393,33 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
               : nextEp.data.season != null && ` · next S${String(nextEp.data.season).padStart(2, '0')}E${String(nextEp.data.episode).padStart(2, '0')}`)}
           </p>
         ) : tvEntry && (
-          <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-meta text-fg-muted tabular-nums">Progress: S{tvEntry.current_season} E{tvEntry.current_episode}</p>
+            {canStartRewatch && (
+              // The hook says which round ("Watching again · round 3", "· from …" when it picked up a pass under way).
+              <Button size="sm" variant="ghost" icon={<Repeat />} disabled={updating} loading={startRewatch.isPending} onClick={() => { void handleWatchAgain() }}
+                title="Watch it again from the start: progress follows the new round until every episode is watched again">
+                Start rewatch
+              </Button>
+            )}
+          </div>
         )}
         {tvEntry && rewatched.episodes > 0 && (
           // A count for the whole show; each episode's watches and their dates are in its watch list.
+          // The label stops at the pill's box (the md+ rail is 15rem): Truncate shows the rest on hover or tap.
           <TonePill tone="info" className="tabular-nums">
-            <Repeat aria-hidden className="h-3.5 w-3.5" />
-            {rewatched.episodes} episode{rewatched.episodes === 1 ? '' : 's'} rewatched · {rewatched.extraPlays} extra watch{rewatched.extraPlays === 1 ? '' : 'es'}
+            <Repeat aria-hidden className="h-3.5 w-3.5 shrink-0" />
+            <Truncate>{`${rewatched.episodes} episode${rewatched.episodes === 1 ? '' : 's'} rewatched · ${rewatched.extraWatches} extra watch${rewatched.extraWatches === 1 ? '' : 'es'}`}</Truncate>
           </TonePill>
         )}
         {movieEntry?.status === 'watching' && (rewatchRound != null
-          ? <p className="text-meta text-fg-muted tabular-nums">Rewatching · watch {rewatchRound}</p>
+          ? (
+            // Watched again: its round, and every watch so far behind ×N (the History icon for one).
+            <div className="flex items-center gap-1">
+              <p className="min-w-0 flex-1 text-meta text-fg-muted tabular-nums">Rewatching · watch {rewatchRound}</p>
+              <MovieWatchHistory entry={movieEntry} disabled={updating} className="-my-1" />
+            </div>
+          )
           : <MovieWatchingInfo entry={movieEntry} />)}
         {movieEntry?.status === 'completed' && (
           <MovieWatchedControls entry={movieEntry} releaseDate={movie!.release_date ?? null} disabled={updating} />

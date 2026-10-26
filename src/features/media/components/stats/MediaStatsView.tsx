@@ -89,7 +89,7 @@ export function MediaStatsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail
       <YearDrillList heading={list.heading} rows={list.rows} onOpenDetail={onOpenDetail} />
       <p className="flex flex-wrap items-center gap-x-2 text-micro text-fg-muted">
         <CalendarClock aria-hidden className="h-3.5 w-3.5" />
-        Time = runtime × plays (100 min for a film, 40 for an episode when TMDB has no runtime). A play counts on the latest date it was watched — one date is kept per title or episode.
+        Time = runtime × plays (100 min for a film, 40 for an episode when TMDB has no runtime). Every watch is a play on its own date — a film seen in 2018 and again this year counts in both years.
         {allTime && unknown > 0 && <button type="button" className="font-semibold text-accent-600" onClick={() => setDrill({ kind: 'undated' })}>{plural(unknown, 'play')} with an unknown date count here but in no year →</button>}
         {!allTime && unknown > 0 && ` ${plural(unknown, 'play')} with an unknown date are in All time only.`}
       </p>
