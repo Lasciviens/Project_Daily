@@ -189,6 +189,17 @@ export async function planTaskId(target: PlanTarget, info: PlanInfo): Promise<st
   return (await ensurePlanTask(target, info)).taskId
 }
 
+/** A session's first day (167): its week is that day and the next six; a
+ *  move to 7 or more days after it skips it there. Null before 167 or unknown. */
+export async function fetchFirstPlanDay(taskId: string): Promise<string | null> {
+  const { data, error } = await supabase.from('tasks').select('first_plan_date').eq('id', taskId).maybeSingle()
+  if (error) {
+    if (isMissingColumn(error)) return null
+    throw error
+  }
+  return (data as { first_plan_date?: string | null } | null)?.first_plan_date ?? null
+}
+
 /** The repeat and day a task is (156: made on its day), or null. Before 156 there is no such column: null. */
 export async function fetchRepeatDayOf(taskId: string): Promise<{ scheduleBlockId: string; date: string } | null> {
   const { data, error } = await supabase.from('tasks').select('schedule_block_id, occurrence_date').eq('id', taskId).maybeSingle()

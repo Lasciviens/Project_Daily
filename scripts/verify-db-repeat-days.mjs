@@ -140,8 +140,10 @@ try {
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
   psql(target, ['-c', ruleSection])
-  // 166 (a moved training day re-checks its workout, a missed day moved forward is to do): live with these scenarios.
+  // 166 (a moved training day re-checks its workout, a missed day moved forward is to do) and 167 (a session lives
+  // one week; the account's run also closes training weeks — it redefines repeat_days_for_user/_run): live with these scenarios.
   psql(target, ['-f', mig('166_training_moves_recheck.sql')])
+  psql(target, ['-f', mig('167_training_week_rules.sql')])
 
   // 1. The scenarios. Each passing one prints a NOTICE ("ok  …"); a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })

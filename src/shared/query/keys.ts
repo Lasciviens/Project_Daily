@@ -29,6 +29,8 @@ export const qk = {
     subtasks: (parentId: string) => ['tasks', 'subtasks', parentId] as const,
     /** Every project's tasks (migration 162) — under tasks, so every task action refreshes them. */
     projects: () => ['tasks', 'projects'] as const,
+    /** A training session's first day (167) — the Move popup's "more than 7 days" note. */
+    firstPlanDay: (id: string) => ['tasks', 'first-plan-day', id] as const,
   },
   googleTaskLists: { all: ['google-task-lists'] as const },
   googleTasks: {
@@ -40,6 +42,8 @@ export const qk = {
     all: ['schedule'] as const,
     day: (date: string) => ['schedule', 'day', date] as const,
     trainingRange: (from: string, to: string) => ['schedule', 'training-range', from, to] as const,
+    /** A training repeat's days that are tasks on their day (156), in a range. */
+    trainingDays: (from: string, to: string) => ['schedule', 'training-days', from, to] as const,
     templates: () => ['schedule', 'blocks'] as const,
     block: (id: string) => ['schedule', 'block', id] as const,
     byTask: (taskId: string) => ['schedule', 'by-task', taskId] as const,

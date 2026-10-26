@@ -69,8 +69,8 @@ grant execute on function public.t_p(text) to authenticated;
 -- ═══ 0. Migration 156 itself ═══════════════════════════════════════════════
 select public.t_ok(not exists (
   select 1 from public.snap_tasks s full join public.tasks t on t.id = s.id
-   where to_jsonb(s) is distinct from (to_jsonb(t) - 'schedule_block_id' - 'occurrence_date' - 'closed_reason')),
-  '156: every existing task as it was (no task added, lost or changed)');
+   where to_jsonb(s) is distinct from (to_jsonb(t) - 'schedule_block_id' - 'occurrence_date' - 'closed_reason' - 'first_plan_date')),
+  '156: every existing task as it was (no task added, lost or changed; 167''s first_plan_date aside)');
 select public.t_ok(not exists (
   select 1 from public.snap_blocks s full join public.time_blocks b on b.id = s.id where to_jsonb(s) is distinct from to_jsonb(b)),
   '156: every slot as it was');
@@ -328,9 +328,10 @@ reset role;
 -- Hevy (141): the workout on its day completes the day's task
 insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, end_time) values
   ('w-gym15', '00000000-0000-0000-0000-000000000001', 'Gym', 'r-gym', '2026-10-15 16:00+00', '2026-10-15 17:00+00');
+-- (13.10's day is closed: missed by 156, and — its week over at 22.10's run — skipped by 167.)
 select public.t_ok((select status = 'done' and hevy_workout_id = 'w-gym15' from public.t_day(public.t_p('gym'), '2026-10-15'))
-  and (select status = 'cancelled' and closed_reason = 'missed' and hevy_workout_id is null from public.t_day(public.t_p('gym'), '2026-10-13')),
-  'Hevy: the workout completes ITS day''s task (141), not the missed one before it');
+  and (select status = 'cancelled' and hevy_workout_id is null from public.t_day(public.t_p('gym'), '2026-10-13')),
+  'Hevy: the workout completes ITS day''s task (141), not the closed one before it');
 -- …and a late one still completes a missed training day (141's six days)
 insert into public.hevy_workouts (id, user_id, title, routine_id, start_time, end_time) values
   ('w-legs', '00000000-0000-0000-0000-000000000001', 'Legs', 'r-legs', '2026-10-15 16:30+00', '2026-10-15 17:30+00');
@@ -535,7 +536,7 @@ select public.t_ok((public.t_v('run17b') ->> 'created')::int = 0 and public.t_n(
 
 -- ═══ 9. Existing rows ═══════════════════════════════════════════════════════
 select public.t_ok((select to_jsonb(s) from public.snap_tasks s where s.id = '00000000-0000-4000-8000-0000000001d1')
-  = (select to_jsonb(t) - 'schedule_block_id' - 'occurrence_date' - 'closed_reason' from public.tasks t where t.id = '00000000-0000-4000-8000-0000000001d1'),
+  = (select to_jsonb(t) - 'schedule_block_id' - 'occurrence_date' - 'closed_reason' - 'first_plan_date' from public.tasks t where t.id = '00000000-0000-4000-8000-0000000001d1'),
   'an ordinary task (on Google Tasks) is untouched by every run');
 select public.t_ok((select to_jsonb(s) from public.snap_blocks s where s.id = '00000000-0000-4000-8000-0000000001c8')
   = (select to_jsonb(b) from public.time_blocks b where b.id = '00000000-0000-4000-8000-0000000001c8')

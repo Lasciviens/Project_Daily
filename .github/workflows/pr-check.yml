@@ -250,9 +250,12 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 166: a moved training session is moved (its Hevy workout
-      # link checked against the new day, a missed day moved is to do, a
-      # repeat's day moved without its slot gets one, the one-off repair).
+      # Migrations 166 and 167: a moved training session is moved (its Hevy
+      # workout link checked against the new day, a missed day moved is to
+      # do, a repeat's day moved without its slot gets one, the one-off
+      # repair); a workout completes only its own routine's session and a
+      # session lives one week (skipped then done, a move of 7+ days, the
+      # week's end skips it).
       - name: Training move recheck database scenarios
         run: node scripts/verify-db-training-recheck.mjs
         env:

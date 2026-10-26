@@ -59,8 +59,12 @@ export function useTrainingPlanActions() {
 
   const move = useMutationWithFeedback({
     action: 'training_plan_move',
-    successMessage: (_: void, v: { plan: TrainingPlanRef; date: string }) => `Moved to ${formatWeekdayDate(v.date)}`,
-    mutationFn: async ({ plan, date, startHHMM }: { plan: TrainingPlanRef; date: string; startHHMM: string | null }) => {
+    // `pastWeek`: 7 or more days after its first day — the database skips it
+    // in its own week and moves that week's session there instead (167).
+    successMessage: (_: void, v: { plan: TrainingPlanRef; date: string; pastWeek?: boolean }) => v.pastWeek
+      ? `Skipped in its week · that week's ${v.plan.info.title} moved to ${formatWeekdayDate(v.date)}`
+      : `Moved to ${formatWeekdayDate(v.date)}`,
+    mutationFn: async ({ plan, date, startHHMM }: { plan: TrainingPlanRef; date: string; startHHMM: string | null; pastWeek?: boolean }) => {
       const rows = await ensurePlanTask(plan.target, plan.info)
       await movePlan(rows, plan.info, { date, startHHMM })
       deliverGoogleTasks(rows.taskId)
@@ -120,7 +124,7 @@ export function useTrainingPlanActions() {
   return {
     markDone: (p: TrainingPlanRef) => done.mutateAsync(p),
     reopen: (p: TrainingPlanRef) => reopen.mutateAsync(p),
-    move: (plan: TrainingPlanRef, date: string, startHHMM: string | null) => move.mutateAsync({ plan, date, startHHMM }),
+    move: (plan: TrainingPlanRef, date: string, startHHMM: string | null, pastWeek = false) => move.mutateAsync({ plan, date, startHHMM, pastWeek }),
     skip: (plan: TrainingPlanRef, reason: string) => skip.mutateAsync({ plan, reason }),
     undoSkip: (s: { taskId?: string | null; skipId?: string | null }) => undoSkip.mutateAsync(s),
     deleteSession,

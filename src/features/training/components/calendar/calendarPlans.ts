@@ -9,6 +9,7 @@
 import { projectRecurringBlocksForDay, type RecurringBlockLike } from '../../../daily/components/dayAgendaProjection'
 import type { CalendarPlanItem } from './calendarModel'
 import type { ScheduleBlock, TimeBlock } from '../../../daily/types'
+import type { TrainingDayTask } from '../../../daily/api/scheduleApi'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -16,9 +17,13 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 type BlockLike = Pick<TimeBlock, 'id' | 'title' | 'date'> & Partial<TimeBlock>
 type TemplateLike = RecurringBlockLike & Partial<ScheduleBlock>
 
-/** `templates` may include non-training ones; only category 'training' counts. */
-export function buildPlansByDate(from: string, to: string, blocks: readonly BlockLike[], templates: readonly TemplateLike[]): Map<string, CalendarPlanItem[]> {
+/** `templates` may include non-training ones; only category 'training' counts.
+ *  `dayTasks`: the repeats' days that are tasks on their day (156) — each
+ *  rides on its projection, so the day reads as its task says. */
+export function buildPlansByDate(from: string, to: string, blocks: readonly BlockLike[], templates: readonly TemplateLike[],
+                                 dayTasks: readonly TrainingDayTask[] = []): Map<string, CalendarPlanItem[]> {
   const m = new Map<string, CalendarPlanItem[]>()
+  const dayTask = new Map(dayTasks.map(t => [`${t.schedule_block_id}:${t.occurrence_date}`, t]))
   const push = (date: string, item: CalendarPlanItem) => m.set(date, [...(m.get(date) ?? []), item])
 
   for (const b of blocks) {
@@ -33,7 +38,9 @@ export function buildPlansByDate(from: string, to: string, blocks: readonly Bloc
       for (const p of projectRecurringBlocksForDay(dateStr, training)) {
         if (p.spillover) continue
         const scheduleBlock = training.find(s => s.id === p.canonicalId)
-        if (scheduleBlock) push(dateStr, { id: `${p.canonicalId}__${dateStr}`, title: p.title, kind: 'recurring', scheduleBlock: scheduleBlock as ScheduleBlock })
+        if (!scheduleBlock) continue
+        const task = dayTask.get(`${p.canonicalId}:${dateStr}`)
+        push(dateStr, { id: `${p.canonicalId}__${dateStr}`, title: p.title, kind: 'recurring', scheduleBlock: scheduleBlock as ScheduleBlock, ...(task ? { dayTask: task } : {}) })
       }
     }
   }

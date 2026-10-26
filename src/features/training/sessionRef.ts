@@ -10,7 +10,7 @@
 // shows what was lifted, never the plan's schedule form. Changing the plan is
 // a deliberate second step (the popup's ⋯ menu).
 
-import { matchDaySessions, planStartHHMM, planWorkoutScore } from './components/calendar/calendarSessions'
+import { matchDaySessions, planStartHHMM, planTaskOf, planWorkoutScore } from './components/calendar/calendarSessions'
 import { sessionStatus, type SessionState } from './plan/sessionState'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { repeatSummary } from '../daily/recurrence'
@@ -96,8 +96,11 @@ export function resolveTrainingSession(input: {
   const open = day.openPlans.find(o => o.plan.id === id)
   if (open) return { kind: 'plan', plan: open.plan, status: open.status, offSchedule: false }
   if (planRow) {
-    const b = planRow.timeBlock
-    const status = sessionStatus({ date, taskStatus: b?.task_id ? b.task_status ?? 'open' : null, activityOnDay: hasActivity, today: todayStr }).state
+    const task = planTaskOf(planRow)
+    const status = sessionStatus({
+      date, taskStatus: task ? task.status : null, taskMissed: task?.missed ?? false, taskRoutineId: task?.routineId ?? null,
+      taskWorkoutId: task?.workoutId ?? null, firstDate: task?.firstDate ?? null, activityOnDay: hasActivity, today: todayStr,
+    }).state
     return { kind: 'plan', plan: planRow, status, offSchedule: true }
   }
   return { kind: 'missing' }
