@@ -78,7 +78,7 @@ export function OnlineFoodSearch({ initialQuery = '', onPick }: {
                 <span className="min-w-0 flex-1">
                   <Truncate className="text-body text-fg">{p.name}</Truncate>
                   <span className="text-meta text-fg-muted tabular-nums">
-                    {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal/100g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)}g protein` : ''}
+                    {p.brand ? `${p.brand} · ` : ''}{p.calories != null ? `${Math.round(p.calories)} kcal / 100 g` : 'no macros'}{p.protein_g != null ? ` · ${Math.round(p.protein_g)} g protein` : ''}
                   </span>
                 </span>
               </button>

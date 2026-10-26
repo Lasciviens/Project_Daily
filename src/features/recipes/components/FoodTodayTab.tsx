@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Brain, Check, ChevronRight, Copy, Plus, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Brain, Check, ChevronRight, CircleCheck, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { GoalSummary } from '../../daily/components/GoalSummary'
@@ -37,6 +37,8 @@ import { SupplementDosesCard } from '../../supplements/components/SupplementDose
 const MACRO_COLS = '@[40rem]:grid-cols-[minmax(0,1fr)_3.5rem_3rem_3.25rem_3rem_3rem_3rem_2.75rem_2.75rem]'
 const MACRO_GRID = cx('hidden items-center gap-x-2 @[40rem]:grid', MACRO_COLS)
 const HEAD_NUM = 'hidden text-meta tabular-nums text-right @[40rem]:block'
+/** A grams cell: "42 g", or a dash when the line has none (an empty cell read as "not loaded"). */
+const grams = (v: number) => (v > 0 ? `${v} g` : '–')
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Food · Today — the full nutrition surface. The day's totals, water and the
@@ -56,16 +58,19 @@ const SLOTS: { slot: MealSlot; label: string; icon: string }[] = [
 
 // `size` is the SVG geometry basis; `sizeClass` sets the displayed box so the
 // ring can shrink on a phone (the viewBox scales the stroke with it).
-function Ring({ consumed, target, size, stroke, color, label, sizeClass, ready }: {
-  consumed: number; target: number; size: number; stroke: number; color: string; label: string; sizeClass: string; ready: boolean
+// `overIs`: what going over the target means — too many calories is a warning
+// (danger), more protein than the target is the goal reached (success).
+function Ring({ consumed, target, size, stroke, color, label, overLabel, sizeClass, ready, overIs }: {
+  consumed: number; target: number; size: number; stroke: number; color: string; label: string; overLabel: string; sizeClass: string; ready: boolean
+  overIs: 'danger' | 'success'
 }) {
   const over = consumed > target
   const remaining = Math.abs(Math.round(target - consumed))
   return (
     <ProgressRing value={target > 0 ? consumed / target : 0} size={size} stroke={stroke} ready={ready}
-      color={over ? 'rgb(var(--danger))' : color} className={sizeClass}>
+      color={over ? `rgb(var(--${overIs}))` : color} className={sizeClass}>
       <AnimatedNumber value={remaining} ready={ready} align="center" className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
-      <span className={cx('mt-0.5 text-micro leading-none', over ? 'text-danger' : 'text-fg-muted')}>{over ? 'over' : label}</span>
+      <span className={cx('mt-0.5 text-micro leading-none', over ? (overIs === 'danger' ? 'text-danger' : 'text-success') : 'text-fg-muted')}>{over ? overLabel : label}</span>
     </ProgressRing>
   )
 }
@@ -111,6 +116,41 @@ export function FoodTodayTab({ date }: { date: string }) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
 
+  // A meal slot's header — the same for every slot, Supplement included (its
+  // Schedule button comes in as `extra`). A wide card puts the totals in the
+  // rows' own columns (kcal · protein · carbs · fat · fiber); a narrow one keeps
+  // them on one line beside the name, and "Log" becomes its + (still read out).
+  function slotHeader(slot: MealSlot, label: string, icon: string, totals: ReturnType<typeof eatenTotals>, extra?: ReactNode) {
+    const kcal = totals.calories
+    const head = (v: number) => (kcal > 0 ? `${v} g` : '')
+    return (
+      <header className={cx('flex items-center gap-2 border-b border-line py-1 pl-4 pr-2 @[40rem]:grid @[40rem]:gap-x-2', MACRO_COLS)}>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <h3 className="flex min-w-0 items-center gap-2 text-ui font-semibold text-fg">
+            <span aria-hidden className="text-base leading-none">{icon}</span>{label}
+          </h3>
+          {extra}
+        </div>
+        {kcal > 0 && (
+          <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted @[40rem]:hidden">
+            <span>{kcal} kcal</span>
+            <MacroLine protein={totals.protein_g} carbs={totals.carbs_g} fat={totals.fat_g} className="flex-nowrap" />
+          </span>
+        )}
+        <span aria-hidden className="hidden @[40rem]:block" />
+        <span className={cx(HEAD_NUM, 'font-semibold text-fg')}>{kcal > 0 ? kcal : ''}</span>
+        <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{head(totals.protein_g)}</span>
+        <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{head(totals.carbs_g)}</span>
+        <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{head(totals.fat_g)}</span>
+        <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{head(totals.fiber_g)}</span>
+        <button type="button" onClick={() => openLog(slot)}
+          className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600 @[40rem]:col-span-2 @[40rem]:justify-self-end">
+          <Plus aria-hidden className="h-4 w-4" /><span className="sr-only @[26rem]:not-sr-only">Log</span>
+        </button>
+      </header>
+    )
+  }
+
   // One logged/planned item, standalone or indented inside an expanded dish.
   // Two markups (stacked phone vs aligned desktop grid) because the column
   // count would otherwise change under one fixed set of children. Inside a
@@ -131,10 +171,10 @@ export function FoodTodayTab({ date }: { date: string }) {
     const macroLine = [
       qty,
       meal.calories > 0 && `${approx && `${approx} `}${meal.calories} kcal`,
-      meal.protein_g > 0 && `${meal.protein_g}g protein`,
-      meal.carbs_g > 0 && `${meal.carbs_g}g carbs`,
-      meal.fat_g > 0 && `${meal.fat_g}g fat`,
-      meal.fiber_g > 0 && `${meal.fiber_g}g fiber`,
+      meal.protein_g > 0 && `${meal.protein_g} g protein`,
+      meal.carbs_g > 0 && `${meal.carbs_g} g carbs`,
+      meal.fat_g > 0 && `${meal.fat_g} g fat`,
+      meal.fiber_g > 0 && `${meal.fiber_g} g fiber`,
     ]
     const nameBtn = (
       <button type="button" onClick={onOpen} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
@@ -143,8 +183,9 @@ export function FoodTodayTab({ date }: { date: string }) {
       </button>
     )
     const actionBtn = planned && meal.planEntry ? (
+      // An outline circle — a green ✓ elsewhere means "eaten" (Meal plan), never "tap to eat".
       <IconButton label={`Mark ${name} eaten`} onClick={() => eatPlan.mutate(meal.planEntry!)} disabled={eatPlan.isPending}
-        className="text-success disabled:opacity-50"><Check /></IconButton>
+        className="text-fg-muted hover:!text-success focus-visible:!text-success disabled:opacity-50"><CircleCheck /></IconButton>
     ) : dish ? <DishItemMenu entryId={meal.id} item={name} dish={dish.title} date={date} /> : null
     const delBtn = (
       <IconButton label={`Remove ${name}`} onClick={onDelete} className="text-fg-faint hover:!text-danger"><X /></IconButton>
@@ -164,11 +205,11 @@ export function FoodTodayTab({ date }: { date: string }) {
         <div className={cx(MACRO_GRID, 'text-body', indent ? 'pl-9 pr-2' : 'pl-4 pr-2')}>
           {nameBtn}
           {qty ? <Truncate className={num}>{qty}</Truncate> : <span />}
-          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? `${approx}${meal.calories}` : ''}</span>
-          <span className={num}>{meal.protein_g > 0 ? `${meal.protein_g}g` : ''}</span>
-          <span className={num}>{meal.carbs_g > 0 ? `${meal.carbs_g}g` : ''}</span>
-          <span className={num}>{meal.fat_g > 0 ? `${meal.fat_g}g` : ''}</span>
-          <span className={num}>{meal.fiber_g > 0 ? `${meal.fiber_g}g` : ''}</span>
+          <span className={cx(num, !planned && 'font-medium text-fg-2')}>{meal.calories > 0 ? `${approx}${meal.calories}` : '–'}</span>
+          <span className={num}>{grams(meal.protein_g)}</span>
+          <span className={num}>{grams(meal.carbs_g)}</span>
+          <span className={num}>{grams(meal.fat_g)}</span>
+          <span className={num}>{grams(meal.fiber_g)}</span>
           <span className="grid place-items-center">{actionBtn}</span>
           {delBtn}
         </div>
@@ -188,10 +229,10 @@ export function FoodTodayTab({ date }: { date: string }) {
     const totals = [
       group.amount,
       `${approx && `${approx} `}${group.calories} kcal`,
-      group.protein_g > 0 && `${group.protein_g}g protein`,
-      group.carbs_g > 0 && `${group.carbs_g}g carbs`,
-      group.fat_g > 0 && `${group.fat_g}g fat`,
-      group.fiber_g > 0 && `${group.fiber_g}g fiber`,
+      group.protein_g > 0 && `${group.protein_g} g protein`,
+      group.carbs_g > 0 && `${group.carbs_g} g carbs`,
+      group.fat_g > 0 && `${group.fat_g} g fat`,
+      group.fiber_g > 0 && `${group.fiber_g} g fiber`,
     ]
     const nameBtn = (
       <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
@@ -216,10 +257,10 @@ export function FoodTodayTab({ date }: { date: string }) {
           {nameBtn}
           <span className={num}>{group.amount}</span>
           <span className={cx(num, 'font-medium text-fg-2')}>{approx}{group.calories}</span>
-          <span className={num}>{group.protein_g > 0 ? `${group.protein_g}g` : ''}</span>
-          <span className={num}>{group.carbs_g > 0 ? `${group.carbs_g}g` : ''}</span>
-          <span className={num}>{group.fat_g > 0 ? `${group.fat_g}g` : ''}</span>
-          <span className={num}>{group.fiber_g > 0 ? `${group.fiber_g}g` : ''}</span>
+          <span className={num}>{grams(group.protein_g)}</span>
+          <span className={num}>{grams(group.carbs_g)}</span>
+          <span className={num}>{grams(group.fat_g)}</span>
+          <span className={num}>{grams(group.fiber_g)}</span>
           <span className="grid place-items-center">{menu}</span>
           {delBtn}
         </div>
@@ -283,17 +324,17 @@ export function FoodTodayTab({ date }: { date: string }) {
           <GoalSummary date={date} className="-mt-2 mb-2" />
           <div className="flex flex-wrap items-center gap-4 sm:gap-5">
             <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
-              label="kcal left" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} />
+              label="kcal left" overLabel="kcal over" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} overIs="danger" />
             <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
-              label="g left" sizeClass="h-[88px] w-[88px]" ready={nut != null} />
+              label="protein left" overLabel="protein over" sizeClass="h-[88px] w-[88px]" ready={nut != null} overIs="success" />
             <div className="min-w-[10rem] flex-1">
               <p className="text-body text-fg-muted tabular-nums">
                 <AnimatedNumber value={consumed} ready={nut != null} className="text-title font-bold text-fg" /> / {targets.calories} kcal
               </p>
               <p className="mt-0.5 text-meta tabular-nums">
                 {proteinHit
-                  ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft}g)` : ''}</span>
-                  : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein}g</strong> / {targets.protein}g protein · {proteinLeft}g left</span>}
+                  ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft} g)` : ''}</span>
+                  : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein} g</strong> / {targets.protein} g protein · {proteinLeft} g left</span>}
               </p>
             </div>
           </div>
@@ -349,37 +390,15 @@ export function FoodTodayTab({ date }: { date: string }) {
           if (slot === 'supplement') {
             return (
               <SupplementDosesCard key={slot} date={date} meals={meals}
+                renderHeader={extra => slotHeader(slot, label, icon, eatenTotals(meals), extra)}
                 renderRows={rows => slotRows(rows, slot)} emptyActions={quickActions(slot, label)} />
             )
           }
           // What was eaten in the slot (planned rows never count), summed exactly and rounded once — the Nutrition total's rule.
           const slotTotals = eatenTotals(meals)
-          const kcal = slotTotals.calories
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
-              {/* A wide card puts the meal's totals in the rows' own columns (kcal · protein · carbs · fat · fiber);
-                  a narrow one keeps them on one line beside the name, and "Log" becomes its + (still read out). */}
-              <header className={cx('flex items-center gap-2 border-b border-line py-1 pl-4 pr-2 @[40rem]:grid @[40rem]:gap-x-2', MACRO_COLS)}>
-                <h3 className="flex min-w-0 flex-1 items-center gap-2 text-ui font-semibold text-fg">
-                  <span aria-hidden className="text-base leading-none">{icon}</span>{label}
-                </h3>
-                {kcal > 0 && (
-                  <span className="flex flex-wrap items-center justify-end gap-x-2 text-meta tabular-nums text-fg-muted @[40rem]:hidden">
-                    <span>{kcal} kcal</span>
-                    <MacroLine protein={slotTotals.protein_g} carbs={slotTotals.carbs_g} fat={slotTotals.fat_g} className="flex-nowrap" />
-                  </span>
-                )}
-                <span aria-hidden className="hidden @[40rem]:block" />
-                <span className={cx(HEAD_NUM, 'font-semibold text-fg')}>{kcal > 0 ? kcal : ''}</span>
-                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.protein_g}g` : ''}</span>
-                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.carbs_g}g` : ''}</span>
-                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.fat_g}g` : ''}</span>
-                <span className={cx(HEAD_NUM, 'font-medium text-fg-2')}>{kcal > 0 ? `${slotTotals.fiber_g}g` : ''}</span>
-                <button type="button" onClick={() => openLog(slot)}
-                  className="btn-ghost btn-sm gap-1 !px-2.5 text-accent-600 @[40rem]:col-span-2 @[40rem]:justify-self-end">
-                  <Plus aria-hidden className="h-4 w-4" /><span className="sr-only @[26rem]:not-sr-only">Log</span>
-                </button>
-              </header>
+              {slotHeader(slot, label, icon, slotTotals)}
               {meals.length > 0 ? (
                 <ul className="divide-y divide-line">
                   {slotRows(meals, slot)}

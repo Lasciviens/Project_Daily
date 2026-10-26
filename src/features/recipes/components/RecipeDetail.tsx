@@ -3,7 +3,7 @@ import { Check, ChefHat, Flame, Minus, Plus, ShoppingBag, UtensilsCrossed, Exter
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { Button, IconButton, MetaLine, Truncate } from '../../../shared/ui'
+import { Button, MetaLine, Truncate } from '../../../shared/ui'
 import { cx } from '../../../shared/ui/cx'
 import { useDeleteRecipe, useIncrementTimesCooked, useRecipeBatch } from '../hooks/useRecipes'
 import { useAddMissingIngredientsToShop } from '../hooks/useShopIntegration'
@@ -124,11 +124,11 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
   const steps = (recipe.instructions ?? '').split('\n').map(s => s.trim()).filter(Boolean)
   const totals = [
     { label: 'Calories', v: macro(recipe.calories) },
-    { label: 'Protein', v: macro(recipe.protein_g), suffix: 'g' },
-    { label: 'Carbs', v: macro(recipe.carbs_g), suffix: 'g' },
-    { label: 'Fat', v: macro(recipe.fat_g), suffix: 'g' },
-    { label: 'Fiber', v: macro(recipe.fiber_g), suffix: 'g' },
-    { label: 'Sugar', v: macro(recipe.sugar_g), suffix: 'g' },
+    { label: 'Protein', v: macro(recipe.protein_g), suffix: ' g' },
+    { label: 'Carbs', v: macro(recipe.carbs_g), suffix: ' g' },
+    { label: 'Fat', v: macro(recipe.fat_g), suffix: ' g' },
+    { label: 'Fiber', v: macro(recipe.fiber_g), suffix: ' g' },
+    { label: 'Sugar', v: macro(recipe.sugar_g), suffix: ' g' },
   ].filter(t => t.v != null)
 
   const hasImage = !!recipe.image_url && !imgError
@@ -160,7 +160,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
       footer={
         <div className="flex gap-2">
           <Button variant="ghost" className="text-danger" onClick={handleDelete} loading={remove.busy}>Delete</Button>
-          <Button variant="primary" block onClick={handleEdit}>Edit recipe</Button>
+          {/* "I ate this" is the one primary action here (THEME §5). */}
+          <Button block onClick={handleEdit}>Edit recipe</Button>
         </div>
       }
     >
@@ -182,9 +183,10 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 <span className="hidden sm:inline">Cook mode</span>
               </Button>
             )}
-            <IconButton label={`I made this (starts a batch of ${countLabel(servings, word)})`} bordered onClick={handleMadeThis} disabled={cooked.isPending}>
-              <Flame />
-            </IconButton>
+            <Button size="sm" icon={<Flame />} onClick={handleMadeThis} disabled={cooked.isPending}
+              aria-label={`I made this (starts a batch of ${countLabel(servings, word)})`} title={`I made this — starts a batch of ${countLabel(servings, word)}`}>
+              <span className="hidden sm:inline">Made it</span>
+            </Button>
           </div>
         </div>
 
@@ -192,7 +194,7 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
             AmountField), what is left of the batch, then when + where it logs
             to (today + the time-of-day slot; both editable to backfill). */}
         <section className="flex flex-col gap-2 border-y border-line py-3">
-          <AmountField model={ateModel} value={ate} onChange={setAte} batch={batch} label="Ate" id="recipe-ate" />
+          <AmountField model={ateModel} value={ate} onChange={setAte} batch={batch} label="Amount" id="recipe-ate" />
           {ate > 0 && recipe.calories != null && (
             <MetaLine className="text-meta text-fg-muted tabular-nums" items={[
               <>logs <strong className="text-fg-2">{Math.round(recipe.calories * ate)}</strong> kcal</>,

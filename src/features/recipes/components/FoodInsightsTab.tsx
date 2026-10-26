@@ -16,6 +16,10 @@ import { MacroBar } from './MacroBar'
 import type { IngredientLibraryItem, RecipeWithIngredients } from '../types'
 import { SLOT_OPTIONS } from './foodLogUtils'
 
+// A bar that counts (days eaten, times logged) is neutral: a macro's colour
+// (kcal violet, fiber lime) on it would read as that macro.
+const COUNT_BAR = 'rgb(var(--neutral))'
+
 type Window = '7' | '30' | '90'
 // Stable empty lists, so the memo below doesn't rerun on every render while a read is pending.
 const EMPTY_RECIPES: RecipeWithIngredients[] = []
@@ -120,7 +124,7 @@ export function FoodInsightsTab() {
             value={s => `${Math.round(s.protein)} g`} hint="Share of all protein in the window" />
         ),
         most: (
-          <SourceList title="Most logged" icon={<Repeat />} items={ins.mostLogged} color="rgb(var(--chart-5))" onOpen={openSource}
+          <SourceList title="Most logged" icon={<Repeat />} items={ins.mostLogged} color={COUNT_BAR} onOpen={openSource}
             value={s => `${s.count}×`} hint="Share of every diary line" />
         ),
         slots: (
@@ -205,7 +209,7 @@ function IngredientUseList({ items, loading, failed, onRetry }: { items: UsedIng
                   <span className="shrink-0 tabular-nums text-fg-2">{u.days} {u.days === 1 ? 'day' : 'days'}</span>
                 </div>
                 <div className="ml-6 mt-1 h-1.5 overflow-hidden rounded-full bg-surface-2">
-                  <div className="h-full rounded-full" style={{ width: `${Math.max(u.dayShare, 2)}%`, backgroundColor: MACRO_COLOR.calories }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.max(u.dayShare, 2)}%`, backgroundColor: COUNT_BAR }} />
                 </div>
                 {meta('ml-6 mt-0.5 block @[30rem]:hidden')}
               </li>

@@ -194,19 +194,32 @@ export function IngredientManager({ focusId }: { focusId?: string | null } = {})
               <span>Calories don't match protein, carbs and fat — {consistency.deltaPct}% off. Tap the badge for details.</span>
             </div>
           )}
+          {/* Labelled like the macro fields: a filled box ("1 medium", "118") must still say what it is. */}
           <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-4">
-            <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="Portion (1 scoop)" aria-label="Portion name" className="input" />
-            <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams (30)" aria-label="Portion grams" className="input" />
+            <label className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-micro text-fg-muted">Portion</span>
+              <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="1 scoop" aria-label="Portion name" className="input" />
+            </label>
+            <label className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-micro text-fg-muted">Portion ({f.unit === 'ml' ? 'ml' : 'g'})</span>
+              <input value={f.servGrams} onChange={e => set('servGrams', sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="30" aria-label="Portion grams" className="input tabular-nums" />
+            </label>
             {/* Macros are per 100 g or 100 ml: any other unit ("stk") could never be counted. */}
-            <select value={f.unit} onChange={e => set('unit', e.target.value)} aria-label="Macros per" className="select">
-              <option value="g">per 100 g</option>
-              <option value="ml">per 100 ml</option>
-              {f.unit !== 'g' && f.unit !== 'ml' && <option value={f.unit}>{f.unit} (old)</option>}
-            </select>
-            <select value={f.group} onChange={e => set('group', e.target.value)} aria-label="Category" className="select">
-              <option value="">Category…</option>
-              {FOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
+            <label className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-micro text-fg-muted">Macros</span>
+              <select value={f.unit} onChange={e => set('unit', e.target.value)} aria-label="Macros per" className="select">
+                <option value="g">per 100 g</option>
+                <option value="ml">per 100 ml</option>
+                {f.unit !== 'g' && f.unit !== 'ml' && <option value={f.unit}>{f.unit} (old)</option>}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-micro text-fg-muted">Category</span>
+              <select value={f.group} onChange={e => set('group', e.target.value)} aria-label="Category" className="select">
+                <option value="">None</option>
+                {FOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </label>
           </div>
           <Button variant="primary" icon={editingId ? undefined : <Plus />} onClick={handleSave} loading={busy} disabled={!f.name.trim()} className="self-start">
             {editingId ? 'Save changes' : 'Add ingredient'}

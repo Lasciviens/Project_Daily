@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { SlidersHorizontal, Sparkles, Zap } from 'lucide-react'
+import { Pencil, SlidersHorizontal, Sparkles, Zap } from 'lucide-react'
 import { Card, CardHeader, SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -99,7 +99,7 @@ export function QuickGuessCard({ date }: { date: string }) {
               onClick={() => logGuess(p.title, p)} />
           )
         })}
-        <GuessChip icon="✏️" title="Your own" sub="kcal and macros"
+        <GuessChip icon={<Pencil />} title="Your own" sub="type a name and kcal"
           hint="Open the logger and type it, e.g. “kebab 700 kcal”"
           onClick={() => modal.open({ kind: 'food-log', date, slot })} />
         <GuessChip icon={<Sparkles />} title="Describe it" sub="AI estimate" opens

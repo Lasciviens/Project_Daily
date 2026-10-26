@@ -25,7 +25,7 @@ export function MacroFigure({ macro, label, value, color, meals }: {
       className="flex min-w-0 items-center gap-1 rounded-sm text-left underline decoration-line-strong decoration-dotted underline-offset-2 transition-colors hover:decoration-fg-faint"
       trigger={<>
         <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        {value}g {label}
+        {value} g {label}
       </>}
     >
       <MacroSourcesPanel macro={macro} label={label} meals={meals} />
