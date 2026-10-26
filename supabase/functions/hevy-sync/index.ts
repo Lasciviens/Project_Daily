@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // ── Inlined from the former _shared/hevySync.ts ─────────────────────────────
 // Kept as a per-function copy because Supabase Dashboard deploys don't bundle
@@ -534,6 +534,17 @@ async function hevyGet(path: string) {
   return res.json()
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   // Handle preflight — Hevy servers won't send this but be safe
   if (req.method === 'OPTIONS') {
@@ -548,7 +559,7 @@ Deno.serve(async (req) => {
   // Verify webhook secret
   const secret = Deno.env.get('HEVY_WEBHOOK_SECRET')
   const authHeader = req.headers.get('authorization') ?? ''
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  if (!secret || !(await sameSecret(authHeader, `Bearer ${secret}`))) {
     return new Response('Unauthorized', { status: 401 })
   }
 

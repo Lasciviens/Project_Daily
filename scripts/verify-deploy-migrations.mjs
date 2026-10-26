@@ -242,11 +242,11 @@ if (testUrl && !/^postgres(ql)?:\/\/[^@]*@(127\.0\.0\.1|localhost)(:\d+)?\//.tes
     psql("select count(*) from information_schema.columns where table_name = 't141' and column_name = 'y'") === '1' && Date.now() - started < 30000, r.out)
 
   rmSync(join(work, '145_e.sql'))
-  writeFileSync(join(work, '147_g.sql'), "create table public.t147 (x text);\ninsert into public.t147 values ('Furkan Secret 12345');\nalter table public.t147 alter column x type int using x::int;")
+  writeFileSync(join(work, '147_g.sql'), "create table public.t147 (x text);\ninsert into public.t147 values ('Owner Secret 12345');\nalter table public.t147 alter column x type int using x::int;")
   r = run()
   check('a failing cast: the value stays out of the log, the full error is kept in the database',
     !r.ok && /\[22P02\]/.test(r.out) && !/Secret/.test(r.out) && /deploy\.migration_errors/.test(r.out) &&
-    psql("select message from deploy.migration_errors where file = '147_g.sql' order by at desc limit 1").includes('Furkan Secret 12345'), r.out)
+    psql("select message from deploy.migration_errors where file = '147_g.sql' order by at desc limit 1").includes('Owner Secret 12345'), r.out)
   rmSync(join(work, '147_g.sql'))
 
   writeFileSync(join(work, '148_h.sql'), [

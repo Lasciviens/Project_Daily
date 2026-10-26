@@ -206,7 +206,7 @@ function functionWiringSection() {
   check('the same problem is logged once, not every 20 minutes', /if \(prevError\.includes\(message\)\) return/.test(f))
   check('the sync state survives a schema without last_full_sync_at', /error\.code === '42703' \|\| error\.code === 'PGRST204'/.test(f))
   check('JWT callers still pass the owner lock', /if \(userId && !\(await isAppUser\(userId\)\)\)/.test(f))
-  check('the cron path still acts as HEVY_USER_ID', /if \(secret && syncSecretHeader === secret\) \{\s+userId = Deno\.env\.get\('HEVY_USER_ID'\)/.test(f))
+  check('the cron path still acts as HEVY_USER_ID (secret compared in constant time)', /if \(secret && await sameSecret\(syncSecretHeader \?\? '', secret\)\) \{\s+userId = Deno\.env\.get\('HEVY_USER_ID'\)/.test(f))
   check('shouldSkipPendingCreate keeps both guards in the function copy',
     /if \(!task\.google_sync_enabled\) return true/.test(f) && /if \(task\.google_task_id && !forceRecreate\) return true/.test(f))
   const toml = read('supabase/config.toml')

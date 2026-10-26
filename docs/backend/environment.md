@@ -17,13 +17,13 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 | `VITE_VAPID_PUBLIC_KEY` | Client build (GitHub Actions **Variable**) — the VAPID **public** key the browser uses to subscribe to Web Push. Safe to expose. |
 | `GEMINI_API_KEY` | Vault — the ONLY AI key; read by `ai-proxy`. (There is no Claude/OpenAI key in this project.) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Vault — server side of the unified Google OAuth (`calendar-oauth`/`calendar-token`) |
-| `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Vault — `strava-auth`/`strava-activities` |
+| `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Vault — `strava-auth`/`strava-activities`, and `strava-disconnect` (Basic auth on Strava's `/oauth/revoke`) |
 | `HEVY_API_KEY` / `HEVY_WEBHOOK_SECRET` / `HEVY_USER_ID` | Vault — Hevy API + webhook auth; `HEVY_USER_ID` is the single-user id reused by every server-side path (health webhook, phone gateway, push cron) |
 | `HEALTH_EXPORT_WEBHOOK_SECRET` | Vault — Health Auto Export sends it as `Authorization: Bearer <secret>` |
 | `GOOGLE_TASKS_SYNC_SECRET` | Vault — `google-tasks-sync`'s cron-path auth (`x-sync-secret`), read from Vault inside migration `072`'s `lascis-google-tasks-sync` cron job (never in the SQL text). |
 | `KASSALAPP_API_KEY` | Vault — personal kassal.app token, read by `food-search`. The client never sees it. |
 | `PHONE_GATEWAY_SECRET` | Vault — the iPhone's durable device secret (`x-phone-secret`). Authenticates `phone-gateway` AND `ai-proxy`'s phone branch; both act as `HEVY_USER_ID` server-side. Never put a login/service key on the device. Revoke = rotate this value. `docs/iphone-examples.md`. |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Vault — Web Push (VAPID) signing keys for `push-send`. Generate with `npx web-push generate-vapid-keys`. `docs/web-push-setup.md`. |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Vault — Web Push (VAPID) signing keys for `push-send`. Generate with `npx web-push generate-vapid-keys`. `VAPID_SUBJECT` is the site's URL (the default when unset) or a non-work `mailto:`. `docs/web-push-setup.md`. |
 | `PUSH_CRON_SECRET` | Vault — the pg_cron morning-push job's auth (`x-cron-secret` → `push-send`). Read from Vault **inside** the cron (migration 068), never written into the SQL text. |
 | `SCREENSCRAPER_DEVID` / `SCREENSCRAPER_DEVPASSWORD` / `SCREENSCRAPER_SSID` / `SCREENSCRAPER_SSPASSWORD` | Vault — read by `screenscraper-sync` and `screenscraper-media`. **All four are needed and the pairs are not interchangeable**: the dev pair identifies the application, the member pair (the screenscraper.fr website login) is what switches the paid membership on. With only the dev pair the account is anonymous — 1 thread, 10k/day, 128 KB/s. |
 | `ESDE_SYNC_SECRET` | Edge Function environment secrets (ES-DE exception to Vault storage) — the RP6 handheld's own device secret (`x-esde-secret`), read by `esde-sync`, `esde-media-sync`, and `esde-content-sync`. Deliberately separate from `PHONE_GATEWAY_SECRET` so revoking the handheld never revokes the iPhone's Shortcuts. Revoke = rotate this value. |

@@ -65,8 +65,8 @@ function row(metric, recordedAt, qty, source) {
 console.log('\n1 · Round 1 case: same hour, same value, device listed twice in one source string')
 {
   const rows = [
-    row('active_energy', '2026-09-05T00:00:00Z', 0.786, "Furkan's Apple Watch"),
-    row('active_energy', '2026-09-05T00:00:00Z', 0.786, "Furkan's Apple Watch|Furkan's Apple Watch"),
+    row('active_energy', '2026-09-05T00:00:00Z', 0.786, "Owner's Apple Watch"),
+    row('active_energy', '2026-09-05T00:00:00Z', 0.786, "Owner's Apple Watch|Owner's Apple Watch"),
   ]
   const out = collapseDuplicateSumPoints(rows)
   check('collapsed to 1 row', out.length === 1, String(out.length))
@@ -76,7 +76,7 @@ console.log('\n1 · Round 1 case: same hour, same value, device listed twice in 
 console.log('\n2 · Round 2 case: hour-boundary reading + a mid-hour partial with a DIFFERENT source, still collapses')
 {
   const rows = [
-    row('active_energy', '2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch'),
+    row('active_energy', '2026-09-06T06:00:00Z', 83.7, 'Owner iPhone|Watch'),
     row('active_energy', '2026-09-06T06:39:34Z', 64.2, 'Watch'),
   ]
   const out = collapseDuplicateSumPoints(rows)
@@ -99,7 +99,7 @@ console.log('\n4 · A full day at a realistic BMR rate stays sane (not inflated 
   const rows = []
   for (let h = 0; h < 24; h++) {
     const hh = String(h).padStart(2, '0')
-    rows.push(row('basal_energy_burned', `2026-09-06T${hh}:00:00Z`, 80, 'Lasci 17 Pro|Watch'))
+    rows.push(row('basal_energy_burned', `2026-09-06T${hh}:00:00Z`, 80, 'Owner iPhone|Watch'))
     rows.push(row('basal_energy_burned', `2026-09-06T${hh}:39:00Z`, 45, 'Watch'))
   }
   const out = collapseDuplicateSumPoints(rows)

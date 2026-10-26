@@ -45,7 +45,7 @@
 // migration 104) and staying under min(saved budget, 850 MB). The budget is
 // always the SAVED one — a request cannot raise it. An image that would cross
 // it is kept online instead, and the result says so.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

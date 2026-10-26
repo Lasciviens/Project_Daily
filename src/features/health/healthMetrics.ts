@@ -7,7 +7,7 @@ export type AggType = 'sum' | 'average' | 'minmaxavg' | 'latest' | 'sleep'
 
 // How to collapse multiple points (across a day, and across differing
 // sources — a day can genuinely have several distinct source strings, e.g.
-// "Furkan's Apple Watch" vs "Furkan's Apple Watch|Lasci"; we intentionally
+// "Owner's Apple Watch" vs "Owner's Apple Watch|Owner iPhone"; we intentionally
 // ignore source for this computation) into one representative daily value:
 // - sum: cumulative/additive HealthKit quantities (steps, energy, distance,
 //   durations, nutrition intake) — add every point's qty together.

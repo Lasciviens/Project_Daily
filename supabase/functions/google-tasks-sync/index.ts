@@ -51,7 +51,7 @@
 // all). Every RPC call below passes p_user_id explicitly; the RPC honors it
 // only when auth.role() = 'service_role' (a claim only the platform's own
 // service key can present) — see migration 072's header comment.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -1454,6 +1454,17 @@ async function readCalendarChanges(token: string, userId: string): Promise<Readb
   return summary
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   const cors = corsHeaders(req.headers.get('origin'))
@@ -1464,7 +1475,7 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get('GOOGLE_TASKS_SYNC_SECRET')
   const syncSecretHeader = req.headers.get('x-sync-secret')
   let userId: string | null = null
-  if (secret && syncSecretHeader === secret) {
+  if (secret && await sameSecret(syncSecretHeader ?? '', secret)) {
     userId = Deno.env.get('HEVY_USER_ID') ?? null
   } else {
     const authHeader = req.headers.get('authorization') ?? ''

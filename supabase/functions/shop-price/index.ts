@@ -41,7 +41,7 @@
 // Fetch safety is news-article's: http/https only, private hosts refused on
 // every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -772,6 +772,17 @@ async function fillRates(supabase: any, userId: string): Promise<RatesResult> {
   return { needed: total, filled, pending: total - filled, ...(error ? { error } : {}) }
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
@@ -785,7 +796,7 @@ Deno.serve(async (req: Request) => {
   const sentSecret = req.headers.get('x-cron-secret')
   if (sentSecret) {
     const secret = Deno.env.get('SHOP_PRICE_CRON_SECRET')
-    if (!secret || sentSecret !== secret) return json({ error: 'Invalid cron secret' }, 401)
+    if (!secret || !(await sameSecret(sentSecret, secret))) return json({ error: 'Invalid cron secret' }, 401)
     const owner = Deno.env.get('HEVY_USER_ID')
     if (!owner) return json({ error: 'HEVY_USER_ID is not set' }, 500)
     userId = owner

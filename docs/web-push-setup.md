@@ -27,7 +27,7 @@ the pg_cron job `lascis-morning-push` that calls it daily. The service worker
    |---|---|
    | `VAPID_PUBLIC_KEY` | the public key |
    | `VAPID_PRIVATE_KEY` | the private key |
-   | `VAPID_SUBJECT` | `mailto:` + your e-mail address |
+   | `VAPID_SUBJECT` | the site's URL, `https://lasciviens.github.io/Project_Daily/` (the default when unset), or `mailto:` + a non-work address — never a work e-mail |
    | `PUSH_CRON_SECRET` | a fresh `openssl rand -hex 24` |
 
 3. **Supabase Vault** — the cron job is SQL, so it reads its copy of the cron

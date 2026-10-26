@@ -1,7 +1,7 @@
 // Handheld cover uploads and explicit deletion reconciliation. JWT is disabled:
 // this function authenticates ESDE_SYNC_SECRET, never accepts a client user ID,
 // and scopes all data to the configured owner. Requires migration 094.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const base = Deno.env.get('SUPABASE_URL')!
 const db = createClient(base, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)

@@ -18,7 +18,12 @@ older endpoints for completeness. How the feature works: `docs/features/media.md
 
 - OAuth 2 (authorization code). `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` are Edge Function secrets of
   `trakt-api` (see `docs/backend/environment.md`); the secret never reaches the browser. Tokens live in
-  `trakt_tokens` (service role only), last 24 h and are refreshed when less than 10 minutes remain.
+  `trakt_tokens` (service role only), last 7 days and are refreshed when less than 10 minutes remain; a
+  refresh token works once, so each refresh stores the new one.
+- Every sign-in request — `/oauth/authorize`, `/oauth/token` (code and refresh), `/oauth/revoke` — goes to
+  `https://auth.trakt.tv`, never `api.trakt.tv` (Trakt's OpenAPI: "Use the https://auth.trakt.tv hostname for
+  all OAuth requests ... Do not use the API hostname for these requests."). The data calls stay on
+  `api.trakt.tv`.
 - Every request sends `trakt-api-version: 2`, `trakt-api-key: <client id>` and `Authorization: Bearer <token>`.
 - The cron calls `trakt-api` with `x-sync-secret` = `TRAKT_SYNC_SECRET` (Vault for the job, the function's env)
   and acts as `HEVY_USER_ID`; the app calls it with the user's JWT (`isAppUser`).
@@ -28,7 +33,7 @@ older endpoints for completeness. How the feature works: `docs/features/media.md
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
 | `GET /sync/history/movies` (paged) | `trakt-api` `syncWatches` | a whole-history read: first sync after 149, after a reconnect, Sync now, a progress reset, more than 25 differing titles | page size clamped by Trakt ("often 250"); more than 200 pages is an error, never partial data |
-| `GET /sync/history/shows/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove` | a show whose plays differ from the summary; a whole-history read, title by title (resumable: `trakt_sync_state.history_cursor`); a single-play remove without a play id | GET: 1,000 calls / 5 min |
+| `GET /sync/history/shows/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove` | a show whose plays differ from the summary; a whole-history read, title by title (resumable: `trakt_sync_state.history_cursor`); a single-play remove without a play id | GET: 500 calls / 5 min |
 | `GET /sync/history/movies/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove` | the same, for a movie | |
 | `POST /sync/history` `{movies, shows: [{ids, seasons: [{number, episodes: [{number, watched_at}]}]}]}` | outbox drain (`history_add`), import push | a watch added here | POST: one per second; Trakt does not check duplicates |
 | `POST /sync/history/remove` `{ids: [history id, …]}` | outbox drain (`history_remove_play`) | a watch removed or re-dated here — that one play | |
@@ -96,4 +101,12 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
 
 ## Log
 
+- 26.10.2026 — sign-in host, limits and token life checked against Trakt's developer portal: the OpenAPI
+  spec (https://developer.trakt.tv/openapi.json — every `/oauth/*` path has the server
+  `https://auth.trakt.tv`), the PKCE guide (authorize at `https://auth.trakt.tv/oauth/authorize`), the
+  rate-limit guide (`AUTHED_API_GET_LIMIT`: 500 calls every 5 minutes; POST: 1 call per second) and the
+  OAuth guide ("The `access_token` is valid for **7 days**"; refresh tokens are single-use) — the last two
+  from https://github.com/trakt/trakt-api `projects/developer/src/lib/guides/`. `trakt-api` now sends
+  authorize, token and revoke to `auth.trakt.tv`. Discussion #1031 (the 01.02.2027 date after which the API
+  host refuses sign-in requests) could not be opened from the development session; the date is as reported.
 - 14.10.2026 — last check against Trakt's API blueprint and contract (see Checked above).

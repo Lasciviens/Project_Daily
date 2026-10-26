@@ -167,7 +167,7 @@ export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMo
         <div>
           <div className="relative aspect-video overflow-hidden rounded-row bg-scrim">
             <iframe
-              src={`https://www.youtube.com/embed/${trailer.key}?autoplay=1`}
+              src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1`}
               title="Trailer"
               allow="autoplay; fullscreen"
               allowFullScreen

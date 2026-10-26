@@ -13,7 +13,7 @@
  *   comparing.
  *   Round 2 (round 1 wasn't enough): every hour ALSO carries a THIRD row at
  *   a genuinely different minute with a genuinely different device
- *   combination in `source` (e.g. "Watch|Lasci 17 Pro" at "06:00:00" and
+ *   combination in `source` (e.g. "Watch|Owner iPhone" at "06:00:00" and
  *   just "Watch" at "06:39:34") -- a per-minute-per-source key still missed
  *   this and summed it on top, inflating a live day's basal energy to
  *   ~5400 kcal/day average (a real BMR is ~1600-2400). Root cause: these
@@ -53,8 +53,8 @@ function pt(recordedAt, qty, source) {
 console.log('\n1 · Round 1 case: same hour, same value, device listed twice in one source string')
 {
   const points = [
-    pt('2026-09-05T00:00:00Z', 0.786, "Furkan's Apple Watch"),
-    pt('2026-09-05T00:00:00Z', 0.786, "Furkan's Apple Watch|Furkan's Apple Watch"),
+    pt('2026-09-05T00:00:00Z', 0.786, "Owner's Apple Watch"),
+    pt('2026-09-05T00:00:00Z', 0.786, "Owner's Apple Watch|Owner's Apple Watch"),
   ]
   const series = computeDailySeries('active_energy', points)
   check('collapses to ONE value, not summed to 1.572', series.length === 1 && Math.abs(series[0].value - 0.786) < 1e-9,
@@ -64,8 +64,8 @@ console.log('\n1 · Round 1 case: same hour, same value, device listed twice in 
 console.log('\n2 · Round 2 case: the exact live pattern — hour-boundary reading + a mid-hour partial with a DIFFERENT source, still collapses')
 {
   const points = [
-    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch'),
-    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch|Watch'), // round-1 style exact dup
+    pt('2026-09-06T06:00:00Z', 83.7, 'Owner iPhone|Watch'),
+    pt('2026-09-06T06:00:00Z', 83.7, 'Owner iPhone|Watch|Watch'), // round-1 style exact dup
     pt('2026-09-06T06:39:34Z', 64.2, 'Watch'),                    // round-2: different minute AND source
   ]
   const series = computeDailySeries('active_energy', points)
@@ -81,8 +81,8 @@ console.log('\n3 · A full day of the real live basal_energy_burned pattern prod
   const points = []
   for (let h = 0; h < 24; h++) {
     const hh = String(h).padStart(2, '0')
-    points.push(pt(`2026-09-06T${hh}:00:00Z`, 80, 'Lasci 17 Pro|Watch'))
-    points.push(pt(`2026-09-06T${hh}:00:00Z`, 80, 'Lasci 17 Pro|Watch|Watch'))
+    points.push(pt(`2026-09-06T${hh}:00:00Z`, 80, 'Owner iPhone|Watch'))
+    points.push(pt(`2026-09-06T${hh}:00:00Z`, 80, 'Owner iPhone|Watch|Watch'))
     points.push(pt(`2026-09-06T${hh}:39:00Z`, 45, 'Watch'))
   }
   const series = computeDailySeries('active_energy', points)
@@ -94,7 +94,7 @@ console.log('\n4 · When NEITHER reading in an hour lands on the boundary, the l
 {
   const points = [
     pt('2026-09-06T09:39:34Z', 60, 'Watch'),
-    pt('2026-09-06T09:51:21Z', 65, 'Lasci 17 Pro|Watch'), // later, more complete partial
+    pt('2026-09-06T09:51:21Z', 65, 'Owner iPhone|Watch'), // later, more complete partial
   ]
   const series = computeDailySeries('active_energy', points)
   check('keeps the larger partial only (65), not 60+65=125', series.length === 1 && Math.abs(series[0].value - 65) < 1e-9,
@@ -104,7 +104,7 @@ console.log('\n4 · When NEITHER reading in an hour lands on the boundary, the l
 console.log('\n5 · A genuine hour-boundary reading always wins over a partial, even if the partial happens to read larger')
 {
   const points = [
-    pt('2026-09-06T10:00:00Z', 90, 'Lasci 17 Pro|Watch'),  // closed-hour total
+    pt('2026-09-06T10:00:00Z', 90, 'Owner iPhone|Watch'),  // closed-hour total
     pt('2026-09-06T10:32:17Z', 93.6, 'Watch'),             // a later partial that reads slightly higher
   ]
   const series = computeDailySeries('active_energy', points)
@@ -115,8 +115,8 @@ console.log('\n5 · A genuine hour-boundary reading always wins over a partial, 
 console.log('\n6 · Two genuinely different real hours both count in full (no cross-hour collapsing)')
 {
   const points = [
-    pt('2026-09-06T12:00:00Z', 3.0, "Furkan's Apple Watch"),
-    pt('2026-09-06T13:00:00Z', 4.0, "Furkan's Apple Watch"),
+    pt('2026-09-06T12:00:00Z', 3.0, "Owner's Apple Watch"),
+    pt('2026-09-06T13:00:00Z', 4.0, "Owner's Apple Watch"),
   ]
   const series = computeDailySeries('active_energy', points)
   check('two real distinct hours sum to 7.0', series.length === 1 && Math.abs(series[0].value - 7.0) < 1e-9)
@@ -146,8 +146,8 @@ console.log('\n8 · Minute-grain with float-noise workout twins: each minute cou
 console.log('\n9 · A re-delivered hour-grain hour right next to a minute-grain hour: each keeps its own rule')
 {
   const points = [
-    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch'),
-    pt('2026-09-06T06:00:00Z', 83.7, 'Lasci 17 Pro|Watch|Watch'),
+    pt('2026-09-06T06:00:00Z', 83.7, 'Owner iPhone|Watch'),
+    pt('2026-09-06T06:00:00Z', 83.7, 'Owner iPhone|Watch|Watch'),
     pt('2026-09-06T06:39:34Z', 64.2, 'Watch'),
   ]
   for (let m = 0; m < 10; m++) points.push(pt(`2026-09-06T07:${String(10 + m)}:05Z`, 5, 'Watch'))

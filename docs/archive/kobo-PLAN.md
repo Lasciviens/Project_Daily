@@ -2077,7 +2077,7 @@ Answered on 30.09.2026. The answers are in §12.4.
   dictionaries), run the same `FSCK*` check.
 - **Wi-Fi tests passed** (10 toggles, restart with Wi-Fi on, sleep/wake: no reboot).
 - **SSH works (04.10.2026):** key `~/.ssh/kobo_ed25519` on the Mac, `Host kobo` in
-  `~/.ssh/config` (root, port 2222, 10.0.0.90), key in
+  `~/.ssh/config` (root, port 2222, the Kobo's LAN address), key in
   `.adds/koreader/settings/SSH/authorized_keys`. KOReader's dropbear still accepts a root
   password unless **SSH server → "Login with key only"** is ticked (it passes `-s`; can only
   be changed while the server is stopped) — tick it.

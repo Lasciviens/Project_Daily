@@ -31,12 +31,14 @@
 // only; the Client Secret never leaves this function. New titles need
 // TMDB_API_KEY (the same key as the app's VITE_TMDB_API_KEY).
 //
-// Trakt facts this relies on (checked against the API blueprint, 30.09.2026):
-// access tokens last 24 h (since 20.03.2025) and are refreshed from the
-// refresh token; GET is limited to 1,000 calls / 5 min per user, POST to one
-// per second; paginated endpoints report X-Pagination-Page-Count.
+// Trakt facts this relies on (developer.trakt.tv guides and openapi.json,
+// checked 26.10.2026): access tokens last 7 days and are refreshed from the
+// refresh token (single use: each refresh returns a new one); GET is limited
+// to 500 calls / 5 min per user, POST to one per second; paginated endpoints
+// report X-Pagination-Page-Count. Every sign-in request (authorize, token,
+// refresh, revoke) goes to auth.trakt.tv, never the API host.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 // Owner lock (security audit 10.10.2026, migration 139): this function serves
 // only the owner (HEVY_USER_ID) and accounts listed in app_allowed_users (for
@@ -62,7 +64,11 @@ type Action = 'authorize_url' | 'connect' | 'status' | 'disconnect' | 'snapshot'
   | 'ratings' | 'follows_check' | 'playback' | 'playback_remove' | 'calendar' | 'lists' | 'list_items' | 'list_create' | 'list_delete' | 'list_add' | 'list_remove' | 'list_reorder'
 
 const API = 'https://api.trakt.tv'
-const AUTHORIZE = 'https://trakt.tv/oauth/authorize'
+// Trakt's OpenAPI gives every /oauth/* path the server https://auth.trakt.tv:
+// "Use the https://auth.trakt.tv hostname for all OAuth requests ... Do not
+// use the API hostname for these requests."
+const AUTH = 'https://auth.trakt.tv'
+const AUTHORIZE = `${AUTH}/oauth/authorize`
 const CLIENT_ID = () => Deno.env.get('TRAKT_CLIENT_ID') ?? ''
 const CLIENT_SECRET = () => Deno.env.get('TRAKT_CLIENT_SECRET') ?? ''
 // The only places Trakt may send the user back to (the Trakt app's own list).
@@ -107,7 +113,7 @@ function headers(token?: string): Record<string, string> {
 }
 
 async function oauth(path: string, body: AnyRec): Promise<AnyRec> {
-  const res = await fetch(`${API}${path}`, { method: 'POST', headers: headers(), body: JSON.stringify(body) })
+  const res = await fetch(`${AUTH}${path}`, { method: 'POST', headers: headers(), body: JSON.stringify(body) })
   const text = await res.text()
   if (!res.ok) throw traktFailure(path, res.status, text)
   return text ? JSON.parse(text) : {}
@@ -3400,6 +3406,17 @@ async function runImport(db: Db, userId: string, token: string, username: string
   }
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   const url = Deno.env.get('SUPABASE_URL')!
@@ -3417,7 +3434,7 @@ Deno.serve(async (req: Request) => {
   const cronSecret = Deno.env.get('TRAKT_SYNC_SECRET')
   const sentSecret = req.headers.get('x-sync-secret')
   if (sentSecret) {
-    if (!cronSecret || sentSecret !== cronSecret) return json({ error: 'Invalid sync secret' }, 401)
+    if (!cronSecret || !(await sameSecret(sentSecret, cronSecret))) return json({ error: 'Invalid sync secret' }, 401)
     const owner = Deno.env.get('HEVY_USER_ID')
     if (!owner) return json({ error: 'HEVY_USER_ID is not set' }, 500)
     userId = owner

@@ -1,5 +1,12 @@
 const BASE = 'https://api.met.no/weatherapi/locationforecast/2.0/compact'
 
+/**
+ * MET's terms allow at most 4 decimals; 3 (about 100 m) is plenty for a
+ * forecast and tells MET (and the service worker's URL cache) less about
+ * where you are.
+ */
+export const weatherCoord = (n: number): number => Math.round(n * 1000) / 1000
+
 export interface WeatherCurrent {
   temp:          number
   symbol:        string
@@ -111,7 +118,7 @@ function computeDailyForecast(series: Timeseries[], daysAhead = 5): WeatherDay[]
 }
 
 export async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
-  const res = await fetch(`${BASE}?lat=${lat}&lon=${lon}`)
+  const res = await fetch(`${BASE}?lat=${weatherCoord(lat)}&lon=${weatherCoord(lon)}`)
   if (!res.ok) throw new Error(`Weather API ${res.status}`)
   const json = await res.json()
   const series: Timeseries[] = json.properties.timeseries

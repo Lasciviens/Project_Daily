@@ -22,7 +22,7 @@
 // function cannot import from src/, hence two copies — the same arrangement
 // googleTasksOutboxRules.ts already uses for the Google Tasks outbox.
 // **Change one, change the other**, and re-run the verify script.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.107.0'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.118.0'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -224,13 +224,24 @@ async function inChunks<T>(items: T[], size: number, fn: (item: T) => Promise<vo
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn))
 }
 
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
   if (req.method !== 'POST') return json({ status: 'error', error: 'Method Not Allowed' }, 405)
 
   const secret = Deno.env.get('ESDE_SYNC_SECRET')
   const given = req.headers.get('x-esde-secret')
-  if (!secret || given !== secret) return json({ status: 'error', error: 'Unauthorized' }, 401)
+  if (!secret || !(await sameSecret(given ?? '', secret))) return json({ status: 'error', error: 'Unauthorized' }, 401)
   const userId = Deno.env.get('HEVY_USER_ID')
   if (!userId) return json({ status: 'error', error: 'Server not configured (HEVY_USER_ID)' }, 503)
 

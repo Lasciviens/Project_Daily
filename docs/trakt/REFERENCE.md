@@ -197,8 +197,13 @@ One sync at a time (`trakt_sync_state.sync_started_at`, stale after 5 minutes). 
 
 ### Trakt — limits, pagination, tokens
 
-- Access tokens last 24 h (since 20.03.2025) and are refreshed from the refresh token.
-- GET: 1,000 calls per 5 minutes per user. POST: **one per second** — the outbox paces itself.
+- Access tokens last 7 days and are refreshed from the refresh token, which works once — each
+  refresh stores the new one (Trakt's OAuth guide, checked 26.10.2026).
+- Sign-in requests (`/oauth/authorize`, `/oauth/token`, `/oauth/revoke`, `/oauth/device/*`) go to
+  `https://auth.trakt.tv`, never the API host (Trakt's OpenAPI, checked 26.10.2026); data calls
+  stay on `api.trakt.tv`.
+- GET: 500 calls per 5 minutes per user (`AUTHED_API_GET_LIMIT`, Trakt's rate-limit guide,
+  checked 26.10.2026). POST: **one per second** — the outbox paces itself.
   Paginated endpoints report `X-Pagination-Page-Count`.
 - Since 03.07.2026 (trakt-api discussion #775) `/sync/watched/*` is paginated (100 items
   without a limit) and leaves out seasons unless `extended=progress` (≤ 100 per page); every

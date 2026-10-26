@@ -57,7 +57,7 @@ export function FollowingPanel() {
                 </span>
               </button>
               {e.video_key && (
-                <a href={`https://www.youtube.com/watch?v=${e.video_key}`} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label={`Watch the trailer for ${e.title}`}>
+                <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(e.video_key)}`} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label={`Watch the trailer for ${e.title}`}>
                   <Play aria-hidden className="h-4 w-4" />
                 </a>
               )}

@@ -30,7 +30,7 @@ import type { HealthMetric } from './api/healthApi'
 // raw `source` STRING, but Health Auto Export's `source` is a "|"-joined list
 // of contributing devices that is NEITHER deduped NOR consistently ordered
 // between exports -- the SAME hour, from the SAME device(s), showed up as
-// both `"Furkan's Apple Watch"` and `"Furkan's Apple Watch|Furkan's Apple
+// both `"Owner's Apple Watch"` and `"Owner's Apple Watch|Owner's Apple
 // Watch"`. The original fix canonicalized this string (dedupe + sort the
 // "|"-joined parts, fold a stray NBSP) and grouped duplicates by canonical
 // source + exact minute \u2014 round 2 below replaced that grouping key entirely
@@ -49,7 +49,7 @@ import type { HealthMetric } from './api/healthApi'
 // THREE rows -- two exact duplicates (round 1's bug) PLUS a THIRD at a
 // DIFFERENT minute (e.g. "06:00:00" qty=83.7 and "06:39:34" qty=64.2) whose
 // `source` is a DIFFERENT device combination (just "Watch" instead of
-// "Watch|Lasci 17 Pro") -- so round 1's per-minute-per-canonical-source key
+// "Watch|Owner iPhone") -- so round 1's per-minute-per-canonical-source key
 // treated it as a genuinely different stream and summed it on top. But the
 // VALUES across an hour's rows are all nearly identical regardless of which
 // devices are listed (confirmed live: 77.55 / 77.64 / 77.60 kcal for the
