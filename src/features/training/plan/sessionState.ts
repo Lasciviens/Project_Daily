@@ -23,7 +23,8 @@ import type { Tone } from '../../../shared/ui/Tone'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 
 /** How many days after its planned day a workout still completes an open
- *  plan — migration 141's training_plan_candidates (p_day - 6). */
+ *  plan — migration 141's training_plan_candidates (p_day - 6) — and never
+ *  past its week: its first day and the next six (167). */
 export const LATE_WINDOW_DAYS = 6
 
 export type SessionState =
@@ -55,6 +56,9 @@ export interface SessionFacts {
    *  cancelled + closed_reason 'missed') — not a skip: read as a past open
    *  plan (a late workout still completes it). */
   taskMissed?: boolean
+  /** Its task's first day (167, tasks.first_plan_date): its week is that day
+   *  and the next six; a moved session's late workout counts only inside it. */
+  firstDate?: string | null
   /** A workout on the planned day that the day's pairing gave a plan with
    *  NO task (a plan with a task is done only through its task: 141 links
    *  the workout and closes it). */
@@ -128,8 +132,11 @@ export function sessionStatus(f: SessionFacts): SessionStatus {
     if (start != null && now != null && now >= start && now < start + Math.max(1, f.minutes ?? 60)) return status('now')
     return status('today')
   }
-  // Only a plan with a routine can still be closed by a later workout.
-  const until = shiftDay(f.date, LATE_WINDOW_DAYS)
+  // Only a plan with a routine can still be closed by a later workout, and
+  // only inside its week (167): after it the database skips it.
+  const lastOfDay = shiftDay(f.date, LATE_WINDOW_DAYS)
+  const lastOfWeek = f.firstDate ? shiftDay(f.firstDate, LATE_WINDOW_DAYS) : lastOfDay
+  const until = lastOfWeek < lastOfDay ? lastOfWeek : lastOfDay
   if (task !== null && OPEN_TASK.has(task) && f.taskRoutineId && f.today <= until) return status('pending', { countsUntil: until })
   return status('missed')
 }
@@ -185,12 +192,21 @@ export type SessionAction = 'done' | 'move' | 'skip' | 'reopen' | 'undoSkip' | '
  * here: the workout would close it again on the next sync.
  */
 export function sessionActions(s: SessionStatus, plan: { hasTask: boolean; weekly: boolean }): SessionAction[] {
-  if (s.state === 'skipped') return plan.hasTask ? ['undoSkip', 'edit', 'delete'] : ['undoSkip']
+  // A skipped session moved to today or later inside its week is to do again (167).
+  if (s.state === 'skipped') return plan.hasTask ? ['undoSkip', 'move', 'edit', 'delete'] : ['undoSkip']
   if (s.state === 'done') {
     if (!plan.hasTask) return plan.weekly ? [] : ['delete']
     return s.doneBy === 'hand' ? ['reopen', 'edit', 'delete'] : ['edit', 'delete']
   }
   return plan.weekly ? ['done', 'move', 'skip'] : ['done', 'move', 'skip', 'edit', 'delete']
+}
+
+/** A session's week is its first day and the next six (167). A move to a day
+ *  7 or more days after its first day skips it there, and that week's session
+ *  of the same plan moves to the day instead (the database does it,
+ *  training_move_past_week). True when `to` is such a day. */
+export function movesPastWeek(firstDay: string | null | undefined, to: string): boolean {
+  return !!firstDay && to >= shiftDay(firstDay, 7)
 }
 
 /** Monday (yyyy-MM-dd) of the week `date` falls in — the key a skip is

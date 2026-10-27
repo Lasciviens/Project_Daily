@@ -193,7 +193,7 @@ check('Day step 4: the glance board sits beside the schedule (owner\'s call)', (
 const glanceCols = (px) => px >= 55 * 16 ? 3 : px >= 36 * 16 ? 2 : 1
 {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/TodaySummary.tsx'), 'utf8')
-  check('glance board: no Nutrition card on Personal (owner, 16.10.2026) and no fourth column', !/NutritionCard/.test(src) && !/grid-cols-4/.test(src))
+  check('glance board: no old Nutrition card on Personal (owner, 16.10.2026 — food is the summary band since 26.10.2026) and no fourth column', !/NutritionCard/.test(src) && !/grid-cols-4/.test(src))
 }
 check('glance board: 1 column on a phone', glanceCols(W.phone) === 1)
 check('glance board: 2 on a 768 tablet and a landscape phone', glanceCols(W.tablet) === 2 && glanceCols(852 - 48) === 2)

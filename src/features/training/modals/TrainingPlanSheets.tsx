@@ -9,6 +9,8 @@ import { DateStepperField, FieldLabel, Time24Field } from '../../../shared/compo
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingPlanActions } from '../hooks/useTrainingPlanActions'
+import { useSessionFirstDay } from '../hooks/useTrainingPlans'
+import { movesPastWeek } from '../plan/sessionState'
 import { useSkipTrainingSession } from '../hooks/useTrainingSkips'
 import { openPlanRoutine } from '../planTraining'
 import { SKIP_REASON_CHIPS, SKIP_REASON_MAX, composeSkipReason, isValidSkipReason } from '../plan/skippedRoutines'
@@ -42,6 +44,9 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
   const [timeTouched, setTimeTouched] = useState(false)
   const pickTime = (t: string) => { setTime(t); setTimeTouched(true) }
   const unchanged = date === plan.info.date && (plan.info.startHHMM ? time === plan.info.startHHMM.slice(0, 5) : !timeTouched)
+  // A week is the session's first day and the next six (owner, 26.10.2026: "If it is moved more than 7 days then it is skipped").
+  const firstDay = useSessionFirstDay(plan)
+  const pastWeek = date !== plan.info.date && movesPastWeek(firstDay, date)
 
   const submit = async () => {
     // The same session already on that day: ask first (the plan editor's rule).
@@ -54,7 +59,7 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
         cancelLabel: 'Keep it here',
       }))) return
     }
-    try { await actions.move(plan, date, plan.info.startHHMM || timeTouched ? time : null) } catch { return }
+    try { await actions.move(plan, date, plan.info.startHHMM || timeTouched ? time : null, pastWeek) } catch { return }
     onClose()
   }
 
@@ -81,7 +86,11 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
           <FieldLabel>Time</FieldLabel>
           <Time24Field value={time} onChange={pickTime} onShift={m => pickTime(shiftHHMM(time, m))} />
         </div>
-        <p className="text-meta text-fg-muted">The task and the calendar move together.</p>
+        {pastWeek && firstDay
+          ? <p data-tone="warn" className="tone-text text-meta">
+              7+ days after its first day: skipped on {formatWeekdayDate(firstDay)}, and that week's session moves here instead.
+            </p>
+          : <p className="text-meta text-fg-muted">The task and the calendar move together.</p>}
       </div>
     </ModalShell>
   )

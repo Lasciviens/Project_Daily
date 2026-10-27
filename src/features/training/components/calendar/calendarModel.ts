@@ -4,6 +4,7 @@ import { workoutLocalDay } from '../../workoutDates'
 import type { SkipRecord } from '../../plan/skippedRoutines'
 import type { HevyWorkout, StravaActivity } from '../../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../../daily/types'
+import type { TrainingDayTask } from '../../../daily/api/scheduleApi'
 import { matchDaySessions, type DaySession, type OpenPlan } from './calendarSessions'
 
 // Training calendar data model — the plan/workout/activity shape of one day.
@@ -20,6 +21,9 @@ export interface CalendarPlanItem {
   kind:  'block' | 'recurring'
   timeBlock?:     TimeBlock
   scheduleBlock?: ScheduleBlock
+  /** A projected day that is its repeat's task on its day (156, no slot):
+   *  the plan reads as that task says — done, skipped, missed. */
+  dayTask?:       TrainingDayTask
 }
 
 // A plan a workout covers folds into that workout's entry (calendarSessions);

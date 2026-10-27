@@ -38,8 +38,19 @@ eq(st({ date: '2026-10-20', taskStatus: 'done' }).state, 'done', 'done ahead of 
   eq(s.state, 'skipped', 'a cancelled task is a skipped session')
   eq(S.sessionNote(s), 'Skipped: Sick — flu', 'with its reason, exactly as written')
   eq(S.SESSION_TONE[s.state], 'neutral', 'skipped is grey (owner)')
-  eq(S.sessionActions(s, { hasTask: true, weekly: false }), ['undoSkip', 'edit', 'delete'], 'undo, edit, delete')
+  eq(S.sessionActions(s, { hasTask: true, weekly: false }), ['undoSkip', 'move', 'edit', 'delete'], 'undo, move (to do again inside its week, 167), edit, delete')
 }
+// ── 167: a session lives one week (its first day and the next six) ──
+eq(st({ date: '2026-10-14', taskStatus: 'open', firstDate: '2026-10-12', today: '2026-10-17', ...R }).countsUntil, '2026-10-18',
+  'moved two days inside its week: a late workout counts until the end of its week, not six days after its new day')
+eq(st({ date: '2026-10-14', taskStatus: 'open', firstDate: '2026-10-12', today: '2026-10-19', ...R }).state, 'missed',
+  'after its week: no longer "Not logged yet" (the database skips it on its first day)')
+eq(st({ date: '2026-10-12', taskStatus: 'open', firstDate: '2026-10-12', today: '2026-10-15', ...R }).countsUntil, '2026-10-18',
+  'on its first day: six days after it, as 141')
+eq(S.movesPastWeek('2026-10-26', '2026-11-01'), false, 'moved 6 days: just moved')
+eq(S.movesPastWeek('2026-10-26', '2026-11-02'), true, 'moved 7 days: out of its week (skipped there)')
+eq(S.movesPastWeek('2026-10-26', '2026-11-04'), true, "the owner's example: 26.10 → 04.11 (9 days)")
+eq(S.movesPastWeek(null, '2026-11-04'), false, 'no first day known (before 167): never claims it')
 eq(st({ date: '2026-10-11', taskStatus: 'cancelled' }).skipReason, null, 'cancelled with no skip row read: no reason, still skipped')
 eq(st({ date: '2026-10-11', taskStatus: 'open', activityOnDay: true, ...R }).state, 'pending', 'Strava never closes an open task (only a workout or a tick)')
 eq(st({ date: '2026-10-11', taskStatus: 'open', skipped: true, skipReason: 'Travel', ...R }).state, 'pending', 'a routine-week skip does not cancel an open task by itself')

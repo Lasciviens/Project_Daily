@@ -60,8 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| `src/features/home/api/enturGeocoder.ts`, `ruterApi.ts`, `supabase/functions/ai-proxy` (place search), `docs/integrations/entur.md` | Claude | EnTur geocoder v3 (PR #579) | 26.10.2026 |
-| `supabase/functions/*` (key block), `src/integrations/supabase/client.ts`, `.github/workflows/deploy.yml`, `scripts/verify-supabase-keys.cjs`, key docs | Claude | Supabase new API keys, step 1 | 26.10.2026 |
+| `supabase/migrations/167_*`, `168_*`, `src/features/daily/**`, `src/features/training/**` (plan, calendar, Move), `src/features/football/**`, `src/features/media/**` (watches, year review), `src/features/home/components/` (glance tiles), `supabase/functions/ai-proxy` (tasks rules) | Claude | Dev Requests 26.10 (PR #581) | 26.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

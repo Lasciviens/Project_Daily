@@ -95,6 +95,10 @@ export interface TimeBlock {
   /** Its linked task's Hevy workout and routine (141), on the same reads. */
   task_workout_id?: string | null
   task_routine_id?: string | null
+  /** 'missed' (156): its task is a day that passed unticked — read as a past open plan, never a skip. */
+  task_closed_reason?: string | null
+  /** Its training task's first day (167): its week is that day and the next six. */
+  task_first_plan_date?: string | null
   created_at:       string
   updated_at:       string
 }

@@ -14,11 +14,13 @@ import { rowsOf, type DeletedRows } from '../../../shared/utils/deletedRows'
 import { fetchTasksByIds } from '../../todo/api/tasksApi'
 import { useDeleteTask } from '../../todo/hooks/useTodos'
 import { isClosedTask } from '../../todo/taskRules'
-import { fetchRoster, fetchStandings, fetchTeam, searchFootball } from '../api/espnApi'
-import { createFollow, fetchFollows, fetchPlans, recordPlan, setSubscribed } from '../api/footballApi'
+import { fetchRoster, searchFootball } from '../api/espnApi'
+import { createFollow, fetchFollows, fetchPlans, recordPlan, setFavourite, setSubscribed } from '../api/footballApi'
 import { buildAgenda, leagueMonths, MATCH_CATEGORY, matchItem, subscriptionLeavers, type FbMatch } from '../footballModel'
 import type { FootballFollow, FootballPlan, NewFollowInput } from '../types'
-import { ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, teamFixturesQuery, teamResultsQuery } from './espnQueries'
+import {
+  ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, standingsQuery, teamFixturesQuery, teamInfoQuery, teamResultsQuery,
+} from './espnQueries'
 import { footballSyncSettled, runFootballSync } from './footballSync'
 
 // ─── The owner's rows ────────────────────────────────────────────────────────
@@ -48,17 +50,11 @@ export function useTeamFixtures(teamId: string | null) {
 }
 
 export function useStandings(league: string | null) {
-  return useQuery({
-    queryKey: qk.football.standings(league ?? ''), queryFn: () => fetchStandings(league!), enabled: !!league,
-    staleTime: STALE.long, ...ESPN,
-  })
+  return useQuery({ ...standingsQuery(league ?? ''), enabled: !!league })
 }
 
 export function useTeamInfo(league: string | null, teamId: string | null) {
-  return useQuery({
-    queryKey: qk.football.team(league ?? '', teamId ?? ''), queryFn: () => fetchTeam(league!, teamId!), enabled: !!league && !!teamId,
-    staleTime: STALE.long, ...ESPN,
-  })
+  return useQuery({ ...teamInfoQuery(league ?? '', teamId ?? ''), enabled: !!league && !!teamId })
 }
 
 export function useRoster(league: string | null, teamId: string | null) {
@@ -147,6 +143,18 @@ export function useSetSubscribed() {
       putRowsInCache(qc, qk.football.follows(), [f])
       if (f.subscribed) void runFootballSync(qc, { within: 0, sayNothing: true })
     },
+    invalidates: [qk.football.follows()],
+  })
+}
+
+/** A followed team starred as a favourite, or no more (168): the Personal page's Football card shows each favourite. */
+export function useSetFavourite() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'football_favourite',
+    successMessage: f => (f.favourite ? `${f.name} is a favourite` : `${f.name} is no longer a favourite`),
+    mutationFn: ({ follow, on }: { follow: FootballFollow; on: boolean }) => setFavourite(follow.id, on),
+    onSuccess: f => putRowsInCache(qc, qk.football.follows(), [f]),
     invalidates: [qk.football.follows()],
   })
 }

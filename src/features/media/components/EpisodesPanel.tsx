@@ -20,9 +20,10 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { toast } from '../../../app/store'
 import { useTraktPlayback } from '../trakt/useTraktExtras'
 import { pausedEpisodes, seasonGaps } from '../episodeGaps'
-import { cacheWatches, doneInRound, editableWatches, isPlaceholder, sortWatches, watchDate, watchesLine, watchFor, type Watch } from '../watches'
+import { cacheWatches, doneInRound, editableWatches, isPlaceholder, sortWatches, watchDate, watchFor, watchMark, type Watch } from '../watches'
 import { SpreadWatchedSheet } from './SpreadWatchedSheet'
 import { WatchesSheet } from './WatchesSheet'
+import { WatchHistoryButton } from './WatchHistoryButton'
 
 interface Props {
   tv:         TMDBTVFull
@@ -462,8 +463,10 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
             // In a rewatch, Up to here stays one tap on every episode still to watch in the round.
             const upToHere   = aired && (rewatch ? belowRound({ season, episode: ep.episode_number }) : !isWatched)
             const waitsForTrakt = watches.length > 0 && watches.every(w => isPlaceholder(w, traktWaits))
-            // In a rewatch round, an episode below the round reads as still to watch.
-            const done       = isWatched && !belowRound({ season, episode: ep.episode_number })
+            // What the row shows of its watches (watches.ts): in a rewatch round an episode reads as
+            // done only once watched in it; ×N counts every watch ever; only the round's ✓ is green.
+            const mark       = watchMark(watches, rewatch?.startedAt)
+            const done       = mark.done
 
             return (
               <div key={ep.episode_number} className="group flex items-center gap-1">
@@ -503,14 +506,10 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
                       <span className="whitespace-nowrap">{formatDate(ep.air_date)}</span>
                     )}
                     {isNext && <TonePill tone="info" className="shrink-0">Next · round {rewatch?.round}</TonePill>}
-                    {/* One short line: the count and the latest (every date is in its watch list). */}
-                    {watches.length > 0 && (
-                      <span className="font-medium text-success">
-                        <span className="whitespace-nowrap">{watchesLine(watches)}</span>
-                        {/* Placeholders: the real dates come with the next Trakt sync. */}
-                        {waitsForTrakt && <Hourglass role="img" aria-label="Waiting for Trakt's dates" className="ml-1 inline h-3 w-3 align-[-2px] text-fg-muted"><title>Waiting for Trakt's dates</title></Hourglass>}
-                      </span>
-                    )}
+                    {/* One watch: its date (green outside a round only); 2+: the ×N counter beside the row. */}
+                    {mark.line && <span className={`whitespace-nowrap font-medium ${mark.lineDone ? 'text-success' : ''}`}>{mark.line}</span>}
+                    {/* Placeholders: the real dates come with the next Trakt sync. */}
+                    {waitsForTrakt && <Hourglass role="img" aria-label="Waiting for Trakt's dates" className="h-3 w-3 shrink-0 text-fg-muted"><title>Waiting for Trakt's dates</title></Hourglass>}
                     {!isWatched && paused != null && (
                       <TonePill tone="warn" className="shrink-0">Paused at {paused} %</TonePill>
                     )}
@@ -523,18 +522,6 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
                   </span>
                 )}
               </button>
-              {isWatched && (
-                <button
-                  type="button"
-                  onClick={() => setWatchesFor(ep.episode_number)}
-                  disabled={marking}
-                  title="Watches"
-                  aria-label={`Watches of episode ${ep.episode_number}`}
-                  className="grid min-h-[44px] w-11 shrink-0 place-items-center rounded-row text-fg-faint transition-colors hover:bg-surface-hover hover:text-fg-2 disabled:opacity-40"
-                >
-                  <History className="h-4 w-4" />
-                </button>
-              )}
               {upToHere && (
                 <button
                   type="button"
@@ -546,6 +533,11 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
                 >
                   <ListChecks className="h-4 w-4" />
                 </button>
+              )}
+              {/* The watch list: ×N from 2 watches (in place of the History icon), the icon for one —
+                  last, so the counters line up at the edge in a round, where to-do rows also have Up to here. */}
+              {isWatched && (
+                <WatchHistoryButton counter={mark.counter} of={`episode ${ep.episode_number}`} onOpen={() => setWatchesFor(ep.episode_number)} disabled={marking} />
               )}
               </div>
             )

@@ -138,6 +138,8 @@ export interface RepeatDaysRun {
   missed: number
   /** Today's days made tasks. */
   created: number
+  /** Training sessions whose week ended, skipped on their first day (167). */
+  skipped: number
   failed: number
   /** The day it ran for (the device's, within a day of Europe/Oslo's). */
   today: string | null
@@ -155,7 +157,7 @@ export async function runRepeatDaysToday(today: string): Promise<RepeatDaysRun |
     throw rpcError(error)
   }
   const r = (data ?? {}) as Record<string, unknown>
-  return { missed: count(r.missed), created: count(r.created), failed: count(r.failed), today: str(r.today) }
+  return { missed: count(r.missed), created: count(r.created), skipped: count(r.skipped), failed: count(r.failed), today: str(r.today) }
 }
 
 /** Google Tasks on or off for a repeat's days from `today` on that are still

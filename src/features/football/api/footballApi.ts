@@ -1,6 +1,7 @@
 // The owner's football rows (migration 163): what is followed and the matches
-// put in the day. Before 163 reads render empty and writes say which
-// migration is missing (remove the fallbacks once 163 has been live a while).
+// put in the day; 168 adds a team's favourite star. Before 163 reads render
+// empty and writes say which migration is missing (remove the fallbacks once
+// 163 has been live a while).
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { itemPayload, saveAnswerOf, type SaveItemAnswer, type SaveItemContext } from '../../items/itemApi'
@@ -17,13 +18,21 @@ const fail = (e: NonNullable<PgError>) => (isMissing(e) ? new Error(MISSING_163)
 
 // ─── Follows ─────────────────────────────────────────────────────────────────
 
+// 168's favourite. Every follow read here is select('*'), which never names the
+// column, so before 168 a row simply comes without it: it reads as "not a
+// favourite" instead of failing. Remove the fallback once 168 has been live a while.
+const followOf = (row: unknown): FootballFollow => {
+  const f = row as FootballFollow
+  return { ...f, favourite: f.favourite === true }
+}
+
 export async function fetchFollows(): Promise<FootballFollow[]> {
   const { data, error } = await supabase.from('football_follows').select('*').order('sort_order').order('created_at')
   if (error) {
     if (isMissing(error)) return []
     throw error
   }
-  return (data ?? []) as FootballFollow[]
+  return (data ?? []).map(followOf)
 }
 
 export async function createFollow(input: NewFollowInput, sortOrder: number): Promise<FootballFollow> {
@@ -34,7 +43,7 @@ export async function createFollow(input: NewFollowInput, sortOrder: number): Pr
     if (error.code === '23505') throw new Error(`You already follow ${input.name}`)
     throw fail(error)
   }
-  return data as FootballFollow
+  return followOf(data)
 }
 
 export async function setSubscribed(id: string, subscribed: boolean): Promise<FootballFollow> {
@@ -42,7 +51,23 @@ export async function setSubscribed(id: string, subscribed: boolean): Promise<Fo
   const { data, error } = await supabase.from('football_follows')
     .update({ subscribed }).eq('id', id).eq('user_id', user.id).select().single()
   if (error) throw fail(error)
-  return data as FootballFollow
+  return followOf(data)
+}
+
+export const MISSING_168 = 'Favourite teams need migration 168 — it runs with the next deploy.'
+
+/** A followed team starred, or not (168). Several may be; a tournament never (168 refuses it). */
+export async function setFavourite(id: string, favourite: boolean): Promise<FootballFollow> {
+  const user = await requireUser()
+  const { data, error } = await supabase.from('football_follows')
+    .update({ favourite }).eq('id', id).eq('user_id', user.id).select().single()
+  if (error) {
+    // The column isn't there yet (a deploy that failed, a revert): Postgres says 42703, PostgREST PGRST204.
+    if (error.code === '42703' || error.code === 'PGRST204') throw new Error(MISSING_168)
+    if (error.code === '23514') throw new Error('Only a team can be a favourite')
+    throw fail(error)
+  }
+  return followOf(data)
 }
 
 // ─── Matches in the day ──────────────────────────────────────────────────────

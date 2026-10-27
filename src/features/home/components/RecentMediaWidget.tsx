@@ -85,10 +85,21 @@ function useWatchNext() {
 const se = (s: number, e: number) => `S${String(s).padStart(2, '0')}E${String(e).padStart(2, '0')}`
 
 /**
- * Glance tile with swipeable screens: last watched · watch next · airing
- * this week. Phone: a tap opens the title on the screen you're on (else
- * Media). Wide Home (the tile stands in for the widget): the whole
- * recently-watched grid opens.
+ * The line under the last watched title: which episode and the day
+ * ("S02E03 · 25.10.2026"), a film's day alone. Never a time — an episode's
+ * watch time may be unknown; an unknown day (the epoch) reads "date unknown".
+ */
+function lastWatchedLine(item: RecentlyWatchedItem): string {
+  const day = isUnknownWatchedAt(item.watched_at) ? 'date unknown' : formatDate(item.watched_at)
+  if (item.season != null && item.episode != null) return `${se(item.season, item.episode)} · ${day}`
+  return day.charAt(0).toUpperCase() + day.slice(1)
+}
+
+/**
+ * Glance tile with swipeable screens: last watched (the title, then which
+ * episode and the day) · watch next · airing this week. Phone: a tap opens
+ * the title on the screen you're on (else Media). Wide Home (the tile stands
+ * in for the widget): the whole recently-watched grid opens.
  */
 export function RecentMediaTile() {
   const { data = [], isLoading } = useRecentlyWatched()
@@ -105,7 +116,7 @@ export function RecentMediaTile() {
     body: (
       <div className="min-w-0 space-y-1">
         <Truncate className="text-ui font-semibold text-fg">{latest ? latest.title : 'Nothing yet'}</Truncate>
-        <Truncate className="text-meta tabular-nums text-fg-muted">{latest ? (isUnknownWatchedAt(latest.watched_at) ? 'Date unknown' : formatDate(latest.watched_at)) : 'Open Media'}</Truncate>
+        <Truncate className="text-meta tabular-nums text-fg-muted">{latest ? lastWatchedLine(latest) : 'Open Media'}</Truncate>
       </div>
     ),
   }]

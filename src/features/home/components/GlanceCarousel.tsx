@@ -11,6 +11,8 @@ export interface GlanceScreen {
   key: string
   /** What this screen shows, next to the tile's label ("Next hours"). */
   name: string
+  /** A short fact shown in the bottom row in the name's place (the Money tile's day change). */
+  nameExtra?: ReactNode
   value?: ReactNode
   hint?: ReactNode
   /** Instead of value/hint: a compact body (a strip of hours, three days…). */
@@ -34,11 +36,27 @@ interface Props {
 
 const DRAG_SLOP = 5
 
+/** What handles its own press inside a screen (the Money tile's converter): never the tile's tap, never a drag. */
+const CONTROL = 'input, textarea, select, button, a[href], label, [contenteditable="true"]'
+
+/**
+ * True when a press belongs to something else: a control inside `box`, or an
+ * element outside its DOM — a listbox's options are portalled out of the screen,
+ * but React still bubbles their events through it.
+ */
+function notOurPress(target: EventTarget | null, box: Element): boolean {
+  if (!(target instanceof Element) || !box.contains(target)) return true
+  const control = target.closest(CONTROL)
+  return control != null && box.contains(control)
+}
+
 /**
  * A glance tile with several screens side by side (THEME.md §6.3). Swipe on
  * touch; with a mouse, hold and drag (or a trackpad's sideways scroll); with
  * the keyboard, ←/→ on the tile's header. The dots say which screen is up. A
- * plain tap or click (not a drag) opens the tile's detail, like before.
+ * plain tap or click (not a drag) opens the tile's detail, like before — except
+ * on a control inside a screen (a field, a menu button), which keeps the press.
+ * Screens not showing are inert, so Tab never lands in a hidden field.
  */
 export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onClick }: Props) {
   const track = useRef<HTMLDivElement>(null)
@@ -73,8 +91,9 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
   }
 
   // Mouse: hold and drag. Touch keeps the browser's own swipe + snap.
+  // A press on a field or a button is the control's own (text selection, a menu).
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== 'mouse' || e.button !== 0 || count < 2) return
+    if (e.pointerType !== 'mouse' || e.button !== 0 || count < 2 || notOurPress(e.target, e.currentTarget)) return
     drag.current = { x: e.clientX, left: track.current?.scrollLeft ?? 0, moved: false }
   }
   useEffect(() => {
@@ -140,7 +159,7 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
   return (
     <div
       className="card-interactive glance-card relative isolate flex min-h-[112px] min-w-0 cursor-pointer select-none flex-col p-3.5 text-left focus-within:ring-2 focus-within:ring-accent-500/40"
-      onClick={e => { if (e.defaultPrevented) return; if (to) navigate(to); else onClick?.() }}
+      onClick={e => { if (e.defaultPrevented || notOurPress(e.target, e.currentTarget)) return; if (to) navigate(to); else onClick?.() }}
       onClickCapture={onClickCapture}
     >
       {art != null && <GlanceArt>{art}</GlanceArt>}
@@ -167,6 +186,7 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
             <div
               key={s.key}
               aria-hidden={i !== current}
+              inert={i !== current}
               className="flex w-full min-w-0 shrink-0 snap-start flex-col px-3.5"
             >
               {s.body ?? (
@@ -182,7 +202,10 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
 
       {count > 1 && !loading && (
         <div aria-hidden className="mt-1.5 flex min-w-0 items-center gap-2">
-          <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>
+          {/* A screen with its own fact here (the Money tile's day change) shows it in the name's place; the name stays in the tile's label for a screen reader. */}
+          {screen?.nameExtra != null
+            ? <span className="min-w-0 flex-1">{screen.nameExtra}</span>
+            : <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>}
           <span className="flex shrink-0 gap-1">
             {screens.map((s, i) => (
               <span key={s.key} className={cx('h-1.5 rounded-full transition-[width,background-color] duration-200', i === current ? 'w-3.5 bg-accent-500' : 'w-1.5 bg-line-strong')} />

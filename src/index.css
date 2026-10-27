@@ -317,6 +317,8 @@
   /* A small field for a compact sheet's rows (32px on every pointer, like its chips). */
   .input-sm { @apply min-h-[32px] px-2.5 rounded-control [@media(pointer:coarse)]:min-h-[32px]; }
   textarea.input-sm { @apply py-1.5; }
+  /* A tiny field inside a glance tile's screen (24px on every pointer; the Money tile's converter). */
+  .input-xs { @apply min-h-[24px] px-2 rounded-control [@media(pointer:coarse)]:min-h-[24px]; }
   /* A field whose text is the content (a sheet's title): no box; focus shows as an accent underline. */
   .input-bare {
     @apply w-full border-0 border-b border-transparent bg-transparent p-0 pb-1 text-fg placeholder:text-fg-faint

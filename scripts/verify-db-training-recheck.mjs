@@ -1,11 +1,15 @@
 // Runs migration 166's scenarios (a moved training session is moved: its
 // Hevy workout link checked again, a missed day moved is to do, a repeat's day
-// moved without its slot gets one, the one-off repair) on a throwaway
+// moved without its slot gets one, the one-off repair) and then migration
+// 167's (a workout represents itself, a session lives one week: no stand-in
+// between two routines, skipped then done inside its week, a move of 7 or
+// more days, the end of a session's week, the repair) on a throwaway
 // Postgres built as verify-db-football builds it — the item save as it is
 // live: one-item/base.sql + repeat-days/base.sql, 112's skips, the real 141,
 // 142, 135, 144, 147, 150, 151, 155, 156, 160's repeat rule, 163 and 165 —
-// then the real 166 twice (it must survive a re-run) and
-// scripts/db-tests/training-recheck/scenarios.sql.
+// then the real 166 twice (it must survive a re-run),
+// scripts/db-tests/training-recheck/scenarios.sql, the real 167 twice (its
+// backfill runs over 166's rows) and scenarios-167.sql.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-training-recheck.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no
 // database URL (a laptop without Postgres) it runs the static checks and passes.
@@ -17,16 +21,20 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const migFile = mig('166_training_moves_recheck.sql')
+const mig167 = mig('167_training_week_rules.sql')
 
 // Static: one transaction, nothing outside the database, no table of its own.
-const sql = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
 const problems = []
-if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
-if (/\bnet\.http_|vault\.|googleapis/i.test(sql)) problems.push('a call outside the database')
-if (/create\s+table/i.test(sql)) problems.push('a table (166 adds none)')
-if (!/revoke all on function public\.training_task_recheck\(uuid\) from public, anon, authenticated/i.test(sql)) problems.push('the recheck callable from the browser')
+for (const [n, file] of [['166', migFile], ['167', mig167]]) {
+  const sql = readFileSync(file, 'utf8').replace(/--.*$/gm, '')
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push(`${n}: a top-level BEGIN/COMMIT (the deploy runs it as one transaction)`)
+  if (/\bnet\.http_|vault\.|googleapis/i.test(sql)) problems.push(`${n}: a call outside the database`)
+  if (/create\s+table/i.test(sql)) problems.push(`${n}: a table (it adds none)`)
+  if (!/revoke all on function public\.training_task_recheck\(uuid\) from public, anon, authenticated/i.test(sql)) problems.push(`${n}: the recheck callable from the browser`)
+}
+if (!/revoke all on function public\.training_move_past_week\(uuid, date, time, time\) from public, anon, authenticated/i.test(readFileSync(mig167, 'utf8'))) problems.push('167: the move rule callable from the browser')
 if (problems.length) {
-  console.error(`verify-db-training-recheck: migration 166 has ${problems.join('; ')}`)
+  console.error(`verify-db-training-recheck: ${problems.join('; ')}`)
   process.exit(1)
 }
 
@@ -69,14 +77,20 @@ try {
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
   // Each passing scenario prints a NOTICE ("ok  …") on stderr; a failing one raises.
-  const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
-  const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
-  if (run.status !== 0) {
-    failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
-    console.error(failed)
-  } else {
-    console.log(`verify-db-training-recheck: the live item save (141–165), 166 (applied twice) and ${passed} scenarios passed`)
+  const scenarios = file => {
+    const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, file)], { encoding: 'utf8' })
+    if (run.status !== 0) failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
+    return (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   }
+  const passed166 = scenarios('scenarios.sql')
+  let passed167 = 0
+  if (!failed) {
+    psql(target, ['-f', mig167])
+    psql(target, ['-f', mig167])
+    passed167 = scenarios('scenarios-167.sql')
+  }
+  if (failed) console.error(failed)
+  else console.log(`verify-db-training-recheck: the live item save (141–165), 166 (applied twice) with ${passed166} scenarios, then 167 (applied twice) with ${passed167} scenarios passed`)
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
 }

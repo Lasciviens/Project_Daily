@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trophy } from 'lucide-react'
@@ -14,18 +14,8 @@ import { FOOTBALL_BOARD } from '../footballBoard'
 import { filterMatches, SUGGESTIONS, tableLeagues, type FollowFilter } from '../footballView'
 import { runFootballSync } from '../hooks/footballSync'
 import { useFollow, useFollows, useFootballAgenda, usePlannedTasks } from '../hooks/useFootball'
+import { useMinute } from '../hooks/useMinute'
 import type { FootballFollow } from '../types'
-
-/** Now, to the minute: the agenda moves a match from "coming up" to live to a result as time passes. */
-function useMinute(): string {
-  const stamp = () => new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString()
-  const [now, setNow] = useState(stamp)
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(stamp()), 60_000)
-    return () => window.clearInterval(id)
-  }, [])
-  return now
-}
 
 const filterKey = (f: { kind: string; ref: string }) => `${f.kind}:${f.ref}`
 

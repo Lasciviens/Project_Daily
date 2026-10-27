@@ -1,7 +1,8 @@
-// The ESPN reads shared by the page's hooks and the subscription (footballSync):
-// one cache entry per answer, however it is asked for.
+// The ESPN reads shared by the page's hooks, the subscription (footballSync) and
+// the favourites' glance (useFavouriteTeamsGlance): one cache entry per answer,
+// however it is asked for.
 import { qk, STALE } from '../../../shared/query'
-import { fetchLeagueMonth, fetchMatch, fetchTeamFixtures, fetchTeamResults } from '../api/espnApi'
+import { fetchLeagueMonth, fetchMatch, fetchStandings, fetchTeam, fetchTeamFixtures, fetchTeamResults } from '../api/espnApi'
 import type { FbMatch } from '../footballModel'
 
 // ESPN answers: one retry (a slow answer isn't worth three), kept while the page is away.
@@ -24,5 +25,11 @@ export const leagueMonthQuery = (league: string, month: string) => ({
 })
 export const matchQuery = (league: string, eventId: string) => ({
   queryKey: qk.football.match(league, eventId), queryFn: () => fetchMatch(league, eventId), staleTime: STALE.live, ...ESPN,
+})
+export const standingsQuery = (league: string) => ({
+  queryKey: qk.football.standings(league), queryFn: () => fetchStandings(league), staleTime: STALE.long, ...ESPN,
+})
+export const teamInfoQuery = (league: string, teamId: string) => ({
+  queryKey: qk.football.team(league, teamId), queryFn: () => fetchTeam(league, teamId), staleTime: STALE.long, ...ESPN,
 })
 

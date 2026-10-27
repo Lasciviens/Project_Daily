@@ -89,6 +89,45 @@ function inPeriodOf<T extends { watchedAt: string; plays: number; watches?: stri
   return { ...x, plays: d.length, watches: d, watchedAt: known[known.length - 1] ?? d[0] }
 }
 
+/** One dated watch, with its estimated length — Personal's Watching card. */
+export interface DayWatch {
+  kind: 'movie' | 'episode'
+  /** ISO: the watch's own moment. */
+  at: string
+  /** Its local day, yyyy-MM-dd. */
+  day: string
+  /** The year review's runtime rule: the film's runtime, else 100 min; the show's episode run time, else 40. */
+  minutes: number
+  title: string
+  tmdbId: number
+  poster: string | null
+  season?: number
+  episode?: number
+}
+
+/** Every dated watch on the local days from → to (inclusive), newest first
+ *  (one moment: the higher season and episode first). A watch on an unknown
+ *  date never counts. */
+export function watchesBetween(from: string, to: string, movies: ReviewMovie[], episodes: ReviewEpisode[], shows: Map<string, ReviewShow>): DayWatch[] {
+  const out: DayWatch[] = []
+  const dayIn = (iso: string) => { if (!isKnown(iso)) return null; const d = dayKey(iso); return d >= from && d <= to ? d : null }
+  for (const m of movies) {
+    for (const at of watchDatesOf(m)) {
+      const day = dayIn(at)
+      if (day) out.push({ kind: 'movie', at, day, minutes: m.runtime || DEFAULT_MOVIE_MIN, title: m.title, tmdbId: m.tmdbId, poster: m.poster })
+    }
+  }
+  for (const e of episodes) {
+    const s = shows.get(e.showId)
+    if (!s) continue
+    for (const at of watchDatesOf(e)) {
+      const day = dayIn(at)
+      if (day) out.push({ kind: 'episode', at, day, minutes: s.runtime || DEFAULT_EP_MIN, title: s.title, tmdbId: s.tmdbId, poster: s.poster, season: e.season, episode: e.episode })
+    }
+  }
+  return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (b.season ?? 0) - (a.season ?? 0) || (b.episode ?? 0) - (a.episode ?? 0))
+}
+
 /** Years that have at least one dated watch, newest first. */
 export function reviewYears(movies: ReviewMovie[], episodes: ReviewEpisode[]): number[] {
   const ys = new Set<number>()

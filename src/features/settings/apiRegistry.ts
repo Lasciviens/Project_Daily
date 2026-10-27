@@ -411,7 +411,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'none',
     direction: 'read', cadence: 'On open of Football; a live match every minute; the subscription on app open',
     usedIn: [{ label: 'Football', path: '/football' }],
-    tables: ['football_follows', 'football_plans'], migrations: ['163'],
+    tables: ['football_follows', 'football_plans'], migrations: ['163', '168'],
     cost: 'free',
     caveats: ['Unofficial: a field or an endpoint can change without warning — the page then says the data isn\'t available.', 'Private, low-volume use only.', 'Times are UTC and shown in Norway\'s time; far-ahead fixtures have no fixed kick-off yet.'],
     since: '19.10.2026', sinceFrom: 'src/features/football/api/espnApi.ts',

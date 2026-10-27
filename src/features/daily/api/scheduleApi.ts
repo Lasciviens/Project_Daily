@@ -185,33 +185,44 @@ export async function fetchSeriesInstanceDays(planId: string, seriesId: string):
 }
 
 // A block's task state rides along (not kept as an embed): a training
-// session's row shows Done / Skipped from the same facts as its popup
-// (training/plan/sessionState).
-type TaskEmbed = { task: { status: TimeBlock['task_status']; hevy_workout_id?: string | null; hevy_routine_id?: string | null } | null }
-const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock =>
-  ({ ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null, task_routine_id: task?.hevy_routine_id ?? null })
+// session's row shows Done / Skipped / Missed from the same facts as its
+// popup (training/plan/sessionState).
+type TaskEmbed = {
+  task: {
+    status: TimeBlock['task_status']; hevy_workout_id?: string | null; hevy_routine_id?: string | null
+    closed_reason?: string | null; first_plan_date?: string | null
+  } | null
+}
+const withTaskState = ({ task, ...b }: TimeBlock & TaskEmbed): TimeBlock => ({
+  ...b, task_status: task?.status ?? null, task_workout_id: task?.hevy_workout_id ?? null, task_routine_id: task?.hevy_routine_id ?? null,
+  task_closed_reason: task?.closed_reason ?? null, task_first_plan_date: task?.first_plan_date ?? null,
+})
+const TASK_EMBED = '*, task:tasks(status, hevy_workout_id, hevy_routine_id, closed_reason, first_plan_date)'
+// Before migration 167 tasks has no first_plan_date: one retry without it.
+// Remove once 167 has run (it ships with this read).
+const TASK_EMBED_BEFORE_167 = '*, task:tasks(status, hevy_workout_id, hevy_routine_id, closed_reason)'
+async function withTaskEmbed<T>(read: (select: string) => PromiseLike<{ data: T | null; error: { code?: string; message?: string } | null }>): Promise<T | null> {
+  let { data, error } = await read(TASK_EMBED)
+  if (error && isMissingColumn(error)) ({ data, error } = await read(TASK_EMBED_BEFORE_167))
+  if (error) throw error
+  return data
+}
 
 /** One block with its task's state, read fresh (null when it is gone): the
  *  Calendar carry of a plan's day reads it, so a move or a skip that ran
  *  meanwhile wins. */
 export async function fetchTimeBlockWithTask(id: string): Promise<TimeBlock | null> {
-  const { data, error } = await supabase
-    .from('time_blocks')
-    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
-    .eq('id', id)
-    .maybeSingle()
-  if (error) throw error
-  return data ? withTaskState(data as TimeBlock & TaskEmbed) : null
+  const data = await withTaskEmbed(select => supabase.from('time_blocks').select(select).eq('id', id).maybeSingle())
+  return data ? withTaskState(data as unknown as TimeBlock & TaskEmbed) : null
 }
 
 export async function fetchTimeBlocks(dateStr: string): Promise<TimeBlock[]> {
-  const { data, error } = await supabase
+  const data = await withTaskEmbed(select => supabase
     .from('time_blocks')
-    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
+    .select(select)
     .eq('date', dateStr)
-    .order('start_time', { ascending: true, nullsFirst: false })
-  if (error) throw error
-  return ((data ?? []) as (TimeBlock & TaskEmbed)[]).map(withTaskState)
+    .order('start_time', { ascending: true, nullsFirst: false }))
+  return ((data ?? []) as unknown as (TimeBlock & TaskEmbed)[]).map(withTaskState)
 }
 
 export async function fetchTimeBlock(id: string): Promise<TimeBlock | null> {
@@ -253,17 +264,49 @@ export async function fetchCalendarLinkedTaskIds(taskIds: string[]): Promise<Set
 // All training-category blocks within a date range (inclusive) — used by the
 // Training calendar to show planned/future sessions.
 export async function fetchTrainingBlocksRange(from: string, to: string): Promise<TimeBlock[]> {
-  const { data, error } = await supabase
+  const data = await withTaskEmbed(select => supabase
     .from('time_blocks')
-    .select('*, task:tasks(status, hevy_workout_id, hevy_routine_id)')
+    .select(select)
     .eq('category', 'training')
     .gte('date', from)
     .lte('date', to)
-    .order('date', { ascending: true })
-  if (error) throw error
+    .order('date', { ascending: true }))
   // The linked task's status rides along so a trained session (its task done,
   // migration 141) stops being "next"; the embed itself is not kept.
-  return ((data ?? []) as (TimeBlock & TaskEmbed)[]).map(withTaskState)
+  return ((data ?? []) as unknown as (TimeBlock & TaskEmbed)[]).map(withTaskState)
+}
+
+/** A training repeat's day that is a task on its day with no slot (156): what
+ *  the Training views pair with that day's projection, so it reads as the
+ *  task says (done, skipped, missed) — never from the date alone. */
+export interface TrainingDayTask {
+  id: string
+  status: NonNullable<TimeBlock['task_status']>
+  closed_reason: string | null
+  hevy_workout_id: string | null
+  hevy_routine_id: string | null
+  schedule_block_id: string
+  occurrence_date: string
+  first_plan_date?: string | null
+}
+
+export async function fetchTrainingDayTasks(from: string, to: string): Promise<TrainingDayTask[]> {
+  const cols = 'id, status, closed_reason, hevy_workout_id, hevy_routine_id, schedule_block_id, occurrence_date'
+  const read = (select: string) => supabase
+    .from('tasks')
+    .select(select)
+    .not('schedule_block_id', 'is', null)
+    .gte('occurrence_date', from)
+    .lte('occurrence_date', to)
+    .or('hevy_routine_id.not.is.null,source_type.eq.training_session')
+  let { data, error } = await read(`${cols}, first_plan_date`)
+  // Before migration 167 (no first_plan_date); remove once 167 has run.
+  if (error && isMissingColumn(error)) ({ data, error } = await read(cols))
+  if (error) {
+    if (isMissingColumn(error)) return [] // before 156: a repeat's day is no task
+    throw error
+  }
+  return (data ?? []) as unknown as TrainingDayTask[]
 }
 
 export async function createTimeBlock(input: CreateTimeBlockInput): Promise<TimeBlock> {

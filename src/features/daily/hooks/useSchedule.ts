@@ -8,6 +8,7 @@ import {
   fetchTimeBlock,
   fetchTimeBlockByTaskId,
   fetchTrainingBlocksRange,
+  fetchTrainingDayTasks,
   createTimeBlock,
   updateTimeBlock,
 } from '../api/scheduleApi'
@@ -169,6 +170,14 @@ export const trainingBlocksQuery = (from: string, to: string) => queryOptions({
 
 export function useTrainingBlocks(from: string, to: string) {
   return useQuery(trainingBlocksQuery(from, to))
+}
+
+export function useTrainingDayTasks(from: string, to: string) {
+  return useQuery({
+    queryKey: qk.schedule.trainingDays(from, to),
+    queryFn:  () => fetchTrainingDayTasks(from, to),
+    staleTime: STALE.default,
+  })
 }
 
 // Every one-off block write refreshes the whole task graph: consumers read

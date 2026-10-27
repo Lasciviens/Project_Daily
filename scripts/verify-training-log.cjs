@@ -336,5 +336,42 @@ check('else its block', JSON.stringify(sr.sessionForTask({ hevy_workout_id: null
 check('before 141 (no column) the block still opens', JSON.stringify(sr.sessionForTask({}, { id: 'b1', date: '2026-10-12' })) === JSON.stringify({ plan: { kind: 'block', id: 'b1', date: '2026-10-12' } }))
 check('neither: nothing to anchor to', sr.sessionForTask({ hevy_workout_id: null }, null) === null)
 
+console.log('\n== 167: a workout represents itself; a weekly day reads its own task ==')
+{
+  const R1 = 'R-LOWER', R2 = 'R-UPPER'
+  // A plan whose routine is known and a workout of another routine.
+  check('two known routines that differ never pair (score 0), even with one title inside the other',
+    cs.planWorkoutScore(block('b', 'Lower B', { sourceType: 'training_session', sourceId: R1 }), workout('w', 'Lower B', undefined, R2)) === 0)
+  const cross = cs.matchDaySessions({ date: '2026-09-22', todayStr: TODAY, plans: [recurring('sb1__2026-09-22', 'Lower B')],
+    workouts: [workout('w1', 'Upper B', '2026-09-22T10:00:00Z', R2)], hasActivity: false, routineOf: () => R1 })
+  check('a weekly Lower B day and an Upper B workout: no "In place of" — the plan stays open, the workout is its own',
+    cross.openPlans.length === 1 && cross.sessions.length === 1 && cross.sessions[0].plans.length === 0)
+  const free = cs.matchDaySessions({ date: '2026-09-22', todayStr: TODAY, plans: [recurring('sb1__2026-09-22', 'Lower B')],
+    workouts: [workout('w1', 'Morning run', '2026-09-22T10:00:00Z', null)], hasActivity: false, routineOf: () => R1 })
+  check('a workout with no routine still stands in for the day\'s plan', free.sessions[0].plans.length === 1 && free.openPlans.length === 0)
+
+  // A weekly day that is a task on its day (156): the projection reads it.
+  const dayTask = (o) => ({ id: 't1', status: 'open', closed_reason: null, hevy_workout_id: null, hevy_routine_id: R1, schedule_block_id: 'sb1', occurrence_date: '2026-09-22', first_plan_date: '2026-09-22', ...o })
+  const plans = buildPlansByDate('2026-09-21', '2026-09-27', [],
+    [{ id: 'sb1', title: 'Lower B', start_time: '16:30:00', end_time: '17:30:00', days_of_week: [2], category: 'training', effective_from: '2026-09-01' }],
+    [dayTask({ status: 'cancelled', closed_reason: 'missed' })])
+  const item = (plans.get('2026-09-22') ?? [])[0]
+  check('buildPlansByDate carries the day\'s task on its projection', item?.dayTask?.id === 't1')
+  const missed = cs.matchDaySessions({ date: '2026-09-22', todayStr: '2026-09-24', plans: [item], workouts: [], hasActivity: false })
+  check('a weekly day closed as missed reads "Not logged yet" while its week runs — never Skipped', missed.openPlans[0]?.status === 'pending')
+  const skippedItem = { ...item, dayTask: dayTask({ status: 'cancelled', closed_reason: null }) }
+  const skipped = cs.matchDaySessions({ date: '2026-09-22', todayStr: '2026-09-30', plans: [skippedItem], workouts: [], hasActivity: false })
+  check('a weekly day skipped (its task cancelled) reads Skipped', skipped.openPlans[0]?.status === 'skipped')
+  const doneItem = { ...item, dayTask: dayTask({ status: 'done', hevy_workout_id: 'w9' }) }
+  const done = cs.matchDaySessions({ date: '2026-09-22', todayStr: TODAY, plans: [doneItem], workouts: [workout('w9', 'Lower B', '2026-09-22T15:00:00Z', R1)], hasActivity: false })
+  check('a weekly day done by its workout folds into that workout (its task\'s link)', done.sessions[0]?.plans.length === 1 && done.openPlans.length === 0)
+
+  // A one-off slot whose task was closed as missed (156) reads missed / not logged yet, not Skipped.
+  const slot = { id: 'b1', title: 'Lower B', kind: 'block', timeBlock: { id: 'b1', title: 'Lower B', date: '2026-09-22', start_time: '16:45:00', duration_minutes: 60, category: 'training',
+    source_type: 'training_session', source_id: null, task_id: 't2', task_status: 'cancelled', task_closed_reason: 'missed', task_routine_id: R1, task_workout_id: null, task_first_plan_date: '2026-09-22' } }
+  const slotDay = cs.matchDaySessions({ date: '2026-09-22', todayStr: '2026-09-25', plans: [slot], workouts: [], hasActivity: false })
+  check('a slot whose task is a missed day reads "Not logged yet", not Skipped', slotDay.openPlans[0]?.status === 'pending')
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

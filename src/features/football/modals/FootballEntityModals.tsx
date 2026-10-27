@@ -22,6 +22,7 @@ import {
 } from '../hooks/useFootball'
 import type { NewFollowInput } from '../types'
 import { TeamFixtures } from '../components/TeamFixtures'
+import { FavouriteToggle } from '../components/FavouriteToggle'
 import { SubscribeToggle } from '../components/SubscribeToggle'
 import { TeamLogo } from '../components/TeamLogo'
 
@@ -141,7 +142,7 @@ function TeamBody({ teamId, name, logo, squadLeague, espnUrl }: { teamId: string
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        {mine ? <SubscribeToggle follow={mine} /> : (
+        {mine ? <><SubscribeToggle follow={mine} /><FavouriteToggle follow={mine} chip /></> : (
           <Button size="sm" loading={follow.isPending} onClick={() => follow.mutate({ input: { kind: 'team', ref: teamId, name, logo, league: squadLeague }, sortOrder: follows.length })}>
             Follow
           </Button>

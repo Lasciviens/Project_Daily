@@ -24,6 +24,8 @@ export interface PlanRowFacts {
   taskRoutineId?: string | null
   /** A repeat's day closed as missed (156: closed_reason 'missed') — not a skip. */
   taskMissed?: boolean
+  /** Its task's first day (167): a late workout counts only inside its week. */
+  firstDate?: string | null
   /** The routine its own row names (a block's training_session source) or a
    *  title match finds (usePlanContext.routineOf) — for a plan with no task. */
   routineId?: string | null
@@ -53,6 +55,7 @@ export function planFacts(row: PlanRowFacts, ctx: PlanDayContext): SessionFacts 
     taskWorkoutId: row.taskWorkoutId ?? null,
     taskRoutineId: row.taskRoutineId ?? null,
     taskMissed: !!row.taskMissed,
+    firstDate: row.firstDate ?? null,
     dayWorkoutId: taskStatus === null ? ctx.dayWorkoutId ?? null : null,
     activityOnDay: !!ctx.hasActivity,
     skipReason: skip?.reason ?? null,

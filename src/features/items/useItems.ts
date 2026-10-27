@@ -293,7 +293,7 @@ export function useRepeatDaysOnOpen() {
       repeatDaysRunning = runRepeatDaysToday(day)
         .then(r => {
           repeatDaysRan = { day, at: Date.now() }
-          if (r && (r.created > 0 || r.missed > 0)) void invalidate(qc, 'taskGraph')
+          if (r && (r.created > 0 || r.missed > 0 || r.skipped > 0)) void invalidate(qc, 'taskGraph')
         })
         .catch(err => {
           if (repeatDaysLogged) return

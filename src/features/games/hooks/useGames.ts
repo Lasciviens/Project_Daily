@@ -6,8 +6,9 @@ import {
   fetchGameStats, fetchAllGames, fetchGameDetail, fetchPlayQueue,
   createGame, updateGame, reorderQueue, addToQueue, removeFromQueue, removeManyFromQueue,
   addPlatform, updatePlatform, setPrimaryVariant, setPlayStatus,
-  fetchLibraryGames,
+  fetchLibraryGames, fetchLastPlayed,
 } from '../api/gamesApi'
+import { qk } from '../../../shared/query'
 import { nextQueuePosition, patchGameData, statusPatch } from '../api/gameCachePatch'
 import type { Game, GamePatch, CreateGameInput, GamePlatformInput, PlayStatus, GameLibrary } from '../types'
 
@@ -46,6 +47,11 @@ export function useGameDetail(id: string | null, opts?: { refetchOnMount?: boole
     queryKey: ['games', 'detail', id], queryFn: () => fetchGameDetail(id!), enabled: !!id, staleTime: 60_000,
     ...(opts?.refetchOnMount !== undefined && { refetchOnMount: opts.refetchOnMount }),
   })
+}
+
+/** The game played last up to `day` (one row). */
+export function useLastPlayed(day: string) {
+  return useQuery({ queryKey: qk.games.lastPlayed(day), queryFn: () => fetchLastPlayed(day), staleTime: LIBRARY_STALE_MS })
 }
 
 export function usePlayQueue(enabled = true) {

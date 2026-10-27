@@ -273,7 +273,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days) |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
 | Filter tabs with counts | `.pill-tab` + `.count-badge`, horizontally scrollable row (`.scroll-x`) |
-| Inputs | `.input`, `.select`, `.field-label` above; focus = accent border + soft halo, no outline. `.input-sm` (with `.input`/`.select`): 32px on every pointer, for a compact sheet's rows. `.input-bare`: a field whose text is the content (the Add sheet's title) — no box, an accent underline only while focused |
+| Inputs | `.input`, `.select`, `.field-label` above; focus = accent border + soft halo, no outline. `.input-sm` (with `.input`/`.select`): 32px on every pointer, for a compact sheet's rows. `.input-xs` (with `.input`): 24px on every pointer, for a field inside a glance tile's screen (the Money converter). `.input-bare`: a field whose text is the content (the Add sheet's title) — no box, an accent underline only while focused |
 | Chips / tags | `.chip`; counts `.count-badge`. `.chip` / `.tone-pill` never grow past their box (put the label in `<Truncate>`) |
 | Text that may not fit | `<Truncate lines as reveal fullText>` (`lines` 1–3, `reveal` auto\|popover\|more\|none) — cuts only when needed; adds a `title` and a mouse tooltip after 400ms. Outside a tappable element a tap, click or Enter opens a bubble (one line) or an in-place More / Less (2–3 lines); inside a tappable row only the hover tooltip. Text that fits costs one render and no listeners. The bubble (`TruncateBubble`) exists only while open and renders through Headless UI's `Portal`, so inside a popup it counts as part of the dialog; Esc and a press elsewhere close only the bubble. On `h2`–`h4` the button role goes on an inner span. `useIsTruncated` / `useTruncatedElement(ref, lines, textKey, nodeKey)` share one ResizeObserver; `node scripts/audit-text-overflow.mjs --static` lists bare `truncate` / `line-clamp` sites |
 | "a · b · c" meta lines | `<MetaLine items={[…]} />` — each fact (and its dot) is unbreakable, so a phone wraps between facts ("518 kcal · 50g protein ·" / "4g fiber"), never inside one ("4g" / "fiber"). Falsy items are skipped; items are short facts, never free user text. Prefer it over `.join(' · ')` for any macro / stats / "last done" line |
@@ -394,6 +394,7 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
 - **Widgets** adapt to their own box with container queries (`@container`, `@sm:` … `@4xl:`), not the
   viewport.
 - **Glance tiles on phones**: 2 columns (`grid-cols-2 gap-3`), each tile opens its detail in a popup.
+- **A control inside a glance screen** (`GlanceCarousel`; the Money tile's converter): a tap on a field, a picker or a button is the control's own — never the tile's detail, never the start of a drag (a drag elsewhere on the screen still turns it); its fields are `select-text` in the `select-none` tile; screens not showing are `inert`, so Tab never lands in a hidden field. The screen fits the height the tile already has.
 
 ### 6.4 Width caps (measurable)
 

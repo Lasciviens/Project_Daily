@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import { CalendarPlus, Gamepad2 } from 'lucide-react'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Truncate } from '../../../../shared/ui'
-import { usePlayQueue } from '../../../games/hooks/useGames'
+import { useLastPlayed, usePlayQueue } from '../../../games/hooks/useGames'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useEntityModal } from '../../../../shared/modals'
 import type { QueueGame } from '../../../games/types'
 
@@ -10,6 +11,8 @@ import type { QueueGame } from '../../../games/types'
 // without leaving Daily. Queue order itself is managed on /games.
 export function GamesCard({ date }: { date: string }) {
   const { data: queue = [], isError } = usePlayQueue()
+  // The game played last, up to the shown day (any library; one row).
+  const { data: last } = useLastPlayed(date)
   const modal = useEntityModal()
   const top = queue.slice(0, 3)
 
@@ -22,6 +25,7 @@ export function GamesCard({ date }: { date: string }) {
   return (
     <Cell>
       <CellHeader icon={<Gamepad2 />} title="Play next" action={<CellLink to="/games">Queue</CellLink>} />
+      {last && <Truncate as="p" className="-mt-1 text-meta tabular-nums text-fg-muted">Last played {formatDate(last.last_played_at)} · {last.title}</Truncate>}
 
       {isError || top.length === 0 ? (
         <Link to="/games" className="flex min-h-[44px] items-center text-body text-fg-muted hover:text-accent-600">

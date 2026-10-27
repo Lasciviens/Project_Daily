@@ -1,13 +1,15 @@
 // Runs migration 163's scenarios (football: the teams and tournaments
 // followed, the matches in the day, app_football_plan's add and move through
 // app_save_item, a deleted item never added again, delete with Undo across
-// football_plans.task_id, row level security and the owner lock) on a
-// throwaway Postgres built as verify-db-repeat-days builds it — the item save
-// as it is live: one-item/base.sql + repeat-days/base.sql, 112's skips, the
-// real 141, 142, 135, 144, 147, 150, 151, 155, 156 and 160's repeat rule —
-// then the real 163 twice (it must survive a re-run),
-// scripts/db-tests/football/scenarios.sql, and two sessions adding the same
-// match at once (163's lock: one item, the second answers planned: false).
+// football_plans.task_id, row level security and the owner lock), 165's
+// Football category and 168's favourite teams on a throwaway Postgres built
+// as verify-db-repeat-days builds it — the item save as it is live:
+// one-item/base.sql + repeat-days/base.sql, 112's skips, the real 141, 142,
+// 135, 144, 147, 150, 151, 155, 156 and 160's repeat rule — then the real
+// 163, 165 and 168 twice each (each must survive a re-run),
+// scripts/db-tests/football/scenarios.sql, 168 once more over starred teams
+// (the stars stay), and two sessions adding the same match at once (163's
+// lock: one item, the second answers planned: false).
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-football.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no
 // database URL (a laptop without Postgres) it runs the static checks and passes.
@@ -20,6 +22,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const migFile = mig('163_football.sql')
 const mig165 = mig('165_football_category.sql')
+const mig168 = mig('168_football_favourite.sql')
 
 // 165 is 156's app_save_item with ONE line changed (the category whitelist takes 'football'):
 // a later change to the item save must be made to the newest copy, so the two never drift.
@@ -35,17 +38,19 @@ const mig165 = mig('165_football_category.sql')
 }
 
 // Static: one transaction, nothing outside the database, every new table locked and audited.
-const sql = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
-const problems = []
-if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
-if (/\bnet\.http_|vault\.|googleapis/i.test(sql)) problems.push('a call outside the database')
-for (const t of sql.matchAll(/create table if not exists public\.(\w+)/gi)) {
-  if (!sql.includes(`owner_lock_apply('public.${t[1]}')`)) problems.push(`no owner lock on ${t[1]}`)
-  if (!new RegExp(`trg_audit[\\s\\S]*?on public\\.${t[1]}\\b`, 'i').test(sql)) problems.push(`no trg_audit on ${t[1]}`)
-}
-if (problems.length) {
-  console.error(`verify-db-football: migration 163 has ${problems.join('; ')}`)
-  process.exit(1)
+for (const file of [migFile, mig168]) {
+  const sql = readFileSync(file, 'utf8').replace(/--.*$/gm, '')
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
+  if (/\bnet\.http_|vault\.|googleapis/i.test(sql)) problems.push('a call outside the database')
+  for (const t of sql.matchAll(/create table if not exists public\.(\w+)/gi)) {
+    if (!sql.includes(`owner_lock_apply('public.${t[1]}')`)) problems.push(`no owner lock on ${t[1]}`)
+    if (!new RegExp(`trg_audit[\\s\\S]*?on public\\.${t[1]}\\b`, 'i').test(sql)) problems.push(`no trg_audit on ${t[1]}`)
+  }
+  if (problems.length) {
+    console.error(`verify-db-football: migration ${file.match(/(\d{3})_[^/]*$/)[1]} has ${problems.join('; ')}`)
+    process.exit(1)
+  }
 }
 
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
@@ -99,15 +104,30 @@ try {
   psql(target, ['-f', migFile])
   psql(target, ['-f', mig165])
   psql(target, ['-f', mig165])
-  // 166's training move trigger is live beside the item save these scenarios use.
+  // 166's and 167's training move triggers are live beside the item save these scenarios use.
   psql(target, ['-f', mig('166_training_moves_recheck.sql')])
+  psql(target, ['-f', mig('167_training_week_rules.sql')])
+  psql(target, ['-f', mig168])
+  psql(target, ['-f', mig168])
   // Each passing scenario prints a NOTICE ("ok  …") on stderr; a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
-  } else {
+  }
+  // 168 run again over starred teams (a re-deploy): every star stays where it was.
+  if (!failed) {
+    const stars = () => psql(target, ['-At', '-c', "select string_agg(ref, ',' order by ref) from public.football_follows where favourite"]).trim()
+    const before = stars()
+    psql(target, ['-f', mig168])
+    const after = stars()
+    if (!before || before !== after) {
+      failed = `168 run again over starred teams: stars ${JSON.stringify(before)} before, ${JSON.stringify(after)} after (want the same, at least one)`
+      console.error(`verify-db-football: ${failed}`)
+    }
+  }
+  if (!failed) {
     const first = session(target, `set role authenticated;\nbegin;\n${ADD}\nselect pg_sleep(1.5);\ncommit;`)
     await new Promise(r => setTimeout(r, 400))
     const second = await session(target, `set role authenticated;\n${ADD}`)
@@ -117,7 +137,7 @@ try {
       failed = `two sessions adding one match: first ${JSON.stringify(one.out.trim())}, second ${JSON.stringify(second.out.trim())}, tasks,plans = ${counts} (want true, false, 1,1)`
       console.error(`verify-db-football: ${failed}`)
     } else {
-      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163 and 165 (each applied twice) with 166, ${passed} scenarios and two sessions adding one match (one item) passed`)
+      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163, 165 and 168 (each applied twice) with 166 and 167, ${passed} scenarios, 168 again over starred teams (stars kept) and two sessions adding one match (one item) passed`)
     }
   }
 } finally {

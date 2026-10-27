@@ -14,6 +14,7 @@ import type { SkipRecord } from '../../plan/skippedRoutines'
 import { planFacts } from '../../plan/planFacts'
 import type { HevyWorkout } from '../../types.hevy'
 import type { CalendarPlanItem } from './calendarModel'
+import type { TimeBlock } from '../../../daily/types'
 
 export interface DaySession {
   workout: HevyWorkout
@@ -39,12 +40,43 @@ export interface DaySessions {
 
 type WorkoutLike = Pick<HevyWorkout, 'id' | 'title' | 'routine_id' | 'start_time'>
 
-/** The routine a one-off block was planned from (Routines → "Plan routine"
- *  stamps source_type 'training_session' + the routine id). A recurring
- *  template carries only a title. */
+/** The routine a plan trains, when its rows say: its task's (141), else the
+ *  routine a one-off block was planned from (Routines → "Plan routine" stamps
+ *  source_type 'training_session' + the routine id). A recurring template
+ *  carries only a title (usePlanContext.routineOf matches it). */
 export function planRoutineId(p: CalendarPlanItem): string | null {
   const b = p.timeBlock
+  if (b?.task_id && b.task_routine_id) return b.task_routine_id
+  if (p.dayTask?.hevy_routine_id) return p.dayTask.hevy_routine_id
   return b?.source_type === 'training_session' && b.source_id ? b.source_id : null
+}
+
+/** A plan's task: its slot's task, else its projected day's task (156). */
+export interface PlanTask {
+  id: string
+  status: NonNullable<TimeBlock['task_status']>
+  workoutId: string | null
+  routineId: string | null
+  /** A day that passed unticked (156: cancelled + closed_reason 'missed') — not a skip. */
+  missed: boolean
+  /** Its first day (167): its week is that day and the next six. */
+  firstDate: string | null
+}
+
+export function planTaskOf(p: CalendarPlanItem): PlanTask | null {
+  const b = p.timeBlock
+  if (b?.task_id) {
+    return {
+      id: b.task_id, status: b.task_status ?? 'open', workoutId: b.task_workout_id ?? null, routineId: b.task_routine_id ?? null,
+      missed: b.task_status === 'cancelled' && b.task_closed_reason === 'missed', firstDate: b.task_first_plan_date ?? null,
+    }
+  }
+  const t = p.dayTask
+  if (!t) return null
+  return {
+    id: t.id, status: t.status, workoutId: t.hevy_workout_id, routineId: t.hevy_routine_id,
+    missed: t.status === 'cancelled' && t.closed_reason === 'missed', firstDate: t.first_plan_date ?? null,
+  }
 }
 
 /** 'HH:MM' the plan starts, or null when it has no time. */
@@ -81,13 +113,15 @@ function timeGap(p: CalendarPlanItem, w: WorkoutLike): number {
  *  nothing (the database didn't link a workout to it); one ticked done by
  *  hand may show the day's workout. */
 export function planWorkoutScore(p: CalendarPlanItem, w: WorkoutLike): number {
-  const block = p.timeBlock
-  if (block?.task_id) {
-    if (block.task_workout_id) return block.task_workout_id === w.id ? 4 : 0
-    if (block.task_status !== 'done') return 0
+  const task = planTaskOf(p)
+  if (task) {
+    if (task.workoutId) return task.workoutId === w.id ? 4 : 0
+    if (task.status !== 'done') return 0
   }
   const rid = planRoutineId(p)
   if (rid && w.routine_id && rid === w.routine_id) return 3
+  // A workout represents itself (owner, 26.10.2026): never another routine's session.
+  if (rid && w.routine_id) return 0
   const a = normalizeTitle(p.title)
   const b = normalizeTitle(w.title)
   if (!a || !b) return 0
@@ -102,9 +136,10 @@ export function planWorkoutScore(p: CalendarPlanItem, w: WorkoutLike): number {
  *  2. a leftover plan that is clearly the SAME session as an already paired
  *     workout (routine or exact title) joins it — the session was planned twice;
  *  3. a leftover plan and a leftover workout on the same (past or current)
- *     day pair by nearest start time: a workout on a planned day covers the
- *     plan, as the calendar always counted it — the entry then says which
- *     plan it replaced;
+ *     day pair by nearest start time — only where a routine is missing (the
+ *     workout's or the plan's): a workout of one routine never covers
+ *     another's session (167, the database's own rule); the entry then says
+ *     which plan it stood in for;
  *  4. what is left stays a plan: done only when a Strava activity covered
  *     the day, else today / upcoming / missed. */
 export function matchDaySessions(input: {
@@ -151,9 +186,13 @@ export function matchDaySessions(input: {
     const left: { p: number; w: number; gap: number }[] = []
     plans.forEach((plan, p) => {
       if (planOf.has(p)) return
-      const b = plan.timeBlock
-      if (b?.task_id && (b.task_status !== 'done' || b.task_workout_id)) return
-      workouts.forEach((wo, w) => { if (!takenWorkouts.has(w)) left.push({ p, w, gap: timeGap(plan, wo) }) })
+      const task = planTaskOf(plan)
+      if (task && (task.status !== 'done' || task.workoutId)) return
+      const rid = planRoutineId(plan) ?? routineOf?.(plan, date) ?? null
+      workouts.forEach((wo, w) => {
+        if (takenWorkouts.has(w) || (rid && wo.routine_id && rid !== wo.routine_id)) return
+        left.push({ p, w, gap: timeGap(plan, wo) })
+      })
     })
     left.sort((a, b) => a.gap - b.gap || a.p - b.p || a.w - b.w)
     for (const pr of left) {
@@ -173,11 +212,12 @@ export function matchDaySessions(input: {
 
   // THE status, from the same facts every view builds (plan/planFacts).
   const statusOf = (plan: CalendarPlanItem): SessionStatus => {
-    const b = plan.timeBlock
+    const task = planTaskOf(plan)
     return sessionStatus(planFacts({
       date, startHHMM: planStartHHMM(plan),
-      taskId: b?.task_id ?? null, taskStatus: b?.task_status ?? null,
-      taskWorkoutId: b?.task_workout_id ?? null, taskRoutineId: b?.task_routine_id ?? null,
+      taskId: task?.id ?? null, taskStatus: task?.status ?? null,
+      taskWorkoutId: task?.workoutId ?? null, taskRoutineId: task?.routineId ?? null,
+      taskMissed: task?.missed ?? false, firstDate: task?.firstDate ?? null,
       routineId: planRoutineId(plan) ?? routineOf?.(plan, date) ?? null,
     }, { today: todayStr, nowHHMM, skips, hasActivity }))
   }

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BookOpen, Flame } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { EmptyState, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
 import { useLibrary, useReadingEvents, useReadingSettings } from '../../books/hooks/useLibrary'
-import { computeStreak, localDay, secondsByDay, sortForLibrary, upNext } from '../../books/readingAggregate'
+import { computeStreak, currentlyReading, localDay, secondsByDay, sortForLibrary, upNext } from '../../books/readingAggregate'
 import { BookCover } from '../../books/components/BookCover'
 import type { Book } from '../../books/types'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -13,18 +13,21 @@ import { WidgetShell } from './WidgetShell'
 import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
 import { BooksGlanceArt } from './glanceMotifs'
 import { TileDetail } from './TileDetail'
+import { formatDateTime } from '../../../shared/utils/dateFormat'
 
 /**
  * Reading at a glance — the same numbers as Daily's Reading cell: today's
  * minutes against the goal, the streak (a day the Kobo hasn't reported yet is
- * unknown, never a zero), the book in hand and what is up next.
+ * unknown, never a zero), the book in hand, when it was last read (the books
+ * model's `currentlyReading` — page events or the device's last open, whichever
+ * is later) and what is up next.
  */
 function useReadingGlance(enabled: boolean) {
   const events = useReadingEvents(120, enabled)
   const { data: settings } = useReadingSettings()
   const { data: sync } = useKoboFeedState(enabled)
   const library = useLibrary(enabled)
-  const books = library.data ?? []
+  const books = useMemo(() => library.data ?? [], [library.data])
   const today = localDay(new Date())
   const perDay = secondsByDay(events.data ?? [])
   const minutes = Math.floor((perDay.get(today) ?? 0) / 60)
@@ -34,7 +37,12 @@ function useReadingGlance(enabled: boolean) {
   const streak = computeStreak(perDay, today, lastSeenDay, settings?.streak_min_minutes ?? 1, first)
   const reading = sortForLibrary(books.filter(b => b.kind !== 'news' && b.read_status === 'reading'), 'recent')
   const queue = upNext(books)
-  return { isLoading: library.isLoading, books, minutes, goal, streak, reading, queue }
+  const currentId = reading[0]?.id ?? null
+  const lastReadAt = useMemo(
+    () => (currentId ? currentlyReading(books, events.data ?? [], today).find(c => c.bookId === currentId)?.lastAt ?? null : null),
+    [books, events.data, today, currentId],
+  )
+  return { isLoading: library.isLoading, books, minutes, goal, streak, reading, queue, lastReadAt }
 }
 
 const pct = (b: Book) => Math.round(b.progress_pct ?? 0)
@@ -90,7 +98,11 @@ function BooksSummary({ enabled }: { enabled: boolean }) {
   )
 }
 
-/** Glance tile with swipeable screens: the book in hand · today · up next. */
+/**
+ * Glance tile with swipeable screens: the book in hand (with its % on the
+ * title line, so "Last read 25.10.2026 22:10" fits in the tile's height) ·
+ * today · up next.
+ */
 export function BooksTile() {
   const r = useReadingGlance(true)
   const popup = useTilePopup()
@@ -100,12 +112,19 @@ export function BooksTile() {
     {
       key: 'reading',
       name: 'Reading',
-      body: (
+      body: current ? (
+        <div className="min-w-0">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <Truncate className="flex-1 text-ui font-semibold text-fg">{current.title}</Truncate>
+            <span className="shrink-0 text-micro tabular-nums text-fg-muted">{pct(current)}%</span>
+          </span>
+          <ProgressBar value={pct(current) / 100} className="mt-0.5" label={`${pct(current)}% read`} />
+          {r.lastReadAt != null && <Truncate className="text-micro tabular-nums text-fg-muted">{`Last read ${formatDateTime(r.lastReadAt)}`}</Truncate>}
+        </div>
+      ) : (
         <div className="min-w-0 space-y-1">
-          <Truncate className="text-ui font-semibold text-fg">{current ? current.title : 'Nothing in progress'}</Truncate>
-          {current
-            ? <span className="flex items-center gap-2"><ProgressBar value={pct(current) / 100} className="flex-1" label={`${pct(current)}% read`} /><span className="text-micro tabular-nums text-fg-muted">{pct(current)}%</span></span>
-            : <Truncate className="text-meta text-fg-muted">Pick one in Books</Truncate>}
+          <Truncate className="text-ui font-semibold text-fg">Nothing in progress</Truncate>
+          <Truncate className="text-meta text-fg-muted">Pick one in Books</Truncate>
         </div>
       ),
     },

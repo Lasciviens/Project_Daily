@@ -8,6 +8,7 @@ import { DayQuickRail } from '../components/DayQuickRail'
 import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
+import { DayLine } from '../components/summary/DayLine'
 import { TasksPanel } from '../components/TasksPanel'
 import { DailyHeroArt } from '../components/DailyHeroArt'
 import { CalendarDays } from 'lucide-react'
@@ -112,7 +113,9 @@ export function DailyPage() {
             isToday={mode === 'day' && isToday(viewDate)}
           />
         }
-        subtitle={context ? <span className="pl-1 tabular-nums">{context}</span> : undefined}
+        subtitle={context
+          ? <span className="pl-1 tabular-nums">{mode === 'day' ? <DayLine date={formatLocalDate(viewDate)} lead={context} /> : context}</span>
+          : undefined}
         actions={
           <>
             <div className="w-full sm:hidden">

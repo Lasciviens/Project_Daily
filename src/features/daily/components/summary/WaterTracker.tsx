@@ -3,6 +3,7 @@ import { Check, Droplet, Undo2 } from 'lucide-react'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useWaterDay, useAddWater, useUndoWater } from '../../hooks/useWater'
 import { useDayTargets } from '../../hooks/useDayTargets'
+import { litres } from '../../foodGlance'
 
 // Water tracker — daily ml total vs a goal (default 2 L). Quick +250/+500 ml
 // taps + undo-last. Logs to water_log_entries (own table, never in the calorie
@@ -10,10 +11,6 @@ import { useDayTargets } from '../../hooks/useDayTargets'
 // left the Personal page, 16.10.2026); Home's brief reads the same
 // ['water', date] query key, so a tap shows there at once.
 
-// Whole litres show with no decimals (2 L), partials with two (1.25 L).
-function litres(ml: number): string {
-  return (ml / 1000).toFixed(ml % 1000 === 0 ? 0 : 2)
-}
 
 export function WaterTracker({ date }: { date: string }) {
   const { data: ml = 0 } = useWaterDay(date)

@@ -245,7 +245,8 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
     date: plan.info.date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes,
     taskId: t?.id ?? i.taskId ?? null, taskStatus: t?.status ?? (b?.task_status as TaskStatus | null | undefined) ?? null,
     taskWorkoutId: t?.hevy_workout_id ?? b?.task_workout_id ?? null, taskRoutineId: t?.hevy_routine_id ?? b?.task_routine_id ?? null,
-    taskMissed: t?.closed_reason === 'missed',
+    taskMissed: t ? t.closed_reason === 'missed' : b?.task_status === 'cancelled' && b?.task_closed_reason === 'missed',
+    firstDate: t?.first_plan_date ?? b?.task_first_plan_date ?? null,
     routineId: plan.info.routineId,
   }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourLabel(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity }))
   // A day of a repeating plan (with its day's task or not): the plan's own entries too.

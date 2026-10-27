@@ -234,10 +234,11 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migrations 163 and 165: football (follows, a match into the day through
-      # app_football_plan with app_save_item, never twice, a deleted item never
-      # added again, a moved kick-off, delete with Undo, the owner lock; the
-      # Football slot category and 165's one-line change to the item save).
+      # Migrations 163, 165 and 168: football (follows, a match into the day
+      # through app_football_plan with app_save_item, never twice, a deleted
+      # item never added again, a moved kick-off, delete with Undo, the owner
+      # lock; the Football slot category and 165's one-line change to the item
+      # save; favourite teams — a team only, several, kept by a re-run).
       - name: Football database scenarios
         run: node scripts/verify-db-football.mjs
         env:
@@ -250,9 +251,12 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 166: a moved training session is moved (its Hevy workout
-      # link checked against the new day, a missed day moved is to do, a
-      # repeat's day moved without its slot gets one, the one-off repair).
+      # Migrations 166 and 167: a moved training session is moved (its Hevy
+      # workout link checked against the new day, a missed day moved is to
+      # do, a repeat's day moved without its slot gets one, the one-off
+      # repair); a workout completes only its own routine's session and a
+      # session lives one week (skipped then done, a move of 7+ days, the
+      # week's end skips it).
       - name: Training move recheck database scenarios
         run: node scripts/verify-db-training-recheck.mjs
         env:
