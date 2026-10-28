@@ -60,7 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| `supabase/migrations/167_*`, `168_*`, `src/features/daily/**`, `src/features/training/**` (plan, calendar, Move), `src/features/football/**`, `src/features/media/**` (watches, year review), `src/features/home/components/` (glance tiles), `supabase/functions/ai-proxy` (tasks rules) | Claude | Dev Requests 26.10 (PR #581) | 26.10.2026 |
+| `src/shared/components/plan-modal/`, `src/features/items/useItems.ts`, `src/features/training/**`, and the files the 28.10 audit fixes touch (listed in the PR) | Claude | Audit 28.10: check, fix, improve | 28.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
