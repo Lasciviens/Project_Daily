@@ -10,7 +10,8 @@
  *   - an account outside the allow-list gets 403;
  *   - the assistant cannot set link columns (google_calendar_event_id …),
  *     cannot pass off a memory as the user's, and play counts are capped;
- *   - it cannot write the retired tomorrow / this_week task sections.
+ *   - it cannot write the retired tomorrow / this_week task sections;
+ *   - the app's 'aiWrite' refresh reaches every table it can write.
  *
  *   Run:  node scripts/verify-ai-confirm.cjs
  */
@@ -90,6 +91,42 @@ const env = { GEMINI_API_KEY: 'k', HEVY_USER_ID: OWNER, PHONE_GATEWAY_SECRET: 'p
 const handler = load('ai-proxy', { env, tables, users: { 'owner-jwt': OWNER, 'stranger-jwt': STRANGER }, log, fetchImpl })
 const call = async (body, headers) => { const r = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })); return { status: r.status, body: await r.json() } }
 let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  ✓', n) } else { bad++; console.log('  ✗', n, d ?? '') } }
+
+function checkAiWriteGroup() {
+  require('sucrase/register')
+  const { INVALIDATION_GROUPS } = require(`${REPO}/src/shared/query/invalidate.ts`)
+  const { qk } = require(`${REPO}/src/shared/query/keys.ts`)
+  const { partialMatchKey } = require('@tanstack/query-core')
+  const d = '2026-10-28', w = '2026-10-26'
+  // One key (or more) a screen reads each writable table under.
+  const SCREENS = {
+    tasks: [qk.tasks.day(d, d), qk.tasks.projects()], time_blocks: [qk.schedule.day(d)], training_skips: [qk.training.skips(w)],
+    recipes: [qk.recipes.all], recipe_ingredients: [qk.recipes.all], recipe_ingredient_library: [qk.ingredients.all],
+    food_log_entries: [qk.foodLog.day(d), qk.mealPlan.dayNutrition(d), qk.health.cutDiary(w, d), qk.supplements.facts(w, d)],
+    water_log_entries: [qk.water.day(d)], quick_guess_items: [qk.quickGuess.list()],
+    supplement_schedules: [qk.supplements.schedules()], supplement_dose_state: [qk.supplements.facts(w, d)],
+    shop_categories: [qk.shop.categories()], shop_items: [qk.shop.items()], shop_item_links: [qk.shop.links()], shop_item_costs: [qk.shop.costs()],
+    wish_items: [qk.wishes.all], books: [qk.books.library()], reading_settings: [qk.books.settings()],
+    user_movie_entries: [qk.media.userMovies(), qk.media.recent()], user_tv_entries: [qk.media.userTv()],
+    user_tv_episodes: [qk.media.watched('e1'), qk.media.nextEpisode('e1'), qk.media.recent()],
+    media_watches: [qk.media.userMovies(), qk.media.watched('e1')], movie_cinema_visits: [qk.media.cinemaVisits()],
+    projects: [qk.projects.list()], project_phases: [qk.projects.phases()],
+    project_blocks: [qk.projects.blocks('p1')], project_entries: [qk.projects.entries('p1'), qk.projects.openQuestions()],
+    sleep_night_confirmations: [qk.health.sleepConfirmations], athlete_profile: [qk.athlete.profile],
+    day_targets: [qk.dayTargets.all], athlete_limitations: [qk.athlete.limitations],
+    dev_requests: [qk.devRequests.all], ai_memory: [qk.memory.all],
+    // written by its own tools, not the catalogue
+    user_transit_stops: [qk.transit.stops()], user_transit_routes: [qk.transit.routes()],
+  }
+  const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
+  const rw = [...src.matchAll(/^ {2}([a-z_]+): \{\n {4}access: 'rw'/gm)].map(m => m[1])
+  check(`DB_CATALOG lists its rw tables (${rw.length})`, rw.length > 25, rw.length)
+  const unmapped = rw.filter(t => !SCREENS[t])
+  check('every rw table has a screen key here', !unmapped.length, unmapped.join(', '))
+  const roots = INVALIDATION_GROUPS.aiWrite
+  const stale = Object.entries(SCREENS).flatMap(([t, keys]) => keys.filter(k => !roots.some(r => partialMatchKey(k, r))).map(k => `${t} ${JSON.stringify(k)}`))
+  check("'aiWrite' refreshes every one of them", !stale.length, stale.join('; '))
+}
 ;(async () => {
   const web = { authorization: 'Bearer owner-jwt' }
   const msg = [{ role: 'user', content: 'Delete my Buy milk task' }]
@@ -158,6 +195,9 @@ let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  
   script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'user_movie_entries', select: 'id, status, movie:movies(title, release_date)' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('a plain catalogue embed still works', r.body.steps?.some(s => s.startsWith('✓ db_query')), JSON.stringify(r.body.steps))
+  // 10. after a turn AIPanel refreshes the 'aiWrite' group: it must reach a screen's key
+  // for every table the assistant may write. A new rw table fails here until mapped.
+  checkAiWriteGroup()
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()

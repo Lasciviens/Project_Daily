@@ -4,7 +4,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { Button, Card, CardHeader } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useDeleteBlock, useMoveBlock } from '../hooks/useProjects'
-import { swapWith } from '../projectModel'
+import { movePlan } from '../projectModel'
 import { BLOCK_ICON } from '../projectIcons'
 import { TableBlockBody } from './TableBlock'
 import { DecisionsBody, LinksBody, LogBody, PagesBody } from './EntryBlocks'
@@ -18,8 +18,8 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
   const move = useMoveBlock()
   const del = useDeleteBlock(block.project_id)
   const Icon = BLOCK_ICON[block.kind]
-  const up = swapWith(blocks, block.id, -1)
-  const down = swapWith(blocks, block.id, 1)
+  const up = movePlan(blocks, block.id, -1)
+  const down = movePlan(blocks, block.id, 1)
   const add = () => modal.open({ kind: 'project-entry', projectId: block.project_id, blockId: block.id })
 
   return (
@@ -45,14 +45,14 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
                 </MenuItem>
                 {up && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: up[0], b: up[1] })}>
+                    <button type="button" className="menu-item" onClick={() => move.mutate(up)}>
                       <ArrowUp aria-hidden className="h-4 w-4" /> Move up
                     </button>
                   </MenuItem>
                 )}
                 {down && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: down[0], b: down[1] })}>
+                    <button type="button" className="menu-item" onClick={() => move.mutate(down)}>
                       <ArrowDown aria-hidden className="h-4 w-4" /> Move down
                     </button>
                   </MenuItem>

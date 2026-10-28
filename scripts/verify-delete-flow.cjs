@@ -4,7 +4,7 @@
  * write's own answer, and writes that don't wait for re-reads.
  *
  *  1. runDeleteFlow (src/shared/modals/deleteFlowCore.ts): asks first, a "no"
- *     deletes nothing, the delete's answer decides the message (nothing there
+ *     deletes nothing (a question closed by a route change is a "no"), the delete's answer decides the message (nothing there
  *     = "Already deleted"), Undo restores and says what didn't come back, a
  *     delete with no Undo says so in the question, too-big deletes say so.
  *  2. cachePatch (src/shared/query/cachePatch.ts) against a small fake
@@ -47,6 +47,7 @@ const { runDeleteFlow, NO_UNDO } = require('../src/shared/modals/deleteFlowCore'
 const { mapRowsInCache, putRowsInCache, removeRowsFromCache, snapshotCache, restoreCache } = require('../src/shared/query/cachePatch')
 const { applyTaskPatch, taskUpdateMessage } = require('../src/features/todo/taskWrites')
 const { rowsOf, notRestoredNote, restoreAnswer } = require('../src/shared/utils/deletedRows')
+const { useModalStore } = require('../src/shared/modals/modalStore')
 
 function deps(answer = true) {
   const log = { asked: null, undo: null, success: [], info: [], warning: [] }
@@ -65,6 +66,20 @@ const tick = () => new Promise(r => setTimeout(r, 0))
 
 ;(async () => {
   // ── 1. the flow ─────────────────────────────────────────────────────────
+  {
+    // The question itself (entityModal.confirm's request) when a route change closes the whole stack.
+    const store = useModalStore.getState()
+    const asked = new Promise(resolve => store.open({ kind: 'confirm', title: 'Delete?', resolve }))
+    store.open({ kind: 'task', id: 't1' })
+    store.closeAll()
+    const answered = await Promise.race([asked, tick().then(() => 'never answered')])
+    ok(answered === false && useModalStore.getState().stack.length === 0, `a question closed with the whole stack (a route change) answers "no", so the flow ends (got ${answered})`)
+    let answer
+    const yes = new Promise(resolve => { answer = resolve; store.open({ kind: 'confirm', title: 'Delete?', resolve }) })
+    answer(true)
+    store.close()
+    ok(await yes === true, 'a question already answered keeps its answer when it closes')
+  }
   {
     const { log, deps: d } = deps(false)
     let removed = false

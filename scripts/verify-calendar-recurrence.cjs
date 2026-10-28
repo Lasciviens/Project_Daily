@@ -12,6 +12,7 @@
  *   4. time zones and daylight saving: wall-clock times + TZID, never UTC;
  *   5. plans crossing midnight end on the next day;
  *   6. the horizon of the monthly kinds and when it is pushed again;
+ *      6b. the zone a push uses, the retry list, and what sign-out clears;
  *      6c. on Google from the day the plan is added (148), never its past
  *          weeks — still exactly the app's days from then on;
  *      6d. every plan at once: which ones, and the result line;
@@ -238,6 +239,52 @@ console.log('\n6b · The zone a push uses, and the retry list')
   check('…and it round-trips through storage', eq(S.parsePendingSeries(JSON.stringify(list)), list))
   check('the storage key is the one sign-out clears', S.SERIES_PENDING_KEY === 'lasci.calendarSeries.pending'
     && require('fs').readFileSync(require('path').join(__dirname, '../src/security/accountState.ts'), 'utf8').includes('localStorage.removeItem(SERIES_PENDING_KEY)'))
+  checkSignOut()
+}
+
+// Sign-out (src/security/accountState.ts) run on a fake device: what belongs to the
+// account goes, typed drafts and device settings stay. Stubs are removed afterwards.
+function checkSignOut() {
+  const fs = require('fs'), path = require('path')
+  const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  const kept = {
+    'lasci.devRequests': '{}', 'lasci.shop.chainDraft': '{}', 'lasci.shop.chainDraft.item1': '{}',
+    'theme-preference': '{}', 'lasci.cutReport.settings': '{}',
+  }
+  const gone = {
+    'lasci-ai-chat': '[]', 'lasci.calendarSeries.pending': '[]', 'lasci.igdbBatch': '{}',
+    'lasci.games.autoSync.steam': '1', 'lasci.games.autoSync.playstation': '1',
+  }
+  const store = { ...kept, ...gone, 'calendar-token': JSON.stringify({ state: { accessToken: 't', expiresAt: 1, selectedCalendarIds: ['ola@example.com'] }, version: 0 }) }
+  const had = { localStorage: global.localStorage, window: global.window }
+  global.localStorage = {
+    getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v) }, removeItem: k => { delete store[k] },
+    key: i => Object.keys(store)[i] ?? null, get length() { return Object.keys(store).length },
+  }
+  global.window = { localStorage: global.localStorage, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) }
+  const Module = require('module')
+  const load = Module._load
+  Module._load = function (request, parent, isMain) {
+    if (/integrations\/supabase\/client$/.test(request)) return { supabase: {} }
+    return load.call(this, request, parent, isMain)
+  }
+  try {
+    const { clearAccountState } = require('../src/security/accountState')
+    void clearAccountState() // its device writes all happen before its first await
+    const left = Object.keys(gone).filter(k => k in store)
+    check('sign-out clears the AI chat, the Calendar retry list, the IGDB review list and every Games auto-sync mark', !left.length, left.join(', '))
+    const cal = JSON.parse(store['calendar-token'] ?? '{}').state ?? {}
+    check('… and the Google token and the calendars picked (their ids name the account)', cal.accessToken === null && cal.selectedCalendarIds === null, JSON.stringify(cal))
+    const lost = Object.keys(kept).filter(k => !(k in store))
+    check('… while typed drafts (Dev Requests, a Shop chain) and device settings stay', !lost.length, lost.join(', '))
+    check('… under the names the Games stores really use',
+      read('src/features/games/igdb/igdbBatchStore.ts').includes("name: 'lasci.igdbBatch'")
+      && read('src/features/games/test-game/useProviderSync.ts').includes('`lasci.games.autoSync.${l}`'))
+  } finally {
+    Module._load = load
+    global.localStorage = had.localStorage
+    global.window = had.window
+  }
 }
 
 console.log('\n6c · On Google from the day it is added (148), not the plan\'s past weeks')

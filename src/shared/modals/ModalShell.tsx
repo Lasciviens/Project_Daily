@@ -61,7 +61,7 @@ export function ModalShell({
 }: ModalShellProps) {
   const depth = useModalDepth()
   const close = () => { if (dismissible) onClose() }
-  useHistoryDismiss(open, close)
+  useHistoryDismiss(open, close, dismissible)
   const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open && mobile === 'sheet' && dismissible, close)
   const panelEl = useRef<HTMLElement | null>(null)
   usePopupTrail(open, panelEl)

@@ -30,6 +30,8 @@ A project is a **header**, a **plan** and a few general **blocks**. A template o
 
 Every write says its result ("Task added", "Row added", "Decided", "Kitchen scale: On hold") and every delete asks and offers Undo (`useRowsDelete`; 144's `app_delete_rows` follows the new keys).
 
+**Order and saving (28.10.2026):** Move up / Move down follow the order shown (sort order, then the older first — `projectModel.movePlan`): two different sort orders swap; when two share one (the assistant adds a phase with the default 0) the list is numbered 0, 1, 2… in its new order. Before, a tie could move a phase the wrong way or two places. Enter in a popup while it is saving does nothing (it used to add a second project, phase, block or entry).
+
 ## The old items (migration 162)
 
 Before 162 a project's work lived in `project_items` (title, notes, a software type, status, priority), reaching Daily only once scheduled. 162 copied every item into `tasks` (owner, 18.10.2026: closed items too, so progress stays right):

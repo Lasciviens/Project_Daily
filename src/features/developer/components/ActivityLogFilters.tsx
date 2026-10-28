@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, IconButton } from '../../../shared/ui'
+import { DateInput } from '../../../shared/components/DateInput'
 import { haptic } from '../../../shared/utils/haptics'
+import { TimeChip } from '../../supplements/components/TimeChip'
 import { friendlyTable } from './activityLogMeta'
 
 // The Activity tab's filter bar: everything inline from sm, a range select +
@@ -14,6 +16,19 @@ const RANGES = [
   { label: 'Last 7 days',  hours: 168 },
   { label: 'Last 30 days', hours: 720 },
 ]
+
+/** One end of the exact window, 'YYYY-MM-DDTHH:MM' ('' = open): a day, then its 24-hour time. */
+function WindowEnd({ label, value, startTime, onChange }: {
+  label: 'From' | 'To'; value: string; startTime: string; onChange: (v: string) => void
+}) {
+  const [day, time = startTime] = value.split('T')
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <DateInput value={day} onChange={d => onChange(d ? `${d}T${time}` : '')} aria-label={label} className="input w-[10rem] tabular-nums" />
+      {day && <TimeChip label={`${label} time`} value={time} onChange={t => onChange(`${day}T${t}`)} />}
+    </span>
+  )
+}
 
 export interface ActivityFilterState {
   rangeHours: number
@@ -81,6 +96,9 @@ export function ActivityLogFilters({
     </IconButton>
   )
   const clearWindow = () => set({ customFrom: '', customTo: '' })
+  // An open day starts at 00:00 and ends at 23:59, so a day alone covers all of it.
+  const fromField = <WindowEnd label="From" value={customFrom} startTime="00:00" onChange={v => set({ customFrom: v })} />
+  const toField = <WindowEnd label="To" value={customTo} startTime="23:59" onChange={v => set({ customTo: v })} />
 
   return (
     <div>
@@ -102,9 +120,9 @@ export function ActivityLogFilters({
         </div>
         <div className="flex flex-wrap items-center gap-2 text-meta text-fg-muted">
           <span>Or an exact window:</span>
-          <input type="datetime-local" value={customFrom} onChange={e => set({ customFrom: e.target.value })} className="input w-auto max-w-[13rem]" aria-label="From" />
+          {fromField}
           <span aria-hidden>→</span>
-          <input type="datetime-local" value={customTo} onChange={e => set({ customTo: e.target.value })} className="input w-auto max-w-[13rem]" aria-label="To" />
+          {toField}
           {usingCustom && (
             <Button size="sm" variant="ghost" onClick={clearWindow} className="text-accent-600">Clear window</Button>
           )}
@@ -141,8 +159,8 @@ export function ActivityLogFilters({
           <label><span className="field-label">Actor</span>{actorSelect('')}</label>
           <div className="flex flex-col gap-2">
             <span className="field-label mb-0">Exact window</span>
-            <input type="datetime-local" value={customFrom} onChange={e => set({ customFrom: e.target.value })} className="input" aria-label="From" />
-            <input type="datetime-local" value={customTo} onChange={e => set({ customTo: e.target.value })} className="input" aria-label="To" />
+            {fromField}
+            {toField}
             {usingCustom && (
               <Button size="sm" variant="ghost" onClick={clearWindow} className="self-start text-accent-600">Clear window</Button>
             )}

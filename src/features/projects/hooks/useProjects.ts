@@ -14,7 +14,7 @@ import {
   fetchBlocks, createBlock, updateBlock,
   fetchEntries, fetchOpenQuestions, createEntry, updateEntry,
 } from '../api/projectsApi'
-import { STATUS_LABEL } from '../projectModel'
+import { STATUS_LABEL, type MovePlan } from '../projectModel'
 import type {
   BlockPatch, EntryFields, NewBlockInput, NewPhaseInput, NewProjectInput, NewProjectTaskInput, PhasePatch,
   ProjectBlock, ProjectPatch, ProjectPhase,
@@ -144,18 +144,14 @@ export function useUpdatePhase({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-/** Swaps two phases' places. */
+/** Moves a phase one place (projectModel.movePlan). */
 export function useMovePhase() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'move_phase',
-    successMessage: ({ moved }) => `${moved.name} moved`,
-    mutationFn: async ({ a, b }: { a: ProjectPhase; b: ProjectPhase }) => {
-      const moved = await updatePhase(a.id, { sort_order: b.sort_order === a.sort_order ? a.sort_order + 1 : b.sort_order })
-      const other = await updatePhase(b.id, { sort_order: a.sort_order })
-      return { moved, other }
-    },
-    onSuccess: ({ moved, other }) => putRowsInCache(qc, qk.projects.phases(), [moved, other]),
+    successMessage: (_rows, { moved }) => `${moved.name} moved`,
+    mutationFn: ({ writes }: MovePlan<ProjectPhase>) => Promise.all(writes.map(w => updatePhase(w.id, { sort_order: w.sort_order }))),
+    onSuccess: rows => putRowsInCache(qc, qk.projects.phases(), rows),
     invalidates: [qk.projects.phases()],
   })
 }
@@ -215,19 +211,15 @@ export function useUpdateBlock({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-/** Swaps two blocks' places. */
+/** Moves a block one place (projectModel.movePlan). */
 export function useMoveBlock() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'move_block',
-    successMessage: ({ moved }) => `${moved.title} moved`,
-    mutationFn: async ({ a, b }: { a: ProjectBlock; b: ProjectBlock }) => {
-      const moved = await updateBlock(a.id, { sort_order: b.sort_order === a.sort_order ? a.sort_order + 1 : b.sort_order })
-      const other = await updateBlock(b.id, { sort_order: a.sort_order })
-      return { moved, other }
-    },
-    onSuccess: ({ moved, other }) => putRowsInCache(qc, qk.projects.blocks(moved.project_id), [moved, other]),
-    invalidates: (_r, { a }) => [qk.projects.blocks(a.project_id)],
+    successMessage: (_rows, { moved }) => `${moved.title} moved`,
+    mutationFn: ({ writes }: MovePlan<ProjectBlock>) => Promise.all(writes.map(w => updateBlock(w.id, { sort_order: w.sort_order }))),
+    onSuccess: (rows, { moved }) => putRowsInCache(qc, qk.projects.blocks(moved.project_id), rows),
+    invalidates: (_r, { moved }) => [qk.projects.blocks(moved.project_id)],
   })
 }
 

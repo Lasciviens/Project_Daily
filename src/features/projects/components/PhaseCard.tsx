@@ -6,7 +6,7 @@ import { cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import type { Task } from '../../todo/types'
 import { useDeletePhase, useMovePhase, useUpdatePhase } from '../hooks/useProjects'
-import { nextSortOrder, swapWith } from '../projectModel'
+import { movePlan, nextSortOrder } from '../projectModel'
 import { AddTaskInline } from './AddTaskInline'
 import { ProjectTaskRow } from './ProjectTaskRow'
 import { DOTTED } from './peekStyle'
@@ -35,8 +35,8 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
   const counted = tasks.filter(t => t.status !== 'cancelled')
   const doneCount = counted.filter(t => t.status === 'done').length
   const dateText = phase.done_at ? `Done ${formatDate(phase.done_at)}` : phase.target_on ? `Target ${formatDate(phase.target_on)}` : null
-  const up = swapWith(phases, phase.id, -1)
-  const down = swapWith(phases, phase.id, 1)
+  const up = movePlan(phases, phase.id, -1)
+  const down = movePlan(phases, phase.id, 1)
 
   return (
     <Disclosure as="section" defaultOpen={current || !!focusAdd}
@@ -72,14 +72,14 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
                 </MenuItem>
                 {up && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: up[0], b: up[1] })}>
+                    <button type="button" className="menu-item" onClick={() => move.mutate(up)}>
                       <ArrowUp aria-hidden className="h-4 w-4" /> Move up
                     </button>
                   </MenuItem>
                 )}
                 {down && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate({ a: down[0], b: down[1] })}>
+                    <button type="button" className="menu-item" onClick={() => move.mutate(down)}>
                       <ArrowDown aria-hidden className="h-4 w-4" /> Move down
                     </button>
                   </MenuItem>
