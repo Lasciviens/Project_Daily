@@ -1,6 +1,7 @@
 import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
+import { useRepeatDay } from '../../items/useItems'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 import { isOpenTask, isTrainingTask } from '../taskRules'
 import { useDeleteTask, useToggleTask, useUpdateTask } from './useTodos'
@@ -15,6 +16,13 @@ export function planRefForTask(task: Task): TrainingPlanRef {
       minutes: null, routineId: task.hevy_routine_id ?? null,
     },
   }
+}
+
+/** A repeat's day that is a task (156): ticked, skipped and undone as that
+ *  day of its repeat (useRepeatDay — a skipped day comes off the series on
+ *  Google, the result says so with Undo), never by a plain status write. */
+function repeatDayOf(task: Task): { scheduleBlockId: string; date: string } | null {
+  return task.schedule_block_id && task.occurrence_date ? { scheduleBlockId: task.schedule_block_id, date: task.occurrence_date } : null
 }
 
 /** Done by its Hevy workout: the workout would close it again, so it can't be reopened. */
@@ -40,6 +48,7 @@ export function useTaskActions() {
   const update = useUpdateTask()
   const remove = useDeleteTask()
   const session = useTrainingPlanActions()
+  const repeatDay = useRepeatDay()
 
   const quietly = (p: Promise<unknown>) => p.then(() => undefined, () => undefined)
 
@@ -50,6 +59,8 @@ export function useTaskActions() {
       const plan = planRefForTask(task)
       return quietly(done ? session.markDone(plan) : session.reopen(plan))
     }
+    const day = repeatDayOf(task)
+    if (day) return quietly(repeatDay.mutateAsync({ ...day, action: done ? 'done' : 'undo', title: task.title }))
     return quietly(toggle.mutateAsync({ id: task.id, isDone: done }))
   }
 
@@ -61,6 +72,8 @@ export function useTaskActions() {
       if (isOpenTask(task)) session.openSkip(planRefForTask(task))
       return Promise.resolve()
     }
+    const day = repeatDayOf(task)
+    if (day) return quietly(repeatDay.mutateAsync({ ...day, action: 'skip', title: task.title }))
     return quietly(update.mutateAsync({ id: task.id, patch: { status: 'cancelled' } }))
   }
 
@@ -69,6 +82,8 @@ export function useTaskActions() {
     if (task.status === 'done') return setDone(task, false)
     if (task.status !== 'cancelled') return Promise.resolve()
     if (isTrainingTask(task)) return quietly(session.undoSkip({ taskId: task.id }))
+    const day = repeatDayOf(task)
+    if (day) return quietly(repeatDay.mutateAsync({ ...day, action: 'undo', title: task.title }))
     return quietly(update.mutateAsync({ id: task.id, patch: { status: 'open' } }))
   }
 
@@ -113,6 +128,6 @@ export function useTaskActions() {
     /** A training session's own: Move (asks the day and time), Skip (asks why). */
     move: (task: Task) => session.openMove(planRefForTask(task)),
     skip: (task: Task) => session.openSkip(planRefForTask(task)),
-    busy: toggle.isPending || update.isPending || remove.busy || session.busy,
+    busy: toggle.isPending || update.isPending || remove.busy || session.busy || repeatDay.isPending,
   }
 }
