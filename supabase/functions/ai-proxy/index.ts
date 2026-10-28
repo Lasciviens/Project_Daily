@@ -1492,6 +1492,18 @@ async function createHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
 // it surface as 01.01.1970.
 const HOME_TZ = 'Europe/Oslo'
 const homeDay = (t: number = Date.now()): string => new Date(t).toLocaleDateString('en-CA', { timeZone: HOME_TZ })
+/** The instant a home day (yyyy-mm-dd) begins — 00:00 in Europe/Oslo — as an ISO timestamp.
+ *  Oslo's clock changes at 01:00 UTC, never at midnight, so the zone's offset an
+ *  hour or two into the UTC day is the offset at its local midnight. */
+function homeDayStart(day: string): string {
+  const utcMidnight = Date.parse(`${day}T00:00:00Z`)
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: HOME_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    .formatToParts(new Date(utcMidnight))
+  const n = (type: string) => Number(p.find(x => x.type === type)?.value)
+  const offset = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute')) - utcMidnight
+  return new Date(utcMidnight - offset).toISOString()
+}
+const nextDay = (day: string): string => new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
 
 // status → the statuses each table holds for it; null = every status. The
 // legacy movie status 'upcoming' is the want-to-watch pool, like wishlist.
@@ -3442,12 +3454,14 @@ async function dbAggregate(supabase: AnyRecord, userId: string, args: AnyRecord)
 // get_day_summary — one compact snapshot instead of several db_query calls.
 async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
-    const date = (typeof args.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) ? args.date : new Date().toISOString().slice(0, 10)
+    // The user's day (Europe/Oslo), and a workout by its instant inside that day: the
+    // UTC day and zone-less (read as UTC) bounds shifted both by an hour or two (audit 28.10.2026).
+    const date = (typeof args.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) ? args.date : homeDay()
     const [tasksR, foodR, blocksR, workoutR] = await Promise.allSettled([
       supabase.from('tasks').select('id,title,priority').eq('user_id', userId).or(`section.eq.today,due_date.eq.${date}`).neq('status', 'cancelled').neq('status', 'done'),
       supabase.from('food_log_entries').select('calories,protein_g').eq('user_id', userId).eq('date', date).eq('status', 'eaten'),
       supabase.from('time_blocks').select('title,start_time,duration_minutes,task:tasks(status)').eq('user_id', userId).eq('date', date).order('start_time', { ascending: true }),
-      supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', `${date}T00:00:00`).lte('start_time', `${date}T23:59:59`),
+      supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', homeDayStart(date)).lt('start_time', homeDayStart(nextDay(date))),
     ])
     const g = (r: AnyRecord): AnyRecord[] => r.status === 'fulfilled' ? (r.value.data ?? []) : []
     const food = g(foodR)
