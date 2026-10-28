@@ -38,6 +38,9 @@ export function useSheetDrag(open: boolean, onClose: () => void) {
   const settleTimer = useRef(0)
   const closeRef = useRef(onClose)
   useEffect(() => { closeRef.current = onClose }, [onClose])
+  // Read by the touch and pointer handlers: a sheet that may not close (saving) doesn't drag.
+  const enabled = useRef(open)
+  useEffect(() => { enabled.current = open }, [open])
 
   /** Drops every inline style a drag left, handing the panel back to its CSS transitions. */
   const clear = () => {
@@ -76,6 +79,7 @@ export function useSheetDrag(open: boolean, onClose: () => void) {
   useEffect(() => () => window.clearTimeout(settleTimer.current), [])
 
   const begin = (y: number) => {
+    if (!enabled.current) return
     window.clearTimeout(settleTimer.current)
     heightRef.current = panelRef.current?.offsetHeight || 400
     track.current = { startY: y - offsetRef.current, lastY: y, lastT: performance.now(), v: 0 }
@@ -95,7 +99,7 @@ export function useSheetDrag(open: boolean, onClose: () => void) {
     if (!t) return
     const height = heightRef.current
     const d = offsetRef.current
-    if (d > Math.min(CLOSE_MAX_PX, height * CLOSE_FRACTION) || (t.v > FLICK_PX_PER_MS && d > 16)) {
+    if (enabled.current && (d > Math.min(CLOSE_MAX_PX, height * CLOSE_FRACTION) || (t.v > FLICK_PX_PER_MS && d > 16))) {
       paint(height, false) // stays off-screen while the Dialog runs its leave transition
       closeRef.current()
     } else if (d > 0) {
@@ -113,7 +117,7 @@ export function useSheetDrag(open: boolean, onClose: () => void) {
     let active = false
     const onStart = (e: TouchEvent) => {
       active = false
-      y0 = e.touches.length === 1 && bodyEl.scrollTop <= 0 ? e.touches[0].clientY : null
+      y0 = enabled.current && e.touches.length === 1 && bodyEl.scrollTop <= 0 ? e.touches[0].clientY : null
     }
     const onMove = (e: TouchEvent) => {
       if (y0 == null) return

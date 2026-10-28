@@ -7,6 +7,8 @@ import {
 interface Overlay {
   id: number
   pushed: boolean
+  /** While true a Back leaves it open (see decidePop's `hold`). */
+  readonly holds: boolean
   close: () => void
 }
 
@@ -112,6 +114,15 @@ function startHop(dir: Dir, from: EntryInfo, chain: number, origin: Resting | nu
   window.history.go(dir === 'back' ? -1 : 1)
 }
 
+function pushEntry(overlay: Overlay) {
+  // A push cuts off everything ahead: a Forward hop can't land any more.
+  endHop()
+  window.history.pushState(overlayEntryState(window.history.state, overlay.id, LOAD), '')
+  overlay.pushed = true
+  lastIdx = current().idx
+  resting = null
+}
+
 function closeOverlay(id: number) {
   const at = stack.findIndex(o => o.id === id)
   if (at === -1) return
@@ -141,6 +152,14 @@ function onPopState(event: PopStateEvent) {
   lastIdx = landed.idx
   if (d.ownPop) ownPops--
   endHop()
+  if (d.hold != null) {
+    // A popup that is saving stays open: its entry goes back on top, so a
+    // failed save still leaves Back closing it instead of leaving the page.
+    event.stopImmediatePropagation()
+    const held = stack.find(o => o.id === d.hold)
+    if (held) pushEntry(held)
+    return
+  }
   if (d.close != null) closeOverlay(d.close)
   if (d.hop) {
     // A dead entry (or a page no different from the one just shown): the
@@ -215,23 +234,18 @@ export function whenHistorySettled(fn: () => void): () => void {
  * (or by one that opens in the same moment, e.g. "Open the game" after a save).
  * An entry that can't be rolled back — buried under a newer overlay's entry,
  * or under a page a link inside the popup opened — stays behind dead, and
- * Back and Forward pass over it (onPopState).
+ * Back and Forward pass over it (onPopState). While `dismissible` is false (a
+ * popup saving) a Back leaves the overlay open and puts its entry back.
  */
-export function useHistoryDismiss(open: boolean, onClose: () => void) {
+export function useHistoryDismiss(open: boolean, onClose: () => void, dismissible = true) {
   const close = useRef(onClose)
-  useEffect(() => { close.current = onClose })
+  const held = useRef(!dismissible)
+  useEffect(() => { close.current = onClose; held.current = !dismissible })
 
   useEffect(() => {
     if (!open || typeof window === 'undefined') return
-    const overlay: Overlay = { id: ++nextId, pushed: false, close: () => close.current() }
-    const push = () => {
-      // A push cuts off everything ahead: a Forward hop can't land any more.
-      endHop()
-      window.history.pushState(overlayEntryState(window.history.state, overlay.id, LOAD), '')
-      overlay.pushed = true
-      lastIdx = current().idx
-      resting = null
-    }
+    const overlay: Overlay = { id: ++nextId, pushed: false, get holds() { return held.current }, close: () => close.current() }
+    const push = () => pushEntry(overlay)
     stack.push(overlay)
     let fallback = 0
     if (busy()) {
