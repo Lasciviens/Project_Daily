@@ -303,10 +303,13 @@ begin
                or (t.hevy_routine_id is null and lower(btrim(x.title)) = lower(btrim(t.title))))) then
     return;
   end if;
+  -- It lives on Google where the moved session did (155's google_target; on
+  -- Google Tasks through 071's outbox — a Calendar slot's event is the browser's).
   insert into tasks (user_id, title, description, domain, section, status, priority, due_date, due_time,
-                     source_type, source_id, hevy_routine_id)
+                     source_type, source_id, hevy_routine_id, google_target, google_sync_enabled)
   values (t.user_id, t.title, t.description, t.domain, item_section_for_day(p_to, v_today), 'open', t.priority,
-          p_to, coalesce(p_to_time, t.due_time), 'training_session', t.source_id, t.hevy_routine_id)
+          p_to, coalesce(p_to_time, t.due_time), 'training_session', t.source_id, t.hevy_routine_id,
+          t.google_target, coalesce(t.google_sync_enabled, false))
   returning id into v_new;
   select * into v_block from time_blocks b where b.task_id = t.id order by b.created_at, b.id limit 1;
   if found then

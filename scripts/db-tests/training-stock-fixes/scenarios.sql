@@ -281,6 +281,11 @@ select public.t_ok((select count(*) = 1 from public.tasks t join public.time_blo
                        and t.due_date = public.t_d(12) and t.due_time = '17:00' and t.first_plan_date = public.t_d(12)
                        and b.date = public.t_d(12) and b.start_time = '17:00' and b.category = 'training'),
   'T2 …and a new Lower E session (with its slot) is planned on the new day, as a one-off gets one (167 planned nothing)');
+select public.t_ok((select n.google_target is not distinct from o.google_target and n.google_sync_enabled = coalesce(o.google_sync_enabled, false)
+                     from public.tasks n, public.tasks o
+                    where n.user_id = '00000000-0000-0000-0000-000000000004' and n.title = 'Lower E' and n.due_date = public.t_d(12) and n.schedule_block_id is null
+                      and o.schedule_block_id = '00000000-0000-4000-8000-0000000d04e1' and o.occurrence_date = public.t_d(3)),
+  'T2 …and lives on Google where the moved session did (its google_target and Google Tasks switch)');
 
 -- b. Weekly, but that week's session is skipped: still none.
 insert into public.schedule_blocks (id, user_id, title, days_of_week, start_time, end_time, category, effective_from)

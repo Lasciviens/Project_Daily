@@ -51,13 +51,23 @@ eq(S.movesPastWeek('2026-10-26', '2026-11-01'), false, 'moved 6 days: just moved
 eq(S.movesPastWeek('2026-10-26', '2026-11-02'), true, 'moved 7 days: out of its week (skipped there)')
 eq(S.movesPastWeek('2026-10-26', '2026-11-04'), true, "the owner's example: 26.10 → 04.11 (9 days)")
 eq(S.movesPastWeek(null, '2026-11-04'), false, 'no first day known (before 167): never claims it')
-eq(S.pastWeekMoveLine('Push A', '2026-11-04'), "Skipped in its week · that week's Push A moved to Wed 04.11.2026",
-  'Move and Edit session say the same thing for a move out of the week')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: false, landed: true }), "Skipped in its week · that week's Push A is on Wed 04.11.2026",
+  'a move out of the week: skipped there, that week\'s session is on the new day (moved or made, 169)')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: false, landed: false }), "Skipped in its week · nothing planned on Wed 04.11.2026 — that week's Push A is already done or skipped",
+  '…or nothing was planned there (that week\'s session already done or skipped) — never "moved"')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: true, landed: true }), "Stays done in its own week · that week's Push A is on Wed 04.11.2026",
+  'a done session moved out of its week stays done — never "skipped"')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', null), "Moved 7 or more days: kept in its own week · see Wed 04.11.2026 for that week's Push A",
+  'the read back failed: only what is certain')
 {
   // Edit session (the Add sheet) reads the same rule and says the same line (28.10.2026).
   const sheet = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/UnifiedPlanModal.tsx'), 'utf8')
-  eq(/movesPastWeek\(session\.firstDay/.test(sheet) && /pastWeekMoveLine\(session\.title/.test(sheet) && /carryPastWeekMoveToCalendar\(/.test(sheet), true,
-    "the session's editor reads movesPastWeek, says pastWeekMoveLine and carries Google")
+  eq(/movesPastWeek\(session\.firstDay/.test(sheet) && /pastWeekMoveLine\(input\.title\.trim\(\) \|\| session\.title, to, outcome/.test(sheet)
+    && /carryPastWeekMoveToCalendar\(/.test(sheet) && /fetchPastWeekOutcome\(session\.taskId/.test(sheet), true,
+    "the session's editor reads movesPastWeek, reads back what happened, says pastWeekMoveLine and carries Google")
+  const actions = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingPlanActions.ts'), 'utf8')
+  eq(/return fetchPastWeekOutcome\(rows\.taskId, date/.test(actions) && /pastWeekMoveLine\(v\.plan\.info\.title, v\.date, outcome\)/.test(actions), true,
+    'Move reads back what happened and says it')
   const entity = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/PlanEntityModals.tsx'), 'utf8')
   eq(/session: \{ taskId: task\.id, firstDay: task\.first_plan_date/.test(entity), true, "a training task's editor gets its first day")
 }

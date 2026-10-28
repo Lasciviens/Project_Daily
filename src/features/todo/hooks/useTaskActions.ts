@@ -94,7 +94,7 @@ export function useTaskActions() {
     if (doneByWorkout(task)) return Promise.resolve()
     // A training session reopens through its own actions first; any other
     // closed task moves in one write (one message, not "reopened" + "started").
-    if (!isOpenTask(task) && (status === 'open' || isTrainingTask(task))) {
+    if (!isOpenTask(task) && (status === 'open' || isTrainingTask(task) || repeatDayOf(task))) {
       return reopen(task).then(() => status === 'open' ? undefined : setStatus({ ...task, status: 'open' }, status, opts))
     }
     if (status === task.status && opts?.waitingFor === undefined) return Promise.resolve()

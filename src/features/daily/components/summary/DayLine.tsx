@@ -50,7 +50,7 @@ export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
       readMinutes: Math.floor((secondsByDay(reading.data ?? []).get(date) ?? 0) / 60),
       renewals: subs.filter(s => s.active && s.renews_on === date).map(s => s.name || s.service),
     })
-  }, [tasks.counts, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
+  }, [tasks.counts, tasks.repeatDays, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
 
   return <MetaLine as="span" items={[lead, ...items]} className="tabular-nums" />
 }

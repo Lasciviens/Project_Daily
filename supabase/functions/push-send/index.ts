@@ -210,7 +210,8 @@ async function sendSupplementReminders(userId: string): Promise<{ sent: number; 
   try {
     sent = (await sendToAll(userId, msg)).sent
   } finally {
-    if (sent === 0) await unclaimReminders(userId, doses, stamp, before)
+    // Without the state read first there is nothing safe to put back: the stamp stays.
+    if (sent === 0 && before) await unclaimReminders(userId, doses, stamp, before)
   }
   return { sent, doses: doses.length }
 }
@@ -219,12 +220,12 @@ type DoseKey = { schedule_id: string; dose_date: string; dose_time: string }
 const doseKey = (d: DoseKey) => `${d.schedule_id}|${d.dose_date}|${String(d.dose_time).slice(0, 5)}`
 
 /** The reminder bookkeeping as it was before the claim (yesterday on, so a run at midnight is covered). */
-async function doseReminderStamps(userId: string): Promise<Map<string, AnyRecord>> {
+async function doseReminderStamps(userId: string): Promise<Map<string, AnyRecord> | null> {
   const since = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
   const { data, error } = await supabase.from('supplement_dose_state')
     .select('schedule_id, dose_date, dose_time, last_reminded_at, reminders_sent')
     .eq('user_id', userId).gte('dose_date', since)
-  if (error) console.error('push-send: could not read the doses\' reminder state:', error.message)
+  if (error) { console.error('push-send: could not read the doses\' reminder state:', error.message); return null }
   return new Map(((data ?? []) as AnyRecord[]).map(r => [doseKey(r as DoseKey), r]))
 }
 

@@ -223,9 +223,19 @@ export function movesPastWeek(firstDay: string | null | undefined, to: string): 
   return !!firstDay && to >= shiftDay(firstDay, 7)
 }
 
-/** What such a move did — the result line of Move and of the session's editor. */
-export function pastWeekMoveLine(title: string, to: string): string {
-  return `Skipped in its week · that week's ${title} moved to ${formatWeekdayDate(to)}`
+/** What a move out of the week did, as the database answered it (167/169):
+ *  the session itself stays done or is skipped in its week; that week's
+ *  session of the plan moved (or was made) on `to`, or nothing was — that
+ *  week's is already done or skipped. Unknown (the read failed): only what is
+ *  certain. The result line of Move and of the session's editor. */
+export interface PastWeekOutcome { stayedDone: boolean; landed: boolean }
+export function pastWeekMoveLine(title: string, to: string, outcome: PastWeekOutcome | null | undefined): string {
+  const day = formatWeekdayDate(to)
+  if (!outcome) return `Moved 7 or more days: kept in its own week · see ${day} for that week's ${title}`
+  const self = outcome.stayedDone ? 'Stays done in its own week' : 'Skipped in its week'
+  return outcome.landed
+    ? `${self} · that week's ${title} is on ${day}`
+    : `${self} · nothing planned on ${day} — that week's ${title} is already done or skipped`
 }
 
 /** Monday (yyyy-MM-dd) of the week `date` falls in — the key a skip is

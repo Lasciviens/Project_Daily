@@ -6,10 +6,10 @@ import { syncGoogleTasksSoon, useDeleteTask } from '../../todo/hooks/useTodos'
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../../daily/hooks/useSchedule'
 import {
   ensurePlanTask, markPlanDone, planTaskId, movePlan, reopenPlan,
-  skipPlan, undoPlanSkip, carryPastWeekMoveToCalendar,
+  skipPlan, undoPlanSkip, carryPastWeekMoveToCalendar, fetchPastWeekOutcome,
   type PlanTarget, type TrainingPlanRef,
 } from '../api/trainingPlanApi'
-import { pastWeekMoveLine } from '../plan/sessionState'
+import { pastWeekMoveLine, type PastWeekOutcome } from '../plan/sessionState'
 
 export type { TrainingPlanRef }
 
@@ -60,16 +60,19 @@ export function useTrainingPlanActions() {
 
   const move = useMutationWithFeedback({
     action: 'training_plan_move',
-    // `pastWeek`: 7 or more days after its first day — the database skips it
-    // in its own week and moves that week's session there instead (167).
-    successMessage: (_: void, v: { plan: TrainingPlanRef; date: string; pastWeek?: boolean }) => v.pastWeek
-      ? pastWeekMoveLine(v.plan.info.title, v.date)
+    // `pastWeek`: 7 or more days after its first day — the database keeps it
+    // in its own week and moves (or makes) that week's session there, or none
+    // when that week's is done or skipped (167/169): the line says which.
+    successMessage: (outcome: PastWeekOutcome | null, v: { plan: TrainingPlanRef; date: string; pastWeek?: boolean }) => v.pastWeek
+      ? pastWeekMoveLine(v.plan.info.title, v.date, outcome)
       : `Moved to ${formatWeekdayDate(v.date)}`,
     mutationFn: async ({ plan, date, startHHMM, pastWeek }: { plan: TrainingPlanRef; date: string; startHHMM: string | null; pastWeek?: boolean }) => {
       const rows = await ensurePlanTask(plan.target, plan.info)
       await movePlan(rows, plan.info, { date, startHHMM })
       deliverGoogleTasks(rows.taskId)
-      if (pastWeek) carryPastWeekMoveToCalendar(rows, date)
+      if (!pastWeek) return null
+      carryPastWeekMoveToCalendar(rows, date)
+      return fetchPastWeekOutcome(rows.taskId, date, { routineId: plan.info.routineId, title: plan.info.title })
     },
     invalidates: [...INVALIDATES],
   })

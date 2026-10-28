@@ -169,7 +169,7 @@ check('every hook mutation goes through useMutationWithFeedback', !/useMutation\
 check('deletes go through the one delete flow (useRowsDelete hooks / confirmDelete)', /useDeleteTask\(\)/.test(hooks) && /useDeleteScheduleBlock\(\)/.test(hooks) && /confirmDelete</.test(hooks))
 check('Google follows the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google\)/.test(hooks))
 check('keys only from qk; groups for invalidation', !/queryKey: \[/.test(hooks) && /invalidates: \['taskGraph', qk\.items\.all\]/.test(hooks))
-check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026)', /successMessage: \(saved, input\) => describe\?\.\(input\) \?\? describeSaved\(input, saved\)/.test(hooks))
+check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026)', /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved\)/.test(hooks))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)

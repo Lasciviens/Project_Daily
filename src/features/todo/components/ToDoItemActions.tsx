@@ -38,6 +38,8 @@ interface Props extends ToDoItemActionHandlers {
 // so Edit here is how its task is edited).
 export function ToDoItemMenu({ task, ...h }: Props) {
   const isCancelled = task.status === 'cancelled'
+  // A repeat's day: Cancel skips that day of the repeat (useTaskActions → useRepeatDay).
+  const repeatDay = !!(task.schedule_block_id && task.occurrence_date)
   return (
     <Menu as="div" className="shrink-0 lg:hidden" onClick={e => e.stopPropagation()}>
       <MenuButton className="icon-btn text-fg-faint" title="More actions" aria-label="More actions">
@@ -66,7 +68,7 @@ export function ToDoItemMenu({ task, ...h }: Props) {
                 ? <Item icon={<Undo2 />} onClick={h.training.onUndoSkip} disabled={h.busy}>Undo skip</Item>
                 : <Item icon={<CalendarClock />} onClick={h.training.onMove} disabled={h.busy}>Move…</Item>)
           : (!isCancelled
-              ? <Item icon={<Ban />} onClick={h.onCancel} disabled={h.busy}>Cancel task</Item>
+              ? <Item icon={<Ban />} onClick={h.onCancel} disabled={h.busy}>{repeatDay ? 'Skip this day' : 'Cancel task'}</Item>
               : <Item icon={<RotateCcw />} onClick={h.onReopen} disabled={h.busy}>Reopen</Item>)}
         <Item icon={<Trash2 />} onClick={h.onDelete} disabled={h.busy} danger>Delete</Item>
       </MenuItems>
@@ -93,6 +95,8 @@ function Item({ icon, onClick, disabled, danger, children }: {
 /** Desktop hover strip (lg+ with a mouse); the row itself stays the edit target. */
 export function ToDoItemHoverActions({ task, ...h }: Props) {
   const isCancelled = task.status === 'cancelled'
+  // A repeat's day: Cancel skips that day of the repeat (useTaskActions → useRepeatDay).
+  const repeatDay = !!(task.schedule_block_id && task.occurrence_date)
   return (
     <div className="hidden shrink-0 items-center gap-0.5 lg:flex">
       {h.onMoveUp && <HoverBtn label="Move up" onClick={h.onMoveUp} disabled={!h.canMoveUp}><ArrowUp /></HoverBtn>}
@@ -109,7 +113,7 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
               ? <HoverBtn label="Undo skip" onClick={h.training.onUndoSkip} disabled={h.busy}><Undo2 /></HoverBtn>
               : <HoverBtn label="Move to another day" onClick={h.training.onMove} disabled={h.busy}><CalendarClock /></HoverBtn>)
         : (!isCancelled
-            ? <HoverBtn label="Cancel (keeps a record, unlike Delete)" onClick={h.onCancel} disabled={h.busy}><Ban /></HoverBtn>
+            ? <HoverBtn label={repeatDay ? 'Skip this day of the repeat' : 'Cancel (keeps a record, unlike Delete)'} onClick={h.onCancel} disabled={h.busy}><Ban /></HoverBtn>
             : <HoverBtn label="Reopen (re-creates it on Google Tasks if connected)" onClick={h.onReopen} disabled={h.busy}><RotateCcw /></HoverBtn>)}
       <HoverBtn label="Delete" onClick={h.onDelete} disabled={h.busy} danger><Trash2 /></HoverBtn>
     </div>

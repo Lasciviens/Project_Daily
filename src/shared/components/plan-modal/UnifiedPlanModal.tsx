@@ -494,8 +494,8 @@ import { AlertCircle, Trash2 } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
-import { movesPastWeek, pastWeekMoveLine } from '../../../features/training/plan/sessionState'
-import { carryPastWeekMoveToCalendar } from '../../../features/training/api/trainingPlanApi'
+import { movesPastWeek, pastWeekMoveLine, type PastWeekOutcome } from '../../../features/training/plan/sessionState'
+import { carryPastWeekMoveToCalendar, fetchPastWeekOutcome } from '../../../features/training/api/trainingPlanApi'
 import { qk } from '../../query'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -544,9 +544,17 @@ export function UnifiedPlanModal({
   const shownDay = timeBlock?.date ?? task?.due_date ?? occurrenceDate ?? null
   const outOfWeek = (input: ItemInput) => (session && input.scope !== 'all' && input.date && input.date !== shownDay
     && movesPastWeek(session.firstDay, input.date) ? input.date : null)
-  const save = useSaveItem(input => {
-    const to = outOfWeek(input)
-    return to && session ? pastWeekMoveLine(session.title, to) : undefined
+  const save = useSaveItem({
+    after: async (input, saved) => {
+      const to = outOfWeek(input)
+      if (!to || !session) return null
+      carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, to)
+      return fetchPastWeekOutcome(session.taskId, to, { routineId: session.routineId, title: session.title })
+    },
+    describe: (input, outcome) => {
+      const to = outOfWeek(input)
+      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : undefined
+    },
   })
   const del = useSheetDelete()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
@@ -694,8 +702,6 @@ export function UnifiedPlanModal({
       // The extras (category, colour, window, the slot's own source) ride along
       // until the contract names them (contract changes, BRIEF).
       const saved = await save.mutateAsync(input as ItemInput)
-      const movedTo = outOfWeek(input as ItemInput)
-      if (movedTo && session) carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, movedTo)
       onSaved?.(resultOf(input, saved, item))
       onClose()
     } catch {
