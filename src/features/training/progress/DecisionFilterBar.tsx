@@ -11,7 +11,8 @@ import type { EvidenceLevel } from '../progress-engine/types'
 // decided in decisionFilters.ts — this only renders the controls.
 
 const FILTER_LABEL = 'flex min-w-0 flex-col gap-0.5 text-meta text-fg-muted @[40rem]:flex-row @[40rem]:items-center @[40rem]:gap-1.5'
-const FILTER_SELECT = 'select w-full min-w-0 py-0 text-meta @[40rem]:w-auto'
+// Tighter side padding than `.select`: a half-width phone column then fits "Last 12 weeks" uncut.
+const FILTER_SELECT = 'select w-full min-w-0 py-0 pl-2.5 pr-6 text-meta @[40rem]:w-auto'
 
 function MuscleChoices({ options }: { options: readonly MuscleOption[] }) {
   const main = options.filter(o => o.major)

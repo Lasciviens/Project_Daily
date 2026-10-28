@@ -174,10 +174,11 @@ export function WorkedMuscles() {
 
       <div className="flex-1 min-w-0 w-full flex flex-col gap-4">
         {lastAt && (
-          <div className="flex items-baseline gap-2 rounded-row bg-surface-2 px-3.5 py-2.5">
-            <span className="flex items-center gap-1 self-center text-meta text-fg-muted"><Dumbbell className="h-3.5 w-3.5" aria-hidden /> Last workout</span>
-            <span className="text-body font-semibold text-fg">{formatDistanceToNow(new Date(lastAt), { addSuffix: true })}</span>
-            <span className="ml-auto text-meta tabular-nums text-fg-muted">{`${formatWeekdayDate(lastAt)} ${formatTime(lastAt)}`}</span>
+          // Each part stays whole; when the three don't fit one line the date moves under them.
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-row bg-surface-2 px-3.5 py-2.5">
+            <span className="flex items-center gap-1 self-center whitespace-nowrap text-meta text-fg-muted"><Dumbbell className="h-3.5 w-3.5" aria-hidden /> Last workout</span>
+            <span className="whitespace-nowrap text-body font-semibold text-fg">{formatDistanceToNow(new Date(lastAt), { addSuffix: true })}</span>
+            <span className="ml-auto whitespace-nowrap text-meta tabular-nums text-fg-muted">{`${formatWeekdayDate(lastAt)} ${formatTime(lastAt)}`}</span>
           </div>
         )}
 
