@@ -109,7 +109,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     // A repeat's day that is a task (156) carries its state: a ticked one is never "next".
     const items = buildDaySchedule({
       date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates, events: calendarQ.data ?? [],
-      dayTasks: [...dayTasks.open, ...dayTasks.done, ...dayTasks.cancelled],
+      dayTasks: [...dayTasks.repeatDays, ...dayTasks.open, ...dayTasks.done, ...dayTasks.cancelled],
     })
     const upcoming: NextUpItem[] = aheadOnDay(items, isToday, nowHour).map(i => ({
       key: i.id, kind: i.kind, id: i.canonicalId, title: i.title, startHour: i.startHour, endHour: i.endHour,

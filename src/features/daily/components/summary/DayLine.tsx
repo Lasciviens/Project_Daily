@@ -40,7 +40,7 @@ export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
     const watched = watching.last30.filter(w => w.day === date)
     const minutes = (workouts.data ?? []).reduce((a, w) => a + (getWorkoutDuration(w) ?? 0), 0)
     // The Day plan's own counts (a repeat's day still to do counts as open there too).
-    const counts = dayRowCounts(tasks.counts, repeatsToDoOn(templates, date, today, repeatDayKeys([...tasks.open, ...tasks.done, ...tasks.cancelled])))
+    const counts = dayRowCounts(tasks.counts, repeatsToDoOn(templates, date, today, repeatDayKeys([...tasks.repeatDays, ...tasks.open, ...tasks.done, ...tasks.cancelled])))
     return dayLineItems({
       tasks: { done: counts.done, total: counts.done + counts.open },
       trainedMinutes: minutes,

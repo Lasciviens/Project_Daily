@@ -49,8 +49,8 @@ export function useRepeatDays(tasks: readonly Task[] = []) {
   const today = todayStr()
   const todayList = useDayTasks(today)
   const asTasks = useMemo(
-    () => repeatDayKeys([...tasks, ...todayList.open, ...todayList.done, ...todayList.cancelled]),
-    [tasks, todayList.open, todayList.done, todayList.cancelled],
+    () => repeatDayKeys([...tasks, ...todayList.repeatDays, ...todayList.open, ...todayList.done, ...todayList.cancelled]),
+    [tasks, todayList.repeatDays, todayList.open, todayList.done, todayList.cancelled],
   )
   return useMemo(() => ({
     /** Repeat days still to do on `day` (none before today), a day that is a task not again. */

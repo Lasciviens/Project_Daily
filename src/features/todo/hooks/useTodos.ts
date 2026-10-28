@@ -75,7 +75,11 @@ export function useDayTasks(day: string) {
   const today = todayStr()
   const query = useQuery(dayTasksQuery(day, today))
   const split = useMemo(() => dayTasks(query.data ?? [], day, today), [query.data, day, today])
-  return { ...split, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
+  // The repeat days the read found, whatever day they closed on: a day ticked
+  // late (or ahead) closes on the day of the tick, yet is still its own day's
+  // state — the split above only lists what closed on `day`.
+  const repeatDays = useMemo(() => (query.data ?? []).filter(t => t.schedule_block_id && t.occurrence_date), [query.data])
+  return { ...split, repeatDays, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
 }
 
 /**
