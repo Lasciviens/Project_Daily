@@ -3,6 +3,9 @@ import { format } from 'date-fns'
 import { Dumbbell, Plus, X } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, EmptyState, Truncate } from '../../../shared/ui'
+import { DateInput } from '../../../shared/components/DateInput'
+import { Time24Field } from '../../../shared/components/plan-modal/fields'
+import { shiftTime } from '../../../shared/components/plan-modal/planModal.config'
 import { toast } from '../../../app/store'
 import { useLogHevyWorkout } from '../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../hooks/useHevyRoutines'
@@ -41,7 +44,7 @@ function LogHevyWorkoutForm({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<WorkoutForm>(() => ({
     title: '',
     description: '',
-    // A datetime-local input takes LOCAL wall time.
+    // LOCAL wall time, 'yyyy-MM-ddTHH:mm'.
     startLocal: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     durationMin: DEFAULT_DURATION_MIN,
     exercises: [],
@@ -50,6 +53,9 @@ function LogHevyWorkoutForm({ onClose }: { onClose: () => void }) {
 
   const typeById = useMemo(() => new Map(templates.map(t => [t.id, t.type])), [templates])
   const patch = (p: Partial<WorkoutForm>) => setForm(f => ({ ...f, ...p }))
+  // The start is typed as a day (DateInput) and a 24-hour time; a cleared day
+  // leaves startLocal incomplete, which validateWorkoutForm reports.
+  const [startDay = '', startTime = '00:00'] = form.startLocal.split('T')
 
   // Hevy's POST /v1/workouts has no routine_id, so a routine can only
   // PREFILL the form — the logged workout isn't linked to it.
@@ -134,10 +140,16 @@ function LogHevyWorkoutForm({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-4 sm:max-w-md">
+        {/* Phone: the day beside the minutes, the time under both; wider, one row. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-x-4 gap-y-3 sm:w-fit sm:grid-cols-[10.5rem_minmax(0,18rem)_6rem]">
           <div>
-            <label htmlFor="log-workout-when" className="field-label">Started</label>
-            <input id="log-workout-when" type="datetime-local" value={form.startLocal} onChange={e => patch({ startLocal: e.target.value })} className="input w-full" />
+            <span className="field-label">Date</span>
+            <DateInput aria-label="Date" value={startDay} onChange={day => patch({ startLocal: `${day}T${startTime}` })} className="input w-full" />
+          </div>
+          <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+            <span className="field-label">Start time</span>
+            <Time24Field value={startTime} onChange={time => patch({ startLocal: `${startDay}T${time}` })}
+              onShift={m => patch({ startLocal: `${startDay}T${shiftTime(startTime, m)}` })} />
           </div>
           <div>
             <label htmlFor="log-workout-duration" className="field-label">Minutes</label>
