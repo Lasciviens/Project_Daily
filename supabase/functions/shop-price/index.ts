@@ -156,29 +156,36 @@ function isPrivateIPv6(ip: string): boolean {
 // 28.10.2026). Fails closed on the answer: a name that doesn't resolve or a
 // resolver error refuses the hop; "no record of this type" is not an error. A
 // runtime with no DNS lookup to give (no Deno.resolveDns, or one it doesn't
-// allow — PermissionDenied / NotSupported) keeps the hostname check alone, as
+// allow — PermissionDenied / NotCapable / NotSupported, or a stub) keeps the hostname check alone, as
 // before: refusing there would refuse every link (Supabase's Edge Runtime is
 // not confirmed to allow lookups). Only a timeout (the fetch's own signal) is
 // passed on. fetch
 // resolves the name again, so a rebinding name with a zero TTL can still
 // change its answer in between — this closes the fixed names.
+// Said once per instance, so the logs show whether the name check is on.
+let noLookupSaid = false
+function noLookupHere(why: string): false {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`resolvesToPrivate: no DNS lookup here (${why}) — hostname check only`) }
+  return false
+}
+
 async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
   const h = hostname.toLowerCase().trim()
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
   if (h.startsWith('[') || h.includes(':')) return true
-  if (typeof Deno.resolveDns !== 'function') return false
-  let unavailable = false
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
+  let unavailable = ''
   const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
     try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
       const name = (e as Error)?.name
       if (name === 'AbortError') throw e
-      if (name === 'PermissionDenied' || name === 'NotSupported') unavailable = true
+      if (name === 'PermissionDenied' || name === 'NotCapable' || name === 'NotSupported' || e instanceof TypeError) unavailable = name || 'TypeError'
       return e instanceof Deno.errors.NotFound ? [] : null
     }
   }
   try {
     const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
-    if (unavailable) return false
+    if (unavailable) return noLookupHere(unavailable)
     if (!a || !aaaa || a.length + aaaa.length === 0) return true
     return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
   } catch (e) {

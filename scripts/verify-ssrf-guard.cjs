@@ -154,6 +154,10 @@ async function dnsChecks() {
     check(`${fn}: a runtime without Deno.resolveDns keeps the hostname check alone (never refuses every link)`, (await without.resolvesToPrivate('www.vg.no')) === false)
     const denied = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw Object.assign(new Error('Requires net access'), { name: 'PermissionDenied' }) } }))
     check(`${fn}: a runtime that doesn't allow the lookup keeps the hostname check alone`, (await denied.resolvesToPrivate('www.vg.no')) === false)
+    const notCapable = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw Object.assign(new Error('Requires net access'), { name: 'NotCapable' }) } }))
+    const stub = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw new TypeError('not implemented') } }))
+    check(`${fn}: Deno 2's NotCapable and a stub's TypeError keep the hostname check alone too`,
+      (await notCapable.resolvesToPrivate('www.vg.no')) === false && (await stub.resolvesToPrivate('www.vg.no')) === false)
     const failing = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw Object.assign(new Error('server failure'), { name: 'Error' }) } }))
     check(`${fn}: a resolver error still refuses (fails closed on the answer)`, (await failing.resolvesToPrivate('www.vg.no')) === true)
     const ctl = new AbortController(); ctl.abort()
