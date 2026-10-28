@@ -83,9 +83,9 @@ export interface DayRows<T extends RowTask = Task> {
 
 /** Hours on a day as HH:MM (9.5 → "09:30"). */
 export function hourLabel(h: number): string {
-  const hh = Math.floor(h)
-  const mm = Math.round((h - hh) * 60)
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  // Rounded as a whole, so 09:59:45 reads 10:00, never 09:60.
+  const total = Math.round(h * 60)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
 /** Where a span ends on its day: past midnight it ends at "midnight", never "24:00". */

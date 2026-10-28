@@ -204,5 +204,49 @@ console.log('\n== 10. A repeat\'s day is a task on its day (156): ONE row, never
   eq(D.repeatsToDoBetween([gym], TODAY, '2026-10-17', TODAY, asTasks), 2, 'the rest of the week: only the days that are not tasks yet')
 }
 
+console.log('\n== A repeat day ticked late or ahead keeps its own day (28.10.2026) ==')
+{
+  // Ticked on 28.10 for 26.10 (a missed day ticked late): 129 stamps completed_at on the day of the tick,
+  // so the day split (taskRules.dayTasks) lists it on 28.10 — its own day still reads it through repeatDays.
+  const MON = '2026-10-12'
+  const late = { ...task('late'), due_date: MON, status: 'done', schedule_block_id: 'water', occurrence_date: MON, completed_at: '2026-10-15T09:15:00+02:00' }
+  const water = plan('water', { start_time: null, end_time: null })
+  const items = S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water], events: [], dayTasks: [late] })
+  const rows = D.buildDayRows({ day: MON, today: TODAY, tasks: { open: [], done: [], cancelled: [] }, items, repeatDays: [late] })
+  eq([...rows.anytime, ...rows.done].map(r => r.state), ['done'], 'its own day reads done, not missed')
+  eq([...rows.anytime, ...rows.done].length, 1, '…as ONE row (the repeat\'s), never a second task row')
+  const without = D.buildDayRows({ day: MON, today: TODAY, tasks: { open: [], done: [], cancelled: [] }, items: S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water], events: [] }) })
+  eq([...without.anytime].map(r => r.state), ['missed'], '(without the read\'s repeat days it read missed — the bug)')
+  // Ticked ahead: Friday's day done on Thursday — Friday's header no longer counts it as to do.
+  const FRI = '2026-10-16'
+  const ahead = { ...late, id: 'ahead', due_date: FRI, occurrence_date: FRI }
+  eq(D.repeatsToDoOn([water], FRI, TODAY, D.repeatDayKeys([ahead])), 0, 'a day ticked ahead is not "to do" on its day')
+  const sheet = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/DayAgenda.tsx'), 'utf8')
+  eq(/repeatDays: list\.repeatDays/.test(sheet) && /repeatDayKeys\(withRepeatDays\)/.test(sheet), true, 'the Day plan passes the read\'s repeat days to rows and counts')
+  eq(/state === 'missed' && !r\.spillover/.test(sheet), true, 'yesterday\'s tail past midnight is not one of today\'s missed')
+}
+
+console.log('\n== Wall-clock hours on the days the clocks change (28.10.2026) ==')
+{
+  const out = require('child_process').execFileSync(process.execPath, ['-e', `
+    require('sucrase/register')
+    const P = require(${JSON.stringify(require('path').join(__dirname, '../src/features/daily/components/dayAgendaProjection'))})
+    const D = require(${JSON.stringify(require('path').join(__dirname, '../src/features/daily/dayItems'))})
+    const ev = (s, e) => ({ start: { dateTime: s }, end: { dateTime: e } })
+    console.log(JSON.stringify([
+      P.projectCalendarEventForDay('2027-03-28', ev('2027-03-28T10:00:00+02:00', '2027-03-28T11:00:00+02:00')),
+      P.projectCalendarEventForDay('2026-10-25', ev('2026-10-25T10:00:00+01:00', '2026-10-25T11:00:00+01:00')),
+      P.projectCalendarEventForDay('2026-10-25', ev('2026-10-25T23:30:00+01:00', '2026-10-26T00:30:00+01:00')),
+      P.projectCalendarEventForDay('2026-10-26', ev('2026-10-25T23:30:00+01:00', '2026-10-26T00:30:00+01:00')),
+      D.hourLabel(9 + 59.75 / 60),
+    ]))`], { cwd: require('path').join(__dirname, '..'), env: { ...process.env, TZ: 'Europe/Oslo' } }).toString()
+  const [spring, autumn, late, tail, label] = JSON.parse(out)
+  eq([spring.startHour, spring.endHour], [10, 11], 'spring forward (28.03.2027): a 10:00 event is at 10, not 9')
+  eq([autumn.startHour, autumn.endHour], [10, 11], 'fall back (25.10.2026): a 10:00 event is at 10, not 11')
+  eq([late.startHour, late.endHour], [23.5, 24], 'fall back: 23:30 → past midnight ends at 24, never 25')
+  eq([tail.startHour, tail.endHour, tail.spillover], [0, 0.5, true], '…and its tail is 00:00–00:30 the next day')
+  eq(label, '10:00', 'hourLabel rounds as a whole: 09:59:45 reads 10:00, never 09:60')
+}
+
 console.log(`\nverify-day-items: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)
