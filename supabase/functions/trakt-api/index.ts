@@ -3153,7 +3153,8 @@ async function readListItems(db: Db, token: string, id: unknown) {
 // The first check only records the baseline.
 async function tmdbQ(path: string, params: Record<string, string> = {}): Promise<AnyRec> {
   const q = new URLSearchParams({ api_key: TMDB_KEY(), language: 'en-US', ...params })
-  const res = await fetch(`${TMDB}${path}?${q}`)
+  // TMDB's v3 key only works in the URL, so a network error must not quote it.
+  const res = await fetchHidingUrl(`${TMDB}${path}?${q}`, undefined, 'TMDB')
   if (res.status === 401) throw new TmdbKeyError()
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return await res.json()

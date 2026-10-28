@@ -87,13 +87,15 @@ const leaks = (text) => Object.values(SECRETS).concat(env.SUPABASE_SERVICE_ROLE_
     ['steam-api', { action: 'profile' }],
     ['igdb-api', { action: 'search', query: 'Zelda' }],
     ['trakt-api', { action: 'ratings', mediaType: 'movie', tmdbId: 603 }],
+    // TMDB's v3 key travels in the URL; "Check now" on follows used a plain fetch (audit 28.10.2026).
+    ['trakt-api', { action: 'follows_check' }, { media_follows: [{ id: 'f1', user_id: 'owner', kind: 'collection', tmdb_id: 10, known_ids: [], trailer_keys: [], last_checked_at: null }] }],
   ]
-  for (const [fn, body] of cases) {
-    const handler = load(fn, { env, tables: { app_allowed_users: [] }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: failing })
+  for (const [fn, body, extra] of cases) {
+    const handler = load(fn, { env, tables: { app_allowed_users: [], ...structuredClone(extra ?? {}) }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: failing })
     const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify(body) }))
     const text = await res.text()
     const l = leaks(text)
-    check(`${fn}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
+    check(`${fn} ${body.action ?? 'chat'}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
   }
 
   // Keys travel in a header or a body, never in a URL (security review
