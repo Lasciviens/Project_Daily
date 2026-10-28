@@ -2,12 +2,12 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { qk, STALE } from '../../../shared/query'
+import { invalidate, qk, STALE } from '../../../shared/query'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { fetchCalendarLinkedTaskIds } from '../../daily/api/scheduleApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { fetchGoogleTasksSyncState, runGoogleTasksSync } from '../api/googleTasksSync'
-import { googleTasksSyncHealth, googleTasksSyncMessage, shouldBackgroundSync, type GoogleTasksSyncSummary } from '../api/googleTasksRules'
+import { googleTasksPushCandidates, googleTasksSyncHealth, googleTasksSyncMessage, shouldBackgroundSync, type GoogleTasksSyncSummary } from '../api/googleTasksRules'
 import { updateTask } from '../api/tasksApi'
 import { isOpenTask } from '../taskRules'
 import type { Task } from '../types'
@@ -32,7 +32,9 @@ export function useSyncFromGoogleTasks() {
     action: 'sync_google_tasks',
     mutationFn: () => runGoogleTasksSync({ full: true, force: true }),
     successMessage: (r: GoogleTasksSyncSummary) => googleTasksSyncMessage(r),
-    invalidates: [qk.tasks.all, qk.googleTaskLists.all, qk.googleTasks.all],
+    // The same run reads Google Calendar back (155): a moved event moves its
+    // slot and the slot its task — the day's schedule refreshes with the tasks.
+    invalidates: ['taskGraph', qk.googleTaskLists.all, qk.googleTasks.all],
   })
 }
 
@@ -59,7 +61,7 @@ export function usePushToGoogleTasks() {
       const token = await ensureValidCalendarToken()
       if (!token) throw new Error('Google is not connected: connect it in Settings → Subscriptions')
 
-      const notYetSynced = tasks.filter(t => !t.google_task_id && isOpenTask(t))
+      const notYetSynced = googleTasksPushCandidates(tasks, isOpenTask)
       const calendarLinkedIds = await fetchCalendarLinkedTaskIds(notYetSynced.map(t => t.id))
       const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
 
@@ -113,7 +115,8 @@ async function syncInBackground(qc: QueryClient): Promise<void> {
     const state = await qc.fetchQuery({ queryKey: qk.googleTasks.syncState(), queryFn: fetchGoogleTasksSyncState, staleTime: 0 })
     if (!shouldBackgroundSync(state?.updated_at, Date.now(), connected)) return
     const result = await runGoogleTasksSync()
-    if ((result.imported ?? 0) > 0 || (result.drained ?? 0) > 0) void qc.invalidateQueries({ queryKey: qk.tasks.all })
+    if ((result.readback?.applied ?? 0) > 0) void invalidate(qc, 'taskGraph')
+    else if ((result.imported ?? 0) > 0 || (result.drained ?? 0) > 0) void qc.invalidateQueries({ queryKey: qk.tasks.all })
     void qc.invalidateQueries({ queryKey: qk.googleTaskLists.all })
   })()
     // Not logged here: the function records every failed run in the sync
