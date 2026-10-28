@@ -92,6 +92,7 @@ function EntrySheet({ block, entry, siblings, onClose }: {
   }
 
   async function save() {
+    if (saving) return
     setTried(true)
     if (problem) return
     try {

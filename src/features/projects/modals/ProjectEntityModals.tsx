@@ -34,7 +34,7 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState<ProjectKind>('blank')
 
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || create.isPending) return
     try {
       const p = await create.mutateAsync({ name: name.trim(), area, kind })
       onClose()
@@ -114,7 +114,7 @@ function ProjectDetailsSheet({ project, onClose }: { project: Project; onClose: 
   const linkBad = !!link.trim() && !/^https?:\/\/\S+$/i.test(link.trim())
 
   async function save() {
-    if (!name.trim() || linkBad) return
+    if (!name.trim() || linkBad || update.isPending) return
     try {
       await update.mutateAsync({ id: project.id, patch: {
         name: name.trim(), description: description.trim() || null, notes: notes.trim() || null, kind,
@@ -235,7 +235,7 @@ function PhaseSheet({ projectId, phase, siblings, onClose }: {
   const saving = create.isPending || update.isPending
 
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || saving) return
     const fields = { name: name.trim(), done_when: doneWhen.trim() || null, target_on: targetOn || null }
     try {
       if (phase) await update.mutateAsync({ id: phase.id, patch: { ...fields, ...(status !== phase.status ? { status } : {}) } })

@@ -85,7 +85,7 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
   }
 
   async function save() {
-    if (!kind || !title.trim() || columnProblem) return
+    if (!kind || !title.trim() || columnProblem || saving) return
     const settings = isTable ? { ...settingsToSave() } as unknown as Record<string, unknown> : {}
     try {
       if (block) await update.mutateAsync({ id: block.id, projectId, patch: { title: title.trim(), settings } })
