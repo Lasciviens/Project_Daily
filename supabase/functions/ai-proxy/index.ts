@@ -1790,10 +1790,28 @@ function summarizeSleepNights(rows: AnyRecord[]): AnyRecord[] {
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)))
 }
 
+// PostgREST answers at most 1,000 rows. Hourly Health Auto Export rows pass
+// that within a week, and an unordered read dropped whichever rows came last
+// — often the newest days (audit 28.10.2026). Pages in a stable order until a
+// short page, like the web app's fetchHealthMetricSeries.
+const HEALTH_PAGE_ROWS = 1000
+async function allHealthRows(query: () => AnyRecord): Promise<{ rows: AnyRecord[]; error: AnyRecord | null }> {
+  const rows: AnyRecord[] = []
+  for (let from = 0; ; from += HEALTH_PAGE_ROWS) {
+    const { data, error } = await query()
+      .order('recorded_at', { ascending: true }).order('id', { ascending: true })
+      .range(from, from + HEALTH_PAGE_ROWS - 1)
+    if (error) return { rows, error }
+    const page = (data ?? []) as AnyRecord[]
+    rows.push(...page)
+    if (page.length < HEALTH_PAGE_ROWS) return { rows, error: null }
+  }
+}
+
 async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
-  const { data } = await supabase.from('health_metrics')
-    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
-  return summarizeSleepNights((data ?? []) as AnyRecord[])
+  const { rows, error } = await allHealthRows(() => supabase.from('health_metrics')
+    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since))
+  return error ? [] : summarizeSleepNights(rows)
 }
 
 // Mirrors healthAggregate.ts's hour-level dedup (hand-synced, not imported --
@@ -1877,15 +1895,14 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
   const sleep = { avg_hours: sleepAvg, last_night: sleepNights.length ? sleepNights[sleepNights.length - 1] : null, nights: sleepNights }
   const METRICS = ['step_count', 'active_energy', 'basal_energy_burned', 'heart_rate', 'resting_heart_rate', 'apple_exercise_time']
 
-  const { data, error } = await supabase
+  const { rows, error } = await allHealthRows(() => supabase
     .from('health_metrics')
     .select('metric_name, date, unit, value, recorded_at, source, source_family')
     .eq('user_id', userId)
     .in('metric_name', METRICS)
-    .gte('date', since)
+    .gte('date', since))
 
   if (error) return { success: false, error: error.message }
-  const rows: AnyRecord[] = data ?? []
   if (!rows.length && !sleepNights.length) return { success: true, message: 'No health data found for this period', averages: {}, daily: [], sleep }
 
   // Health Auto Export can export energy in kJ depending on locale — always
