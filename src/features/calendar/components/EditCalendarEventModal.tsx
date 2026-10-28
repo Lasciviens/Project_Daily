@@ -71,7 +71,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   async function handleDelete() {
     const result = await confirmDelete({
       title: 'Delete this event?',
-      message: 'It is removed from Google Calendar. This can\'t be undone.',
+      message: 'It is removed from Google Calendar.',
       remove: () => remove.mutateAsync({ calendarId, eventId: event.id }),
       done: 'Event deleted',
     })
