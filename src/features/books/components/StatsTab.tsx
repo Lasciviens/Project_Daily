@@ -3,7 +3,7 @@ import { Target } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard, SkeletonCard } from '../../../shared/ui'
 import { STATS_BOARD } from '../booksBoard'
 import { useKoboFeedState } from '../hooks/useBooks'
-import { useLibrary, useReadingEvents, useReadingSettings } from '../hooks/useLibrary'
+import { READING_HISTORY_DAYS as HISTORY_DAYS, useLibrary, useReadingEvents, useReadingSettings } from '../hooks/useLibrary'
 import { addDays, daysBetween, eventsBetween, localDay, secondsByDay, sessions } from '../readingAggregate'
 import { CurrentlyReadingCard } from './stats/CurrentlyReadingCard'
 import { FinishedBooksCard } from './stats/FinishedBooksCard'
@@ -15,9 +15,6 @@ import { ReadingLogCard } from './stats/ReadingLogCard'
 import { StatsKpis } from './stats/StatsKpis'
 import { WindowBooksCard } from './stats/WindowBooksCard'
 import { YearInBooksCard } from './stats/YearInBooksCard'
-
-/** Fetched once: covers the 365-day window and this year; older years load on demand. */
-const HISTORY_DAYS = 400
 
 /** Stats: what you read, how much and how far — from KOReader's page events on the Kobo. */
 export function StatsTab() {

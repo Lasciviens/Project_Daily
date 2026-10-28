@@ -7,7 +7,7 @@ import {
   createBook, fetchBooks, fetchReadingEvents, fetchReadingSettings, lookupBookMeta, mergeBooks,
   READING_DEFAULTS, saveQueueOrder, saveReadingSettings, updateBook,
 } from '../api/libraryApi'
-import { addDays, localDay } from '../readingAggregate'
+import { addDays, localDay, windowStreak, type Streak } from '../readingAggregate'
 import type { Book, BookPatch, ReadingSettings } from '../types'
 
 const libraryQuery = { queryKey: qk.books.library(), queryFn: fetchBooks, staleTime: STALE.default }
@@ -43,6 +43,23 @@ export function useReadingEvents(days: number, enabled = true) {
     staleTime: STALE.default,
     enabled,
   })
+}
+
+/** Books → Stats' read, fetched once: covers its 365-day window and this year; older years load on demand. */
+export const READING_HISTORY_DAYS = 400
+
+/**
+ * The streak where only `days` of page events are read (Home, Daily) — the
+ * number Books → Stats shows: a streak that runs back to the first day of the
+ * short read is counted on Stats' read instead (one shared query).
+ */
+export function useReadingStreak(days: number, lastSeenDay: string | null, minMinutes: number, enabled = true): Streak {
+  const today = localDay(new Date())
+  const short = useReadingEvents(days, enabled)
+  const fromShort = windowStreak(short.data ?? [], addDays(today, -(days - 1)), today, lastSeenDay, minMinutes)
+  const long = useReadingEvents(READING_HISTORY_DAYS, enabled && fromShort.cut)
+  if (!fromShort.cut || !long.data) return fromShort.streak
+  return windowStreak(long.data, addDays(today, -(READING_HISTORY_DAYS - 1)), today, lastSeenDay, minMinutes).streak
 }
 
 export function useBookEvents(bookId: string) {
