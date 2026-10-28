@@ -74,9 +74,11 @@ export async function saveItemVia<A extends SaveItemAnswer>(
 /**
  * THE item save — Add and edit, one-off or repeating, one day of a repeat
  * (scope 'day') or every day of it ('all'). "Added · 15.10.2026 17:30–18:30 ·
- * on Google Calendar".
+ * on Google Calendar". `describe`: a caller's own result line when its save
+ * means more than that (a training session moved out of its week, 167);
+ * undefined keeps the usual one.
  */
-export function useSaveItem() {
+export function useSaveItem(describe?: (input: ItemInput) => string | undefined) {
   const qc = useQueryClient()
   return useMutationWithFeedback<SavedItem, ItemInput>({
     action: 'save_item',
@@ -87,7 +89,7 @@ export function useSaveItem() {
         created: answer.created, occurrenceDate: answer.occurrence ? answer.occurrenceDate : null,
       }
     },
-    successMessage: (saved, input) => describeSaved(input, saved),
+    successMessage: (saved, input) => describe?.(input) ?? describeSaved(input, saved),
     invalidates: ['taskGraph', qk.items.all],
   })
 }

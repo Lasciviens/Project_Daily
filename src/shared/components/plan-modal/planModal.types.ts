@@ -41,6 +41,10 @@ export interface PlanModalConfig {
   heading?: string
   hideScheduleFields?: ScheduleField[]
   hideTaskFields?: TaskField[]
+  /** A training session's task (167): a save that puts it 7 or more days
+   *  after its first day is a skip there, and that week's session moves to
+   *  the day — the sheet says so and Google follows, as for Move. */
+  session?: { taskId: string; firstDay: string | null; title: string }
 }
 
 // ── Defaults — prefilled values ───────────────────────────────────────────────

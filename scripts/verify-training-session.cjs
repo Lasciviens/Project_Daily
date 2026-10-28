@@ -51,6 +51,16 @@ eq(S.movesPastWeek('2026-10-26', '2026-11-01'), false, 'moved 6 days: just moved
 eq(S.movesPastWeek('2026-10-26', '2026-11-02'), true, 'moved 7 days: out of its week (skipped there)')
 eq(S.movesPastWeek('2026-10-26', '2026-11-04'), true, "the owner's example: 26.10 → 04.11 (9 days)")
 eq(S.movesPastWeek(null, '2026-11-04'), false, 'no first day known (before 167): never claims it')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04'), "Skipped in its week · that week's Push A moved to Wed 04.11.2026",
+  'Move and Edit session say the same thing for a move out of the week')
+{
+  // Edit session (the Add sheet) reads the same rule and says the same line (28.10.2026).
+  const sheet = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/UnifiedPlanModal.tsx'), 'utf8')
+  eq(/movesPastWeek\(session\.firstDay/.test(sheet) && /pastWeekMoveLine\(session\.title/.test(sheet) && /carryPastWeekMoveToCalendar\(/.test(sheet), true,
+    "the session's editor reads movesPastWeek, says pastWeekMoveLine and carries Google")
+  const entity = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/PlanEntityModals.tsx'), 'utf8')
+  eq(/session: \{ taskId: task\.id, firstDay: task\.first_plan_date/.test(entity), true, "a training task's editor gets its first day")
+}
 eq(st({ date: '2026-10-11', taskStatus: 'cancelled' }).skipReason, null, 'cancelled with no skip row read: no reason, still skipped')
 eq(st({ date: '2026-10-11', taskStatus: 'open', activityOnDay: true, ...R }).state, 'pending', 'Strava never closes an open task (only a workout or a tick)')
 eq(st({ date: '2026-10-11', taskStatus: 'open', skipped: true, skipReason: 'Travel', ...R }).state, 'pending', 'a routine-week skip does not cancel an open task by itself')

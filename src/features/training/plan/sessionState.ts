@@ -209,6 +209,11 @@ export function movesPastWeek(firstDay: string | null | undefined, to: string): 
   return !!firstDay && to >= shiftDay(firstDay, 7)
 }
 
+/** What such a move did — the result line of Move and of the session's editor. */
+export function pastWeekMoveLine(title: string, to: string): string {
+  return `Skipped in its week · that week's ${title} moved to ${formatWeekdayDate(to)}`
+}
+
 /** Monday (yyyy-MM-dd) of the week `date` falls in — the key a skip is
  *  stored under (112: the week the session was due). */
 export function weekStartOf(date: string): string {
