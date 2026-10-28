@@ -246,7 +246,7 @@ export function TestGamePage() {
     <TgRanksContext.Provider value={ranks}>
     <TgGamesContext.Provider value={lib.games}>
       {phone ? (
-        <div key="phone" className="tg-root flex h-full flex-col overflow-hidden">
+        <div key="phone" className="tg-root relative flex h-full flex-col overflow-hidden">
           <div className={`grid shrink-0 transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${rowsHidden ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'}`}>
             <div className="min-h-0 overflow-hidden">
               <TgMobileHeader
@@ -258,8 +258,10 @@ export function TestGamePage() {
           <div
             ref={phoneScroll}
             // The app header hides while this list scrolls down, as it does over <main>.
+            // `relative`: an absolute child (a chart's sr-only caption) stays in this
+            // scroller — it used to stretch <main> into a blank band below the page.
             onScroll={e => { rememberDepth(listKey, e.currentTarget.scrollTop); reportScroll(e.currentTarget.scrollTop) }}
-            className="tg-scroll-y min-h-0 flex-1 pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
+            className="tg-scroll-y relative min-h-0 flex-1 pb-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-2"
           >
             {providerError}
             {renderSection('phone')}

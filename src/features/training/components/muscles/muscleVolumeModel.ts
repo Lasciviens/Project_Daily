@@ -295,7 +295,7 @@ export function buildVerdict(args: {
   for (const u of under.slice(0, 3)) {
     const d = weeklySetGap(u.wk, ctx.landmarksFor(u.slug))
     bullets.push({ icon: 'up', text: restrictedNote(u.slug) ?? (d?.kind === 'add'
-      ? `Add ~${d.sets} sets/wk to ${labelForSlug(u.slug)} (≈ ${d.sessions === 1 ? 'one more session' : `${d.sessions} more sessions`}) to reach the growth range.`
+      ? `Add ~${d.sets} ${d.sets === 1 ? 'set' : 'sets'}/wk to ${labelForSlug(u.slug)} (≈ ${d.sessions === 1 ? 'one more session' : `${d.sessions} more sessions`}) to reach the growth range.`
       : `Train ${labelForSlug(u.slug)} more — ${u.wk.toFixed(1)}/wk.`) })
   }
   // Only the side worth fixing becomes a bullet — pull-heavy is rarely a

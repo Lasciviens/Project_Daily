@@ -59,8 +59,8 @@ export function FoodBand({ date }: { date: string }) {
           <StatBox icon={<Flame aria-hidden />} label={totals.planned ? 'Calories · planned' : 'Calories'} onClick={show} ariaLabel={name('Calories')}>
             {loading ? <StatEmpty loading /> : (
               <>
-                <StatValue tone={kcalLeft < 0 ? 'danger' : undefined}>{totals.calories.toLocaleString('en-GB')}</StatValue>
-                <StatNote>of {goal.kcal.toLocaleString('en-GB')} kcal</StatNote>
+                <StatValue tone={kcalLeft < 0 ? 'danger' : undefined}>{totals.calories}</StatValue>
+                <StatNote>of {goal.kcal} kcal</StatNote>
                 <Bar value={goal.kcal ? totals.calories / goal.kcal : 0} tone={kcalLeft < 0 ? 'danger' : undefined} color={MACRO_COLOR.calories} />
               </>
             )}

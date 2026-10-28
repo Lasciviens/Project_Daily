@@ -60,6 +60,7 @@
     --highlight: 147 51 234; --highlight-soft: 240 226 252;
     --upcoming: 79 70 229;   --upcoming-soft: 231 232 252; /* indigo: not out yet */
     --star:    245 179 1;    --star-soft:    254 244 219;
+    --star-fg: 138 92 0;     /* star LABEL text: the gold dot is 1.7:1 on white (this is 5.3:1 on its soft tint) */
 
     /* Chart series — categorical, deliberately away from the accent hue so a
        series never reads as "selected". Read via useChartColors(). */
@@ -126,6 +127,7 @@
     --highlight: 192 132 252; --highlight-soft: 42 36 64;
     --upcoming: 129 140 248; --upcoming-soft: 32 34 70;
     --star:    251 191 36;   --star-soft:    51 46 29;
+    --star-fg: 251 191 36;   /* the dot colour reads on dark surfaces */
 
     --chart-1: 45 212 191;
     --chart-2: 167 139 250;
@@ -653,7 +655,7 @@ select:focus-visible,
 [data-tone='neutral'] { --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-fg: var(--neutral-fg); }
 [data-tone='highlight'] { --tone: var(--highlight); --tone-soft: var(--highlight-soft); --tone-fg: var(--highlight); }
 [data-tone='upcoming'] { --tone: var(--upcoming); --tone-soft: var(--upcoming-soft); --tone-fg: var(--upcoming); }
-[data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); --tone-fg: var(--star); }
+[data-tone='star']    { --tone: var(--star);    --tone-soft: var(--star-soft); --tone-fg: var(--star-fg); }
 [data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); --tone-fg: var(--accent-500); }
 .tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
 .tone-text { color: rgb(var(--tone-fg, var(--neutral-fg))); }

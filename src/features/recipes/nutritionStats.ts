@@ -144,7 +144,7 @@ export function buildFindings({ summary: s, targets: t, goal, weightKg }: Findin
   // Fibre and fat only when they are low — fine values sit in the per-day line.
   if (avg.fiber < FIBER_LOW) {
     out.push({
-      key: 'fiber', label: 'Fibre', value: `${n0(avg.fiber)} g a day`, tone: avg.fiber < 20 ? 'warn' : 'neutral',
+      key: 'fiber', label: 'Fiber', value: `${n0(avg.fiber)} g a day`, tone: avg.fiber < 20 ? 'warn' : 'neutral',
       sentence: `Below the 25–30 g most guidelines advise. Vegetables, oats, beans or berries add it${goal === 'cut' ? ' — and keep you full on a cut' : ''}.`,
     })
   }

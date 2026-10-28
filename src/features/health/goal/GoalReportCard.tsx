@@ -6,7 +6,7 @@ import { GOAL_BOARD } from '../healthBoards'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { numericSpanLabel } from '../healthDateLabels'
+import { formatDateRange } from '../../../shared/utils/dateFormat'
 import { goalWindowDates, useGoalReport, type GoalWindow } from './useGoalReport'
 import { usePhase } from './useBodyGoals'
 import { PHASE_QUESTION, verdictCopy } from './goalCopy'
@@ -64,7 +64,7 @@ function GoalReportMain({ win, onWin, d }: { win: `${GoalWindow}`; onWin: (w: `$
             Today is left out because its diary and energy aren&apos;t finished. An estimate from your own data, not medical advice.
           </InfoBubble>
         )} />
-      <div className="mb-4"><PhaseBar win={win} onWin={onWin} windowLabel={numericSpanLabel(from, to, today)} /></div>
+      <div className="mb-4"><PhaseBar win={win} onWin={onWin} windowLabel={formatDateRange(from, to)} /></div>
       <ErrorBoundary label="Goal progress">
         <GoalReportBody d={d} withBlocks={!split} />
       </ErrorBoundary>

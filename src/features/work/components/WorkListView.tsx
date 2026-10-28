@@ -1,4 +1,5 @@
-import { Check, RotateCcw, Trash2, Zap } from 'lucide-react'
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { Check, MoreHorizontal, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import { EmptyState, TonePill, cx, Truncate } from '../../../shared/ui'
 import { STATUS_CYCLE, isOverdue, taskStatusMeta } from './workMeta'
@@ -92,44 +93,95 @@ export default function WorkListView({
 
             <DueChip task={task} />
 
-            {/* Row actions: always visible on touch, hover-reveal with a mouse */}
-            <div
-              className="flex shrink-0 items-center gap-0.5 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => onStatusChange(task.id, isDone ? 'open' : 'done')}
-                aria-label={isDone ? 'Reopen' : 'Mark done'}
-                title={isDone ? 'Reopen' : 'Mark done'}
-                data-tone="success"
-                className={cx(ACTION, 'tone-text [@media(hover:hover)]:hover:bg-success-soft')}
-              >
-                {isDone ? <RotateCcw /> : <Check />}
-              </button>
-              {isOpenTask(task) && <button
-                type="button"
-                onClick={() => onFocus(task)}
-                aria-label={focused ? 'Remove focus' : 'Focus'}
-                aria-pressed={focused}
-                title={focused ? 'Remove focus' : 'Focus'}
-                className={cx(ACTION, focused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
-              >
-                <Zap />
-              </button>}
-              <button
-                type="button"
-                onClick={() => onDelete(task.id)}
-                aria-label="Delete"
-                title="Delete"
-                className={cx(ACTION, 'text-fg-faint [@media(hover:hover)]:hover:bg-danger-soft [@media(hover:hover)]:hover:text-danger')}
-              >
-                <Trash2 />
-              </button>
-            </div>
+            <WorkRowActions task={task} focused={focused} onStatusChange={onStatusChange} onFocus={onFocus} onDelete={onDelete} />
           </li>
         )
       })}
     </ul>
+  )
+}
+
+interface RowActionProps {
+  task: Task
+  focused: boolean
+  onStatusChange: (id: string, status: TaskStatus) => void
+  onFocus: (task: Task) => void
+  onDelete: (id: string) => void
+}
+
+// Done, Focus and Delete. On a phone, and on any touch screen, they sit in one
+// ⋯ menu so the title keeps the row's width; from `md` with a mouse they are a
+// button row, revealed on hover.
+function WorkRowActions({ task, focused, onStatusChange, onFocus, onDelete }: RowActionProps) {
+  const isDone = task.status === 'done'
+  const toggleDone = () => onStatusChange(task.id, isDone ? 'open' : 'done')
+  return (
+    <div className="flex shrink-0 items-center" onClick={e => e.stopPropagation()}>
+      <Menu>
+        <MenuButton
+          aria-label="More actions"
+          className={cx(ACTION, 'text-fg-faint data-[open]:bg-surface-hover data-[open]:text-fg md:[@media(hover:hover)]:hidden')}
+        >
+          <MoreHorizontal />
+        </MenuButton>
+        <MenuItems
+          anchor="bottom end"
+          transition
+          className="menu min-w-[10rem] [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0"
+        >
+          <MenuItem>
+            <button type="button" onClick={toggleDone} className="menu-item">
+              {isDone ? <RotateCcw aria-hidden className="h-4 w-4" /> : <Check aria-hidden className="h-4 w-4" />}
+              {isDone ? 'Reopen' : 'Mark done'}
+            </button>
+          </MenuItem>
+          {isOpenTask(task) && (
+            <MenuItem>
+              <button type="button" onClick={() => onFocus(task)} className="menu-item">
+                <Zap aria-hidden className="h-4 w-4" /> {focused ? 'Remove focus' : 'Focus'}
+              </button>
+            </MenuItem>
+          )}
+          <div className="menu-sep" />
+          <MenuItem>
+            <button type="button" onClick={() => onDelete(task.id)} className="menu-item is-danger">
+              <Trash2 aria-hidden className="h-4 w-4" /> Delete
+            </button>
+          </MenuItem>
+        </MenuItems>
+      </Menu>
+
+      <div className="hidden items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:[@media(hover:hover)]:flex">
+        <button
+          type="button"
+          onClick={toggleDone}
+          aria-label={isDone ? 'Reopen' : 'Mark done'}
+          title={isDone ? 'Reopen' : 'Mark done'}
+          data-tone="success"
+          className={cx(ACTION, 'tone-text [@media(hover:hover)]:hover:bg-success-soft')}
+        >
+          {isDone ? <RotateCcw /> : <Check />}
+        </button>
+        {isOpenTask(task) && <button
+          type="button"
+          onClick={() => onFocus(task)}
+          aria-label={focused ? 'Remove focus' : 'Focus'}
+          aria-pressed={focused}
+          title={focused ? 'Remove focus' : 'Focus'}
+          className={cx(ACTION, focused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
+        >
+          <Zap />
+        </button>}
+        <button
+          type="button"
+          onClick={() => onDelete(task.id)}
+          aria-label="Delete"
+          title="Delete"
+          className={cx(ACTION, 'text-fg-faint [@media(hover:hover)]:hover:bg-danger-soft [@media(hover:hover)]:hover:text-danger')}
+        >
+          <Trash2 />
+        </button>
+      </div>
+    </div>
   )
 }

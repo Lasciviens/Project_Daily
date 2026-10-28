@@ -8,8 +8,8 @@ export async function fetchWorkNote(): Promise<WorkNote | null> {
     .from('work_notes')
     .select('*')
     .eq('user_id', user.id)
-    .single()
-  if (error && error.code !== 'PGRST116') throw error
+    .maybeSingle() // no note yet is null, not an HTTP 406
+  if (error) throw error
   return data ?? null
 }
 
