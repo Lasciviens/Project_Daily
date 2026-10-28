@@ -1,8 +1,10 @@
 // Planned-training rules shared by the "next session" banner and Home (a
 // plan's status lives in plan/sessionState) — pure and import-free apart from the (also pure) recurring
-// projection helper (scripts/verify-hevy-training.cjs).
+// projection helper and sessionState (scripts/verify-hevy-training.cjs).
 
 import { projectRecurringBlocksForDay, type RecurringBlockLike } from '../daily/components/dayAgendaProjection'
+import { sessionStatus } from './plan/sessionState'
+import type { TaskStatus } from '../todo/types'
 
 // ── Next session ─────────────────────────────────────────────────────────────
 // The soonest planned training session from now: one-off training blocks
@@ -42,17 +44,32 @@ function hhmm(hour: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/** A training repeat's day that is a task on its day (156, no slot). */
+export interface TrainingDayTaskLike {
+  schedule_block_id: string
+  occurrence_date:   string
+  status:            TaskStatus
+  closed_reason?:    string | null
+}
+
 /** `templates` must already be the training ones. A block without a start
  *  time on today counts as still ahead (it has no time to have passed); a
- *  block whose task is done (trained — migration 141) or cancelled is not. */
+ *  block whose task is done (trained — migration 141) or cancelled is not.
+ *  `dayTasks`: a weekly day closed as its task (a Hevy workout or a Google
+ *  Tasks tick, no split) is not one to come either — sessionState decides
+ *  (a day closed as missed is still to do there). */
 export function pickNextTrainingSession(input: {
   blocks:        readonly OneOffTrainingBlock[]
   templates:     readonly RecurringBlockLike[]
+  dayTasks?:     readonly TrainingDayTaskLike[]
   today:         string
   nowHHMM:       string
   lookaheadDays: number
 }): NextTrainingSession | null {
   const { blocks, templates, today, nowHHMM, lookaheadDays } = input
+  const closedDays = new Set((input.dayTasks ?? [])
+    .filter(t => !sessionStatus({ date: t.occurrence_date, taskStatus: t.status, taskMissed: t.closed_reason === 'missed', today }).open)
+    .map(t => `${t.schedule_block_id}:${t.occurrence_date}`))
   const candidates: NextTrainingSession[] = blocks
     .filter(b => b.task_status !== 'done' && b.task_status !== 'cancelled')
     .filter(b => b.date > today || (b.date === today && (b.start_time ?? '99:99').slice(0, 5) >= nowHHMM))
@@ -62,7 +79,7 @@ export function pickNextTrainingSession(input: {
     for (let i = 0; i <= lookaheadDays; i++) {
       const day = shiftDay(today, i)
       const hit = projectRecurringBlocksForDay(day, templates)
-        .filter(p => !p.spillover && (day !== today || hhmm(p.startHour) >= nowHHMM))
+        .filter(p => !p.spillover && !closedDays.has(`${p.canonicalId}:${day}`) && (day !== today || hhmm(p.startHour) >= nowHHMM))
         .sort((a, b) => a.startHour - b.startHour)[0]
       if (hit) {
         candidates.push({ kind: 'recurring', id: hit.canonicalId, title: hit.title, date: day, startTime: hhmm(hit.startHour), taskId: null })

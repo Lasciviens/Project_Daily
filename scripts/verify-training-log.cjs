@@ -349,6 +349,16 @@ console.log('\n== 167: a workout represents itself; a weekly day reads its own t
   const free = cs.matchDaySessions({ date: '2026-09-22', todayStr: TODAY, plans: [recurring('sb1__2026-09-22', 'Lower B')],
     workouts: [workout('w1', 'Morning run', '2026-09-22T10:00:00Z', null)], hasActivity: false, routineOf: () => R1 })
   check('a workout with no routine still stands in for the day\'s plan', free.sessions[0].plans.length === 1 && free.openPlans.length === 0)
+  // 28.10.2026 audit: the session popup paired without the plan's routine, so it
+  // opened that Lower B as the Upper B workout ("In place of ⟳ Lower B").
+  const popup = sr.resolveTrainingSession({ plan: { kind: 'recurring', id: 'sb1', date: '2026-09-22' }, date: '2026-09-22', todayStr: TODAY,
+    plans: [recurring('sb1__2026-09-22', 'Lower B')], workouts: [workout('w1', 'Upper B', '2026-09-22T10:00:00Z', R2)], hasActivity: false, routineOf: () => R1 })
+  check('the session popup pairs as the calendar: a weekly Lower B opens as its plan, not as the Upper B workout', popup.kind === 'plan' && popup.plan.id === 'sb1__2026-09-22')
+  const popupFree = sr.resolveTrainingSession({ plan: { kind: 'recurring', id: 'sb1', date: '2026-09-22' }, date: '2026-09-22', todayStr: TODAY,
+    plans: [recurring('sb1__2026-09-22', 'Lower B')], workouts: [workout('w1', 'Morning run', '2026-09-22T10:00:00Z', null)], hasActivity: false, routineOf: () => R1 })
+  check('…and a workout with no routine still stands in there', popupFree.kind === 'workout' && popupFree.workoutId === 'w1')
+  const detail = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingSessionDetail.ts'), 'utf8')
+  check('the popup hands resolveTrainingSession the title match (usePlanContext.routineOf)', /usePlanContext\(\)/.test(detail) && /routineOf:\s*routineOfPlan/.test(detail))
 
   // A weekly day that is a task on its day (156): the projection reads it.
   const dayTask = (o) => ({ id: 't1', status: 'open', closed_reason: null, hevy_workout_id: null, hevy_routine_id: R1, schedule_block_id: 'sb1', occurrence_date: '2026-09-22', first_plan_date: '2026-09-22', ...o })

@@ -208,12 +208,13 @@ export function missedText(a: Pick<AttentionBase, 'daysSince'>): string {
   return `not done in ${a.daysSince} ${a.daysSince === 1 ? 'day' : 'days'}`
 }
 
-/** The skip that covers `routineId` on `date` (a skip covers the week its
- *  missed session was due in), for the session popup of a missed plan. */
+/** The routine-week skip (Missed sessions: no task) that covers `routineId`
+ *  on `date` — it covers the week its missed session was due in. A skip with
+ *  a task is that one session's own and covers nothing else (28.10.2026). */
 export function skipCovering(skips: readonly SkipRecord[], routineId: string | null | undefined, date: string): SkipRecord | null {
   if (!routineId) return null
   const week = weekStartOf(date)
-  return skips.find(s => s.routine_id === routineId && s.week_start === week) ?? null
+  return skips.find(s => !s.task_id && s.routine_id === routineId && s.week_start === week) ?? null
 }
 
 /** "Skipped: Busy — Got busy and tired." — the reason exactly as written. */
@@ -223,15 +224,18 @@ export function skippedText(skip: Pick<SkipRecord, 'reason'>): string {
 
 /** The skip that covers one planned session (sessionState's skipReason):
  *  its task's own skip (142); for a cancelled task with none, or a plan with
- *  no task, the routine's skip for that week. */
+ *  no task, the routine's skip for that week. A routine-week skip is written
+ *  for a missed session, always a day before the day it is written: it never
+ *  covers a plan with no task on today or later (a weekly day whose task 156
+ *  makes on its day) — that one is still to do. */
 export function skipForPlan(
   skips: readonly SkipRecord[],
-  plan: { taskId?: string | null; taskCancelled?: boolean; routineId?: string | null; date: string },
+  plan: { taskId?: string | null; taskCancelled?: boolean; routineId?: string | null; date: string; today: string },
 ): SkipRecord | null {
   if (plan.taskId) {
     const own = skips.find(s => s.task_id === plan.taskId)
     if (own) return own
     if (!plan.taskCancelled) return null
-  }
+  } else if (plan.date >= plan.today) return null
   return skipCovering(skips, plan.routineId, plan.date)
 }

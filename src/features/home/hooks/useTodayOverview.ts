@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useDayTasks } from '../../todo/hooks/useTodos'
-import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
+import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
 import { dayRowCounts, repeatDayKeys, repeatsToDoOn } from '../../daily/dayItems'
@@ -98,6 +98,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const templatesQ = useScheduleBlocks()
   const calendarQ = useCalendarEventsForDay(date)
   const trainingQ = useTrainingBlocks(training.from, training.to)
+  const trainingDaysQ = useTrainingDayTasks(training.from, training.to)
   // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
   const nowMs = useNow(date === todayStr(), 60_000)
 
@@ -123,9 +124,11 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     // recurring training templates — the same pure rule the Training banner
     // uses (useNextTrainingSession). Only today filters out passed times.
     const trainingTemplates = templates.filter(t => t.category === 'training')
+    const trainingDays = trainingDaysQ.data ?? []
     const nextTraining = pickNextTrainingSession({
       blocks:        trainingQ.data ?? [],
       templates:     trainingTemplates,
+      dayTasks:      trainingDays,
       today:         date,
       nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
@@ -135,6 +138,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     const trainingAfterNext = nextTraining ? pickNextTrainingSession({
       blocks:        (trainingQ.data ?? []).filter(b => !(nextTraining.kind === 'block' && b.id === nextTraining.id)),
       templates:     trainingTemplates,
+      dayTasks:      trainingDays,
       today:         nextTraining.date,
       nowHHMM:       nextTraining.startTime ? minuteAfter(nextTraining.startTime) : '99:99',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
@@ -151,8 +155,8 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       // Every read of the app's own the tiles show waits here, so a picked day appears once and
       // complete; Google's is apart (calendarLoading) — Home's picked day waits for it too.
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
-        || prevBlocksQ.isLoading || trainingQ.isLoading,
+        || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading,
       calendarLoading: calendarQ.isLoading,
     }
-  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading])
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading])
 }

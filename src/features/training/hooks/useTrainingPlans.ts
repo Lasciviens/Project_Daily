@@ -33,14 +33,19 @@ export function useTrainingPlansByDate(from: string, to: string): {
  *  day; a session with a task reads its stored first day; an older block
  *  with no task is on its first day. */
 export function useSessionFirstDay(plan: TrainingPlanRef): string | null {
-  const taskId = plan.target.kind === 'task' ? plan.target.taskId : null
+  const firstDay = useFirstPlanDay(plan.target.kind === 'task' ? plan.target.taskId : null)
+  if (plan.target.kind === 'weekly') return plan.target.date
+  if (plan.target.kind === 'block') return plan.info.date
+  return firstDay
+}
+
+/** A training task's stored first day (167), or null (no task, not read yet, before 167). */
+export function useFirstPlanDay(taskId: string | null): string | null {
   const q = useQuery({
     queryKey: qk.tasks.firstPlanDay(taskId ?? ''),
     queryFn: () => fetchFirstPlanDay(taskId as string),
     enabled: !!taskId,
     staleTime: STALE.default,
   })
-  if (plan.target.kind === 'weekly') return plan.target.date
-  if (plan.target.kind === 'block') return plan.info.date
-  return q.data ?? null
+  return taskId ? q.data ?? null : null
 }

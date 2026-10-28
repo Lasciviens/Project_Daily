@@ -162,6 +162,8 @@ console.log('\nskip shown in the session popup')
   check('the next week is not covered', S.skipCovering(skips, 'upperB', '2026-09-28') === null)
   check('another routine\'s skip never leaks', S.skipCovering(skips, 'upperA', '2026-09-24') === null)
   check('no matched routine → no skip', S.skipCovering(skips, null, '2026-09-24') === null)
+  check('a session\'s own skip (with a task) covers no other plan of its routine\'s week (28.10.2026)',
+    S.skipCovering([{ id: 'k3', routine_id: 'upperB', week_start: '2026-09-21', reason: 'Sick', task_id: 't-mon' }], 'upperB', '2026-09-24') === null)
   check('the reason exactly as written', S.skippedText(skips[0]) === 'Skipped: Busy — Got busy and tired.')
 }
 

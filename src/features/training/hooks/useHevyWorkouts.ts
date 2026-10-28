@@ -48,12 +48,14 @@ export function useHevyWorkoutDetail(id: string | null) {
 }
 
 // Payload comes from routineForm.workoutFormToPayload (the strict Hevy shape).
+// The stored workout completes its routine's session (141/167), so the task
+// graph refreshes too — as after every Hevy sync.
 export function useLogHevyWorkout() {
   return useMutationWithFeedback({
     action:         'create_workout',
     loadingMessage: 'Saving workout…',
     successMessage: 'Workout logged',
     mutationFn:     (payload: unknown) => callHevyApi('create_workout', payload),
-    invalidates:    ['training'],
+    invalidates:    ['training', 'taskGraph'],
   })
 }

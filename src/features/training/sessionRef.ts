@@ -70,6 +70,9 @@ export type ResolvedSession =
  * `date` (pairing needs them all — a workout can belong to another plan that
  * day). `planRow` is the requested plan built from its own loaded row, used
  * when it isn't among the day's plans; null/undefined = the row is gone.
+ * `routineOf`: the routine a plan with none of its own trains (a weekly plan,
+ * by its title — the calendar's own, usePlanContext), so another routine's
+ * workout never stands in for it (167).
  */
 export function resolveTrainingSession(input: {
   workoutId?: string | null
@@ -80,9 +83,10 @@ export function resolveTrainingSession(input: {
   workouts: readonly DayWorkout[]
   hasActivity: boolean
   planRow?: CalendarPlanItem | null
+  routineOf?: (plan: CalendarPlanItem, date: string) => string | null
 }): ResolvedSession {
-  const { workoutId, plan, date, todayStr, plans, workouts, hasActivity, planRow } = input
-  const day = matchDaySessions({ date, todayStr, plans, workouts: workouts as HevyWorkout[], hasActivity })
+  const { workoutId, plan, date, todayStr, plans, workouts, hasActivity, planRow, routineOf } = input
+  const day = matchDaySessions({ date, todayStr, plans, workouts: workouts as HevyWorkout[], hasActivity, routineOf })
 
   if (workoutId) {
     const session = day.sessions.find(s => s.workout.id === workoutId)

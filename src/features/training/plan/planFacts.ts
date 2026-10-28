@@ -46,7 +46,7 @@ export interface PlanDayContext {
 export function planFacts(row: PlanRowFacts, ctx: PlanDayContext): SessionFacts & { skipId: string | null; routineId: string | null } {
   const taskStatus = row.taskId ? row.taskStatus ?? 'open' : null
   const routineId = row.taskRoutineId ?? row.routineId ?? null
-  const skip = skipForPlan(ctx.skips, { taskId: row.taskId ?? null, taskCancelled: taskStatus === 'cancelled' && !row.taskMissed, routineId, date: row.date })
+  const skip = skipForPlan(ctx.skips, { taskId: row.taskId ?? null, taskCancelled: taskStatus === 'cancelled' && !row.taskMissed, routineId, date: row.date, today: ctx.today })
   return {
     date: row.date,
     startHHMM: row.startHHMM ?? null,
