@@ -7,11 +7,43 @@
  *   health/workoutStats.ts  — time in each ACSM heart-rate zone, per-minute rates
  *   health/workoutRaw.ts    — heartRateTimeline (timestamps from the raw payload)
  *   training/workoutHealthMatch.ts — the same match rule read from the Apple side
+ *   health/api/healthApi.ts — Other workouts reads every page, and its kcal
+ *     come through the detail's converter (against a stand-in for Supabase)
  *
  *   Run:  node scripts/verify-health-workout-stats.cjs
  */
 require('sucrase/register')
 process.env.TZ = 'Europe/Oslo'
+// healthApi imports the live Supabase client: hand it a stand-in that serves
+// `workoutRows` by .range() or .limit() (with the exact count when asked) and
+// records calls.
+const Module = require('module')
+const queries = []
+let workoutRows = []
+const fakeSupabase = {
+  from(table) {
+    const ops = []
+    queries.push({ table, ops })
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'then') {
+          const range = ops.find(o => o[0] === 'range')
+          const counted = ops.some(o => o[0] === 'select' && o[2]?.count === 'exact')
+          const limit = ops.find(o => o[0] === 'limit')
+          const data = range ? workoutRows.slice(range[1], range[2] + 1) : workoutRows.slice(0, Math.min(limit?.[1] ?? 1000, 1000))
+          return (res, rej) => Promise.resolve({ data, error: null, count: counted ? workoutRows.length : null }).then(res, rej)
+        }
+        return (...args) => { ops.push([k, ...args]); return q }
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  return origLoad.apply(this, arguments)
+}
 
 const S = require('../src/features/health/workoutStats')
 const raw = require('../src/features/health/workoutRaw')
@@ -92,5 +124,30 @@ const hevy = [
 check('an Apple strength workout finds its Hevy session', matchHealthWorkout(apple, hevy)?.id === 'lift')
 check('an evening walk that doesn’t overlap finds none', matchHealthWorkout({ start_time: '2026-09-24T18:00:00Z', end_time: '2026-09-24T18:30:00Z' }, hevy) === null)
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+console.log('\n§6 Other workouts: every row of the period, kcal as the detail shows them')
+;(async () => {
+  const { fetchHealthWorkoutSummaries } = require('../src/features/health/api/healthApi')
+  const { isStrengthWorkout } = require('../src/features/health/workoutKinds')
+  // A year: 900 strength sessions (newest) and 350 walks — 1,250 rows.
+  workoutRows = [
+    ...Array.from({ length: 900 }, (_, i) => ({ id: `s${i}`, name: 'Traditional Strength Training', active_energy_kj: 250, active_energy_raw: { qty: 250, units: 'kcal' } })),
+    ...Array.from({ length: 350 }, (_, i) => ({ id: `w${i}`, name: 'Outdoor Walk', active_energy_kj: 1046, active_energy_raw: { qty: 1046, units: 'kJ' } })),
+  ]
+  queries.length = 0
+  const rows = await fetchHealthWorkoutSummaries('2025-10-29', '2026-10-28')
+  const other = rows.filter(w => !isStrengthWorkout(w.name))
+  check('the period\'s every walk counts in "(N)" (a 200-row cap over every kind showed 0)', rows.length === 1250 && other.length === 350, [rows.length, other.length])
+  const ops = queries.filter(q => q.table === 'health_workouts').map(q => q.ops)
+  check('read in pages of 1,000 in a total order (start_time, id), never .limit()', ops.length === 2 && ops.every(o => o.filter(x => x[0] === 'order').map(x => x[1]).join() === 'start_time,id') && !ops.some(o => o.some(x => x[0] === 'limit')), ops)
+  const sel = ops[0].find(o => o[0] === 'select')[1]
+  check('the summary reads raw.activeEnergyBurned alone (its units), not the whole raw payload', sel.includes('active_energy_raw:raw->activeEnergyBurned') && !/(^|,)raw(,|$)/.test(sel), sel)
+  const walk = other[0]
+  // The detail: energyKcal(workout.active_energy_kj, raw.activeEnergyBurned) — the same value from the full raw.
+  const listKcal = Math.round(raw.energyKcal(walk.active_energy_kj, walk.active_energy_raw))
+  check('a kJ export reads 250 kcal in the list, as in its detail (was 1046 "kcal")', listKcal === 250 && listKcal === Math.round(raw.energyKcal(1046, { qty: 1046, units: 'kJ' })), listKcal)
+  const list = require('fs').readFileSync(require('path').join(__dirname, '../src/features/health/components/HealthWorkoutsList.tsx'), 'utf8')
+  check('the list row converts through energyKcal, never prints the column raw', /energyKcal\(workout\.active_energy_kj, workout\.active_energy_raw\)/.test(list) && !/Math\.round\(workout\.active_energy_kj\)/.test(list))
+
+  console.log(`\n${passed} passed, ${failed} failed`)
+  process.exit(failed ? 1 : 0)
+})().catch(e => { console.log(`  ✗ threw — ${e?.stack ?? e}`); process.exit(1) })

@@ -8,6 +8,7 @@ import { useHevyMatches } from '../hooks/useWorkoutLinks'
 import type { HealthWorkoutSummary } from '../api/healthApi'
 import type { HealthWindow } from '../healthWindowStats'
 import { isStrengthWorkout } from '../workoutKinds'
+import { energyKcal } from '../workoutRaw'
 import { fmtDuration } from './healthFormat'
 
 function fmtStart(iso: string | null): string {
@@ -16,6 +17,8 @@ function fmtStart(iso: string | null): string {
 }
 
 function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorkoutSummary; hevyTitle?: string; onOpen: () => void }) {
+  // The detail's own converter on the same field, so the row and its popup agree.
+  const kcal = energyKcal(workout.active_energy_kj, workout.active_energy_raw)
   return (
     <button
       type="button"
@@ -37,8 +40,7 @@ function HealthWorkoutRow({ workout, hevyTitle, onOpen }: { workout: HealthWorko
             </span>
           )}
           {workout.avg_heart_rate != null && <span className="chip tabular-nums">avg {Math.round(workout.avg_heart_rate)} bpm</span>}
-          {/* HAE sends workout energy in kcal despite the column being named *_kj. */}
-          {workout.active_energy_kj != null && <span className="chip tabular-nums">{Math.round(workout.active_energy_kj)} kcal</span>}
+          {kcal != null && <span className="chip tabular-nums">{Math.round(kcal)} kcal</span>}
         </div>
       </div>
       <ChevronRight className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
