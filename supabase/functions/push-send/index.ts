@@ -189,9 +189,16 @@ export function supplementReminder(doses: readonly ReminderDose[]): { title: str
 // </supplement-reminders>
 
 /** The doses whose reminder is due, stamped as reminded by the claim (one run
- *  at a time), as ONE notification. Missing RPC (before 160) → nothing. */
+ *  at a time), as ONE notification. Missing RPC (before 160) → nothing.
+ *  A run that reached no device (a push service error, or no live
+ *  subscription) puts its stamps back, so the next run tries again while the
+ *  dose's window is open — a 'once' reminder used to be lost for good
+ *  (audit 28.10.2026). */
 async function sendSupplementReminders(userId: string): Promise<{ sent: number; doses: number }> {
-  const { data, error } = await supabase.rpc('supplement_reminders_claim', { p_user: userId })
+  const before = await doseReminderStamps(userId)
+  // The claim stamps exactly this time, so the undo below finds its own stamps only.
+  const stamp = new Date().toISOString()
+  const { data, error } = await supabase.rpc('supplement_reminders_claim', { p_user: userId, p_now: stamp })
   if (error) {
     console.error('supplement_reminders_claim failed:', error.message)
     return { sent: 0, doses: 0 }
@@ -199,8 +206,38 @@ async function sendSupplementReminders(userId: string): Promise<{ sent: number; 
   const doses = (data ?? []) as ReminderDose[]
   const msg = supplementReminder(doses)
   if (!msg) return { sent: 0, doses: 0 }
-  const res = await sendToAll(userId, msg)
-  return { sent: res.sent, doses: doses.length }
+  let sent = 0
+  try {
+    sent = (await sendToAll(userId, msg)).sent
+  } finally {
+    if (sent === 0) await unclaimReminders(userId, doses, stamp, before)
+  }
+  return { sent, doses: doses.length }
+}
+
+type DoseKey = { schedule_id: string; dose_date: string; dose_time: string }
+const doseKey = (d: DoseKey) => `${d.schedule_id}|${d.dose_date}|${String(d.dose_time).slice(0, 5)}`
+
+/** The reminder bookkeeping as it was before the claim (yesterday on, so a run at midnight is covered). */
+async function doseReminderStamps(userId: string): Promise<Map<string, AnyRecord>> {
+  const since = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+  const { data, error } = await supabase.from('supplement_dose_state')
+    .select('schedule_id, dose_date, dose_time, last_reminded_at, reminders_sent')
+    .eq('user_id', userId).gte('dose_date', since)
+  if (error) console.error('push-send: could not read the doses\' reminder state:', error.message)
+  return new Map(((data ?? []) as AnyRecord[]).map(r => [doseKey(r as DoseKey), r]))
+}
+
+/** Puts back what the claim wrote, only where the row still carries this run's stamp. */
+async function unclaimReminders(userId: string, doses: ReminderDose[], stamp: string, before: Map<string, AnyRecord>): Promise<void> {
+  for (const d of doses) {
+    const prior = before.get(doseKey(d))
+    const { error } = await supabase.from('supplement_dose_state')
+      .update({ last_reminded_at: prior?.last_reminded_at ?? null, reminders_sent: prior?.reminders_sent ?? 0 })
+      .eq('user_id', userId).eq('schedule_id', d.schedule_id).eq('dose_date', d.dose_date).eq('dose_time', d.dose_time)
+      .eq('last_reminded_at', stamp)
+    if (error) console.error('push-send: could not put a reminder stamp back:', error.message)
+  }
 }
 
 // ── Release reminders (migration 122) ──────────────────────────────────────
