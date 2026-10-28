@@ -45,7 +45,7 @@ Last 28 days: 26 taken · 1 skipped · 1 missed
 - **Repeat** is the planner's `RecurrenceField` over the same repeat columns as a repeating plan (`schedule_blocks`, 146), so a schedule repeats every way a plan does and `recurrence.ts`'s `occursOn` / `repeatSummary` read it unchanged.
 - **Ends**: never, on a date, or after N days (saved as the date; a loading phase — 20 g a day for a week, then 5 g — is two schedules).
 - **Remind** (decision 10): until taken — every 60 minutes until 22:00 by default, both editable —, once (at the dose's time) or no reminder. When notifications are off on this device the popup says how to turn them on.
-- **Stock**: how much is left (in the dose's unit) and how many days before it runs out to warn; what is left is **derived** — the count minus the dose × doses taken since the count — never stored.
+- **Stock**: how much is left (in the dose's unit) and how many days before it runs out to warn; what is left is **derived** — the count minus the dose × doses taken since the count — never stored. A schedule put back by Undo keeps its count's clock (`stock_set_at`; 169, 28.10.2026 — Undo used to restart it, so 455 g left read 500 g).
 - **Pause**: from a day until a day or until resumed; paused days have no doses and no reminders. Resume (the card's or the popup's) ends the pause.
 - **Delete** asks, deletes (the dose states go with it; taken doses stay in the diary as plain lines) and offers Undo, which also links them again.
 

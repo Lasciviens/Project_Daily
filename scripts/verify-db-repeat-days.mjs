@@ -144,6 +144,8 @@ try {
   // one week; the account's run also closes training weeks — it redefines repeat_days_for_user/_run): live with these scenarios.
   psql(target, ['-f', mig('166_training_moves_recheck.sql')])
   psql(target, ['-f', mig('167_training_week_rules.sql')])
+  // 169: the account run closes days only up to Oslo's today, and 167's training rules' fixes.
+  psql(target, ['-f', mig('169_training_and_stock_fixes.sql')])
 
   // 1. The scenarios. Each passing one prints a NOTICE ("ok  …"); a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
