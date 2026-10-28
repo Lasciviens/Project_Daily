@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Briefcase, Home } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard } from '../../../shared/ui'
+import { useEntityModal } from '../../../shared/modals'
 import { useTransitStops, DuplicateStopError, type UserTransitStop } from '../../home/hooks/useTransitStops'
 import type { StopResult } from '../../home/api/ruterApi'
 import { StopSearchInput } from '../../home/components/ruter/StopSearchInput'
@@ -16,6 +17,7 @@ import { PLACES_BOARD, type PlacesSection } from '../settingsBoards'
 const ICON: Record<PlaceKind, typeof Home> = { home: Home, work: Briefcase }
 
 function PlaceCard({ kind }: { kind: PlaceKind }) {
+  const modal = useEntityModal()
   const { stops, addStop, updateStop, removeStop, dropStop } = useTransitStops()
   const place = findPlace(stops, kind)
   const label = PLACE_LABEL[kind]
@@ -41,7 +43,14 @@ function PlaceCard({ kind }: { kind: PlaceKind }) {
       close()
     } catch (e) {
       if (!(e instanceof DuplicateStopError)) return
-      // Already a favourite: label that row as this place instead.
+      // Already a favourite: label that row as this place instead — asking
+      // first when it is the other place, which would be left not set.
+      const other: PlaceKind = kind === 'home' ? 'work' : 'home'
+      if (findPlace([e.existing], other) && !(await modal.confirm({
+        title: `Use your ${PLACE_LABEL[other].toLowerCase()} stop as ${label.toLowerCase()}?`,
+        message: `${e.existing.stop_name} is saved as ${PLACE_LABEL[other]}. Making it ${label} leaves ${PLACE_LABEL[other]} not set.`,
+        confirmLabel: `Make it ${label}`,
+      }))) return
       try {
         await updateStop(e.existing.id, { label: name, quayId, quayDescription })
         await dropOld(old, e.existing.id)

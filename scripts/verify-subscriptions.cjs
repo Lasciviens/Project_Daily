@@ -98,5 +98,15 @@ console.log('\ncurrencies')
   check('existing lower-case TRY rows total under TRY', J(S.monthlyTotals([sub({ price: 50, currency: 'try' }), sub({ price: 50, currency: 'TRY' })])) === J([{ currency: 'TRY', amount: 100 }]))
 }
 
+console.log('\ntyped price')
+{
+  const read = (t) => S.priceFromText(t)
+  check('empty is no price', read('') === null && read('  ') === null)
+  check('NOK style "1 299,00" and "1299,00"', read('1 299,00') === 1299 && read('1299,00') === 1299)
+  check('"1.299,00" and "1,299.00" are 1299', read('1.299,00') === 1299 && read('1,299.00') === 1299)
+  check('plain decimals: "129,5", "129.50", "99"', read('129,5') === 129.5 && read('129.50') === 129.5 && read('99') === 99)
+  check('not a price → undefined (the save stops)', read('1,2,3') === undefined && read('.') === undefined && read('1..2') === undefined)
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)
