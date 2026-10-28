@@ -316,7 +316,8 @@ export async function skipPlan(rows: PlanRows, s: { routineId: string | null; pl
 }
 
 /** Undoes a skip: the task's skip row goes and the database reopens the task
- *  (142); a skip of a routine's week with no task is removed by its id. */
+ *  (142); a skip of a routine's week with no task is removed by its id.
+ *  Neither id: nothing to undo — it says so instead of reporting "Skip undone". */
 export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string | null }): Promise<void> {
   if (s.taskId) {
     const { error } = await supabase.from('training_skips').delete().eq('task_id', s.taskId)
@@ -327,9 +328,8 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
     putSkippedDayBackOnCalendar(s.taskId)
     return
   }
-  if (s.skipId) {
-    const { error } = await supabase.from('training_skips').delete().eq('id', s.skipId)
-    if (error) throw error
-  }
+  if (!s.skipId) throw new Error('No skip found to undo for this session.')
+  const { error } = await supabase.from('training_skips').delete().eq('id', s.skipId)
+  if (error) throw error
 }
 

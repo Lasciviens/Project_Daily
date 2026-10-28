@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
-import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
+import { useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { pickNextTrainingSession, type NextTrainingSession } from '../trainingPlanModel'
 import { fetchStravaStatus } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava, exchangeStravaCode } from '../api/stravaApi'
@@ -89,13 +89,15 @@ export function useNextTrainingSession(): { data: NextTrainingSession | null; is
   const to = shiftDateStr(today, NEXT_SESSION_LOOKAHEAD_DAYS)
   const blocksQ = useTrainingBlocks(today, to)
   const templatesQ = useScheduleBlocks()
+  const dayTasksQ = useTrainingDayTasks(today, to)
   const nowHHMM = format(new Date(), 'HH:mm')
   const data = useMemo(() => pickNextTrainingSession({
     blocks:        blocksQ.data ?? [],
     templates:     (templatesQ.data ?? []).filter(t => t.category === 'training'),
+    dayTasks:      dayTasksQ.data ?? [],
     today,
     nowHHMM,
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
-  }), [blocksQ.data, templatesQ.data, today, nowHHMM])
-  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading }
+  }), [blocksQ.data, templatesQ.data, dayTasksQ.data, today, nowHHMM])
+  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading }
 }

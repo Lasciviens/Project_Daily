@@ -22,8 +22,9 @@ export interface ToDoItemActionHandlers {
   busy:          boolean
   /** A planned training session: Move instead of nothing, Skip (with a
    *  reason) instead of Cancel, Undo skip instead of Reopen — the same
-   *  actions as the session popup (training/useTrainingPlanActions). */
-  training?:     { onMove: () => void; onSkip: () => void; onUndoSkip: () => void }
+   *  actions as the session popup (training/useTrainingPlanActions). No
+   *  `onUndoSkip`: a skip after its week (167) — Move instead. */
+  training?:     { onMove: () => void; onSkip: () => void; onUndoSkip?: () => void }
 }
 
 interface Props extends ToDoItemActionHandlers {
@@ -61,7 +62,9 @@ export function ToDoItemMenu({ task, ...h }: Props) {
         {h.training
           ? (!isCancelled
               ? task.status !== 'done' && <Item icon={<SkipForward />} onClick={h.training.onSkip} disabled={h.busy}>Skip…</Item>
-              : <Item icon={<Undo2 />} onClick={h.training.onUndoSkip} disabled={h.busy}>Undo skip</Item>)
+              : h.training.onUndoSkip
+                ? <Item icon={<Undo2 />} onClick={h.training.onUndoSkip} disabled={h.busy}>Undo skip</Item>
+                : <Item icon={<CalendarClock />} onClick={h.training.onMove} disabled={h.busy}>Move…</Item>)
           : (!isCancelled
               ? <Item icon={<Ban />} onClick={h.onCancel} disabled={h.busy}>Cancel task</Item>
               : <Item icon={<RotateCcw />} onClick={h.onReopen} disabled={h.busy}>Reopen</Item>)}
@@ -102,7 +105,9 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
       {h.training
         ? (!isCancelled
             ? task.status !== 'done' && <HoverBtn label="Skip (asks why)" onClick={h.training.onSkip} disabled={h.busy}><SkipForward /></HoverBtn>
-            : <HoverBtn label="Undo skip" onClick={h.training.onUndoSkip} disabled={h.busy}><Undo2 /></HoverBtn>)
+            : h.training.onUndoSkip
+              ? <HoverBtn label="Undo skip" onClick={h.training.onUndoSkip} disabled={h.busy}><Undo2 /></HoverBtn>
+              : <HoverBtn label="Move to another day" onClick={h.training.onMove} disabled={h.busy}><CalendarClock /></HoverBtn>)
         : (!isCancelled
             ? <HoverBtn label="Cancel (keeps a record, unlike Delete)" onClick={h.onCancel} disabled={h.busy}><Ban /></HoverBtn>
             : <HoverBtn label="Reopen (re-creates it on Google Tasks if connected)" onClick={h.onReopen} disabled={h.busy}><RotateCcw /></HoverBtn>)}

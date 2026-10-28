@@ -241,14 +241,15 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
   const plan = trainingPlanOf(row, planCtx)
   // The row's task (its slot's, or the day's own — 156) is the session's truth.
   const t = row.task
-  const status = sessionStatus(planFacts({
+  const facts = planFacts({
     date: plan.info.date, startHHMM: plan.info.startHHMM, minutes: plan.info.minutes,
     taskId: t?.id ?? i.taskId ?? null, taskStatus: t?.status ?? (b?.task_status as TaskStatus | null | undefined) ?? null,
     taskWorkoutId: t?.hevy_workout_id ?? b?.task_workout_id ?? null, taskRoutineId: t?.hevy_routine_id ?? b?.task_routine_id ?? null,
     taskMissed: t ? t.closed_reason === 'missed' : b?.task_status === 'cancelled' && b?.task_closed_reason === 'missed',
     firstDate: t?.first_plan_date ?? b?.task_first_plan_date ?? null,
     routineId: plan.info.routineId,
-  }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourLabel(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity }))
+  }, { today: format(new Date(), 'yyyy-MM-dd'), nowHHMM: hourLabel(nowHour), skips: planCtx.skips, hasActivity: planCtx.hasActivity })
+  const status = sessionStatus(facts)
   // A day of a repeating plan (with its day's task or not): the plan's own entries too.
   const weekly = i.kind === 'recurring' ? { templateId: i.canonicalId } : null
   const can = sessionActions(status, { hasTask: plan.target.kind === 'task', weekly: !!weekly })
@@ -267,7 +268,7 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
       title={row.title}
       icons={<>{(i.kind === 'recurring' || row.repeat) && <Repeat className="text-fg-muted" aria-label="Repeats" />}{active && <NowWord />}</>}
       pills={mark ? <TonePill tone={SESSION_TONE[mark]}>{SESSION_LABEL[mark]}</TonePill> : undefined}
-      menu={<div className="-my-2 flex shrink-0 items-center" onClick={e => e.stopPropagation()}><TrainingPlanMenu plan={plan} status={status} weekly={weekly} /></div>}
+      menu={<div className="-my-2 flex shrink-0 items-center" onClick={e => e.stopPropagation()}><TrainingPlanMenu plan={plan} status={status} weekly={weekly} skipId={facts.skipId} /></div>}
       onOpen={open}
       dim={isDone || status.state === 'skipped'}
       struck={isDone}

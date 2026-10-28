@@ -13,6 +13,7 @@ import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
 import { SetParentTaskSheet } from './SetParentTaskSheet'
 import { MoveToListSheet } from './MoveToListSheet'
 import { ToDoItemHoverActions, ToDoItemMenu } from './ToDoItemActions'
+import { weekIsOver } from '../../training/plan/sessionState'
 
 // A tick often moves the row to another list (Done), which mounts a NEW
 // ToDoItem there — remember the tick for a moment so that one still pops.
@@ -76,7 +77,8 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
     training: training ? {
       onMove: () => act.move(task),
       onSkip: () => act.skip(task),
-      onUndoSkip: () => { void act.reopen(task) },
+      // After its week a reopened session is skipped again by the hourly job (167): Move instead.
+      onUndoSkip: weekIsOver(task.first_plan_date ?? task.due_date, todayStr()) ? undefined : () => { void act.reopen(task) },
     } : undefined,
   }
 

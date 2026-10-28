@@ -13,7 +13,7 @@ import { useAthleteProfile } from '../../../training/hooks/useAthleteProfile'
 import { useTrainingHistory } from '../../../training/hooks/useTrainingProgress'
 import { useTrainingPlansByDate } from '../../../training/hooks/useTrainingPlans'
 import { useDayPlanContext } from '../../../training/hooks/usePlanContext'
-import { useScheduleBlocks, useTrainingBlocks } from '../../hooks/useSchedule'
+import { useScheduleBlocks, useTrainingBlocks, useTrainingDayTasks } from '../../hooks/useSchedule'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../../training/hooks/useTrainingSessions'
 import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
 import { openPlanRoutine } from '../../../training/planTraining'
@@ -203,11 +203,12 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
   const lookaheadTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
   const { data: blocks = [] } = useTrainingBlocks(date, lookaheadTo)
   const { data: templates = [] } = useScheduleBlocks()
+  const { data: dayTasks = [] } = useTrainingDayTasks(date, lookaheadTo)
   const { data: routines = [] } = useHevyRoutines()
   const next = useMemo(() => pickNextTrainingSession({
-    blocks, templates: templates.filter(t => t.category === 'training'), today: shiftDateStr(date, 1), nowHHMM: '00:00',
+    blocks, templates: templates.filter(t => t.category === 'training'), dayTasks, today: shiftDateStr(date, 1), nowHHMM: '00:00',
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS - 1,
-  }), [blocks, templates, date])
+  }), [blocks, templates, dayTasks, date])
   if (loading) return <StatBox icon={<Dumbbell aria-hidden />} label={label}><StatEmpty loading /></StatBox>
   return (
     <StatBox icon={<Dumbbell aria-hidden />} label={label}>

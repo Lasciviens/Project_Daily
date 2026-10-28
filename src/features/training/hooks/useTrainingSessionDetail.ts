@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { linkedTimeBlockQuery, useScheduleBlock, useTimeBlock } from '../../daily/hooks/useSchedule'
 import { useTaskById } from '../../todo/hooks/useTodos'
@@ -10,8 +10,11 @@ import { useHevyWorkoutDetail, useHevyWorkoutsRange } from './useHevyWorkouts'
 import { useStravaActivities } from './useStravaActivities'
 import { useTodayStr } from './useTrainingSessions'
 import { useTrainingPlansByDate } from './useTrainingPlans'
+import { useHevyRoutines } from './useHevyRoutines'
+import { usePlanContext } from './usePlanContext'
 import { localDayBoundsIso, workoutLocalDay } from '../workoutDates'
 import { resolveTrainingSession, sessionForTask, type ResolvedSession, type SessionPlanRef } from '../sessionRef'
+import { planStartHHMM } from '../components/calendar/calendarSessions'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
 export interface SessionRequest {
@@ -139,9 +142,14 @@ export function useSessionDay(req: SessionRequest, date: string | null, planRow:
   const plans = useTrainingPlansByDate(day, day)
   const bounds = useMemo(() => localDayBoundsIso(day, day), [day])
   const stravaQ = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 50 }, { enabled: !!date })
+  // A weekly plan's routine, matched by its title as the Log calendar does (167:
+  // another routine's workout never stands in for it).
+  const routinesQ = useHevyRoutines()
+  const { routineOf } = usePlanContext()
+  const routineOfPlan = useCallback((p: CalendarPlanItem, d: string) => routineOf({ title: p.title, date: d, startHHMM: planStartHHMM(p) }), [routineOf])
 
   // keepPreviousData would briefly pair against another day's workouts.
-  const isLoading = !date || workoutsQ.isLoading || workoutsQ.isPlaceholderData || plans.isLoading || stravaQ.isLoading
+  const isLoading = !date || workoutsQ.isLoading || workoutsQ.isPlaceholderData || plans.isLoading || stravaQ.isLoading || routinesQ.isLoading
   const workouts = workoutsQ.data
   const activities = stravaQ.data
   const dayPlans = plans.data.get(day)
@@ -157,8 +165,9 @@ export function useSessionDay(req: SessionRequest, date: string | null, planRow:
       workouts: (workouts ?? []).filter(w => workoutLocalDay(w) === day),
       hasActivity,
       planRow,
+      routineOf: routineOfPlan,
     })
-  }, [isLoading, req.workoutId, req.plan, day, todayStr, dayPlans, workouts, hasActivity, planRow])
+  }, [isLoading, req.workoutId, req.plan, day, todayStr, dayPlans, workouts, hasActivity, planRow, routineOfPlan])
 
   return { resolved, todayStr, hasActivity }
 }
