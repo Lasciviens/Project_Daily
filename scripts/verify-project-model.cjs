@@ -96,9 +96,32 @@ console.log('Entries')
   check('answering a question decides it today, unless it already has a day',
     eq(M.decide({ entry_date: null }, '2026-10-18'), { state: 'decided', entry_date: '2026-10-18' }) && M.decide({ entry_date: '2026-10-14' }, '2026-10-18').entry_date === '2026-10-14')
   check('nextSortOrder: after the last (0 for none)', M.nextSortOrder([]) === 0 && M.nextSortOrder([{ sort_order: 3 }, { sort_order: 1 }]) === 4)
-  const items = [{ id: 'a', sort_order: 0 }, { id: 'b', sort_order: 1 }, { id: 'c', sort_order: 2 }]
-  check('swapWith: the neighbour up or down, null at the ends', eq(M.swapWith(items, 'b', -1).map(x => x.id), ['b', 'a'])
-    && eq(M.swapWith(items, 'b', 1).map(x => x.id), ['b', 'c']) && M.swapWith(items, 'a', -1) === null && M.swapWith(items, 'c', 1) === null && M.swapWith(items, 'z', 1) === null)
+  const at = (id, sort_order, created_at = '2026-10-01T10:00:00Z') => ({ id, sort_order, created_at })
+  const items = [at('a', 0), at('b', 1), at('c', 2)]
+  check('movePlan: distinct places swap with the neighbour, null at the ends',
+    eq(M.movePlan(items, 'b', -1), { moved: items[1], writes: [{ id: 'b', sort_order: 0 }, { id: 'a', sort_order: 1 }] })
+    && eq(M.movePlan(items, 'b', 1).writes, [{ id: 'b', sort_order: 2 }, { id: 'c', sort_order: 1 }])
+    && M.movePlan(items, 'a', -1) === null && M.movePlan(items, 'c', 1) === null && M.movePlan(items, 'z', 1) === null)
+  // Probe 28.10.2026: the assistant adds a phase without a sort order (the default 0).
+  const apply = (list, plan) => M.inSortOrder(list.map(x => {
+    const w = plan.writes.find(v => v.id === x.id)
+    return w ? { ...x, sort_order: w.sort_order } : x
+  })).map(x => x.id)
+  const tied = [at('plan', 0), at('a9', 1, '2026-10-01T10:00:01Z'), at('b5', 2, '2026-10-01T10:00:02Z'), at('f0', 0, '2026-10-20T09:00:00Z')]
+  check('movePlan follows the order shown (sort order, then the older first)', eq(M.inSortOrder(tied).map(x => x.id), ['plan', 'f0', 'a9', 'b5'])
+    && M.movePlan(tied, 'plan', -1) === null && M.movePlan(tied, 'f0', -1).writes.length > 0)
+  check('a tie: Move up moves exactly one place up, the list renumbered 0, 1, 2…',
+    eq(apply(tied, M.movePlan(tied, 'f0', -1)), ['f0', 'plan', 'a9', 'b5'])
+    && eq(M.movePlan(tied, 'f0', -1).writes, [{ id: 'plan', sort_order: 1 }, { id: 'a9', sort_order: 2 }, { id: 'b5', sort_order: 3 }]))
+  check('a tie: Move down moves exactly one place down', eq(apply(tied, M.movePlan(tied, 'plan', 1)), ['f0', 'plan', 'a9', 'b5'])
+    && eq(apply(tied, M.movePlan(tied, 'a9', 1)), ['plan', 'f0', 'b5', 'a9']))
+  const two = [at('second', 0, '2026-10-02T10:00:00Z'), at('first', 0)]
+  check('two tied: the top one goes down, the bottom one up — never the other way',
+    eq(apply(two, M.movePlan(two, 'first', 1)), ['second', 'first']) && eq(apply(two, M.movePlan(two, 'second', -1)), ['second', 'first'])
+    && M.movePlan(two, 'first', -1) === null && M.movePlan(two, 'second', 1) === null)
+  const older = [at('p', 0, '2026-10-02T00:00:00Z'), at('t', 0, '2026-10-03T00:00:00Z'), at('b', 1, '2026-10-01T00:00:00Z')]
+  check('a tie elsewhere in the list: a plain swap would jump two places, the renumber moves one',
+    eq(apply(older, M.movePlan(older, 'b', -1)), ['p', 'b', 't']))
 }
 
 console.log('A project\'s numbers')

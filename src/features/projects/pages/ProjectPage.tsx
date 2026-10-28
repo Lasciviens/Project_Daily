@@ -5,7 +5,7 @@ import { Button, EmptyState, PageBoard, PageContainer, PageHeader, Skeleton, use
 import { ErrorNotice } from '../../../shared/components/ErrorNotice'
 import type { Task } from '../../todo/types'
 import { useAllPhases, useBlocks, useEntries, useProjectTasks, useProjects } from '../hooks/useProjects'
-import { isOpenQuestion, orderPhases, projectSummary, tableSettings } from '../projectModel'
+import { inSortOrder, isOpenQuestion, orderPhases, projectSummary, tableSettings } from '../projectModel'
 import { blockTrack, projectLayout, type ProjectSection } from '../projectBoard'
 import { BlockCard } from '../components/BlockCard'
 import { ProjectHeaderCard } from '../components/ProjectHeaderCard'
@@ -58,7 +58,7 @@ export function ProjectPage() {
       project={project}
       phases={(phasesQ.data ?? []).filter(p => p.project_id === project.id)}
       tasks={(tasksQ.data ?? []).filter(t => t.project_id === project.id)}
-      blocks={[...(blocksQ.data ?? [])].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))}
+      blocks={inSortOrder(blocksQ.data ?? [])}
       entries={entriesQ.data ?? []}
       loading={queries.some(q => q.isLoading)}
       error={failed ? { error: failed.error, retry: () => { for (const q of queries) if (q.isError) void q.refetch() } } : null}
