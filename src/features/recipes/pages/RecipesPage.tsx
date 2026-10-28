@@ -47,8 +47,10 @@ export function RecipesPage() {
   const logFood = () => modal.open({ kind: 'food-log', date: foodDate })
 
   // Two rows on a phone: the tabs, then the day picker with the actions on
-  // its right (owner, 06.10.2026 — fewer rows before the first meal). From
-  // `sm` they share one row. Shop is its own page now (no Food | Shop switch).
+  // its right (owner, 06.10.2026 — fewer rows before the first meal). They
+  // share one row once both fit: the second group sizes on its content
+  // (`flex-auto`), so it wraps under the tabs instead of running out of the
+  // card. Shop is its own page now (no Food | Shop switch).
   return (
     <PageContainer>
       <PageHeader title="Food" art={<FoodHeroArt />}>
@@ -58,7 +60,7 @@ export function RecipesPage() {
           </div>
           {/* On a phone the second row only exists where it does something on
               that tab (Today: the day + Log food; Library: Add recipe + Log food). */}
-          <div className={cx('flex min-w-0 flex-1 items-center gap-2', phoneRowless && 'max-sm:hidden')}>
+          <div className={cx('flex min-w-0 flex-auto items-center gap-2', phoneRowless && 'max-sm:hidden')}>
             {tab === 'today' && <FoodDateNav value={foodDate} onChange={setFoodDate} />}
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
