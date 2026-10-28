@@ -84,10 +84,8 @@ function isPrivateIPv4(ip: string): boolean {
 // fetches whatever URL the user pastes, server-side. Beyond the obvious
 // dotted-quad ranges this also blocks the encodings that trivially bypass a
 // naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
-// and every IPv6 literal. (DNS rebinding — a
-// public name that re-resolves to a private IP at connect time — can't be fully
-// closed here without a custom resolver; fetchPageText's manual redirect
-// re-validation closes the redirect-based variant, which is the practical one.)
+// and every IPv6 literal. A name that resolves to a private address is
+// refused by resolvesToPrivate below, on every redirect hop.
 function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)   // [::1] -> ::1
@@ -108,6 +106,71 @@ function isPrivateHost(hostname: string): boolean {
   if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
 
   return false
+}
+
+// An IPv6 address as its eight 16-bit groups (an embedded IPv4 tail too), or null.
+function ipv6Groups(ip: string): number[] | null {
+  let s = ip.toLowerCase().split('%')[0]
+  const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
+  if (tail) {
+    const q = tail.slice(1).map(Number)
+    if (q.some(n => n > 255)) return null
+    s = s.slice(0, tail.index) + `${((q[0] << 8) | q[1]).toString(16)}:${((q[2] << 8) | q[3]).toString(16)}`
+  }
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const head = halves[0] ? halves[0].split(':') : []
+  const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...rest]
+  if (fill < 0 || groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map(g => parseInt(g, 16))
+}
+
+// True for an IPv6 address a public web page never has: unspecified, loopback,
+// IPv4-compatible/-mapped (judged by the IPv4 inside), NAT64, unique local
+// (fd00:ec2::254 is AWS's metadata), link-local, site-local, multicast,
+// documentation, Teredo, 6to4 around a private IPv4, discard.
+function isPrivateIPv6(ip: string): boolean {
+  const g = ipv6Groups(ip)
+  if (!g) return true
+  const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
+  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) return isPrivateIPv4(v4(g[6], g[7]))
+  if (g.slice(0, 6).every(x => x === 0)) return true
+  if (g[0] === 0x64 && g[1] === 0xff9b) return true
+  if ((g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00) return true
+  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return true
+  if (g[0] === 0x2002) return isPrivateIPv4(v4(g[1], g[2]))
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true
+  return false
+}
+
+// A public NAME can still point at a private address (127.0.0.1.nip.io,
+// localtest.me, a record its owner points at 169.254.169.254), so every hop's
+// name is resolved and refused when any A/AAAA answer is private (audit
+// 28.10.2026). Fails closed: a name that doesn't resolve, a resolver error or a
+// runtime without Deno.resolveDns refuses the hop; "no record of this type" is
+// not an error. Only a timeout (the fetch's own signal) is passed on. fetch
+// resolves the name again, so a rebinding name with a zero TTL can still
+// change its answer in between — this closes the fixed names.
+async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
+  const h = hostname.toLowerCase().trim()
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
+  if (h.startsWith('[') || h.includes(':')) return true
+  const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
+    try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
+      if ((e as Error)?.name === 'AbortError') throw e
+      return e instanceof Deno.errors.NotFound ? [] : null
+    }
+  }
+  try {
+    const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
+    if (!a || !aaaa || a.length + aaaa.length === 0) return true
+    return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw e
+    return true
+  }
 }
 
 // Strips scripts/styles/tags and decodes common entities to leave plain
@@ -140,7 +203,7 @@ async function fetchPageText(rawUrl: string): Promise<string> {
       let url: URL
       try { url = new URL(current) } catch { throw new Error('Invalid URL') }
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
-      if (isPrivateHost(url.hostname)) throw new Error('URL not allowed')
+      if (isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, controller.signal)) throw new Error('URL not allowed')
 
       res = await fetch(url.toString(), {
         signal:   controller.signal,

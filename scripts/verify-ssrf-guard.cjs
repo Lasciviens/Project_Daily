@@ -10,6 +10,12 @@
  *    form. Runs each copy's real text (TypeScript stripped by sucrase) on the
  *    hostname the URL parser produces, exactly as the functions call it.
  *
+ *    Audit 28.10.2026: a public NAME can point at a private address
+ *    (127.0.0.1.nip.io, localtest.me), so each copy also resolves the name of
+ *    every hop (resolvesToPrivate, Deno.resolveDns stubbed here — no network)
+ *    and refuses any private A/AAAA answer, failing closed. Checked on the
+ *    helper and through each REAL handler, redirects included.
+ *
  * 2. news-proxy, the one function with no caller check (security review
  *    26.10.2026): its allow-lists held only for the first URL and fetch
  *    followed redirects, so an open redirect on a listed site made it an open
@@ -58,6 +64,130 @@ for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
   if (ok) console.log(`  ✓ ${fn}: ${BLOCK.length} internal addresses refused, ${ALLOW.length} public ones allowed`)
 }
 
+// ── Names that resolve to a private address (audit 28.10.2026) ────────────────
+class NotFound extends Error { constructor(m) { super(m); this.name = 'NotFound' } }
+// name → { A, AAAA }: an array answers, NotFound = "no record of this type", any other Error = resolver failure.
+const NX = new NotFound('no record found')
+const DNS = {
+  '127.0.0.1.nip.io': { A: ['127.0.0.1'], AAAA: NX },
+  '169.254.169.254.nip.io': { A: ['169.254.169.254'], AAAA: NX },
+  'localtest.me': { A: ['127.0.0.1'], AAAA: ['::1'] },
+  'metadata.google.internal.example': { A: ['169.254.169.254'], AAAA: NX },
+  'cgnat.example': { A: ['100.64.0.1'], AAAA: NX },
+  'ten.example': { A: ['93.184.216.34', '10.0.0.5'], AAAA: NX },
+  'v6-loopback.example': { A: NX, AAAA: ['::1'] },
+  'aws-metadata-v6.example': { A: NX, AAAA: ['fd00:ec2::254'] },
+  'mapped-metadata.example': { A: NX, AAAA: ['::ffff:a9fe:a9fe'] },
+  'mapped-dotted.example': { A: NX, AAAA: ['::ffff:192.168.1.1'] },
+  'link-local-v6.example': { A: ['93.184.216.34'], AAAA: ['fe80::1'] },
+  'nat64.example': { A: NX, AAAA: ['64:ff9b::7f00:1'] },
+  'sixtofour.example': { A: NX, AAAA: ['2002:c0a8:101::1'] },
+  'multicast-v6.example': { A: NX, AAAA: ['ff02::1'] },
+  'nxdomain.example': { A: NX, AAAA: NX },
+  'servfail.example': { A: new Error('SERVFAIL'), AAAA: NX },
+  'aaaa-fails.example': { A: ['93.184.216.34'], AAAA: new Error('timed out') },
+  'www.vg.no': { A: ['195.88.54.16'], AAAA: ['2001:67c:21e0::16'] },
+  'v4only.example': { A: ['93.184.216.34'], AAAA: NX },
+  'v6only.example': { A: NX, AAAA: ['2a00:1450:4001:80b::200e'] },
+  'public.example': { A: ['93.184.216.34'], AAAA: NX },
+  'other-public.example': { A: ['93.184.216.35'], AAAA: NX },
+  'shop.example': { A: ['93.184.216.36'], AAAA: NX },
+  'shop2.example': { A: ['93.184.216.37'], AAAA: NX },
+}
+const DNS_BLOCK = Object.keys(DNS).filter(n => !['www.vg.no', 'v4only.example', 'v6only.example', 'public.example', 'other-public.example', 'shop.example', 'shop2.example'].includes(n))
+const DNS_ALLOW = ['www.vg.no', 'v4only.example', 'v6only.example']
+let lookups = []
+const resolveDns = async (name, type, opts) => {
+  lookups.push(`${name} ${type}`)
+  if (opts?.signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+  const answer = DNS[name]?.[type] ?? NX
+  if (answer instanceof Error) throw answer
+  return answer
+}
+const fakeDeno = (env, extra = {}) => ({ env: { get: (k) => env[k] }, errors: { NotFound }, resolveDns, ...extra })
+
+function guardOf(fn, deno) {
+  const src = fnSource(fn)
+  const start = src.indexOf('function isPrivateIPv4')
+  const end = src.indexOf('\n}\n', src.indexOf('async function resolvesToPrivate')) + 3
+  const code = transform(src.slice(start, end), { transforms: ['typescript'] }).code
+  return new Function('Deno', code + '; return { isPrivateHost, resolvesToPrivate, isPrivateIPv6 }')(deno)
+}
+
+// The REAL handler, every outside call scripted: the caller is the owner, fetch answers from `pages`.
+const OWNER_ENV = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a', HEVY_USER_ID: 'owner', GEMINI_API_KEY: 'g' }
+function realHandler(fn, pages, fetched) {
+  const src = fnSource(fn).replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
+  const code = transform(src, { transforms: ['typescript'] }).code
+  const q = { select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, maybeSingle: () => q, single: () => q,
+    insert: () => q, upsert: () => q, update: () => q, delete: () => q, then: (res) => res({ data: null, error: null }) }
+  const db = { from: () => q, rpc: async () => ({ data: null, error: null }), auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) } }
+  const fetchStub = async (url) => {
+    fetched.push(String(url))
+    const page = pages[String(url)]
+    if (!page) throw new TypeError(`unexpected fetch ${url}`)
+    return new Response(page.status >= 300 && page.status < 400 ? null : (page.body ?? '<html><title>t</title><p>x</p></html>'),
+      { status: page.status ?? 200, headers: page.headers ?? { 'content-type': 'text/html; charset=utf-8' } })
+  }
+  let handler
+  const quiet = { ...console, log: () => {}, warn: () => {}, error: () => {} }   // the refusals are logged by the function
+  new Function('Deno', 'createClient', 'fetch', 'console', code)(fakeDeno(OWNER_ENV, { serve: (f) => { handler = f } }), () => db, fetchStub, quiet)
+  return handler
+}
+const askFor = { 'ai-proxy': (url) => ({ fetchUrl: url }), 'news-article': (url) => ({ url }), 'shop-price': (url) => ({ action: 'read', url }) }
+// Refused = no 2xx with content: ai-proxy throws (an error answer), news-article answers 400, shop-price answers 200 { error, code: 'not_allowed' }.
+const refusedAnswer = async (res) => { const body = await res.json().catch(() => ({})); return res.status >= 400 || body.code === 'not_allowed' ? body : null }
+
+async function dnsChecks() {
+  console.log('\nresolvesToPrivate — names that resolve to a private address')
+  for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+    const g = guardOf(fn, fakeDeno({}))
+    const letThrough = []
+    for (const name of DNS_BLOCK) if (!(await g.resolvesToPrivate(name))) letThrough.push(name)
+    const blocked = []
+    for (const name of DNS_ALLOW) if (await g.resolvesToPrivate(name)) blocked.push(name)
+    check(`${fn}: ${DNS_BLOCK.length} names with a private (or no, or failing) answer refused, ${DNS_ALLOW.length} public ones allowed`,
+      letThrough.length === 0 && blocked.length === 0, `let through ${letThrough.join(', ')}; blocked ${blocked.join(', ')}`)
+    lookups = []
+    check(`${fn}: a public IPv4 literal needs no lookup`, (await g.resolvesToPrivate('8.8.8.8')) === false && lookups.length === 0, lookups.join(', '))
+    const without = guardOf(fn, { errors: { NotFound } })
+    check(`${fn}: a runtime without Deno.resolveDns refuses (fails closed)`, (await without.resolvesToPrivate('www.vg.no')) === true)
+    const ctl = new AbortController(); ctl.abort()
+    const aborted = await g.resolvesToPrivate('www.vg.no', ctl.signal).then(() => 'answered', (e) => e.name)
+    check(`${fn}: a timeout is passed on, not read as a verdict`, aborted === 'AbortError', aborted)
+    const v6 = ['::1', '::', 'fd12::1', 'fe80::1', 'fec0::1', 'ff02::1', '2001:db8::1', '2001::1', '64:ff9b::808:808', '::ffff:7f00:1', '::ffff:10.1.2.3', '2002:a00:1::1', '100::1', 'not-an-ip', '1::2::3']
+      .filter(ip => !g.isPrivateIPv6(ip))
+    const v6ok = ['2001:67c:21e0::16', '2a00:1450:4001:80b::200e', '2606:4700::6810:84e5', '::ffff:8.8.8.8', '2002:808:808::1'].filter(ip => g.isPrivateIPv6(ip))
+    check(`${fn}: isPrivateIPv6 sorts private and public addresses`, v6.length === 0 && v6ok.length === 0, `missed ${v6.join(', ')}; wrongly refused ${v6ok.join(', ')}`)
+  }
+
+  const dnsBlock = (fn) => { const src = fnSource(fn), a = src.indexOf('// An IPv6 address as its eight'); return src.slice(a, src.indexOf('\n}\n', src.indexOf('async function resolvesToPrivate')) + 3) }
+  check('the DNS check is one block, identical in ai-proxy, news-article and shop-price',
+    dnsBlock('ai-proxy').length > 1000 && dnsBlock('news-article') === dnsBlock('ai-proxy') && dnsBlock('shop-price') === dnsBlock('ai-proxy'))
+
+  console.log('\nThe real fetchers refuse such names on every hop')
+  for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+    const ask = async (url, pages) => {
+      const fetched = []
+      const handler = realHandler(fn, pages, fetched)
+      const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify(askFor[fn](url)) }))
+      return { res, fetched }
+    }
+    for (const url of ['http://127.0.0.1.nip.io/', 'http://169.254.169.254.nip.io/latest/meta-data/', 'http://localtest.me/', 'https://nxdomain.example/']) {
+      const { res, fetched } = await ask(url, { [url]: { status: 200 } })
+      check(`${fn}: ${url} is refused without a fetch`, (await refusedAnswer(res)) && fetched.length === 0, `${res.status}, fetched ${fetched.join(' ')}`)
+    }
+    const first = fn === 'shop-price' ? 'https://shop.example/p' : 'https://public.example/a'
+    const internal = 'http://127.0.0.1.nip.io/admin'
+    let r = await ask(first, { [first]: { status: 302, headers: { location: internal } }, [internal]: { status: 200 } })
+    check(`${fn}: a redirect to a name that resolves privately is refused and never fetched`,
+      (await refusedAnswer(r.res)) && r.fetched.length === 1 && !r.fetched.includes(internal), `${r.res.status}, fetched ${r.fetched.join(' ')}`)
+    const ok = fn === 'shop-price' ? 'https://shop2.example/p' : 'https://other-public.example/a'
+    r = await ask(ok, { [ok]: { status: 200 } })
+    check(`${fn}: a page on a public name is still read`, r.res.status === 200 && !(await refusedAnswer(r.res)) && r.fetched.length === 1, `${r.res.status}, fetched ${r.fetched.join(' ')}`)
+  }
+}
+
 // ── news-proxy ────────────────────────────────────────────────────────────────
 const MB = 1024 * 1024
 let routes = {}
@@ -91,6 +221,7 @@ const fetched = (url) => calls.some(c => c.url === url)
 const errorOf = async (res) => { try { return (await res.json()).error } catch { return '' } }
 
 ;(async () => {
+  await dnsChecks()
   console.log('\nnews-proxy — images')
   const BBC = 'https://ichef.bbci.co.uk/ace/standard/240/a.jpg'
   const EVIL = 'https://evil.example/steal'
