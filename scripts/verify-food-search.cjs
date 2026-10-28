@@ -1,7 +1,36 @@
 #!/usr/bin/env node
 /* Verification — the food logger's search ranking and quick-add parsing
- * (src/features/recipes/foodSearch.ts). Run: node scripts/verify-food-search.cjs */
+ * (src/features/recipes/foodSearch.ts), and that Recents read every page of
+ * the diary (foodLogApi.fetchRecentFoods, against a stand-in for Supabase).
+ * Run: node scripts/verify-food-search.cjs */
 require('sucrase/register')
+// foodLogApi imports the live Supabase client: hand it a stand-in that serves
+// pages of `diary` by .range() and records each query's calls.
+const Module = require('module')
+const queries = []
+let diary = []
+const fakeSupabase = {
+  from(table) {
+    const ops = []
+    queries.push({ table, ops })
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'then') {
+          const range = ops.find(o => o[0] === 'range')
+          const data = table === 'food_log_entries' ? (range ? diary.slice(range[1], range[2] + 1) : diary.slice(0, 1000)) : []
+          return (res, rej) => Promise.resolve({ data, error: null }).then(res, rej)
+        }
+        return (...args) => { ops.push([k, ...args]); return q }
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  return origLoad.apply(this, arguments)
+}
 const { foldText, matchRank, rankMatches, parseQuickAdd, sortForSlot, usualForSlot } = require('../src/features/recipes/foodSearch')
 
 let passed = 0, failed = 0
@@ -71,5 +100,24 @@ console.log('\n4 · Slot-aware recents')
   check('no slotCounts → never usual', usualForSlot([{ key: 'x', count: 9 }], 'lunch').length === 0)
 }
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+console.log('\n5 · Recents read every page of the 30 days')
+;(async () => {
+  const { fetchRecentFoods } = require('../src/features/recipes/api/foodLogApi')
+  // 1,150 eaten lines, newest first: 1,000 chicken lines, then 150 older oats lines.
+  const line = (i, o) => ({ meal_slot: 'lunch', library_ingredient_id: 'chicken', recipe_id: null, custom_title: null, quantity: 150, unit: 'g',
+    calories: 248, protein_g: 46, carbs_g: 0, fat_g: 5, fiber_g: 0, sugar_g: 0, ingredient: { name: 'Chicken breast' }, recipe: null, ...o })
+  diary = [...Array.from({ length: 1000 }, (_, i) => line(i)), ...Array.from({ length: 150 }, (_, i) => line(i, { meal_slot: 'breakfast', library_ingredient_id: 'oats', ingredient: { name: 'Oats' }, quantity: 60 }))]
+  queries.length = 0
+  const recents = await fetchRecentFoods('2026-09-28')
+  const reads = queries.filter(q => q.table === 'food_log_entries')
+  const oats = recents.find(r => r.key === 'oats')
+  check('the oldest days past row 1,000 still count (was cut at PostgREST\'s 1,000)', oats?.count === 150 && recents.find(r => r.key === 'chicken')?.count === 1000, JSON.stringify(recents.map(r => [r.key, r.count])))
+  check('read in two pages of 1,000, eaten only, in a stable order (created_at, id)', reads.length === 2
+    && reads.every(q => q.ops.some(o => o[0] === 'eq' && o[1] === 'status' && o[2] === 'eaten'))
+    && reads.every(q => q.ops.filter(o => o[0] === 'order').map(o => o[1]).join() === 'created_at,id')
+    && reads[1].ops.some(o => o[0] === 'range' && o[1] === 1000 && o[2] === 1999), JSON.stringify(reads.map(q => q.ops.filter(o => o[0] === 'range'))))
+  check('only the columns Recents use (no select *)', !reads[0].ops.find(o => o[0] === 'select')[1].includes('*'))
+
+  console.log(`\n${passed} passed, ${failed} failed`)
+  process.exit(failed ? 1 : 0)
+})().catch(e => { console.log(`  ✗ threw — ${e?.stack ?? e}`); process.exit(1) })

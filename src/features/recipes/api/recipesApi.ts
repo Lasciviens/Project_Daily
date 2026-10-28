@@ -3,6 +3,8 @@ import { requireUser } from '../../../shared/utils/requireUser'
 import { toGrams } from '../foodUnits'
 import type { Recipe, RecipeWithIngredients, RecipeInput, RecipeIngredient, IngredientLibraryItem } from '../types'
 
+// An EATEN row's units that 106's trigger recalculates (food_is_weight_unit):
+// the diary stores g / ml. Recipes and planned rows count through foodUnits.
 export const WEIGHT_UNITS = new Set(['g', 'gram', 'grams', 'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'])
 
 export interface ComputedMacros {

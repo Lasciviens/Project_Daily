@@ -1,5 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
-import { WEIGHT_UNITS } from '../../recipes/api/recipesApi'
+import { toGrams } from '../../recipes/foodUnits'
 import type { MealPlanEntry } from '../../recipes/types'
 import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/foodIngredients'
 import { groupDishes, type DishGroup, type DishSingle } from '../../recipes/foodDish'
@@ -61,6 +61,10 @@ export type MealDisplayRow = MealGroupRow | SingleMealRow
 
 export const groupDayMeals = (meals: readonly DayMeal[]): MealDisplayRow[] => groupDishes(meals)
 
+/** The eaten rows of one meal another line can join as a dish ("In" in Edit entry) — never a taken supplement dose's line, which keeps its day and meal (160). */
+export const joinableMeals = (meals: readonly DayMeal[], slot: DayMeal['meal_slot']): DayMeal[] =>
+  meals.filter(m => m.source === 'log' && m.meal_slot === slot && !m.logEntry?.supplement_schedule_id)
+
 export interface DayNutrition {
   meals:     DayMeal[]
   calories:  number
@@ -71,11 +75,14 @@ export interface DayNutrition {
   sugar_g:   number
 }
 
-// Only weight/volume units let a per-100g library macro be scaled to a real
-// amount; a "piece"/"clove"/etc. quantity can't be converted, so it's skipped.
-// Shares recipesApi's WEIGHT_UNITS so the two paths never drift (was a local
-// narrower set that dropped 'milliliter(s)'/'millilitre(s)').
-const SCALABLE_UNITS = WEIGHT_UNITS
+// A planned food counts per 100 g only in a unit foodUnits can weigh (g, kg,
+// ml, dl, l…) — the same gate as Meal plan's plannedKcal and ticking it eaten
+// (a g/ml-only gate here showed "0.5 kg" as 0 kcal); a "piece"/"clove"
+// quantity can't be converted, so it's skipped.
+const per100 = (quantity: number | null, unit: string | null): number => {
+  const grams = toGrams(quantity, unit ?? 'g')
+  return grams != null ? grams / 100 : 0
+}
 
 interface MealRow {
   id:                    string
@@ -169,7 +176,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
       sugar_g = (row.recipe.sugar_g ?? 0) * servings
     } else if (row.ingredient) {
       const qty = row.quantity ?? 0
-      const factor = SCALABLE_UNITS.has((row.unit ?? '').toLowerCase()) ? qty / 100 : 0
+      const factor = per100(row.quantity, row.unit)
       const qtyLabel = qty ? `${qty}${row.unit ? ` ${row.unit}` : ''}` : ''
       title = qtyLabel ? `${row.ingredient.name} · ${qtyLabel}` : row.ingredient.name
       calories = (row.ingredient.calories ?? 0) * factor; protein_g = (row.ingredient.protein_g ?? 0) * factor
@@ -306,8 +313,7 @@ async function legacyTwoTable(date: string): Promise<DayMeal[]> {
       // recipe fiber isn't selected pre-migration-060 → fiber stays 0 for plans.
     } else if (row.ingredient) {
       const qty  = row.ingredient_quantity ?? 0
-      const unit = (row.ingredient_unit ?? '').toLowerCase()
-      const factor = SCALABLE_UNITS.has(unit) ? qty / 100 : 0
+      const factor = per100(row.ingredient_quantity, row.ingredient_unit)
       const qtyLabel = qty ? `${qty}${row.ingredient_unit ? ` ${row.ingredient_unit}` : ''}` : ''
       title = qtyLabel ? `${row.ingredient.name} · ${qtyLabel}` : row.ingredient.name
       calories  = (row.ingredient.calories  ?? 0) * factor
