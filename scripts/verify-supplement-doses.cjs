@@ -5,12 +5,39 @@
  * words a dose line shows, when a Take is stamped), the schedule popup's form
  * (scheduleForm.ts), the reminder push and its link (supplementReminder.ts,
  * copied verbatim into push-send), phone-gateway's log_supplement hook and
- * the two popup kinds. The SQL copy of the dose rules is compared with
- * supplementDoses.ts on a database by verify-db-supplement-schedules.mjs.
+ * the two popup kinds, and a taken dose's line staying out of dishes (Edit
+ * entry's "In", a dish's move, Edit meal and Copy to — mealGroupApi against a
+ * recording stand-in for Supabase). The SQL copy of the dose rules is
+ * compared with supplementDoses.ts on a database by
+ * verify-db-supplement-schedules.mjs.
  * Run: node scripts/verify-supplement-doses.cjs */
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
+// The diary api modules import the live Supabase client: hand them a stand-in
+// that records each query's calls and answers from `answer`.
+const Module = require('module')
+const queries = []
+let answer = () => ({ data: null, error: null })
+const fakeSupabase = {
+  from(table) {
+    const ops = []
+    queries.push({ table, ops })
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'then') return (res, rej) => Promise.resolve(answer(table, ops)).then(res, rej)
+        return (...args) => { ops.push([k, ...args]); return q }
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  if (/shared\/utils\/requireUser$/.test(request)) return { requireUser: async () => ({ id: 'u' }) }
+  return origLoad.apply(this, arguments)
+}
 const D = require('../src/features/supplements/supplementDoses')
 const F = require('../src/features/supplements/scheduleForm')
 const P = require('../src/features/supplements/supplementReminder')
@@ -274,7 +301,48 @@ async function reminderRuns() {
   check('a stamp written after this run\'s own is left alone', [r.row?.last_reminded_at, r.row?.reminders_sent], [LATER, 2])
 }
 
-reminderRuns().catch((e) => { failed++; console.log(`  ✗ crashed: ${e.stack}`) }).then(() => {
+console.log('A taken dose\'s line never joins or moves with a dish')
+const N = require('../src/features/daily/api/dayNutritionApi')
+const G = require('../src/features/recipes/api/mealGroupApi')
+{
+  const line = (id, o) => N.unifiedToMeal({ id, meal_slot: 'supplement', status: 'eaten', recipe_id: null, library_ingredient_id: null, custom_title: id,
+    quantity: null, unit: null, calories: 200, protein_g: 20, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, recipe: null, ingredient: null,
+    meal_group_id: null, meal_group_title: null, supplement_schedule_id: null, ...o }, '2026-10-28')
+  const meals = [line('Kreatin', { supplement_schedule_id: 's1', quantity: 5, unit: 'g', calories: 0, protein_g: 0 }), line('Protein bar'), line('Shake', { status: 'planned' }), line('Toast', { meal_slot: 'breakfast' })]
+  check('Edit entry\'s "In" offers the slot\'s eaten lines, never a taken dose\'s line', N.joinableMeals(meals, 'supplement').map(m => m.id), ['Protein bar'])
+}
+;(async () => {
+  const rows = [
+    { id: 'D', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: 's1' },
+    { id: 'P', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: null },
+    { id: 'S', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: null },
+  ]
+  const updates = () => queries.filter(q => q.ops.some(o => o[0] === 'update'))
+  const idsOf = q => (q.ops.find(o => o[0] === 'in') ?? [])[2]
+  answer = (table, ops) => (ops.some(o => o[0] === 'update') ? { error: null } : { data: rows, error: null })
+  queries.length = 0
+  const before = await G.moveMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  check('a dish\'s move moves its other rows, not the dose line', [updates().length, idsOf(updates()[0]), updates()[0].ops.find(o => o[0] === 'update')[1]],
+    [1, ['P', 'S'], { date: '2026-10-29', meal_slot: 'snack' }])
+  check('…and its Undo puts back only what moved', before.map(r => r.id), ['P', 'S'])
+  // Before 160 the column is missing: no row is a dose, the whole dish moves.
+  const pre160 = rows.map(({ supplement_schedule_id, ...r }) => r)
+  answer = (table, ops) => ops.some(o => o[0] === 'update') ? { error: null }
+    : String(ops.find(o => o[0] === 'select')[1]).includes('supplement_schedule_id') ? { data: null, error: { code: '42703', message: 'column food_log_entries.supplement_schedule_id does not exist' } }
+    : { data: pre160, error: null }
+  queries.length = 0
+  await G.moveMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  check('before 160 the dish moves whole (retried without the column)', idsOf(updates()[0]), ['D', 'P', 'S'])
+  answer = (table, ops) => ops.some(o => o[0] === 'insert') ? { data: [{ id: 'n1' }, { id: 'n2' }], error: null } : { data: rows.map(r => ({ ...r, custom_title: r.id, ingredient: null, recipe: null })), error: null }
+  const dish = await G.fetchMealGroupRows('G')
+  check('Edit meal\'s basket (and Copy to) leaves the dose line out', dish.map(r => r.id), ['P', 'S'])
+  queries.length = 0
+  await G.copyMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  const ins = queries.find(q => q.ops.some(o => o[0] === 'insert'))
+  check('Copy to copies the dish without the dose line', (ins?.ops.find(o => o[0] === 'insert')[1] ?? []).map(r => r.custom_title), ['P', 'S'])
+
+
+  await reminderRuns().catch((e) => { failed++; console.log(`  ✗ crashed: ${e.stack}`) })
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)
-})
+})().catch(e => { console.log(`  ✗ threw — ${e?.stack ?? e}`); process.exit(1) })

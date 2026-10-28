@@ -3,10 +3,38 @@
  * the logger's plan mode saves the same row shapes as a log, as status
  * 'planned', with no stored totals for a food or recipe; a one-off line keeps
  * its typed values; a planned row's kcal is worked out live, through the same
- * weight-unit gate as every reader. Run: node scripts/verify-meal-plan.cjs */
+ * weight-unit gate as every reader — Food · Today's planned row
+ * (dayNutritionApi.unifiedToMeal) and ticking it eaten
+ * (mealPlanApi.eatPlannedEntry, against a recording stand-in for Supabase).
+ * Run: node scripts/verify-meal-plan.cjs */
 require('sucrase/register')
+// The api modules import the live Supabase client: hand them a stand-in that
+// records each query's calls and answers from `answer`.
+const Module = require('module')
+const writes = []
+let answer = () => ({ data: null, error: null })
+const fakeSupabase = {
+  from(table) {
+    const ops = []
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'then') return (res, rej) => Promise.resolve(answer(table, ops)).then(res, rej)
+        if (k === 'maybeSingle') return () => Promise.resolve(answer(table, ops))
+        return (...args) => { ops.push([k, ...args]); if (k === 'update' || k === 'insert') writes.push({ table, op: k, row: args[0] }); return q }
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  return origLoad.apply(this, arguments)
+}
 const { plannedRow, plannedKcal, MACRO_KEYS } = require('../src/features/recipes/mealPlanRows')
 const { itemsToEntries } = require('../src/features/recipes/foodBasket')
+const { unifiedToMeal } = require('../src/features/daily/api/dayNutritionApi')
+const { eatPlannedEntry } = require('../src/features/recipes/api/mealPlanApi')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
   if (cond) { passed++; console.log(`  ✓ ${name}`) } else { failed++; console.log(`  ✗ ${name}${detail ? ' — ' + detail : ''}`) }
@@ -62,5 +90,50 @@ console.log('\n2 · A planned row\'s kcal, live')
   check('a recipe ignores a stray stored kcal', plannedKcal({ ...base, recipe_id: 'r', recipe: { calories: 100 }, calories: 999 }) === 100)
 }
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+console.log('\n3 · Food · Today\'s planned row counts what Meal plan counts (one weight-unit gate)')
+{
+  const chicken = { name: 'Chicken breast', unit: 'g', calories: 165, protein_g: 31, carbs_g: 0, fat_g: 3.6, fiber_g: 0, sugar_g: 0 }
+  const planned = (quantity, unit, ingredient = chicken) => ({
+    id: 'p1', meal_slot: 'dinner', status: 'planned', recipe_id: null, library_ingredient_id: 'lib1', custom_title: null,
+    quantity, unit, calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null, recipe: null, ingredient,
+  })
+  const plan = (quantity, unit, ingredient = chicken) => plannedKcal({ recipe_id: null, servings: 1, library_ingredient_id: 'lib1', ingredient_quantity: quantity, ingredient_unit: unit, ingredient })
+  for (const [q, u, want] of [[150, 'g', 248], [0.5, 'kg', 825], [150, 'gr', 248], [2, 'dl', 330], [0.5, 'l', 825], [5, 'cl', 83]]) {
+    const today = unifiedToMeal(planned(q, u), '2026-10-28')
+    check(`${q} ${u}: Today ${today.calories} kcal = Meal plan ${Math.round(plan(q, u))} kcal`, today.calories === want && Math.round(plan(q, u)) === want, `${today.calories} / ${plan(q, u)}`)
+  }
+  const kg = unifiedToMeal(planned(0.5, 'kg'), '2026-10-28')
+  check('0.5 kg: protein counts too (155 g), the title keeps the typed amount', kg.protein_g === 155 && kg.title === 'Chicken breast · 0.5 kg', JSON.stringify(kg))
+  const egg = { ...chicken, name: 'Egg', calories: 143 }
+  check('"2 piece" can\'t be counted: 0 on Today, none on Meal plan', unifiedToMeal(planned(2, 'piece', egg), '2026-10-28').calories === 0 && plan(2, 'piece', egg) === null)
+  check('no unit on a planned food reads as g on both', unifiedToMeal(planned(100, null), '2026-10-28').calories === 165 && plan(100, null) === 165)
+}
+
+console.log('\n4 · Ticking a planned food eaten stores grams / ml (the units 106\'s trigger recalculates)')
+;(async () => {
+  const lib = (o = {}) => ({ id: 'lib1', name: 'Chicken breast', unit: 'g', serving_grams: 150, calories: 165, protein_g: 31, carbs_g: 0, fat_g: 3.6, fiber_g: 0, sugar_g: 0, ...o })
+  const tick = async (quantity, unit, libRow) => {
+    writes.length = 0
+    answer = (table) => (table === 'recipe_ingredient_library' ? { data: libRow, error: null } : { data: null, error: null })
+    await eatPlannedEntry({ id: 'p1', date: '2026-10-28', meal_slot: 'dinner', recipe_id: null, custom_title: null, library_ingredient_id: 'lib1', ingredient_quantity: quantity, ingredient_unit: unit, servings: 1 })
+    return writes.find(w => w.table === 'food_log_entries')?.row ?? {}
+  }
+  const shown = (quantity, unit, libRow) => Math.round(plannedKcal({ recipe_id: null, servings: 1, library_ingredient_id: 'lib1', ingredient_quantity: quantity, ingredient_unit: unit, ingredient: libRow }))
+  let w = await tick(0.5, 'kg', lib())
+  check('0.5 kg → 500 g eaten with 825 kcal — what the plan showed (was 75 g: 0.5 × the 150 g preset)', w.status === 'eaten' && w.quantity === 500 && w.unit === 'g' && w.calories === 825 && shown(0.5, 'kg', lib()) === 825, JSON.stringify(w))
+  w = await tick(0.5, 'kg', lib({ serving_grams: null }))
+  check('0.5 kg without a preset → 500 g with macros (was "0.5 kg" with none)', w.quantity === 500 && w.unit === 'g' && w.calories === 825, JSON.stringify(w))
+  w = await tick(2, 'dl', lib({ name: 'Milk', unit: 'ml', serving_grams: 200, calories: 46 }))
+  check('2 dl of a drink → 200 ml', w.quantity === 200 && w.unit === 'ml' && w.calories === 92, JSON.stringify(w))
+  w = await tick(150, 'g', lib())
+  check('150 g stays 150 g', w.quantity === 150 && w.unit === 'g' && w.calories === 247.5, JSON.stringify(w))
+  w = await tick(2, 'piece', lib({ name: 'Egg', serving_grams: 50, calories: 143 }))
+  check('"2 piece" of a food with a 50 g preset → 100 g', w.quantity === 100 && w.unit === 'g' && w.calories === 143, JSON.stringify(w))
+  w = await tick(2, 'piece', lib({ name: 'Egg', serving_grams: null, calories: 143 }))
+  check('"2 piece" without a preset keeps its amount, no macros (nothing to count from)', w.quantity === 2 && w.unit === 'piece' && w.calories === null, JSON.stringify(w))
+  w = await tick(null, 'g', lib())
+  check('no amount → the food\'s portion (150 g), never 0', w.quantity === 150 && w.unit === 'g' && w.calories === 247.5, JSON.stringify(w))
+
+  console.log(`\n${passed} passed, ${failed} failed`)
+  process.exit(failed ? 1 : 0)
+})().catch(e => { console.log(`  ✗ threw — ${e?.stack ?? e}`); process.exit(1) })

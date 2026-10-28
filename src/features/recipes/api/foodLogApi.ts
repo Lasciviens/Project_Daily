@@ -196,26 +196,39 @@ export function recentToEntry(r: RecentFood, date: string, slot: MealSlot): Food
   }
 }
 
+const RECENT_COLS = 'meal_slot, library_ingredient_id, recipe_id, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, ' +
+  'ingredient:recipe_ingredient_library(name), recipe:recipes(title)'
+
 export async function fetchRecentFoods(fromDate: string, slot?: string): Promise<RecentFood[]> {
   // Recents = what was actually EATEN (status='eaten'), never planned rows.
-  const build = (withStatus: boolean) => {
+  // Paged like fetchFoodLogRange: 30 days of a detailed diary pass PostgREST's
+  // 1,000 rows, and the cut dropped the oldest days from the counts.
+  const build = (offset: number, withStatus: boolean) => {
     let q = supabase
       .from('food_log_entries')
-      .select('*, ingredient:recipe_ingredient_library(name), recipe:recipes(title)')
+      .select(RECENT_COLS)
       .gte('date', fromDate)
-      .order('created_at', { ascending: false })
     if (slot) q = q.eq('meal_slot', slot)
     if (withStatus) q = q.eq('status', 'eaten')
     return q
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + RANGE_PAGE - 1)
   }
-  let { data, error } = await build(true)
-  if (error && isMissingStatus(error)) ({ data, error } = await build(false))
-  if (error) throw error
+  const data: unknown[] = []
+  let withStatus = true
+  for (let offset = 0; ; offset += RANGE_PAGE) {
+    let page = await build(offset, withStatus)
+    if (page.error && withStatus && isMissingStatus(page.error)) { withStatus = false; page = await build(offset, false) }
+    if (page.error) throw page.error
+    data.push(...(page.data ?? []))
+    if ((page.data?.length ?? 0) < RANGE_PAGE) break
+  }
   const hidden = await fetchHiddenRecentKeys()
   // Ordered newest-first, so the FIRST row seen per key is the most recent
   // snapshot — that's the one we keep (re-log the way you last ate it).
   const byKey = new Map<string, RecentFood>()
-  for (const row of (data ?? []) as unknown as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]) {
+  for (const row of data as (FoodLogEntry & { ingredient: { name: string } | null; recipe: { title: string } | null })[]) {
     const title = row.ingredient?.name ?? row.recipe?.title ?? row.custom_title ?? '—'
     const key = row.library_ingredient_id ?? row.recipe_id ?? `c:${title.toLowerCase()}`
     if (hidden.has(key)) continue

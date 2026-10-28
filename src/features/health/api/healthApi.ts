@@ -10,6 +10,9 @@ export interface HealthWorkoutSummary {
   duration_seconds: number | null
   active_energy_kj: number | null
   total_energy_kj:  number | null
+  /** `raw.activeEnergyBurned` alone (a number or { qty, units }): its units say
+   *  what active_energy_kj holds, for workoutRaw.energyKcal. */
+  active_energy_raw?: unknown
   avg_heart_rate:   number | null
   min_heart_rate:   number | null
   max_heart_rate:   number | null
@@ -39,7 +42,7 @@ export interface HealthMetric {
 // Only what the aggregation reads. `select('*')` also pulled user_id,
 // synced_at and source_family on every one of tens of thousands of rows.
 const METRIC_COLUMNS = 'id,metric_name,date,recorded_at,unit,source,value'
-const WORKOUT_SUMMARY_COLUMNS = 'id,name,start_time,end_time,duration_seconds,active_energy_kj,total_energy_kj,avg_heart_rate,min_heart_rate,max_heart_rate'
+const WORKOUT_SUMMARY_COLUMNS = 'id,name,start_time,end_time,duration_seconds,active_energy_kj,total_energy_kj,active_energy_raw:raw->activeEnergyBurned,avg_heart_rate,min_heart_rate,max_heart_rate'
 
 // Supabase/PostgREST caps every response at this many rows server-side
 // (confirmed: an explicit Range header asking for more still comes back
@@ -188,17 +191,18 @@ function localMidnightIso(date: string, addDays = 0): string {
 
 /** Workouts that started inside [from, to] (local days), newest first, without
  *  the `raw` payload — the list used to download every HR curve and GPS route
- *  even while collapsed (H-07). */
+ *  even while collapsed (H-07). Every page: a `.limit(200)` over every kind
+ *  left a year's "Other workouts (N)" short once strength sessions filled it. */
 export async function fetchHealthWorkoutSummaries(fromDate: string, toDate: string): Promise<HealthWorkoutSummary[]> {
-  const { data, error } = await supabase
-    .from('health_workouts')
-    .select(WORKOUT_SUMMARY_COLUMNS)
-    .gte('start_time', localMidnightIso(fromDate))
-    .lt('start_time', localMidnightIso(toDate, 1))
-    .order('start_time', { ascending: false })
-    .limit(200)
-  if (error) throw error
-  return (data ?? []) as HealthWorkoutSummary[]
+  return fetchAllPages<HealthWorkoutSummary>((from, to, withCount) =>
+    supabase
+      .from('health_workouts')
+      .select(WORKOUT_SUMMARY_COLUMNS, withCount ? { count: 'exact' } : undefined)
+      .gte('start_time', localMidnightIso(fromDate))
+      .lt('start_time', localMidnightIso(toDate, 1))
+      .order('start_time', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to))
 }
 
 /** One workout with `raw`, read only when its detail opens. */

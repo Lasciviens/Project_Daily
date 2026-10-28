@@ -8,7 +8,9 @@ import type { FoodLogEntryInput, MealSlot } from '../types'
 // A dish = the diary rows sharing a meal_group_id (087, "As meal"); its own
 // name is meal_group_title on each of them (158). Every change here is one
 // update on those rows (food_log_entries is audited) and returns what the
-// rows were before, so the caller's toast can offer Undo.
+// rows were before, so the caller's toast can offer Undo. A taken supplement
+// dose's line (160) never moves day or meal: a dish's move, Edit meal and
+// Copy to leave it where it is.
 
 /** Where a diary row sits, and in which dish — what a move, an ungroup or a "Move out of meal" changes and its Undo puts back. */
 export interface RowPlace { id: string; date: string; meal_slot: MealSlot; meal_group_id: string | null; meal_group_title: string | null }
@@ -17,15 +19,24 @@ export const NOT_MIGRATED_158 = 'Naming a dish needs migration 158 (meal_group_t
 
 const PLACE = 'id, date, meal_slot, meal_group_id'
 
-async function readPlaces(filter: { group?: string; ids?: readonly string[] }): Promise<RowPlace[]> {
+// Before 160 the column is missing and no row is a dose.
+function isMissingDoseColumn(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /supplement_schedule_id/i.test(x?.message ?? '')
+}
+
+type PlaceRow = RowPlace & { supplement_schedule_id?: string | null }
+
+async function readPlaces(filter: { group?: string; ids?: readonly string[] }): Promise<PlaceRow[]> {
   const q = (cols: string) => {
     const base = supabase.from('food_log_entries').select(cols)
     return filter.group ? base.eq('meal_group_id', filter.group) : base.in('id', [...(filter.ids ?? [])])
   }
-  let { data, error } = await q(`${PLACE}, meal_group_title`)
+  let { data, error } = await q(`${PLACE}, meal_group_title, supplement_schedule_id`)
+  if (error && isMissingDoseColumn(error)) ({ data, error } = await q(`${PLACE}, meal_group_title`))
   if (error && isMissingGroupTitle(error)) ({ data, error } = await q(PLACE))
   if (error) throw error
-  return ((data ?? []) as unknown as RowPlace[]).map(r => ({ ...r, meal_group_title: r.meal_group_title ?? null }))
+  return ((data ?? []) as unknown as PlaceRow[]).map(r => ({ ...r, meal_group_title: r.meal_group_title ?? null }))
 }
 
 /** Writes `patch` to the rows `where` picks (scoped to the account), dropping the dish name before 158. */
@@ -44,10 +55,10 @@ async function updateRows(patch: Record<string, unknown>, where: { group?: strin
   if (error) throw error
 }
 
-/** Moves a dish to another meal and/or day; returns where its rows were. */
+/** Moves a dish to another meal and/or day (a taken dose's line stays); returns where its rows were. */
 export async function moveMealGroup(groupId: string, to: { date: string; slot: MealSlot }): Promise<RowPlace[]> {
-  const before = await readPlaces({ group: groupId })
-  await updateRows({ date: to.date, meal_slot: to.slot }, { group: groupId })
+  const before = (await readPlaces({ group: groupId })).filter(r => !r.supplement_schedule_id)
+  if (before.length) await updateRows({ date: to.date, meal_slot: to.slot }, { ids: before.map(r => r.id) })
   return before
 }
 
@@ -88,7 +99,7 @@ export async function renameMealGroup(groupId: string, title: string | null): Pr
   return before[0]?.meal_group_title ?? null
 }
 
-/** The dish's rows with their names resolved (Edit meal, Copy to). */
+/** The dish's rows with their names resolved (Edit meal, Copy to), without a taken dose's line. */
 export async function fetchMealGroupRows(groupId: string): Promise<LoggedFood[]> {
   const { data, error } = await supabase
     .from('food_log_entries')
@@ -98,7 +109,9 @@ export async function fetchMealGroupRows(groupId: string): Promise<LoggedFood[]>
     .order('id', { ascending: true })
   if (error) throw error
   const rows = (data ?? []) as unknown as (LoggedFood & { ingredient: { name: string } | null; recipe: { title: string } | null })[]
-  return rows.map(({ ingredient, recipe, ...row }) => ({ ...row, title: ingredient?.name ?? recipe?.title ?? row.custom_title ?? '—' }))
+  return rows
+    .filter(r => !r.supplement_schedule_id)
+    .map(({ ingredient, recipe, ...row }) => ({ ...row, title: ingredient?.name ?? recipe?.title ?? row.custom_title ?? '—' }))
 }
 
 /** "Copy to": the dish's rows again on that day and meal, as a dish of their own with the same name. Returns the new ids. */
