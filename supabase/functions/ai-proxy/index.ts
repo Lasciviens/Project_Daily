@@ -148,23 +148,32 @@ function isPrivateIPv6(ip: string): boolean {
 // A public NAME can still point at a private address (127.0.0.1.nip.io,
 // localtest.me, a record its owner points at 169.254.169.254), so every hop's
 // name is resolved and refused when any A/AAAA answer is private (audit
-// 28.10.2026). Fails closed: a name that doesn't resolve, a resolver error or a
-// runtime without Deno.resolveDns refuses the hop; "no record of this type" is
-// not an error. Only a timeout (the fetch's own signal) is passed on. fetch
+// 28.10.2026). Fails closed on the answer: a name that doesn't resolve or a
+// resolver error refuses the hop; "no record of this type" is not an error. A
+// runtime with no DNS lookup to give (no Deno.resolveDns, or one it doesn't
+// allow — PermissionDenied / NotSupported) keeps the hostname check alone, as
+// before: refusing there would refuse every link (Supabase's Edge Runtime is
+// not confirmed to allow lookups). Only a timeout (the fetch's own signal) is
+// passed on. fetch
 // resolves the name again, so a rebinding name with a zero TTL can still
 // change its answer in between — this closes the fixed names.
 async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
   const h = hostname.toLowerCase().trim()
   if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
   if (h.startsWith('[') || h.includes(':')) return true
+  if (typeof Deno.resolveDns !== 'function') return false
+  let unavailable = false
   const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
     try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
-      if ((e as Error)?.name === 'AbortError') throw e
+      const name = (e as Error)?.name
+      if (name === 'AbortError') throw e
+      if (name === 'PermissionDenied' || name === 'NotSupported') unavailable = true
       return e instanceof Deno.errors.NotFound ? [] : null
     }
   }
   try {
     const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
+    if (unavailable) return false
     if (!a || !aaaa || a.length + aaaa.length === 0) return true
     return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
   } catch (e) {

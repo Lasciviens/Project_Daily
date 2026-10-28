@@ -151,7 +151,11 @@ async function dnsChecks() {
     lookups = []
     check(`${fn}: a public IPv4 literal needs no lookup`, (await g.resolvesToPrivate('8.8.8.8')) === false && lookups.length === 0, lookups.join(', '))
     const without = guardOf(fn, { errors: { NotFound } })
-    check(`${fn}: a runtime without Deno.resolveDns refuses (fails closed)`, (await without.resolvesToPrivate('www.vg.no')) === true)
+    check(`${fn}: a runtime without Deno.resolveDns keeps the hostname check alone (never refuses every link)`, (await without.resolvesToPrivate('www.vg.no')) === false)
+    const denied = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw Object.assign(new Error('Requires net access'), { name: 'PermissionDenied' }) } }))
+    check(`${fn}: a runtime that doesn't allow the lookup keeps the hostname check alone`, (await denied.resolvesToPrivate('www.vg.no')) === false)
+    const failing = guardOf(fn, fakeDeno({}, { resolveDns: async () => { throw Object.assign(new Error('server failure'), { name: 'Error' }) } }))
+    check(`${fn}: a resolver error still refuses (fails closed on the answer)`, (await failing.resolvesToPrivate('www.vg.no')) === true)
     const ctl = new AbortController(); ctl.abort()
     const aborted = await g.resolvesToPrivate('www.vg.no', ctl.signal).then(() => 'answered', (e) => e.name)
     check(`${fn}: a timeout is passed on, not read as a verdict`, aborted === 'AbortError', aborted)
