@@ -1,5 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
+import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { addFollow, checkFollowsNow, fetchFollows, removeFollow, updateFollow, type FollowKind, type MediaFollow } from '../api/followsApi'
 import { addToTraktList, createTraktList, deleteTraktList, fetchTraktLists } from '../trakt/traktApi'
@@ -89,12 +90,18 @@ export function useDeleteAutoList() {
   })
 }
 
-/** Stops a list filling itself; the Trakt list stays as a normal list. */
+/**
+ * Stops a list filling itself; the Trakt list stays as a normal list. The rule
+ * goes with what it found (media_follow_events, ON DELETE CASCADE), so it is a
+ * delete with Undo — a toggle, so it doesn't ask first.
+ */
 export function useStopAutoFill() {
-  return useMutationWithFeedback({
-    action: 'media_auto_list_stop',
-    mutationFn: (follow: MediaFollow) => removeFollow(follow.id),
-    successMessage: (_r, f) => `“${f.name}” stays on Trakt but stops filling itself`,
-    invalidates: [qk.mediaFollows.all],
+  const del = useRowsDelete({ table: 'media_follows', action: 'media_auto_list_stop', invalidates: [qk.mediaFollows.all], cache: qk.mediaFollows.all })
+  const run = (follow: MediaFollow) => del.run([follow.id], {
+    title: `Stop filling “${follow.name}”?`,
+    ask: false,
+    done: `“${follow.name}” stays on Trakt but stops filling itself`,
+    restored: `“${follow.name}” fills itself again`,
   })
+  return { run, busy: del.busy }
 }

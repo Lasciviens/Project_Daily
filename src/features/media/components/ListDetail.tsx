@@ -48,7 +48,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
         <div className="flex flex-wrap items-center gap-2">
           {follow && (
             <Button size="sm" variant="ghost" icon={<Unlink />} title="Keep the list on Trakt but stop adding new films"
-              onClick={() => stop.mutate(follow)}>Stop filling</Button>
+              loading={stop.busy} onClick={() => { void stop.run(follow) }}>Stop filling</Button>
           )}
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
         </div>
