@@ -18,6 +18,7 @@ import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
+import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
 import { DAY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 
@@ -61,6 +62,8 @@ export function DailyPage() {
     const d = dateFromParam(dateParam)
     if (d) { setViewDate(d); setMode('day') }
   }
+
+  useFollowToday(formatLocalDate(viewDate), day => setViewDate(new Date(`${day}T00:00:00`)))
 
   function handleDayClick(date: Date) {
     setViewDate(date)

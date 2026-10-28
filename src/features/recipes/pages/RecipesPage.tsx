@@ -12,6 +12,7 @@ import { FoodTodayTab } from '../components/FoodTodayTab'
 import { FoodDateNav } from '../components/FoodDateNav'
 import { FoodHeroArt } from '../components/FoodHeroArt'
 import { useDoseLink } from '../../supplements/hooks/useDoseLink'
+import { useFollowToday } from '../../../shared/hooks/useToday'
 
 type Tab = 'today' | 'library' | 'ingredients' | 'plan' | 'insights'
 
@@ -40,6 +41,7 @@ export function RecipesPage() {
   })
   // A supplement reminder's tap shows its day on Today, whichever tab was open.
   useDoseLink(date => { setTab('today'); setFoodDate(date) })
+  useFollowToday(foodDate, setFoodDate)
 
   const phoneRowless = tab !== 'today' && tab !== 'library'
   const addRecipe = () => modal.open({ kind: 'recipe' })
