@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Dices, Film, Shuffle, Tv } from 'lucide-react'
-import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
+import { Button, IconButton, SegmentedControl, Truncate } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { haptic } from '../../../shared/utils/haptics'
@@ -60,7 +60,7 @@ function PickRow({ type, pick, shaking, onRoll, onOpenDetail }: {
           <img src={posterUrl(pick.poster_path, 'w92')} alt="" className="h-[54px] w-9 rounded-md bg-surface-2 object-cover" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold text-fg">{pick.title}</p>
+          <Truncate as="p" className="text-body font-semibold text-fg">{pick.title}</Truncate>
           {pick.status && <p className="text-meta capitalize text-fg-muted">{pick.status}</p>}
         </div>
         <Button size="sm" variant="primary" onClick={() => { haptic('light'); onOpenDetail(pick.id, type) }}>View</Button>

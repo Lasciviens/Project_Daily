@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Play, X } from 'lucide-react'
-import { SectionLabel } from '../../../shared/ui'
+import { SectionLabel, Truncate } from '../../../shared/ui'
 import type { TMDBMovieFull, TMDBTVFull, TMDBCastMember, TMDBWatchProvider, TMDBVideo } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { languageName } from '../discoverModel'
@@ -32,8 +32,8 @@ function CastMember({ member }: { member: TMDBCastMember }) {
       ) : (
         <div className="grid h-12 w-12 place-items-center rounded-full bg-surface-2 text-meta font-semibold text-fg-muted">{initials}</div>
       )}
-      <p className="line-clamp-2 text-center text-micro font-medium leading-tight text-fg-2">{member.name}</p>
-      <p className="line-clamp-1 text-center text-micro leading-tight text-fg-muted">{member.character}</p>
+      <Truncate as="p" lines={2} className="text-center text-micro font-medium leading-tight text-fg-2">{member.name}</Truncate>
+      <Truncate as="p" className="text-center text-micro leading-tight text-fg-muted">{member.character}</Truncate>
     </div>
   )
 }

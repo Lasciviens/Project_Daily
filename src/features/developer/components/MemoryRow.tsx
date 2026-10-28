@@ -1,6 +1,6 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
-import { IconButton, TonePill, cx } from '../../../shared/ui'
+import { IconButton, TonePill, Truncate, cx } from '../../../shared/ui'
 import { relativeTime } from '../../../shared/utils/relativeTime'
 import { KIND_LABEL, KIND_TONE, SOURCE_LABEL } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
@@ -19,9 +19,9 @@ function Body({ memory }: { memory: AiMemory }) {
     <>
       <span className="flex flex-wrap items-center gap-1.5">
         <TonePill tone={KIND_TONE[memory.kind]}>{KIND_LABEL[memory.kind]}</TonePill>
-        <span className="truncate text-body font-semibold text-fg">{memory.title}</span>
+        <Truncate className="text-body font-semibold text-fg">{memory.title}</Truncate>
       </span>
-      <span className="line-clamp-2 text-body text-fg-2">{memory.content}</span>
+      <Truncate lines={2} className="text-body text-fg-2">{memory.content}</Truncate>
       <span className="text-meta text-fg-muted">
         {SOURCE_LABEL[memory.source]} · {relativeTime(memory.updated_at)}
       </span>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { cx } from '../../../shared/ui'
+import { Truncate, cx } from '../../../shared/ui'
 import type { CategoryGroup } from '../shopModel'
 import type { ShopItem } from '../types'
 
@@ -38,7 +38,7 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
         <div id={id} className={CARD_GRID}>
           {group.subs.flatMap(sub => sub.items.map(item => (
             <div key={item.id} className="flex min-w-0 flex-col gap-1">
-              {labelled && <p className="section-label truncate">{sub.title ?? 'Other'}</p>}
+              {labelled && <Truncate as="p" className="section-label">{sub.title ?? 'Other'}</Truncate>}
               <div className="flex flex-1 flex-col [&>*]:flex-1">{card(item)}</div>
             </div>
           )))}
