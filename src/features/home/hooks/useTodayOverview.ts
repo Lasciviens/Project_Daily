@@ -3,6 +3,7 @@ import { useDayTasks } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
+import { dayRowCounts, repeatDayKeys, repeatsToDoOn } from '../../daily/dayItems'
 import type { TaskCounts } from '../../todo/taskRules'
 import { mondayOfStr, shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useNow } from './useNow'
@@ -107,9 +108,10 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
 
     const templates: ScheduleBlock[] = templatesQ.data ?? []
     // A repeat's day that is a task (156) carries its state: a ticked one is never "next".
+    const withRepeatDays = [...dayTasks.repeatDays, ...dayTasks.open, ...dayTasks.done, ...dayTasks.cancelled]
     const items = buildDaySchedule({
       date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates, events: calendarQ.data ?? [],
-      dayTasks: [...dayTasks.repeatDays, ...dayTasks.open, ...dayTasks.done, ...dayTasks.cancelled],
+      dayTasks: withRepeatDays,
     })
     const upcoming: NextUpItem[] = aheadOnDay(items, isToday, nowHour).map(i => ({
       key: i.id, kind: i.kind, id: i.canonicalId, title: i.title, startHour: i.startHour, endHour: i.endHour,
@@ -139,7 +141,8 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     }) : null
 
     return {
-      tasks: dayTasks.counts,
+      // The Day plan's own counts: a repeat's day still to do is open there too.
+      tasks: { ...dayTasks.counts, ...dayRowCounts(dayTasks.counts, repeatsToDoOn(templates, date, todayStr(), repeatDayKeys(withRepeatDays))) },
       nextUp: upcoming[0] ?? null,
       upcoming,
       plannedMinutes: plannedMinutes(items),
@@ -151,5 +154,5 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
         || prevBlocksQ.isLoading || trainingQ.isLoading,
       calendarLoading: calendarQ.isLoading,
     }
-  }, [date, nowMs, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading])
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading])
 }
