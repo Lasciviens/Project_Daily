@@ -141,7 +141,7 @@ export function RecentMediaTile() {
       <div className="min-w-0 space-y-1">
         <p className="text-ui font-semibold tabular-nums text-fg">{airing.length === 0 ? 'No new episodes' : `${airing.length} new episode${airing.length === 1 ? '' : 's'}`}</p>
         <Truncate className="text-meta tabular-nums text-fg-muted">
-          {airing[0] ? `${airing[0].title} ${se(airing[0].season, airing[0].episode)} · ${formatWeekdayDate(airing[0].airDate.slice(0, 10))}` : 'Of the shows you follow, next 7 days'}
+          {airing[0] ? `${airing[0].title} ${se(airing[0].season, airing[0].episode)} · ${formatWeekdayDate(airing[0].airDate)}` : 'Of the shows you follow, next 7 days'}
         </Truncate>
       </div>
     ),

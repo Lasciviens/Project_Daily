@@ -19,28 +19,67 @@ interface EpisodeRow {
   tv_entry: { tv_series: { title: string; poster_path: string | null; tmdb_id: number } | null } | null
 }
 
+const EPISODE_PAGE = 12
+
+function episodeItem(e: EpisodeRow): RecentlyWatchedItem {
+  const series = e.tv_entry?.tv_series
+  return {
+    id:         e.id,
+    type:       'tv',
+    tmdbId:     series?.tmdb_id ?? null,
+    title:      series?.title ?? 'Unknown',
+    poster:     series?.poster_path ?? null,
+    watched_at: e.watched_at,
+    season:     e.season_number,
+    episode:    e.episode_number,
+  }
+}
+
+/**
+ * The latest episode of up to `limit` series, newest first. A whole season
+ * marked at once fills a read with one series, so the next read leaves the
+ * series already found out — at most `limit` reads.
+ */
+async function fetchLatestEpisodes(limit: number): Promise<RecentlyWatchedItem[]> {
+  const seen = new Set<string>()
+  const out: RecentlyWatchedItem[] = []
+  for (let read = 0; read < limit && out.length < limit; read++) {
+    const all = supabase
+      .from('user_tv_episodes')
+      .select('id, watched_at, tv_entry_id, season_number, episode_number, tv_entry:user_tv_entries(tv_series(title, poster_path, tmdb_id))')
+    const rest = seen.size ? all.not('tv_entry_id', 'in', `(${[...seen].join(',')})`) : all
+    const { data, error } = await rest
+      .not('watched_at', 'is', null)
+      .order('watched_at', { ascending: false })
+      // Episodes marked at the same moment (a whole season at once): the higher one is the latest —
+      // so the one-per-series pick below keeps it (the stable sort at the end keeps this order).
+      .order('season_number', { ascending: false })
+      .order('episode_number', { ascending: false })
+      .limit(EPISODE_PAGE)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as EpisodeRow[]
+    for (const e of rows) {
+      if (seen.has(e.tv_entry_id)) continue
+      seen.add(e.tv_entry_id)
+      out.push(episodeItem(e))
+    }
+    if (rows.length < EPISODE_PAGE) break
+  }
+  return out.slice(0, limit)
+}
+
 /** Last watched titles: completed movies + the latest episode of each series. */
 export async function fetchRecentlyWatched(limit = 6): Promise<RecentlyWatchedItem[]> {
-  const [movies, episodes] = await Promise.all([
+  const [movies, episodeItems] = await Promise.all([
     supabase
       .from('user_movie_entries')
       .select('id, watched_at, movie:movies(title, poster_path, tmdb_id)')
       .not('watched_at', 'is', null)
       .order('watched_at', { ascending: false })
-      .limit(4),
-    supabase
-      .from('user_tv_episodes')
-      .select('id, watched_at, tv_entry_id, season_number, episode_number, tv_entry:user_tv_entries(tv_series(title, poster_path, tmdb_id))')
-      .not('watched_at', 'is', null)
-      .order('watched_at', { ascending: false })
-      // Episodes marked at the same moment (a whole season at once): the higher one is the latest —
-      // so the limit and the one-per-series pick below keep it (the stable sort at the end keeps this order).
-      .order('season_number', { ascending: false })
-      .order('episode_number', { ascending: false })
-      .limit(12),
+      .limit(limit),
+    fetchLatestEpisodes(limit),
   ])
   if (movies.error) throw movies.error
-  if (episodes.error) throw episodes.error
 
   const movieItems: RecentlyWatchedItem[] = ((movies.data ?? []) as unknown as MovieRow[]).map(m => ({
     id:         m.id,
@@ -52,25 +91,6 @@ export async function fetchRecentlyWatched(limit = 6): Promise<RecentlyWatchedIt
     season:     null,
     episode:    null,
   }))
-
-  // One row per series — keep only the most recently watched episode of each.
-  const seenSeries = new Set<string>()
-  const episodeItems: RecentlyWatchedItem[] = []
-  for (const e of (episodes.data ?? []) as unknown as EpisodeRow[]) {
-    if (seenSeries.has(e.tv_entry_id)) continue
-    seenSeries.add(e.tv_entry_id)
-    const series = e.tv_entry?.tv_series
-    episodeItems.push({
-      id:         e.id,
-      type:       'tv',
-      tmdbId:     series?.tmdb_id ?? null,
-      title:      series?.title ?? 'Unknown',
-      poster:     series?.poster_path ?? null,
-      watched_at: e.watched_at,
-      season:     e.season_number,
-      episode:    e.episode_number,
-    })
-  }
 
   return [...movieItems, ...episodeItems]
     .sort((a, b) => new Date(b.watched_at).getTime() - new Date(a.watched_at).getTime())

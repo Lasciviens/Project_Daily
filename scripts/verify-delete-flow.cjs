@@ -216,7 +216,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/supplements/api/supplementsApi.ts': [1, 'Undo of a supplement Take (the undo itself: the lines that Take just wrote)'],
     'src/features/media/reminders/remindersApi.ts': [1, 'a reminder bell toggled off'],
     'src/features/media/api/watchedEpisodesApi.ts': [1, 'Not watched (step 5 brings its Undo)'],
-    'src/features/media/api/followsApi.ts': [1, 'Follow toggled off / a list stops filling (its delete goes through useDeleteFollow)'],
+    'src/features/media/api/followsApi.ts': [1, 'a self-filling list deleted with its Trakt list (no Undo: confirmDelete says so); Stop filling and a rule\'s own delete go through useRowsDelete'],
     'src/features/home/api/transitStoreApi.ts': [2, 'a Home/Work place replaced by a new stop; recent searches trimmed'],
     'src/features/developer/api/logsApi.ts': [2, 'Clear all logs (no Undo: confirmDelete says so)'],
     'src/features/daily/api/waterApi.ts': [1, 'the water card\'s own Undo chip (the undo itself)'],

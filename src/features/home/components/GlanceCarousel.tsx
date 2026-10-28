@@ -72,9 +72,10 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
   useLayoutEffect(() => {
     const el = track.current
     if (el && current > 0) el.scrollLeft = current * el.clientWidth
-    // Only on mount / when the screens first arrive.
+    // Only on mount / when the screens first arrive / when the strip appears
+    // (it isn't rendered while loading, so it starts at screen 0 again).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count > 1])
+  }, [count > 1, loading])
 
   const go = useCallback((i: number) => {
     const el = track.current

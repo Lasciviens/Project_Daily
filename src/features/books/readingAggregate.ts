@@ -56,23 +56,25 @@ export function dayState(day: string, seconds: number, today: string, lastSeenDa
   return 'zero'
 }
 
-export interface Streak { current: number; longest: number; atRisk: boolean }
+export interface Streak { current: number; longest: number; atRisk: boolean; open: boolean }
 
 /**
  * Current streak, walking back from today: a read day counts; today and an
  * unknown day neither count nor break; a short or zero day ends it.
  * `atRisk` = today is not read yet but the streak is alive.
+ * `open` = the walk reached `firstDay` unbroken.
  */
 export function computeStreak(byDay: Map<string, number>, today: string, lastSeenDay: string | null, minMinutes: number, firstDay: string | null): Streak {
   let current = 0
   let atRisk = false
+  let open = true
   const start = firstDay ?? today
   for (let d = today; d >= start; d = addDays(d, -1)) {
     const st = dayState(d, byDay.get(d) ?? 0, today, lastSeenDay, minMinutes)
     if (st === 'read') current++
     else if (st === 'today') { if (d === today) atRisk = true; continue }
     else if (st === 'unknown') continue
-    else break
+    else { open = false; break }
   }
   if (current === 0) atRisk = false
   let longest = 0, run = 0
@@ -81,7 +83,18 @@ export function computeStreak(byDay: Map<string, number>, today: string, lastSee
     if (st === 'read') { run++; longest = Math.max(longest, run) }
     else if (st === 'short' || st === 'zero') run = 0
   }
-  return { current, longest: Math.max(longest, current), atRisk }
+  return { current, longest: Math.max(longest, current), atRisk, open }
+}
+
+/**
+ * The streak from the page events read since `fromDay` (oldest first, as
+ * fetchReadingEvents returns them). `cut` = it runs back unbroken to
+ * `fromDay` itself, so days before the read could make it longer.
+ */
+export function windowStreak(events: readonly ReadingEvent[], fromDay: string, today: string, lastSeenDay: string | null, minMinutes: number): { streak: Streak; cut: boolean } {
+  const firstDay = events.length ? localDay(new Date(events[0].started_at)) : null
+  const streak = computeStreak(secondsByDay(events), today, lastSeenDay, minMinutes, firstDay)
+  return { streak, cut: streak.open && firstDay === fromDay }
 }
 
 /** A reading session; start/end are epoch SECONDS; firstPage/lastPage = the lowest and highest page seen. */

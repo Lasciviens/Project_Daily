@@ -46,7 +46,7 @@ export function FollowMenu({ detail, isMovie }: { detail: TMDBMovieFull | TMDBTV
           const f = followed(o)
           return (
             <MenuItem key={`${o.kind}:${o.tmdbId}`}>
-              <button type="button" className="menu-item w-full" disabled={create.isPending} onClick={() => (f ? stop.mutate(f) : create.mutate({ kind: o.kind, tmdbId: o.tmdbId, name: o.name }))}>
+              <button type="button" className="menu-item w-full" disabled={create.isPending || stop.busy} onClick={() => (f ? void stop.run(f) : create.mutate({ kind: o.kind, tmdbId: o.tmdbId, name: o.name }))}>
                 <span className="min-w-0 flex-1 text-left">
                   <span className="block truncate">{o.label}</span>
                   <span className="block text-micro text-fg-muted">{KIND_LABEL[o.kind]}</span>
