@@ -106,8 +106,9 @@ a `-soft` background.
 sit in a zero-specificity `:where(.tone-pill)` rule, so utilities on a pill (`hidden sm:inline-flex`,
 `max-w-[10rem]`) win.
 
-`data-tone` sets `--tone` / `--tone-soft` / `--tone-fg`; `neutral` labels use the darker
-`--neutral-fg`, since the dot colour is too faint for words. `accent` has no `-soft` Tailwind class —
+`data-tone` sets `--tone` / `--tone-soft` / `--tone-fg`; `neutral` and `star` labels use the darker
+`--neutral-fg` / `--star-fg`, since the dot colour is too faint for words (the light gold star is
+1.7:1 on white; `--star-fg` is ≥ 5:1 there, and the dot colour itself in dark). `accent` has no `-soft` Tailwind class —
 use `data-tone="accent"`.
 
 Map a domain enum to tones **once**, next to the enum (e.g. `PRIORITY_TONE: Record<TaskPriority, Tone>`),
