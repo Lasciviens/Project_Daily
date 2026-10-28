@@ -27,8 +27,12 @@ const groups = {
   aiWrite: [
     qk.tasks.all, qk.schedule.all, qk.calendar.all,
     qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all, qk.quickGuess.all, qk.supplements.all,
-    qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll,
+    qk.health.cutDiaryAll,
+    qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent(),
     qk.wishes.all, qk.devRequests.all, qk.memory.all, qk.work.all,
+    qk.books.library(), qk.books.settings(), qk.training.skipsAll, qk.health.sleepConfirmations,
+    // Its save_transit_stop / save_transit_route tools.
+    qk.transit.stops(), qk.transit.routes(),
     qk.athlete.profile, qk.athlete.limitations, qk.athlete.musclePrefs,
     // Coach mode edits and creates Hevy routines through hevy-api, and the
     // assistant can write the current program / targets / assessments.
