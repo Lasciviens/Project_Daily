@@ -3,7 +3,8 @@
 // scripts/db-tests/supplement-schedules/base.sql, 156's repeat rule functions
 // as 156 wrote them (160 replaces repeat_occurs_on with a call of the one
 // rule), the real migration 144 (the delete with Undo), the real 160 TWICE
-// (a re-run must be a no-op), then:
+// (a re-run must be a no-op), 169's <stock-clock> section (160's tidy trigger
+// as it is live: a schedule put back keeps its stock clock), then:
 //   1. supplement-schedules/scenarios.sql — the table rules, the refused
 //      rows, Take (a food, a recipe, a custom line, twice, from the phone),
 //      the doses' states, the reminders (once, until taken, a snooze, the
@@ -182,6 +183,10 @@ try {
   psql(target, ['-f', mig('144_delete_with_undo.sql')])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
+  // 169's <stock-clock> section: 160's tidy trigger as it is live (a schedule put back keeps its stock clock).
+  const stockClock = readFileSync(mig('169_training_and_stock_fixes.sql'), 'utf8').match(/-- <stock-clock>\n([\s\S]*?)-- <\/stock-clock>/)?.[1]
+  if (!stockClock) throw new Error('verify-db-supplement-schedules: migration 169 has no <stock-clock> section')
+  psql(target, ['-c', stockClock])
 
   // 1. The scenarios. Each passing one prints a NOTICE ("ok  …"); a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
@@ -259,7 +264,7 @@ try {
       failed = `FAIL  the SQL dose rules differ from supplementDoses.ts:\n${bad.slice(0, 12).join('\n')}`
       console.error(failed)
     } else {
-      console.log(`verify-db-supplement-schedules: 144 + 160 (applied twice), ${passed} scenarios, and the SQL dose rules = supplementDoses.ts `
+      console.log(`verify-db-supplement-schedules: 144 + 160 (applied twice) + 169's stock clock, ${passed} scenarios, and the SQL dose rules = supplementDoses.ts `
         + `(${schedules.length} schedules: their days over two years, every dose's status at ${statusAt.length} instants, the due reminders at ${instants.length} instants, ${dueSeen} reminders): ${checks + passed} checks passed`)
     }
   }

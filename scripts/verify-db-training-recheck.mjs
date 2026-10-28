@@ -9,7 +9,9 @@
 // 142, 135, 144, 147, 150, 151, 155, 156, 160's repeat rule, 163 and 165 —
 // then the real 166 twice (it must survive a re-run),
 // scripts/db-tests/training-recheck/scenarios.sql, the real 167 twice (its
-// backfill runs over 166's rows) and scenarios-167.sql.
+// backfill runs over 166's rows), the real 169 (167's rules with the 28.10
+// audit's fixes; its own scenarios: verify-db-training-stock-fixes) and
+// scenarios-167.sql.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-training-recheck.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no
 // database URL (a laptop without Postgres) it runs the static checks and passes.
@@ -87,10 +89,12 @@ try {
   if (!failed) {
     psql(target, ['-f', mig167])
     psql(target, ['-f', mig167])
+    // 169 redefines 167's rules (their fixes): 167's scenarios run on the live definitions.
+    psql(target, ['-f', mig('169_training_and_stock_fixes.sql')])
     passed167 = scenarios('scenarios-167.sql')
   }
   if (failed) console.error(failed)
-  else console.log(`verify-db-training-recheck: the live item save (141–165), 166 (applied twice) with ${passed166} scenarios, then 167 (applied twice) with ${passed167} scenarios passed`)
+  else console.log(`verify-db-training-recheck: the live item save (141–165), 166 (applied twice) with ${passed166} scenarios, then 167 (applied twice) and 169 with ${passed167} scenarios passed`)
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
 }
