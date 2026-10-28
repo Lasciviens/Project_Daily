@@ -41,9 +41,12 @@ export function ColumnBars({ bars, onPick, height = 'h-32' }: { bars: Bar[]; onP
     <div ref={ref} className={`flex ${height} items-end gap-1`}>
       {bars.map(b => (
         <button key={b.key} type="button" onClick={() => onPick(b.key)} title={b.title} aria-label={b.title} aria-pressed={!!b.active}
-          className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
-          <span className="w-full max-w-[3rem] rounded-t bg-accent-500/60 transition-colors group-hover:bg-accent-500 group-aria-pressed:bg-accent-600"
-            style={{ height: `${b.value > 0 ? Math.max(3, (b.value / max) * 100) : 0}%` }} />
+          className="group flex h-full min-w-0 flex-1 flex-col items-center gap-1">
+          {/* The bar's % is of the plot above the label, so the tallest bar ends on the same baseline as the rest. */}
+          <span className="flex min-h-0 w-full flex-1 items-end justify-center">
+            <span className="w-full max-w-[3rem] rounded-t bg-accent-500/60 transition-colors group-hover:bg-accent-500 group-aria-pressed:bg-accent-600"
+              style={{ height: `${b.value > 0 ? Math.max(3, (b.value / max) * 100) : 0}%` }} />
+          </span>
           <span className="max-w-full overflow-hidden whitespace-nowrap text-micro text-fg-muted tabular-nums">{labelOf(b)}</span>
         </button>
       ))}

@@ -77,12 +77,16 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail }) {
       <div className="grid grid-cols-1 items-start gap-4 @[56rem]:grid-cols-[17rem_minmax(0,1fr)]">
         {/* Phones and narrow pages: one picker instead of the whole rail above the covers. */}
         <div className="card flex flex-wrap items-center gap-2 p-3 @[56rem]:hidden">
-          <select aria-label="List" className="input min-w-0 flex-1"
-            value={current ? `${current.src}:${current.id}` : ''}
-            onChange={e => { const [src, id] = e.target.value.split(/:(.*)/s); setPicked(src === 'trakt' ? { src: 'trakt', id: Number(id) } : { src: 'pending', id }) }}>
-            {traktLists.map(l => <option key={l.id} value={`trakt:${l.id}`}>{railLabel(l.name, !!ruleFor(l.id))} ({l.itemCount})</option>)}
-            {pending.map(f => <option key={f.id} value={`pending:${f.id}`}>✦ {f.name} · not on Trakt yet</option>)}
-          </select>
+          {loading ? <Skeleton className="h-11 min-w-0 flex-1" />
+            : traktLists.length === 0 && pending.length === 0 ? <p className="min-w-0 flex-1 px-1 text-body text-fg-muted">No lists yet</p>
+            : (
+              <select aria-label="List" className="input min-w-0 flex-1"
+                value={current ? `${current.src}:${current.id}` : ''}
+                onChange={e => { const [src, id] = e.target.value.split(/:(.*)/s); setPicked(src === 'trakt' ? { src: 'trakt', id: Number(id) } : { src: 'pending', id }) }}>
+                {traktLists.map(l => <option key={l.id} value={`trakt:${l.id}`}>{railLabel(l.name, !!ruleFor(l.id))} ({l.itemCount})</option>)}
+                {pending.map(f => <option key={f.id} value={`pending:${f.id}`}>✦ {f.name} · not on Trakt yet</option>)}
+              </select>
+            )}
           <Button size="sm" variant="ghost" icon={<ListPlus />} onClick={() => setNaming(true)}>New list</Button>
           {!connected && !statusLoading && <p className="w-full text-meta text-fg-muted">Lists live on Trakt. <Link to="/settings?tab=subscriptions" className="font-semibold text-accent-600">Connect Trakt</Link></p>}
         </div>
