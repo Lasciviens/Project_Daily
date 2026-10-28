@@ -31,7 +31,8 @@ export function FoodDayPopup({ date, onClose }: { date: string; onClose: () => v
     { name: 'Carbs', unit: 'g', have: totals.carbs_g, want: goal.carbs },
     { name: 'Fat', unit: 'g', have: totals.fat_g, want: goal.fat },
   ]
-  const n = (v: number) => v.toLocaleString('en-GB')
+  // Food's own figures: whole numbers with no thousands separator (3220 kcal, as on the Food page).
+  const n = (v: number) => String(Math.round(v))
 
   return (
     <ModalShell open onClose={onClose} size="sm" title="Food" subtitle={formatWeekdayDate(date)}
