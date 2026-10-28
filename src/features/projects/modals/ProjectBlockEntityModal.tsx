@@ -196,7 +196,7 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
               </p>
             )}
             {columnProblem && <p className="text-meta text-danger">{columnProblem}</p>}
-            <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 min-[416px]:grid-cols-2">
               <div>
                 <label htmlFor="bl-group" className="field-label">Group rows by</label>
                 <select id="bl-group" value={groupBy} onChange={e => setGroupBy(e.target.value)} className="select">

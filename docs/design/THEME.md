@@ -324,7 +324,9 @@ UI chrome or section markers.
 
 `useBreakpoint()` (`src/shared/hooks/useBreakpoint.ts`) returns `'phone' | 'tablet' | 'desktop'`.
 Prefer CSS (`md:`, `xl:`, container queries) for styling; use the hook only when the *structure*
-differs.
+differs. An arbitrary viewport variant (`min-[…]:` / `max-[…]:`) takes **px only**: the screens are
+px, and Tailwind 3 drops every `min-[…]`/`max-[…]` in the build once one of them uses rem (a
+"mixed units" warning in the build log).
 
 **Navigation** is defined once in `src/app/navigation.ts` — sidebar, shell titles, phone tab bar,
 More sheet and the command bar all read that registry. Adding a page = one entry there (label, path,
