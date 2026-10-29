@@ -155,7 +155,11 @@ function ReadResult({ result }: { result: ICloudRead }) {
           </p>
         )}
       </div>
-      {result.days.length === 0 && result.series.length === 0 && <p className="text-meta text-fg-2">Nothing in your calendars this week.</p>}
+      {result.calendars.length === 0 ? (
+        <p className="text-meta text-fg-2">
+          No event calendar found.{result.listing?.length ? ` iCloud listed: ${result.listing.join(' · ')}` : ' iCloud listed nothing.'} Send this line to Claude.
+        </p>
+      ) : result.days.length === 0 && result.series.length === 0 && <p className="text-meta text-fg-2">Nothing in your calendars this week.</p>}
       {result.days.map(d => (
         <div key={d.day}>
           <p className="section-label">{formatWeekdayDate(d.day)}</p>
