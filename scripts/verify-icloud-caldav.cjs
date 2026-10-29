@@ -20,7 +20,7 @@ const { transform } = require('sucrase')
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const block = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
 const code = transform(block.replace(/^export /gm, ''), { transforms: ['typescript'] }).code
-const I = new Function(`${code}; return { isICloudUrl, isTestCalendarName, isAppSpecificPassword, maskAppleId, xmlText, parseMultistatus, icsEscape, foldLine, checkEvents, eventProps, keptOf, changeOf, escapeXml, startOf, zonedToUtc, readWindow, calendarQuery, calendarsOf, readEventsOf, byDay }`)()
+const I = new Function(`${code}; return { isICloudUrl, isTestCalendarName, isAppSpecificPassword, maskAppleId, xmlText, parseMultistatus, icsEscape, foldLine, checkEvents, eventProps, keptOf, changeOf, escapeXml, startOf, zonedToUtc, readWindow, calendarQuery, calendarsOf, listingKinds, readEventsOf, byDay }`)()
 
 let passed = 0, failed = 0
 function eq(got, want, name) {
@@ -120,6 +120,15 @@ const homeXml = `<?xml version="1.0"?><multistatus xmlns="DAV:" xmlns:C="urn:iet
 </multistatus>`
 eq(I.calendarsOf(I.parseMultistatus(homeXml).responses), [{ href: '/123/calendars/home/', name: 'Home', color: '#FF2968' }, { href: '/123/calendars/work/', name: 'Work', color: null }],
   'event calendars only (not the home, the inbox or a tasks-only list); a colour only when it is a real #RRGGBB')
+// iCloud's own answer may quote attributes with ' (29.10.2026: the first live read found no calendar).
+const singleQuoted = `<?xml version='1.0' encoding='UTF-8'?><multistatus xmlns='DAV:'><response><href>/123/calendars/</href><propstat><prop><resourcetype><collection/></resourcetype></prop><status>HTTP/1.1 200 OK</status></propstat><propstat><prop><displayname/><calendar-color xmlns='http://apple.com/ns/ical/'/></prop><status>HTTP/1.1 404 Not Found</status></propstat></response>
+<response><href>/123/calendars/home/</href><propstat><prop><displayname>Home</displayname><resourcetype><collection/><calendar xmlns='urn:ietf:params:xml:ns:caldav'/></resourcetype><calendar-color xmlns='http://apple.com/ns/ical/' symbolic-color='red'>#FF2968FF</calendar-color><supported-calendar-component-set xmlns='urn:ietf:params:xml:ns:caldav'><comp name='VEVENT'/></supported-calendar-component-set></prop><status>HTTP/1.1 200 OK</status></propstat></response>
+<response><href>/123/calendars/tasks/</href><propstat><prop><displayname>Reminders</displayname><resourcetype><collection/><calendar xmlns='urn:ietf:params:xml:ns:caldav'/></resourcetype><supported-calendar-component-set xmlns='urn:ietf:params:xml:ns:caldav'><comp name='VTODO'/></supported-calendar-component-set></prop><status>HTTP/1.1 200 OK</status></propstat></response>
+<response><href>/123/calendars/inbox/</href><propstat><prop><resourcetype><collection/><schedule-inbox xmlns='urn:ietf:params:xml:ns:caldav'/></resourcetype></prop><status>HTTP/1.1 200 OK</status></propstat></response></multistatus>`
+eq(I.calendarsOf(I.parseMultistatus(singleQuoted).responses).map(c => [c.name, c.color]), [['Home', '#FF2968']], "single-quoted XML ('VEVENT') is read the same as double-quoted")
+eq(I.listingKinds(I.parseMultistatus(singleQuoted).responses), ['collection', 'collection calendar [VEVENT]', 'collection calendar [VTODO]', 'collection schedule-inbox'],
+  'what the home listed, by kind only (element names, no calendar name or address)')
+eq(I.listingKinds(I.parseMultistatus(homeXml).responses).join(' | ').includes('Home'), false, 'a calendar name never reaches the listing')
 const obj = lines => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VTIMEZONE', 'TZID:Europe/Oslo', 'BEGIN:STANDARD', 'DTSTART:19701025T030000', 'END:STANDARD', 'END:VTIMEZONE', ...lines, 'END:VCALENDAR'].join('\r\n')
 const seriesObj = obj(['BEGIN:VEVENT', 'UID:a', 'SUMMARY:Gym', 'DTSTART;TZID=Europe/Oslo:20260105T070000', 'RRULE:FREQ=WEEKLY', 'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Reminder', 'TRIGGER:-PT10M', 'END:VALARM', 'END:VEVENT',
   'BEGIN:VEVENT', 'UID:a', 'RECURRENCE-ID;TZID=Europe/Oslo:20261102T070000', 'SUMMARY:Gym (moved)', 'DTSTART;TZID=Europe/Oslo:20261102T090000', 'END:VEVENT'])

@@ -304,15 +304,33 @@ export function calendarQuery(start: string, end: string): string {
 
 export interface ICloudCalendar { href: string; name: string; color: string | null }
 
+/** The component names a calendar takes (VEVENT, VTODO), whichever quotes the XML uses. */
+const compsOf = (set: string | null) => [...(set ?? '').matchAll(/name\s*=\s*["']?([A-Za-z]+)/g)].map(m => m[1].toUpperCase())
+
 /** The event calendars in the calendar home (not the inbox, outbox, notifications or a tasks-only list). */
 export function calendarsOf(responses: DavResponse[]): ICloudCalendar[] {
   return responses
     .filter(r => /<(?:[\w-]+:)?calendar[\s/>]/.test(xmlText(r.props, 'resourcetype') ?? ''))
-    .filter(r => { const set = xmlText(r.props, 'supported-calendar-component-set'); return !set || /name="VEVENT"/i.test(set) })
+    .filter(r => { const comps = compsOf(xmlText(r.props, 'supported-calendar-component-set')); return !comps.length || comps.includes('VEVENT') })
     .map(r => {
       const color = xmlText(r.props, 'calendar-color') ?? ''
       return { href: r.href, name: xmlText(r.props, 'displayname') || 'Untitled', color: /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color) ? color.slice(0, 7) : null }
     })
+}
+
+/**
+ * What the calendar home listed, by kind only ("collection calendar [VEVENT] ×5") — element names,
+ * never a calendar's name or address — so a read that found no calendar can say why.
+ */
+export function listingKinds(responses: DavResponse[]): string[] {
+  const counts = new Map<string, number>()
+  for (const r of responses) {
+    const types = [...(xmlText(r.props, 'resourcetype') ?? '').matchAll(/<(?:[\w-]+:)?([\w-]+)/g)].map(m => m[1])
+    const comps = compsOf(xmlText(r.props, 'supported-calendar-component-set'))
+    const kind = `${types.join(' ') || 'no type'}${comps.length ? ` [${comps.join(' ')}]` : ''}`
+    counts.set(kind, (counts.get(kind) ?? 0) + 1)
+  }
+  return [...counts].map(([kind, n]) => (n > 1 ? `${kind} ×${n}` : kind))
 }
 
 export interface ReadEvent {
@@ -676,6 +694,8 @@ Deno.serve(async (req) => {
         expanded: repeats.length ? !repeats.some(e => e.series) : null,
         calendars: calendars.map(c => ({ name: c.name, color: c.color, count: c.events.length, problem: c.problem })),
         skipped: Math.max(0, found.length - MAX_READ_CALENDARS),
+        // No calendar found: what iCloud listed instead, by kind only (no names, no addresses).
+        listing: found.length ? null : listingKinds(list.responses),
         days: days.map(d => ({ day: d.day, events: d.events.slice(0, MAX_READ_PER_DAY), more: Math.max(0, d.events.length - MAX_READ_PER_DAY) })),
         series,
       })

@@ -68,6 +68,8 @@ export interface ICloudRead {
   calendars: { name: string; color: string | null; count: number; problem: string | null }[]
   /** Calendars past the read limit. */
   skipped:   number
+  /** No calendar found: what iCloud listed, by kind only ("collection calendar [VTODO]"). */
+  listing?:  string[] | null
   days:      { day: string; events: ICloudReadRow[]; more: number }[]
   /** Repeating events iCloud gave as one series (their days not worked out). */
   series:    ICloudReadRow[]
