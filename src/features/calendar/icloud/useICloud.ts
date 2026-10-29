@@ -20,6 +20,12 @@ export function useConnectICloud() {
   })
 }
 
+/** A failed call may have left a new "Last problem" on the server: the status reads it again. */
+function useRefreshStatus() {
+  const qc = useQueryClient()
+  return () => { void qc.invalidateQueries({ queryKey: qk.icloud.all }) }
+}
+
 export function useDisconnectICloud() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
@@ -33,28 +39,40 @@ export function useDisconnectICloud() {
 
 /** The check's own panel shows each step; the toast says how it went in one line. */
 export function useRunICloudCheck() {
+  const refresh = useRefreshStatus()
   return useMutationWithFeedback({
     action: 'icloud_check',
     mutationFn: () => runICloudCheck(),
-    successMessage: r => r.needsCalendar ? 'iCloud check: make the test calendar on your iPhone first'
-      : r.steps.every(s => s.ok) ? 'iCloud check done · look at your iPhone and Mac' : 'iCloud check done · some steps failed (see the card)',
+    successMessage: r => {
+      if (r.needsCalendar) return 'iCloud check: make the test calendar on your iPhone first'
+      const failed = r.steps.filter(s => !s.ok).length
+      return failed ? `iCloud check: ${failed} step${failed === 1 ? '' : 's'} failed — see the card` : 'iCloud check done · look at your iPhone and Mac'
+    },
     invalidates: [qk.icloud.all],
+    onError: refresh,
   })
 }
 
 export function useICloudChanges() {
+  const refresh = useRefreshStatus()
   return useMutationWithFeedback({
     action: 'icloud_changes',
     mutationFn: () => fetchICloudChanges(),
     successMessage: r => !r.tokenWorked ? 'iCloud did not answer "what changed"' : r.changes.length ? `${r.changes.length} change${r.changes.length === 1 ? '' : 's'} from iCloud` : 'No changes from iCloud yet',
+    invalidates: [qk.icloud.all],
+    onError: refresh,
   })
 }
 
 export function useRemoveICloudTest() {
+  const refresh = useRefreshStatus()
   return useMutationWithFeedback({
     action: 'icloud_remove_test',
     mutationFn: () => removeICloudTest(),
-    successMessage: r => (r.removed ? 'Test calendar removed from iCloud' : r.message ?? 'Nothing to remove'),
+    successMessage: r => r.removed === 'calendar' ? 'Test calendar removed from iCloud'
+      : r.removed === 'events' ? 'Test events removed from iCloud · your calendar stays'
+      : r.message ?? 'Nothing to remove',
     invalidates: [qk.icloud.all],
+    onError: refresh,
   })
 }

@@ -18,7 +18,7 @@ const { transform } = require('sucrase')
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const block = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
 const code = transform(block.replace(/^export /gm, ''), { transforms: ['typescript'] }).code
-const I = new Function(`${code}; return { isICloudUrl, isAppSpecificPassword, maskAppleId, xmlText, parseMultistatus, icsEscape, foldLine, checkEvents, eventProps, keptOf, changeOf, escapeXml }`)()
+const I = new Function(`${code}; return { isICloudUrl, isTestCalendarName, isAppSpecificPassword, maskAppleId, xmlText, parseMultistatus, icsEscape, foldLine, checkEvents, eventProps, keptOf, changeOf, escapeXml }`)()
 
 let passed = 0, failed = 0
 function eq(got, want, name) {
@@ -27,7 +27,9 @@ function eq(got, want, name) {
 }
 
 console.log('\n== Where the password may go ==')
-eq(['https://caldav.icloud.com/', 'https://p67-caldav.icloud.com:443/123/calendars/', 'https://icloud.com/'].map(I.isICloudUrl), [true, true, true], 'iCloud hosts over HTTPS')
+eq(['https://caldav.icloud.com/', 'https://p67-caldav.icloud.com:443/123/calendars/'].map(I.isICloudUrl), [true, true], "iCloud's CalDAV hosts over HTTPS")
+eq(['https://icloud.com/', 'https://www.icloud.com/', 'https://p67-contacts.icloud.com/', 'https://ola:pw@caldav.icloud.com/'].map(I.isICloudUrl), [false, false, false, false],
+  'other iCloud hosts and a URL carrying its own user name are refused')
 eq(['http://caldav.icloud.com/', 'https://caldav.icloud.com.evil.example/', 'https://evilicloud.com/', 'https://example.com/?u=https://caldav.icloud.com', 'not a url'].map(I.isICloudUrl), [false, false, false, false, false],
   'never plain HTTP, a look-alike host or anything else')
 eq(['abcd-efgh-ijkl-mnop', ' ABCD-EFGH-IJKL-MNOP '].map(I.isAppSpecificPassword), [true, true], 'an app-specific password (any case, spaces trimmed)')
@@ -74,6 +76,10 @@ eq([round.alarm.private, round.maybe.free, round.notes.alarm], [false, false, fa
 eq(I.eventProps(evs[0].ics).get('DESCRIPTION'), undefined, "the alarm's own DESCRIPTION is not read as the event's")
 eq(I.changeOf(I.eventProps(evs[7].ics)), { title: 'Lasci check · Every day ×4, the 2nd day left out', starts: '30.10.2026 18:00' }, 'a change reads its title and DD.MM.YYYY HH:MM start')
 eq(I.changeOf(I.eventProps(evs[6].ics)).starts, '30.10.2026', 'an all-day change reads its day only')
+eq(I.changeOf(new Map([['DTSTART', ['DTSTART:20261030T140000Z']], ['SUMMARY', ['SUMMARY:Moved']]])).starts, '30.10.2026 15:00', 'a UTC time reads as the Oslo clock (winter: +1)')
+eq(I.changeOf(new Map([['DTSTART', ['DTSTART:20260630T140000Z']]])).starts, '30.06.2026 16:00', 'a UTC time reads as the Oslo clock (summer: +2)')
+eq(['Lasci · Test', 'lasci test', 'Lasci-Test', 'LASCI TEST '].map(I.isTestCalendarName), [true, true, true, true], 'the test calendar is found by its name however it was typed on the iPhone')
+eq(['Lasci', 'Test', 'Lasci Tests', null].map(I.isTestCalendarName), [false, false, false, false], 'another calendar is never taken for it')
 
 console.log('\n== The function ==')
 eq(/redirect: 'manual'/.test(src) && /isICloudUrl\(current\)/.test(src), true, 'redirects are followed by hand, iCloud hosts only')
@@ -81,6 +87,14 @@ eq(/console\.(log|error|warn)\([^)]*(password|app_password|creds|authorization|A
 eq(/\.select\([^)]*app_password[^)]*\)[\s\S]{0,400}answer\(\{[^}]*app_password/.test(src), false, 'the password is never answered back')
 eq(/auth\.getUser\(/.test(src) && /isAppUser\(user\.id\)/.test(src), true, 'browser caller: getUser and the owner lock')
 eq(/isAppSpecificPassword\(password\)/.test(src), true, 'connect refuses anything but an app-specific password')
+eq(/delete\(\)\.eq\('user_id', user\.id\)\s*\n\s*if \(error\) throw/.test(src), true, 'disconnect says so when the stored password could not be deleted')
+eq(/mk\.status === 405[\s\S]{0,400}isTestCalendarName\(xmlText\(props, 'displayname'\)\)/.test(src), true, 'a 405 on MKCALENDAR counts only when the calendar there is the test calendar')
+eq(/onlyOurs[\s\S]{0,300}lasci-check-\[a-z\]\+-lasciviens-github-io\\\.ics/.test(src) && /endsWith\(`\/\$\{TEST_SLUG\}`\) && onlyOurs/.test(src), true,
+  'Remove deletes the whole calendar only when the app made it and it holds nothing but the check events')
+eq(/sync-collection[\s\S]{0,300}Depth: '0'/.test(src), true, 'sync-collection asks with Depth 0 (RFC 6578)')
+eq(/update\(\{ test_calendar_url: cal\.url[\s\S]{0,200}checkEvents\(/.test(src), true, 'the test calendar is saved before any event is written (Remove can always find them)')
+eq(/if \(readError\)[\s\S]{0,300}502\)/.test(src), true, 'a failed read answers an error, never "not connected" (Apple shows a password only once)')
+eq(/e\.code === 'auth' \? 400/.test(src), true, "Apple refusing the password answers 400, not the app's own 401")
 
 console.log(`\nverify-icloud-caldav: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

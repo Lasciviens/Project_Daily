@@ -112,7 +112,7 @@ function checkAiWriteGroup() {
     media_watches: [qk.media.userMovies(), qk.media.watched('e1')], movie_cinema_visits: [qk.media.cinemaVisits()],
     projects: [qk.projects.list()], project_phases: [qk.projects.phases()],
     project_blocks: [qk.projects.blocks('p1')], project_entries: [qk.projects.entries('p1'), qk.projects.openQuestions()],
-    sleep_night_confirmations: [qk.health.sleepConfirmations], diary_entries: [qk.diary.day('2026-10-28')], athlete_profile: [qk.athlete.profile],
+    sleep_night_confirmations: [qk.health.sleepConfirmations], athlete_profile: [qk.athlete.profile],
     day_targets: [qk.dayTargets.all], athlete_limitations: [qk.athlete.limitations],
     dev_requests: [qk.devRequests.all], ai_memory: [qk.memory.all],
     // written by its own tools, not the catalogue

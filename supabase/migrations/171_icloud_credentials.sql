@@ -4,7 +4,8 @@
 --
 -- One row per account: the Apple ID email and its app-specific password, the
 -- discovered principal and calendar home, and the Apple check's test calendar
--- with its sync token. A token table (docs/integrations/icloud-caldav.md):
+-- with its sync token and its last result (what to look for on the iPhone —
+-- no password or URL in it). A token table (docs/integrations/icloud-caldav.md):
 -- written and read only by the `icloud-calendar` edge function with the
 -- service role — no browser policy, REVOKE ALL from anon and authenticated,
 -- never in ai-proxy's DB_CATALOG. The browser sees only the function's derived
@@ -20,6 +21,7 @@ create table if not exists public.icloud_credentials (
   calendar_home_url  text,
   test_calendar_url  text,
   test_sync_token    text,
+  last_check         jsonb,
   last_error         text,
   connected_at       timestamptz not null default now(),
   created_at         timestamptz not null default now(),

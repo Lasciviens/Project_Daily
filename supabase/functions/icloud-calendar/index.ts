@@ -48,14 +48,20 @@ const TEST_SLUG = 'lasci-test/'
 // <icloud-pure>
 // Pure: no network, no Deno — scripts/verify-icloud-caldav.cjs runs this block.
 
-/** Credentials go only to iCloud's own hosts, over HTTPS. */
+/** Credentials go only to iCloud's CalDAV hosts, over HTTPS: caldav.icloud.com and the account's pNN-caldav partition. */
 export function isICloudUrl(u: string): boolean {
   try {
     const x = new URL(u)
-    return x.protocol === 'https:' && (x.hostname === 'icloud.com' || x.hostname.endsWith('.icloud.com'))
+    return x.protocol === 'https:' && !x.username && !x.password
+      && (x.hostname === 'caldav.icloud.com' || /^p\d+-caldav\.icloud\.com$/.test(x.hostname))
   } catch {
     return false
   }
+}
+
+/** "Lasci · Test", "lasci test", "Lasci-Test": the owner may type the test calendar's name on the iPhone. */
+export function isTestCalendarName(name: string | null | undefined): boolean {
+  return (name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '') === 'lascitest'
 }
 
 /** Apple's app-specific passwords are four groups of four letters (abcd-efgh-ijkl-mnop). */
@@ -224,8 +230,15 @@ export function changeOf(props: Map<string, string[]>): { title: string; starts:
   const title = (props.get('SUMMARY')?.[0] ?? '').replace(/^[^:]*:/, '').replace(/\\([\\;,])/g, '$1').replace(/\\n/gi, ' ')
   const raw = props.get('DTSTART')?.[0]?.replace(/^[^:]*:/, '') ?? ''
   const m = raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/)
-  const starts = m ? `${m[3]}.${m[2]}.${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}${/Z$/.test(raw) ? ' UTC' : ''}` : '–'
-  return { title, starts }
+  if (!m) return { title, starts: '–' }
+  if (m[4] && /Z$/.test(raw)) {
+    // A UTC time reads as the Oslo clock, like every other time in the app.
+    const at = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]))
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(at).map(x => [x.type, x.value]))
+    return { title, starts: `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}` }
+  }
+  return { title, starts: `${m[3]}.${m[2]}.${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}` }
 }
 // </icloud-pure>
 
@@ -269,6 +282,8 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
       await res.body?.cancel()
       if (!loc) throw new ICloudError('redirect', `iCloud answered ${res.status} with nowhere to go`)
       current = new URL(loc, current).toString()
+      // A 303 means "read it with GET" — never re-send a write there.
+      if (res.status === 303) { method = 'GET'; body = undefined }
       continue
     }
     if (res.status === 401) { await res.body?.cancel(); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
@@ -303,25 +318,37 @@ async function discover(c: Creds): Promise<{ principal: string; home: string }> 
 interface Step { step: string; ok: boolean; detail: string }
 
 /** The test calendar: made by the app (MKCALENDAR), else one called "Lasci · Test" the owner made. */
-async function ensureTestCalendar(c: Creds, home: string, stored: string | null, steps: Step[]): Promise<{ url: string; created: boolean } | null> {
+async function ensureTestCalendar(c: Creds, home: string, stored: string | null, steps: Step[]): Promise<{ url: string; name: string } | null> {
   if (stored) {
     const r = await dav(c, 'PROPFIND', stored, `${XML}<d:propfind ${NS}><d:prop><d:displayname/></d:prop></d:propfind>`, { Depth: '0' })
-    if (r.status === 207) { steps.push({ step: 'Test calendar', ok: true, detail: 'found from the last check' }); return { url: stored, created: stored.endsWith(`/${TEST_SLUG}`) } }
+    if (r.status === 207) {
+      steps.push({ step: 'Test calendar', ok: true, detail: 'found from the last check' })
+      return { url: stored, name: xmlText(parseMultistatus(r.text).responses[0]?.props ?? '', 'displayname') ?? TEST_NAME }
+    }
   }
   const url = new URL(TEST_SLUG, home).toString()
   const mk = await dav(c, 'MKCALENDAR', url,
     `${XML}<c:mkcalendar ${NS}><d:set><d:prop><d:displayname>${TEST_NAME}</d:displayname><a:calendar-color>#7C3AEDFF</a:calendar-color>`
     + '<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>')
-  if (mk.status === 201 || mk.status === 405) {
-    steps.push({ step: 'Make a calendar', ok: true, detail: mk.status === 201 ? `"${TEST_NAME}" made by the app, in purple` : `"${TEST_NAME}" was already there` })
-    return { url, created: true }
+  if (mk.status === 201) {
+    steps.push({ step: 'Make a calendar', ok: true, detail: `"${TEST_NAME}" made by the app, in purple` })
+    return { url, name: TEST_NAME }
   }
-  steps.push({ step: 'Make a calendar', ok: false, detail: `iCloud answered ${mk.status} — looking for one called "${TEST_NAME}" instead` })
+  // 405 may mean "already there" — only when it really is our test calendar.
+  if (mk.status === 405) {
+    const there = await dav(c, 'PROPFIND', url, `${XML}<d:propfind ${NS}><d:prop><d:displayname/><d:resourcetype/></d:prop></d:propfind>`, { Depth: '0' })
+    const props = there.status === 207 ? parseMultistatus(there.text).responses[0]?.props ?? '' : ''
+    if (isTestCalendarName(xmlText(props, 'displayname')) && /calendar/.test(xmlText(props, 'resourcetype') ?? '')) {
+      steps.push({ step: 'Make a calendar', ok: true, detail: `"${TEST_NAME}" was already there` })
+      return { url, name: TEST_NAME }
+    }
+  }
+  steps.push({ step: 'Make a calendar', ok: false, detail: `iCloud answered ${mk.status} — looking for one called "Lasci Test" instead` })
   const list = await propfind(c, home, '<d:displayname/><d:resourcetype/>', '1')
-  const found = list.responses.find(r => xmlText(r.props, 'displayname') === TEST_NAME && /calendar/.test(xmlText(r.props, 'resourcetype') ?? ''))
+  const found = list.responses.find(r => isTestCalendarName(xmlText(r.props, 'displayname')) && /calendar/.test(xmlText(r.props, 'resourcetype') ?? ''))
   if (!found) return null
-  steps.push({ step: 'Test calendar', ok: true, detail: `found "${TEST_NAME}"` })
-  return { url: new URL(found.href, list.url).toString(), created: false }
+  steps.push({ step: 'Test calendar', ok: true, detail: `found "${xmlText(found.props, 'displayname')}"` })
+  return { url: new URL(found.href, list.url).toString(), name: xmlText(found.props, 'displayname') ?? TEST_NAME }
 }
 
 /** What iCloud has for these hrefs (calendar-multiget): href → the stored iCalendar. */
@@ -340,8 +367,13 @@ async function multiget(c: Creds, calendar: string, hrefs: string[]): Promise<Ma
 }
 
 async function syncToken(c: Creds, calendar: string): Promise<string | null> {
-  const r = await propfind(c, calendar, '<d:sync-token/>', '0')
-  return xmlText(r.responses[0]?.props ?? '', 'sync-token')
+  try {
+    const r = await propfind(c, calendar, '<d:sync-token/>', '0')
+    return xmlText(r.responses[0]?.props ?? '', 'sync-token')
+  } catch (e) {
+    if (e instanceof ICloudError && e.code === 'auth') throw e
+    return null
+  }
 }
 
 function osloTomorrow(now: Date): string {
@@ -375,11 +407,24 @@ Deno.serve(async (req) => {
   try { body = await req.json() } catch { return answer({ error: 'Bad request' }, 400) }
   const action = String(body.action ?? '')
 
-  const { data: row } = await db.from('icloud_credentials')
-    .select('apple_id, app_password, calendar_home_url, test_calendar_url, test_sync_token, last_error, connected_at')
-    .eq('user_id', user.id).maybeSingle()
+  // The password is read only for the actions that call iCloud.
+  const needsPassword = action === 'check' || action === 'changes' || action === 'remove'
+  const { data: row, error: readError } = await db.from('icloud_credentials')
+    .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, connected_at`)
+    .eq('user_id', user.id).maybeSingle() as {
+      data: { apple_id: string; app_password?: string; calendar_home_url: string | null; test_calendar_url: string | null; test_sync_token: string | null; last_error: string | null; last_check: unknown; connected_at: string } | null
+      error: { message: string } | null
+    }
+  // A failed read is not "not connected": the card would offer Connect, and Apple shows a password only once.
+  if (readError) {
+    console.error(`icloud-calendar ${action}: read`)
+    return answer({ error: /icloud_credentials|last_check/.test(readError.message) ? 'Apple Calendar needs migration 171 — it runs with the next deploy' : 'The iCloud connection could not be read — try again' }, 502)
+  }
   const status = (r: typeof row) => (r
-    ? { connected: true, appleId: maskAppleId(r.apple_id), connectedAt: r.connected_at, lastError: r.last_error, hasTest: !!r.test_calendar_url }
+    ? {
+        connected: true, appleId: maskAppleId(r.apple_id), connectedAt: r.connected_at, lastError: r.last_error,
+        hasTest: !!r.test_calendar_url, testIsApps: !!r.test_calendar_url?.endsWith(`/${TEST_SLUG}`), lastCheck: r.last_check ?? null,
+      }
     : { connected: false })
 
   try {
@@ -396,18 +441,20 @@ Deno.serve(async (req) => {
       const { principal, home } = await discover(creds)
       const { error } = await db.from('icloud_credentials').upsert({
         user_id: user.id, apple_id: email, app_password: password, principal_url: principal, calendar_home_url: home,
-        last_error: null, connected_at: new Date().toISOString(),
+        // Another Apple ID's test calendar is not this one's.
+        test_calendar_url: null, test_sync_token: null, last_check: null, last_error: null, connected_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
       if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migration 171 — it runs with the next deploy' : 'The connection could not be saved')
-      return answer(status({ apple_id: email, app_password: '', calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, connected_at: new Date().toISOString() }))
+      return answer(status({ apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null, connected_at: new Date().toISOString() }))
     }
 
     if (action === 'disconnect') {
-      await db.from('icloud_credentials').delete().eq('user_id', user.id)
+      const { error } = await db.from('icloud_credentials').delete().eq('user_id', user.id)
+      if (error) throw new ICloudError('store', 'The stored password could not be deleted — try again')
       return answer({ connected: false })
     }
 
-    if (!row) return answer({ error: 'Connect iCloud first' }, 400)
+    if (!row || !row.app_password) return answer({ error: 'Connect iCloud first' }, 400)
     const creds = { email: row.apple_id, password: row.app_password }
     const home = row.calendar_home_url ?? (await discover(creds)).home
 
@@ -415,8 +462,10 @@ Deno.serve(async (req) => {
       const steps: Step[] = []
       const cal = await ensureTestCalendar(creds, home, row.test_calendar_url, steps)
       if (!cal) {
-        return answer({ steps, needsCalendar: true, message: `iCloud didn't let the app make a calendar. On your iPhone: Calendar → Calendars → Add Calendar → "${TEST_NAME}" (iCloud), then run the check again.` })
+        return answer({ steps, needsCalendar: true, message: 'iCloud didn\'t let the app make a calendar. On your iPhone: Calendar → Calendars → Add Calendar → name it "Lasci Test" (in iCloud), then run the check again.' })
       }
+      // Saved before any event is written: whatever fails next, Remove can still find them.
+      await db.from('icloud_credentials').update({ test_calendar_url: cal.url, test_sync_token: null }).eq('user_id', user.id)
       const events = checkEvents(osloTomorrow(new Date()), new Date(), APP_URL)
       const written: { ev: CheckEvent; href: string; ok: boolean; status: number }[] = []
       for (const ev of events) {
@@ -425,29 +474,37 @@ Deno.serve(async (req) => {
         written.push({ ev, href, ok: r.status === 201 || r.status === 204, status: r.status })
       }
       steps.push({ step: 'Write the test events', ok: written.every(w => w.ok), detail: `${written.filter(w => w.ok).length} of ${written.length} taken by iCloud` })
-      const stored = await multiget(creds, cal.url, written.filter(w => w.ok).map(w => new URL(w.href).pathname))
-      steps.push({ step: 'Read them back', ok: stored.size === written.filter(w => w.ok).length, detail: `${stored.size} read back` })
+      let stored = new Map<string, string>()
+      try {
+        stored = await multiget(creds, cal.url, written.filter(w => w.ok).map(w => new URL(w.href).pathname))
+        steps.push({ step: 'Read them back', ok: stored.size === written.filter(w => w.ok).length, detail: `${stored.size} read back` })
+      } catch (e) {
+        if (e instanceof ICloudError && e.code === 'auth') throw e
+        steps.push({ step: 'Read them back', ok: false, detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
+      }
       const token = await syncToken(creds, cal.url)
       steps.push({ step: 'Changes since (sync token)', ok: !!token, detail: token ? 'iCloud gave a sync token — "Check changes" can follow your edits' : 'iCloud gave no sync token' })
-      await db.from('icloud_credentials').update({ test_calendar_url: cal.url, test_sync_token: token, last_error: null }).eq('user_id', user.id)
-      return answer({
+      const result = {
         steps,
-        calendar: TEST_NAME,
+        calendar: cal.name,
         day: osloTomorrow(new Date()),
         events: written.map(w => {
           const ics = stored.get(new URL(w.href).pathname)
           const kept = ics ? keptOf(eventProps(ics)) : null
           return { key: w.ev.key, label: w.ev.label, written: w.ok, status: w.status, kept: kept ? Object.fromEntries(w.ev.expect.map(k => [k, kept[k]])) : null }
         }),
-      })
+      }
+      // Kept so the card still shows what to look for after the trip to the Calendar app (no password or URL in it).
+      await db.from('icloud_credentials').update({ test_sync_token: token, last_check: result, last_error: null }).eq('user_id', user.id)
+      return answer(result)
     }
 
     if (action === 'changes') {
       if (!row.test_calendar_url || !row.test_sync_token) return answer({ error: 'Run the Apple check first' }, 400)
       const r = await dav(creds, 'REPORT', row.test_calendar_url,
         `${XML}<d:sync-collection ${NS}><d:sync-token>${escapeXml(row.test_sync_token)}</d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/></d:prop></d:sync-collection>`,
-        { Depth: '1' })
-      if (r.status !== 207) return answer({ tokenWorked: false, message: `iCloud answered ${r.status} to "what changed since" — the check falls back to reading the calendar again`, changes: [] })
+        { Depth: '0' })
+      if (r.status !== 207) return answer({ tokenWorked: false, message: `iCloud doesn't report changes this way (it answered ${r.status}) — Phase 2 would read the whole calendar again instead`, changes: [] })
       const parsed = parseMultistatus(r.text)
       const changed = parsed.responses.filter(x => x.status !== 404 && x.href.endsWith('.ics'))
       const removed = parsed.responses.filter(x => x.status === 404)
@@ -456,23 +513,32 @@ Deno.serve(async (req) => {
         ...[...stored.values()].map(ics => ({ kind: 'changed' as const, ...changeOf(eventProps(ics)) })),
         ...removed.map(() => ({ kind: 'removed' as const, title: 'An event', starts: '–' })),
       ]
-      if (parsed.syncToken) await db.from('icloud_credentials').update({ test_sync_token: parsed.syncToken }).eq('user_id', user.id)
+      await db.from('icloud_credentials').update({ ...(parsed.syncToken ? { test_sync_token: parsed.syncToken } : {}), last_error: null }).eq('user_id', user.id)
       return answer({ tokenWorked: true, changes })
     }
 
     if (action === 'remove') {
-      if (!row.test_calendar_url) return answer({ removed: false, message: 'No test calendar to remove' })
-      // Only the calendar the app made goes whole; one the owner made keeps everything but the check's events.
-      if (row.test_calendar_url.endsWith(`/${TEST_SLUG}`)) {
+      if (!row.test_calendar_url) return answer({ removed: null, message: 'No test calendar to remove' })
+      // Only the calendar the app made, holding nothing but the check's events, goes whole; otherwise only the check's events go.
+      const members = await propfind(creds, row.test_calendar_url, '<d:getetag/>', '1')
+      const onlyOurs = members.responses
+        .map(m => new URL(m.href, members.url).pathname)
+        .filter(p => p !== new URL(row.test_calendar_url!).pathname)
+        .every(p => /\/lasci-check-[a-z]+-lasciviens-github-io\.ics$/.test(p))
+      let removed: 'calendar' | 'events'
+      if (row.test_calendar_url.endsWith(`/${TEST_SLUG}`) && onlyOurs) {
         const r = await dav(creds, 'DELETE', row.test_calendar_url)
         if (r.status >= 300 && r.status !== 404) return answer({ error: `iCloud answered ${r.status} — the test calendar is still there` }, 502)
+        removed = 'calendar'
       } else {
         for (const ev of checkEvents(osloTomorrow(new Date()), new Date(), APP_URL)) {
-          await dav(creds, 'DELETE', new URL(`${ev.uid.replace(/[^a-z0-9-]/gi, '-')}.ics`, row.test_calendar_url).toString())
+          const r = await dav(creds, 'DELETE', new URL(`${ev.uid.replace(/[^a-z0-9-]/gi, '-')}.ics`, row.test_calendar_url).toString())
+          if (r.status >= 300 && r.status !== 404) return answer({ error: `iCloud answered ${r.status} — some test events are still there` }, 502)
         }
+        removed = 'events'
       }
-      await db.from('icloud_credentials').update({ test_calendar_url: null, test_sync_token: null }).eq('user_id', user.id)
-      return answer({ removed: true })
+      await db.from('icloud_credentials').update({ test_calendar_url: null, test_sync_token: null, last_check: null, last_error: null }).eq('user_id', user.id)
+      return answer({ removed })
     }
 
     return answer({ error: 'Unknown action' }, 400)
@@ -481,6 +547,7 @@ Deno.serve(async (req) => {
     const message = e instanceof ICloudError ? e.message : 'Something went wrong talking to iCloud'
     if (row) await db.from('icloud_credentials').update({ last_error: message }).eq('user_id', user.id)
     console.error(`icloud-calendar ${action}: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
-    return answer({ error: message }, e instanceof ICloudError && e.code === 'auth' ? 401 : 502)
+    // Apple refusing the password is not this app's sign-in failing: 400, never 401.
+    return answer({ error: message }, e instanceof ICloudError && e.code === 'auth' ? 400 : 502)
   }
 })

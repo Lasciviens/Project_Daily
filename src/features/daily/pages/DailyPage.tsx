@@ -97,8 +97,8 @@ export function DailyPage() {
   const dayLike = mode === 'day' || mode === 'diary'
   const context = !dayLike ? null
     : isToday(viewDate) ? `${greeting} · ${timeStr}`
-    : period === 'yesterday' ? 'Yesterday'
-    : period === 'tomorrow'  ? 'Tomorrow'
+    : isYesterday(viewDate) ? 'Yesterday'
+    : isTomorrow(viewDate)  ? 'Tomorrow'
     : diff > 0 ? `In ${diff} day${diff !== 1 ? 's' : ''}`
     : `${Math.abs(diff)} day${Math.abs(diff) !== 1 ? 's' : ''} ago`
 

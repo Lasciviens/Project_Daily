@@ -61,6 +61,7 @@
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
 | `supabase/migrations/170_*`, `src/features/diary/**`, `src/features/daily/pages/DailyPage.tsx`, `src/features/daily/dailyBoards.ts` | Claude | Personal → Diary | 29.10.2026 |
+| `supabase/migrations/171_*`, `supabase/functions/icloud-calendar/`, `src/features/calendar/icloud/**`, `src/features/developer/components/ConnectionsTab.tsx`, `src/features/developer/developerBoards.ts` | Claude | Apple Calendar (iCloud) Phase 1 | 29.10.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

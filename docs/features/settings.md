@@ -32,8 +32,9 @@ nothing but Disconnect — the one action actually needed (paste a fresh token)
 was unreachable from the page that owns connections.
 
 Two kinds of integration sit side by side there and are labelled differently, deliberately:
-- **user-authorized** (Google, Strava, PlayStation) — a real per-user token; connect and revoke
-  from here.
+- **user-authorized** (Google, Strava, PlayStation, Apple Calendar through iCloud — an
+  app-specific password, `docs/integrations/icloud-caldav.md`) — a real per-user credential;
+  connect and revoke from here.
 - **server-configured** (Steam, Hevy, Apple Health) — a single-user secret in Supabase Vault
   with no browser consent step at all, so the card is a read-only status readout. **Never render
   a Connect button that can't actually connect anything.** The Hevy card (14.10.2026, migration

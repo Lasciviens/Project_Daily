@@ -42,6 +42,9 @@ let failed = null
 try {
   const target = withDb(url, db)
   psql(target, ['-f', join(root, 'scripts/db-tests/one-item/base.sql')])
+  // Supabase grants every new table to the API roles by default (until 30.10.2026): give the test
+  // database the same default, so 171's REVOKE is what keeps the browser out.
+  psql(target, ['-c', 'alter default privileges in schema public grant all on tables to anon, authenticated, service_role'])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud/scenarios.sql')], { encoding: 'utf8' })

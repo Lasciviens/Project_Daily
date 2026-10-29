@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Apple, RefreshCw, Trash2, Unplug } from 'lucide-react'
+import { Apple, Check, RefreshCw, Trash2, Unplug, X } from 'lucide-react'
 import { Button, ToneDot, TonePill } from '../../../shared/ui'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
@@ -83,7 +83,9 @@ function CheckResult({ result }: { result: ICloudCheck }) {
                 <span className="flex flex-wrap gap-1">
                   {!e.written && <TonePill tone="danger">iCloud refused it ({e.status})</TonePill>}
                   {e.kept && Object.entries(e.kept).filter(([k]) => k !== 'summary').map(([k, ok]) => (
-                    <TonePill key={k} tone={ok ? 'success' : 'warn'}>{ok ? '✓' : '✗'} {KEPT_LABEL[k] ?? k}</TonePill>
+                    <TonePill key={k} tone={ok ? 'success' : 'warn'} className="[&_svg]:h-3 [&_svg]:w-3">
+                      {ok ? <Check aria-label="kept" /> : <X aria-label="lost" />} {KEPT_LABEL[k] ?? k}
+                    </TonePill>
                   ))}
                 </span>
               </li>
@@ -115,37 +117,71 @@ export function ICloudCard() {
   const remove = useRemoveICloudTest()
   const s = status.data
   const connected = !!s?.connected
+  // The last check stays on the server: the list survives the trip to the Calendar app.
+  const result = check.data ?? s?.lastCheck ?? null
+  const hasTest = !!(s?.hasTest || check.data)
+
+  async function runCheck() {
+    if (result?.events) {
+      const ok = await entityModal.confirm({
+        title: 'Run the Apple check again?',
+        message: 'The test events are written again, over anything you moved, and "Check changes" starts over from now. Check changes first if you moved an event.',
+        confirmLabel: 'Run again',
+      })
+      if (!ok) return
+    }
+    changes.reset()
+    check.mutate()
+  }
 
   async function removeTest() {
     const ok = await entityModal.confirm({
-      title: 'Remove the test calendar?',
-      message: '"Lasci · Test" and its events go from iCloud, on every device. This can\'t be undone.',
+      title: s?.testIsApps === false ? 'Remove the test events?' : 'Remove the test calendar?',
+      message: s?.testIsApps === false
+        ? `The check's events go from "${result?.calendar ?? 'your test calendar'}" in iCloud, on every device; the calendar itself stays. This can't be undone.`
+        : '"Lasci · Test" and its events go from iCloud, on every device. This can\'t be undone.',
       confirmLabel: 'Remove',
       destructive: true,
     })
     if (ok) remove.mutate(undefined, { onSuccess: () => { check.reset(); changes.reset() } })
   }
 
+  async function disconnectICloud() {
+    const ok = await entityModal.confirm({
+      title: 'Disconnect iCloud?',
+      message: `The app forgets the app-specific password (Apple shows a password only once — connecting again takes a new one).${hasTest ? ' The test calendar stays in iCloud: remove it first if you\'re done with it.' : ''} Then revoke the password at account.apple.com. This can't be undone.`,
+      confirmLabel: 'Disconnect',
+      destructive: true,
+    })
+    if (ok) disconnect.mutate(undefined, { onSuccess: () => { check.reset(); changes.reset() } })
+  }
+
   return (
     <ConnectionCard service="icloud" kind="user" icon={<Apple />} name="Apple Calendar (iCloud)" account={s?.appleId}
       description="Writes straight into Apple Calendar through iCloud — Phase 1 is a check: a few test events, then you look at your iPhone and Mac."
-      status={status.isLoading ? 'unknown' : connected ? 'connected' : 'disconnected'}
+      status={status.isLoading || status.isError ? 'unknown' : connected ? 'connected' : 'disconnected'}
       details={[s?.connectedAt ? `Since ${formatDateTime(s.connectedAt)}` : null]}>
-      {!connected ? <ConnectForm /> : (
+      {status.isLoading ? null : status.isError ? (
+        // Never the Connect form on a failed read: Apple shows a password only once.
+        <div className="flex flex-wrap items-center gap-2">
+          <p role="alert" className="text-meta text-danger">{status.error instanceof Error ? status.error.message : 'The iCloud connection could not be read'}</p>
+          <Button size="sm" onClick={() => status.refetch()}>Retry</Button>
+        </div>
+      ) : !connected ? <ConnectForm /> : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={() => check.mutate()} loading={check.isPending}>Run the Apple check</Button>
-            {(s?.hasTest || check.data) && (
+            <Button variant="primary" onClick={runCheck} loading={check.isPending}>{result?.events ? 'Run the check again' : 'Run the Apple check'}</Button>
+            {hasTest && (
               <Button size="sm" icon={<RefreshCw />} onClick={() => changes.mutate()} loading={changes.isPending}>Check changes</Button>
             )}
-            {(s?.hasTest || check.data) && (
-              <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending}>Remove test calendar</Button>
+            {hasTest && (
+              <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending}>{s?.testIsApps === false ? 'Remove test events' : 'Remove test calendar'}</Button>
             )}
-            <Button size="sm" icon={<Unplug />} onClick={() => disconnect.mutate()} loading={disconnect.isPending}>Disconnect</Button>
+            <Button size="sm" icon={<Unplug />} onClick={disconnectICloud} loading={disconnect.isPending}>Disconnect</Button>
           </div>
           {s?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {s.lastError}</p>}
-          {check.data && <CheckResult result={check.data} />}
           {changes.data && <ChangesResult result={changes.data} />}
+          {result && <CheckResult result={result} />}
         </>
       )}
     </ConnectionCard>

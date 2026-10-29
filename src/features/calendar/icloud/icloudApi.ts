@@ -11,6 +11,10 @@ export interface ICloudStatus {
   connectedAt?: string
   lastError?:   string | null
   hasTest?:     boolean
+  /** The test calendar is the one the app made (Remove deletes it whole), not one the owner made. */
+  testIsApps?:  boolean
+  /** The last Apple check, kept on the server so the card still shows it after a trip to the Calendar app. */
+  lastCheck?:   ICloudCheck | null
 }
 
 export interface ICloudStep { step: string; ok: boolean; detail: string }
@@ -54,4 +58,5 @@ export const connectICloud = (appleId: string, appPassword: string) => call<IClo
 export const disconnectICloud = () => call<ICloudStatus>('disconnect')
 export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')
-export const removeICloudTest = () => call<{ removed: boolean; message?: string }>('remove')
+/** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */
+export const removeICloudTest = () => call<{ removed: 'calendar' | 'events' | null; message?: string }>('remove')
