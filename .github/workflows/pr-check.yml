@@ -251,6 +251,20 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 170: the day's diary (one row per day, the owner's own,
+      # audited, row level security and the owner lock).
+      - name: Diary database scenarios
+        run: node scripts/verify-db-diary.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 171: iCloud credentials — a token table only the service
+      # role reads and writes (no browser access), with the owner lock.
+      - name: iCloud credentials database scenarios
+        run: node scripts/verify-db-icloud.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migrations 166 and 167: a moved training session is moved (its Hevy
       # workout link checked against the new day, a missed day moved is to
       # do, a repeat's day moved without its slot gets one, the one-off

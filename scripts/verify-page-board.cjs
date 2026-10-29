@@ -175,7 +175,7 @@ check('news is last on the phone (a list) and lists more headlines as the band w
   HOME_BOARD[1][HOME_BOARD[1].length - 1] === 'news' && H.newsRows(1) === 8 && H.newsRows(2) < H.newsRows(3) && H.newsRows(3) < H.newsRows(4))
 
 console.log('Daily layouts')
-for (const [name, board, known] of [['Day', D.DAY_BOARD, D.DAY_SECTIONS], ['Week', D.WEEK_BOARD, D.PICKER_SECTIONS], ['Month', D.MONTH_BOARD, D.PICKER_SECTIONS], ['Tasks', D.TASKS_BOARD, D.TASK_SECTIONS]]) {
+for (const [name, board, known] of [['Day', D.DAY_BOARD, D.DAY_SECTIONS], ['Week', D.WEEK_BOARD, D.PICKER_SECTIONS], ['Month', D.MONTH_BOARD, D.PICKER_SECTIONS], ['Tasks', D.TASKS_BOARD, D.TASK_SECTIONS], ['Diary', D.DIARY_BOARD, D.DIARY_SECTIONS]]) {
   const problems = B.validateBoardLayouts(board, known)
   check(`${name} layout is valid`, problems.length === 0, problems.join('; '))
 }

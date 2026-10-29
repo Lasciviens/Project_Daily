@@ -289,6 +289,16 @@ export const qk = {
     routes: () => ['transit', 'routes'] as const,
     recentSearches: () => ['transit', 'recent-searches'] as const,
   },
+  // Settings → Subscriptions → Apple Calendar (iCloud), Phase 1 (171).
+  icloud: {
+    all: ['icloud'] as const,
+    status: () => ['icloud', 'status'] as const,
+  },
+  // Personal → Diary: the day's own words (diary_entries, migration 170).
+  diary: {
+    all: ['diary'] as const,
+    day: (day: string) => ['diary', 'day', day] as const,
+  },
   // Settings → Subscriptions (service_subscriptions, migration 115).
   subscriptions: {
     all: ['subscriptions'] as const,

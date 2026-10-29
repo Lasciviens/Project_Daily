@@ -25,6 +25,7 @@ import { ConnectionCard, type Status } from './ConnectionCard'
 import { TraktCard } from '../../media/trakt/TraktCard'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
 import { CalendarReadbackLine, ConvertOldItemsButton } from './ConvertOldItems'
+import { ICloudCard } from '../../calendar/icloud/ICloudCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
@@ -311,13 +312,14 @@ function KoboCard() {
 }
 
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
-const CARD_SERVICES = ['google', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo'] as const
+const CARD_SERVICES = ['google', 'icloud', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo'] as const
 
 const ACCOUNTS_LABEL = 'Signed in by you'
 const SERVER_LABEL = 'Set up on the server'
 
 export function ConnectionsTab() {
   const google = <GoogleCard />
+  const icloud = <ICloudCard />
   const strava = <StravaCard />
   const psn = <PlayStationCard />
   const trakt = <TraktCard />
@@ -339,7 +341,7 @@ export function ConnectionsTab() {
       </div>
     ),
     otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
-    google, strava, psn, trakt, steam, igdb, hevy, health, kobo,
+    google, icloud, strava, psn, trakt, steam, igdb, hevy, health, kobo,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
     // Short read-only cards of about the same height, so a row grid

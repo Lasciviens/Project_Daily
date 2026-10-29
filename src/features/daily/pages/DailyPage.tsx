@@ -20,7 +20,8 @@ import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
 import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
-import { DAY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
+import { DAY_BOARD, DIARY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
+import { DiaryView } from '../../diary/components/DiaryView'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage — one header: ‹ date › + context on the left, the period switcher
@@ -29,9 +30,9 @@ import { DAY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type D
 //  Yesterday/Tomorrow cells (reachable via ‹ ›) so the switcher fits.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Mode = 'day' | 'week' | 'month' | 'tasks'
-const MODE_BOARD = { day: DAY_BOARD, week: WEEK_BOARD, month: MONTH_BOARD, tasks: TASKS_BOARD } as const
-type Period = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month' | 'tasks' | 'other'
+type Mode = 'day' | 'week' | 'month' | 'tasks' | 'diary'
+const MODE_BOARD = { day: DAY_BOARD, week: WEEK_BOARD, month: MONTH_BOARD, tasks: TASKS_BOARD, diary: DIARY_BOARD } as const
+type Period = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month' | 'tasks' | 'diary' | 'other'
 
 const DESKTOP_PERIODS: SegmentedOption<Period>[] = [
   { value: 'yesterday', label: 'Yesterday' },
@@ -40,6 +41,7 @@ const DESKTOP_PERIODS: SegmentedOption<Period>[] = [
   { value: 'week',      label: 'Week' },
   { value: 'month',     label: 'Month' },
   { value: 'tasks',     label: 'Tasks' },
+  { value: 'diary',     label: 'Diary' },
 ]
 const PHONE_PERIODS = DESKTOP_PERIODS.filter(o => o.value !== 'yesterday' && o.value !== 'tomorrow')
 
@@ -78,7 +80,7 @@ export function DailyPage() {
       : 'other'
 
   function pickPeriod(p: Period) {
-    if (p === 'week' || p === 'month' || p === 'tasks') { setMode(p); return }
+    if (p === 'week' || p === 'month' || p === 'tasks' || p === 'diary') { setMode(p); return }
     const offset = p === 'yesterday' ? -1 : p === 'tomorrow' ? 1 : 0
     setViewDate(addDays(new Date(), offset))
     setMode('day')
@@ -91,10 +93,12 @@ export function DailyPage() {
   const { ref: pageRef, step } = usePageStep<HTMLDivElement>()
   const headerRem = step == null ? null : boardWidthRem(MODE_BOARD[mode], step)
 
-  const context = mode !== 'day' ? null
+  // The diary pages through days like the day view, with the same day line.
+  const dayLike = mode === 'day' || mode === 'diary'
+  const context = !dayLike ? null
     : isToday(viewDate) ? `${greeting} · ${timeStr}`
-    : period === 'yesterday' ? 'Yesterday'
-    : period === 'tomorrow'  ? 'Tomorrow'
+    : isYesterday(viewDate) ? 'Yesterday'
+    : isTomorrow(viewDate)  ? 'Tomorrow'
     : diff > 0 ? `In ${diff} day${diff !== 1 ? 's' : ''}`
     : `${Math.abs(diff)} day${Math.abs(diff) !== 1 ? 's' : ''} ago`
 
@@ -110,14 +114,14 @@ export function DailyPage() {
             size="md"
             label={formatWeekdayDate(viewDate)}
             labelClassName="min-w-[120px] text-head font-bold tracking-tight text-fg sm:text-page"
-            onPrev={() => { setViewDate(d => addDays(d, -1)); setMode('day') }}
-            onNext={() => { setViewDate(d => addDays(d,  1)); setMode('day') }}
-            onToday={() => { setViewDate(new Date()); setMode('day') }}
-            isToday={mode === 'day' && isToday(viewDate)}
+            onPrev={() => { setViewDate(d => addDays(d, -1)); setMode(m => (m === 'diary' ? m : 'day')) }}
+            onNext={() => { setViewDate(d => addDays(d,  1)); setMode(m => (m === 'diary' ? m : 'day')) }}
+            onToday={() => { setViewDate(new Date()); setMode(m => (m === 'diary' ? m : 'day')) }}
+            isToday={dayLike && isToday(viewDate)}
           />
         }
         subtitle={context
-          ? <span className="pl-1 tabular-nums">{mode === 'day' ? <DayLine date={formatLocalDate(viewDate)} lead={context} /> : context}</span>
+          ? <span className="pl-1 tabular-nums">{dayLike ? <DayLine date={formatLocalDate(viewDate)} lead={context} /> : context}</span>
           : undefined}
         actions={
           <>
@@ -136,6 +140,7 @@ export function DailyPage() {
       {mode === 'week' && <PickerSection kind="week" onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'month' && <PickerSection kind="month" onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'tasks' && <TasksPanel />}
+      {mode === 'diary' && <DiaryView day={formatLocalDate(viewDate)} />}
       </div>
     </PageContainer>
   )

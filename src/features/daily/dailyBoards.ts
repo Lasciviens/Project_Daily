@@ -52,6 +52,18 @@ const PICKER_WIDE = {
 export const WEEK_BOARD: BoardLayouts<PickerSection> = { 1: ['picker'], ...PICKER_WIDE }
 export const MONTH_BOARD: BoardLayouts<PickerSection> = { 1: ['pair'], ...PICKER_WIDE }
 
+// ── Diary ───────────────────────────────────────────────────────────────────
+// The day's own words and what happened that day (owner, 29.10.2026):
+//   1  phone, tablet — the words, then the day's list.
+//   2+ the day's list in the main track, the words beside it.
+export const DIARY_SECTIONS = ['entry', 'timeline'] as const
+export type DiarySection = typeof DIARY_SECTIONS[number]
+
+export const DIARY_BOARD: BoardLayouts<DiarySection> = {
+  1: ['entry', 'timeline'],
+  2: { main: '42rem', columns: [['timeline'], ['entry']] },
+}
+
 // ── Tasks ───────────────────────────────────────────────────────────────────
 // The task groups become columns, read left to right by time: what needs
 // doing now (overdue · open windows · today) | upcoming | no date | done.

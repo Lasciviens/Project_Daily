@@ -6,7 +6,7 @@ import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
 // sign-out only ended the Supabase session: the Google token, the AI chat, the
 // cached API answers and this device's morning-brief subscription all stayed,
 // so the next account in this browser inherited them and the brief kept coming.
-// Drafts (Dev Requests, a Shop chain being built) stay on purpose — nothing
+// Drafts (Dev Requests, a Shop chain being built, the Diary's unsaved words) stay on purpose — nothing
 // typed is ever lost, and a session that expires lands here too.
 
 // Kept here as text so the shell doesn't load the Games code; the verify script
