@@ -34,7 +34,7 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
   const [kind, setKind] = useState<ProjectKind>('blank')
 
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || create.isPending) return
     try {
       const p = await create.mutateAsync({ name: name.trim(), area, kind })
       onClose()
@@ -67,7 +67,7 @@ function NewProjectSheet({ onClose }: { onClose: () => void }) {
         </div>
         <fieldset>
           <legend className="field-label">Start from</legend>
-          <div className="grid grid-cols-1 gap-2 min-[25rem]:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
             {TEMPLATES.map(t => {
               const Icon = KIND_ICON[t.kind]
               const on = kind === t.kind
@@ -114,7 +114,7 @@ function ProjectDetailsSheet({ project, onClose }: { project: Project; onClose: 
   const linkBad = !!link.trim() && !/^https?:\/\/\S+$/i.test(link.trim())
 
   async function save() {
-    if (!name.trim() || linkBad) return
+    if (!name.trim() || linkBad || update.isPending) return
     try {
       await update.mutateAsync({ id: project.id, patch: {
         name: name.trim(), description: description.trim() || null, notes: notes.trim() || null, kind,
@@ -161,7 +161,7 @@ function ProjectDetailsSheet({ project, onClose }: { project: Project; onClose: 
           <textarea id="pd-desc" value={description} onChange={e => setDescription(e.target.value)} rows={2}
             placeholder="One or two sentences about the goal" className="input min-h-[64px] resize-y" />
         </div>
-        <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 min-[416px]:grid-cols-2">
           <div>
             <label htmlFor="pd-status" className="field-label">Status</label>
             <select id="pd-status" value={status} onChange={e => setStatus(e.target.value as ProjectStatus)} className="select">
@@ -176,11 +176,11 @@ function ProjectDetailsSheet({ project, onClose }: { project: Project; onClose: 
           </div>
           <div>
             <span className="field-label">Started</span>
-            <DateInput value={startedOn} onChange={setStartedOn} aria-label="Started" />
+            <DateInput value={startedOn} onChange={setStartedOn} aria-label="Started" className="w-full" />
           </div>
           <div>
             <span className="field-label">Target</span>
-            <DateInput value={targetOn} onChange={setTargetOn} min={startedOn || undefined} aria-label="Target" />
+            <DateInput value={targetOn} onChange={setTargetOn} min={startedOn || undefined} aria-label="Target" className="w-full" />
           </div>
         </div>
         <div>
@@ -235,7 +235,7 @@ function PhaseSheet({ projectId, phase, siblings, onClose }: {
   const saving = create.isPending || update.isPending
 
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || saving) return
     const fields = { name: name.trim(), done_when: doneWhen.trim() || null, target_on: targetOn || null }
     try {
       if (phase) await update.mutateAsync({ id: phase.id, patch: { ...fields, ...(status !== phase.status ? { status } : {}) } })

@@ -136,7 +136,23 @@ export interface GoogleTasksSyncSummary {
   drain_failed?: number
   imported?:     number
   added?:        number
+  /** The same run's Google Calendar read-back: changes applied to slots and plans. */
+  readback?:     { applied?: number } | null
   partial_errors?: unknown
+}
+
+/** "Push to Google Tasks": the open tasks not on Google Tasks yet that
+ *  belong there. An item saved since 155 says where it lives (`google_target`):
+ *  only Tasks / Both are pushed — never one kept off Google or on Calendar
+ *  only (a repeat's day on Calendar would show twice). An older row (no
+ *  target) is pushed as before, except a project's task (162: not on Google
+ *  until the owner plans it). */
+export function googleTasksPushCandidates<T extends {
+  status: string; google_task_id?: string | null; google_target?: string | null; project_id?: string | null
+}>(tasks: readonly T[], isOpen: (t: T) => boolean): T[] {
+  return tasks.filter(t => !t.google_task_id && isOpen(t) && (t.google_target
+    ? t.google_target === 'tasks' || t.google_target === 'both'
+    : !t.project_id))
 }
 
 /** The toast after "Sync now". */

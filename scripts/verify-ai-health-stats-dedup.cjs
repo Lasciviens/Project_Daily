@@ -160,5 +160,77 @@ console.log('\n8 · The mirror AGREES with the web app (healthAggregate.collapse
   }
 }
 
-console.log(`\n${passed} passed, ${failed} failed\n`)
-if (failed > 0) process.exit(1)
+// The REAL getHealthStats (TypeScript stripped) against a fake PostgREST that,
+// like Supabase, answers at most 1,000 rows — in table order unless the query
+// orders it. Audit 28.10.2026: hourly rows pass 1,000 within a week, and the
+// unpaged read dropped the newest days.
+async function pagingChecks() {
+  console.log('\n9 · The real getHealthStats reads past PostgREST\'s 1,000-row cap')
+  const fs = require('fs')
+  const path = require('path')
+  const { transform } = require('sucrase')
+  const src = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/ai-proxy/index.ts'), 'utf8')
+  const start = src.indexOf('const SLEEP_CONTAINMENT')
+  const end = src.indexOf('\nasync function markEpisodeWatched')
+  const code = transform('type AnyRecord = Record<string, any>\n' + src.slice(start, end), { transforms: ['typescript'] }).code
+  const getHealthStats = new Function(code + '; return getHealthStats')()
+
+  const reads = []
+  const fakeDb = (table) => ({ from: () => {
+    const f = [], order = []
+    let range = null
+    const q = {
+      select: () => q,
+      eq: (c, v) => (f.push(r => r[c] === v), q),
+      in: (c, v) => (f.push(r => v.includes(r[c])), q),
+      gte: (c, v) => (f.push(r => r[c] >= v), q),
+      order: (c) => (order.push(c), q),
+      range: (a, b) => (range = [a, b], q),
+      then: (res) => {
+        let rows = table.filter(r => f.every(fn => fn(r)))
+        if (order.length) rows = [...rows].sort((x, y) => { for (const c of order) { const d = String(x[c]).localeCompare(String(y[c])); if (d) return d } return 0 })
+        if (range) rows = rows.slice(range[0], range[1] + 1)
+        reads.push({ order: [...order], range })
+        return res({ data: rows.slice(0, 1000), error: null })
+      },
+    }
+    return q
+  } })
+
+  const days = 7
+  const table = []
+  let id = 0
+  const today = new Date()
+  for (let d = days - 1; d >= 0; d--) {
+    const day = new Date(today.getTime() - d * 86400e3).toISOString().slice(0, 10)
+    for (let h = 0; h < 24; h++) {
+      const hh = String(h).padStart(2, '0')
+      for (const m of ['step_count', 'active_energy', 'basal_energy_burned', 'apple_exercise_time']) {
+        const qty = m === 'step_count' ? 300 : m === 'apple_exercise_time' ? 1 : 50
+        const base = { user_id: 'u', metric_name: m, date: day, unit: 'kcal', source_family: 'apple' }
+        table.push({ ...base, id: String(++id).padStart(8, '0'), value: { qty }, recorded_at: `${day}T${hh}:00:00Z`, source: 'Watch' })
+        table.push({ ...base, id: String(++id).padStart(8, '0'), value: { qty: qty * 0.8 }, recorded_at: `${day}T${hh}:39:00Z`, source: 'Watch|iPhone' })
+      }
+      table.push({ user_id: 'u', id: String(++id).padStart(8, '0'), metric_name: 'heart_rate', date: day, unit: 'bpm', value: { Avg: 70, Min: 55, Max: 120 }, recorded_at: `${day}T${hh}:00:00Z`, source: 'Watch' })
+    }
+    // Raw per-stage sleep rows: 160 stages of 0.05 h = 8 h a night (1,120 rows in a week).
+    for (let i = 0; i < 160; i++) {
+      const at = new Date(Date.parse(`${day}T00:00:00Z`) + i * 3 * 60_000).toISOString()
+      table.push({ user_id: 'u', id: String(++id).padStart(8, '0'), metric_name: 'sleep_analysis', date: day, unit: 'hr', value: { value: 'Core', qty: 0.05 }, recorded_at: at, source: 'Watch' })
+    }
+  }
+  const out = await getHealthStats(fakeDb(table), 'u', { days })
+  const dates = out.daily.map(x => x.date)
+  check(`all ${days} days come back (${table.length} rows in the table)`, dates.length === days, dates.join(' '))
+  check('every day counts 7,200 steps, so the average is 7,200', out.daily.every(x => x.steps === 7200) && out.averages.steps === 7200,
+    `${out.averages.steps}: ${out.daily.map(x => `${x.date.slice(5)}=${x.steps}`).join(' ')}`)
+  check(`every night of sleep comes back with 8 h`, out.sleep.nights.length === days && out.sleep.nights.every(n => n.hours === 8),
+    out.sleep.nights.map(n => `${n.date.slice(5)}=${n.hours}`).join(' '))
+  check('every read is a ranged page in a stable order (recorded_at, id)',
+    reads.length > 2 && reads.every(r => r.range && r.order.join(',') === 'recorded_at,id'), JSON.stringify(reads.slice(0, 3)))
+}
+
+pagingChecks().catch((e) => { failed++; console.log(`  ✗ crashed: ${e.stack}`) }).then(() => {
+  console.log(`\n${passed} passed, ${failed} failed\n`)
+  if (failed > 0) process.exit(1)
+})

@@ -5,12 +5,39 @@
  * words a dose line shows, when a Take is stamped), the schedule popup's form
  * (scheduleForm.ts), the reminder push and its link (supplementReminder.ts,
  * copied verbatim into push-send), phone-gateway's log_supplement hook and
- * the two popup kinds. The SQL copy of the dose rules is compared with
- * supplementDoses.ts on a database by verify-db-supplement-schedules.mjs.
+ * the two popup kinds, and a taken dose's line staying out of dishes (Edit
+ * entry's "In", a dish's move, Edit meal and Copy to — mealGroupApi against a
+ * recording stand-in for Supabase). The SQL copy of the dose rules is
+ * compared with supplementDoses.ts on a database by
+ * verify-db-supplement-schedules.mjs.
  * Run: node scripts/verify-supplement-doses.cjs */
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
+// The diary api modules import the live Supabase client: hand them a stand-in
+// that records each query's calls and answers from `answer`.
+const Module = require('module')
+const queries = []
+let answer = () => ({ data: null, error: null })
+const fakeSupabase = {
+  from(table) {
+    const ops = []
+    queries.push({ table, ops })
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'then') return (res, rej) => Promise.resolve(answer(table, ops)).then(res, rej)
+        return (...args) => { ops.push([k, ...args]); return q }
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  if (/shared\/utils\/requireUser$/.test(request)) return { requireUser: async () => ({ id: 'u' }) }
+  return origLoad.apply(this, arguments)
+}
 const D = require('../src/features/supplements/supplementDoses')
 const F = require('../src/features/supplements/scheduleForm')
 const P = require('../src/features/supplements/supplementReminder')
@@ -200,5 +227,122 @@ check('log_supplement takes today\'s matching dose first (supplement_dose_for_lo
 const reg = read('src/shared/modals/registry.ts')
 check('both popups are entity modal kinds', ['supplement-schedule', 'supplement-dose'].map(k => reg.includes(`'${k}': L('${k}'`)), [true, true])
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+// The REAL push-send handler (TypeScript stripped) on the cron's supplements
+// trigger, with an in-memory supplement_dose_state, a claim that stamps like
+// 160's supplement_reminders_claim, and a scripted web-push. Audit 28.10.2026:
+// the claim stamps before the send, and a run that reached no device lost a
+// 'once' reminder for good — such a run now puts its stamps back.
+async function reminderRuns() {
+  console.log('push-send: a reminder that reached no device is claimed again next run')
+  const OWNER = 'owner', SECRET = 'cron-secret-123456'
+  let state, subs, sendImpl, claims
+  // The claim hands out today's doses (Oslo), and push-send reads their state from yesterday on.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
+  const due = [{ schedule_id: 's1', title: 'Kreatin', dose_label: '5 g', dose_date: today, dose_time: '08:00:00' }]
+  const db = {
+    from: (table) => {
+      const filters = []
+      let vals = null
+      const q = {
+        select: () => q,
+        update: (v) => { vals = v; return q },
+        delete: () => q,
+        eq: (c, v) => (filters.push(r => String(r[c]) === String(v)), q),
+        gte: (c, v) => (filters.push(r => String(r[c]) >= String(v)), q),
+        maybeSingle: () => q,
+        then: (res) => {
+          if (table !== 'supplement_dose_state') return res({ data: [], error: null })
+          const hit = state.filter(r => filters.every(f => f(r)))
+          if (vals) for (const r of hit) Object.assign(r, vals)
+          return res({ data: hit.map(r => ({ ...r })), error: null })
+        },
+      }
+      return q
+    },
+    rpc: async (name, args) => {
+      if (name === 'push_live_subscriptions') return { data: subs, error: null }
+      if (name !== 'supplement_reminders_claim') return { data: null, error: { message: 'unexpected rpc' } }
+      claims.push(args)
+      for (const d of due) {
+        const row = state.find(r => r.schedule_id === d.schedule_id && r.dose_date === d.dose_date && r.dose_time === d.dose_time)
+        if (row) { row.last_reminded_at = args.p_now; row.reminders_sent++ }
+        else state.push({ user_id: args.p_user, schedule_id: d.schedule_id, dose_date: d.dose_date, dose_time: d.dose_time, last_reminded_at: args.p_now, reminders_sent: 1 })
+      }
+      return { data: due, error: null }
+    },
+    auth: { getUser: async () => ({ data: { user: null }, error: null }) },
+  }
+  const src = read('supabase/functions/push-send/index.ts').replace(/^import .*$/gm, '').replace(/^export /gm, '')
+  const code = require('sucrase').transform(src, { transforms: ['typescript'] }).code
+  const env = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 'k', VAPID_PUBLIC_KEY: 'pub', VAPID_PRIVATE_KEY: 'priv', PUSH_CRON_SECRET: SECRET, HEVY_USER_ID: OWNER }
+  let handler
+  const webpush = { setVapidDetails: () => {}, sendNotification: (...a) => sendImpl(...a) }
+  new Function('Deno', 'createClient', 'webpush', code)({ env: { get: k => env[k] }, serve: f => { handler = f } }, () => db, webpush)
+  const run = async (setup) => {
+    state = setup.state; subs = setup.subs; sendImpl = setup.send; claims = []
+    const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', 'x-cron-secret': SECRET }, body: JSON.stringify({ trigger: 'supplements' }) }))
+    return { body: await res.json(), row: state.find(r => r.schedule_id === 's1'), stamp: claims[0]?.p_now }
+  }
+  const phone = [{ id: 'p1', endpoint: 'https://web.push.apple.com/abc', p256dh: 'x', auth: 'y' }]
+  const failing = async () => { throw Object.assign(new Error('push service 503'), { statusCode: 503 }) }
+  const ok = async () => ({ statusCode: 201 })
+
+  let r = await run({ state: [], subs: phone, send: ok })
+  check('delivered: the claim\'s stamp stays (sent 1, reminders_sent 1)', [r.body.sent, r.row?.reminders_sent, r.row?.last_reminded_at === r.stamp && !!r.stamp], [1, 1, true])
+  r = await run({ state: [], subs: phone, send: failing })
+  check('the push service fails: a first reminder is unstamped (claimed again next run)', [r.body.sent, r.row?.last_reminded_at, r.row?.reminders_sent], [0, null, 0])
+  r = await run({ state: [], subs: [], send: ok })
+  check('no live subscription: the reminder is unstamped too', [r.body.sent, r.row?.last_reminded_at, r.row?.reminders_sent], [0, null, 0])
+  const T0 = `${today}T07:00:00.000Z`
+  r = await run({ state: [{ user_id: OWNER, schedule_id: 's1', dose_date: today, dose_time: '08:00:00', last_reminded_at: T0, reminders_sent: 2 }], subs: phone, send: failing })
+  check('until_taken: a failed repeat puts the previous stamp and count back', [r.row?.last_reminded_at, r.row?.reminders_sent], [T0, 2])
+  const LATER = `${today}T08:15:00.000Z`
+  r = await run({ state: [], subs: phone, send: async () => { state[0].last_reminded_at = LATER; state[0].reminders_sent = 2; return failing() } })
+  check('a stamp written after this run\'s own is left alone', [r.row?.last_reminded_at, r.row?.reminders_sent], [LATER, 2])
+}
+
+console.log('A taken dose\'s line never joins or moves with a dish')
+const N = require('../src/features/daily/api/dayNutritionApi')
+const G = require('../src/features/recipes/api/mealGroupApi')
+{
+  const line = (id, o) => N.unifiedToMeal({ id, meal_slot: 'supplement', status: 'eaten', recipe_id: null, library_ingredient_id: null, custom_title: id,
+    quantity: null, unit: null, calories: 200, protein_g: 20, carbs_g: 0, fat_g: 0, fiber_g: 0, sugar_g: 0, recipe: null, ingredient: null,
+    meal_group_id: null, meal_group_title: null, supplement_schedule_id: null, ...o }, '2026-10-28')
+  const meals = [line('Kreatin', { supplement_schedule_id: 's1', quantity: 5, unit: 'g', calories: 0, protein_g: 0 }), line('Protein bar'), line('Shake', { status: 'planned' }), line('Toast', { meal_slot: 'breakfast' })]
+  check('Edit entry\'s "In" offers the slot\'s eaten lines, never a taken dose\'s line', N.joinableMeals(meals, 'supplement').map(m => m.id), ['Protein bar'])
+}
+;(async () => {
+  const rows = [
+    { id: 'D', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: 's1' },
+    { id: 'P', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: null },
+    { id: 'S', date: '2026-10-28', meal_slot: 'supplement', meal_group_id: 'G', meal_group_title: null, supplement_schedule_id: null },
+  ]
+  const updates = () => queries.filter(q => q.ops.some(o => o[0] === 'update'))
+  const idsOf = q => (q.ops.find(o => o[0] === 'in') ?? [])[2]
+  answer = (table, ops) => (ops.some(o => o[0] === 'update') ? { error: null } : { data: rows, error: null })
+  queries.length = 0
+  const before = await G.moveMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  check('a dish\'s move moves its other rows, not the dose line', [updates().length, idsOf(updates()[0]), updates()[0].ops.find(o => o[0] === 'update')[1]],
+    [1, ['P', 'S'], { date: '2026-10-29', meal_slot: 'snack' }])
+  check('…and its Undo puts back only what moved', before.map(r => r.id), ['P', 'S'])
+  // Before 160 the column is missing: no row is a dose, the whole dish moves.
+  const pre160 = rows.map(({ supplement_schedule_id, ...r }) => r)
+  answer = (table, ops) => ops.some(o => o[0] === 'update') ? { error: null }
+    : String(ops.find(o => o[0] === 'select')[1]).includes('supplement_schedule_id') ? { data: null, error: { code: '42703', message: 'column food_log_entries.supplement_schedule_id does not exist' } }
+    : { data: pre160, error: null }
+  queries.length = 0
+  await G.moveMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  check('before 160 the dish moves whole (retried without the column)', idsOf(updates()[0]), ['D', 'P', 'S'])
+  answer = (table, ops) => ops.some(o => o[0] === 'insert') ? { data: [{ id: 'n1' }, { id: 'n2' }], error: null } : { data: rows.map(r => ({ ...r, custom_title: r.id, ingredient: null, recipe: null })), error: null }
+  const dish = await G.fetchMealGroupRows('G')
+  check('Edit meal\'s basket (and Copy to) leaves the dose line out', dish.map(r => r.id), ['P', 'S'])
+  queries.length = 0
+  await G.copyMealGroup('G', { date: '2026-10-29', slot: 'snack' })
+  const ins = queries.find(q => q.ops.some(o => o[0] === 'insert'))
+  check('Copy to copies the dish without the dose line', (ins?.ops.find(o => o[0] === 'insert')[1] ?? []).map(r => r.custom_title), ['P', 'S'])
+
+
+  await reminderRuns().catch((e) => { failed++; console.log(`  ✗ crashed: ${e.stack}`) })
+  console.log(`\n${passed} passed, ${failed} failed`)
+  process.exit(failed ? 1 : 0)
+})().catch(e => { console.log(`  ✗ threw — ${e?.stack ?? e}`); process.exit(1) })

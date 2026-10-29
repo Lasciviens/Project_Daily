@@ -66,22 +66,25 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
   const { data: prevBlocks = [] } = useTimeBlocks(prevDay)
   const { data: events, isFetching: calFetching } = useCalendarEventsForDay(day)
 
-  // A repeat's day that is a task (156, made on its day) is that day's row and state.
+  // A repeat's day that is a task (156, made on its day) is that day's row and
+  // state — also when it closed on another day (ticked late or ahead).
   const dayList = useMemo(() => [...list.open, ...list.done, ...list.cancelled], [list.open, list.done, list.cancelled])
+  const withRepeatDays = useMemo(() => [...list.repeatDays, ...dayList], [list.repeatDays, dayList])
   const items = useMemo(
-    () => buildDaySchedule({ date: day, blocks, prevBlocks, templates, events: events ?? [], dayTasks: dayList }),
-    [day, blocks, prevBlocks, templates, events, dayList],
+    () => buildDaySchedule({ date: day, blocks, prevBlocks, templates, events: events ?? [], dayTasks: withRepeatDays }),
+    [day, blocks, prevBlocks, templates, events, withRepeatDays],
   )
   // A slot whose task is not on this day's list (its date is another day) still ticks: its task by id.
   const onList = new Set(dayList.map(t => t.id))
   const linkedIds = [...new Set([...blocks, ...prevBlocks].map(b => b.task_id).filter((id): id is string => !!id && !onList.has(id)))].sort()
   const { data: linkedTasks = [] } = useTasksByIds(linkedIds)
-  const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks })
+  const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks, repeatDays: list.repeatDays })
 
   // A repeat's day that is a task already counts with the tasks, never twice.
-  const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(dayList)))
-  // Repeat days that passed with no tick: on their day, never carried over.
-  const missed = [...rows.timed, ...rows.anytime].filter(r => r.kind === 'repeat' && r.state === 'missed').length
+  const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)))
+  // Repeat days that passed with no tick: on their day, never carried over
+  // (yesterday's tail past midnight is yesterday's day, not one of today's).
+  const missed = [...rows.timed, ...rows.anytime].filter(r => r.kind === 'repeat' && r.state === 'missed' && !r.spillover).length
   const planned = plannedMinutes(items)
   const next = viewingToday ? aheadOnDay(items, true, nowHour)[0] : undefined
   const planCtx = useDayPlanContext(day, rows.timed.some(r => r.kind === 'training') || rows.anytime.some(r => r.kind === 'training'))

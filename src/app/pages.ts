@@ -16,7 +16,7 @@ export const WorkPage     = lazyPage('work-page',      () => import('../features
 export const TrainingPage = lazyPage('training-page',  () => import('../features/training/pages/TrainingPage').then(m => m.TrainingPage))
 export const HealthPage   = lazyPage('health-page',    () => import('../features/health/pages/HealthPage').then(m => m.HealthPage))
 export const ProjectsPage = lazyPage('projects-page',  () => import('../features/projects/pages/ProjectsPage').then(m => m.ProjectsPage))
-export const ProjectPage = lazyPage('project-page',  () => import('../features/projects/pages/ProjectPage').then(m => m.ProjectPage))
+export const ProjectPage  = lazyPage('project-page',   () => import('../features/projects/pages/ProjectPage').then(m => m.ProjectPage))
 export const WishesPage   = lazyPage('wishes-page',    () => import('../features/wishes/pages/WishesPage').then(m => m.WishesPage))
 export const BooksPage    = lazyPage('books-page',     () => import('../features/books/pages/BooksPage').then(m => m.BooksPage))
 export const DeveloperPage = lazyPage('developer-page', () => import('../features/developer/pages/DeveloperPage').then(m => m.DeveloperPage))
@@ -25,7 +25,7 @@ export const SettingsPage = lazyPage('settings-page',  () => import('../features
 // Most used first: the tab-bar pages, then the rest.
 const PRELOAD_ORDER = [
   HomePage, DailyPage, RecipesPage, MediaPage, TrainingPage, HealthPage, ShopPage,
-  WishesPage, BooksPage, FootballPage, WorkPage, ProjectsPage, SettingsPage, DeveloperPage,
+  WishesPage, BooksPage, FootballPage, WorkPage, ProjectsPage, ProjectPage, SettingsPage, DeveloperPage,
 ]
 
 /** Loads every page's code, one after another, without competing with what is on screen. */

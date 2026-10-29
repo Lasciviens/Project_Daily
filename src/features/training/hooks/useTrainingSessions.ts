@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
-import { useTrainingBlocks, useScheduleBlocks } from '../../daily/hooks/useSchedule'
+import { shiftDateStr } from '../../../shared/utils/dateUtils'
+import { useTodayStr } from '../../../shared/hooks/useToday'
+import { useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { pickNextTrainingSession, type NextTrainingSession } from '../trainingPlanModel'
 import { fetchStravaStatus } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava, exchangeStravaCode } from '../api/stravaApi'
@@ -57,23 +58,8 @@ export function useConnectStrava() {
 
 // ─── Planned sessions ────────────────────────────────────────────────────────
 
-/** Today's local date, kept current across midnight (focus, visibility and a
- *  one-minute tick) — a PWA left open overnight otherwise keeps yesterday. */
-export function useTodayStr(): string {
-  const [today, setToday] = useState(todayStr)
-  useEffect(() => {
-    const check = () => setToday(prev => (prev === todayStr() ? prev : todayStr()))
-    document.addEventListener('visibilitychange', check)
-    window.addEventListener('focus', check)
-    const id = setInterval(check, 60_000)
-    return () => {
-      document.removeEventListener('visibilitychange', check)
-      window.removeEventListener('focus', check)
-      clearInterval(id)
-    }
-  }, [])
-  return today
-}
+// Today's local date, kept current across midnight — the one shared hook.
+export { useTodayStr }
 
 export const NEXT_SESSION_LOOKAHEAD_DAYS = 30
 
@@ -89,13 +75,15 @@ export function useNextTrainingSession(): { data: NextTrainingSession | null; is
   const to = shiftDateStr(today, NEXT_SESSION_LOOKAHEAD_DAYS)
   const blocksQ = useTrainingBlocks(today, to)
   const templatesQ = useScheduleBlocks()
+  const dayTasksQ = useTrainingDayTasks(today, to)
   const nowHHMM = format(new Date(), 'HH:mm')
   const data = useMemo(() => pickNextTrainingSession({
     blocks:        blocksQ.data ?? [],
     templates:     (templatesQ.data ?? []).filter(t => t.category === 'training'),
+    dayTasks:      dayTasksQ.data ?? [],
     today,
     nowHHMM,
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
-  }), [blocksQ.data, templatesQ.data, today, nowHHMM])
-  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading }
+  }), [blocksQ.data, templatesQ.data, dayTasksQ.data, today, nowHHMM])
+  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading }
 }

@@ -76,7 +76,8 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
               </span>
               <span className="flex h-3 items-center gap-0.5 leading-none">
                 {count > 0 && (
-                  <span className={cx('rounded-sm px-1 text-micro font-semibold leading-none tabular-nums', viewed ? 'bg-accent-700 text-on-accent' : 'bg-accent-50 text-accent-700')}>
+                  // The soft badge on the filled day too: white on accent-700 is 2.1:1 in dark.
+                  <span className="rounded-sm bg-accent-50 px-1 text-micro font-semibold leading-none tabular-nums text-accent-700">
                     {count}
                   </span>
                 )}

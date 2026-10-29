@@ -217,15 +217,20 @@ export function AIPanel() {
     try { localStorage.setItem(MODEL_KEY, next) } catch { /* quota */ }
   }
 
-  async function handleSend(text: string) {
+  // A retry passes the conversation without the failed question and that
+  // question's own photos, and leaves the box and its attachments alone.
+  async function handleSend(text: string, retry?: { history: ChatMessage[]; images?: string[] }) {
     const trimmed = text.trim()
-    if ((!trimmed && !pendingImages.length) || loading) return
+    const images = retry ? (retry.images ?? []) : pendingImages
+    if ((!trimmed && !images.length) || loading) return
 
-    const userMsg: ChatMessage = { role: 'user', content: trimmed, ...(pendingImages.length ? { images: pendingImages } : {}) }
-    const next = [...messages, userMsg]
+    const userMsg: ChatMessage = { role: 'user', content: trimmed, ...(images.length ? { images } : {}) }
+    const next = [...(retry ? retry.history : messages), userMsg]
     setMessages(next)
-    setInput('')
-    setPendingImages([])
+    if (!retry) {
+      setInput('')
+      setPendingImages([])
+    }
     setLoading(true)
     setError(null)
 
@@ -267,14 +272,11 @@ export function AIPanel() {
   // Resend the most recent user message after a failure, dropping the dead
   // turn so the conversation doesn't accumulate a stranded question.
   function retryLast() {
-    const lastUser = [...messages].reverse().find(m => m.role === 'user')
-    if (!lastUser || loading) return
-    setMessages(m => {
-      const idx = m.map(x => x.role).lastIndexOf('user')
-      return idx >= 0 ? m.slice(0, idx) : m
-    })
+    const idx = messages.map(x => x.role).lastIndexOf('user')
+    if (idx < 0 || loading) return
+    const lastUser = messages[idx]
     setError(null)
-    setTimeout(() => { void handleSend(lastUser.content) }, 0)
+    void handleSend(lastUser.content, { history: messages.slice(0, idx), images: lastUser.images })
   }
 
   async function copyReply(text: string, idx: number) {

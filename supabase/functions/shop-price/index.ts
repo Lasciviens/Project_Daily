@@ -38,8 +38,8 @@
 //   no check in 20 h, oldest first, ≤ 40 per run, 1.5 s between two calls to
 //   one host, stopping after 100 s (the rest wait for tomorrow).
 //
-// Fetch safety is news-article's: http/https only, private hosts refused on
-// every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
+// Fetch safety is news-article's: http/https only, private hosts and names
+// that resolve to one refused on every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
@@ -113,6 +113,87 @@ function isPrivateHost(hostname: string): boolean {
   return false
 }
 
+// An IPv6 address as its eight 16-bit groups (an embedded IPv4 tail too), or null.
+function ipv6Groups(ip: string): number[] | null {
+  let s = ip.toLowerCase().split('%')[0]
+  const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
+  if (tail) {
+    const q = tail.slice(1).map(Number)
+    if (q.some(n => n > 255)) return null
+    s = s.slice(0, tail.index) + `${((q[0] << 8) | q[1]).toString(16)}:${((q[2] << 8) | q[3]).toString(16)}`
+  }
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const head = halves[0] ? halves[0].split(':') : []
+  const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...rest]
+  if (fill < 0 || groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map(g => parseInt(g, 16))
+}
+
+// True for an IPv6 address a public web page never has: unspecified, loopback,
+// IPv4-compatible/-mapped (judged by the IPv4 inside), NAT64, unique local
+// (fd00:ec2::254 is AWS's metadata), link-local, site-local, multicast,
+// documentation, Teredo, 6to4 around a private IPv4, discard.
+function isPrivateIPv6(ip: string): boolean {
+  const g = ipv6Groups(ip)
+  if (!g) return true
+  const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
+  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) return isPrivateIPv4(v4(g[6], g[7]))
+  if (g.slice(0, 6).every(x => x === 0)) return true
+  if (g[0] === 0x64 && g[1] === 0xff9b) return true
+  if ((g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00) return true
+  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return true
+  if (g[0] === 0x2002) return isPrivateIPv4(v4(g[1], g[2]))
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true
+  return false
+}
+
+// A public NAME can still point at a private address (127.0.0.1.nip.io,
+// localtest.me, a record its owner points at 169.254.169.254), so every hop's
+// name is resolved and refused when any A/AAAA answer is private (audit
+// 28.10.2026). Fails closed on the answer: a name that doesn't resolve or a
+// resolver error refuses the hop; "no record of this type" is not an error. A
+// runtime with no DNS lookup to give (no Deno.resolveDns, or one it doesn't
+// allow — PermissionDenied / NotCapable / NotSupported, or a stub) keeps the hostname check alone, as
+// before: refusing there would refuse every link (Supabase's Edge Runtime is
+// not confirmed to allow lookups). Only a timeout (the fetch's own signal) is
+// passed on. fetch
+// resolves the name again, so a rebinding name with a zero TTL can still
+// change its answer in between — this closes the fixed names.
+// Said once per instance, so the logs show whether the name check is on.
+let noLookupSaid = false
+function noLookupHere(why: string): false {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`resolvesToPrivate: no DNS lookup here (${why}) — hostname check only`) }
+  return false
+}
+
+async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
+  const h = hostname.toLowerCase().trim()
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
+  if (h.startsWith('[') || h.includes(':')) return true
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
+  let unavailable = ''
+  const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
+    try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
+      const name = (e as Error)?.name
+      if (name === 'AbortError') throw e
+      if (name === 'PermissionDenied' || name === 'NotCapable' || name === 'NotSupported' || e instanceof TypeError) unavailable = name || 'TypeError'
+      return e instanceof Deno.errors.NotFound ? [] : null
+    }
+  }
+  try {
+    const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
+    if (unavailable) return noLookupHere(unavailable)
+    if (!a || !aaaa || a.length + aaaa.length === 0) return true
+    return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw e
+    return true
+  }
+}
+
 class FetchError extends Error { constructor(public code: string, message: string) { super(message) } }
 
 async function readCapped(res: Response): Promise<Uint8Array> {
@@ -152,7 +233,9 @@ async function fetchPage(rawUrl: string): Promise<{ html: string; finalUrl: stri
       let url: URL
       try { url = new URL(current) } catch { throw new FetchError('bad_url', 'Not a link') }
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new FetchError('bad_url', 'Only http and https links can be read')
-      if (url.username || url.password || isPrivateHost(url.hostname)) throw new FetchError('not_allowed', 'This address is not allowed')
+      if (url.username || url.password || isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, ctl.signal)) {
+        throw new FetchError('not_allowed', 'This address is not allowed')
+      }
       const res = await fetch(url.toString(), {
         signal: ctl.signal,
         redirect: 'manual',

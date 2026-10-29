@@ -109,6 +109,8 @@ try {
   psql(target, ['-f', mig('167_training_week_rules.sql')])
   psql(target, ['-f', mig168])
   psql(target, ['-f', mig168])
+  // 169's fixes to 167's training move trigger are live beside the item save too.
+  psql(target, ['-f', mig('169_training_and_stock_fixes.sql')])
   // Each passing scenario prints a NOTICE ("ok  …") on stderr; a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
@@ -137,7 +139,7 @@ try {
       failed = `two sessions adding one match: first ${JSON.stringify(one.out.trim())}, second ${JSON.stringify(second.out.trim())}, tasks,plans = ${counts} (want true, false, 1,1)`
       console.error(`verify-db-football: ${failed}`)
     } else {
-      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163, 165 and 168 (each applied twice) with 166 and 167, ${passed} scenarios, 168 again over starred teams (stars kept) and two sessions adding one match (one item) passed`)
+      console.log(`verify-db-football: the live item save (141–156, 160's rule), 163, 165 and 168 (each applied twice) with 166, 167 and 169, ${passed} scenarios, 168 again over starred teams (stars kept) and two sessions adding one match (one item) passed`)
     }
   }
 } finally {

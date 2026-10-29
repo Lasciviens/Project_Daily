@@ -316,13 +316,40 @@ export function nextSortOrder(items: readonly { sort_order: number }[]): number 
   return items.reduce((max, i) => Math.max(max, i.sort_order), -1) + 1
 }
 
-/** The two sort orders to swap to move `id` one place up or down (null at an end). */
-export function swapWith<T extends { id: string; sort_order: number }>(items: readonly T[], id: string, dir: -1 | 1): [T, T] | null {
-  const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
-  const i = sorted.findIndex(x => x.id === id)
+type SortKeys = { id: string; sort_order: number; created_at: string }
+
+const bySortOrder = (a: SortKeys, b: SortKeys) =>
+  a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+
+/** Phases and blocks in the order they show: their sort order, then the older first. */
+export function inSortOrder<T extends SortKeys>(items: readonly T[]): T[] {
+  return [...items].sort(bySortOrder)
+}
+
+export interface MovePlan<T> {
+  moved: T
+  writes: Array<{ id: string; sort_order: number }>
+}
+
+/** What moving `id` one place up or down in the order shown writes (null at an end).
+ *  Two different sort orders swap. When two items share one (a row added with the
+ *  default 0), the list is numbered 0, 1, 2… in its new order, writing only what changes. */
+export function movePlan<T extends SortKeys>(items: readonly T[], id: string, dir: -1 | 1): MovePlan<T> | null {
+  const shown = inSortOrder(items)
+  const i = shown.findIndex(x => x.id === id)
   const j = i + dir
-  if (i < 0 || j < 0 || j >= sorted.length) return null
-  return [sorted[i], sorted[j]]
+  if (i < 0 || j < 0 || j >= shown.length) return null
+  const [a, b] = [shown[i], shown[j]]
+  if (new Set(shown.map(x => x.sort_order)).size === shown.length) {
+    return { moved: a, writes: [{ id: a.id, sort_order: b.sort_order }, { id: b.id, sort_order: a.sort_order }] }
+  }
+  const next = [...shown]
+  next[i] = b
+  next[j] = a
+  return {
+    moved: a,
+    writes: next.flatMap((x, k) => (x.sort_order === k ? [] : [{ id: x.id, sort_order: k }])),
+  }
 }
 
 /** A new decision from a question: answered today unless it already has a day. */
@@ -347,7 +374,7 @@ const taskOrder = (a: TaskLike, b: TaskLike) =>
 
 /** Phases in their order. */
 export function orderPhases<T extends Pick<ProjectPhase, 'sort_order' | 'created_at' | 'id'>>(phases: readonly T[]): T[] {
-  return [...phases].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+  return inSortOrder(phases)
 }
 
 /** A phase's tasks (null = the tasks in no phase) in their order. */

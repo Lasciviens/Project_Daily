@@ -95,6 +95,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
 
   const done = () => onDone(target)
   function save() {
+    if (pending) return
     if (target.kind === 'new') void saveNew(readPage(), done)
     else void saveEdit(target.id, fields!, undefined, done)
   }
@@ -125,7 +126,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
     <>
       <div
         onKeyDown={e => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && fields.title.trim() && (target.kind === 'new' || editDraft)) { e.preventDefault(); save() }
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.repeat && fields.title.trim() && (target.kind === 'new' || editDraft)) { e.preventDefault(); save() }
         }}
         className="scroll-y flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4 pt-3">
         {parsed.recheck && <RecheckHeader recheck={parsed.recheck} />}

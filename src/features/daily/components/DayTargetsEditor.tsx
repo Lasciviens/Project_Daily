@@ -107,7 +107,7 @@ export function DayTargetsEditor({ onClose }: { date?: string; onClose: () => vo
             </div>
           </EditorSection>
 
-          <EditorSection title="Daily targets" hint="Each phase remembers its own targets. Leave carbs or fat empty and they’re worked out from calories and protein (the grey number). Fibre ≈ 14 g per 1,000 kcal.">
+          <EditorSection title="Daily targets" hint="Each phase remembers its own targets. Leave carbs or fat empty and they’re worked out from calories and protein (the grey number). Fiber ≈ 14 g per 1,000 kcal.">
             <StepperRow label="Calories">
               <GoalStepper label="Calorie target" value={draft.calories} step={50} suffix="kcal" onChange={v => patch({ calories: v })} />
             </StepperRow>

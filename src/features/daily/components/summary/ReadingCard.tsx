@@ -5,8 +5,8 @@ import { Cell, CellHeader, CellLink, StatBox, StatNote, StatValue } from './cell
 import { Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { useKoboFeedState } from '../../../books/hooks/useBooks'
-import { useLibrary, useReadingEvents, useReadingSettings } from '../../../books/hooks/useLibrary'
-import { computeStreak, currentlyReading, localDay, secondsByDay, sortForLibrary } from '../../../books/readingAggregate'
+import { useLibrary, useReadingEvents, useReadingSettings, useReadingStreak } from '../../../books/hooks/useLibrary'
+import { currentlyReading, localDay, secondsByDay, sortForLibrary } from '../../../books/readingAggregate'
 import { BookCover } from '../../../books/components/BookCover'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 
@@ -27,8 +27,7 @@ export function ReadingCard({ date }: { date: string }) {
   const minutes = Math.floor((perDay.get(date) ?? 0) / 60)
   const today = localDay(new Date())
   const lastSeenDay = sync?.last_seen_at ? localDay(new Date(sync.last_seen_at)) : null
-  const first = events.data?.[0] ? localDay(new Date(events.data[0].started_at)) : null
-  const streak = computeStreak(perDay, today, lastSeenDay, settings?.streak_min_minutes ?? 1, first)
+  const streak = useReadingStreak(120, lastSeenDay, settings?.streak_min_minutes ?? 1)
   const current = sortForLibrary(books.filter(b => b.kind !== 'news' && b.read_status === 'reading'), 'recent')[0]
   const unknown = minutes === 0 && date !== today && (!lastSeenDay || date >= lastSeenDay)
   const lastRead = useMemo(() => {

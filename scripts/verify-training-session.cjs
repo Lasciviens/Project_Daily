@@ -51,6 +51,26 @@ eq(S.movesPastWeek('2026-10-26', '2026-11-01'), false, 'moved 6 days: just moved
 eq(S.movesPastWeek('2026-10-26', '2026-11-02'), true, 'moved 7 days: out of its week (skipped there)')
 eq(S.movesPastWeek('2026-10-26', '2026-11-04'), true, "the owner's example: 26.10 → 04.11 (9 days)")
 eq(S.movesPastWeek(null, '2026-11-04'), false, 'no first day known (before 167): never claims it')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: false, landed: true }), "Skipped in its week · that week's Push A is on Wed 04.11.2026",
+  'a move out of the week: skipped there, that week\'s session is on the new day (moved or made, 169)')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: false, landed: false }), "Skipped in its week · nothing planned on Wed 04.11.2026 — that week's Push A is already done or skipped",
+  '…or nothing was planned there (that week\'s session already done or skipped) — never "moved"')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', { stayedDone: true, landed: true }), "Stays done in its own week · that week's Push A is on Wed 04.11.2026",
+  'a done session moved out of its week stays done — never "skipped"')
+eq(S.pastWeekMoveLine('Push A', '2026-11-04', null), "Moved 7 or more days: kept in its own week · see Wed 04.11.2026 for that week's Push A",
+  'the read back failed: only what is certain')
+{
+  // Edit session (the Add sheet) reads the same rule and says the same line (28.10.2026).
+  const sheet = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/UnifiedPlanModal.tsx'), 'utf8')
+  eq(/movesPastWeek\(session\.firstDay/.test(sheet) && /pastWeekMoveLine\(input\.title\.trim\(\) \|\| session\.title, to, outcome/.test(sheet)
+    && /carryPastWeekMoveToCalendar\(/.test(sheet) && /fetchPastWeekOutcome\(session\.taskId/.test(sheet), true,
+    "the session's editor reads movesPastWeek, reads back what happened, says pastWeekMoveLine and carries Google")
+  const actions = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingPlanActions.ts'), 'utf8')
+  eq(/return fetchPastWeekOutcome\(rows\.taskId, date/.test(actions) && /pastWeekMoveLine\(v\.plan\.info\.title, v\.date, outcome\)/.test(actions), true,
+    'Move reads back what happened and says it')
+  const entity = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/PlanEntityModals.tsx'), 'utf8')
+  eq(/session: \{ taskId: task\.id, firstDay: task\.first_plan_date/.test(entity), true, "a training task's editor gets its first day")
+}
 eq(st({ date: '2026-10-11', taskStatus: 'cancelled' }).skipReason, null, 'cancelled with no skip row read: no reason, still skipped')
 eq(st({ date: '2026-10-11', taskStatus: 'open', activityOnDay: true, ...R }).state, 'pending', 'Strava never closes an open task (only a workout or a tick)')
 eq(st({ date: '2026-10-11', taskStatus: 'open', skipped: true, skipReason: 'Travel', ...R }).state, 'pending', 'a routine-week skip does not cancel an open task by itself')
@@ -121,13 +141,30 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
     { id: 'a', routine_id: 'r1', week_start: '2026-10-05', reason: 'Sick', task_id: 't1' },
     { id: 'b', routine_id: 'r2', week_start: '2026-10-05', reason: 'Travel', task_id: null },
   ]
-  eq(skipForPlan(skips, { taskId: 't1', taskCancelled: true, routineId: 'r1', date: '2026-10-11' })?.id, 'a', 'the task\'s own skip')
-  eq(skipForPlan(skips, { taskId: 't1', taskCancelled: false, routineId: 'r1', date: '2026-10-11' })?.id, 'a', 'its own skip even before the status refetch')
-  eq(skipForPlan(skips, { taskId: 't2', taskCancelled: false, routineId: 'r2', date: '2026-10-11' }), null, 'an open task is not skipped by its routine\'s week')
-  eq(skipForPlan(skips, { taskId: 't2', taskCancelled: true, routineId: 'r2', date: '2026-10-11' })?.id, 'b', 'a cancelled task with no row reads its routine\'s week')
-  eq(skipForPlan(skips, { taskId: null, routineId: 'r2', date: '2026-10-07' })?.id, 'b', 'a plan with no task: its routine\'s week')
-  eq(skipForPlan(skips, { taskId: null, routineId: 'r2', date: '2026-10-13' }), null, 'another week: not skipped')
-  eq(skipForPlan(skips, { taskId: null, routineId: null, date: '2026-10-07' }), null, 'no routine, no task: nothing to match')
+  const today = '2026-10-12'
+  eq(skipForPlan(skips, { taskId: 't1', taskCancelled: true, routineId: 'r1', date: '2026-10-11', today })?.id, 'a', 'the task\'s own skip')
+  eq(skipForPlan(skips, { taskId: 't1', taskCancelled: false, routineId: 'r1', date: '2026-10-11', today })?.id, 'a', 'its own skip even before the status refetch')
+  eq(skipForPlan(skips, { taskId: 't2', taskCancelled: false, routineId: 'r2', date: '2026-10-11', today }), null, 'an open task is not skipped by its routine\'s week')
+  eq(skipForPlan(skips, { taskId: 't2', taskCancelled: true, routineId: 'r2', date: '2026-10-11', today })?.id, 'b', 'a cancelled task with no row reads its routine\'s week')
+  eq(skipForPlan(skips, { taskId: null, routineId: 'r2', date: '2026-10-07', today })?.id, 'b', 'a plan with no task: its routine\'s week')
+  eq(skipForPlan(skips, { taskId: null, routineId: 'r2', date: '2026-10-13', today }), null, 'another week: not skipped')
+  eq(skipForPlan(skips, { taskId: null, routineId: null, date: '2026-10-07', today }), null, 'no routine, no task: nothing to match')
+
+  // 28.10.2026 audit: a weekly Full body A on Mon + Thu; Monday's session (its
+  // task) skipped by hand. Thursday, a weekly day with no task yet (156 makes
+  // it on its day), read Monday's skip ("Skipped: Sick"), and its Undo skip
+  // deleted Monday's skip and reopened MONDAY.
+  const mon = [{ id: 'skip-mon', routine_id: 'fb', week_start: '2026-11-02', reason: 'Sick', task_id: 't-mon', plan_date: '2026-11-02' }]
+  eq(skipForPlan(mon, { taskId: null, routineId: 'fb', date: '2026-11-05', today: '2026-11-02' }), null, 'another session\'s skip never covers a weekly day with no task')
+  eq(skipForPlan(mon, { taskId: null, routineId: 'fb', date: '2026-11-04', today: '2026-11-06' }), null, '…not even a past one: a skip with a task covers only its own task')
+  eq(skipForPlan(mon, { taskId: 't-thu', taskCancelled: true, routineId: 'fb', date: '2026-11-05', today: '2026-11-06' }), null, '…nor another cancelled task of that week')
+  const thu = planFacts({ date: '2026-11-05', startHHMM: '17:00', routineId: 'fb' }, { today: '2026-11-02', skips: mon })
+  eq([S.sessionStatus(thu).state, thu.skipId], ['upcoming', null], 'Thursday reads Upcoming, with no skip for Undo to delete')
+  // The Missed card's routine-week skip (no task) covers the missed day, not the week's days still to come.
+  const week = [{ id: 'skip-wk', routine_id: 'fb', week_start: '2026-10-26', reason: 'Travel', task_id: null }]
+  eq(skipForPlan(week, { taskId: null, routineId: 'fb', date: '2026-10-26', today: '2026-10-28' })?.id, 'skip-wk', 'a routine-week skip covers its week\'s past day')
+  eq(skipForPlan(week, { taskId: null, routineId: 'fb', date: '2026-10-29', today: '2026-10-28' }), null, '…never a day after today (its task is made on its day)')
+  eq(skipForPlan(week, { taskId: null, routineId: 'fb', date: '2026-10-28', today: '2026-10-28' }), null, '…nor today\'s, still to do')
 }
 
 // ── A weekly plan leaves out the days that became plans of their own (142) ──
@@ -170,6 +207,43 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
   eq(d.sessions[0].plans.map(p => p.id), ['p1'], 'a plan ticked done by hand may show the day\'s workout')
   d = day([plan('p1', {})], [W('w1', 'r1', '18:05')])
   eq(d.sessions[0].plans.map(p => p.id), ['p1'], 'a plan with no task is covered by its routine\'s workout, as before')
+}
+
+// ── 28.10.2026 audit: a skip after its week can't be undone (167) ──
+{
+  // Reopened after its week, the hourly job (training_weeks_close) skips it again
+  // within the hour; Move plans that week's session on the new day instead.
+  const skipped = (f) => S.sessionStatus({ taskStatus: 'cancelled', skipReason: 'Not done within 7 days', ...f })
+  const over = skipped({ date: '2026-10-19', firstDate: '2026-10-19', today: '2026-10-26' })
+  eq([over.state, over.weekOver], ['skipped', true], 'first day + 7 = today: its week is over')
+  eq(S.sessionActions(over, { hasTask: true, weekly: false }), ['move', 'edit', 'delete'], 'no Undo skip after its week: Move, edit, delete')
+  eq(S.sessionActions(over, { hasTask: true, weekly: true }), ['move', 'edit', 'delete'], '…a weekly day\'s task too')
+  const inside = skipped({ date: '2026-10-19', firstDate: '2026-10-19', today: '2026-10-25', skipReason: 'Sick' })
+  eq([inside.weekOver, S.sessionActions(inside, { hasTask: true, weekly: false })], [false, ['undoSkip', 'move', 'edit', 'delete']], 'inside its week: Undo skip stays')
+  const moved = skipped({ date: '2026-10-24', firstDate: '2026-10-19', today: '2026-10-26', skipReason: 'Busy' })
+  eq(moved.weekOver, true, 'moved inside its week and skipped: its week still ends 7 days after its FIRST day')
+  eq(skipped({ date: '2026-10-19', today: '2026-10-26' }).weekOver, true, 'no first day read: its planned day stands in')
+  eq(S.sessionStatus({ date: '2026-10-19', taskStatus: 'open', firstDate: '2026-10-19', today: '2026-10-30' }).weekOver, false, 'only a skip carries it')
+  eq(S.sessionActions(S.sessionStatus({ date: '2026-10-05', skipped: true, skipReason: 'Travel', today: '2026-10-28' }), { hasTask: false, weekly: true }), ['undoSkip'],
+    'a routine-week skip with no task (Missed sessions) is still undone by its id')
+  eq([S.weekIsOver('2026-10-19', '2026-10-25'), S.weekIsOver('2026-10-19', '2026-10-26'), S.weekIsOver(null, '2026-12-01')], [false, true, false], 'weekIsOver: first day + 7')
+
+  const fs = require('fs'), path = require('path')
+  const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  eq(/undoable && \(/.test(src('src/features/training/components/program/MissedSessions.tsx')) && /weekIsOver\(firstDay \?\? item\.skip\.plan_date, today\)/.test(src('src/features/training/components/program/MissedSessions.tsx')), true,
+    'Missed sessions: no Undo for a session\'s skip after its week')
+  eq(/onUndoSkip: weekIsOver\(task\.first_plan_date \?\? task\.due_date/.test(src('src/features/todo/components/ToDoItem.tsx')), true,
+    'the task row: no Undo skip after its week (Move instead)')
+
+  // Daily's training row hands its skip to Undo skip; an Undo with nothing to undo says so.
+  eq(/<TrainingPlanMenu plan=\{plan\} status=\{status\} weekly=\{weekly\} skipId=\{facts\.skipId\} \/>/.test(src('src/features/daily/components/DayAgendaRows.tsx')), true,
+    'Daily\'s training row passes the skip its facts found')
+  eq(/if \(!s\.skipId\) throw new Error\(/.test(src('src/features/training/api/trainingPlanApi.ts')), true,
+    'undoPlanSkip with neither a task nor a skip throws instead of reporting "Skip undone"')
+
+  // "Plan it" for a picked day: Move of the open past plan starts on that day.
+  eq(/toDate: opts\.date/.test(src('src/features/training/planTraining.ts')) && /useState\(toDate \?\? /.test(src('src/features/training/modals/TrainingPlanSheets.tsx')), true,
+    '"Plan it" for a day moves the open session to that day, not today')
 }
 
 // ── Guard: one status, one writer (owner, 12.10.2026: "shared components and

@@ -85,6 +85,10 @@ export interface SessionStatus {
   skipReason: string | null
   /** Still to do: done / move / skip apply. */
   open: boolean
+  /** A skipped session (its task cancelled) whose week is over — its first
+   *  day + 7 is today or earlier (167): reopened, the hourly job would skip it
+   *  again ("Not done within 7 days"), so its skip can't be undone. */
+  weekOver: boolean
 }
 
 const OPEN_TASK: ReadonlySet<TaskStatus> = new Set(OPEN_STATUSES)
@@ -104,6 +108,7 @@ const toMinutes = (hhmm: string | null | undefined): number | null => {
 const status = (state: SessionState, extra: Partial<SessionStatus> = {}): SessionStatus => ({
   state, doneBy: null, workoutId: null, countsUntil: null, skipReason: null,
   open: state === 'upcoming' || state === 'today' || state === 'now' || state === 'pending' || state === 'missed',
+  weekOver: false,
   ...extra,
 })
 
@@ -115,7 +120,7 @@ export function sessionStatus(f: SessionFacts): SessionStatus {
     const workoutId = f.taskWorkoutId ?? f.dayWorkoutId ?? null
     return status('done', { doneBy: workoutId ? 'workout' : 'hand', workoutId })
   }
-  if (task === 'cancelled') return status('skipped', { skipReason: f.skipReason ?? null })
+  if (task === 'cancelled') return status('skipped', { skipReason: f.skipReason ?? null, weekOver: weekIsOver(f.firstDate ?? f.date, f.today) })
   // A plan with no task is covered by a workout that day; one with a task is
   // done only through its task (the database links the workout and closes
   // it, 141) — so the task row, the calendar and the popup never disagree.
@@ -193,12 +198,21 @@ export type SessionAction = 'done' | 'move' | 'skip' | 'reopen' | 'undoSkip' | '
  */
 export function sessionActions(s: SessionStatus, plan: { hasTask: boolean; weekly: boolean }): SessionAction[] {
   // A skipped session moved to today or later inside its week is to do again (167).
-  if (s.state === 'skipped') return plan.hasTask ? ['undoSkip', 'move', 'edit', 'delete'] : ['undoSkip']
+  // After its week, Undo skip would only reopen it until the hourly job skips
+  // it again; Move plans it in the week of the new day (training_move_past_week).
+  if (s.state === 'skipped') return !plan.hasTask ? ['undoSkip'] : s.weekOver ? ['move', 'edit', 'delete'] : ['undoSkip', 'move', 'edit', 'delete']
   if (s.state === 'done') {
     if (!plan.hasTask) return plan.weekly ? [] : ['delete']
     return s.doneBy === 'hand' ? ['reopen', 'edit', 'delete'] : ['edit', 'delete']
   }
   return plan.weekly ? ['done', 'move', 'skip'] : ['done', 'move', 'skip', 'edit', 'delete']
+}
+
+/** A session's week is over on `today`: its first day + 7 is today or earlier
+ *  (167: the hourly job skips one still to do then — training_weeks_close) —
+ *  the same day from which a move leaves its week. */
+export function weekIsOver(firstDay: string | null | undefined, today: string): boolean {
+  return movesPastWeek(firstDay, today)
 }
 
 /** A session's week is its first day and the next six (167). A move to a day
@@ -207,6 +221,21 @@ export function sessionActions(s: SessionStatus, plan: { hasTask: boolean; weekl
  *  training_move_past_week). True when `to` is such a day. */
 export function movesPastWeek(firstDay: string | null | undefined, to: string): boolean {
   return !!firstDay && to >= shiftDay(firstDay, 7)
+}
+
+/** What a move out of the week did, as the database answered it (167/169):
+ *  the session itself stays done or is skipped in its week; that week's
+ *  session of the plan moved (or was made) on `to`, or nothing was — that
+ *  week's is already done or skipped. Unknown (the read failed): only what is
+ *  certain. The result line of Move and of the session's editor. */
+export interface PastWeekOutcome { stayedDone: boolean; landed: boolean }
+export function pastWeekMoveLine(title: string, to: string, outcome: PastWeekOutcome | null | undefined): string {
+  const day = formatWeekdayDate(to)
+  if (!outcome) return `Moved 7 or more days: kept in its own week · see ${day} for that week's ${title}`
+  const self = outcome.stayedDone ? 'Stays done in its own week' : 'Skipped in its week'
+  return outcome.landed
+    ? `${self} · that week's ${title} is on ${day}`
+    : `${self} · nothing planned on ${day} — that week's ${title} is already done or skipped`
 }
 
 /** Monday (yyyy-MM-dd) of the week `date` falls in — the key a skip is

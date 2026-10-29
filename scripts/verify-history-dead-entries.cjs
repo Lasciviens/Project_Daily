@@ -16,7 +16,8 @@
  *      Backs, entries from an older page load, unknown positions, the hop cap,
  *      and the "resting on a dead entry" rule;
  *   4. whole sequences on a simulated history driven by decidePop the way
- *      useHistoryDismiss drives it (open, link out of a popup, Back, Forward).
+ *      useHistoryDismiss drives it (open, link out of a popup, Back, Forward,
+ *      Back while a popup is saving).
  *
  *   Run:  node scripts/verify-history-dead-entries.cjs
  */
@@ -156,6 +157,20 @@ console.log('\n== 3. decidePop ==')
   check('Back onto the top popup\'s own entry (under a page) closes it', d.close === 1)
   check('… and passes over the entry it no longer owns', d.dead && d.hop === 'back')
 
+  // A popup that is saving (dismissible false) holds.
+  d = pop({ landed: page(3), left: 4, live: [{ id: 1, pushed: true, holds: true }] })
+  check('Back while the top popup is saving: it holds (stays open), nothing closes', d.hold === 1 && d.close === null)
+  check('… and nothing is passed over (its entry goes back on top)', d.hop === null && !d.dead)
+  d = pop({ landed: ov(5, 3), left: 4, live: [{ id: 2, pushed: true, holds: true }] })
+  check('… even when the entry under it is dead', d.hold === 2 && d.hop === null)
+  d = pop({ landed: ov(1, 4), left: 5, live: [{ id: 1, pushed: true, holds: true }, { id: 2, pushed: true }] })
+  check('a saving popup under the top one: the top one still closes', d.close === 2 && d.hold === null)
+  d = pop({ landed: page(5), left: 4, live: [{ id: 1, pushed: true, holds: true }] })
+  check('a Forward never holds', d.hold === null && d.close === null)
+  d = pop({ landed: page(3), left: 4, live: [{ id: 1, pushed: true, holds: true }], ownPops: 1 })
+  check('our own Back (the save closed it) is not held', d.ownPop && d.hold === null)
+  check('a popup that is not saving never holds', pop({ landed: page(3), left: 4, live: [{ id: 1, pushed: true }] }).hold === null)
+
   // The hop cap.
   d = pop({ landed: ov(1, 4), left: 5, live: [], hop: { dir: 'back', expect: 4, chain: MAX_HOPS, origin: null } })
   check('the hop run stops at MAX_HOPS', d.dead && d.hop === null)
@@ -230,6 +245,12 @@ function makeWorld() {
     w.lastIdx = landed.idx
     if (d.ownPop) w.ownPops--
     w.hop = null
+    if (d.hold != null) {
+      w.historyPush(overlayEntryState(state(), d.hold, LOAD))
+      w.lastIdx = readEntry(state()).idx
+      w.resting = null
+      return // kept from the router
+    }
     if (d.close != null) { const at = w.stack.findIndex(o => o.id === d.close); w.stack.splice(at, 1) }
     if (d.hop) {
       w.hop = { dir: d.hop, expect: hopTarget(landed.idx, d.hop), chain: d.chain, origin: d.origin }
@@ -270,6 +291,7 @@ function makeWorld() {
   w.back = () => { w.go(-1); w.settle() }
   w.forward = () => { w.go(1); w.settle() }
   w.isOpen = id => w.stack.some(o => o.id === id)
+  w.saving = (id, on) => { w.stack.find(o => o.id === id).holds = on }
   return w
 }
 
@@ -398,6 +420,47 @@ function makeWorld() {
   w.navigate(HREF_B)                        // a link out, but p stays open (not an entity popup)
   w.back()                                  // lands on p's own entry: it closes and is passed over
   check('Back onto an open drawer\'s own entry (under a page) closes it and returns to the page', !w.isOpen(p) && w.shown === HREF_A && w.cur === 0)
+}
+
+{
+  // Back while a popup is saving, then the save fails: the form stays reachable.
+  const w = makeWorld()
+  w.navigate(HREF_B)                        // [A, B]
+  const p = w.open()                        // [A, B, p]
+  w.saving(p, true)
+  w.back()
+  check('Back while saving: the popup stays open on its own entry', w.isOpen(p) && readEntry(w.entries[w.cur].state).overlay === p)
+  check('… the router saw nothing and the page is unchanged', w.routerPops === 0 && w.shown === HREF_B)
+  w.saving(p, false)                        // the save failed
+  w.back()
+  check('… after a failed save the next Back closes the popup, not the page', !w.isOpen(p) && w.shown === HREF_B && w.cur === 1)
+  w.back()
+  check('… and the Back after that leaves the page', w.shown === HREF_A && w.cur === 0)
+}
+
+{
+  // Back while saving, then the save succeeds and closes the popup.
+  const w = makeWorld()
+  w.navigate(HREF_B)
+  const p = w.open()
+  w.saving(p, true)
+  w.back(); w.back()
+  check('two Backs while saving: still open, one entry of its own', w.isOpen(p) && w.entries.length === 3)
+  w.closeOther(p); w.settle()
+  check('the save closes it: its entry is dropped, the page shows', !w.isOpen(p) && w.cur === 1 && w.shown === HREF_B)
+  w.back()
+  check('… and one Back leaves the page', w.shown === HREF_A && w.cur === 0)
+}
+
+{
+  // A confirm over a saving popup: Back closes the confirm, and the popup holds after that.
+  const w = makeWorld()
+  const p = w.open(); const c = w.open()
+  w.saving(p, true)
+  w.back()
+  check('Back closes the confirm on top of a saving popup', !w.isOpen(c) && w.isOpen(p))
+  w.back()
+  check('… the next Back finds the popup saving: it stays', w.isOpen(p) && readEntry(w.entries[w.cur].state).overlay === p)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

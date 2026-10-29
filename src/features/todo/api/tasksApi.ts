@@ -15,15 +15,18 @@ import type { Task, CreateTaskInput, UpdateTaskInput } from '../types'
 // could move it across the boundary and skip it. Sorted here afterwards
 // (taskRules.compareByDueThenOrder — the order the query used to give).
 export async function fetchAllTasks(): Promise<Task[]> {
+  return (await fetchTaskPages(q => q)).sort(compareByDueThenOrder)
+}
+
+type TaskQuery = ReturnType<ReturnType<typeof supabase.from>['select']>
+
+/** Every non-cancelled task `where` picks, read in keyset pages on id (see
+ *  fetchAllTasks: PostgREST stops at 1,000 rows), each row once. */
+async function fetchTaskPages(where: (q: TaskQuery) => TaskQuery): Promise<Task[]> {
   const PAGE = 1000
   const out: Task[] = []
   for (let last: string | null = null; ;) {
-    let query = supabase
-      .from('tasks')
-      .select('*')
-      .neq('status', 'cancelled')
-      .order('id', { ascending: true })
-      .limit(PAGE)
+    let query = where(supabase.from('tasks').select('*')).neq('status', 'cancelled').order('id', { ascending: true }).limit(PAGE)
     if (last) query = query.gt('id', last)
     const { data, error } = await query
     if (error) throw error
@@ -32,20 +35,19 @@ export async function fetchAllTasks(): Promise<Task[]> {
     if (rows.length < PAGE) break
     last = rows[rows.length - 1].id
   }
-  // Keep each row once (a cheap guard; keyset pages don't overlap).
-  return [...new Map(out.map(t => [t.id, t])).values()].sort(compareByDueThenOrder)
+  return [...new Map(out.map(t => [t.id, t])).values()]
 }
 
+/** A list's own order: sort_order (unset last), then newest first — what the query used to give. */
+const bySortOrderNewestFirst = (a: Task, b: Task) =>
+  (a.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.sort_order ?? Number.MAX_SAFE_INTEGER)
+  || (b.created_at ?? '').localeCompare(a.created_at ?? '')
+
+// A section and the Work board read every non-cancelled row (done ones too,
+// and since 156 every repeat's day is a task) — in pages, or past 1,000 rows
+// the cut fell on the newest quick-adds (28.10.2026).
 export async function fetchTasksBySection(section: string): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('section', section)
-    .neq('status', 'cancelled')
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  return (await fetchTaskPages(q => q.eq('section', section))).sort(bySortOrderNewestFirst)
 }
 
 // Open planned training sessions — every training task (141's definition:
@@ -179,15 +181,7 @@ export async function fetchSubtasks(parentTaskId: string): Promise<Task[]> {
 }
 
 export async function fetchWorkTasks(): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('domain', 'work')
-    .neq('status', 'cancelled')
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data ?? []
+  return (await fetchTaskPages(q => q.eq('domain', 'work'))).sort(bySortOrderNewestFirst)
 }
 
 export async function fetchTasksByMonth(monthStart: string, monthEnd: string): Promise<Task[]> {

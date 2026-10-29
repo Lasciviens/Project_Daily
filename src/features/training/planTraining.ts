@@ -35,6 +35,8 @@ export async function openPlanRoutine(routine: Pick<HevyRoutine, 'id' | 'title'>
           target: { kind: 'task', taskId: open.id, blockId: null },
           info: { title: open.title, date: open.due_date, startHHMM: open.due_time?.slice(0, 5) ?? null, minutes: null, routineId: routine.id },
         },
+        // The day "Plan it" was asked for, so Move puts it there (not today).
+        ...(opts.date ? { toDate: opts.date } : {}),
       })
       return
     }

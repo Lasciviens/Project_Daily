@@ -5,8 +5,10 @@ import { useEntityModal } from '../../../../shared/modals'
 import { openPlanRoutine } from '../../planTraining'
 import { useMissedSessions, useUndoTrainingSkip } from '../../hooks/useTrainingSkips'
 import { useTrainingPlanActions } from '../../hooks/useTrainingPlanActions'
+import { useFirstPlanDay } from '../../hooks/useTrainingPlans'
 import { useOpenTrainingSessionTasks } from '../../../todo/hooks/useTodos'
 import { OVERDUE_AFTER_DAYS, missedText, type RoutineAttention } from '../../plan/skippedRoutines'
+import { weekIsOver } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import type { Task } from '../../../todo/types'
 import { plannedDayText, shortDay } from './missedSessionCopy'
@@ -45,7 +47,12 @@ function Row({ item, today, openTasks }: { item: RoutineAttention; today: string
   const undo = useUndoTrainingSkip()
   const actions = useTrainingPlanActions()
   const pending = openPastPlan(openTasks, item.routineId, today)
-  const planIt = () => (pending ? actions.openMove(pending) : openPlanRoutine({ id: item.routineId, title: item.title }, { date: today }))
+  // A session's own skip after its week can't be undone: reopened, the hourly
+  // job skips it again (167). Its first day, else the day it was filed under.
+  const skipTaskId = item.kind === 'skipped' ? item.skip.task_id ?? null : null
+  const firstDay = useFirstPlanDay(skipTaskId)
+  const undoable = item.kind === 'skipped' && !(skipTaskId && weekIsOver(firstDay ?? item.skip.plan_date, today))
+  const planIt = () =>(pending ? actions.openMove(pending) : openPlanRoutine({ id: item.routineId, title: item.title }, { date: today }))
   const skip = () => modal.open({ kind: 'training-plan-skip', ...(pending
     ? { plan: pending }
     : { missed: { routineId: item.routineId, title: item.title, dueDate: item.dueDate, weekStart: item.weekStart } }) })
@@ -74,7 +81,7 @@ function Row({ item, today, openTasks }: { item: RoutineAttention; today: string
           <Button size="sm" variant="ghost" icon={<SkipForward />} onClick={skip}>Skip</Button>
         </div>
       )}
-      {item.kind === 'skipped' && (
+      {item.kind === 'skipped' && undoable && (
         <div className="pl-6 sm:shrink-0 sm:pl-0">
           <Button size="sm" variant="ghost" icon={<Undo2 />} loading={undo.isPending || actions.busy}
             onClick={() => (item.skip.task_id ? void actions.undoSkip({ taskId: item.skip.task_id }).catch(() => {}) : undo.mutate(item.skip.id))}>Undo</Button>

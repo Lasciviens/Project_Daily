@@ -71,7 +71,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
   async function handleDelete() {
     const result = await confirmDelete({
       title: 'Delete this event?',
-      message: 'It is removed from Google Calendar. This can\'t be undone.',
+      message: 'It is removed from Google Calendar.',
       remove: () => remove.mutateAsync({ calendarId, eventId: event.id }),
       done: 'Event deleted',
     })
@@ -145,7 +145,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
         )}
 
         {draft.allDay ? (
-          <div className="grid grid-cols-1 gap-3 min-[26rem]:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 min-[416px]:grid-cols-2">
             <div>
               <span className="field-label">First day</span>
               <DateInput aria-label="First day" value={draft.startDate} className="input w-full tabular-nums"
@@ -161,7 +161,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
             {/* The day beside its time from 26rem, stacked on a phone; the time picker gets the room it needs (it sizes on its own width). */}
             <div>
               <span className="field-label">Starts</span>
-              <div className="flex flex-col gap-2 min-[26rem]:flex-row min-[26rem]:items-center">
+              <div className="flex flex-col gap-2 min-[416px]:flex-row min-[416px]:items-center">
                 <DateInput aria-label="Start day" value={draft.startDate} className="input w-[10rem] tabular-nums"
                   onChange={v => set({ startDate: v, endDate: draft.endDate < v ? v : draft.endDate })} />
                 <div className="min-w-0 flex-1">
@@ -171,7 +171,7 @@ export function EditCalendarEventModal({ event, onClose }: Props) {
             </div>
             <div>
               <span className="field-label">Ends</span>
-              <div className="flex flex-col gap-2 min-[26rem]:flex-row min-[26rem]:items-center">
+              <div className="flex flex-col gap-2 min-[416px]:flex-row min-[416px]:items-center">
                 <DateInput aria-label="End day" value={draft.endDate} min={draft.startDate} className="input w-[10rem] tabular-nums" onChange={v => set({ endDate: v })} />
                 <div className="min-w-0 flex-1">
                   <Time24Field value={draft.endTime} onChange={v => set({ endTime: v })} onShift={m => set({ endTime: shiftTime(draft.endTime, m) })} />

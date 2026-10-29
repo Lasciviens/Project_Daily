@@ -272,4 +272,12 @@ eq(R.isFocusedOpen(task({ is_focused: true, status: 'waiting' })), true, 'a wait
   eq(hits, [], 'task counting lives in taskRules only')
 }
 
+// Open-ended task lists are read in pages (PostgREST stops at 1,000 rows) — 28.10.2026.
+{
+  const api = fs.readFileSync(path.join(__dirname, '../src/features/todo/api/tasksApi.ts'), 'utf8')
+  const body = name => (api.split(`export async function ${name}(`)[1] ?? '').split('\nexport ')[0]
+  eq(['fetchAllTasks', 'fetchTasksBySection', 'fetchWorkTasks'].filter(f => !/fetchTaskPages\(/.test(body(f))), [],
+    'the full list, a section and the Work board read every page')
+}
+
 console.log(`verify-task-model: ${n} passed`)

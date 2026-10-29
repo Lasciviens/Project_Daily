@@ -18,7 +18,7 @@ import { settleItemGoogle, settleRepeatDayGoogle } from '../calendar/api/itemCal
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSchedule'
 import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
-import { useDeleteTask } from '../todo/hooks/useTodos'
+import { syncGoogleTasksSoon, useDeleteTask } from '../todo/hooks/useTodos'
 import {
   convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
   undoConversion,
@@ -74,20 +74,27 @@ export async function saveItemVia<A extends SaveItemAnswer>(
 /**
  * THE item save — Add and edit, one-off or repeating, one day of a repeat
  * (scope 'day') or every day of it ('all'). "Added · 15.10.2026 17:30–18:30 ·
- * on Google Calendar".
+ * on Google Calendar". A caller whose save means more than that (a training
+ * session moved out of its week, 167/169) reads back what happened (`after`,
+ * once the database answered) and says it (`describe` — undefined keeps the
+ * usual line).
  */
-export function useSaveItem() {
+export function useSaveItem(own?: {
+  after?: (input: ItemInput, saved: SavedItem) => Promise<unknown>
+  describe?: (input: ItemInput, after: unknown) => string | undefined
+}) {
   const qc = useQueryClient()
   return useMutationWithFeedback<SavedItem, ItemInput>({
     action: 'save_item',
     mutationFn: async input => {
       const answer = (await saveItemVia(qc, input, saveItem))!
-      return {
+      const saved: SavedItem = {
         taskId: answer.taskId, blockId: answer.blockId, scheduleBlockId: answer.scheduleBlockId,
         created: answer.created, occurrenceDate: answer.occurrence ? answer.occurrenceDate : null,
       }
+      return own?.after ? { ...saved, after: await own.after(input, saved).catch(() => null) } : saved
     },
-    successMessage: (saved, input) => describeSaved(input, saved),
+    successMessage: (saved, input) => own?.describe?.(input, saved.after) ?? describeSaved(input, saved),
     invalidates: ['taskGraph', qk.items.all],
   })
 }
@@ -101,6 +108,8 @@ export function useRepeatDay() {
   const run = async (v: RepeatDayInput): Promise<RepeatDayAnswer> => {
     const answer = await repeatDay(v.scheduleBlockId, v.date, v.action, todayStr())
     settleRepeatDayGoogle(answer)
+    // A day on Google Tasks (the iPhone widget) follows now, not at the next sync.
+    if (answer.changed && answer.taskId) syncGoogleTasksSoon({ taskId: answer.taskId })
     return answer
   }
   const undo = useMutationWithFeedback<RepeatDayAnswer, RepeatDayInput>({

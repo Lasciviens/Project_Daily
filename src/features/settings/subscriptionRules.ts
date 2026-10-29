@@ -1,5 +1,7 @@
-// Pure subscription rules (service_subscriptions, migration 115). Import-free
-// so scripts/verify-subscriptions.cjs can require it through sucrase.
+// Pure subscription rules (service_subscriptions, migration 115). Pure imports
+// only, so scripts/verify-subscriptions.cjs can require it through sucrase.
+
+import { parsePrice } from '../shop/priceRead'
 
 export type BillingCycle = 'monthly' | 'yearly' | 'weekly' | 'once' | 'free'
 export type Requirement = 'required' | 'info'
@@ -220,6 +222,13 @@ export function monthlyTotalIn(subs: readonly ServiceSubscription[], target: str
 
 const CYCLE_TEXT: Record<BillingCycle, string> = {
   monthly: '/ month', yearly: '/ year', weekly: '/ week', once: 'one-off', free: 'free',
+}
+
+/** The typed Price: '' → null (no price); "1 299,00", "1.299,00", "1,299.00" or "129,5" → the
+ *  number (read like a shop's price); undefined when it is not a price, so the save stops. */
+export function priceFromText(text: string): number | null | undefined {
+  if (text.trim() === '') return null
+  return parsePrice(text) ?? undefined
 }
 
 /** "99 NOK / month", "Free", "499 NOK one-off", or null with no price. */

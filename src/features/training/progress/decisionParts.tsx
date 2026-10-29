@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Flame } from 'lucide-react'
 import { TonePill, type Tone } from '../../../shared/ui'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
@@ -69,6 +69,14 @@ export function EvidencePill({ level, label }: { level: EvidenceLevel; label: st
   )
 }
 
+/** A session's set groups ("100 kg × 5 · 80 kg × 10/10"), each kept on one
+ *  line: a narrow column wraps between groups, never inside "84 kg × 8/9/8". */
+function unbroken(sets: string): ReactNode {
+  return sets.split(' · ').map((group, i) => (
+    <Fragment key={i}>{i > 0 && ' · '}<span className="whitespace-nowrap">{group}</span></Fragment>
+  ))
+}
+
 /** "100 kg × 5 · 80 kg × 10/10 → 102.5 kg × 5 · 80 kg × 9/8 (+2.5%)" — each
  *  set group with its own load. */
 export function ExposureLine({ result }: { result: ExerciseProgressResult }) {
@@ -80,8 +88,8 @@ export function ExposureLine({ result }: { result: ExerciseProgressResult }) {
   const better = showPercent && (result.metricKind === 'assistedWeight' ? (pct as number) < 0 : (pct as number) > 0)
   return (
     <span className="text-meta tabular-nums text-fg-2">
-      {prevSets && prevSets.length > 0 && <>{formatSessionSets(prevSets, result.metricKind)} <span className="text-fg-faint">→</span>{' '}</>}
-      <span className="font-semibold text-fg">{formatSessionSets(latestSets, result.metricKind)}</span>
+      {prevSets && prevSets.length > 0 && <>{unbroken(formatSessionSets(prevSets, result.metricKind))} <span className="text-fg-faint">→</span>{' '}</>}
+      <span className="font-semibold text-fg">{unbroken(formatSessionSets(latestSets, result.metricKind))}</span>
       {showPercent && (
         <span data-tone={better ? 'success' : 'warn'} className="tone-text"> ({(pct as number) > 0 ? '+' : ''}{pct}%)</span>
       )}

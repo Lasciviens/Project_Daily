@@ -145,11 +145,12 @@ export function projectCalendarEventForDay(dateStr: string, event: CalendarEvent
   const end   = new Date(event.end.dateTime ?? event.start.dateTime)
   if (end.getTime() <= dayStart.getTime() || start.getTime() >= nextDayStart.getTime()) return null
 
-  const clippedStartMs = Math.max(start.getTime(), dayStart.getTime())
-  const clippedEndMs   = Math.min(end.getTime(), nextDayStart.getTime())
+  // Wall-clock hours, as slots and plans count them: on a day the clocks
+  // change, elapsed time since midnight is an hour off (28.10.2026).
+  const wallHour = (d: Date) => d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600
   return {
-    startHour: (clippedStartMs - dayStart.getTime()) / 3_600_000,
-    endHour:   (clippedEndMs   - dayStart.getTime()) / 3_600_000,
+    startHour: start.getTime() <= dayStart.getTime() ? 0 : wallHour(start),
+    endHour:   end.getTime() >= nextDayStart.getTime() ? 24 : wallHour(end),
     spillover: start.getTime() < dayStart.getTime(),
   }
 }

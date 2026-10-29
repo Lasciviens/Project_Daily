@@ -34,11 +34,12 @@ const shiftHHMM = (hhmm: string, min: number) => {
  *  task and its block move together (migration 142), and its Google Calendar
  *  event with them. */
 export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'training-plan-move'>) {
-  const { plan } = request
+  const { plan, toDate } = request
   const actions = useTrainingPlanActions()
   const today = todayStr()
-  // A session planned in the past moves to today by default; a coming one to its own day.
-  const [date, setDate] = useState(plan.info.date < today ? today : plan.info.date)
+  // The day asked for ("Plan it" on a picked day); else a session planned in
+  // the past moves to today by default, a coming one to its own day.
+  const [date, setDate] = useState(toDate ?? (plan.info.date < today ? today : plan.info.date))
   const [time, setTime] = useState((plan.info.startHHMM ?? '18:00').slice(0, 5))
   // A session whose time this view doesn't know keeps its own unless one is picked.
   const [timeTouched, setTimeTouched] = useState(false)
@@ -88,7 +89,7 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
         </div>
         {pastWeek && firstDay
           ? <p data-tone="warn" className="tone-text text-meta">
-              7+ days after its first day: skipped on {formatWeekdayDate(firstDay)}, and that week's session moves here instead.
+              7+ days after its first day: it stays in its own week (skipped on {formatWeekdayDate(firstDay)} unless done), and that week's session of this plan comes here instead — none if that one is already done or skipped.
             </p>
           : <p className="text-meta text-fg-muted">The task and the calendar move together.</p>}
       </div>

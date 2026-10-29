@@ -66,6 +66,8 @@ export interface SavedItem {
   created?: boolean
   /** Set when the save edited one day of a repeat. */
   occurrenceDate?: string | null
+  /** What a caller's `after` read back once the save was done (useSaveItem). */
+  after?: unknown
 }
 
 export interface ConvertPreview {

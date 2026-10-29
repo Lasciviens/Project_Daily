@@ -40,7 +40,7 @@ export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
     const watched = watching.last30.filter(w => w.day === date)
     const minutes = (workouts.data ?? []).reduce((a, w) => a + (getWorkoutDuration(w) ?? 0), 0)
     // The Day plan's own counts (a repeat's day still to do counts as open there too).
-    const counts = dayRowCounts(tasks.counts, repeatsToDoOn(templates, date, today, repeatDayKeys([...tasks.open, ...tasks.done, ...tasks.cancelled])))
+    const counts = dayRowCounts(tasks.counts, repeatsToDoOn(templates, date, today, repeatDayKeys([...tasks.repeatDays, ...tasks.open, ...tasks.done, ...tasks.cancelled])))
     return dayLineItems({
       tasks: { done: counts.done, total: counts.done + counts.open },
       trainedMinutes: minutes,
@@ -50,7 +50,7 @@ export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
       readMinutes: Math.floor((secondsByDay(reading.data ?? []).get(date) ?? 0) / 60),
       renewals: subs.filter(s => s.active && s.renews_on === date).map(s => s.name || s.service),
     })
-  }, [tasks.counts, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
+  }, [tasks.counts, tasks.repeatDays, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
 
   return <MetaLine as="span" items={[lead, ...items]} className="tabular-nums" />
 }

@@ -171,6 +171,28 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
   const cancelled = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-28', start_time: '18:00:00', task_id: 't1', task_status: 'cancelled' }, { id: 'C', title: 'Pull', date: '2026-09-29', start_time: null, task_id: null }], templates: [], today: '2026-09-27', nowHHMM: '07:30', lookaheadDays: 30 })
   check('a cancelled one is skipped for the next plan', cancelled?.id === 'C')
 }
+{
+  // 28.10.2026 audit: a weekly day closed as its task with no split (156) — a
+  // Hevy workout at 07:00 (141) or a Google Tasks tick — stayed "next".
+  // 2026-10-29 is a Thursday.
+  const tpl = { id: 'sb', title: 'Lower B', category: 'training', days_of_week: [4], start_time: '17:00:00', end_time: '18:00:00', effective_from: '2026-01-01', except_dates: [] }
+  const day = (o) => ({ schedule_block_id: 'sb', occurrence_date: '2026-10-29', status: 'open', closed_reason: null, ...o })
+  const pick = (dayTasks) => pickNextTrainingSession({ blocks: [], templates: [tpl], dayTasks, today: '2026-10-29', nowHHMM: '08:00', lookaheadDays: 30 })
+  check('a weekly day whose task is done is not next: the following week\'s is', pick([day({ status: 'done' })])?.date === '2026-11-05')
+  check('…nor one skipped (its task cancelled)', pick([day({ status: 'cancelled' })])?.date === '2026-11-05')
+  check('a day closed as missed is still to do (sessionState reads it open)', pick([day({ status: 'cancelled', closed_reason: 'missed' })])?.date === '2026-10-29')
+  check('an open day task stays next', pick([day({})])?.date === '2026-10-29')
+  check('another repeat\'s or another day\'s task changes nothing', pick([day({ status: 'done', schedule_block_id: 'other' }), day({ status: 'done', occurrence_date: '2026-10-22' })])?.date === '2026-10-29')
+  // Every caller (the Training banner and Next, Home, Personal's rest day) hands it the days' tasks.
+  const fs = require('fs'), path = require('path')
+  for (const f of ['src/features/training/hooks/useTrainingSessions.ts', 'src/features/home/hooks/useTodayOverview.ts', 'src/features/daily/components/summary/TrainingBand.tsx']) {
+    const calls = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('pickNextTrainingSession({').slice(1).map(c => c.slice(0, c.indexOf('})')))
+    check(`${path.basename(f)}: every next-session pick gets the days' tasks`, calls.length > 0 && calls.every(c => /\bdayTasks\b/.test(c)))
+  }
+  // Logging a workout in the app completes its session in the database (141/167): the task views refresh too.
+  const hooks = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useHevyWorkouts.ts'), 'utf8')
+  check('useLogHevyWorkout refreshes the task graph, as every Hevy sync does', /'create_workout'[\s\S]*?invalidates:\s*\['training', 'taskGraph'\]/.test(hooks))
+}
 
 // ─── bodyMeasurementFields ──────────────────────────────────────────────────
 console.log('\n== bodyMeasurementFields.buildMeasurementPayload ==')

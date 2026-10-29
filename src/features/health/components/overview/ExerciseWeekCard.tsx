@@ -1,6 +1,6 @@
 import { Card, TonePill, useChartColors } from '../../../../shared/ui'
 import { exerciseWeeks, type HealthHero } from './useHealthHero'
-import { WeeklyBars } from './HeroDetailsActivity'
+import { MINUTES_EMPTY, STRENGTH_EMPTY, WeeklyBars } from './HeroDetailsActivity'
 import { num } from './heroFormat'
 
 // Weekly exercise against WHO 2020: Apple exercise minutes vs 150 a week and
@@ -27,12 +27,12 @@ export function ExerciseWeekCard({ hero }: { hero: HealthHero }) {
         <div className="min-w-0">
           <p className="section-label mb-1">Minutes per week</p>
           <WeeklyBars data={weeks.minutes} refY={150} refLabel="150" label="of exercise" unit="min" color={c.series[2]}
-            ariaLabel="Exercise minutes per week; the newest week counts up to the day you're viewing" />
+            ariaLabel="Exercise minutes per week; the newest week counts up to the day you're viewing" empty={MINUTES_EMPTY} />
         </div>
         <div className="min-w-0">
           <p className="section-label mb-1">Strength days per week</p>
           <WeeklyBars data={weeks.strength} refY={2} refLabel="2" label="strength days" unit="" color={c.series[1]}
-            ariaLabel="Days with a Hevy workout per week; the newest week counts up to the day you're viewing" />
+            ariaLabel="Days with a Hevy workout per week; the newest week counts up to the day you're viewing" empty={STRENGTH_EMPTY} />
         </div>
       </div>
     </Card>

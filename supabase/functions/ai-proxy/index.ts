@@ -84,10 +84,8 @@ function isPrivateIPv4(ip: string): boolean {
 // fetches whatever URL the user pastes, server-side. Beyond the obvious
 // dotted-quad ranges this also blocks the encodings that trivially bypass a
 // naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
-// and every IPv6 literal. (DNS rebinding — a
-// public name that re-resolves to a private IP at connect time — can't be fully
-// closed here without a custom resolver; fetchPageText's manual redirect
-// re-validation closes the redirect-based variant, which is the practical one.)
+// and every IPv6 literal. A name that resolves to a private address is
+// refused by resolvesToPrivate below, on every redirect hop.
 function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)   // [::1] -> ::1
@@ -108,6 +106,87 @@ function isPrivateHost(hostname: string): boolean {
   if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
 
   return false
+}
+
+// An IPv6 address as its eight 16-bit groups (an embedded IPv4 tail too), or null.
+function ipv6Groups(ip: string): number[] | null {
+  let s = ip.toLowerCase().split('%')[0]
+  const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
+  if (tail) {
+    const q = tail.slice(1).map(Number)
+    if (q.some(n => n > 255)) return null
+    s = s.slice(0, tail.index) + `${((q[0] << 8) | q[1]).toString(16)}:${((q[2] << 8) | q[3]).toString(16)}`
+  }
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const head = halves[0] ? halves[0].split(':') : []
+  const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...rest]
+  if (fill < 0 || groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.map(g => parseInt(g, 16))
+}
+
+// True for an IPv6 address a public web page never has: unspecified, loopback,
+// IPv4-compatible/-mapped (judged by the IPv4 inside), NAT64, unique local
+// (fd00:ec2::254 is AWS's metadata), link-local, site-local, multicast,
+// documentation, Teredo, 6to4 around a private IPv4, discard.
+function isPrivateIPv6(ip: string): boolean {
+  const g = ipv6Groups(ip)
+  if (!g) return true
+  const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
+  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) return isPrivateIPv4(v4(g[6], g[7]))
+  if (g.slice(0, 6).every(x => x === 0)) return true
+  if (g[0] === 0x64 && g[1] === 0xff9b) return true
+  if ((g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00) return true
+  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return true
+  if (g[0] === 0x2002) return isPrivateIPv4(v4(g[1], g[2]))
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true
+  return false
+}
+
+// A public NAME can still point at a private address (127.0.0.1.nip.io,
+// localtest.me, a record its owner points at 169.254.169.254), so every hop's
+// name is resolved and refused when any A/AAAA answer is private (audit
+// 28.10.2026). Fails closed on the answer: a name that doesn't resolve or a
+// resolver error refuses the hop; "no record of this type" is not an error. A
+// runtime with no DNS lookup to give (no Deno.resolveDns, or one it doesn't
+// allow — PermissionDenied / NotCapable / NotSupported, or a stub) keeps the hostname check alone, as
+// before: refusing there would refuse every link (Supabase's Edge Runtime is
+// not confirmed to allow lookups). Only a timeout (the fetch's own signal) is
+// passed on. fetch
+// resolves the name again, so a rebinding name with a zero TTL can still
+// change its answer in between — this closes the fixed names.
+// Said once per instance, so the logs show whether the name check is on.
+let noLookupSaid = false
+function noLookupHere(why: string): false {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`resolvesToPrivate: no DNS lookup here (${why}) — hostname check only`) }
+  return false
+}
+
+async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
+  const h = hostname.toLowerCase().trim()
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
+  if (h.startsWith('[') || h.includes(':')) return true
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
+  let unavailable = ''
+  const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
+    try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
+      const name = (e as Error)?.name
+      if (name === 'AbortError') throw e
+      if (name === 'PermissionDenied' || name === 'NotCapable' || name === 'NotSupported' || e instanceof TypeError) unavailable = name || 'TypeError'
+      return e instanceof Deno.errors.NotFound ? [] : null
+    }
+  }
+  try {
+    const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
+    if (unavailable) return noLookupHere(unavailable)
+    if (!a || !aaaa || a.length + aaaa.length === 0) return true
+    return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw e
+    return true
+  }
 }
 
 // Strips scripts/styles/tags and decodes common entities to leave plain
@@ -140,7 +219,7 @@ async function fetchPageText(rawUrl: string): Promise<string> {
       let url: URL
       try { url = new URL(current) } catch { throw new Error('Invalid URL') }
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
-      if (isPrivateHost(url.hostname)) throw new Error('URL not allowed')
+      if (isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, controller.signal)) throw new Error('URL not allowed')
 
       res = await fetch(url.toString(), {
         signal:   controller.signal,
@@ -1429,6 +1508,18 @@ async function createHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
 // it surface as 01.01.1970.
 const HOME_TZ = 'Europe/Oslo'
 const homeDay = (t: number = Date.now()): string => new Date(t).toLocaleDateString('en-CA', { timeZone: HOME_TZ })
+/** The instant a home day (yyyy-mm-dd) begins — 00:00 in Europe/Oslo — as an ISO timestamp.
+ *  Oslo's clock changes at 01:00 UTC, never at midnight, so the zone's offset an
+ *  hour or two into the UTC day is the offset at its local midnight. */
+function homeDayStart(day: string): string {
+  const utcMidnight = Date.parse(`${day}T00:00:00Z`)
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: HOME_TZ, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    .formatToParts(new Date(utcMidnight))
+  const n = (type: string) => Number(p.find(x => x.type === type)?.value)
+  const offset = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute')) - utcMidnight
+  return new Date(utcMidnight - offset).toISOString()
+}
+const nextDay = (day: string): string => new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
 
 // status → the statuses each table holds for it; null = every status. The
 // legacy movie status 'upcoming' is the want-to-watch pool, like wishlist.
@@ -1790,10 +1881,28 @@ function summarizeSleepNights(rows: AnyRecord[]): AnyRecord[] {
   return out.sort((a, b) => String(a.date).localeCompare(String(b.date)))
 }
 
+// PostgREST answers at most 1,000 rows. Hourly Health Auto Export rows pass
+// that within a week, and an unordered read dropped whichever rows came last
+// — often the newest days (audit 28.10.2026). Pages in a stable order until a
+// short page, like the web app's fetchHealthMetricSeries.
+const HEALTH_PAGE_ROWS = 1000
+async function allHealthRows(query: () => AnyRecord): Promise<{ rows: AnyRecord[]; error: AnyRecord | null }> {
+  const rows: AnyRecord[] = []
+  for (let from = 0; ; from += HEALTH_PAGE_ROWS) {
+    const { data, error } = await query()
+      .order('recorded_at', { ascending: true }).order('id', { ascending: true })
+      .range(from, from + HEALTH_PAGE_ROWS - 1)
+    if (error) return { rows, error }
+    const page = (data ?? []) as AnyRecord[]
+    rows.push(...page)
+    if (page.length < HEALTH_PAGE_ROWS) return { rows, error: null }
+  }
+}
+
 async function computeSleepNights(supabase: AnyRecord, userId: string, since: string): Promise<AnyRecord[]> {
-  const { data } = await supabase.from('health_metrics')
-    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since)
-  return summarizeSleepNights((data ?? []) as AnyRecord[])
+  const { rows, error } = await allHealthRows(() => supabase.from('health_metrics')
+    .select('value, date, source, recorded_at').eq('user_id', userId).eq('metric_name', 'sleep_analysis').gte('date', since))
+  return error ? [] : summarizeSleepNights(rows)
 }
 
 // Mirrors healthAggregate.ts's hour-level dedup (hand-synced, not imported --
@@ -1877,15 +1986,14 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
   const sleep = { avg_hours: sleepAvg, last_night: sleepNights.length ? sleepNights[sleepNights.length - 1] : null, nights: sleepNights }
   const METRICS = ['step_count', 'active_energy', 'basal_energy_burned', 'heart_rate', 'resting_heart_rate', 'apple_exercise_time']
 
-  const { data, error } = await supabase
+  const { rows, error } = await allHealthRows(() => supabase
     .from('health_metrics')
     .select('metric_name, date, unit, value, recorded_at, source, source_family')
     .eq('user_id', userId)
     .in('metric_name', METRICS)
-    .gte('date', since)
+    .gte('date', since))
 
   if (error) return { success: false, error: error.message }
-  const rows: AnyRecord[] = data ?? []
   if (!rows.length && !sleepNights.length) return { success: true, message: 'No health data found for this period', averages: {}, daily: [], sleep }
 
   // Health Auto Export can export energy in kJ depending on locale — always
@@ -3362,12 +3470,14 @@ async function dbAggregate(supabase: AnyRecord, userId: string, args: AnyRecord)
 // get_day_summary — one compact snapshot instead of several db_query calls.
 async function getDaySummary(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
-    const date = (typeof args.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) ? args.date : new Date().toISOString().slice(0, 10)
+    // The user's day (Europe/Oslo), and a workout by its instant inside that day: the
+    // UTC day and zone-less (read as UTC) bounds shifted both by an hour or two (audit 28.10.2026).
+    const date = (typeof args.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.date)) ? args.date : homeDay()
     const [tasksR, foodR, blocksR, workoutR] = await Promise.allSettled([
       supabase.from('tasks').select('id,title,priority').eq('user_id', userId).or(`section.eq.today,due_date.eq.${date}`).neq('status', 'cancelled').neq('status', 'done'),
       supabase.from('food_log_entries').select('calories,protein_g').eq('user_id', userId).eq('date', date).eq('status', 'eaten'),
       supabase.from('time_blocks').select('title,start_time,duration_minutes,task:tasks(status)').eq('user_id', userId).eq('date', date).order('start_time', { ascending: true }),
-      supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', `${date}T00:00:00`).lte('start_time', `${date}T23:59:59`),
+      supabase.from('hevy_workouts').select('id').eq('user_id', userId).gte('start_time', homeDayStart(date)).lt('start_time', homeDayStart(nextDay(date))),
     ])
     const g = (r: AnyRecord): AnyRecord[] => r.status === 'fulfilled' ? (r.value.data ?? []) : []
     const food = g(foodR)

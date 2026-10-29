@@ -83,9 +83,9 @@ export interface DayRows<T extends RowTask = Task> {
 
 /** Hours on a day as HH:MM (9.5 → "09:30"). */
 export function hourLabel(h: number): string {
-  const hh = Math.floor(h)
-  const mm = Math.round((h - hh) * 60)
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  // Rounded as a whole, so 09:59:45 reads 10:00, never 09:60.
+  const total = Math.round(h * 60)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
 /** Where a span ends on its day: past midnight it ends at "midnight", never "24:00". */
@@ -140,7 +140,9 @@ const isTraining = (i: DayItem) => (i.block ?? i.template)?.category === 'traini
  * The day's rows. `tasks`: the day list (useDayTasks — open, done, cancelled);
  * `items`: the day schedule (buildDaySchedule); `linkedTasks`: the tasks of the
  * day's slots that are not on the day list (a slot on another day than its
- * task's date) — read by id, so a slot's row can still be ticked.
+ * task's date) — read by id, so a slot's row can still be ticked;
+ * `repeatDays`: the repeat days the day read found (useDayTasks), whatever day
+ * they closed on — a day ticked late or ahead is still its own day's state.
  */
 export function buildDayRows<T extends RowTask>(input: {
   day:         string
@@ -148,6 +150,7 @@ export function buildDayRows<T extends RowTask>(input: {
   tasks:       { open: readonly T[]; done: readonly T[]; cancelled: readonly T[] }
   items:       readonly DayItem[]
   linkedTasks?: readonly T[]
+  repeatDays?: readonly T[]
 }): DayRows<T> {
   const { day, today, tasks, items } = input
   const dayList = [...tasks.open, ...tasks.done, ...tasks.cancelled]
@@ -155,7 +158,7 @@ export function buildDayRows<T extends RowTask>(input: {
   const linked = new Map((input.linkedTasks ?? []).map(t => [t.id, t]))
   // A repeat's day that is a task (156), by the repeat and the day.
   const byDay = new Map<string, T>()
-  for (const t of [...dayList, ...(input.linkedTasks ?? [])]) {
+  for (const t of [...(input.repeatDays ?? []), ...dayList, ...(input.linkedTasks ?? [])]) {
     if (t.schedule_block_id && t.occurrence_date) byDay.set(repeatDayKey(t.schedule_block_id, t.occurrence_date), t)
   }
   const placed = new Set<string>()

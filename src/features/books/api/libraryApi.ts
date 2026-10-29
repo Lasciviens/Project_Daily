@@ -46,20 +46,33 @@ export async function saveQueueOrder(rows: { id: string; queue_order: number }[]
   }
 }
 
+type EventKey = { id: number; page: number; started_at: string }
+
+/** Every reading event of one book (paged past PostgREST's 1,000-row cap). */
+async function fetchBookEventKeys(bookId: string): Promise<EventKey[]> {
+  const out: EventKey[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('reading_page_events')
+      .select('id, page, started_at').eq('book_id', bookId).order('id').range(from, from + 999)
+    if (error) fail(error)
+    out.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+  return out
+}
+
+const eventKey = (r: EventKey) => `${r.page}|${new Date(r.started_at).getTime()}`
+
 /**
  * "These two are the same book": repoints the loser's reading events to the
  * survivor (a duplicate page/time pair is dropped — the unique key makes that
  * safe), fills the survivor's empty fields from the loser, deletes the loser.
  */
 export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
-  const { data: events, error } = await supabase.from('reading_page_events')
-    .select('id, page, started_at').eq('book_id', loser.id).limit(100000)
-  if (error) fail(error)
-  const { data: mine, error: e2 } = await supabase.from('reading_page_events')
-    .select('page, started_at').eq('book_id', survivor.id).limit(100000)
-  if (e2) fail(e2)
-  const taken = new Set((mine ?? []).map(r => `${r.page}|${new Date(r.started_at).getTime()}`))
-  const move = (events ?? []).filter(r => !taken.has(`${r.page}|${new Date(r.started_at).getTime()}`)).map(r => r.id)
+  const [events, mine] = await Promise.all([fetchBookEventKeys(loser.id), fetchBookEventKeys(survivor.id)])
+  const taken = new Set(mine.map(eventKey))
+  const move = events.filter(r => !taken.has(eventKey(r))).map(r => r.id)
+  const duplicates = events.length - move.length
   for (let i = 0; i < move.length; i += 500) {
     const { error: e3 } = await supabase.from('reading_page_events').update({ book_id: survivor.id }).in('id', move.slice(i, i + 500))
     if (e3) fail(e3)
@@ -84,6 +97,14 @@ export async function mergeBooks(survivor: Book, loser: Book): Promise<void> {
     if (e3) fail(e3)
     const { error: e4 } = await supabase.from('books').update(keys).eq('id', survivor.id)
     if (e4) fail(e4)
+  }
+  // The delete takes every event still on the loser with it (ON DELETE CASCADE, 126):
+  // only the duplicates may be left, or the loser stays and Merge can run again.
+  const { count, error: e6 } = await supabase.from('reading_page_events')
+    .select('id', { count: 'exact', head: true }).eq('book_id', loser.id)
+  if (e6) fail(e6)
+  if (count == null || count > duplicates) {
+    throw new Error('Some reading history is still on the duplicate, so it was not deleted — try Merge again.')
   }
   const { error: e5 } = await supabase.from('books').delete().eq('id', loser.id)
   if (e5) fail(e5)

@@ -2,7 +2,8 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
-import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, fetchTrainingBlocksRange, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { createTimeBlock, fetchScheduleBlock, fetchScheduleBlocks, fetchTimeBlockWithTask, fetchTimeBlocks, fetchTrainingBlocksRange, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { linkBlockCalendarEvent } from '../../calendar/api/linkBlockCalendarEvent'
 import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, takeSkippedDayOffCalendar,
 } from '../../calendar/api/scheduleSeriesCalendar'
@@ -247,15 +248,41 @@ export async function movePlan(rows: PlanRows, info: PlanInfo, to: { date: strin
  *  calendar, the day moved onto `date` gets its own event (the series its
  *  EXDATE). Background — the move is done and reported first. */
 export function carryPastWeekMoveToCalendar(rows: PlanRows, date: string): void {
-  if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
   void (async () => {
+    // Was the moved session on Google Calendar (its own event, or its repeat's series)?
+    const own = rows.blockId ? await fetchTimeBlockWithTask(rows.blockId) : null
+    const onCalendar = !!own?.google_calendar_event_id
+      || (!!own?.schedule_block_id && !!(await fetchScheduleBlock(own.schedule_block_id).catch(() => null))?.google_calendar_event_id)
+    if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
     const blocks = await fetchTrainingBlocksRange(date, date)
     for (const b of blocks) {
-      if (b.id !== rows.blockId && b.schedule_block_id && b.occurrence_date && b.occurrence_date !== date && !b.google_calendar_event_id) {
-        carryOccurrenceToCalendar(b.schedule_block_id, b.id)
-      }
+      if (b.id === rows.blockId || b.google_calendar_event_id) continue
+      if (b.schedule_block_id && b.occurrence_date && b.occurrence_date !== date) carryOccurrenceToCalendar(b.schedule_block_id, b.id)
+      // A session made there by the move (169's new one): on Calendar as the moved one was.
+      else if (!b.schedule_block_id && b.task_id && b.task_id !== rows.taskId && onCalendar) void linkBlockCalendarEvent(b.id)
     }
   })().catch(() => { /* a failed read leaves Google as it was; the next app open pushes what is pending */ })
+}
+
+/** What a move out of the week did (167/169), read back for its result line:
+ *  the moved session done (it stays done) or not, and whether a session of
+ *  the same plan (its routine, else its title) is now on `date`. A failed
+ *  read answers null — the line then says only what is certain. */
+export async function fetchPastWeekOutcome(taskId: string, date: string, plan: { routineId: string | null; title: string }): Promise<{ stayedDone: boolean; landed: boolean } | null> {
+  try {
+    const [self, there] = await Promise.all([
+      supabase.from('tasks').select('status').eq('id', taskId).maybeSingle(),
+      supabase.from('tasks').select('id, title, hevy_routine_id').eq('due_date', date).neq('status', 'cancelled').neq('id', taskId)
+        .or('source_type.eq.training_session,hevy_routine_id.not.is.null'),
+    ])
+    if (self.error || there.error) return null
+    const same = (t: { title: string | null; hevy_routine_id: string | null }) => plan.routineId
+      ? t.hevy_routine_id === plan.routineId
+      : (t.title ?? '').trim().toLowerCase() === plan.title.trim().toLowerCase()
+    return { stayedDone: self.data?.status === 'done', landed: (there.data ?? []).some(same) }
+  } catch {
+    return null
+  }
 }
 
 /** The same session already planned on `date` (planTwins — the plan editor's
@@ -316,7 +343,8 @@ export async function skipPlan(rows: PlanRows, s: { routineId: string | null; pl
 }
 
 /** Undoes a skip: the task's skip row goes and the database reopens the task
- *  (142); a skip of a routine's week with no task is removed by its id. */
+ *  (142); a skip of a routine's week with no task is removed by its id.
+ *  Neither id: nothing to undo — it says so instead of reporting "Skip undone". */
 export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string | null }): Promise<void> {
   if (s.taskId) {
     const { error } = await supabase.from('training_skips').delete().eq('task_id', s.taskId)
@@ -327,9 +355,8 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
     putSkippedDayBackOnCalendar(s.taskId)
     return
   }
-  if (s.skipId) {
-    const { error } = await supabase.from('training_skips').delete().eq('id', s.skipId)
-    if (error) throw error
-  }
+  if (!s.skipId) throw new Error('No skip found to undo for this session.')
+  const { error } = await supabase.from('training_skips').delete().eq('id', s.skipId)
+  if (error) throw error
 }
 

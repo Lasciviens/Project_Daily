@@ -15,7 +15,7 @@ import { useIngredientLibrary } from '../hooks/useIngredientLibrary'
 import { useRecipeBatch, useRecipes } from '../hooks/useRecipes'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
-import { groupDayMeals } from '../../daily/api/dayNutritionApi'
+import { groupDayMeals, joinableMeals } from '../../daily/api/dayNutritionApi'
 import { amountUnit, ingredientSnapshot, recipeSnapshot } from '../foodBasket'
 import { foodAmountModel, portionWord, recipeAmountModel } from '../foodAmount'
 import { macroAmounts, splitTitleQty } from '../foodIngredients'
@@ -129,8 +129,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   // The dishes (and single rows) in the picked meal of the picked day.
   const options = useMemo(() => {
     if (!dayNut) return null
-    const inSlot = dayNut.meals.filter(m => m.source === 'log' && m.meal_slot === slot)
-    return groupDayMeals(inSlot).flatMap(r => r.kind === 'group'
+    return groupDayMeals(joinableMeals(dayNut.meals, slot)).flatMap(r => r.kind === 'group'
       ? [{ value: `g:${r.groupId}`, label: `${cut(r.title)} (${r.items.length})`, title: r.title }]
       : r.meal.id === entry.id ? [] : [{ value: `r:${r.meal.id}`, label: `With ${cut(splitTitleQty(r.meal.title).name)}`, title: r.meal.title }])
   }, [dayNut, slot, entry.id])

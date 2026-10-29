@@ -22,7 +22,7 @@ const PROT_H = 'h-10 @[42rem]:h-16'
 const PROT_TOP = 'top-[5.5rem] @[42rem]:top-[8.5rem]'
 
 const macroFacts = (m: Macros) => [
-  `${m.kcal.toLocaleString('en-GB')} kcal`, `${m.protein} g protein`, `${m.carbs} g carbs`, `${m.fat} g fat`, `${m.fiber} g fibre`, m.sugar > 0 && `${m.sugar} g sugar`,
+  `${m.kcal.toLocaleString('en-GB')} kcal`, `${m.protein} g protein`, `${m.carbs} g carbs`, `${m.fat} g fat`, `${m.fiber} g fiber`, m.sugar > 0 && `${m.sugar} g sugar`,
 ]
 
 function Legend() {

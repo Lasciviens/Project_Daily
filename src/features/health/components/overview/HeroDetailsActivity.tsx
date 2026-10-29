@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useChartColors } from '../../../../shared/ui'
+import { EmptyState, useChartColors } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { buildTrendStats, clockRows, fmtClock } from '../../healthTrendStats'
 import { SRC } from '../../benchmarks/sources'
@@ -91,10 +91,12 @@ export function StepsDetail({ hero, onViewDay }: Props) {
 
 // Each bar is a Monday–Sunday week, labelled as its range ("7–13 Jul") on
 // the axis and in the tooltip — a single date read like one day.
-export function WeeklyBars({ data, refY, refLabel, label, unit, ariaLabel, color }: {
+export function WeeklyBars({ data, refY, refLabel, label, unit, ariaLabel, color, empty }: {
   data: { weekStart: string; value: number }[]; refY: number; refLabel: string; label: string; unit: string; ariaLabel: string; color: string
+  /** What the chart's place says when no week has data (its heading stays). */
+  empty: { title: string; description: string }
 }) {
-  if (!data.length) return null
+  if (!data.length) return <EmptyState bordered title={empty.title} description={empty.description} className="py-6" />
   return (
     <HealthTrendChart
       data={data.map(w => ({ label: weekRangeLabel(w.weekStart), title: weekRangeLabel(w.weekStart, todayStr()), value: w.value }))}
@@ -105,6 +107,15 @@ export function WeeklyBars({ data, refY, refLabel, label, unit, ariaLabel, color
       refLines={[{ y: refY, label: refLabel }]}
     />
   )
+}
+
+export const MINUTES_EMPTY = {
+  title: 'No exercise minutes in these weeks',
+  description: 'Apple’s exercise minutes show here once Health Auto Export sends them.',
+}
+export const STRENGTH_EMPTY = {
+  title: 'No strength days in these weeks',
+  description: 'Days with a Hevy workout show here.',
 }
 
 export function ExerciseDetail({ hero }: Props) {
@@ -124,12 +135,12 @@ export function ExerciseDetail({ hero }: Props) {
       <div>
         <p className="section-label mb-1">Exercise minutes per week</p>
         <WeeklyBars data={weeks.minutes} refY={150} refLabel="150 min" label="of exercise" unit="min" color={c.series[2]}
-          ariaLabel="Apple exercise minutes per week; the newest week counts up to the day you're viewing" />
+          ariaLabel="Apple exercise minutes per week; the newest week counts up to the day you're viewing" empty={MINUTES_EMPTY} />
       </div>
       <div>
         <p className="section-label mb-1">Strength days per week (Hevy)</p>
         <WeeklyBars data={weeks.strength} refY={2} refLabel="2 days" label="strength days" unit="" color={c.series[1]}
-          ariaLabel="Days with a Hevy workout per week; the newest week counts up to the day you're viewing" />
+          ariaLabel="Days with a Hevy workout per week; the newest week counts up to the day you're viewing" empty={STRENGTH_EMPTY} />
       </div>
       <TrendStatsBlock stats={stats} format={v => num(v)} formatDelta={v => signed(v)} direction="up" />
       <p className="text-meta text-fg-muted">

@@ -258,7 +258,25 @@ function migrationSection() {
   check('the DB scenarios run in the PR check', /node scripts\/verify-db-google-tasks-pull\.mjs/.test(read('.github/workflows/pr-check.yml')))
 }
 
-;(async () => {
+;// "Push to Google Tasks" pushes only what belongs on Google Tasks; "Sync now"
+// refreshes the schedule too (its read-back moves slots) — 28.10.2026.
+function pushSection() {
+  console.log('\n== Push / Sync now ==')
+  const open = t => t.status === 'open'
+  const t = (id, extra) => ({ id, status: 'open', google_task_id: null, google_target: null, project_id: null, ...extra })
+  const picked = R.googleTasksPushCandidates([
+    t('old'), t('tasks', { google_target: 'tasks' }), t('both', { google_target: 'both' }),
+    t('none', { google_target: 'none' }), t('cal', { google_target: 'calendar' }), t('project', { project_id: 'p' }),
+    t('linked', { google_task_id: 'g1' }), t('done', { status: 'done' }),
+  ], open).map(x => x.id)
+  check('Push takes old rows and Tasks / Both items only', JSON.stringify(picked) === JSON.stringify(['old', 'tasks', 'both']), JSON.stringify(picked))
+  const hooks = fs.readFileSync(path.join(__dirname, '../src/features/todo/hooks/useGoogleTasksSync.ts'), 'utf8')
+  check('Push reads googleTasksPushCandidates', /googleTasksPushCandidates\(tasks, isOpenTask\)/.test(hooks))
+  check('Sync now refreshes the task graph (tasks, schedule, calendar)', /invalidates: \['taskGraph', qk\.googleTaskLists\.all, qk\.googleTasks\.all\]/.test(hooks))
+  check('a background run that applied Calendar changes refreshes the task graph', /readback\?\.applied \?\? 0\) > 0\) void invalidate\(qc, 'taskGraph'\)/.test(hooks))
+}
+
+(async () => {
   mirrorSection()
   dateSection()
   failureSection()
@@ -268,6 +286,7 @@ function migrationSection() {
   functionWiringSection()
   browserWiringSection()
   migrationSection()
+  pushSection()
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)
 })()

@@ -19,6 +19,16 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-28 · v21.4 · "Edit session…" moving a training session 7 or more
+//                    days after its first day said only "Saved · <new day>",
+//                    while the database (167) had skipped it in its own week
+//                    and moved that week's session there. The sheet now says
+//                    what Move says (`pastWeekMoveLine`, through
+//                    useSaveItem's `describe`) and Google follows as for Move
+//                    (`carryPastWeekMoveToCalendar`): the skipped day of a
+//                    repeat comes off the calendar, a day moved in gets its
+//                    own event. Only for a session's task (`config.session`,
+//                    set by PlanEntityModals); never for "All days".
 //  2026-10-20 · v21.3 · "All day" in the time chip's picker (owner, 16.10.2026:
 //                    "there are no options to mark as all day on website"):
 //                    no time, no length, on Google Calendar (Both stays Both —
@@ -484,6 +494,8 @@ import { AlertCircle, Trash2 } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
+import { movesPastWeek, pastWeekMoveLine, type PastWeekOutcome } from '../../../features/training/plan/sessionState'
+import { carryPastWeekMoveToCalendar, fetchPastWeekOutcome } from '../../../features/training/api/trainingPlanApi'
 import { qk } from '../../query'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -526,7 +538,24 @@ export function UnifiedPlanModal({
   const today = todayStr()
   const qc = useQueryClient()
   const googleConnected = !!useCalendarStore(s => s.accessToken)
-  const save = useSaveItem()
+  // A training session put 7 or more days after its first day (167): the
+  // database skips it in its week and moves that week's session to the day.
+  const session = config?.session
+  const shownDay = timeBlock?.date ?? task?.due_date ?? occurrenceDate ?? null
+  const outOfWeek = (input: ItemInput) => (session && input.scope !== 'all' && input.date && input.date !== shownDay
+    && movesPastWeek(session.firstDay, input.date) ? input.date : null)
+  const save = useSaveItem({
+    after: async (input, saved) => {
+      const to = outOfWeek(input)
+      if (!to || !session) return null
+      carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, to)
+      return fetchPastWeekOutcome(session.taskId, to, { routineId: session.routineId, title: session.title })
+    },
+    describe: (input, outcome) => {
+      const to = outOfWeek(input)
+      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : undefined
+    },
+  })
   const del = useSheetDelete()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 

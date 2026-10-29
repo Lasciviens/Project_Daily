@@ -592,12 +592,12 @@ export async function fetchLibraryGames(library: GameLibrary): Promise<Game[]> {
 }
 
 /** The game played last up to the end of `day` — any library, whichever
- *  provider reported it (last_played_at, 096) — or null. One row, never the
- *  whole library. */
+ *  provider reported it (last_played_at, 096), never a hidden one (a launcher
+ *  or a tool, like the queue) — or null. One row, never the whole library. */
 export async function fetchLastPlayed(day: string): Promise<{ title: string; last_played_at: string } | null> {
   const end = new Date(`${day}T23:59:59.999`).toISOString()
   const { data, error } = await supabase.from('games').select('title, last_played_at')
-    .not('last_played_at', 'is', null).lte('last_played_at', end)
+    .not('last_played_at', 'is', null).lte('last_played_at', end).neq('play_status', 'hidden')
     .order('last_played_at', { ascending: false }).limit(1).maybeSingle()
   if (error) {
     if (isMissingColumn(error) || isMissingTable(error)) return null

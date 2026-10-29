@@ -3,8 +3,8 @@ import { BookOpen, Flame } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { EmptyState, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
-import { useLibrary, useReadingEvents, useReadingSettings } from '../../books/hooks/useLibrary'
-import { computeStreak, currentlyReading, localDay, secondsByDay, sortForLibrary, upNext } from '../../books/readingAggregate'
+import { useLibrary, useReadingEvents, useReadingSettings, useReadingStreak } from '../../books/hooks/useLibrary'
+import { currentlyReading, localDay, secondsByDay, sortForLibrary, upNext } from '../../books/readingAggregate'
 import { BookCover } from '../../books/components/BookCover'
 import type { Book } from '../../books/types'
 import { useWidgetState } from '../hooks/useWidgetState'
@@ -33,8 +33,7 @@ function useReadingGlance(enabled: boolean) {
   const minutes = Math.floor((perDay.get(today) ?? 0) / 60)
   const goal = settings?.daily_minutes_goal ?? 20
   const lastSeenDay = sync?.last_seen_at ? localDay(new Date(sync.last_seen_at)) : null
-  const first = events.data?.[0] ? localDay(new Date(events.data[0].started_at)) : null
-  const streak = computeStreak(perDay, today, lastSeenDay, settings?.streak_min_minutes ?? 1, first)
+  const streak = useReadingStreak(120, lastSeenDay, settings?.streak_min_minutes ?? 1, enabled)
   const reading = sortForLibrary(books.filter(b => b.kind !== 'news' && b.read_status === 'reading'), 'recent')
   const queue = upNext(books)
   const currentId = reading[0]?.id ?? null

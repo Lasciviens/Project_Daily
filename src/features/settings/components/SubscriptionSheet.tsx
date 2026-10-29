@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { ModalShell } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
+import { DateInput } from '../../../shared/components/DateInput'
 import { useDeleteSubscription, useSaveSubscription } from '../hooks/useSubscriptions'
 import {
-  BILLING_CYCLES, KNOWN_SERVICES, normalizeCurrency, serviceKey, SUBSCRIPTION_CURRENCIES,
+  BILLING_CYCLES, KNOWN_SERVICES, normalizeCurrency, priceFromText, serviceKey, SUBSCRIPTION_CURRENCIES,
   type BillingCycle, type Requirement, type ServiceSubscription, type SubscriptionInput,
 } from '../subscriptionRules'
 
@@ -33,6 +34,8 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
   const [form, setForm] = useState<SubscriptionInput>(() => initialInput(sub, service))
   const [priceText, setPriceText] = useState(sub?.price != null ? String(sub.price) : '')
   const set = <K extends keyof SubscriptionInput>(k: K, v: SubscriptionInput[K]) => setForm(f => ({ ...f, [k]: v }))
+  const price = priceFromText(priceText)
+  const priceBad = price === undefined
   const valid = form.service.trim() !== ''
   // A row saved earlier in another currency keeps its own option, so opening
   // and saving it never changes the currency behind the user's back.
@@ -41,12 +44,11 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
   const busy = save.isPending || remove.busy
 
   async function submit() {
-    if (!valid) return
-    const price = priceText.trim() === '' ? null : Number(priceText.replace(',', '.'))
+    if (!valid || price === undefined || busy) return
     const input: SubscriptionInput = {
       ...form,
       service: serviceKey(form.service),
-      price: price != null && Number.isFinite(price) && price >= 0 ? price : null,
+      price,
       currency: normalizeCurrency(form.currency),
       name: blank(form.name ?? ''), account: blank(form.account ?? ''), plan: blank(form.plan ?? ''), notes: blank(form.notes ?? ''),
       renews_on: form.renews_on || null,
@@ -72,7 +74,7 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {sub && <Button block className="sm:mr-auto sm:w-auto" variant="danger" onClick={() => { void handleDelete() }} disabled={busy}>Remove</Button>}
           <Button block className="sm:w-auto" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button block className="sm:w-auto" type="submit" form={FORM_ID} variant="primary" loading={save.isPending} disabled={!valid}>Save</Button>
+          <Button block className="sm:w-auto" type="submit" form={FORM_ID} variant="primary" loading={save.isPending} disabled={!valid || priceBad}>Save</Button>
         </div>
       }
     >
@@ -97,7 +99,9 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
           <label className="flex flex-col gap-1">
             <span className="field-label">Price</span>
-            <input inputMode="decimal" value={priceText} onChange={e => setPriceText(e.target.value.replace(/[^0-9.,]/g, ''))} className="input w-full" placeholder="0" />
+            <input inputMode="decimal" value={priceText} onChange={e => setPriceText(e.target.value.replace(/[^0-9.,]/g, ''))} className="input w-full" placeholder="0"
+              aria-invalid={priceBad} aria-describedby={priceBad ? 'sub-price-bad' : undefined} />
+            {priceBad && <span id="sub-price-bad" className="text-meta text-danger">Not a price — write it like 1&nbsp;299,00</span>}
           </label>
           <label className="flex flex-col gap-1">
             <span className="field-label">Currency</span>
@@ -116,10 +120,10 @@ export function SubscriptionSheet({ open, sub, service, onClose }: {
             ))}
           </div>
         </div>
-        <label className="flex flex-col gap-1">
+        <div>
           <span className="field-label">Renews on</span>
-          <input type="date" value={form.renews_on ?? ''} onChange={e => set('renews_on', e.target.value || null)} className="input w-full max-w-xs" />
-        </label>
+          <DateInput value={form.renews_on ?? ''} onChange={v => set('renews_on', v || null)} aria-label="Renews on" className="input w-[10rem] tabular-nums" />
+        </div>
         <div>
           <p className="field-label" id="sub-req">Does the integration need it?</p>
           <div role="group" aria-labelledby="sub-req" className="flex flex-wrap gap-1.5">

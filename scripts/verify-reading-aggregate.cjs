@@ -22,12 +22,28 @@ eq(a.dayState('2026-10-03', 30, '2026-10-05', '2026-10-04', 1), 'short', 'under 
 eq(a.dayState('2026-10-03', 600, '2026-10-05', '2026-10-04', 5), 'read', 'read day')
 
 const days = new Map([['2026-10-01', 900], ['2026-10-02', 900], ['2026-10-03', 900]])
-eq(a.computeStreak(days, '2026-10-05', '2026-10-03', 1, '2026-10-01'), { current: 3, longest: 3, atRisk: true }, 'unsynced yesterday does not break the streak')
+eq(a.computeStreak(days, '2026-10-05', '2026-10-03', 1, '2026-10-01'), { current: 3, longest: 3, atRisk: true, open: true }, 'unsynced yesterday does not break the streak')
 eq(a.computeStreak(days, '2026-10-05', '2026-10-05', 1, '2026-10-01').current, 0, 'a synced empty yesterday breaks it')
 const withToday = new Map([...days, ['2026-10-04', 900], ['2026-10-05', 900]])
-eq(a.computeStreak(withToday, '2026-10-05', '2026-10-05', 1, '2026-10-01'), { current: 5, longest: 5, atRisk: false }, 'today read counts')
-eq(a.computeStreak(new Map([['2026-09-28', 900], ['2026-10-01', 900]]), '2026-10-01', '2026-10-01', 1, '2026-09-28'), { current: 1, longest: 1, atRisk: false }, 'gap resets longest')
-eq(a.computeStreak(new Map(), '2026-10-05', null, 1, null), { current: 0, longest: 0, atRisk: false }, 'nothing at all')
+eq(a.computeStreak(withToday, '2026-10-05', '2026-10-05', 1, '2026-10-01'), { current: 5, longest: 5, atRisk: false, open: true }, 'today read counts')
+eq(a.computeStreak(new Map([['2026-09-28', 900], ['2026-10-01', 900]]), '2026-10-01', '2026-10-01', 1, '2026-09-28'), { current: 1, longest: 1, atRisk: false, open: false }, 'gap resets longest')
+eq(a.computeStreak(new Map(), '2026-10-05', null, 1, null), { current: 0, longest: 0, atRisk: false, open: true }, 'nothing at all')
+
+// windowStreak: Home and Daily read 120 days, Books → Stats 400 — one streak number
+// (audit 28.10.2026: a 150-day streak read 120 on Home and Personal).
+{
+  const today = '2026-10-28'
+  const nightly = n => Array.from({ length: n }, (_, i) => ev('b', `${a.addDays(today, -(n - 1 - i))}T21:00:00`, 1800, i))
+  const since = (events, days) => events.filter(e => a.localDay(new Date(e.started_at)) >= a.addDays(today, -(days - 1)))
+  const win = (events, days) => a.windowStreak(since(events, days), a.addDays(today, -(days - 1)), today, today, 1)
+  const all150 = nightly(150)
+  eq([win(all150, 120).streak.current, win(all150, 120).cut], [120, true], 'a streak running to the 120-day read\'s first day is cut there')
+  eq([win(all150, 400).streak.current, win(all150, 400).cut], [150, false], 'the 400-day read counts all of it')
+  const broken = nightly(150).filter(e => !e.started_at.startsWith(a.addDays(today, -30)))
+  eq([win(broken, 120).streak.current, win(broken, 120).cut], [30, false], 'a break inside the short read needs nothing older')
+  eq([win(nightly(40), 120).streak.current, win(nightly(40), 120).cut], [40, false], 'reading every day since the very first event: nothing older to read')
+  eq(win([], 120).cut, false, 'no events: nothing to read further')
+}
 
 const s = a.sessions([
   ev('b', '2026-10-04T20:00:00Z', 60, 1), ev('b', '2026-10-04T20:01:00Z', 60, 2), ev('b', '2026-10-04T20:02:00Z', 60, 3),

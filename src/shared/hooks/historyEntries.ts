@@ -30,6 +30,8 @@ export interface LiveOverlay {
   id: number
   /** False while its push waits for one of our own Backs to land. */
   pushed: boolean
+  /** True while it may not close (a popup saving): a Back leaves it open. */
+  holds?: boolean
 }
 
 /** A hop over a dead entry that has not landed yet. */
@@ -138,6 +140,11 @@ export interface PopDecision {
   dir: Dir | null
   /** The overlay this Back closes — the top one — or null. */
   close: number | null
+  /**
+   * The top overlay, when it holds: it stays open and its entry is pushed
+   * again (so the next Back still reaches it); the landing goes to no one.
+   */
+  hold: number | null
   /** Landed on an entry no open overlay owns. */
   dead: boolean
   /** A Back off a resting dead entry reached the very address that entry was showing. */
@@ -163,7 +170,11 @@ export function decidePop(p: PopInput): PopDecision {
   // Only someone else's Back (the user's, or a page's own history.back())
   // closes an overlay, and only the top one. Forward never closes anything.
   const top = p.live[p.live.length - 1]
-  const close = !own && dir !== 'forward' && top != null && top.pushed ? top.id : null
+  const back = !own && dir !== 'forward' && top != null && top.pushed
+  if (back && top.holds) {
+    return { hopLanding, ownPop, dir, close: null, hold: top.id, dead: false, unchanged: false, hop: null, chain: 0, origin: null }
+  }
+  const close = back ? top.id : null
   const open = close == null ? p.live : p.live.filter(o => o.id !== close)
   const dead = isDeadEntry(p.landed, p.load, open)
   // One step back off a resting dead entry: whatever this run of hops lands
@@ -175,5 +186,5 @@ export function decidePop(p: PopInput): PopDecision {
   const unchanged = !dead && dir === 'back' && origin != null && p.href === origin.href
   const chain = (hopLanding && pending ? pending.chain : 0) + (dead || unchanged ? 1 : 0)
   const hop = (dead || unchanged) && dir != null && chain <= MAX_HOPS ? dir : null
-  return { hopLanding, ownPop, dir, close, dead, unchanged, hop, chain, origin: hop ? origin : null }
+  return { hopLanding, ownPop, dir, close, hold: null, dead, unchanged, hop, chain, origin: hop ? origin : null }
 }
