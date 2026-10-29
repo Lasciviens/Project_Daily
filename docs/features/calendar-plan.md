@@ -52,6 +52,15 @@ The owner's Apple Calendar shows several accounts side by side; the iCloud conne
 
 This matters for Phase 3: "find a free time" is only as good as the calendars the app can see.
 
+## Decisions (owner, 29.10.2026, "Go" for Phase 2)
+
+- **Roles:** iCloud is the **only place the app writes** its events (Apple Calendar). Google is **read-only for calendars** — the Google account the app is connected to is the one that holds the shared family calendars. **Google Tasks stays exactly as it is** (the owner uses it).
+- **Never the same event in both:** an iCloud copy first, confirmed, then the Google Calendar copy is removed (the item stays in the app).
+- **Five calendars:** Training · Work (with Projects) · Personal (tasks, repeats) · Media (episodes, films) · Football.
+- **A default alert per area:** Training 60 min, Football 15 min, Work 10 min, Personal and Media none.
+- **Emoji per area** in front of event titles (🏋️ Lower B, ⚽ a match, 📺 an episode).
+- **Every choice is a setting** — "Add those to the settings as well, and other settings that you are coding but I couldn't change without asking you": each calendar's name, emoji, colour, default alert and whether it is used; which area an item goes to; what an event's notes carry. Values above are only the defaults.
+
 ## Phases
 
 **Phase 1 — the Apple check (done, 29.10.2026).** Connect with an app-specific password; the app made a test calendar, wrote 9 test events, read them back and followed an event moved on the iPhone. Everything worked except Maybe and Private (no visible effect). Then **Read my calendars** (read-only): the owner's iCloud calendar reads; subscriptions, Google and work calendars don't (table above). Still to try: a deleted event through Check changes; whether iCloud splits repeating events into days.
