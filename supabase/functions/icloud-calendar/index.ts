@@ -649,12 +649,11 @@ async function placeAreaCalendar(c: Creds, home: string, stored: string | null, 
   const mk = await dav(c, 'MKCALENDAR', url,
     `${XML}<c:mkcalendar ${NS}><d:set><d:prop>${props}<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>`)
   if (mk.status === 201) return { url, state: 'created' }
-  if (mk.status === 405) {
-    // Something is at the area's place already: taken only when it is a calendar (made by this app before).
-    const there = await dav(c, 'PROPFIND', url, `${XML}<d:propfind ${NS}><d:prop><d:resourcetype/></d:prop></d:propfind>`, { Depth: '0' })
-    const type = there.status === 207 ? xmlText(parseMultistatus(there.text).responses[0]?.props ?? '', 'resourcetype') ?? '' : ''
-    if (/<(?:[\w-]+:)?calendar[\s/>]/.test(type) && await patch(url) === 'ok') return { url, state: 'found' }
-  }
+  // Refused (405 is the standard answer for "already there"; iCloud's own answer is not confirmed): something may be
+  // at the area's place already — taken only when it is a calendar (made by this app before, e.g. before a re-connect).
+  const there = await dav(c, 'PROPFIND', url, `${XML}<d:propfind ${NS}><d:prop><d:resourcetype/></d:prop></d:propfind>`, { Depth: '0' })
+  const type = there.status === 207 ? xmlText(parseMultistatus(there.text).responses[0]?.props ?? '', 'resourcetype') ?? '' : ''
+  if (/<(?:[\w-]+:)?calendar[\s/>]/.test(type) && await patch(url) === 'ok') return { url, state: 'found' }
   throw new ICloudError('mkcalendar', `iCloud answered ${mk.status} when "${area.name}" was made`)
 }
 
@@ -751,10 +750,13 @@ Deno.serve(async (req) => {
     if (!row || !row.app_password) return answer({ error: 'Connect iCloud first' }, 400)
     const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
     const password = await openSecret(row.app_password, key, user.id)
-    if (password === null) throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect and connect again' : NO_KEY)
-    // A password stored before sealing is sealed now, the first time a key is there.
+    if (password === null) {
+      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : NO_KEY)
+    }
+    // A password stored before sealing is sealed now, the first time a key is there (tried again on the next call if it fails).
     if (key && !isSealed(row.app_password)) {
-      await db.from('icloud_credentials').update({ app_password: await sealSecret(password, key, user.id) }).eq('user_id', user.id)
+      const { error } = await db.from('icloud_credentials').update({ app_password: await sealSecret(password, key, user.id) }).eq('user_id', user.id)
+      if (error) console.error(`icloud-calendar ${action}: reseal`)
     }
     const creds = { email: row.apple_id, password }
     const home = row.calendar_home_url ?? (await discover(creds)).home
@@ -873,7 +875,10 @@ Deno.serve(async (req) => {
           areas.push({ area: key, name: area.name, state: 'failed', detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
         }
       }
-      const { error } = await db.from('icloud_credentials').update({ area_calendars: known, last_error: null }).eq('user_id', user.id)
+      // A calendar not made is kept as the last problem until a run makes it, so a reload still says why.
+      const notMade = areas.filter(a => a.state === 'failed')
+      const lastError = notMade.length ? `Not made in Apple Calendar: ${notMade.map(a => `${a.name} (${a.detail})`).join('; ')}` : null
+      const { error } = await db.from('icloud_credentials').update({ area_calendars: known, last_error: lastError }).eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The calendars are in iCloud, but the app could not save where they are — run it again')
       return answer({ areas })
     }

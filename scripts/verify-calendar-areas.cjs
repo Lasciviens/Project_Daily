@@ -51,8 +51,9 @@ eq(between(fnSrc, '// <calendar-areas>', '// </calendar-areas>') === between(app
 const setup = fnSrc.slice(fnSrc.indexOf("if (action === 'setup')"), fnSrc.indexOf("if (action === 'remove')"))
 eq(setup.length > 0 && !/'(PUT|DELETE)'/.test(setup) && /readCalendarPrefs\(/.test(setup), true, 'Create in Apple Calendar reads the saved settings and writes calendars only — no event, nothing deleted')
 const place = fnSrc.slice(fnSrc.indexOf('async function placeAreaCalendar'), fnSrc.indexOf('function osloTomorrow'))
-eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(place) && /mk\.status === 405[\s\S]{0,400}calendar/.test(place), true,
-  "a calendar is renamed/recoloured in place, made at its area's place, or taken there only when it is a calendar")
+eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(place) && /mk\.status === 201[\s\S]{0,800}'PROPFIND'[\s\S]{0,400}calendar\[/.test(place), true,
+  "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
+eq(/notMade\.length \? `Not made in Apple Calendar/.test(setup) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
 const connect = fnSrc.slice(fnSrc.indexOf("if (action === 'connect')"), fnSrc.indexOf("if (action === 'disconnect')"))
 eq(/if \(!key\) return answer\(\{ error: NO_KEY \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
   'connect stores the password only sealed, and refuses without a key')

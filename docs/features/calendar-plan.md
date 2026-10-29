@@ -1,6 +1,6 @@
 # Calendar plan — Apple first
 
-The owner's wishes for the app's calendar, written down on 29.10.2026 so the context isn't lost between sessions. **Nothing past Phase 1 is approved:** each phase waits for the owner's go. How the iCloud connection works: `docs/integrations/icloud-caldav.md`. What is built today: `docs/features/planning-calendar.md`.
+The owner's wishes for the app's calendar, written down on 29.10.2026 so the context isn't lost between sessions. **Approved so far:** Phase 1 (done) and Phase 2 (29.10.2026, step by step); Phase 3 waits for the owner's go. How the iCloud connection works: `docs/integrations/icloud-caldav.md`. What is built today: `docs/features/planning-calendar.md`.
 
 ## What the owner wants
 
@@ -26,7 +26,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 | 15 | Working location (home / office) | **Later** — "let's talk about this later" |
 | 17 | Instant sync | **Later** — iCloud has no push; changes come by asking every few minutes |
 | 19 | The app's own calendars, one per area | Wanted — the core of Phase 2 |
-| 20 | A default alert per calendar | The owner handles alerts on the phone ("something I can solve on my own"); with iCloud direct, the double alert from Google goes away |
+| 20 | A default alert per calendar | First: "something I can solve on my own" (the double alert from Google). Then decided for Phase 2: a default alert per area, the owner's setting (Settings → Calendar); with iCloud direct the double alert goes away |
 | 21 | Free/busy: find a free time | Wanted (Phase 3) |
 | 24 | Calendar colours in the app's own agenda | Wanted, with 19 |
 | 28 | Clear completed tasks | **Not applied** — turned into the rule "past days are never cleared" |

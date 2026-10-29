@@ -18,15 +18,18 @@ import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settin
 
 const sameDoc = (a: CalendarPrefs, b: CalendarPrefs) => JSON.stringify(a) === JSON.stringify(b)
 
-function AreaRow({ areaKey, area, ready, failure, onChange }: {
+function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
   areaKey: AreaKey
   area: CalendarArea
+  /** The saved settings aren't loaded yet: an edit now would be made on the defaults. */
+  locked: boolean
   ready: boolean | undefined
   failure: string | undefined
   onChange: (next: CalendarArea) => void
 }) {
   const problem = areaProblem(area)
   const label = AREA_LABEL[areaKey]
+  const off = locked || !area.enabled
   return (
     <li className="flex flex-col gap-1.5 border-t border-line py-3 first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-2">
@@ -37,24 +40,24 @@ function AreaRow({ areaKey, area, ready, failure, onChange }: {
           : ready === false ? <TonePill tone="neutral">Not made yet</TonePill> : null}
       </div>
       <div className="flex items-center gap-2">
-        <input type="color" value={area.color} aria-label={`${label} colour`} disabled={!area.enabled}
+        <input type="color" value={area.color} aria-label={`${label} colour`} disabled={off}
           onChange={e => onChange({ ...area, color: e.target.value.toUpperCase() })}
           className="h-9 w-9 shrink-0 cursor-pointer rounded-control border border-line bg-surface p-0.5 disabled:opacity-50" />
-        <input className="input w-12 shrink-0 text-center" value={area.emoji} aria-label={`${label} emoji`} disabled={!area.enabled}
+        <input className="input w-12 shrink-0 text-center" value={area.emoji} aria-label={`${label} emoji`} disabled={off}
           onChange={e => onChange({ ...area, emoji: e.target.value })} />
-        <input className="input min-w-0 max-w-md flex-1" value={area.name} aria-label={`${label} calendar name`} disabled={!area.enabled}
+        <input className="input min-w-0 max-w-md flex-1" value={area.name} aria-label={`${label} calendar name`} disabled={off}
           onChange={e => onChange({ ...area, name: e.target.value })} />
       </div>
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
           Alert
-          <select className="select w-auto" value={area.alertMinutes === null ? 'none' : String(area.alertMinutes)} disabled={!area.enabled}
+          <select className="select w-auto" value={area.alertMinutes === null ? 'none' : String(area.alertMinutes)} disabled={off}
             onChange={e => onChange({ ...area, alertMinutes: e.target.value === 'none' ? null : Number(e.target.value) })}>
             {ALERT_CHOICES.map(m => <option key={m ?? 'none'} value={m === null ? 'none' : String(m)}>{alertLabel(m)}</option>)}
           </select>
         </label>
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
-          <input type="checkbox" checked={area.enabled} onChange={e => onChange({ ...area, enabled: e.target.checked })} />
+          <input type="checkbox" className="h-4 w-4 accent-accent-500" checked={area.enabled} disabled={locked} onChange={e => onChange({ ...area, enabled: e.target.checked })} />
           In use
         </label>
       </div>
@@ -69,21 +72,36 @@ function AreasCard() {
   const save = useSaveCalendarPrefs()
   const status = useICloudStatus()
   const setup = useSetupICloudCalendars()
-  const [draft, setDraft] = useState<CalendarPrefs | null>(null)
-  const form = draft ?? prefs
-  const dirty = !!draft && !sameDoc(readCalendarPrefs(draft), prefs)
+  // Only the areas edited here, over the saved ones: a refetch never loses an edit, an edit never resets another area.
+  const [edits, setEdits] = useState<Partial<Record<AreaKey, CalendarArea>>>({})
+  const form: CalendarPrefs = { areas: { ...prefs.areas, ...edits } }
+  const dirty = !sameDoc(readCalendarPrefs(form), prefs)
   const invalid = AREA_KEYS.some(k => areaProblem(form.areas[k]))
-  const connected = !!status.data?.connected
-  const anyReady = AREA_KEYS.some(k => status.data?.areas?.[k]?.ready)
+  const connected = status.data?.connected === true
+  const ready = (k: AreaKey) => !!status.data?.areas?.[k]?.ready
+  const missing = AREA_KEYS.some(k => form.areas[k].enabled && !ready(k))
   const failures = new Map((setup.data?.areas ?? []).filter(a => a.state === 'failed').map(a => [a.area, a.detail ?? 'iCloud did not take it']))
+  const busy = save.isPending || setup.isPending
 
-  function change(key: AreaKey, next: CalendarArea) {
-    setDraft({ areas: { ...form.areas, [key]: next } })
+  // One action: save what changed, then bring Apple Calendar up to date with it.
+  function apply() {
+    if (!dirty) { setup.mutate(); return }
+    save.mutate(readCalendarPrefs(form), {
+      onSuccess: () => {
+        setEdits({})
+        if (connected) setup.mutate()
+      },
+    })
   }
+
+  const label = !connected ? 'Save'
+    : dirty ? 'Save and update Apple Calendar'
+    : missing ? 'Create in Apple Calendar'
+    : 'Update Apple Calendar'
 
   return (
     <Card>
-      <CardHeader icon={<CalendarDays />} title="The app's calendars" subtitle="In Apple Calendar through iCloud, one per area. Events follow in the next step." />
+      <CardHeader icon={<CalendarDays />} title="The app's calendars" subtitle="In Apple Calendar through iCloud, one per area." />
       {failed ? (
         <div className="flex items-center gap-2">
           <p role="alert" className="text-meta text-danger">The calendar settings could not be loaded.</p>
@@ -93,26 +111,27 @@ function AreasCard() {
         <>
           <ul className="flex flex-col">
             {AREA_KEYS.map(k => (
-              <AreaRow key={k} areaKey={k} area={form.areas[k]} ready={connected ? !!status.data?.areas?.[k]?.ready : undefined}
-                failure={failures.get(k)} onChange={next => change(k, next)} />
+              <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined}
+                failure={failures.get(k)} onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
           </ul>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button variant={dirty ? 'primary' : 'secondary'} disabled={!loaded || !dirty || invalid} loading={save.isPending}
-              onClick={() => draft && save.mutate(readCalendarPrefs(draft), { onSuccess: () => setDraft(null) })}>
-              Save
+            <Button variant="primary" disabled={!loaded || invalid || (!dirty && !connected) || status.isLoading} loading={busy} onClick={apply}>
+              {label}
             </Button>
-            {connected ? (
-              <Button disabled={!loaded || dirty} loading={setup.isPending} onClick={() => setup.mutate()}>
-                {anyReady ? 'Update Apple Calendar' : 'Create in Apple Calendar'}
-              </Button>
-            ) : (
+            {status.isError ? (
+              // Never "connect again" on a failed read: Apple shows a password only once.
+              <span className="flex items-center gap-2">
+                <span role="alert" className="text-meta text-danger">The iCloud connection could not be read.</span>
+                <Button size="sm" onClick={() => status.refetch()}>Retry</Button>
+              </span>
+            ) : status.data?.connected === false && (
               <p className="text-meta text-fg-muted">
-                Connect iCloud first: <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
+                To make them in Apple Calendar, connect iCloud in <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
               </p>
             )}
-            {connected && dirty && <span className="text-meta text-fg-muted">Save first</span>}
           </div>
+          {!setup.data && status.data?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {status.data.lastError}</p>}
         </>
       )}
     </Card>

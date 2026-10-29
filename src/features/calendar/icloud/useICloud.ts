@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, runICloudCheck, setupICloudCalendars, type ICloudStatus } from './icloudApi'
@@ -80,16 +81,24 @@ export function useReadICloud() {
   })
 }
 
-/** Create in Apple Calendar (Settings → Calendar): each area's calendar made or brought up to date. */
+const calendars = (n: number) => `${n} calendar${n === 1 ? '' : 's'}`
+
+/** Create / update in Apple Calendar (Settings → Calendar): each area's calendar made or brought up to date.
+ *  All made: a success toast. Any not made: a warning naming them (the rows say why). */
 export function useSetupICloudCalendars() {
   const refresh = useRefreshStatus()
   return useMutationWithFeedback({
     action: 'icloud_setup',
     mutationFn: () => setupICloudCalendars(),
     successMessage: r => {
+      if (r.areas.some(a => a.state === 'failed')) return undefined
+      return `Apple Calendar: ${calendars(r.areas.filter(a => a.state !== 'off').length)} ready`
+    },
+    onSuccess: r => {
+      const failed = r.areas.filter(a => a.state === 'failed')
+      if (!failed.length) return
       const ready = r.areas.filter(a => a.state !== 'off' && a.state !== 'failed').length
-      const failed = r.areas.filter(a => a.state === 'failed').length
-      return `Apple Calendar: ${ready} calendar${ready === 1 ? '' : 's'} ready${failed ? ` · ${failed} failed (see Settings → Calendar)` : ''}`
+      toast.warning(`Apple Calendar: ${calendars(ready)} ready · not made: ${failed.map(a => a.name).join(', ')}`)
     },
     invalidates: [qk.icloud.all],
     onError: refresh,
