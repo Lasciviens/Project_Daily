@@ -22,7 +22,7 @@ const TABLE_LABEL: Record<string, string> = {
   athlete_muscle_preferences: 'Muscle preference', current_program_routines: 'Program routine',
   exercise_gif_overrides: 'Exercise GIF fix', exercise_target_overrides: 'Exercise target',
   training_skips: 'Training skip', body_composition_reports: 'Body composition report',
-  games: 'Game', game_platforms: 'Game platform', games_prefs: 'Games setting',
+  games: 'Game', game_platforms: 'Game platform', games_prefs: 'Games setting', calendar_prefs: 'Calendar setting',
   scrape_decisions: 'Scrape decision', screenscraper_prefs: 'ScreenScraper setting',
   books: 'Book', book_deliveries: 'Kobo delivery', reading_settings: 'Reading setting',
   kobo_device_config: 'Kobo setting', kobo_sleep_images: 'Kobo sleep image',

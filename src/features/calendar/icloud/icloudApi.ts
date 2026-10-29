@@ -3,6 +3,7 @@
 // password is sent once (connect) and is never read back.
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
+import type { AreaKey } from '../areas/calendarAreas'
 
 export interface ICloudStatus {
   connected:    boolean
@@ -15,6 +16,15 @@ export interface ICloudStatus {
   testIsApps?:  boolean
   /** The last Apple check, kept on the server so the card still shows it after a trip to the Calendar app. */
   lastCheck?:   ICloudCheck | null
+  /** Which areas have their calendar in iCloud (Settings → Calendar, 172). */
+  areas?:       Partial<Record<AreaKey, { ready: boolean }>>
+  /** The stored app-specific password is sealed (AES-GCM). */
+  passwordSealed?: boolean
+}
+
+/** Create in Apple Calendar: what happened to each area's calendar. */
+export interface ICloudSetup {
+  areas: { area: AreaKey; name: string; state: 'created' | 'updated' | 'found' | 'off' | 'failed'; detail?: string }[]
 }
 
 export interface ICloudStep { step: string; ok: boolean; detail: string }
@@ -90,5 +100,6 @@ export const disconnectICloud = () => call<ICloudStatus>('disconnect')
 export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')
 export const readICloudCalendars = () => call<ICloudRead>('read')
+export const setupICloudCalendars = () => call<ICloudSetup>('setup')
 /** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */
 export const removeICloudTest = () => call<{ removed: 'calendar' | 'events' | null; message?: string }>('remove')

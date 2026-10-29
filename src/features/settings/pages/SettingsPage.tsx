@@ -8,22 +8,24 @@ import { AppearanceTab } from '../components/AppearanceTab'
 import { FoodTab } from '../components/FoodTab'
 import { ProfileTab } from '../components/ProfileTab'
 import { ApisTab } from '../components/ApisTab'
+import { CalendarTab } from '../components/CalendarTab'
 import { SettingsHeroArt } from '../components/SettingsHeroArt'
-import { APIS_BOARD, APPEARANCE_BOARD, FOOD_SETTINGS_BOARD, PLACES_BOARD, PROFILE_BOARD } from '../settingsBoards'
+import { APIS_BOARD, APPEARANCE_BOARD, CALENDAR_SETTINGS_BOARD, FOOD_SETTINGS_BOARD, PLACES_BOARD, PROFILE_BOARD } from '../settingsBoards'
 
-type Tab = 'places' | 'profile' | 'appearance' | 'food' | 'subscriptions' | 'apis'
+type Tab = 'places' | 'profile' | 'appearance' | 'food' | 'calendar' | 'subscriptions' | 'apis'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'places', label: 'Places' },
   { id: 'profile', label: 'Profile' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'food', label: 'Food' },
+  { id: 'calendar', label: 'Calendar' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'apis', label: 'Integrations and APIs' },
 ]
-const BOARD = { places: PLACES_BOARD, profile: PROFILE_BOARD, appearance: APPEARANCE_BOARD, food: FOOD_SETTINGS_BOARD, subscriptions: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
+const BOARD = { places: PLACES_BOARD, profile: PROFILE_BOARD, appearance: APPEARANCE_BOARD, food: FOOD_SETTINGS_BOARD, calendar: CALENDAR_SETTINGS_BOARD, subscriptions: CONNECTIONS_BOARD, apis: APIS_BOARD } as const
 
-/** /settings — Places · Profile · Appearance · Food · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
+/** /settings — Places · Profile · Appearance · Food · Calendar · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
  *  The old `?tab=integrations` (the Subscriptions tab's earlier id) still opens Subscriptions. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams()
@@ -58,6 +60,7 @@ export function SettingsPage() {
       {tab === 'profile' && <ProfileTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'food' && <FoodTab />}
+      {tab === 'calendar' && <CalendarTab />}
       {tab === 'subscriptions' && <ConnectionsTab />}
       {tab === 'apis' && <ApisTab />}
     </PageContainer>

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, runICloudCheck, type ICloudStatus } from './icloudApi'
+import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, runICloudCheck, setupICloudCalendars, type ICloudStatus } from './icloudApi'
 
 export function useICloudStatus() {
   return useQuery({ queryKey: qk.icloud.status(), queryFn: fetchICloudStatus, staleTime: STALE.default })
@@ -74,6 +74,22 @@ export function useReadICloud() {
       const events = r.days.reduce((n, d) => n + d.events.length + d.more, 0) + r.series.length
       const failed = r.calendars.filter(c => c.problem).length
       return `Read ${events} event${events === 1 ? '' : 's'} from ${r.calendars.length} calendar${r.calendars.length === 1 ? '' : 's'}${failed ? ` · ${failed} couldn't be read` : ''}`
+    },
+    invalidates: [qk.icloud.all],
+    onError: refresh,
+  })
+}
+
+/** Create in Apple Calendar (Settings → Calendar): each area's calendar made or brought up to date. */
+export function useSetupICloudCalendars() {
+  const refresh = useRefreshStatus()
+  return useMutationWithFeedback({
+    action: 'icloud_setup',
+    mutationFn: () => setupICloudCalendars(),
+    successMessage: r => {
+      const ready = r.areas.filter(a => a.state !== 'off' && a.state !== 'failed').length
+      const failed = r.areas.filter(a => a.state === 'failed').length
+      return `Apple Calendar: ${ready} calendar${ready === 1 ? '' : 's'} ready${failed ? ` · ${failed} failed (see Settings → Calendar)` : ''}`
     },
     invalidates: [qk.icloud.all],
     onError: refresh,

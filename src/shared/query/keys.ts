@@ -294,6 +294,8 @@ export const qk = {
     all: ['icloud'] as const,
     status: () => ['icloud', 'status'] as const,
   },
+  // Settings → Calendar: the app's calendars per area (calendar_prefs, 172).
+  calendarPrefs: ['calendar-prefs'] as const,
   // Personal → Diary: the day's own words (diary_entries, migration 170).
   diary: {
     all: ['diary'] as const,

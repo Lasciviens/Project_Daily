@@ -166,7 +166,7 @@ eq(/onlyOurs[\s\S]{0,300}lasci-check-\[a-z\]\+-lasciviens-github-io\\\.ics/.test
   'Remove deletes the whole calendar only when the app made it and it holds nothing but the check events')
 eq(/sync-collection[\s\S]{0,300}Depth: '0'/.test(src), true, 'sync-collection asks with Depth 0 (RFC 6578)')
 eq(/update\(\{ test_calendar_url: cal\.url[\s\S]{0,200}checkEvents\(/.test(src), true, 'the test calendar is saved before any event is written (Remove can always find them)')
-eq(/if \(readError\)[\s\S]{0,300}502\)/.test(src), true, 'a failed read answers an error, never "not connected" (Apple shows a password only once)')
+eq(/if \(readError\)[\s\S]{0,500}502\)/.test(src), true, 'a failed read answers an error, never "not connected" (Apple shows a password only once)')
 const readBlock = src.slice(src.indexOf("if (action === 'read')"), src.indexOf("if (action === 'remove')"))
 eq(readBlock.length > 0 && !/'(PUT|DELETE|MKCALENDAR|PROPPATCH)'/.test(readBlock) && !/last_check|test_calendar_url:/.test(readBlock), true,
   'Read my calendars only reads: no write to iCloud, nothing of the calendars stored')

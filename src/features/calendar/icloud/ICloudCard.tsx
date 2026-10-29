@@ -233,7 +233,10 @@ export function ICloudCard() {
     <ConnectionCard service="icloud" kind="user" icon={<Apple />} name="Apple Calendar (iCloud)" account={s?.appleId}
       description="Writes straight into Apple Calendar through iCloud — Phase 1 is a check: a few test events to look at on your iPhone and Mac, and a read of your own calendars."
       status={status.isLoading || status.isError ? 'unknown' : connected ? 'connected' : 'disconnected'}
-      details={[s?.connectedAt ? `Since ${formatDateTime(s.connectedAt)}` : null]}>
+      details={[
+        s?.connectedAt ? `Since ${formatDateTime(s.connectedAt)}` : null,
+        connected ? (s?.passwordSealed ? 'Password stored encrypted' : 'Password not encrypted yet') : null,
+      ]}>
       {status.isLoading ? null : status.isError ? (
         // Never the Connect form on a failed read: Apple shows a password only once.
         <div className="flex flex-wrap items-center gap-2">

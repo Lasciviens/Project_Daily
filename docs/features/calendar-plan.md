@@ -65,12 +65,12 @@ This matters for Phase 3: "find a free time" is only as good as the calendars th
 
 **Phase 1 — the Apple check (done, 29.10.2026).** Connect with an app-specific password; the app made a test calendar, wrote 9 test events, read them back and followed an event moved on the iPhone. Everything worked except Maybe and Private (no visible effect). Then **Read my calendars** (read-only): the owner's iCloud calendar reads; subscriptions, Google and work calendars don't (table above). Still to try: a deleted event through Check changes; whether iCloud splits repeating events into days.
 
-**Phase 2 — the app's calendars in iCloud (proposed, not approved).** Items 19, 35, 24, 4, 3, 5, 6, 7 (12 by its fallback):
-- The app makes one iCloud calendar per area, each with its colour, and puts its slots and repeating plans there instead of Google.
-- Each event carries its alert, plain-text notes (a session's exercises, match details), a link back to the app, and a location with a map pin.
-- Changes made on the iPhone come back by asking iCloud every few minutes (sync token), like Google's read-back today.
-- A migration so every slot and plan knows its iCloud calendar and event; the app-specific password encrypted before it is kept for good.
-- Questions for the owner first: which calendars (proposal: Training · Work · Personal · Media · Football), emoji in titles, a default alert per area, and what happens to Google (keep as a backup, or switch off once iCloud works).
+**Phase 2 — the app's calendars in iCloud (approved 29.10.2026: "Go").** Items 19, 35, 24, 4, 3, 5, 6, 7 (12 by its fallback). Four steps, each its own PR, each checked by the owner before the next:
+
+- **2a · Settings and the five calendars** (built 29.10.2026, migration 172). A **Calendar** tab in Settings: each area's name, emoji, colour, default alert and on/off (the defaults above). **Create in Apple Calendar** makes the area calendars in iCloud, or brings an existing one's name and colour up to date. The app-specific password is stored encrypted (AES-GCM, a key held as an Edge Function secret — one owner step). No event moves yet.
+- **2b · Writing to iCloud.** A setting "The app's calendar: Google / Apple" — Google until 2d. With Apple, every timed slot and repeating plan is written to its area's iCloud calendar by the server (an outbox like Google's `calendar_outbox`, drained every few minutes and right after a save): the title with the area's emoji, the area's alert, plain-text notes with a link back, the location. A repeating plan is one series, mapped exactly like Google's (`calendarSeries.ts`, mirrored into the function and checked). The sheet's chip says "Apple Calendar". Settings added: which kind of item goes to which area (Games have no area of their own yet), what the notes carry.
+- **2c · Changes from the iPhone.** Moves, renames and deletions made on the iPhone come back (a sync token per calendar), under the same rules as Google's read-back: only the app's own events, baselines first, a deletion takes the item off the calendar but never deletes the item, the token moves only when everything applied.
+- **2d · The move.** A preview ("N slots and M repeats move to Apple Calendar"), then one by one: the iCloud copy first and confirmed, then its Google Calendar copy removed. Google Tasks is untouched. Then the setting flips to Apple.
 
 **Phase 3 — planning with time (proposed).** Items 21, 32, 33: find a free time (from every calendar the app can read), travel time before an event, and a weekly planned vs. done.
 
