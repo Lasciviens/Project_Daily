@@ -44,6 +44,9 @@ const APP_URL = 'https://lasciviens.github.io/Project_Daily/#/daily'
 const ICLOUD_ROOT = 'https://caldav.icloud.com/'
 const TEST_NAME = 'Lasci · Test'
 const TEST_SLUG = 'lasci-test/'
+// The read test's limits: a few requests to Apple, and an answer a phone can show.
+const MAX_READ_CALENDARS = 20
+const MAX_READ_PER_DAY = 40
 
 // <icloud-pure>
 // Pure: no network, no Deno — scripts/verify-icloud-caldav.cjs runs this block.
@@ -185,23 +188,29 @@ export function checkEvents(day: string, now: Date, appUrl: string): CheckEvent[
   ]
 }
 
-/** The VEVENT's properties as iCloud stored them: name → raw lines (params included). */
-export function eventProps(ics: string): Map<string, string[]> {
+/** Every VEVENT in a calendar object (a series and its moved days, or the days iCloud expanded):
+ *  name → raw lines (params included); an alarm inside one counts as its VALARM. */
+export function allEventProps(ics: string): Map<string, string[]>[] {
   const lines = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
-  const out = new Map<string, string[]>()
+  const events: Map<string, string[]>[] = []
+  let out: Map<string, string[]> | null = null
   let depth = 0
-  let inEvent = false
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { inEvent = true; continue }
-    if (line === 'END:VEVENT') { inEvent = false; continue }
-    if (!inEvent) continue
+    if (line === 'BEGIN:VEVENT') { out = new Map(); depth = 0; continue }
+    if (line === 'END:VEVENT') { if (out) events.push(out); out = null; continue }
+    if (!out) continue
     if (/^BEGIN:/.test(line)) { depth++; if (line === 'BEGIN:VALARM') out.set('VALARM', [...(out.get('VALARM') ?? []), line]); continue }
     if (/^END:/.test(line)) { depth--; continue }
     if (depth > 0) continue
     const name = line.match(/^([A-Z0-9-]+)[;:]/)?.[1]
     if (name) out.set(name, [...(out.get(name) ?? []), line])
   }
-  return out
+  return events
+}
+
+/** The first VEVENT's properties as iCloud stored them. */
+export function eventProps(ics: string): Map<string, string[]> {
+  return allEventProps(ics)[0] ?? new Map()
 }
 
 /** Which of the check's features iCloud kept on an event. */
@@ -225,20 +234,142 @@ export function keptOf(props: Map<string, string[]>): Record<Kept, boolean> {
   }
 }
 
+/** A text property's value, unescaped (SUMMARY;LANGUAGE=en:A\, B → "A, B"). */
+const textOf = (line: string | undefined) => (line ?? '').replace(/^[^:]*:/, '').replace(/\\n/gi, ' ').replace(/\\([\\;,])/g, '$1')
+const dmy = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
+
 /** A changed event, for "Check changes": its title and when it starts now ("29.10.2026 10:00", or the day for all-day). */
 export function changeOf(props: Map<string, string[]>): { title: string; starts: string } {
-  const title = (props.get('SUMMARY')?.[0] ?? '').replace(/^[^:]*:/, '').replace(/\\([\\;,])/g, '$1').replace(/\\n/gi, ' ')
-  const raw = props.get('DTSTART')?.[0]?.replace(/^[^:]*:/, '') ?? ''
-  const m = raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/)
-  if (!m) return { title, starts: '–' }
-  if (m[4] && /Z$/.test(raw)) {
-    // A UTC time reads as the Oslo clock, like every other time in the app.
-    const at = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]))
-    const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(at).map(x => [x.type, x.value]))
-    return { title, starts: `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}` }
+  const at = startOf(props.get('DTSTART')?.[0])
+  return { title: textOf(props.get('SUMMARY')?.[0]), starts: at ? `${dmy(at.day)}${at.time ? ` ${at.time}` : ''}` : '–' }
+}
+
+const OSLO = 'Europe/Oslo'
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+function wallClock(t: number, tz: string) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(new Date(t)).map(x => [x.type, x.value]))
+  return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour, mi: +p.minute, s: +p.second }
+}
+
+/** The instant a wall-clock time in an IANA zone names; null for a zone this runtime doesn't know. */
+export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, tz: string): Date | null {
+  try {
+    const want = Date.UTC(y, mo - 1, d, h, mi)
+    const offsetAt = (t: number) => { const w = wallClock(t, tz); return Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - t }
+    return new Date(want - offsetAt(want - offsetAt(want)))
+  } catch {
+    return null
   }
-  return { title, starts: `${m[3]}.${m[2]}.${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}` }
+}
+
+/** An instant on the Oslo clock: its day (yyyy-MM-dd) and HH:MM. */
+export function osloClock(at: Date): { day: string; time: string } {
+  const w = wallClock(at.getTime(), OSLO)
+  return { day: `${w.y}-${pad2(w.mo)}-${pad2(w.d)}`, time: `${pad2(w.h)}:${pad2(w.mi)}` }
+}
+
+/**
+ * When an event starts, on the Oslo clock. All-day (VALUE=DATE): its date, no time. UTC (…Z) and a
+ * known TZID: converted. Floating, or a zone this runtime doesn't know: as written, with the zone named.
+ */
+export function startOf(line: string | undefined): { day: string; time: string | null; zone: string | null } | null {
+  const m = line?.match(/:(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?\s*$/)
+  if (!line || !m) return null
+  const day = `${m[1]}-${m[2]}-${m[3]}`
+  if (!m[4]) return { day, time: null, zone: null }
+  const tz = line.match(/;TZID="?([^";:]+)"?/)?.[1] ?? null
+  const at = m[7] ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]))
+    : tz ? zonedToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], tz)
+    : null
+  return at ? { ...osloClock(at), zone: null } : { day, time: `${m[4]}:${m[5]}`, zone: tz }
+}
+
+/** The read test's days: today and the next 6 on the Oslo clock, and their edges as CalDAV UTC stamps. */
+export function readWindow(now: Date): { fromDay: string; toDay: string; start: string; end: string } {
+  const plus = (day: string, n: number) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+  const midnight = (day: string) => zonedToUtc(+day.slice(0, 4), +day.slice(5, 7), +day.slice(8, 10), 0, 0, OSLO)!
+  const fromDay = osloClock(now).day
+  return { fromDay, toDay: plus(fromDay, 6), start: stamp(midnight(fromDay)), end: stamp(midnight(plus(fromDay, 7))) }
+}
+
+/** The CalDAV query for the window: events that touch it, repeating ones split into their days (expand). */
+export function calendarQuery(start: string, end: string): string {
+  return '<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+    + `<d:prop><d:getetag/><c:calendar-data><c:expand start="${start}" end="${end}"/></c:calendar-data></d:prop>`
+    + `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${start}" end="${end}"/></c:comp-filter></c:comp-filter></c:filter>`
+    + '</c:calendar-query>'
+}
+
+export interface ICloudCalendar { href: string; name: string; color: string | null }
+
+/** The event calendars in the calendar home (not the inbox, outbox, notifications or a tasks-only list). */
+export function calendarsOf(responses: DavResponse[]): ICloudCalendar[] {
+  return responses
+    .filter(r => /<(?:[\w-]+:)?calendar[\s/>]/.test(xmlText(r.props, 'resourcetype') ?? ''))
+    .filter(r => { const set = xmlText(r.props, 'supported-calendar-component-set'); return !set || /name="VEVENT"/i.test(set) })
+    .map(r => {
+      const color = xmlText(r.props, 'calendar-color') ?? ''
+      return { href: r.href, name: xmlText(r.props, 'displayname') || 'Untitled', color: /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color) ? color.slice(0, 7) : null }
+    })
+}
+
+export interface ReadEvent {
+  /** yyyy-MM-dd on the Oslo clock */
+  day:        string
+  /** HH:MM on the Oslo clock; null = all day */
+  time:       string | null
+  title:      string
+  /** A repeating event: a series (RRULE) or one of its days (RECURRENCE-ID). */
+  repeats:    boolean
+  /** The whole series in one piece (iCloud didn't split it into days); its day is where it began. */
+  series:     boolean
+  /** Someone else's event you were invited to, or one you invited people to. */
+  invitation: boolean
+  /** A zone this runtime doesn't know: the time is as written there. */
+  zone:       string | null
+}
+
+/** One calendar object as rows (cancelled ones left out, as Apple Calendar leaves them out). */
+export function readEventsOf(ics: string): ReadEvent[] {
+  return allEventProps(ics).flatMap(p => {
+    const at = startOf(p.get('DTSTART')?.[0])
+    if (!at || textOf(p.get('STATUS')?.[0]) === 'CANCELLED') return []
+    const series = (p.get('RRULE')?.length ?? 0) > 0
+    return [{
+      day: at.day, time: at.time, zone: at.zone, title: textOf(p.get('SUMMARY')?.[0]) || '(no title)',
+      repeats: series || (p.get('RECURRENCE-ID')?.length ?? 0) > 0, series,
+      invitation: (p.get('ORGANIZER')?.length ?? 0) > 0 || (p.get('ATTENDEE')?.length ?? 0) > 0,
+    }]
+  })
+}
+
+export interface ReadRow extends Omit<ReadEvent, 'day' | 'series'> { calendar: string; color: string | null; since: string | null }
+
+/**
+ * The window's events by day, all-day first, then by time. One that began before the window
+ * (a trip, a multi-day event) shows on its first day with "since". A series iCloud didn't split
+ * goes in `series`: its days aren't known without working out the repeat rule.
+ */
+export function byDay(calendars: { name: string; color: string | null; events: ReadEvent[] }[], fromDay: string, toDay: string):
+  { days: { day: string; events: ReadRow[] }[]; series: ReadRow[] } {
+  const days = new Map<string, ReadRow[]>()
+  const series: ReadRow[] = []
+  for (const cal of calendars) {
+    for (const e of cal.events) {
+      const row: ReadRow = { calendar: cal.name, color: cal.color, time: e.time, title: e.title, repeats: e.repeats, invitation: e.invitation, zone: e.zone, since: null }
+      if (e.series && (e.day < fromDay || e.day > toDay)) { series.push({ ...row, since: e.day }); continue }
+      if (e.day > toDay) continue
+      const day = e.day < fromDay ? fromDay : e.day
+      days.set(day, [...(days.get(day) ?? []), e.day < fromDay ? { ...row, since: e.day } : row])
+    }
+  }
+  const order = (a: ReadRow, b: ReadRow) => (a.time ?? '') < (b.time ?? '') ? -1 : (a.time ?? '') > (b.time ?? '') ? 1 : a.title.localeCompare(b.title)
+  return {
+    days: [...days.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([day, events]) => ({ day, events: events.sort(order) })),
+    series: series.sort((a, b) => a.title.localeCompare(b.title)),
+  }
 }
 // </icloud-pure>
 
@@ -408,7 +539,7 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '')
 
   // The password is read only for the actions that call iCloud.
-  const needsPassword = action === 'check' || action === 'changes' || action === 'remove'
+  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'remove'
   const { data: row, error: readError } = await db.from('icloud_credentials')
     .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, connected_at`)
     .eq('user_id', user.id).maybeSingle() as {
@@ -515,6 +646,39 @@ Deno.serve(async (req) => {
       ]
       await db.from('icloud_credentials').update({ ...(parsed.syncToken ? { test_sync_token: parsed.syncToken } : {}), last_error: null }).eq('user_id', user.id)
       return answer({ tokenWorked: true, changes })
+    }
+
+    // Read-only (owner, 29.10.2026: "Build that"): the owner's own calendars, today and the next 6 days,
+    // to compare with the iPhone. Nothing is stored or logged — the titles go only to the owner's browser.
+    if (action === 'read') {
+      const win = readWindow(new Date())
+      const list = await propfind(creds, home, '<d:displayname/><d:resourcetype/><a:calendar-color/><c:supported-calendar-component-set/>', '1')
+      const found = calendarsOf(list.responses)
+      const calendars: { name: string; color: string | null; events: ReadEvent[]; problem: string | null }[] = []
+      for (const cal of found.slice(0, MAX_READ_CALENDARS)) {
+        const entry = { name: cal.name, color: cal.color, events: [] as ReadEvent[], problem: null as string | null }
+        calendars.push(entry)
+        try {
+          const r = await dav(creds, 'REPORT', new URL(cal.href, list.url).toString(), calendarQuery(win.start, win.end), { Depth: '1' })
+          if (r.status !== 207) { entry.problem = `iCloud answered ${r.status}`; continue }
+          entry.events = parseMultistatus(r.text).responses.flatMap(x => { const d = xmlText(x.props, 'calendar-data'); return d ? readEventsOf(d) : [] })
+        } catch (e) {
+          if (e instanceof ICloudError && e.code === 'auth') throw e
+          entry.problem = e instanceof ICloudError ? e.message : 'iCloud did not answer'
+        }
+      }
+      const repeats = calendars.flatMap(c => c.events).filter(e => e.repeats)
+      const { days, series } = byDay(calendars, win.fromDay, win.toDay)
+      await db.from('icloud_credentials').update({ last_error: null }).eq('user_id', user.id)
+      return answer({
+        fromDay: win.fromDay, toDay: win.toDay,
+        // Did iCloud split repeating events into their days (CalDAV expand)? null: nothing repeats this week.
+        expanded: repeats.length ? !repeats.some(e => e.series) : null,
+        calendars: calendars.map(c => ({ name: c.name, color: c.color, count: c.events.length, problem: c.problem })),
+        skipped: Math.max(0, found.length - MAX_READ_CALENDARS),
+        days: days.map(d => ({ day: d.day, events: d.events.slice(0, MAX_READ_PER_DAY), more: Math.max(0, d.events.length - MAX_READ_PER_DAY) })),
+        series,
+      })
     }
 
     if (action === 'remove') {

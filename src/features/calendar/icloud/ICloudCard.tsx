@@ -1,18 +1,19 @@
 import { useState } from 'react'
-import { Apple, Check, RefreshCw, Trash2, Unplug, X } from 'lucide-react'
-import { Button, ToneDot, TonePill } from '../../../shared/ui'
+import { Apple, CalendarSearch, Check, RefreshCw, Repeat, Trash2, Unplug, Users, X } from 'lucide-react'
+import { Button, ToneDot, TonePill, Truncate } from '../../../shared/ui'
 import { entityModal } from '../../../shared/modals/useEntityModal'
-import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
+import { formatDate, formatDateTime, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { ConnectionCard } from '../../developer/components/ConnectionCard'
-import type { ICloudChanges, ICloudCheck } from './icloudApi'
-import { useConnectICloud, useDisconnectICloud, useICloudChanges, useICloudStatus, useRemoveICloudTest, useRunICloudCheck } from './useICloud'
+import type { ICloudChanges, ICloudCheck, ICloudRead, ICloudReadRow } from './icloudApi'
+import { useConnectICloud, useDisconnectICloud, useICloudChanges, useICloudStatus, useReadICloud, useRemoveICloudTest, useRunICloudCheck } from './useICloud'
 
 // Settings → Subscriptions → Apple Calendar (iCloud), Phase 1 (owner,
 // 29.10.2026: "I have to be sure that iCloud Calendar would work as good as
 // Google Calendar"). Connect with an app-specific password, then the Apple
 // check: test events in "Lasci · Test", what iCloud kept, and what to look for
-// on the iPhone and Mac. docs/integrations/icloud-caldav.md.
+// on the iPhone and Mac; then Read my calendars (read-only: the owner's own
+// calendars this week, shown and never stored). docs/integrations/icloud-caldav.md.
 
 const KEPT_LABEL: Record<string, string> = {
   summary: 'title', alarm: 'alert', description: 'notes', url: 'link', location: 'place', pin: 'map pin',
@@ -109,12 +110,80 @@ function ChangesResult({ result }: { result: ICloudChanges }) {
   )
 }
 
+/** A calendar's own colour, as on the iPhone (its colour is the owner's data, not a theme colour). */
+function CalendarDot({ color, name }: { color: string | null; name: string }) {
+  return color
+    ? <span role="img" aria-label={name} title={name} className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+    : <span role="img" aria-label={name} title={name} className="inline-flex shrink-0"><ToneDot tone="neutral" /></span>
+}
+
+function ReadRowItem({ row }: { row: ICloudReadRow }) {
+  return (
+    <li className="flex min-w-0 items-center gap-2 py-1.5">
+      <span className="w-[3.25rem] shrink-0 text-meta tabular-nums text-fg-muted">{row.time ?? 'All day'}</span>
+      <CalendarDot color={row.color} name={row.calendar} />
+      <Truncate className="min-w-0 flex-1 text-body text-fg">{row.title}</Truncate>
+      <span className="flex shrink-0 items-center gap-1.5 text-meta text-fg-muted [&_svg]:h-3.5 [&_svg]:w-3.5">
+        {row.since && <span>since {formatDate(row.since)}</span>}
+        {row.zone && <span>{row.zone} time</span>}
+        {row.repeats && <Repeat aria-label="repeats" />}
+        {row.invitation && <Users aria-label="invitation" />}
+      </span>
+    </li>
+  )
+}
+
+/** Read my calendars: what the app sees in the owner's own calendars, to hold up against the iPhone. */
+function ReadResult({ result }: { result: ICloudRead }) {
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      <div>
+        <p className="section-label">Your calendars · {formatDate(result.fromDay)} – {formatDate(result.toDay)}</p>
+        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+          {result.calendars.map((c, i) => (
+            <li key={i} className="flex items-center gap-1.5 text-meta text-fg-2">
+              <CalendarDot color={c.color} name={c.name} />
+              <span>{c.name}</span>
+              {c.problem ? <span className="text-danger">· {c.problem}</span> : <span className="tabular-nums text-fg-muted">· {c.count}</span>}
+            </li>
+          ))}
+        </ul>
+        {result.skipped > 0 && <p className="mt-1 text-meta text-fg-muted">{result.skipped} more calendar{result.skipped === 1 ? '' : 's'} not read (the test reads 20).</p>}
+        {result.expanded !== null && (
+          <p className="mt-1 text-meta text-fg-2">
+            {result.expanded ? 'Repeating events came split into their days.' : 'iCloud gave some repeating events as one series — they are listed at the end.'}
+          </p>
+        )}
+      </div>
+      {result.days.length === 0 && result.series.length === 0 && <p className="text-meta text-fg-2">Nothing in your calendars this week.</p>}
+      {result.days.map(d => (
+        <div key={d.day}>
+          <p className="section-label">{formatWeekdayDate(d.day)}</p>
+          <ul className="mt-0.5 flex flex-col divide-y divide-line">
+            {d.events.map((e, i) => <ReadRowItem key={i} row={e} />)}
+          </ul>
+          {d.more > 0 && <p className="text-meta text-fg-muted">+{d.more} more</p>}
+        </div>
+      ))}
+      {result.series.length > 0 && (
+        <div>
+          <p className="section-label">Repeating · as one series</p>
+          <ul className="mt-0.5 flex flex-col divide-y divide-line">
+            {result.series.map((e, i) => <ReadRowItem key={i} row={e} />)}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ICloudCard() {
   const status = useICloudStatus()
   const disconnect = useDisconnectICloud()
   const check = useRunICloudCheck()
   const changes = useICloudChanges()
   const remove = useRemoveICloudTest()
+  const read = useReadICloud()
   const s = status.data
   const connected = !!s?.connected
   // The last check stays on the server: the list survives the trip to the Calendar app.
@@ -153,12 +222,12 @@ export function ICloudCard() {
       confirmLabel: 'Disconnect',
       destructive: true,
     })
-    if (ok) disconnect.mutate(undefined, { onSuccess: () => { check.reset(); changes.reset() } })
+    if (ok) disconnect.mutate(undefined, { onSuccess: () => { check.reset(); changes.reset(); read.reset() } })
   }
 
   return (
     <ConnectionCard service="icloud" kind="user" icon={<Apple />} name="Apple Calendar (iCloud)" account={s?.appleId}
-      description="Writes straight into Apple Calendar through iCloud — Phase 1 is a check: a few test events, then you look at your iPhone and Mac."
+      description="Writes straight into Apple Calendar through iCloud — Phase 1 is a check: a few test events to look at on your iPhone and Mac, and a read of your own calendars."
       status={status.isLoading || status.isError ? 'unknown' : connected ? 'connected' : 'disconnected'}
       details={[s?.connectedAt ? `Since ${formatDateTime(s.connectedAt)}` : null]}>
       {status.isLoading ? null : status.isError ? (
@@ -177,10 +246,12 @@ export function ICloudCard() {
             {hasTest && (
               <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending}>{s?.testIsApps === false ? 'Remove test events' : 'Remove test calendar'}</Button>
             )}
+            <Button size="sm" icon={<CalendarSearch />} onClick={() => read.mutate()} loading={read.isPending}>Read my calendars</Button>
             <Button size="sm" icon={<Unplug />} onClick={disconnectICloud} loading={disconnect.isPending}>Disconnect</Button>
           </div>
           {s?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {s.lastError}</p>}
           {changes.data && <ChangesResult result={changes.data} />}
+          {read.data && <ReadResult result={read.data} />}
           {result && <CheckResult result={result} />}
         </>
       )}

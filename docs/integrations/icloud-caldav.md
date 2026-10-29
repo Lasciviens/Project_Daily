@@ -1,6 +1,6 @@
 # iCloud Calendar (CalDAV)
 
-Checked: 29.10.2026 against the CalDAV standard (RFC 4791 calendar access, RFC 6578 sync-collection, RFC 5545 iCalendar), Apple's support pages on app-specific passwords (support.apple.com/102654, support.apple.com/121539) and published iCloud CalDAV guides (cli.nylas.com/guides/icloud-caldav-settings; tsdav's iCloud notes). **No live sample yet** — there are no credentials in a development session. Phase 1 ("Apple check", owner 29.10.2026) is that sample: it writes test events to the owner's iCloud, reads back what iCloud kept, and the owner reports what the iPhone and Mac show. Every line marked *(to confirm)* below is settled by that run and then rewritten here with the date.
+Checked: 29.10.2026 against the CalDAV standard (RFC 4791 calendar access, RFC 6578 sync-collection, RFC 5545 iCalendar), Apple's support pages on app-specific passwords (support.apple.com/102654, support.apple.com/121539) and published iCloud CalDAV guides (cli.nylas.com/guides/icloud-caldav-settings; tsdav's iCloud notes). **Live sample: the owner's Apple check, 29.10.2026** (Phase 1: test events written to the owner's iCloud, what iCloud kept read back, the owner's report of the iPhone and Mac — results in the field table and the Log). Lines still marked *(to confirm)* wait for the read test ("Read my calendars"), which has no live run yet.
 
 Why: the owner uses Google Calendar only to reach Apple Calendar ("our main focus should be on how Apple will handle it"). Apple Calendar shows Google events only partly (no event colour, notes as raw HTML on some iPhones, double alerts). iCloud is Apple's own calendar store; CalDAV is the protocol Apple's own Mac Calendar, Outlook, Thunderbird, BusyCal and DAVx5 use for it. Apple offers no other calendar API (no REST, no developer keys); Apple's support page names app-specific passwords as the way "apps made by developers other than Apple" sign in to iCloud Mail, Calendar and Contacts.
 
@@ -23,18 +23,20 @@ Base `https://caldav.icloud.com`. Each account's calendars live on its own parti
 |---|---|---|
 | `PROPFIND /` (`Depth: 0`, `current-user-principal`) | Connect | 401 = wrong email / not an app-specific password. Answer: the principal's href |
 | `PROPFIND <principal>` (`Depth: 0`, `C:calendar-home-set`) | Connect | the calendar home (often on the `pNN-caldav` host) — stored |
-| `MKCALENDAR <home>lasci-test/` (`displayname`, `apple:calendar-color`, `C:supported-calendar-component-set` VEVENT) | the check | *(to confirm)* that iCloud lets a third-party client make a calendar. 201 = made. 405 = something is there already: a `PROPFIND` (`Depth: 0`) counts it only when it is a calendar called "Lasci · Test" |
+| `MKCALENDAR <home>lasci-test/` (`displayname`, `apple:calendar-color`, `C:supported-calendar-component-set` VEVENT) | the check | iCloud lets the app make a calendar (201, purple — confirmed 29.10.2026). 201 = made. 405 = something is there already: a `PROPFIND` (`Depth: 0`) counts it only when it is a calendar called "Lasci · Test" |
 | `PROPFIND <home>` (`Depth: 1`, `displayname`, `resourcetype`) | the check, when MKCALENDAR didn't give the test calendar | finds a calendar the owner made on the iPhone called "Lasci Test" — case and punctuation ignored (`isTestCalendarName`), since the iPhone keyboard has no easy "·" |
 | `PUT <calendar>/<uid>.ics` (`Content-Type: text/calendar; charset=utf-8`, no `If-None-Match`) | the check | one VEVENT per object; UID unique in the calendar. A second run writes over the first (201 new, 204 replaced) |
 | `REPORT <calendar>` `calendar-multiget` (the hrefs written) | the check | what iCloud kept of each event (`calendar-data`, `getetag`) |
-| `PROPFIND <calendar>` (`Depth: 0`, `sync-token`) then `REPORT <calendar>` `sync-collection` (`Depth: 0`, `sync-token`, `sync-level 1`, `getetag`) | the check / Check changes | *(to confirm)* RFC 6578 on iCloud: changed hrefs (200) and deleted ones (404) since the token, and a new token |
+| `PROPFIND <calendar>` (`Depth: 0`, `sync-token`) then `REPORT <calendar>` `sync-collection` (`Depth: 0`, `sync-token`, `sync-level 1`, `getetag`) | the check / Check changes | RFC 6578 on iCloud: changed hrefs (200) and deleted ones (404) since the token, and a new token. Confirmed 29.10.2026 for a change (an event moved on the iPhone came back with its new day and time); a deletion not tried yet |
+| `PROPFIND <home>` (`Depth: 1`, `displayname`, `resourcetype`, `apple:calendar-color`, `C:supported-calendar-component-set`) | Read my calendars | the owner's calendars: a `calendar` resourcetype whose component set has VEVENT (or none given) — not the home itself, the inbox/outbox, notifications or a tasks-only list. At most 20 are read |
+| `REPORT <calendar>` `calendar-query` (`Depth: 1`; `calendar-data` with `C:expand` over the window; filter `VEVENT` + `C:time-range`) | Read my calendars | *(to confirm)* the events touching today and the next 6 days (Oslo midnights as UTC stamps), repeating ones split into their days by iCloud (RFC 4791 §9.6.5 expand). If iCloud ignores expand, a series comes as one object with its `RRULE`: the card lists it apart ("as one series") |
 | `PROPFIND <calendar>` (`Depth: 1`, `getetag`) then `DELETE <calendar>` | Remove the test calendar | the whole calendar goes only when it is the app's own `lasci-test/` and holds nothing but the check's events (`lasci-check-<key>-lasciviens-github-io.ics`); otherwise only the check's events are deleted, one by one. The answer says which (`removed: 'calendar' \| 'events'`), and so do the question and the toast |
 
 ## Fields we write (the check's events)
 
 All in one `VCALENDAR` (`VERSION:2.0`, `PRODID:-//Lasci's Board//Apple check//EN`), lines folded at 75 octets, text escaped (`\\`, `\;`, `\,`, `\n`).
 
-| Property | What it should do on Apple *(to confirm)* |
+| Property | What Apple did (the owner's Apple check, 29.10.2026: iCloud kept every one; on the iPhone and Mac all as expected except the two marked) |
 |---|---|
 | `UID` (`lasci-check-<key>@lasciviens.github.io`), `DTSTAMP` (UTC), `DTSTART`/`DTEND` (`TZID=Europe/Oslo` with a `VTIMEZONE` in each object; `VALUE=DATE` all-day) | the event at the right time, also across summer time |
 | `SUMMARY` | the title |
@@ -42,8 +44,8 @@ All in one `VCALENDAR` (`VERSION:2.0`, `PRODID:-//Lasci's Board//Apple check//EN
 | `DESCRIPTION` (plain text, several lines) | Notes, line breaks kept |
 | `URL` | Apple's URL field, a tappable link back to the app |
 | `LOCATION` + `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-APPLE-RADIUS=…;X-TITLE="…":geo:lat,lon` (a public place: Oslo S) + `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC` | a map pin; "Time to Leave" alerts. Apple's own extensions — no public spec; the read-back shows whether iCloud keeps them |
-| `STATUS:TENTATIVE` | "Maybe" |
-| `CLASS:PRIVATE` | Private |
+| `STATUS:TENTATIVE` | **No visible effect**: iCloud keeps it, but Apple Calendar shows the event like any other (probably because Apple shows "Maybe" only as an answer to an invitation — not checked). Phase 2 must not rely on it |
+| `CLASS:PRIVATE` | **No visible effect** on the owner's own devices: iCloud keeps it (what others see on a shared calendar — not checked). Phase 2 must not rely on it |
 | `TRANSP:TRANSPARENT` | Free (doesn't block time) |
 | `RRULE:FREQ=DAILY;COUNT=4` + `EXDATE` (one day left out) | a repeating event with a day taken out |
 | calendar `apple:calendar-color` (`#RRGGBBAA`) | the calendar's colour on every Apple device |
@@ -52,13 +54,15 @@ All in one `VCALENDAR` (`VERSION:2.0`, `PRODID:-//Lasci's Board//Apple check//EN
 
 The read-back looks only for the properties above (present or not, and their values) in what `calendar-multiget` returns; Check changes reads each changed event's `SUMMARY` and `DTSTART` (a UTC time is shown on the Oslo clock). Stored in Phase 1: the test calendar's URL (saved before any event is written, so Remove can always find them), its sync token, and the last check's result (`last_check`: the steps, the calendar's name, the day, and per event what iCloud kept — no password, no URL), so the card still shows what to look for after the owner comes back from the Calendar app.
 
+**Read my calendars** (read-only, owner 29.10.2026) reads each calendar's `displayname`, `resourcetype`, `apple:calendar-color` (a `#RRGGBB` only, else none) and `supported-calendar-component-set`, and per event `SUMMARY`, `DTSTART` (with its `TZID`), `RRULE`, `RECURRENCE-ID`, `STATUS` (a cancelled one is left out) and whether it has an `ORGANIZER`/`ATTENDEE` (an invitation). A start is shown on the Oslo clock: UTC and any zone the runtime knows are converted; a floating time and an unknown zone (a Windows name) are shown as written, with the zone named. Nothing of it is stored or logged — the titles go only to the owner's browser, and the card forgets them on reload.
+
 ## Fields deliberately not used (Phase 1)
 
 - `ATTACH` — the owner dropped attachments (11).
 - `ATTENDEE` / `ORGANIZER` — the events are the owner's own; an attendee makes iCloud send invitation mail.
 - Reminders (`VTODO`) — Apple's Reminders left CalDAV in iOS 13 ("a private silo that only the Apple Reminders app can access"); reaching them takes a script on the device (Scriptable / Shortcuts).
 
-## Traps (known before the first run)
+## Traps
 
 - **No push.** iCloud has no webhook; changes come only by asking (`sync-collection`), so "from the iPhone to the app" is as fast as the polling interval.
 - **No developer support or published limits.** Apple doesn't document rate limits for CalDAV; keep requests few and back off on 429/503.
@@ -70,3 +74,4 @@ The read-back looks only for the properties above (present or not, and their val
 ## Log
 
 - 29.10.2026 — Written before the first live run (Phase 1). Owner steps in `docs/deploy-checklist.md`.
+- 29.10.2026 — **The Apple check, live** (the owner's iCloud): MKCALENDAR made "Lasci · Test" in purple (201); 9 of 9 events taken; 9 read back with every property kept (alert, notes, link, place, map pin, Time to Leave, Maybe, private, Free, all day, repeat, the day left out); a sync token given. On the iPhone and Mac everything showed as expected ("everything works perfectly"), except Maybe (looks like a normal event) and Private (no visible difference). An event moved on the iPhone came back through Check changes with its new day and time. Not tried: a deletion through Check changes; reading the owner's own calendars — the read test ("Read my calendars") added for that.
