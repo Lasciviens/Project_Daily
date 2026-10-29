@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, removeICloudTest, runICloudCheck, type ICloudStatus } from './icloudApi'
+import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, runICloudCheck, type ICloudStatus } from './icloudApi'
 
 export function useICloudStatus() {
   return useQuery({ queryKey: qk.icloud.status(), queryFn: fetchICloudStatus, staleTime: STALE.default })
@@ -59,6 +59,22 @@ export function useICloudChanges() {
     action: 'icloud_changes',
     mutationFn: () => fetchICloudChanges(),
     successMessage: r => !r.tokenWorked ? 'iCloud did not answer "what changed"' : r.changes.length ? `${r.changes.length} change${r.changes.length === 1 ? '' : 's'} from iCloud` : 'No changes from iCloud yet',
+    invalidates: [qk.icloud.all],
+    onError: refresh,
+  })
+}
+
+/** Read-only: the week in the owner's iCloud calendars, kept only on screen. */
+export function useReadICloud() {
+  const refresh = useRefreshStatus()
+  return useMutationWithFeedback({
+    action: 'icloud_read',
+    mutationFn: () => readICloudCalendars(),
+    successMessage: r => {
+      const events = r.days.reduce((n, d) => n + d.events.length + d.more, 0) + r.series.length
+      const failed = r.calendars.filter(c => c.problem).length
+      return `Read ${events} event${events === 1 ? '' : 's'} from ${r.calendars.length} calendar${r.calendars.length === 1 ? '' : 's'}${failed ? ` · ${failed} couldn't be read` : ''}`
+    },
     invalidates: [qk.icloud.all],
     onError: refresh,
   })
