@@ -265,6 +265,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 172: calendar settings (the owner's own row, audited, owner
+      # lock) and the iCloud row's area calendars + derived password_sealed.
+      - name: Calendar settings database scenarios
+        run: node scripts/verify-db-calendar-prefs.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migrations 166 and 167: a moved training session is moved (its Hevy
       # workout link checked against the new day, a missed day moved is to
       # do, a repeat's day moved without its slot gets one, the one-off

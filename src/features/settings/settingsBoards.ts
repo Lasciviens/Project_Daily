@@ -40,6 +40,14 @@ export const FOOD_SETTINGS_BOARD: BoardLayouts<FoodSettingsSection> = {
   1: ['today'],
 }
 
+// ── Calendar ─────────────────────────────────────────────────────────────
+// One bounded card (the app's calendars per area), so the page stops after
+// it: a 42rem-capped list at every width.
+export type CalendarSettingsSection = 'areas'
+export const CALENDAR_SETTINGS_BOARD: BoardLayouts<CalendarSettingsSection> = {
+  1: ['areas'],
+}
+
 // ── APIs ─────────────────────────────────────────────────────────────────
 // One collection (every external API, apiRegistry.ts) under a filter bar.
 // The list spans every track and flows its 19–22rem cards into as many

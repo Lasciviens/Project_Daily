@@ -68,6 +68,11 @@ Load-bearing details:
   labelled columns ("Signed in from here" / "Configured on the server"); from 1920 the accounts use a
   42rem main track and the server-side cards sit in 19–22rem columns.
 
+## Calendar (Phase 2a, 29.10.2026)
+**Settings → Calendar** (`CalendarTab.tsx`, `?tab=calendar`) holds the app's calendars in Apple Calendar, one per area — Training, Work (with Projects), Personal (tasks, repeats), Media (episodes, films), Football. For each: the calendar's **name**, the **emoji** in front of its events' titles, its **colour**, a **default alert** (None, at the start, 5–120 min, 1 day before) and **In use**. The owner asked for every such choice to be a setting ("other settings that you are coding but I couldn't change without asking you"), so these are only defaults (`calendar/areas/calendarAreas.ts`; Training 60 min, Work 10, Football 15, Personal and Media none). Stored in `calendar_prefs` (172: one row per account, audited, owner lock), read through `readCalendarPrefs` (a wrong value falls back to its default; `verify-calendar-areas`).
+
+One button does it all: with changes it saves them and then brings Apple Calendar up to date (**Save and update Apple Calendar**); without changes it makes what's missing (**Create in Apple Calendar**) or re-applies names and colours (**Update Apple Calendar**). Not connected to iCloud, it only saves (the card links to Settings → Subscriptions; while the connection is loading or can't be read it never says "connect"). The inputs stay locked until the saved settings have loaded, and only the areas edited are sent over the saved ones. A calendar not made is named on its row, in a warning toast, and as the iCloud row's last problem (so a reload still says why). A calendar switched off stays in iCloud as it is. No event goes there until Phase 2b (`docs/features/calendar-plan.md`). The iCloud card in Subscriptions says "Password not encrypted yet" until the password is sealed.
+
 ## Open question: Connections vs Subscriptions (owner, 13.10.2026)
 
 The owner said Settings → Subscriptions should hold only what they subscribe to ("Google is not a subscription, it's an integration") and wants to decide the split in a later session. Proposal from 13.10.2026, not built:

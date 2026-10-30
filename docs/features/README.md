@@ -8,6 +8,7 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Daily (day, week, month, tasks; glance board) | `/#/daily` | [daily.md](daily.md) | `tasks.md` |
 | Tasks — one table, one model, one action hook | — | [tasks.md](tasks.md) | `tasks.md` |
 | Planning, schedule, Google Calendar and Tasks | — | [planning-calendar.md](planning-calendar.md) | `planning.md` |
+| Calendar plan — Apple first (the owner's wishes and phases) | — | [calendar-plan.md](calendar-plan.md) | `planning.md` |
 | One delete, with Undo | — | [delete-undo.md](delete-undo.md) | `database.md`, `ui.md` |
 | Wishes | `/#/wishes` | [wishes.md](wishes.md) | `wishes.md` |
 | Food (diary, plan, recipes, foods, insights) | `/#/recipes` | [food.md](food.md) | `food.md` |

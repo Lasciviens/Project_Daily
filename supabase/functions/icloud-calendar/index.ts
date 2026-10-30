@@ -389,6 +389,112 @@ export function byDay(calendars: { name: string; color: string | null; events: R
     series: series.sort((a, b) => a.title.localeCompare(b.title)),
   }
 }
+// The app's calendars per area — hand-mirrored from src/features/calendar/areas/calendarAreas.ts
+// (verify-calendar-areas compares the two blocks).
+// <calendar-areas>
+export const AREA_KEYS = ['training', 'work', 'personal', 'media', 'football'] as const
+export type AreaKey = typeof AREA_KEYS[number]
+
+export interface CalendarArea {
+  /** The calendar's name in Apple Calendar. */
+  name:         string
+  /** In front of each event's title ("🏋️ Lower B"); '' for none. */
+  emoji:        string
+  /** The calendar's colour, #RRGGBB. */
+  color:        string
+  /** The alert every event of the area gets, in minutes before it; null for none. */
+  alertMinutes: number | null
+  /** Off: the area gets no calendar of its own (one made earlier stays in iCloud). */
+  enabled:      boolean
+}
+
+export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
+
+/** The default alerts the owner can pick (minutes before; null = none). */
+export const ALERT_CHOICES: readonly (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120, 1440]
+
+export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true },
+  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true },
+  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true },
+}
+
+const NAME_MAX = 60
+/** Code points: a flag is 2, a family emoji up to about 10. */
+const EMOJI_MAX = 12
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** The saved settings, checked where they enter: a missing or wrong value falls back to its default. */
+export function readCalendarPrefs(raw: unknown): CalendarPrefs {
+  const saved = isRecord(raw) && isRecord(raw.areas) ? raw.areas : {}
+  const areas = {} as Record<AreaKey, CalendarArea>
+  for (const key of AREA_KEYS) {
+    const d = DEFAULT_AREAS[key]
+    const a = isRecord(saved[key]) ? saved[key] : {}
+    const name = typeof a.name === 'string' ? a.name.trim() : ''
+    const emoji = typeof a.emoji === 'string' ? a.emoji.trim() : null
+    const color = typeof a.color === 'string' && /^#[0-9a-f]{6}$/i.test(a.color) ? a.color.toUpperCase() : d.color
+    const alert = 'alertMinutes' in a ? a.alertMinutes : undefined
+    areas[key] = {
+      name: name && name.length <= NAME_MAX ? name : d.name,
+      emoji: emoji !== null && [...emoji].length <= EMOJI_MAX ? emoji : d.emoji,
+      color,
+      alertMinutes: alert !== undefined && ALERT_CHOICES.includes(alert as number | null) ? alert as number | null : d.alertMinutes,
+      enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
+    }
+  }
+  return { areas }
+}
+
+/** Where an area's calendar lives under the calendar home: fixed per area, so a rename never makes a second calendar. */
+export const areaSlug = (key: AreaKey) => `lasci-${key}/`
+
+/** Apple's calendar colour form, #RRGGBBAA. */
+export const appleColor = (hex: string) => `${hex.toUpperCase()}FF`
+// </calendar-areas>
+
+/** A PROPPATCH (and MKCALENDAR) property set: the calendar's name and Apple colour. */
+export function calendarProps(name: string, color: string): string {
+  return `<d:displayname>${escapeXml(name)}</d:displayname><a:calendar-color>${appleColor(color)}</a:calendar-color>`
+}
+
+// The stored app-specific password, sealed with AES-GCM (Phase 2a): `enc:v1:<iv>:<ciphertext>`, both base64,
+// the account's id as additional data so a sealed value can't be moved to another row. A row from before
+// sealing is plain text and is sealed the next time the function reads it with a key.
+const SEAL = 'enc:v1:'
+export const isSealed = (stored: string) => stored.startsWith(SEAL)
+const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+const unb64 = (s: string) => Uint8Array.from(atob(s), ch => ch.charCodeAt(0))
+
+/** The key from its secret (32 bytes, base64); null when it is missing or not 32 bytes. */
+export async function sealKey(secret: string | null | undefined): Promise<CryptoKey | null> {
+  if (!secret) return null
+  const raw = (() => { try { return unb64(secret.trim()) } catch { return null } })()
+  if (!raw || raw.length !== 32) return null
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt'])
+}
+
+export async function sealSecret(plain: string, key: CryptoKey, userId: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(userId) }, key, new TextEncoder().encode(plain))
+  return `${SEAL}${b64(iv)}:${b64(new Uint8Array(ct))}`
+}
+
+/** The password as stored: sealed → opened with the key (null when it can't be), plain → as it is. */
+export async function openSecret(stored: string, key: CryptoKey | null, userId: string): Promise<string | null> {
+  if (!isSealed(stored)) return stored
+  if (!key) return null
+  const [iv, ct] = stored.slice(SEAL.length).split(':')
+  try {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv), additionalData: new TextEncoder().encode(userId) }, key, unb64(ct))
+    return new TextDecoder().decode(plain)
+  } catch {
+    return null
+  }
+}
 // </icloud-pure>
 
 class ICloudError extends Error {
@@ -525,6 +631,32 @@ async function syncToken(c: Creds, calendar: string): Promise<string | null> {
   }
 }
 
+const NO_KEY = 'The key that seals the stored password (ICLOUD_ENC_KEY) is not set yet — see the deploy checklist'
+
+/** One area's calendar: the stored one gets its name and colour, else it is made at its fixed place (or found there). */
+async function placeAreaCalendar(c: Creds, home: string, stored: string | null, key: AreaKey, area: CalendarArea): Promise<{ url: string; state: 'created' | 'updated' | 'found' }> {
+  const props = calendarProps(area.name, area.color)
+  const patch = async (url: string) => {
+    const r = await dav(c, 'PROPPATCH', url, `${XML}<d:propertyupdate ${NS}><d:set><d:prop>${props}</d:prop></d:set></d:propertyupdate>`)
+    if (r.status === 404) return 'gone' as const
+    // 207 with each property's own status: the name must be among the accepted ones.
+    if (r.status === 207 && /displayname/.test(parseMultistatus(r.text).responses[0]?.props ?? '')) return 'ok' as const
+    throw new ICloudError('patch', `iCloud answered ${r.status} when "${area.name}" was updated`)
+  }
+  // Deleted on the iPhone: made again at its place below.
+  if (stored && isICloudUrl(stored) && await patch(stored) === 'ok') return { url: stored, state: 'updated' }
+  const url = new URL(areaSlug(key), home).toString()
+  const mk = await dav(c, 'MKCALENDAR', url,
+    `${XML}<c:mkcalendar ${NS}><d:set><d:prop>${props}<c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:set></c:mkcalendar>`)
+  if (mk.status === 201) return { url, state: 'created' }
+  // Refused (405 is the standard answer for "already there"; iCloud's own answer is not confirmed): something may be
+  // at the area's place already — taken only when it is a calendar (made by this app before, e.g. before a re-connect).
+  const there = await dav(c, 'PROPFIND', url, `${XML}<d:propfind ${NS}><d:prop><d:resourcetype/></d:prop></d:propfind>`, { Depth: '0' })
+  const type = there.status === 207 ? xmlText(parseMultistatus(there.text).responses[0]?.props ?? '', 'resourcetype') ?? '' : ''
+  if (/<(?:[\w-]+:)?calendar[\s/>]/.test(type) && await patch(url) === 'ok') return { url, state: 'found' }
+  throw new ICloudError('mkcalendar', `iCloud answered ${mk.status} when "${area.name}" was made`)
+}
+
 function osloTomorrow(now: Date): string {
   const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
   return nextDay(today)
@@ -557,22 +689,28 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '')
 
   // The password is read only for the actions that call iCloud.
-  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'remove'
+  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'setup' || action === 'remove'
   const { data: row, error: readError } = await db.from('icloud_credentials')
-    .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, connected_at`)
+    .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, area_calendars, password_sealed, connected_at`)
     .eq('user_id', user.id).maybeSingle() as {
-      data: { apple_id: string; app_password?: string; calendar_home_url: string | null; test_calendar_url: string | null; test_sync_token: string | null; last_error: string | null; last_check: unknown; connected_at: string } | null
+      data: {
+        apple_id: string; app_password?: string; calendar_home_url: string | null; test_calendar_url: string | null; test_sync_token: string | null
+        last_error: string | null; last_check: unknown; area_calendars: Record<string, { url?: string }> | null; password_sealed: boolean | null; connected_at: string
+      } | null
       error: { message: string } | null
     }
   // A failed read is not "not connected": the card would offer Connect, and Apple shows a password only once.
   if (readError) {
     console.error(`icloud-calendar ${action}: read`)
-    return answer({ error: /icloud_credentials|last_check/.test(readError.message) ? 'Apple Calendar needs migration 171 — it runs with the next deploy' : 'The iCloud connection could not be read — try again' }, 502)
+    return answer({ error: /icloud_credentials|last_check|area_calendars|password_sealed/.test(readError.message) ? 'Apple Calendar needs migrations 171 and 172 — they run with the next deploy' : 'The iCloud connection could not be read — try again' }, 502)
   }
   const status = (r: typeof row) => (r
     ? {
         connected: true, appleId: maskAppleId(r.apple_id), connectedAt: r.connected_at, lastError: r.last_error,
         hasTest: !!r.test_calendar_url, testIsApps: !!r.test_calendar_url?.endsWith(`/${TEST_SLUG}`), lastCheck: r.last_check ?? null,
+        // Derived only: whether each area has its calendar in iCloud, and whether the password is stored sealed.
+        areas: Object.fromEntries(AREA_KEYS.map(k => [k, { ready: !!r.area_calendars?.[k]?.url }])),
+        passwordSealed: !!r.password_sealed,
       }
     : { connected: false })
 
@@ -586,15 +724,21 @@ Deno.serve(async (req) => {
       if (!isAppSpecificPassword(password)) {
         return answer({ error: 'That is not an app-specific password (four groups of four letters, like abcd-efgh-ijkl-mnop). Never use your Apple ID password here.' }, 400)
       }
+      // The password is only ever stored sealed: no key, no connect.
+      const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
+      if (!key) return answer({ error: NO_KEY }, 400)
       const creds = { email, password }
       const { principal, home } = await discover(creds)
       const { error } = await db.from('icloud_credentials').upsert({
-        user_id: user.id, apple_id: email, app_password: password, principal_url: principal, calendar_home_url: home,
-        // Another Apple ID's test calendar is not this one's.
-        test_calendar_url: null, test_sync_token: null, last_check: null, last_error: null, connected_at: new Date().toISOString(),
+        user_id: user.id, apple_id: email, app_password: await sealSecret(password, key, user.id), principal_url: principal, calendar_home_url: home,
+        // Another Apple ID's calendars are not this one's.
+        test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
-      if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migration 171 — it runs with the next deploy' : 'The connection could not be saved')
-      return answer(status({ apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null, connected_at: new Date().toISOString() }))
+      if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migrations 171 and 172 — they run with the next deploy' : 'The connection could not be saved')
+      return answer(status({
+        apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null,
+        area_calendars: {}, password_sealed: true, connected_at: new Date().toISOString(),
+      }))
     }
 
     if (action === 'disconnect') {
@@ -604,7 +748,17 @@ Deno.serve(async (req) => {
     }
 
     if (!row || !row.app_password) return answer({ error: 'Connect iCloud first' }, 400)
-    const creds = { email: row.apple_id, password: row.app_password }
+    const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
+    const password = await openSecret(row.app_password, key, user.id)
+    if (password === null) {
+      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : NO_KEY)
+    }
+    // A password stored before sealing is sealed now, the first time a key is there (tried again on the next call if it fails).
+    if (key && !isSealed(row.app_password)) {
+      const { error } = await db.from('icloud_credentials').update({ app_password: await sealSecret(password, key, user.id) }).eq('user_id', user.id)
+      if (error) console.error(`icloud-calendar ${action}: reseal`)
+    }
+    const creds = { email: row.apple_id, password }
     const home = row.calendar_home_url ?? (await discover(creds)).home
 
     if (action === 'check') {
@@ -699,6 +853,34 @@ Deno.serve(async (req) => {
         days: days.map(d => ({ day: d.day, events: d.events.slice(0, MAX_READ_PER_DAY), more: Math.max(0, d.events.length - MAX_READ_PER_DAY) })),
         series,
       })
+    }
+
+    // Phase 2a: the app's calendars, one per area, made in iCloud or brought up to date (name, colour).
+    // No event is written yet. A calendar switched off stays in iCloud as it is.
+    if (action === 'setup') {
+      const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', user.id).maybeSingle()
+      if (prefsError) throw new ICloudError('prefs', /calendar_prefs/.test(prefsError.message) ? 'Calendar settings need migration 172 — it runs with the next deploy' : 'The calendar settings could not be read — try again')
+      const prefs = readCalendarPrefs(prefsRow?.prefs)
+      const known: Record<string, { url?: string }> = { ...(row.area_calendars ?? {}) }
+      const areas: { area: AreaKey; name: string; state: 'created' | 'updated' | 'found' | 'off' | 'failed'; detail?: string }[] = []
+      for (const key of AREA_KEYS) {
+        const area = prefs.areas[key]
+        if (!area.enabled) { areas.push({ area: key, name: area.name, state: 'off' }); continue }
+        try {
+          const placed = await placeAreaCalendar(creds, home, known[key]?.url ?? null, key, area)
+          known[key] = { url: placed.url }
+          areas.push({ area: key, name: area.name, state: placed.state })
+        } catch (e) {
+          if (e instanceof ICloudError && e.code === 'auth') throw e
+          areas.push({ area: key, name: area.name, state: 'failed', detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
+        }
+      }
+      // A calendar not made is kept as the last problem until a run makes it, so a reload still says why.
+      const notMade = areas.filter(a => a.state === 'failed')
+      const lastError = notMade.length ? `Not made in Apple Calendar: ${notMade.map(a => `${a.name} (${a.detail})`).join('; ')}` : null
+      const { error } = await db.from('icloud_credentials').update({ area_calendars: known, last_error: lastError }).eq('user_id', user.id)
+      if (error) throw new ICloudError('store', 'The calendars are in iCloud, but the app could not save where they are — run it again')
+      return answer({ areas })
     }
 
     if (action === 'remove') {
