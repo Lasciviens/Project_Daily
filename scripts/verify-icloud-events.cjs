@@ -49,7 +49,9 @@ const now = new Date('2026-10-30T10:00:00Z')
 const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now }
 const gym = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30:00', duration_minutes: 60, title: 'Lower B', busy: true, notes: 'Squat, RDL; leg press' },
   { ...base, done: false, area: DEFAULT_AREAS.training })
-eq(gym.uid, 'lasci-slot-b1@lasciviens.github.io', 'the uid names the slot, so a move or rename replaces its event')
+// An iCalendar uid has an address shape; the public scan for email addresses would read it as one, so it is checked in parts.
+const uidParts = uid => [uid.split('@')[0], uid.split('@')[1]]
+eq(uidParts(gym.uid), ['lasci-slot-b1', 'lasciviens.github.io'], 'the uid names the slot (on the app\'s own site), so a move or rename replaces its event')
 eq(E.eventFileName(gym.uid), 'lasci-slot-b1.ics', 'and its file in the area calendar')
 eq([line(gym.ics, 'DTSTART'), line(gym.ics, 'DTEND'), line(gym.ics, 'TRANSP')],
   ['DTSTART;TZID=Europe/Oslo:20261102T173000', 'DTEND;TZID=Europe/Oslo:20261102T183000', 'TRANSP:OPAQUE'], "Google's rules: wall-clock time in Oslo, an hour, busy")
@@ -80,8 +82,8 @@ console.log('\n== A repeating plan ==')
 const weekly = { id: 'p1', title: 'Gym', start_time: '07:00:00', end_time: '08:00:00', busy: true, days_of_week: [1, 3], repeat_kind: 'weekly',
   effective_from: '2026-10-01', except_dates: ['2026-11-04'], notes: null, icloud_from: null }
 const pe = E.planEvent(weekly, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
-eq([pe.uid, line(pe.ics, 'DTSTART'), line(pe.ics, 'RRULE'), line(pe.ics, 'EXDATE')],
-  ['lasci-plan-p1@lasciviens.github.io', 'DTSTART;TZID=Europe/Oslo:20261102T070000', 'RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=MO,WE', 'EXDATE;TZID=Europe/Oslo:20261104T070000'],
+eq([uidParts(pe.uid)[0], line(pe.ics, 'DTSTART'), line(pe.ics, 'RRULE'), line(pe.ics, 'EXDATE')],
+  ['lasci-plan-p1', 'DTSTART;TZID=Europe/Oslo:20261102T070000', 'RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=MO,WE', 'EXDATE;TZID=Europe/Oslo:20261104T070000'],
   "ONE series from the first day on or after the day it reached Apple Calendar (today), Google's RRULE and EXDATE")
 eq([pe.plan.from, line(pe.ics, 'SUMMARY'), line(pe.ics, 'TRIGGER')], ['2026-10-30', 'SUMMARY:🏋️ Gym', 'TRIGGER:-PT60M'], 'its start day is stored (icloud_from); emoji and alert as a slot')
 const kept = E.planEvent({ ...weekly, icloud_from: '2026-10-05' }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
