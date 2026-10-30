@@ -1,8 +1,9 @@
-// Runs migrations 173 + 174 + 175's scenarios (the app's events in Apple
-// Calendar: the queue and its triggers, dormant while every area is on
-// Google; 174 the security fixes — area keys, never addresses; 175 the switch
-// per area — the hand-over of a Google copy, the moments a move finishes, the
-// timer, the retired columns dropped) on a throwaway Postgres:
+// Runs migrations 173–177's scenarios (the app's events in Apple Calendar: the
+// queue and its triggers, dormant while every area is on Google; 174 the
+// security fixes — area keys, never addresses; 175 the switch per area — the
+// hand-over of a Google copy, the moments a move finishes, the timer, the
+// retired columns dropped; 176 the read-back from the iPhone; 177 the settings
+// for every event and the app's own change time) on a throwaway Postgres:
 // scripts/db-tests/one-item/base.sql plus the columns 141/155/156/162 added to
 // tasks, time_blocks and schedule_blocks, 135/155's calendar_outbox, the real
 // 160 list for Undo, 171 and 172, the real 173 as it ran in production, then
@@ -22,6 +23,7 @@ const mig173 = mig('173_icloud_events.sql')
 const migFile = mig('174_icloud_events_safety.sql')
 const mig175 = mig('175_icloud_switch.sql')
 const mig176 = mig('176_icloud_readback.sql')
+const mig177 = mig('177_icloud_every_event.sql')
 
 const sql = readFileSync(mig173, 'utf8').replace(/--.*$/gm, '')
 const fix = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
@@ -143,6 +145,8 @@ try {
   psql(target, ['-c', STAND_INS])
   psql(target, ['-f', mig176])
   psql(target, ['-f', mig176])
+  psql(target, ['-f', mig177])
+  psql(target, ['-f', mig177])
   // The timer's condition is text inside cron.schedule (no pg_cron here): run it, so it parses against the real tables.
   for (const [n, file] of [['175', mig175], ['176', mig176]]) {
     const when = readFileSync(file, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
@@ -155,7 +159,7 @@ try {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
   } else {
-    console.log(`verify-db-icloud-events: 173, then 174, 175 and 176 (each applied twice) and ${passed} scenarios passed`)
+    console.log(`verify-db-icloud-events: 173, then 174–177 (each applied twice) and ${passed} scenarios passed`)
   }
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }

@@ -108,7 +108,8 @@ export function Time24Field({
 }: {
   value: string                       // 'HH:MM'
   onChange: (v: string) => void
-  onShift: (deltaMin: number) => void
+  /** −30m / +30m buttons; left out where hour and minute are enough (a setting's time). */
+  onShift?: (deltaMin: number) => void
   locked?: boolean
   /** `sm`: the Add sheet's chips (its time picker, the deadline's time) — the
    *  hour and minute as chips, −30m / +30m after them, wrapping when narrow. */
@@ -125,8 +126,10 @@ export function Time24Field({
           <span className="font-bold text-fg-faint" aria-hidden>:</span>
           <ChipSelect label="Minute" value={mm} options={minutes.map(m => ({ value: m, label: m }))} disabled={locked} onChange={m => onChange(`${hh}:${m}`)} />
         </div>
-        <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shift}>−30m</button>
-        <button type="button" disabled={locked} onClick={() => onShift(30)} className={shift}>+30m</button>
+        {onShift && <>
+          <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shift}>−30m</button>
+          <button type="button" disabled={locked} onClick={() => onShift(30)} className={shift}>+30m</button>
+        </>}
       </div>
     )
   }
@@ -138,7 +141,7 @@ export function Time24Field({
   return (
     <div className="@container">
     <div className="flex flex-wrap items-center gap-2">
-      <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shiftCls}>−30m</button>
+      {onShift && <button type="button" disabled={locked} onClick={() => onShift(-30)} className={shiftCls}>−30m</button>}
       <div className="order-first flex basis-full items-center justify-center gap-1 @[17rem]:order-none @[17rem]:basis-auto @[17rem]:flex-1">
         <select value={hh} disabled={locked} aria-label="Hour" onChange={e => onChange(`${e.target.value}:${mm}`)} className={selectCls}>
           {HOUR_OPTS.map(h => <option key={h} value={h}>{h}</option>)}
@@ -148,7 +151,7 @@ export function Time24Field({
           {minutes.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
-      <button type="button" disabled={locked} onClick={() => onShift(30)} className={shiftCls}>+30m</button>
+      {onShift && <button type="button" disabled={locked} onClick={() => onShift(30)} className={shiftCls}>+30m</button>}
     </div>
     </div>
   )

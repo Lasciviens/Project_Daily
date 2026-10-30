@@ -22,6 +22,8 @@ export interface ICloudStatus {
   passwordSealed?: boolean
   /** Changes from Apple Calendar (2c), per area calendar read so far: when last read, and its last problem. */
   readBack?: Partial<Record<AreaKey, { syncedAt: string | null; problem: string | null }>>
+  /** Events that couldn't be sent yet (each item's own problem, tried again later): how many, and the newest reason. */
+  notSent?: { count: number; reason: string | null } | null
 }
 
 /** Create in Apple Calendar: what happened to each area's calendar. */
@@ -120,6 +122,28 @@ async function call<T>(action: string, extra: Record<string, unknown> = {}): Pro
 
 export const fetchICloudStatus = () => call<ICloudStatus>('status')
 export const connectICloud = (appleId: string, appPassword: string) => call<ICloudStatus>('connect', { appleId, appPassword })
+/** A new app-specific password for the Apple ID already connected (the server keeps the Apple ID). */
+export const renewICloudPassword = (appPassword: string) => call<ICloudStatus>('connect', { renew: true, appPassword })
+
+/** Connecting needs a password sign-in this recent (the server checks the same: icloud-calendar FRESH_SIGN_IN_MS). */
+export const FRESH_SIGN_IN_MS = 10 * 60_000
+
+/** Whether this session signed in with the password recently enough to connect: read from the token's `amr` claim, as
+ *  the server does — so the owner signs in again BEFORE making an Apple password (Apple shows it only once). */
+export async function signedInFreshly(): Promise<boolean> {
+  const { data } = await supabase.auth.getSession()
+  const part = data.session?.access_token.split('.')[1]
+  if (!part) return false
+  try {
+    const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')))
+    const at = (Array.isArray(claims.amr) ? claims.amr : [])
+      .filter((m: { method?: unknown }) => m?.method === 'password')
+      .map((m: { timestamp?: unknown }) => Number(m?.timestamp) * 1000).filter(Number.isFinite)
+    return at.length > 0 && Date.now() - Math.max(...at) < FRESH_SIGN_IN_MS
+  } catch {
+    return false
+  }
+}
 export const disconnectICloud = () => call<ICloudStatus>('disconnect')
 export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')

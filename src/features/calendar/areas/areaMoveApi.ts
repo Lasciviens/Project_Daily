@@ -28,6 +28,16 @@ export interface SwitchPreview extends AreaSwitch {
 
 const PAGE = 1000
 
+/** Whether any item of these areas is in Apple Calendar now; when it can't be read, yes (never undo a switch that may
+ *  have moved something). */
+async function anyInApple(areas: AreaKey[]): Promise<boolean> {
+  for (const table of ['time_blocks', 'schedule_blocks'] as const) {
+    const { data, error } = await supabase.from(table).select('id').in('icloud_area', areas).limit(1)
+    if (error || (data ?? []).length) return true
+  }
+  return false
+}
+
 /** The ids of an area's items that are in Apple Calendar now. */
 async function appleItemIds(area: AreaKey): Promise<{ slots: string[]; plans: string[] }> {
   const read = async (table: 'time_blocks' | 'schedule_blocks') => {
@@ -172,7 +182,9 @@ export async function switchAreas(previous: CalendarPrefs, next: CalendarPrefs, 
       r = await drainICloudQueue()
     } catch (err) {
       // Nothing reached Apple yet (the password refused, iCloud down): the switch to Apple is undone, nothing moved.
-      if (toApple.length && !toGoogle.length && result.toApple === 0) return putBack(err)
+      // A first run that stopped part-way (iCloud's rate limit) may have moved some: then the switch stays, the timer
+      // sends the rest, and the problem is said.
+      if (toApple.length && !toGoogle.length && result.toApple === 0 && !(await anyInApple(toApple.map(s => s.area)))) return putBack(err)
       result.problem = message(err)
       break
     }

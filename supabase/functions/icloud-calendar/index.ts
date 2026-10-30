@@ -999,11 +999,11 @@ function wantsCalendar(target: string | null | undefined, onACalendar: boolean):
 }
 
 /** iCalendar text: backslash, semicolon, comma and every line break escaped; other control characters dropped
- *  (a lone CR could end a line for some parsers — security review, 30.10.2026). */
+ *  (a lone CR, U+0085 or U+2028/2029 could end a line for some parsers — security reviews, 30.10.2026). */
 function icsEscape(t: string): string {
   return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n')
     // eslint-disable-next-line no-control-regex -- matching control characters is the point: they are dropped
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u2028\u2029]/g, '')
 }
 
 /** A content line folded at 75 octets (UTF-8), never inside a character. */
@@ -1047,10 +1047,28 @@ function areaTitle(summary: string, area: CalendarArea): string {
   return done ? `✓ ${titled}` : titled
 }
 
-/** The alert before a timed event ("-PT60M"; at the start "PT0S"); an all-day event gets none. */
-function alarmLines(minutes: number | null, timed: boolean, title: string): string[] {
-  if (minutes === null || !timed) return []
-  return ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, `TRIGGER:${minutes === 0 ? 'PT0S' : `-PT${minutes}M`}`, 'END:VALARM']
+/** Apple's own "no alert" (2b-3): without any VALARM the iPhone may add the owner's default alert, so "None" is written
+ *  as this marker — an alert of 01.04.1976 that never fires (to confirm live). */
+const NO_ALERT = ['BEGIN:VALARM', 'ACTION:NONE', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'END:VALARM']
+
+/** The event's alert. Timed: the area's, before its start ("-PT60M"; at the start "PT0S"). All day: the owner's
+ *  all-day alert, at a time on its day ("PT540M" = 09:00) or the day before ("-PT900M" = 09:00 the day before).
+ *  None: Apple's no-alert marker. */
+function alarmLines(minutes: number | null, timed: boolean, title: string, allDay: AllDayAlert | null): string[] {
+  const at = (trigger: string) => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, `TRIGGER:${trigger}`, 'END:VALARM']
+  if (timed) return minutes === null ? NO_ALERT : at(minutes === 0 ? 'PT0S' : `-PT${minutes}M`)
+  const m = allDay && /^([01]\d|2[0-3]):([0-5]\d)$/.exec(allDay.time)
+  if (!allDay || !m) return NO_ALERT
+  const ofDay = Number(m[1]) * 60 + Number(m[2])
+  if (allDay.dayBefore) return at(`-PT${1440 - ofDay}M`)
+  return at(ofDay === 0 ? 'PT0S' : `PT${ofDay}M`)
+}
+
+/** What an event's notes carry (the owner's choice, 2b-3): the item's own notes and/or the link back to the app. */
+function eventNotes(mode: NotesMode, notes: string | null | undefined, link: string): string {
+  const own = mode === 'notes+link' || mode === 'notes' ? notes?.trim() : ''
+  const back = mode === 'notes+link' || mode === 'link' ? `Open in Lasci's Board: ${link}` : ''
+  return [own, back].filter(Boolean).join('\n\n')
 }
 
 /** A link to the day in the app: tappable in Apple Calendar's URL field and its notes. */
@@ -1058,10 +1076,14 @@ function dayLink(appUrl: string, day: string): string {
   return `${appUrl.replace(/#.*$/, '')}#/daily?date=${day}`
 }
 
+/** The owner's settings for every event (Settings → Calendar, 2b-3). */
+interface EventLook { notes: NotesMode; allDayAlert: AllDayAlert | null }
+
 interface EventParts {
   uid:        string
   body:       Pick<BlockEventBody, 'summary' | 'start' | 'end' | 'transparency'> & { recurrence?: string[] }
   area:       CalendarArea
+  look:       EventLook
   notes:      string | null | undefined
   link:       string
   now:        Date
@@ -1071,7 +1093,7 @@ interface EventParts {
 function eventObject(p: EventParts): string {
   const timed = !('date' in p.body.start)
   const title = areaTitle(p.body.summary, p.area)
-  const notes = [p.notes?.trim(), `Open in Lasci's Board: ${p.link}`].filter(Boolean).join('\n\n')
+  const notes = eventNotes(p.look.notes, p.notes, p.link)
   const zones = timed && 'timeZone' in p.body.start && p.body.start.timeZone === 'Europe/Oslo' ? VTIMEZONE_OSLO : []
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Calendar//EN", 'CALSCALE:GREGORIAN', ...zones,
@@ -1082,41 +1104,41 @@ function eventObject(p: EventParts): string {
     timeLine('DTEND', p.body.end),
     ...(p.body.recurrence ?? []),
     `SUMMARY:${icsEscape(title)}`,
-    `DESCRIPTION:${icsEscape(notes)}`,
+    ...(notes ? [`DESCRIPTION:${icsEscape(notes)}`] : []),
     `URL;VALUE=URI:${p.link}`,
     `TRANSP:${p.body.transparency === 'transparent' ? 'TRANSPARENT' : 'OPAQUE'}`,
-    ...alarmLines(p.area.alertMinutes, timed, title),
+    ...alarmLines(p.area.alertMinutes, timed, title, p.look.allDayAlert),
     'END:VEVENT',
     'END:VCALENDAR',
   ]
   // The last guard: no line may carry a control character (a property smuggled in through any field).
   // eslint-disable-next-line no-control-regex -- matching control characters is the point: such a line is refused
-  if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F]/.test(l))) throw new Error('An event line holds a control character — not written')
+  if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F-\x9F\u2028\u2029]/.test(l))) throw new Error('An event line holds a control character — not written')
   return lines.map(foldLine).join('\r\n') + '\r\n'
 }
 
 /** A slot's event (time_blocks): its id names it in iCloud, so a move or rename replaces it in place. */
 function slotEvent(
   block: EventBlock & { id: string; notes?: string | null },
-  o: { done: boolean; taskNotes?: string | null; area: CalendarArea; timeZone: string; appUrl: string; now: Date },
+  o: { done: boolean; taskNotes?: string | null; area: CalendarArea; look: EventLook; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string } | null {
   const body = blockEventBody(block, { done: o.done, timeZone: o.timeZone })
   if (!body) return null
   const uid = `lasci-slot-${block.id}@lasciviens.github.io`
   const notes = [block.notes?.trim(), o.taskNotes?.trim()].filter(Boolean).join('\n\n') || null
-  return { uid, ics: eventObject({ uid, body, area: o.area, notes, link: dayLink(o.appUrl, block.date), now: o.now }) }
+  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now }) }
 }
 
 /** A repeating plan's ONE series event (schedule_blocks), from the day it reached Apple Calendar (`icloud_from`). */
 function planEvent(
   plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null },
-  o: { area: CalendarArea; today: string; timeZone: string; appUrl: string; now: Date },
+  o: { area: CalendarArea; look: EventLook; today: string; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string; plan: SeriesPlan } | null {
   // Google's own start day is not iCloud's: a series starts where it reached this calendar.
   const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
-  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
+  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
 }
 
 /** Where an item's event lives in its area's calendar. */
@@ -1458,7 +1480,20 @@ export interface CalendarArea {
   app:          'google' | 'apple'
 }
 
-export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
+/** What an event's notes carry in Apple Calendar: the item's own notes and/or a link back to the app. */
+export const NOTES_MODES = ['notes+link', 'notes', 'link', 'none'] as const
+export type NotesMode = typeof NOTES_MODES[number]
+
+/** An all-day event's alert: at a time on its day, or the day before (Apple's own "On day of event (9:00)"). */
+export interface AllDayAlert { dayBefore: boolean; time: string }
+
+export interface CalendarPrefs {
+  areas:       Record<AreaKey, CalendarArea>
+  /** For every app event (2b-3). */
+  notes:       NotesMode
+  /** null: an all-day event gets no alert (as before 2b-3). */
+  allDayAlert: AllDayAlert | null
+}
 
 /** Quick picks for the default alert (minutes before; null = none); any whole number of minutes up to ALERT_MAX is a choice too. */
 export const ALERT_CHOICES: readonly (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120, 1440]
@@ -1503,7 +1538,12 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
-  return { areas }
+  const top = isRecord(raw) ? raw : {}
+  const notes = (NOTES_MODES as readonly unknown[]).includes(top.notes) ? top.notes as NotesMode : 'notes+link'
+  const ada = isRecord(top.allDayAlert) ? top.allDayAlert : null
+  const allDayAlert = ada && typeof ada.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(ada.time)
+    ? { dayBefore: ada.dayBefore === true, time: ada.time } : null
+  return { areas, notes, allDayAlert }
 }
 
 /** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */
@@ -1599,18 +1639,22 @@ export function ownEventOfHref(href: string): { entity: 'slot' | 'plan'; id: str
   return m ? { entity: m[1] as 'slot' | 'plan', id: m[2].toLowerCase() } : null
 }
 
-/** "✓ 🏋️ Lower B" → "Lower B": the done mark and the area's emoji the app put in front come off; no control characters. */
+/** "✓ 🏋️ Lower B" → "Lower B": the done mark and the area's emoji the app put in front come off; no control characters.
+ *  A symbol of the owner's own title stays ("🎂 Birthday" in an area with no emoji). */
 export function titleFromSummary(summary: string, emoji: string): string {
   let t = summary.trim()
   if (t.startsWith('✓ ')) t = t.slice(2).trimStart()
   if (emoji && t.startsWith(`${emoji} `)) t = t.slice(emoji.length + 1)
-  // An emoji from before the area's emoji changed (its events are rewritten soon after): a first word of symbols only.
-  else {
-    const first = t.match(/^(\S+)\s+(?=\S)/)?.[1]
-    if (first && [...first].length <= 12 && !/[\p{L}\p{N}]/u.test(first)) t = t.slice(first.length).trimStart()
-  }
   // eslint-disable-next-line no-control-regex -- control characters are what is taken out
   return t.replace(/[\x00-\x1F\x7F]/g, '').trim().slice(0, 500)
+}
+
+/** The same without a first word of symbols only: an emoji from before the area's emoji changed (its events are
+ *  rewritten soon after). Only compared with the item's title (the same title is no rename) — never stored. */
+export function bareTitleFromSummary(summary: string, emoji: string): string {
+  const t = titleFromSummary(summary, emoji)
+  const first = t.match(/^(\S+)\s+(?=\S)/)?.[1]
+  return first && [...first].length <= 12 && !/[\p{L}\p{N}]/u.test(first) ? t.slice(first.length).trimStart() : t
 }
 
 /** The instant a timed DTSTART/DTEND/RECURRENCE-ID line names (UTC, a known zone, or floating read on the Oslo clock). */
@@ -1669,10 +1713,12 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
   if (!master) return null
   const stamps = events.map(modifiedOf).filter((x): x is string => !!x).sort()
   const lastModified = stamps.length ? stamps[stamps.length - 1] : null
-  const title = titleFromSummary(textOf(master.get('SUMMARY')?.[0]), emoji)
+  const summary = textOf(master.get('SUMMARY')?.[0])
+  const title = titleFromSummary(summary, emoji)
+  const titleBare = bareTitleFromSummary(summary, emoji)
   if (entity === 'slot') {
     const t = timesOf(master)
-    return t ? { ...t, title, lastModified } : null
+    return t ? { ...t, title, titleBare, lastModified } : null
   }
   const days: Record<string, unknown>[] = []
   for (const line of master.get('EXDATE') ?? []) for (const day of exdateDays(line)) days.push({ originalDate: day, cancelled: true })
@@ -1683,7 +1729,7 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
     const t = timesOf(o)
     if (t) days.push({ originalDate: orig, ...t, title: titleFromSummary(textOf(o.get('SUMMARY')?.[0]), emoji) || null })
   }
-  return { title, lastModified, days }
+  return { title, titleBare, lastModified, days }
 }
 
 /** Where an item is moved from: today on (the default), or every day it has. */
@@ -1731,7 +1777,13 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
       const loc = res.headers.get('location')
       await res.body?.cancel()
       if (!loc) throw new ICloudError('redirect', `iCloud answered ${res.status} with nowhere to go`)
-      current = new URL(loc, current).toString()
+      const next = new URL(loc, current)
+      // A write goes only to the exact place the app built: a redirect may move it to another iCloud server, never
+      // to another path (security check, 30.10.2026). Reads may follow iCloud wherever it points.
+      if (!READ_METHODS.has(method) && res.status !== 303 && next.pathname !== new URL(current).pathname) {
+        throw new ICloudError('redirect', 'iCloud sent a write somewhere else — stopped')
+      }
+      current = next.toString()
       // A 303 means "read it with GET" — never re-send a write there.
       if (res.status === 303) { method = 'GET'; body = undefined }
       continue
@@ -1739,9 +1791,33 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
     if (res.status === 401) { await res.body?.cancel(); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
     // iCloud's rate limit (503, Retry-After): this run stops; the timer tries again.
     if (res.status === 503) { await res.body?.cancel(); throw new ICloudError('busy', 'iCloud asked the app to wait (too many requests) — tried again in a few minutes') }
-    return { status: res.status, text: await res.text(), url: current, etag: res.headers.get('etag') }
+    return { status: res.status, text: await readCapped(res), url: current, etag: res.headers.get('etag') }
   }
   throw new ICloudError('redirect', 'iCloud redirected too many times')
+}
+
+const READ_METHODS = new Set(['GET', 'PROPFIND', 'REPORT'])
+/** The most of an answer the app reads (a whole calendar's change list fits many times over). */
+const MAX_ANSWER_BYTES = 10 * 1024 * 1024
+
+async function readCapped(res: Response): Promise<string> {
+  const tooBig = () => new ICloudError('too_big', 'iCloud\'s answer was too large — stopped')
+  if (Number(res.headers.get('content-length') ?? '0') > MAX_ANSWER_BYTES) { await res.body?.cancel(); throw tooBig() }
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const parts: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > MAX_ANSWER_BYTES) { await reader.cancel(); throw tooBig() }
+    parts.push(value)
+  }
+  const all = new Uint8Array(size)
+  let at = 0
+  for (const p of parts) { all.set(p, at); at += p.length }
+  return new TextDecoder().decode(all)
 }
 
 const XML = '<?xml version="1.0" encoding="utf-8"?>'
@@ -1863,7 +1939,8 @@ async function placeAreaCalendar(c: Creds, home: string, stored: string | null, 
 const DRAIN_MAX_ROWS = 25
 const DRAIN_MAX_MS = 20_000
 /** A drain's lease: longer than a run, short enough that a crashed one never blocks for long. */
-const DRAIN_LEASE_MS = 60_000
+// As long as the function may run (150 s): a slow iCloud answer never lets a second drain start beside this one.
+const DRAIN_LEASE_MS = 150_000
 
 interface QueueRow { id: number; entity: 'slot' | 'plan'; entity_id: string; area: AreaKey | null; requested_at: string; attempts: number }
 type Db = SupabaseClient
@@ -1875,8 +1952,29 @@ const retryAt = (attempts: number) => new Date(Date.now() + Math.min(86_400_000,
  * Puts one event at its own address; iCloud's new version (etag) when it gives one. With the version the app
  * last wrote, If-Match: a change made on the iPhone since (412) is never written over — it waits for step 2c.
  */
+/** An event the owner shared on the iPhone (invitees): iCloud mails them in the owner's name when it is rewritten
+ *  without them or removed, so the app never rewrites or removes one (security check, 30.10.2026). */
+const INVITED = 'Has invitees in Apple Calendar — the app leaves it as it is there (a change would email them); change it on the iPhone'
+
+/** The event as iCloud has it now, read before every write and remove (whatever the row stores — a stored version
+ *  can be missing or stale): gone, or there with its version. Refused when it holds invitees, or when iCloud
+ *  answered for another place than the one the app built. */
+async function eventNow(c: Creds, url: string): Promise<{ gone: true } | { gone: false; etag: string | null }> {
+  const r = await dav(c, 'GET', url)
+  if (new URL(r.url).pathname !== new URL(url).pathname) throw new ICloudError('redirect', 'iCloud answered for another place — stopped')
+  if (r.status === 404 || r.status === 410) return { gone: true }
+  if (r.status !== 200) throw new ICloudError('read', `iCloud answered ${r.status} when an event was checked`)
+  if (/^(ATTENDEE|ORGANIZER)[;:]/im.test(r.text)) throw new ICloudError('invited', INVITED)
+  return { gone: false, etag: validEtag(r.etag) }
+}
+
 async function putEvent(c: Creds, url: string, ics: string, etag: string | null): Promise<string | null> {
-  const r = await dav(c, 'PUT', url, ics, etag ? { 'If-Match': etag } : {})
+  // The write goes only over the version just read (or the one the app knew, when it has one: a change on the iPhone
+  // since is then refused, 412). One deleted in iCloud meanwhile (a calendar made anew, a removal the read-back held
+  // back) is made again — never over anything (If-None-Match): its old version would be refused for ever.
+  const now = await eventNow(c, url)
+  const match = now.gone ? null : etag ?? now.etag
+  const r = await dav(c, 'PUT', url, ics, now.gone ? { 'If-None-Match': '*' } : match ? { 'If-Match': match } : {})
   if (r.status === 412) throw new ICloudError('changed', 'Changed in Apple Calendar since the app wrote it — kept as it is there until changes from the iPhone come back (step 2c)')
   if (r.status !== 201 && r.status !== 204) throw new ICloudError('put', `iCloud answered ${r.status} when an event was written`)
   if (r.etag) return r.etag
@@ -1898,7 +1996,11 @@ async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan', id: string, are
   // A link is never cleared without a real DELETE: no calendar to delete from means the row waits.
   const url = ownEventUrl(entity, id, area, areaCals)
   if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
-  const r = await dav(c, 'DELETE', url)
+  const now = await eventNow(c, url)
+  if (now.gone) return
+  // Only the version just read goes: one changed since (412) waits for the read-back.
+  const r = await dav(c, 'DELETE', url, undefined, now.etag ? { 'If-Match': now.etag } : {})
+  if (r.status === 412) throw new ICloudError('changed', 'Changed in Apple Calendar just now — removed after the change comes back')
   if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when an event was removed`)
 }
 
@@ -1940,7 +2042,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
-      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, google_calendar_event_id, icloud_area, icloud_etag')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag')
       .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
     if (error) throw new ICloudError('read', 'A slot could not be read')
     if (!b) {
@@ -1948,20 +2050,24 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
       return q.area ? 'removed' : 'none'
     }
     let t: {
-      status: string; description: string | null; google_target: string | null; domain: string | null; source_type: string | null
-      project_id: string | null; hevy_routine_id: string | null; google_sync_enabled: boolean | null; google_task_id: string | null
+      status: string; closed_reason: string | null; description: string | null; google_target: string | null; domain: string | null
+      source_type: string | null; project_id: string | null; hevy_routine_id: string | null; google_sync_enabled: boolean | null
+      google_task_id: string | null
     } | null = null
     if (b.task_id) {
       const { data, error: te } = await db.from('tasks')
-        .select('status, description, google_target, domain, source_type, project_id, hevy_routine_id, google_sync_enabled, google_task_id')
+        .select('status, closed_reason, description, google_target, domain, source_type, project_id, hevy_routine_id, google_sync_enabled, google_task_id')
         .eq('id', b.task_id).eq('user_id', userId).maybeSingle()
       if (te) throw new ICloudError('read', 'A slot\'s task could not be read')
       t = data
     }
     const area = itemArea({ category: b.category, source_type: b.source_type, task_source_type: t?.source_type, domain: t?.domain, project_id: t?.project_id, hevy_routine_id: t?.hevy_routine_id })
     const conf = prefs.areas[area]
-    // A slot with no task is on a calendar only where it is now (itemRules.presentGoogleTarget).
-    const wanted = wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))
+    // A slot with no task is on a calendar only where it is now (itemRules.presentGoogleTarget). A skipped day of a
+    // repeat stays off it, as on Google (scheduleSeriesCalendar.linkDayEvent); Undo of the skip puts it back.
+    // A day marked missed (156: closed_reason 'missed') stays, as on Google.
+    const skippedDay = !!b.schedule_block_id && t?.status === 'cancelled' && !t.closed_reason
+    const wanted = !skippedDay && wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))
     const step = drainStep({
       wanted, apple: onApple(conf), inApple: !!b.icloud_area, googleCopy: !!b.google_calendar_event_id,
       waitsForGoogleTask: !!t?.google_sync_enabled && !t.google_task_id,
@@ -1969,7 +2075,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (step === 'put') {
       const url = ownEventUrl('slot', b.id, area, areaCals)
       if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
-      const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, timeZone: SERVER_EVENT_TIME_ZONE, appUrl: APP_URL, now: new Date() })
+      const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, look: prefs, timeZone: SERVER_EVENT_TIME_ZONE, appUrl: APP_URL, now: new Date() })
       if (ev) {
         const etag = await putEvent(c, url, ev.ics, b.icloud_area === area ? validEtag(b.icloud_etag) : null)
         if (!(await link('time_blocks', b.id, b.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag) }))) {
@@ -2017,7 +2123,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
     // A series that was on Google keeps its start (its past days stay on the calendar).
     const from = p.icloud_from ?? p.google_calendar_from ?? null
-    const ev = planEvent({ ...p, icloud_from: from }, { area: conf, today, timeZone: seriesTimeZone(p.google_calendar_time_zone), appUrl: APP_URL, now: new Date() })
+    const ev = planEvent({ ...p, icloud_from: from }, { area: conf, look: prefs, today, timeZone: seriesTimeZone(p.google_calendar_time_zone), appUrl: APP_URL, now: new Date() })
     if (ev) {
       const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? validEtag(p.icloud_etag) : null)
       if (!(await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag), icloud_from: from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon }))) {
@@ -2169,7 +2275,9 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
       await apply(o.entity, o.id, change, now)
     }
   }
-  const removedOwn = removed.map(own).filter((o): o is { entity: 'slot' | 'plan'; id: string } => !!o)
+  // Only events still linked to this calendar count: one the app removed itself (a delete, a move back to Google)
+  // is not the iPhone's, and counting it would hold every later run back.
+  const removedOwn = await stillLinked(db, userId, area, removed.map(own).filter((o): o is { entity: 'slot' | 'plan'; id: string } => !!o))
   counts.ignored += removed.length - removedOwn.length
   if (removedOwn.length > READBACK_MAX_REMOVED) {
     // Never many at once: the token stays, nothing is let go, and it is said.
@@ -2183,6 +2291,20 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
     await db.from('icloud_sync_state').upsert({ user_id: userId, area, sync_token: newToken, synced_at: new Date().toISOString(), last_error: null }, { onConflict: 'user_id,area' })
   }
   return counts
+}
+
+/** The removed events whose item still names this area calendar (in pages: an id list in the URL stays short). */
+async function stillLinked(db: Db, userId: string, area: AreaKey, items: { entity: 'slot' | 'plan'; id: string }[]): Promise<{ entity: 'slot' | 'plan'; id: string }[]> {
+  const out: { entity: 'slot' | 'plan'; id: string }[] = []
+  for (const [entity, table] of [['slot', 'time_blocks'], ['plan', 'schedule_blocks']] as const) {
+    const ids = items.filter(o => o.entity === entity).map(o => o.id)
+    for (let at = 0; at < ids.length; at += 100) {
+      const { data, error } = await db.from(table).select('id').eq('user_id', userId).eq('icloud_area', area).in('id', ids.slice(at, at + 100))
+      if (error) throw new ICloudError('read', 'The app\'s events could not be checked')
+      for (const r of data ?? []) out.push({ entity, id: r.id })
+    }
+  }
+  return out
 }
 
 /** A calendar renamed or recoloured on the iPhone comes back into Settings → Calendar (only when it differs from what
@@ -2258,7 +2380,7 @@ type DrainCounts = Record<DrainResult | 'failed', number>
 const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0, removed: 0, none: 0, failed: 0 })
 
 /**
- * One account's queue, oldest first, within a time budget. Each queued slot or plan is read live; a row goes only
+ * One account's queue, the app's own changes oldest first and settings re-sends after them, within a time budget. Each queued slot or plan is read live; a row goes only
  * while requested_at is what was read (a newer change waits). One drain at a time per account: a short lease.
  */
 async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean }):
@@ -2290,7 +2412,8 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     const { data: queue, error: qError } = await db.from('icloud_outbox')
       .select('id, entity, entity_id, area, requested_at, attempts')
       .eq('user_id', userId).lte('next_try_at', new Date().toISOString())
-      .order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
+      // The app's own changes first (oldest first), then re-sends for a settings change (changed_at null, 177).
+      .order('changed_at', { ascending: true, nullsFirst: false }).order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
     if (qError) throw new ICloudError('queue', 'The queue could not be read')
     const counts = emptyCounts()
     for (const q of (queue ?? []) as QueueRow[]) {
@@ -2308,7 +2431,8 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
       }
     }
     const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', userId)
-    // The account's "Last problem" stays setup's (a drain's problems live on their own queue rows).
+    // An item's problem lives on its queue row; the account's "Last problem" is a failed run's (the next run that goes
+    // through clears it, clearRunProblem) or setup's.
     return { ...counts, waiting: waiting ?? 0, readBack }
   } finally {
     // Only this run's own lease is given back (a run that outlived it never frees the next run's).
@@ -2390,6 +2514,16 @@ async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFr
   return { slots: slots.length, plans: plans.length, queued: !dryRun, partial }
 }
 
+/** Setup's own problem (a calendar not made) stays until a setup run makes it. */
+const NOT_MADE = 'Not made in Apple Calendar'
+
+/** A run that went through clears the problem an earlier failed run left on the card (one iCloud 503 is not a lasting
+ *  problem); setup's "Not made…" stays. */
+async function clearRunProblem(db: Db, userId: string): Promise<void> {
+  await db.from('icloud_credentials').update({ last_error: null })
+    .eq('user_id', userId).not('last_error', 'is', null).not('last_error', 'like', `${NOT_MADE}%`)
+}
+
 /** The timer (175): every connected account the app serves, one after the other. Counts only — no titles, no names. */
 async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
   const { data: rows, error } = await db.from('icloud_credentials').select('user_id, apple_id, app_password, area_calendars')
@@ -2401,6 +2535,7 @@ async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
     try {
       const result = await drainAccount(db, r.user_id, await openCreds(db, r.user_id, r), r.area_calendars ?? {}, { look: true })
       if ('busy' in result) { total.busy++; continue }
+      await clearRunProblem(db, r.user_id)
       const { readBack, ...counts } = result
       for (const [k, v] of Object.entries(counts)) total[k] = (total[k] ?? 0) + v
       total.readBackApplied = (total.readBackApplied ?? 0) + readBack.applied
@@ -2413,6 +2548,32 @@ async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
     }
   }
   return total
+}
+
+/** The test calendar is the one the app made: exactly the address it builds (never a suffix test on a URL). */
+function isAppsTestCalendar(r: { test_calendar_url: string | null; calendar_home_url: string | null }): boolean {
+  if (!r.test_calendar_url || !r.calendar_home_url) return false
+  try { return r.test_calendar_url === new URL(TEST_SLUG, r.calendar_home_url).toString() } catch { return false }
+}
+
+/** Connecting iCloud needs a sign-in this recent. */
+const FRESH_SIGN_IN_MS = 10 * 60_000
+const FRESH_SIGN_IN_TEXT = 'For safety, connecting Apple Calendar needs a fresh sign-in: sign out, sign in again, then connect within 10 minutes'
+
+/** When this session signed in with the password (the app's only sign-in): its entry in Supabase's `amr` claim,
+ *  kept through token refreshes, so a refreshed stolen token still shows the old sign-in. Never another method's
+ *  time — a stolen session can verify a new second factor and stamp that "now". Read only after getUser checked the token. */
+function signedInAt(jwt: string): number | null {
+  try {
+    const part = jwt.split('.')[1] ?? ''
+    const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')))
+    const times = (Array.isArray(claims.amr) ? claims.amr : [])
+      .filter((m: { method?: unknown }) => m?.method === 'password')
+      .map((m: { timestamp?: unknown }) => Number(m?.timestamp)).filter(Number.isFinite)
+    return times.length ? Math.max(...times) * 1000 : null
+  } catch {
+    return null
+  }
 }
 
 // Constant-time secret check (security review 26.10.2026): both sides are
@@ -2489,7 +2650,7 @@ Deno.serve(async (req) => {
   const status = (r: typeof row) => (r
     ? {
         connected: true, appleId: maskAppleId(r.apple_id), connectedAt: r.connected_at, lastError: r.last_error,
-        hasTest: !!r.test_calendar_url, testIsApps: !!r.test_calendar_url?.endsWith(`/${TEST_SLUG}`), lastCheck: r.last_check ?? null,
+        hasTest: !!r.test_calendar_url, testIsApps: isAppsTestCalendar(r), lastCheck: r.last_check ?? null,
         // Derived only: whether each area has its calendar in iCloud, and whether the password is stored sealed.
         areas: Object.fromEntries(AREA_KEYS.map(k => [k, { ready: !!r.area_calendars?.[k]?.url }])),
         passwordSealed: !!r.password_sealed,
@@ -2501,31 +2662,56 @@ Deno.serve(async (req) => {
       // How the read-back of each area calendar stands (2c): when it last read, and its last problem (no addresses).
       const { data: states } = row ? await db.from('icloud_sync_state').select('area, synced_at, last_error').eq('user_id', user.id) : { data: [] }
       const readBack = Object.fromEntries((states ?? []).map(s => [s.area, { syncedAt: s.synced_at, problem: s.last_error }]))
-      return answer({ ...status(row), readBack })
+      // Events that couldn't be sent (an item's own problem, e.g. invitees added on the iPhone): how many, and the newest reason.
+      const { data: stuck, count } = row
+        ? await db.from('icloud_outbox').select('last_error', { count: 'exact' }).eq('user_id', user.id).not('last_error', 'is', null)
+          .order('requested_at', { ascending: false }).limit(1)
+        : { data: [], count: 0 }
+      return answer({ ...status(row), readBack, notSent: count ? { count, reason: stuck?.[0]?.last_error ?? null } : null })
     }
 
     if (action === 'connect') {
-      const email = String(body.appleId ?? '').trim()
+      // renew: a new app-specific password for the Apple ID already connected (the server has it).
+      if (body.renew === true && !row) return answer({ error: 'Apple Calendar is not connected' }, 400)
+      const email = body.renew === true && row ? row.apple_id : String(body.appleId ?? '').trim()
       const password = String(body.appPassword ?? '').trim().toLowerCase()
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return answer({ error: 'Write the Apple ID email' }, 400)
       if (!isAppSpecificPassword(password)) {
         return answer({ error: 'That is not an app-specific password (four groups of four letters, like abcd-efgh-ijkl-mnop). Never use your Apple ID password here.' }, 400)
+      }
+      // A stolen session must never point the owner's calendars at another Apple ID, where the timer would keep
+      // sending every item after the session is gone (security check, 30.10.2026): connecting needs a sign-in from
+      // the last few minutes, and another Apple ID only after Disconnect.
+      const signedIn = signedInAt(authHeader.replace('Bearer ', ''))
+      if (signedIn === null || Date.now() - signedIn > FRESH_SIGN_IN_MS) return answer({ error: FRESH_SIGN_IN_TEXT }, 400)
+      if (row && row.apple_id.toLowerCase() !== email.toLowerCase()) {
+        return answer({ error: 'Apple Calendar is connected to another Apple ID — disconnect it first' }, 400)
       }
       // The password is only ever stored sealed: no key, no connect.
       const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
       if (!key) return answer({ error: keyProblem() }, 400)
       const creds = { email, password }
       const { principal, home } = await discover(creds)
+      const sealed = await sealSecret(password, key, user.id)
+      const connectedAt = new Date().toISOString()
+      if (row) {
+        // A new password for the same Apple ID (New app password): its calendars, test calendar and read-back stay.
+        const { error } = await db.from('icloud_credentials')
+          .update({ app_password: sealed, principal_url: principal, calendar_home_url: home, last_error: null, connected_at: connectedAt })
+          .eq('user_id', user.id)
+        if (error) throw new ICloudError('store', 'The new password could not be saved')
+        return answer(status({ ...row, calendar_home_url: home, last_error: null, password_sealed: true, connected_at: connectedAt }))
+      }
       const { error } = await db.from('icloud_credentials').upsert({
-        user_id: user.id, apple_id: email, app_password: await sealSecret(password, key, user.id), principal_url: principal, calendar_home_url: home,
+        user_id: user.id, apple_id: email, app_password: sealed, principal_url: principal, calendar_home_url: home,
         // Another Apple ID's calendars are not this one's.
-        test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: new Date().toISOString(),
+        test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: connectedAt,
       }, { onConflict: 'user_id' })
       if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migrations 171 and 172 — they run with the next deploy' : 'The connection could not be saved')
       await db.from('icloud_sync_state').delete().eq('user_id', user.id)
       return answer(status({
         apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null,
-        area_calendars: {}, password_sealed: true, connected_at: new Date().toISOString(),
+        area_calendars: {}, password_sealed: true, connected_at: connectedAt,
       }))
     }
 
@@ -2679,7 +2865,7 @@ Deno.serve(async (req) => {
       }
       // A calendar not made is kept as the last problem until a run makes it, so a reload still says why.
       const notMade = areas.filter(a => a.state === 'failed')
-      const lastError = notMade.length ? `Not made in Apple Calendar: ${notMade.map(a => `${a.name} (${a.detail})`).join('; ')}` : null
+      const lastError = notMade.length ? `${NOT_MADE}: ${notMade.map(a => `${a.name} (${a.detail})`).join('; ')}` : null
       const { error } = await db.from('icloud_credentials').update({ area_calendars: known, last_error: lastError }).eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The calendars are in iCloud, but the app could not save where they are — run it again')
       // Events that waited for a calendar to exist go now (best effort: the queue is retried anyway).
@@ -2689,18 +2875,22 @@ Deno.serve(async (req) => {
 
     // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on the timer (175).
     // `look`: also bring calendar names and colours back (the app's opening and the timer; a save skips it, for speed).
-    if (action === 'drain') return answer(await drainAccount(db, user.id, creds, row.area_calendars ?? {}, { look: body.look === true }))
+    if (action === 'drain') {
+      const result = await drainAccount(db, user.id, creds, row.area_calendars ?? {}, { look: body.look === true })
+      if (!('busy' in result)) await clearRunProblem(db, user.id)
+      return answer(result)
+    }
 
     if (action === 'remove') {
       if (!row.test_calendar_url) return answer({ removed: null, message: 'No test calendar to remove' })
       // Only the calendar the app made, holding nothing but the check's events, goes whole; otherwise only the check's events go.
       const members = await propfind(creds, row.test_calendar_url, '<d:getetag/>', '1')
-      const onlyOurs = members.responses
-        .map(m => new URL(m.href, members.url).pathname)
-        .filter(p => p !== new URL(row.test_calendar_url!).pathname)
-        .every(p => /\/lasci-check-[a-z]+-lasciviens-github-io\.ics$/.test(p))
+      const paths = members.responses.map(m => new URL(m.href, members.url).pathname)
+      const self = new URL(row.test_calendar_url).pathname
+      // The listing must name the calendar itself (an empty answer proves nothing), and every other entry is a check event.
+      const onlyOurs = paths.includes(self) && paths.filter(p => p !== self).every(p => /\/lasci-check-[a-z]+-lasciviens-github-io\.ics$/.test(p))
       let removed: 'calendar' | 'events'
-      if (row.test_calendar_url.endsWith(`/${TEST_SLUG}`) && onlyOurs) {
+      if (isAppsTestCalendar(row) && onlyOurs) {
         const r = await dav(creds, 'DELETE', row.test_calendar_url)
         if (r.status >= 300 && r.status !== 404) return answer({ error: `iCloud answered ${r.status} — the test calendar is still there` }, 502)
         removed = 'calendar'

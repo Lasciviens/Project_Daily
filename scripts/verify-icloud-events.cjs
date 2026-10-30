@@ -46,7 +46,7 @@ eq([E.wantsCalendar('calendar', false), E.wantsCalendar('both', false), E.wantsC
 
 console.log('\n== A slot ==')
 const now = new Date('2026-10-30T10:00:00Z')
-const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now }
+const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now, look: { notes: 'notes+link', allDayAlert: null } }
 const gym = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30:00', duration_minutes: 60, title: 'Lower B', busy: true, notes: 'Squat, RDL; leg press' },
   { ...base, done: false, area: DEFAULT_AREAS.training })
 // An iCalendar uid has an address shape; the public scan for email addresses would read it as one, so it is checked in parts.
@@ -66,8 +66,9 @@ const done = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30', du
 eq(line(done.ics, 'SUMMARY'), 'SUMMARY:✓ 🏋️ Lower B', "done: Google's ✓ first, then the emoji")
 const allDay = E.slotEvent({ id: 'b2', date: '2026-11-03', start_time: null, duration_minutes: 60, title: 'Pay rent æøå', busy: true },
   { ...base, done: false, area: DEFAULT_AREAS.work })
-eq([line(allDay.ics, 'DTSTART'), line(allDay.ics, 'DTEND'), line(allDay.ics, 'TRANSP'), allDay.ics.includes('VALARM'), allDay.ics.includes('VTIMEZONE')],
-  ['DTSTART;VALUE=DATE:20261103', 'DTEND;VALUE=DATE:20261104', 'TRANSP:TRANSPARENT', false, false], 'no time: all day, free, no alert (an alert before midnight helps no one), no zone')
+eq([line(allDay.ics, 'DTSTART'), line(allDay.ics, 'DTEND'), line(allDay.ics, 'TRANSP'), allDay.ics.includes('ACTION:DISPLAY'), line(allDay.ics, 'ACTION'), allDay.ics.includes('VTIMEZONE')],
+  ['DTSTART;VALUE=DATE:20261103', 'DTEND;VALUE=DATE:20261104', 'TRANSP:TRANSPARENT', false, 'ACTION:NONE', false],
+  "no time: all day, free, no alert unless the owner set an all-day one (Apple's no-alert marker, not the iPhone's default), no zone")
 eq(line(allDay.ics, 'SUMMARY'), 'SUMMARY:💼 Pay rent æøå', 'æøå kept')
 const free = E.slotEvent({ id: 'b3', date: '2026-11-03', start_time: '14:00', duration_minutes: 0, title: 'Call', busy: false },
   { ...base, done: false, area: { ...DEFAULT_AREAS.personal, emoji: '', alertMinutes: 0 } })
@@ -89,10 +90,28 @@ eq([pe.plan.from, line(pe.ics, 'SUMMARY'), line(pe.ics, 'TRIGGER')], ['2026-10-3
 const kept = E.planEvent({ ...weekly, icloud_from: '2026-10-05' }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
 eq(line(kept.ics, 'DTSTART'), 'DTSTART;TZID=Europe/Oslo:20261005T070000', 'a series keeps the start day it was given (never moved by a later push)')
 const allDayPlan = E.planEvent({ ...weekly, id: 'p2', start_time: null, end_time: null, except_dates: [] }, { ...base, area: DEFAULT_AREAS.personal, today: '2026-10-30' })
-eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('VALARM')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert')
+eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('ACTION:DISPLAY')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert (unless the owner set an all-day one)')
 eq(E.planEvent({ ...weekly, days_of_week: [] }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' }), null, 'a repeat with no day left has no event')
 
+console.log('\n== Every event: notes and alerts (2b-3) ==')
+const look = (o) => ({ ...base, done: false, look: { ...base.look, ...o } })
+const slot = { id: 'b7', date: '2026-11-03', start_time: '18:00', duration_minutes: 60, title: 'Match', busy: true, notes: 'Bring scarf' }
+const desc = (o) => { const ics = unfold(E.slotEvent(slot, { ...look(o), area: DEFAULT_AREAS.football }).ics); return ics.slice(0, ics.indexOf('BEGIN:VALARM')).split('\r\n').find(l => l.startsWith('DESCRIPTION:')) ?? null }
+eq([desc({ notes: 'notes+link' })?.startsWith('DESCRIPTION:Bring scarf\\n\\nOpen in Lasci'), desc({ notes: 'notes' }), desc({ notes: 'link' })?.startsWith("DESCRIPTION:Open in Lasci's Board"), desc({ notes: 'none' })],
+  [true, 'DESCRIPTION:Bring scarf', true, null], "an event's notes carry what the owner picked: notes and the link, notes only, the link only, or nothing")
+eq(E.slotEvent(slot, { ...look({ notes: 'none' }), area: DEFAULT_AREAS.football }).ics.includes('URL;VALUE=URI:'), true, "the link field itself stays (Apple's URL field, #7)")
+const allDaySlot = { id: 'b8', date: '2026-11-03', start_time: null, duration_minutes: 60, title: 'Birthday', busy: true }
+const trig = (o) => line(E.slotEvent(allDaySlot, { ...look(o), area: DEFAULT_AREAS.personal }).ics, 'TRIGGER')
+eq([trig({ allDayAlert: { dayBefore: false, time: '09:00' } }), trig({ allDayAlert: { dayBefore: true, time: '09:00' } }), trig({ allDayAlert: { dayBefore: false, time: '00:00' } }), trig({ allDayAlert: null })],
+  ['TRIGGER:PT540M', 'TRIGGER:-PT900M', 'TRIGGER:PT0S', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z'],
+  'an all-day alert at a time on the day (PT540M = 09:00), the day before (-PT900M = 09:00 the day before), or Apple\'s no-alert marker')
+const timedNone = E.slotEvent(slot, { ...look({}), area: { ...DEFAULT_AREAS.football, alertMinutes: null } }).ics
+eq([timedNone.includes('ACTION:NONE'), timedNone.includes('ACTION:DISPLAY')], [true, false], 'an area with alert "None" writes Apple\'s no-alert marker (the iPhone adds no default alert)')
+eq(trig({ allDayAlert: { dayBefore: false, time: '25:99' } }), 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'a time that isn\'t one gives no alert, never a broken line')
+
 console.log('\n== Hostile text (security review, 30.10.2026) ==')
+eq([E.icsEscape('Lunch\u2028ATTENDEE:mailto:ola@example.com'), E.icsEscape('Lunch\u0085X'), E.icsEscape('Lunch\u2029X')],
+  ['LunchATTENDEE:mailto:ola@example.com', 'LunchX', 'LunchX'], 'U+0085 and U+2028/2029 (line ends to some parsers) are dropped too')
 eq(E.icsEscape('Lunch\rATTENDEE;RSVP=TRUE:mailto:ola@example.com\u0007'), 'Lunch\\nATTENDEE\\;RSVP=TRUE:mailto:ola@example.com', 'a lone CR becomes an escaped line break; other control characters are dropped')
 const sneaky = E.slotEvent({ id: 'b6', date: '2026-11-03', start_time: '09:00', duration_minutes: 30, title: 'Lunch\rATTENDEE:mailto:ola@example.com', busy: true, notes: 'a\r\nb\nc' },
   { ...base, done: false, area: { ...DEFAULT_AREAS.personal, emoji: '🏠\r' } })
@@ -111,7 +130,7 @@ catch { eq(false, true, "the function's copy of the event rules is current — r
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const { transform } = require('sucrase')
 const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
-const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, readbackChangeOf }`)()
+const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, bareTitleFromSummary, readbackChangeOf }`)()
 const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
 const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
 eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
@@ -123,13 +142,25 @@ eq(!/icloud_href|\.href\b/.test(drainOne) && /ownEventUrl\(/.test(drainOne), tru
 eq((drainOne.match(/if \(step === 'put'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
   'an event is put only when the item wants a calendar and its area is on and on Apple; a missing area calendar keeps the row waiting (never a silent skip)')
 eq(/wantsCalendar\(t \? t\.google_target : null,/.test(drainOne), true, 'a slot with no task is on a calendar only where it is now (never put there by default)')
+eq(/const skippedDay = !!b\.schedule_block_id && t\?\.status === 'cancelled' && !t\.closed_reason\n\s*const wanted = !skippedDay && wantsCalendar\(/.test(drainOne) && /schedule_block_id, google_calendar_event_id, icloud_area/.test(drainOne) && /\.select\('status, closed_reason, /.test(drainOne), true,
+  'a skipped day of a repeat comes off Apple Calendar, as it does off Google (Undo of the skip puts it back); a day marked missed stays')
 eq(/function removeOwnEvent[\s\S]{0,400}if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/.test(src), true, 'a link is never cleared without a real DELETE')
 eq((drainOne.match(/const etag = await putEvent\([^\n]*\n\s*if \(!\(await link\([^\n]*\n[\s\S]{0,500}?\}\n\s*await removeOld\(/g) || []).length, 2,
   'the new copy first, linked only while the row still is what was read, then the old copies go')
-eq(/'If-Match': etag/.test(src) && /r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write sends the version the app last wrote: a change made on the iPhone is never written over')
+eq(/const now = await eventNow\(c, url\)\n\s*const match = now\.gone \? null : etag \?\? now\.etag\n\s*const r = await dav\(c, 'PUT', url, ics, now\.gone \? \{ 'If-None-Match': '\*' \} : match \? \{ 'If-Match': match \} : \{\}\)/.test(src), true,
+  'every write reads the event first and goes only over the version read (or the one the app knew): a change on the iPhone is never written over; one deleted there is made again (If-None-Match)')
+eq(/const now = await eventNow\(c, url\)\n\s*if \(now\.gone\) return\n[^\n]*\n\s*const r = await dav\(c, 'DELETE', url, undefined, now\.etag \? \{ 'If-Match': now\.etag \} : \{\}\)\n\s*if \(r\.status === 412\) throw new ICloudError\('changed'/.test(src), true,
+  'a remove reads the event first and removes only the version read (a change since waits for the read-back)')
+eq(/\/\^\(ATTENDEE\|ORGANIZER\)\[;:\]\/im\.test\(r\.text\)\) throw new ICloudError\('invited'/.test(src) && /new URL\(r\.url\)\.pathname !== new URL\(url\)\.pathname\) throw new ICloudError\('redirect'/.test(src)
+  && !/refuseIfInvited/.test(src), true,
+  'an event with invitees is never rewritten or removed (iCloud would email them in the owner\'s name), whatever version the row stores; an answer for another place is refused')
+eq(/r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write over a version changed on the iPhone is refused (412) and waits for the read-back')
 const drainAction = drain
 eq(/\.or\(`drain_until\.is\.null,drain_until\.lt\.\$\{nowIso\}`\)/.test(drainAction) && /finally \{\n[^\n]*\n\s*await db\.from\('icloud_credentials'\)\.update\(\{ drain_until: null \}\)\.eq\('user_id', userId\)\.eq\('drain_until', lease\)/.test(drainAction), true, 'one drain at a time per account (a lease; only its own is given back)')
-eq(/if \(prefsError\) throw new ICloudError\('prefs'/.test(drainAction) && !/last_error: null/.test(drainAction), true, "settings that can't be read are never guessed; a drain never wipes the account's last problem")
+eq(/if \(prefsError\) throw new ICloudError\('prefs'/.test(drainAction) && !/last_error: null/.test(drainAction), true, "settings that can't be read are never guessed; a drain itself never wipes the account's last problem")
+eq(/function clearRunProblem[\s\S]{0,300}\.not\('last_error', 'like', `\$\{NOT_MADE\}%`\)/.test(src) && /`\$\{NOT_MADE\}: \$\{notMade/.test(src)
+  && (src.match(/await clearRunProblem\(db, /g) || []).length === 2, true,
+  "a run that went through (the drain action, the timer) clears a failed run's problem; setup's \"Not made…\" stays until a setup run makes it")
 eq(/lt\('icloud_horizon', addDaysIso\(today, SERIES_TOPUP_DAYS\)\)/.test(drainAction), true, "a monthly series' date list is renewed before it runs out (90 days)")
 const reads = [...drainOne.matchAll(/db\.from\((?:'[a-z_]+'|table)\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0])
 eq(reads.length >= 4 && reads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `every read and write of the live rows is the caller's own (${reads.length})`)
@@ -186,15 +217,17 @@ eq([F.ownEventOfHref('/123/calendars/lasci-work/ABC-owner-made.ics'), F.ownEvent
   [null, null, null, null], 'any other name (an event the owner made, a trick path, a broken escape) gives nothing')
 eq([F.titleFromSummary('✓ 🏋️ Lower B', '🏋️'), F.titleFromSummary('🏋️ Lower B', '🏋️'), F.titleFromSummary('Lower B', '🏋️'), F.titleFromSummary('Lunch\u0007\u0000 ok', '')],
   ['Lower B', 'Lower B', 'Lower B', 'Lunch ok'], "a title read back loses the done mark and the area's emoji the app put there, and control characters")
-eq([F.titleFromSummary('⚽ Derby', '🥅'), F.titleFromSummary('#1 Derby', '🥅'), F.titleFromSummary('⚽', '🥅')], ['Derby', '#1 Derby', '⚽'],
-  'an emoji from before the area\'s emoji changed comes off too (a first word of symbols only — never "#1", never the whole title)')
+eq([F.titleFromSummary('🎂 Birthday', ''), F.titleFromSummary('→ Call the bank', ''), F.titleFromSummary('⚽ Derby', '🥅')], ['🎂 Birthday', '→ Call the bank', '⚽ Derby'],
+  "a symbol of the owner's own title stays (an area with no emoji, or another emoji): the title read back is never cut")
+eq([F.bareTitleFromSummary('⚽ Derby', '🥅'), F.bareTitleFromSummary('#1 Derby', '🥅'), F.bareTitleFromSummary('⚽', '🥅')], ['Derby', '#1 Derby', '⚽'],
+  'only for comparing: an emoji from before the area\'s emoji changed comes off (a first word of symbols only — never "#1", never the whole title)')
 const ev = (...lines) => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', ...lines, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
 const suid = `lasci-slot-${pid}@lasciviens.github.io`
 eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;TZID=Europe/Oslo:20261113T183000', 'DTEND;TZID=Europe/Oslo:20261113T200000', 'SUMMARY:⚽ Match (moved)', 'LAST-MODIFIED:20261030T150000Z'), 'slot', suid, '⚽'),
-  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 90, busy: true, title: 'Match (moved)', lastModified: '2026-10-30T15:00:00Z' },
+  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 90, busy: true, title: 'Match (moved)', titleBare: 'Match (moved)', lastModified: '2026-10-30T15:00:00Z' },
   'an event moved on the iPhone: its day, time, length and title on the Oslo clock, and when it was changed')
 eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART:20261113T173000Z', 'DURATION:PT45M', 'TRANSP:TRANSPARENT', 'SUMMARY:x'), 'slot', suid, ''),
-  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 45, busy: false, title: 'x', lastModified: null },
+  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 45, busy: false, title: 'x', titleBare: 'x', lastModified: null },
   'a UTC time is read on the Oslo clock; a DURATION gives the length; Free is not busy; no stamp stays null (never applied)')
 eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;VALUE=DATE:20261114', 'DTEND;VALUE=DATE:20261115', 'SUMMARY:Birthday'), 'slot', suid, '').allDay, true, 'an all-day event reads as all day')
 eq([F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;TZID=Mars/Olympus:20261113T183000', 'SUMMARY:x'), 'slot', suid, ''),
@@ -208,7 +241,7 @@ const series = ['BEGIN:VCALENDAR', 'VERSION:2.0',
   'BEGIN:VEVENT', `UID:${puid}`, 'RECURRENCE-ID;TZID=Europe/Oslo:20261201T063000', 'STATUS:CANCELLED', 'DTSTART;TZID=Europe/Oslo:20261201T063000', 'END:VEVENT',
   'END:VCALENDAR'].join('\r\n')
 eq(F.readbackChangeOf(series, 'plan', puid, '🏋️'), {
-  title: 'Swim 2 km', lastModified: '2026-10-30T15:10:00Z', days: [
+  title: 'Swim 2 km', titleBare: 'Swim 2 km', lastModified: '2026-10-30T15:10:00Z', days: [
     { originalDate: '2026-11-10', cancelled: true }, { originalDate: '2026-11-17', cancelled: true }, { originalDate: '2026-11-24', cancelled: true },
     { originalDate: '2026-11-03', allDay: false, date: '2026-11-04', time: '07:00', minutes: 45, busy: true, title: 'Swim' },
     { originalDate: '2026-12-01', cancelled: true },
@@ -234,6 +267,8 @@ eq(/return look \|\| !state\?\.synced_at \|\| Date\.now\(\) - Date\.parse\(state
   'a save skips a calendar read in the last minute, and the send gets its own time after the read-back')
 eq(/if \(action === 'status'\) \{[\s\S]{0,400}from\('icloud_sync_state'\)\.select\('area, synced_at, last_error'\)\.eq\('user_id', user\.id\)/.test(src), true,
   'the card is told when changes were last read and any problem (never silent)')
+eq(/const removedOwn = await stillLinked\(db, userId, area, /.test(rbArea) && /\.eq\('icloud_area', area\)\.in\('id', ids\.slice\(at, at \+ 100\)\)/.test(src), true,
+  'only removals of events still linked to that calendar count: the app\'s own deletes and moves never hold the read-back back')
 eq(/if \(removedOwn\.length > READBACK_MAX_REMOVED\) \{/.test(rbArea) && /const READBACK_MAX_REMOVED = 20/.test(src), true,
   'more than 20 of the app\'s events removed at once: none is let go, the token stays and it is said')
 eq(/if \(Date\.now\(\) > deadline\) \{ stopped = true; return \}/.test(rbArea) && /!counts\.failed && !stopped &&/.test(rbArea), true,

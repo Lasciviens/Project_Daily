@@ -38,6 +38,16 @@ eq(bad.areas.media, A.DEFAULT_AREAS.media, 'a wrong name, emoji, colour, alert o
 eq([bad.areas.football.alertMinutes, bad.areas.football.emoji], [null, ''], 'an alert of None and no emoji are real choices, kept')
 eq(A.readCalendarPrefs({ areas: { training: { name: 'x'.repeat(61) } } }).areas.training.name, A.DEFAULT_AREAS.training.name, 'a name over 60 characters is not taken')
 eq(A.readCalendarPrefs('nonsense').areas.personal, A.DEFAULT_AREAS.personal, 'a broken document reads as the defaults')
+eq([d.notes, d.allDayAlert], ['notes+link', null], 'every event: notes + link and no all-day alert by default (as before 2b-3)')
+eq(A.readCalendarPrefs({ notes: 'link', allDayAlert: { dayBefore: true, time: '18:00' } }), { areas: d.areas, notes: 'link', allDayAlert: { dayBefore: true, time: '18:00' } },
+  'a saved notes choice and all-day alert are read back')
+eq(['<script>', 'NOTES', 7, null].map(n => A.readCalendarPrefs({ notes: n }).notes), ['notes+link', 'notes+link', 'notes+link', 'notes+link'], 'an unknown notes choice falls back to the default')
+eq([{ time: '24:00' }, { time: '9:00' }, { time: '09:00\r\nX:1' }, { time: 900 }, 'on', { dayBefore: 'yes', time: '07:30' }].map(a => A.readCalendarPrefs({ allDayAlert: a }).allDayAlert),
+  [null, null, null, null, null, { dayBefore: false, time: '07:30' }], 'an all-day alert takes only a HH:MM time; anything else means none')
+eq([A.rewritesEvents(d, { ...d, notes: 'link' }), A.rewritesEvents(d, { ...d, allDayAlert: { dayBefore: false, time: '09:00' } }),
+  A.rewritesEvents(d, { ...d, areas: { ...d.areas, work: { ...d.areas.work, alertMinutes: 30 } } }),
+  A.rewritesEvents(d, { ...d, areas: { ...d.areas, work: { ...d.areas.work, name: 'Jobb' } } }), A.rewritesEvents(d, A.readCalendarPrefs(null))],
+  [true, true, true, false, false], 'the save says events update only when it rewrites them (notes, all-day alert, an area\'s emoji/alert/use — not a name)')
 eq([A.areaSlug('football'), A.appleColor('#ff9500')], ['lasci-football/', '#FF9500FF'], "each area's fixed place in iCloud, and Apple's colour form")
 eq([A.alertLabel(null), A.alertLabel(0), A.alertLabel(10), A.alertLabel(60), A.alertLabel(120), A.alertLabel(1440)],
   ['None', 'At the start', '10 min before', '1 h before', '2 h before', '1 day before'], 'alert labels')
@@ -61,9 +71,10 @@ eq(setup.length > 0 && !/'(PUT|DELETE)'/.test(setup) && /readCalendarPrefs\(/.te
 const place = fnSrc.slice(fnSrc.indexOf('async function placeAreaCalendar'), fnSrc.indexOf('const DRAIN_MAX_ROWS'))
 eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(place) && /mk\.status === 201[\s\S]{0,800}'PROPFIND'[\s\S]{0,400}calendar\[/.test(place), true,
   "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
-eq(/notMade\.length \? `Not made in Apple Calendar/.test(setup) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
+eq(/notMade\.length \? `\$\{NOT_MADE\}: /.test(setup) && /const NOT_MADE = 'Not made in Apple Calendar'/.test(fnSrc) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
 const connect = fnSrc.slice(fnSrc.indexOf("if (action === 'connect')"), fnSrc.indexOf("if (action === 'disconnect')"))
-eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
+eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /const sealed = await sealSecret\(password, key, user\.id\)/.test(connect)
+   && (connect.match(/app_password: /g) || []).length === 2 && (connect.match(/app_password: sealed/g) || []).length === 2, true,
   'connect stores the password only sealed, and refuses without a key')
 eq(/openSecret\(row\.app_password, key, userId\)/.test(fnSrc) && /!isSealed\(row\.app_password\)[\s\S]{0,200}sealSecret/.test(fnSrc), true,
   'a stored password is opened with the key, and one stored before sealing is sealed on the next read')
@@ -111,9 +122,9 @@ eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainI
    && appleSettle.indexOf("outcome.calendar = now === side.area ? 'linked' : 'unknown'") < appleSettle.indexOf('google_sync_enabled: false'), true,
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
 const move = read('src/features/calendar/areas/areaMoveApi.ts')
-eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0\) return putBack\(err\)/.test(move)
-   && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0, true,
-  'a move that fails before anything moved puts the settings back (never an area switched with nothing moved)')
+eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0 && !\(await anyInApple\(toApple\.map\(s => s\.area\)\)\)\) return putBack\(err\)/.test(move)
+   && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0 && /if \(error \|\| \(data \?\? \[\]\)\.length\) return true/.test(move), true,
+  'a move that fails before anything moved puts the settings back; one that stopped part-way (some already in Apple) keeps the switch')
 eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
 eq(/const why = sent\.problem/.test(appleSettle) && /Saved · not in Apple Calendar yet\$\{why\}/.test(appleSettle), true,
   'a save whose Apple copy is not confirmed says so, with the reason')
