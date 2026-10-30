@@ -112,11 +112,17 @@ eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainI
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
 const move = read('src/features/calendar/areas/areaMoveApi.ts')
 eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0\) return putBack\(err\)/.test(move)
-   && move.indexOf('saveCalendarPrefs(previous)') > 0, true,
+   && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0, true,
   'a move that fails before anything moved puts the settings back (never an area switched with nothing moved)')
 eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
 eq(/const why = sent\.problem/.test(appleSettle) && /Saved · not in Apple Calendar yet\$\{why\}/.test(appleSettle), true,
   'a save whose Apple copy is not confirmed says so, with the reason')
+eq(/save\.mutate\(\{ base: prefs, next: readCalendarPrefs\(form\) \}/.test(read('src/features/settings/components/CalendarTab.tsx'))
+   && /saveCalendarPrefsChanges\(previous, next\)/.test(move) && /saveCalendarPrefsChanges\(next, previous\)/.test(move), true,
+  'Settings → Calendar saves only the fields changed, over the settings as they are now (a name from the iPhone is never put back)')
+const onOpen = read('src/features/calendar/hooks/useICloudDrainOnOpen.ts')
+eq(/const AGAIN_AFTER_MS = 30_000/.test(onOpen) && /void invalidate\(qc, 'taskGraph'\)\n\s*void qc\.invalidateQueries\(\{ queryKey: qk\.calendarPrefs \}\)/.test(onOpen), true,
+  'coming back to the app reads Apple Calendar again (at most every 30 seconds) and redraws whatever the timer brought in')
 const memory = read('src/security/accountState.ts')
 eq(/forgetCalendarPrefs\(\)/.test(memory), true, 'sign-out forgets which areas are on Apple')
 

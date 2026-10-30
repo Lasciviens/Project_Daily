@@ -417,7 +417,10 @@ export async function removeDeletedSeriesEvents(snapshot: DeletedRows | null): P
 
 /** Undo: Google keeps a deleted event under its id, so a plan put back gets a
  *  new series (its zone stays). */
-export const SERIES_EVENT_RESET: RowOverrides = { schedule_blocks: { google_calendar_event_id: null, google_calendar_horizon: null } }
+export const SERIES_EVENT_RESET: RowOverrides = {
+  // Apple's link goes too (2c); its start (icloud_from) stays, so the series put back keeps its past days.
+  schedule_blocks: { google_calendar_event_id: null, google_calendar_horizon: null, icloud_area: null, icloud_etag: null, icloud_horizon: null },
+}
 
 /** After Undo: the plans that were on Google Calendar go back on it, in the
  *  zone they had. One that Google doesn't take now is retried when the app

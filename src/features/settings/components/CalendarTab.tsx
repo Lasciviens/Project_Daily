@@ -119,7 +119,7 @@ function AreasCard() {
   function apply() {
     if (switches.length) { setSwitching(switches); return }
     if (!dirty) { setup.mutate(); return }
-    save.mutate(readCalendarPrefs(form), {
+    save.mutate({ base: prefs, next: readCalendarPrefs(form) }, {
       onSuccess: () => {
         setEdits({})
         if (connected) setup.mutate()

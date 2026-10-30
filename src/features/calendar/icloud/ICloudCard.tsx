@@ -5,7 +5,7 @@ import { entityModal } from '../../../shared/modals/useEntityModal'
 import { formatDate, formatDateTime, formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { ConnectionCard } from '../../developer/components/ConnectionCard'
-import type { ICloudChanges, ICloudCheck, ICloudRead, ICloudReadRow } from './icloudApi'
+import type { ICloudChanges, ICloudCheck, ICloudRead, ICloudReadRow, ICloudStatus } from './icloudApi'
 import { useConnectICloud, useDisconnectICloud, useICloudChanges, useICloudStatus, useReadICloud, useRemoveICloudTest, useRunICloudCheck } from './useICloud'
 
 // Settings → Subscriptions → Apple Calendar (iCloud), Phase 1 (owner,
@@ -181,6 +181,20 @@ function ReadResult({ result }: { result: ICloudRead }) {
   )
 }
 
+/** Changes from Apple Calendar (2c): when the app last read them, and a problem when there is one — never silent. */
+function ReadBackLine({ readBack }: { readBack: ICloudStatus['readBack'] }) {
+  const rows = Object.values(readBack ?? {}).filter((r): r is { syncedAt: string | null; problem: string | null } => !!r)
+  if (!rows.length) return null
+  const last = rows.map(r => r.syncedAt).filter((x): x is string => !!x).sort().pop()
+  const problems = [...new Set(rows.map(r => r.problem).filter((x): x is string => !!x))]
+  return (
+    <>
+      <p className="mt-2 text-meta text-fg-muted">Changes from Apple Calendar: {last ? `last read ${formatDateTime(last)}` : 'not read yet'}</p>
+      {problems.map(p => <p key={p} role="alert" className="text-meta text-danger">{p}</p>)}
+    </>
+  )
+}
+
 export function ICloudCard() {
   const status = useICloudStatus()
   const disconnect = useDisconnectICloud()
@@ -257,6 +271,7 @@ export function ICloudCard() {
             <Button size="sm" icon={<Unplug />} onClick={disconnectICloud} loading={disconnect.isPending}>Disconnect</Button>
           </div>
           {s?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {s.lastError}</p>}
+          <ReadBackLine readBack={s?.readBack} />
           {changes.data && <ChangesResult result={changes.data} />}
           {read.data && <ReadResult result={read.data} />}
           {result && <CheckResult result={result} />}
