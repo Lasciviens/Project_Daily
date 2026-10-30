@@ -150,6 +150,21 @@ update public.calendar_prefs set prefs = (prefs - 'notes' - 'allDayAlert') where
 delete from public.icloud_outbox;
 update public.calendar_prefs set prefs = prefs || '{"notes": "notes+link", "allDayAlert": null}' where user_id = '00000000-0000-0000-0000-000000000001';
 select public.t_ok(not exists (select 1 from public.icloud_outbox), 'X9: saving the defaults over a pre-177 row re-sends nothing');
+-- X9b. An all-day Football item (the Add sheet's All day: no time, Calendar, its category kept) goes to Apple.
+delete from public.icloud_outbox;
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item('{"title": "Test all-day", "domain": "personal", "priority": "medium", "category": "football",
+    "date": "2026-11-20", "time": null, "durationMinutes": null, "google": "calendar", "today": "2026-10-30"}');
+  insert into public.t_keep values ('allday', r);
+end $$;
+reset role;
+select public.t_ok((select category = 'football' and start_time is null from public.time_blocks
+                    where id = ((select v from public.t_keep where k = 'allday') ->> 'blockId')::uuid)
+                   and (select count(*) = 1 and bool_and(changed is not null) from public.t_q(((select v from public.t_keep where k = 'allday') ->> 'blockId')::uuid)),
+  'X9b: an all-day Football item keeps its category on its slot and is queued for Apple (as the sheet''s chip says)');
 -- X10. Switching Football back to Google re-queues its Apple events as re-sends (to be removed once Google has them).
 update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,football,app}', '"google"') where user_id = '00000000-0000-0000-0000-000000000001';
 select public.t_ok((select count(*) >= 1 and bool_and(changed is null) from public.t_q(((select v from public.t_keep where k = 'match') ->> 'blockId')::uuid)),
