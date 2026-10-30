@@ -81,7 +81,7 @@ export interface UndoSideEffect {
   label: string | null
 }
 
-export type UndoService = 'trakt' | 'google_tasks' | 'google_calendar'
+export type UndoService = 'trakt' | 'google_tasks' | 'google_calendar' | 'apple_calendar'
 
 /** Outbox rows the trial run queued for an outside service, per kind (151). */
 export interface UndoOutbox {

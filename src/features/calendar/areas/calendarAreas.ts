@@ -20,6 +20,8 @@ export interface CalendarArea {
   alertMinutes: number | null
   /** Off: the area gets no calendar of its own (one made earlier stays in iCloud). */
   enabled:      boolean
+  /** Where the area's events go: Google Calendar (as before) or its Apple Calendar (Phase 2b). */
+  app:          'google' | 'apple'
 }
 
 export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
@@ -34,11 +36,11 @@ export const isAlertMinutes = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true },
-  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true },
-  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true, app: 'google' },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true, app: 'google' },
+  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
+  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true, app: 'google' },
 }
 
 const NAME_MAX = 60
@@ -64,6 +66,7 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       color,
       alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
+      app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
   return { areas }

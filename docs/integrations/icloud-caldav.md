@@ -33,6 +33,8 @@ Base `https://caldav.icloud.com`. Each account's calendars live on its own parti
 | `PROPFIND <home>` (`Depth: 1`, `displayname`, `resourcetype`, `apple:calendar-color`, `C:supported-calendar-component-set`) | Read my calendars | the owner's calendars: a `calendar` resourcetype whose component set has VEVENT (or none given) — not the home itself, the inbox/outbox, notifications or a tasks-only list. At most 20 are read |
 | `PROPPATCH <area calendar>` (`displayname`, `apple:calendar-color`) | Create / Update in Apple Calendar (2a) | *(to confirm)* an area's calendar gets its name and colour; 207 with the name among the accepted properties = done; 404 = deleted on the iPhone, made again |
 | `MKCALENDAR <home>lasci-<area>/` (`displayname`, `apple:calendar-color`, VEVENT) | Create in Apple Calendar (2a) | one calendar per area at a fixed place, so a rename never makes a second one. 201 = made (confirmed for the test calendar). *(to confirm)* any other answer (405 is the standard "already there") → a `PROPFIND` (`Depth: 0`, `resourcetype`) of the place: taken only when it is a calendar (made by the app before, e.g. before a re-connect cleared where they are), then PROPPATCHed. Where each lives: `icloud_credentials.area_calendars` |
+| `PUT <area calendar>lasci-slot-<id>.ics` / `lasci-plan-<id>.ics` (`Content-Type: text/calendar`, no `If-None-Match`) | `drain` (2b) | *(to confirm)* one event per slot, ONE series per repeating plan, written over in place (the uid names the item); 201 new, 204 replaced. An item that moves area: the new copy first, then `DELETE` of the old one |
+| `DELETE <event>` | `drain` (2b) | an item gone, off the calendar, or back on Google: its event goes (404/410 = gone already); only ever inside the app's own area calendars |
 | `REPORT <calendar>` `calendar-query` (`Depth: 1`; `calendar-data` with `C:expand` over the window; filter `VEVENT` + `C:time-range`) | Read my calendars | *(to confirm)* the events touching today and the next 6 days (Oslo midnights as UTC stamps), repeating ones split into their days by iCloud (RFC 4791 §9.6.5 expand). If iCloud ignores expand, a series comes as one object with its `RRULE`: the card lists it apart ("as one series") |
 | `PROPFIND <calendar>` (`Depth: 1`, `getetag`) then `DELETE <calendar>` | Remove the test calendar | the whole calendar goes only when it is the app's own `lasci-test/` and holds nothing but the check's events (`lasci-check-<key>-lasciviens-github-io.ics`); otherwise only the check's events are deleted, one by one. The answer says which (`removed: 'calendar' \| 'events'`), and so do the question and the toast |
 
@@ -53,6 +55,22 @@ All in one `VCALENDAR` (`VERSION:2.0`, `PRODID:-//Lasci's Board//Apple check//EN
 | `TRANSP:TRANSPARENT` | Free (doesn't block time) |
 | `RRULE:FREQ=DAILY;COUNT=4` + `EXDATE` (one day left out) | a repeating event with a day taken out |
 | calendar `apple:calendar-color` (`#RRGGBBAA`) | the calendar's colour on every Apple device |
+
+## Fields we write (the app's events, Phase 2b)
+
+Built in `src/features/calendar/areas/icloudEvents.ts` from Google's own rules — `calendarEventRules.blockEventBody` for a slot, `calendarSeries.seriesEventFor` for a repeating plan (its RRULE / RDATE / EXDATE lines are RFC 5545 already) — and copied into the function by `scripts/sync-icloud-shared.mjs`:
+
+| Property | From |
+|---|---|
+| `UID` `lasci-slot-<id>@…` / `lasci-plan-<id>@…`, `DTSTAMP` | the item's id (a move or rename replaces the event in place) |
+| `DTSTART` / `DTEND` (`TZID=Europe/Oslo` + `VTIMEZONE`, or `VALUE=DATE`) | the slot's day, time and length; a series' first day on or after `icloud_from` (the day it reached Apple Calendar) |
+| `RRULE` / `RDATE` / `EXDATE` | the plan's repeat, exactly as Google gets it |
+| `SUMMARY` | "✓ " when done (as on Google), then the area's emoji, then the title |
+| `VALARM` (`TRIGGER:-PT<n>M`, `PT0S` at the start) | the area's default alert; none on an all-day event |
+| `DESCRIPTION`, `URL` | the slot's and task's notes, then "Open in Lasci's Board" with a link to the day |
+| `TRANSP` | Busy, or Free for no length and all day |
+
+Deliberately not written: `STATUS:TENTATIVE` and `CLASS:PRIVATE` (no visible effect on Apple, Phase 1), `ATTENDEE` (no invitations), `LOCATION` (the app keeps no place on a slot yet).
 
 ## Fields we read
 
