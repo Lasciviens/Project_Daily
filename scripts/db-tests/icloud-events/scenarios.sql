@@ -26,11 +26,16 @@ $$;
 grant execute on function public.t_queue() to authenticated;
 
 select public.t_ok((select count(*) from pg_policies where tablename = 'icloud_outbox' and policyname = 'app_owner_lock') = 1, '173: the owner lock is on the queue');
+select public.t_ok((select count(*) from public.time_blocks where icloud_href is not null) = 0 and (select count(*) from public.icloud_outbox where href is not null) = 0,
+  '174: a forged address left from 173 is emptied, and nothing it queued stays');
+delete from public.time_blocks where id = '20000000-0000-0000-0000-0000000000aa';
+-- (Its insert under 173 also queued it without an address — harmless: the drain reads the live row and derives every address.)
+delete from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-0000000000aa';
 select public.t_ok(not has_table_privilege('authenticated', 'public.icloud_outbox', 'select') and has_table_privilege('service_role', 'public.icloud_outbox', 'delete'),
   '173: the browser can''t read or write the queue; the function can');
 select public.t_ok('icloud_area' = any(public.app_undo_links('time_blocks')) and 'icloud_area' = any(public.app_undo_links('schedule_blocks'))
                    and 'google_calendar_event_id' = any(public.app_undo_links('time_blocks')),
-  '173: Undo leaves the iCloud links as they are (and still the Google ones)');
+  '173/174: Undo leaves the iCloud links as they are (and still the Google ones)');
 select public.t_ok(array['icloud_from', 'icloud_horizon', 'google_calendar_from']::text[] <@ public.app_undo_bookkeeping('schedule_blocks')
                    and 'stock_set_at' = any(public.app_undo_bookkeeping('supplement_schedules')),
   '173: the series'' iCloud start and horizon are bookkeeping; 160''s entries kept');

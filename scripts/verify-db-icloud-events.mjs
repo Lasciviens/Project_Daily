@@ -1,9 +1,10 @@
-// Runs migration 173's scenarios (the app's events in Apple Calendar: the
-// queue and its triggers, dormant while every area is on Google) on a
+// Runs migrations 173 + 174's scenarios (the app's events in Apple Calendar:
+// the queue and its triggers, dormant while every area is on Google; 174 the
+// security fixes — area keys, never addresses) on a
 // throwaway Postgres: scripts/db-tests/one-item/base.sql plus the columns
 // 141/155/162 added to tasks, time_blocks and schedule_blocks, the real 160
-// list for Undo, 171 and 172, then the real 173 twice (it must survive a
-// re-run) and scripts/db-tests/icloud-events/scenarios.sql.
+// list for Undo, 171 and 172, the real 173 as it ran in production, then
+// 174 twice (it must survive a re-run) and scripts/db-tests/icloud-events/scenarios.sql.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-icloud-events.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no
 // database URL (a laptop without Postgres) it runs the static checks and passes.
@@ -14,9 +15,11 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
-const migFile = mig('173_icloud_events.sql')
+const mig173 = mig('173_icloud_events.sql')
+const migFile = mig('174_icloud_events_safety.sql')
 
-const sql = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
+const sql = readFileSync(mig173, 'utf8').replace(/--.*$/gm, '')
+const fix = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
 const problems = []
 if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
 if (/\bnet\.http_|vault\./i.test(sql)) problems.push('a call outside the database (a trigger never calls iCloud)')
@@ -26,8 +29,16 @@ for (const fn of ['icloud_time_block_changed', 'icloud_schedule_block_changed', 
   const body = sql.slice(sql.indexOf(`function public.${fn}()`))
   if (!/app\.icloud_readback/.test(body.slice(0, 600))) problems.push(`${fn} doesn't stop for the read-back`)
 }
+// 174 (security review 30.10.2026): area keys, never addresses; the browser can't call the queue helpers.
+if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(fix)) problems.push('174: a top-level BEGIN/COMMIT')
+if (!/revoke all on function public\.icloud_writes_on\(uuid\) from public, anon, authenticated/i.test(fix)) problems.push('174: icloud_writes_on still open to the browser')
+if (!/icloud_area in \('training', 'work', 'personal', 'media', 'football'\)/.test(fix)) problems.push('174: icloud_area takes more than the five area keys')
+for (const fn of ['icloud_time_block_changed', 'icloud_schedule_block_changed', 'icloud_task_changed']) {
+  const body = fix.slice(fix.indexOf(`function public.${fn}()`), fix.indexOf('$$;', fix.indexOf(`function public.${fn}()`)))
+  if (/icloud_href/.test(body)) problems.push(`174: ${fn} still reads the retired icloud_href`)
+}
 if (problems.length) {
-  console.error(`verify-db-icloud-events: migration 173 has ${problems.join('; ')}`)
+  console.error(`verify-db-icloud-events: migrations 173/174 have ${problems.join('; ')}`)
   process.exit(1)
 }
 
@@ -64,6 +75,9 @@ try {
   psql(target, ['-c', BOOKKEEPING_160])
   psql(target, ['-f', mig('171_icloud_credentials.sql')])
   psql(target, ['-f', mig('172_calendar_prefs.sql')])
+  psql(target, ['-f', mig173])
+  // A forged address written while 173 was live: 174 must empty it and drop what it queued.
+  psql(target, ['-c', "insert into public.time_blocks (id, user_id, date, title, icloud_href) values ('20000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', '2026-11-01', 'forged', 'https://p1-caldav.icloud.com/1/calendars/lasci-work/../home/')"])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud-events/scenarios.sql')], { encoding: 'utf8' })
@@ -72,7 +86,7 @@ try {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
   } else {
-    console.log(`verify-db-icloud-events: 173 (applied twice) and ${passed} scenarios passed`)
+    console.log(`verify-db-icloud-events: 173, then 174 (applied twice) and ${passed} scenarios passed`)
   }
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
