@@ -410,8 +410,14 @@ export interface CalendarArea {
 
 export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
 
-/** The default alerts the owner can pick (minutes before; null = none). */
+/** Quick picks for the default alert (minutes before; null = none); any whole number of minutes up to ALERT_MAX is a choice too. */
 export const ALERT_CHOICES: readonly (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120, 1440]
+/** Four weeks: the longest alert the app sets. */
+export const ALERT_MAX = 40320
+
+/** A real alert choice: none, or whole minutes from 0 (at the start) to four weeks. */
+export const isAlertMinutes = (v: unknown): v is number | null =>
+  v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
   training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true },
@@ -442,7 +448,7 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       name: name && name.length <= NAME_MAX ? name : d.name,
       emoji: emoji !== null && [...emoji].length <= EMOJI_MAX ? emoji : d.emoji,
       color,
-      alertMinutes: alert !== undefined && ALERT_CHOICES.includes(alert as number | null) ? alert as number | null : d.alertMinutes,
+      alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
     }
   }

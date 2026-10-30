@@ -31,7 +31,7 @@ const saved = A.readCalendarPrefs({ areas: { training: { name: '  Gym  ', emoji:
 eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false }, 'a saved area is read as saved (name trimmed, colour upper case)')
 eq(saved.areas.work.name, 'Jobb – æøå', 'æøå in a name are kept')
 eq(saved.areas.work.alertMinutes, 10, 'a value not saved keeps its default')
-const bad = A.readCalendarPrefs({ areas: { media: { name: '', emoji: '😀'.repeat(13), color: 'purple', alertMinutes: 7, enabled: 'yes' }, football: { alertMinutes: null, emoji: '' } } })
+const bad = A.readCalendarPrefs({ areas: { media: { name: '', emoji: '😀'.repeat(13), color: 'purple', alertMinutes: -7, enabled: 'yes' }, football: { alertMinutes: null, emoji: '' } } })
 eq(bad.areas.media, A.DEFAULT_AREAS.media, 'a wrong name, emoji, colour, alert or switch falls back to its default')
 eq([bad.areas.football.alertMinutes, bad.areas.football.emoji], [null, ''], 'an alert of None and no emoji are real choices, kept')
 eq(A.readCalendarPrefs({ areas: { training: { name: 'x'.repeat(61) } } }).areas.training.name, A.DEFAULT_AREAS.training.name, 'a name over 60 characters is not taken')
@@ -39,6 +39,12 @@ eq(A.readCalendarPrefs('nonsense').areas.personal, A.DEFAULT_AREAS.personal, 'a 
 eq([A.areaSlug('football'), A.appleColor('#ff9500')], ['lasci-football/', '#FF9500FF'], "each area's fixed place in iCloud, and Apple's colour form")
 eq([A.alertLabel(null), A.alertLabel(0), A.alertLabel(10), A.alertLabel(60), A.alertLabel(120), A.alertLabel(1440)],
   ['None', 'At the start', '10 min before', '1 h before', '2 h before', '1 day before'], 'alert labels')
+eq([A.alertLabel(45), A.alertLabel(90), A.alertLabel(2880), A.alertLabel(1500)], ['45 min before', '1 h 30 min before', '2 days before', '1 day 1 h before'], 'a custom alert reads in days, hours and minutes')
+eq(A.readCalendarPrefs({ areas: { training: { alertMinutes: 45 }, work: { alertMinutes: 40321 }, media: { alertMinutes: 2.5 }, personal: { alertMinutes: -5 } } }).areas.training.alertMinutes, 45,
+  'any whole number of minutes is a real alert choice (owner, 30.10.2026: "Should have a custom input as well")')
+eq(['work', 'media', 'personal'].map(k => A.readCalendarPrefs({ areas: { work: { alertMinutes: 40321 }, media: { alertMinutes: 2.5 }, personal: { alertMinutes: -5 } } }).areas[k].alertMinutes), [10, null, null],
+  'more than four weeks, a fraction or a negative falls back to the default')
+eq(A.areaProblem({ ...d.areas.training, alertMinutes: 40321 }) !== null && A.areaProblem({ ...d.areas.training, alertMinutes: 45 }) === null, true, 'the form says so before saving')
 eq([A.areaProblem({ ...d.areas.training, name: ' ' }), A.areaProblem(d.areas.training), A.areaProblem({ ...d.areas.training, emoji: '😀'.repeat(13) })],
   ['Give the calendar a name', null, 'Use one emoji (or none)'], 'the form says what is wrong before saving')
 

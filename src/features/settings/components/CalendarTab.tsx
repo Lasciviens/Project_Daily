@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarDays } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard, TonePill } from '../../../shared/ui'
 import {
-  ALERT_CHOICES, AREA_KEYS, AREA_LABEL, alertLabel, areaProblem, readCalendarPrefs,
+  ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, alertLabel, areaProblem, readCalendarPrefs,
   type AreaKey, type CalendarArea, type CalendarPrefs,
 } from '../../calendar/areas/calendarAreas'
 import { useCalendarPrefs, useSaveCalendarPrefs } from '../../calendar/areas/useCalendarPrefs'
@@ -30,6 +30,9 @@ function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
   const problem = areaProblem(area)
   const label = AREA_LABEL[areaKey]
   const off = locked || !area.enabled
+  // Any whole number of minutes: a saved value that isn't a quick pick opens as Custom.
+  const [customPicked, setCustom] = useState(false)
+  const custom = customPicked || !ALERT_CHOICES.includes(area.alertMinutes)
   return (
     <li className="flex flex-col gap-1.5 border-t border-line py-3 first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-2">
@@ -48,14 +51,28 @@ function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
         <input className="input min-w-0 max-w-md flex-1" value={area.name} aria-label={`${label} calendar name`} disabled={off}
           onChange={e => onChange({ ...area, name: e.target.value })} />
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
           Alert
-          <select className="select w-auto" value={area.alertMinutes === null ? 'none' : String(area.alertMinutes)} disabled={off}
-            onChange={e => onChange({ ...area, alertMinutes: e.target.value === 'none' ? null : Number(e.target.value) })}>
+          <select className="select w-auto" value={custom ? 'custom' : area.alertMinutes === null ? 'none' : String(area.alertMinutes)} disabled={off}
+            onChange={e => {
+              const v = e.target.value
+              if (v === 'custom') { setCustom(true); return }
+              setCustom(false)
+              onChange({ ...area, alertMinutes: v === 'none' ? null : Number(v) })
+            }}>
             {ALERT_CHOICES.map(m => <option key={m ?? 'none'} value={m === null ? 'none' : String(m)}>{alertLabel(m)}</option>)}
+            <option value="custom">Custom…</option>
           </select>
         </label>
+        {custom && (
+          <label className="flex items-center gap-1.5 text-meta text-fg-2">
+            <input type="number" inputMode="numeric" min={0} max={ALERT_MAX} step={1} className="input w-20" aria-label={`${label} alert, minutes before`} disabled={off}
+              value={area.alertMinutes ?? ''}
+              onChange={e => onChange({ ...area, alertMinutes: e.target.value === '' ? null : Number(e.target.value) })} />
+            <span className="whitespace-nowrap">min before</span>
+          </label>
+        )}
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
           <input type="checkbox" className="h-4 w-4 accent-accent-500" checked={area.enabled} disabled={locked} onChange={e => onChange({ ...area, enabled: e.target.checked })} />
           In use
