@@ -107,6 +107,10 @@ try {
   psql(target, ['-f', migFile])
   psql(target, ['-f', mig175])
   psql(target, ['-f', mig175])
+  // The timer's condition is text inside cron.schedule (no pg_cron here): run it, so it parses against the real tables.
+  const when = readFileSync(mig175, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
+  if (!when) throw new Error("175: the timer's condition was not found")
+  psql(target, ['-c', `select count(*) from (select 1 ${when}) x`])
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud-events/scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) {

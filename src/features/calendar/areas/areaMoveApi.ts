@@ -8,6 +8,7 @@
 //     keeps its Apple copy.
 import { supabase } from '../../../integrations/supabase/client'
 import { logError } from '../../../shared/utils/logError'
+import { requireUser } from '../../../shared/utils/requireUser'
 import { linkBlockCalendarEvent } from '../api/linkBlockCalendarEvent'
 import { linkScheduleSeries } from '../api/scheduleSeriesCalendar'
 import { drainICloudQueue, moveAreaToApple, setupICloudCalendars } from '../icloud/icloudApi'
@@ -59,12 +60,14 @@ export async function previewSwitches(switches: readonly AreaSwitch[], from: Mov
 
 /** A plan going back to Google keeps the start it had in Apple Calendar (its past days stay on the calendar). */
 async function keepSeriesStart(planId: string): Promise<void> {
-  const { data, error } = await supabase.from('schedule_blocks').select('icloud_from, google_calendar_from, google_calendar_event_id').eq('id', planId).maybeSingle()
+  const { id: userId } = await requireUser()
+  const { data, error } = await supabase.from('schedule_blocks').select('icloud_from, google_calendar_from, google_calendar_event_id')
+    .eq('id', planId).eq('user_id', userId).maybeSingle()
   if (error) throw error
   const row = data as { icloud_from: string | null; google_calendar_from: string | null; google_calendar_event_id: string | null } | null
   if (!row?.icloud_from || row.google_calendar_from || row.google_calendar_event_id) return
   const { error: upError } = await supabase.from('schedule_blocks').update({ google_calendar_from: row.icloud_from })
-    .eq('id', planId).is('google_calendar_event_id', null).is('google_calendar_from', null)
+    .eq('id', planId).eq('user_id', userId).is('google_calendar_event_id', null).is('google_calendar_from', null)
   if (upError) throw upError
 }
 

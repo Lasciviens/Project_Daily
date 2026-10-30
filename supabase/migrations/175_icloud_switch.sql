@@ -19,8 +19,9 @@
 --      155 (no Google choice stored) whose series is in Apple Calendar is on
 --      Calendar (repeat_day_target / repeat_day_presence; the browser's
 --      itemRules.presentGoogleTarget reads the same).
---   D. The timer: every 10 minutes, only when something waits (a queued
---      item, or a series whose dates run out within 90 days), icloud-calendar
+--   D. The timer: every 10 minutes, only when something waits for an account
+--      connected to iCloud (a queued item, or a series whose dates run out
+--      within 90 days), icloud-calendar
 --      drains the queue — the secret read from Vault at call time
 --      (ICLOUD_SYNC_SECRET, an owner step; missing, the function refuses and
 --      nothing happens).
@@ -145,7 +146,7 @@ declare
   v_hex text;
   v_payload jsonb;
 begin
-  if p_user is null or p_id is null or p_event is null or p_entity not in ('slot', 'plan') then return 'changed'; end if;
+  if p_user is null or p_id is null or p_event is null or p_entity is null or p_entity not in ('slot', 'plan') then return 'changed'; end if;
   -- Only the item's own event: the id the app made from the item's own id (its uuid without dashes, or a
   -- later one of its sequence v1–v4). A Google-picked id after five unlinks stays — the owner removes it.
   v_hex := replace(p_id::text, '-', '');
@@ -221,8 +222,9 @@ begin
       ),
       body := jsonb_build_object('action', 'cron')
     )
-    where exists (select 1 from public.icloud_outbox where next_try_at <= now())
-       or exists (select 1 from public.schedule_blocks where icloud_area is not null and icloud_horizon < current_date + 90);
+    where exists (select 1 from public.icloud_outbox o join public.icloud_credentials c on c.user_id = o.user_id where o.next_try_at <= now())
+       or exists (select 1 from public.schedule_blocks sb join public.icloud_credentials c on c.user_id = sb.user_id
+                   where sb.icloud_area is not null and sb.icloud_horizon < current_date + 90);
   $cron$);
 end $$;
 
@@ -257,7 +259,9 @@ begin
                    or (table_name = 'icloud_outbox' and column_name = 'href'))) then
     raise exception 'Migration 175 assertion failed: a retired address column is still there';
   end if;
-  if has_function_privilege('authenticated', 'public.icloud_hand_over(uuid, text, uuid, text)', 'execute') then
+  if has_function_privilege('authenticated', 'public.icloud_hand_over(uuid, text, uuid, text)', 'execute')
+     or has_function_privilege('anon', 'public.icloud_hand_over(uuid, text, uuid, text)', 'execute')
+     or has_function_privilege('public', 'public.icloud_hand_over(uuid, text, uuid, text)', 'execute') then
     raise exception 'Migration 175 assertion failed: the browser can call icloud_hand_over';
   end if;
 end $$;

@@ -178,6 +178,8 @@ select public.t_ok((select google_calendar_event_id from public.time_blocks wher
 select public.t_ok(public.t_queue() = 0, '175: the hand-over itself queues nothing for Apple (no loop)');
 select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', '20000000000000000000000000000011') = 'changed',
   '175: a second hand-over of the same copy does nothing');
+select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', null, '20000000-0000-0000-0000-000000000011', '20000000000000000000000000000011') = 'changed',
+  '175: a hand-over that names no kind of item does nothing');
 
 -- Only the item's own event: an id the app didn't make for this item is never deleted.
 update public.time_blocks set google_calendar_event_id = 'meeting4owner' where id = '20000000-0000-0000-0000-000000000011';
