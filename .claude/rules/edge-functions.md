@@ -20,6 +20,6 @@ Each function's purpose, auth and secrets: `docs/backend/edge-functions.md` · s
 - Imports pinned to exact versions (`npm:@supabase/supabase-js@2.118.0`, `npm:psn-api@2.18.1`, `npm:web-push@3.6.7`), never `@2`/`^2`; packages come from npm (`npm:`), never esm.sh — an esm.sh outage stopped the 26.10.2026 deploy (`verify-supabase-keys`).
 - Duplicated code is deliberate and must change together:
   - The Hevy upsert logic is inlined in `hevy-sync`, `hevy-initial-sync`, `hevy-incremental-sync` and `hevy-api` — change all four (import → end marker; `verify-hevy-api` compares them).
-  - Sections marked GENERATED (`// <ss-shared>`, Trakt plans, `readingSync`/`opdsFeed`) are edited at their `src/` source and regenerated with `scripts/sync-*-shared.mjs`.
+  - Sections marked GENERATED (`// <ss-shared>`, Trakt plans, `readingSync`/`opdsFeed`, `// <icloud-shared>` — the calendar event rules in `icloud-calendar`) are edited at their `src/` source and regenerated with `scripts/sync-*-shared.mjs`.
   - Hand-mirrored copies (`calendarOutboxRules`, `articleExtract`, `priceRead`/`fxNorgesBank`, the media reminder rules, the sleep merge in `ai-proxy`/`phone-gateway`) change in the same PR as their source; their verify scripts compare them.
 - Deploy is automatic on merge after the migrations; never deploy by hand.

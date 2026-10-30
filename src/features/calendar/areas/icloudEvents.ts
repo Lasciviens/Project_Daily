@@ -39,9 +39,11 @@ export function wantsCalendar(target: string | null | undefined, onACalendar: bo
   return false
 }
 
-/** iCalendar text: backslash, semicolon, comma and line breaks escaped. */
+/** iCalendar text: backslash, semicolon, comma and every line break escaped; other control characters dropped
+ *  (a lone CR could end a line for some parsers — security review, 30.10.2026). */
 export function icsEscape(t: string): string {
-  return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+  return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
 }
 
 /** A content line folded at 75 octets (UTF-8), never inside a character. */
@@ -127,6 +129,8 @@ export function eventObject(p: EventParts): string {
     'END:VEVENT',
     'END:VCALENDAR',
   ]
+  // The last guard: no line may carry a control character (a property smuggled in through any field).
+  if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F]/.test(l))) throw new Error('An event line holds a control character — not written')
   return lines.map(foldLine).join('\r\n') + '\r\n'
 }
 

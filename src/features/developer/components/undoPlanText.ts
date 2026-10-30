@@ -278,7 +278,7 @@ function googleLine(s: 'google_tasks' | 'google_calendar' | 'apple_calendar', ro
 /** An outside link (app_undo_links) Undo leaves as it is: what it links, per column. */
 const LINK_WORDS: Record<string, { service: UndoService; what: string }> = {
   google_calendar_event_id: { service: 'google_calendar', what: 'event link' },
-  icloud_href: { service: 'apple_calendar', what: 'event link' },
+  icloud_area: { service: 'apple_calendar', what: 'event link' },
   google_task_id: { service: 'google_tasks', what: 'Google task link' },
   google_tasklist_id: { service: 'google_tasks', what: 'Google list' },
   trakt_note_id: { service: 'trakt', what: 'Trakt note link' },

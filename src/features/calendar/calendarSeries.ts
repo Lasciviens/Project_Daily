@@ -116,8 +116,17 @@ const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0]
 const TIME = /^(\d{2}):(\d{2})(?::(\d{2}))?/
 
+/** An IANA zone name's shape ("Europe/Oslo", "America/Argentina/Buenos_Aires", "Etc/GMT+1"). */
+const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
+
+/** The zone a series' times mean: a real zone name, else the fallback. A stored or device value is data —
+ *  it lands in TZID= lines, so anything that isn't a zone the runtime knows is never used (security review, 30.10.2026). */
 export function seriesTimeZone(tz: string | null | undefined): string {
-  return tz && tz.trim() ? tz : SERIES_FALLBACK_TIME_ZONE
+  const z = tz?.trim()
+  if (z && IANA_ZONE.test(z)) {
+    try { new Intl.DateTimeFormat('en', { timeZone: z }); return z } catch { /* not a zone this runtime knows */ }
+  }
+  return SERIES_FALLBACK_TIME_ZONE
 }
 
 /** The zone a push expands the series in. A save from the planner takes the
@@ -125,7 +134,7 @@ export function seriesTimeZone(tz: string | null | undefined): string {
  *  horizon top-up, Undo, a retry — keeps the series' own, so opening the app
  *  abroad never re-zones a plan. */
 export function seriesPushZone(storedZone: string | null | undefined, deviceZone: string | null | undefined, fromEditor: boolean): string {
-  if (!fromEditor && storedZone && storedZone.trim()) return storedZone
+  if (!fromEditor && storedZone && storedZone.trim()) return seriesTimeZone(storedZone)
   return seriesTimeZone(deviceZone)
 }
 

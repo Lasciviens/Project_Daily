@@ -6,6 +6,7 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 
 ## The owner's rules
 
+- **Security before features** (owner, 30.10.2026: "Security > Feature! … Security is always a priority"). When a choice trades safety for a feature, speed or convenience, pick safety; a known security finding is fixed before the feature ships — never "later", never "dormant so it's fine".
 - **English everywhere** — code, comments, UI text, commits, PRs, docs and replies to the owner — unless the owner asks for another language. Things about a place (the TRY currency, a country's news or films) are content, not language.
 - The owner is learning the vocabulary: name each technical term and explain it once in plain words, with an everyday example when it helps.
 - **Change only what was asked.** When a request can be read in ways that lead to different work — for example only the screen, or also the stored data — ask one short question first, and in the report say exactly which one changed. If you can't ask, the stored data is what the owner means; never report a screen-only change as done.
@@ -64,6 +65,18 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 - Animations are welcome; respect the device's Reduce Motion setting (`useMotion()`).
 
 ## Security (audit 10.10.2026 — each rule has a check script)
+
+> ⚠️ **SECURITY WARNING — a real mistake, made here (Claude, 30.10.2026; caught by review before it shipped)**
+> **What happened:** the first Apple Calendar writer (PR #588, migration 173 — merged and deployed before its fixes; 174 fixes it) stored each event's iCloud address in `time_blocks`, a table the browser **and** the assistant can write, then sent a DELETE — with the owner's Apple password — to whatever address it found there. One forged value (a stolen session, or Ask AI steered by a web page) could have deleted the owner's other calendars. In the same change: a new link column left out of `AI_NO_WRITE`; a stored time zone pasted unchecked into an iCalendar line; a URL "checked" with `startsWith`; a SECURITY DEFINER function callable by every signed-in user; and "it's switched off, so it's fine".
+> **Why:** I trusted data because my own code had written it; I copied a pattern (Google's event-id column) without its safety half; I left security to the review instead of designing it in.
+> **Never again — every AI, every change:**
+> - Anything the browser, the assistant, a sync or an outside service can write is **input**, even when our code wrote it. The target of a write or delete made with the owner's credentials (a URL, path, id, file name) is built from server-only data at the moment of use — never read back from such a table.
+> - Check data where it enters **and** where it becomes another format (iCalendar, SQL, HTML, a URL, a header): allow-lists, not escaping alone, plus a last-line guard that refuses what slipped through.
+> - Never `startsWith` on a URL or path as a security check: compare the exact value you built.
+> - A new link column goes into `AI_NO_WRITE` in the same change (`verify-ai-confirm` checks it against `app_undo_links`).
+> - SECURITY DEFINER: `search_path = ''`, every query scoped to the row's own user, no grant to `authenticated` unless the caller is checked.
+> - "Switched off" is not "safe": dormant code is reviewed as if it were live.
+> - Before writing code that touches credentials, an outside service, a new table or column, or the assistant: write down what an attacker controlling each input could do, design that out, and run the `guardian` review before reporting.
 
 - **Owner lock:** only ids in `public.app_allowed_users` use the app. A migration that creates a table ends with `select public.owner_lock_apply('public.<table>');` (`verify-owner-lock`).
 - An edge function with browser callers checks `auth.getUser` **and** its own `isAppUser(user.id)` copy; platform `verify_jwt` alone admits any project JWT. Only `news-proxy` is exempt.

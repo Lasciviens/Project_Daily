@@ -92,19 +92,50 @@ const allDayPlan = E.planEvent({ ...weekly, id: 'p2', start_time: null, end_time
 eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('VALARM')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert')
 eq(E.planEvent({ ...weekly, days_of_week: [] }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' }), null, 'a repeat with no day left has no event')
 
+console.log('\n== Hostile text (security review, 30.10.2026) ==')
+eq(E.icsEscape('Lunch\rATTENDEE;RSVP=TRUE:mailto:ola@example.com\u0007'), 'Lunch\\nATTENDEE\\;RSVP=TRUE:mailto:ola@example.com', 'a lone CR becomes an escaped line break; other control characters are dropped')
+const sneaky = E.slotEvent({ id: 'b6', date: '2026-11-03', start_time: '09:00', duration_minutes: 30, title: 'Lunch\rATTENDEE:mailto:ola@example.com', busy: true, notes: 'a\r\nb\nc' },
+  { ...base, done: false, area: { ...DEFAULT_AREAS.personal, emoji: '🏠\r' } })
+eq(unfold(sneaky.ics).split('\r\n').filter(l => /^ATTENDEE/.test(l)).length, 0, 'a title, note or emoji with line breaks never adds a property')
+let guarded = false
+try { E.eventObject({ uid: 'x', body: { summary: 'x', start: { date: '2026-11-03' }, end: { date: '2026-11-04' }, transparency: 'transparent', recurrence: ['RRULE:FREQ=DAILY\r\nATTENDEE:mailto:ola@example.com'] }, area: DEFAULT_AREAS.personal, notes: null, link: 'https://example.com', now }) } catch { guarded = true }
+eq(guarded, true, 'the last guard refuses any event line that still holds a control character')
+const { seriesTimeZone, seriesPushZone } = require('../src/features/calendar/calendarSeries')
+eq([seriesTimeZone('America/New_York'), seriesTimeZone('Etc/GMT+1'), seriesTimeZone('Europe/Oslo:20261102T070000\r\nATTENDEE:mailto:x@example.com'), seriesTimeZone('Not/AZone'), seriesTimeZone(null)],
+  ['America/New_York', 'Etc/GMT+1', 'Europe/Oslo', 'Europe/Oslo', 'Europe/Oslo'], 'a stored zone is used only when it is a real zone name (never text that lands in TZID=)')
+eq(seriesPushZone('Europe/Oslo\r\nX:1', 'Europe/Oslo', false), 'Europe/Oslo', 'the stored zone of a background push goes through the same check (Google too)')
+
 console.log('\n== The function ==')
 try { execFileSync('node', [path.join(__dirname, 'sync-icloud-shared.mjs'), '--check'], { stdio: 'pipe' }); eq(true, true, "the function's copy of the event rules is current (sync-icloud-shared)") }
 catch { eq(false, true, "the function's copy of the event rules is current — run node scripts/sync-icloud-shared.mjs") }
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
+const { transform } = require('sucrase')
+const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
+const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl }`)()
+const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
+const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
+eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
+eq([F.ownEventUrl('slot', '../../work/x', 'work', cals), F.ownEventUrl('slot', id, '../work', cals), F.ownEventUrl('slot', id, 'personal', cals), F.ownEventUrl('plan', id, 'media', cals)],
+  [null, null, null, null], 'never from a stored address: a forged id or area, an area with no calendar, or one outside iCloud gives no address at all')
 const drainOne = src.slice(src.indexOf('async function drainOne'), src.indexOf('function osloTomorrow'))
 const drain = src.slice(src.indexOf("if (action === 'drain')"), src.indexOf("if (action === 'remove')"))
-eq(/conf\.enabled && conf\.app === 'apple' && calUrl/.test(drainOne) && /wantsCalendar\(/.test(drainOne), true, 'an event is put only when the item wants a calendar and its area is on, on Apple, and made')
-eq(/putEvent\([^)]*\)\n\s*if \(b\.icloud_href && b\.icloud_href !== href\) await removeEvent/.test(drainOne) && /putEvent\([^)]*\)\n\s*if \(p\.icloud_href && p\.icloud_href !== href\) await removeEvent/.test(drainOne), true,
-  'the new copy first, then the old one (an area change)')
-eq(/function removeEvent[\s\S]{0,200}inAreaCalendars\(href, areaUrls\)/.test(src) && /areaUrls\.some\(u => href\.startsWith\(u\)\)/.test(src), true, "it only ever removes from the app's own area calendars")
-eq(/\.delete\(\)\.eq\('id', q\.id\)\.eq\('requested_at', q\.requested_at\)/.test(drain), true, 'a queue row goes only while requested_at is what was read (a newer change waits)')
+eq(!/icloud_href|\.href\b/.test(drainOne) && /ownEventUrl\(/.test(drainOne), true, 'the drain stores and trusts only the area key, never an address')
+eq((drainOne.match(/if \(wanted && conf\.enabled && conf\.app === 'apple'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
+  'an event is put only when the item wants a calendar and its area is on and on Apple; a missing area calendar keeps the row waiting (never a silent skip)')
+eq(/wantsCalendar\(t \? t\.google_target : null,/.test(drainOne), true, 'a slot with no task is on a calendar only where it is now (never put there by default)')
+eq(/function removeOwnEvent[\s\S]{0,400}if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/.test(src), true, 'a link is never cleared without a real DELETE')
+eq((drainOne.match(/const etag = await putEvent\([^\n]*\n\s*if \(!\(await link\([^\n]*\n[\s\S]{0,500}?\}\n\s*await removeOld\(/g) || []).length, 2,
+  'the new copy first, linked only while the row still is what was read, then the old copies go')
+eq(/'If-Match': etag/.test(src) && /r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write sends the version the app last wrote: a change made on the iPhone is never written over')
+const drainAction = src.slice(src.indexOf("if (action === 'drain')"), src.indexOf("if (action === 'remove')"))
+eq(/\.or\(`drain_until\.is\.null,drain_until\.lt\.\$\{nowIso\}`\)/.test(drainAction) && /finally \{\n[^\n]*\n\s*await db\.from\('icloud_credentials'\)\.update\(\{ drain_until: null \}\)\.eq\('user_id', user\.id\)\.eq\('drain_until', lease\)/.test(drainAction), true, 'one drain at a time per account (a lease; only its own is given back)')
+eq(/if \(prefsError\) throw new ICloudError\('prefs'/.test(drainAction) && !/last_error: null/.test(drainAction), true, "settings that can't be read are never guessed; a drain never wipes the account's last problem")
+eq(/lt\('icloud_horizon', addDaysIso\(today, SERIES_TOPUP_DAYS\)\)/.test(drainAction), true, "a monthly series' date list is renewed before it runs out (90 days)")
+const reads = [...drainOne.matchAll(/db\.from\((?:'[a-z_]+'|table)\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0])
+eq(reads.length >= 4 && reads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `every read and write of the live rows is the caller's own (${reads.length})`)
+eq(/\.delete\(\)\.eq\('id', q\.id\)\.eq\('user_id', user\.id\)\.eq\('requested_at', q\.requested_at\)/.test(drain), true, 'a queue row goes only while requested_at is what was read (a newer change waits)')
 eq(!/console\.(log|error|warn)\([^)]*(title|summary|notes|ics)/i.test(src), true, 'no title, note or event text is ever logged')
-eq(/\.eq\('user_id', userId\)/.test(drainOne) && !/'PROPPATCH'|'MKCALENDAR'/.test(drainOne), true, "the live rows are read as the caller's own; the drain never makes or changes a calendar")
+eq(!/'PROPPATCH'|'MKCALENDAR'/.test(drainOne), true, 'the drain never makes or changes a calendar')
 
 console.log(`\nverify-icloud-events: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)
