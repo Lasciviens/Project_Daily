@@ -183,14 +183,18 @@ select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001
 
 -- Only the item's own event: an id the app didn't make for this item is never deleted.
 update public.time_blocks set google_calendar_event_id = 'meeting4owner' where id = '20000000-0000-0000-0000-000000000011';
-select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', 'meeting4owner') = 'foreign'
-                   and (select google_calendar_event_id from public.time_blocks where id = '20000000-0000-0000-0000-000000000011') = 'meeting4owner'
+select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', 'meeting4owner') = 'foreign',
+  '175: a stored id that isn''t the item''s own (a forged one, a day moved in Google) is foreign');
+select public.t_ok((select google_calendar_event_id from public.time_blocks where id = '20000000-0000-0000-0000-000000000011') is null
                    and not exists (select 1 from public.calendar_outbox where event_id = 'meeting4owner'),
-  '175: a stored id that isn''t the item''s own (a forged one) is left as it is, never deleted');
+  '175: …it is never deleted, but the item lets go of it (Google''s read-back of it can''t take the item off Apple Calendar)');
 update public.time_blocks set google_calendar_event_id = 'x20000000000000000000000000000011' where id = '20000000-0000-0000-0000-000000000011';
-select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', 'x20000000000000000000000000000011') = 'foreign'
-                   and public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', '20000000000000000000000000000011v9') = 'foreign',
-  '175: the own-id check is exact (no prefix, no id past the sequence)');
+select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', 'x20000000000000000000000000000011') = 'foreign',
+  '175: the own-id check is exact — no prefix');
+update public.time_blocks set google_calendar_event_id = '20000000000000000000000000000011v9' where id = '20000000-0000-0000-0000-000000000011';
+select public.t_ok(public.icloud_hand_over('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000011', '20000000000000000000000000000011v9') = 'foreign'
+                   and not exists (select 1 from public.calendar_outbox where event_id like '%v9'),
+  '175: …and no id past the sequence (never deleted)');
 
 -- A plan: its series' Google bookkeeping goes with the link; a later id of its sequence is its own.
 update public.schedule_blocks set google_calendar_event_id = '30000000000000000000000000000001v2', google_calendar_horizon = '2027-10-30', google_calendar_from = '2026-10-01'

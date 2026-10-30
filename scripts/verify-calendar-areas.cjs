@@ -87,8 +87,11 @@ eq(A.areaSwitches(g, withApp({ media: { app: 'apple', enabled: false } })), [], 
 const res = { toApple: 0, toGoogle: 0, notOnGoogle: 0, foreign: 0, failed: 0, waiting: 0, partial: false }
 eq(A.switchResultText({ ...res, toApple: 14 }), 'Calendar settings saved · 14 items in Apple Calendar', 'what moved, in one line')
 eq(A.switchResultText(res), 'Calendar settings saved · nothing to move', '…or that nothing had to')
-eq(A.switchResultText({ ...res, toGoogle: 3, notOnGoogle: 1 }), "Calendar settings saved · 3 items back in Google Calendar · 1 item stayed in Apple Calendar (Google didn't take it — switch again)",
-  'one Google did not take stays in Apple Calendar, and says so')
+eq(A.switchResultText({ ...res, toGoogle: 3, notOnGoogle: 1 }), "Calendar settings saved · 3 items back in Google Calendar · 1 item stayed in Apple Calendar (Google didn't take it; saving one puts it in Google Calendar)",
+  'one Google did not take stays in Apple Calendar, and says what puts it there')
+eq(A.switchResultText({ ...res, toApple: 2, problem: 'Apple did not accept the password' }), 'Calendar settings saved · 2 items in Apple Calendar · stopped: Apple did not accept the password — the rest goes within minutes',
+  'a run that stopped says why')
+eq(A.switchNeedsAttention({ ...res, problem: 'x' }), true, '…as a warning')
 eq([A.switchNeedsAttention({ ...res, toApple: 2 }), A.switchNeedsAttention({ ...res, foreign: 1 }), A.switchNeedsAttention({ ...res, failed: 1 })], [false, true, true],
   'a result with something left behind is a warning, not a plain success')
 
@@ -107,6 +110,13 @@ const appleSettle = settle.slice(settle.indexOf('async function settleItemApple'
 eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainICloudNow()') && /outcome\.calendar === 'linked' && google === 'calendar'/.test(appleSettle)
    && appleSettle.indexOf("outcome.calendar = now === side.area ? 'linked' : 'unknown'") < appleSettle.indexOf('google_sync_enabled: false'), true,
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
+const move = read('src/features/calendar/areas/areaMoveApi.ts')
+eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0\) return putBack\(err\)/.test(move)
+   && move.indexOf('saveCalendarPrefs(previous)') > 0, true,
+  'a move that fails before anything moved puts the settings back (never an area switched with nothing moved)')
+eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
+eq(/const why = sent\.problem/.test(appleSettle) && /Saved · not in Apple Calendar yet\$\{why\}/.test(appleSettle), true,
+  'a save whose Apple copy is not confirmed says so, with the reason')
 const memory = read('src/security/accountState.ts')
 eq(/forgetCalendarPrefs\(\)/.test(memory), true, 'sign-out forgets which areas are on Apple')
 

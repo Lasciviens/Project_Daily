@@ -22,8 +22,10 @@ export function useAreaSwitchPreview(switches: readonly AreaSwitch[], from: Move
 export function useSwitchAreas() {
   return useMutationWithFeedback({
     action: 'calendar_switch_areas',
-    mutationFn: (v: { next: CalendarPrefs; switches: readonly AreaSwitch[]; from: MoveFrom; onProgress: (p: SwitchProgress) => void }) =>
-      switchAreas(v.next, v.switches, v.from, v.onProgress),
+    mutationFn: (v: {
+      previous: CalendarPrefs; next: CalendarPrefs; switches: readonly AreaSwitch[]; from: MoveFrom; icloudConnected: boolean
+      onProgress: (p: SwitchProgress) => void
+    }) => switchAreas(v.previous, v.next, v.switches, v.from, v.icloudConnected, v.onProgress),
     successMessage: r => (switchNeedsAttention(r) ? undefined : switchResultText(r)),
     onSuccess: r => { if (switchNeedsAttention(r)) toast.warning(switchResultText(r)) },
     // The status only: the popup's own count must not be asked again as it closes.

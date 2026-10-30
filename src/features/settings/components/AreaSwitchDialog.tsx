@@ -14,9 +14,12 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 const itemsText = (slots: number, plans: number) =>
   [slots ? count(slots, 'event') : '', plans ? count(plans, 'repeating plan') : ''].filter(Boolean).join(' and ') || 'nothing to move'
 
-export function AreaSwitchDialog({ next, switches, onClose, onDone }: {
+export function AreaSwitchDialog({ previous, next, switches, icloudConnected, onClose, onDone }: {
+  /** The saved settings (put back when the move fails before anything moved). */
+  previous: CalendarPrefs
   /** The settings as the form has them (saved by the move). */
   next: CalendarPrefs
+  icloudConnected: boolean
   switches: AreaSwitch[]
   onClose: () => void
   onDone: () => void
@@ -35,7 +38,7 @@ export function AreaSwitchDialog({ next, switches, onClose, onDone }: {
 
   function start() {
     setProgress(null)
-    move.mutate({ next, switches, from, onProgress: setProgress }, { onSuccess: onDone })
+    move.mutate({ previous, next, switches, from, icloudConnected, onProgress: setProgress }, { onSuccess: onDone })
   }
 
   return (
@@ -76,7 +79,7 @@ export function AreaSwitchDialog({ next, switches, onClose, onDone }: {
         {toApple && (
           <p className="text-meta text-fg-muted">
             Each one goes to Apple Calendar first; once Apple has it, its Google Calendar copy is removed. Google Tasks isn't touched.
-            {from === 'today' && ' Past days stay in Google Calendar until you change them.'}
+            {from === 'today' && ' Single events before today stay in Google Calendar until you change them; a repeating plan moves whole, with its days.'}
           </p>
         )}
         {toGoogle && (
@@ -86,7 +89,7 @@ export function AreaSwitchDialog({ next, switches, onClose, onDone }: {
         )}
         {needsGoogle && <p role="alert" className="text-meta text-danger">Connect Google first (Settings → Subscriptions) — until then they stay in Apple Calendar.</p>}
         {preview.isError && <p role="alert" className="text-meta text-danger">The count could not be read: {(preview.error as Error).message}</p>}
-        {preview.data?.some(p => p.partial) && <p className="text-meta text-fg-muted">There are more than one move reads; save again afterwards to move the rest.</p>}
+        {preview.data?.some(p => p.partial) && <p className="text-meta text-fg-muted">This area has more items than one move takes; the rest stay where they are.</p>}
         {busy && progress && progress.total > 0 && <p role="status" className="text-meta text-fg-2">Moving… {Math.min(progress.done, progress.total)} of {progress.total}</p>}
       </div>
     </ModalShell>

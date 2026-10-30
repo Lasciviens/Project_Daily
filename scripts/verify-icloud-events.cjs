@@ -168,6 +168,11 @@ eq(/\[functions\.icloud-calendar\]\nverify_jwt = false/.test(fs.readFileSync(pat
 const move = src.slice(src.indexOf("if (action === 'move')"), src.indexOf("if (!row || !row.app_password)"))
 const moveFn = src.slice(src.indexOf('async function queueAreaMove'), src.indexOf('async function drainEveryAccount'))
 eq(/!\(AREA_KEYS as readonly string\[\]\)\.includes\(areaKey\) \|\| !\(MOVE_FROM as readonly string\[\]\)\.includes\(from\)/.test(move), true, 'a move names one of the five areas and a known start, nothing else')
+eq(/part === 'past days of a repeat'\) page = page\.lt\('date', today\)\.not\('schedule_block_id', 'is', null\)/.test(moveFn), true,
+  'from today on also takes the earlier days of a repeat with a slot of their own (they go with the series)')
+const disconnect = src.slice(src.indexOf("if (action === 'disconnect')"), src.indexOf("if (action === 'move')"))
+eq(/onApple\(readCalendarPrefs\(prefsRow\?\.prefs\)\.areas\[k\]\)/.test(disconnect) && disconnect.indexOf('onAppleNow.length') < disconnect.indexOf(".delete()"), true,
+  'disconnect is refused while an area shows in Apple Calendar (its new items would reach no calendar)')
 eq(/if \(!dryRun && !onApple\(/.test(moveFn), true, "an area's items are queued only once it is switched to Apple (the preview only counts)")
 const moveReads = [...moveFn.matchAll(/db\.from\('[a-z_]+'\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
 eq(moveReads.length >= 4 && moveReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `a move reads only the caller's own rows (${moveReads.length})`)

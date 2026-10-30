@@ -179,7 +179,10 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
   const wantsTasks = google === 'tasks' || google === 'both'
   const outcome: ItemGoogleOutcome = { calendar: wantsCal ? 'unknown' : 'off', tasks: answer.googleSync }
   if (answer.googleSync || wantsTasks) await drainTasks()
-  await drainICloudNow()
+  let sent = await drainICloudNow()
+  // Another run is sending the queue (often the app's own opening): once more when it is done.
+  if (sent.busy) { await new Promise(res => setTimeout(res, 3000)); sent = await drainICloudNow() }
+  const why = sent.problem ? ` (${sent.problem})` : ''
   const now = await appleAreaNow(side.table, side.id)
   if (wantsCal) {
     outcome.calendar = now === side.area ? 'linked' : 'unknown'
@@ -195,14 +198,17 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
         void drainTasks()
       }
     } else if (outcome.calendar === 'unknown' && google === 'calendar' && answer.googleSync) {
-      toast.warning('Apple Calendar hasn\'t confirmed the event yet, so the Google Task stays for now — save the item again to finish the move.')
+      toast.warning(`Apple Calendar hasn't confirmed the event yet${why}, so the Google Task stays for now — save the item again to finish the move.`)
+    } else if (outcome.calendar === 'unknown') {
+      toast.warning(`Saved · not in Apple Calendar yet${why} — it is tried again within minutes.`)
     }
     return outcome
   }
   if (now) {
     // The server keeps the Apple copy until the Google Task is there; it goes on its own once it is.
     outcome.calendar = 'unknown'
-    if (wantsTasks) toast.warning('Google Tasks hasn\'t confirmed its copy yet, so the Apple Calendar event stays until it has.')
+    toast.warning(wantsTasks ? 'Google Tasks hasn\'t confirmed its copy yet, so the Apple Calendar event stays until it has.'
+      : `Saved · its Apple Calendar event isn't removed yet${why} — it is tried again within minutes.`)
     return outcome
   }
   if (answer.blockToDrop && answer.blockToDrop === answer.blockId) {

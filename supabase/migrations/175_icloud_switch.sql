@@ -14,7 +14,9 @@
 --      google-tasks-sync) and the link cleared — in one step, and only for an
 --      event id the app builds from the item's own id (calendarApi
 --      .blockEventId), never another event in the calendar (the warning in
---      AGENTS.md: a delete's target is built from server-only data).
+--      AGENTS.md: a delete's target is built from server-only data). Any
+--      other stored id is never deleted; its link is cleared, so its fate in
+--      Google can't take the item off Apple Calendar.
 --   C. Where an item IS on a calendar counts Apple too: a repeat saved before
 --      155 (no Google choice stored) whose series is in Apple Calendar is on
 --      Calendar (repeat_day_target / repeat_day_presence; the browser's
@@ -134,7 +136,10 @@ $$;
 -- ── B. The hand-over: the Apple copy is in, the Google Calendar copy goes ────
 -- Called by icloud-calendar (service role) right after it linked the Apple copy. Answers:
 --   'handed'  — the Google copy is queued for deletion and the link cleared;
---   'foreign' — the stored id isn't one the app makes for this item: left as it is, never deleted;
+--   'foreign' — the stored id isn't one the app makes for this item (a day moved in Google Calendar holds
+--               `<series>_…`; an id Google picked): never deleted, but the link is cleared all the same — the
+--               Apple copy is the item's event now, and a later deletion of that Google event must not reach
+--               the item (the read-back would take it off every calendar, 155);
 --   'changed' — the row no longer holds that id with an Apple copy (another run, an edit): nothing done.
 create or replace function public.icloud_hand_over(p_user uuid, p_entity text, p_id uuid, p_event text)
 returns text
@@ -150,7 +155,16 @@ begin
   -- Only the item's own event: the id the app made from the item's own id (its uuid without dashes, or a
   -- later one of its sequence v1–v4). A Google-picked id after five unlinks stays — the owner removes it.
   v_hex := replace(p_id::text, '-', '');
-  if p_event !~ ('^' || v_hex || '(v[1-4])?$') then return 'foreign'; end if;
+  if p_event !~ ('^' || v_hex || '(v[1-4])?$') then
+    if p_entity = 'slot' then
+      update public.time_blocks set google_calendar_event_id = null
+       where id = p_id and user_id = p_user and google_calendar_event_id = p_event and icloud_area is not null;
+    else
+      update public.schedule_blocks set google_calendar_event_id = null, google_calendar_horizon = null, google_calendar_from = null
+       where id = p_id and user_id = p_user and google_calendar_event_id = p_event and icloud_area is not null;
+    end if;
+    return case when found then 'foreign' else 'changed' end;
+  end if;
   if not exists (select 1 from auth.users u where u.id = p_user) then return 'changed'; end if;
 
   if p_entity = 'slot' then

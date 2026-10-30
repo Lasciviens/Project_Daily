@@ -2023,11 +2023,15 @@ async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFr
   let partial = false
 
   const slots: string[] = []
-  for (let at = 0; ; at += MOVE_PAGE) {
+  // From today on: the days from today, plus every earlier day of a repeat that has its own slot (142) — a day moved
+  // in Google Calendar is an instance of the series, and it goes with the series when the series moves.
+  const parts = from === 'today' ? ['upcoming', 'past days of a repeat'] as const : ['all'] as const
+  for (const part of parts) for (let at = 0; ; at += MOVE_PAGE) {
     let page = db.from('time_blocks').select('id, category, source_type, task_id, google_calendar_event_id, icloud_area')
       .eq('user_id', userId).or('google_calendar_event_id.not.is.null,task_id.not.is.null,icloud_area.not.is.null')
       .order('id').range(at, at + MOVE_PAGE - 1)
-    if (from === 'today') page = page.gte('date', today)
+    if (part === 'upcoming') page = page.gte('date', today)
+    if (part === 'past days of a repeat') page = page.lt('date', today).not('schedule_block_id', 'is', null)
     const { data: rows, error } = await page
     if (error) throw new ICloudError('read', 'The slots could not be read — nothing was moved')
     const taskIds = [...new Set((rows ?? []).map(b => b.task_id).filter((id): id is string => !!id))]
@@ -2206,6 +2210,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'disconnect') {
+      // An area on Apple has its events only there: without the connection its new items would reach no calendar.
+      const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', user.id).maybeSingle()
+      if (prefsError) return answer({ error: 'The calendar settings could not be read — try again' }, 502)
+      const onAppleNow = AREA_KEYS.filter(k => onApple(readCalendarPrefs(prefsRow?.prefs).areas[k]))
+      if (onAppleNow.length) {
+        const names = onAppleNow.map(k => readCalendarPrefs(prefsRow?.prefs).areas[k].name).join(', ')
+        return answer({ error: `Move ${names} back to Google Calendar first (Settings → Calendar → Shows in) — then disconnect` }, 400)
+      }
       const { error } = await db.from('icloud_credentials').delete().eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The stored password could not be deleted — try again')
       return answer({ connected: false })

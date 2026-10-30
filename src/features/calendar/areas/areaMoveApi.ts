@@ -78,59 +78,85 @@ export interface SwitchResult {
   toApple: number
   /** Back in Google Calendar (its Apple copy removed, or about to be). */
   toGoogle: number
-  /** Google didn't take it now: it stays in Apple Calendar (switch again to retry). */
+  /** Google didn't take it now: it stays in Apple Calendar (saving it puts it in Google Calendar). */
   notOnGoogle: number
-  /** Kept a Google Calendar copy the app can't remove (an id Google picked): delete it there. */
+  /** Kept a Google Calendar copy the app didn't make: never deleted by the app, so it is in both until deleted there. */
   foreign: number
   /** Couldn't be written now: retried by the timer. */
   failed: number
   /** Still queued when this run stopped (the timer finishes it). */
   waiting: number
   partial: boolean
+  /** Why sending stopped early (the timer goes on with the rest). */
+  problem: string | null
 }
 
 /** Rounds of the drain one switch runs at most (each sends up to 25 items); the timer finishes anything left. */
 const MAX_ROUNDS = 40
 const BUSY_WAIT_MS = 3000
+const message = (err: unknown) => (err as Error)?.message ?? String(err)
 
 /**
- * Saves the settings, makes the area calendars when an area goes to Apple, then moves each switched area's items
- * and sends the queue until it is empty (or stops moving). Never leaves an item in neither calendar.
+ * Saves the settings, brings the area calendars up to date, then moves each switched area's items and sends the queue
+ * until it is empty (or stops moving). Whatever fails before the first item moved puts the settings back as they were,
+ * so an area is never left switched with nothing moved; after that, a problem stops the run and is reported (the
+ * timer goes on). Never leaves an item in neither calendar.
  */
-export async function switchAreas(next: CalendarPrefs, switches: readonly AreaSwitch[], from: MoveFrom,
-  onProgress: (p: SwitchProgress) => void): Promise<SwitchResult> {
+export async function switchAreas(previous: CalendarPrefs, next: CalendarPrefs, switches: readonly AreaSwitch[], from: MoveFrom,
+  icloudConnected: boolean, onProgress: (p: SwitchProgress) => void): Promise<SwitchResult> {
+  const toApple = switches.filter(x => x.to === 'apple')
+  const toGoogle = switches.filter(x => x.to === 'google')
   const saved = await saveCalendarPrefs(next)
   // The Google calls read this, so an area back on Google is let through at once.
   rememberCalendarPrefs(saved)
-  const result: SwitchResult = { toApple: 0, toGoogle: 0, notOnGoogle: 0, foreign: 0, failed: 0, waiting: 0, partial: false }
+  const result: SwitchResult = { toApple: 0, toGoogle: 0, notOnGoogle: 0, foreign: 0, failed: 0, waiting: 0, partial: false, problem: null }
+  const putBack = async (err: unknown): Promise<never> => {
+    try {
+      rememberCalendarPrefs(await saveCalendarPrefs(previous))
+    } catch (undoErr) {
+      logError(`Calendar: the settings could not be put back after a failed move: ${message(undoErr)}`, { action: 'calendar_switch' })
+      throw new Error(`${message(err)} — and the settings could not be put back: set "Shows in" again`, { cause: undoErr })
+    }
+    throw new Error(`${message(err)} — nothing was moved; the settings are as before`, { cause: err })
+  }
   let total = 0
   let done = 0
+  let googleIds: { area: AreaKey; slots: string[]; plans: string[] }[]
 
-  if (switches.some(s => s.to === 'apple')) {
-    // The calendars must exist before an event can go in (a missing one keeps its items waiting).
-    const setup = await setupICloudCalendars()
-    const missing = setup.areas.filter(a => a.state === 'failed' && switches.some(s => s.to === 'apple' && s.area === a.area))
-    if (missing.length) throw new Error(`Apple Calendar didn't make ${missing.map(a => a.name).join(', ')} — nothing was moved (${missing[0].detail ?? 'try again'})`)
-    for (const s of switches.filter(x => x.to === 'apple')) {
+  try {
+    // The calendars must exist before an event can go in (a missing one keeps its items waiting); names and colours
+    // edited with the switch reach Apple too. Moving back to Google never waits on iCloud.
+    if (icloudConnected) {
+      try {
+        const setup = await setupICloudCalendars()
+        const missing = setup.areas.filter(a => a.state === 'failed' && toApple.some(s => s.area === a.area))
+        if (missing.length) throw new Error(`Apple Calendar didn't make ${missing.map(a => a.name).join(', ')} (${missing[0].detail ?? 'try again'})`)
+      } catch (err) {
+        if (toApple.length) throw err
+        result.problem = `Apple Calendar not updated: ${message(err)}`
+      }
+    }
+    for (const s of toApple) {
       const queued = await moveAreaToApple(s.area, from, false)
       total += queued.slots + queued.plans
       result.partial ||= queued.partial
     }
-    onProgress({ done, total })
+    googleIds = await Promise.all(toGoogle.map(async s => ({ area: s.area, ...(await appleItemIds(s.area)) })))
+  } catch (err) {
+    return putBack(err)
   }
+  total += googleIds.reduce((sum, g) => sum + g.slots.length + g.plans.length, 0)
+  onProgress({ done, total })
 
-  for (const s of switches.filter(x => x.to === 'google')) {
-    const ids = await appleItemIds(s.area)
-    total += ids.slots.length + ids.plans.length
-    onProgress({ done, total })
-    for (const id of ids.slots) {
+  for (const g of googleIds) {
+    for (const id of g.slots) {
       const status = await linkBlockCalendarEvent(id)
       if (status === 'linked') result.toGoogle++
       else result.notOnGoogle++
       onProgress({ done: ++done, total })
     }
-    for (const id of ids.plans) {
-      await keepSeriesStart(id).catch(err => logError(`Calendar: a series' start not kept: ${(err as Error).message}`, { planId: id }))
+    for (const id of g.plans) {
+      await keepSeriesStart(id).catch(err => logError(`Calendar: a series' start not kept: ${message(err)}`, { planId: id }))
       const status = await linkScheduleSeries(id, { fromEditor: false })
       if (status === 'linked') result.toGoogle++
       else result.notOnGoogle++
@@ -141,7 +167,15 @@ export async function switchAreas(next: CalendarPrefs, switches: readonly AreaSw
   // The queue: each Apple copy written (→ Apple) or removed once its Google copy is there (← Google).
   let moved = 0
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const r = await drainICloudQueue()
+    let r: Awaited<ReturnType<typeof drainICloudQueue>>
+    try {
+      r = await drainICloudQueue()
+    } catch (err) {
+      // Nothing reached Apple yet (the password refused, iCloud down): the switch to Apple is undone, nothing moved.
+      if (toApple.length && !toGoogle.length && result.toApple === 0) return putBack(err)
+      result.problem = message(err)
+      break
+    }
     if ('busy' in r) { await new Promise(res => setTimeout(res, BUSY_WAIT_MS)); continue }
     const handled = r.put + r.moved + r.foreign + r.kept + r.removed + r.none
     result.toApple += r.put + r.moved + r.foreign
@@ -149,11 +183,11 @@ export async function switchAreas(next: CalendarPrefs, switches: readonly AreaSw
     result.failed += r.failed
     result.waiting = r.waiting
     moved += r.moved
-    if (switches.some(s => s.to === 'apple')) onProgress({ done: Math.min(total, result.toApple), total })
+    if (toApple.length) onProgress({ done: Math.min(total, done + result.toApple), total })
     if (r.waiting === 0 || handled === 0) break
   }
 
   // Google's copies of what moved go now (the server's delete queue), not on its next 20-minute run.
-  if (moved) await runGoogleTasksSync().catch(err => logError(`Calendar: Google's copies not removed yet (the timer does it): ${(err as Error).message}`, { action: 'calendar_switch' }))
+  if (moved) await runGoogleTasksSync().catch(err => logError(`Calendar: Google's copies not removed yet (the timer does it): ${message(err)}`, { action: 'calendar_switch' }))
   return result
 }

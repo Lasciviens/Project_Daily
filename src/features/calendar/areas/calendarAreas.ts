@@ -114,22 +114,26 @@ export function areaSwitches(saved: CalendarPrefs, next: CalendarPrefs): AreaSwi
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
 /** What a switch did, in one line: where the items are now, and anything the owner must know. */
-export function switchResultText(r: { toApple: number; toGoogle: number; notOnGoogle: number; foreign: number; failed: number; waiting: number; partial: boolean }): string {
+export function switchResultText(r: {
+  toApple: number; toGoogle: number; notOnGoogle: number; foreign: number; failed: number; waiting: number; partial: boolean; problem?: string | null
+}): string {
+  const them = (count: number) => (count === 1 ? 'it' : 'them')
   const parts = [
     r.toApple ? `${n(r.toApple, 'item')} in Apple Calendar` : '',
     r.toGoogle ? `${n(r.toGoogle, 'item')} back in Google Calendar` : '',
-    r.notOnGoogle ? `${n(r.notOnGoogle, 'item')} stayed in Apple Calendar (Google didn't take ${r.notOnGoogle === 1 ? 'it' : 'them'} — switch again)` : '',
-    r.foreign ? `${n(r.foreign, 'item')} also still in Google Calendar (delete ${r.foreign === 1 ? 'it' : 'them'} there)` : '',
+    r.notOnGoogle ? `${n(r.notOnGoogle, 'item')} stayed in Apple Calendar (Google didn't take ${them(r.notOnGoogle)}; saving one puts it in Google Calendar)` : '',
+    r.foreign ? `${n(r.foreign, 'item')} also still in Google Calendar (the app didn't make that copy, so it never deletes it: delete ${them(r.foreign)} there)` : '',
     r.failed ? `${n(r.failed, 'item')} not written yet (tried again within minutes)` : '',
     r.waiting && !r.failed ? `${r.waiting} still to go (within minutes)` : '',
-    r.partial ? 'more than one run reads — save again to move the rest' : '',
+    r.partial ? 'the area has more items than one move takes: the rest stay where they are' : '',
+    r.problem ? `stopped: ${r.problem} — the rest goes within minutes` : '',
   ].filter(Boolean)
   return `Calendar settings saved · ${parts.length ? parts.join(' · ') : 'nothing to move'}`
 }
 
 /** A switch result the owner must act on or wait for. */
-export const switchNeedsAttention = (r: { notOnGoogle: number; foreign: number; failed: number; partial: boolean }) =>
-  !!(r.notOnGoogle || r.foreign || r.failed || r.partial)
+export const switchNeedsAttention = (r: { notOnGoogle: number; foreign: number; failed: number; partial: boolean; problem?: string | null }) =>
+  !!(r.notOnGoogle || r.foreign || r.failed || r.partial || r.problem)
 
 export const AREA_LABEL: Record<AreaKey, string> = {
   training: 'Training', work: 'Work (with Projects)', personal: 'Personal (tasks, repeats)', media: 'Media (episodes, films)', football: 'Football',

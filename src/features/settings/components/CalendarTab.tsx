@@ -169,7 +169,7 @@ function AreasCard() {
         </>
       )}
       {switching && (
-        <AreaSwitchDialog next={readCalendarPrefs(form)} switches={switching} onClose={() => setSwitching(null)}
+        <AreaSwitchDialog previous={prefs} next={readCalendarPrefs(form)} switches={switching} icloudConnected={connected} onClose={() => setSwitching(null)}
           onDone={() => { setSwitching(null); setEdits({}) }} />
       )}
     </Card>

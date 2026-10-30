@@ -65,15 +65,22 @@ export async function appleAreaNow(table: 'time_blocks' | 'schedule_blocks', id:
   return (data as { icloud_area?: string | null } | null)?.icloud_area ?? null
 }
 
-/** Sends what waits for Apple Calendar now. False when it couldn't (not connected, another run busy, iCloud down):
- *  the timer catches it within minutes. Quiet: the caller says what the item needs. */
-export async function drainICloudNow(): Promise<boolean> {
+export interface DrainOutcome {
+  /** Another run (the timer, another tab) is sending the queue right now. */
+  busy: boolean
+  /** Why it couldn't be sent (not connected, the password refused, iCloud down); null when it was. */
+  problem: string | null
+}
+
+/** Sends what waits for Apple Calendar now; the timer catches whatever this misses within minutes. Quiet: the
+ *  caller says what the item needs. */
+export async function drainICloudNow(): Promise<DrainOutcome> {
   try {
     const r = await drainICloudQueue()
-    return !('busy' in r)
+    return { busy: 'busy' in r, problem: null }
   } catch (err) {
     logError(`Apple Calendar: the queue was not sent: ${(err as Error).message}`, { action: 'icloud_drain' })
-    return false
+    return { busy: false, problem: (err as Error).message }
   }
 }
 
