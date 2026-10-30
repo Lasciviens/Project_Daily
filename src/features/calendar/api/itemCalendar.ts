@@ -188,7 +188,8 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
         // A repeat on Calendar only: its days' Google Tasks go now its series is confirmed.
         await setRepeatDaysGoogleTasks(side.id, todayStr(), false)
         void drainTasks()
-      } else if (answer.googleSync && answer.taskId) {
+      } else if (answer.googleSync && answer.taskId && !answer.occurrence) {
+        // (One day of a repeat leaves its Google Task as it is — as on Google Calendar.)
         await updateTask(answer.taskId, { google_sync_enabled: false })
         outcome.tasks = false
         void drainTasks()
