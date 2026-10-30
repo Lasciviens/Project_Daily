@@ -61,11 +61,13 @@ eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(p
   "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
 eq(/notMade\.length \? `Not made in Apple Calendar/.test(setup) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
 const connect = fnSrc.slice(fnSrc.indexOf("if (action === 'connect')"), fnSrc.indexOf("if (action === 'disconnect')"))
-eq(/if \(!key\) return answer\(\{ error: NO_KEY \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
+eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
   'connect stores the password only sealed, and refuses without a key')
 eq(/openSecret\(row\.app_password, key, user\.id\)/.test(fnSrc) && /!isSealed\(row\.app_password\)[\s\S]{0,200}sealSecret/.test(fnSrc), true,
   'a stored password is opened with the key, and one stored before sealing is sealed on the next read')
 
+eq(/Deno\.env\.get\('ICLOUD_ENC_KEY'\)\?\.trim\(\)\s*\?\s*'ICLOUD_ENC_KEY is set, but/.test(fnSrc), true,
+  "a key that is set but unusable is named as such, not as \"not set\" (owner, 30.10.2026)")
 console.log('\n== Sealing the password ==')
 const block = between(fnSrc, '// <icloud-pure>', '// </icloud-pure>')
 const code = transform(block.replace(/^export /gm, ''), { transforms: ['typescript'] }).code

@@ -637,7 +637,12 @@ async function syncToken(c: Creds, calendar: string): Promise<string | null> {
   }
 }
 
-const NO_KEY = 'The key that seals the stored password (ICLOUD_ENC_KEY) is not set yet — see the deploy checklist'
+/** Why there is no key: not set at all, or set to something that isn't 32 bytes in base64 (both read as no key). */
+function keyProblem(): string {
+  return Deno.env.get('ICLOUD_ENC_KEY')?.trim()
+    ? 'ICLOUD_ENC_KEY is set, but it isn\'t a key the app can use — make one with "openssl rand -base64 32" and paste the whole line it prints (44 characters, ending in =) as the secret\'s value'
+    : 'The key that seals the stored password (ICLOUD_ENC_KEY) is not set yet — see the deploy checklist'
+}
 
 /** One area's calendar: the stored one gets its name and colour, else it is made at its fixed place (or found there). */
 async function placeAreaCalendar(c: Creds, home: string, stored: string | null, key: AreaKey, area: CalendarArea): Promise<{ url: string; state: 'created' | 'updated' | 'found' }> {
@@ -732,7 +737,7 @@ Deno.serve(async (req) => {
       }
       // The password is only ever stored sealed: no key, no connect.
       const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
-      if (!key) return answer({ error: NO_KEY }, 400)
+      if (!key) return answer({ error: keyProblem() }, 400)
       const creds = { email, password }
       const { principal, home } = await discover(creds)
       const { error } = await db.from('icloud_credentials').upsert({
@@ -757,7 +762,7 @@ Deno.serve(async (req) => {
     const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
     const password = await openSecret(row.app_password, key, user.id)
     if (password === null) {
-      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : NO_KEY)
+      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : keyProblem())
     }
     // A password stored before sealing is sealed now, the first time a key is there (tried again on the next call if it fails).
     if (key && !isSealed(row.app_password)) {
