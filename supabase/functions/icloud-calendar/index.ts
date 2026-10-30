@@ -1779,6 +1779,11 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (error) throw new ICloudError('store', 'An event was written, but the app could not save where')
     return (data ?? []).length > 0
   }
+  /** The area a row is linked to now (null when the row is gone). */
+  const linkedArea = async (table: 'time_blocks' | 'schedule_blocks', id: string): Promise<string | null> => {
+    const { data } = await db.from(table).select('icloud_area').eq('id', id).eq('user_id', userId).maybeSingle()
+    return data?.icloud_area ?? null
+  }
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
@@ -1806,7 +1811,8 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
       if (ev) {
         const etag = await putEvent(c, url, ev.ics, b.icloud_area === area ? b.icloud_etag : null)
         if (!(await link('time_blocks', b.id, b.icloud_area, { icloud_area: area, icloud_etag: etag }))) {
-          // Deleted or relinked while it was being written: the copy just made goes again.
+          // Deleted while it was being written: the copy just made goes again — unless another run linked this very copy.
+          if ((await linkedArea('time_blocks', b.id)) === area) return 'put'
           await removeOwnEvent(c, 'slot', b.id, area, areaCals)
           return 'removed'
         }
@@ -1840,6 +1846,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (ev) {
       const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? p.icloud_etag : null)
       if (!(await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: area, icloud_etag: etag, icloud_from: from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon }))) {
+        if ((await linkedArea('schedule_blocks', p.id)) === area) return 'put'
         await removeOwnEvent(c, 'plan', p.id, area, areaCals)
         return 'removed'
       }
@@ -2087,8 +2094,9 @@ Deno.serve(async (req) => {
       const started = Date.now()
       // One drain at a time per account: a short lease (a crashed run's lapses on its own).
       const nowIso = new Date().toISOString()
+      const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
       const { data: leased, error: leaseError } = await db.from('icloud_credentials')
-        .update({ drain_until: new Date(Date.now() + DRAIN_LEASE_MS).toISOString() })
+        .update({ drain_until: lease })
         .eq('user_id', user.id).or(`drain_until.is.null,drain_until.lt.${nowIso}`).select('user_id')
       if (leaseError) throw new ICloudError('queue', /drain_until/.test(leaseError.message) ? 'Apple Calendar events need migration 173 — it runs with the next deploy' : 'The queue could not be read')
       if (!(leased ?? []).length) return answer({ busy: true })
@@ -2129,7 +2137,8 @@ Deno.serve(async (req) => {
         // The account's "Last problem" stays setup's (a drain's problems live on their own queue rows).
         return answer({ ...counts, waiting: waiting ?? 0 })
       } finally {
-        await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', user.id)
+        // Only this run's own lease is given back (a run that outlived it never frees the next run's).
+        await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', user.id).eq('drain_until', lease)
       }
     }
 
