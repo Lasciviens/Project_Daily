@@ -108,8 +108,12 @@ const STAND_INS = `
   declare v_block uuid; v_task uuid; p public.schedule_blocks%rowtype;
   begin
     select * into p from public.schedule_blocks s where s.id = p_plan;
-    insert into public.tasks (user_id, title, due_date, due_time, schedule_block_id, occurrence_date, google_target)
-    values (coalesce(p_user, auth.uid()), p.title, p_date, p.start_time, p_plan, p_date, 'calendar') returning id into v_task;
+    -- The day's own task when it has one (156), as the real one does.
+    select t.id into v_task from public.tasks t where t.schedule_block_id = p_plan and t.occurrence_date = p_date;
+    if v_task is null then
+      insert into public.tasks (user_id, title, due_date, due_time, schedule_block_id, occurrence_date, google_target)
+      values (coalesce(p_user, auth.uid()), p.title, p_date, p.start_time, p_plan, p_date, 'calendar') returning id into v_task;
+    end if;
     insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, category, task_id, schedule_block_id, occurrence_date)
     values (coalesce(p_user, auth.uid()), p_date, p.title, p.start_time, 60, p.category, v_task, p_plan, p_date) returning id into v_block;
     return query select v_block, v_task, true;

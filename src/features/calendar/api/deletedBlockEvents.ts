@@ -32,7 +32,8 @@ export async function removeDeletedBlockEvents(snapshot: DeletedRows | null): Pr
 }
 
 /** Undo: Google keeps a deleted event under its id, so a block put back gets a new event (relinkRestoredBlockEvents). */
-export const BLOCK_EVENT_RESET: RowOverrides = { time_blocks: { google_calendar_event_id: null } }
+// Apple's link goes too (2c): a slot put back by Undo gets a fresh event, never a link to the one its delete removed.
+export const BLOCK_EVENT_RESET: RowOverrides = { time_blocks: { google_calendar_event_id: null, icloud_area: null, icloud_etag: null } }
 
 /** After Undo: the blocks that had a Google Calendar event get one again. Returns a note when one couldn't. */
 export async function relinkRestoredBlockEvents(snapshot: DeletedRows): Promise<string> {

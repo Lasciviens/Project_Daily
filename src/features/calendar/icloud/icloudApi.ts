@@ -20,6 +20,8 @@ export interface ICloudStatus {
   areas?:       Partial<Record<AreaKey, { ready: boolean }>>
   /** The stored app-specific password is sealed (AES-GCM). */
   passwordSealed?: boolean
+  /** Changes from Apple Calendar (2c), per area calendar read so far: when last read, and its last problem. */
+  readBack?: Partial<Record<AreaKey, { syncedAt: string | null; problem: string | null }>>
 }
 
 /** Create in Apple Calendar: what happened to each area's calendar. */

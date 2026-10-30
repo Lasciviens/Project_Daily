@@ -186,6 +186,8 @@ eq([F.ownEventOfHref('/123/calendars/lasci-work/ABC-owner-made.ics'), F.ownEvent
   [null, null, null, null], 'any other name (an event the owner made, a trick path, a broken escape) gives nothing')
 eq([F.titleFromSummary('✓ 🏋️ Lower B', '🏋️'), F.titleFromSummary('🏋️ Lower B', '🏋️'), F.titleFromSummary('Lower B', '🏋️'), F.titleFromSummary('Lunch\u0007\u0000 ok', '')],
   ['Lower B', 'Lower B', 'Lower B', 'Lunch ok'], "a title read back loses the done mark and the area's emoji the app put there, and control characters")
+eq([F.titleFromSummary('⚽ Derby', '🥅'), F.titleFromSummary('#1 Derby', '🥅'), F.titleFromSummary('⚽', '🥅')], ['Derby', '#1 Derby', '⚽'],
+  'an emoji from before the area\'s emoji changed comes off too (a first word of symbols only — never "#1", never the whole title)')
 const ev = (...lines) => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', ...lines, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
 const suid = `lasci-slot-${pid}@lasciviens.github.io`
 eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;TZID=Europe/Oslo:20261113T183000', 'DTEND;TZID=Europe/Oslo:20261113T200000', 'SUMMARY:⚽ Match (moved)', 'LAST-MODIFIED:20261030T150000Z'), 'slot', suid, '⚽'),
@@ -216,7 +218,7 @@ const rbArea = src.slice(src.indexOf('async function readBackArea'), src.indexOf
 eq(/return ownEventUrl\(o\.entity, o\.id, area, areaCals\) === new URL\(href, calUrl\)\.toString\(\) \? o : null/.test(rbArea)
    && /readbackChangeOf\(item\.ics, o\.entity, `lasci-\$\{o\.entity\}-\$\{o\.id\}@lasciviens\.github\.io`/.test(rbArea), true,
   "only the app's own events: the file name, the whole address the app builds itself (exact, never startsWith), and the uid inside")
-eq(/if \(!counts\.failed && todo\.length <= READBACK_MAX && newToken\)/.test(rbArea), true, 'the token moves only when every change was handled')
+eq(/if \(!counts\.failed && !stopped && todo\.length <= READBACK_MAX && newToken\)/.test(rbArea), true, 'the token moves only when every change was handled')
 eq(!/removed = /.test(rbArea.slice(rbArea.indexOf('if (!token) {'))) , true, 'reading every event (no token) never infers a deletion')
 const rbReads = [...rbArea.matchAll(/db\.from\((?:'[a-z_]+'|table)\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
 eq(rbReads.length >= 1 && rbReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `the read-back reads only the account's own rows (${rbReads.length})`)
@@ -226,6 +228,26 @@ eq(drainFn.indexOf('await readBackAccount(') > drainFn.indexOf("update({ drain_u
 const lookFn = src.slice(src.indexOf('async function readBackCalendarLook'), src.indexOf('async function readBackAccount'))
 eq(/if \(!state\?\.written_name && !state\?\.written_color\)[\s\S]{0,300}return false/.test(lookFn) && /iName !== state\.written_name/.test(lookFn), true,
   "a calendar's name comes back only when it differs from what the app last wrote (the first look is the baseline)")
+eq(/change\.foreign = !!\(mine && now && validEtag\(mine\) && mine !== now\)/.test(rbArea), true,
+  "a version the app didn't write (it knew its own) is someone else's change, even with no LAST-MODIFIED stamp")
+eq(/return look \|\| !state\?\.synced_at \|\| Date\.now\(\) - Date\.parse\(state\.synced_at\) > READBACK_FRESH_MS/.test(src) && /started = Date\.now\(\) \/\/ the send's own time budget/.test(src), true,
+  'a save skips a calendar read in the last minute, and the send gets its own time after the read-back')
+eq(/if \(action === 'status'\) \{[\s\S]{0,400}from\('icloud_sync_state'\)\.select\('area, synced_at, last_error'\)\.eq\('user_id', user\.id\)/.test(src), true,
+  'the card is told when changes were last read and any problem (never silent)')
+eq(/if \(removedOwn\.length > READBACK_MAX_REMOVED\) \{/.test(rbArea) && /const READBACK_MAX_REMOVED = 20/.test(src), true,
+  'more than 20 of the app\'s events removed at once: none is let go, the token stays and it is said')
+eq(/if \(Date\.now\(\) > deadline\) \{ stopped = true; return \}/.test(rbArea) && /!counts\.failed && !stopped &&/.test(rbArea), true,
+  'the read-back keeps to its share of the drain\'s time; past it nothing new starts and the token stays')
+const rbAccount = src.slice(src.indexOf('async function readBackAccount'), src.indexOf("type DrainCounts"))
+eq(/await Promise\.allSettled\(areas\.map/.test(rbAccount) && !/await Promise\.all\(areas/.test(rbAccount), true,
+  'every area calendar finishes before the drain goes on or gives its lease back (never work left running)')
+eq(/filter\(d => \(d\.originalDate \?\? ''\) >= today\)\.slice\(0, 31\)/.test(rbArea), true, "a series' days: only from today on, at most 31 (the database checks the same)")
+eq(/db\.rpc\('icloud_calendar_look'/.test(lookFn) && !/from\('calendar_prefs'\)\.upsert/.test(lookFn), true,
+  "a calendar renamed on the iPhone changes only its name and colour in Settings (one narrow update, never the whole document)")
+const readFile = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+eq(/BLOCK_EVENT_RESET: RowOverrides = \{ time_blocks: \{ google_calendar_event_id: null, icloud_area: null, icloud_etag: null \} \}/.test(readFile('src/features/calendar/api/deletedBlockEvents.ts'))
+   && /icloud_area: null, icloud_etag: null, icloud_horizon: null/.test(readFile('src/features/calendar/api/scheduleSeriesCalendar.ts')), true,
+  'Undo of a delete puts the item back without its old Apple link (the next read-back never takes it for deleted on the iPhone)')
 eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) throw e/.test(drainFn), true,
   "iCloud's rate limit (503) stops the run instead of hammering it")
 

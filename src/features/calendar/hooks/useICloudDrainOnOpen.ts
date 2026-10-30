@@ -4,10 +4,10 @@ import { invalidate, qk } from '../../../shared/query'
 import { anyAreaOnAppleNow, drainICloudNow } from '../areas/appleAreas'
 
 /** At most this often when the app comes back to the front (it reads iCloud each time). */
-const AGAIN_AFTER_MS = 2 * 60_000
+const AGAIN_AFTER_MS = 30_000
 
 /**
- * When the app opens or comes back to the front (at most every 2 minutes), while an area is on Apple Calendar (2b-2,
+ * When the app opens or comes back to the front (at most every 30 seconds), while an area is on Apple Calendar (2b-2,
  * 2c): changes made in Apple Calendar come back first — the day's lists and Settings → Calendar are read again when
  * they did — then what waits in the queue goes to Apple. Silent: nothing was asked for; the timer does the same every
  * few minutes anyway.
@@ -22,8 +22,11 @@ export function useICloudDrainOnOpen() {
       void anyAreaOnAppleNow().then(async on => {
         if (!on) return
         const r = await drainICloudNow({ look: true })
-        if (r.readBackApplied) void invalidate(qc, 'taskGraph')
-        if (r.calendarsRenamed) void qc.invalidateQueries({ queryKey: qk.calendarPrefs })
+        if (r.busy || r.problem) return
+        // Read again whatever this run took: the timer may have brought changes in since the screen was drawn.
+        void invalidate(qc, 'taskGraph')
+        void qc.invalidateQueries({ queryKey: qk.calendarPrefs })
+        void qc.invalidateQueries({ queryKey: qk.icloud.status() })
       })
     }
     run()

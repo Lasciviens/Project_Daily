@@ -3,7 +3,7 @@
 // (remove the fallback once 172 has been live for a while).
 import { supabase } from '../../../security/supabaseClient'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { readCalendarPrefs, type CalendarPrefs } from './calendarAreas'
+import { AREA_KEYS, readCalendarPrefs, type CalendarArea, type CalendarPrefs } from './calendarAreas'
 
 const missingTable = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /Could not find the table/i.test(e.message ?? ''))
@@ -29,4 +29,19 @@ export async function saveCalendarPrefs(prefs: CalendarPrefs): Promise<CalendarP
     throw error
   }
   return readCalendarPrefs(data?.prefs)
+}
+
+/**
+ * Saves only what the form changed — field by field, over the settings as they are now — so a calendar name or colour
+ * that came back from the iPhone (2c) or another device meanwhile is never put back to an older copy.
+ */
+export async function saveCalendarPrefsChanges(base: CalendarPrefs, next: CalendarPrefs): Promise<CalendarPrefs> {
+  const now = await fetchCalendarPrefs()
+  const areas = { ...now.areas }
+  for (const k of AREA_KEYS) {
+    const fields = Object.keys(next.areas[k]) as (keyof CalendarArea)[]
+    const changed = Object.fromEntries(fields.filter(f => next.areas[k][f] !== base.areas[k][f]).map(f => [f, next.areas[k][f]]))
+    areas[k] = { ...now.areas[k], ...changed }
+  }
+  return saveCalendarPrefs({ areas })
 }

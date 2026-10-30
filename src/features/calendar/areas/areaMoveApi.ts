@@ -13,7 +13,7 @@ import { linkBlockCalendarEvent } from '../api/linkBlockCalendarEvent'
 import { linkScheduleSeries } from '../api/scheduleSeriesCalendar'
 import { drainICloudQueue, moveAreaToApple, setupICloudCalendars } from '../icloud/icloudApi'
 import { runGoogleTasksSync } from '../../todo/api/googleTasksSync'
-import { saveCalendarPrefs } from './calendarPrefsApi'
+import { saveCalendarPrefsChanges } from './calendarPrefsApi'
 import { rememberCalendarPrefs } from './calendarPrefsMemory'
 import type { AreaKey, AreaSwitch, CalendarPrefs } from './calendarAreas'
 
@@ -106,13 +106,13 @@ export async function switchAreas(previous: CalendarPrefs, next: CalendarPrefs, 
   icloudConnected: boolean, onProgress: (p: SwitchProgress) => void): Promise<SwitchResult> {
   const toApple = switches.filter(x => x.to === 'apple')
   const toGoogle = switches.filter(x => x.to === 'google')
-  const saved = await saveCalendarPrefs(next)
+  const saved = await saveCalendarPrefsChanges(previous, next)
   // The Google calls read this, so an area back on Google is let through at once.
   rememberCalendarPrefs(saved)
   const result: SwitchResult = { toApple: 0, toGoogle: 0, notOnGoogle: 0, foreign: 0, failed: 0, waiting: 0, partial: false, problem: null }
   const putBack = async (err: unknown): Promise<never> => {
     try {
-      rememberCalendarPrefs(await saveCalendarPrefs(previous))
+      rememberCalendarPrefs(await saveCalendarPrefsChanges(next, previous))
     } catch (undoErr) {
       logError(`Calendar: the settings could not be put back after a failed move: ${message(undoErr)}`, { action: 'calendar_switch' })
       throw new Error(`${message(err)} — and the settings could not be put back: set "Shows in" again`, { cause: undoErr })
