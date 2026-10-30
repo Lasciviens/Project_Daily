@@ -111,31 +111,66 @@ catch { eq(false, true, "the function's copy of the event rules is current — r
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const { transform } = require('sucrase')
 const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
-const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl }`)()
+const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple }`)()
 const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
 const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
 eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
 eq([F.ownEventUrl('slot', '../../work/x', 'work', cals), F.ownEventUrl('slot', id, '../work', cals), F.ownEventUrl('slot', id, 'personal', cals), F.ownEventUrl('plan', id, 'media', cals)],
   [null, null, null, null], 'never from a stored address: a forged id or area, an area with no calendar, or one outside iCloud gives no address at all')
-const drainOne = src.slice(src.indexOf('async function drainOne'), src.indexOf('function osloTomorrow'))
-const drain = src.slice(src.indexOf("if (action === 'drain')"), src.indexOf("if (action === 'remove')"))
+const drainOne = src.slice(src.indexOf('async function drainOne'), src.indexOf('async function openCreds'))
+const drain = src.slice(src.indexOf('async function drainAccount'), src.indexOf('const MOVE_PAGE'))
 eq(!/icloud_href|\.href\b/.test(drainOne) && /ownEventUrl\(/.test(drainOne), true, 'the drain stores and trusts only the area key, never an address')
-eq((drainOne.match(/if \(wanted && conf\.enabled && conf\.app === 'apple'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
+eq((drainOne.match(/if \(step === 'put'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
   'an event is put only when the item wants a calendar and its area is on and on Apple; a missing area calendar keeps the row waiting (never a silent skip)')
 eq(/wantsCalendar\(t \? t\.google_target : null,/.test(drainOne), true, 'a slot with no task is on a calendar only where it is now (never put there by default)')
 eq(/function removeOwnEvent[\s\S]{0,400}if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/.test(src), true, 'a link is never cleared without a real DELETE')
 eq((drainOne.match(/const etag = await putEvent\([^\n]*\n\s*if \(!\(await link\([^\n]*\n[\s\S]{0,500}?\}\n\s*await removeOld\(/g) || []).length, 2,
   'the new copy first, linked only while the row still is what was read, then the old copies go')
 eq(/'If-Match': etag/.test(src) && /r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write sends the version the app last wrote: a change made on the iPhone is never written over')
-const drainAction = src.slice(src.indexOf("if (action === 'drain')"), src.indexOf("if (action === 'remove')"))
-eq(/\.or\(`drain_until\.is\.null,drain_until\.lt\.\$\{nowIso\}`\)/.test(drainAction) && /finally \{\n[^\n]*\n\s*await db\.from\('icloud_credentials'\)\.update\(\{ drain_until: null \}\)\.eq\('user_id', user\.id\)\.eq\('drain_until', lease\)/.test(drainAction), true, 'one drain at a time per account (a lease; only its own is given back)')
+const drainAction = drain
+eq(/\.or\(`drain_until\.is\.null,drain_until\.lt\.\$\{nowIso\}`\)/.test(drainAction) && /finally \{\n[^\n]*\n\s*await db\.from\('icloud_credentials'\)\.update\(\{ drain_until: null \}\)\.eq\('user_id', userId\)\.eq\('drain_until', lease\)/.test(drainAction), true, 'one drain at a time per account (a lease; only its own is given back)')
 eq(/if \(prefsError\) throw new ICloudError\('prefs'/.test(drainAction) && !/last_error: null/.test(drainAction), true, "settings that can't be read are never guessed; a drain never wipes the account's last problem")
 eq(/lt\('icloud_horizon', addDaysIso\(today, SERIES_TOPUP_DAYS\)\)/.test(drainAction), true, "a monthly series' date list is renewed before it runs out (90 days)")
 const reads = [...drainOne.matchAll(/db\.from\((?:'[a-z_]+'|table)\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0])
 eq(reads.length >= 4 && reads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `every read and write of the live rows is the caller's own (${reads.length})`)
-eq(/\.delete\(\)\.eq\('id', q\.id\)\.eq\('user_id', user\.id\)\.eq\('requested_at', q\.requested_at\)/.test(drain), true, 'a queue row goes only while requested_at is what was read (a newer change waits)')
+eq(/\.delete\(\)\.eq\('id', q\.id\)\.eq\('user_id', userId\)\.eq\('requested_at', q\.requested_at\)/.test(drain), true, 'a queue row goes only while requested_at is what was read (a newer change waits)')
 eq(!/console\.(log|error|warn)\([^)]*(title|summary|notes|ics)/i.test(src), true, 'no title, note or event text is ever logged')
 eq(!/'PROPPATCH'|'MKCALENDAR'/.test(drainOne), true, 'the drain never makes or changes a calendar')
+
+
+console.log('\n== The switch per area (2b-2, migration 175) ==')
+const step = (wanted, apple, inApple, googleCopy, waitsForGoogleTask) => F.drainStep({ wanted, apple, inApple, googleCopy, waitsForGoogleTask })
+eq([step(true, true, false, true, false), step(true, true, true, false, false)], ['put', 'put'], 'an item that wants a calendar in an area on Apple is put there')
+eq([step(true, false, true, false, false), step(true, false, true, true, false)], ['keep', 'remove'],
+  'back on Google: the Apple copy stays until the Google copy exists, then goes (the new copy first)')
+eq([step(false, true, true, false, true), step(false, true, true, false, false), step(false, false, false, false, false)], ['keep', 'remove', 'none'],
+  'moved to Google Tasks: the Apple copy waits for the Google Task; off every calendar it goes; nothing in Apple, nothing to do')
+eq([F.onApple({ enabled: true, app: 'apple' }), F.onApple({ enabled: false, app: 'apple' }), F.onApple({ enabled: true, app: 'google' })], [true, false, false],
+  'an area writes to Apple only when it is switched to Apple and in use')
+eq([F.validEtag('"abc-1"'), F.validEtag('W/"x"'), F.validEtag('"a"\r\nX-Evil: 1'), F.validEtag('abc'), F.validEtag('""'), F.validEtag(null)],
+  ['"abc-1"', 'W/"x"', null, null, null, null], 'a stored version goes into If-Match only as one quoted value (never a header break)')
+eq(/validEtag\(b\.icloud_etag\)/.test(drainOne) && /validEtag\(p\.icloud_etag\)/.test(drainOne), true, 'the drain sends a stored version only through that check')
+eq((drainOne.match(/await removeOld\('(slot|plan)', [bp]\.id, area, [bp]\.icloud_area, q\.area\)\n\s*return handOver\('(slot|plan)', [bp]\.id, [bp]\.google_calendar_event_id\)/g) || []).length, 2,
+  'the Google Calendar copy is handed over only after the Apple copy is in and linked')
+eq(/db\.rpc\('icloud_hand_over', \{ p_user: userId, p_entity: entity, p_id: id, p_event: eventId \}\)/.test(drainOne), true,
+  "the hand-over is the database's (it deletes only an id the app made for that item, 175)")
+eq((drainOne.match(/if \(step === 'keep'\) \{\n\s*await removeOld\('(slot|plan)', [bp]\.id, [bp]\.icloud_area, q\.area\)\n\s*return 'kept'/g) || []).length, 2,
+  'a kept item keeps its linked Apple copy (only an unlinked one left by an Undo goes)')
+const handler = src.slice(src.indexOf('Deno.serve('))
+eq(/const syncHeader = req\.headers\.get\('x-sync-secret'\)\n\s*if \(syncHeader !== null\) \{\n\s*const syncSecret = Deno\.env\.get\('ICLOUD_SYNC_SECRET'\)\n\s*if \(!syncSecret \|\| !\(await sameSecret\(syncHeader, syncSecret\)\)\) return answer\(\{ error: 'forbidden' \}, 401\)/.test(handler)
+   && handler.indexOf("req.headers.get('x-sync-secret')") < handler.indexOf("req.headers.get('authorization')"), true,
+  'the timer is let in only with the sync secret (constant time; none set: refused) — every other call needs a signed-in app user')
+const everyAccount = src.slice(src.indexOf('async function drainEveryAccount'), src.indexOf('async function sameSecret'))
+eq(/if \(!\(await isAppUser\(r\.user_id\)\)\) continue/.test(everyAccount) && /const total: Record<string, number>/.test(everyAccount) && /\n  return total\n\}/.test(everyAccount), true,
+  'the timer drains only accounts the app serves, and answers counts only')
+eq(/\[functions\.icloud-calendar\]\nverify_jwt = false/.test(fs.readFileSync(path.join(__dirname, '../supabase/config.toml'), 'utf8')), true,
+  'config.toml lets the timer reach the function (the check is in its code)')
+const move = src.slice(src.indexOf("if (action === 'move')"), src.indexOf("if (!row || !row.app_password)"))
+const moveFn = src.slice(src.indexOf('async function queueAreaMove'), src.indexOf('async function drainEveryAccount'))
+eq(/!\(AREA_KEYS as readonly string\[\]\)\.includes\(areaKey\) \|\| !\(MOVE_FROM as readonly string\[\]\)\.includes\(from\)/.test(move), true, 'a move names one of the five areas and a known start, nothing else')
+eq(/if \(!dryRun && !onApple\(/.test(moveFn), true, "an area's items are queued only once it is switched to Apple (the preview only counts)")
+const moveReads = [...moveFn.matchAll(/db\.from\('[a-z_]+'\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
+eq(moveReads.length >= 4 && moveReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `a move reads only the caller's own rows (${moveReads.length})`)
 
 console.log(`\nverify-icloud-events: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

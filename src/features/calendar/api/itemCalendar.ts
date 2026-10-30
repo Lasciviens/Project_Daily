@@ -18,6 +18,8 @@ import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
 import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, syncScheduleSeriesAfterSave, takeSkippedDayOffCalendar,
 } from './scheduleSeriesCalendar'
+import { anyAreaOnAppleNow, appleAreaNow, appleAreaOf, drainICloudNow, drainICloudSoon, slotAreaInput } from '../areas/appleAreas'
+import type { AreaKey } from '../areas/calendarAreas'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  One item on Google (migration 155) — what the browser does after the
@@ -47,6 +49,13 @@ import {
 //  the outbox), both, or neither. Moving between them is the same rule: the
 //  new copy first — the series confirmed 'linked', or today's day task's
 //  Google Task id there — then the old one goes.
+//
+//  An item whose area is on Apple Calendar (2b-2) gets no Google Calendar
+//  event: the save queued it (173–175's triggers) and the server writes its
+//  Apple event — sent here at once, confirmed by the row's icloud_area. The
+//  same rule holds: Google Tasks goes only once the Apple copy is there, and
+//  the server keeps an Apple copy until its Google Task exists (the Google
+//  Tasks outbox is drained first).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const message = (err: unknown) => (err as Error)?.message ?? String(err)
@@ -101,8 +110,9 @@ export async function pushBlockCalendarEvent(blockId: string, fields: EventPushF
 
 /** A task ticked done or reopened: its slot's event gains or loses "✓ " —
  *  the title ONLY. In the background (the calendar outbox's upsert is the
- *  safety net). */
+ *  safety net; an Apple Calendar event follows through its queue). */
 export function refreshTaskEventSoon(taskId: string): void {
+  drainICloudSoon()
   if (!connected()) return
   void (async () => {
     const block = await fetchTimeBlockByTaskId(taskId)
@@ -145,9 +155,65 @@ export interface ItemGoogleOutcome {
   tasks: boolean
 }
 
+/** The area whose Apple calendar a saved item belongs in (null: Google Calendar), and its row there. */
+async function appleSideOf(answer: SaveItemAnswer): Promise<{ area: AreaKey; table: 'time_blocks' | 'schedule_blocks'; id: string } | null> {
+  if (!(await anyAreaOnAppleNow())) return null
+  if (answer.scheduleBlockId && !answer.occurrence) {
+    const row = await fetchScheduleBlock(answer.scheduleBlockId)
+    const area = await appleAreaOf({ category: row.category, domain: row.domain })
+    return area ? { area, table: 'schedule_blocks', id: row.id } : null
+  }
+  if (!answer.blockId) return null
+  const block = await fetchTimeBlockWithTask(answer.blockId)
+  const area = block ? await appleAreaOf(slotAreaInput(block)) : null
+  return area && block ? { area, table: 'time_blocks', id: block.id } : null
+}
+
+/**
+ * An item in an area on Apple Calendar, after its save: the queue goes to Apple now (Google Tasks first, so a
+ * move to Tasks finds its Google Task), then the item's row says where its Apple copy is. A confirmed copy lets
+ * the old Google Task go, exactly like a confirmed Google Calendar event.
+ */
+async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, side: { area: AreaKey; table: 'time_blocks' | 'schedule_blocks'; id: string }): Promise<ItemGoogleOutcome> {
+  const wantsCal = google === 'calendar' || google === 'both'
+  const wantsTasks = google === 'tasks' || google === 'both'
+  const outcome: ItemGoogleOutcome = { calendar: wantsCal ? 'unknown' : 'off', tasks: answer.googleSync }
+  if (answer.googleSync || wantsTasks) await drainTasks()
+  await drainICloudNow()
+  const now = await appleAreaNow(side.table, side.id)
+  if (wantsCal) {
+    outcome.calendar = now === side.area ? 'linked' : 'unknown'
+    if (outcome.calendar === 'linked' && google === 'calendar') {
+      if (side.table === 'schedule_blocks') {
+        // A repeat on Calendar only: its days' Google Tasks go now its series is confirmed.
+        await setRepeatDaysGoogleTasks(side.id, todayStr(), false)
+        void drainTasks()
+      } else if (answer.googleSync && answer.taskId) {
+        await updateTask(answer.taskId, { google_sync_enabled: false })
+        outcome.tasks = false
+        void drainTasks()
+      }
+    } else if (outcome.calendar === 'unknown' && google === 'calendar' && answer.googleSync) {
+      toast.warning('Apple Calendar hasn\'t confirmed the event yet, so the Google Task stays for now — save the item again to finish the move.')
+    }
+    return outcome
+  }
+  if (now) {
+    // The server keeps the Apple copy until the Google Task is there; it goes on its own once it is.
+    outcome.calendar = 'unknown'
+    if (wantsTasks) toast.warning('Google Tasks hasn\'t confirmed its copy yet, so the Apple Calendar event stays until it has.')
+    return outcome
+  }
+  if (answer.blockToDrop && answer.blockToDrop === answer.blockId) {
+    await dropItemBlock(answer.blockToDrop).catch(err => logError(`Item: a presence slot not dropped: ${message(err)}`, { blockId: answer.blockToDrop }))
+  }
+  return outcome
+}
+
 /**
  * After app_save_item: the item's Google Calendar side follows its Google
- * choice (Google Tasks follows through the outbox the database filled).
+ * choice (Google Tasks follows through the outbox the database filled) — or,
+ * in an area on Apple Calendar, its Apple side (settleItemApple).
  * Never throws; a failure is said once and logged.
  */
 export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTarget): Promise<ItemGoogleOutcome> {
@@ -161,6 +227,10 @@ export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTar
       await ensureLinkedCalendarEventRemoved(answer.replacedEventId).catch(err =>
         logError(`Calendar: a replaced item's event not removed yet (the calendar outbox retries): ${message(err)}`, { eventId: answer.replacedEventId }))
     }
+    const apple = await appleSideOf(answer)
+    if (apple) return await settleItemApple(answer, google, apple)
+    // A replaced row may have had an Apple copy (its delete queued it): sent soon, quietly.
+    drainICloudSoon()
     if (!connected()) return outcome
 
     // A repeating item's rule: its ONE series (calendarSeries.ts), and its
@@ -254,6 +324,8 @@ export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTar
  * back as it was. Runs in the background — a tick never waits for Google.
  */
 export function settleRepeatDayGoogle(answer: RepeatDayAnswer): void {
+  // A repeat in Apple Calendar: the day's change (its EXDATE, its own event) follows through the queue.
+  drainICloudSoon()
   if (!connected()) return
   const planId = answer.scheduleBlockId
   void (async () => {

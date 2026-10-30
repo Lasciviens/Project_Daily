@@ -72,6 +72,9 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
   return { areas }
 }
 
+/** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */
+export const onApple = (area: Pick<CalendarArea, 'enabled' | 'app'>) => area.enabled && area.app === 'apple'
+
 /** Where an area's calendar lives under the calendar home: fixed per area, so a rename never makes a second calendar. */
 export const areaSlug = (key: AreaKey) => `lasci-${key}/`
 
@@ -97,6 +100,36 @@ export function alertLabel(minutes: number | null): string {
   const parts = [days ? `${days} day${days === 1 ? '' : 's'}` : '', hours ? `${hours} h` : '', mins ? `${mins} min` : ''].filter(Boolean)
   return `${parts.join(' ')} before`
 }
+
+/** An area whose calendar app the form changes (2b-2): its events move to Apple Calendar, or back to Google. */
+export interface AreaSwitch { area: AreaKey; to: 'apple' | 'google' }
+
+/** The areas whose events change app between the saved settings and the form — an area switched on or off counts
+ *  too (an area not in use stays on Google). */
+export function areaSwitches(saved: CalendarPrefs, next: CalendarPrefs): AreaSwitch[] {
+  return AREA_KEYS.filter(k => onApple(saved.areas[k]) !== onApple(next.areas[k]))
+    .map(k => ({ area: k, to: onApple(next.areas[k]) ? 'apple' as const : 'google' as const }))
+}
+
+const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
+/** What a switch did, in one line: where the items are now, and anything the owner must know. */
+export function switchResultText(r: { toApple: number; toGoogle: number; notOnGoogle: number; foreign: number; failed: number; waiting: number; partial: boolean }): string {
+  const parts = [
+    r.toApple ? `${n(r.toApple, 'item')} in Apple Calendar` : '',
+    r.toGoogle ? `${n(r.toGoogle, 'item')} back in Google Calendar` : '',
+    r.notOnGoogle ? `${n(r.notOnGoogle, 'item')} stayed in Apple Calendar (Google didn't take ${r.notOnGoogle === 1 ? 'it' : 'them'} — switch again)` : '',
+    r.foreign ? `${n(r.foreign, 'item')} also still in Google Calendar (delete ${r.foreign === 1 ? 'it' : 'them'} there)` : '',
+    r.failed ? `${n(r.failed, 'item')} not written yet (tried again within minutes)` : '',
+    r.waiting && !r.failed ? `${r.waiting} still to go (within minutes)` : '',
+    r.partial ? 'more than one run reads — save again to move the rest' : '',
+  ].filter(Boolean)
+  return `Calendar settings saved · ${parts.length ? parts.join(' · ') : 'nothing to move'}`
+}
+
+/** A switch result the owner must act on or wait for. */
+export const switchNeedsAttention = (r: { notOnGoogle: number; foreign: number; failed: number; partial: boolean }) =>
+  !!(r.notOnGoogle || r.foreign || r.failed || r.partial)
 
 export const AREA_LABEL: Record<AreaKey, string> = {
   training: 'Training', work: 'Work (with Projects)', personal: 'Personal (tasks, repeats)', media: 'Media (episodes, films)', football: 'Football',

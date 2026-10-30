@@ -7,9 +7,12 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.1
 // what changed since (the iPhone → app direction), remove the test calendar.
 // Everything about iCloud: docs/integrations/icloud-caldav.md.
 //
-// Browser caller: getUser + this function's own isAppUser. The password lives
-// only in icloud_credentials (171, service role); it is sent only to iCloud's
-// own hosts and never logged or returned.
+// Callers: the browser (getUser + this function's own isAppUser), or the
+// timer (175: pg_cron with x-sync-secret = ICLOUD_SYNC_SECRET, compared in
+// constant time — it drains each account the app serves; supabase/config.toml
+// turns platform JWT checks off for it). The password lives only in
+// icloud_credentials (171, service role); it is sent only to iCloud's own
+// hosts and never logged or returned.
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -999,6 +1002,7 @@ function wantsCalendar(target: string | null | undefined, onACalendar: boolean):
  *  (a lone CR could end a line for some parsers — security review, 30.10.2026). */
 function icsEscape(t: string): string {
   return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n')
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point: they are dropped
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
 }
 
@@ -1086,6 +1090,7 @@ function eventObject(p: EventParts): string {
     'END:VCALENDAR',
   ]
   // The last guard: no line may carry a control character (a property smuggled in through any field).
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point: such a line is refused
   if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F]/.test(l))) throw new Error('An event line holds a control character — not written')
   return lines.map(foldLine).join('\r\n') + '\r\n'
 }
@@ -1501,6 +1506,9 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
   return { areas }
 }
 
+/** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */
+export const onApple = (area: Pick<CalendarArea, 'enabled' | 'app'>) => area.enabled && area.app === 'apple'
+
 /** Where an area's calendar lives under the calendar home: fixed per area, so a rename never makes a second calendar. */
 export const areaSlug = (key: AreaKey) => `lasci-${key}/`
 
@@ -1557,6 +1565,32 @@ export function ownEventUrl(entity: 'slot' | 'plan', id: string, area: string | 
   if (!cal || !isICloudUrl(cal) || !/^[0-9a-f-]{36}$/i.test(id)) return null
   return new URL(eventFileName(`lasci-${entity}-${id}@lasciviens.github.io`), cal).toString()
 }
+
+/** iCloud's version tag as it may go back in If-Match: one quoted value of printable characters, nothing more. */
+export function validEtag(etag: string | null | undefined): string | null {
+  return typeof etag === 'string' && /^(W\/)?"[\x21\x23-\x7E]{1,200}"$/.test(etag) ? etag : null
+}
+
+export type DrainStep = 'put' | 'keep' | 'remove' | 'none'
+
+/**
+ * What the drain does with one item — the owner's rule both ways: the new copy first, then the old one goes.
+ *   put    — it wants a calendar and its area is on Apple: its Apple copy is written, then its Google copy goes;
+ *   keep   — its Apple copy stays until the new copy exists: the Google Calendar copy (its area is back on
+ *            Google) or its Google Task (moved to Google Tasks); that copy appearing queues the item again;
+ *   remove — its Apple copy goes;
+ *   none   — it has no Apple copy and wants none.
+ */
+export function drainStep(x: { wanted: boolean; apple: boolean; inApple: boolean; googleCopy: boolean; waitsForGoogleTask: boolean }): DrainStep {
+  if (x.wanted && x.apple) return 'put'
+  if (!x.inApple) return 'none'
+  if (x.wanted) return x.googleCopy ? 'remove' : 'keep'
+  return x.waitsForGoogleTask ? 'keep' : 'remove'
+}
+
+/** Where an item is moved from: today on (the default), or every day it has. */
+export const MOVE_FROM = ['today', 'all'] as const
+export type MoveFrom = typeof MOVE_FROM[number]
 
 // </icloud-pure>
 
@@ -1761,12 +1795,14 @@ async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan', id: string, are
   if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when an event was removed`)
 }
 
+type DrainResult = 'put' | 'moved' | 'foreign' | 'kept' | 'removed' | 'none'
+
 /**
- * One queued slot or plan, read live: when it wants a calendar and its area is on Apple, its event is put
- * (the new copy first, then the old one in another area's calendar goes); otherwise its event is removed.
- * Returns what happened, for the count.
+ * One queued slot or plan, read live, through drainStep: its Apple copy is put (the new copy first, then an old
+ * one in another area's calendar goes, then its Google Calendar copy is handed to Google's delete queue), kept
+ * while the copy that replaces it doesn't exist yet, or removed. Returns what happened, for the count.
  */
-async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>, today: string): Promise<'put' | 'removed' | 'none'> {
+async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>, today: string): Promise<DrainResult> {
   // Old copies to take away after the new one is in: the row's own, and the queue's (an Undo can bring a row back unlinked).
   const removeOld = async (entity: 'slot' | 'plan', id: string, keep: string | null, ...olds: (string | null)[]) => {
     for (const old of new Set(olds.filter((a): a is string => !!a && a !== keep))) await removeOwnEvent(c, entity, id, old, areaCals)
@@ -1784,6 +1820,16 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     const { data } = await db.from(table).select('icloud_area').eq('id', id).eq('user_id', userId).maybeSingle()
     return data?.icloud_area ?? null
   }
+  /** The Apple copy is in: its Google Calendar copy goes to Google's delete queue (175) — only an id the app made for this item. */
+  const handOver = async (entity: 'slot' | 'plan', id: string, eventId: string | null): Promise<DrainResult> => {
+    if (!eventId) return 'put'
+    const { data, error } = await db.rpc('icloud_hand_over', { p_user: userId, p_entity: entity, p_id: id, p_event: eventId })
+    if (error) {
+      throw new ICloudError('store', /icloud_hand_over/.test(error.message) ? 'Moving from Google Calendar needs migration 175 — it runs with the next deploy'
+        : 'In Apple Calendar now, but its Google Calendar copy could not be queued for removal — it is tried again')
+    }
+    return data === 'handed' ? 'moved' : data === 'foreign' ? 'foreign' : 'put'
+  }
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
@@ -1794,9 +1840,14 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
       await removeOld('slot', q.entity_id, null, q.area)
       return q.area ? 'removed' : 'none'
     }
-    let t: { status: string; description: string | null; google_target: string | null; domain: string | null; source_type: string | null; project_id: string | null; hevy_routine_id: string | null } | null = null
+    let t: {
+      status: string; description: string | null; google_target: string | null; domain: string | null; source_type: string | null
+      project_id: string | null; hevy_routine_id: string | null; google_sync_enabled: boolean | null; google_task_id: string | null
+    } | null = null
     if (b.task_id) {
-      const { data, error: te } = await db.from('tasks').select('status, description, google_target, domain, source_type, project_id, hevy_routine_id').eq('id', b.task_id).eq('user_id', userId).maybeSingle()
+      const { data, error: te } = await db.from('tasks')
+        .select('status, description, google_target, domain, source_type, project_id, hevy_routine_id, google_sync_enabled, google_task_id')
+        .eq('id', b.task_id).eq('user_id', userId).maybeSingle()
       if (te) throw new ICloudError('read', 'A slot\'s task could not be read')
       t = data
     }
@@ -1804,21 +1855,29 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     const conf = prefs.areas[area]
     // A slot with no task is on a calendar only where it is now (itemRules.presentGoogleTarget).
     const wanted = wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))
-    if (wanted && conf.enabled && conf.app === 'apple') {
+    const step = drainStep({
+      wanted, apple: onApple(conf), inApple: !!b.icloud_area, googleCopy: !!b.google_calendar_event_id,
+      waitsForGoogleTask: !!t?.google_sync_enabled && !t.google_task_id,
+    })
+    if (step === 'put') {
       const url = ownEventUrl('slot', b.id, area, areaCals)
       if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
       const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, timeZone: SERVER_EVENT_TIME_ZONE, appUrl: APP_URL, now: new Date() })
       if (ev) {
-        const etag = await putEvent(c, url, ev.ics, b.icloud_area === area ? b.icloud_etag : null)
-        if (!(await link('time_blocks', b.id, b.icloud_area, { icloud_area: area, icloud_etag: etag }))) {
+        const etag = await putEvent(c, url, ev.ics, b.icloud_area === area ? validEtag(b.icloud_etag) : null)
+        if (!(await link('time_blocks', b.id, b.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag) }))) {
           // Deleted while it was being written: the copy just made goes again — unless another run linked this very copy.
           if ((await linkedArea('time_blocks', b.id)) === area) return 'put'
           await removeOwnEvent(c, 'slot', b.id, area, areaCals)
           return 'removed'
         }
         await removeOld('slot', b.id, area, b.icloud_area, q.area)
-        return 'put'
+        return handOver('slot', b.id, b.google_calendar_event_id)
       }
+    }
+    if (step === 'keep') {
+      await removeOld('slot', b.id, b.icloud_area, q.area)
+      return 'kept'
     }
     if (!b.icloud_area && !q.area) return 'none'
     await removeOld('slot', b.id, null, b.icloud_area, q.area)
@@ -1837,27 +1896,216 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   const area = itemArea({ category: p.category, domain: p.domain })
   const conf = prefs.areas[area]
   const wanted = wantsCalendar(p.google_target, !!(p.google_calendar_event_id || p.icloud_area))
-  if (wanted && conf.enabled && conf.app === 'apple') {
+  // A repeat moved to Google Tasks keeps its Apple series until today's day task is a Google Task (156: one per day).
+  let waitsForGoogleTask = false
+  if (!wanted && p.icloud_area) {
+    const { data: day, error: de } = await db.from('tasks').select('google_sync_enabled, google_task_id')
+      .eq('user_id', userId).eq('schedule_block_id', p.id).eq('occurrence_date', today).maybeSingle()
+    if (de) throw new ICloudError('read', 'A repeat\'s day could not be read')
+    waitsForGoogleTask = !!day?.google_sync_enabled && !day.google_task_id
+  }
+  const step = drainStep({ wanted, apple: onApple(conf), inApple: !!p.icloud_area, googleCopy: !!p.google_calendar_event_id, waitsForGoogleTask })
+  if (step === 'put') {
     const url = ownEventUrl('plan', p.id, area, areaCals)
     if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
     // A series that was on Google keeps its start (its past days stay on the calendar).
     const from = p.icloud_from ?? p.google_calendar_from ?? null
     const ev = planEvent({ ...p, icloud_from: from }, { area: conf, today, timeZone: seriesTimeZone(p.google_calendar_time_zone), appUrl: APP_URL, now: new Date() })
     if (ev) {
-      const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? p.icloud_etag : null)
-      if (!(await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: area, icloud_etag: etag, icloud_from: from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon }))) {
+      const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? validEtag(p.icloud_etag) : null)
+      if (!(await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag), icloud_from: from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon }))) {
         if ((await linkedArea('schedule_blocks', p.id)) === area) return 'put'
         await removeOwnEvent(c, 'plan', p.id, area, areaCals)
         return 'removed'
       }
       await removeOld('plan', p.id, area, p.icloud_area, q.area)
-      return 'put'
+      return handOver('plan', p.id, p.google_calendar_event_id)
     }
+  }
+  if (step === 'keep') {
+    await removeOld('plan', p.id, p.icloud_area, q.area)
+    return 'kept'
   }
   if (!p.icloud_area && !q.area) return 'none'
   await removeOld('plan', p.id, null, p.icloud_area, q.area)
   if (p.icloud_area) await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: null, icloud_etag: null, icloud_from: null, icloud_horizon: null })
   return 'removed'
+}
+
+/** The account's Apple password, opened — and sealed now if it was stored before sealing (tried again next time if that fails). */
+async function openCreds(db: Db, userId: string, row: { apple_id: string; app_password?: string | null }): Promise<Creds> {
+  if (!row.app_password) throw new ICloudError('connect', 'Connect iCloud first')
+  const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
+  const password = await openSecret(row.app_password, key, userId)
+  if (password === null) {
+    throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : keyProblem())
+  }
+  if (key && !isSealed(row.app_password)) {
+    const { error } = await db.from('icloud_credentials').update({ app_password: await sealSecret(password, key, userId) }).eq('user_id', userId)
+    if (error) console.error('icloud-calendar: reseal')
+  }
+  return { email: row.apple_id, password }
+}
+
+type DrainCounts = Record<DrainResult | 'failed', number>
+const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0, removed: 0, none: 0, failed: 0 })
+
+/**
+ * One account's queue, oldest first, within a time budget. Each queued slot or plan is read live; a row goes only
+ * while requested_at is what was read (a newer change waits). One drain at a time per account: a short lease.
+ */
+async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>): Promise<{ busy: true } | (DrainCounts & { waiting: number })> {
+  const started = Date.now()
+  const nowIso = new Date().toISOString()
+  const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
+  const { data: leased, error: leaseError } = await db.from('icloud_credentials')
+    .update({ drain_until: lease })
+    .eq('user_id', userId).or(`drain_until.is.null,drain_until.lt.${nowIso}`).select('user_id')
+  if (leaseError) throw new ICloudError('queue', /drain_until/.test(leaseError.message) ? 'Apple Calendar events need migration 174 — it runs with the next deploy' : 'The queue could not be read')
+  if (!(leased ?? []).length) return { busy: true }
+  try {
+    // Settings that can't be read are never guessed: the defaults would read every area as Google and remove events.
+    const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', userId).maybeSingle()
+    if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was changed in Apple Calendar')
+    const prefs = readCalendarPrefs(prefsRow?.prefs)
+    const today = osloClock(new Date()).day
+    // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left (Google: needsHorizonTopUp).
+    const { data: ending } = await db.from('schedule_blocks').select('id, icloud_area')
+      .eq('user_id', userId).not('icloud_area', 'is', null).not('icloud_horizon', 'is', null)
+      .lt('icloud_horizon', addDaysIso(today, SERIES_TOPUP_DAYS))
+    if ((ending ?? []).length) {
+      await db.from('icloud_outbox').upsert((ending ?? []).map(e => ({ user_id: userId, entity: 'plan', entity_id: e.id, area: e.icloud_area })), { onConflict: 'user_id,entity,entity_id', ignoreDuplicates: true })
+    }
+    const { data: queue, error: qError } = await db.from('icloud_outbox')
+      .select('id, entity, entity_id, area, requested_at, attempts')
+      .eq('user_id', userId).lte('next_try_at', new Date().toISOString())
+      .order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
+    if (qError) throw new ICloudError('queue', 'The queue could not be read')
+    const counts = emptyCounts()
+    for (const q of (queue ?? []) as QueueRow[]) {
+      if (Date.now() - started > DRAIN_MAX_MS) break
+      try {
+        counts[await drainOne(db, creds, userId, q, prefs, areaCals, today)]++
+        await db.from('icloud_outbox').delete().eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+      } catch (e) {
+        if (e instanceof ICloudError && e.code === 'auth') throw e
+        counts.failed++
+        // An event the guard refused (a control character in a field) says so; anything else is iCloud's.
+        const why = e instanceof ICloudError ? e.message : e instanceof Error && /control character/.test(e.message) ? e.message : 'iCloud did not answer'
+        await db.from('icloud_outbox').update({ attempts: q.attempts + 1, next_try_at: retryAt(q.attempts + 1), last_error: why })
+          .eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+      }
+    }
+    const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', userId)
+    // The account's "Last problem" stays setup's (a drain's problems live on their own queue rows).
+    return { ...counts, waiting: waiting ?? 0 }
+  } finally {
+    // Only this run's own lease is given back (a run that outlived it never frees the next run's).
+    await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', userId).eq('drain_until', lease)
+  }
+}
+
+/** Rows read per page when an area moves, and at most this many in one call (the answer says when it stopped short). */
+const MOVE_PAGE = 1000
+const MOVE_MAX_ROWS = 20_000
+const QUEUE_CHUNK = 500
+
+/**
+ * The items of one area that want a calendar and aren't in its Apple calendar yet: slots (from today on, or all)
+ * and repeating plans. dryRun counts them for the preview; otherwise they are queued — the drain decides each one
+ * from the live row, so a row queued for nothing does nothing.
+ */
+async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFrom, dryRun: boolean): Promise<{ slots: number; plans: number; queued: boolean; partial: boolean }> {
+  const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', userId).maybeSingle()
+  if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was moved')
+  if (!dryRun && !onApple(readCalendarPrefs(prefsRow?.prefs).areas[area])) throw new ICloudError('prefs', 'Switch the area to Apple Calendar first (Settings → Calendar)')
+  const today = osloClock(new Date()).day
+  let partial = false
+
+  const slots: string[] = []
+  for (let at = 0; ; at += MOVE_PAGE) {
+    let page = db.from('time_blocks').select('id, category, source_type, task_id, google_calendar_event_id, icloud_area')
+      .eq('user_id', userId).or('google_calendar_event_id.not.is.null,task_id.not.is.null,icloud_area.not.is.null')
+      .order('id').range(at, at + MOVE_PAGE - 1)
+    if (from === 'today') page = page.gte('date', today)
+    const { data: rows, error } = await page
+    if (error) throw new ICloudError('read', 'The slots could not be read — nothing was moved')
+    const taskIds = [...new Set((rows ?? []).map(b => b.task_id).filter((id): id is string => !!id))]
+    const tasks = new Map<string, { google_target: string | null; domain: string | null; source_type: string | null; project_id: string | null; hevy_routine_id: string | null }>()
+    for (let i = 0; i < taskIds.length; i += 200) {
+      const { data: ts, error: te } = await db.from('tasks').select('id, google_target, domain, source_type, project_id, hevy_routine_id')
+        .eq('user_id', userId).in('id', taskIds.slice(i, i + 200))
+      if (te) throw new ICloudError('read', 'The slots\' tasks could not be read — nothing was moved')
+      for (const t of ts ?? []) tasks.set(t.id, t)
+    }
+    for (const b of rows ?? []) {
+      const t = b.task_id ? tasks.get(b.task_id) ?? null : null
+      if (b.icloud_area === area) continue
+      if (itemArea({ category: b.category, source_type: b.source_type, task_source_type: t?.source_type, domain: t?.domain, project_id: t?.project_id, hevy_routine_id: t?.hevy_routine_id }) !== area) continue
+      if (wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))) slots.push(b.id)
+    }
+    if ((rows ?? []).length < MOVE_PAGE) break
+    if (at + MOVE_PAGE >= MOVE_MAX_ROWS) { partial = true; break }
+  }
+
+  const plans: string[] = []
+  for (let at = 0; ; at += MOVE_PAGE) {
+    const { data: rows, error } = await db.from('schedule_blocks').select('id, category, domain, google_target, google_calendar_event_id, icloud_area')
+      .eq('user_id', userId).order('id').range(at, at + MOVE_PAGE - 1)
+    if (error) throw new ICloudError('read', 'The repeating plans could not be read — nothing was moved')
+    for (const p of rows ?? []) {
+      if (p.icloud_area === area || itemArea({ category: p.category, domain: p.domain }) !== area) continue
+      if (wantsCalendar(p.google_target, !!(p.google_calendar_event_id || p.icloud_area))) plans.push(p.id)
+    }
+    if ((rows ?? []).length < MOVE_PAGE) break
+    if (at + MOVE_PAGE >= MOVE_MAX_ROWS) { partial = true; break }
+  }
+
+  if (!dryRun) {
+    const now = new Date().toISOString()
+    const rows = [
+      ...slots.map(id => ({ user_id: userId, entity: 'slot', entity_id: id })),
+      ...plans.map(id => ({ user_id: userId, entity: 'plan', entity_id: id })),
+    ].map(r => ({ ...r, requested_at: now, attempts: 0, next_try_at: now, last_error: null }))
+    for (let i = 0; i < rows.length; i += QUEUE_CHUNK) {
+      const { error } = await db.from('icloud_outbox').upsert(rows.slice(i, i + QUEUE_CHUNK), { onConflict: 'user_id,entity,entity_id' })
+      if (error) throw new ICloudError('queue', i ? 'Only part of the area was queued — run the move again' : 'Nothing could be queued — try again')
+    }
+  }
+  return { slots: slots.length, plans: plans.length, queued: !dryRun, partial }
+}
+
+/** The timer (175): every connected account the app serves, one after the other. Counts only — no titles, no names. */
+async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
+  const { data: rows, error } = await db.from('icloud_credentials').select('user_id, apple_id, app_password, area_calendars')
+  if (error) throw new ICloudError('read', 'The iCloud connections could not be read')
+  const total: Record<string, number> = { accounts: 0, busy: 0, problems: 0, waiting: 0, ...emptyCounts() }
+  for (const r of rows ?? []) {
+    if (!(await isAppUser(r.user_id))) continue
+    total.accounts++
+    try {
+      const result = await drainAccount(db, r.user_id, await openCreds(db, r.user_id, r), r.area_calendars ?? {})
+      if ('busy' in result) { total.busy++; continue }
+      for (const [k, v] of Object.entries(result)) total[k] = (total[k] ?? 0) + v
+    } catch (e) {
+      total.problems++
+      const message = e instanceof ICloudError ? e.message : 'Something went wrong talking to iCloud'
+      await db.from('icloud_credentials').update({ last_error: message }).eq('user_id', r.user_id)
+      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
+    }
+  }
+  return total
+}
+
+// Constant-time secret check (security review 26.10.2026): both sides are
+// hashed to the same length first, so the answer time shows neither the
+// secret's length nor how much of it matched. Never log either value.
+async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
 }
 
 function osloTomorrow(now: Date): string {
@@ -1880,9 +2128,22 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers })
   if (req.method !== 'POST') return answer({ error: 'POST only' }, 405)
 
+  const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
+  // The timer (175): pg_cron sends the sync secret (from Vault), never a user's token. No secret set: refused.
+  const syncHeader = req.headers.get('x-sync-secret')
+  if (syncHeader !== null) {
+    const syncSecret = Deno.env.get('ICLOUD_SYNC_SECRET')
+    if (!syncSecret || !(await sameSecret(syncHeader, syncSecret))) return answer({ error: 'forbidden' }, 401)
+    try {
+      return answer(await drainEveryAccount(db))
+    } catch (e) {
+      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
+      return answer({ error: 'The timer\'s run failed' }, 502)
+    }
+  }
+
   const authHeader = req.headers.get('authorization')
   if (!authHeader) return answer({ error: 'Missing authorization' }, 401)
-  const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
   const { data: { user }, error: authError } = await db.auth.getUser(authHeader.replace('Bearer ', ''))
   if (authError || !user) return answer({ error: 'Invalid token' }, 401)
   if (!(await isAppUser(user.id))) return answer({ error: 'forbidden' }, 403)
@@ -1950,18 +2211,18 @@ Deno.serve(async (req) => {
       return answer({ connected: false })
     }
 
+    // Phase 2b-2: an area switched to Apple — its items that want a calendar are queued for Apple Calendar (the
+    // drain puts each one, then hands its Google copy over). dryRun only counts them, for the preview.
+    if (action === 'move') {
+      if (!row) return answer({ error: 'Connect iCloud first' }, 400)
+      const areaKey = String(body.area ?? '')
+      const from = String(body.from ?? 'today')
+      if (!(AREA_KEYS as readonly string[]).includes(areaKey) || !(MOVE_FROM as readonly string[]).includes(from)) return answer({ error: 'Bad request' }, 400)
+      return answer(await queueAreaMove(db, user.id, areaKey as AreaKey, from as MoveFrom, body.dryRun === true))
+    }
+
     if (!row || !row.app_password) return answer({ error: 'Connect iCloud first' }, 400)
-    const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
-    const password = await openSecret(row.app_password, key, user.id)
-    if (password === null) {
-      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : keyProblem())
-    }
-    // A password stored before sealing is sealed now, the first time a key is there (tried again on the next call if it fails).
-    if (key && !isSealed(row.app_password)) {
-      const { error } = await db.from('icloud_credentials').update({ app_password: await sealSecret(password, key, user.id) }).eq('user_id', user.id)
-      if (error) console.error(`icloud-calendar ${action}: reseal`)
-    }
-    const creds = { email: row.apple_id, password }
+    const creds = await openCreds(db, user.id, { apple_id: row.apple_id, app_password: row.app_password })
     const home = row.calendar_home_url ?? (await discover(creds)).home
 
     if (action === 'check') {
@@ -2088,59 +2349,8 @@ Deno.serve(async (req) => {
       return answer({ areas })
     }
 
-    // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on a timer (2b-2).
-    // Each queued slot or plan is read live; a row goes only while requested_at is what was read (a newer change waits).
-    if (action === 'drain') {
-      const started = Date.now()
-      // One drain at a time per account: a short lease (a crashed run's lapses on its own).
-      const nowIso = new Date().toISOString()
-      const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
-      const { data: leased, error: leaseError } = await db.from('icloud_credentials')
-        .update({ drain_until: lease })
-        .eq('user_id', user.id).or(`drain_until.is.null,drain_until.lt.${nowIso}`).select('user_id')
-      if (leaseError) throw new ICloudError('queue', /drain_until/.test(leaseError.message) ? 'Apple Calendar events need migration 173 — it runs with the next deploy' : 'The queue could not be read')
-      if (!(leased ?? []).length) return answer({ busy: true })
-      try {
-        // Settings that can't be read are never guessed: the defaults would read every area as Google and remove events.
-        const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', user.id).maybeSingle()
-        if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was changed in Apple Calendar')
-        const prefs = readCalendarPrefs(prefsRow?.prefs)
-        const today = osloClock(new Date()).day
-        // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left (Google: needsHorizonTopUp).
-        const { data: ending } = await db.from('schedule_blocks').select('id, icloud_area')
-          .eq('user_id', user.id).not('icloud_area', 'is', null).not('icloud_horizon', 'is', null)
-          .lt('icloud_horizon', addDaysIso(today, SERIES_TOPUP_DAYS))
-        if ((ending ?? []).length) {
-          await db.from('icloud_outbox').upsert((ending ?? []).map(e => ({ user_id: user.id, entity: 'plan', entity_id: e.id, area: e.icloud_area })), { onConflict: 'user_id,entity,entity_id', ignoreDuplicates: true })
-        }
-        const { data: queue, error: qError } = await db.from('icloud_outbox')
-          .select('id, entity, entity_id, area, requested_at, attempts')
-          .eq('user_id', user.id).lte('next_try_at', new Date().toISOString())
-          .order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
-        if (qError) throw new ICloudError('queue', 'The queue could not be read')
-        const counts = { put: 0, removed: 0, none: 0, failed: 0 }
-        for (const q of (queue ?? []) as QueueRow[]) {
-          if (Date.now() - started > DRAIN_MAX_MS) break
-          try {
-            counts[await drainOne(db, creds, user.id, q, prefs, row.area_calendars ?? {}, today)]++
-            await db.from('icloud_outbox').delete().eq('id', q.id).eq('user_id', user.id).eq('requested_at', q.requested_at)
-          } catch (e) {
-            if (e instanceof ICloudError && e.code === 'auth') throw e
-            counts.failed++
-            // An event the guard refused (a control character in a field) says so; anything else is iCloud's.
-            const why = e instanceof ICloudError ? e.message : e instanceof Error && /control character/.test(e.message) ? e.message : 'iCloud did not answer'
-            await db.from('icloud_outbox').update({ attempts: q.attempts + 1, next_try_at: retryAt(q.attempts + 1), last_error: why })
-              .eq('id', q.id).eq('user_id', user.id).eq('requested_at', q.requested_at)
-          }
-        }
-        const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
-        // The account's "Last problem" stays setup's (a drain's problems live on their own queue rows).
-        return answer({ ...counts, waiting: waiting ?? 0 })
-      } finally {
-        // Only this run's own lease is given back (a run that outlived it never frees the next run's).
-        await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', user.id).eq('drain_until', lease)
-      }
-    }
+    // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on the timer (175).
+    if (action === 'drain') return answer(await drainAccount(db, user.id, creds, row.area_calendars ?? {}))
 
     if (action === 'remove') {
       if (!row.test_calendar_url) return answer({ removed: null, message: 'No test calendar to remove' })

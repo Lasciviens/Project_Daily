@@ -270,7 +270,10 @@ function checkSignOut() {
   }
   try {
     const { clearAccountState } = require('../src/security/accountState')
+    const memory = require('../src/features/calendar/areas/calendarPrefsMemory')
+    memory.rememberCalendarPrefs({ areas: {} })
     void clearAccountState() // its device writes all happen before its first await
+    check('… and which areas are on Apple Calendar (the Google calls\' copy of Settings → Calendar)', memory.rememberedCalendarPrefs(1e9) === null)
     const left = Object.keys(gone).filter(k => k in store)
     check('sign-out clears the AI chat, the Calendar retry list, the IGDB review list and every Games auto-sync mark', !left.length, left.join(', '))
     const cal = JSON.parse(store['calendar-token'] ?? '{}').state ?? {}

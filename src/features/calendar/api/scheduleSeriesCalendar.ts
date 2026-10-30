@@ -21,6 +21,7 @@ import {
 } from './calendarApi'
 import { ensureLinkedCalendarEventRemoved, ensureValidCalendarToken } from './calendarTokenSync'
 import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
+import { appleAreaOf } from '../areas/appleAreas'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  A repeating plan's ONE repeating Google Calendar event (migration 147) —
@@ -189,6 +190,8 @@ export async function linkScheduleSeries(planId: string, mode: PushMode = { from
     const row = await fetchScheduleBlock(planId)
     if (!hasSeriesColumns(row)) throw new Error(SERIES_NOT_MIGRATED)
     if (row.google_calendar_event_id) return await pushSeries(row, token, mode)
+    // Its area is on Apple Calendar (2b-2): its series is the server's, there — never one on Google as well.
+    if (await appleAreaOf({ category: row.category, domain: row.domain })) return 'not_linked'
     const zone = zoneFor(row, mode)
     const plan = planFor(row, zone)
     if (!plan) {

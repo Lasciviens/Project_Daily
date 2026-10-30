@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-30 · v21.5 · Apple Calendar per area (calendar plan 2b-2): an item
+//                    whose area is on Apple in Settings → Calendar says
+//                    "Apple Calendar · busy" on its chip (Both: "Google Tasks +
+//                    Apple Calendar", no "Shows twice" — two apps; none: "Only
+//                    in this app"). Its save makes no Google Calendar event: the
+//                    server writes the Apple one (settleItemApple); Google areas
+//                    read exactly as before.
 //  2026-10-28 · v21.4 · "Edit session…" moving a training session 7 or more
 //                    days after its first day said only "Saved · <new day>",
 //                    while the database (167) had skipped it in its own week

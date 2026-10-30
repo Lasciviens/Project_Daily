@@ -1,6 +1,7 @@
 import { supabase } from '../integrations/supabase/client'
 import { useCalendarStore } from '../app/store'
 import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
+import { forgetCalendarPrefs } from '../features/calendar/areas/calendarPrefsMemory'
 
 // What signing out must leave behind (security audit 10.10.2026). Before this,
 // sign-out only ended the Supabase session: the Google token, the AI chat, the
@@ -62,6 +63,8 @@ export async function clearAccountState(): Promise<void> {
   try { localStorage.removeItem('lasci.googleTasks.warnedError') } catch { /* */ }
   // Repeating-plan Calendar pushes waiting for a retry (they name this account's plans).
   try { localStorage.removeItem(SERIES_PENDING_KEY) } catch { /* */ }
+  // Which areas are on Apple Calendar (the Google calls' copy of Settings → Calendar).
+  try { forgetCalendarPrefs() } catch { /* */ }
   // Games: the IGDB review list (this account's games) and the daily auto-sync marks.
   try { localStorage.removeItem(IGDB_BATCH_KEY) } catch { /* */ }
   try {

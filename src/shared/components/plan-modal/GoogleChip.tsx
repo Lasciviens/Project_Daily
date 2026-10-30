@@ -7,33 +7,36 @@
 //  made on its day, is a Google Task (the API can't repeat one). Both warns
 //  "Shows twice in Google Calendar". The rules are sheetRules' (googleChoices,
 //  googleTargetLabel, googleTargetProblem); a choice a rule blocks shows
-//  disabled with its reason.
+//  disabled with its reason. An item whose area is on Apple Calendar (2b-2)
+//  says "Apple Calendar" for its event — Google Tasks stays Google Tasks.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CalendarDays, Check, ChevronDown, CloudOff, Layers, ListTodo } from 'lucide-react'
 import type { GoogleTarget, ItemInput } from '../../../features/items/itemTypes'
-import { googleChoices, googleTargetLabel, googleTargetProblem } from '../../../features/items/sheetRules'
+import { googleChoices, googleTargetLabel, googleTargetProblem, type CalendarApp } from '../../../features/items/sheetRules'
 import { chipClass } from './fieldStyles'
 
 const ICON: Record<GoogleTarget, typeof CalendarDays> = { calendar: CalendarDays, tasks: ListTodo, both: Layers, none: CloudOff }
 
-export function GoogleChip({ shape, target, onPick }: {
+export function GoogleChip({ shape, target, app = 'google', onPick }: {
   shape: Pick<ItemInput, 'time' | 'durationMinutes' | 'repeat'>
   /** The target the item saves with (picked, or the default). */
   target: GoogleTarget
+  /** Where the item's calendar event lives: its area's choice in Settings → Calendar (2b-2). */
+  app?: CalendarApp
   onPick: (target: GoogleTarget) => void
 }) {
   const Icon = ICON[target]
-  const warning = googleTargetProblem({ repeat: shape.repeat, google: target })
+  const warning = googleTargetProblem({ repeat: shape.repeat, google: target }, app)
   return (
     <>
       <Menu>
-        <MenuButton className={chipClass('set')} aria-label={`Google: ${googleTargetLabel(shape, target)}`}>
-          <Icon aria-hidden />{googleTargetLabel(shape, target)}<ChevronDown className="text-fg-faint" aria-hidden />
+        <MenuButton className={chipClass('set')} aria-label={`${app === 'apple' ? 'Where it shows' : 'Google'}: ${googleTargetLabel(shape, target, app)}`}>
+          <Icon aria-hidden />{googleTargetLabel(shape, target, app)}<ChevronDown className="text-fg-faint" aria-hidden />
         </MenuButton>
         <MenuItems anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast w-[min(19rem,calc(100vw-24px))]">
-          {googleChoices(shape).map(c => {
+          {googleChoices(shape, app).map(c => {
             const ChoiceIcon = ICON[c.target]
             return (
               <MenuItem key={c.target} disabled={!!c.disabled}>

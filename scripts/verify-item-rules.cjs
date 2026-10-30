@@ -92,6 +92,8 @@ check('an old row (google_target NULL) opens with its ACTUAL presence — on Cal
 check('…on Google Tasks', R.itemFromRows(task({ google_sync_enabled: true }), null, null).google === 'tasks')
 check('…on both', R.itemFromRows(task({ google_sync_enabled: true }), blk(), null).google === 'both')
 check('…nowhere', R.itemFromRows(task(), blk({ google_calendar_event_id: null }), null).google === 'none')
+check('…on Calendar through its Apple copy too (its area on Apple, 2b-2: moved off Google)', R.itemFromRows(task(), blk({ google_calendar_event_id: null, icloud_area: 'personal' }), null).google === 'calendar'
+  && R.itemFromRows(null, null, { ...{ id: 'p0', title: 'x', days_of_week: [1], start_time: null, end_time: null, effective_from: '2026-10-18', repeat_kind: 'weekly' }, google_calendar_event_id: null, icloud_area: 'training', google_target: null }).google === 'calendar')
 check('a saved choice wins over the presence', R.itemFromRows(task({ google_target: 'tasks', google_sync_enabled: true }), blk(), null).google === 'tasks')
 check('a slot with no length → no length shown', R.itemFromRows(task(), blk({ busy: false, duration_minutes: 15, start_time: '14:00:00' }), null).durationMinutes === null)
 const pres = R.itemFromRows(task({ due_time: null }), blk({ start_time: null, busy: false }), null)
