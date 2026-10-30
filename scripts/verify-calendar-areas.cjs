@@ -73,7 +73,8 @@ eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(p
   "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
 eq(/notMade\.length \? `\$\{NOT_MADE\}: /.test(setup) && /const NOT_MADE = 'Not made in Apple Calendar'/.test(fnSrc) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
 const connect = fnSrc.slice(fnSrc.indexOf("if (action === 'connect')"), fnSrc.indexOf("if (action === 'disconnect')"))
-eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
+eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /const sealed = await sealSecret\(password, key, user\.id\)/.test(connect)
+   && (connect.match(/app_password: /g) || []).length === 2 && (connect.match(/app_password: sealed/g) || []).length === 2, true,
   'connect stores the password only sealed, and refuses without a key')
 eq(/openSecret\(row\.app_password, key, userId\)/.test(fnSrc) && /!isSealed\(row\.app_password\)[\s\S]{0,200}sealSecret/.test(fnSrc), true,
   'a stored password is opened with the key, and one stored before sealing is sealed on the next read')

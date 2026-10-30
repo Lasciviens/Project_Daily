@@ -295,6 +295,8 @@ export const qk = {
     status: () => ['icloud', 'status'] as const,
     /** Settings → Calendar's move preview (2b-2): how many items each switched area moves. */
     movePreview: (switches: string, from: string) => ['icloud', 'move-preview', switches, from] as const,
+    /** Whether this session signed in recently enough to connect (the token's sign-in time). */
+    freshSignIn: () => ['icloud', 'fresh-sign-in'] as const,
   },
   // Settings → Calendar: the app's calendars per area (calendar_prefs, 172).
   calendarPrefs: ['calendar-prefs'] as const,

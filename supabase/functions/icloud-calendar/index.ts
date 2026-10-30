@@ -1956,20 +1956,25 @@ const retryAt = (attempts: number) => new Date(Date.now() + Math.min(86_400_000,
  *  without them or removed, so the app never rewrites or removes one (security check, 30.10.2026). */
 const INVITED = 'Has invitees in Apple Calendar — the app leaves it as it is there (a change would email them); change it on the iPhone'
 
-/** Whether the event is still there; refused when it holds invitees. */
-async function refuseIfInvited(c: Creds, url: string): Promise<'there' | 'gone'> {
+/** The event as iCloud has it now, read before every write and remove (whatever the row stores — a stored version
+ *  can be missing or stale): gone, or there with its version. Refused when it holds invitees, or when iCloud
+ *  answered for another place than the one the app built. */
+async function eventNow(c: Creds, url: string): Promise<{ gone: true } | { gone: false; etag: string | null }> {
   const r = await dav(c, 'GET', url)
-  if (r.status === 404 || r.status === 410) return 'gone'
+  if (new URL(r.url).pathname !== new URL(url).pathname) throw new ICloudError('redirect', 'iCloud answered for another place — stopped')
+  if (r.status === 404 || r.status === 410) return { gone: true }
   if (r.status !== 200) throw new ICloudError('read', `iCloud answered ${r.status} when an event was checked`)
   if (/^(ATTENDEE|ORGANIZER)[;:]/im.test(r.text)) throw new ICloudError('invited', INVITED)
-  return 'there'
+  return { gone: false, etag: validEtag(r.etag) }
 }
 
 async function putEvent(c: Creds, url: string, ics: string, etag: string | null): Promise<string | null> {
-  // Only an event already there can hold invitees. One deleted in iCloud meanwhile (a calendar made anew, a removal
-  // the read-back held back) is made again: its old version would be refused for ever (412).
-  const gone = etag ? (await refuseIfInvited(c, url)) === 'gone' : false
-  const r = await dav(c, 'PUT', url, ics, etag && !gone ? { 'If-Match': etag } : gone ? { 'If-None-Match': '*' } : {})
+  // The write goes only over the version just read (or the one the app knew, when it has one: a change on the iPhone
+  // since is then refused, 412). One deleted in iCloud meanwhile (a calendar made anew, a removal the read-back held
+  // back) is made again — never over anything (If-None-Match): its old version would be refused for ever.
+  const now = await eventNow(c, url)
+  const match = now.gone ? null : etag ?? now.etag
+  const r = await dav(c, 'PUT', url, ics, now.gone ? { 'If-None-Match': '*' } : match ? { 'If-Match': match } : {})
   if (r.status === 412) throw new ICloudError('changed', 'Changed in Apple Calendar since the app wrote it — kept as it is there until changes from the iPhone come back (step 2c)')
   if (r.status !== 201 && r.status !== 204) throw new ICloudError('put', `iCloud answered ${r.status} when an event was written`)
   if (r.etag) return r.etag
@@ -1991,8 +1996,11 @@ async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan', id: string, are
   // A link is never cleared without a real DELETE: no calendar to delete from means the row waits.
   const url = ownEventUrl(entity, id, area, areaCals)
   if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
-  await refuseIfInvited(c, url)
-  const r = await dav(c, 'DELETE', url)
+  const now = await eventNow(c, url)
+  if (now.gone) return
+  // Only the version just read goes: one changed since (412) waits for the read-back.
+  const r = await dav(c, 'DELETE', url, undefined, now.etag ? { 'If-Match': now.etag } : {})
+  if (r.status === 412) throw new ICloudError('changed', 'Changed in Apple Calendar just now — removed after the change comes back')
   if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when an event was removed`)
 }
 
@@ -2042,12 +2050,13 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
       return q.area ? 'removed' : 'none'
     }
     let t: {
-      status: string; description: string | null; google_target: string | null; domain: string | null; source_type: string | null
-      project_id: string | null; hevy_routine_id: string | null; google_sync_enabled: boolean | null; google_task_id: string | null
+      status: string; closed_reason: string | null; description: string | null; google_target: string | null; domain: string | null
+      source_type: string | null; project_id: string | null; hevy_routine_id: string | null; google_sync_enabled: boolean | null
+      google_task_id: string | null
     } | null = null
     if (b.task_id) {
       const { data, error: te } = await db.from('tasks')
-        .select('status, description, google_target, domain, source_type, project_id, hevy_routine_id, google_sync_enabled, google_task_id')
+        .select('status, closed_reason, description, google_target, domain, source_type, project_id, hevy_routine_id, google_sync_enabled, google_task_id')
         .eq('id', b.task_id).eq('user_id', userId).maybeSingle()
       if (te) throw new ICloudError('read', 'A slot\'s task could not be read')
       t = data
@@ -2056,7 +2065,8 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     const conf = prefs.areas[area]
     // A slot with no task is on a calendar only where it is now (itemRules.presentGoogleTarget). A skipped day of a
     // repeat stays off it, as on Google (scheduleSeriesCalendar.linkDayEvent); Undo of the skip puts it back.
-    const skippedDay = !!b.schedule_block_id && t?.status === 'cancelled'
+    // A day marked missed (156: closed_reason 'missed') stays, as on Google.
+    const skippedDay = !!b.schedule_block_id && t?.status === 'cancelled' && !t.closed_reason
     const wanted = !skippedDay && wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))
     const step = drainStep({
       wanted, apple: onApple(conf), inApple: !!b.icloud_area, googleCopy: !!b.google_calendar_event_id,
@@ -2550,13 +2560,16 @@ function isAppsTestCalendar(r: { test_calendar_url: string | null; calendar_home
 const FRESH_SIGN_IN_MS = 10 * 60_000
 const FRESH_SIGN_IN_TEXT = 'For safety, connecting Apple Calendar needs a fresh sign-in: sign out, sign in again, then connect within 10 minutes'
 
-/** When this session signed in: the newest time in Supabase's `amr` claim (kept through token refreshes, so a
- *  refreshed stolen token still shows the old sign-in). Read only after getUser has checked the token. */
+/** When this session signed in with the password (the app's only sign-in): its entry in Supabase's `amr` claim,
+ *  kept through token refreshes, so a refreshed stolen token still shows the old sign-in. Never another method's
+ *  time — a stolen session can verify a new second factor and stamp that "now". Read only after getUser checked the token. */
 function signedInAt(jwt: string): number | null {
   try {
     const part = jwt.split('.')[1] ?? ''
     const claims = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')))
-    const times = (Array.isArray(claims.amr) ? claims.amr : []).map((m: { timestamp?: unknown }) => Number(m?.timestamp)).filter(Number.isFinite)
+    const times = (Array.isArray(claims.amr) ? claims.amr : [])
+      .filter((m: { method?: unknown }) => m?.method === 'password')
+      .map((m: { timestamp?: unknown }) => Number(m?.timestamp)).filter(Number.isFinite)
     return times.length ? Math.max(...times) * 1000 : null
   } catch {
     return null
@@ -2649,11 +2662,18 @@ Deno.serve(async (req) => {
       // How the read-back of each area calendar stands (2c): when it last read, and its last problem (no addresses).
       const { data: states } = row ? await db.from('icloud_sync_state').select('area, synced_at, last_error').eq('user_id', user.id) : { data: [] }
       const readBack = Object.fromEntries((states ?? []).map(s => [s.area, { syncedAt: s.synced_at, problem: s.last_error }]))
-      return answer({ ...status(row), readBack })
+      // Events that couldn't be sent (an item's own problem, e.g. invitees added on the iPhone): how many, and the newest reason.
+      const { data: stuck, count } = row
+        ? await db.from('icloud_outbox').select('last_error', { count: 'exact' }).eq('user_id', user.id).not('last_error', 'is', null)
+          .order('requested_at', { ascending: false }).limit(1)
+        : { data: [], count: 0 }
+      return answer({ ...status(row), readBack, notSent: count ? { count, reason: stuck?.[0]?.last_error ?? null } : null })
     }
 
     if (action === 'connect') {
-      const email = String(body.appleId ?? '').trim()
+      // renew: a new app-specific password for the Apple ID already connected (the server has it).
+      if (body.renew === true && !row) return answer({ error: 'Apple Calendar is not connected' }, 400)
+      const email = body.renew === true && row ? row.apple_id : String(body.appleId ?? '').trim()
       const password = String(body.appPassword ?? '').trim().toLowerCase()
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return answer({ error: 'Write the Apple ID email' }, 400)
       if (!isAppSpecificPassword(password)) {
@@ -2672,16 +2692,26 @@ Deno.serve(async (req) => {
       if (!key) return answer({ error: keyProblem() }, 400)
       const creds = { email, password }
       const { principal, home } = await discover(creds)
+      const sealed = await sealSecret(password, key, user.id)
+      const connectedAt = new Date().toISOString()
+      if (row) {
+        // A new password for the same Apple ID (New app password): its calendars, test calendar and read-back stay.
+        const { error } = await db.from('icloud_credentials')
+          .update({ app_password: sealed, principal_url: principal, calendar_home_url: home, last_error: null, connected_at: connectedAt })
+          .eq('user_id', user.id)
+        if (error) throw new ICloudError('store', 'The new password could not be saved')
+        return answer(status({ ...row, calendar_home_url: home, last_error: null, password_sealed: true, connected_at: connectedAt }))
+      }
       const { error } = await db.from('icloud_credentials').upsert({
-        user_id: user.id, apple_id: email, app_password: await sealSecret(password, key, user.id), principal_url: principal, calendar_home_url: home,
+        user_id: user.id, apple_id: email, app_password: sealed, principal_url: principal, calendar_home_url: home,
         // Another Apple ID's calendars are not this one's.
-        test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: new Date().toISOString(),
+        test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: connectedAt,
       }, { onConflict: 'user_id' })
       if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migrations 171 and 172 — they run with the next deploy' : 'The connection could not be saved')
       await db.from('icloud_sync_state').delete().eq('user_id', user.id)
       return answer(status({
         apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null,
-        area_calendars: {}, password_sealed: true, connected_at: new Date().toISOString(),
+        area_calendars: {}, password_sealed: true, connected_at: connectedAt,
       }))
     }
 

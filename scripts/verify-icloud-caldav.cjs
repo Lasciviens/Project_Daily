@@ -164,6 +164,23 @@ const connectBlock = src.slice(src.indexOf("if (action === 'connect')"), src.ind
 eq(/signedInAt\(authHeader\.replace\('Bearer ', ''\)\)\s*\n\s*if \(signedIn === null \|\| Date\.now\(\) - signedIn > FRESH_SIGN_IN_MS\)/.test(connectBlock)
   && connectBlock.indexOf('FRESH_SIGN_IN_MS') < connectBlock.indexOf('discover(creds)') && /const FRESH_SIGN_IN_MS = 10 \* 60_000/.test(src), true,
   'connect needs a sign-in from the last 10 minutes, checked before iCloud is called (a stolen, refreshed session can\'t)')
+{
+  // The sign-in time, run on sample tokens: only the password sign-in counts (a second factor a stolen session
+  // verifies would be stamped "now").
+  const fnText = src.match(/function signedInAt\(jwt: string\): number \| null \{[\s\S]*?\n\}\n/)?.[0] ?? ''
+  const signedInAt = new Function(`${transform(fnText, { transforms: ['typescript'] }).code}\nreturn signedInAt`)()
+  const tok = claims => `x.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`
+  const now = Math.floor(Date.now() / 1000)
+  eq([signedInAt(tok({ amr: [{ method: 'password', timestamp: now - 60 }] })) === (now - 60) * 1000,
+      signedInAt(tok({ amr: [{ method: 'password', timestamp: now - 86400 }, { method: 'totp', timestamp: now }] })) === (now - 86400) * 1000,
+      signedInAt(tok({ amr: [{ method: 'totp', timestamp: now }] })), signedInAt(tok({ sub: 'x' })), signedInAt('nonsense')],
+    [true, true, null, null, null], "connect's sign-in time: the password sign-in only — never a second factor's time, nothing for a token without one")
+  const api = fs.readFileSync(path.join(__dirname, '../src/features/calendar/icloud/icloudApi.ts'), 'utf8')
+  eq(/m\?\.method === 'password'/.test(api) && /export const FRESH_SIGN_IN_MS = 10 \* 60_000/.test(api), true,
+    'the card asks for a fresh sign-in by the same rule as the server, before the owner makes an Apple password')
+}
+eq(/if \(row\) \{\n[^\n]*\n\s*const \{ error \} = await db\.from\('icloud_credentials'\)\n\s*\.update\(\{ app_password: sealed, principal_url: principal, calendar_home_url: home, last_error: null, connected_at: connectedAt \}\)/.test(connectBlock), true,
+  'a new password for the same Apple ID keeps its calendars, test calendar and read-back (only the password and addresses change)')
 eq(/if \(row && row\.apple_id\.toLowerCase\(\) !== email\.toLowerCase\(\)\)/.test(connectBlock) && connectBlock.indexOf('row.apple_id') < connectBlock.indexOf('.upsert('), true,
   'another Apple ID connects only after Disconnect (never a silent swap of where the calendars go)')
 eq(/delete\(\)\.eq\('user_id', user\.id\)\s*\n\s*if \(error\) throw/.test(src), true, 'disconnect says so when the stored password could not be deleted')

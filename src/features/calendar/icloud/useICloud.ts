@@ -2,18 +2,25 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, runICloudCheck, setupICloudCalendars, type ICloudStatus } from './icloudApi'
+import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, renewICloudPassword, runICloudCheck, setupICloudCalendars, signedInFreshly, type ICloudStatus } from './icloudApi'
 
 export function useICloudStatus() {
   return useQuery({ queryKey: qk.icloud.status(), queryFn: fetchICloudStatus, staleTime: STALE.default })
+}
+
+/** Whether this session may connect iCloud now (a password sign-in in the last 10 minutes); read fresh each time. */
+export function useSignedInFreshly() {
+  return useQuery({ queryKey: qk.icloud.freshSignIn(), queryFn: signedInFreshly, staleTime: STALE.live, refetchInterval: STALE.live })
 }
 
 export function useConnectICloud() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
     action: 'icloud_connect',
-    mutationFn: ({ appleId, appPassword }: { appleId: string; appPassword: string }) => connectICloud(appleId, appPassword),
-    successMessage: (s: ICloudStatus) => `iCloud connected · ${s.appleId ?? ''}`.trim(),
+    // renew: a new app-specific password for the Apple ID already connected.
+    mutationFn: ({ appleId, appPassword, renew }: { appleId: string; appPassword: string; renew?: boolean }) =>
+      renew ? renewICloudPassword(appPassword) : connectICloud(appleId, appPassword),
+    successMessage: (s: ICloudStatus, v) => v.renew ? 'New app password saved' : `iCloud connected · ${s.appleId ?? ''}`.trim(),
     onSuccess: s => qc.setQueryData(qk.icloud.status(), s),
     // The app-specific password never reaches the error log.
     logPayload: false,

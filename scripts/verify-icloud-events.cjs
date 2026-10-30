@@ -142,18 +142,19 @@ eq(!/icloud_href|\.href\b/.test(drainOne) && /ownEventUrl\(/.test(drainOne), tru
 eq((drainOne.match(/if \(step === 'put'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
   'an event is put only when the item wants a calendar and its area is on and on Apple; a missing area calendar keeps the row waiting (never a silent skip)')
 eq(/wantsCalendar\(t \? t\.google_target : null,/.test(drainOne), true, 'a slot with no task is on a calendar only where it is now (never put there by default)')
-eq(/const skippedDay = !!b\.schedule_block_id && t\?\.status === 'cancelled'\n\s*const wanted = !skippedDay && wantsCalendar\(/.test(drainOne) && /schedule_block_id, google_calendar_event_id, icloud_area/.test(drainOne), true,
-  'a skipped day of a repeat comes off Apple Calendar, as it does off Google (Undo of the skip puts it back)')
+eq(/const skippedDay = !!b\.schedule_block_id && t\?\.status === 'cancelled' && !t\.closed_reason\n\s*const wanted = !skippedDay && wantsCalendar\(/.test(drainOne) && /schedule_block_id, google_calendar_event_id, icloud_area/.test(drainOne) && /\.select\('status, closed_reason, /.test(drainOne), true,
+  'a skipped day of a repeat comes off Apple Calendar, as it does off Google (Undo of the skip puts it back); a day marked missed stays')
 eq(/function removeOwnEvent[\s\S]{0,400}if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/.test(src), true, 'a link is never cleared without a real DELETE')
 eq((drainOne.match(/const etag = await putEvent\([^\n]*\n\s*if \(!\(await link\([^\n]*\n[\s\S]{0,500}?\}\n\s*await removeOld\(/g) || []).length, 2,
   'the new copy first, linked only while the row still is what was read, then the old copies go')
-eq(/const gone = etag \? \(await refuseIfInvited\(c, url\)\) === 'gone' : false\n\s*const r = await dav\(c, 'PUT', url, ics, etag && !gone \? \{ 'If-Match': etag \} : gone \? \{ 'If-None-Match': '\*' \} : \{\}\)/.test(src)
-  && /await refuseIfInvited\(c, url\)\n\s*const r = await dav\(c, 'DELETE'/.test(src)
-  && /\/\^\(ATTENDEE\|ORGANIZER\)\[;:\]\/im\.test\(r\.text\)\) throw new ICloudError\('invited'/.test(src), true,
-  'an event with invitees (added on the iPhone) is never rewritten or removed by the app: iCloud would email them in the owner\'s name')
-eq(/if \(r\.status === 404 \|\| r\.status === 410\) return 'gone'/.test(src), true,
-  'an event deleted in iCloud meanwhile is made again (If-None-Match), never refused for ever by its old version')
-eq(/'If-Match': etag/.test(src) && /r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write sends the version the app last wrote: a change made on the iPhone is never written over')
+eq(/const now = await eventNow\(c, url\)\n\s*const match = now\.gone \? null : etag \?\? now\.etag\n\s*const r = await dav\(c, 'PUT', url, ics, now\.gone \? \{ 'If-None-Match': '\*' \} : match \? \{ 'If-Match': match \} : \{\}\)/.test(src), true,
+  'every write reads the event first and goes only over the version read (or the one the app knew): a change on the iPhone is never written over; one deleted there is made again (If-None-Match)')
+eq(/const now = await eventNow\(c, url\)\n\s*if \(now\.gone\) return\n[^\n]*\n\s*const r = await dav\(c, 'DELETE', url, undefined, now\.etag \? \{ 'If-Match': now\.etag \} : \{\}\)\n\s*if \(r\.status === 412\) throw new ICloudError\('changed'/.test(src), true,
+  'a remove reads the event first and removes only the version read (a change since waits for the read-back)')
+eq(/\/\^\(ATTENDEE\|ORGANIZER\)\[;:\]\/im\.test\(r\.text\)\) throw new ICloudError\('invited'/.test(src) && /new URL\(r\.url\)\.pathname !== new URL\(url\)\.pathname\) throw new ICloudError\('redirect'/.test(src)
+  && !/refuseIfInvited/.test(src), true,
+  'an event with invitees is never rewritten or removed (iCloud would email them in the owner\'s name), whatever version the row stores; an answer for another place is refused')
+eq(/r\.status === 412\) throw new ICloudError\('changed'/.test(src), true, 'a write over a version changed on the iPhone is refused (412) and waits for the read-back')
 const drainAction = drain
 eq(/\.or\(`drain_until\.is\.null,drain_until\.lt\.\$\{nowIso\}`\)/.test(drainAction) && /finally \{\n[^\n]*\n\s*await db\.from\('icloud_credentials'\)\.update\(\{ drain_until: null \}\)\.eq\('user_id', userId\)\.eq\('drain_until', lease\)/.test(drainAction), true, 'one drain at a time per account (a lease; only its own is given back)')
 eq(/if \(prefsError\) throw new ICloudError\('prefs'/.test(drainAction) && !/last_error: null/.test(drainAction), true, "settings that can't be read are never guessed; a drain itself never wipes the account's last problem")
