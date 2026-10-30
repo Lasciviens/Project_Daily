@@ -410,8 +410,14 @@ export interface CalendarArea {
 
 export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
 
-/** The default alerts the owner can pick (minutes before; null = none). */
+/** Quick picks for the default alert (minutes before; null = none); any whole number of minutes up to ALERT_MAX is a choice too. */
 export const ALERT_CHOICES: readonly (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120, 1440]
+/** Four weeks: the longest alert the app sets. */
+export const ALERT_MAX = 40320
+
+/** A real alert choice: none, or whole minutes from 0 (at the start) to four weeks. */
+export const isAlertMinutes = (v: unknown): v is number | null =>
+  v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
   training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true },
@@ -442,7 +448,7 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       name: name && name.length <= NAME_MAX ? name : d.name,
       emoji: emoji !== null && [...emoji].length <= EMOJI_MAX ? emoji : d.emoji,
       color,
-      alertMinutes: alert !== undefined && ALERT_CHOICES.includes(alert as number | null) ? alert as number | null : d.alertMinutes,
+      alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
     }
   }
@@ -631,7 +637,12 @@ async function syncToken(c: Creds, calendar: string): Promise<string | null> {
   }
 }
 
-const NO_KEY = 'The key that seals the stored password (ICLOUD_ENC_KEY) is not set yet — see the deploy checklist'
+/** Why there is no key: not set at all, or set to something that isn't 32 bytes in base64 (both read as no key). */
+function keyProblem(): string {
+  return Deno.env.get('ICLOUD_ENC_KEY')?.trim()
+    ? 'ICLOUD_ENC_KEY is set, but it isn\'t a key the app can use — make one with "openssl rand -base64 32" and paste the whole line it prints (44 characters, ending in =) as the secret\'s value'
+    : 'The key that seals the stored password (ICLOUD_ENC_KEY) is not set yet — see the deploy checklist'
+}
 
 /** One area's calendar: the stored one gets its name and colour, else it is made at its fixed place (or found there). */
 async function placeAreaCalendar(c: Creds, home: string, stored: string | null, key: AreaKey, area: CalendarArea): Promise<{ url: string; state: 'created' | 'updated' | 'found' }> {
@@ -726,7 +737,7 @@ Deno.serve(async (req) => {
       }
       // The password is only ever stored sealed: no key, no connect.
       const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
-      if (!key) return answer({ error: NO_KEY }, 400)
+      if (!key) return answer({ error: keyProblem() }, 400)
       const creds = { email, password }
       const { principal, home } = await discover(creds)
       const { error } = await db.from('icloud_credentials').upsert({
@@ -751,7 +762,7 @@ Deno.serve(async (req) => {
     const key = await sealKey(Deno.env.get('ICLOUD_ENC_KEY'))
     const password = await openSecret(row.app_password, key, user.id)
     if (password === null) {
-      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : NO_KEY)
+      throw new ICloudError('sealed', key ? 'The stored password can\'t be opened with the current key — disconnect, then connect with a new app-specific password from account.apple.com' : keyProblem())
     }
     // A password stored before sealing is sealed now, the first time a key is there (tried again on the next call if it fails).
     if (key && !isSealed(row.app_password)) {
