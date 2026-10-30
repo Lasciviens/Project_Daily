@@ -112,7 +112,9 @@ create trigger trg_icloud_prefs
   for each row execute function public.icloud_prefs_changed();
 
 -- ── C. The read-back compares an iPhone edit with the app's own change ───────
--- 176's function as it was, but for where the app's waiting change is read (changed_at, A).
+-- 176's function as it was, but for where the app's waiting change is read (changed_at, A), a one-off moved
+-- there only within a year of today (as a repeat's days already were), and a title that only lost an old area
+-- emoji is no rename (titleBare) — a symbol of the owner's own title is kept.
 create or replace function public.apply_icloud_readback(p_user uuid, p_entity text, p_id uuid, p_area text, p_change jsonb, p_etag text)
 returns text
 language plpgsql
@@ -122,6 +124,7 @@ as $$
 declare
   v_deleted  boolean;
   v_title    text;
+  v_bare     text;
   v_allday   boolean;
   v_date     date;
   v_time     time;
@@ -169,7 +172,11 @@ begin
     return 'ignored';
   end;
   v_title := nullif(btrim(left(regexp_replace(coalesce(p_change ->> 'title', ''), '[[:cntrl:]]', '', 'g'), 500)), '');
+  -- The title without a leading symbol word (an old area emoji): only compared — the same title is no rename.
+  v_bare := nullif(btrim(left(regexp_replace(coalesce(p_change ->> 'titleBare', ''), '[[:cntrl:]]', '', 'g'), 500)), '');
   if v_allday then v_time := null; end if;
+  -- A one-off moved there lands within a year of today, like a repeat's days (security check, 30.10.2026).
+  if v_date is not null and abs(v_date - current_date) > 366 then return 'ignored'; end if;
   if v_time is null then v_busy := false; end if;
   v_minutes := least(1440, greatest(1, coalesce(v_minutes, 60)));
   -- What this applies came FROM Apple Calendar: the queue triggers don't send it back (the iPhone has it, with what
@@ -220,7 +227,7 @@ begin
       -- The task's due follows by itself (item_slot_moves_due; 142 for a training session).
       v_moved := true;
     end if;
-    if v_title is not null and v_title is distinct from coalesce(t.title, b.title) then
+    if v_title is not null and v_title is distinct from coalesce(t.title, b.title) and v_bare is distinct from coalesce(t.title, b.title) then
       if t.id is not null then update public.tasks set title = v_title where id = t.id;
       else update public.time_blocks set title = v_title where id = b.id; end if;
       return case when v_moved then 'moved' else 'renamed' end;
@@ -242,7 +249,7 @@ begin
   if (v_modified is null and not v_foreign) or (v_pending is not null and (v_modified is null or v_pending >= v_modified)) then
     return 'stale';
   end if;
-  if v_title is not null and v_title is distinct from p.title then
+  if v_title is not null and v_title is distinct from p.title and v_bare is distinct from p.title then
     update public.schedule_blocks set title = v_title where id = p.id;
     v_out := 'renamed';
   end if;
@@ -298,3 +305,73 @@ end;
 $$;
 revoke all on function public.apply_icloud_readback(uuid, text, uuid, text, jsonb, text) from public, anon, authenticated;
 grant execute on function public.apply_icloud_readback(uuid, text, uuid, text, jsonb, text) to service_role;
+
+-- ── D. The training rules' own writes reach Apple Calendar too ───────────────
+-- A training session moved on the iPhone sets off 167/169's rules (out of its week: skipped there, that week's
+-- session moves instead). Those are the database's own decisions, not the iPhone's data: like Google's flags
+-- (169), the Apple read-back's flag is off for the rule's writes and put back after, so they are sent to Apple.
+-- 169's function as it was, with that one flag added.
+create or replace function public.training_task_moved()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today    date := (now() at time zone 'Europe/Oslo')::date;
+  -- 169: a move read back from Google (155's read-back, 148's Google Tasks
+  -- pull) carries the echo flags for its whole transaction.
+  v_readback text := current_setting('app.calendar_readback', true);
+  v_gsync    text := current_setting('app.google_sync_write', true);
+  -- 177: a move read back from Apple Calendar carries its echo flag too.
+  v_icloud   text := current_setting('app.icloud_readback', true);
+begin
+  if new.due_date is null or new.due_date is not distinct from old.due_date then return null; end if;
+  if not (new.hevy_routine_id is not null or new.source_type = 'training_session') then return null; end if;
+
+  -- 169: what follows is the database's own decision, not Google's data:
+  -- queued for Google like a change made in the app (the flags are put back
+  -- below, so the move Google sent is still not sent back).
+  perform set_config('app.calendar_readback', 'off', true);
+  perform set_config('app.google_sync_write', '', true);
+  perform set_config('app.icloud_readback', 'off', true);
+
+  -- D. Out of its week: skipped there, that week's session moves instead.
+  if new.first_plan_date is not null and new.due_date >= new.first_plan_date + 7 then
+    perform training_move_past_week(new.id, new.due_date, new.due_time, old.due_time);
+    perform set_config('app.calendar_readback', coalesce(v_readback, ''), true);
+    perform set_config('app.google_sync_write', coalesce(v_gsync, ''), true);
+    perform set_config('app.icloud_readback', coalesce(v_icloud, ''), true);
+    return null;
+  end if;
+
+  -- 1. A repeat's day moved without its slot: split like Move (a slot where it is now).
+  if new.schedule_block_id is not null and new.occurrence_date is not null
+     and not exists (select 1 from time_blocks b where b.task_id = new.id)
+     and exists (select 1 from schedule_blocks s where s.id = new.schedule_block_id) then
+    perform 1 from item_occurrence(new.schedule_block_id, new.occurrence_date, v_today, new.user_id);
+  end if;
+
+  -- 2. Missed, then moved to today or later: to do on its new day (156's
+  --    marker goes with the status). Moved to another past day it stays missed.
+  update tasks set status = 'open'
+   where id = new.id and status = 'cancelled' and closed_reason = 'missed'
+     and new.due_date >= v_today;
+
+  -- C. Skipped, then moved to today or later inside its week: to do again
+  --    (removing its skip reopens it, 142). Not when D put it back on its
+  --    first day (the move came from outside its week).
+  if new.due_date >= v_today and old.due_date < coalesce(new.first_plan_date, old.due_date) + 7 then
+    delete from training_skips k
+     where k.task_id = new.id
+       and exists (select 1 from tasks x where x.id = new.id and x.status = 'cancelled' and x.closed_reason is null);
+  end if;
+
+  perform training_task_recheck(new.id);
+  perform set_config('app.calendar_readback', coalesce(v_readback, ''), true);
+  perform set_config('app.google_sync_write', coalesce(v_gsync, ''), true);
+  perform set_config('app.icloud_readback', coalesce(v_icloud, ''), true);
+  return null;
+end;
+$$;
+revoke all on function public.training_task_moved() from public, anon, authenticated;

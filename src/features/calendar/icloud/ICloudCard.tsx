@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Apple, CalendarSearch, Check, RefreshCw, Repeat, Trash2, Unplug, Users, X } from 'lucide-react'
+import { Apple, CalendarSearch, Check, KeyRound, RefreshCw, Repeat, Trash2, Unplug, Users, X } from 'lucide-react'
 import { Button, ToneDot, TonePill, Truncate } from '../../../shared/ui'
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { formatDate, formatDateTime, formatWeekdayDate } from '../../../shared/utils/dateFormat'
@@ -37,7 +37,9 @@ function lookFor(key: string, day: string): string {
   }
 }
 
-function ConnectForm() {
+/** Connect, or (renew) a new app-specific password for the Apple ID already connected — Apple ends the old one when
+ *  the Apple ID password changes, and an area on Apple can't be disconnected meanwhile. */
+function ConnectForm({ renew, onDone }: { renew?: boolean; onDone?: () => void }) {
   const [appleId, setAppleId] = useState('')
   const [password, setPassword] = useState('')
   const connect = useConnectICloud()
@@ -45,16 +47,18 @@ function ConnectForm() {
     <form className="flex max-w-md flex-col gap-2" onSubmit={e => {
       e.preventDefault()
       if (connect.isPending) return
-      connect.mutate({ appleId, appPassword: password }, { onSuccess: () => setPassword('') })
+      connect.mutate({ appleId, appPassword: password }, { onSuccess: () => { setPassword(''); onDone?.() } })
     }}>
       <ol className="list-inside list-decimal space-y-0.5 text-meta text-fg-2">
         <li>At <a href="https://account.apple.com" target="_blank" rel="noreferrer" className="text-accent-600 underline">account.apple.com</a>: Sign-In and Security → App-Specific Passwords → make one called "Lasci's Board".</li>
-        <li>Enter your Apple ID email and that password here — never your Apple ID password.</li>
+        <li>Enter {renew ? 'the same' : 'your'} Apple ID email and that password here — never your Apple ID password.</li>
+        <li>For safety this needs a sign-in to this app in the last 10 minutes.</li>
       </ol>
       <input className="input" type="email" autoComplete="username" placeholder="Apple ID email" value={appleId} onChange={e => setAppleId(e.target.value)} />
       <input className="input" type="password" autoComplete="off" spellCheck={false} placeholder="App-specific password (abcd-efgh-ijkl-mnop)" value={password} onChange={e => setPassword(e.target.value)} />
       <div>
-        <Button type="submit" variant="primary" loading={connect.isPending} disabled={!appleId.trim() || !password.trim()}>Connect iCloud</Button>
+        <Button type="submit" variant="primary" loading={connect.isPending} disabled={!appleId.trim() || !password.trim()}>{renew ? 'Save the new password' : 'Connect iCloud'}</Button>
+        {renew && <Button variant="ghost" onClick={onDone}>Cancel</Button>}
       </div>
       <p className="text-meta text-fg-muted">Only the server keeps the password (never this browser), and it is used only for your calendars. Revoke it any time at account.apple.com.</p>
     </form>
@@ -202,6 +206,7 @@ export function ICloudCard() {
   const changes = useICloudChanges()
   const remove = useRemoveICloudTest()
   const read = useReadICloud()
+  const [renewing, setRenewing] = useState(false)
   const s = status.data
   const connected = !!s?.connected
   // The last check stays on the server: the list survives the trip to the Calendar app.
@@ -268,8 +273,10 @@ export function ICloudCard() {
               <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending}>{s?.testIsApps === false ? 'Remove test events' : 'Remove test calendar'}</Button>
             )}
             <Button size="sm" icon={<CalendarSearch />} onClick={() => read.mutate()} loading={read.isPending}>Read my calendars</Button>
+            <Button size="sm" icon={<KeyRound />} onClick={() => setRenewing(r => !r)} aria-expanded={renewing}>New app password</Button>
             <Button size="sm" icon={<Unplug />} onClick={disconnectICloud} loading={disconnect.isPending}>Disconnect</Button>
           </div>
+          {renewing && <div className="mt-3"><ConnectForm renew onDone={() => setRenewing(false)} /></div>}
           {s?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {s.lastError}</p>}
           <ReadBackLine readBack={s?.readBack} />
           {changes.data && <ChangesResult result={changes.data} />}

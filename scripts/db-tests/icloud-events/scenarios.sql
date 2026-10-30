@@ -451,3 +451,34 @@ end $$;
 select public.t_ok((select changed_at is not null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000052')
                    and (select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
   '177: in one save, a change after the settings re-queue is still the app''s own change');
+
+-- A one-off moved on the iPhone far away (more than a year from today) is not taken (security check, 30.10.2026).
+delete from public.icloud_outbox;
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', (current_date + 400)::text, 'time', '10:00', 'foreign', true), '"m9"') = 'ignored'
+                   and public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', '1999-01-01', 'time', '10:00', 'foreign', true), '"m9"') = 'ignored',
+  '177: a one-off moved more than a year from today on the iPhone is ignored');
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', (current_date + 30)::text, 'time', '10:00', 'foreign', true), '"m10"') = 'moved',
+  '177: …one within the year is taken');
+
+-- A title read back: a symbol of the owner's own title is kept; one that only lost an old area emoji is no rename.
+delete from public.icloud_outbox;
+update public.tasks set title = '🎂 Birthday' where id = '10000000-0000-0000-0000-000000000052';
+delete from public.icloud_outbox;
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', (current_date + 31)::text, 'time', '10:00', 'title', '🎂 Birthday', 'titleBare', 'Birthday', 'foreign', true), '"t1"') = 'moved',
+  '177: an iPhone move of "🎂 Birthday" is a move');
+select public.t_ok((select title from public.tasks where id = '10000000-0000-0000-0000-000000000052') = '🎂 Birthday',
+  '177: …and the title keeps its own symbol (never cut to "Birthday")');
+update public.tasks set title = 'Match 52' where id = '10000000-0000-0000-0000-000000000052';
+delete from public.icloud_outbox;
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', (current_date + 31)::text, 'time', '10:00', 'title', '🥅 Match 52', 'titleBare', 'Match 52', 'foreign', true), '"t2"') = 'same',
+  '177: a title that only carries an old area emoji is no rename');
+select public.t_ok((select title from public.tasks where id = '10000000-0000-0000-0000-000000000052') = 'Match 52', '177: …the title stays');
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', (current_date + 31)::text, 'time', '10:00', 'title', 'Match 52 (moved to Ullevaal)', 'titleBare', 'Match 52 (moved to Ullevaal)', 'foreign', true), '"t3"') = 'renamed',
+  '177: a real rename on the iPhone is still taken');
+select public.t_ok((select title from public.tasks where id = '10000000-0000-0000-0000-000000000052') = 'Match 52 (moved to Ullevaal)', '177: …with its new title');

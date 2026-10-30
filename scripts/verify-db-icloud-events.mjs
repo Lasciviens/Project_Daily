@@ -1,8 +1,9 @@
-// Runs migrations 173 + 174 + 175's scenarios (the app's events in Apple
-// Calendar: the queue and its triggers, dormant while every area is on
-// Google; 174 the security fixes — area keys, never addresses; 175 the switch
-// per area — the hand-over of a Google copy, the moments a move finishes, the
-// timer, the retired columns dropped) on a throwaway Postgres:
+// Runs migrations 173–177's scenarios (the app's events in Apple Calendar: the
+// queue and its triggers, dormant while every area is on Google; 174 the
+// security fixes — area keys, never addresses; 175 the switch per area — the
+// hand-over of a Google copy, the moments a move finishes, the timer, the
+// retired columns dropped; 176 the read-back from the iPhone; 177 the settings
+// for every event and the app's own change time) on a throwaway Postgres:
 // scripts/db-tests/one-item/base.sql plus the columns 141/155/156/162 added to
 // tasks, time_blocks and schedule_blocks, 135/155's calendar_outbox, the real
 // 160 list for Undo, 171 and 172, the real 173 as it ran in production, then

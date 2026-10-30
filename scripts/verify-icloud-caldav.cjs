@@ -160,10 +160,24 @@ eq(/console\.(log|error|warn)\([^)]*(password|app_password|creds|authorization|A
 eq(/\.select\([^)]*app_password[^)]*\)[\s\S]{0,400}answer\(\{[^}]*app_password/.test(src), false, 'the password is never answered back')
 eq(/auth\.getUser\(/.test(src) && /isAppUser\(user\.id\)/.test(src), true, 'browser caller: getUser and the owner lock')
 eq(/isAppSpecificPassword\(password\)/.test(src), true, 'connect refuses anything but an app-specific password')
+const connectBlock = src.slice(src.indexOf("if (action === 'connect')"), src.indexOf("if (action === 'disconnect')"))
+eq(/signedInAt\(authHeader\.replace\('Bearer ', ''\)\)\s*\n\s*if \(signedIn === null \|\| Date\.now\(\) - signedIn > FRESH_SIGN_IN_MS\)/.test(connectBlock)
+  && connectBlock.indexOf('FRESH_SIGN_IN_MS') < connectBlock.indexOf('discover(creds)') && /const FRESH_SIGN_IN_MS = 10 \* 60_000/.test(src), true,
+  'connect needs a sign-in from the last 10 minutes, checked before iCloud is called (a stolen, refreshed session can\'t)')
+eq(/if \(row && row\.apple_id\.toLowerCase\(\) !== email\.toLowerCase\(\)\)/.test(connectBlock) && connectBlock.indexOf('row.apple_id') < connectBlock.indexOf('.upsert('), true,
+  'another Apple ID connects only after Disconnect (never a silent swap of where the calendars go)')
 eq(/delete\(\)\.eq\('user_id', user\.id\)\s*\n\s*if \(error\) throw/.test(src), true, 'disconnect says so when the stored password could not be deleted')
 eq(/mk\.status === 405[\s\S]{0,400}isTestCalendarName\(xmlText\(props, 'displayname'\)\)/.test(src), true, 'a 405 on MKCALENDAR counts only when the calendar there is the test calendar')
-eq(/onlyOurs[\s\S]{0,300}lasci-check-\[a-z\]\+-lasciviens-github-io\\\.ics/.test(src) && /endsWith\(`\/\$\{TEST_SLUG\}`\) && onlyOurs/.test(src), true,
+eq(/onlyOurs[\s\S]{0,300}lasci-check-\[a-z\]\+-lasciviens-github-io\\\.ics/.test(src) && /isAppsTestCalendar\(row\) && onlyOurs/.test(src), true,
   'Remove deletes the whole calendar only when the app made it and it holds nothing but the check events')
+eq(/isAppsTestCalendar\(row\) && onlyOurs/.test(src) && /paths\.includes\(self\) && /.test(src) && !/endsWith\(`\/\$\{TEST_SLUG\}`\)/.test(src)
+  && /test_calendar_url === new URL\(TEST_SLUG, r\.calendar_home_url\)\.toString\(\)/.test(src), true,
+  'Remove compares the exact address the app built (never a suffix), and an empty listing proves nothing')
+eq(/!READ_METHODS\.has\(method\) && res\.status !== 303 && next\.pathname !== new URL\(current\)\.pathname/.test(src), true,
+  'a write follows a redirect to another iCloud server only, never to another path')
+eq(/text: await readCapped\(res\)/.test(src) && !/text: await res\.text\(\)/.test(src) && /const MAX_ANSWER_BYTES = 10 \* 1024 \* 1024/.test(src), true,
+  'an iCloud answer is read up to 10 MB, never without a limit')
+eq(/const DRAIN_LEASE_MS = 150_000/.test(src), true, 'a drain\'s lease lasts as long as the function may run (never two drains side by side)')
 eq(/sync-collection[\s\S]{0,300}Depth: '0'/.test(src), true, 'sync-collection asks with Depth 0 (RFC 6578)')
 eq(/update\(\{ test_calendar_url: cal\.url[\s\S]{0,200}checkEvents\(/.test(src), true, 'the test calendar is saved before any event is written (Remove can always find them)')
 eq(/if \(readError\)[\s\S]{0,500}502\)/.test(src), true, 'a failed read answers an error, never "not connected" (Apple shows a password only once)')

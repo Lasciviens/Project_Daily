@@ -272,10 +272,19 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 173: the app's events in Apple Calendar — the queue and its
-      # triggers (dormant while every area is on Google), Undo's registries.
+      # Migrations 173–177: the app's events in Apple Calendar — the queue and
+      # its triggers, the switch, the read-back from the iPhone, the settings
+      # for every event, Undo's registries.
       - name: Apple Calendar events database scenarios
         run: node scripts/verify-db-icloud-events.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # 171–177 on the live item, repeat, training, Google and Undo rules
+      # (135–169): a save, a tick, a delete and its Undo, a repeat's day, a
+      # training move read back from the iPhone reach Apple Calendar.
+      - name: Apple Calendar across features database scenarios
+        run: node scripts/verify-db-icloud-cross.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 

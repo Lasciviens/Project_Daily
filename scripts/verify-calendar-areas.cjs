@@ -71,7 +71,7 @@ eq(setup.length > 0 && !/'(PUT|DELETE)'/.test(setup) && /readCalendarPrefs\(/.te
 const place = fnSrc.slice(fnSrc.indexOf('async function placeAreaCalendar'), fnSrc.indexOf('const DRAIN_MAX_ROWS'))
 eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(place) && /mk\.status === 201[\s\S]{0,800}'PROPFIND'[\s\S]{0,400}calendar\[/.test(place), true,
   "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
-eq(/notMade\.length \? `Not made in Apple Calendar/.test(setup) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
+eq(/notMade\.length \? `\$\{NOT_MADE\}: /.test(setup) && /const NOT_MADE = 'Not made in Apple Calendar'/.test(fnSrc) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')
 const connect = fnSrc.slice(fnSrc.indexOf("if (action === 'connect')"), fnSrc.indexOf("if (action === 'disconnect')"))
 eq(/if \(!key\) return answer\(\{ error: keyProblem\(\) \}/.test(connect) && /app_password: await sealSecret\(password, key, user\.id\)/.test(connect), true,
   'connect stores the password only sealed, and refuses without a key')
@@ -121,9 +121,9 @@ eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainI
    && appleSettle.indexOf("outcome.calendar = now === side.area ? 'linked' : 'unknown'") < appleSettle.indexOf('google_sync_enabled: false'), true,
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
 const move = read('src/features/calendar/areas/areaMoveApi.ts')
-eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0\) return putBack\(err\)/.test(move)
-   && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0, true,
-  'a move that fails before anything moved puts the settings back (never an area switched with nothing moved)')
+eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0 && !\(await anyInApple\(toApple\.map\(s => s\.area\)\)\)\) return putBack\(err\)/.test(move)
+   && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0 && /if \(error \|\| \(data \?\? \[\]\)\.length\) return true/.test(move), true,
+  'a move that fails before anything moved puts the settings back; one that stopped part-way (some already in Apple) keeps the switch')
 eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
 eq(/const why = sent\.problem/.test(appleSettle) && /Saved · not in Apple Calendar yet\$\{why\}/.test(appleSettle), true,
   'a save whose Apple copy is not confirmed says so, with the reason')
