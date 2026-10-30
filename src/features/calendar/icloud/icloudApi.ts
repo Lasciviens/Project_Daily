@@ -42,6 +42,8 @@ export type ICloudDrain = { busy: true } | {
   failed: number
   /** Still queued (failed ones wait for their retry, the rest for the next run). */
   waiting: number
+  /** Changes made in Apple Calendar read back first (2c): how many the app took, and calendars renamed there. */
+  readBack?: { applied: number; ignored: number; failed: number; calendars: number; calendarsRenamed: number; problem: string | null }
 }
 
 /** An area's items for Apple Calendar: counted (dryRun) or queued. partial = more than one call reads. */
@@ -121,7 +123,8 @@ export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')
 export const readICloudCalendars = () => call<ICloudRead>('read')
 export const setupICloudCalendars = () => call<ICloudSetup>('setup')
-export const drainICloudQueue = () => call<ICloudDrain>('drain')
+/** `look`: also bring calendar names and colours back from the iPhone (the app's opening; a save skips it, for speed). */
+export const drainICloudQueue = (look = false) => call<ICloudDrain>('drain', { look })
 /** Where the items come from: today on, or every day they have. */
 export const moveAreaToApple = (area: AreaKey, from: 'today' | 'all', dryRun: boolean) => call<ICloudMove>('move', { area, from, dryRun })
 /** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */

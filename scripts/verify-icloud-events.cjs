@@ -111,7 +111,7 @@ catch { eq(false, true, "the function's copy of the event rules is current — r
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const { transform } = require('sucrase')
 const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
-const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple }`)()
+const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, readbackChangeOf }`)()
 const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
 const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
 eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
@@ -176,6 +176,58 @@ eq(/onApple\(readCalendarPrefs\(prefsRow\?\.prefs\)\.areas\[k\]\)/.test(disconne
 eq(/if \(!dryRun && !onApple\(/.test(moveFn), true, "an area's items are queued only once it is switched to Apple (the preview only counts)")
 const moveReads = [...moveFn.matchAll(/db\.from\('[a-z_]+'\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
 eq(moveReads.length >= 4 && moveReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `a move reads only the caller's own rows (${moveReads.length})`)
+
+
+console.log('\n== Changes from Apple Calendar (2c, migration 176) ==')
+const pid = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
+eq([F.ownEventOfHref(`/123/calendars/lasci-work/lasci-slot-${pid}.ics`), F.ownEventOfHref(`/123/calendars/lasci-work/lasci-plan-${pid.toUpperCase()}.ics`)],
+  [{ entity: 'slot', id: pid }, { entity: 'plan', id: pid }], "the app's own event file names give the item")
+eq([F.ownEventOfHref('/123/calendars/lasci-work/ABC-owner-made.ics'), F.ownEventOfHref(`/x/lasci-slot-${pid}.ics/../evil.ics`), F.ownEventOfHref(`/x/lasci-slot-${pid}x.ics`), F.ownEventOfHref('/x/%E0%A4%A.ics')],
+  [null, null, null, null], 'any other name (an event the owner made, a trick path, a broken escape) gives nothing')
+eq([F.titleFromSummary('✓ 🏋️ Lower B', '🏋️'), F.titleFromSummary('🏋️ Lower B', '🏋️'), F.titleFromSummary('Lower B', '🏋️'), F.titleFromSummary('Lunch\u0007\u0000 ok', '')],
+  ['Lower B', 'Lower B', 'Lower B', 'Lunch ok'], "a title read back loses the done mark and the area's emoji the app put there, and control characters")
+const ev = (...lines) => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', ...lines, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
+const suid = `lasci-slot-${pid}@lasciviens.github.io`
+eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;TZID=Europe/Oslo:20261113T183000', 'DTEND;TZID=Europe/Oslo:20261113T200000', 'SUMMARY:⚽ Match (moved)', 'LAST-MODIFIED:20261030T150000Z'), 'slot', suid, '⚽'),
+  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 90, busy: true, title: 'Match (moved)', lastModified: '2026-10-30T15:00:00Z' },
+  'an event moved on the iPhone: its day, time, length and title on the Oslo clock, and when it was changed')
+eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART:20261113T173000Z', 'DURATION:PT45M', 'TRANSP:TRANSPARENT', 'SUMMARY:x'), 'slot', suid, ''),
+  { allDay: false, date: '2026-11-13', time: '18:30', minutes: 45, busy: false, title: 'x', lastModified: null },
+  'a UTC time is read on the Oslo clock; a DURATION gives the length; Free is not busy; no stamp stays null (never applied)')
+eq(F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;VALUE=DATE:20261114', 'DTEND;VALUE=DATE:20261115', 'SUMMARY:Birthday'), 'slot', suid, '').allDay, true, 'an all-day event reads as all day')
+eq([F.readbackChangeOf(ev(`UID:${suid}`, 'DTSTART;TZID=Mars/Olympus:20261113T183000', 'SUMMARY:x'), 'slot', suid, ''),
+    F.readbackChangeOf(ev('UID:someone-else@example.com', 'DTSTART:20261113T173000Z', 'SUMMARY:x'), 'slot', suid, '')],
+  [null, null], 'a time in a zone the server can\'t read, or another uid, gives nothing (never a guess)')
+const puid = `lasci-plan-${pid}@lasciviens.github.io`
+const series = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+  'BEGIN:VEVENT', `UID:${puid}`, 'DTSTART;TZID=Europe/Oslo:20261103T063000', 'DTEND;TZID=Europe/Oslo:20261103T073000', 'RRULE:FREQ=WEEKLY;BYDAY=TU',
+  'EXDATE;TZID=Europe/Oslo:20261110T063000,20261117T063000', 'EXDATE;VALUE=DATE:20261124', 'SUMMARY:🏋️ Swim 2 km', 'LAST-MODIFIED:20261030T150000Z', 'END:VEVENT',
+  'BEGIN:VEVENT', `UID:${puid}`, 'RECURRENCE-ID;TZID=Europe/Oslo:20261103T063000', 'DTSTART;TZID=Europe/Oslo:20261104T070000', 'DTEND;TZID=Europe/Oslo:20261104T074500', 'SUMMARY:🏋️ Swim', 'LAST-MODIFIED:20261030T151000Z', 'END:VEVENT',
+  'BEGIN:VEVENT', `UID:${puid}`, 'RECURRENCE-ID;TZID=Europe/Oslo:20261201T063000', 'STATUS:CANCELLED', 'DTSTART;TZID=Europe/Oslo:20261201T063000', 'END:VEVENT',
+  'END:VCALENDAR'].join('\r\n')
+eq(F.readbackChangeOf(series, 'plan', puid, '🏋️'), {
+  title: 'Swim 2 km', lastModified: '2026-10-30T15:10:00Z', days: [
+    { originalDate: '2026-11-10', cancelled: true }, { originalDate: '2026-11-17', cancelled: true }, { originalDate: '2026-11-24', cancelled: true },
+    { originalDate: '2026-11-03', allDay: false, date: '2026-11-04', time: '07:00', minutes: 45, busy: true, title: 'Swim' },
+    { originalDate: '2026-12-01', cancelled: true },
+  ] }, "a series: its title, its newest stamp, every deleted day (EXDATEs, a cancelled day) and a moved day")
+
+const rbArea = src.slice(src.indexOf('async function readBackArea'), src.indexOf('async function readBackCalendarLook'))
+eq(/return ownEventUrl\(o\.entity, o\.id, area, areaCals\) === new URL\(href, calUrl\)\.toString\(\) \? o : null/.test(rbArea)
+   && /readbackChangeOf\(item\.ics, o\.entity, `lasci-\$\{o\.entity\}-\$\{o\.id\}@lasciviens\.github\.io`/.test(rbArea), true,
+  "only the app's own events: the file name, the whole address the app builds itself (exact, never startsWith), and the uid inside")
+eq(/if \(!counts\.failed && todo\.length <= READBACK_MAX && newToken\)/.test(rbArea), true, 'the token moves only when every change was handled')
+eq(!/removed = /.test(rbArea.slice(rbArea.indexOf('if (!token) {'))) , true, 'reading every event (no token) never infers a deletion')
+const rbReads = [...rbArea.matchAll(/db\.from\((?:'[a-z_]+'|table)\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
+eq(rbReads.length >= 1 && rbReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `the read-back reads only the account's own rows (${rbReads.length})`)
+const drainFn = src.slice(src.indexOf('async function drainAccount'), src.indexOf('const MOVE_PAGE'))
+eq(drainFn.indexOf('await readBackAccount(') > drainFn.indexOf("update({ drain_until: lease })") && drainFn.indexOf('await readBackAccount(') < drainFn.indexOf("from('icloud_outbox')"), true,
+  'changes from the iPhone are read inside the drain\'s lease, before anything is sent')
+const lookFn = src.slice(src.indexOf('async function readBackCalendarLook'), src.indexOf('async function readBackAccount'))
+eq(/if \(!state\?\.written_name && !state\?\.written_color\)[\s\S]{0,300}return false/.test(lookFn) && /iName !== state\.written_name/.test(lookFn), true,
+  "a calendar's name comes back only when it differs from what the app last wrote (the first look is the baseline)")
+eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) throw e/.test(drainFn), true,
+  "iCloud's rate limit (503) stops the run instead of hammering it")
 
 console.log(`\nverify-icloud-events: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

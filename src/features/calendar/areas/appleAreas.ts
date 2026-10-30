@@ -70,17 +70,22 @@ export interface DrainOutcome {
   busy: boolean
   /** Why it couldn't be sent (not connected, the password refused, iCloud down); null when it was. */
   problem: string | null
+  /** Changes made in Apple Calendar the app took (2c): the lists must be read again. */
+  readBackApplied: number
+  /** Calendars renamed or recoloured on the iPhone: Settings → Calendar must be read again. */
+  calendarsRenamed: number
 }
 
 /** Sends what waits for Apple Calendar now; the timer catches whatever this misses within minutes. Quiet: the
  *  caller says what the item needs. */
-export async function drainICloudNow(): Promise<DrainOutcome> {
+export async function drainICloudNow(opts: { look?: boolean } = {}): Promise<DrainOutcome> {
   try {
-    const r = await drainICloudQueue()
-    return { busy: 'busy' in r, problem: null }
+    const r = await drainICloudQueue(opts.look === true)
+    if ('busy' in r) return { busy: true, problem: null, readBackApplied: 0, calendarsRenamed: 0 }
+    return { busy: false, problem: null, readBackApplied: r.readBack?.applied ?? 0, calendarsRenamed: r.readBack?.calendarsRenamed ?? 0 }
   } catch (err) {
     logError(`Apple Calendar: the queue was not sent: ${(err as Error).message}`, { action: 'icloud_drain' })
-    return { busy: false, problem: (err as Error).message }
+    return { busy: false, problem: (err as Error).message, readBackApplied: 0, calendarsRenamed: 0 }
   }
 }
 

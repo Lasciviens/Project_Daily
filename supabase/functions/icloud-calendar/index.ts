@@ -1588,6 +1588,99 @@ export function drainStep(x: { wanted: boolean; apple: boolean; inApple: boolean
   return x.waitsForGoogleTask ? 'keep' : 'remove'
 }
 
+// ── The read-back (2c): what an event in an area calendar says now ────────────
+
+/** The app's own event a stored file name names (lasci-slot-<id>.ics / lasci-plan-<id>.ics); null for any other. The
+ *  caller also compares the whole address with the one it builds itself (ownEventUrl) — never this alone. */
+export function ownEventOfHref(href: string): { entity: 'slot' | 'plan'; id: string } | null {
+  let name: string
+  try { name = decodeURIComponent(href.split('/').filter(Boolean).pop() ?? '') } catch { return null }
+  const m = name.match(/^lasci-(slot|plan)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.ics$/i)
+  return m ? { entity: m[1] as 'slot' | 'plan', id: m[2].toLowerCase() } : null
+}
+
+/** "✓ 🏋️ Lower B" → "Lower B": the done mark and the area's emoji the app put in front come off; no control characters. */
+export function titleFromSummary(summary: string, emoji: string): string {
+  let t = summary.trim()
+  if (t.startsWith('✓ ')) t = t.slice(2).trimStart()
+  if (emoji && t.startsWith(`${emoji} `)) t = t.slice(emoji.length + 1)
+  // eslint-disable-next-line no-control-regex -- control characters are what is taken out
+  return t.replace(/[\x00-\x1F\x7F]/g, '').trim().slice(0, 500)
+}
+
+/** The instant a timed DTSTART/DTEND/RECURRENCE-ID line names (UTC, a known zone, or floating read on the Oslo clock). */
+function instantOf(line: string | undefined): number | null {
+  const m = line?.match(/:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?\s*$/)
+  if (!line || !m) return null
+  if (m[7]) return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])
+  const tz = line.match(/;TZID="?([^";:]+)"?/)?.[1] ?? OSLO
+  return zonedToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], tz)?.getTime() ?? null
+}
+
+/** RFC 5545 DURATION (P1D, PT1H30M, P1DT2H) in minutes; null when it isn't one. */
+function durationMinutes(value: string | undefined): number | null {
+  const m = value?.match(/^[+]?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/)
+  if (!value || !m || value === 'P' || value === 'PT') return null
+  return (+(m[1] ?? 0)) * 10080 + (+(m[2] ?? 0)) * 1440 + (+(m[3] ?? 0)) * 60 + (+(m[4] ?? 0))
+}
+
+/** When an event (or one day of a series) is, on the Oslo clock; null when it can't be read safely (an unknown zone). */
+function timesOf(e: Map<string, string[]>): { allDay: boolean; date: string; time: string | null; minutes: number; busy: boolean } | null {
+  const line = e.get('DTSTART')?.[0]
+  const at = startOf(line)
+  if (!line || !at || at.zone) return null
+  const busy = !/^TRANSP[^:]*:TRANSPARENT\s*$/i.test(e.get('TRANSP')?.[0] ?? '')
+  if (!at.time) return { allDay: true, date: at.day, time: null, minutes: 60, busy: false }
+  const start = instantOf(line)
+  const end = instantOf(e.get('DTEND')?.[0])
+  const dur = durationMinutes(e.get('DURATION')?.[0]?.replace(/^[^:]*:/, '').trim())
+  const minutes = start !== null && end !== null ? Math.round((end - start) / 60_000) : dur ?? 60
+  return { allDay: false, date: at.day, time: at.time, minutes: Math.min(1440, Math.max(1, minutes)), busy }
+}
+
+/** LAST-MODIFIED (a UTC stamp) as an ISO instant; null when absent or not one. */
+function modifiedOf(e: Map<string, string[]>): string | null {
+  const m = e.get('LAST-MODIFIED')?.[0]?.match(/:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\s*$/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : null
+}
+
+/** Every day an EXDATE line names, on the Oslo clock. */
+function exdateDays(line: string): string[] {
+  const at = line.indexOf(':')
+  if (at < 0) return []
+  const params = line.slice(0, at)
+  return line.slice(at + 1).split(',').map(v => startOf(`${params}:${v.trim()}`)?.day).filter((d): d is string => !!d)
+}
+
+/**
+ * One of the app's events as iCloud has it now, in apply_icloud_readback's shape: a slot's day, time, length,
+ * Free/Busy and title; a series' title and the days moved or deleted there (overrides, EXDATEs — the app's own
+ * EXDATEs are skipped by the database). lastModified is the newest LAST-MODIFIED (a change without one is never
+ * applied). null when the object holds no event of this uid or can't be read safely.
+ */
+export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: string, emoji: string): Record<string, unknown> | null {
+  const events = allEventProps(ics).filter(e => textOf(e.get('UID')?.[0]).trim() === uid)
+  const master = events.find(e => !e.has('RECURRENCE-ID'))
+  if (!master) return null
+  const stamps = events.map(modifiedOf).filter((x): x is string => !!x).sort()
+  const lastModified = stamps.length ? stamps[stamps.length - 1] : null
+  const title = titleFromSummary(textOf(master.get('SUMMARY')?.[0]), emoji)
+  if (entity === 'slot') {
+    const t = timesOf(master)
+    return t ? { ...t, title, lastModified } : null
+  }
+  const days: Record<string, unknown>[] = []
+  for (const line of master.get('EXDATE') ?? []) for (const day of exdateDays(line)) days.push({ originalDate: day, cancelled: true })
+  for (const o of events.filter(e => e.has('RECURRENCE-ID'))) {
+    const orig = startOf(o.get('RECURRENCE-ID')?.[0])?.day
+    if (!orig) continue
+    if (/^STATUS[^:]*:CANCELLED\s*$/i.test(o.get('STATUS')?.[0] ?? '')) { days.push({ originalDate: orig, cancelled: true }); continue }
+    const t = timesOf(o)
+    if (t) days.push({ originalDate: orig, ...t, title: titleFromSummary(textOf(o.get('SUMMARY')?.[0]), emoji) || null })
+  }
+  return { title, lastModified, days }
+}
+
 /** Where an item is moved from: today on (the default), or every day it has. */
 export const MOVE_FROM = ['today', 'all'] as const
 export type MoveFrom = typeof MOVE_FROM[number]
@@ -1639,6 +1732,8 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
       continue
     }
     if (res.status === 401) { await res.body?.cancel(); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
+    // iCloud's rate limit (503, Retry-After): this run stops; the timer tries again.
+    if (res.status === 503) { await res.body?.cancel(); throw new ICloudError('busy', 'iCloud asked the app to wait (too many requests) — tried again in a few minutes') }
     return { status: res.status, text: await res.text(), url: current, etag: res.headers.get('etag') }
   }
   throw new ICloudError('redirect', 'iCloud redirected too many times')
@@ -1779,7 +1874,14 @@ async function putEvent(c: Creds, url: string, ics: string, etag: string | null)
   const r = await dav(c, 'PUT', url, ics, etag ? { 'If-Match': etag } : {})
   if (r.status === 412) throw new ICloudError('changed', 'Changed in Apple Calendar since the app wrote it — kept as it is there until changes from the iPhone come back (step 2c)')
   if (r.status !== 201 && r.status !== 204) throw new ICloudError('put', `iCloud answered ${r.status} when an event was written`)
-  return r.etag
+  if (r.etag) return r.etag
+  // No version in the answer: asked for, so the read-back can tell the app's own write from a change on the iPhone.
+  try {
+    return xmlText((await propfind(c, url, '<d:getetag/>', '0')).responses[0]?.props ?? '', 'getetag')
+  } catch (e) {
+    if (e instanceof ICloudError && e.code === 'auth') throw e
+    return null
+  }
 }
 
 /** The calendar an area's event must go to is missing (never made, or the account was connected again). */
@@ -1947,6 +2049,184 @@ async function openCreds(db: Db, userId: string, row: { apple_id: string; app_pa
   return { email: row.apple_id, password }
 }
 
+/** What iCloud has for these hrefs, with each event's version: path → { ics, etag }. */
+async function multigetWithEtag(c: Creds, calendar: string, hrefs: string[]): Promise<Map<string, { ics: string; etag: string | null }>> {
+  const out = new Map<string, { ics: string; etag: string | null }>()
+  for (let i = 0; i < hrefs.length; i += READBACK_BATCH) {
+    const part = hrefs.slice(i, i + READBACK_BATCH)
+    const r = await dav(c, 'REPORT', calendar,
+      `${XML}<c:calendar-multiget ${NS}><d:prop><d:getetag/><c:calendar-data/></d:prop>${part.map(h => `<d:href>${escapeXml(h)}</d:href>`).join('')}</c:calendar-multiget>`,
+      { Depth: '1' })
+    if (r.status !== 207) throw new ICloudError('read', `iCloud answered ${r.status} when changed events were read`)
+    for (const resp of parseMultistatus(r.text).responses) {
+      const data = xmlText(resp.props, 'calendar-data')
+      if (data) out.set(new URL(resp.href, r.url).pathname, { ics: data, etag: xmlText(resp.props, 'getetag') })
+    }
+  }
+  return out
+}
+
+/** Events read back in one run at most (the rest wait for the next run; the token moves only when all are in). */
+const READBACK_MAX = 120
+const READBACK_BATCH = 40
+
+type ReadBackCounts = { applied: number; ignored: number; failed: number; calendars: number }
+interface SyncStateRow { area: AreaKey; sync_token: string | null; written_name: string | null; written_color: string | null }
+
+/**
+ * Changes made in Apple Calendar since the last read, for one area calendar (2c): only the app's own events (the
+ * file name the app makes AND the whole address it builds itself AND the uid inside), each applied by
+ * apply_icloud_readback (which checks every value again). With no token yet, every event is read once: a change made
+ * before 2c comes back too (a deletion is noticed only from a token on). The token moves only when every change was
+ * handled. Runs inside the drain's lease, so nothing is written to iCloud meanwhile.
+ */
+async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, calUrl: string, areaCals: Record<string, { url?: string }>,
+  emoji: string, state: SyncStateRow | undefined): Promise<ReadBackCounts> {
+  const counts: ReadBackCounts = { applied: 0, ignored: 0, failed: 0, calendars: 1 }
+  const own = (href: string) => {
+    const o = ownEventOfHref(href)
+    if (!o) return null
+    return ownEventUrl(o.entity, o.id, area, areaCals) === new URL(href, calUrl).toString() ? o : null
+  }
+  let token = state?.sync_token ?? null
+  let newToken: string | null = null
+  let changed: { href: string; etag: string | null }[] = []
+  let removed: string[] = []
+  if (token) {
+    const r = await dav(c, 'REPORT', calUrl,
+      `${XML}<d:sync-collection ${NS}><d:sync-token>${escapeXml(token)}</d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/></d:prop></d:sync-collection>`,
+      { Depth: '0' })
+    if (r.status === 207) {
+      const parsed = parseMultistatus(r.text)
+      newToken = parsed.syncToken
+      changed = parsed.responses.filter(x => x.status !== 404 && x.href.endsWith('.ics')).map(x => ({ href: x.href, etag: xmlText(x.props, 'getetag') }))
+      removed = parsed.responses.filter(x => x.status === 404).map(x => x.href)
+    } else if ([403, 409, 410, 412].includes(r.status)) {
+      token = null // the token is no longer valid: every event is read again (no deletion inferred)
+    } else {
+      throw new ICloudError('read', `iCloud answered ${r.status} when changes were read`)
+    }
+  }
+  if (!token) {
+    // The token first, so nothing that changes while the events are listed is missed.
+    newToken = await syncToken(c, calUrl)
+    const list = await propfind(c, calUrl, '<d:getetag/>', '1')
+    changed = list.responses.filter(x => x.href.endsWith('.ics')).map(x => ({ href: x.href, etag: xmlText(x.props, 'getetag') }))
+  }
+
+  // The app's own events whose version isn't the one the app wrote (or last read).
+  const mine = changed.map(x => ({ ...x, own: own(x.href) })).filter(x => x.own)
+  counts.ignored += changed.length - mine.length
+  const known = new Map<string, string | null>()
+  for (const [table, entity] of [['time_blocks', 'slot'], ['schedule_blocks', 'plan']] as const) {
+    const ids = mine.filter(x => x.own!.entity === entity).map(x => x.own!.id)
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await db.from(table).select('id, icloud_etag').eq('user_id', userId).eq('icloud_area', area).in('id', ids.slice(i, i + 200))
+      if (error) throw new ICloudError('read', 'The items could not be read for the read-back')
+      for (const row of data ?? []) known.set(`${entity}:${row.id}`, row.icloud_etag)
+    }
+  }
+  const keyOf = (x: { own: { entity: string; id: string } | null }) => `${x.own!.entity}:${x.own!.id}`
+  // Not linked to this calendar (another area now, or gone): not the app's to follow.
+  counts.ignored += mine.filter(x => !known.has(keyOf(x))).length
+  // The version the app wrote or last read: nothing new.
+  const todo = mine.filter(x => known.has(keyOf(x)) && !(x.etag && known.get(keyOf(x)) === x.etag))
+  const batch = todo.slice(0, READBACK_MAX)
+  const apply = async (entity: 'slot' | 'plan', id: string, change: Record<string, unknown>, etag: string | null) => {
+    const { data, error } = await db.rpc('apply_icloud_readback', { p_user: userId, p_entity: entity, p_id: id, p_area: area, p_change: change, p_etag: etag })
+    if (error) { counts.failed++; return }
+    if (['unlinked', 'moved', 'renamed', 'days'].includes(String(data))) counts.applied++
+    else if (data === 'ignored' || data === 'not_ours') counts.ignored++
+  }
+  if (batch.length) {
+    const got = await multigetWithEtag(c, calUrl, batch.map(x => new URL(x.href, calUrl).pathname))
+    for (const x of batch) {
+      const o = x.own!
+      const item = got.get(new URL(x.href, calUrl).pathname)
+      const change = item ? readbackChangeOf(item.ics, o.entity, `lasci-${o.entity}-${o.id}@lasciviens.github.io`, emoji) : null
+      if (!item || !change) { counts.ignored++; continue }
+      await apply(o.entity, o.id, change, item.etag ?? x.etag)
+    }
+  }
+  for (const href of removed) {
+    const o = own(href)
+    if (!o) { counts.ignored++; continue }
+    await apply(o.entity, o.id, { deleted: true }, null)
+  }
+  // The token moves only when every change was handled (a later run takes the rest).
+  if (!counts.failed && todo.length <= READBACK_MAX && newToken) {
+    await db.from('icloud_sync_state').upsert({ user_id: userId, area, sync_token: newToken, synced_at: new Date().toISOString(), last_error: null }, { onConflict: 'user_id,area' })
+  }
+  return counts
+}
+
+/** A calendar renamed or recoloured on the iPhone comes back into Settings → Calendar (only when it differs from what
+ *  the app last wrote: a change made in the app, not yet written, is never undone). */
+async function readBackCalendarLook(db: Db, c: Creds, userId: string, area: AreaKey, calUrl: string, state: SyncStateRow | undefined): Promise<boolean> {
+  const look = await propfind(c, calUrl, '<d:displayname/><a:calendar-color/>', '0')
+  const props = look.responses[0]?.props ?? ''
+  // eslint-disable-next-line no-control-regex -- control characters are what is taken out
+  const name = (xmlText(props, 'displayname') ?? '').replace(/[\x00-\x1F\x7F]/g, '').trim()
+  const color = (xmlText(props, 'calendar-color') ?? '').match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i)?.[1]
+  const iName = name && name.length <= 60 ? name : null
+  const iColor = color ? `#${color.toUpperCase()}` : null
+  if (!state?.written_name && !state?.written_color) {
+    // First look: what iCloud has now is the baseline (nothing in Settings changes).
+    await db.from('icloud_sync_state').upsert({ user_id: userId, area, written_name: iName, written_color: iColor }, { onConflict: 'user_id,area' })
+    return false
+  }
+  const newName = iName && iName !== state.written_name ? iName : null
+  const newColor = iColor && iColor !== state.written_color ? iColor : null
+  if (!newName && !newColor) return false
+  const { data: prefsRow, error } = await db.from('calendar_prefs').select('prefs').eq('user_id', userId).maybeSingle()
+  if (error) return false
+  const prefs = readCalendarPrefs(prefsRow?.prefs)
+  prefs.areas[area] = { ...prefs.areas[area], ...(newName ? { name: newName } : {}), ...(newColor ? { color: newColor } : {}) }
+  const { error: saveError } = await db.from('calendar_prefs').upsert({ user_id: userId, prefs: readCalendarPrefs(prefs) }, { onConflict: 'user_id' })
+  if (saveError) return false
+  await db.from('icloud_sync_state').upsert({ user_id: userId, area, written_name: iName, written_color: iColor }, { onConflict: 'user_id,area' })
+  return true
+}
+
+/** The read-back for every area calendar that can hold the app's events, side by side; a calendar that fails is said
+ *  once and the others go on. */
+async function readBackAccount(db: Db, c: Creds, userId: string, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>,
+  look: boolean): Promise<ReadBackCounts & { calendarsRenamed: number; problem: string | null }> {
+  const total = { applied: 0, ignored: 0, failed: 0, calendars: 0, calendarsRenamed: 0, problem: null as string | null }
+  const { data: states, error } = await db.from('icloud_sync_state').select('area, sync_token, written_name, written_color').eq('user_id', userId)
+  if (error) throw new ICloudError('read', /icloud_sync_state/.test(error.message) ? 'Changes from Apple Calendar need migration 176 — it runs with the next deploy' : 'The read-back state could not be read')
+  const byArea = new Map((states ?? []).map(s => [s.area as AreaKey, s as SyncStateRow]))
+  const areas: AreaKey[] = []
+  for (const k of AREA_KEYS) {
+    const url = areaCals[k]?.url
+    if (!url || !isICloudUrl(url)) continue
+    if (onApple(prefs.areas[k])) { areas.push(k); continue }
+    // An area back on Google may still hold Apple copies kept until their Google copy exists.
+    const { count } = await db.from('time_blocks').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('icloud_area', k)
+    const { count: plans } = await db.from('schedule_blocks').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('icloud_area', k)
+    if ((count ?? 0) + (plans ?? 0) > 0) areas.push(k)
+  }
+  const results = await Promise.all(areas.map(async k => {
+    const url = areaCals[k]!.url!
+    try {
+      const counts = await readBackArea(db, c, userId, k, url, areaCals, prefs.areas[k].emoji, byArea.get(k))
+      const renamed = look ? await readBackCalendarLook(db, c, userId, k, url, byArea.get(k)).catch(() => false) : false
+      return { ...counts, renamed, problem: null as string | null }
+    } catch (e) {
+      if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) throw e
+      const why = e instanceof ICloudError ? e.message : 'iCloud did not answer'
+      await db.from('icloud_sync_state').upsert({ user_id: userId, area: k, last_error: why }, { onConflict: 'user_id,area' })
+      return { applied: 0, ignored: 0, failed: 1, calendars: 1, renamed: false, problem: `${prefs.areas[k].name}: ${why}` }
+    }
+  }))
+  for (const r of results) {
+    total.applied += r.applied; total.ignored += r.ignored; total.failed += r.failed; total.calendars += r.calendars
+    if (r.renamed) total.calendarsRenamed++
+    total.problem ??= r.problem
+  }
+  return total
+}
+
 type DrainCounts = Record<DrainResult | 'failed', number>
 const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0, removed: 0, none: 0, failed: 0 })
 
@@ -1954,7 +2234,8 @@ const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0,
  * One account's queue, oldest first, within a time budget. Each queued slot or plan is read live; a row goes only
  * while requested_at is what was read (a newer change waits). One drain at a time per account: a short lease.
  */
-async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>): Promise<{ busy: true } | (DrainCounts & { waiting: number })> {
+async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean }):
+  Promise<{ busy: true } | (DrainCounts & { waiting: number; readBack: Awaited<ReturnType<typeof readBackAccount>> })> {
   const started = Date.now()
   const nowIso = new Date().toISOString()
   const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
@@ -1969,6 +2250,8 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was changed in Apple Calendar')
     const prefs = readCalendarPrefs(prefsRow?.prefs)
     const today = osloClock(new Date()).day
+    // Changes made in Apple Calendar first (2c): a move made on the iPhone reaches the item before anything is sent.
+    const readBack = await readBackAccount(db, creds, userId, prefs, areaCals, opts.look)
     // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left (Google: needsHorizonTopUp).
     const { data: ending } = await db.from('schedule_blocks').select('id, icloud_area')
       .eq('user_id', userId).not('icloud_area', 'is', null).not('icloud_horizon', 'is', null)
@@ -1988,7 +2271,7 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
         counts[await drainOne(db, creds, userId, q, prefs, areaCals, today)]++
         await db.from('icloud_outbox').delete().eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
       } catch (e) {
-        if (e instanceof ICloudError && e.code === 'auth') throw e
+        if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) throw e
         counts.failed++
         // An event the guard refused (a control character in a field) says so; anything else is iCloud's.
         const why = e instanceof ICloudError ? e.message : e instanceof Error && /control character/.test(e.message) ? e.message : 'iCloud did not answer'
@@ -1998,7 +2281,7 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     }
     const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', userId)
     // The account's "Last problem" stays setup's (a drain's problems live on their own queue rows).
-    return { ...counts, waiting: waiting ?? 0 }
+    return { ...counts, waiting: waiting ?? 0, readBack }
   } finally {
     // Only this run's own lease is given back (a run that outlived it never frees the next run's).
     await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', userId).eq('drain_until', lease)
@@ -2088,9 +2371,12 @@ async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
     if (!(await isAppUser(r.user_id))) continue
     total.accounts++
     try {
-      const result = await drainAccount(db, r.user_id, await openCreds(db, r.user_id, r), r.area_calendars ?? {})
+      const result = await drainAccount(db, r.user_id, await openCreds(db, r.user_id, r), r.area_calendars ?? {}, { look: true })
       if ('busy' in result) { total.busy++; continue }
-      for (const [k, v] of Object.entries(result)) total[k] = (total[k] ?? 0) + v
+      const { readBack, ...counts } = result
+      for (const [k, v] of Object.entries(counts)) total[k] = (total[k] ?? 0) + v
+      total.readBackApplied = (total.readBackApplied ?? 0) + readBack.applied
+      total.readBackFailed = (total.readBackFailed ?? 0) + readBack.failed
     } catch (e) {
       total.problems++
       const message = e instanceof ICloudError ? e.message : 'Something went wrong talking to iCloud'
@@ -2203,6 +2489,7 @@ Deno.serve(async (req) => {
         test_calendar_url: null, test_sync_token: null, last_check: null, area_calendars: {}, last_error: null, connected_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
       if (error) throw new ICloudError('store', /icloud_credentials/.test(error.message) ? 'Connecting iCloud needs migrations 171 and 172 — they run with the next deploy' : 'The connection could not be saved')
+      await db.from('icloud_sync_state').delete().eq('user_id', user.id)
       return answer(status({
         apple_id: email, calendar_home_url: home, test_calendar_url: null, test_sync_token: null, last_error: null, last_check: null,
         area_calendars: {}, password_sealed: true, connected_at: new Date().toISOString(),
@@ -2219,6 +2506,7 @@ Deno.serve(async (req) => {
         return answer({ error: `Move ${names} back to Google Calendar first (Settings → Calendar → Shows in) — then disconnect` }, 400)
       }
       const { error } = await db.from('icloud_credentials').delete().eq('user_id', user.id)
+      if (!error) await db.from('icloud_sync_state').delete().eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The stored password could not be deleted — try again')
       return answer({ connected: false })
     }
@@ -2346,6 +2634,11 @@ Deno.serve(async (req) => {
           const placed = await placeAreaCalendar(creds, home, known[key]?.url ?? null, key, area)
           known[key] = { url: placed.url }
           areas.push({ area: key, name: area.name, state: placed.state })
+          // What the app wrote (a rename on the iPhone is told from it); a calendar made anew starts its read-back afresh.
+          await db.from('icloud_sync_state').upsert({
+            user_id: user.id, area: key, written_name: area.name, written_color: area.color.toUpperCase(),
+            ...(placed.state === 'created' ? { sync_token: null } : {}),
+          }, { onConflict: 'user_id,area' })
         } catch (e) {
           if (e instanceof ICloudError && e.code === 'auth') throw e
           areas.push({ area: key, name: area.name, state: 'failed', detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
@@ -2362,7 +2655,8 @@ Deno.serve(async (req) => {
     }
 
     // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on the timer (175).
-    if (action === 'drain') return answer(await drainAccount(db, user.id, creds, row.area_calendars ?? {}))
+    // `look`: also bring calendar names and colours back (the app's opening and the timer; a save skips it, for speed).
+    if (action === 'drain') return answer(await drainAccount(db, user.id, creds, row.area_calendars ?? {}, { look: body.look === true }))
 
     if (action === 'remove') {
       if (!row.test_calendar_url) return answer({ removed: null, message: 'No test calendar to remove' })

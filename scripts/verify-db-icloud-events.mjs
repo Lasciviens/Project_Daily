@@ -21,10 +21,12 @@ const mig = f => join(root, 'supabase/migrations', f)
 const mig173 = mig('173_icloud_events.sql')
 const migFile = mig('174_icloud_events_safety.sql')
 const mig175 = mig('175_icloud_switch.sql')
+const mig176 = mig('176_icloud_readback.sql')
 
 const sql = readFileSync(mig173, 'utf8').replace(/--.*$/gm, '')
 const fix = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
 const sw = readFileSync(mig175, 'utf8').replace(/--.*$/gm, '')
+const rb = readFileSync(mig176, 'utf8').replace(/--.*$/gm, '')
 const problems = []
 if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
 if (/\bnet\.http_|vault\./i.test(sql)) problems.push('a call outside the database (a trigger never calls iCloud)')
@@ -52,8 +54,14 @@ for (const fn of ['icloud_time_block_changed', 'icloud_schedule_block_changed', 
   if (at < 0 || !/app\.icloud_readback/.test(sw.slice(at, at + 600))) problems.push(`175: ${fn} doesn't stop for the read-back`)
   if (/icloud_href/.test(sw.slice(at, sw.indexOf('$$;', at)))) problems.push(`175: ${fn} reads the dropped icloud_href`)
 }
+// 176: the read-back. Its apply function is the server's alone; the sync state is closed to the browser; the timer's secret from Vault.
+if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(rb)) problems.push('176: a top-level BEGIN/COMMIT')
+if (!/revoke all on function public\.apply_icloud_readback\(uuid, text, uuid, text, jsonb, text\) from public, anon, authenticated/i.test(rb)) problems.push('176: apply_icloud_readback open to the browser')
+if (!/revoke all on public\.icloud_sync_state from anon, authenticated/i.test(rb) || !rb.includes("owner_lock_apply('public.icloud_sync_state')")) problems.push('176: icloud_sync_state not closed to the browser or not owner-locked')
+if (!/set search_path = ''/.test(rb.slice(rb.indexOf('function public.apply_icloud_readback')))) problems.push('176: apply_icloud_readback has no empty search_path')
+if (!/vault\.decrypted_secrets where name = 'ICLOUD_SYNC_SECRET'/.test(rb)) problems.push("176: the timer's secret isn't read from Vault at call time")
 if (problems.length) {
-  console.error(`verify-db-icloud-events: migrations 173/174/175 have ${problems.join('; ')}`)
+  console.error(`verify-db-icloud-events: migrations 173/174/175/176 have ${problems.join('; ')}`)
   process.exit(1)
 }
 
@@ -85,6 +93,27 @@ const LATER_COLUMNS = `
     next_retry_at timestamptz not null default now(), last_error text, requested_at timestamptz not null default now(),
     created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
     constraint calendar_outbox_event_key unique (user_id, calendar_id, event_id));`
+// Stand-ins for 155/156's day split and its helpers (the real ones are tested by verify-db-one-item and
+// verify-db-repeat-days): enough to run 176's "one day of a repeat moved on the iPhone".
+const STAND_INS = `
+  create or replace function public.repeat_occurs_on(p public.schedule_blocks, p_day date) returns boolean language sql stable as $$
+    select p_day >= coalesce(p.effective_from, p_day) and extract(dow from p_day)::int = any (coalesce(p.days_of_week, '{}'))
+       and not (p_day = any (coalesce(p.except_dates, '{}')))
+  $$;
+  create or replace function public.item_section_for_day(p_day date, p_today date) returns text language sql immutable as $$
+    select case when p_day = p_today then 'today' else 'backlog' end
+  $$;
+  create or replace function public.item_occurrence(p_plan uuid, p_date date, p_today date, p_user uuid default null)
+  returns table(block_id uuid, task_id uuid, created boolean) language plpgsql as $$
+  declare v_block uuid; v_task uuid; p public.schedule_blocks%rowtype;
+  begin
+    select * into p from public.schedule_blocks s where s.id = p_plan;
+    insert into public.tasks (user_id, title, due_date, due_time, schedule_block_id, occurrence_date, google_target)
+    values (coalesce(p_user, auth.uid()), p.title, p_date, p.start_time, p_plan, p_date, 'calendar') returning id into v_task;
+    insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, category, task_id, schedule_block_id, occurrence_date)
+    values (coalesce(p_user, auth.uid()), p_date, p.title, p.start_time, 60, p.category, v_task, p_plan, p_date) returning id into v_block;
+    return query select v_block, v_task, true;
+  end $$;`
 // The real 160 list for Undo (173 must keep every entry of it).
 const BOOKKEEPING_160 = readFileSync(mig('160_supplement_schedules.sql'), 'utf8')
   .match(/create or replace function public\.app_undo_bookkeeping\(p_table text\)[\s\S]*?\n\$\$;/)?.[0]
@@ -107,17 +136,22 @@ try {
   psql(target, ['-f', migFile])
   psql(target, ['-f', mig175])
   psql(target, ['-f', mig175])
+  psql(target, ['-c', STAND_INS])
+  psql(target, ['-f', mig176])
+  psql(target, ['-f', mig176])
   // The timer's condition is text inside cron.schedule (no pg_cron here): run it, so it parses against the real tables.
-  const when = readFileSync(mig175, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
-  if (!when) throw new Error("175: the timer's condition was not found")
-  psql(target, ['-c', `select count(*) from (select 1 ${when}) x`])
+  for (const [n, file] of [['175', mig175], ['176', mig176]]) {
+    const when = readFileSync(file, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
+    if (!when) throw new Error(`${n}: the timer's condition was not found`)
+    psql(target, ['-c', `select count(*) from (select 1 ${when}) x`])
+  }
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud-events/scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
   } else {
-    console.log(`verify-db-icloud-events: 173, then 174 and 175 (each applied twice) and ${passed} scenarios passed`)
+    console.log(`verify-db-icloud-events: 173, then 174, 175 and 176 (each applied twice) and ${passed} scenarios passed`)
   }
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
