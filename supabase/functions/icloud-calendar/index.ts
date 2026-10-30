@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // iCloud Calendar over CalDAV — Phase 1, the "Apple check" (owner, 29.10.2026:
 // "I have to be sure that iCloud Calendar would work as good as Google
@@ -50,6 +50,1061 @@ const MAX_READ_PER_DAY = 40
 
 // <icloud-pure>
 // Pure: no network, no Deno — scripts/verify-icloud-caldav.cjs runs this block.
+
+// <icloud-shared>
+// GENERATED from src/ by scripts/sync-icloud-shared.mjs. Do not edit here — edit the source and re-run the script.
+
+// ── src/features/daily/recurrence.ts ──
+// ─────────────────────────────────────────────────────────────────────────────
+//  THE repeat rule of a recurring plan (schedule_blocks) — the one answer to
+//  "does this template occur on day D?" and "which days in a range?". Every
+//  projection (Daily's agenda, Home, the Training calendar, next session,
+//  plan twins…) asks occursOn; nothing else reads days_of_week to decide a
+//  day (.claude/rules/planning.md). Pure and import-free (sucrase verify:
+//  scripts/verify-recurrence.cjs).
+//
+//  Day math runs on 'yyyy-MM-dd' strings turned into whole day numbers
+//  (Date.UTC / 86 400 000), never on local Date objects — so a time zone or a
+//  daylight-saving change can never shift a day.
+//
+//  The kinds (migration 146; a row without repeat_kind is 'weekly'):
+//    weekly   — every week on days_of_week (covers "every day" and "weekdays")
+//    monthly  — every month: the chosen weekday (days_of_week[0]) nearest the
+//               start date's day of the month, or that same date (clamped to
+//               the month's last day) when no weekday is chosen
+//    interval — every repeat_interval days / weeks / months from the start:
+//               'day' ignores weekdays, 'week' counts Monday-first weeks from
+//               the start's week and uses days_of_week, 'month' uses the
+//               monthly rule every N months
+//    dates    — exactly the hand-picked repeat_dates
+//  The start (anchor) is effective_from (081): nothing occurs before it, and
+//  except_dates (142) are left out of every kind.
+//
+//  "Nearest" never ties: the seven days from 3 before to 3 after a date hold
+//  each weekday exactly once, so the nearest one is at most 3 days away and
+//  unique. It may fall in the neighbouring month (the Saturday nearest the
+//  1st can be the 30th before it); it is still that month's occurrence.
+//
+//  Google Calendar (147): a linked plan is ONE repeating event —
+//  calendar/calendarSeries.ts maps weekly / interval-day / interval-week to
+//  an RRULE, monthly / interval-month / dates to an RDATE list
+//  (occurrencesBetween) and except_dates to EXDATEs, starting on the first
+//  day this rule has on or after effective_from.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type RepeatKind = 'weekly' | 'monthly' | 'interval' | 'dates'
+type RepeatUnit = 'day' | 'week' | 'month'
+
+const REPEAT_KINDS: readonly RepeatKind[] = ['weekly', 'monthly', 'interval', 'dates']
+const REPEAT_UNITS: readonly RepeatUnit[] = ['day', 'week', 'month']
+/** The largest "every N" the planner offers (the database allows the same). */
+const MAX_REPEAT_INTERVAL = 99
+/** The most picked dates one plan holds (146's CHECK allows the same). */
+const MAX_REPEAT_DATES = 366
+
+/** The repeat columns of a schedule_blocks row (all but days_of_week optional:
+ *  before migration 146 a row has none of them and is weekly). */
+interface RepeatRule {
+  days_of_week:     readonly number[]
+  repeat_kind?:     RepeatKind | null
+  repeat_interval?: number | null
+  repeat_unit?:     RepeatUnit | null
+  repeat_dates?:    readonly string[] | null
+  /** First day it may occur on, and the anchor of monthly / interval kinds. */
+  effective_from?:  string | null
+  /** Days it was taken out of (each became a one-off plan, 142). */
+  except_dates?:    readonly string[] | null
+}
+
+const DAY_MS = 86_400_000
+const pad = (n: number) => String(n).padStart(2, '0')
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
+
+function isIsoDay(s: unknown): s is string {
+  return typeof s === 'string' && ISO_DAY.test(s)
+}
+
+/** Whole days since 01.01.1970 for 'yyyy-MM-dd'. */
+function dayNumber(iso: string): number {
+  return Math.round(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / DAY_MS)
+}
+
+function isoOfDayNumber(n: number): string {
+  const d = new Date(n * DAY_MS)
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+}
+
+function addDaysIso(iso: string, days: number): string {
+  return isoOfDayNumber(dayNumber(iso) + days)
+}
+
+/** 0 = Sunday … 6 = Saturday (the days_of_week numbering). 01.01.1970 was a Thursday. */
+function weekdayOfIso(iso: string): number {
+  return (((dayNumber(iso) + 4) % 7) + 7) % 7
+}
+
+function daysInMonth(year: number, month0: number): number {
+  return new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate()
+}
+
+/** The day a monthly rule lands on in `month0` of `year`: the `anchorDay` (clamped
+ *  to the month's last day), or the `weekday` nearest it when one is chosen. */
+function monthlyOccurrence(anchorDay: number, year: number, month0: number, weekday: number | null): string {
+  const target = Math.round(Date.UTC(year, month0, Math.min(anchorDay, daysInMonth(year, month0))) / DAY_MS)
+  if (weekday == null) return isoOfDayNumber(target)
+  const ahead = (weekday - weekdayOfIso(isoOfDayNumber(target)) + 7) % 7
+  return isoOfDayNumber(ahead <= 3 ? target + ahead : target + ahead - 7)
+}
+
+const validDays = (days: readonly number[] | null | undefined): number[] =>
+  [...new Set((days ?? []).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b)
+
+/** The rule's kind; a row without one (before 146) or with an unknown one is weekly. */
+function repeatKindOf(rule: Pick<RepeatRule, 'repeat_kind'>): RepeatKind {
+  return rule.repeat_kind && REPEAT_KINDS.includes(rule.repeat_kind) ? rule.repeat_kind : 'weekly'
+}
+
+function intervalOf(rule: RepeatRule): number {
+  const n = Math.floor(Number(rule.repeat_interval))
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
+
+/** The monthly rule every `every` months from the anchor month. */
+function monthlyHits(rule: RepeatRule, day: string, every: number): boolean {
+  const anchor = rule.effective_from
+  if (!isIsoDay(anchor)) return false // no start, no "same date as the start"
+  const weekday = validDays(rule.days_of_week)[0] ?? null
+  const anchorDay = Number(anchor.slice(8, 10))
+  const startMonth = Number(anchor.slice(0, 4)) * 12 + Number(anchor.slice(5, 7)) - 1
+  const month = Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1
+  // The nearest weekday may sit in the month before or after.
+  for (const m of [month - 1, month, month + 1]) {
+    const k = m - startMonth
+    if (k < 0 || k % every !== 0) continue
+    if (monthlyOccurrence(anchorDay, Math.floor(m / 12), m % 12, weekday) === day) return true
+  }
+  return false
+}
+
+/** The kind's own pattern, before the start and the left-out days. */
+function patternHits(rule: RepeatRule, day: string): boolean {
+  const days = validDays(rule.days_of_week)
+  switch (repeatKindOf(rule)) {
+    case 'weekly':  return days.includes(weekdayOfIso(day))
+    case 'dates':   return (rule.repeat_dates ?? []).includes(day)
+    case 'monthly': return monthlyHits(rule, day, 1)
+    case 'interval': {
+      const every = intervalOf(rule)
+      const start = rule.effective_from
+      if (rule.repeat_unit === 'month') return monthlyHits(rule, day, every)
+      if (!isIsoDay(start)) return false
+      if (rule.repeat_unit === 'day') return (dayNumber(day) - dayNumber(start)) % every === 0
+      if (rule.repeat_unit === 'week') {
+        const monday = (iso: string) => dayNumber(iso) - ((weekdayOfIso(iso) + 6) % 7)
+        return days.includes(weekdayOfIso(day)) && ((monday(day) - monday(start)) / 7) % every === 0
+      }
+      return false
+    }
+  }
+}
+
+/** Does the template have an occurrence that STARTS on `day` ('yyyy-MM-dd')?
+ *  Never before effective_from, never on an except_dates day. */
+function occursOn(rule: RepeatRule, day: string): boolean {
+  if (!isIsoDay(day)) return false
+  if (rule.effective_from && day < rule.effective_from) return false
+  if ((rule.except_dates ?? []).includes(day)) return false
+  return patternHits(rule, day)
+}
+
+/** Every day from `from` to `to` (both included) the template occurs on. */
+function occurrencesBetween(rule: RepeatRule, from: string, to: string): string[] {
+  if (!isIsoDay(from) || !isIsoDay(to)) return []
+  const out: string[] = []
+  for (let n = dayNumber(from), end = dayNumber(to); n <= end; n++) {
+    const iso = isoOfDayNumber(n)
+    if (occursOn(rule, iso)) out.push(iso)
+  }
+  return out
+}
+
+/** The next `count` days from `from` (included) it occurs on, looking at most
+ *  `horizonDays` ahead (a rule that never occurs again returns fewer). */
+function nextOccurrences(rule: RepeatRule, from: string, count: number, horizonDays = 3 * 366): string[] {
+  if (!isIsoDay(from)) return []
+  const out: string[] = []
+  for (let n = dayNumber(from), end = n + horizonDays; n <= end && out.length < count; n++) {
+    const iso = isoOfDayNumber(n)
+    if (occursOn(rule, iso)) out.push(iso)
+  }
+  return out
+}
+
+/** The weekdays it occurs on in a typical week — only for the week-shaped
+ *  kinds (weekly, every N weeks); [] for monthly / every N days or months /
+ *  picked dates, which have no fixed weekday. */
+function weeklyDaysOf(rule: RepeatRule): number[] {
+  const kind = repeatKindOf(rule)
+  if (kind === 'weekly' || (kind === 'interval' && rule.repeat_unit === 'week')) return validDays(rule.days_of_week)
+  return []
+}
+
+/** Training days a week the plans hold on average, weekday by weekday: one a
+ *  plan covers every week counts 1, one covered only every N weeks counts 1/N
+ *  (the most frequent plan on a weekday wins — two plans on one Monday are
+ *  still one day). Monthly, every N days / months and picked dates have no
+ *  fixed weekday and add nothing. Rounded to two decimals. */
+function weeklyDaysPerWeek(rules: readonly RepeatRule[]): number {
+  const share = new Map<number, number>()
+  for (const r of rules) {
+    const each = repeatKindOf(r) === 'interval' ? 1 / intervalOf(r) : 1
+    for (const d of weeklyDaysOf(r)) share.set(d, Math.max(share.get(d) ?? 0, each))
+  }
+  return Math.round([...share.values()].reduce((a, b) => a + b, 0) * 100) / 100
+}
+
+// ── One-line summary ─────────────────────────────────────────────────────────
+
+const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0]
+
+/** "Tue and Thu", "Mon, Wed and Fri" — Monday first. */
+function dayList(days: readonly number[]): string {
+  const names = MONDAY_FIRST.filter(d => days.includes(d)).map(d => SHORT[d])
+  return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+/** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st, 22nd, 23rd, 31st. */
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13
+  const suffix = teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'
+  return `${n}${suffix}`
+}
+
+function monthlyPart(rule: RepeatRule): string {
+  const anchor = rule.effective_from
+  if (!isIsoDay(anchor)) return ' on the start date'
+  const anchorDay = Number(anchor.slice(8, 10))
+  const weekday = validDays(rule.days_of_week)[0]
+  if (weekday != null) return `, the ${LONG[weekday]} nearest the ${ordinal(anchorDay)}`
+  return ` on the ${ordinal(anchorDay)}${anchorDay > 28 ? ' (or the last day)' : ''}`
+}
+
+/** What the rule says, in one plain line: "Every week on Tue and Thu",
+ *  "Every month, the Saturday nearest the 13th", "Every 3 days". */
+function repeatSummary(rule: RepeatRule): string {
+  const days = validDays(rule.days_of_week)
+  const kind = repeatKindOf(rule)
+  if (kind === 'weekly') {
+    if (days.length === 7) return 'Every day'
+    if (days.length === 5 && [1, 2, 3, 4, 5].every(d => days.includes(d))) return 'Every weekday'
+    return days.length === 0 ? 'No day picked' : `Every week on ${dayList(days)}`
+  }
+  if (kind === 'monthly') return `Every month${monthlyPart(rule)}`
+  if (kind === 'dates') {
+    const n = new Set(rule.repeat_dates ?? []).size
+    return n === 0 ? 'No date picked' : `On ${n} picked ${n === 1 ? 'date' : 'dates'}`
+  }
+  const every = intervalOf(rule)
+  if (rule.repeat_unit === 'day') return every === 1 ? 'Every day' : `Every ${every} days`
+  if (rule.repeat_unit === 'month') return `${every === 1 ? 'Every month' : `Every ${every} months`}${monthlyPart(rule)}`
+  const weeks = every === 1 ? 'Every week' : `Every ${every} weeks`
+  return days.length === 0 ? `${weeks}, no day picked` : `${weeks} on ${dayList(days)}`
+}
+
+// ── src/features/calendar/calendarEventRules.ts ──
+// ─────────────────────────────────────────────────────────────────────────────
+//  One item's Google Calendar event (migration 155) — the PURE rules both the
+//  browser and google-tasks-sync use:
+//    · the event a slot (time_blocks) becomes: timed or all-day, Busy or
+//      Free, "✓ " in front once its task is done;
+//    · what a change read back from Google Calendar means for the row
+//      (readbackEvent), and how the read-back lists changes (sync token).
+//  Google's side, checked against its reference first (15.10.2026):
+//  docs/integrations/google-calendar.md.
+//
+//  Import-free on purpose. The block between the <calendar-event-rules>
+//  markers is MIRRORED BY HAND into supabase/functions/google-tasks-sync/
+//  index.ts (Deno can't import from src/); edit it here, then copy the block
+//  there. scripts/verify-calendar-event-rules.cjs fails when they differ.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// <calendar-event-rules>
+/** "Do it at 14:00" has no length: Google gets a short Free event (a
+ *  zero-length one risks 400 timeRangeEmpty). Also the slot's stored length. */
+const NOMINAL_EVENT_MINUTES = 15
+/** In front of a done item's event title (owner, 15.10.2026); Undo takes it off. */
+const DONE_MARK = '✓ '
+/** The zone a server-side push uses (time_blocks keeps none): the owner's. */
+const SERVER_EVENT_TIME_ZONE = 'Europe/Oslo'
+
+/** The event title: "✓ " in front once the item is done (never twice). */
+function calendarTitle(title: string | null | undefined, done: boolean): string {
+  const clean = stripDoneMark(title ?? '')
+  return done ? `${DONE_MARK}${clean}` : clean
+}
+
+/** A title as the app keeps it: without the done mark Google shows. */
+function stripDoneMark(summary: string | null | undefined): string {
+  let s = (summary ?? '').trim()
+  while (s.startsWith('✓')) s = s.slice(1).trim()
+  return s
+}
+
+const CLOCK = /^(\d{2}):(\d{2})(?::(\d{2}))?/
+
+/** 'yyyy-MM-dd' + n days (calendar arithmetic, no time zone involved). */
+function addDaysToIso(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d + n))
+  return t.toISOString().slice(0, 10)
+}
+
+/** 'HH:MM[:SS]' → minutes after midnight, or null. */
+function clockMinutes(t: string | null | undefined): number | null {
+  const m = CLOCK.exec(t ?? '')
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+
+/** A wall-clock date-time `minutes` after `day` 00:00 (may roll into later days). */
+function wallClockAt(day: string, minutes: number): string {
+  const days = Math.floor(minutes / 1440)
+  const rest = minutes - days * 1440
+  return `${addDaysToIso(day, days)}T${pad(Math.floor(rest / 60))}:${pad(rest % 60)}:00`
+}
+
+/** The columns of a slot (time_blocks) its event is made from. */
+interface EventBlock {
+  date: string
+  start_time: string | null
+  duration_minutes: number
+  title: string | null
+  /** false: no length — Free on Google (155). Missing before 155 = busy. */
+  busy?: boolean | null
+}
+
+type EventTime = { date: string } | { dateTime: string; timeZone: string }
+
+/** What events.insert / events.patch get for a slot. */
+interface BlockEventBody {
+  summary: string
+  start: EventTime
+  end: EventTime
+  transparency: 'opaque' | 'transparent'
+}
+
+/**
+ * The Google event of a slot: a day with no time is an all-day event (end =
+ * the next day — Google's end is exclusive) and Free; a time is a wall-clock
+ * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
+ * with a nominal end when it doesn't. null when the slot has no usable day.
+ */
+function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
+  if (!ISO_DAY.test(b.date ?? '')) return null
+  const summary = calendarTitle(b.title, opts.done)
+  const start = clockMinutes(b.start_time)
+  if (start === null) {
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent' }
+  }
+  const busy = b.busy !== false
+  const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
+  const timeZone = opts.timeZone && opts.timeZone.trim() ? opts.timeZone : SERVER_EVENT_TIME_ZONE
+  return {
+    summary,
+    start: { dateTime: wallClockAt(b.date, start), timeZone },
+    end: { dateTime: wallClockAt(b.date, start + length), timeZone },
+    transparency: busy ? 'opaque' : 'transparent',
+  }
+}
+
+/** What a push sends: 'all' (the slot's day, time, length, Busy/Free and
+ *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
+type EventPushFields = 'all' | 'title'
+
+/** A start or end in a PATCH: the form not used is sent as null. */
+type EventTimePatch =
+  | { date: string; dateTime: null; timeZone: null }
+  | { dateTime: string; timeZone: string; date: null }
+
+/**
+ * PATCH merges objects field by field (Google: "To delete a field, specify the
+ * field and set it to null"), and start and end "must both be timed or both
+ * be all-day": an item turned all-day kept its old dateTime, and a timed one
+ * its old date, so the change never reached Google (owner, 16.10.2026). Every
+ * PATCH of a start/end sends the other form as null; an insert keeps the plain
+ * body.
+ */
+function timePatch(t: EventTime): EventTimePatch {
+  return 'date' in t ? { date: t.date, dateTime: null, timeZone: null } : { dateTime: t.dateTime, timeZone: t.timeZone, date: null }
+}
+
+/** A body for PATCH: its start and end through timePatch. */
+function withTimePatch<B extends { start: EventTime; end: EventTime }>(body: B): Omit<B, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch } {
+  return { ...body, start: timePatch(body.start), end: timePatch(body.end) }
+}
+
+/**
+ * The PATCH a push sends. A title push carries the summary and nothing else,
+ * so ticking an item done never sends its old day or time back over a move
+ * the owner made in Google Calendar. Anything but 'title' is the whole event,
+ * its start and end through timePatch.
+ */
+function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof withTimePatch<BlockEventBody>> {
+  return fields === 'title' ? { summary: body.summary } : withTimePatch(body)
+}
+
+/** The done mark's PATCH: the title with or without "✓ " — and only that. */
+function doneMarkPatch(title: string | null | undefined, done: boolean): { summary: string } {
+  return { summary: calendarTitle(title, done) }
+}
+
+// ── The read-back (google-tasks-sync) ───────────────────────────────────────
+
+/** The fields of a Google event the read-back reads (events.list, singleEvents=false). */
+interface GoogleEventLike {
+  id?: string
+  status?: string
+  summary?: string
+  start?: { date?: string; dateTime?: string; timeZone?: string }
+  end?: { date?: string; dateTime?: string; timeZone?: string }
+  transparency?: string
+  recurringEventId?: string
+  originalStartTime?: { date?: string; dateTime?: string; timeZone?: string }
+  updated?: string
+}
+
+/** One change as apply_calendar_readback (migration 155) takes it. */
+interface ReadbackEvent {
+  id: string
+  seriesId: string | null
+  status: 'confirmed' | 'tentative' | 'cancelled'
+  title: string | null
+  allDay: boolean
+  date: string | null
+  time: string | null
+  minutes: number | null
+  busy: boolean
+  originalDate: string | null
+  updated: string | null
+}
+
+/** An RFC 3339 instant as the wall clock in `timeZone` ({ date, time 'HH:MM:SS' }). */
+function wallClockIn(instant: string, timeZone: string): { date: string; time: string } | null {
+  const ms = Date.parse(instant)
+  if (!Number.isFinite(ms)) return null
+  let parts: Intl.DateTimeFormatPart[]
+  try {
+    parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(ms))
+  } catch {
+    return null
+  }
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? ''
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
+}
+
+const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string): string | null => {
+  if (!t) return null
+  if (t.date && ISO_DAY.test(t.date)) return t.date
+  if (t.dateTime) return wallClockIn(t.dateTime, t.timeZone || zone)?.date ?? null
+  return null
+}
+
+/**
+ * A Google event as the change the read-back applies. Times are read as the
+ * wall clock of the event's own zone (else the calendar's), the length from
+ * the two instants (an all-day event: whole days), the title without "✓ ".
+ * A cancelled entry may carry only its id (and, for one day of a series,
+ * recurringEventId + originalStartTime — Google's reference). null for
+ * something with no id.
+ */
+function readbackEvent(e: GoogleEventLike, calendarZone: string): ReadbackEvent | null {
+  if (!e || typeof e.id !== 'string' || !e.id) return null
+  const zone = (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
+  const seriesId = typeof e.recurringEventId === 'string' && e.recurringEventId ? e.recurringEventId : null
+  const originalDate = dayOf(e.originalStartTime, e.originalStartTime?.timeZone || zone)
+  const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
+  const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
+  if (status === 'cancelled') {
+    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false }
+  }
+  const title = typeof e.summary === 'string' ? stripDoneMark(e.summary) : null
+  const busy = e.transparency !== 'transparent'
+  if (e.start?.date && ISO_DAY.test(e.start.date)) {
+    const endDay = e.end?.date && ISO_DAY.test(e.end.date) ? e.end.date : addDaysToIso(e.start.date, 1)
+    const days = Math.max(1, Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${e.start.date}T00:00:00Z`)) / 86_400_000))
+    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false }
+  }
+  const startAt = e.start?.dateTime ? wallClockIn(e.start.dateTime, zone) : null
+  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy }
+  const startMs = Date.parse(e.start!.dateTime!)
+  const endMs = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
+  const minutes = Number.isFinite(endMs) && endMs > startMs ? Math.min(1440, Math.round((endMs - startMs) / 60_000)) : null
+  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy }
+}
+
+/** The first read (and the one after a 410) only fetches a sync token. */
+type ReadbackPlan = { mode: 'baseline' } | { mode: 'incremental'; syncToken: string }
+
+function readbackPlan(state: { sync_token?: string | null } | null | undefined): ReadbackPlan {
+  const token = state?.sync_token
+  return typeof token === 'string' && token ? { mode: 'incremental', syncToken: token } : { mode: 'baseline' }
+}
+
+/** How far back the baseline reads (it only needs the token at its end). */
+const READBACK_BASELINE_DAYS = 7
+/** Pages a run reads at most (2500 events each). */
+const READBACK_MAX_PAGES = 20
+
+/**
+ * events.list parameters. Google: "Sync tokens aren't compatible with most
+ * filters" — timeMin goes on the baseline only; with a syncToken no
+ * timeMin/timeMax/updatedMin/orderBy/q, and showDeleted can't be false (it is
+ * left out on both, so both requests carry the same set otherwise). A page
+ * repeats the same query with its pageToken.
+ */
+function readbackListParams(plan: ReadbackPlan, nowMs: number, pageToken?: string | null): Record<string, string> {
+  const params: Record<string, string> = { maxResults: '2500' }
+  if (plan.mode === 'incremental') params.syncToken = plan.syncToken
+  else params.timeMin = new Date(nowMs - READBACK_BASELINE_DAYS * 86_400_000).toISOString()
+  if (pageToken) params.pageToken = pageToken
+  return params
+}
+
+/** 410 Gone on a sync token: Google wants a fresh full sync. */
+function isSyncTokenGone(status: number | null | undefined): boolean {
+  return status === 410
+}
+// </calendar-event-rules>
+
+// ── src/features/calendar/calendarSeries.ts ──
+// ─────────────────────────────────────────────────────────────────────────────
+//  A repeating plan (schedule_blocks) as ONE repeating Google Calendar event
+//  (migration 147) — the pure mapping. Pure and import-free apart from the
+//  repeat rule itself (daily/recurrence.ts), so scripts/verify-calendar-
+//  recurrence.cjs runs it as is. The calls that send it live in
+//  api/scheduleSeriesCalendar.ts.
+//
+//  Google's event (docs/integrations/google-calendar.md, checked 13.10.2026):
+//    start / end  the FIRST occurrence: a wall-clock dateTime with no offset
+//                 plus `timeZone` — required for a repeating event, it is the
+//                 zone the repeat is expanded in, so every occurrence keeps
+//                 its clock time across a daylight-saving change.
+//    recurrence   RFC 5545 lines: RRULE, RDATE, EXDATE (DTSTART is not
+//                 allowed there; start is DTSTART). The occurrences are the
+//                 RRULE's and the RDATEs', plus start itself, minus EXDATEs.
+//
+//  The kinds (recurrence.ts):
+//    weekly            RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=… (all seven days:
+//                      FREQ=DAILY)
+//    every N days      RRULE:FREQ=DAILY;INTERVAL=N
+//    every N weeks     RRULE:FREQ=WEEKLY;INTERVAL=N;WKST=MO;BYDAY=… — WKST=MO
+//                      because recurrence.ts counts Monday-first weeks
+//    monthly, every N months, picked dates
+//                      no RRULE can say "the Saturday nearest the 13th", so an
+//                      RDATE list from occurrencesBetween: picked dates all of
+//                      them; the monthly kinds up to a horizon a year ahead
+//                      (`horizon`, kept on the row), pushed again when the
+//                      app opens and less than 90 days of it remain.
+//    except_dates      EXDATE (only days the rule really has — Google wants
+//                      an EXDATE to name a real occurrence).
+//
+//  Start = the rule's FIRST day on or after the later of effective_from and
+//  the day the plan was added to Google (google_calendar_from, migration 148:
+//  owner, 14.10.2026 — a plan added today must not fill Google with its past
+//  weeks; the app's own projection still starts at effective_from). Never the
+//  day itself: RFC 5545 counts the start as an occurrence and leaves a start
+//  that doesn't fit the rule undefined (a Tuesday start for a Mon/Wed plan
+//  would put an extra Tuesday in Google). A first day that was taken out
+//  stays the start and gets an EXDATE, so skipping a day never moves the
+//  series.
+//
+//  A plan that crosses midnight (end before start, or equal = 24 h) ends on
+//  the next day — the same reading as dayAgendaProjection.ts.
+//
+//  Since 155 (one item): a repeat with no time (start_time and end_time NULL)
+//  is an ALL-DAY series — start/end are dates (the first day, the day after:
+//  Google's end is exclusive) and every RDATE / EXDATE is a date
+//  (`RDATE;VALUE=DATE:20261018,…` — Google: "must be dates (not date-times)
+//  for all-day events"). Every series says whether it blocks time
+//  (`transparency`): Busy for a time with a length, Free for a time without
+//  one (busy false) and for all-day. A day held by a moved instance of the
+//  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
+//  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+/** The RDATE list of a monthly kind covers this many days past today. */
+const SERIES_HORIZON_DAYS = 365
+/** …and is pushed again once fewer than this many days of it remain. */
+const SERIES_TOPUP_DAYS = 90
+/** The zone when the device names none (the owner lives in Oslo). */
+const SERIES_FALLBACK_TIME_ZONE = 'Europe/Oslo'
+/** How far the first day is looked for: every 99 months, with a nearest
+ *  weekday that fell before the start, is 100 months away. */
+const FIRST_DAY_SEARCH_DAYS = 9 * 366
+
+/** The columns of a schedule_blocks row the mapping reads. */
+interface SeriesTemplate extends RepeatRule {
+  title:        string
+  /** 'HH:MM' or 'HH:MM:SS'; null (with end_time) = a repeat with no time — an all-day series (155). */
+  start_time:   string | null
+  end_time:     string | null
+  /** false: a time with no length — Free on Google (155). Missing = busy. */
+  busy?:        boolean | null
+  google_calendar_event_id?: string | null
+  /** The last day the event's RDATE list covers (147); null = it lists them all. */
+  google_calendar_horizon?:  string | null
+  /** The zone the series was created in (147). */
+  google_calendar_time_zone?: string | null
+  /** The day the plan was added to Google Calendar (148): its series starts
+   *  on the first real day on or after this. Missing before 148. */
+  google_calendar_from?: string | null
+}
+
+/** What events.insert / events.patch get. A timed series: wall-clock
+ *  dateTime + zone; an all-day one (155): dates. */
+interface SeriesEventBody {
+  summary:    string
+  start:      { dateTime: string; timeZone: string } | { date: string }
+  end:        { dateTime: string; timeZone: string } | { date: string }
+  recurrence: string[]
+  /** opaque = Busy, transparent = Free (155). */
+  transparency: 'opaque' | 'transparent'
+}
+
+/** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
+interface SeriesPushOptions { today: string; timeZone: string; keepDays?: readonly string[] }
+
+interface SeriesPlan {
+  body:    SeriesEventBody
+  /** The first occurrence ('yyyy-MM-dd') — the event's start. */
+  first:   string
+  /** Store on the row: the RDATE list's last day, or null when the event
+   *  carries every occurrence (an RRULE, or all picked dates). */
+  horizon: string | null
+  /** Store on the row: the day the series starts from (148), or null when
+   *  it starts at effective_from (no google_calendar_from given). */
+  from:    string | null
+}
+
+const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+const TIME = /^(\d{2}):(\d{2})(?::(\d{2}))?/
+
+function seriesTimeZone(tz: string | null | undefined): string {
+  return tz && tz.trim() ? tz : SERIES_FALLBACK_TIME_ZONE
+}
+
+/** The zone a push expands the series in. A save from the planner takes the
+ *  device's (and may change it); every other push — a day carried over, the
+ *  horizon top-up, Undo, a retry — keeps the series' own, so opening the app
+ *  abroad never re-zones a plan. */
+function seriesPushZone(storedZone: string | null | undefined, deviceZone: string | null | undefined, fromEditor: boolean): string {
+  if (!fromEditor && storedZone && storedZone.trim()) return storedZone
+  return seriesTimeZone(deviceZone)
+}
+
+/** 'HH:MM[:SS]' → 'HH:MM:SS', or null when it isn't a time. */
+function clock(t: string): string | null {
+  const m = TIME.exec(t ?? '')
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null
+  return `${m[1]}:${m[2]}:${m[3] ?? '00'}`
+}
+const minutesOf = (hhmmss: string) => Number(hhmmss.slice(0, 2)) * 60 + Number(hhmmss.slice(3, 5))
+
+/** '2026-10-13' + '16:30:00' → '20261013T163000' (an RFC 5545 local date-time). */
+function icalStamp(day: string, hhmmss: string): string {
+  return `${day.replace(/-/g, '')}T${hhmmss.replace(/:/g, '')}`
+}
+
+const everyOf = (rule: RepeatRule) => {
+  const n = Math.floor(Number(rule.repeat_interval))
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
+
+/** True for the kinds Google gets as an RDATE list kept up to a horizon. */
+function isHorizonKind(rule: RepeatRule): boolean {
+  const kind = repeatKindOf(rule)
+  return kind === 'monthly' || (kind === 'interval' && rule.repeat_unit === 'month')
+}
+
+/** The one RRULE line of the week- and day-shaped kinds; null for the others
+ *  (monthly, every N months, picked dates) and for a week with no day. */
+function seriesRrule(rule: RepeatRule): string | null {
+  const kind = repeatKindOf(rule)
+  if (kind === 'interval' && rule.repeat_unit === 'day') {
+    const n = everyOf(rule)
+    return n === 1 ? 'RRULE:FREQ=DAILY' : `RRULE:FREQ=DAILY;INTERVAL=${n}`
+  }
+  const weekShaped = kind === 'weekly' || (kind === 'interval' && rule.repeat_unit === 'week')
+  if (!weekShaped) return null
+  const days = weeklyDaysOf(rule)
+  if (!days.length) return null
+  const n = kind === 'interval' ? everyOf(rule) : 1
+  if (n === 1 && days.length === 7) return 'RRULE:FREQ=DAILY'
+  const byday = MONDAY_FIRST.filter(d => days.includes(d)).map(d => BYDAY[d]).join(',')
+  return `RRULE:FREQ=WEEKLY${n > 1 ? `;INTERVAL=${n}` : ''};WKST=MO;BYDAY=${byday}`
+}
+
+/** The rule's own pattern, with no day taken out. */
+const patternOf = (rule: RepeatRule): RepeatRule => ({ ...rule, except_dates: [] })
+
+/** The first day the rule's pattern has on or after its start — the later of
+ *  effective_from and the day it was added to Google (taken-out days count). */
+function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+  const start = isIsoDay(rule.effective_from) ? rule.effective_from : today
+  const added = rule.google_calendar_from
+  const from = isIsoDay(added) && added > start ? added : start
+  return nextOccurrences(patternOf(rule), from, 1, FIRST_DAY_SEARCH_DAYS)[0] ?? null
+}
+
+/** Whether the row comes from a database with 148's column (a `*` read carries it, null or not). */
+function hasSeriesFromColumn(row: object): boolean {
+  return 'google_calendar_from' in row
+}
+
+/**
+ * The day a push starts the series from (148): the one stored with the link;
+ * else today — a new link, or a series linked before 148, which starts over
+ * from the day of this push. null without 148's column: the series then
+ * starts at effective_from, as before it.
+ */
+function seriesFromDay(row: Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+  if (!hasSeriesFromColumn(row)) return null
+  return isIsoDay(row.google_calendar_from) ? row.google_calendar_from : today
+}
+
+/** A series linked before 148: no start day stored yet — the app pushes it
+ *  once when it opens, so Google drops the past weeks it was given. */
+function needsSeriesFromDay(t: SeriesTemplate): boolean {
+  return !!t.google_calendar_event_id && hasSeriesFromColumn(t) && !isIsoDay(t.google_calendar_from)
+}
+
+/** The event a push sends today: seriesEventFor from the series' start day
+ *  (seriesFromDay) — what the plan's link stores as `from`. */
+function seriesEventForPush(row: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
+  return seriesEventFor({ ...row, google_calendar_from: seriesFromDay(row, opts.today) }, opts)
+}
+
+/** A day of the plan before its series starts on Google (148: the day it was
+ *  added) was never there, so a change to it (done, moved, skipped, put
+ *  back) stays off Google too. */
+function isBeforeSeriesStart(row: SeriesTemplate, day: string | null | undefined, today: string): boolean {
+  if (!isIsoDay(day)) return false
+  const first = firstSeriesDay({ ...row, google_calendar_from: seriesFromDay(row, today) }, today)
+  return !!first && day < first
+}
+
+/** The repeating plans one tap adds to Google Calendar (148): not on it yet,
+ *  with a day left to show from the day they would start there. */
+function plansToAddToCalendar<T extends SeriesTemplate>(rows: readonly T[], today: string): T[] {
+  return rows.filter(r => !r.google_calendar_event_id
+    && seriesEventForPush(r, { today, timeZone: SERIES_FALLBACK_TIME_ZONE }) !== null)
+}
+
+const plans = (n: number) => `${n} repeating plan${n === 1 ? '' : 's'}`
+
+/** "Adding 6 repeating plans to Google Calendar…" */
+function addPlansProgressText(count: number): string {
+  return `Adding ${plans(count)} to Google Calendar…`
+}
+
+/** The one result line of "Add plans to Calendar" ("Added 6 repeating plans
+ *  to Google Calendar · 1 failed — …"); a failed one waits on the retry list. */
+function addPlansResultText(r: { added: number; failed: number }): string {
+  const retry = 'the app tries again the next time it opens'
+  if (!r.added && !r.failed) return 'Every repeating plan is already on Google Calendar'
+  if (!r.added) return `Couldn't add ${plans(r.failed)} to Google Calendar — ${retry}`
+  return `Added ${plans(r.added)} to Google Calendar${r.failed ? ` · ${r.failed} failed — ${retry}` : ''}`
+}
+
+/**
+ * The Google event for a repeating plan, or null when it has no occurrence
+ * left to show (no day picked, every day taken out). `today` sets the
+ * horizon of the monthly kinds; `timeZone` is the zone the times mean.
+ */
+function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
+  const allDay = t.start_time == null && t.end_time == null
+  const startClock = allDay ? null : clock(t.start_time ?? '')
+  const endClock = allDay ? null : clock(t.end_time ?? '')
+  if ((!allDay && (!startClock || !endClock)) || !isIsoDay(opts.today)) return null
+  const first = firstSeriesDay(t, opts.today)
+  if (!first) return null
+
+  const tz = seriesTimeZone(opts.timeZone)
+  const keep = new Set((opts.keepDays ?? []).filter(isIsoDay))
+  const except = new Set((t.except_dates ?? []).filter(isIsoDay))
+  const pattern = patternOf(t)
+  // All-day: dates (VALUE=DATE, no zone); timed: local date-times with TZID.
+  const stamps = (days: readonly string[]) =>
+    days.map(d => (startClock ? icalStamp(d, startClock) : d.replace(/-/g, ''))).join(',')
+  const prefix = (name: 'RDATE' | 'EXDATE') => (allDay ? `${name};VALUE=DATE:` : `${name};TZID=${tz}:`)
+  const recurrence: string[] = []
+  let horizon: string | null = null
+  let exdates: string[]
+
+  const rrule = seriesRrule(t)
+  if (rrule) {
+    recurrence.push(rrule)
+    // Only days the rule really has, from its first one on.
+    exdates = [...except].filter(d => d >= first && occursOn(pattern, d)).sort()
+  } else {
+    const last = repeatKindOf(t) === 'dates'
+      ? [...(t.repeat_dates ?? [])].filter(isIsoDay).sort().pop() ?? first
+      : addDaysIso(first > opts.today ? first : opts.today, SERIES_HORIZON_DAYS)
+    if (repeatKindOf(t) !== 'dates') horizon = last
+    const days = occurrencesBetween(pattern, first, last)
+    const extra = days.filter(d => d !== first && !except.has(d))
+    if (!extra.length && except.has(first) && !keep.has(first)) return null // nothing left to show
+    if (extra.length) recurrence.push(`${prefix('RDATE')}${stamps(extra)}`)
+    exdates = except.has(first) ? [first] : []
+  }
+  exdates = exdates.filter(d => !keep.has(d))
+  if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
+
+  const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
+  if (!startClock || !endClock) {
+    return {
+      first, horizon, from,
+      body: {
+        summary: t.title,
+        start: { date: first },
+        end: { date: addDaysIso(first, 1) },
+        recurrence,
+        transparency: 'transparent',
+      },
+    }
+  }
+  const endDay = minutesOf(endClock) <= minutesOf(startClock) ? addDaysIso(first, 1) : first
+  return {
+    first,
+    horizon,
+    from,
+    body: {
+      summary: t.title,
+      start: { dateTime: `${first}T${startClock}`, timeZone: tz },
+      end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
+      recurrence,
+      transparency: t.busy === false ? 'transparent' : 'opaque',
+    },
+  }
+}
+
+/** A linked monthly-kind plan whose RDATE list runs out within 90 days (or
+ *  never had one) — the app pushes it again when it opens. */
+function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
+  if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
+  const h = t.google_calendar_horizon
+  return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
+}
+
+// ── Retries (pushes Google didn't take) ──────────────────────────────────────
+//  A day carried over (142) or an Undo whose push answered 'unknown' (no
+//  connection, a network or 5xx failure) is remembered on this device and
+//  pushed again the next time the app opens (useCalendarSeriesTopUp). The
+//  list lives in localStorage under SERIES_PENDING_KEY and is cleared on
+//  sign-out (security/accountState.ts).
+
+const SERIES_PENDING_KEY = 'lasci.calendarSeries.pending'
+
+interface PendingSeries {
+  planId:   string
+  /** Days of the plan (one-off blocks, 142) that get their own event once the series took their EXDATE. */
+  blockIds: string[]
+  /** Put back by Undo with its link reset: link it again. */
+  relink?:  boolean
+}
+
+/** The stored list, or [] for anything that isn't one. */
+function parsePendingSeries(raw: string | null | undefined): PendingSeries[] {
+  try {
+    const list: unknown = JSON.parse(raw ?? '[]')
+    if (!Array.isArray(list)) return []
+    return list.flatMap((p): PendingSeries[] => {
+      const x = p as Partial<PendingSeries> | null
+      if (!x || typeof x.planId !== 'string' || !x.planId) return []
+      const blockIds = Array.isArray(x.blockIds) ? x.blockIds.filter((b): b is string => typeof b === 'string' && !!b) : []
+      return [{ planId: x.planId, blockIds: [...new Set(blockIds)], ...(x.relink ? { relink: true } : {}) }]
+    })
+  } catch {
+    return []
+  }
+}
+
+/** Adds a plan (and a day of it) to the list: one entry per plan, days merged. */
+function addPendingSeries(list: readonly PendingSeries[], planId: string, blockId: string | null, relink = false): PendingSeries[] {
+  const at = list.findIndex(p => p.planId === planId)
+  const prev: PendingSeries = at >= 0 ? list[at] : { planId, blockIds: [] }
+  const next: PendingSeries = {
+    planId,
+    blockIds: blockId && !prev.blockIds.includes(blockId) ? [...prev.blockIds, blockId] : [...prev.blockIds],
+    ...(relink || prev.relink ? { relink: true } : {}),
+  }
+  return at >= 0 ? list.map((p, i) => (i === at ? next : p)) : [...list, next]
+}
+
+// ── src/features/calendar/areas/icloudEvents.ts ──
+// The app's events in Apple Calendar (Phase 2b, docs/features/calendar-plan.md):
+// which area an item belongs to, and the iCalendar object iCloud keeps for it —
+// built from the same rules as Google's events (calendarEventRules.blockEventBody
+// for a slot, calendarSeries.seriesEventFor for a repeating plan), plus the
+// area's emoji, alert and a link back to the app. Pure; copied into
+// supabase/functions/icloud-calendar by scripts/sync-icloud-shared.mjs, which
+// is where it runs (verify-icloud-events checks the copy is current).
+
+
+/** What an item's area is read from: its slot's or plan's category and source, its task's. */
+interface AreaInput {
+  category?:         string | null
+  source_type?:      string | null
+  task_source_type?: string | null
+  domain?:           string | null
+  project_id?:       string | null
+  hevy_routine_id?:  string | null
+}
+
+const MEDIA_SOURCES = new Set(['movie', 'tv_series', 'tv_episode', 'media'])
+
+/** The area an item goes to: football → training → media → work (with projects) → personal. */
+function itemArea(x: AreaInput): AreaKey {
+  const sources = [x.source_type, x.task_source_type].filter((s): s is string => !!s)
+  if (x.category === 'football') return 'football'
+  if (x.category === 'training' || sources.includes('training_session') || !!x.hevy_routine_id) return 'training'
+  if (x.category === 'media' || x.domain === 'media' || sources.some(s => MEDIA_SOURCES.has(s))) return 'media'
+  if (x.category === 'work' || x.category === 'projects' || x.domain === 'work' || !!x.project_id || sources.includes('project_item')) return 'work'
+  return 'personal'
+}
+
+/** An item wants a calendar when its Google choice is Calendar or Both; an old row (no choice saved) where it is now. */
+function wantsCalendar(target: string | null | undefined, onACalendar: boolean): boolean {
+  if (target === 'calendar' || target === 'both') return true
+  if (target == null) return onACalendar
+  return false
+}
+
+/** iCalendar text: backslash, semicolon, comma and line breaks escaped. */
+function icsEscape(t: string): string {
+  return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+}
+
+/** A content line folded at 75 octets (UTF-8), never inside a character. */
+function foldLine(line: string): string {
+  const enc = new TextEncoder()
+  const out: string[] = []
+  let cur = ''
+  let size = 0
+  for (const ch of line) {
+    const n = enc.encode(ch).length
+    if (size + n > (out.length ? 74 : 75)) { out.push(cur); cur = ''; size = 0 }
+    cur += ch
+    size += n
+  }
+  out.push(cur)
+  return out.join('\r\n ')
+}
+
+/** The zone the app's times mean, as a VTIMEZONE (Europe/Oslo: CET/CEST). */
+const VTIMEZONE_OSLO = [
+  'BEGIN:VTIMEZONE', 'TZID:Europe/Oslo',
+  'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
+  'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
+  'END:VTIMEZONE',
+]
+
+const ics8 = (day: string) => day.replace(/-/g, '')
+const icsStamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+
+/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. */
+function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
+  if ('date' in t) return `${name};VALUE=DATE:${ics8(t.date)}`
+  return `${name};TZID=${t.timeZone}:${t.dateTime.replace(/[-:]/g, '').slice(0, 15)}`
+}
+
+/** "✓ 🏋️ Lower B": the done mark first (Google's), then the area's emoji. */
+function areaTitle(summary: string, area: CalendarArea): string {
+  const done = summary.startsWith('✓ ')
+  const rest = done ? summary.slice(2) : summary
+  const titled = area.emoji ? `${area.emoji} ${rest}` : rest
+  return done ? `✓ ${titled}` : titled
+}
+
+/** The alert before a timed event ("-PT60M"; at the start "PT0S"); an all-day event gets none. */
+function alarmLines(minutes: number | null, timed: boolean, title: string): string[] {
+  if (minutes === null || !timed) return []
+  return ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, `TRIGGER:${minutes === 0 ? 'PT0S' : `-PT${minutes}M`}`, 'END:VALARM']
+}
+
+/** A link to the day in the app: tappable in Apple Calendar's URL field and its notes. */
+function dayLink(appUrl: string, day: string): string {
+  return `${appUrl.replace(/#.*$/, '')}#/daily?date=${day}`
+}
+
+interface EventParts {
+  uid:        string
+  body:       Pick<BlockEventBody, 'summary' | 'start' | 'end' | 'transparency'> & { recurrence?: string[] }
+  area:       CalendarArea
+  notes:      string | null | undefined
+  link:       string
+  now:        Date
+}
+
+/** One VCALENDAR with one VEVENT, lines folded, CRLF throughout. */
+function eventObject(p: EventParts): string {
+  const timed = !('date' in p.body.start)
+  const title = areaTitle(p.body.summary, p.area)
+  const notes = [p.notes?.trim(), `Open in Lasci's Board: ${p.link}`].filter(Boolean).join('\n\n')
+  const zones = timed && 'timeZone' in p.body.start && p.body.start.timeZone === 'Europe/Oslo' ? VTIMEZONE_OSLO : []
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Calendar//EN", 'CALSCALE:GREGORIAN', ...zones,
+    'BEGIN:VEVENT',
+    `UID:${p.uid}`,
+    `DTSTAMP:${icsStamp(p.now)}`,
+    timeLine('DTSTART', p.body.start),
+    timeLine('DTEND', p.body.end),
+    ...(p.body.recurrence ?? []),
+    `SUMMARY:${icsEscape(title)}`,
+    `DESCRIPTION:${icsEscape(notes)}`,
+    `URL;VALUE=URI:${p.link}`,
+    `TRANSP:${p.body.transparency === 'transparent' ? 'TRANSPARENT' : 'OPAQUE'}`,
+    ...alarmLines(p.area.alertMinutes, timed, title),
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+  return lines.map(foldLine).join('\r\n') + '\r\n'
+}
+
+/** A slot's event (time_blocks): its id names it in iCloud, so a move or rename replaces it in place. */
+function slotEvent(
+  block: EventBlock & { id: string; notes?: string | null },
+  o: { done: boolean; taskNotes?: string | null; area: CalendarArea; timeZone: string; appUrl: string; now: Date },
+): { uid: string; ics: string } | null {
+  const body = blockEventBody(block, { done: o.done, timeZone: o.timeZone })
+  if (!body) return null
+  const uid = `lasci-slot-${block.id}@lasciviens.github.io`
+  const notes = [block.notes?.trim(), o.taskNotes?.trim()].filter(Boolean).join('\n\n') || null
+  return { uid, ics: eventObject({ uid, body, area: o.area, notes, link: dayLink(o.appUrl, block.date), now: o.now }) }
+}
+
+/** A repeating plan's ONE series event (schedule_blocks), from the day it reached Apple Calendar (`icloud_from`). */
+function planEvent(
+  plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null },
+  o: { area: CalendarArea; today: string; timeZone: string; appUrl: string; now: Date },
+): { uid: string; ics: string; plan: SeriesPlan } | null {
+  // Google's own start day is not iCloud's: a series starts where it reached this calendar.
+  const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
+  if (!series) return null
+  const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
+  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
+}
+
+/** Where an item's event lives in its area's calendar. */
+const eventFileName = (uid: string) => `${uid.replace(/@.*$/, '').replace(/[^a-z0-9-]/gi, '-')}.ics`
+
+// </icloud-shared>
 
 /** Credentials go only to iCloud's CalDAV hosts, over HTTPS: caldav.icloud.com and the account's pNN-caldav partition. */
 export function isICloudUrl(u: string): boolean {
@@ -114,33 +1169,8 @@ export function parseMultistatus(xml: string): { responses: DavResponse[]; syncT
   return { responses, syncToken: xmlText(rest, 'sync-token') }
 }
 
-/** iCalendar TEXT escaping (RFC 5545 §3.3.11). */
-export function icsEscape(t: string): string {
-  return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
-}
 
-/** Folds a content line at 75 octets, never inside a UTF-8 character (RFC 5545 §3.1). */
-export function foldLine(line: string): string {
-  const enc = new TextEncoder()
-  const out: string[] = []
-  let cur = ''
-  let bytes = 0
-  for (const ch of line) {
-    const n = enc.encode(ch).length
-    if (bytes + n > (out.length ? 74 : 75)) { out.push(cur); cur = ''; bytes = 0 }
-    cur += ch
-    bytes += n
-  }
-  out.push(cur)
-  return out.join('\r\n ')
-}
 
-const VTIMEZONE_OSLO = [
-  'BEGIN:VTIMEZONE', 'TZID:Europe/Oslo',
-  'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
-  'BEGIN:STANDARD', 'TZOFFSETFROM:+0200', 'TZOFFSETTO:+0100', 'TZNAME:CET', 'DTSTART:19701025T030000', 'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU', 'END:STANDARD',
-  'END:VTIMEZONE',
-]
 
 const compact = (day: string) => day.replace(/-/g, '')
 const nextDay = (day: string) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10) }
@@ -406,6 +1436,8 @@ export interface CalendarArea {
   alertMinutes: number | null
   /** Off: the area gets no calendar of its own (one made earlier stays in iCloud). */
   enabled:      boolean
+  /** Where the area's events go: Google Calendar (as before) or its Apple Calendar (Phase 2b). */
+  app:          'google' | 'apple'
 }
 
 export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
@@ -420,11 +1452,11 @@ export const isAlertMinutes = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true },
-  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true },
-  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true, app: 'google' },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true, app: 'google' },
+  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
+  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true, app: 'google' },
 }
 
 const NAME_MAX = 60
@@ -450,6 +1482,7 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       color,
       alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
+      app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
   return { areas }
@@ -668,6 +1701,107 @@ async function placeAreaCalendar(c: Creds, home: string, stored: string | null, 
   throw new ICloudError('mkcalendar', `iCloud answered ${mk.status} when "${area.name}" was made`)
 }
 
+// ── Phase 2b: the app's events in Apple Calendar (the queue, icloud_outbox, 173) ──
+const DRAIN_MAX_ROWS = 25
+const DRAIN_MAX_MS = 20_000
+
+interface QueueRow { id: number; entity: 'slot' | 'plan'; entity_id: string; href: string | null; requested_at: string; attempts: number }
+type Db = SupabaseClient
+
+/** A failed row waits 1 min, then twice as long each time, at most a day. */
+const retryAt = (attempts: number) => new Date(Date.now() + Math.min(86_400_000, 60_000 * 2 ** Math.min(attempts, 11))).toISOString()
+
+/** An event in an area calendar the app made: only there may the drain put or remove anything. */
+function inAreaCalendars(href: string, areaUrls: string[]): boolean {
+  return isICloudUrl(href) && areaUrls.some(u => href.startsWith(u))
+}
+
+/** Puts one event; the address it lives at. A refusal is an ICloudError (the row is tried again later). */
+async function putEvent(c: Creds, calendarUrl: string, uid: string, ics: string): Promise<string> {
+  const url = new URL(eventFileName(uid), calendarUrl).toString()
+  const r = await dav(c, 'PUT', url, ics)
+  if (r.status !== 201 && r.status !== 204) throw new ICloudError('put', `iCloud answered ${r.status} when an event was written`)
+  return url
+}
+
+/** Removes one event; gone already is fine. */
+async function removeEvent(c: Creds, href: string, areaUrls: string[]): Promise<void> {
+  if (!inAreaCalendars(href, areaUrls)) return
+  const r = await dav(c, 'DELETE', href)
+  if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when an event was removed`)
+}
+
+/**
+ * One queued slot or plan, read live: when it wants a calendar and its area is on Apple, its event is put
+ * (the new copy first, then an old one in another area's calendar goes); otherwise its event is removed.
+ * Returns what happened, for the count.
+ */
+async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>, today: string): Promise<'put' | 'removed' | 'none'> {
+  const areaUrls = Object.values(areaCals).map(a => a.url).filter((u): u is string => !!u)
+  if (q.entity === 'slot') {
+    const { data: b, error } = await db.from('time_blocks')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, google_calendar_event_id, icloud_href')
+      .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
+    if (error) throw new ICloudError('read', 'A slot could not be read')
+    if (!b) {
+      if (q.href) await removeEvent(c, q.href, areaUrls)
+      return q.href ? 'removed' : 'none'
+    }
+    const { data: t } = b.task_id
+      ? await db.from('tasks').select('status, description, google_target, domain, source_type, project_id, hevy_routine_id').eq('id', b.task_id).maybeSingle()
+      : { data: null }
+    const area = itemArea({ category: b.category, source_type: b.source_type, task_source_type: t?.source_type, domain: t?.domain, project_id: t?.project_id, hevy_routine_id: t?.hevy_routine_id })
+    const conf = prefs.areas[area]
+    const calUrl = areaCals[area]?.url
+    const wanted = wantsCalendar(t ? t.google_target : 'calendar', !!(b.google_calendar_event_id || b.icloud_href))
+    if (wanted && conf.enabled && conf.app === 'apple' && calUrl) {
+      const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, timeZone: SERVER_EVENT_TIME_ZONE, appUrl: APP_URL, now: new Date() })
+      if (ev) {
+        const href = await putEvent(c, calUrl, ev.uid, ev.ics)
+        if (b.icloud_href && b.icloud_href !== href) await removeEvent(c, b.icloud_href, areaUrls)
+        if (b.icloud_href !== href) {
+          const { error: e } = await db.from('time_blocks').update({ icloud_href: href }).eq('id', b.id).eq('user_id', userId)
+          if (e) throw new ICloudError('store', 'An event was written, but the app could not save where')
+        }
+        return 'put'
+      }
+    }
+    if (!b.icloud_href) return 'none'
+    await removeEvent(c, b.icloud_href, areaUrls)
+    await db.from('time_blocks').update({ icloud_href: null }).eq('id', b.id).eq('user_id', userId).eq('icloud_href', b.icloud_href)
+    return 'removed'
+  }
+
+  const { data: p, error } = await db.from('schedule_blocks')
+    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, icloud_href, icloud_from, icloud_horizon')
+    .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
+  if (error) throw new ICloudError('read', 'A repeating plan could not be read')
+  if (!p) {
+    if (q.href) await removeEvent(c, q.href, areaUrls)
+    return q.href ? 'removed' : 'none'
+  }
+  const area = itemArea({ category: p.category, domain: p.domain })
+  const conf = prefs.areas[area]
+  const calUrl = areaCals[area]?.url
+  const wanted = wantsCalendar(p.google_target, !!(p.google_calendar_event_id || p.icloud_href))
+  if (wanted && conf.enabled && conf.app === 'apple' && calUrl) {
+    const ev = planEvent(p, { area: conf, today, timeZone: seriesTimeZone(p.google_calendar_time_zone), appUrl: APP_URL, now: new Date() })
+    if (ev) {
+      const href = await putEvent(c, calUrl, ev.uid, ev.ics)
+      if (p.icloud_href && p.icloud_href !== href) await removeEvent(c, p.icloud_href, areaUrls)
+      const { error: e } = await db.from('schedule_blocks')
+        .update({ icloud_href: href, icloud_from: p.icloud_from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon })
+        .eq('id', p.id).eq('user_id', userId)
+      if (e) throw new ICloudError('store', 'A series was written, but the app could not save where')
+      return 'put'
+    }
+  }
+  if (!p.icloud_href) return 'none'
+  await removeEvent(c, p.icloud_href, areaUrls)
+  await db.from('schedule_blocks').update({ icloud_href: null, icloud_from: null, icloud_horizon: null }).eq('id', p.id).eq('user_id', userId).eq('icloud_href', p.icloud_href)
+  return 'removed'
+}
+
 function osloTomorrow(now: Date): string {
   const today = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Oslo' })
   return nextDay(today)
@@ -700,7 +1834,7 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '')
 
   // The password is read only for the actions that call iCloud.
-  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'setup' || action === 'remove'
+  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'setup' || action === 'drain' || action === 'remove'
   const { data: row, error: readError } = await db.from('icloud_credentials')
     .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, area_calendars, password_sealed, connected_at`)
     .eq('user_id', user.id).maybeSingle() as {
@@ -892,6 +2026,36 @@ Deno.serve(async (req) => {
       const { error } = await db.from('icloud_credentials').update({ area_calendars: known, last_error: lastError }).eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The calendars are in iCloud, but the app could not save where they are — run it again')
       return answer({ areas })
+    }
+
+    // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on a timer (2b-2).
+    // Each queued slot or plan is read live; a row goes only while requested_at is what was read (a newer change waits).
+    if (action === 'drain') {
+      const started = Date.now()
+      const { data: prefsRow } = await db.from('calendar_prefs').select('prefs').eq('user_id', user.id).maybeSingle()
+      const prefs = readCalendarPrefs(prefsRow?.prefs)
+      const { data: queue, error: qError } = await db.from('icloud_outbox')
+        .select('id, entity, entity_id, href, requested_at, attempts')
+        .eq('user_id', user.id).lte('next_try_at', new Date().toISOString())
+        .order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
+      if (qError) throw new ICloudError('queue', /icloud_outbox/.test(qError.message) ? 'Apple Calendar events need migration 173 — it runs with the next deploy' : 'The queue could not be read')
+      const today = osloClock(new Date()).day
+      const counts = { put: 0, removed: 0, none: 0, failed: 0 }
+      for (const q of (queue ?? []) as QueueRow[]) {
+        if (Date.now() - started > DRAIN_MAX_MS) break
+        try {
+          counts[await drainOne(db, creds, user.id, q, prefs, row.area_calendars ?? {}, today)]++
+          await db.from('icloud_outbox').delete().eq('id', q.id).eq('requested_at', q.requested_at)
+        } catch (e) {
+          if (e instanceof ICloudError && e.code === 'auth') throw e
+          counts.failed++
+          await db.from('icloud_outbox').update({ attempts: q.attempts + 1, next_try_at: retryAt(q.attempts + 1), last_error: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
+            .eq('id', q.id).eq('requested_at', q.requested_at)
+        }
+      }
+      const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+      if (!counts.failed) await db.from('icloud_credentials').update({ last_error: null }).eq('user_id', user.id)
+      return answer({ ...counts, waiting: waiting ?? 0 })
     }
 
     if (action === 'remove') {

@@ -28,7 +28,9 @@ eq(A.AREA_KEYS, ['training', 'work', 'personal', 'media', 'football'], 'five are
 eq(A.AREA_KEYS.map(k => d.areas[k].alertMinutes), [60, 10, null, null, 15], 'default alerts: Training 60, Work 10, Personal none, Media none, Football 15')
 eq(A.AREA_KEYS.every(k => d.areas[k].emoji && d.areas[k].enabled && /^#[0-9A-F]{6}$/.test(d.areas[k].color)), true, 'every area has an emoji, a colour and is in use by default')
 const saved = A.readCalendarPrefs({ areas: { training: { name: '  Gym  ', emoji: '💪', color: '#ff00aa', alertMinutes: 30, enabled: false }, work: { name: 'Jobb – æøå' } } })
-eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false }, 'a saved area is read as saved (name trimmed, colour upper case)')
+eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false, app: 'google' }, 'a saved area is read as saved (name trimmed, colour upper case)')
+eq([A.readCalendarPrefs({ areas: { football: { app: 'apple' } } }).areas.football.app, A.readCalendarPrefs({ areas: { football: { app: 'outlook' } } }).areas.football.app, d.areas.training.app],
+  ['apple', 'google', 'google'], "an area goes to Google Calendar until it is switched to Apple (Phase 2b); anything else reads as Google")
 eq(saved.areas.work.name, 'Jobb – æøå', 'æøå in a name are kept')
 eq(saved.areas.work.alertMinutes, 10, 'a value not saved keeps its default')
 const bad = A.readCalendarPrefs({ areas: { media: { name: '', emoji: '😀'.repeat(13), color: 'purple', alertMinutes: -7, enabled: 'yes' }, football: { alertMinutes: null, emoji: '' } } })
@@ -56,7 +58,7 @@ eq(between(fnSrc, '// <calendar-areas>', '// </calendar-areas>') === between(app
   "the function's copy of the area rules is the same text as the app's")
 const setup = fnSrc.slice(fnSrc.indexOf("if (action === 'setup')"), fnSrc.indexOf("if (action === 'remove')"))
 eq(setup.length > 0 && !/'(PUT|DELETE)'/.test(setup) && /readCalendarPrefs\(/.test(setup), true, 'Create in Apple Calendar reads the saved settings and writes calendars only — no event, nothing deleted')
-const place = fnSrc.slice(fnSrc.indexOf('async function placeAreaCalendar'), fnSrc.indexOf('function osloTomorrow'))
+const place = fnSrc.slice(fnSrc.indexOf('async function placeAreaCalendar'), fnSrc.indexOf('const DRAIN_MAX_ROWS'))
 eq(/'PROPPATCH'/.test(place) && /'MKCALENDAR'/.test(place) && !/'DELETE'/.test(place) && /mk\.status === 201[\s\S]{0,800}'PROPFIND'[\s\S]{0,400}calendar\[/.test(place), true,
   "a calendar is renamed/recoloured in place, made at its area's place, or — on any refusal — taken there only when it is a calendar")
 eq(/notMade\.length \? `Not made in Apple Calendar/.test(setup) && /last_error: lastError/.test(setup), true, 'a calendar not made stays the last problem, so a reload still says why')

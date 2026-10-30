@@ -218,10 +218,10 @@ export const SYNCED: Record<string, UndoService> = {
 }
 
 export const SERVICE_NAME: Record<UndoService, string> = {
-  trakt: 'Trakt', google_tasks: 'Google Tasks', google_calendar: 'Google Calendar',
+  trakt: 'Trakt', google_tasks: 'Google Tasks', google_calendar: 'Google Calendar', apple_calendar: 'Apple Calendar',
 }
 
-const SERVICE_ORDER: UndoService[] = ['trakt', 'google_tasks', 'google_calendar']
+const SERVICE_ORDER: UndoService[] = ['trakt', 'google_tasks', 'google_calendar', 'apple_calendar']
 
 function joinAnd(items: readonly string[]): string {
   return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
@@ -258,13 +258,15 @@ function traktLines(rows: readonly UndoOutbox[]): UndoLine[] {
   return out
 }
 
-const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar', { one: string; many: string; ops: Record<string, string> }> = {
+const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar' | 'apple_calendar', { one: string; many: string; ops: Record<string, string> }> = {
   google_tasks: { one: 'task', many: 'tasks', ops: { create: 'added', update: 'changed', delete: 'removed' } },
   // 'upsert' (155): a linked slot changed on the server — its event is brought up to date.
   google_calendar: { one: 'event', many: 'events', ops: { create: 'added', update: 'changed', upsert: 'changed', delete: 'removed' } },
+  // 173: a slot or plan whose Apple Calendar event is brought up to date (put or removed, read from the live row).
+  apple_calendar: { one: 'event', many: 'events', ops: { upsert: 'brought up to date' } },
 }
 
-function googleLine(s: 'google_tasks' | 'google_calendar', rows: readonly UndoOutbox[]): UndoLine {
+function googleLine(s: 'google_tasks' | 'google_calendar' | 'apple_calendar', rows: readonly UndoOutbox[]): UndoLine {
   const w = GOOGLE_WORDS[s]
   const order = ['delete', 'create', 'update', 'upsert']
   const parts = [...rows]
@@ -276,6 +278,7 @@ function googleLine(s: 'google_tasks' | 'google_calendar', rows: readonly UndoOu
 /** An outside link (app_undo_links) Undo leaves as it is: what it links, per column. */
 const LINK_WORDS: Record<string, { service: UndoService; what: string }> = {
   google_calendar_event_id: { service: 'google_calendar', what: 'event link' },
+  icloud_href: { service: 'apple_calendar', what: 'event link' },
   google_task_id: { service: 'google_tasks', what: 'Google task link' },
   google_tasklist_id: { service: 'google_tasks', what: 'Google list' },
   trakt_note_id: { service: 'trakt', what: 'Trakt note link' },

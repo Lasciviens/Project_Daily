@@ -272,6 +272,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 173: the app's events in Apple Calendar — the queue and its
+      # triggers (dormant while every area is on Google), Undo's registries.
+      - name: Apple Calendar events database scenarios
+        run: node scripts/verify-db-icloud-events.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migrations 166 and 167: a moved training session is moved (its Hevy
       # workout link checked against the new day, a missed day moved is to
       # do, a repeat's day moved without its slot gets one, the one-off
