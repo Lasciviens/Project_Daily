@@ -2298,7 +2298,7 @@ type DrainCounts = Record<DrainResult | 'failed', number>
 const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0, removed: 0, none: 0, failed: 0 })
 
 /**
- * One account's queue, oldest first, within a time budget. Each queued slot or plan is read live; a row goes only
+ * One account's queue, the app's own changes oldest first and settings re-sends after them, within a time budget. Each queued slot or plan is read live; a row goes only
  * while requested_at is what was read (a newer change waits). One drain at a time per account: a short lease.
  */
 async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean }):
@@ -2330,7 +2330,8 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     const { data: queue, error: qError } = await db.from('icloud_outbox')
       .select('id, entity, entity_id, area, requested_at, attempts')
       .eq('user_id', userId).lte('next_try_at', new Date().toISOString())
-      .order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
+      // The app's own changes first (oldest first), then re-sends for a settings change (changed_at null, 177).
+      .order('changed_at', { ascending: true, nullsFirst: false }).order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
     if (qError) throw new ICloudError('queue', 'The queue could not be read')
     const counts = emptyCounts()
     for (const q of (queue ?? []) as QueueRow[]) {

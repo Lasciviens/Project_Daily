@@ -129,6 +129,13 @@ export function areaSwitches(saved: CalendarPrefs, next: CalendarPrefs): AreaSwi
     .map(k => ({ area: k, to: onApple(next.areas[k]) ? 'apple' as const : 'google' as const }))
 }
 
+/** A save that rewrites events already in Apple Calendar (177's trigger): every event's notes or all-day alert, or an
+ *  area's emoji, alert or use. */
+export function rewritesEvents(saved: CalendarPrefs, next: CalendarPrefs): boolean {
+  return saved.notes !== next.notes || JSON.stringify(saved.allDayAlert) !== JSON.stringify(next.allDayAlert)
+    || AREA_KEYS.some(k => (['emoji', 'alertMinutes', 'enabled'] as const).some(f => saved.areas[k][f] !== next.areas[k][f]))
+}
+
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
 /** What a switch did, in one line: where the items are now, and anything the owner must know. */

@@ -7,7 +7,6 @@ import {
   type AllDayAlert, type AreaKey, type AreaSwitch, type CalendarArea, type CalendarPrefs, type NotesMode,
 } from '../../calendar/areas/calendarAreas'
 import { Time24Field } from '../../../shared/components/plan-modal/fields'
-import { shiftTime } from '../../../shared/components/plan-modal/planModal.config'
 import { AreaSwitchDialog } from './AreaSwitchDialog'
 import { useCalendarPrefs, useSaveCalendarPrefs } from '../../calendar/areas/useCalendarPrefs'
 import { useICloudStatus, useSetupICloudCalendars } from '../../calendar/icloud/useICloud'
@@ -99,7 +98,7 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChan
 }
 
 const NOTES_LABEL: Record<NotesMode, string> = {
-  'notes+link': 'Your notes + a link to the app', notes: 'Your notes only', link: 'A link to the app only', none: 'Nothing',
+  'notes+link': 'Your notes + a link to the app', notes: 'Your notes only', link: 'A link to the app only', none: 'No notes',
 }
 
 /** For every event in Apple Calendar (2b-3): what its notes carry, and an all-day event's alert. Google's events keep theirs. */
@@ -135,13 +134,11 @@ function EveryEventRow({ notes, allDayAlert, locked, onChange }: {
         {allDayAlert && (
           <span className="flex items-center gap-1.5 text-meta text-fg-2">
             at
-            <Time24Field size="sm" value={allDayAlert.time} locked={locked}
-              onChange={time => onChange({ allDayAlert: { ...allDayAlert, time } })}
-              onShift={d => onChange({ allDayAlert: { ...allDayAlert, time: shiftTime(allDayAlert.time, d) } })} />
+            <Time24Field size="sm" value={allDayAlert.time} locked={locked} onChange={time => onChange({ allDayAlert: { ...allDayAlert, time } })} />
           </span>
         )}
       </div>
-      <p className="text-micro text-fg-muted">The URL field always links to the app. Alert "None" means none — not the iPhone's default alert.</p>
+      <p className="text-micro text-fg-muted">Every event still links to its day in the app. Alert "None" asks the iPhone not to add its default alert.</p>
     </div>
   )
 }

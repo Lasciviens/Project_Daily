@@ -3015,7 +3015,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   calendar_prefs: {
     access: 'ro',
-    purpose: 'The user\'s calendar settings (migration 172): the app\'s calendars in Apple Calendar, one per area — prefs.areas.<training|work|personal|media|football> = { name, emoji, color (#RRGGBB), alertMinutes (default alert before each event; null = none), enabled }. One row per user.',
+    purpose: 'The user\'s calendar settings (migration 172): the app\'s calendars in Apple Calendar, one per area — prefs.areas.<training|work|personal|media|football> = { name, emoji, color (#RRGGBB), alertMinutes (default alert before each event; null = none), enabled, app (google|apple: where the area\'s events show) }; prefs.notes (what an Apple Calendar event\'s notes carry: notes+link|notes|link|none) and prefs.allDayAlert ({ dayBefore, time HH:MM } or null = none) for every Apple Calendar event. One row per user.',
     columns: 'user_id, prefs(jsonb), created_at, updated_at',
     rules: 'Read-only: the user changes these in Settings → Calendar.',
   },

@@ -383,6 +383,18 @@ select public.t_ok((select count(*) from public.icloud_outbox where entity = 'pl
 -- ── 177: settings for every event re-queue every event in Apple Calendar ─────
 reset role;
 delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs - 'notes' - 'allDayAlert' where user_id = '00000000-0000-0000-0000-000000000001';
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"notes":"notes+link","allDayAlert":null}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok(public.t_queue() = 0, '177: the first save after 177 (a row without the new keys gets the defaults) re-sends nothing');
+update public.calendar_prefs set prefs = prefs || '{"notes":"<x>","allDayAlert":{"dayBefore":true,"time":"25:99"}}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+update public.calendar_prefs set prefs = prefs || '{"notes":"<y>","allDayAlert":"on"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok(public.t_queue() = 0, '177: values that read as the defaults re-send nothing');
+update public.calendar_prefs set prefs = prefs || '{"allDayAlert":{"time":"09:00"}}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok(public.t_queue() > 0, '177: an all-day alert without dayBefore still counts as a change');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs - 'allDayAlert' where user_id = '00000000-0000-0000-0000-000000000001';
+delete from public.icloud_outbox;
 update public.calendar_prefs set prefs = prefs || '{"notes":"notes"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
 select public.t_ok((select count(*) from public.icloud_outbox where user_id = '00000000-0000-0000-0000-000000000001')
                      = (select count(*) from public.time_blocks where user_id = '00000000-0000-0000-0000-000000000001' and icloud_area is not null)
@@ -395,3 +407,47 @@ select public.t_ok((select count(*) from public.icloud_outbox) > 0, '177: …and
 delete from public.icloud_outbox;
 update public.calendar_prefs set prefs = prefs || '{"allDayAlert":{"dayBefore":true,"time":"09:00"}}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
 select public.t_ok(public.t_queue() = 0, '177: saving the same choice again queues nothing');
+
+-- A settings re-send is not a change of the item: an iPhone edit made before it is still taken (owner review, 30.10.2026).
+insert into public.tasks (id, user_id, title, google_target) values
+  ('10000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000001', 'Match 51', 'calendar'),
+  ('10000000-0000-0000-0000-000000000052', '00000000-0000-0000-0000-000000000001', 'Match 52', 'calendar');
+insert into public.time_blocks (id, user_id, date, title, start_time, duration_minutes, category, task_id, icloud_area) values
+  ('20000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000001', '2026-11-12', 'Match 51', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000051', 'football'),
+  ('20000000-0000-0000-0000-000000000052', '00000000-0000-0000-0000-000000000001', '2026-11-12', 'Match 52', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000052', 'football');
+select public.t_ok((select bool_and(changed_at = requested_at) from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: a change of the item itself is stamped as the app''s own change');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"notes":"link"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: a settings re-send is queued as a re-send, not as a change of the item');
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000051', 'football',
+  jsonb_build_object('date', '2026-11-13', 'time', '18:30', 'lastModified', (now() - interval '1 minute')::text), '"m1"') = 'moved',
+  '177: an iPhone move made just before a settings change is taken (the re-send doesn''t win)');
+select public.t_ok((select (date, start_time) = ('2026-11-13'::date, '18:30'::time) from public.time_blocks where id = '20000000-0000-0000-0000-000000000051'),
+  '177: …the slot has the iPhone''s day and time, and the re-send goes out with them');
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
+  jsonb_build_object('date', '2026-11-14', 'time', '10:00', 'foreign', true), '"m2"') = 'moved',
+  '177: …also an unstamped edit the app didn''t write');
+update public.icloud_outbox set attempts = attempts + 1, last_error = 'iCloud did not answer' where entity_id = '20000000-0000-0000-0000-000000000051';
+select public.t_ok((select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: a failed send keeps a re-send a re-send');
+select public.icloud_enqueue('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000051', null);
+select public.t_ok((select changed_at is not null and changed_at = requested_at from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: the app''s own change after a re-send is stamped as the app''s change');
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000051', 'football',
+  jsonb_build_object('date', '2026-11-20', 'time', '09:00', 'lastModified', '2020-01-01T00:00:00Z'), '"m3"') = 'stale',
+  '177: …and it still wins over an older iPhone change');
+create temp table t_stamp as select changed_at from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051';
+update public.calendar_prefs set prefs = prefs || '{"notes":"none"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select o.changed_at = s.changed_at from public.icloud_outbox o, t_stamp s where o.entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: a settings re-send over the app''s waiting change keeps that change''s time');
+delete from public.icloud_outbox;
+do $$
+begin
+  update public.calendar_prefs set prefs = prefs || '{"notes":"notes"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+  update public.time_blocks set title = 'Match 52 (renamed)' where id = '20000000-0000-0000-0000-000000000052';
+end $$;
+select public.t_ok((select changed_at is not null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000052')
+                   and (select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
+  '177: in one save, a change after the settings re-queue is still the app''s own change');

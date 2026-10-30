@@ -44,6 +44,10 @@ eq(A.readCalendarPrefs({ notes: 'link', allDayAlert: { dayBefore: true, time: '1
 eq(['<script>', 'NOTES', 7, null].map(n => A.readCalendarPrefs({ notes: n }).notes), ['notes+link', 'notes+link', 'notes+link', 'notes+link'], 'an unknown notes choice falls back to the default')
 eq([{ time: '24:00' }, { time: '9:00' }, { time: '09:00\r\nX:1' }, { time: 900 }, 'on', { dayBefore: 'yes', time: '07:30' }].map(a => A.readCalendarPrefs({ allDayAlert: a }).allDayAlert),
   [null, null, null, null, null, { dayBefore: false, time: '07:30' }], 'an all-day alert takes only a HH:MM time; anything else means none')
+eq([A.rewritesEvents(d, { ...d, notes: 'link' }), A.rewritesEvents(d, { ...d, allDayAlert: { dayBefore: false, time: '09:00' } }),
+  A.rewritesEvents(d, { ...d, areas: { ...d.areas, work: { ...d.areas.work, alertMinutes: 30 } } }),
+  A.rewritesEvents(d, { ...d, areas: { ...d.areas, work: { ...d.areas.work, name: 'Jobb' } } }), A.rewritesEvents(d, A.readCalendarPrefs(null))],
+  [true, true, true, false, false], 'the save says events update only when it rewrites them (notes, all-day alert, an area\'s emoji/alert/use — not a name)')
 eq([A.areaSlug('football'), A.appleColor('#ff9500')], ['lasci-football/', '#FF9500FF'], "each area's fixed place in iCloud, and Apple's colour form")
 eq([A.alertLabel(null), A.alertLabel(0), A.alertLabel(10), A.alertLabel(60), A.alertLabel(120), A.alertLabel(1440)],
   ['None', 'At the start', '10 min before', '1 h before', '2 h before', '1 day before'], 'alert labels')
