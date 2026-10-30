@@ -57,6 +57,19 @@ console.log('\n== 1. Google: the default, the problems, the labels ==')
     && choices[2].hint === 'Shows twice in Google Calendar')
   check('…an all-day repeat says so', choices[0].hint === 'An all-day repeating event')
   check('…nothing disabled without a repeat', R.googleChoices({ time: '9:00', durationMinutes: 30, repeat: null }).every(c => !c.disabled))
+  // Its area on Apple Calendar (2b-2): the event is in Apple Calendar, Google Tasks stays Google Tasks.
+  const one = { time: '17:30', durationMinutes: 60, repeat: null }
+  check('an item in an area on Apple says "Apple Calendar"; Tasks stays "Google Tasks"; none is "Only in this app"',
+    R.googleTargetLabel(one, 'calendar', 'apple') === 'Apple Calendar · busy'
+    && R.googleTargetLabel(one, 'both', 'apple') === 'Google Tasks + Apple Calendar'
+    && R.googleTargetLabel({ ...one, repeat: weekly }, 'both', 'apple') === 'Apple Calendar + Google Tasks · one per day'
+    && R.googleTargetLabel(one, 'tasks', 'apple') === 'Google Tasks'
+    && R.googleTargetLabel(one, 'none', 'apple') === 'Only in this app')
+  const appleChoices = R.googleChoices(one, 'apple')
+  check('…its menu names Apple Calendar, and Both shows twice nowhere (two apps)',
+    appleChoices[0].label === 'Apple Calendar' && appleChoices[2].hint === 'In Apple Calendar and as a Google Task'
+    && R.googleTargetProblem({ repeat: null, google: 'both' }, 'apple') === null)
+  check('…Google areas read exactly as before', R.googleTargetLabel(one, 'calendar') === 'Google Calendar · busy' && R.googleChoices(one)[0].label === 'Google Calendar')
 }
 
 console.log('\n== 2. The section follows the date ==')

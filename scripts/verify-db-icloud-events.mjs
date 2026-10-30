@@ -1,10 +1,13 @@
-// Runs migrations 173 + 174's scenarios (the app's events in Apple Calendar:
-// the queue and its triggers, dormant while every area is on Google; 174 the
-// security fixes — area keys, never addresses) on a
-// throwaway Postgres: scripts/db-tests/one-item/base.sql plus the columns
-// 141/155/162 added to tasks, time_blocks and schedule_blocks, the real 160
-// list for Undo, 171 and 172, the real 173 as it ran in production, then
-// 174 twice (it must survive a re-run) and scripts/db-tests/icloud-events/scenarios.sql.
+// Runs migrations 173 + 174 + 175's scenarios (the app's events in Apple
+// Calendar: the queue and its triggers, dormant while every area is on
+// Google; 174 the security fixes — area keys, never addresses; 175 the switch
+// per area — the hand-over of a Google copy, the moments a move finishes, the
+// timer, the retired columns dropped) on a throwaway Postgres:
+// scripts/db-tests/one-item/base.sql plus the columns 141/155/156/162 added to
+// tasks, time_blocks and schedule_blocks, 135/155's calendar_outbox, the real
+// 160 list for Undo, 171 and 172, the real 173 as it ran in production, then
+// 174 and 175 twice each (they must survive a re-run) and
+// scripts/db-tests/icloud-events/scenarios.sql.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-icloud-events.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no
 // database URL (a laptop without Postgres) it runs the static checks and passes.
@@ -17,9 +20,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const mig173 = mig('173_icloud_events.sql')
 const migFile = mig('174_icloud_events_safety.sql')
+const mig175 = mig('175_icloud_switch.sql')
 
 const sql = readFileSync(mig173, 'utf8').replace(/--.*$/gm, '')
 const fix = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
+const sw = readFileSync(mig175, 'utf8').replace(/--.*$/gm, '')
 const problems = []
 if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
 if (/\bnet\.http_|vault\./i.test(sql)) problems.push('a call outside the database (a trigger never calls iCloud)')
@@ -37,8 +42,18 @@ for (const fn of ['icloud_time_block_changed', 'icloud_schedule_block_changed', 
   const body = fix.slice(fix.indexOf(`function public.${fn}()`), fix.indexOf('$$;', fix.indexOf(`function public.${fn}()`)))
   if (/icloud_href/.test(body)) problems.push(`174: ${fn} still reads the retired icloud_href`)
 }
+// 175: the switch. Its hand-over is the server's alone, deletes only the item's own event, and the timer reads its secret from Vault.
+if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sw)) problems.push('175: a top-level BEGIN/COMMIT')
+if (!/revoke all on function public\.icloud_hand_over\(uuid, text, uuid, text\) from public, anon, authenticated/i.test(sw)) problems.push('175: icloud_hand_over open to the browser')
+if (!/p_event !~ \('\^' \|\| v_hex \|\| '\(v\[1-4\]\)\?\$'\)/.test(sw)) problems.push('175: the hand-over doesn\'t check the event is the item\'s own')
+if (!/vault\.decrypted_secrets where name = 'ICLOUD_SYNC_SECRET'/.test(sw) || /x-sync-secret', '[^']/.test(sw)) problems.push('175: the timer\'s secret isn\'t read from Vault at call time')
+for (const fn of ['icloud_time_block_changed', 'icloud_schedule_block_changed', 'icloud_task_changed']) {
+  const at = sw.indexOf(`function public.${fn}()`)
+  if (at < 0 || !/app\.icloud_readback/.test(sw.slice(at, at + 600))) problems.push(`175: ${fn} doesn't stop for the read-back`)
+  if (/icloud_href/.test(sw.slice(at, sw.indexOf('$$;', at)))) problems.push(`175: ${fn} reads the dropped icloud_href`)
+}
 if (problems.length) {
-  console.error(`verify-db-icloud-events: migrations 173/174 have ${problems.join('; ')}`)
+  console.error(`verify-db-icloud-events: migrations 173/174/175 have ${problems.join('; ')}`)
   process.exit(1)
 }
 
@@ -55,11 +70,21 @@ const psql = (u, args) => execFileSync('psql', [u, '-v', 'ON_ERROR_STOP=1', '-q'
 // The columns later migrations added to the item tables (base.sql is the 142 schema).
 const LATER_COLUMNS = `
   alter table public.tasks add column if not exists google_target text, add column if not exists project_id uuid,
-    add column if not exists hevy_routine_id text;
+    add column if not exists hevy_routine_id text, add column if not exists schedule_block_id uuid,
+    add column if not exists occurrence_date date;
   alter table public.time_blocks add column if not exists busy boolean not null default true;
   alter table public.schedule_blocks alter column start_time drop not null, alter column end_time drop not null,
     add column if not exists busy boolean not null default true, add column if not exists google_target text,
-    add column if not exists domain text, add column if not exists notes text;`
+    add column if not exists domain text, add column if not exists notes text;
+  create table if not exists public.calendar_outbox (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+    calendar_id text not null default 'primary', event_id text not null,
+    operation text not null default 'delete' check (operation in ('delete', 'upsert')),
+    time_block_id uuid, payload jsonb not null default '{}'::jsonb, attempts integer not null default 0,
+    next_retry_at timestamptz not null default now(), last_error text, requested_at timestamptz not null default now(),
+    created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+    constraint calendar_outbox_event_key unique (user_id, calendar_id, event_id));`
 // The real 160 list for Undo (173 must keep every entry of it).
 const BOOKKEEPING_160 = readFileSync(mig('160_supplement_schedules.sql'), 'utf8')
   .match(/create or replace function public\.app_undo_bookkeeping\(p_table text\)[\s\S]*?\n\$\$;/)?.[0]
@@ -80,13 +105,19 @@ try {
   psql(target, ['-c', "insert into public.time_blocks (id, user_id, date, title, icloud_href) values ('20000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-000000000001', '2026-11-01', 'forged', 'https://p1-caldav.icloud.com/1/calendars/lasci-work/../home/')"])
   psql(target, ['-f', migFile])
   psql(target, ['-f', migFile])
+  psql(target, ['-f', mig175])
+  psql(target, ['-f', mig175])
+  // The timer's condition is text inside cron.schedule (no pg_cron here): run it, so it parses against the real tables.
+  const when = readFileSync(mig175, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
+  if (!when) throw new Error("175: the timer's condition was not found")
+  psql(target, ['-c', `select count(*) from (select 1 ${when}) x`])
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud-events/scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
   } else {
-    console.log(`verify-db-icloud-events: 173, then 174 (applied twice) and ${passed} scenarios passed`)
+    console.log(`verify-db-icloud-events: 173, then 174 and 175 (each applied twice) and ${passed} scenarios passed`)
   }
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }

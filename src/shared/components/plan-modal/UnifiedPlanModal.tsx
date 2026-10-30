@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-30 · v21.5 · Apple Calendar per area (calendar plan 2b-2): an item
+//                    whose area is on Apple in Settings → Calendar says
+//                    "Apple Calendar · busy" on its chip (Both: "Google Tasks +
+//                    Apple Calendar", no "Shows twice" — two apps; none: "Only
+//                    in this app"). Its save makes no Google Calendar event: the
+//                    server writes the Apple one (settleItemApple); Google areas
+//                    read exactly as before.
 //  2026-10-28 · v21.4 · "Edit session…" moving a training session 7 or more
 //                    days after its first day said only "Saved · <new day>",
 //                    while the database (167) had skipped it in its own week
@@ -492,6 +499,7 @@ import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Trash2 } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
+import { useItemCalendarApp } from '../../../features/calendar/areas/useItemCalendarApp'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
 import { movesPastWeek, pastWeekMoveLine, type PastWeekOutcome } from '../../../features/training/plan/sessionState'
@@ -576,6 +584,10 @@ export function UnifiedPlanModal({
   }
 
   const [form, setForm] = useState<PlanForm>(seedForm)
+  // Where it shows: Google needs its connection; an item whose area is on Apple Calendar (2b-2) doesn't — its choice
+  // is shown and kept either way (Google Tasks still follows the real connection, in the database).
+  const appleArea = useItemCalendarApp({ category: form.category, domain: form.domain }) === 'apple'
+  const choiceShown = googleConnected || appleArea
   // The title field's text; with quick add it can say more than form.title.
   const [typed, setTyped] = useState(form.title)
   const [parse, setParse] = useState<QuickAddResult | null>(null)
@@ -697,7 +709,7 @@ export function UnifiedPlanModal({
     try {
       const googleTaskListId = hasGoogleTasks(target) ? await resolveGoogleList() : undefined
       const input = inputFromForm(form, {
-        item, occurrenceDate, googleConnected, googleTaskListId, source, color: defaults?.color, today,
+        item, occurrenceDate, googleConnected: choiceShown, googleTaskListId, source, color: defaults?.color, today,
       })
       // The extras (category, colour, window, the slot's own source) ride along
       // until the contract names them (contract changes, BRIEF).
@@ -788,7 +800,7 @@ export function UnifiedPlanModal({
         <ItemForm
           form={form} patch={patch} config={config}
           typed={typed} onTitle={onTitle} parse={parse} onKeepText={onKeepText}
-          creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={googleConnected}
+          creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown}
           occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}

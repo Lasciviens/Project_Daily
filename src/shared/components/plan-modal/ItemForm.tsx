@@ -29,6 +29,7 @@ import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
+import { useItemCalendarApp } from '../../../features/calendar/areas/useItemCalendarApp'
 import { weekdayOfIso } from '../../../features/daily/recurrence'
 import {
   isScheduleFieldHidden, isTaskFieldHidden, pickRecurrence, repeatAnchorOf, shiftTime, withStartForRepeatChange,
@@ -80,6 +81,8 @@ export function ItemForm({
   const canAddRepeat = !repeating && !day && savedKind !== 'one-off' && !isScheduleFieldHidden('recurrence', config)
   const shape = shapeOf(form)
   const target = effectiveGoogleTarget(shape, form.googlePick)
+  // Its area on Apple Calendar (Settings → Calendar, 2b-2): the chip says where the event really goes.
+  const calendarApp = useItemCalendarApp({ category: form.category, domain: form.domain })
   const showGoogle = googleConnected && !day && !isScheduleFieldHidden('gcal', config)
   const allDay = showGoogle && !form.time && hasGoogleCalendar(target)
 
@@ -135,7 +138,7 @@ export function ItemForm({
             <Repeat aria-hidden />Repeat
           </button>
         )}
-        {showGoogle && <GoogleChip shape={shape} target={target} onPick={googlePick => patch({ googlePick })} />}
+        {showGoogle && <GoogleChip shape={shape} target={target} app={calendarApp} onPick={googlePick => patch({ googlePick })} />}
       </div>
 
       {repeating && (

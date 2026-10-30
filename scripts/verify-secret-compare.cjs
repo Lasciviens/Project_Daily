@@ -19,7 +19,7 @@ const path = require('path')
 const { transform } = require('sucrase')
 
 const FUNCTIONS = path.join(__dirname, '..', 'supabase/functions')
-const USES_SAME_SECRET = ['ai-proxy', 'esde-sync', 'google-tasks-sync', 'health-export-webhook', 'hevy-sync', 'kobo-sync', 'phone-gateway', 'push-send', 'shop-price', 'trakt-api']
+const USES_SAME_SECRET = ['ai-proxy', 'esde-sync', 'google-tasks-sync', 'health-export-webhook', 'hevy-sync', 'icloud-calendar', 'kobo-sync', 'phone-gateway', 'push-send', 'shop-price', 'trakt-api']
 
 let passed = 0
 let failed = 0

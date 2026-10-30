@@ -293,6 +293,8 @@ export const qk = {
   icloud: {
     all: ['icloud'] as const,
     status: () => ['icloud', 'status'] as const,
+    /** Settings → Calendar's move preview (2b-2): how many items each switched area moves. */
+    movePreview: (switches: string, from: string) => ['icloud', 'move-preview', switches, from] as const,
   },
   // Settings → Calendar: the app's calendars per area (calendar_prefs, 172).
   calendarPrefs: ['calendar-prefs'] as const,

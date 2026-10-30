@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import { CalendarDays } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard, TonePill } from '../../../shared/ui'
 import {
-  ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, alertLabel, areaProblem, readCalendarPrefs,
-  type AreaKey, type CalendarArea, type CalendarPrefs,
+  ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, alertLabel, areaProblem, areaSwitches, readCalendarPrefs,
+  type AreaKey, type AreaSwitch, type CalendarArea, type CalendarPrefs,
 } from '../../calendar/areas/calendarAreas'
+import { AreaSwitchDialog } from './AreaSwitchDialog'
 import { useCalendarPrefs, useSaveCalendarPrefs } from '../../calendar/areas/useCalendarPrefs'
 import { useICloudStatus, useSetupICloudCalendars } from '../../calendar/icloud/useICloud'
 import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settingsBoards'
@@ -13,18 +14,21 @@ import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settin
 // Settings → Calendar (owner, 29.10.2026: "Add those to the settings as well,
 // and other settings that you are coding but I couldn't change without asking
 // you"). The app's calendars in Apple Calendar, one per area: name, emoji,
-// colour, default alert, on/off. Phase 2a only makes the calendars; events
-// follow in 2b (docs/features/calendar-plan.md).
+// colour, default alert, on/off, and where the area's events show — Google
+// Calendar or Apple Calendar (2b-2: switching moves them, AreaSwitchDialog).
+// docs/features/calendar-plan.md.
 
 const sameDoc = (a: CalendarPrefs, b: CalendarPrefs) => JSON.stringify(a) === JSON.stringify(b)
 
-function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
+function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChange }: {
   areaKey: AreaKey
   area: CalendarArea
   /** The saved settings aren't loaded yet: an edit now would be made on the defaults. */
   locked: boolean
   ready: boolean | undefined
   failure: string | undefined
+  /** iCloud is connected: Apple Calendar can be picked. */
+  appleAvailable: boolean
   onChange: (next: CalendarArea) => void
 }) {
   const problem = areaProblem(area)
@@ -39,8 +43,8 @@ function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
         <span className="text-meta font-semibold text-fg-2">{label}</span>
         {!area.enabled ? <TonePill tone="neutral">Off</TonePill>
           : failure ? <TonePill tone="danger">Not made</TonePill>
-          : ready ? <TonePill tone="success">In Apple Calendar</TonePill>
-          : ready === false ? <TonePill tone="neutral">Not made yet</TonePill> : null}
+          : ready ? <TonePill tone="success">Calendar ready</TonePill>
+          : ready === false ? <TonePill tone="neutral">No calendar yet</TonePill> : null}
       </div>
       <div className="flex items-center gap-2">
         <input type="color" value={area.color} aria-label={`${label} colour`} disabled={off}
@@ -74,6 +78,14 @@ function AreaRow({ areaKey, area, locked, ready, failure, onChange }: {
           </label>
         )}
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
+          Shows in
+          <select className="select w-auto" value={area.app} disabled={off} aria-label={`${label}: where its events show`}
+            onChange={e => onChange({ ...area, app: e.target.value === 'apple' ? 'apple' : 'google' })}>
+            <option value="google">Google Calendar</option>
+            <option value="apple" disabled={!appleAvailable && area.app !== 'apple'}>Apple Calendar</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-meta text-fg-2">
           <input type="checkbox" className="h-4 w-4 accent-accent-500" checked={area.enabled} disabled={locked} onChange={e => onChange({ ...area, enabled: e.target.checked })} />
           In use
         </label>
@@ -99,9 +111,13 @@ function AreasCard() {
   const missing = AREA_KEYS.some(k => form.areas[k].enabled && !ready(k))
   const failures = new Map((setup.data?.areas ?? []).filter(a => a.state === 'failed').map(a => [a.area, a.detail ?? 'iCloud did not take it']))
   const busy = save.isPending || setup.isPending
+  // An area whose events change app (2b-2): its move is asked about first.
+  const switches = loaded ? areaSwitches(prefs, readCalendarPrefs(form)) : []
+  const [switching, setSwitching] = useState<AreaSwitch[] | null>(null)
 
   // One action: save what changed, then bring Apple Calendar up to date with it.
   function apply() {
+    if (switches.length) { setSwitching(switches); return }
     if (!dirty) { setup.mutate(); return }
     save.mutate(readCalendarPrefs(form), {
       onSuccess: () => {
@@ -111,7 +127,8 @@ function AreasCard() {
     })
   }
 
-  const label = !connected ? 'Save'
+  const label = switches.length ? 'Save and move…'
+    : !connected ? 'Save'
     : dirty ? 'Save and update Apple Calendar'
     : missing ? 'Create in Apple Calendar'
     : 'Update Apple Calendar'
@@ -129,7 +146,7 @@ function AreasCard() {
           <ul className="flex flex-col">
             {AREA_KEYS.map(k => (
               <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined}
-                failure={failures.get(k)} onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
+                failure={failures.get(k)} appleAvailable={connected} onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
           </ul>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -150,6 +167,10 @@ function AreasCard() {
           </div>
           {!setup.data && status.data?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {status.data.lastError}</p>}
         </>
+      )}
+      {switching && (
+        <AreaSwitchDialog previous={prefs} next={readCalendarPrefs(form)} switches={switching} icloudConnected={connected} onClose={() => setSwitching(null)}
+          onDone={() => { setSwitching(null); setEdits({}) }} />
       )}
     </Card>
   )

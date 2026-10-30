@@ -3,10 +3,17 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { readCalendarPrefs, type CalendarPrefs } from './calendarAreas'
 import { fetchCalendarPrefs, saveCalendarPrefs } from './calendarPrefsApi'
+import { rememberCalendarPrefs } from './calendarPrefsMemory'
 
 /** The saved calendar settings; `loaded` is false while only the defaults are shown — nothing saves from that state. */
 export function useCalendarPrefs() {
-  const query = useQuery({ queryKey: qk.calendarPrefs, queryFn: fetchCalendarPrefs, placeholderData: readCalendarPrefs(null), staleTime: STALE.default })
+  // Every read also refreshes the Google calls' copy (calendarPrefsMemory), so a change from another device reaches them.
+  const query = useQuery({
+    queryKey: qk.calendarPrefs,
+    queryFn: () => fetchCalendarPrefs().then(p => { rememberCalendarPrefs(p); return p }),
+    placeholderData: readCalendarPrefs(null),
+    staleTime: STALE.default,
+  })
   return { prefs: query.data ?? readCalendarPrefs(null), loaded: query.isSuccess && !query.isPlaceholderData, failed: query.isError, retry: query.refetch }
 }
 
@@ -17,6 +24,6 @@ export function useSaveCalendarPrefs() {
     action: 'save_calendar_prefs',
     mutationFn: (prefs: CalendarPrefs) => saveCalendarPrefs(prefs),
     successMessage: 'Calendar settings saved',
-    onSuccess: saved => qc.setQueryData(qk.calendarPrefs, saved),
+    onSuccess: saved => { qc.setQueryData(qk.calendarPrefs, saved); rememberCalendarPrefs(saved) },
   })
 }

@@ -27,6 +27,26 @@ export interface ICloudSetup {
   areas: { area: AreaKey; name: string; state: 'created' | 'updated' | 'found' | 'off' | 'failed'; detail?: string }[]
 }
 
+/** One drain of the queue (2b): what happened to each item; busy = another run is sending it right now. */
+export type ICloudDrain = { busy: true } | {
+  /** Written to Apple Calendar. */
+  put: number
+  /** Written there, and its Google Calendar copy handed to Google's delete queue (2b-2). */
+  moved: number
+  /** Written there, but its Google Calendar copy has an id the app didn't make: it stays there (remove it by hand). */
+  foreign: number
+  /** Its Apple copy waits for the copy that replaces it (a Google Calendar event, or a Google Task). */
+  kept: number
+  removed: number
+  none: number
+  failed: number
+  /** Still queued (failed ones wait for their retry, the rest for the next run). */
+  waiting: number
+}
+
+/** An area's items for Apple Calendar: counted (dryRun) or queued. partial = more than one call reads. */
+export interface ICloudMove { slots: number; plans: number; queued: boolean; partial: boolean }
+
 export interface ICloudStep { step: string; ok: boolean; detail: string }
 
 export interface ICloudCheckEvent {
@@ -101,5 +121,8 @@ export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')
 export const readICloudCalendars = () => call<ICloudRead>('read')
 export const setupICloudCalendars = () => call<ICloudSetup>('setup')
+export const drainICloudQueue = () => call<ICloudDrain>('drain')
+/** Where the items come from: today on, or every day they have. */
+export const moveAreaToApple = (area: AreaKey, from: 'today' | 'all', dryRun: boolean) => call<ICloudMove>('move', { area, from, dryRun })
 /** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */
 export const removeICloudTest = () => call<{ removed: 'calendar' | 'events' | null; message?: string }>('remove')

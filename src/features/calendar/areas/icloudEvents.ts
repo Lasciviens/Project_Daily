@@ -43,6 +43,7 @@ export function wantsCalendar(target: string | null | undefined, onACalendar: bo
  *  (a lone CR could end a line for some parsers — security review, 30.10.2026). */
 export function icsEscape(t: string): string {
   return t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n')
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point: they are dropped
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
 }
 
@@ -130,6 +131,7 @@ export function eventObject(p: EventParts): string {
     'END:VCALENDAR',
   ]
   // The last guard: no line may carry a control character (a property smuggled in through any field).
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point: such a line is refused
   if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F]/.test(l))) throw new Error('An event line holds a control character — not written')
   return lines.map(foldLine).join('\r\n') + '\r\n'
 }

@@ -9,6 +9,7 @@ import {
   blockEventId, createCalendarEvent, deleteCalendarEvent, getCalendarEvent, isCalendarConflict, isCalendarNotFound,
 } from './calendarApi'
 import { ensureValidCalendarToken } from './calendarTokenSync'
+import { appleAreaOf, slotAreaInput } from '../areas/appleAreas'
 
 // Moved out of UnifiedPlanModal (12.10.2026) so every path that puts a block
 // on Google Calendar uses the same code: the plan editor, and restoring a
@@ -44,6 +45,8 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr?: string, 
     const block = await fetchTimeBlockWithTask(blockId)
     if (!block) return 'not_linked' // the slot is gone: nothing to put on Google
     if (block.google_calendar_event_id) return 'linked'
+    // Its area is on Apple Calendar (2b-2): its event is the server's, there — never one on Google as well.
+    if (await appleAreaOf(slotAreaInput(block))) return 'not_linked'
 
     const body = blockEventBody({
       date: block.date ?? dateStr ?? '',

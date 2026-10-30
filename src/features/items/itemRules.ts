@@ -71,8 +71,9 @@ export function defaultGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>): 
  *  the sheet). Google Tasks can't repeat through its API, but since 156 a
  *  repeat on Google Tasks is "one per day": each day's task (made on its
  *  day) is a Google Task — so nothing is blocked any more. */
-export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>): GoogleTargetProblem | null {
-  if (input.google === 'both') return { level: 'warning', message: 'Shows twice in Google Calendar' }
+export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>, app: 'google' | 'apple' = 'google'): GoogleTargetProblem | null {
+  // In Apple Calendar (its area on Apple, 2b-2) the event and the Google Task are in two apps: nothing shows twice.
+  if (input.google === 'both' && app === 'google') return { level: 'warning', message: 'Shows twice in Google Calendar' }
   return null
 }
 
@@ -163,13 +164,15 @@ export function repeatRuleOf(r: RepeatInput): RepeatRule {
 type TaskRow = Pick<Task, 'id' | 'title' | 'description' | 'domain' | 'priority' | 'due_date' | 'due_time'
   | 'source_type' | 'source_id' | 'google_tasklist_id' | 'google_sync_enabled'> & { google_target?: GoogleTarget | null }
 type BlockRow = Pick<TimeBlock, 'id' | 'date' | 'title' | 'start_time' | 'duration_minutes' | 'category' | 'notes'
-  | 'source_type' | 'source_id' | 'google_calendar_event_id'> & { busy?: boolean | null; google_target?: GoogleTarget | null }
+  | 'source_type' | 'source_id' | 'google_calendar_event_id'> & { busy?: boolean | null; google_target?: GoogleTarget | null; icloud_area?: string | null }
 /** A repeat rule; since 155 it may have no time (an all-day repeat). */
 type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' | 'effective_from'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates' | 'google_calendar_event_id'>
   & {
     google_target?: GoogleTarget | null; start_time: string | null; end_time: string | null; busy?: boolean | null
     domain?: TaskDomain | null; priority?: Task['priority'] | null; notes?: string | null
+    /** The area calendar its series is in, in Apple Calendar (174). */
+    icloud_area?: string | null
   }
 
 /** The minutes between a rule's start and end (crossing midnight). */
@@ -187,7 +190,8 @@ export function storedGoogleTarget(task?: TaskRow | null, block?: BlockRow | nul
  *  slot or repeat, a Google Task while the task syncs, both, or neither —
  *  never a default, so saving an old item never moves it by itself. */
 export function presentGoogleTarget(task?: TaskRow | null, block?: BlockRow | null, plan?: PlanRow | null): GoogleTarget {
-  const calendar = !!(block?.google_calendar_event_id || plan?.google_calendar_event_id)
+  // On a calendar: Google's event, or — its area on Apple (2b-2, migration 175's SQL reads the same) — Apple's.
+  const calendar = !!(block?.google_calendar_event_id || plan?.google_calendar_event_id || block?.icloud_area || plan?.icloud_area)
   const tasks = !!task?.google_sync_enabled
   return calendar && tasks ? 'both' : calendar ? 'calendar' : tasks ? 'tasks' : 'none'
 }
