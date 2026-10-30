@@ -66,7 +66,7 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 
 ## Security (audit 10.10.2026 — each rule has a check script)
 
-> ⚠️ **SECURITY WARNING — a real mistake, made here (Claude, 30.10.2026; caught by review before it shipped)**
+> ⚠️ **SECURITY WARNING — a real mistake, made here (Claude, 30.10.2026; caught by review after it was merged and deployed, while still switched off — 174 fixed it)**
 > **What happened:** the first Apple Calendar writer (PR #588, migration 173 — merged and deployed before its fixes; 174 fixes it) stored each event's iCloud address in `time_blocks`, a table the browser **and** the assistant can write, then sent a DELETE — with the owner's Apple password — to whatever address it found there. One forged value (a stolen session, or Ask AI steered by a web page) could have deleted the owner's other calendars. In the same change: a new link column left out of `AI_NO_WRITE`; a stored time zone pasted unchecked into an iCalendar line; a URL "checked" with `startsWith`; a SECURITY DEFINER function callable by every signed-in user; and "it's switched off, so it's fine".
 > **Why:** I trusted data because my own code had written it; I copied a pattern (Google's event-id column) without its safety half; I left security to the review instead of designing it in.
 > **Never again — every AI, every change:**
