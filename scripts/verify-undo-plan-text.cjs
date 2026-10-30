@@ -220,6 +220,14 @@ console.log('\n7 · Outside the app (151): a danger line per service')
   check('every outside line is danger', v.outside.every(l => l.tone === 'danger'))
 }
 {
+  // 173: an undo that touches slots or plans in an Apple Calendar area says it reaches Apple Calendar too.
+  const v = describeUndoPlan(plan({ needs_confirm: true, outbox: [{ s: 'apple_calendar', op: 'upsert', n: 2 }], links_kept: [{ t: 'time_blocks', c: 'icloud_area', n: 1 }] }))
+  check('Apple Calendar gets its own line and its link is named', JSON.stringify(v.outside.map(l => l.text)) === JSON.stringify([
+    'Apple Calendar: 2 events brought up to date',
+    "Apple Calendar: 1 schedule block keeps its current event link — Undo doesn't put the old one back",
+  ]), v.outside.map(l => l.text))
+}
+{
   const v = describeUndoPlan(plan({
     needs_confirm: true, actors: ['service'], sync_save: ['user_tv_episodes', 'media_watches', 'tasks'],
   }))

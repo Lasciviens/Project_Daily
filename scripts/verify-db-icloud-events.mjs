@@ -48,8 +48,11 @@ const LATER_COLUMNS = `
   alter table public.time_blocks add column if not exists busy boolean not null default true;
   alter table public.schedule_blocks alter column start_time drop not null, alter column end_time drop not null,
     add column if not exists busy boolean not null default true, add column if not exists google_target text,
-    add column if not exists domain text, add column if not exists notes text;
-  create or replace function public.app_undo_bookkeeping(p_table text) returns text[] language sql immutable as $$ select '{}'::text[] $$;`
+    add column if not exists domain text, add column if not exists notes text;`
+// The real 160 list for Undo (173 must keep every entry of it).
+const BOOKKEEPING_160 = readFileSync(mig('160_supplement_schedules.sql'), 'utf8')
+  .match(/create or replace function public\.app_undo_bookkeeping\(p_table text\)[\s\S]*?\n\$\$;/)?.[0]
+if (!BOOKKEEPING_160) { console.error('verify-db-icloud-events: 160\'s app_undo_bookkeeping not found'); process.exit(1) }
 
 psql(url, ['-c', `create database ${db}`])
 let failed = null
@@ -58,6 +61,7 @@ try {
   psql(target, ['-f', join(root, 'scripts/db-tests/one-item/base.sql')])
   psql(target, ['-c', 'alter default privileges in schema public grant all on tables to anon, authenticated, service_role'])
   psql(target, ['-c', LATER_COLUMNS])
+  psql(target, ['-c', BOOKKEEPING_160])
   psql(target, ['-f', mig('171_icloud_credentials.sql')])
   psql(target, ['-f', mig('172_calendar_prefs.sql')])
   psql(target, ['-f', migFile])

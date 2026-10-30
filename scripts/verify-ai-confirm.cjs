@@ -92,6 +92,20 @@ const handler = load('ai-proxy', { env, tables, users: { 'owner-jwt': OWNER, 'st
 const call = async (body, headers) => { const r = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })); return { status: r.status, body: await r.json() } }
 let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  ✓', n) } else { bad++; console.log('  ✗', n, d ?? '') } }
 
+function checkLinkColumnsNoWrite() {
+  const migDir = `${REPO}/supabase/migrations`
+  const latest = fs.readdirSync(migDir).filter(f => /^\d+_.*\.sql$/.test(f)).sort()
+    .map(f => fs.readFileSync(`${migDir}/${f}`, 'utf8'))
+    .filter(t => /function public\.app_undo_links\(p_table text\)/.test(t)).pop() ?? ''
+  const body = latest.slice(latest.indexOf('function public.app_undo_links(p_table text)'))
+  const cols = [...new Set([...body.slice(0, body.indexOf('$$;')).matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+    .filter(c => /_(id|area|href)$/.test(c) && !/^(tasks|time_blocks|schedule_blocks|user_[a-z_]+)$/.test(c)))]
+  const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
+  const re = new RegExp(src.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
+  const open = cols.filter(c => !re.test(c))
+  check(`every outside link Undo knows (${cols.length}) is closed to the assistant (AI_NO_WRITE)`, cols.length >= 5 && !open.length, open.join(', '))
+}
+
 function checkAiWriteGroup() {
   require('sucrase/register')
   const { INVALIDATION_GROUPS } = require(`${REPO}/src/shared/query/invalidate.ts`)
@@ -198,6 +212,9 @@ function checkAiWriteGroup() {
   // 10. after a turn AIPanel refreshes the 'aiWrite' group: it must reach a screen's key
   // for every table the assistant may write. A new rw table fails here until mapped.
   checkAiWriteGroup()
+  // 11. every column Undo treats as a link to an outside copy (the latest app_undo_links) is one the
+  //     assistant may not write — a forged link would steer a sync to someone else's data (30.10.2026)
+  checkLinkColumnsNoWrite()
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()
