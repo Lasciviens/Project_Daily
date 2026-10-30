@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { CalendarDays } from 'lucide-react'
 import { Button, Card, CardHeader, PageBoard, TonePill } from '../../../shared/ui'
 import {
-  ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, alertLabel, areaProblem, areaSwitches, readCalendarPrefs,
-  type AreaKey, type AreaSwitch, type CalendarArea, type CalendarPrefs,
+  ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, NOTES_MODES, alertLabel, areaProblem, areaSwitches, readCalendarPrefs,
+  type AllDayAlert, type AreaKey, type AreaSwitch, type CalendarArea, type CalendarPrefs, type NotesMode,
 } from '../../calendar/areas/calendarAreas'
+import { Time24Field } from '../../../shared/components/plan-modal/fields'
+import { shiftTime } from '../../../shared/components/plan-modal/planModal.config'
 import { AreaSwitchDialog } from './AreaSwitchDialog'
 import { useCalendarPrefs, useSaveCalendarPrefs } from '../../calendar/areas/useCalendarPrefs'
 import { useICloudStatus, useSetupICloudCalendars } from '../../calendar/icloud/useICloud'
@@ -96,6 +98,54 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChan
   )
 }
 
+const NOTES_LABEL: Record<NotesMode, string> = {
+  'notes+link': 'Your notes + a link to the app', notes: 'Your notes only', link: 'A link to the app only', none: 'Nothing',
+}
+
+/** For every event in Apple Calendar (2b-3): what its notes carry, and an all-day event's alert. Google's events keep theirs. */
+function EveryEventRow({ notes, allDayAlert, locked, onChange }: {
+  notes: NotesMode
+  allDayAlert: AllDayAlert | null
+  locked: boolean
+  onChange: (next: Partial<Pick<CalendarPrefs, 'notes' | 'allDayAlert'>>) => void
+}) {
+  const when = allDayAlert ? (allDayAlert.dayBefore ? 'before' : 'day') : 'none'
+  return (
+    <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+      <span className="text-meta font-semibold text-fg-2">Every Apple Calendar event</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <label className="flex items-center gap-1.5 text-meta text-fg-2">
+          Notes
+          <select className="select w-auto" value={notes} disabled={locked} onChange={e => onChange({ notes: e.target.value as NotesMode })}>
+            {NOTES_MODES.map(m => <option key={m} value={m}>{NOTES_LABEL[m]}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-meta text-fg-2">
+          All-day alert
+          <select className="select w-auto" value={when} disabled={locked}
+            onChange={e => {
+              const v = e.target.value
+              onChange({ allDayAlert: v === 'none' ? null : { dayBefore: v === 'before', time: allDayAlert?.time ?? '09:00' } })
+            }}>
+            <option value="none">None</option>
+            <option value="day">On the day</option>
+            <option value="before">The day before</option>
+          </select>
+        </label>
+        {allDayAlert && (
+          <span className="flex items-center gap-1.5 text-meta text-fg-2">
+            at
+            <Time24Field size="sm" value={allDayAlert.time} locked={locked}
+              onChange={time => onChange({ allDayAlert: { ...allDayAlert, time } })}
+              onShift={d => onChange({ allDayAlert: { ...allDayAlert, time: shiftTime(allDayAlert.time, d) } })} />
+          </span>
+        )}
+      </div>
+      <p className="text-micro text-fg-muted">The URL field always links to the app. Alert "None" means none — not the iPhone's default alert.</p>
+    </div>
+  )
+}
+
 function AreasCard() {
   const { prefs, loaded, failed, retry } = useCalendarPrefs()
   const save = useSaveCalendarPrefs()
@@ -103,7 +153,13 @@ function AreasCard() {
   const setup = useSetupICloudCalendars()
   // Only the areas edited here, over the saved ones: a refetch never loses an edit, an edit never resets another area.
   const [edits, setEdits] = useState<Partial<Record<AreaKey, CalendarArea>>>({})
-  const form: CalendarPrefs = { areas: { ...prefs.areas, ...edits } }
+  // The settings for every event (2b-3), edited the same way: only what was changed, over the saved ones.
+  const [look, setLook] = useState<Partial<Pick<CalendarPrefs, 'notes' | 'allDayAlert'>>>({})
+  const form: CalendarPrefs = {
+    areas: { ...prefs.areas, ...edits },
+    notes: look.notes ?? prefs.notes,
+    allDayAlert: 'allDayAlert' in look ? look.allDayAlert ?? null : prefs.allDayAlert,
+  }
   const dirty = !sameDoc(readCalendarPrefs(form), prefs)
   const invalid = AREA_KEYS.some(k => areaProblem(form.areas[k]))
   const connected = status.data?.connected === true
@@ -122,6 +178,7 @@ function AreasCard() {
     save.mutate({ base: prefs, next: readCalendarPrefs(form) }, {
       onSuccess: () => {
         setEdits({})
+        setLook({})
         if (connected) setup.mutate()
       },
     })
@@ -149,6 +206,7 @@ function AreasCard() {
                 failure={failures.get(k)} appleAvailable={connected} onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
           </ul>
+          <EveryEventRow notes={form.notes} allDayAlert={form.allDayAlert} locked={!loaded} onChange={next => setLook(l => ({ ...l, ...next }))} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" disabled={!loaded || invalid || (!dirty && !connected) || status.isLoading} loading={busy} onClick={apply}>
               {label}
@@ -170,7 +228,7 @@ function AreasCard() {
       )}
       {switching && (
         <AreaSwitchDialog previous={prefs} next={readCalendarPrefs(form)} switches={switching} icloudConnected={connected} onClose={() => setSwitching(null)}
-          onDone={() => { setSwitching(null); setEdits({}) }} />
+          onDone={() => { setSwitching(null); setEdits({}); setLook({}) }} />
       )}
     </Card>
   )

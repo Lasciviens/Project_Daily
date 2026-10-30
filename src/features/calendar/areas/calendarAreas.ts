@@ -24,7 +24,20 @@ export interface CalendarArea {
   app:          'google' | 'apple'
 }
 
-export interface CalendarPrefs { areas: Record<AreaKey, CalendarArea> }
+/** What an event's notes carry in Apple Calendar: the item's own notes and/or a link back to the app. */
+export const NOTES_MODES = ['notes+link', 'notes', 'link', 'none'] as const
+export type NotesMode = typeof NOTES_MODES[number]
+
+/** An all-day event's alert: at a time on its day, or the day before (Apple's own "On day of event (9:00)"). */
+export interface AllDayAlert { dayBefore: boolean; time: string }
+
+export interface CalendarPrefs {
+  areas:       Record<AreaKey, CalendarArea>
+  /** For every app event (2b-3). */
+  notes:       NotesMode
+  /** null: an all-day event gets no alert (as before 2b-3). */
+  allDayAlert: AllDayAlert | null
+}
 
 /** Quick picks for the default alert (minutes before; null = none); any whole number of minutes up to ALERT_MAX is a choice too. */
 export const ALERT_CHOICES: readonly (number | null)[] = [null, 0, 5, 10, 15, 30, 60, 120, 1440]
@@ -69,7 +82,12 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
-  return { areas }
+  const top = isRecord(raw) ? raw : {}
+  const notes = (NOTES_MODES as readonly unknown[]).includes(top.notes) ? top.notes as NotesMode : 'notes+link'
+  const ada = isRecord(top.allDayAlert) ? top.allDayAlert : null
+  const allDayAlert = ada && typeof ada.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(ada.time)
+    ? { dayBefore: ada.dayBefore === true, time: ada.time } : null
+  return { areas, notes, allDayAlert }
 }
 
 /** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */

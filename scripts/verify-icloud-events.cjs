@@ -46,7 +46,7 @@ eq([E.wantsCalendar('calendar', false), E.wantsCalendar('both', false), E.wantsC
 
 console.log('\n== A slot ==')
 const now = new Date('2026-10-30T10:00:00Z')
-const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now }
+const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now, look: { notes: 'notes+link', allDayAlert: null } }
 const gym = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30:00', duration_minutes: 60, title: 'Lower B', busy: true, notes: 'Squat, RDL; leg press' },
   { ...base, done: false, area: DEFAULT_AREAS.training })
 // An iCalendar uid has an address shape; the public scan for email addresses would read it as one, so it is checked in parts.
@@ -66,8 +66,9 @@ const done = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30', du
 eq(line(done.ics, 'SUMMARY'), 'SUMMARY:✓ 🏋️ Lower B', "done: Google's ✓ first, then the emoji")
 const allDay = E.slotEvent({ id: 'b2', date: '2026-11-03', start_time: null, duration_minutes: 60, title: 'Pay rent æøå', busy: true },
   { ...base, done: false, area: DEFAULT_AREAS.work })
-eq([line(allDay.ics, 'DTSTART'), line(allDay.ics, 'DTEND'), line(allDay.ics, 'TRANSP'), allDay.ics.includes('VALARM'), allDay.ics.includes('VTIMEZONE')],
-  ['DTSTART;VALUE=DATE:20261103', 'DTEND;VALUE=DATE:20261104', 'TRANSP:TRANSPARENT', false, false], 'no time: all day, free, no alert (an alert before midnight helps no one), no zone')
+eq([line(allDay.ics, 'DTSTART'), line(allDay.ics, 'DTEND'), line(allDay.ics, 'TRANSP'), allDay.ics.includes('ACTION:DISPLAY'), line(allDay.ics, 'ACTION'), allDay.ics.includes('VTIMEZONE')],
+  ['DTSTART;VALUE=DATE:20261103', 'DTEND;VALUE=DATE:20261104', 'TRANSP:TRANSPARENT', false, 'ACTION:NONE', false],
+  "no time: all day, free, no alert unless the owner set an all-day one (Apple's no-alert marker, not the iPhone's default), no zone")
 eq(line(allDay.ics, 'SUMMARY'), 'SUMMARY:💼 Pay rent æøå', 'æøå kept')
 const free = E.slotEvent({ id: 'b3', date: '2026-11-03', start_time: '14:00', duration_minutes: 0, title: 'Call', busy: false },
   { ...base, done: false, area: { ...DEFAULT_AREAS.personal, emoji: '', alertMinutes: 0 } })
@@ -89,8 +90,24 @@ eq([pe.plan.from, line(pe.ics, 'SUMMARY'), line(pe.ics, 'TRIGGER')], ['2026-10-3
 const kept = E.planEvent({ ...weekly, icloud_from: '2026-10-05' }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
 eq(line(kept.ics, 'DTSTART'), 'DTSTART;TZID=Europe/Oslo:20261005T070000', 'a series keeps the start day it was given (never moved by a later push)')
 const allDayPlan = E.planEvent({ ...weekly, id: 'p2', start_time: null, end_time: null, except_dates: [] }, { ...base, area: DEFAULT_AREAS.personal, today: '2026-10-30' })
-eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('VALARM')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert')
+eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('ACTION:DISPLAY')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert (unless the owner set an all-day one)')
 eq(E.planEvent({ ...weekly, days_of_week: [] }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' }), null, 'a repeat with no day left has no event')
+
+console.log('\n== Every event: notes and alerts (2b-3) ==')
+const look = (o) => ({ ...base, done: false, look: { ...base.look, ...o } })
+const slot = { id: 'b7', date: '2026-11-03', start_time: '18:00', duration_minutes: 60, title: 'Match', busy: true, notes: 'Bring scarf' }
+const desc = (o) => { const ics = unfold(E.slotEvent(slot, { ...look(o), area: DEFAULT_AREAS.football }).ics); return ics.slice(0, ics.indexOf('BEGIN:VALARM')).split('\r\n').find(l => l.startsWith('DESCRIPTION:')) ?? null }
+eq([desc({ notes: 'notes+link' })?.startsWith('DESCRIPTION:Bring scarf\\n\\nOpen in Lasci'), desc({ notes: 'notes' }), desc({ notes: 'link' })?.startsWith("DESCRIPTION:Open in Lasci's Board"), desc({ notes: 'none' })],
+  [true, 'DESCRIPTION:Bring scarf', true, null], "an event's notes carry what the owner picked: notes and the link, notes only, the link only, or nothing")
+eq(E.slotEvent(slot, { ...look({ notes: 'none' }), area: DEFAULT_AREAS.football }).ics.includes('URL;VALUE=URI:'), true, "the link field itself stays (Apple's URL field, #7)")
+const allDaySlot = { id: 'b8', date: '2026-11-03', start_time: null, duration_minutes: 60, title: 'Birthday', busy: true }
+const trig = (o) => line(E.slotEvent(allDaySlot, { ...look(o), area: DEFAULT_AREAS.personal }).ics, 'TRIGGER')
+eq([trig({ allDayAlert: { dayBefore: false, time: '09:00' } }), trig({ allDayAlert: { dayBefore: true, time: '09:00' } }), trig({ allDayAlert: { dayBefore: false, time: '00:00' } }), trig({ allDayAlert: null })],
+  ['TRIGGER:PT540M', 'TRIGGER:-PT900M', 'TRIGGER:PT0S', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z'],
+  'an all-day alert at a time on the day (PT540M = 09:00), the day before (-PT900M = 09:00 the day before), or Apple\'s no-alert marker')
+const timedNone = E.slotEvent(slot, { ...look({}), area: { ...DEFAULT_AREAS.football, alertMinutes: null } }).ics
+eq([timedNone.includes('ACTION:NONE'), timedNone.includes('ACTION:DISPLAY')], [true, false], 'an area with alert "None" writes Apple\'s no-alert marker (the iPhone adds no default alert)')
+eq(trig({ allDayAlert: { dayBefore: false, time: '25:99' } }), 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'a time that isn\'t one gives no alert, never a broken line')
 
 console.log('\n== Hostile text (security review, 30.10.2026) ==')
 eq(E.icsEscape('Lunch\rATTENDEE;RSVP=TRUE:mailto:ola@example.com\u0007'), 'Lunch\\nATTENDEE\\;RSVP=TRUE:mailto:ola@example.com', 'a lone CR becomes an escaped line break; other control characters are dropped')

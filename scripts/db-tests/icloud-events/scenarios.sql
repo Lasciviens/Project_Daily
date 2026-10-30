@@ -379,3 +379,19 @@ select public.t_ok((select count(*) from public.icloud_outbox where entity = 'pl
                    and (select count(*) from public.icloud_outbox o join public.time_blocks b on b.id = o.entity_id
                          where b.schedule_block_id = '30000000-0000-0000-0000-000000000003' and b.occurrence_date = '2026-11-10') = 1,
   '176: a day of a repeat moved on the iPhone is queued on purpose: its own event, and the series'' EXDATE');
+
+-- ── 177: settings for every event re-queue every event in Apple Calendar ─────
+reset role;
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"notes":"notes"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) from public.icloud_outbox where user_id = '00000000-0000-0000-0000-000000000001')
+                     = (select count(*) from public.time_blocks where user_id = '00000000-0000-0000-0000-000000000001' and icloud_area is not null)
+                     + (select count(*) from public.schedule_blocks where user_id = '00000000-0000-0000-0000-000000000001' and icloud_area is not null)
+                   and (select count(*) from public.icloud_outbox) > 0,
+  '177: what an event''s notes carry changed: every event already in Apple Calendar is rewritten (and only those)');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"allDayAlert":{"dayBefore":true,"time":"09:00"}}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) from public.icloud_outbox) > 0, '177: …and so does a new all-day alert');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"allDayAlert":{"dayBefore":true,"time":"09:00"}}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok(public.t_queue() = 0, '177: saving the same choice again queues nothing');

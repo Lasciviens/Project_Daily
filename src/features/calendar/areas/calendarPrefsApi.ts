@@ -43,5 +43,10 @@ export async function saveCalendarPrefsChanges(base: CalendarPrefs, next: Calend
     const changed = Object.fromEntries(fields.filter(f => next.areas[k][f] !== base.areas[k][f]).map(f => [f, next.areas[k][f]]))
     areas[k] = { ...now.areas[k], ...changed }
   }
-  return saveCalendarPrefs({ areas })
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+  return saveCalendarPrefs({
+    areas,
+    notes: next.notes !== base.notes ? next.notes : now.notes,
+    allDayAlert: !same(next.allDayAlert, base.allDayAlert) ? next.allDayAlert : now.allDayAlert,
+  })
 }

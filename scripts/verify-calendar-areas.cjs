@@ -38,6 +38,12 @@ eq(bad.areas.media, A.DEFAULT_AREAS.media, 'a wrong name, emoji, colour, alert o
 eq([bad.areas.football.alertMinutes, bad.areas.football.emoji], [null, ''], 'an alert of None and no emoji are real choices, kept')
 eq(A.readCalendarPrefs({ areas: { training: { name: 'x'.repeat(61) } } }).areas.training.name, A.DEFAULT_AREAS.training.name, 'a name over 60 characters is not taken')
 eq(A.readCalendarPrefs('nonsense').areas.personal, A.DEFAULT_AREAS.personal, 'a broken document reads as the defaults')
+eq([d.notes, d.allDayAlert], ['notes+link', null], 'every event: notes + link and no all-day alert by default (as before 2b-3)')
+eq(A.readCalendarPrefs({ notes: 'link', allDayAlert: { dayBefore: true, time: '18:00' } }), { areas: d.areas, notes: 'link', allDayAlert: { dayBefore: true, time: '18:00' } },
+  'a saved notes choice and all-day alert are read back')
+eq(['<script>', 'NOTES', 7, null].map(n => A.readCalendarPrefs({ notes: n }).notes), ['notes+link', 'notes+link', 'notes+link', 'notes+link'], 'an unknown notes choice falls back to the default')
+eq([{ time: '24:00' }, { time: '9:00' }, { time: '09:00\r\nX:1' }, { time: 900 }, 'on', { dayBefore: 'yes', time: '07:30' }].map(a => A.readCalendarPrefs({ allDayAlert: a }).allDayAlert),
+  [null, null, null, null, null, { dayBefore: false, time: '07:30' }], 'an all-day alert takes only a HH:MM time; anything else means none')
 eq([A.areaSlug('football'), A.appleColor('#ff9500')], ['lasci-football/', '#FF9500FF'], "each area's fixed place in iCloud, and Apple's colour form")
 eq([A.alertLabel(null), A.alertLabel(0), A.alertLabel(10), A.alertLabel(60), A.alertLabel(120), A.alertLabel(1440)],
   ['None', 'At the start', '10 min before', '1 h before', '2 h before', '1 day before'], 'alert labels')
