@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { MetaLine } from '../../../../shared/ui'
+import { MetaLine, Truncate } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useDayTasks } from '../../../todo/hooks/useTodos'
 import { useScheduleBlocks } from '../../hooks/useSchedule'
@@ -24,7 +24,9 @@ import { dayLineItems } from '../../personalGlance'
 // them side by side. In the header it shows at every width (beside the
 // schedule too) and never moves the cards.
 
-export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
+/** `oneLine`: cut to one line (the full line on tap), so a long day never makes the header taller (Personal's
+ *  header keeps one size between sections — owner, 31.10.2026). */
+export function DayLine({ date, lead, oneLine = false }: { date: string; lead?: ReactNode; oneLine?: boolean }) {
   const today = todayStr()
   const tasks = useDayTasks(date)
   const { data: templates = [] } = useScheduleBlocks()
@@ -52,5 +54,8 @@ export function DayLine({ date, lead }: { date: string; lead?: ReactNode }) {
     })
   }, [tasks.counts, tasks.repeatDays, tasks.open, tasks.done, tasks.cancelled, templates, workouts.data, steps.summary.value, nut.data, watching.last30, reading.data, subs, date, today])
 
-  return <MetaLine as="span" items={[lead, ...items]} className="tabular-nums" />
+  const line = <MetaLine as="span" items={[lead, ...items]} className="tabular-nums" />
+  if (!oneLine) return line
+  const full = [typeof lead === 'string' ? lead : null, ...items].filter(Boolean).join(' · ')
+  return <Truncate className="block" fullText={full}>{line}</Truncate>
 }

@@ -16,7 +16,7 @@ The full guide is `docs/design/THEME.md` — read the section you need before a 
   - W5 Secondary detail lives in a hover/tap peek (`HoverPeek`, never a hover-only tooltip).
   - W6 At 402 / 1469 / 2450 px: no horizontal overflow; check with `scripts/audit-page-width.mjs`.
   - W7 PageBoard: one main track (≤ 56rem) + 0–3 side tracks of 24rem; steps on the page's own width at 60 / 100 / 128 rem; positions never depend on content; cards that must line up across tracks go in `rows` (a row's cards share top and bottom — column stacks line up only by luck).
-- A page header with sections (tabs) keeps one size and the same lines in every section: `sectionsWidthRem` (the widest board), never the open section's own width — the tabs never move on a switch (owner, 31.10.2026).
+- A page header with sections (tabs) keeps one size and the same lines in every section: `sectionsWidthRem` (the widest board), never the open section's own width; text that changes with the section or day goes in a `PageHeader steady` with a one-line subtitle — the tabs never move on a switch (owner, 31.10.2026). Not for a view switch that changes the board itself (Work's Board / List).
 - Toasts: success, error, warning, info, loading and undo (THEME §10); a plain toast with the same text replaces the one on screen; toasts with Undo never merge.
 - Compact first: check every UI change in the phone layout (402×874, and sideways 874×402) and look at it: keep it compact and use the space it has — no extra lines, nothing overlapping or squashed, nothing wrapping onto a line it doesn't need. No minimum button size. Hover-only actions get a touch fallback.
 - No density setting (tried and rejected).

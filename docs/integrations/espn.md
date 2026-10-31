@@ -98,7 +98,7 @@ answer (`all/teams/{id}/schedule`, CORS ✓) has the same club fields (`team.sta
 `clubhouse`, `logo`, `color`) but no `defaultLeague`; the club's league now comes from `season.name` matched to an
 event's league (checked live on Galatasaray tur.1, Arsenal eng.1, Real Madrid esp.1, Mainz ger.1; France, a
 national team, falls back to its most-played competition). The old `team.json` sample went; `sched-res.json` and
-`sched-fix.json` carry the fields.
+`sched-fix.json` carry the fields. The club and its results read the same address, so `espnApi.getJson` sends one request when both ask at once (each caller parses its own copy).
 
 ### 19.10.2026 — first use
 

@@ -27,7 +27,18 @@ function checked(value: string, re: RegExp, what: string): string {
   return value
 }
 
-async function getJson(url: string): Promise<unknown> {
+// The same address asked twice at once (the club popup reads its club and its results from one schedule answer)
+// goes out once; each caller parses its own copy of the answer.
+const inFlight = new Map<string, Promise<unknown>>()
+function getJson(url: string): Promise<unknown> {
+  const running = inFlight.get(url)
+  if (running) return running.then(v => structuredClone(v))
+  const p = fetchJson(url).finally(() => inFlight.delete(url))
+  inFlight.set(url, p)
+  return p.then(v => structuredClone(v))
+}
+
+async function fetchJson(url: string): Promise<unknown> {
   let res: Response
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })

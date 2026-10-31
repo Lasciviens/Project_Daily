@@ -16,6 +16,9 @@
 --     breakfast 07:00, lunch 12:00, snack 15:00, dinner 18:00, supplement
 --     21:00 — foodLogUtils.MEAL_USUAL_TIME is the browser's copy, compared by
 --     verify-db-food-log-times). A row put back to planned loses its time.
+--     A food joining a dish (meal_group_id — added to it, or moved into it)
+--     takes the dish's time unless the same write sets its own, so a dish
+--     reads as one sitting on Food and in the Diary.
 --     A time the writer sends is kept; an eaten row's time cleared on purpose
 --     (an Undo putting an older log back) stays clear; a row written before
 --     181 ran for a day before it (food_log_times_from — an Undo of a deleted
@@ -60,10 +63,27 @@ set search_path = ''
 as $$
 declare
   v_at timestamp;
+  v_dish time;
 begin
   if new.status is distinct from 'eaten' then
     new.eaten_time := null;
     return new;
+  end if;
+  -- A food joining a dish takes the dish's time (its earliest), unless this write sets one of its own.
+  if new.meal_group_id is not null
+     and ((tg_op = 'INSERT' and new.eaten_time is null)
+          or (tg_op = 'UPDATE' and new.meal_group_id is distinct from old.meal_group_id
+              and new.eaten_time is not distinct from old.eaten_time)) then
+    select f.eaten_time into v_dish
+      from public.food_log_entries f
+     where f.meal_group_id = new.meal_group_id and f.user_id = new.user_id and f.id <> new.id
+       and f.status = 'eaten' and f.eaten_time is not null
+     order by f.eaten_time
+     limit 1;
+    if v_dish is not null then
+      new.eaten_time := v_dish;
+      return new;
+    end if;
   end if;
   if new.eaten_time is not null then
     new.eaten_time := date_trunc('minute', date '2000-01-01' + new.eaten_time)::time;
@@ -86,7 +106,7 @@ begin
 end;
 $$;
 drop trigger if exists trg_food_log_eaten_time on public.food_log_entries;
-create trigger trg_food_log_eaten_time before insert or update of status, eaten_time on public.food_log_entries
+create trigger trg_food_log_eaten_time before insert or update of status, eaten_time, meal_group_id on public.food_log_entries
   for each row execute function public.food_log_eaten_time();
 
 revoke all on function public.food_log_times_from() from public, anon;

@@ -327,7 +327,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
           <label htmlFor="rm-servings" className="field-label !mb-0">Base servings</label>
           <input id="rm-servings" type="number" min="1" step="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
           {/* One name per recipe (owner decision 6): what ONE serving is called. */}
-          <PortionWordSelect value={servingLabel || 'portion'} onChange={setServingLabel} ariaLabel="What one serving is called" className="w-32 min-w-0" />
+          <PortionWordSelect value={servingLabel} emptyWord="portion" onChange={setServingLabel} ariaLabel="What one serving is called" className="w-32 min-w-0" />
         </div>
 
         <section>

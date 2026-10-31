@@ -234,10 +234,13 @@ export function FoodTodayTab({ date }: { date: string }) {
       group.fat_g > 0 && `${group.fat_g} g fat`,
       group.fiber_g > 0 && `${group.fiber_g} g fiber`,
     ]
+    // A dish is one sitting (181 gives its foods its time): its earliest, as its items show it.
+    const dishAt = group.items.map(m => eatenTimeLabel(m.eaten_time)).filter((t): t is string => !!t).sort()[0] ?? null
     const nameBtn = (
       <button type="button" onClick={() => toggleGroup(group.groupId)} aria-expanded={expanded}
         className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
         <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform', expanded && 'rotate-90')} />
+        {dishAt && <span className="shrink-0 text-meta font-normal tabular-nums text-fg-muted" title="When it was eaten">{dishAt}</span>}
         <Truncate className="font-medium text-fg">{group.title}</Truncate>
         <span className="count-badge shrink-0" title={`${n} items`}>{n}<span className="sr-only"> items</span></span>
       </button>

@@ -109,6 +109,7 @@ export function DailyPage() {
       <div style={headerRem ? { maxWidth: `${headerRem}rem` } : undefined}>
       <PageHeader
         showTitle
+        steady
         art={<DailyHeroArt />}
         title={
           <DateNav
@@ -121,7 +122,7 @@ export function DailyPage() {
             isToday={dayLike && isToday(viewDate)}
           />
         }
-        subtitle={<span className="pl-1 tabular-nums"><DayLine date={formatLocalDate(viewDate)} lead={context} /></span>}
+        subtitle={<span className="block pl-1 tabular-nums"><DayLine oneLine date={formatLocalDate(viewDate)} lead={context} /></span>}
         actions={
           <>
             <div className="w-full sm:hidden">

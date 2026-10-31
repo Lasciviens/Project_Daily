@@ -8,7 +8,7 @@ import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { formatDate, formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useFavouriteTeamsGlance } from '../../../football/hooks/useFavouriteTeamsGlance'
-import type { FavouriteTeamGlance, GlanceResult } from '../../../football/footballGlance'
+import { RESULTS_SHOWN, type FavouriteTeamGlance, type GlanceResult } from '../../../football/footballGlance'
 
 // Personal's Football card (owner, 26.10.2026: "favourite team(s), with the
 // favourite selected on the Football page: how they're doing and the next
@@ -59,7 +59,7 @@ function TeamGlance({ team, date, today }: { team: FavouriteTeamGlance; date: st
           )}
         </StatBox>
       </div>
-      <LastResults results={team.results.filter(r => r.eventId !== match?.eventId)} />
+      <LastResults results={team.results.filter(r => r.eventId !== match?.eventId).slice(0, RESULTS_SHOWN)} />
       {match ? (
         <StatBox icon={team.live ? <Radio aria-hidden /> : <CalendarClock aria-hidden />} label={label}
           ariaLabel={`${label}: ${team.name} ${vs} — open the match`}

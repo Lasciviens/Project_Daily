@@ -380,6 +380,10 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     boards keeps ONE header size for all of them** — `sectionsWidthRem(boards, step)`, the widest — and
     the same lines in every section, so the header and its tabs never move or resize on a switch (owner,
     31.10.2026: "the layout should not move while navigating between sections"; Personal and Settings).
+    When the header's text changes with the section or the day (Personal's date and day line), give it
+    `PageHeader steady` and a one-line subtitle (`<Truncate>`): its title column takes a fixed share of the
+    row, so where the actions go depends on the width only. (A view switch that changes the page's own
+    board — Work's Board / List — is not a section; it is left as it is.)
     `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem
     via a callback ref.
   - Anything placed by PageBoard sizes its inner grids and rings on its own width (`@container` +

@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
 import { Hash, Plus, X } from 'lucide-react'
 import { chipClass } from './fieldStyles'
+import { Truncate } from '../../ui'
 import { AddFact } from './ItemFacts'
 import { cleanLabel, cleanLabels, labelSuggestions, LABEL_MAX, LABELS_PER_TASK } from '../../../features/todo/taskLabels'
 import { useTaskLabels } from '../../../features/todo/hooks/useTaskLabels'
@@ -37,7 +38,7 @@ export function LabelsFact({ value, onChange }: { value: string[]; onChange: (la
       {value.map(l => (
         <span key={l} className={chipClass('value', 'pr-0.5')}>
           <Hash aria-hidden />
-          <bdi className="max-w-[10rem] truncate">{l}</bdi>
+          <bdi className="min-w-0"><Truncate className="max-w-[10rem]">{l}</Truncate></bdi>
           <button type="button" onClick={() => onChange(value.filter(x => x !== l))} aria-label={`Remove the label ${l}`}
             className="grid h-6 w-6 place-items-center rounded-full text-fg-muted hover:bg-surface-hover hover:text-fg">
             <X aria-hidden />
@@ -55,24 +56,28 @@ export function LabelsFact({ value, onChange }: { value: string[]; onChange: (la
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => {
-                // Enter on a new word adds it (an offered one is picked by the combobox itself); Escape on an empty field closes.
+                // Enter on a new word adds it (an offered one is picked by the combobox itself); Escape drops what is
+                // typed, then closes.
                 if (e.key === 'Enter' && isNew && offered.length === 0) { e.preventDefault(); add(typed) }
-                if (e.key === 'Escape' && !query) close()
+                if (e.key === 'Escape') { if (query) setQuery(''); else close() }
               }}
-              onBlur={() => { if (!query) close() }}
+              // Leaving the field (Save, another field) keeps what was typed: a label typed and never Entered is
+              // added, never dropped without a word. Picking an option keeps the focus here, so it never adds twice.
+              onBlur={() => { if (typed && !has(value, typed)) onChange(cleanLabels([...value, typed])); close() }}
               autoComplete="off"
               className="input input-sm h-8 w-36"
             />
             {(isNew || offered.length > 0) && (
-              <ComboboxOptions anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
+              // Not modal (as the sheet's other pickers — DateChip, TimeChips): Save stays one tap away while the list is open.
+              <ComboboxOptions modal={false} anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
                 {isNew && (
                   <ComboboxOption value={typed} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
-                    <Plus aria-hidden className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">Add “<bdi>{typed}</bdi>”</span>
+                    <Plus aria-hidden className="h-4 w-4 shrink-0" /><Truncate className="min-w-0 flex-1" fullText={`Add “${typed}”`}>Add “<bdi>{typed}</bdi>”</Truncate>
                   </ComboboxOption>
                 )}
                 {offered.map(l => (
                   <ComboboxOption key={l} value={l} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
-                    <Hash aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1 truncate">{l}</bdi>
+                    <Hash aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1"><Truncate>{l}</Truncate></bdi>
                   </ComboboxOption>
                 ))}
               </ComboboxOptions>

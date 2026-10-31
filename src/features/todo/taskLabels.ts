@@ -49,7 +49,10 @@ export function labelSuggestions(known: readonly string[], typed: string, chosen
   const taken = new Set(chosen.map(l => l.toLowerCase()))
   const free = known.filter(l => !taken.has(l.toLowerCase()))
   if (!q) return free.slice(0, limit)
-  const starts = free.filter(l => l.toLowerCase().startsWith(q))
+  // The exact label first (Enter on "Phone" picks Phone, never the more used "Phone call"), then the ones that start
+  // with the text, then the ones that contain it.
+  const exact = free.filter(l => l.toLowerCase() === q)
+  const starts = free.filter(l => l.toLowerCase() !== q && l.toLowerCase().startsWith(q))
   const inside = free.filter(l => !l.toLowerCase().startsWith(q) && l.toLowerCase().includes(q))
-  return [...starts, ...inside].slice(0, limit)
+  return [...exact, ...starts, ...inside].slice(0, limit)
 }

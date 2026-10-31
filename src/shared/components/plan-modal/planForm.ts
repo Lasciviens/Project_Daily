@@ -50,6 +50,9 @@ export interface PlanForm extends RepeatFormFields {
   googleListTitle: string
   /** The task's own labels (migration 180) — a repeat's rule has none. */
   labels: string[]
+  /** The owner changed the labels here: only then are they sent (a save that didn't touch them keeps them — a sheet
+   *  opened without its task's labels never wipes them). */
+  labelsTouched: boolean
   /** A repeating item opened on one of its days: that day only, or the rule. */
   scope: 'day' | 'all'
   /** The rule's start while "This day" shows the day (and the day while "All days" shows the start). */
@@ -123,6 +126,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     googlePick: d.gcal ? 'calendar' as const : null,
     googleListTitle: DOMAIN_LABEL[domain],
     labels: [],
+    labelsTouched: false,
     scope: 'all' as const,
     otherDate: null,
   }
@@ -151,6 +155,7 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     googlePick,
     googleListTitle: DOMAIN_LABEL[item.domain],
     labels: item.labels ?? [],
+    labelsTouched: false,
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
   }
@@ -235,8 +240,8 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     repeat: repeat && date ? { ...repeat, startsOn: date } : null,
     google,
     googleTaskList: google === 'tasks' || google === 'both' ? ctx.googleTaskListId ?? ctx.item?.googleTaskList ?? null : null,
-    // A task's labels; a repeat's rule has none (its days are tasks the database makes), so they aren't sent.
-    ...(repeat ? {} : { labels: cleanLabels(f.labels) }),
+    // A task's labels, only when changed here (untouched, the database keeps them); a repeat's rule has none.
+    ...(repeat || !f.labelsTouched ? {} : { labels: cleanLabels(f.labels) }),
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,

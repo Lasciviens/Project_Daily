@@ -102,6 +102,10 @@ eq(buildDiary(base), [], 'an empty day has no rows')
     '|food|Dinner · Pizza|900 kcal',
   ], 'a meal at the time it was logged (logged together: one row), two snacks at two times two rows in time order, an older log at its meal\'s usual hour')
   eq(new Set(timed.map(r => r.key)).size, timed.length, 'every timed meal has its own key')
+  const sitting = buildDiary({ ...base, meals: [at(meal('o', 'breakfast', 'Oats', 300), '08:12:00'), at(meal('c', 'breakfast', 'Coffee', 5), '08:13:00'),
+    at(meal('j', 'breakfast', 'Juice', 60), '08:40:00'), meal('t', 'breakfast', 'Toast', 100)] })
+  eq(sitting.map(r => `${r.when}|${r.title}|${r.detail}`), ['|Breakfast · Toast|100 kcal', '08:12|Breakfast · Oats, Coffee, Juice|365 kcal'],
+    'a breakfast tapped in over a few minutes is one row at its first time; a log with no time keeps its own row at the usual hour (07:00, before it)')
 }
 
 // Night owl: 00:30 Oslo on the 28th is the 27th in UTC.

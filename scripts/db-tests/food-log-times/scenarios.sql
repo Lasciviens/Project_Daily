@@ -68,6 +68,26 @@ update public.food_log_entries set status = 'eaten' where custom_title = 'Planne
 select public.t_ok((select eaten_time = time '18:00' from public.food_log_entries where custom_title = 'Planned tomorrow'),
   'a planned row for another day ticked eaten: its meal''s usual time (dinner 18:00)');
 
+-- A dish (rows sharing meal_group_id) is one sitting: a food added to it, or moved into it, takes its time.
+insert into public.food_log_entries (date, meal_slot, custom_title, meal_group_id, eaten_time)
+values (public.t_oslo_day(), 'breakfast', 'Dish oats', '11111111-1111-4111-8111-111111111111', time '08:12');
+insert into public.food_log_entries (date, meal_slot, custom_title, meal_group_id)
+values (public.t_oslo_day(), 'breakfast', 'Dish coffee added later', '11111111-1111-4111-8111-111111111111');
+select public.t_ok((select eaten_time = time '08:12' from public.food_log_entries where custom_title = 'Dish coffee added later'),
+  'a food added to a dish later (Edit meal) takes the dish''s time, not the time it is added');
+insert into public.food_log_entries (date, meal_slot, custom_title, eaten_time) values (public.t_oslo_day(), 'breakfast', 'Loose juice', time '13:05');
+update public.food_log_entries set meal_group_id = '11111111-1111-4111-8111-111111111111' where custom_title = 'Loose juice';
+select public.t_ok((select eaten_time = time '08:12' from public.food_log_entries where custom_title = 'Loose juice'),
+  'a food moved into a dish (Edit entry → In) takes the dish''s time');
+insert into public.food_log_entries (date, meal_slot, custom_title, eaten_time) values (public.t_oslo_day(), 'breakfast', 'Loose tea', time '09:00');
+update public.food_log_entries set meal_group_id = '11111111-1111-4111-8111-111111111111', eaten_time = time '09:30' where custom_title = 'Loose tea';
+select public.t_ok((select eaten_time = time '09:30' from public.food_log_entries where custom_title = 'Loose tea'),
+  'a write that moves a food into a dish AND sets its time keeps the time it sets');
+insert into public.food_log_entries (date, meal_slot, custom_title, meal_group_id)
+values (public.t_oslo_day(), 'lunch', 'New dish first row', '22222222-2222-4222-8222-222222222222'),
+       (public.t_oslo_day(), 'lunch', 'New dish second row', '22222222-2222-4222-8222-222222222222');
+select public.t_ok((select count(distinct eaten_time) = 1 from public.food_log_entries where meal_group_id = '22222222-2222-4222-8222-222222222222'),
+  'a new dish logged in one go ("As meal") has one time on every row');
 update public.food_log_entries set eaten_time = time '13:05' where custom_title = 'Now dinner';
 select public.t_ok((select eaten_time = time '13:05' from public.food_log_entries where custom_title = 'Now dinner'),
   'the edit popup''s time is kept');

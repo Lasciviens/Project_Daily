@@ -42,6 +42,8 @@ function local(iso: string): { day: string; hhmm: string; minutes: number } | nu
   return { day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, hhmm: `${pad(d.getHours())}:${pad(d.getMinutes())}`, minutes: d.getHours() * 60 + d.getMinutes() }
 }
 const clockMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+/** Foods of one meal logged this close together are one sitting (one Diary row). */
+const MEAL_GAP_MINUTES = 60
 /** Where a meal with no clock time sits among the clock times: its usual hour (Food's MEAL_USUAL_TIME). */
 const usualMinutes = (slot: string) => {
   const t = (MEAL_USUAL_TIME as Record<string, string | undefined>)[slot]
@@ -68,21 +70,32 @@ export function buildDiary(input: DiaryInput): DiaryRow[] {
   const rows: { row: DiaryRow; sort: number }[] = []
   const push = (row: DiaryRow, sort: number) => rows.push({ row, sort })
 
-  // Food's own grouping and eaten kcal (foodGlance.mealsBySlot), every food listed by name (no amounts); one row
-  // per time a meal was logged (181: a log keeps its time — owner, 31.10.2026: "log times … so I can see on my
-  // diary"), a log from before that at its meal's usual hour with no time.
+  // Food's own grouping and eaten kcal (foodGlance.mealsBySlot), every food listed by name (no amounts). A meal sits
+  // at the time it was logged (181 — owner, 31.10.2026: "log times … so I can see on my diary"): foods logged
+  // within MEAL_GAP_MINUTES of each other are one sitting, one row at its first time (a breakfast tapped in over a
+  // few minutes stays one row); a longer gap starts another (a 10:30 and a 16:05 snack). A log from before 181 has
+  // no time and sits at its meal's usual hour.
   for (const g of mealsBySlot(input.meals)) {
-    const byTime = new Map<string, typeof g.items>()
-    for (const m of g.items) {
-      const t = eatenTimeLabel(m.eaten_time) ?? ''
-      byTime.set(t, [...(byTime.get(t) ?? []), m])
+    const sittings: { time: string; items: typeof g.items }[] = []
+    const timed = g.items
+      .map(m => ({ m, t: eatenTimeLabel(m.eaten_time) }))
+      .filter((x): x is { m: typeof g.items[number]; t: string } => x.t !== null)
+      .sort((a, b) => clockMinutes(a.t) - clockMinutes(b.t))
+    let last = -Infinity
+    for (const { m, t } of timed) {
+      const at = clockMinutes(t)
+      if (sittings.length && at - last <= MEAL_GAP_MINUTES) sittings[sittings.length - 1].items.push(m)
+      else sittings.push({ time: t, items: [m] })
+      last = at
     }
-    for (const [time, items] of byTime) {
-      const kcal = byTime.size === 1 ? g.kcal : eatenTotals(items).calories
+    const untimed = g.items.filter(m => eatenTimeLabel(m.eaten_time) === null)
+    if (untimed.length) sittings.push({ time: '', items: untimed })
+    for (const s of sittings) {
+      const kcal = sittings.length === 1 ? g.kcal : eatenTotals(s.items).calories
       push({
-        key: time ? `food:${g.slot}:${time}` : `food:${g.slot}`, kind: 'food', when: time,
-        title: `${g.name} · ${items.map(m => splitTitleQty(m.title).name).join(', ')}`, detail: kcal > 0 ? `${kcal} kcal` : null,
-      }, time ? clockMinutes(time) : usualMinutes(g.slot))
+        key: s.time ? `food:${g.slot}:${s.time}` : `food:${g.slot}`, kind: 'food', when: s.time,
+        title: `${g.name} · ${s.items.map(m => splitTitleQty(m.title).name).join(', ')}`, detail: kcal > 0 ? `${kcal} kcal` : null,
+      }, s.time ? clockMinutes(s.time) : usualMinutes(g.slot))
     }
   }
 

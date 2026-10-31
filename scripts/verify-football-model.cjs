@@ -353,19 +353,21 @@ eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score 
         opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png', home: true, competition: 'UEFA Champions League', score: '1–4', outcome: 'L' },
       { eventId: '401888280', league: 'tur.1', kickoffISO: '2026-10-09T17:00Z', day: '2026-10-09', time: '19:00', opponent: 'Kasimpasa',
         opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/6870.png', home: true, competition: 'Turkish Super Lig', score: '3–1', outcome: 'W' },
+      { eventId: '401927423', league: 'club.friendly', kickoffISO: '2026-10-02T14:30Z', day: '2026-10-02', time: '16:30', opponent: 'Pendikspor',
+        opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/9104.png', home: false, competition: 'Club Friendly', score: '3–3', outcome: 'D' },
     ],
     next: {
       eventId: '401915396', league: 'uefa.champions', kickoffISO: '2026-10-21T16:45Z', day: '2026-10-21', time: '18:45',
       opponent: 'Lille', opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/166.png', home: false, competition: 'UEFA Champions League',
     },
-  }, 'glance: 1st in the Süper Lig table with 19 points from 8, the form oldest first, the last three results newest first with the score home first (won 0–1 at Gençlerbirliği), next away at Lille 21.10.2026 18:45 (Oslo), nothing live')
+  }, 'glance: 1st in the Süper Lig table with 19 points from 8, the form oldest first, the last results newest first with the score home first (won 0–1 at Gençlerbirliği; one more than the card lists), next away at Lille 21.10.2026 18:45 (Oslo), nothing live')
   const popup = [...results.filter(m => M.outcomeFor(m, '432')).slice(0, 5)].reverse().map(m => M.outcomeFor(m, '432'))
   eq(glance([...fixtures, ...results]).form, popup, 'glance: the form is the club popup\'s, the newest last')
   eq(glance([...results, ...results, ...fixtures]).form, popup, 'glance: a result from two sources counts once')
   const many = Array.from({ length: 7 }, (_, i) => ({ ...results[i % 2], id: `r${i}`, kickoff: `2026-10-0${i + 1}T12:00Z` }))
   eq(glance(many).form, ['W', 'L', 'W', 'L', 'W'], 'glance: only the last five results')
-  eq(glance(many).results.map(r => r.eventId), ['r6', 'r5', 'r4'], 'glance: the last results are the newest three, newest first')
-  eq(glance([...results, ...results, ...fixtures]).results.map(r => r.eventId), ['401888274', '401915435', '401888280'], 'glance: a result from two sources is listed once')
+  eq(glance(many).results.map(r => r.eventId), ['r6', 'r5', 'r4', 'r3'], 'glance: the last results newest first — one more than the card lists, so a match day (its match shown above) still lists three')
+  eq(glance([...results, ...results, ...fixtures]).results.map(r => r.eventId), ['401888274', '401915435', '401888280', '401927423'], 'glance: a result from two sources is listed once')
   eq(glance([{ ...results[0], home: { ...results[0].home, score: null } }]).results, [], 'glance: a result without a score from ESPN isn\'t listed (never a made-up 0–0)')
 
   // A match being played: live from the favourite's side; the next is the one after it.

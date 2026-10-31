@@ -33,14 +33,17 @@ eq(L.labelSuggestions(known, 'h', []), ['Home office', 'Health', 'Phone', 'Kitch
 eq(L.labelSuggestions(known, 'E', ['errands']), ['Phone', 'Kitchen scale', 'Home office', 'Health'],
   'a label already on the task isn\'t offered again (any case); the rest that contain the letters')
 eq(L.labelSuggestions(known, '', [], 2), ['Errands', 'Phone'], 'at most the limit')
+eq(L.labelSuggestions(['Phone call', 'Phone', 'Phonics'], 'phone', [])[0], 'Phone', 'the exact label first: Enter on "Phone" picks Phone, never the more used "Phone call"')
 
 // ── Where they go ──
 const form = src('src/shared/components/plan-modal/planForm.ts')
-eq(/\.\.\.\(repeat \? \{\} : \{ labels: cleanLabels\(f\.labels\) \}\)/.test(form), true,
-  'the one save sends a task\'s labels cleaned, never a repeat\'s rule (its days are tasks the database makes)')
+eq(/\.\.\.\(repeat \|\| !f\.labelsTouched \? \{\} : \{ labels: cleanLabels\(f\.labels\) \}\)/.test(form), true,
+  'the one save sends a task\'s labels cleaned and only when changed in the sheet (untouched, the database keeps them — a sheet opened without them never wipes them), never a repeat\'s rule')
 const sheet = src('src/shared/components/plan-modal/ItemForm.tsx')
-eq(/const showLabels = !repeating && !hideTask\('labels'\)/.test(sheet) && /<LabelsFact value=\{form\.labels\}/.test(sheet), true,
-  'the sheet shows "+ Label" for a task, never for a repeat\'s rule')
+eq(/const showLabels = !repeating && !day && !hideTask\('labels'\)/.test(sheet) && /<LabelsFact value=\{form\.labels\} onChange=\{labels => patch\(\{ labels, labelsTouched: true \}\)\}/.test(sheet), true,
+  'the sheet shows "+ Label" for a task, never for a repeat\'s rule or a repeat\'s day ("This day" opens without its task\'s labels)')
+eq(/onBlur=\{\(\) => \{ if \(typed && !has\(value, typed\)\) onChange/.test(src('src/shared/components/plan-modal/LabelsFact.tsx')), true,
+  'a label typed and never Entered is added when the field is left (Save), never dropped without a word')
 eq(/VALUE_FACTS: readonly SheetRow\[\] = \['priority', 'area', 'list'\]/.test(sheet) && /<ListFact\b/.test(sheet), true,
   'a Google Task\'s list is a value with a menu of the lists (owner: "+Google List … did nothing")')
 eq(/answer\.labels === null/.test(src('src/features/items/useItems.ts')), true,

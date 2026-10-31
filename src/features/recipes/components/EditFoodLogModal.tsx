@@ -307,7 +307,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
             <DateInput value={day} onChange={v => { if (v) setDay(v) }} aria-label="Day" className="input input-sm h-8 w-[7.5rem] tabular-nums" />
           </span>
           <span className="flex items-center gap-1.5">Time
-            <FoodTimeField value={time ?? defaultEatenTime(day, slot, todayStr())} onChange={setTime} auto={!time} />
+            <FoodTimeField value={time} fallback={defaultEatenTime(day, slot, todayStr())} onChange={setTime} />
           </span>
           <span className="flex min-w-0 max-w-full items-center gap-1.5">In
             <ChipSelect label="In (dish)" value={dishValue} onChange={setDish} options={[

@@ -63,7 +63,8 @@ export interface FavouriteTeamGlance {
   played?: number
   /** Its last five results, oldest first: the newest is last. */
   form: Outcome[]
-  /** Its last results with their scores, newest first (owner, 31.10.2026: "add last results as well"). */
+  /** Its last results with their scores, newest first (owner, 31.10.2026: "add last results as well") — one more
+   *  than the card lists, so it still lists RESULTS_SHOWN when the day's own match (shown above them) is one. */
   results: GlanceResult[]
   /** Its next match not yet kicked off (a postponed one is left out). */
   next?: GlanceMatch
@@ -116,7 +117,7 @@ export function teamGlance(follow: Pick<FootballFollow, 'id' | 'ref' | 'name' | 
       const outcome = outcomeFor(m, follow.ref)
       const score = scoreText(m)
       return outcome && score ? [{ ...glanceMatch(m, follow.ref), score, outcome }] : []
-    }).slice(0, RESULTS_SHOWN),
+    }).slice(0, RESULTS_SHOWN + 1),
     next: next ? glanceMatch(next, follow.ref) : undefined,
     live: live ? { ...glanceMatch(live, follow.ref), score: scoreText(live) ?? '–', minute: live.clock || undefined } : undefined,
     onDay: dayMatch ? {

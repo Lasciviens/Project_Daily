@@ -26,21 +26,30 @@ import type { IngredientLibraryItem, MealSlot } from '../types'
  * time is the automatic one (now for today, the meal's usual time for another day) until it is changed.
  * `header`: the logger's header size (beside SlotSelect); otherwise a sheet row's chip.
  */
-export function FoodTimeField({ value, onChange, auto, header = false }: { value: string; onChange: (t: string) => void; auto?: boolean; header?: boolean }) {
+export function FoodTimeField({ value, fallback, onChange, auto, header = false }: {
+  /** HH:MM, or null for a log with no time (one from before 181): it reads "No time" until one is picked. */
+  value: string | null
+  /** Where the picker starts when there is no time yet. */
+  fallback?: string
+  onChange: (t: string) => void
+  auto?: boolean
+  header?: boolean
+}) {
+  const picked = value ?? fallback ?? '12:00'
   return (
     <Popover>
       <PopoverButton
-        aria-label={`Eaten at ${value}${auto ? ', the time it is logged' : ''} — change`}
-        title={auto ? 'The time it is logged — change it if you ate earlier' : 'When it was eaten'}
+        aria-label={value ? `Eaten at ${value}${auto ? ', the time it is logged' : ''} — change` : 'No time — pick when it was eaten'}
+        title={!value ? 'Logged before food times were kept — pick one if you know it' : auto ? 'The time it is logged — change it if you ate earlier' : 'When it was eaten'}
         className={header
           ? 'flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-control border border-line bg-surface-2 px-3 text-body font-medium tabular-nums text-fg transition-colors hover:border-line-strong data-[open]:border-line-strong'
           : chipClass('set')}
       >
-        <Clock aria-hidden className={header ? 'h-4 w-4 text-fg-faint' : undefined} />{value}
+        <Clock aria-hidden className={header ? 'h-4 w-4 text-fg-faint' : undefined} />{value ?? <span className="font-normal text-fg-muted">No time</span>}
       </PopoverButton>
       <PopoverPanel anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast flex flex-col gap-1.5 p-2.5">
         <p className="px-0.5 text-meta text-fg-muted">When you ate it</p>
-        <Time24Field size="sm" value={value} onChange={onChange} />
+        <Time24Field size="sm" value={picked} onChange={onChange} />
       </PopoverPanel>
     </Popover>
   )

@@ -389,7 +389,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="numeric"
                     aria-label="Portions this batch makes" title="How many portions this batch makes"
                     className="input w-12 px-1 text-center tabular-nums" />
-                  <PortionWordSelect value={mealPortionName || 'portion'} onChange={setMealPortionName}
+                  <PortionWordSelect value={mealPortionName} emptyWord="portion" onChange={setMealPortionName}
                     ariaLabel="What one portion is called" className="w-28 min-w-0" />
                   <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
                     title="Add to your recipe Library. Off = a temp meal: reusable and editable, but hidden from the Library grid.">

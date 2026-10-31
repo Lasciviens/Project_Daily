@@ -98,8 +98,9 @@ export function ItemForm({
   })
   // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
   const showCategory = (!!form.time || repeating) && !isScheduleFieldHidden('category', config)
-  // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes.
-  const showLabels = !repeating && !hideTask('labels')
+  // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
+  // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
+  const showLabels = !repeating && !day && !hideTask('labels')
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
   const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
 
@@ -164,7 +165,7 @@ export function ItemForm({
               onNew={() => patch({ googleListTitle: '', shown: [...form.shown.filter(r => r !== 'list'), 'list'] })}
             />
           )}
-          {showLabels && <LabelsFact value={form.labels} onChange={labels => patch({ labels })} />}
+          {showLabels && <LabelsFact value={form.labels} onChange={labels => patch({ labels, labelsTouched: true })} />}
           {addable.map(r => <AddFact key={r} label={ROW_LABEL[r]} onClick={() => patch({ shown: [...form.shown, r] })} />)}
         </div>
       )}

@@ -9,7 +9,7 @@
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { Check, ListChecks, Palette, Plus, Tag } from 'lucide-react'
-import { ToneDot, type Tone } from '../../ui'
+import { ToneDot, Truncate, type Tone } from '../../ui'
 import { chipClass } from './fieldStyles'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
@@ -60,19 +60,25 @@ export function ListFact({ value, onPick, onNew }: {
   onPick: (title: string) => void
   onNew: () => void
 }) {
-  const { data: lists = [] } = useGoogleTaskLists()
+  const listsQ = useGoogleTaskLists()
+  const lists = listsQ.data ?? []
   const name = value.trim()
   const known = (t: string) => lists.some(l => l.title.toLowerCase() === t.toLowerCase())
+  // "new" only once the lists are there to compare with (before that every name would read as new).
+  const isNew = !!name && listsQ.isSuccess && lists.length > 0 && !known(name)
   return (
     <Menu>
+      {/* "List:" — beside the area ("Personal") the same word must not read as the same thing. */}
       <MenuButton className={chipClass('value')} aria-label={`Google Tasks list: ${name || 'not picked'}`} title="Google Tasks list">
-        <ListChecks aria-hidden />{name || 'Google list'}{name && !known(name) && <span className="font-normal text-fg-muted">· new</span>}
+        <ListChecks aria-hidden /><span className="font-normal text-fg-muted">List:</span>
+        <Truncate className="max-w-[9rem]">{name || 'pick one'}</Truncate>
+        {isNew && <span className="font-normal text-fg-muted">· new</span>}
       </MenuButton>
       <MenuItems anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast max-h-72 min-w-[12rem] overflow-y-auto">
         {lists.map(l => (
           <MenuItem key={l.id}>
             <button type="button" onClick={() => onPick(l.title)} className="menu-item">
-              <span className="min-w-0 flex-1 truncate">{l.title}</span>
+              <Truncate className="min-w-0 flex-1">{l.title}</Truncate>
               {l.title.toLowerCase() === name.toLowerCase() && <Check className="h-4 w-4 shrink-0 text-accent-600" aria-label="Chosen" />}
             </button>
           </MenuItem>
