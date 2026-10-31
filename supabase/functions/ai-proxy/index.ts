@@ -3542,7 +3542,7 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // made-up one would hide or duplicate a day of a repeat. Play counts are capped
 // at the app's own 1–99 plays, because each extra play becomes a Trakt history
 // write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag))$/
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key))$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {

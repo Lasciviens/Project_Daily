@@ -78,11 +78,18 @@ try {
   for (const f of ['163_football.sql', '165_football_category.sql', '166_training_moves_recheck.sql', '167_training_week_rules.sql',
     '168_football_favourite.sql', '169_training_and_stock_fixes.sql', '171_icloud_credentials.sql', '172_calendar_prefs.sql',
     '173_icloud_events.sql', '174_icloud_events_safety.sql', '175_icloud_switch.sql', '176_icloud_readback.sql', '177_icloud_every_event.sql',
-    '177_icloud_every_event.sql']) step(f, () => psql(a, ['-f', mig(f)]))
+    '177_icloud_every_event.sql', '178_icloud_games_area.sql', '178_icloud_games_area.sql']) step(f, () => psql(a, ['-f', mig(f)]))
+  // 179's past trainings: a stored workout of an account whose Training is on Apple before 179 runs (024's notes column too).
+  step('before 179', () => psql(a, ['-c', `alter table public.hevy_workouts add column if not exists description text;
+    insert into public.calendar_prefs (user_id, prefs) values ('00000000-0000-0000-0000-000000000002', '{"areas": {"training": {"app": "apple", "enabled": true}}}');
+    insert into public.hevy_workouts (id, user_id, title, start_time, end_time) values
+      ('b459cba5-cd6d-463c-abd6-54f8eafcadcb', '00000000-0000-0000-0000-000000000002', 'Lower B', '2026-10-21 16:30+00', '2026-10-21 17:35+00'),
+      ('hevy-not-a-uuid', '00000000-0000-0000-0000-000000000002', 'Upper A', '2026-10-23 16:30+00', null);`]))
+  for (const f of ['179_icloud_workouts.sql', '179_icloud_workouts.sql']) step(f, () => psql(a, ['-f', mig(f)]))
   const run = spawnSync('psql', [a, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/icloud-cross/scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) { code = 1; console.error(run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n')) }
-  if (!code) console.log(`verify-db-icloud-cross: the live item, repeat, training, Google and Undo rules (135–169), then 171–177 (177 twice), and ${passed} scenarios passed`)
+  if (!code) console.log(`verify-db-icloud-cross: the live item, repeat, training, Google and Undo rules (135–169), then 171–179 (177–179 twice), and ${passed} scenarios passed`)
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
 }

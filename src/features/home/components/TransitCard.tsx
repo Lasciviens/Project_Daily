@@ -3,6 +3,7 @@ import { Bus, MapPin, Navigation } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import { useTransitStops } from '../hooks/useTransitStops'
+import { useAskLocation, useGeolocation } from '../hooks/useGeolocation'
 import { useDepartures, useNearbyStops } from '../hooks/useTransitQueries'
 import { useWidgetState } from '../hooks/useWidgetState'
 import { useNow } from '../hooks/useNow'
@@ -51,6 +52,15 @@ export function TransitCard() {
   const { stops, isLoading: stopsLoading } = useTransitStops()
   const saved = stops.find(s => s.is_default) ?? stops[0] ?? null
   const nearby = useNearbyStops({ enabled: !ws.collapsed })
+  // The phone is never asked on opening the app: "Near me" asks it (its prompt, once).
+  const geo = useGeolocation()
+  const askLocation = useAskLocation()
+  const nearMe = geo.data && geo.data.source !== 'gps' && (
+    <button type="button" onClick={() => void askLocation()} disabled={geo.isFetching}
+      className="ml-auto inline-flex min-h-[44px] shrink-0 items-center gap-1 px-1 text-meta font-semibold text-accent-600 disabled:opacity-50">
+      <Navigation aria-hidden className="h-3.5 w-3.5" />{geo.isFetching ? 'Locating…' : 'Near me'}
+    </button>
+  )
   // Around you (EnTur's ≤ 6 stops within 1 km, nearest first): a SAVED stop
   // among them wins, with its saved direction; otherwise the nearest stop;
   // without a location, the saved default.
@@ -90,12 +100,13 @@ export function TransitCard() {
         ) : stopsLoading ? (
           <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
         ) : !label ? (
-          <p className="mb-3 text-body text-fg-muted">Allow your location, or save a stop, to see departures here.</p>
+          <p className="mb-3 flex items-center gap-x-2 text-body text-fg-muted">No saved stop yet.{nearMe}</p>
         ) : (
           <>
             <p className="mb-1 flex min-w-0 items-center gap-1 text-meta text-fg-muted">
               {useNearest ? <Navigation aria-hidden className="h-3.5 w-3.5 shrink-0" /> : <MapPin aria-hidden className="h-3.5 w-3.5 shrink-0" />}
               <Truncate>{useNearest ? `Nearest stop: ${label}` : label}</Truncate>
+              {!useNearest && nearMe}
             </p>
             {isAddress ? (
               <p className="py-2 text-body text-fg-muted">This favourite is an address, so it has no departures board.</p>

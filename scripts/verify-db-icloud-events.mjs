@@ -24,6 +24,8 @@ const migFile = mig('174_icloud_events_safety.sql')
 const mig175 = mig('175_icloud_switch.sql')
 const mig176 = mig('176_icloud_readback.sql')
 const mig177 = mig('177_icloud_every_event.sql')
+const mig178 = mig('178_icloud_games_area.sql')
+const mig179 = mig('179_icloud_workouts.sql')
 
 const sql = readFileSync(mig173, 'utf8').replace(/--.*$/gm, '')
 const fix = readFileSync(migFile, 'utf8').replace(/--.*$/gm, '')
@@ -147,6 +149,14 @@ try {
   psql(target, ['-f', mig176])
   psql(target, ['-f', mig177])
   psql(target, ['-f', mig177])
+  psql(target, ['-f', mig178])
+  psql(target, ['-f', mig178])
+  // 024's workouts and 141's session link, as the live database has them (base.sql is the 142 item schema).
+  psql(target, ['-c', `create table if not exists public.hevy_workouts (id text primary key, user_id uuid not null references auth.users(id) on delete cascade,
+    title text not null, routine_id text, description text, start_time timestamptz, end_time timestamptz);
+    alter table public.tasks add column if not exists hevy_workout_id text references public.hevy_workouts(id) on delete set null;`])
+  psql(target, ['-f', mig179])
+  psql(target, ['-f', mig179])
   // The timer's condition is text inside cron.schedule (no pg_cron here): run it, so it parses against the real tables.
   for (const [n, file] of [['175', mig175], ['176', mig176]]) {
     const when = readFileSync(file, 'utf8').match(/body := jsonb_build_object\('action', 'cron'\)\n\s*\)\n(\s*where[\s\S]*?);\n\s*\$cron\$/)?.[1]
@@ -159,7 +169,7 @@ try {
     failed = run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') || run.stderr
     console.error(failed)
   } else {
-    console.log(`verify-db-icloud-events: 173, then 174–177 (each applied twice) and ${passed} scenarios passed`)
+    console.log(`verify-db-icloud-events: 173, then 174–179 (each applied twice) and ${passed} scenarios passed`)
   }
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }

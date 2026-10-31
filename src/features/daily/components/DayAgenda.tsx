@@ -46,7 +46,8 @@ import type { CalendarEvent } from '../../calendar/types'
 
 // `bare` — a pane inside a parent surface (Daily's hero card, the picked-day
 // card); without it the list draws its own card.
-export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }) {
+/** `addButton: false` — the caller has its own way to add (Home's quick add), so the day shows one Add. */
+export function DayAgenda({ date, bare = false, addButton = true }: { date: Date; bare?: boolean; addButton?: boolean }) {
   const day = format(date, 'yyyy-MM-dd')
   const prevDay = format(subDays(date, 1), 'yyyy-MM-dd')
   const today = todayStr()
@@ -187,7 +188,7 @@ export function DayAgenda({ date, bare = false }: { date: Date; bare?: boolean }
               <RefreshCw className={cx(calFetching && 'animate-spin')} />
             </IconButton>
           )}
-          <Button variant="primary" size="sm" icon={<Plus />} onClick={() => openAdd()}>Add</Button>
+          {addButton && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => openAdd()}>Add</Button>}
         </div>
       </div>
 

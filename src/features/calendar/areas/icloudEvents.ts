@@ -22,11 +22,12 @@ export interface AreaInput {
 
 const MEDIA_SOURCES = new Set(['movie', 'tv_series', 'tv_episode', 'media'])
 
-/** The area an item goes to: football → training → media → work (with projects) → personal. */
+/** The area an item goes to: football → training → games → media → work (with projects) → personal. */
 export function itemArea(x: AreaInput): AreaKey {
   const sources = [x.source_type, x.task_source_type].filter((s): s is string => !!s)
   if (x.category === 'football') return 'football'
   if (x.category === 'training' || sources.includes('training_session') || !!x.hevy_routine_id) return 'training'
+  if (x.category === 'games' || sources.includes('game')) return 'games'
   if (x.category === 'media' || x.domain === 'media' || sources.some(s => MEDIA_SOURCES.has(s))) return 'media'
   if (x.category === 'work' || x.category === 'projects' || x.domain === 'work' || !!x.project_id || sources.includes('project_item')) return 'work'
   return 'personal'
@@ -180,6 +181,37 @@ export function planEvent(
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
   return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
+}
+
+/** A moment as Oslo's wall clock ("2026-10-28T17:30:00"), or null for no real moment. */
+export function osloWallClock(iso: string | null | undefined): string | null {
+  const t = iso ? Date.parse(iso) : NaN
+  if (!Number.isFinite(t)) return null
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(t)).map(x => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`
+}
+
+/** A Hevy workout's event in the Training calendar (owner, 31.10.2026: "Workouts and calendar items"): its real start
+ *  and end, its Hevy notes, never an alert — it is done. Named by its key (`hevy_workouts.icloud_key`, a uuid the
+ *  database makes from Hevy's id), so nothing from outside is in its address. An hour when Hevy gave no real end. */
+export function workoutEvent(
+  w: { key: string; title: string | null; description?: string | null; start_time: string | null; end_time: string | null },
+  o: { area: CalendarArea; look: EventLook; appUrl: string; now: Date },
+): { uid: string; ics: string } | null {
+  const start = osloWallClock(w.start_time)
+  if (!start || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(w.key)) return null
+  const began = Date.parse(w.start_time as string)
+  const ended = w.end_time ? Date.parse(w.end_time) : NaN
+  const end = osloWallClock(new Date(Number.isFinite(ended) && ended > began ? ended : began + 3_600_000).toISOString()) as string
+  const uid = `lasci-workout-${w.key}@lasciviens.github.io`
+  const body = {
+    summary: w.title?.trim() || 'Workout',
+    start: { dateTime: start, timeZone: 'Europe/Oslo' }, end: { dateTime: end, timeZone: 'Europe/Oslo' },
+    transparency: 'opaque' as const,
+  }
+  return { uid, ics: eventObject({ uid, body, area: { ...o.area, alertMinutes: null }, look: o.look, notes: w.description, link: dayLink(o.appUrl, start.slice(0, 10)), now: o.now }) }
 }
 
 /** Where an item's event lives in its area's calendar. */

@@ -29,7 +29,7 @@
 import { BOARD, boardTemplate, pageStepForWidth, resolveBoardLayout, type BoardLayouts, type PageStep } from '../../../shared/ui/pageBoardRules'
 
 export const HOME_SECTIONS = [
-  'brief', 'hero', 'tasks', 'pair', 'transit', 'tiles', 'news',
+  'brief', 'tasks', 'pair', 'transit', 'tiles', 'news',
   'weather', 'currency', 'training', 'media', 'books', 'games',
   // The split laptop layout's tiles: a large weather tile under transit, and
   // the glance row (money, watched, books, games | a large training tile).
@@ -37,13 +37,14 @@ export const HOME_SECTIONS = [
 ] as const
 export type HomeSection = typeof HOME_SECTIONS[number]
 
-const MAIN = ['brief', 'hero', 'tasks'] as const
-/** From the laptop up the week and the tasks share one row (`pair` renders both). */
+// The week and the day are one card (HomeDayCard, owner 31.10.2026: one list of the day).
+const MAIN = ['brief', 'tasks'] as const
+/** From the laptop up the day card sits in the board's second row (`pair`). */
 const WIDE_MAIN = ['brief', 'pair'] as const
 /**
- * Home's main track may grow past the default 56rem: the brief, the week and
- * the tasks lay themselves out in two columns once wide (container queries),
- * so a 1795px laptop no longer ends in an empty strip right of the cards.
+ * Home's main track may grow past the default 56rem: the brief and the day's
+ * list lay themselves out in two columns once wide (container queries), so a
+ * 1795px laptop no longer ends in an empty strip right of the cards.
  */
 const HOME_MAIN = '72rem'
 
@@ -55,10 +56,10 @@ export const HOME_BOARD: BoardLayouts<HomeSection> = {
 }
 
 /**
- * Step 2 once the week and the tasks sit side by side: board rows, so cards
- * line up through the grid, never through their content heights. Row 1 the
- * brief | transit, row 2 the week | the tasks (`pair`) | the large weather
- * tile: each card stretches to its row's tallest. As two column stacks
+ * Step 2 once the main track is 44rem wide: board rows, so cards line up
+ * through the grid, never through their content heights. Row 1 the brief |
+ * transit, row 2 the day card (`pair`) | the large weather tile: each card
+ * stretches to its row's tallest. As two column stacks
  * (brief → pair | transit → weather) they lined up only when transit happened
  * to be as tall as the brief (owner, 16.10.2026). Then the glance row on the
  * same tracks, then news.
@@ -77,22 +78,22 @@ export const HOME_BOARD_SPLIT: BoardLayouts<HomeSection> = {
 
 /**
  * The glance row's tracks: the split board's own (main + one side track), so
- * money · watched · books · games sit under the week and the tasks and the
- * training tile under transit and weather, edge to edge.
+ * money · watched · books · games sit under the day card and the training
+ * tile under transit and weather, edge to edge.
  */
 export const GLANCE_ROW_TEMPLATE = boardTemplate(2, HOME_MAIN)
 
 /**
- * The main track's width from which `pair` lays the week and the tasks side by
- * side — HeroAndTasks' `@[44rem]` container query in HomePage.tsx (keep the
- * two equal; scripts/verify-page-board.cjs checks it).
+ * The main track's width from which Home uses the split board (the day card
+ * beside the large weather tile, in rows); the day's list lays its own columns
+ * out from its own width (DayAgenda's container query).
  */
 export const PAIR_SIDE_BY_SIDE_REM = 44
 
 /**
  * Home's layout for its content width (rem; null before the first measure).
  * At step 2 the main track is the page minus one side track, up to 72rem; from
- * 44rem of it the split layout keeps the two columns about the same height.
+ * 44rem of it the split layout lines the day card up with the weather tile.
  */
 export function homeBoardFor(pageRem: number | null): BoardLayouts<HomeSection> {
   if (pageRem == null || pageStepForWidth(pageRem * 16) !== 2) return HOME_BOARD

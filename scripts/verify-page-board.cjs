@@ -101,9 +101,9 @@ for (const [name, board] of [['', HOME_BOARD], ['split ', HOME_BOARD_SPLIT]]) {
     const keys = B.keysAt(board, s)
     const glanceOk = Object.values(HOME_GLANCE).every(alts => alts.some(k => keys.includes(k)))
     check(`${name}step ${s}: brief, now/next, tasks, transit, news and all six glance widgets are reachable`,
-      // `pair` renders the week (hero) and the tasks side by side.
+      // `pair` and `tasks` render the one day card (the week strip and the day's list).
       ['brief', 'transit', 'news'].every(k => keys.includes(k))
-        && (keys.includes('pair') || ['hero', 'tasks'].every(k => keys.includes(k))) && glanceOk)
+        && (keys.includes('pair') || keys.includes('tasks')) && glanceOk)
     check(`${name}step ${s}: a widget never shows beside its own tile, and no tile shows twice`,
       !(keys.some(k => TILE_SECTIONS.includes(k)) && keys.some(k => HOME_GLANCE[k]))
         && !(keys.includes('tiles') && (keys.includes('weatherTile') || keys.includes('glanceRow'))))
@@ -116,13 +116,15 @@ check('split step 2: row 1 = brief | transit; row 2 = week | tasks (pair) | weat
 })())
 check('split step 2: no independent column stacks — every card above the glance row is in a row, so tops and bottoms come from the grid, never from content heights',
   B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns.length === 0)
-check('split step 2: transit and the week/tasks are in different rows, so a tall transit stretches only the brief',
+check('split step 2: transit and the day card are in different rows, so a tall transit stretches only the brief',
   (rows => rows.findIndex(r => r.some(c => c.stack.includes('transit'))) !== rows.findIndex(r => r.some(c => c.stack.includes('pair'))))(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).rows))
 check('split step 2: the glance row starts under both rows, then news', eq(B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).bottom, ['glanceRow', 'news']))
-check('HomePage.tsx: the pair stretches with its row cell, and the week and the tasks with it (h-full)', (() => {
+check('HomePage.tsx: the day card stretches with its row cell (h-full), one card — never a second list of the day', (() => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
-  const pair = src.slice(src.indexOf('function HeroAndTasks'), src.indexOf('function HomeNews'))
-  return pair.includes('grid h-full') && pair.includes('[&>*]:h-full')
+  const pair = src.slice(src.indexOf('function DayCardCell'), src.indexOf('function HomeNews'))
+  const card = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/components/HomeDayCard.tsx'), 'utf8')
+  return pair.includes('className="h-full"') && /<HomeDayCard day=\{day\} onDay=\{onDay\} \/>/.test(pair) && /card flex h-full flex-col/.test(card)
+    && !/HomeHero|TodayTasksCard/.test(src)
 })())
 check('the glance row lies on the split board\'s own tracks (money · watched · books · games under main, training under the side)', (() => {
   const l = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2)
@@ -155,11 +157,7 @@ check('HomePage.tsx lays the groups out with GLANCE_GROUP_GRID', (() => {
   return src.includes('GLANCE_GROUP_GRID.all') && src.includes('GLANCE_GROUP_GRID.row')
     && !/grid-cols-\d/.test(src.slice(src.indexOf('function GlanceTiles'), src.indexOf('function HeroAndTasks')))
 })())
-check('the pair\'s container query in HomePage.tsx is the split\'s breakpoint', (() => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/home/pages/HomePage.tsx'), 'utf8')
-  return src.includes(`@[${H.PAIR_SIDE_BY_SIDE_REM}rem]:grid-cols-2`)
-})())
-check('step 1 keeps the phone order (brief → hero → tasks → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'hero', 'tasks', 'transit', 'tiles', 'news']))
+check('step 1 keeps the phone order (brief → the day card → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'tasks', 'transit', 'tiles', 'news']))
 check('step 2 (laptop) uses compact tiles, the owner\'s call', B.keysAt(HOME_BOARD, 2).includes('tiles'))
 check('main column is brief → (week | tasks side by side) from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'pair'])))
 check('step 3: weather column ends with games, the page-card column with books', (() => {

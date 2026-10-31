@@ -24,15 +24,16 @@ function eq(got, want, name) {
 
 console.log('\n== The settings ==')
 const d = A.readCalendarPrefs(null)
-eq(A.AREA_KEYS, ['training', 'work', 'personal', 'media', 'football'], 'five areas (owner, 29.10.2026)')
-eq(A.AREA_KEYS.map(k => d.areas[k].alertMinutes), [60, 10, null, null, 15], 'default alerts: Training 60, Work 10, Personal none, Media none, Football 15')
+eq(A.AREA_KEYS, ['training', 'work', 'personal', 'media', 'football', 'games'], 'six areas (owner, 29.10.2026; Games its own, 31.10.2026)')
+eq(A.AREA_KEYS.map(k => d.areas[k].alertMinutes), [null, null, null, null, null, null], 'no area has an alert by default (owner, 31.10.2026: "off by default")')
+eq([d.areas.games.name, d.areas.games.emoji, d.areas.games.app], ['Lasci · Games', '🎮', 'google'], 'Games: its own calendar, on Google until switched')
 eq(A.AREA_KEYS.every(k => d.areas[k].emoji && d.areas[k].enabled && /^#[0-9A-F]{6}$/.test(d.areas[k].color)), true, 'every area has an emoji, a colour and is in use by default')
 const saved = A.readCalendarPrefs({ areas: { training: { name: '  Gym  ', emoji: '💪', color: '#ff00aa', alertMinutes: 30, enabled: false }, work: { name: 'Jobb – æøå' } } })
 eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false, app: 'google' }, 'a saved area is read as saved (name trimmed, colour upper case)')
 eq([A.readCalendarPrefs({ areas: { football: { app: 'apple' } } }).areas.football.app, A.readCalendarPrefs({ areas: { football: { app: 'outlook' } } }).areas.football.app, d.areas.training.app],
   ['apple', 'google', 'google'], "an area goes to Google Calendar until it is switched to Apple (Phase 2b); anything else reads as Google")
 eq(saved.areas.work.name, 'Jobb – æøå', 'æøå in a name are kept')
-eq(saved.areas.work.alertMinutes, 10, 'a value not saved keeps its default')
+eq([saved.areas.work.emoji, saved.areas.work.alertMinutes], ['💼', null], 'a value not saved keeps its default')
 const bad = A.readCalendarPrefs({ areas: { media: { name: '', emoji: '😀'.repeat(13), color: 'purple', alertMinutes: -7, enabled: 'yes' }, football: { alertMinutes: null, emoji: '' } } })
 eq(bad.areas.media, A.DEFAULT_AREAS.media, 'a wrong name, emoji, colour, alert or switch falls back to its default')
 eq([bad.areas.football.alertMinutes, bad.areas.football.emoji], [null, ''], 'an alert of None and no emoji are real choices, kept')
@@ -54,7 +55,7 @@ eq([A.alertLabel(null), A.alertLabel(0), A.alertLabel(10), A.alertLabel(60), A.a
 eq([A.alertLabel(45), A.alertLabel(90), A.alertLabel(2880), A.alertLabel(1500)], ['45 min before', '1 h 30 min before', '2 days before', '1 day 1 h before'], 'a custom alert reads in days, hours and minutes')
 eq(A.readCalendarPrefs({ areas: { training: { alertMinutes: 45 }, work: { alertMinutes: 40321 }, media: { alertMinutes: 2.5 }, personal: { alertMinutes: -5 } } }).areas.training.alertMinutes, 45,
   'any whole number of minutes is a real alert choice (owner, 30.10.2026: "Should have a custom input as well")')
-eq(['work', 'media', 'personal'].map(k => A.readCalendarPrefs({ areas: { work: { alertMinutes: 40321 }, media: { alertMinutes: 2.5 }, personal: { alertMinutes: -5 } } }).areas[k].alertMinutes), [10, null, null],
+eq(['work', 'media', 'personal'].map(k => A.readCalendarPrefs({ areas: { work: { alertMinutes: 40321 }, media: { alertMinutes: 2.5 }, personal: { alertMinutes: -5 } } }).areas[k].alertMinutes), [null, null, null],
   'more than four weeks, a fraction or a negative falls back to the default')
 eq(A.areaProblem({ ...d.areas.training, alertMinutes: 40321 }) !== null && A.areaProblem({ ...d.areas.training, alertMinutes: 45 }) === null, true, 'the form says so before saving')
 eq([A.areaProblem({ ...d.areas.training, name: ' ' }), A.areaProblem(d.areas.training), A.areaProblem({ ...d.areas.training, emoji: '😀'.repeat(13) })],

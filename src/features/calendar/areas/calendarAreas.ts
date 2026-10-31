@@ -6,7 +6,7 @@
 // change it here, then copy it there.
 
 // <calendar-areas>
-export const AREA_KEYS = ['training', 'work', 'personal', 'media', 'football'] as const
+export const AREA_KEYS = ['training', 'work', 'personal', 'media', 'football', 'games'] as const
 export type AreaKey = typeof AREA_KEYS[number]
 
 export interface CalendarArea {
@@ -48,12 +48,14 @@ export const ALERT_MAX = 40320
 export const isAlertMinutes = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
+// No alert unless the owner turns one on (owner, 31.10.2026: "It should be off by default").
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true, app: 'google' },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true, app: 'google' },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true, app: 'google' },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true, app: 'google' },
   personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
   media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true, app: 'google' },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true, app: 'google' },
+  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true, app: 'google' },
 }
 
 const NAME_MAX = 60
@@ -162,4 +164,5 @@ export const switchNeedsAttention = (r: { notOnGoogle: number; foreign: number; 
 
 export const AREA_LABEL: Record<AreaKey, string> = {
   training: 'Training', work: 'Work (with Projects)', personal: 'Personal (tasks, repeats)', media: 'Media (episodes, films)', football: 'Football',
+  games: 'Games',
 }

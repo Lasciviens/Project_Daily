@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MapPin, Settings } from 'lucide-react'
-import { useGeolocation } from '../hooks/useGeolocation'
+import { useAskLocation, useGeolocation } from '../hooks/useGeolocation'
 import { useNow } from '../hooks/useNow'
 import { DeparturesTab } from './ruter/DeparturesTab'
 import { RoutesTab } from './ruter/RoutesTab'
@@ -80,6 +80,16 @@ export function TransitPanel({ active, initialTab = 'routes', planToStopId = nul
  */
 function LocationAge({ now }: { now: number }) {
   const { data: geo, dataUpdatedAt, refetch, isFetching } = useGeolocation()
+  const askLocation = useAskLocation()
+  // The phone is never asked on opening the app: a tap asks it (and its prompt, once).
+  if (geo && geo.source !== 'gps') {
+    return (
+      <button type="button" onClick={() => void askLocation()} disabled={isFetching}
+        className="ml-auto inline-flex min-h-[44px] items-center gap-1 px-2 text-micro font-semibold text-accent-600 disabled:opacity-50">
+        <MapPin aria-hidden className="h-3 w-3" />{isFetching ? 'Locating…' : 'Use my location'}
+      </button>
+    )
+  }
   if (geo?.source !== 'gps') return null
   return (
     <p className="ml-auto flex items-center gap-1.5 text-micro text-fg-muted" title={`Location from ${fmtMinsAgo(dataUpdatedAt, now)}`}>
