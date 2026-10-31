@@ -9,8 +9,6 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTodayOverview, type NextUpItem } from '../hooks/useTodayOverview'
 import { usePrefetchWeek } from '../hooks/usePrefetchWeek'
 
-const LATER_ROWS = 3
-
 const hourLabel = (h: number) => {
   const total = Math.round(h * 60)
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
@@ -117,16 +115,14 @@ function NowTile({ label, icon, title, meta, tone, emptyText, onOpen }: NowTileP
 
 /**
  * Home's "now / next" band: the week (a day can be picked in place, other
- * weeks reached with the chevrons), that day's schedule — one-off blocks,
- * recurring templates and calendar events, in-progress first on today — and
- * the training planned on that same day. Everything opens in a popup; only
- * "Open Daily" leaves Home. Counts and ordering come from useTodayOverview.
+ * weeks reached with the chevrons), what is next on that day and the training
+ * planned on it. The day's list itself is HomeDayCard (one list, as Daily's —
+ * never a second copy here). Everything opens in a popup; only "Open Daily"
+ * leaves Home. Counts and ordering come from useTodayOverview.
  */
-export function HomeHero() {
+export function HomeHero({ selected, onSelect }: { selected: string; onSelect: (day: string) => void }) {
   const today = todayStr()
-  const [selected, setSelected] = useState(today)
   const [weekOffset, setWeekOffset] = useState(0)
-  const [showAll, setShowAll] = useState(false)
   const monday = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), weekOffset)
   const isToday = selected === today
   const dayName = format(parseISO(selected), 'EEEE')
@@ -138,7 +134,7 @@ export function HomeHero() {
   // A training session opens as the session (its exercises and targets);
   // changing the plan is behind the popup's ⋯.
   const modal = useEntityModal()
-  const { nextUp, upcoming } = overview
+  const { nextUp } = overview
   // Only a session on the picked day — tomorrow's training is not today's job.
   const onDay = (t: typeof overview.nextTraining) => (t && t.date === selected ? t : null)
   const dayTraining = onDay(overview.nextTraining)
@@ -147,11 +143,9 @@ export function HomeHero() {
   const nextIsTraining = !!(nextUp && dayTraining && nextUp.kind === dayTraining.kind
     && nextUp.id === dayTraining.id && (nextUp.planDate ?? dayTraining.date) === dayTraining.date)
   const training = nextIsTraining ? onDay(overview.trainingAfterNext) : dayTraining
-  const later = showAll ? upcoming.slice(1) : upcoming.slice(1, 1 + LATER_ROWS)
 
   function pick(date: string) {
-    setSelected(date)
-    setShowAll(false)
+    onSelect(date)
   }
   function changeWeek(delta: number) {
     const next = weekOffset + delta
@@ -200,31 +194,6 @@ export function HomeHero() {
         )}
       </div>
 
-      {later.length > 0 && (
-        <ul className="mt-3 border-t border-line pt-2" aria-label={isToday ? 'Later today' : `Later on ${dayName}`}>
-          {later.map(item => (
-            <li key={item.key}>
-              <button
-                type="button"
-                onClick={() => openItem(item)}
-                disabled={item.kind === 'calendar'}
-                className="row row-interactive -mx-3 w-[calc(100%+1.5rem)] text-left disabled:cursor-default"
-              >
-                <span className="w-11 shrink-0 text-meta tabular-nums text-fg-muted">{item.startLabel}</span>
-                <Truncate className="flex-1 text-body text-fg-2">{item.title}</Truncate>
-              </button>
-            </li>
-          ))}
-          {!showAll && upcoming.length > 1 + LATER_ROWS && (
-            <li>
-              {/* Shows the rest here; Home never jumps to Daily on its own. */}
-              <button type="button" onClick={() => setShowAll(true)} className="inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600">
-                {upcoming.length - 1 - LATER_ROWS} more {isToday ? 'today' : `on ${dayName}`}
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
     </Card>
   )
 }

@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { PageBoard, PageContainer, cx, useBoardStep } from '../../../shared/ui'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { DailyBrief } from '../components/DailyBrief'
 import { HomeHero } from '../components/HomeHero'
-import { TodayTasksCard } from '../components/TodayTasksCard'
+import { HomeDayCard } from '../components/HomeDayCard'
 import { TransitCard } from '../components/TransitCard'
 import { WeatherWidget, WeatherTile } from '../components/WeatherWidget'
 import { CurrencyWidget, CurrencyTile } from '../components/CurrencyWidget'
@@ -57,18 +58,18 @@ function GlanceRow() {
 }
 
 /**
- * The week and today's tasks side by side under the brief (laptop and up),
+ * The week and the picked day's list side by side under the brief (laptop and up),
  * equal height, stacking again when the main track is narrow. The 44rem here
  * is homeBoard.ts' PAIR_SIDE_BY_SIDE_REM (the split layout starts there too).
  * `h-full`: on the split board the pair stretches to its row (the weather
  * tile beside it), and so do the week and the tasks.
  */
-function HeroAndTasks() {
+function HeroAndTasks({ day, onDay }: { day: string; onDay: (day: string) => void }) {
   return (
     <div className="@container">
       <div className="grid h-full grid-cols-1 items-stretch gap-4 @[44rem]:grid-cols-2 [&>*]:h-full">
-        <HomeHero />
-        <TodayTasksCard />
+        <HomeHero selected={day} onSelect={onDay} />
+        <HomeDayCard day={day} />
       </div>
     </div>
   )
@@ -86,18 +87,21 @@ function HomeNews() {
  * its tile never both fetch.
  */
 export function HomePage() {
-  // Asked for up front so the location prompt fires on load and every
-  // location-aware card shares the one cached answer.
+  // Read up front so every location-aware card shares the one answer; it never
+  // prompts on load (the phone is asked only when it already allows it, or
+  // after "Use my location").
   useGeolocation()
   // The same content width PageBoard measures: it picks the split laptop
   // layout once the week and the tasks sit side by side (homeBoardFor).
   const { ref, width } = useElementWidthRem()
+  // The day the week strip picked; the day's list shows the same day.
+  const [day, setDay] = useState(todayStr)
 
   const sections: Record<HomeSection, ReactNode> = {
     brief: <DailyBrief />,
-    hero: <HomeHero />,
-    tasks: <TodayTasksCard />,
-    pair: <HeroAndTasks />,
+    hero: <HomeHero selected={day} onSelect={setDay} />,
+    tasks: <HomeDayCard day={day} />,
+    pair: <HeroAndTasks day={day} onDay={setDay} />,
     transit: <TransitCard />,
     tiles: <GlanceTiles />,
     weatherTile: <WeatherTile large />,
