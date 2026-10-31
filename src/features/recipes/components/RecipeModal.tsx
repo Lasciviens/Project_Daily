@@ -11,6 +11,7 @@ import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 import { DecimalInput } from './foodLogKit'
+import { PortionWordSelect } from './PortionWordSelect'
 import { wholePortions } from '../foodBasket'
 import { RecipeModalFoodLink } from './RecipeModalFoodLink'
 import type { RecipeDraft } from './RecipeBuilder'
@@ -326,9 +327,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
           <label htmlFor="rm-servings" className="field-label !mb-0">Base servings</label>
           <input id="rm-servings" type="number" min="1" step="1" value={servings} onChange={e => setServings(e.target.value)} className="input w-24 text-center tabular-nums" />
           {/* One name per recipe (owner decision 6): what ONE serving is called. */}
-          <input value={servingLabel} onChange={e => setServingLabel(e.target.value)} maxLength={30} placeholder="portion"
-            aria-label="What one serving is called (piece, slice, bowl)" title="What ONE serving is called — piece, slice, bowl. Empty = portion."
-            className="input w-28 min-w-0" />
+          <PortionWordSelect value={servingLabel} emptyWord="portion" onChange={setServingLabel} ariaLabel="What one serving is called" className="w-32 min-w-0" />
         </div>
 
         <section>

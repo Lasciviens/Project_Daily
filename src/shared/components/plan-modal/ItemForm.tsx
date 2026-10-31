@@ -7,7 +7,7 @@
 //    Title (quick add: "Gym 17:30 1h every Mon Wed Fri" + the Read as line)
 //    [Thu 15.10.2026] [17:30–18:30] [Blocks 1h] [Repeat] [Google Calendar · busy ▾]
 //    [Weekly ▾] M T W T F S S                                  ← once repeating
-//    ● Medium priority · Personal · + Notes · + Deadline · + Google list
+//    ● Medium priority · Personal · ☰ Personal (its Google list) · # Errands × · + Label · + Notes · + Deadline
 //    Notes     [ … ]                                           ← rows opened
 //    Deadline  [ … ]
 //
@@ -24,7 +24,8 @@ import { TimeChip, LengthChip } from './TimeChips'
 import { GoogleChip } from './GoogleChip'
 import { GoogleListField } from './GoogleListField'
 import { TaskWindowField } from './TaskWindowField'
-import { AddFact, AreaFact, CategoryFact, FactRow, PriorityFact } from './ItemFacts'
+import { AddFact, AreaFact, CategoryFact, FactRow, ListFact, PriorityFact } from './ItemFacts'
+import { LabelsFact } from './LabelsFact'
 import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
@@ -38,9 +39,10 @@ import { shapeOf, withAllDay, withDate, withTime, type PlanForm, type SheetRow }
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 
-const ROW_LABEL: Record<SheetRow, string> = { notes: 'Notes', priority: 'Priority', deadline: 'Deadline', area: 'Area', list: 'Google list' }
-/** Priority and area always hold a value: they read as values on the facts line, never as rows. */
-const VALUE_FACTS: readonly SheetRow[] = ['priority', 'area']
+const ROW_LABEL: Record<SheetRow, string> = { notes: 'Notes', priority: 'Priority', deadline: 'Deadline', area: 'Area', list: 'New list' }
+/** Priority, area and a Google Task's list always hold a value: they read as values on the facts line, never as
+ *  "+" rows (the list's row is only "New list…", opened from its menu). */
+const VALUE_FACTS: readonly SheetRow[] = ['priority', 'area', 'list']
 
 interface Props {
   form: PlanForm
@@ -96,6 +98,9 @@ export function ItemForm({
   })
   // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
   const showCategory = (!!form.time || repeating) && !isScheduleFieldHidden('category', config)
+  // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
+  // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
+  const showLabels = !repeating && !day && !hideTask('labels')
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
   const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
 
@@ -148,11 +153,19 @@ export function ItemForm({
         />
       )}
 
-      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || addable.length > 0) && (
+      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || showLabels || addable.length > 0) && (
         <div className="-ml-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1">
           {rows.includes('priority') && <PriorityFact value={form.priority} onChange={priority => patch({ priority })} />}
           {rows.includes('area') && <AreaFact value={form.domain} onChange={domain => patch({ domain })} />}
           {showCategory && <CategoryFact value={form.category} onChange={category => patch({ category })} />}
+          {rows.includes('list') && (
+            <ListFact
+              value={form.googleListTitle}
+              onPick={googleListTitle => patch({ googleListTitle, shown: form.shown.filter(r => r !== 'list') })}
+              onNew={() => patch({ googleListTitle: '', shown: [...form.shown.filter(r => r !== 'list'), 'list'] })}
+            />
+          )}
+          {showLabels && <LabelsFact value={form.labels} onChange={labels => patch({ labels, labelsTouched: true })} />}
           {addable.map(r => <AddFact key={r} label={ROW_LABEL[r]} onClick={() => patch({ shown: [...form.shown, r] })} />)}
         </div>
       )}

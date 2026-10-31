@@ -1,14 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  UnifiedPlanModal — GOOGLE TASK LIST FIELD
-//  Free text, not a fixed picker over `domain` — the app's own domain enum
-//  (personal/work/media) is coarser than the nav categories a user actually
-//  thinks in (Training, Projects, ... all collapse to domain='personal'
-//  today), so this field lets a task's Google list be typed/picked per task
-//  instead. A native <input list> + <datalist> gives free text AND
-//  autocomplete over existing lists with zero extra state — the value typed
-//  or picked here is resolved (and created on Google if new, matched
-//  case-insensitively so it never duplicates) by
-//  resolveOrCreateGoogleTaskListId at save time in UnifiedPlanModal.tsx.
+//  UnifiedPlanModal — A NEW GOOGLE TASKS LIST
+//  The facts line's list menu (ItemFacts.ListFact) picks one of the Google
+//  lists; "New list…" opens this field for a name. The name is found (any
+//  case — never a second list of the same name) or made on Google at save
+//  time by resolveOrCreateGoogleTaskListId in UnifiedPlanModal.tsx; an empty
+//  field leaves the task in its list.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useId } from 'react'
@@ -27,22 +23,22 @@ export function GoogleListField({ value, onChange, locked }: Props) {
   const inputId = useId()
 
   return (
-    <FactRow label="Google list" htmlFor={inputId}>
+    <FactRow label="New list" htmlFor={inputId}>
       <input
         id={inputId}
         list={datalistId}
         value={value}
         disabled={locked}
+        autoFocus
+        maxLength={100}
         onChange={e => onChange(e.target.value)}
-        placeholder="Personal, Work, Training…"
+        placeholder="Name of the list"
         className="input input-sm disabled:opacity-60"
       />
       <datalist id={datalistId}>
         {lists.map(l => <option key={l.id} value={l.title} />)}
       </datalist>
-      <p className="mt-1 text-meta text-fg-muted">
-        Pick an existing list or type a new name — it's created on Google automatically.
-      </p>
+      <p className="mt-1 text-meta text-fg-muted">Made on Google when you save; the task goes into it.</p>
     </FactRow>
   )
 }

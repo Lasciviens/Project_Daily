@@ -7,6 +7,7 @@ import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { DOMAIN_LABEL } from '../domainColors'
 import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE, dueTone } from '../taskTones'
 import { isOverdue, isTrainingTask, dueLabel } from '../taskRules'
+import { TaskLabelPills } from './TaskLabelPills'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
@@ -180,6 +181,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
                   {due.text}
                 </TonePill>
               )}
+              <TaskLabelPills task={task} />
             </div>
             {/* Description gets its OWN line — sharing the chip row squeezed it
                 to a 1px-wide slot that rendered nothing on a phone. */}

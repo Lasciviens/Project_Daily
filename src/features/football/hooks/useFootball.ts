@@ -53,8 +53,8 @@ export function useStandings(league: string | null) {
   return useQuery({ ...standingsQuery(league ?? ''), enabled: !!league })
 }
 
-export function useTeamInfo(league: string | null, teamId: string | null) {
-  return useQuery({ ...teamInfoQuery(league ?? '', teamId ?? ''), enabled: !!league && !!teamId })
+export function useTeamInfo(teamId: string | null) {
+  return useQuery({ ...teamInfoQuery(teamId ?? ''), enabled: !!teamId })
 }
 
 export function useRoster(league: string | null, teamId: string | null) {

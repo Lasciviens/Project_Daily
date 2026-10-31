@@ -43,6 +43,13 @@ interface PageHeaderProps {
    * the art behind it — an empty band still shows the art.
    */
   art?: ReactNode
+  /**
+   * A header that must not move between a page's sections (owner, 31.10.2026: "the layout should not move while
+   * navigating between sections"): the title column takes a fixed share of the row (22rem, then whatever is
+   * left), so whether the actions fit beside it depends on the page's width only — never on the title's or the
+   * subtitle's text. Give it a one-line subtitle (<Truncate>) so its height can't change either.
+   */
+  steady?: boolean
 }
 
 /**
@@ -61,7 +68,7 @@ interface PageHeaderProps {
 /** `cond && <X/>` hands over `false` when the condition fails; treat it like nothing. */
 const shown = (node: ReactNode) => node != null && node !== false && node !== ''
 
-export function PageHeader({ title, subtitle, actions, children, className, showTitle = false, art }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, children, className, showTitle = false, art, steady = false }: PageHeaderProps) {
   const [hasSubtitle, hasActions, hasChildren] = [shown(subtitle), shown(actions), shown(children)]
   const heading = (
     <h1 className={showTitle ? 'text-head font-bold tracking-tight text-fg sm:text-page' : 'sr-only'}>{title}</h1>
@@ -95,7 +102,7 @@ export function PageHeader({ title, subtitle, actions, children, className, show
       {band(
         <>
           <div className={cx('flex flex-wrap justify-between gap-x-4 gap-y-3', showTitle ? 'items-end' : 'items-center')}>
-            <div className="min-w-0">
+            <div className={cx('min-w-0', steady && 'flex-1 basis-[22rem]')}>
               {heading}
               {hasSubtitle && <p className={cx('text-body text-fg-muted', showTitle && 'mt-0.5')}>{subtitle}</p>}
             </div>

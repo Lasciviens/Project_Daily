@@ -12,6 +12,7 @@ import type { TaskPriority, TaskDomain } from '../../../features/todo/types'
 import type { GoogleTarget, ItemInput, RepeatInput } from '../../../features/items/itemTypes'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
+import { cleanLabels } from '../../../features/todo/taskLabels'
 import {
   columnsFromRepeatInput, defaultGoogleTarget, effectiveGoogleTarget, repeatFromQuick,
 } from '../../../features/items/sheetRules'
@@ -47,6 +48,11 @@ export interface PlanForm extends RepeatFormFields {
   /** The Google choice picked for this item; null = follow the default. */
   googlePick: GoogleTarget | null
   googleListTitle: string
+  /** The task's own labels (migration 180) — a repeat's rule has none. */
+  labels: string[]
+  /** The owner changed the labels here: only then are they sent (a save that didn't touch them keeps them — a sheet
+   *  opened without its task's labels never wipes them). */
+  labelsTouched: boolean
   /** A repeating item opened on one of its days: that day only, or the rule. */
   scope: 'day' | 'all'
   /** The rule's start while "This day" shows the day (and the day while "All days" shows the start). */
@@ -119,6 +125,8 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     startDate: d.startDate ?? '',
     googlePick: d.gcal ? 'calendar' as const : null,
     googleListTitle: DOMAIN_LABEL[domain],
+    labels: [],
+    labelsTouched: false,
     scope: 'all' as const,
     otherDate: null,
   }
@@ -146,6 +154,8 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     startDate: startDate ?? '',
     googlePick,
     googleListTitle: DOMAIN_LABEL[item.domain],
+    labels: item.labels ?? [],
+    labelsTouched: false,
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
   }
@@ -230,6 +240,8 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     repeat: repeat && date ? { ...repeat, startsOn: date } : null,
     google,
     googleTaskList: google === 'tasks' || google === 'both' ? ctx.googleTaskListId ?? ctx.item?.googleTaskList ?? null : null,
+    // A task's labels, only when changed here (untouched, the database keeps them); a repeat's rule has none.
+    ...(repeat || !f.labelsTouched ? {} : { labels: cleanLabels(f.labels) }),
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,

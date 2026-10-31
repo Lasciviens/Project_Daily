@@ -23,7 +23,7 @@ export type ScheduleField = 'recurrence' | 'gcal' | 'category'
 
 /** Each hides its "+" chip and row. 'startDate' is the "do it between" window
  *  under "+ Deadline"; 'dueDate' / 'dueTime' hide the deadline itself. */
-export type TaskField = 'notes' | 'priority' | 'domain' | 'startDate' | 'dueDate' | 'dueTime' | 'googleList'
+export type TaskField = 'notes' | 'priority' | 'domain' | 'startDate' | 'dueDate' | 'dueTime' | 'googleList' | 'labels'
 
 /** The planner's Repeat choice. 'custom' is "every N days / weeks / months"
  *  or "picked dates" (CustomRepeatKind). Stored as schedule_blocks' repeat

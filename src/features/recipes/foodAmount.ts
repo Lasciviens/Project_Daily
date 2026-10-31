@@ -43,6 +43,36 @@ export interface AmountChip { label: string; hint?: string; base: number }
 
 // ── Words and numbers ───────────────────────────────────────────────────────
 
+/**
+ * The portion words offered wherever a portion is named (owner, 31.10.2026: "there are no type of portion, it's
+ * manually written like '1 portion' '1 pc' … It should be options") — a food's preset ("1 slice") and a recipe's
+ * serving word. The owner's own words already in use are offered after these (portionWordOptions), and "Other…"
+ * still takes a new one.
+ */
+export const PORTION_WORDS = [
+  'portion', 'serving', 'piece', 'slice', 'scoop', 'cup', 'glass', 'bowl', 'plate',
+  'bar', 'can', 'bottle', 'pack', 'tablespoon', 'teaspoon', 'handful',
+] as const
+
+/** A word fit to be offered: letters (any language), spaces and hyphens, at most 30 — never "2 slices (60 g)". */
+const OFFERABLE = /^[\p{L}][\p{L} -]{0,29}$/u
+
+/**
+ * The words a portion field offers: the usual ones, then the owner's own in use (foods' presets, recipes' serving
+ * words — each once, any case), then the current value if it is none of them, so a saved word always shows.
+ */
+export function portionWordOptions(own: readonly (string | null | undefined)[], current = ''): string[] {
+  const out: string[] = [...PORTION_WORDS]
+  const has = (w: string) => out.some(x => x.toLowerCase() === w.toLowerCase())
+  for (const raw of own) {
+    const w = raw?.trim()
+    if (w && OFFERABLE.test(w) && !has(w)) out.push(w)
+  }
+  const c = current.trim()
+  if (c && !has(c)) out.push(c)
+  return out
+}
+
 /** One serving's word: the recipe's own (157) or "portion". */
 export const portionWord = (label: string | null | undefined): string => label?.trim() || 'portion'
 

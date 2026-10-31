@@ -4,7 +4,7 @@
 // through footballModel's parsers, which turn anything odd into "nothing".
 // The only file that calls ESPN (verify-football-model checks it).
 import {
-  parseLeagueStandings, parseMatchDetail, parseMatches, parseRoster, parseSearch, parseTeam,
+  parseLeagueStandings, parseMatchDetail, parseMatches, parseRoster, parseScheduleTeam, parseSearch,
   type FbMatch, type FbMatchDetail, type FbPlayer, type FbSearchHit, type FbStandings, type FbTeamInfo,
 } from '../footballModel'
 
@@ -27,7 +27,18 @@ function checked(value: string, re: RegExp, what: string): string {
   return value
 }
 
-async function getJson(url: string): Promise<unknown> {
+// The same address asked twice at once (the club popup reads its club and its results from one schedule answer)
+// goes out once; each caller parses its own copy of the answer.
+const inFlight = new Map<string, Promise<unknown>>()
+function getJson(url: string): Promise<unknown> {
+  const running = inFlight.get(url)
+  if (running) return running.then(v => structuredClone(v))
+  const p = fetchJson(url).finally(() => inFlight.delete(url))
+  inFlight.set(url, p)
+  return p.then(v => structuredClone(v))
+}
+
+async function fetchJson(url: string): Promise<unknown> {
   let res: Response
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
@@ -62,8 +73,9 @@ export async function fetchStandings(league: string): Promise<FbStandings> {
   return parseLeagueStandings(await getJson(`${STANDINGS}/${checked(league, SLUG, 'tournament')}/standings`))
 }
 
-export async function fetchTeam(league: string, teamId: string): Promise<FbTeamInfo | null> {
-  return parseTeam(await getJson(`${SITE}/${checked(league, SLUG, 'tournament')}/teams/${checked(teamId, TEAM_ID, 'team id')}`))
+/** A club (its table place, W-D-L, own league, ESPN page) from its schedule answer — see parseScheduleTeam. */
+export async function fetchTeam(teamId: string): Promise<FbTeamInfo | null> {
+  return parseScheduleTeam(await getJson(`${SITE}/all/teams/${checked(teamId, TEAM_ID, 'team id')}/schedule`))
 }
 
 export async function fetchRoster(league: string, teamId: string): Promise<FbPlayer[]> {

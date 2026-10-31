@@ -14,7 +14,7 @@ import { DailyHeroArt } from '../components/DailyHeroArt'
 import { CalendarDays } from 'lucide-react'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep, usePageStep } from '../../../shared/ui'
-import { boardWidthRem } from '../../../shared/ui/pageBoardRules'
+import { sectionsWidthRem } from '../../../shared/ui/pageBoardRules'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
@@ -88,15 +88,16 @@ export function DailyPage() {
 
   const diff = differenceInCalendarDays(viewDate, new Date())
   const { greeting, timeStr } = useGreeting()
-  // The header stops where the mode's board stops (Week/Month/Tasks use a
-  // narrower main track), so the period switcher lines up with the last card.
+  // One header for every section: as wide as the widest section's board and with the same lines, so the date and
+  // the period switcher never move or resize between Today, Week, Tasks… (owner, 31.10.2026: "the layout should
+  // not move while navigating between sections" — it used to stop where each section's board stopped).
   const { ref: pageRef, step } = usePageStep<HTMLDivElement>()
-  const headerRem = step == null ? null : boardWidthRem(MODE_BOARD[mode], step)
+  const headerRem = step == null ? null : sectionsWidthRem(Object.values(MODE_BOARD), step)
 
-  // The diary pages through days like the day view, with the same day line.
+  // The diary pages through days like the day view.
   const dayLike = mode === 'day' || mode === 'diary'
-  const context = !dayLike ? null
-    : isToday(viewDate) ? `${greeting} · ${timeStr}`
+  // The viewed date's line shows in every section (the date above it does too).
+  const context = isToday(viewDate) ? `${greeting} · ${timeStr}`
     : isYesterday(viewDate) ? 'Yesterday'
     : isTomorrow(viewDate)  ? 'Tomorrow'
     : diff > 0 ? `In ${diff} day${diff !== 1 ? 's' : ''}`
@@ -108,6 +109,7 @@ export function DailyPage() {
       <div style={headerRem ? { maxWidth: `${headerRem}rem` } : undefined}>
       <PageHeader
         showTitle
+        steady
         art={<DailyHeroArt />}
         title={
           <DateNav
@@ -120,9 +122,7 @@ export function DailyPage() {
             isToday={dayLike && isToday(viewDate)}
           />
         }
-        subtitle={context
-          ? <span className="pl-1 tabular-nums">{dayLike ? <DayLine date={formatLocalDate(viewDate)} lead={context} /> : context}</span>
-          : undefined}
+        subtitle={<span className="block pl-1 tabular-nums"><DayLine oneLine date={formatLocalDate(viewDate)} lead={context} /></span>}
         actions={
           <>
             <div className="w-full sm:hidden">

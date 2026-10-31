@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ListOrdered, Radio, TrendingUp, Trophy } from 'lucide-react'
+import { CalendarClock, History, ListOrdered, Radio, TrendingUp, Trophy } from 'lucide-react'
 import { Cell, CellHeader, CellLink, StatBox, StatEmpty, StatNote, StatValue } from './cellKit'
 import { TonePill, Truncate, cx, type Tone } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
-import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
+import { formatDate, formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useFavouriteTeamsGlance } from '../../../football/hooks/useFavouriteTeamsGlance'
-import type { FavouriteTeamGlance } from '../../../football/footballGlance'
+import { RESULTS_SHOWN, type FavouriteTeamGlance, type GlanceResult } from '../../../football/footballGlance'
 
 // Personal's Football card (owner, 26.10.2026: "favourite team(s), with the
 // favourite selected on the Football page: how they're doing and the next
-// match"): the starred team's table place, its last five results and its
-// next match — or the score while it plays. Only useFavouriteTeamsGlance (the
+// match"): the starred team's table place, its form, its last results with
+// their scores (owner, 31.10.2026: "add last results as well") and its next
+// match — or the score while it plays. Only useFavouriteTeamsGlance (the
 // Football page's own reads); a tap opens the club or the match, where Plan it is.
 
 const OUTCOME_TONE: Record<'W' | 'D' | 'L', Tone> = { W: 'success', D: 'neutral', L: 'danger' }
@@ -58,6 +59,7 @@ function TeamGlance({ team, date, today }: { team: FavouriteTeamGlance; date: st
           )}
         </StatBox>
       </div>
+      <LastResults results={team.results.filter(r => r.eventId !== match?.eventId).slice(0, RESULTS_SHOWN)} />
       {match ? (
         <StatBox icon={team.live ? <Radio aria-hidden /> : <CalendarClock aria-hidden />} label={label}
           ariaLabel={`${label}: ${team.name} ${vs} — open the match`}
@@ -69,6 +71,31 @@ function TeamGlance({ team, date, today }: { team: FavouriteTeamGlance; date: st
         <p className="text-meta text-fg-muted">No match coming up.</p>
       )}
     </div>
+  )
+}
+
+/** The last results, newest first: each line its result, the score (home first) and the other side; a tap opens the match. */
+function LastResults({ results }: { results: readonly GlanceResult[] }) {
+  const modal = useEntityModal()
+  if (results.length === 0) return null
+  return (
+    <StatBox icon={<History aria-hidden />} label="Last results">
+      <ul className="-mx-1 flex flex-col">
+        {results.map(r => (
+          <li key={r.eventId}>
+            <button type="button" disabled={!r.league}
+              onClick={() => r.league && modal.open({ kind: 'football-match', eventId: r.eventId, league: r.league })}
+              aria-label={`${r.outcome === 'W' ? 'Won' : r.outcome === 'L' ? 'Lost' : 'Drew'} ${r.score} ${r.home ? 'v' : 'at'} ${r.opponent}, ${formatDate(r.day)} — open the match`}
+              className="flex min-h-[32px] w-full min-w-0 items-center gap-2 rounded-control px-1 text-left hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40">
+              <TonePill tone={OUTCOME_TONE[r.outcome]} className="w-6 shrink-0 justify-center">{r.outcome}</TonePill>
+              <span className="shrink-0 text-body font-semibold tabular-nums text-fg">{r.score}</span>
+              <Truncate className="min-w-0 flex-1 text-body text-fg-2">{`${r.home ? 'v' : 'at'} ${r.opponent}`}</Truncate>
+              <span className="shrink-0 text-meta tabular-nums text-fg-muted">{formatDate(r.day)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </StatBox>
   )
 }
 

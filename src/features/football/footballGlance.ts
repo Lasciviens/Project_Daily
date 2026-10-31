@@ -33,6 +33,12 @@ export interface GlanceMatch {
   competition?: string
 }
 
+/** A finished match from the favourite's side: the score home first ("2–1"), the result for the favourite. */
+export interface GlanceResult extends GlanceMatch {
+  score: string
+  outcome: Outcome
+}
+
 export interface GlanceLive extends GlanceMatch {
   /** Home first, as football writes it and the page shows it ("2–1"); "–" if ESPN gives no score. */
   score: string
@@ -57,6 +63,9 @@ export interface FavouriteTeamGlance {
   played?: number
   /** Its last five results, oldest first: the newest is last. */
   form: Outcome[]
+  /** Its last results with their scores, newest first (owner, 31.10.2026: "add last results as well") — one more
+   *  than the card lists, so it still lists RESULTS_SHOWN when the day's own match (shown above them) is one. */
+  results: GlanceResult[]
   /** Its next match not yet kicked off (a postponed one is left out). */
   next?: GlanceMatch
   /** Its match being played now. */
@@ -77,6 +86,8 @@ export interface GlanceSources {
 /** How far ahead a next match and how far back a result are looked for: past a summer break or a World Cup. */
 const REACH_DAYS = 400
 const FORM_LENGTH = 5
+/** How many results the card lists with their scores (the form shows five as W/D/L). */
+export const RESULTS_SHOWN = 3
 
 /** The favourite teams, in the order of the Following list (a tournament is never one). */
 export function favouritesOf<F extends Pick<FootballFollow, 'kind' | 'favourite'>>(follows: readonly F[]): F[] {
@@ -102,6 +113,11 @@ export function teamGlance(follow: Pick<FootballFollow, 'id' | 'ref' | 'name' | 
     played: row?.played,
     // Results come newest first: the five newest, turned so the newest is last (as the club popup shows them).
     form: agenda.results.map(m => outcomeFor(m, follow.ref)).filter((o): o is Outcome => o !== null).slice(0, FORM_LENGTH).reverse(),
+    results: agenda.results.flatMap(m => {
+      const outcome = outcomeFor(m, follow.ref)
+      const score = scoreText(m)
+      return outcome && score ? [{ ...glanceMatch(m, follow.ref), score, outcome }] : []
+    }).slice(0, RESULTS_SHOWN + 1),
     next: next ? glanceMatch(next, follow.ref) : undefined,
     live: live ? { ...glanceMatch(live, follow.ref), score: scoreText(live) ?? '–', minute: live.clock || undefined } : undefined,
     onDay: dayMatch ? {
