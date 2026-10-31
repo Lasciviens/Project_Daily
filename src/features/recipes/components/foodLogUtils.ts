@@ -11,6 +11,27 @@ export const SLOT_OPTIONS: { id: MealSlot; icon: string; label: string }[] = [
   { id: 'supplement', icon: '💊', label: 'Supplement' },
 ]
 
+/**
+ * A meal's usual time of day — the Diary's hour for a meal, and the time a log for another day gets (owner,
+ * 31.10.2026: food logs carry their time). Migration 181's food_meal_usual_time is the database's copy
+ * (verify-db-food-log-times compares them).
+ */
+export const MEAL_USUAL_TIME: Record<MealSlot, string> = {
+  breakfast: '07:00', lunch: '12:00', snack: '15:00', dinner: '18:00', supplement: '21:00',
+}
+
+/** The time a new log shows before it is changed: now (HH:MM) for today, else its meal's usual time — the database's rule (181). */
+export function defaultEatenTime(date: string, slot: MealSlot, today: string, now = new Date()): string {
+  return date === today
+    ? `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    : MEAL_USUAL_TIME[slot]
+}
+
+/** A stored time ("08:12:00") as the app writes times: HH:MM; null when there is none. */
+export function eatenTimeLabel(t: string | null | undefined): string | null {
+  return t && /^\d{2}:\d{2}/.test(t) ? t.slice(0, 5) : null
+}
+
 /** The meal slot that fits the time of day (breakfast before 11, lunch before 15, dinner before 21). */
 export function slotForNow(now = new Date()): MealSlot {
   const h = now.getHours()

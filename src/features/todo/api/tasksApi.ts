@@ -298,3 +298,14 @@ export async function swapTaskOrder(id1: string, id2: string): Promise<void> {
 export async function toggleTaskDone(id: string, isDone: boolean): Promise<Task> {
   return updateTask(id, { status: isDone ? 'done' : 'open' })
 }
+
+/** The owner's own task labels, most used first (migration 180's app_task_labels) — the Add sheet's suggestions.
+ *  An older database (no function yet) offers none. */
+export async function fetchTaskLabels(): Promise<string[]> {
+  const { data, error } = await supabase.rpc('app_task_labels')
+  if (error) {
+    if (error.code === 'PGRST202' || error.code === '42883') return []
+    throw error
+  }
+  return ((data ?? []) as Array<{ label?: unknown }>).flatMap(r => (typeof r.label === 'string' ? [r.label] : []))
+}

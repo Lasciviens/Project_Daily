@@ -42,6 +42,8 @@ export interface ItemInput {
   /** A Google Tasks list: its local id (google_task_lists.id, what the sheet
    *  resolves) — a name is found or made on Google by useSaveItem. */
   googleTaskList?: string | null
+  /** The task's own labels (migration 180); absent = keep them as they are (a repeat's rule has none). */
+  labels?: string[]
   /** The task's origin (tasks.source_type vocabulary: tv_series, not
    *  tv_episode); `id` may be null (a training session with no routine). */
   source?: { type: string; id: string | null } | null

@@ -9,6 +9,8 @@ import { OnlineFoodSearch } from './OnlineFoodSearch'
 import { Button, Card, IconButton, PageBoard, Truncate, cx } from '../../../shared/ui'
 import { IngredientList } from './IngredientList'
 import { sanitizeDecimal } from './foodLogUtils'
+import { PortionWordSelect } from './PortionWordSelect'
+import { presetWord } from '../foodAmount'
 import { INGREDIENT_BOARD } from '../foodBoards'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -198,7 +200,7 @@ export function IngredientManager({ focusId }: { focusId?: string | null } = {})
           <div className="grid grid-cols-2 gap-2 @[36rem]:grid-cols-4">
             <label className="flex min-w-0 flex-col gap-0.5">
               <span className="text-micro text-fg-muted">Portion</span>
-              <input value={f.servLabel} onChange={e => set('servLabel', e.target.value)} placeholder="1 scoop" aria-label="Portion name" className="input" />
+              <PortionWordSelect value={presetWord(f.servLabel) ?? ''} onChange={w => set('servLabel', w ? `1 ${w}` : '')} noneLabel="None" ariaLabel="Portion name" />
             </label>
             <label className="flex min-w-0 flex-col gap-0.5">
               <span className="text-micro text-fg-muted">Portion ({f.unit === 'ml' ? 'ml' : 'g'})</span>

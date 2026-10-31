@@ -6,6 +6,7 @@ import { STATUS_CYCLE, isOverdue, taskStatusMeta } from './workMeta'
 import { closedOn, isOpenTask } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
+import { TaskLabelPills } from '../../todo/components/TaskLabelPills'
 
 interface Props {
   tasks: Task[]                 // already search/priority-filtered by the page
@@ -90,6 +91,8 @@ export default function WorkListView({
             )}
 
             <TonePill tone={meta.tone} className="hidden shrink-0 md:inline-flex">{meta.label}</TonePill>
+
+            <TaskLabelPills task={task} className="hidden shrink-0 lg:inline-flex" />
 
             <DueChip task={task} />
 

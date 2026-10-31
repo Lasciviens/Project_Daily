@@ -27,6 +27,12 @@ function isMissingMealGroup(e: unknown): boolean {
 
 // Migration 158 (a dish's own name). Before it a write drops the name — the
 // dish keeps its automatic one. Remove once 158 has run everywhere.
+/** Migration 181 (a log's time) not applied yet. */
+export function isMissingEatenTime(e: unknown): boolean {
+  const x = e as { code?: string; message?: string }
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /eaten_time/i.test(x?.message ?? '')
+}
+
 export function isMissingGroupTitle(e: unknown): boolean {
   const x = e as { code?: string; message?: string }
   return (x?.code === '42703' || x?.code === 'PGRST204') && /meal_group_title/i.test(x?.message ?? '')
@@ -44,9 +50,15 @@ export async function fetchFoodLog(date: string): Promise<FoodLogEntry[]> {
 export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<string[]> {
   if (entries.length === 0) return []
   const user = await requireUser()
-  const base = entries.map(e => ({ ...e, user_id: user.id }))
+  let base = entries.map(e => ({ ...e, user_id: user.id }))
   const insert = (rows: object[]) => supabase.from('food_log_entries').insert(rows).select('id')
   let { data, error } = await insert(base.map(r => ({ ...r, status: 'eaten' })))
+  if (error && isMissingEatenTime(error)) {
+    // migration 181 not applied yet — logged without a picked time (the Diary shows the meal at its usual hour).
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    base = base.map(({ eaten_time, ...rest }) => rest)
+    ;({ data, error } = await insert(base.map(r => ({ ...r, status: 'eaten' }))))
+  }
   if (error && isMissingGroupTitle(error)) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     ;({ data, error } = await insert(base.map(({ meal_group_title, ...rest }) => ({ ...rest, status: 'eaten' }))))
@@ -66,10 +78,17 @@ export async function addFoodLogEntries(entries: FoodLogEntryInput[]): Promise<s
 // Edit an existing diary row — a fresh snapshot at edit time (the diary
 // contract: editing THIS row re-snapshots it; other rows/history untouched).
 // Callers pass a partial patch of the columns they changed.
-export type FoodLogPatch = Partial<Pick<FoodLogEntry, 'meal_slot' | 'date' | 'custom_title' | 'quantity' | 'unit' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g' | 'meal_group_id' | 'meal_group_title'>>
+export type FoodLogPatch = Partial<Pick<FoodLogEntry, 'meal_slot' | 'date' | 'custom_title' | 'quantity' | 'unit' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g' | 'fiber_g' | 'sugar_g' | 'meal_group_id' | 'meal_group_title' | 'eaten_time'>>
 
 export async function updateFoodLogEntry(id: string, patch: FoodLogPatch): Promise<void> {
   let { error } = await supabase.from('food_log_entries').update(patch).eq('id', id)
+  if (error && isMissingEatenTime(error) && 'eaten_time' in patch) {
+    // migration 181 not applied yet — everything but the time is saved.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { eaten_time, ...rest } = patch
+    patch = rest
+    ;({ error } = await supabase.from('food_log_entries').update(rest).eq('id', id))
+  }
   if (error && isMissingGroupTitle(error) && 'meal_group_title' in patch) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { meal_group_title, ...rest } = patch

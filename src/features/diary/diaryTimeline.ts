@@ -5,14 +5,15 @@
 // again (scripts/verify-diary-timeline.cjs).
 
 import { mealsBySlot } from '../daily/foodGlance'
-import { splitTitleQty, type MacroAmounts } from '../recipes/foodIngredients'
+import { eatenTotals, splitTitleQty, type MacroAmounts } from '../recipes/foodIngredients'
+import { MEAL_USUAL_TIME, eatenTimeLabel } from '../recipes/components/foodLogUtils'
 
 export type DiaryKind = 'food' | 'training' | 'watched' | 'reading' | 'game' | 'task' | 'planned'
 
 export interface DiaryRow {
   key:    string
   kind:   DiaryKind
-  /** "HH:MM"; empty for a meal (it has a meal, not a clock time — its name leads the title). */
+  /** "HH:MM"; a meal's is the time it was logged (181) — empty for a log from before that (it sits at its meal's usual hour). */
   when:   string
   title:  string
   /** Only what the icon doesn't already say: minutes, an episode, a plan's outcome. */
@@ -23,7 +24,7 @@ export interface DiaryInput {
   /** yyyy-MM-dd */
   day: string
   /** Eaten lines only (Food's diary, never a planned row). */
-  meals: readonly ({ id: string; source: 'plan' | 'log'; meal_slot: string; title: string; exact?: MacroAmounts } & MacroAmounts)[]
+  meals: readonly ({ id: string; source: 'plan' | 'log'; meal_slot: string; title: string; exact?: MacroAmounts; eaten_time?: string | null } & MacroAmounts)[]
   workouts: readonly { id: string; title: string; start_time: string | null; minutes: number | null }[]
   watches: readonly { at: string; day: string; kind: 'movie' | 'episode'; title: string; season?: number; episode?: number; tmdbId: number }[]
   reading: readonly { book_id: string; started_at: string; duration_seconds: number }[]
@@ -33,9 +34,6 @@ export interface DiaryInput {
   lastPlayed: { title: string; last_played_at: string } | null
 }
 
-/** Where a meal sits among the clock times (its usual hour). */
-const MEAL_AT: Record<string, number> = { breakfast: 7 * 60, lunch: 12 * 60, snack: 15 * 60, dinner: 18 * 60, supplement: 21 * 60 }
-
 const pad = (n: number) => String(n).padStart(2, '0')
 /** The device's day and clock time of an instant (the owner's phone is on Oslo time). */
 function local(iso: string): { day: string; hhmm: string; minutes: number } | null {
@@ -44,6 +42,11 @@ function local(iso: string): { day: string; hhmm: string; minutes: number } | nu
   return { day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, hhmm: `${pad(d.getHours())}:${pad(d.getMinutes())}`, minutes: d.getHours() * 60 + d.getMinutes() }
 }
 const clockMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+/** Where a meal with no clock time sits among the clock times: its usual hour (Food's MEAL_USUAL_TIME). */
+const usualMinutes = (slot: string) => {
+  const t = (MEAL_USUAL_TIME as Record<string, string | undefined>)[slot]
+  return t ? clockMinutes(t) : 24 * 60
+}
 const code = (s?: number, e?: number) => (s != null && e != null ? `S${pad(s)}E${pad(e)}` : null)
 const MEDIA_TASK = new Set(['movie', 'tv_series', 'media'])
 
@@ -65,9 +68,22 @@ export function buildDiary(input: DiaryInput): DiaryRow[] {
   const rows: { row: DiaryRow; sort: number }[] = []
   const push = (row: DiaryRow, sort: number) => rows.push({ row, sort })
 
-  // Food's own grouping and eaten kcal (foodGlance.mealsBySlot), every food listed by name (no amounts).
+  // Food's own grouping and eaten kcal (foodGlance.mealsBySlot), every food listed by name (no amounts); one row
+  // per time a meal was logged (181: a log keeps its time — owner, 31.10.2026: "log times … so I can see on my
+  // diary"), a log from before that at its meal's usual hour with no time.
   for (const g of mealsBySlot(input.meals)) {
-    push({ key: `food:${g.slot}`, kind: 'food', when: '', title: `${g.name} · ${g.items.map(m => splitTitleQty(m.title).name).join(', ')}`, detail: g.kcal > 0 ? `${g.kcal} kcal` : null }, MEAL_AT[g.slot] ?? 24 * 60)
+    const byTime = new Map<string, typeof g.items>()
+    for (const m of g.items) {
+      const t = eatenTimeLabel(m.eaten_time) ?? ''
+      byTime.set(t, [...(byTime.get(t) ?? []), m])
+    }
+    for (const [time, items] of byTime) {
+      const kcal = byTime.size === 1 ? g.kcal : eatenTotals(items).calories
+      push({
+        key: time ? `food:${g.slot}:${time}` : `food:${g.slot}`, kind: 'food', when: time,
+        title: `${g.name} · ${items.map(m => splitTitleQty(m.title).name).join(', ')}`, detail: kcal > 0 ? `${kcal} kcal` : null,
+      }, time ? clockMinutes(time) : usualMinutes(g.slot))
+    }
   }
 
   const shownWorkouts = new Set<string>()

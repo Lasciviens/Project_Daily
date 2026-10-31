@@ -34,7 +34,7 @@ export function useFavouriteTeamsGlance({ enabled = true, day }: { enabled?: boo
   const now = useMinute()
   const favourites = useMemo(() => favouritesOf(followsQ.data ?? []), [followsQ.data])
   // A team followed without its league (ESPN's search gave none): the club's own league, read as its popup reads it.
-  const infosQ = useQueries({ queries: favourites.map(f => ({ ...teamInfoQuery('all', f.ref), enabled: enabled && !f.league })) })
+  const infosQ = useQueries({ queries: favourites.map(f => ({ ...teamInfoQuery(f.ref), enabled: enabled && !f.league })) })
   const leagues = favourites.map((f, i) => {
     const league = f.league ?? infosQ[i]?.data?.defaultLeague ?? null
     return league && isLeagueSlug(league) ? league : null

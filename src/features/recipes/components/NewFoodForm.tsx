@@ -5,6 +5,8 @@ import { checkMacroConsistency } from '../macroSanity'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { FoodThumb } from './foodLogKit'
 import { sanitizeDecimal } from './foodLogUtils'
+import { PortionWordSelect } from './PortionWordSelect'
+import { presetWord } from '../foodAmount'
 import type { BarcodeProduct } from '../api/openFoodFactsApi'
 import type { IngredientLibraryItem } from '../types'
 
@@ -79,8 +81,9 @@ export function NewFoodForm({ seed, onCreated, onCancel, submitLabel = 'Add to m
         </div>
       )}
       <div className="grid grid-cols-2 gap-1.5">
-        <input value={servLabel} onChange={e => setServLabel(e.target.value)} placeholder="Portion label (1 scoop)" aria-label="Portion label" className="input" />
-        <input value={servGrams} onChange={e => setServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder="= grams" aria-label="Portion grams" className="input" />
+        {/* A portion is picked from a list (owner, 31.10.2026) and stored as "1 <word>". */}
+        <PortionWordSelect value={presetWord(servLabel) ?? ''} onChange={w => setServLabel(w ? `1 ${w}` : '')} noneLabel="No portion" ariaLabel="Portion" />
+        <input value={servGrams} onChange={e => setServGrams(sanitizeDecimal(e.target.value))} inputMode="decimal" placeholder={servLabel ? `1 ${presetWord(servLabel)} = grams` : '= grams'} aria-label="Portion grams" className="input" />
       </div>
       <div className="flex gap-2">
         <Button variant="ghost" onClick={onCancel}>Cancel</Button>

@@ -8,6 +8,7 @@ import type { Tone } from '../../../shared/ui'
 import { Truncate, cx } from '../../../shared/ui'
 import { haptic } from '../../../shared/utils/haptics'
 import { DueChip, PriorityMark } from './WorkTaskBits'
+import { TaskLabelPills } from '../../todo/components/TaskLabelPills'
 import { isOpenTask } from '../../todo/taskRules'
 
 interface Props {
@@ -81,6 +82,7 @@ export default function WorkTaskCard({
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <PriorityMark task={task} />
         <DueChip task={task} />
+        <TaskLabelPills task={task} />
         {task.description && <AlignLeft aria-label="Has notes" className="h-3 w-3 text-fg-faint" />}
         {task.status === 'waiting' && !editingWaiting && (
           <button

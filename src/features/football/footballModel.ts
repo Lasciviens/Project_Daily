@@ -302,21 +302,61 @@ export function squadGroups(players: readonly FbPlayer[]): Array<{ group: Positi
     .filter(g => g.players.length > 0)
 }
 
-export function parseTeam(raw: unknown): FbTeamInfo | null {
-  const t = obj(obj(raw)?.team)
+/**
+ * A club from its schedule answer (`all/teams/{id}/schedule`, the one its results come from). ESPN's own club
+ * address (`/teams/{id}`) stopped sending the header a browser needs to read it (checked 31.10.2026), so the club
+ * popup said "Couldn't load this club"; the schedule answer carries the same club fields and still sends it.
+ */
+export function parseScheduleTeam(raw: unknown): FbTeamInfo | null {
+  const d = obj(raw)
+  const t = obj(d?.team)
   const ref = teamRefOf(t)
-  if (!t || !ref) return null
-  const record = obj(arr(obj(t.record)?.items)[0])
-  const link = arr(t.links).map(obj).find(l => arr(l?.rel).includes('clubhouse'))
+  if (!d || !t || !ref) return null
   const color = str(t.color)
   return {
     id: ref.id, name: ref.name, logo: ref.logo,
     color: color && /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : null,
     standing: str(t.standingSummary),
-    record: str(record?.summary),
-    defaultLeague: str(obj(t.defaultLeague)?.slug) ?? str(t.defaultLeague),
-    espnUrl: https(link?.href),
+    record: str(t.recordSummary),
+    defaultLeague: scheduleLeague(d),
+    espnUrl: espnPage(t.clubhouse),
   }
+}
+
+/** ESPN's own page for "On ESPN": an https address on www.espn.com exactly (no user info) — never another site an odd answer names. */
+function espnPage(v: unknown): string | null {
+  const s = https(v)
+  if (!s) return null
+  try {
+    const u = new URL(s)
+    return u.protocol === 'https:' && u.hostname === 'www.espn.com' && !u.username && !u.password ? u.href : null
+  } catch {
+    return null
+  }
+}
+
+/** "2026-27 Turkish Super Lig" → "turkish super lig": a season's or a league's name without its years. */
+const leagueWords = (v: string | null) => (v ?? '').toLowerCase().replace(/^\d{4}(?:[-/]\d{2,4})?\s+/, '').trim()
+
+/**
+ * The club's own league from its schedule: the league its season is named after ("2026-27 LALIGA" is
+ * "Spanish LALIGA"'s), else the one it played most in, friendlies aside. Null when nothing fits — the squad,
+ * which needs a real league, then says ESPN has none.
+ */
+function scheduleLeague(d: Obj): string | null {
+  const leagues = arr(d.events).map(e => obj(obj(e)?.league)).filter((l): l is Obj => !!l && !!str(l.slug))
+  const season = leagueWords(str(obj(d.season)?.name) ?? str(obj(d.requestedSeason)?.name))
+  const named = season ? leagues.find(l => {
+    const name = leagueWords(str(l.name))
+    return !!name && (name === season || name.endsWith(` ${season}`) || season.endsWith(` ${name}`))
+  }) : undefined
+  if (named) return str(named.slug)
+  const count = new Map<string, number>()
+  for (const l of leagues) {
+    const slug = str(l.slug)!
+    if (!/friendly/.test(slug)) count.set(slug, (count.get(slug) ?? 0) + 1)
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 }
 
 export function parseMatchDetail(raw: unknown, leagueHint: { slug: string; name: string } | null = null): FbMatchDetail | null {

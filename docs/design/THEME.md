@@ -376,8 +376,12 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     re-checks on resize); a taller one scrolls with the page.
   - `boardWidthRem(layouts, step)` gives a board's widest width at a step. A page header above a
     board that stops short of the container (e.g. a 40rem main track) caps itself to it, so its
-    right-hand controls line up with the last card. `useElementWidthRem`
-    (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem via a callback ref.
+    right-hand controls line up with the last card. **A page whose sections (tabs) lay out different
+    boards keeps ONE header size for all of them** — `sectionsWidthRem(boards, step)`, the widest — and
+    the same lines in every section, so the header and its tabs never move or resize on a switch (owner,
+    31.10.2026: "the layout should not move while navigating between sections"; Personal and Settings).
+    `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem
+    via a callback ref.
   - Anything placed by PageBoard sizes its inner grids and rings on its own width (`@container` +
     `@[..rem]:`), never viewport `sm:/lg:` — a 24rem side track at 2450 is narrower than a
     phone-landscape viewport.
@@ -459,7 +463,7 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
   - A section that can be empty goes in the last track, so an empty track is only ever at the far right. A card whose content is bounded (≤ 2 metrics, a few short rows) never spans; the window stops early with empty trailing tracks, documented in its board file (Cardio, Coach, Goal at 2450).
   - A band (`top`/`bottom`) spans only the tracks its own step declares, so a full-width band is declared at every step. Never put a collection in a `bottom` band under a much taller column (it starts after the tallest column ends); give it a column.
   - A section that is its host card's block on a phone is **absent** from step 1; the host decides with `keysAt(layout, useBoardStep())` (Health Sleep breathing, Cardio recovery, the Goal blocks).
-  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header above a board that stops short caps itself to `boardWidthRem(layout, step)`; `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
+  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header above a board that stops short caps itself to `boardWidthRem(layout, step)` — with tabs, to `sectionsWidthRem` (one size for every tab); `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
   - **Cards that must line up across tracks go in `rows`.** Independent column stacks line up only when their heights happen to match. A row is one grid row on the board's tracks (its cells' spans cover every track): each cell stretches to the row's tallest and grows its last section, content top-aligned, so the row's cards share one top and one bottom whatever their content — the grid does it, nothing is measured. A section that holds its own grid (Home's `pair`, the week | the tasks) passes the height on with `h-full`. A step has `columns` or `rows`, never both; a row cell is never `sticky`. A band that must line up with the tracks lays its own grid on `boardTemplate(tracks, main)` (Home's split laptop board: brief | transit, then week | tasks | weather as rows; the glance row under them on the same tracks).
   - Layouts live in `homeBoard.ts`, `dailyBoards.ts`, `foodBoards.ts`, `wishesBoard.ts`, `healthBoards.ts`, `trainingBoards.ts`, `mediaBoard.ts`, `workBoard.ts`, `projectBoard.ts`, `developerBoards.ts`, checked by `scripts/verify-page-board.cjs` (Home, Daily), `verify-life-boards.cjs` (Food, Wishes, Health, Training) and `verify-feature-boards.cjs` (Media, Work, Projects, Developer).
 - **No density setting.** A Comfortable/Compact/Dense toggle was tried and rejected — don't reintroduce it.
@@ -578,9 +582,10 @@ clunky") and renders `ModalShell compact`. Top down:
   `ChipSelect` is exported from `plan-modal/fields.tsx` for any compact sheet row (Food's amount unit,
   Edit entry's Meal and dish): a chip is as wide as its choice, a visible select as wide as its longest option.
 - **The facts line**, small text: what every item has reads as an inline value that opens a `Menu`
-  (`chipClass('value')`: "● Medium priority", "Personal"); rarely-used facts wait as text buttons
-  (`chipClass('quiet')`: "+ Notes", "+ Deadline", "+ Google list") — never a row of empty pills, never a
-  dashed box, never an uppercase label.
+  (`chipClass('value')`: "● Medium priority", "Personal", a Google Task's list "☰ Personal"); a task's own
+  labels are value chips with × ("# Errands"), "+ Label" opens a Headless UI `Combobox` beside them
+  (`LabelsFact`); rarely-used facts wait as text buttons (`chipClass('quiet')`: "+ Notes", "+ Deadline") —
+  never a row of empty pills, never a dashed box, never an uppercase label.
 - **Opened rows** (`FactRow`): a short label beside a small field (`.input-sm`); a row with a value opens
   by itself.
 - Pickers use the same pieces: `choiceClass(active, …, 'sm')` for Today / Tomorrow, the lengths and the

@@ -19,6 +19,14 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-31 · v21.7 · The task's own labels (migration 180, owner: "an option
+//                    to add other labels"): "+ Label" on the facts line, the
+//                    owner's labels offered as they type, sent as `labels` with
+//                    the one save (a repeat's rule has none); an older database
+//                    answers without them and the save says so. The Google list
+//                    is a value with a menu of the Google lists and "New list…"
+//                    (owner: "+Google List … did nothing") instead of "+ Google
+//                    list" opening a text field.
 //  2026-10-31 · v21.6 · The chip's Apple/Google comes from the server's own
 //                    area rule with its inputs (category, domain, the slot's and
 //                    task's origin, project, Hevy routine) — a project's task

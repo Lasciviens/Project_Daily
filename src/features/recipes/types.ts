@@ -82,6 +82,8 @@ export interface FoodLogEntry {
   /** A taken supplement dose's line (160): its schedule and time of day; absent before 160. */
   supplement_schedule_id?: string | null
   dose_time?:              string | null
+  /** When it was eaten (181, "HH:MM:SS"); null for a planned row or a log from before 181; absent before 181. */
+  eaten_time?:             string | null
   created_at:            string
 }
 
@@ -101,6 +103,8 @@ export interface FoodLogEntryInput {
   sugar_g?:               number | null
   meal_group_id?:         string | null
   meal_group_title?:      string | null
+  /** "HH:MM" picked in the logger (181); absent = the database's: now for today, else the meal's usual time. */
+  eaten_time?:            string | null
 }
 
 export interface RecipeIngredient {

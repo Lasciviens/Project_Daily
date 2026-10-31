@@ -27,6 +27,8 @@ export const qk = {
     byId: (id: string) => ['tasks', 'by-id', id] as const,
     byIds: (ids: readonly string[]) => ['tasks', 'by-ids', [...ids].sort().join(',')] as const,
     subtasks: (parentId: string) => ['tasks', 'subtasks', parentId] as const,
+    /** The owner's own labels (migration 180) — under tasks, so a task's save refreshes them. */
+    labels: () => ['tasks', 'labels'] as const,
     /** Every project's tasks (migration 162) — under tasks, so every task action refreshes them. */
     projects: () => ['tasks', 'projects'] as const,
     /** A training session's first day (167) — the Move popup's "more than 7 days" note. */
@@ -173,7 +175,7 @@ export const qk = {
     results: (teamId: string) => ['football', 'espn', 'results', teamId] as const,
     month: (league: string, month: string) => ['football', 'espn', 'month', league, month] as const,
     standings: (league: string) => ['football', 'espn', 'standings', league] as const,
-    team: (league: string, teamId: string) => ['football', 'espn', 'team', league, teamId] as const,
+    team: (teamId: string) => ['football', 'espn', 'team', teamId] as const,
     roster: (league: string, teamId: string) => ['football', 'espn', 'roster', league, teamId] as const,
     match: (league: string, eventId: string) => ['football', 'espn', 'match', league, eventId] as const,
     search: (q: string) => ['football', 'espn', 'search', q] as const,

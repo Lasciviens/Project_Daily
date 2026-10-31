@@ -128,12 +128,30 @@ eq(M.scoreOf(undefined), null, 'no score')
 }
 
 // ── Club ──
-eq(M.parseTeam(fx('team')), {
+// ESPN's own club address (/teams/{id}) stopped sending the header a browser needs (31.10.2026): the club comes from
+// its schedule answer — the same answer the results are read from.
+eq(M.parseScheduleTeam(fx('sched-res')), {
   id: '432', name: 'Galatasaray', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/432.png', color: '#aa0031',
-  standing: '1st in Turkish Super Lig', record: '6-1-1', defaultLeague: 'tur.1',
+  standing: '1st in Turkish Super Lig', record: fx('sched-res').team.recordSummary, defaultLeague: 'tur.1',
   espnUrl: 'https://www.espn.com/soccer/club/_/id/432/galatasaray',
-}, 'club: standing, W-D-L record, its league, the ESPN page')
-eq(M.parseTeam({ team: { id: '1' } }), null, 'a club without a name')
+}, 'club from its schedule: standing, W-D-L record, its own league (the season\'s), the ESPN page')
+eq(M.parseScheduleTeam(fx('sched-fix')).defaultLeague, 'tur.1', 'the fixtures answer names the same league')
+eq(M.parseScheduleTeam({ team: { id: '1' } }), null, 'a club without a name')
+eq(M.parseScheduleTeam(null), null, 'no answer, no club')
+{
+  const page = clubhouse => M.parseScheduleTeam({ ...fx('sched-res'), team: { ...fx('sched-res').team, clubhouse } }).espnUrl
+  eq([page('javascript:alert(1)'), page('https://www.espn.com.evil.example/x'), page('https://user:pw@www.espn.com/x'), page('http://www.espn.com/x'), page('https://www.espn.com/soccer/club/_/id/432')],
+    [null, null, null, null, 'https://www.espn.com/soccer/club/_/id/432'], '"On ESPN" opens only https://www.espn.com — never another site an odd answer names')
+}
+{
+  const club = (season, leagues) => M.parseScheduleTeam({ team: { id: '86', displayName: 'Real Madrid' }, season: { name: season }, events: leagues.map(([slug, name]) => ({ league: { slug, name } })) })
+  eq(club('2026-27 LALIGA', [['uefa.champions', 'UEFA Champions League'], ['esp.1', 'Spanish LALIGA'], ['uefa.champions', 'UEFA Champions League']]).defaultLeague, 'esp.1',
+    'the season names the league even when another competition has more matches ("LALIGA" is "Spanish LALIGA")')
+  eq(club('League Phase', [['fifa.friendly', 'International Friendly'], ['fifa.friendly', 'International Friendly'], ['uefa.nations', 'UEFA Nations League']]).defaultLeague, 'uefa.nations',
+    'no league named by the season: the one played most, friendlies aside')
+  eq(club('2026-27 English Premier League', [['club.friendly', 'Club Friendly']]).defaultLeague, null, 'only friendlies: no league (the squad then says ESPN has none)')
+  eq(club(null, []).color, null, 'no colour given, none made up')
+}
 
 // ── Match popup ──
 {
@@ -328,16 +346,27 @@ eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score 
     id: 'f1', ref: '432', name: 'Galatasaray', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/432.png',
     league: 'tur.1', leagueName: 'Turkish Super Lig', position: 1, points: 19, played: 8,
     form: ['D', 'W', 'L', 'W'],
+    results: [
+      { eventId: '401888274', league: 'tur.1', kickoffISO: '2026-10-17T13:00Z', day: '2026-10-17', time: '15:00', opponent: 'Genclerbirli',
+        opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/996.png', home: false, competition: 'Turkish Super Lig', score: '0–1', outcome: 'W' },
+      { eventId: '401915435', league: 'uefa.champions', kickoffISO: '2026-10-13T19:00Z', day: '2026-10-13', time: '21:00', opponent: 'Barcelona',
+        opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/83.png', home: true, competition: 'UEFA Champions League', score: '1–4', outcome: 'L' },
+      { eventId: '401888280', league: 'tur.1', kickoffISO: '2026-10-09T17:00Z', day: '2026-10-09', time: '19:00', opponent: 'Kasimpasa',
+        opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/6870.png', home: true, competition: 'Turkish Super Lig', score: '3–1', outcome: 'W' },
+    ],
     next: {
       eventId: '401915396', league: 'uefa.champions', kickoffISO: '2026-10-21T16:45Z', day: '2026-10-21', time: '18:45',
       opponent: 'Lille', opponentLogo: 'https://a.espncdn.com/i/teamlogos/soccer/500/166.png', home: false, competition: 'UEFA Champions League',
     },
-  }, 'glance: 1st in the Süper Lig table with 19 points from 8, the form oldest first, next away at Lille 21.10.2026 18:45 (Oslo), nothing live')
+  }, 'glance: 1st in the Süper Lig table with 19 points from 8, the form oldest first, the last three results newest first with the score home first (won 0–1 at Gençlerbirliği), next away at Lille 21.10.2026 18:45 (Oslo), nothing live')
   const popup = [...results.filter(m => M.outcomeFor(m, '432')).slice(0, 5)].reverse().map(m => M.outcomeFor(m, '432'))
   eq(glance([...fixtures, ...results]).form, popup, 'glance: the form is the club popup\'s, the newest last')
   eq(glance([...results, ...results, ...fixtures]).form, popup, 'glance: a result from two sources counts once')
   const many = Array.from({ length: 7 }, (_, i) => ({ ...results[i % 2], id: `r${i}`, kickoff: `2026-10-0${i + 1}T12:00Z` }))
   eq(glance(many).form, ['W', 'L', 'W', 'L', 'W'], 'glance: only the last five results')
+  eq(glance(many).results.map(r => r.eventId), ['r6', 'r5', 'r4'], 'glance: the last results are the newest three, newest first')
+  eq(glance([...results, ...results, ...fixtures]).results.map(r => r.eventId), ['401888274', '401915435', '401888280'], 'glance: a result from two sources is listed once')
+  eq(glance([{ ...results[0], home: { ...results[0].home, score: null } }]).results, [], 'glance: a result without a score from ESPN isn\'t listed (never a made-up 0–0)')
 
   // A match being played: live from the favourite's side; the next is the one after it.
   const playing = { ...lille, state: 'in', clock: '67\'', home: { ...lille.home, score: 1 }, away: { ...lille.away, score: 0 } }
@@ -375,7 +404,7 @@ eq([V.scoreText(results[0]), V.scoreText(fixtures[0])], ['0–1', null], 'score 
 
   // Missing data is "nothing", never a crash.
   eq(plain(G.teamGlance({ ...gs, logo: null }, { league: null, standings: null, matches: [] }, NOW)),
-    { id: 'f1', ref: '432', name: 'Galatasaray', logo: null, league: null, form: [] }, 'glance: nothing read yet — no table, no form, no match')
+    { id: 'f1', ref: '432', name: 'Galatasaray', logo: null, league: null, form: [], results: [] }, 'glance: nothing read yet — no table, no form, no results, no match')
   eq(G.teamGlance({ ...gs, logo: null }, { league: 'tur.1', standings: tur, matches: [] }, NOW).logo,
     'https://a.espncdn.com/i/teamlogos/soccer/500/432.png', 'glance: a follow without a logo takes the table\'s')
   eq(plain(glance([], NOW, { standings: { name: '', tables: [] } })).position, undefined, 'glance: a table without the team: no place')

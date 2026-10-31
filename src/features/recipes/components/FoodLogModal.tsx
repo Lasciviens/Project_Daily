@@ -12,10 +12,12 @@ import { useRecipes, useCreateRecipe, useRecipeBatches } from '../hooks/useRecip
 import { useSaveDishEdit } from '../hooks/useMealGroups'
 import { recentToEntry, type LoggedFood, type RecentFood } from '../api/foodLogApi'
 import { RecipePortionSheet } from './RecipePortionSheet'
-import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow, PortionBasketRow } from './foodLogKit'
-import { SLOT_OPTIONS, sanitizeDecimal, slotForNow } from './foodLogUtils'
+import { SlotSelect, FoodThumb, FoodTile, BasketRow, FoodMatchRow, PortionBasketRow, FoodTimeField } from './foodLogKit'
+import { SLOT_OPTIONS, defaultEatenTime, sanitizeDecimal, slotForNow } from './foodLogUtils'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { FoodSearchField } from './FoodSearchField'
 import { NewFoodForm, type NewFoodSeed } from './NewFoodForm'
+import { PortionWordSelect } from './PortionWordSelect'
 import { QuickAddCustom, type QuickAddValues } from './QuickAddCustom'
 import { parseQuickAdd, rankMatches, sortForSlot } from '../foodSearch'
 import {
@@ -105,6 +107,11 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
   const dishOwnName = dish?.rows.find(r => r.meal_group_title)?.meal_group_title ?? null
   const startSlot = (): MealSlot => dish?.rows[0]?.meal_slot ?? defaultSlot ?? slotForNow()
   const [slot, setSlot] = useState<MealSlot>(startSlot)
+  // The log's time (181): automatic until changed — now for today, else the meal's usual time, the database's own
+  // rule — so only a picked time is sent (an unpicked one is exact to the minute the row is written).
+  const [timePick, setTimePick] = useState<string | null>(null)
+  const shownTime = timePick ?? defaultEatenTime(date, slot, todayStr())
+  const timed = <E extends object>(entries: E[]): E[] => (plan || !timePick ? entries : entries.map(e => ({ ...e, eaten_time: timePick })))
   const [query, setQuery] = useState(defaultQuery ?? '')
   const [mealName, setMealName] = useState('')
   const [mealServings, setMealServings] = useState('1')
@@ -139,6 +146,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
     setWasOpen(open)
     if (open) {
       setSlot(startSlot())
+      setTimePick(null)
       setQuery(defaultQuery ?? '')
       setMealName(''); setMealServings('1'); setMealPortionName(''); setPortion(null); setSaveMealOpen(false)
       setBasket(dishBasket(dish, library, recipes)); setNewFood(null); setAsMeal(true); setLogged(0)
@@ -147,7 +155,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
 
   /** A one-tap log (or plan): the logger stays open; the toast says what was done, with Undo. */
   function logNow(entries: Parameters<typeof logFood.mutate>[0]['entries'], what: string, after?: () => void) {
-    write.mutate({ entries, what }, { onSuccess: () => { setLogged(n => n + 1); after?.() } })
+    write.mutate({ entries: timed(entries), what }, { onSuccess: () => { setLogged(n => n + 1); after?.() } })
   }
 
   function addRecent(r: RecentFood) {
@@ -265,7 +273,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       ? (groupId ? dishName(null, basket.map(itemTitle)) : `${basket.length} items`)
       : `${itemTitle(basket[0])} · ${itemAmount(basket[0])}`
     try {
-      await write.mutateAsync({ entries: itemsToEntries(basket, { date, slot, groupId }), what })
+      await write.mutateAsync({ entries: timed(itemsToEntries(basket, { date, slot, groupId })), what })
       setBasket([])
       onClose()
     } catch { return }   // the hook already toasted + logged
@@ -332,7 +340,13 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
       onClose={onClose}
       title={plan ? `Plan ${slotWord}` : dish ? 'Edit meal' : 'Log food'}
       subtitle={dish ? `${dishShownName} · ${dateLabel}` : dateLabel}
-      headerActions={<SlotSelect value={slot} onChange={setSlot} />}
+      headerActions={(
+        <div className="flex items-center justify-end gap-2">
+          {/* A planned row has no time yet, and a dish's rows keep theirs (each edits on its own). */}
+          {!plan && !dish && <FoodTimeField header value={shownTime} onChange={setTimePick} auto={!timePick} />}
+          <SlotSelect value={slot} onChange={setSlot} />
+        </div>
+      )}
       size="lg"
       mobile="fullscreen"
       panelClassName="sm:!h-[min(780px,88dvh)]"
@@ -375,9 +389,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                   <input value={mealServings} onChange={e => setMealServings(sanitizeDecimal(e.target.value))} inputMode="numeric"
                     aria-label="Portions this batch makes" title="How many portions this batch makes"
                     className="input w-12 px-1 text-center tabular-nums" />
-                  <input value={mealPortionName} onChange={e => setMealPortionName(e.target.value)} maxLength={30}
-                    placeholder="portion" aria-label="What one portion is called (piece, slice…)" title="What ONE portion is called — piece, slice, bowl"
-                    className="input w-24 px-2" />
+                  <PortionWordSelect value={mealPortionName || 'portion'} onChange={setMealPortionName}
+                    ariaLabel="What one portion is called" className="w-28 min-w-0" />
                   <label className="flex shrink-0 cursor-pointer select-none items-center gap-1.5 text-meta text-fg-muted"
                     title="Add to your recipe Library. Off = a temp meal: reusable and editable, but hidden from the Library grid.">
                     <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 accent-accent-500" />

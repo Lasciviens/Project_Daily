@@ -67,6 +67,10 @@ export async function saveItemVia<A extends SaveItemAnswer>(
   const section = input.section ?? (input.date ? sectionForDay(input.date, today) : input.taskId ? null : 'inbox')
   const googleTaskList = await resolveTaskList(input)
   const answer = await send({ ...input, googleTaskList }, { section, today, googleConnected: googleConnected() })
+  // Labels need migration 180: a database before it answers without them and keeps none — said, never silent.
+  if (answer?.taskId && input.labels?.length && answer.labels === null) {
+    toast.warning('Saved without its labels — they need the latest database update (migration 180)')
+  }
   if (answer) void settleItemGoogle(answer, input.google).then(() => invalidate(qc, 'taskGraph'))
   return answer
 }

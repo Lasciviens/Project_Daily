@@ -226,5 +226,24 @@ check('Tasks: 42rem main → 67 / 92 / 117rem', B.boardWidthRem(D.TASKS_BOARD, 2
 check('Day at step 4 is the full 131rem board', B.boardWidthRem(D.DAY_BOARD, 4) === B.BOARD_MAX_REM)
 check('a non-rem main cap gives no cap', B.boardWidthRem({ 1: ['a'], 2: { main: '50%', columns: [['a'], []] } }, 2) === null)
 
+console.log('sectionsWidthRem (a page header keeps one size across its sections)')
+{
+  const fs = require('fs'), path = require('path')
+  const modes = [D.DAY_BOARD, D.WEEK_BOARD, D.MONTH_BOARD, D.TASKS_BOARD, D.DIARY_BOARD]
+  check('the widest section decides: Personal at step 4 is the day board\'s 131rem', B.sectionsWidthRem(modes, 4) === B.BOARD_MAX_REM)
+  check('Personal: one width at every step whichever section is open', [1, 2, 3, 4].every(st => {
+    const w = B.sectionsWidthRem(modes, st)
+    return modes.every(m => w === null || w >= (B.boardWidthRem(m, st) ?? Infinity))
+  }))
+  check('one section taking the page width uncaps the header', B.sectionsWidthRem([D.WEEK_BOARD, { 1: ['a'] }], 2) === null)
+  const code = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '')
+  const daily = code('src/features/daily/pages/DailyPage.tsx')
+  check('Personal\'s header width comes from every section, never the open one (owner, 31.10.2026: "the layout should not move")',
+    /sectionsWidthRem\(Object\.values\(MODE_BOARD\)/.test(daily) && !/boardWidthRem\(MODE_BOARD\[mode\]/.test(daily))
+  check('Personal\'s day line shows in every section (the header keeps its height)', /subtitle=\{<span[^>]*><DayLine\b/.test(daily))
+  const settings = code('src/features/settings/pages/SettingsPage.tsx')
+  check('Settings\' header width comes from every tab', /sectionsWidthRem\(Object\.values\(BOARD\)/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

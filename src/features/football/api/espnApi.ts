@@ -4,7 +4,7 @@
 // through footballModel's parsers, which turn anything odd into "nothing".
 // The only file that calls ESPN (verify-football-model checks it).
 import {
-  parseLeagueStandings, parseMatchDetail, parseMatches, parseRoster, parseSearch, parseTeam,
+  parseLeagueStandings, parseMatchDetail, parseMatches, parseRoster, parseScheduleTeam, parseSearch,
   type FbMatch, type FbMatchDetail, type FbPlayer, type FbSearchHit, type FbStandings, type FbTeamInfo,
 } from '../footballModel'
 
@@ -62,8 +62,9 @@ export async function fetchStandings(league: string): Promise<FbStandings> {
   return parseLeagueStandings(await getJson(`${STANDINGS}/${checked(league, SLUG, 'tournament')}/standings`))
 }
 
-export async function fetchTeam(league: string, teamId: string): Promise<FbTeamInfo | null> {
-  return parseTeam(await getJson(`${SITE}/${checked(league, SLUG, 'tournament')}/teams/${checked(teamId, TEAM_ID, 'team id')}`))
+/** A club (its table place, W-D-L, own league, ESPN page) from its schedule answer — see parseScheduleTeam. */
+export async function fetchTeam(teamId: string): Promise<FbTeamInfo | null> {
+  return parseScheduleTeam(await getJson(`${SITE}/all/teams/${checked(teamId, TEAM_ID, 'team id')}/schedule`))
 }
 
 export async function fetchRoster(league: string, teamId: string): Promise<FbPlayer[]> {

@@ -35,6 +35,7 @@
 import type { ScheduleBlock, TimeBlock, TimeBlockCategory } from '../daily/types'
 import type { LiveTaskSection, Task, TaskDomain, TaskSection } from '../todo/types'
 import { liveSection, sectionForDay } from '../todo/taskRules'
+import { labelsOf } from '../todo/taskLabels'
 import { repeatSummary, type RepeatKind, type RepeatRule, type RepeatUnit } from '../daily/recurrence'
 import { formatDate } from '../../shared/utils/dateFormat'
 import { NOMINAL_EVENT_MINUTES } from '../calendar/calendarEventRules'
@@ -162,7 +163,7 @@ export function repeatRuleOf(r: RepeatInput): RepeatRule {
 // The columns read — Picks, so a screen can pass the rows it has; the 155
 // columns are optional (a database before it has none of them).
 type TaskRow = Pick<Task, 'id' | 'title' | 'description' | 'domain' | 'priority' | 'due_date' | 'due_time'
-  | 'source_type' | 'source_id' | 'google_tasklist_id' | 'google_sync_enabled'> & { google_target?: GoogleTarget | null }
+  | 'source_type' | 'source_id' | 'google_tasklist_id' | 'google_sync_enabled' | 'labels'> & { google_target?: GoogleTarget | null }
 type BlockRow = Pick<TimeBlock, 'id' | 'date' | 'title' | 'start_time' | 'duration_minutes' | 'category' | 'notes'
   | 'source_type' | 'source_id' | 'google_calendar_event_id'> & { busy?: boolean | null; google_target?: GoogleTarget | null; icloud_area?: string | null }
 /** A repeat rule; since 155 it may have no time (an all-day repeat). */
@@ -239,6 +240,7 @@ export function itemFromRows(task?: TaskRow | null, block?: BlockRow | null, pla
     repeat: plan ? repeatInputFromColumns(plan, plan.effective_from ?? date ?? '') : null,
     google: storedGoogleTarget(task, block, plan) ?? presentGoogleTarget(task, block, plan),
     googleTaskList: task?.google_tasklist_id ?? null,
+    ...(task && !plan ? { labels: labelsOf(task) } : {}),
     source,
   }
 }
