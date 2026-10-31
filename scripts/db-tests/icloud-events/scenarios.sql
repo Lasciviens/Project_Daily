@@ -482,3 +482,75 @@ select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-0000000
   jsonb_build_object('date', (current_date + 31)::text, 'time', '10:00', 'title', 'Match 52 (moved to Ullevaal)', 'titleBare', 'Match 52 (moved to Ullevaal)', 'foreign', true), '"t3"') = 'renamed',
   '177: a real rename on the iPhone is still taken');
 select public.t_ok((select title from public.tasks where id = '10000000-0000-0000-0000-000000000052') = 'Match 52 (moved to Ullevaal)', '177: …with its new title');
+
+-- ── 178: Games has its own calendar ──────────────────────────────────────────
+delete from public.icloud_outbox;
+insert into public.tasks (id, user_id, title, google_target) values ('10000000-0000-0000-0000-000000000061', '00000000-0000-0000-0000-000000000001', 'Elden Ring evening', 'calendar');
+insert into public.time_blocks (id, user_id, date, title, start_time, duration_minutes, category, task_id, icloud_area)
+values ('20000000-0000-0000-0000-000000000061', '00000000-0000-0000-0000-000000000001', current_date + 3, 'Elden Ring evening', '20:00', 120, 'games', '10000000-0000-0000-0000-000000000061', 'games');
+select public.t_ok((select icloud_area = 'games' from public.time_blocks where id = '20000000-0000-0000-0000-000000000061'),
+  '178: a slot can be in the Games calendar');
+select public.t_ok(public.t_err($$insert into public.time_blocks (user_id, date, title, icloud_area) values ('00000000-0000-0000-0000-000000000001', current_date, 'x', 'gamez')$$) = '23514',
+  '178: …and in no calendar the app doesn''t have');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,games}', '{"emoji": "🕹️"}') where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) = 1 from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000061'),
+  '178: a change to the Games calendar''s settings re-sends its events');
+delete from public.icloud_outbox;
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000061', 'games',
+  jsonb_build_object('date', (current_date + 4)::text, 'time', '20:00', 'minutes', 120, 'foreign', true), '"g1"') = 'moved',
+  '178: a move on the iPhone comes back from the Games calendar');
+select public.t_ok(public.icloud_calendar_look('00000000-0000-0000-0000-000000000001', 'games', 'Lasci · Spill', '#5856D6'),
+  '178: a Games calendar renamed on the iPhone comes back into Settings');
+select public.t_ok((select prosrc !~ 'search_path' and proconfig = array['search_path=""'] from pg_proc where proname = 'training_task_moved')
+                   or (select proconfig::text from pg_proc where proname = 'training_task_moved') = '{"search_path=\"\""}',
+  '178: the training move rule runs with an empty search path');
+
+
+-- ── 179: Hevy workouts in the Training calendar ─────────────────────────────
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,training}', '{"app": "apple", "enabled": true}')
+ where user_id = '00000000-0000-0000-0000-000000000001';
+delete from public.icloud_outbox;
+insert into public.hevy_workouts (id, user_id, title, start_time, end_time) values
+  ('b459cba5-cd6d-463c-abd6-54f8eafcadcb', '00000000-0000-0000-0000-000000000001', 'Lower B', now() - interval '2 days', now() - interval '2 days' + interval '65 minutes');
+select public.t_ok((select icloud_key = md5('b459cba5-cd6d-463c-abd6-54f8eafcadcb')::uuid from public.hevy_workouts where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb'),
+  '179: a workout''s key is a uuid made from Hevy''s id');
+select public.t_ok((select count(*) = 1 from public.icloud_outbox o join public.hevy_workouts w on w.icloud_key = o.entity_id
+                    where o.entity = 'workout' and w.id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb'),
+  '179: a new workout is queued for the Training calendar while Training is on Apple');
+delete from public.icloud_outbox;
+update public.hevy_workouts set title = title, start_time = start_time, end_time = end_time, description = description
+ where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb';
+select public.t_ok(public.t_queue() = 0, '179: a sync that saves the workout unchanged queues nothing');
+update public.hevy_workouts set end_time = end_time + interval '5 minutes' where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb';
+select public.t_ok(public.t_queue() = 1, '179: a real change of its times queues it again');
+delete from public.icloud_outbox;
+update public.hevy_workouts set icloud_area = 'training', icloud_etag = '"w1"' where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb';
+select public.t_ok(public.t_queue() = 0, '179: the function''s own link write queues nothing');
+select public.t_ok(public.t_err($$update public.hevy_workouts set icloud_area = 'work' where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb'$$) = '23514',
+  '179: a workout''s event is only ever in the Training calendar');
+insert into public.tasks (id, user_id, title, google_target) values ('10000000-0000-0000-0000-000000000071', '00000000-0000-0000-0000-000000000001', 'Lower B', 'calendar');
+delete from public.icloud_outbox;
+update public.tasks set hevy_workout_id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb' where id = '10000000-0000-0000-0000-000000000071';
+select public.t_ok((select count(*) = 1 from public.icloud_outbox where entity = 'workout'),
+  '179: a session linked to the workout looks at it again (shown by the session, or on its own)');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = prefs || '{"notes": "link"}' where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) = 1 and bool_and(changed_at is null) from public.icloud_outbox where entity = 'workout'),
+  '179: a settings change re-sends the workout''s event too (as a re-send)');
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,training,app}', '"google"') where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) = 1 and bool_and(area = 'training') from public.icloud_outbox where entity = 'workout'),
+  '179: Training back on Google queues its workout, to take the event away');
+delete from public.icloud_outbox;
+insert into public.hevy_workouts (id, user_id, title, start_time) values
+  ('c459cba5-cd6d-463c-abd6-54f8eafcadcc', '00000000-0000-0000-0000-000000000001', 'Upper A', now() - interval '1 day');
+select public.t_ok((select count(*) = 0 from public.icloud_outbox o join public.hevy_workouts w on w.icloud_key = o.entity_id where w.id = 'c459cba5-cd6d-463c-abd6-54f8eafcadcc'),
+  '179: with Training on Google a new workout queues nothing');
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,training,app}', '"apple"') where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) = 2 from public.icloud_outbox where entity = 'workout'),
+  '179: Training switched to Apple queues every workout (the past trainings go too)');
+delete from public.icloud_outbox;
+delete from public.hevy_workouts where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb';
+select public.t_ok((select count(*) = 1 and bool_and(area = 'training') from public.icloud_outbox where entity = 'workout'),
+  '179: a deleted workout with an event queues its removal, with the calendar it is in');

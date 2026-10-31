@@ -981,11 +981,12 @@ interface AreaInput {
 
 const MEDIA_SOURCES = new Set(['movie', 'tv_series', 'tv_episode', 'media'])
 
-/** The area an item goes to: football → training → media → work (with projects) → personal. */
+/** The area an item goes to: football → training → games → media → work (with projects) → personal. */
 function itemArea(x: AreaInput): AreaKey {
   const sources = [x.source_type, x.task_source_type].filter((s): s is string => !!s)
   if (x.category === 'football') return 'football'
   if (x.category === 'training' || sources.includes('training_session') || !!x.hevy_routine_id) return 'training'
+  if (x.category === 'games' || sources.includes('game')) return 'games'
   if (x.category === 'media' || x.domain === 'media' || sources.some(s => MEDIA_SOURCES.has(s))) return 'media'
   if (x.category === 'work' || x.category === 'projects' || x.domain === 'work' || !!x.project_id || sources.includes('project_item')) return 'work'
   return 'personal'
@@ -1139,6 +1140,37 @@ function planEvent(
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
   return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
+}
+
+/** A moment as Oslo's wall clock ("2026-10-28T17:30:00"), or null for no real moment. */
+function osloWallClock(iso: string | null | undefined): string | null {
+  const t = iso ? Date.parse(iso) : NaN
+  if (!Number.isFinite(t)) return null
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(t)).map(x => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`
+}
+
+/** A Hevy workout's event in the Training calendar (owner, 31.10.2026: "Workouts and calendar items"): its real start
+ *  and end, its Hevy notes, never an alert — it is done. Named by its key (`hevy_workouts.icloud_key`, a uuid the
+ *  database makes from Hevy's id), so nothing from outside is in its address. An hour when Hevy gave no real end. */
+function workoutEvent(
+  w: { key: string; title: string | null; description?: string | null; start_time: string | null; end_time: string | null },
+  o: { area: CalendarArea; look: EventLook; appUrl: string; now: Date },
+): { uid: string; ics: string } | null {
+  const start = osloWallClock(w.start_time)
+  if (!start || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(w.key)) return null
+  const began = Date.parse(w.start_time as string)
+  const ended = w.end_time ? Date.parse(w.end_time) : NaN
+  const end = osloWallClock(new Date(Number.isFinite(ended) && ended > began ? ended : began + 3_600_000).toISOString()) as string
+  const uid = `lasci-workout-${w.key}@lasciviens.github.io`
+  const body = {
+    summary: w.title?.trim() || 'Workout',
+    start: { dateTime: start, timeZone: 'Europe/Oslo' }, end: { dateTime: end, timeZone: 'Europe/Oslo' },
+    transparency: 'opaque' as const,
+  }
+  return { uid, ics: eventObject({ uid, body, area: { ...o.area, alertMinutes: null }, look: o.look, notes: w.description, link: dayLink(o.appUrl, start.slice(0, 10)), now: o.now }) }
 }
 
 /** Where an item's event lives in its area's calendar. */
@@ -1462,7 +1494,7 @@ export function byDay(calendars: { name: string; color: string | null; events: R
 // The app's calendars per area — hand-mirrored from src/features/calendar/areas/calendarAreas.ts
 // (verify-calendar-areas compares the two blocks).
 // <calendar-areas>
-export const AREA_KEYS = ['training', 'work', 'personal', 'media', 'football'] as const
+export const AREA_KEYS = ['training', 'work', 'personal', 'media', 'football', 'games'] as const
 export type AreaKey = typeof AREA_KEYS[number]
 
 export interface CalendarArea {
@@ -1504,12 +1536,14 @@ export const ALERT_MAX = 40320
 export const isAlertMinutes = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ALERT_MAX)
 
+// No alert unless the owner turns one on (owner, 31.10.2026: "It should be off by default").
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: 60, enabled: true, app: 'google' },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: 10, enabled: true, app: 'google' },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true, app: 'google' },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true, app: 'google' },
   personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
   media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: 15, enabled: true, app: 'google' },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true, app: 'google' },
+  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true, app: 'google' },
 }
 
 const NAME_MAX = 60
@@ -1600,7 +1634,7 @@ export async function openSecret(stored: string, key: CryptoKey | null, userId: 
  * every time from the service-role record of the area calendars — never from anything the browser or the assistant
  * can write — so a put or a delete can only ever reach the app's own event (security review, 30.10.2026).
  */
-export function ownEventUrl(entity: 'slot' | 'plan', id: string, area: string | null, areaCals: Record<string, { url?: string }>): string | null {
+export function ownEventUrl(entity: 'slot' | 'plan' | 'workout', id: string, area: string | null, areaCals: Record<string, { url?: string }>): string | null {
   const cal = area && (AREA_KEYS as readonly string[]).includes(area) ? areaCals[area]?.url : undefined
   if (!cal || !isICloudUrl(cal) || !/^[0-9a-f-]{36}$/i.test(id)) return null
   return new URL(eventFileName(`lasci-${entity}-${id}@lasciviens.github.io`), cal).toString()
@@ -1942,7 +1976,7 @@ const DRAIN_MAX_MS = 20_000
 // As long as the function may run (150 s): a slow iCloud answer never lets a second drain start beside this one.
 const DRAIN_LEASE_MS = 150_000
 
-interface QueueRow { id: number; entity: 'slot' | 'plan'; entity_id: string; area: AreaKey | null; requested_at: string; attempts: number }
+interface QueueRow { id: number; entity: 'slot' | 'plan' | 'workout'; entity_id: string; area: AreaKey | null; requested_at: string; attempts: number }
 type Db = SupabaseClient
 
 /** A failed row waits 1 min, then twice as long each time, at most a day. */
@@ -1991,7 +2025,7 @@ async function putEvent(c: Creds, url: string, ics: string, etag: string | null)
 const NO_AREA_CALENDAR = 'Make the area calendars first: Settings → Calendar → Create in Apple Calendar'
 
 /** Removes the item's own event in an area calendar; gone already is fine. */
-async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan', id: string, area: string | null, areaCals: Record<string, { url?: string }>): Promise<void> {
+async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan' | 'workout', id: string, area: string | null, areaCals: Record<string, { url?: string }>): Promise<void> {
   if (!area) return
   // A link is never cleared without a real DELETE: no calendar to delete from means the row waits.
   const url = ownEventUrl(entity, id, area, areaCals)
@@ -2013,7 +2047,7 @@ type DrainResult = 'put' | 'moved' | 'foreign' | 'kept' | 'removed' | 'none'
  */
 async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>, today: string): Promise<DrainResult> {
   // Old copies to take away after the new one is in: the row's own, and the queue's (an Undo can bring a row back unlinked).
-  const removeOld = async (entity: 'slot' | 'plan', id: string, keep: string | null, ...olds: (string | null)[]) => {
+  const removeOld = async (entity: 'slot' | 'plan' | 'workout', id: string, keep: string | null, ...olds: (string | null)[]) => {
     for (const old of new Set(olds.filter((a): a is string => !!a && a !== keep))) await removeOwnEvent(c, entity, id, old, areaCals)
   }
   /** The link is written only while it still is what was read (another drain or a delete since: nothing is overwritten). */
@@ -2097,6 +2131,8 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (b.icloud_area) await link('time_blocks', b.id, b.icloud_area, { icloud_area: null, icloud_etag: null })
     return 'removed'
   }
+
+  if (q.entity === 'workout') return drainWorkout(db, c, userId, q, prefs, areaCals, removeOld)
 
   const { data: p, error } = await db.from('schedule_blocks')
     .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon')
@@ -2438,6 +2474,55 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     // Only this run's own lease is given back (a run that outlived it never frees the next run's).
     await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', userId).eq('drain_until', lease)
   }
+}
+
+/**
+ * A Hevy workout (179): its own event in the Training calendar while Training is on Apple, read live by its key. Not
+ * when its planned session's event is already there (the ticked session stands for it) — never twice. A workout gone,
+ * or Training back on Google, takes its event away.
+ */
+async function drainWorkout(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>,
+  removeOld: (entity: 'workout', id: string, keep: string | null, ...olds: (string | null)[]) => Promise<void>): Promise<DrainResult> {
+  const { data: w, error } = await db.from('hevy_workouts')
+    .select('id, icloud_key, title, description, start_time, end_time, icloud_area, icloud_etag')
+    .eq('icloud_key', q.entity_id).eq('user_id', userId).maybeSingle()
+  if (error) throw new ICloudError('read', /icloud_key/.test(error.message) ? 'Workouts in Apple Calendar need migration 179 — it runs with the next deploy' : 'A workout could not be read')
+  if (!w) {
+    await removeOld('workout', q.entity_id, null, q.area)
+    return q.area ? 'removed' : 'none'
+  }
+  const { data: session, error: se } = await db.from('tasks').select('id').eq('user_id', userId).eq('hevy_workout_id', w.id).maybeSingle()
+  if (se) throw new ICloudError('read', 'A workout\'s session could not be read')
+  let shownBySession = false
+  if (session) {
+    const { data: slot, error: be } = await db.from('time_blocks').select('id').eq('user_id', userId).eq('task_id', session.id).not('icloud_area', 'is', null).limit(1)
+    if (be) throw new ICloudError('read', 'A workout\'s session could not be read')
+    shownBySession = (slot ?? []).length > 0
+  }
+  const conf = prefs.areas.training
+  const link = async (was: string | null, values: Record<string, unknown>) => {
+    let u = db.from('hevy_workouts').update(values).eq('id', w.id).eq('user_id', userId)
+    u = was === null ? u.is('icloud_area', null) : u.eq('icloud_area', was)
+    const { data, error: le } = await u.select('id')
+    if (le) throw new ICloudError('store', 'A workout was written, but the app could not save where')
+    return (data ?? []).length > 0
+  }
+  if (onApple(conf) && !shownBySession && w.start_time) {
+    const url = ownEventUrl('workout', w.icloud_key, 'training', areaCals)
+    if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
+    const ev = workoutEvent({ key: w.icloud_key, title: w.title, description: w.description, start_time: w.start_time, end_time: w.end_time },
+      { area: conf, look: prefs, appUrl: APP_URL, now: new Date() })
+    if (ev) {
+      const etag = await putEvent(c, url, ev.ics, w.icloud_area === 'training' ? validEtag(w.icloud_etag) : null)
+      // Linked only while the row still is what was read; another run that linked it meanwhile wrote the same event.
+      await link(w.icloud_area, { icloud_area: 'training', icloud_etag: validEtag(etag) })
+      return 'put'
+    }
+  }
+  if (!w.icloud_area && !q.area) return 'none'
+  await removeOld('workout', w.icloud_key, null, w.icloud_area, q.area)
+  if (w.icloud_area) await link(w.icloud_area, { icloud_area: null, icloud_etag: null })
+  return 'removed'
 }
 
 /** Rows read per page when an area moves, and at most this many in one call (the answer says when it stopped short). */

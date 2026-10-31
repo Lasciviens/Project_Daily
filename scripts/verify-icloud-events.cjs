@@ -41,14 +41,24 @@ eq([
   E.itemArea({}),
 ], ['football', 'training', 'training', 'media', 'media', 'work', 'work', 'work', 'personal', 'personal'],
   'football → training → media → work (with projects) → personal')
+eq([E.itemArea({ category: 'games' }), E.itemArea({ task_source_type: 'game', domain: 'personal' }), E.itemArea({ category: 'games', hevy_routine_id: 'r1' }), E.itemArea({ category: 'other' })],
+  ['games', 'games', 'training', 'personal'], 'Games has its own calendar (owner, 31.10.2026): category Games or a game as origin; training still comes first')
+{
+  const sheet = fs.readFileSync(path.join(__dirname, '../src/shared/components/plan-modal/UnifiedPlanModal.tsx'), 'utf8')
+  eq(/useItemCalendarApp\(\{\n\s*category: form\.category, domain: form\.domain,\n\s*source_type: [^\n]*,\n\s*task_source_type: [^\n]*,\n\s*project_id: [^\n]*hevy_routine_id: /.test(sheet)
+    && !/useItemCalendarApp/.test(fs.readFileSync(path.join(__dirname, '../src/shared/components/plan-modal/ItemForm.tsx'), 'utf8')), true,
+    "the Add sheet's chip asks the server's own area rule with its inputs, once (a project's task with category Other is Work)")
+}
 eq([E.wantsCalendar('calendar', false), E.wantsCalendar('both', false), E.wantsCalendar('tasks', true), E.wantsCalendar('none', true), E.wantsCalendar(null, true), E.wantsCalendar(null, false)],
   [true, true, false, false, true, false], "an item wants a calendar by its Google choice; an old row (no choice saved) where it is now")
 
 console.log('\n== A slot ==')
 const now = new Date('2026-10-30T10:00:00Z')
+// A Training area with an alert of 60 min (no area has one by default since 31.10.2026).
+const training60 = { ...DEFAULT_AREAS.training, alertMinutes: 60 }
 const base = { timeZone: 'Europe/Oslo', appUrl: 'https://lasciviens.github.io/Project_Daily/#/daily', now, look: { notes: 'notes+link', allDayAlert: null } }
 const gym = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30:00', duration_minutes: 60, title: 'Lower B', busy: true, notes: 'Squat, RDL; leg press' },
-  { ...base, done: false, area: DEFAULT_AREAS.training })
+  { ...base, done: false, area: training60 })
 // An iCalendar uid has an address shape; the public scan for email addresses would read it as one, so it is checked in parts.
 const uidParts = uid => [uid.split('@')[0], uid.split('@')[1]]
 eq(uidParts(gym.uid), ['lasci-slot-b1', 'lasciviens.github.io'], 'the uid names the slot (on the app\'s own site), so a move or rename replaces its event')
@@ -62,7 +72,7 @@ eq(line(gym.ics, 'DESCRIPTION'), "DESCRIPTION:Squat\\, RDL\\; leg press\\n\\nOpe
   'notes escaped, with a link back to the day')
 eq(line(gym.ics, 'URL'), 'URL;VALUE=URI:https://lasciviens.github.io/Project_Daily/#/daily?date=2026-11-02', "and the same link in Apple's URL field")
 const done = E.slotEvent({ id: 'b1', date: '2026-11-02', start_time: '17:30', duration_minutes: 60, title: 'Lower B', busy: true },
-  { ...base, done: true, area: DEFAULT_AREAS.training })
+  { ...base, done: true, area: training60 })
 eq(line(done.ics, 'SUMMARY'), 'SUMMARY:✓ 🏋️ Lower B', "done: Google's ✓ first, then the emoji")
 const allDay = E.slotEvent({ id: 'b2', date: '2026-11-03', start_time: null, duration_minutes: 60, title: 'Pay rent æøå', busy: true },
   { ...base, done: false, area: DEFAULT_AREAS.work })
@@ -82,16 +92,38 @@ eq(long.ics.endsWith('END:VEVENT\r\nEND:VCALENDAR\r\n') && !/[^\r]\n/.test(long.
 console.log('\n== A repeating plan ==')
 const weekly = { id: 'p1', title: 'Gym', start_time: '07:00:00', end_time: '08:00:00', busy: true, days_of_week: [1, 3], repeat_kind: 'weekly',
   effective_from: '2026-10-01', except_dates: ['2026-11-04'], notes: null, icloud_from: null }
-const pe = E.planEvent(weekly, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
+{
+  // 179: a Hevy workout's event (UTC from Hevy → Oslo's clock; summer and winter time).
+  const key = 'a7d5c2f0-1b2c-4d3e-8f9a-0b1c2d3e4f50'
+  const w = E.workoutEvent({ key, title: 'Lower B', description: 'Felt strong', start_time: '2026-10-21T16:30:00Z', end_time: '2026-10-21T17:35:00Z' },
+    { area: training60, look: { notes: 'notes+link', allDayAlert: null }, appUrl: base.appUrl, now })
+  eq([w.uid, line(w.ics, 'DTSTART'), line(w.ics, 'DTEND'), line(w.ics, 'SUMMARY'), line(w.ics, 'ACTION')],
+    [`lasci-workout-${key}@lasciviens.github.io`, 'DTSTART;TZID=Europe/Oslo:20261021T183000', 'DTEND;TZID=Europe/Oslo:20261021T193500', 'SUMMARY:🏋️ Lower B', 'ACTION:NONE'],
+    "a workout's event: its real times on Oslo's clock (summer time), the area's emoji, never an alert — even when the area has one")
+  const winter = E.workoutEvent({ key, title: '', start_time: '2026-11-04T17:00:00Z', end_time: null },
+    { area: training60, look: { notes: 'link', allDayAlert: null }, appUrl: base.appUrl, now })
+  eq([line(winter.ics, 'DTSTART'), line(winter.ics, 'DTEND'), line(winter.ics, 'SUMMARY'), unfold(winter.ics).includes('Felt')],
+    ['DTSTART;TZID=Europe/Oslo:20261104T180000', 'DTEND;TZID=Europe/Oslo:20261104T190000', 'SUMMARY:🏋️ Workout', false],
+    'winter time; no real end: an hour; no title: "Workout"; the notes setting applies')
+  eq([E.workoutEvent({ key: 'hevy-1', title: 'x', start_time: '2026-10-21T16:30:00Z', end_time: null }, { area: training60, look: base.look, appUrl: base.appUrl, now }),
+      E.workoutEvent({ key, title: 'x', start_time: null, end_time: null }, { area: training60, look: base.look, appUrl: base.appUrl, now })],
+    [null, null], 'no event without a uuid key (never an outside id in an address) or without a start')
+  const fnSrc = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
+  const dw = fnSrc.slice(fnSrc.indexOf('async function drainWorkout'), fnSrc.indexOf('/** Rows read per page when an area moves'))
+  eq(/\.eq\('icloud_key', q\.entity_id\)\.eq\('user_id', userId\)/.test(dw) && /if \(onApple\(conf\) && !shownBySession && w\.start_time\)/.test(dw)
+    && /ownEventUrl\('workout', w\.icloud_key, 'training', areaCals\)/.test(dw) && /\.not\('icloud_area', 'is', null\)/.test(dw), true,
+    'a workout is read live by its key, put only while Training is on Apple and its planned session\'s event is not there (never twice), at an address built from its key')
+}
+const pe = E.planEvent(weekly, { ...base, area: training60, today: '2026-10-30' })
 eq([uidParts(pe.uid)[0], line(pe.ics, 'DTSTART'), line(pe.ics, 'RRULE'), line(pe.ics, 'EXDATE')],
   ['lasci-plan-p1', 'DTSTART;TZID=Europe/Oslo:20261102T070000', 'RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=MO,WE', 'EXDATE;TZID=Europe/Oslo:20261104T070000'],
   "ONE series from the first day on or after the day it reached Apple Calendar (today), Google's RRULE and EXDATE")
 eq([pe.plan.from, line(pe.ics, 'SUMMARY'), line(pe.ics, 'TRIGGER')], ['2026-10-30', 'SUMMARY:🏋️ Gym', 'TRIGGER:-PT60M'], 'its start day is stored (icloud_from); emoji and alert as a slot')
-const kept = E.planEvent({ ...weekly, icloud_from: '2026-10-05' }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' })
+const kept = E.planEvent({ ...weekly, icloud_from: '2026-10-05' }, { ...base, area: training60, today: '2026-10-30' })
 eq(line(kept.ics, 'DTSTART'), 'DTSTART;TZID=Europe/Oslo:20261005T070000', 'a series keeps the start day it was given (never moved by a later push)')
 const allDayPlan = E.planEvent({ ...weekly, id: 'p2', start_time: null, end_time: null, except_dates: [] }, { ...base, area: DEFAULT_AREAS.personal, today: '2026-10-30' })
 eq([line(allDayPlan.ics, 'DTSTART'), allDayPlan.ics.includes('ACTION:DISPLAY')], ['DTSTART;VALUE=DATE:20261102', false], 'a repeat with no time is an all-day series, no alert (unless the owner set an all-day one)')
-eq(E.planEvent({ ...weekly, days_of_week: [] }, { ...base, area: DEFAULT_AREAS.training, today: '2026-10-30' }), null, 'a repeat with no day left has no event')
+eq(E.planEvent({ ...weekly, days_of_week: [] }, { ...base, area: training60, today: '2026-10-30' }), null, 'a repeat with no day left has no event')
 
 console.log('\n== Every event: notes and alerts (2b-3) ==')
 const look = (o) => ({ ...base, done: false, look: { ...base.look, ...o } })

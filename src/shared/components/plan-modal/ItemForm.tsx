@@ -29,7 +29,6 @@ import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
-import { useItemCalendarApp } from '../../../features/calendar/areas/useItemCalendarApp'
 import { weekdayOfIso } from '../../../features/daily/recurrence'
 import {
   isScheduleFieldHidden, isTaskFieldHidden, pickRecurrence, repeatAnchorOf, shiftTime, withStartForRepeatChange,
@@ -57,6 +56,8 @@ interface Props {
   today: string
   nextTime: string
   googleConnected: boolean
+  /** Where the item's calendar event lives (the server's rule, worked out by the sheet). */
+  calendarApp: 'google' | 'apple'
   /** A repeating item opened on one of its days (its This day | All days is in the header). */
   occurrenceDate?: string | null
   /** Editing: a saved one-off doesn't turn into a repeat here, nor a saved repeat into a one-off. */
@@ -67,7 +68,7 @@ interface Props {
 }
 
 export function ItemForm({
-  form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected,
+  form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp,
   occurrenceDate, savedKind, savedRepeat, exceptDates,
 }: Props) {
   const titleId = useId()
@@ -82,7 +83,6 @@ export function ItemForm({
   const shape = shapeOf(form)
   const target = effectiveGoogleTarget(shape, form.googlePick)
   // Its area on Apple Calendar (Settings → Calendar, 2b-2): the chip says where the event really goes.
-  const calendarApp = useItemCalendarApp({ category: form.category, domain: form.domain })
   const showGoogle = googleConnected && !day && !isScheduleFieldHidden('gcal', config)
   const allDay = showGoogle && !form.time && hasGoogleCalendar(target)
 

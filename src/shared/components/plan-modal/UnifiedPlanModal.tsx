@@ -19,6 +19,11 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-10-31 · v21.6 · The chip's Apple/Google comes from the server's own
+//                    area rule with its inputs (category, domain, the slot's and
+//                    task's origin, project, Hevy routine) — a project's task
+//                    with category Other is Work, not Personal; worked out once
+//                    here and handed to ItemForm.
 //  2026-10-30 · v21.5 · Apple Calendar per area (calendar plan 2b-2): an item
 //                    whose area is on Apple in Settings → Calendar says
 //                    "Apple Calendar · busy" on its chip (Both: "Google Tasks +
@@ -586,7 +591,14 @@ export function UnifiedPlanModal({
   const [form, setForm] = useState<PlanForm>(seedForm)
   // Where it shows: Google needs its connection; an item whose area is on Apple Calendar (2b-2) doesn't — its choice
   // is shown and kept either way (Google Tasks still follows the real connection, in the database).
-  const appleArea = useItemCalendarApp({ category: form.category, domain: form.domain }) === 'apple'
+  // The server's own rule and inputs (icloudEvents.itemArea): the chip names the calendar the item really goes to.
+  const calendarApp = useItemCalendarApp({
+    category: form.category, domain: form.domain,
+    source_type: timeBlock?.source_type ?? source?.sourceType ?? null,
+    task_source_type: task?.source_type ?? source?.taskSourceType ?? null,
+    project_id: task?.project_id ?? null, hevy_routine_id: task?.hevy_routine_id ?? null,
+  })
+  const appleArea = calendarApp === 'apple'
   const choiceShown = googleConnected || appleArea
   // The title field's text; with quick add it can say more than form.title.
   const [typed, setTyped] = useState(form.title)
@@ -800,7 +812,7 @@ export function UnifiedPlanModal({
         <ItemForm
           form={form} patch={patch} config={config}
           typed={typed} onTitle={onTitle} parse={parse} onKeepText={onKeepText}
-          creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown}
+          creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown} calendarApp={calendarApp}
           occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}

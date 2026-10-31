@@ -272,9 +272,9 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migrations 173–177: the app's events in Apple Calendar — the queue and
+      # Migrations 173–179: the app's events in Apple Calendar — the queue and
       # its triggers, the switch, the read-back from the iPhone, the settings
-      # for every event, Undo's registries.
+      # for every event, the Games calendar, Hevy workouts, Undo's registries.
       - name: Apple Calendar events database scenarios
         run: node scripts/verify-db-icloud-events.mjs
         env:
