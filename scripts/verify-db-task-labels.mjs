@@ -90,6 +90,7 @@ const CASES = [
   Array.from({ length: 14 }, (_, i) => `L${i % 12}`),
   ['A', 'a', 'B', 'b ', ' B'],
   ['tab\there', 'line\r\nbreak', 'bell\u0007'],
+  ['a\u202Eb', '\u00A0\u00A0', 'zero\u200Bwidth', 'line\u2028sep', 'c1\u0085x', 'bom\uFEFF', 'em\u2003\u2003space', 'family 👨\u200D👩', 'soft\u00ADhyphen'],
   [],
 ]
 

@@ -37,7 +37,7 @@ export function LabelsFact({ value, onChange }: { value: string[]; onChange: (la
       {value.map(l => (
         <span key={l} className={chipClass('value', 'pr-0.5')}>
           <Hash aria-hidden />
-          <span className="max-w-[10rem] truncate">{l}</span>
+          <bdi className="max-w-[10rem] truncate">{l}</bdi>
           <button type="button" onClick={() => onChange(value.filter(x => x !== l))} aria-label={`Remove the label ${l}`}
             className="grid h-6 w-6 place-items-center rounded-full text-fg-muted hover:bg-surface-hover hover:text-fg">
             <X aria-hidden />
@@ -67,12 +67,12 @@ export function LabelsFact({ value, onChange }: { value: string[]; onChange: (la
               <ComboboxOptions anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
                 {isNew && (
                   <ComboboxOption value={typed} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
-                    <Plus aria-hidden className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">Add “{typed}”</span>
+                    <Plus aria-hidden className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">Add “<bdi>{typed}</bdi>”</span>
                   </ComboboxOption>
                 )}
                 {offered.map(l => (
                   <ComboboxOption key={l} value={l} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
-                    <Hash aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><span className="min-w-0 flex-1 truncate">{l}</span>
+                    <Hash aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1 truncate">{l}</bdi>
                   </ComboboxOption>
                 ))}
               </ComboboxOptions>

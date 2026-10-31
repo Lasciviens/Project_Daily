@@ -139,6 +139,11 @@ eq(M.parseScheduleTeam(fx('sched-fix')).defaultLeague, 'tur.1', 'the fixtures an
 eq(M.parseScheduleTeam({ team: { id: '1' } }), null, 'a club without a name')
 eq(M.parseScheduleTeam(null), null, 'no answer, no club')
 {
+  const page = clubhouse => M.parseScheduleTeam({ ...fx('sched-res'), team: { ...fx('sched-res').team, clubhouse } }).espnUrl
+  eq([page('javascript:alert(1)'), page('https://www.espn.com.evil.example/x'), page('https://user:pw@www.espn.com/x'), page('http://www.espn.com/x'), page('https://www.espn.com/soccer/club/_/id/432')],
+    [null, null, null, null, 'https://www.espn.com/soccer/club/_/id/432'], '"On ESPN" opens only https://www.espn.com — never another site an odd answer names')
+}
+{
   const club = (season, leagues) => M.parseScheduleTeam({ team: { id: '86', displayName: 'Real Madrid' }, season: { name: season }, events: leagues.map(([slug, name]) => ({ league: { slug, name } })) })
   eq(club('2026-27 LALIGA', [['uefa.champions', 'UEFA Champions League'], ['esp.1', 'Spanish LALIGA'], ['uefa.champions', 'UEFA Champions League']]).defaultLeague, 'esp.1',
     'the season names the league even when another competition has more matches ("LALIGA" is "Spanish LALIGA")')

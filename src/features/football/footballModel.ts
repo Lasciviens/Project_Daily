@@ -319,7 +319,19 @@ export function parseScheduleTeam(raw: unknown): FbTeamInfo | null {
     standing: str(t.standingSummary),
     record: str(t.recordSummary),
     defaultLeague: scheduleLeague(d),
-    espnUrl: https(t.clubhouse),
+    espnUrl: espnPage(t.clubhouse),
+  }
+}
+
+/** ESPN's own page for "On ESPN": an https address on www.espn.com exactly (no user info) — never another site an odd answer names. */
+function espnPage(v: unknown): string | null {
+  const s = https(v)
+  if (!s) return null
+  try {
+    const u = new URL(s)
+    return u.protocol === 'https:' && u.hostname === 'www.espn.com' && !u.username && !u.password ? u.href : null
+  } catch {
+    return null
   }
 }
 

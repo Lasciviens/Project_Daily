@@ -27,8 +27,8 @@ select public.t_ok((select a.atttypid = 'text[]'::regtype and a.attnotnull and p
   '180: tasks.labels is a text array, never null, empty unless labelled');
 select public.t_ok((select count(*) from pg_trigger where tgname = 'trg_tasks_labels_clean' and tgrelid = 'public.tasks'::regclass) = 1,
   '180: one cleaning trigger after two runs');
-select public.t_ok((select count(*) from pg_constraint where conname = 'tasks_labels_size' and conrelid = 'public.tasks'::regclass) = 1,
-  '180: one size check after two runs');
+select public.t_ok((select count(*) from pg_constraint where conname = 'tasks_labels_valid' and conrelid = 'public.tasks'::regclass) = 1,
+  '180: one last-line check after two runs');
 select public.t_ok(not has_function_privilege('anon', 'public.app_task_labels()', 'execute')
                    and has_function_privilege('authenticated', 'public.app_task_labels()', 'execute'),
   '180: the label list is for signed-in callers only');
@@ -84,6 +84,10 @@ select public.t_ok((select t.labels = array['Health'] and b.start_time = '09:30'
   'a timed item keeps its labels on its task and its slot as always');
 
 -- ═══ 2. Every other writer goes through the same rule ═══════════════════════
+update public.tasks set labels = array[E'Bad\u202Eguy', E'\u00A0\u00A0', E'zero\u200Bwidth']
+ where id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'timed');
+select public.t_ok((select labels = array['Badguy', 'zerowidth'] from public.tasks where id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'timed')),
+  'invisible and direction-changing characters go; a label of only no-break spaces is none');
 update public.tasks set labels = array['  a  ', 'A', null, E'b\nc']
  where id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'timed');
 select public.t_ok((select labels = array['a', 'b c'] from public.tasks where id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'timed')),
@@ -113,4 +117,10 @@ reset role;
 alter table public.tasks disable trigger trg_tasks_labels_clean;
 select public.t_ok(public.t_err($$update public.tasks set labels = (select array_agg('x' || i) from generate_series(1, 11) i) where title = 'Plain insert'$$) = '23514',
   'eleven labels are refused even past the cleaning');
+select public.t_ok(public.t_err($$update public.tasks set labels = array[repeat('y', 31)] where title = 'Plain insert'$$) = '23514',
+  'a label over 30 characters is refused even past the cleaning');
+select public.t_ok(public.t_err($$update public.tasks set labels = array[E'a\u202Eb'] where title = 'Plain insert'$$) = '23514',
+  'a right-to-left override is refused even past the cleaning');
+select public.t_ok(public.t_err($$update public.tasks set labels = array[' padded '] where title = 'Plain insert'$$) = '23514',
+  'an untrimmed label is refused even past the cleaning');
 alter table public.tasks enable trigger trg_tasks_labels_clean;

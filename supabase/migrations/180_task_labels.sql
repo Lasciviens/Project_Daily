@@ -5,9 +5,13 @@
 --
 --  A. tasks.labels text[] (never null, '{}' = none). Every writer — the item
 --     save, the assistant, a sync — goes through trg_tasks_labels_clean:
---     trimmed, control characters out, inner spaces squashed, at most 30
+--     invisible and direction-changing characters out (a right-to-left
+--     override could reorder the row it sits on), control characters and odd
+--     spaces made plain spaces, inner spaces squashed, trimmed, at most 30
 --     characters each, duplicates (any case) out, at most 10 — the first
---     ones kept, in order. The check is the last line behind it.
+--     ones kept, in order. The check (task_labels_valid: count, length,
+--     characters) is the last line behind it, should the trigger ever not
+--     run.
 --  B. app_save_item: 165's (the live one) with ONLY the label lines added —
 --     `labels` in the item JSON sets them (an array; [] clears), a save
 --     without the key keeps them (Plan it, the subscription, the phone),
@@ -31,7 +35,10 @@ immutable
 set search_path = ''
 as $$
   with cut as (
-    select btrim(left(btrim(regexp_replace(regexp_replace(x.v, '[\u0001-\u001f\u007f]', ' ', 'g'), ' {2,}', ' ', 'g')), 30)) as l, x.ord
+    select btrim(left(btrim(regexp_replace(regexp_replace(regexp_replace(x.v,
+             '[\u00ad\u180e\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]', '', 'g'),
+             '[\u0001-\u001f\u007f-\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]', ' ', 'g'),
+             ' {2,}', ' ', 'g')), 30)) as l, x.ord
       from unnest(coalesce(p_labels, '{}'::text[])) with ordinality as x(v, ord)
      where x.v is not null
   ), once as (
@@ -57,10 +64,26 @@ drop trigger if exists trg_tasks_labels_clean on public.tasks;
 create trigger trg_tasks_labels_clean before insert or update of labels on public.tasks
   for each row execute function public.tasks_labels_clean();
 
-alter table public.tasks drop constraint if exists tasks_labels_size;
-alter table public.tasks add constraint tasks_labels_size
-  check (cardinality(labels) <= 10 and array_position(labels, null) is null);
+-- The last line: what the cleaning gives, checked without the cleaning (a fixed rule of its own, so a later
+-- change to the cleaning never makes an old row's unrelated update fail).
+create or replace function public.task_labels_valid(p_labels text[])
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select coalesce(cardinality(p_labels), 0) <= 10
+     and coalesce(bool_and(l is not null and char_length(l) between 1 and 30 and l = btrim(l) and l !~ ' {2}'
+       and l !~ '[\u0001-\u001f\u007f-\u00a0\u00ad\u1680\u180e\u2000-\u200b\u200e\u200f\u2028-\u202f\u205f-\u2064\u2066-\u2069\u3000\ufeff]'), true)
+    from unnest(p_labels) l
+$$;
 
+alter table public.tasks drop constraint if exists tasks_labels_size;
+alter table public.tasks drop constraint if exists tasks_labels_valid;
+alter table public.tasks add constraint tasks_labels_valid check (public.task_labels_valid(labels));
+
+revoke all on function public.task_labels_valid(text[]) from public, anon;
+grant execute on function public.task_labels_valid(text[]) to authenticated, service_role;
 revoke all on function public.task_labels_clean(text[]) from public, anon;
 grant execute on function public.task_labels_clean(text[]) to authenticated, service_role;
 revoke all on function public.tasks_labels_clean() from public, anon;

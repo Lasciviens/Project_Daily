@@ -74,6 +74,10 @@ select public.t_ok((select eaten_time = time '13:05' from public.food_log_entrie
 update public.food_log_entries set eaten_time = null where custom_title = 'Picked time';
 select public.t_ok((select eaten_time is null from public.food_log_entries where custom_title = 'Picked time'),
   'an eaten row''s time cleared on purpose stays clear (Undo puts an older log back to no time)');
+insert into public.food_log_entries (date, meal_slot, custom_title, calories, created_at)
+values (date '2026-10-20', 'lunch', 'Restored old lunch', 450, timestamptz '2026-10-20 12:05:00+02');
+select public.t_ok((select eaten_time is null from public.food_log_entries where custom_title = 'Restored old lunch'),
+  'an older log put back by Undo (its created_at from before 181) comes back exactly: no made-up time');
 update public.food_log_entries set calories = 520 where custom_title = 'Old lunch';
 select public.t_ok((select eaten_time is null and calories = 520 from public.food_log_entries where custom_title = 'Old lunch'),
   'an older log edited in anything but its time keeps no time (never a made-up one)');

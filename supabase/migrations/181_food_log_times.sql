@@ -17,7 +17,11 @@
 --     21:00 — foodLogUtils.MEAL_USUAL_TIME is the browser's copy, compared by
 --     verify-db-food-log-times). A row put back to planned loses its time.
 --     A time the writer sends is kept; an eaten row's time cleared on purpose
---     (an Undo putting an older log back) stays clear.
+--     (an Undo putting an older log back) stays clear; a row written before
+--     181 ran for a day before it (food_log_times_from — an Undo of a deleted
+--     older log puts it back with its old created_at) never gets one, so it
+--     comes back exactly as it was. (A dose "Taken at" earlier on the day 181
+--     ran still gets its time.)
 -- No new table (food_log_entries keeps its row level security, owner lock
 -- and audit — a time change is an edit like any other). Re-runnable.
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -40,6 +44,15 @@ as $$
   end
 $$;
 
+-- When 181 ran: a log written before it keeps no time (its Undo restore comes back exactly). Made once by the
+-- migration (a deploy runs it once; a test's second run only moves it on).
+do $mig$
+begin
+  execute format($f$create or replace function public.food_log_times_from() returns timestamptz
+    language sql immutable set search_path = '' as $b$ select %L::timestamptz $b$ $f$, now());
+end
+$mig$;
+
 create or replace function public.food_log_eaten_time()
 returns trigger
 language plpgsql
@@ -56,8 +69,13 @@ begin
     new.eaten_time := date_trunc('minute', date '2000-01-01' + new.eaten_time)::time;
     return new;
   end if;
-  -- Only a new log, or a planned row now eaten, gets one: an eaten row's time cleared on purpose stays clear.
+  -- Only a new log, or a planned row now eaten, gets one: an eaten row's time cleared on purpose stays clear,
+  -- and a row from before 181 (an Undo putting a deleted older log back) keeps none.
   if tg_op = 'UPDATE' and old.status = 'eaten' then
+    return new;
+  end if;
+  if tg_op = 'INSERT' and new.created_at < public.food_log_times_from()
+     and new.date < (public.food_log_times_from() at time zone 'Europe/Oslo')::date then
     return new;
   end if;
   -- An insert happens at its created_at (supplement_take's chosen time); a planned row ticked eaten now.
@@ -71,6 +89,8 @@ drop trigger if exists trg_food_log_eaten_time on public.food_log_entries;
 create trigger trg_food_log_eaten_time before insert or update of status, eaten_time on public.food_log_entries
   for each row execute function public.food_log_eaten_time();
 
+revoke all on function public.food_log_times_from() from public, anon;
+grant execute on function public.food_log_times_from() to authenticated, service_role;
 revoke all on function public.food_meal_usual_time(text) from public, anon;
 grant execute on function public.food_meal_usual_time(text) to authenticated, service_role;
 revoke all on function public.food_log_eaten_time() from public, anon;

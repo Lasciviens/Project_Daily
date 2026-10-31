@@ -8,14 +8,17 @@ export const LABEL_MAX = 30
 /** At most this many labels per task (the first ones kept). */
 export const LABELS_PER_TASK = 10
 
-// Control characters become spaces, runs of spaces one space; only plain spaces are trimmed (as SQL's btrim).
-// eslint-disable-next-line no-control-regex -- matching control characters is the point (the database's [\u0001-\u001f\u007f])
-const CONTROL = /[\u0000-\u001F\u007F]/g
+// Invisible and direction-changing characters go (a right-to-left override could reorder the row a label sits
+// on); control characters and odd spaces become plain spaces, runs of spaces one; only plain spaces are trimmed
+// (as SQL's btrim). The same classes as 180's task_labels_clean — keep the two identical.
+const INVISIBLE = /[\u00AD\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const SPACE_LIKE = /[\u0000-\u001F\u007F-\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g
 const trimSpaces = (s: string) => s.replace(/^ +| +$/g, '')
 
-/** One label as stored: control characters out, spaces squashed and trimmed, cut at 30 characters (not UTF-16 units). */
+/** One label as stored: invisible characters out, odd spaces plain, squashed and trimmed, cut at 30 characters (not UTF-16 units). */
 export function cleanLabel(raw: string): string {
-  const once = trimSpaces(raw.replace(CONTROL, ' ').replace(/ {2,}/g, ' '))
+  const once = trimSpaces(raw.replace(INVISIBLE, '').replace(SPACE_LIKE, ' ').replace(/ {2,}/g, ' '))
   return trimSpaces(Array.from(once).slice(0, LABEL_MAX).join(''))
 }
 
