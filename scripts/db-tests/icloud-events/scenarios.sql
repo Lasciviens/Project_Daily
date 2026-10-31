@@ -554,3 +554,10 @@ delete from public.icloud_outbox;
 delete from public.hevy_workouts where id = 'b459cba5-cd6d-463c-abd6-54f8eafcadcb';
 select public.t_ok((select count(*) = 1 and bool_and(area = 'training') from public.icloud_outbox where entity = 'workout'),
   '179: a deleted workout with an event queues its removal, with the calendar it is in');
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,training}', '{"app": "google", "enabled": true}') where user_id = '00000000-0000-0000-0000-000000000001';
+delete from public.icloud_outbox;
+update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,training,enabled}', 'false') where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select count(*) = 0 from public.icloud_outbox where entity = 'workout'),
+  '179: turning Training off while it stays on Google queues no workout');
+select public.t_ok((select indisunique from pg_index where indexrelid = 'public.hevy_workouts_icloud_key'::regclass), '179: one workout per key');
+

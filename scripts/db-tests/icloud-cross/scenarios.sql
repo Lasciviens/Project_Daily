@@ -18,10 +18,10 @@ grant execute on function public.t_q(uuid) to authenticated;
 
 -- X0. 179: the past trainings — every workout stored before 179 of an account whose Training is on Apple is queued
 --     once, named by a uuid made from Hevy's id (any id: a uuid or not).
-select public.t_ok((select count(*) = 2 and bool_and(o.entity_id = md5(w.id)::uuid and o.area is null)
+select public.t_ok((select count(*) = 2 and bool_and(o.entity_id = md5(w.id)::uuid and o.area is null and o.changed_at is null)
                     from public.icloud_outbox o join public.hevy_workouts w on w.icloud_key = o.entity_id
                     where o.user_id = '00000000-0000-0000-0000-000000000002' and o.entity = 'workout'),
-  'X0: 179 queued the stored workouts of an account with Training on Apple, named by their key');
+  'X0: 179 queued the stored workouts of an account with Training on Apple, named by their key, as re-sends (the owner''s own edits go first)');
 delete from public.icloud_outbox;
 
 -- Football and Training on Apple Calendar; the rest on Google.

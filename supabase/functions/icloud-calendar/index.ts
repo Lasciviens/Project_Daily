@@ -2513,7 +2513,9 @@ async function drainWorkout(db: Db, c: Creds, userId: string, q: QueueRow, prefs
     const ev = workoutEvent({ key: w.icloud_key, title: w.title, description: w.description, start_time: w.start_time, end_time: w.end_time },
       { area: conf, look: prefs, appUrl: APP_URL, now: new Date() })
     if (ev) {
-      const etag = await putEvent(c, url, ev.ics, w.icloud_area === 'training' ? validEtag(w.icloud_etag) : null)
+      // Over the version just read, never a stored one: a workout isn't read back, so an iPhone edit to it would
+      // otherwise be refused for ever (412); the latest version wins (owner, 31.10.2026).
+      const etag = await putEvent(c, url, ev.ics, null)
       // Linked only while the row still is what was read; another run that linked it meanwhile wrote the same event.
       await link(w.icloud_area, { icloud_area: 'training', icloud_etag: validEtag(etag) })
       return 'put'

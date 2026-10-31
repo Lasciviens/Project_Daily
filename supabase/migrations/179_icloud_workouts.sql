@@ -26,7 +26,8 @@ alter table public.hevy_workouts
 alter table public.hevy_workouts drop constraint if exists hevy_workouts_icloud_area_check;
 alter table public.hevy_workouts add constraint hevy_workouts_icloud_area_check
   check (icloud_area is null or icloud_area = 'training');
-create index if not exists hevy_workouts_icloud_key on public.hevy_workouts (user_id, icloud_key);
+-- One row per key (a key names one event and one queue row).
+create unique index if not exists hevy_workouts_icloud_key on public.hevy_workouts (user_id, icloud_key);
 
 -- ── B. The queue's third kind and its triggers ──────────────────────────────
 alter table public.icloud_outbox drop constraint if exists icloud_outbox_entity_check;
@@ -116,7 +117,8 @@ begin
   perform set_config('app.icloud_look', 'on', true);
   -- 179: Training switched (to Apple, back, on or off): every workout is sent, or its event taken away.
   if (new.prefs #> '{areas,training,app}', new.prefs #> '{areas,training,enabled}')
-     is distinct from (old.prefs #> '{areas,training,app}', old.prefs #> '{areas,training,enabled}') then
+     is distinct from (old.prefs #> '{areas,training,app}', old.prefs #> '{areas,training,enabled}')
+     and 'apple' in (coalesce(new.prefs #>> '{areas,training,app}', ''), coalesce(old.prefs #>> '{areas,training,app}', '')) then
     insert into public.icloud_outbox (user_id, entity, entity_id, area)
     select w.user_id, 'workout', w.icloud_key, w.icloud_area from public.hevy_workouts w
      where w.user_id = new.user_id and (w.start_time is not null or w.icloud_area is not null)
@@ -160,11 +162,19 @@ end;
 $$;
 
 -- ── D. The past trainings: every stored workout, once, where Training is on Apple ──
-insert into public.icloud_outbox (user_id, entity, entity_id, area)
-select w.user_id, 'workout', w.icloud_key, null
-  from public.hevy_workouts w
- where w.start_time is not null
-   and exists (select 1 from auth.users u where u.id = w.user_id)
-   and exists (select 1 from public.calendar_prefs p where p.user_id = w.user_id
-                    and p.prefs #>> '{areas,training,app}' = 'apple' and coalesce(p.prefs #>> '{areas,training,enabled}', 'true') <> 'false')
-on conflict (user_id, entity, entity_id) do nothing;
+-- As re-sends (changed_at null): the owner's own edits after the deploy go first, never behind hundreds of these.
+do $$
+begin
+  -- One statement, so the flag holds for the insert however the file is run.
+  perform set_config('app.icloud_look', 'on', true);
+  insert into public.icloud_outbox (user_id, entity, entity_id, area)
+  select w.user_id, 'workout', w.icloud_key, null
+    from public.hevy_workouts w
+   where w.start_time is not null
+     and exists (select 1 from auth.users u where u.id = w.user_id)
+     and exists (select 1 from public.calendar_prefs p where p.user_id = w.user_id
+                      and p.prefs #>> '{areas,training,app}' = 'apple' and coalesce(p.prefs #>> '{areas,training,enabled}', 'true') <> 'false')
+  on conflict (user_id, entity, entity_id) do nothing;
+  perform set_config('app.icloud_look', 'off', true);
+end
+$$;
