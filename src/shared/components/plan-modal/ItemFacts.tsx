@@ -1,14 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The Add sheet's facts line (THEME §8, Add sheet): the values every item has
-//  (priority, area — and a timed or repeating item's category) read as small
-//  inline values that open a menu, and the
-//  optional rows wait as "+ Notes / + Deadline / + Google list" text buttons
-//  and open in place as a FactRow (a short label beside the field).
+//  (priority, area, a Google Task's list — and a timed or repeating item's
+//  category) read as small inline values that open a menu, the task's labels
+//  (LabelsFact), and the optional rows wait as "+ Notes / + Deadline" text
+//  buttons and open in place as a FactRow (a short label beside the field).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Check, Palette, Plus, Tag } from 'lucide-react'
+import { Check, ListChecks, Palette, Plus, Tag } from 'lucide-react'
 import { ToneDot, type Tone } from '../../ui'
 import { chipClass } from './fieldStyles'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
@@ -16,6 +16,7 @@ import { PRIORITY_LABEL, PRIORITY_TONE } from '../../../features/todo/taskTones'
 import type { TaskDomain, TaskPriority } from '../../../features/todo/types'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import { CATEGORY_LABELS } from './planModal.config'
+import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 
 interface Option<T extends string> { id: T; label: string; tone?: Tone }
 
@@ -46,6 +47,44 @@ export function CategoryFact({ value, onChange }: { value: TimeBlockCategory; on
     <FactMenu name="Category" value={value} options={CATEGORIES} onChange={onChange}>
       <Palette aria-hidden />{CATEGORY_LABELS[value]}
     </FactMenu>
+  )
+}
+
+/**
+ * The Google Tasks list a Google Task goes to (owner, 31.10.2026: "+ Google list … did nothing" → a dropdown of
+ * the lists): the task's own list as a value; the menu lists the Google lists and "New list…", which opens a
+ * field for a name (made on Google when the item is saved). A name not on Google yet says "new".
+ */
+export function ListFact({ value, onPick, onNew }: {
+  value: string
+  onPick: (title: string) => void
+  onNew: () => void
+}) {
+  const { data: lists = [] } = useGoogleTaskLists()
+  const name = value.trim()
+  const known = (t: string) => lists.some(l => l.title.toLowerCase() === t.toLowerCase())
+  return (
+    <Menu>
+      <MenuButton className={chipClass('value')} aria-label={`Google Tasks list: ${name || 'not picked'}`} title="Google Tasks list">
+        <ListChecks aria-hidden />{name || 'Google list'}{name && !known(name) && <span className="font-normal text-fg-muted">· new</span>}
+      </MenuButton>
+      <MenuItems anchor={{ to: 'bottom start', gap: 6, padding: 12 }} className="menu z-toast max-h-72 min-w-[12rem] overflow-y-auto">
+        {lists.map(l => (
+          <MenuItem key={l.id}>
+            <button type="button" onClick={() => onPick(l.title)} className="menu-item">
+              <span className="min-w-0 flex-1 truncate">{l.title}</span>
+              {l.title.toLowerCase() === name.toLowerCase() && <Check className="h-4 w-4 shrink-0 text-accent-600" aria-label="Chosen" />}
+            </button>
+          </MenuItem>
+        ))}
+        {lists.length === 0 && <p className="px-3 py-2 text-meta text-fg-muted">Your Google lists show here once Google Tasks has synced.</p>}
+        <MenuItem>
+          <button type="button" onClick={onNew} className="menu-item">
+            <Plus aria-hidden className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1">New list…</span>
+          </button>
+        </MenuItem>
+      </MenuItems>
+    </Menu>
   )
 }
 

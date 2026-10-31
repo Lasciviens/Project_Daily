@@ -244,6 +244,24 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 180: your own labels on a task (the column and its one
+      # cleaning rule on every writer, the item save setting / keeping /
+      # clearing them, 165's item save with only the label lines added, the
+      # label list from the caller's own rows, the SQL rule = the browser's).
+      - name: Task labels database scenarios
+        run: node scripts/verify-db-task-labels.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 181: a time on every food log (the database fills it for
+      # every writer that sends none — the moment it was written on the log's
+      # own day, else its meal's usual time; a sent time kept; planned rows and
+      # older logs none; the SQL meal hours = the browser's).
+      - name: Food log times database scenarios
+        run: node scripts/verify-db-food-log-times.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 164: a sleep night confirmed complete (one row per night,
       # undone by a delete, audited, row level security, the owner lock).
       - name: Sleep night confirmation database scenarios

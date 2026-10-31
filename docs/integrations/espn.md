@@ -18,8 +18,9 @@ commercial.
 
 ## How we authenticate
 
-None. The browser calls ESPN directly: every answer carries `access-control-allow-origin: *`, there is no key
-or secret, and nothing is sent but the ids in the URL. No edge function.
+None. The browser calls ESPN directly: every answer we read carries `access-control-allow-origin: *`, there is no
+key or secret, and nothing is sent but the ids in the URL. No edge function. **Not every ESPN address does:**
+`/teams/{id}` (the club) answers without the header since about 31.10.2026, so a browser can't read it — see Traps.
 
 ## Endpoints we call
 
@@ -28,10 +29,9 @@ Base `https://site.api.espn.com`; search on `https://site.web.api.espn.com`.
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
 | `GET /apis/site/v2/sports/soccer/all/teams/{teamId}/schedule?fixture=true` | `espnApi.fetchTeamFixtures` | a followed team's next matches, **every competition in one call** (Süper Lig + Champions League for Galatasaray); the subscription's sync | the whole season ahead |
-| `GET /apis/site/v2/sports/soccer/all/teams/{teamId}/schedule` | `espnApi.fetchTeamResults` | a followed team's results this season | newest first |
+| `GET /apis/site/v2/sports/soccer/all/teams/{teamId}/schedule` | `espnApi.fetchTeamResults`, `espnApi.fetchTeam` | a followed team's results this season; the club popup's club (its `team` and `season`) | newest first |
 | `GET /apis/site/v2/sports/soccer/{league}/scoreboard?dates=YYYYMM` | `espnApi.fetchLeagueMonth` | a followed tournament's matches: this month and next | **a day range (`YYYYMMDD-YYYYMMDD`) answers 400 for the Champions League** — a month (`YYYYMM`) or one day works |
 | `GET /apis/v2/sports/soccer/{league}/standings` | `espnApi.fetchStandings` | tables | one table per group (`children[]`) |
-| `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}` | `espnApi.fetchTeam` | the club popup | `all` as the league works and gives the club's own (`defaultLeague`) |
 | `GET /apis/site/v2/sports/soccer/{league}/teams/{teamId}/roster` | `espnApi.fetchRoster` | the club popup's squad, the player popup | needs a real league: under `all` it answers an empty squad |
 | `GET /apis/site/v2/sports/soccer/{league}/summary?event={eventId}` | `espnApi.fetchMatch` | the match popup; a planned match outside the subscription is re-checked by it | ~200 KB; we read `header`, `gameInfo`, `rosters` |
 | `GET /apis/search/v2?query=…&limit=10` (site.web.api) | `espnApi.search` | "+ Follow": teams and tournaments | mixed sports — only `sport: "soccer"` kept |
@@ -55,7 +55,7 @@ while one is live).
 | `competitions[0].details[]` (scoreboard): `type.text`, `clock.displayValue`, `athletesInvolved[0].displayName`, `team.id` | `"Goal"`, `"22'"` | goals in a match row |
 | standings `name` (the tournament), `children[].name`, `.standings.entries[]`: `team`, `note.{color,description}`, `stats[]` by `name` | `rank`, `gamesPlayed`, `wins`, `ties`, `losses`, `pointsFor`, `pointsAgainst`, `pointDifferential`, `points` | tables; the note's colour marks qualification places |
 | roster `athletes[]`: `displayName`, `jersey`, `position.name`, `age`, `dateOfBirth`, `citizenship`, `flag.href`, `height` (inches), `weight` (lbs) | **imperial** — shown as cm / kg | squad, player popup |
-| team: `logos[0].href`, `color`, `standingSummary`, `record.items[0].summary`, `nextEvent[0]`, `defaultLeague.slug` | `"1st in Turkish Super Lig"`, `"6-1-1"` (W-D-L) | club popup |
+| schedule `team`: `displayName`, `logo`, `color`, `standingSummary`, `recordSummary`, `clubhouse`; schedule `season.name`, `events[].league.{slug,name}` | `"1st in Turkish Super Lig"`, `"8-1-1"` (W-D-L), `"2026-27 Turkish Super Lig"` | club popup; the club's own league = the league its season is named after (`"2026-27 LALIGA"` → `"Spanish LALIGA"` → `esp.1`), else the one it played most in, friendlies aside (`footballModel.parseScheduleTeam`) |
 | summary `rosters[]`: `homeAway`, `formation`, `roster[]`: `starter`, `jersey`, `athlete.displayName`, `position.abbreviation` | `"4-4-2"` | line-ups |
 | summary `gameInfo.venue.fullName`, `.attendance` | text, number | match popup |
 | search `results[]` of type `team` / `league`: `contents[].displayName`, `uid` (`s:600~t:432`), `defaultLeagueSlug`, `subtitle`, `image.default`, `sport` | | "+ Follow" |
@@ -71,7 +71,8 @@ while one is live).
 
 - **Score shape differs** between endpoints (object vs string) — `footballModel.scoreOf` reads both.
 - **A scoreboard says `"0"` before kick-off** — a score is read only once a match is live or over.
-- **A squad needs a real league**: `all/teams/{id}/roster` answers an empty list; the club's own league comes from `all/teams/{id}` (`defaultLeague.slug`).
+- **A squad needs a real league**: `all/teams/{id}/roster` answers an empty list; the club's own league comes from its schedule's season name (above).
+- **`/teams/{id}` lost its CORS header** (checked 31.10.2026 with an `Origin` header: no `access-control-allow-origin`, under `all`, `tur.1` and `eng.1`, on `site.api` and `site.web.api`; its schedule, roster and standings still send it). The club popup said "Couldn't load this club"; it reads the club from `all/teams/{id}/schedule` instead (`parseScheduleTeam`).
 - **A scoreboard's events have no `seasonType`** (no round name); a summary's `header` has no venue — it is in `gameInfo.venue`; `attendance` is `0` when unknown.
 - **A day range fails** on some leagues' scoreboard (400 "Failed to get events endpoint."); a month works.
 - **`timeValid: false`**: far-ahead fixtures carry a placeholder time. They show as "time not set" and are never put
@@ -88,6 +89,16 @@ while one is live).
   tournaments of their own.
 
 ## Log
+
+### 31.10.2026 — the club moves to the schedule answer
+
+The club popup (on Football and from Personal's Football card) failed with "Couldn't load this club. Try again":
+`/teams/{id}` answers 200 but without `access-control-allow-origin`, so the browser refuses it. The schedule
+answer (`all/teams/{id}/schedule`, CORS ✓) has the same club fields (`team.standingSummary`, `recordSummary`,
+`clubhouse`, `logo`, `color`) but no `defaultLeague`; the club's league now comes from `season.name` matched to an
+event's league (checked live on Galatasaray tur.1, Arsenal eng.1, Real Madrid esp.1, Mainz ger.1; France, a
+national team, falls back to its most-played competition). The old `team.json` sample went; `sched-res.json` and
+`sched-fix.json` carry the fields.
 
 ### 19.10.2026 — first use
 

@@ -46,6 +46,8 @@ export interface SaveItemAnswer {
   /** A repeat saved (156): today's day task, when the repeat has today — on
    *  Google Tasks it is the new copy a series' removal waits for. */
   dayTaskId: string | null
+  /** The labels the task now has; null when the database didn't say (one before migration 180 keeps none). */
+  labels: string[] | null
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -58,6 +60,7 @@ export function saveAnswerOf(raw: unknown): SaveItemAnswer {
     blockToDrop: str(r.blockToDrop), replacedTaskId: str(r.replacedTaskId), replacedScheduleBlockId: str(r.replacedScheduleBlockId),
     replacedEventId: str(r.replacedEventId), googleSyncWas: r.googleSyncWas === true, googleSync: r.googleSync === true,
     dayTaskId: str(r.dayTaskId),
+    labels: Array.isArray(r.labels) ? r.labels.filter((l): l is string => typeof l === 'string') : null,
   }
 }
 

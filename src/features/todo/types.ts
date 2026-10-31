@@ -34,6 +34,8 @@ export interface Task {
   parent_task_id:           string | null
   /** Which Google Tasks list this task belongs to. NULL until tasklist sync runs (migration is additive — no backfill). */
   google_tasklist_id:       string | null
+  /** The owner's own labels (migration 180, cleaned by the database); absent on an older database. */
+  labels?:                  string[]
   /** Completion timestamp — Google's `completed` field had no local home before this migration. */
   completed_at:             string | null
   /** Google's own opaque lexicographic sibling-ordering string — never parsed/computed locally, only stored and echoed back on move(). */

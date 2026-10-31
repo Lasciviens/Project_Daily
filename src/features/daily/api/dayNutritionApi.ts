@@ -5,6 +5,7 @@ import { eatenTotals, macroAmounts, type MacroAmounts } from '../../recipes/food
 import { groupDishes, type DishGroup, type DishSingle } from '../../recipes/foodDish'
 import { countLabel } from '../../recipes/foodAmount'
 import { COUNT_UNITS } from '../../supplements/supplementDoses'
+import { eatenTimeLabel } from '../../recipes/components/foodLogUtils'
 
 // A single planned meal for a day, resolved to its display title + macro
 // contribution. Macros are the TOTAL for that entry (recipe per-serving ×
@@ -48,6 +49,8 @@ export interface DayMeal {
   meal_group_id?: string | null
   /** The dish's own name (158), the same on every row of the group; null = automatic. */
   meal_group_title?: string | null
+  /** When it was eaten, HH:MM (181, eaten rows); null for a planned row or a log from before 181. */
+  eaten_time?: string | null
 }
 
 // A meal-slot's rows, collapsed so several entries sharing the same
@@ -147,6 +150,7 @@ interface UnifiedRow {
   meal_group_id?: string | null
   meal_group_title?: string | null
   supplement_schedule_id?: string | null
+  eaten_time?: string | null
   recipe:     { title: string; serving_label?: string | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; sugar_g: number | null } | null
   ingredient: { name: string; unit: string; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null; sugar_g: number | null } | null
 }
@@ -158,6 +162,12 @@ const UNIFIED_SELECT_BASE = `${UNIFIED_COLS}recipe:recipes(title, calories, prot
 const UNIFIED_SELECT_087 = `${UNIFIED_SELECT_BASE}, meal_group_id`
 const UNIFIED_SELECT =
   `${UNIFIED_COLS}recipe:recipes(title, serving_label, calories, protein_g, carbs_g, fat_g, sugar_g), ${INGREDIENT_EMBED}, meal_group_id, meal_group_title, supplement_schedule_id`
+/** 181's time of an eaten row on top. */
+const UNIFIED_SELECT_181 = `${UNIFIED_SELECT}, eaten_time`
+const isMissingEatenTime = (e: unknown) => {
+  const x = e as { code?: string; message?: string } | null
+  return (x?.code === '42703' || x?.code === 'PGRST204') && /eaten_time/i.test(x?.message ?? '')
+}
 
 // Exported for unit-testability (the post-061 path can't be exercised against
 // an un-migrated DB) — a pure row→DayMeal mapper.
@@ -217,6 +227,7 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
     },
     meal_group_id: row.meal_group_id ?? null,
     meal_group_title: row.meal_group_title ?? null,
+    eaten_time: eatenTimeLabel(row.eaten_time),
   }
 }
 
@@ -244,7 +255,11 @@ export async function fetchDayNutrition(date: string): Promise<DayNutrition> {
   // since the two `select()` calls below use different column lists and are
   // cast to UnifiedRow[] downstream regardless.
   let uni: { data: unknown; error: unknown } =
-    await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
+    await supabase.from('food_log_entries').select(UNIFIED_SELECT_181).eq('date', date).order('created_at', { ascending: true })
+  if (uni.error && isMissingEatenTime(uni.error)) {
+    // migration 181 not applied yet — no times; the Diary shows each meal at its usual hour, as before.
+    uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT).eq('date', date).order('created_at', { ascending: true })
+  }
   if (uni.error && isMissingGroupTitle(uni.error)) {
     // migrations 157/158/160 not applied yet — a dish keeps its automatic name, a recipe reads "2×".
     uni = await supabase.from('food_log_entries').select(UNIFIED_SELECT_087).eq('date', date).order('created_at', { ascending: true })

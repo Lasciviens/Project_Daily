@@ -86,6 +86,24 @@ eq(buildDiary({ ...base, watches: [{ at: '2026-10-28T20:15:00Z', day: DAY, kind:
 eq(buildDiary({ ...base, lastPlayed: { title: 'Hades', last_played_at: '2026-10-27T19:00:00Z' } }).length, 0, 'a game last played on another day is not in this day')
 eq(buildDiary(base), [], 'an empty day has no rows')
 
+// Food log times (181; owner, 31.10.2026: "log times for food section so I can see on my diary"): a meal shows at
+// the time it was logged — one row per time — and a log from before 181 at its meal's usual hour with no time.
+{
+  const at = (m, t) => ({ ...m, eaten_time: t })
+  const timed = buildDiary({ ...base,
+    meals: [at(meal('b1', 'breakfast', 'Oats', 300), '08:12:00'), at(meal('b2', 'breakfast', 'Coffee', 5), '08:12:00'),
+      at(meal('s1', 'snack', 'Apple', 80), '10:30:00'), at(meal('s2', 'snack', 'Bar', 200), '16:05:00'), meal('d1', 'dinner', 'Pizza', 900)],
+    workouts: [{ id: 'w', title: 'Upper A', start_time: '2026-10-28T09:00:00Z', minutes: 50 }] })
+  eq(timed.map(r => `${r.when}|${r.kind}|${r.title}|${r.detail}`), [
+    '08:12|food|Breakfast · Oats, Coffee|305 kcal',
+    '10:00|training|Upper A|50 min',
+    '10:30|food|Snacks · Apple|80 kcal',
+    '16:05|food|Snacks · Bar|200 kcal',
+    '|food|Dinner · Pizza|900 kcal',
+  ], 'a meal at the time it was logged (logged together: one row), two snacks at two times two rows in time order, an older log at its meal\'s usual hour')
+  eq(new Set(timed.map(r => r.key)).size, timed.length, 'every timed meal has its own key')
+}
+
 // Night owl: 00:30 Oslo on the 28th is the 27th in UTC.
 eq(buildDiary({ ...base, workouts: [{ id: 'n', title: 'Night', start_time: '2026-10-27T23:30:00Z', minutes: 20 }] }).map(r => r.when), ['00:30'],
   'a workout at 00:30 Oslo time is on its local day')

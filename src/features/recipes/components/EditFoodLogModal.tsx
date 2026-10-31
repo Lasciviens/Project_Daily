@@ -28,8 +28,8 @@ import { MacroBar } from './MacroBar'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { RecipeBatchPanel } from './RecipeBatch'
 import { QuickGuessSheet } from './QuickGuessEditor'
-import { DecimalInput, FoodThumb } from './foodLogKit'
-import { SLOT_OPTIONS } from './foodLogUtils'
+import { DecimalInput, FoodThumb, FoodTimeField } from './foodLogKit'
+import { SLOT_OPTIONS, defaultEatenTime, eatenTimeLabel } from './foodLogUtils'
 import type { EntrySave, FoodLogPatch, LoggedFood } from '../api/foodLogApi'
 import type { MealSlot } from '../types'
 
@@ -97,6 +97,9 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   const isDose = !!entry.supplement_schedule_id
   const [slot, setSlot] = useState<MealSlot>(entry.meal_slot)
   const [day, setDay] = useState(entry.date)
+  // When it was eaten (181); a log from before 181 has none until one is picked here.
+  const startTime = eatenTimeLabel(entry.eaten_time)
+  const [time, setTime] = useState<string | null>(startTime)
   const startDish: DishChoice = entry.meal_group_id ? `g:${entry.meal_group_id}` : 'none'
   const [dish, setDish] = useState<DishChoice>(startDish)
   const [amount, setAmount] = useState(entry.quantity && entry.quantity > 0 ? entry.quantity : kind === 'recipe' ? 1 : 100)
@@ -159,7 +162,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
   }
 
   async function handleSave() {
-    const patch: FoodLogPatch = isDose ? {} : { meal_slot: slot, date: day }
+    const patch: FoodLogPatch = isDose ? {} : { meal_slot: slot, date: day, ...(time && time !== startTime ? { eaten_time: time } : {}) }
     let name: string
     if (kind === 'library' && lib) {
       if (!(amount > 0)) { toast.error('Enter an amount'); return }
@@ -302,6 +305,9 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
           </span>
           <span className="flex items-center gap-1.5">Day
             <DateInput value={day} onChange={v => { if (v) setDay(v) }} aria-label="Day" className="input input-sm h-8 w-[7.5rem] tabular-nums" />
+          </span>
+          <span className="flex items-center gap-1.5">Time
+            <FoodTimeField value={time ?? defaultEatenTime(day, slot, todayStr())} onChange={setTime} auto={!time} />
           </span>
           <span className="flex min-w-0 max-w-full items-center gap-1.5">In
             <ChipSelect label="In (dish)" value={dishValue} onChange={setDish} options={[

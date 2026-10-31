@@ -30,7 +30,7 @@ import { FOOD_TODAY_BOARD } from '../foodBoards'
 import { DishItemMenu, DishMenu } from './DishActions'
 import { GUESS_MARK, isGuessLine } from '../quickGuess'
 import { SupplementDosesCard } from '../../supplements/components/SupplementDosesCard'
-import { SLOT_OPTIONS } from './foodLogUtils'
+import { SLOT_OPTIONS, eatenTimeLabel } from './foodLogUtils'
 
 // The wide meal-row grid: name · amount · kcal · protein · carbs · fat · fiber · ✓ · ✕.
 // Shared by the rows, their column-heading row and the meal's header totals,
@@ -173,8 +173,11 @@ export function FoodTodayTab({ date }: { date: string }) {
       meal.fat_g > 0 && `${meal.fat_g} g fat`,
       meal.fiber_g > 0 && `${meal.fiber_g} g fiber`,
     ]
+    // When it was eaten (181), before its name; a planned row or a log from before 181 has none.
+    const at = planned ? null : eatenTimeLabel(meal.eaten_time)
     const nameBtn = (
       <button type="button" onClick={onOpen} className="flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 text-left transition-colors hover:text-accent-600">
+        {at && <span className="shrink-0 text-meta tabular-nums text-fg-muted" title="When it was eaten">{at}</span>}
         <Truncate className={planned ? 'italic text-fg-muted' : 'text-fg'}>{name}</Truncate>
         {planned && PLANNED_PILL}
       </button>

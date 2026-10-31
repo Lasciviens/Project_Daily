@@ -1,8 +1,9 @@
 import { useState, type InputHTMLAttributes } from 'react'
-import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
-import { ChevronDown, Minus, Plus, Star, X } from 'lucide-react'
+import { Listbox, ListboxButton, ListboxOptions, ListboxOption, Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
+import { ChevronDown, Clock, Minus, Plus, Star, X } from 'lucide-react'
 import { IconButton, Truncate, cx } from '../../../shared/ui'
 import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
+import { Time24Field } from '../../../shared/components/plan-modal/fields'
 import { SLOT_OPTIONS, foodEmoji, sanitizeDecimal } from './foodLogUtils'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -18,6 +19,33 @@ import type { IngredientLibraryItem, MealSlot } from '../types'
 
 // One compact dropdown for the meal slot — replaces the pill row that ate a
 // full line of the header area on phones.
+/**
+ * The time a food was eaten (181; owner, 31.10.2026: "log times for food section so I can see on my diary"):
+ * one compact button with the time ("🕒 21:27") that opens the hour and minute as the app's own 24 h chips (never
+ * the device's AM/PM) — compact enough to sit beside the meal in the logger's header on a phone. `auto` says the
+ * time is the automatic one (now for today, the meal's usual time for another day) until it is changed.
+ * `header`: the logger's header size (beside SlotSelect); otherwise a sheet row's chip.
+ */
+export function FoodTimeField({ value, onChange, auto, header = false }: { value: string; onChange: (t: string) => void; auto?: boolean; header?: boolean }) {
+  return (
+    <Popover>
+      <PopoverButton
+        aria-label={`Eaten at ${value}${auto ? ', the time it is logged' : ''} — change`}
+        title={auto ? 'The time it is logged — change it if you ate earlier' : 'When it was eaten'}
+        className={header
+          ? 'flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-control border border-line bg-surface-2 px-3 text-body font-medium tabular-nums text-fg transition-colors hover:border-line-strong data-[open]:border-line-strong'
+          : chipClass('set')}
+      >
+        <Clock aria-hidden className={header ? 'h-4 w-4 text-fg-faint' : undefined} />{value}
+      </PopoverButton>
+      <PopoverPanel anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast flex flex-col gap-1.5 p-2.5">
+        <p className="px-0.5 text-meta text-fg-muted">When you ate it</p>
+        <Time24Field size="sm" value={value} onChange={onChange} />
+      </PopoverPanel>
+    </Popover>
+  )
+}
+
 export function SlotSelect({ value, onChange }: { value: MealSlot; onChange: (s: MealSlot) => void }) {
   const current = SLOT_OPTIONS.find(o => o.id === value) ?? SLOT_OPTIONS[0]
   return (

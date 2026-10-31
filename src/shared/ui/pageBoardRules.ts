@@ -226,3 +226,19 @@ export function boardWidthRem<K extends string>(layouts: BoardLayouts<K>, step: 
   if (!m) return null
   return parseFloat(m[1]) + (l.tracks - 1) * (BOARD.side + BOARD.gap)
 }
+
+/**
+ * The header width of a page whose sections (tabs) lay out different boards: the widest of them at this step,
+ * so the header — and the tabs in it — keeps one size and place whichever section is open (owner, 31.10.2026:
+ * "the layout should not move while navigating between sections"). Null (the page's width) when any of them
+ * takes the page width.
+ */
+export function sectionsWidthRem(boards: ReadonlyArray<BoardLayouts<string>>, step: PageStep): number | null {
+  let widest = 0
+  for (const b of boards) {
+    const w = boardWidthRem(b, step)
+    if (w == null) return null
+    widest = Math.max(widest, w)
+  }
+  return widest || null
+}

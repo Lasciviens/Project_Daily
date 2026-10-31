@@ -29,7 +29,7 @@ export const matchQuery = (league: string, eventId: string) => ({
 export const standingsQuery = (league: string) => ({
   queryKey: qk.football.standings(league), queryFn: () => fetchStandings(league), staleTime: STALE.long, ...ESPN,
 })
-export const teamInfoQuery = (league: string, teamId: string) => ({
-  queryKey: qk.football.team(league, teamId), queryFn: () => fetchTeam(league, teamId), staleTime: STALE.long, ...ESPN,
+export const teamInfoQuery = (teamId: string) => ({
+  queryKey: qk.football.team(teamId), queryFn: () => fetchTeam(teamId), staleTime: STALE.long, ...ESPN,
 })
 

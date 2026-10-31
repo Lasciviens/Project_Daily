@@ -108,8 +108,8 @@ const OUTCOME_TONE: Record<'W' | 'D' | 'L', Tone> = { W: 'success', D: 'neutral'
 /** A club: where it stands, its form, its coming matches (each with Plan it) and its squad by position. */
 export function FootballTeamModal({ request, onClose }: EntityModalProps<'football-team'>) {
   const { teamId } = request
-  // ESPN reads a club under any league ("all" gives its own); a squad only under a real one.
-  const infoQ = useTeamInfo(request.league ?? 'all', teamId)
+  // The club comes from its schedule (every competition); a squad needs a real league — the club's own, else the one it was opened with.
+  const infoQ = useTeamInfo(teamId)
   const info = infoQ.data
   if (!info) {
     if (infoQ.isSuccess) return <ModalShell onClose={onClose} title="Can't open this club"><p className="text-body text-fg-2">ESPN has no page for this club.</p></ModalShell>
