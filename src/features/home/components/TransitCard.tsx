@@ -100,7 +100,7 @@ export function TransitCard() {
         ) : stopsLoading ? (
           <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
         ) : !label ? (
-          <p className="mb-3 flex flex-wrap items-center gap-x-2 text-body text-fg-muted">Tap Near me, or save a stop, to see departures here.{nearMe}</p>
+          <p className="mb-3 flex items-center gap-x-2 text-body text-fg-muted">No saved stop yet.{nearMe}</p>
         ) : (
           <>
             <p className="mb-1 flex min-w-0 items-center gap-1 text-meta text-fg-muted">

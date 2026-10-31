@@ -95,7 +95,7 @@ function StickyStack<K extends string>({ keys, sections, className, style }: {
 /**
  * ```tsx
  * <PageBoard
- *   sections={{ brief: <DailyBrief />, tasks: <TodayTasksCard />, news: <NewsWidget /> }}
+ *   sections={{ brief: <DailyBrief />, tasks: <HomeDayCard day={day} onDay={setDay} />, news: <NewsWidget /> }}
  *   layout={{
  *     1: ['brief', 'tasks', 'news'],
  *     2: { columns: [['brief', 'tasks'], ['news']] },

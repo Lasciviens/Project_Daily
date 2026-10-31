@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { qk, STALE } from '../../../shared/query'
 import { fetchTransitStops } from '../api/transitStoreApi'
 import { findPlace } from '../transitPlaces'
@@ -54,18 +55,23 @@ export function useGeolocation() {
     gcTime:    Infinity,
     retry:     false,
   })
-  const { data: stops = [] } = useQuery({ queryKey: qk.transit.stops(), queryFn: fetchTransitStops, staleTime: STALE.default })
-  const home = findPlace(stops, 'home')
+  const places = useQuery({ queryKey: qk.transit.stops(), queryFn: fetchTransitStops, staleTime: STALE.default })
+  const home = findPlace(places.data ?? [], 'home')
   const saved: GeoPosition | null = home?.lat != null && home?.lon != null ? { lat: home.lat, lon: home.lon, source: 'saved' } : null
-  const data: GeoPosition | undefined = gps.isPending ? undefined : gps.data ?? saved ?? OSLO_DEFAULT
+  // Wait for the saved places before falling back, so a card never fetches for Oslo and then again for Home.
+  const settling = gps.isPending || (!gps.data && places.isPending)
+  const data: GeoPosition | undefined = settling ? undefined : gps.data ?? saved ?? OSLO_DEFAULT
   return { ...gps, data }
 }
 
 /** "Use my location": asks the phone now (its prompt, if it has one) and shares the answer with every card. */
 export function useAskLocation() {
   const qc = useQueryClient()
-  return () => {
+  return async () => {
     askedThisSession = true
-    return qc.refetchQueries({ queryKey: qk.external.geolocation() })
+    await qc.refetchQueries({ queryKey: qk.external.geolocation() })
+    if (!qc.getQueryData<GeoPosition | null>(qk.external.geolocation())) {
+      toast.warning('No location — allow it for this app in the phone\'s settings. Your Home place is used meanwhile.')
+    }
   }
 }

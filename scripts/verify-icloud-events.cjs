@@ -111,8 +111,15 @@ const weekly = { id: 'p1', title: 'Gym', start_time: '07:00:00', end_time: '08:0
   const fnSrc = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
   const dw = fnSrc.slice(fnSrc.indexOf('async function drainWorkout'), fnSrc.indexOf('/** Rows read per page when an area moves'))
   eq(/\.eq\('icloud_key', q\.entity_id\)\.eq\('user_id', userId\)/.test(dw) && /if \(onApple\(conf\) && !shownBySession && w\.start_time\)/.test(dw)
-    && /ownEventUrl\('workout', w\.icloud_key, 'training', areaCals\)/.test(dw) && /\.not\('icloud_area', 'is', null\)/.test(dw), true,
-    'a workout is read live by its key, put only while Training is on Apple and its planned session\'s event is not there (never twice), at an address built from its key')
+    && /ownEventUrl\('workout', w\.icloud_key, 'training', areaCals\)/.test(dw) && /const shownBySession = await sessionShown\(db, userId, w\.id\)/.test(dw)
+    && /putEvent\(c, url, ev\.ics, null\)/.test(dw), true,
+    'a workout is read live by its key, put only while Training is on Apple and its planned session\'s event is not there (never twice), at an address built from its key, over the version just read')
+  const shown = fnSrc.slice(fnSrc.indexOf('async function sessionShown'), fnSrc.indexOf('/** A slot\'s task'))
+  eq(/if \(\(slots \?\? \[\]\)\.length\) return \(slots \?\? \[\]\)\.some\(b => !!b\.icloud_area\)/.test(shown)
+    && /return !!plan\?\.icloud_area && !!plan\.icloud_from && session\.occurrence_date >= plan\.icloud_from/.test(shown), true,
+    'shown by its session: its own slot in Apple Calendar, or a repeat\'s day inside the repeat\'s Apple series (from icloud_from) — a weekly plan\'s workout is never there twice')
+  eq((fnSrc.match(/await requeueSessionWorkouts\(db, userId, /g) || []).length, 5,
+    'a session\'s event put or removed (slot, plan) or deleted on the iPhone looks at its workout again — never none, never two')
 }
 const pe = E.planEvent(weekly, { ...base, area: training60, today: '2026-10-30' })
 eq([uidParts(pe.uid)[0], line(pe.ics, 'DTSTART'), line(pe.ics, 'RRULE'), line(pe.ics, 'EXDATE')],
@@ -213,7 +220,7 @@ eq([F.onApple({ enabled: true, app: 'apple' }), F.onApple({ enabled: false, app:
 eq([F.validEtag('"abc-1"'), F.validEtag('W/"x"'), F.validEtag('"a"\r\nX-Evil: 1'), F.validEtag('abc'), F.validEtag('""'), F.validEtag(null)],
   ['"abc-1"', 'W/"x"', null, null, null, null], 'a stored version goes into If-Match only as one quoted value (never a header break)')
 eq(/validEtag\(b\.icloud_etag\)/.test(drainOne) && /validEtag\(p\.icloud_etag\)/.test(drainOne), true, 'the drain sends a stored version only through that check')
-eq((drainOne.match(/await removeOld\('(slot|plan)', [bp]\.id, area, [bp]\.icloud_area, q\.area\)\n\s*return handOver\('(slot|plan)', [bp]\.id, [bp]\.google_calendar_event_id\)/g) || []).length, 2,
+eq((drainOne.match(/await removeOld\('(slot|plan)', [bp]\.id, area, [bp]\.icloud_area, q\.area\)\n(?:\s*if \(area === 'training'[^\n]*await requeueSessionWorkouts\([^\n]*\n)?\s*return handOver\('(slot|plan)', [bp]\.id, [bp]\.google_calendar_event_id\)/g) || []).length, 2,
   'the Google Calendar copy is handed over only after the Apple copy is in and linked')
 eq(/db\.rpc\('icloud_hand_over', \{ p_user: userId, p_entity: entity, p_id: id, p_event: eventId \}\)/.test(drainOne), true,
   "the hand-over is the database's (it deletes only an id the app made for that item, 175)")

@@ -2119,6 +2119,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
           return 'removed'
         }
         await removeOld('slot', b.id, area, b.icloud_area, q.area)
+        if (area === 'training' && !b.icloud_area && b.task_id) await requeueSessionWorkouts(db, userId, { taskId: b.task_id })
         return handOver('slot', b.id, b.google_calendar_event_id)
       }
     }
@@ -2129,6 +2130,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (!b.icloud_area && !q.area) return 'none'
     await removeOld('slot', b.id, null, b.icloud_area, q.area)
     if (b.icloud_area) await link('time_blocks', b.id, b.icloud_area, { icloud_area: null, icloud_etag: null })
+    if (b.icloud_area === 'training' && b.task_id) await requeueSessionWorkouts(db, userId, { taskId: b.task_id })
     return 'removed'
   }
 
@@ -2168,6 +2170,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
         return 'removed'
       }
       await removeOld('plan', p.id, area, p.icloud_area, q.area)
+      if (area === 'training' && !p.icloud_area) await requeueSessionWorkouts(db, userId, { planId: p.id })
       return handOver('plan', p.id, p.google_calendar_event_id)
     }
   }
@@ -2178,6 +2181,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   if (!p.icloud_area && !q.area) return 'none'
   await removeOld('plan', p.id, null, p.icloud_area, q.area)
   if (p.icloud_area) await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: null, icloud_etag: null, icloud_from: null, icloud_horizon: null })
+  if (p.icloud_area === 'training') await requeueSessionWorkouts(db, userId, { planId: p.id })
   return 'removed'
 }
 
@@ -2293,6 +2297,8 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
     const { data, error } = await db.rpc('apply_icloud_readback', { p_user: userId, p_entity: entity, p_id: id, p_area: area, p_change: change, p_etag: etag })
     if (error) { counts.failed++; counts.problem ??= 'A change from Apple Calendar could not be saved in the app — tried again on the next read'; return }
     if (['unlinked', 'moved', 'renamed', 'days'].includes(String(data))) counts.applied++
+    // A session's event deleted on the iPhone: its workout gets its own event again (never none, never two).
+    if (data === 'unlinked' && area === 'training') await requeueSessionWorkouts(db, userId, entity === 'plan' ? { planId: id } : { taskId: await slotTask(db, userId, id) })
     else if (data === 'ignored' || data === 'not_ours') counts.ignored++
   }
   if (batch.length) {
@@ -2477,6 +2483,48 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
 }
 
 /**
+ * Whether a workout's planned session already stands in Apple Calendar — never two events for one training: a session
+ * with its own slot, when that slot is there; a repeat's day with no slot (156), when the repeat's series is there and
+ * reaches that day (from `icloud_from`; the series keeps an untouched day — no EXDATE for a ticked one).
+ */
+async function sessionShown(db: Db, userId: string, workoutId: string): Promise<boolean> {
+  const fail = () => new ICloudError('read', 'A workout\'s session could not be read')
+  const { data: session, error } = await db.from('tasks').select('id, schedule_block_id, occurrence_date')
+    .eq('user_id', userId).eq('hevy_workout_id', workoutId).maybeSingle()
+  if (error) throw fail()
+  if (!session) return false
+  const { data: slots, error: be } = await db.from('time_blocks').select('icloud_area').eq('user_id', userId).eq('task_id', session.id)
+  if (be) throw fail()
+  if ((slots ?? []).length) return (slots ?? []).some(b => !!b.icloud_area)
+  if (!session.schedule_block_id || !session.occurrence_date) return false
+  const { data: plan, error: pe } = await db.from('schedule_blocks').select('icloud_area, icloud_from')
+    .eq('user_id', userId).eq('id', session.schedule_block_id).maybeSingle()
+  if (pe) throw fail()
+  return !!plan?.icloud_area && !!plan.icloud_from && session.occurrence_date >= plan.icloud_from
+}
+
+/** A slot's task (null: none, or not read). */
+async function slotTask(db: Db, userId: string, slotId: string): Promise<string | null> {
+  const { data } = await db.from('time_blocks').select('task_id').eq('user_id', userId).eq('id', slotId).maybeSingle()
+  return (data?.task_id as string | null) ?? null
+}
+
+/** A session's event came or went (put, removed, deleted on the iPhone): its workout is looked at again. */
+async function requeueSessionWorkouts(db: Db, userId: string, by: { taskId: string | null } | { planId: string }): Promise<void> {
+  let q = db.from('tasks').select('hevy_workout_id').eq('user_id', userId).not('hevy_workout_id', 'is', null)
+  if ('planId' in by) q = q.eq('schedule_block_id', by.planId)
+  else if (by.taskId) q = q.eq('id', by.taskId)
+  else return
+  const { data: tasks } = await q.limit(500)
+  const ids = (tasks ?? []).map(t => t.hevy_workout_id as string)
+  if (!ids.length) return
+  const { data: ws } = await db.from('hevy_workouts').select('icloud_key, icloud_area').eq('user_id', userId).in('id', ids)
+  if ((ws ?? []).length) {
+    await db.from('icloud_outbox').upsert((ws ?? []).map(w => ({ user_id: userId, entity: 'workout', entity_id: w.icloud_key, area: w.icloud_area })), { onConflict: 'user_id,entity,entity_id' })
+  }
+}
+
+/**
  * A Hevy workout (179): its own event in the Training calendar while Training is on Apple, read live by its key. Not
  * when its planned session's event is already there (the ticked session stands for it) — never twice. A workout gone,
  * or Training back on Google, takes its event away.
@@ -2491,14 +2539,7 @@ async function drainWorkout(db: Db, c: Creds, userId: string, q: QueueRow, prefs
     await removeOld('workout', q.entity_id, null, q.area)
     return q.area ? 'removed' : 'none'
   }
-  const { data: session, error: se } = await db.from('tasks').select('id').eq('user_id', userId).eq('hevy_workout_id', w.id).maybeSingle()
-  if (se) throw new ICloudError('read', 'A workout\'s session could not be read')
-  let shownBySession = false
-  if (session) {
-    const { data: slot, error: be } = await db.from('time_blocks').select('id').eq('user_id', userId).eq('task_id', session.id).not('icloud_area', 'is', null).limit(1)
-    if (be) throw new ICloudError('read', 'A workout\'s session could not be read')
-    shownBySession = (slot ?? []).length > 0
-  }
+  const shownBySession = await sessionShown(db, userId, w.id)
   const conf = prefs.areas.training
   const link = async (was: string | null, values: Record<string, unknown>) => {
     let u = db.from('hevy_workouts').update(values).eq('id', w.id).eq('user_id', userId)
@@ -2517,7 +2558,11 @@ async function drainWorkout(db: Db, c: Creds, userId: string, q: QueueRow, prefs
       // otherwise be refused for ever (412); the latest version wins (owner, 31.10.2026).
       const etag = await putEvent(c, url, ev.ics, null)
       // Linked only while the row still is what was read; another run that linked it meanwhile wrote the same event.
-      await link(w.icloud_area, { icloud_area: 'training', icloud_etag: validEtag(etag) })
+      if (!(await link(w.icloud_area, { icloud_area: 'training', icloud_etag: validEtag(etag) }))) {
+        const { data: still } = await db.from('hevy_workouts').select('id').eq('id', w.id).eq('user_id', userId).maybeSingle()
+        // Deleted while it was being written: the copy just made goes again (never an orphan event).
+        if (!still) { await removeOwnEvent(c, 'workout', w.icloud_key, 'training', areaCals); return 'removed' }
+      }
       return 'put'
     }
   }

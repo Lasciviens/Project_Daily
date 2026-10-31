@@ -52,10 +52,6 @@ export interface TodayOverview {
   /** Minutes the day's schedule holds (every timed item, its own portion). */
   plannedMinutes: number
   nextTraining: NextTrainingItem | null
-  /** The training session after `nextTraining` — what the Home hero shows when
-   *  the next training is already the "Next up" item, so one session is never
-   *  shown twice side by side. */
-  trainingAfterNext: NextTrainingItem | null
   isLoading: boolean
   /** Google Calendar's events for the day are still being read (kept out of isLoading: a token refresh
    *  or a slow Google must never put the brief back into a skeleton). */
@@ -66,13 +62,6 @@ const hourLabel = (h: number) => {
   const whole = Math.floor(h)
   const min = Math.round((h - whole) * 60)
   return `${String(whole + Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
-}
-
-/** 'HH:MM' one minute later ('23:59' → '24:00', which sorts after every time that day). */
-function minuteAfter(hhmm: string): string {
-  const [h, m] = hhmm.split(':').map(Number)
-  const t = h * 60 + m + 1
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
 }
 
 /**
@@ -133,16 +122,6 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
     })
-    // From one minute after the next session starts (anything at the same
-    // time is the same slot), so this is a genuinely later session.
-    const trainingAfterNext = nextTraining ? pickNextTrainingSession({
-      blocks:        (trainingQ.data ?? []).filter(b => !(nextTraining.kind === 'block' && b.id === nextTraining.id)),
-      templates:     trainingTemplates,
-      dayTasks:      trainingDays,
-      today:         nextTraining.date,
-      nowHHMM:       nextTraining.startTime ? minuteAfter(nextTraining.startTime) : '99:99',
-      lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
-    }) : null
 
     return {
       // The Day plan's own counts: a repeat's day still to do is open there too.
@@ -151,9 +130,8 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       upcoming,
       plannedMinutes: plannedMinutes(items),
       nextTraining,
-      trainingAfterNext,
-      // Every read of the app's own the tiles show waits here, so a picked day appears once and
-      // complete; Google's is apart (calendarLoading) — Home's picked day waits for it too.
+      // Every read of the app's own waits here, so a day appears once and complete; Google's is
+      // apart (calendarLoading).
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
         || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading,
       calendarLoading: calendarQ.isLoading,

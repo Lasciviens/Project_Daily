@@ -3,7 +3,6 @@ import { PageBoard, PageContainer, cx, useBoardStep } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { DailyBrief } from '../components/DailyBrief'
-import { HomeHero } from '../components/HomeHero'
 import { HomeDayCard } from '../components/HomeDayCard'
 import { TransitCard } from '../components/TransitCard'
 import { WeatherWidget, WeatherTile } from '../components/WeatherWidget'
@@ -58,19 +57,13 @@ function GlanceRow() {
 }
 
 /**
- * The week and the picked day's list side by side under the brief (laptop and up),
- * equal height, stacking again when the main track is narrow. The 44rem here
- * is homeBoard.ts' PAIR_SIDE_BY_SIDE_REM (the split layout starts there too).
- * `h-full`: on the split board the pair stretches to its row (the weather
- * tile beside it), and so do the week and the tasks.
+ * The day card under the brief (laptop and up). `h-full`: on the split board
+ * it stretches to its row (the weather tile beside it), content top-aligned.
  */
-function HeroAndTasks({ day, onDay }: { day: string; onDay: (day: string) => void }) {
+function DayCardCell({ day, onDay }: { day: string; onDay: (day: string) => void }) {
   return (
-    <div className="@container">
-      <div className="grid h-full grid-cols-1 items-stretch gap-4 @[44rem]:grid-cols-2 [&>*]:h-full">
-        <HomeHero selected={day} onSelect={onDay} />
-        <HomeDayCard day={day} />
-      </div>
+    <div className="h-full">
+      <HomeDayCard day={day} onDay={onDay} />
     </div>
   )
 }
@@ -92,16 +85,19 @@ export function HomePage() {
   // after "Use my location").
   useGeolocation()
   // The same content width PageBoard measures: it picks the split laptop
-  // layout once the week and the tasks sit side by side (homeBoardFor).
+  // layout once the main track is 44rem wide (homeBoardFor).
   const { ref, width } = useElementWidthRem()
-  // The day the week strip picked; the day's list shows the same day.
-  const [day, setDay] = useState(todayStr)
+  // The day the week strip picked; none picked is today — worked out on every render, so an app left open past
+  // midnight shows (and quick-adds to) the new day, never yesterday.
+  const [picked, setPicked] = useState<string | null>(null)
+  const today = todayStr()
+  const day = picked ?? today
+  const setDay = (d: string) => setPicked(d === today ? null : d)
 
   const sections: Record<HomeSection, ReactNode> = {
     brief: <DailyBrief />,
-    hero: <HomeHero selected={day} onSelect={setDay} />,
-    tasks: <HomeDayCard day={day} />,
-    pair: <HeroAndTasks day={day} onDay={setDay} />,
+    tasks: <HomeDayCard day={day} onDay={setDay} />,
+    pair: <DayCardCell day={day} onDay={setDay} />,
     transit: <TransitCard />,
     tiles: <GlanceTiles />,
     weatherTile: <WeatherTile large />,

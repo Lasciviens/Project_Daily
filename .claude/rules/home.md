@@ -15,7 +15,7 @@ Background: `docs/features/home.md`.
 - Line cards up through the board, never through content heights: the split laptop board is PageBoard `rows` — brief | transit, then week | tasks | weather, each card stretched to its row's tallest, content top-aligned — and the glance row lies on the board's own tracks (`GLANCE_ROW_TEMPLATE`). Independent column stacks only line up by luck (`verify-page-board`).
 - One currency converter: the Money tile's Convert screen and the Currency popup/widget's Convert tab render `CurrencyConverter` (logic in `api/currencyConvert.ts`, `verify-currency-convert`); it stores nothing.
 - Geolocation never prompts on opening the app: the phone is asked only when it already allows it, or after Near me / Use my location (`useAskLocation`); otherwise the saved Home place, else Oslo — a fallback counts as a success, never as the user's real position (`source === 'gps'` is).
-- Home shows a day once: the picked day's list is Daily's `DayAgenda` (`HomeDayCard`); the week card keeps only the strip and its two tiles — never a second list of the day.
+- Home shows a day once: one card (`HomeDayCard`) — the week strip, the picked day as Daily's `DayAgenda`, then the quick add (the card's one Add). Never a second list of the day, never a second Add.
 - Place search is EnTur's geocoder v3 through the one `<entur-geocoder>` block (`enturGeocoder.ts`, a verbatim copy in `ai-proxy` — `verify-entur-geocoder`); `countries=no` is lowercase. EnTur facts: `docs/integrations/entur.md`.
 - Transit (EnTur): only GraphQL fields verified live; quays are grouped by their raw NSR id (a roadside stop's `publicCode` is an empty string); filter departures, not groups.
 - `articleExtract.ts` is hand-mirrored into `news-article` (`verify-article-extract`).
