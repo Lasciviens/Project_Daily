@@ -140,7 +140,7 @@ export function ItemForm({
           />
         )}
         {form.time && <LengthChip duration={form.duration} onChange={duration => patch({ duration })} />}
-        {form.time && <ZoneChip zone={form.timeZone} savedZone={savedZone} onPick={timeZone => patch({ timeZone, zoneTouched: true })} />}
+        {form.time && <ZoneChip zone={form.timeZone} savedZone={savedZone} onPick={timeZone => patch({ timeZone })} />}
         {canAddRepeat && (
           <button type="button" onClick={startRepeat} className={chipClass('add')}>
             <Repeat aria-hidden />Repeat

@@ -55,10 +55,10 @@ function edgeOf(row: DayRow): string {
   return EDGE[tag] ?? EDGE.accent
 }
 
-/** The time column beside a timed row: start, where a span ends, whose clock it is when not the phone's (183: "Oslo"),
- *  its colour, an overlap. */
-export function TimeGutter({ row }: { row: DayRow }) {
-  const zone = row.kind === 'event' ? null : zoneTag(rowTimeZone(row))
+/** The time column beside a timed row: start, where a span ends, whose clock it is when not the phone's (183: "Oslo";
+ *  `hideZone` when the Schedule heading says it once for every row), its colour, an overlap. */
+export function TimeGutter({ row, hideZone = false }: { row: DayRow; hideZone?: boolean }) {
+  const zone = hideZone || row.kind === 'event' ? null : zoneTag(rowTimeZone(row))
   return (
     <div className={cx('flex w-12 shrink-0 flex-col items-end border-r-2 pr-1.5 pt-2.5 tabular-nums', edgeOf(row))}>
       <span className="text-meta font-semibold leading-none text-fg">{hourLabel(row.startHour ?? 0)}</span>

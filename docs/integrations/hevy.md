@@ -28,10 +28,12 @@ abandon the project entirely".
   **`HEVY_USER_ID`** (stricter than `isAppUser`; `verify-owner-lock` lists them as own-owner-check functions).
   `hevy-sync` writes as `HEVY_USER_ID`. The assistant's `create_hevy_routine` / `update_hevy_routine` forward to
   `hevy-api` with the owner's JWT (the update only after the Confirm card).
-- **Stored workouts are read-only for the browser** (182, 02.11.2026 — the security review of #593): every
-  workout is an Apple Calendar event since 179, named by its `icloud_key`, so only the syncs (service role) and
-  icloud-calendar write `hevy_workouts`; the app and the assistant read it. A database rule that touches a workout
-  (166's `training_workout_relink`) is SECURITY DEFINER. `verify-db-hevy-read-only`.
+- **A stored workout can't be changed from the browser** (182, 02.11.2026 — the security review of #593): every
+  workout is an Apple Calendar event since 179, so only the syncs (service role) and icloud-calendar update
+  `hevy_workouts`. The browser keeps SELECT, and DELETE + INSERT for Developer → Connections → Check workouts with
+  Hevy (it deletes the workouts Hevy no longer has through `app_delete_rows`, and Undo puts them back); an insert
+  can't aim at another workout's event (`icloud_key` is generated from the row's id). A database rule that touches a
+  workout (166's `training_workout_relink`) is SECURITY DEFINER. `verify-db-hevy-no-update`.
 
 ## Endpoints we call
 

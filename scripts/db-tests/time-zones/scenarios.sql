@@ -30,6 +30,14 @@ select t_ok((select count(*) = 2 from pg_trigger where tgname in ('trg_time_bloc
 select t_ok(not exists (select 1 from public.time_blocks where time_zone is not null)
         and not exists (select 1 from public.schedule_blocks where time_zone is not null),
   'Z0 nothing is backfilled (a row with no zone keeps meaning Oslo)');
+select t_ok((select count(*) = 2 from information_schema.columns where table_schema = 'public' and column_name = 'time_zone'
+              and table_name in ('time_blocks', 'schedule_blocks') and column_default = '''''::text'),
+  'Z0 the column''s default is '''' — "not given" — so an explicit null (Undo putting a row back) stays null');
+select t_ok('Europe/Oslo' = any (public.time_zone_names()) and 'Europe/Istanbul' = any (public.time_zone_names())
+        and 'America/Argentina/Buenos_Aires' = any (public.time_zone_names())
+        and not ('Factory' = any (public.time_zone_names())) and not ('localtime' = any (public.time_zone_names()))
+        and not ('posixrules' = any (public.time_zone_names())) and cardinality(public.time_zone_names()) > 300,
+  'Z0 the zone names, read once when 183 ran: the real zones, without Factory, localtime and posixrules');
 
 -- ═══ Z1. Zone names ═════════════════════════════════════════════════════════
 select t_ok(public.time_zone_ok('Europe/Istanbul') and public.time_zone_ok('Europe/Oslo') and public.time_zone_ok('America/Argentina/Buenos_Aires')
@@ -81,6 +89,13 @@ X-INJECTED:1');
   exception when invalid_parameter_value then perform t_ok(true, 'Z3 an unknown zone is refused on a change too'); end;
   update public.time_blocks set start_time = '10:00' where id = v;
   perform t_ok(public.t_zone(v) is null, 'Z3 a later change of the time keeps the zone the slot has (a move never re-zones)');
+  perform public.t_phone('Europe/Istanbul');
+  insert into public.time_blocks (date, title, start_time, duration_minutes, time_zone) values ('2026-11-12', 'Put back', '09:00', 30, null) returning id into v;
+  perform t_ok(public.t_zone(v) is null, 'Z3 an explicit null — a row put back as it was — stays the home zone, whatever the phone');
+  update public.time_blocks set time_zone = 'Asia/Tokyo' where id = v;
+  update public.time_blocks set time_zone = '' where id = v;
+  perform t_ok(public.t_zone(v) is null, 'Z3 a zone changed to '''' is no zone (the home zone)');
+  perform public.t_phone(null);
 end $$;
 reset role;
 
@@ -194,3 +209,49 @@ update public.time_blocks set time_zone = 'Europe/Istanbul' where id = ((select 
 reset role;
 select t_ok((select count(*) = 1 from public.calendar_outbox where operation = 'upsert' and event_id = 'lasci0zone0test'),
   'Z5 a linked slot''s zone changed queues its Google event once (every writer, not only the sheet)');
+
+-- ═══ Z6. Undo puts a row back as it was — never in the zone of the phone that pressed it ════
+set role authenticated;
+do $$
+declare r jsonb; d jsonb;
+begin
+  perform public.t_phone(null);
+  r := public.app_save_item('{"title": "Haircut", "domain": "personal", "priority": "medium", "date": "2026-11-13", "time": "11:00",
+    "durationMinutes": 30, "google": "calendar", "today": "2026-11-02"}');
+  insert into public.t_keep values ('haircut', r);
+  perform t_ok(public.t_zone((r ->> 'blockId')::uuid) is null, 'Z6 setup: an item from a writer with no zone is in the home zone');
+  r := public.app_save_item('{"title": "Call Tokyo", "domain": "personal", "priority": "medium", "date": "2026-11-13", "time": "02:00",
+    "durationMinutes": 30, "google": "calendar", "today": "2026-11-02", "timeZone": "Asia/Tokyo"}');
+  insert into public.t_keep values ('tokyo', r);
+  d := public.app_delete_rows('tasks', array[(select v ->> 'taskId' from public.t_keep where k = 'haircut'), (select v ->> 'taskId' from public.t_keep where k = 'tokyo')]);
+  perform t_ok(not exists (select 1 from public.time_blocks where id in (((select v from public.t_keep where k = 'haircut') ->> 'blockId')::uuid,
+                                                                          ((select v from public.t_keep where k = 'tokyo') ->> 'blockId')::uuid)),
+    'Z6 deleting both items takes their slots too');
+  perform public.t_phone('America/New_York');
+  perform public.app_restore_rows(d);
+  perform t_ok(public.t_zone(((select v from public.t_keep where k = 'haircut') ->> 'blockId')::uuid) is null,
+    'Z6 Undo from a phone in New York puts the home-zone item back in the home zone (its event doesn''t move)');
+  perform t_ok(public.t_zone(((select v from public.t_keep where k = 'tokyo') ->> 'blockId')::uuid) = 'Asia/Tokyo',
+    'Z6 …and the Tokyo item in Tokyo''s');
+  perform public.t_phone(null);
+end $$;
+reset role;
+
+-- ═══ Z7. A stored name the database no longer knows never blocks a save that keeps it ═════
+alter table public.time_blocks disable trigger trg_time_block_time_zone;
+update public.time_blocks set time_zone = 'Atlantis/Lost' where id = ((select v from public.t_keep where k = 'haircut') ->> 'blockId')::uuid;
+alter table public.time_blocks enable trigger trg_time_block_time_zone;
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item(jsonb_build_object('title', 'Haircut (moved)', 'domain', 'personal', 'priority', 'medium', 'date', '2026-11-13',
+    'time', '12:00', 'durationMinutes', 30, 'google', 'calendar', 'today', '2026-11-02',
+    'taskId', (select v ->> 'taskId' from public.t_keep where k = 'haircut'), 'blockId', (select v ->> 'blockId' from public.t_keep where k = 'haircut')));
+  perform t_ok(public.t_zone((r ->> 'blockId')::uuid) = 'Atlantis/Lost', 'Z7 an edit that keeps a zone the database no longer knows still saves (a zone-file update never locks an item)');
+  begin
+    update public.time_blocks set time_zone = 'Mars/Olympus_Mons' where id = (r ->> 'blockId')::uuid;
+    perform t_ok(false, 'Z7 …while a new unknown name is still refused');
+  exception when invalid_parameter_value then perform t_ok(true, 'Z7 …while a new unknown name is still refused'); end;
+end $$;
+reset role;

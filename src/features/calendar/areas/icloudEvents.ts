@@ -133,6 +133,8 @@ export function vtimezoneLines(zone: string, year: number): string[] {
   const known = zoneDefinitions.get(key)
   if (known) return known
   const lines = zoneDefinition(zone, y)
+  // Bounded (security review, 02.11.2026): a run that meets many zones and years never grows it without end.
+  if (zoneDefinitions.size >= 200) zoneDefinitions.clear()
   zoneDefinitions.set(key, lines)
   return lines
 }

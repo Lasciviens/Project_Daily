@@ -11,10 +11,11 @@
 --    as the writers read it before. The zone is written into iCalendar lines and Google's events, so it is
 --    input (the warning in AGENTS.md): the column takes only a name's shape (CHECK) and a trigger refuses a
 --    name Postgres doesn't know (pg_timezone_names) — for every writer.
--- B. A new slot or plan with no zone gets one: a day split off a plan → the plan's (never the phone's: the day
---    belongs to its series); anything else → the zone of the phone that sent the request (the website sends it
---    as `x-time-zone` with every database call; checked the same way). Server writers (the syncs, the phone
---    gateway, the assistant's function) send none: the home zone.
+-- B. A new slot or plan that names no zone (the column's default '') gets one: a day split off a plan → the plan's
+--    (never the phone's: the day belongs to its series); anything else → the zone of the phone that sent the request
+--    (the website sends it as `x-time-zone` with every database call; checked the same way). Server writers (the
+--    syncs, the phone gateway, the assistant's function) send none: the home zone. An explicit null stays null, so
+--    Undo puts a row back as it was. A stored name is checked only when it changes.
 -- C. The one item save takes `timeZone` (the sheet's: a new item's is the phone's, an edit's is the item's own
 --    unless the owner picked another) — 180's body with only the zone lines added (verify-db-time-zones).
 -- D. A zone changed is a change of the event: Apple's queue triggers (175) and Google's upsert trigger (155)
@@ -26,17 +27,35 @@
 -- deploy runs it as one transaction.
 
 -- ── A. Zone names ─────────────────────────────────────────────────────────────
+-- The zone names this database knows, read once when 183 runs: reading pg_timezone_names takes about 8 ms a call,
+-- too slow for a check on every row (security review, 02.11.2026). Only IANA-shaped names, without Factory,
+-- localtime and posixrules (no phone reports them, and the browser's and the functions' runtime refuse them).
+do $mig$
+begin
+  execute format($f$
+    create or replace function public.time_zone_names()
+    returns text[]
+    language sql
+    immutable
+    set search_path = ''
+    as $b$ select %L::text[] $b$
+  $f$, (select array_agg(z.name order by z.name) from pg_catalog.pg_timezone_names z
+         where z.name ~ '^[A-Za-z]+([/_+-][A-Za-z0-9]+)*$' and length(z.name) <= 64
+           and z.name not in ('Factory', 'localtime', 'posixrules')));
+end
+$mig$;
+
 -- A zone name the database knows, in IANA's shape (letters, then parts after / _ + -; at most 64 characters).
 create or replace function public.time_zone_ok(p_zone text)
 returns boolean
 language sql
-stable
+immutable
 set search_path = ''
 as $$
   select p_zone is not null
      and length(p_zone) <= 64
      and p_zone ~ '^[A-Za-z]+([/_+-][A-Za-z0-9]+)*$'
-     and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_zone)
+     and p_zone = any (public.time_zone_names())
 $$;
 
 -- The zone of the phone that sent this request (`x-time-zone`, which PostgREST hands over in request.headers),
@@ -64,6 +83,10 @@ $$;
 
 alter table public.time_blocks add column if not exists time_zone text;
 alter table public.schedule_blocks add column if not exists time_zone text;
+-- '' = "not given": a writer that leaves the column out. The trigger turns it into a zone (or none) before the row is
+-- stored; an explicit null — Undo putting a row back exactly as it was — stays null (security review, 02.11.2026).
+alter table public.time_blocks alter column time_zone set default '';
+alter table public.schedule_blocks alter column time_zone set default '';
 alter table public.time_blocks drop constraint if exists time_blocks_time_zone_shape;
 alter table public.time_blocks add constraint time_blocks_time_zone_shape
   check (time_zone is null or (length(time_zone) <= 64 and time_zone ~ '^[A-Za-z]+([/_+-][A-Za-z0-9]+)*$'));
@@ -84,18 +107,24 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if tg_op = 'INSERT' and new.time_zone is null then
-    if new.schedule_block_id is not null then
-      -- A day of a plan is in its plan's zone; a plan with none leaves it none (the home zone).
+  -- '' is the column's default: a writer that named no zone. An explicit null (Undo putting a row back as it was) stays
+  -- the home zone — never the zone of the phone that pressed Undo.
+  if new.time_zone = '' then
+    if tg_op = 'UPDATE' then
+      new.time_zone := null;
+    elsif new.schedule_block_id is not null then
+      -- A day of a plan is in its plan's zone (its own, else its Google series'); a plan with none: the home zone.
       select coalesce(s.time_zone, case when public.time_zone_ok(s.google_calendar_time_zone) then s.google_calendar_time_zone end)
         into new.time_zone
-        from public.schedule_blocks s where s.id = new.schedule_block_id;
+        from public.schedule_blocks s where s.id = new.schedule_block_id and s.user_id = new.user_id;
     else
       new.time_zone := public.app_request_time_zone();
     end if;
-    return new;  -- every value filled here was checked already (a plan's zone when it was stored)
+    return new;  -- a filled value was checked already (a plan's when it was stored, the request's by app_request_time_zone)
   end if;
-  if new.time_zone is not null and not public.time_zone_ok(new.time_zone) then
+  -- Only a new name is checked: a stored one that a later zone-file update no longer knows never blocks a save.
+  if new.time_zone is not null and (tg_op = 'INSERT' or new.time_zone is distinct from old.time_zone)
+     and not public.time_zone_ok(new.time_zone) then
     raise exception 'Not a time zone the database knows' using errcode = '22023';
   end if;
   return new;
@@ -112,11 +141,13 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if tg_op = 'INSERT' and new.time_zone is null then
-    new.time_zone := public.app_request_time_zone();
+  -- '' is the column's default (no zone named): a new plan takes the phone's of this request; an explicit null stays.
+  if new.time_zone = '' then
+    new.time_zone := case when tg_op = 'INSERT' then public.app_request_time_zone() end;
     return new;  -- checked by app_request_time_zone
   end if;
-  if new.time_zone is not null and not public.time_zone_ok(new.time_zone) then
+  if new.time_zone is not null and (tg_op = 'INSERT' or new.time_zone is distinct from old.time_zone)
+     and not public.time_zone_ok(new.time_zone) then
     raise exception 'Not a time zone the database knows' using errcode = '22023';
   end if;
   return new;
@@ -307,7 +338,7 @@ begin
                                           repeat_unit, repeat_dates, effective_from, start_time, end_time, busy, color, category,
                                           google_target, time_zone)
       values (v_user, v_title, v_notes, v_domain, v_priority, v_days, v_kind, v_interval, v_unit, v_dates, v_starts,
-              v_time, v_end, v_busy, coalesce(v_color_in, 'blue'), v_category, v_google, v_zone)
+              v_time, v_end, v_busy, coalesce(v_color_in, 'blue'), v_category, v_google, coalesce(v_zone, ''))
       returning id into v_plan_id;
       if v_task_id is not null then
         -- The one-off it was: its slot goes with it (ON DELETE CASCADE), and the
@@ -471,7 +502,7 @@ begin
               coalesce(v_color_in, 'accent'), coalesce(v_cat_in, public.item_default_category(v_domain, t.source_type)), v_task_id,
               case when v_bsrc is not null then v_bsrc_type else public.item_block_source(coalesce(v_src_type, t.source_type)) end,
               case when v_bsrc is not null then v_bsrc_id else coalesce(v_src_id, t.source_id) end,
-              v_season, v_episode, v_zone)
+              v_season, v_episode, coalesce(v_zone, ''))
       returning id into v_block_id;
     end if;
   elsif v_block_id is not null then
@@ -565,7 +596,7 @@ create or replace function public.enqueue_calendar_event_upsert()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 begin
   if coalesce(current_setting('app.calendar_readback', true), '') = 'on' then return null; end if;
@@ -635,6 +666,8 @@ begin
 end;
 $$;
 
+revoke all on function public.time_zone_names() from public, anon;
+grant execute on function public.time_zone_names() to authenticated, service_role;
 revoke all on function public.time_zone_ok(text) from public, anon;
 grant execute on function public.time_zone_ok(text) to authenticated, service_role;
 revoke all on function public.app_request_time_zone() from public, anon;

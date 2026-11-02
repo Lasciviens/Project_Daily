@@ -32,13 +32,15 @@ const fail = msg => { console.error(`verify-db-time-zones: ${msg}`); process.exi
     .replace("\n  -- 183: the sheet's zone; one the database doesn't know is left out (an edit keeps the item's, a new item takes\n  -- the phone's or the home zone) — a phone reporting an old name never fails a save.\n  v_zone      text := case when public.time_zone_ok(btrim(p_item ->> 'timeZone')) then btrim(p_item ->> 'timeZone') end;", '')
     .replace('\n        time_zone = coalesce(v_zone, p.time_zone),', '')
     .replace('google_target, time_zone)', 'google_target)')
-    .replace("v_category, v_google, v_zone)", 'v_category, v_google)')
+    .replace("v_category, v_google, coalesce(v_zone, ''))", 'v_category, v_google)')
     .replace('\n        time_zone = coalesce(v_zone, b.time_zone),', '')
     .replace('season_number, episode_number, time_zone)', 'season_number, episode_number)')
-    .replace('v_season, v_episode, v_zone)', 'v_season, v_episode)'))
+    .replace("v_season, v_episode, coalesce(v_zone, ''))", 'v_season, v_episode)'))
   same('icloud_time_block_changed', '175_icloud_switch.sql', s => s.replace('new.notes, new.time_zone, new.user_id', 'new.notes, new.user_id').replace('old.notes, old.time_zone, old.user_id', 'old.notes, old.user_id'))
   same('icloud_schedule_block_changed', '175_icloud_switch.sql', s => s.replace('new.google_calendar_time_zone, new.time_zone,', 'new.google_calendar_time_zone,').replace('old.google_calendar_time_zone, old.time_zone,', 'old.google_calendar_time_zone,'))
-  same('enqueue_calendar_event_upsert', '155_one_item.sql', s => s.replace('new.busy, new.time_zone)', 'new.busy)').replace('old.busy, old.time_zone)', 'old.busy)'))
+  // …and SECURITY DEFINER with search_path '' now (AGENTS.md; every name in it is qualified or built in).
+  same('enqueue_calendar_event_upsert', '155_one_item.sql', s => s.replace('new.busy, new.time_zone)', 'new.busy)').replace('old.busy, old.time_zone)', 'old.busy)')
+    .replace("security definer\nset search_path = ''\nas $$", () => 'security definer\nset search_path = public\nas $$'))
   same('food_log_eaten_time', '181_food_log_times.sql', s => s
     .replace(" now() end)\n          at time zone coalesce(public.app_request_time_zone(), 'Europe/Oslo');", " now() end) at time zone 'Europe/Oslo';")
     .replace(' a planned row ticked eaten now — on the\n  -- clock of the phone that sent it (183), else Oslo\'s (a server writer: the phone gateway, Scriptable).', ' a planned row ticked eaten now.'))
@@ -52,13 +54,16 @@ const fail = msg => { console.error(`verify-db-time-zones: ${msg}`); process.exi
   if (/\bnet\.http_|vault\.|googleapis|icloud\.com/i.test(sql)) problems.push('a call outside the database')
   if (/create table/i.test(sql)) problems.push('a new table')
   if (/^(update|insert into|delete from) /im.test(sql)) problems.push('a top-level write (183 backfills nothing)')
-  for (const name of ['time_zone_ok(text)', 'app_request_time_zone()', 'time_block_time_zone_fill()', 'schedule_block_time_zone_fill()']) {
+  if (/pg_timezone_names/.test(sql.replace(/do \$mig\$[\s\S]*?\$mig\$;/, ''))) problems.push('pg_timezone_names read outside the one-time list (about 8 ms a read — too slow for a check per row)')
+  for (const name of ['time_zone_names()', 'time_zone_ok(text)', 'app_request_time_zone()', 'time_block_time_zone_fill()', 'schedule_block_time_zone_fill()']) {
     if (!sql.includes(`grant execute on function public.${name} to authenticated, service_role`)) problems.push(`no grant for ${name}`)
     if (!sql.includes(`revoke all on function public.${name} from public, anon`)) problems.push(`no revoke for ${name}`)
   }
-  // The zone check: one IANA shape in SQL (twice: the CHECKs and time_zone_ok) = the browser's (calendarEventRules).
+  // The zone check: one IANA shape in SQL (the list, time_zone_ok and the two CHECKs) = the browser's (calendarEventRules).
   const shapes = [...sql.matchAll(/~ '(\^\[A-Za-z\]\+\(\[\/_\+-\]\[A-Za-z0-9\]\+\)\*\$)'/g)].map(m => m[1])
-  if (shapes.length !== 3) problems.push(`the zone shape should appear 3 times (time_zone_ok and the two CHECKs), found ${shapes.length}`)
+  if (shapes.length !== 4) problems.push(`the zone shape should appear 4 times (the list, time_zone_ok and the two CHECKs), found ${shapes.length}`)
+  const browserShape = readFileSync(join(root, 'src/features/calendar/calendarEventRules.ts'), 'utf8').match(/export const IANA_ZONE = \/(.+)\/$/m)?.[1]
+  if (browserShape?.replace('(?:', '(') !== shapes[0]) problems.push(`the SQL zone shape ${shapes[0]} differs from the browser's ${browserShape}`)
   if (problems.length) fail(`migration 183 has ${problems.join('; ')}`)
 }
 
@@ -127,11 +132,11 @@ try {
   // B. Food log times.
   const b = withDb(url, food)
   for (const f of [join(root, 'scripts/db-tests/food-dishes/base.sql'), mig('106_food_macros_computed.sql'), mig('181_food_log_times.sql')]) step(f, () => psql(b, ['-f', f]))
-  const zoneFns = ['time_zone_ok', 'app_request_time_zone', 'food_log_eaten_time'].map(n => {
+  const zoneFns = (src183.match(/do \$mig\$[\s\S]*?\$mig\$;/)?.[0] ?? '') + '\n' + ['time_zone_ok', 'app_request_time_zone', 'food_log_eaten_time'].map(n => {
     const body = fnOf(src183, n)
     if (!body) throw new Error(`verify-db-time-zones: no ${n} in migration 183`)
     return body
-  }).join('\n') + '\n' + src183.split('\n').filter(l => /^(revoke|grant) .*(time_zone_ok|app_request_time_zone)/.test(l)).join('\n')
+  }).join('\n') + '\n' + src183.split('\n').filter(l => /^(revoke|grant) .*(time_zone_names|time_zone_ok|app_request_time_zone)/.test(l)).join('\n')
   for (const n of [1, 2]) step(`183 food part (${n})`, () => psql(b, ['-c', zoneFns]))
   step('food scenarios', () => done.push(['food', runScenarios(b, join(root, 'scripts/db-tests/time-zones/food.sql'))]))
 } catch (e) {

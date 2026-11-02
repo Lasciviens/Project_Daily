@@ -53,14 +53,15 @@ const F = require('../src/shared/components/plan-modal/planForm.ts')
     date: '2026-11-12', time: '17:00', durationMinutes: 60, deadline: null, repeat: null, google: 'calendar', googleTaskList: null, source: null, timeZone: 'Europe/Oslo' }
   const edit = F.buildInitialForm({ mode: 'task', today: '2026-11-02', nextTime: '17:00', item })
   eq(edit.timeZone, 'Europe/Oslo', 'an edit shows the item\'s own zone')
-  ok(!('timeZone' in F.inputFromForm(edit, { ...ctx, item })), 'an edit that didn\'t pick a zone sends none (the database keeps the item\'s — a sheet opened abroad never re-zones it)')
-  const picked = { ...edit, timeZone: 'Europe/Istanbul', zoneTouched: true }
+  eq(F.inputFromForm(edit, { ...ctx, item }).timeZone, 'Europe/Oslo', 'an edit sends the zone the sheet shows — the item\'s own, so a sheet opened abroad never re-zones it')
+  eq(F.inputFromForm({ ...edit, recurrence: 'weekly' }, { ...ctx, item }).timeZone, 'Europe/Oslo', '…and a one-off turned into a repeat keeps the clock it showed')
+  const picked = { ...edit, timeZone: 'Europe/Istanbul' }
   eq(F.inputFromForm(picked, { ...ctx, item }).timeZone, 'Europe/Istanbul', 'a zone picked in the sheet is sent')
   const match = F.buildInitialForm({ mode: 'task', today: '2026-11-02', nextTime: '17:00', defaults: { date: '2026-11-12', startTime: '20:45', scheduled: true, timeZone: 'Europe/Oslo' } })
   eq([match.timeZone, F.inputFromForm(match, ctx).timeZone], ['Europe/Oslo', 'Europe/Oslo'], 'a new item whose default time is on another clock (a match\'s kick-off on Oslo\'s) keeps that zone, even from a phone in Istanbul')
   const old = F.buildInitialForm({ mode: 'task', today: '2026-11-02', nextTime: '17:00', item: { ...item, timeZone: null } })
   eq(old.timeZone, null, 'an older item (no zone) shows the home zone…')
-  ok(!('timeZone' in F.inputFromForm(old, { ...ctx, item })), '…and its save sends none')
+  eq(F.inputFromForm(old, { ...ctx, item }).timeZone, 'Europe/Oslo', '…and its save stores that, by name (the same clock — nothing moves)')
   delete process.env.TZ
 }
 
@@ -76,6 +77,11 @@ eq(R.itemFromRows(task, null, null).timeZone, undefined, 'a task with no slot ha
 const D = require('../src/features/daily/dayItems.ts')
 eq([D.rowTimeZone({ item: { block } }), D.rowTimeZone({ item: { template: { time_zone: null, google_calendar_time_zone: 'Asia/Tokyo' } } }), D.rowTimeZone({ item: null })],
   ['Europe/Istanbul', 'Asia/Tokyo', null], 'a day row\'s zone: its slot\'s, else its plan\'s (else its Google series\'), else none')
+{
+  const chip = src('src/shared/components/plan-modal/TimeChips.tsx')
+  ok(/const abroad = !sameClock\(phone, SERVER_EVENT_TIME_ZONE\)/.test(chip) && /for \(const z of \[saved, phone, SERVER_EVENT_TIME_ZONE\]\)/.test(chip),
+    'the sheet\'s zone chip shows while the phone is away from the home clock and offers the item\'s zone, the phone\'s and Oslo\'s (one per clock)')
+}
 ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/football/hooks/useFootball.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
   'a football plan (Plan it, a subscription, a moved kick-off) is on Oslo\'s clock and says so — its time is read there (osloParts)')
 ok(/zoneTag\(rowTimeZone\(row\)\)/.test(src('src/features/daily/components/DayAgendaRows.tsx')) && /row\.kind === 'event' \? null/.test(src('src/features/daily/components/DayAgendaRows.tsx')),

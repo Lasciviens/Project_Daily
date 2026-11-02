@@ -329,12 +329,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 182: Hevy workouts are read-only for the browser (it reads
-      # them; adding, changing, deleting or emptying them is refused, Supabase's
-      # default grants included), while the Hevy syncs (service role) and a
-      # SECURITY DEFINER rule like 166's relink still write them.
-      - name: Hevy workouts read-only database scenarios
-        run: node scripts/verify-db-hevy-read-only.mjs
+      # Migration 182: a stored Hevy workout can't be changed from the browser
+      # (an update, emptying the table, Supabase's default grants included);
+      # it still reads them and deletes and puts back the ones Hevy no longer
+      # has (Check workouts with Hevy and its Undo), and the Hevy syncs
+      # (service role) and a SECURITY DEFINER rule like 166's relink still write.
+      - name: Hevy workouts no-update database scenarios
+        run: node scripts/verify-db-hevy-no-update.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 

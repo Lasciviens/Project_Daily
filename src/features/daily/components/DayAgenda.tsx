@@ -16,7 +16,8 @@ import { Button, IconButton, Skeleton, ToneDot, TonePill, Truncate, cx } from '.
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
-import { buildDayRows, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, untilLabel, type DayRow } from '../dayItems'
+import { buildDayRows, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
+import { zoneTag } from '../../../shared/utils/timeZone'
 import {
   ContinuationRow, EventRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
 } from './DayAgendaRows'
@@ -141,13 +142,17 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 
   // The now-line sits before the first row that starts later (or after the last).
   const nowAt = viewingToday ? rows.timed.findIndex(r => r.startHour! > nowHour) : -2
+  // Times on another clock than the phone's (183): said once in the heading when every timed row shares it ("Oslo time"),
+  // else under each row that differs.
+  const rowZones = rows.timed.map(r => (r.kind === 'event' ? null : zoneTag(rowTimeZone(r))))
+  const sharedZone = rowZones.length > 0 && rowZones.every(z => z !== null && z === rowZones[0]) ? rowZones[0] : null
   const timedList = (
     <div className="flex flex-col gap-1">
       {rows.timed.map((r, n) => (
         <div key={r.key} className="flex flex-col gap-1">
           {nowAt === n && <NowMarker hour={nowHour} />}
           <div className="flex min-w-0 items-stretch gap-1.5">
-            <TimeGutter row={r} />
+            <TimeGutter row={r} hideZone={!!sharedZone} />
             <div className="min-w-0 flex-1">{renderRow(r)}</div>
           </div>
         </div>
@@ -233,7 +238,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
           </Group>
           <Group
             label="Schedule"
-            note={planned > 0 ? `${formatDurationMinutes(planned)} planned` : undefined}
+            note={[planned > 0 ? `${formatDurationMinutes(planned)} planned` : null, sharedZone ? `${sharedZone} time` : null].filter(Boolean).join(' · ') || undefined}
             empty="Nothing at a set time"
             className="order-2 @[54rem]:col-start-1 @[54rem]:row-start-1 @[54rem]:row-end-7"
             count={rows.timed.length}
