@@ -152,9 +152,28 @@ check('it reads only the primary calendar', /\/calendars\/primary\/events\?/.tes
 check('410 → a new baseline in the same run (once)', /isSyncTokenGone\(res\.status\) && plan\.mode === 'incremental' && !reset/.test(rb) && /plan = \{ mode: 'baseline' \}/.test(rb))
 check('a baseline applies nothing (only incremental items are kept)', /if \(plan\.mode === 'incremental'\) items\.push/.test(rb))
 check('only events a slot or plan of this account stores are applied',
-  /from\('time_blocks'\)\.select\('google_calendar_event_id'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
-  && /from\('schedule_blocks'\)\.select\('google_calendar_event_id'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
+  /from\('time_blocks'\)\.select\('google_calendar_event_id, time_zone'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
+  && /from\('schedule_blocks'\)\.select\('google_calendar_event_id, time_zone, google_calendar_time_zone'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
   && /if \(!ours\.has\(c\.id\) && !\(c\.seriesId && ours\.has\(c\.seriesId\)\)\) continue/.test(rb))
+check('each change is read on its item\'s own zone (183): a slot\'s, a series day\'s plan\'s',
+  /zones\.set\(r\.google_calendar_event_id, itemTimeZone\(r\.time_zone\)\)/.test(rb)
+  && /const itemZone = zones\.get\(x\.c\.id\) \?\? \(x\.c\.seriesId \? zones\.get\(x\.c\.seriesId\) : undefined\)/.test(rb)
+  && /readbackEvent\(x\.e, zone, itemZone\)/.test(rb))
+// 183: the item's zone wins over the event's own and the calendar's.
+{
+  const istanbul = R.readbackEvent({ id: 'i', start: { dateTime: '2026-11-12T14:00:00Z', timeZone: 'Europe/Oslo' }, end: { dateTime: '2026-11-12T15:00:00Z' } }, 'Europe/Oslo', 'Europe/Istanbul')
+  check('an item in Istanbul moved in Google to 14:00 UTC reads 17:00 on its own clock', istanbul.date === '2026-11-12' && istanbul.time === '17:00:00' && istanbul.minutes === 60)
+  const late = R.readbackEvent({ id: 'l', start: { dateTime: '2026-11-12T22:30:00Z' }, end: { dateTime: '2026-11-12T23:00:00Z' } }, 'Europe/Oslo', 'Asia/Tokyo')
+  check('…its day too (22:30 UTC is the next morning in Tokyo)', late.date === '2026-11-13' && late.time === '07:30:00')
+  const day = R.readbackEvent({ id: 's_1', recurringEventId: 's', originalStartTime: { dateTime: '2026-11-12T22:30:00Z', timeZone: 'UTC' }, start: { dateTime: '2026-11-13T00:30:00Z' }, end: { dateTime: '2026-11-13T01:30:00Z' } }, 'Europe/Oslo', 'Asia/Tokyo')
+  check('a day of a series: its original day on the plan\'s clock, not the zone Google wrote', day.originalDate === '2026-11-13')
+  const forged = R.readbackEvent({ id: 'f', start: { dateTime: '2026-11-12T14:00:00Z' }, end: { dateTime: '2026-11-12T15:00:00Z' } }, 'Europe/Oslo', 'Europe/Oslo\r\nX:1')
+  check('a zone that is no zone name reads on the home zone', forged.time === '15:00:00')
+  check('itemTimeZone: a real zone, else the home zone', R.itemTimeZone('America/New_York') === 'America/New_York' && R.itemTimeZone(' Europe/Istanbul ') === 'Europe/Istanbul'
+    && R.itemTimeZone('Not/AZone') === 'Europe/Oslo' && R.itemTimeZone('Europe/Oslo;X') === 'Europe/Oslo' && R.itemTimeZone(null) === 'Europe/Oslo' && R.itemTimeZone('x'.repeat(65)) === 'Europe/Oslo')
+  const body = R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym' }, { done: false, timeZone: 'Europe/Oslo\r\nATTENDEE:mailto:x@example.com' })
+  check('blockEventBody never carries a zone that is no zone name', body.start.timeZone === 'Europe/Oslo' && body.end.timeZone === 'Europe/Oslo')
+}
 check('each change goes through apply_calendar_readback with this user', /rpc\('apply_calendar_readback', \{ p_user: userId, p_event: c \}\)/.test(rb))
 check('the token moves only when every change was applied', /if \(failures\) \{[\s\S]*?return summary\s*\}\s*await record\(\{\s*sync_token: nextSyncToken/.test(rb))
 check('no token on the last page → said, nothing moves', /if \(!nextSyncToken\) \{/.test(rb))

@@ -5,7 +5,7 @@ import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '..
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
 import { classifyCalendarPushFailure } from './scheduleSyncRules'
-import { blockEventBody, eventPatchFor } from '../../calendar/calendarEventRules'
+import { blockEventBody, eventPatchFor, itemTimeZone } from '../../calendar/calendarEventRules'
 import type {
   ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
   CreateScheduleBlockInput, UpdateScheduleBlockInput,
@@ -14,7 +14,6 @@ import type { TimeBlockCalendarStatus } from './scheduleSyncRules'
 
 export type { TimeBlockCalendarStatus }
 
-const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
   const { data, error } = await supabase
@@ -428,7 +427,7 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     duration_minutes: patch.duration_minutes ?? before!.duration_minutes,
     title:            patch.title ?? before!.title,
     busy:             patch.busy ?? before!.busy,
-  }, { done: before?.task?.status === 'done', timeZone: LOCAL_TZ })
+  }, { done: before?.task?.status === 'done', timeZone: itemTimeZone(before!.time_zone) })
   if (!body) return { calendarStatus: 'linked' } // no usable day -> nothing coherent to push; existing id stands
 
   try {

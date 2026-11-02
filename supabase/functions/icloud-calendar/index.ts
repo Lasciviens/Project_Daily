@@ -339,8 +339,23 @@ function repeatSummary(rule: RepeatRule): string {
 const NOMINAL_EVENT_MINUTES = 15
 /** In front of a done item's event title (owner, 15.10.2026); Undo takes it off. */
 const DONE_MARK = '✓ '
-/** The zone a server-side push uses (time_blocks keeps none): the owner's. */
+/** The home zone: the zone of an item that names none (made before 183, or by a server writer). The owner's. */
 const SERVER_EVENT_TIME_ZONE = 'Europe/Oslo'
+/** An IANA zone name's shape ("Europe/Oslo", "America/Argentina/Buenos_Aires", "Etc/GMT+1") — 183's CHECK. */
+const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
+
+/**
+ * The zone an item's times are in (183): its own when it is a zone this runtime knows, else the home zone. A
+ * stored or device value is data — it lands in iCalendar TZID lines and Google's event bodies (the warning in
+ * AGENTS.md) — so anything but a real zone name is never used.
+ */
+function itemTimeZone(zone: string | null | undefined): string {
+  const z = typeof zone === 'string' ? zone.trim() : ''
+  if (z && z.length <= 64 && IANA_ZONE.test(z)) {
+    try { new Intl.DateTimeFormat('en', { timeZone: z }); return z } catch { /* not a zone this runtime knows */ }
+  }
+  return SERVER_EVENT_TIME_ZONE
+}
 
 /** The event title: "✓ " in front once the item is done (never twice). */
 function calendarTitle(title: string | null | undefined, done: boolean): string {
@@ -414,7 +429,7 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
-  const timeZone = opts.timeZone && opts.timeZone.trim() ? opts.timeZone : SERVER_EVENT_TIME_ZONE
+  const timeZone = itemTimeZone(opts.timeZone)
   return {
     summary,
     start: { dateTime: wallClockAt(b.date, start), timeZone },
@@ -510,26 +525,29 @@ function wallClockIn(instant: string, timeZone: string): { date: string; time: s
   return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
 }
 
-const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string): string | null => {
+/** A start's day: its date, or its instant's day in its own zone (else `zone`) — or in `zone` when `force`d. */
+const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string, force = false): string | null => {
   if (!t) return null
   if (t.date && ISO_DAY.test(t.date)) return t.date
-  if (t.dateTime) return wallClockIn(t.dateTime, t.timeZone || zone)?.date ?? null
+  if (t.dateTime) return wallClockIn(t.dateTime, force ? zone : (t.timeZone || zone))?.date ?? null
   return null
 }
 
 /**
  * A Google event as the change the read-back applies. Times are read as the
- * wall clock of the event's own zone (else the calendar's), the length from
- * the two instants (an all-day event: whole days), the title without "✓ ".
- * A cancelled entry may carry only its id (and, for one day of a series,
- * recurringEventId + originalStartTime — Google's reference). null for
- * something with no id.
+ * wall clock of the item's own zone when the caller knows the item (183: a
+ * slot's or plan's `time_zone` — the app stores its times in that zone,
+ * whatever zone Google shows the event in), else of the event's own zone
+ * (else the calendar's); the length from the two instants (an all-day event:
+ * whole days), the title without "✓ ". A cancelled entry may carry only its
+ * id (and, for one day of a series, recurringEventId + originalStartTime —
+ * Google's reference). null for something with no id.
  */
-function readbackEvent(e: GoogleEventLike, calendarZone: string): ReadbackEvent | null {
+function readbackEvent(e: GoogleEventLike, calendarZone: string, itemZone?: string | null): ReadbackEvent | null {
   if (!e || typeof e.id !== 'string' || !e.id) return null
-  const zone = (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
+  const zone = itemZone ? itemTimeZone(itemZone) : (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
   const seriesId = typeof e.recurringEventId === 'string' && e.recurringEventId ? e.recurringEventId : null
-  const originalDate = dayOf(e.originalStartTime, e.originalStartTime?.timeZone || zone)
+  const originalDate = dayOf(e.originalStartTime, itemZone ? zone : (e.originalStartTime?.timeZone || zone), !!itemZone)
   const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
   const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
   if (status === 'cancelled') {
@@ -588,7 +606,8 @@ function isSyncTokenGone(status: number | null | undefined): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 //  A repeating plan (schedule_blocks) as ONE repeating Google Calendar event
 //  (migration 147) — the pure mapping. Pure and import-free apart from the
-//  repeat rule itself (daily/recurrence.ts), so scripts/verify-calendar-
+//  repeat rule itself (daily/recurrence.ts) and the zone rule every event
+//  shares (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
 //  recurrence.cjs runs it as is. The calls that send it live in
 //  api/scheduleSeriesCalendar.ts.
 //
@@ -645,8 +664,8 @@ function isSyncTokenGone(status: number | null | undefined): boolean {
 const SERIES_HORIZON_DAYS = 365
 /** …and is pushed again once fewer than this many days of it remain. */
 const SERIES_TOPUP_DAYS = 90
-/** The zone when the device names none (the owner lives in Oslo). */
-const SERIES_FALLBACK_TIME_ZONE = 'Europe/Oslo'
+/** The zone of a plan that names none — the home zone (the owner lives in Oslo). */
+const SERIES_FALLBACK_TIME_ZONE = SERVER_EVENT_TIME_ZONE
 /** How far the first day is looked for: every 99 months, with a nearest
  *  weekday that fell before the start, is 100 months away. */
 const FIRST_DAY_SEARCH_DAYS = 9 * 366
@@ -662,8 +681,10 @@ interface SeriesTemplate extends RepeatRule {
   google_calendar_event_id?: string | null
   /** The last day the event's RDATE list covers (147); null = it lists them all. */
   google_calendar_horizon?:  string | null
-  /** The zone the series was created in (147). */
+  /** The zone Google's series was made in (147) — the plan's zone when it names none of its own. */
   google_calendar_time_zone?: string | null
+  /** The zone the plan's times are in (183): the phone's when it was made. */
+  time_zone?: string | null
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -698,26 +719,19 @@ interface SeriesPlan {
 const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 const TIME = /^(\d{2}):(\d{2})(?::(\d{2}))?/
 
-/** An IANA zone name's shape ("Europe/Oslo", "America/Argentina/Buenos_Aires", "Etc/GMT+1"). */
-const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
-
-/** The zone a series' times mean: a real zone name, else the fallback. A stored or device value is data —
- *  it lands in TZID= lines, so anything that isn't a zone the runtime knows is never used (security review, 30.10.2026). */
+/** The zone a series' times mean: a real zone name, else the home zone (calendarEventRules.itemTimeZone — a stored
+ *  or device value is data: it lands in TZID= lines, security review 30.10.2026). */
 function seriesTimeZone(tz: string | null | undefined): string {
-  const z = tz?.trim()
-  if (z && IANA_ZONE.test(z)) {
-    try { new Intl.DateTimeFormat('en', { timeZone: z }); return z } catch { /* not a zone this runtime knows */ }
-  }
-  return SERIES_FALLBACK_TIME_ZONE
+  return itemTimeZone(tz)
 }
 
-/** The zone a push expands the series in. A save from the planner takes the
- *  device's (and may change it); every other push — a day carried over, the
- *  horizon top-up, Undo, a retry — keeps the series' own, so opening the app
- *  abroad never re-zones a plan. */
-function seriesPushZone(storedZone: string | null | undefined, deviceZone: string | null | undefined, fromEditor: boolean): string {
-  if (!fromEditor && storedZone && storedZone.trim()) return seriesTimeZone(storedZone)
-  return seriesTimeZone(deviceZone)
+/** The zone a plan's series is expanded in, by Google and Apple alike (183): the plan's own (`time_zone` — the
+ *  phone's when it was made, changed only by the owner in the sheet), else the zone its Google series was made in,
+ *  else the home zone. Never the device's at push time: a push from abroad (a save, a day carried over, the horizon
+ *  top-up, Undo, a retry) never re-zones a plan. */
+function planTimeZone(plan: Pick<SeriesTemplate, 'time_zone' | 'google_calendar_time_zone'>): string {
+  const own = typeof plan.time_zone === 'string' ? plan.time_zone.trim() : ''
+  return itemTimeZone(own || plan.google_calendar_time_zone)
 }
 
 /** 'HH:MM[:SS]' → 'HH:MM:SS', or null when it isn't a time. */
@@ -1023,7 +1037,7 @@ function foldLine(line: string): string {
   return out.join('\r\n ')
 }
 
-/** The zone the app's times mean, as a VTIMEZONE (Europe/Oslo: CET/CEST). */
+/** The home zone as a VTIMEZONE (Europe/Oslo: CET/CEST) — written as is since Phase 1's live check. */
 const VTIMEZONE_OSLO = [
   'BEGIN:VTIMEZONE', 'TZID:Europe/Oslo',
   'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
@@ -1034,9 +1048,106 @@ const VTIMEZONE_OSLO = [
 const ics8 = (day: string) => day.replace(/-/g, '')
 const icsStamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 
-/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. */
+const MINUTE = 60_000
+
+const zoneClocks = new Map<string, Intl.DateTimeFormat>()
+/** `zone`'s UTC offset at instant `t`, in minutes (Oslo in summer: 120). One formatter per zone (making one is the slow part). */
+function zoneOffsetAt(t: number, zone: string): number {
+  let clock = zoneClocks.get(zone)
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+    zoneClocks.set(zone, clock)
+  }
+  const p = Object.fromEntries(clock.formatToParts(new Date(t)).map(x => [x.type, x.value]))
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - t) / MINUTE)
+}
+
+/** Every change of `zone`'s offset in [from, to): its instant (to the minute) and the offsets on each side. */
+function zoneTransitions(zone: string, from: number, to: number): { at: number; before: number; after: number }[] {
+  const out: { at: number; before: number; after: number }[] = []
+  const DAY = 1440 * MINUTE
+  let prev = zoneOffsetAt(from, zone)
+  for (let t = from + DAY; t <= to; t += DAY) {
+    const cur = zoneOffsetAt(t, zone)
+    if (cur === prev) continue
+    let lo = t - DAY
+    let hi = t
+    while (hi - lo > MINUTE) {
+      const mid = lo + Math.max(1, Math.floor((hi - lo) / MINUTE / 2)) * MINUTE
+      if (zoneOffsetAt(mid, zone) === prev) lo = mid
+      else hi = mid
+    }
+    out.push({ at: hi, before: prev, after: cur })
+    prev = cur
+  }
+  return out
+}
+
+const icsOffset = (m: number) => `${m < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(m) / 60))}${pad(Math.abs(m) % 60)}`
+
+/**
+ * Any real zone as a VTIMEZONE (183: an item's own zone — RFC 5545 wants one for every TZID an object names), from
+ * the runtime's own zone data in the five years around `year` (two before, so even a southern summer that began the
+ * year before has its onset). A zone with no change there is one STANDARD; a change that falls on the same weekday
+ * of the same month at the same local time in every one of those years is a yearly rule (BYMONTH + BYDAY, as Oslo's);
+ * anything else — a zone that changed its rules — lists its changes, so nothing is promised past what is known. The
+ * home zone keeps VTIMEZONE_OSLO. Only a zone name the runtime knows gets here (itemTimeZone): anything else throws.
+ */
+const zoneDefinitions = new Map<string, string[]>()
+function vtimezoneLines(zone: string, year: number): string[] {
+  if (zone === 'Europe/Oslo') return VTIMEZONE_OSLO
+  if (!IANA_ZONE.test(zone) || itemTimeZone(zone) !== zone) throw new Error('Not a zone this runtime knows — not written')
+  const y = Number.isInteger(year) && year > 1970 && year < 3000 ? year : new Date().getUTCFullYear()
+  const key = `${zone}|${y}`
+  const known = zoneDefinitions.get(key)
+  if (known) return known
+  const lines = zoneDefinition(zone, y)
+  zoneDefinitions.set(key, lines)
+  return lines
+}
+
+function zoneDefinition(zone: string, y: number): string[] {
+  const YEARS = 5
+  const changes = zoneTransitions(zone, Date.UTC(y - 2, 0, 1), Date.UTC(y - 2 + YEARS, 0, 1))
+  const wall = (t: number, offset: number) => new Date(t + offset * MINUTE)
+  const stamp = (d: Date) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`
+  const part = (kind: 'STANDARD' | 'DAYLIGHT', before: number, after: number, start: string, rule?: string) =>
+    [`BEGIN:${kind}`, `TZOFFSETFROM:${icsOffset(before)}`, `TZOFFSETTO:${icsOffset(after)}`, `DTSTART:${start}`, ...(rule ? [rule] : []), `END:${kind}`]
+  if (!changes.length) {
+    const offset = zoneOffsetAt(Date.UTC(y, 0, 1), zone)
+    return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...part('STANDARD', offset, offset, '19700101T000000'), 'END:VTIMEZONE']
+  }
+  const parts: string[] = []
+  for (const kind of ['DAYLIGHT', 'STANDARD'] as const) {
+    const mine = changes.filter(c => (c.after > c.before) === (kind === 'DAYLIGHT'))
+    if (!mine.length) continue
+    const shape = mine.map(c => {
+      const d = wall(c.at, c.before)
+      const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+      return { d, month: d.getUTCMonth() + 1, weekday: d.getUTCDay(), nth: Math.ceil(d.getUTCDate() / 7), last: d.getUTCDate() + 7 > lastDay,
+        clock: `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`, before: c.before, after: c.after }
+    })
+    const first = shape[0]
+    const same = shape.every(x => x.month === first.month && x.weekday === first.weekday && x.clock === first.clock
+      && x.before === first.before && x.after === first.after)
+    const nth = shape.every(x => x.nth === first.nth) ? String(first.nth) : shape.every(x => x.last) ? '-1' : null
+    const everyYear = shape.length === YEARS && new Set(shape.map(x => x.d.getUTCFullYear())).size === YEARS
+    if (same && nth && everyYear) {
+      parts.push(...part(kind, first.before, first.after, stamp(first.d), `RRULE:FREQ=YEARLY;BYMONTH=${first.month};BYDAY=${nth}${BYDAY[first.weekday]}`))
+    } else {
+      for (const x of shape) parts.push(...part(kind, x.before, x.after, stamp(x.d)))
+    }
+  }
+  return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...parts, 'END:VTIMEZONE']
+}
+
+/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
+ *  zone name's shape or the line is not written (183 — the zone is the item's, i.e. input). */
 function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   if ('date' in t) return `${name};VALUE=DATE:${ics8(t.date)}`
+  if (!IANA_ZONE.test(t.timeZone) || t.timeZone.length > 64) throw new Error('An event zone is not a zone name — not written')
   return `${name};TZID=${t.timeZone}:${t.dateTime.replace(/[-:]/g, '').slice(0, 15)}`
 }
 
@@ -1095,7 +1206,7 @@ function eventObject(p: EventParts): string {
   const timed = !('date' in p.body.start)
   const title = areaTitle(p.body.summary, p.area)
   const notes = eventNotes(p.look.notes, p.notes, p.link)
-  const zones = timed && 'timeZone' in p.body.start && p.body.start.timeZone === 'Europe/Oslo' ? VTIMEZONE_OSLO : []
+  const zones = timed && 'timeZone' in p.body.start ? vtimezoneLines(p.body.start.timeZone, Number(p.body.start.dateTime.slice(0, 4))) : []
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Calendar//EN", 'CALSCALE:GREGORIAN', ...zones,
     'BEGIN:VEVENT',
@@ -1368,15 +1479,23 @@ export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: numb
 
 /** An instant on the Oslo clock: its day (yyyy-MM-dd) and HH:MM. */
 export function osloClock(at: Date): { day: string; time: string } {
-  const w = wallClock(at.getTime(), OSLO)
+  return zoneClock(at, OSLO)
+}
+
+/** An instant on `zone`'s clock (an item's own, 183): its day (yyyy-MM-dd) and HH:MM. */
+export function zoneClock(at: Date, zone: string): { day: string; time: string } {
+  const w = wallClock(at.getTime(), zone)
   return { day: `${w.y}-${pad2(w.mo)}-${pad2(w.d)}`, time: `${pad2(w.h)}:${pad2(w.mi)}` }
 }
 
 /**
- * When an event starts, on the Oslo clock. All-day (VALUE=DATE): its date, no time. UTC (…Z) and a
- * known TZID: converted. Floating, or a zone this runtime doesn't know: as written, with the zone named.
+ * When an event starts, on the Oslo clock — or on `clock`'s, an item's own zone (183). All-day (VALUE=DATE): its
+ * date, no time. UTC (…Z) and a known TZID: converted. Floating, or a zone this runtime doesn't know: as written,
+ * with the zone named.
  */
-export function startOf(line: string | undefined): { day: string; time: string | null; zone: string | null } | null {
+export function startOf(line: string | undefined, clock: string = OSLO): { day: string; time: string | null; zone: string | null } | null {
+  // Only a zone name counts (it is passed to .map() as is, where the second argument is an index).
+  if (typeof clock !== 'string' || !clock) clock = OSLO
   const m = line?.match(/:(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?\s*$/)
   if (!line || !m) return null
   const day = `${m[1]}-${m[2]}-${m[3]}`
@@ -1385,7 +1504,7 @@ export function startOf(line: string | undefined): { day: string; time: string |
   const at = m[7] ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]))
     : tz ? zonedToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], tz)
     : null
-  return at ? { ...osloClock(at), zone: null } : { day, time: `${m[4]}:${m[5]}`, zone: tz }
+  return at ? { ...zoneClock(at, clock), zone: null } : { day, time: `${m[4]}:${m[5]}`, zone: tz }
 }
 
 /** The read test's days: today and the next 6 on the Oslo clock, and their edges as CalDAV UTC stamps. */
@@ -1691,12 +1810,12 @@ export function bareTitleFromSummary(summary: string, emoji: string): string {
   return first && [...first].length <= 12 && !/[\p{L}\p{N}]/u.test(first) ? t.slice(first.length).trimStart() : t
 }
 
-/** The instant a timed DTSTART/DTEND/RECURRENCE-ID line names (UTC, a known zone, or floating read on the Oslo clock). */
-function instantOf(line: string | undefined): number | null {
+/** The instant a timed DTSTART/DTEND/RECURRENCE-ID line names (UTC, a known zone, or floating read on `clock`). */
+function instantOf(line: string | undefined, clock: string = OSLO): number | null {
   const m = line?.match(/:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?\s*$/)
   if (!line || !m) return null
   if (m[7]) return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])
-  const tz = line.match(/;TZID="?([^";:]+)"?/)?.[1] ?? OSLO
+  const tz = line.match(/;TZID="?([^";:]+)"?/)?.[1] ?? clock
   return zonedToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], tz)?.getTime() ?? null
 }
 
@@ -1707,15 +1826,16 @@ function durationMinutes(value: string | undefined): number | null {
   return (+(m[1] ?? 0)) * 10080 + (+(m[2] ?? 0)) * 1440 + (+(m[3] ?? 0)) * 60 + (+(m[4] ?? 0))
 }
 
-/** When an event (or one day of a series) is, on the Oslo clock; null when it can't be read safely (an unknown zone). */
-function timesOf(e: Map<string, string[]>): { allDay: boolean; date: string; time: string | null; minutes: number; busy: boolean } | null {
+/** When an event (or one day of a series) is, on `clock` (the item's zone, 183); null when it can't be read safely
+ *  (an unknown zone). */
+function timesOf(e: Map<string, string[]>, clock: string = OSLO): { allDay: boolean; date: string; time: string | null; minutes: number; busy: boolean } | null {
   const line = e.get('DTSTART')?.[0]
-  const at = startOf(line)
+  const at = startOf(line, clock)
   if (!line || !at || at.zone) return null
   const busy = !/^TRANSP[^:]*:TRANSPARENT\s*$/i.test(e.get('TRANSP')?.[0] ?? '')
   if (!at.time) return { allDay: true, date: at.day, time: null, minutes: 60, busy: false }
-  const start = instantOf(line)
-  const end = instantOf(e.get('DTEND')?.[0])
+  const start = instantOf(line, clock)
+  const end = instantOf(e.get('DTEND')?.[0], clock)
   const dur = durationMinutes(e.get('DURATION')?.[0]?.replace(/^[^:]*:/, '').trim())
   const minutes = start !== null && end !== null ? Math.round((end - start) / 60_000) : dur ?? 60
   return { allDay: false, date: at.day, time: at.time, minutes: Math.min(1440, Math.max(1, minutes)), busy }
@@ -1727,12 +1847,12 @@ function modifiedOf(e: Map<string, string[]>): string | null {
   return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : null
 }
 
-/** Every day an EXDATE line names, on the Oslo clock. */
-function exdateDays(line: string): string[] {
+/** Every day an EXDATE line names, on `clock` (the plan's zone, 183). */
+function exdateDays(line: string, clock: string = OSLO): string[] {
   const at = line.indexOf(':')
   if (at < 0) return []
   const params = line.slice(0, at)
-  return line.slice(at + 1).split(',').map(v => startOf(`${params}:${v.trim()}`)?.day).filter((d): d is string => !!d)
+  return line.slice(at + 1).split(',').map(v => startOf(`${params}:${v.trim()}`, clock)?.day).filter((d): d is string => !!d)
 }
 
 /**
@@ -1741,7 +1861,7 @@ function exdateDays(line: string): string[] {
  * EXDATEs are skipped by the database). lastModified is the newest LAST-MODIFIED (a change without one is never
  * applied). null when the object holds no event of this uid or can't be read safely.
  */
-export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: string, emoji: string): Record<string, unknown> | null {
+export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: string, emoji: string, clock: string = OSLO): Record<string, unknown> | null {
   const events = allEventProps(ics).filter(e => textOf(e.get('UID')?.[0]).trim() === uid)
   const master = events.find(e => !e.has('RECURRENCE-ID'))
   if (!master) return null
@@ -1751,16 +1871,16 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
   const title = titleFromSummary(summary, emoji)
   const titleBare = bareTitleFromSummary(summary, emoji)
   if (entity === 'slot') {
-    const t = timesOf(master)
+    const t = timesOf(master, clock)
     return t ? { ...t, title, titleBare, lastModified } : null
   }
   const days: Record<string, unknown>[] = []
-  for (const line of master.get('EXDATE') ?? []) for (const day of exdateDays(line)) days.push({ originalDate: day, cancelled: true })
+  for (const line of master.get('EXDATE') ?? []) for (const day of exdateDays(line, clock)) days.push({ originalDate: day, cancelled: true })
   for (const o of events.filter(e => e.has('RECURRENCE-ID'))) {
-    const orig = startOf(o.get('RECURRENCE-ID')?.[0])?.day
+    const orig = startOf(o.get('RECURRENCE-ID')?.[0], clock)?.day
     if (!orig) continue
     if (/^STATUS[^:]*:CANCELLED\s*$/i.test(o.get('STATUS')?.[0] ?? '')) { days.push({ originalDate: orig, cancelled: true }); continue }
-    const t = timesOf(o)
+    const t = timesOf(o, clock)
     if (t) days.push({ originalDate: orig, ...t, title: titleFromSummary(textOf(o.get('SUMMARY')?.[0]), emoji) || null })
   }
   return { title, titleBare, lastModified, days }
@@ -2076,7 +2196,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
-      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone')
       .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
     if (error) throw new ICloudError('read', 'A slot could not be read')
     if (!b) {
@@ -2109,7 +2229,8 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (step === 'put') {
       const url = ownEventUrl('slot', b.id, area, areaCals)
       if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
-      const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, look: prefs, timeZone: SERVER_EVENT_TIME_ZONE, appUrl: APP_URL, now: new Date() })
+      // In the slot's own zone (183): itemTimeZone takes only a real zone name, else the home zone.
+      const ev = slotEvent(b, { done: t?.status === 'done', taskNotes: t?.description, area: conf, look: prefs, timeZone: itemTimeZone(b.time_zone), appUrl: APP_URL, now: new Date() })
       if (ev) {
         const etag = await putEvent(c, url, ev.ics, b.icloud_area === area ? validEtag(b.icloud_etag) : null)
         if (!(await link('time_blocks', b.id, b.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag) }))) {
@@ -2137,7 +2258,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   if (q.entity === 'workout') return drainWorkout(db, c, userId, q, prefs, areaCals, removeOld)
 
   const { data: p, error } = await db.from('schedule_blocks')
-    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon')
+    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone')
     .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
   if (error) throw new ICloudError('read', 'A repeating plan could not be read')
   if (!p) {
@@ -2161,7 +2282,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
     // A series that was on Google keeps its start (its past days stay on the calendar).
     const from = p.icloud_from ?? p.google_calendar_from ?? null
-    const ev = planEvent({ ...p, icloud_from: from }, { area: conf, look: prefs, today, timeZone: seriesTimeZone(p.google_calendar_time_zone), appUrl: APP_URL, now: new Date() })
+    const ev = planEvent({ ...p, icloud_from: from }, { area: conf, look: prefs, today, timeZone: planTimeZone(p), appUrl: APP_URL, now: new Date() })
     if (ev) {
       const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? validEtag(p.icloud_etag) : null)
       if (!(await link('schedule_blocks', p.id, p.icloud_area, { icloud_area: area, icloud_etag: validEtag(etag), icloud_from: from ?? ev.plan.from ?? today, icloud_horizon: ev.plan.horizon }))) {
@@ -2277,12 +2398,18 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
   const mine = changed.map(x => ({ ...x, own: own(x.href) })).filter(x => x.own)
   counts.ignored += changed.length - mine.length
   const known = new Map<string, string | null>()
+  // Each item's zone (183): a change from the iPhone is read on the item's own clock, the zone its times are in.
+  const zones = new Map<string, string>()
   for (const [table, entity] of [['time_blocks', 'slot'], ['schedule_blocks', 'plan']] as const) {
     const ids = mine.filter(x => x.own!.entity === entity).map(x => x.own!.id)
+    const cols = entity === 'plan' ? 'id, icloud_etag, time_zone, google_calendar_time_zone' : 'id, icloud_etag, time_zone'
     for (let i = 0; i < ids.length; i += 200) {
-      const { data, error } = await db.from(table).select('id, icloud_etag').eq('user_id', userId).eq('icloud_area', area).in('id', ids.slice(i, i + 200))
+      const { data, error } = await db.from(table).select(cols).eq('user_id', userId).eq('icloud_area', area).in('id', ids.slice(i, i + 200))
       if (error) throw new ICloudError('read', 'The items could not be read for the read-back')
-      for (const row of data ?? []) known.set(`${entity}:${row.id}`, row.icloud_etag)
+      for (const row of (data ?? []) as unknown as { id: string; icloud_etag: string | null; time_zone?: string | null; google_calendar_time_zone?: string | null }[]) {
+        known.set(`${entity}:${row.id}`, row.icloud_etag)
+        zones.set(`${entity}:${row.id}`, entity === 'plan' ? planTimeZone(row) : itemTimeZone(row.time_zone))
+      }
     }
   }
   const keyOf = (x: { own: { entity: string; id: string } | null }) => `${x.own!.entity}:${x.own!.id}`
@@ -2306,7 +2433,7 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
     for (const x of batch) {
       const o = x.own!
       const item = got.get(new URL(x.href, calUrl).pathname)
-      const change = item ? readbackChangeOf(item.ics, o.entity, `lasci-${o.entity}-${o.id}@lasciviens.github.io`, emoji) : null
+      const change = item ? readbackChangeOf(item.ics, o.entity, `lasci-${o.entity}-${o.id}@lasciviens.github.io`, emoji, zones.get(keyOf(x)) ?? OSLO) : null
       if (!item || !change) { counts.ignored++; continue }
       // A series' days: only from today on, at most 31 (the database checks the same).
       if (Array.isArray(change.days)) change.days = (change.days as { originalDate?: string }[]).filter(d => (d.originalDate ?? '') >= today).slice(0, 31)

@@ -44,6 +44,9 @@ export interface ItemInput {
   googleTaskList?: string | null
   /** The task's own labels (migration 180); absent = keep them as they are (a repeat's rule has none). */
   labels?: string[]
+  /** The zone the item's day and time are in (183, an IANA name). A new item's is the phone's; an edit sends one only
+   *  when the owner picked another — absent or null = keep the item's (the database gives a new one the phone's). */
+  timeZone?: string | null
   /** The task's origin (tasks.source_type vocabulary: tv_series, not
    *  tv_episode); `id` may be null (a training session with no routine). */
   source?: { type: string; id: string | null } | null

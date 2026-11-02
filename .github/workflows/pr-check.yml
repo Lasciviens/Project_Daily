@@ -329,6 +329,26 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 182: Hevy workouts are read-only for the browser (it reads
+      # them; adding, changing, deleting or emptying them is refused, Supabase's
+      # default grants included), while the Hevy syncs (service role) and a
+      # SECURITY DEFINER rule like 166's relink still write them.
+      - name: Hevy workouts read-only database scenarios
+        run: node scripts/verify-db-hevy-read-only.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 183: time zones from the phone on the live item chain (a
+      # zone per slot and plan: only names the database knows, the phone's
+      # for a new item, the plan's for a day split off it, kept by an edit;
+      # a changed zone reaches Apple's and Google's queues) and a food log's
+      # time on the phone's clock. Its re-created functions = their sources
+      # with only the zone lines added.
+      - name: Time zones database scenarios
+        run: node scripts/verify-db-time-zones.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  A repeating plan (schedule_blocks) as ONE repeating Google Calendar event
 //  (migration 147) — the pure mapping. Pure and import-free apart from the
-//  repeat rule itself (daily/recurrence.ts), so scripts/verify-calendar-
+//  repeat rule itself (daily/recurrence.ts) and the zone rule every event
+//  shares (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
 //  recurrence.cjs runs it as is. The calls that send it live in
 //  api/scheduleSeriesCalendar.ts.
 //
@@ -53,6 +54,7 @@
 //  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { itemTimeZone, SERVER_EVENT_TIME_ZONE } from './calendarEventRules'
 import {
   addDaysIso, dayNumber, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatKindOf, weeklyDaysOf,
   type RepeatRule,
@@ -62,8 +64,8 @@ import {
 export const SERIES_HORIZON_DAYS = 365
 /** …and is pushed again once fewer than this many days of it remain. */
 export const SERIES_TOPUP_DAYS = 90
-/** The zone when the device names none (the owner lives in Oslo). */
-export const SERIES_FALLBACK_TIME_ZONE = 'Europe/Oslo'
+/** The zone of a plan that names none — the home zone (the owner lives in Oslo). */
+export const SERIES_FALLBACK_TIME_ZONE = SERVER_EVENT_TIME_ZONE
 /** How far the first day is looked for: every 99 months, with a nearest
  *  weekday that fell before the start, is 100 months away. */
 const FIRST_DAY_SEARCH_DAYS = 9 * 366
@@ -79,8 +81,10 @@ export interface SeriesTemplate extends RepeatRule {
   google_calendar_event_id?: string | null
   /** The last day the event's RDATE list covers (147); null = it lists them all. */
   google_calendar_horizon?:  string | null
-  /** The zone the series was created in (147). */
+  /** The zone Google's series was made in (147) — the plan's zone when it names none of its own. */
   google_calendar_time_zone?: string | null
+  /** The zone the plan's times are in (183): the phone's when it was made. */
+  time_zone?: string | null
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -116,26 +120,19 @@ const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
 const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0]
 const TIME = /^(\d{2}):(\d{2})(?::(\d{2}))?/
 
-/** An IANA zone name's shape ("Europe/Oslo", "America/Argentina/Buenos_Aires", "Etc/GMT+1"). */
-const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
-
-/** The zone a series' times mean: a real zone name, else the fallback. A stored or device value is data —
- *  it lands in TZID= lines, so anything that isn't a zone the runtime knows is never used (security review, 30.10.2026). */
+/** The zone a series' times mean: a real zone name, else the home zone (calendarEventRules.itemTimeZone — a stored
+ *  or device value is data: it lands in TZID= lines, security review 30.10.2026). */
 export function seriesTimeZone(tz: string | null | undefined): string {
-  const z = tz?.trim()
-  if (z && IANA_ZONE.test(z)) {
-    try { new Intl.DateTimeFormat('en', { timeZone: z }); return z } catch { /* not a zone this runtime knows */ }
-  }
-  return SERIES_FALLBACK_TIME_ZONE
+  return itemTimeZone(tz)
 }
 
-/** The zone a push expands the series in. A save from the planner takes the
- *  device's (and may change it); every other push — a day carried over, the
- *  horizon top-up, Undo, a retry — keeps the series' own, so opening the app
- *  abroad never re-zones a plan. */
-export function seriesPushZone(storedZone: string | null | undefined, deviceZone: string | null | undefined, fromEditor: boolean): string {
-  if (!fromEditor && storedZone && storedZone.trim()) return seriesTimeZone(storedZone)
-  return seriesTimeZone(deviceZone)
+/** The zone a plan's series is expanded in, by Google and Apple alike (183): the plan's own (`time_zone` — the
+ *  phone's when it was made, changed only by the owner in the sheet), else the zone its Google series was made in,
+ *  else the home zone. Never the device's at push time: a push from abroad (a save, a day carried over, the horizon
+ *  top-up, Undo, a retry) never re-zones a plan. */
+export function planTimeZone(plan: Pick<SeriesTemplate, 'time_zone' | 'google_calendar_time_zone'>): string {
+  const own = typeof plan.time_zone === 'string' ? plan.time_zone.trim() : ''
+  return itemTimeZone(own || plan.google_calendar_time_zone)
 }
 
 /** 'HH:MM[:SS]' → 'HH:MM:SS', or null when it isn't a time. */

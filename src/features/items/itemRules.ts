@@ -165,7 +165,11 @@ export function repeatRuleOf(r: RepeatInput): RepeatRule {
 type TaskRow = Pick<Task, 'id' | 'title' | 'description' | 'domain' | 'priority' | 'due_date' | 'due_time'
   | 'source_type' | 'source_id' | 'google_tasklist_id' | 'google_sync_enabled' | 'labels'> & { google_target?: GoogleTarget | null }
 type BlockRow = Pick<TimeBlock, 'id' | 'date' | 'title' | 'start_time' | 'duration_minutes' | 'category' | 'notes'
-  | 'source_type' | 'source_id' | 'google_calendar_event_id'> & { busy?: boolean | null; google_target?: GoogleTarget | null; icloud_area?: string | null }
+  | 'source_type' | 'source_id' | 'google_calendar_event_id'> & {
+    busy?: boolean | null; google_target?: GoogleTarget | null; icloud_area?: string | null
+    /** The zone its day and time are in (183); null = the home zone. */
+    time_zone?: string | null
+  }
 /** A repeat rule; since 155 it may have no time (an all-day repeat). */
 type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' | 'effective_from'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates' | 'google_calendar_event_id'>
@@ -174,6 +178,9 @@ type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' 
     domain?: TaskDomain | null; priority?: Task['priority'] | null; notes?: string | null
     /** The area calendar its series is in, in Apple Calendar (174). */
     icloud_area?: string | null
+    /** The zone its times are in (183) — else the one its Google series was made in (147). */
+    time_zone?: string | null
+    google_calendar_time_zone?: string | null
   }
 
 /** The minutes between a rule's start and end (crossing midnight). */
@@ -241,6 +248,8 @@ export function itemFromRows(task?: TaskRow | null, block?: BlockRow | null, pla
     google: storedGoogleTarget(task, block, plan) ?? presentGoogleTarget(task, block, plan),
     googleTaskList: task?.google_tasklist_id ?? null,
     ...(task && !plan ? { labels: labelsOf(task) } : {}),
+    // The zone its times are in, as stored (183): a slot's, a plan's (else its Google series'). Null = the home zone.
+    ...(plan ? { timeZone: plan.time_zone || plan.google_calendar_time_zone || null } : block ? { timeZone: block.time_zone ?? null } : {}),
     source,
   }
 }
