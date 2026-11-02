@@ -72,7 +72,8 @@ reach Trakt and come back here through the normal history sync.
 - An app edit writes locally at once (the UI stays instant) and adds an outbox row — from
   any writer (web, AI, SQL), queued by the triggers of migrations 117, 118, 120, 132 and 136.
   A write carrying the `x-trakt-sync: 1` request header (the sync's own client) is skipped,
-  so the sync never queues its own writes. The outbox drains **first** (app → Trakt), so the
+  so the sync never queues its own writes — since migration 184 only on a service-role request, so a browser
+  that sends the header is still queued. The outbox drains **first** (app → Trakt), so the
   mirror never undoes a change made here; items still waiting (or just sent) are left alone
   by the mirror.
 - A watch logged here is sent as one play; the next watched read returns the new

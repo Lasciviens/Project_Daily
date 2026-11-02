@@ -403,7 +403,7 @@ which door the write came through.
   `watched_at` NULL — the row stays so an Undo can put a watch back on it).
   A watch that names an `episode_id` that isn't there raises a foreign-key
   error (150's undo retries it after putting the episode back) instead of
-  making a second row for the episode. A sync write (x-trakt-sync) through
+  making a second row for the episode. A sync write (x-trakt-sync on a service-role request — 184; a browser's header counts for nothing) through
   the cache columns only ever ADDS placeholder watches — it never removes or
   re-dates one (trakt-api removes by Trakt play id); and the sync's writes to
   `media_watches` are not audited (`trg_audit … WHEN (NOT

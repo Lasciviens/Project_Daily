@@ -350,6 +350,15 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 184: the Trakt sync's own writes are known by who writes
+      # them — x-trakt-sync counts only on a service-role request, so a browser
+      # can't keep its changes from reaching Trakt; the sync still never
+      # queues its own writes, and every Trakt outbox trigger asks this rule.
+      - name: Trakt sync writer database scenarios
+        run: node scripts/verify-db-trakt-sync-writer.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

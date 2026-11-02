@@ -18,7 +18,7 @@ Trakt is the online service that keeps the owner's film and series history; the 
 - A watch count on screen is every watch ever, read from the watch list through `watches.ts` (`watchMark` for an episode row or a movie, `rewatchTotals`/`watchCounts` for a show) — never `repeat_count` arithmetic; from 2 watches it is the neutral ×N counter (`WatchHistoryButton`) that opens the watch list, and during a round only the round's ✓ is green.
 - "When watched?" is one sheet (`WatchedWhenSheet`), asked only through `useWatchedWhenPrompt`; for more than one episode use `askMany`, whose 5th option opens `SpreadWatchedSheet` — never a copy of either (`verify-watched-when`).
 - Trakt is the source of truth for what it holds (watched + plays, ratings, watchlist, favorites, dropped shows, notes). App-only facts (Paused, priority, plans) stay local. When unsure whether something is only on screen or also stored: the data is one, and Trakt sees what the app shows.
-- Changes reach Trakt through the outbox triggers; the sync's own writes carry `x-trakt-sync: 1` so nothing loops.
+- Changes reach Trakt through the outbox triggers; the sync's own writes carry `x-trakt-sync: 1` so nothing loops — counted only on a service-role request (184, `trakt_sync_writing()`): never trust a request header a browser can send.
 - Lists are Trakt lists; an automatic list keeps only its rule in `media_follows`.
 - "Coming soon" is derived from the release date, never a stored status.
 - An unknown watch date is NULL for movies and the epoch for episodes; screens show "date unknown". Without TMDB data, never guess a show's status.
