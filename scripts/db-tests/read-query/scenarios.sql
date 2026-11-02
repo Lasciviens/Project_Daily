@@ -1,5 +1,7 @@
--- Migration 185's scenarios (scripts/verify-db-read-query.mjs runs the real 185 twice first). Each request is made the
--- way PostgREST makes it: signed in as authenticator, switched to authenticated, the JWT's claims set.
+-- Migration 185's scenarios (scripts/verify-db-read-query.mjs runs the real 185 twice first, as the database's own
+-- role, so its wall is built). Each request is made the way PostgREST makes it: signed in as authenticator, switched to
+-- authenticated, the JWT's claims set. tablefunc (Postgres's contrib) stands for an extension that runs SQL text.
+create extension if not exists tablefunc;
 
 -- ── 1. Only the app's own account may run a read query ──────────────────────
 set session authorization authenticator;
@@ -46,15 +48,19 @@ select t_refused($q$select query_to_xml('select ' || 'set_' || 'config(''role'',
 select t_refused('select "set_config"(''role'', ''service_role'', true) as r', 'comments, quoted names', 'R3 a quoted function name');
 select t_refused($q$select U&"\0073et_config"('role', 'service_role', true) as r$q$, 'comments, quoted names', 'R3 a unicode-escaped name');
 select t_refused('select 1 as n; select 2 as m', 'comments, quoted names', 'R3 a second statement');
-select t_refused('set role service_role', 'settings cannot be changed', 'R3 a SET statement');
-select t_refused('  RESET role', 'settings cannot be changed', 'R3 a RESET statement');
-select t_refused($q$select set_config('role', 'service_role', true) as r$q$, 'settings cannot be changed', 'R3 set_config, plainly');
+select t_refused('set role service_role', 'settings cannot be read or changed', 'R3 a SET statement');
+select t_refused('  RESET role', 'settings cannot be read or changed', 'R3 a RESET statement');
+select t_refused($q$select set_config('role', 'service_role', true) as r$q$, 'settings cannot be read or changed', 'R3 set_config, plainly');
 select t_refused(E'select SET_CONFIG\t(''request.jwt.claims'', ''{"sub":"x"}'', true) as r', 'comments, quoted names',
   'R3 set_config in capitals with a tab, forging the claims (refused for the quote in its text first)');
-select t_refused(E'select SET_CONFIG\t(''request.jwt.claims'', ''{}'', true) as r', 'settings cannot be changed',
+select t_refused(E'select SET_CONFIG\t(''request.jwt.claims'', ''{}'', true) as r', 'settings cannot be read or changed',
   'R3 set_config in capitals with a tab');
-select t_refused($q$select pg_catalog.set_config('role', 'service_role', true) as r$q$, 'settings cannot be changed', 'R3 set_config named with its schema');
-select t_refused($q$select 'set_config' as w$q$, 'settings cannot be changed', 'R3 even the bare name inside text (fail closed)');
+select t_refused($q$select pg_catalog.set_config('role', 'service_role', true) as r$q$, 'settings cannot be read or changed', 'R3 set_config named with its schema');
+select t_refused($q$select 'set_config' as w$q$, 'settings cannot be read or changed', 'R3 even the bare name inside text (fail closed)');
+select t_refused($q$select current_setting('request.headers', true) as h$q$, 'settings cannot be read or changed',
+  'R3 current_setting (it would read the request''s own headers: the caller''s sign-in token)');
+select t_refused($q$select set_limit(0.99) as l$q$, 'settings cannot be read or changed', 'R3 set_limit (pg_trgm''s session setting)');
+select t_refused($q$select setseed(0.5) as s$q$, 'settings cannot be read or changed', 'R3 setseed');
 
 -- ── 4. Built-ins that run SQL text, and system catalogs and schemas ─────────
 select t_refused($q$select query_to_xml('select 1', true, false, '') as x$q$, 'that function is not allowed', 'R4 query_to_xml');
@@ -74,6 +80,21 @@ select t_refused($q$select net.http_get('https://example.com') as x$q$, 'system 
 select t_refused('select * from cron.job', 'system catalogs', 'R4 pg_cron''s schema');
 select t_refused('select * from deploy . applied_migrations', 'system catalogs', 'R4 the deploy log, even with spaces around the dot');
 
+-- ── 4b. Postgres's own wall, and the last line ──────────────────────────────
+select t_refused($q$select b.v as stolen from crosstab('select ''r''::text, ''c''::text, set_' || 'config(''role'', ''service_role'', true)') as a(r text, v text), lateral crosstab('select ''r''::text, ''c''::text, access_token from trakt_tokens where ''' || a.v || ''' <> ''''') as b(r text, v text)$q$,
+  'within security-definer function', 'R4b an extension that runs SQL text (tablefunc''s crosstab) can''t switch to the service role: Postgres refuses it');
+select t_refused($q$select public.t_exec('select set_' || 'config(''role'', ''service_role'', true)') as r$q$,
+  'within security-definer function', 'R4b …nor any other function that runs SQL text');
+select t_refused($q$select public.t_exec('select set_' || 'config(''session_authorization'', ''postgres'', true)') as r$q$,
+  'within security-definer function', 'R4b …nor change the session''s user');
+select t_refused($q$select public.t_exec('select set_' || 'config(''request.jwt.claims'', ''{"sub":"00000000-0000-0000-0000-00000000000b"}'', true)') as r, (select count(*) from public.notes) as n$q$,
+  'comments, quoted names', 'R4b forged claims need a quote in the text: refused first');
+select t_refused($q$select public.t_exec('select set_' || 'config(''request.jwt.claim.sub'', ''00000000-0000-0000-0000-00000000000b'', true)') as r, (select count(*) from public.notes) as n$q$,
+  'changed a setting', 'R4b a changed account id (request.jwt.claim.sub) gives nothing back: the last line');
+select t_refused($q$select public.t_exec('select set_' || 'config(''app.icloud_readback'', ''on'', false)') as r$q$,
+  'changed a setting', 'R4b a trigger flag switched on for the whole connection gives nothing back…');
+select t_ok(coalesce(current_setting('app.icloud_readback', true), '') <> 'on', 'R4b …and the refusal undoes the flag');
+
 -- ── 5. What held before still holds ─────────────────────────────────────────
 select t_refused('select * from public.trakt_tokens', 'permission denied', 'R5 the token table stays out of reach for the owner''s session too');
 select t_refused($q$select (select access_token from public.trakt_tokens)::int as n$q$, 'permission denied',
@@ -88,9 +109,12 @@ reset session authorization;
 -- ── 6. Shape and grants ─────────────────────────────────────────────────────
 select t_ok((select count(*) from pg_proc where proname = 'ai_run_read_query' and pronamespace = 'public'::regnamespace) = 1,
   'R6 one ai_run_read_query');
-select t_ok((select not prosecdef and proconfig @> array['statement_timeout=5000'] from pg_proc
-             where proname = 'ai_run_read_query' and pronamespace = 'public'::regnamespace),
-  'R6 still SECURITY INVOKER (RLS as the caller) with the 5 s timeout');
+select t_ok((select prosecdef and proowner = 'authenticated'::regrole
+                    and proconfig @> array['statement_timeout=5000', 'search_path=public, extensions, pg_temp']
+             from pg_proc where proname = 'ai_run_read_query' and pronamespace = 'public'::regnamespace),
+  'R6 behind the wall: SECURITY DEFINER owned by authenticated (the caller''s own rights), PostgREST''s search_path');
+select t_ok(not has_schema_privilege('authenticated', 'public', 'CREATE'),
+  'R6 the browser''s role got CREATE on public only for the owner change, not to keep');
 select t_ok(has_function_privilege('authenticated', 'public.ai_run_read_query(text)', 'execute')
         and not has_function_privilege('anon', 'public.ai_run_read_query(text)', 'execute'),
   'R6 the browser''s signed-in role may call it; a signed-out caller may not');

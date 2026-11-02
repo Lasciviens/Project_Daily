@@ -3339,16 +3339,18 @@ async function logQuery(
 // THE SECURITY BOUNDARY IS THE DATABASE, NOT THIS TEXT GUARD (an adversarial
 // review proved regex SQL-parsing is bypassable via comments/quoting). What
 // actually contains this:
-//   • the ai_run_read_query RPC is SECURITY INVOKER, called via a USER-JWT
-//     client → RLS applies (rows scoped to the user; a service-role call would
-//     bypass RLS, which is why we build a dedicated user client here);
+//   • the ai_run_read_query RPC has exactly the caller's rights (185: SECURITY
+//     DEFINER owned by `authenticated`, so Postgres refuses a role change
+//     inside it), called via a USER-JWT client → RLS applies (rows scoped to
+//     the user; a service-role call would bypass RLS, which is why we build a
+//     dedicated user client here);
 //   • the RPC runs the query read-only (transaction_read_only) → no writes;
 //   • the OAuth-token tables are revoked from the `authenticated` role (044),
 //     and the RPC itself (185) lets only an app user call it and refuses
-//     comments, quoted names, ";", settings changes, SQL-running built-ins,
-//     pg_ names and system schemas — a query that changed the `role` setting
-//     would otherwise run as the service role, past those grants; result rows
-//     are hard-capped (LIMIT 500).
+//     comments, quoted names, ";", settings (set_config, current_setting …),
+//     SQL-running built-ins, pg_ names and system schemas — a query that
+//     changed the `role` setting would otherwise run as the service role,
+//     past those grants; result rows are hard-capped (LIMIT 500).
 // The text guard below is a best-effort UX filter (clear errors, cheap block of
 // obvious system-catalog probes) layered on top — it is NOT relied on for
 // containment. It fails CLOSED: anything it can't vet is rejected. Don't re-add

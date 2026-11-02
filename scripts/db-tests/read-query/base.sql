@@ -38,6 +38,8 @@ insert into public.notes values (1, '00000000-0000-0000-0000-00000000000a', 'the
                                 (2, '00000000-0000-0000-0000-00000000000b', 'someone else''s note');
 create sequence public.t_seq;
 grant usage on sequence public.t_seq to authenticated;
+-- A stand-in for a function that runs SQL text and that 185's name list doesn't know (an extension enabled later).
+create or replace function public.t_exec(p text) returns text language plpgsql as $$ begin execute p; return 'ran'; end $$;
 
 -- Helpers. A request as PostgREST makes it: signed in as authenticator, switched to the caller's role, the JWT's
 -- claims set. t_ok raises on a mismatch; t_refused expects the read query to refuse with a given message.

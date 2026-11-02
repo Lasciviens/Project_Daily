@@ -75,17 +75,20 @@ external world?                → special tools (transit / calendar / media / �
 ## 4. `run_read_query` — the opt-in read-only live-SQL hatch
 
 Raw SQL was rejected as the *primary* path because ai-proxy's normal ops run under the **service role (RLS
-bypassed)**. The hatch instead builds a **user-JWT client** and calls a **SECURITY INVOKER** RPC
-(`ai_run_read_query`), so it runs as `authenticated` and RLS applies; the RPC sets `transaction_read_only = on` plus
-a 5 s `statement_timeout` and wraps the query in `LIMIT 500` before `jsonb_agg`. The system prompt only reaches for
+bypassed)**. The hatch instead builds a **user-JWT client** and calls an RPC (`ai_run_read_query`) with exactly the
+caller's rights — SECURITY INVOKER until 185, since then SECURITY DEFINER *owned by `authenticated`* — so it runs as
+`authenticated` and RLS applies; the RPC sets `transaction_read_only = on` and wraps the query in `LIMIT 500` before
+`jsonb_agg`. The system prompt only reaches for
 it when the user asks for a raw/custom query `db_query` can't express (or literally says "live sql").
 
 **The security boundary is the DATABASE, not the text guard.** An adversarial review proved regex SQL parsing is
 bypassable (`FROM/**/tbl`, `FROM "tbl"`), so containment rests on RLS + the read-only transaction + **migration 044
-already revoking the OAuth-token tables from `authenticated`** + the hard row cap + **the RPC's own checks (185)**:
-only an app user may call it, and it refuses comments, quoted names, `;`, settings changes, SQL-running built-ins,
-`pg_` names and system schemas. Without them a query could change the `role` setting and run as the service role,
-past the 044 grants (guardian review, 02.11.2026; `verify-db-read-query`).
+already revoking the OAuth-token tables from `authenticated`** + the hard row cap + **185**: only an app user may
+call it; inside a definer owned by `authenticated` Postgres itself refuses a `role` change, whatever runs the SQL; it
+refuses comments, quoted names, `;`, settings (`set_config`, `current_setting`, …), SQL-running built-ins, `pg_` names
+and system schemas; and a query that changed the role, the claims or a trigger flag returns nothing. Without that a
+query could change the `role` setting and run as the service role, past the 044 grants (guardian review, 02.11.2026;
+`verify-db-read-query`).
 
 The edge guard is a best-effort UX filter that fails closed: strip comments first, reject quoted identifiers,
 `SELECT`/`WITH`-only, single statement, block `pg_` / `information_schema` / other schemas, check every `FROM`/`JOIN`
