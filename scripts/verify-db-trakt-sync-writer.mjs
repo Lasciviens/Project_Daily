@@ -1,7 +1,8 @@
 // Runs migration 184's scenarios (the Trakt sync's own writes are known by who writes them, not by a header any
 // caller can send) on a throwaway Postgres: the three API roles, the real 184 twice, then
-// scripts/db-tests/trakt-sync-writer/scenarios.sql. Static checks first: 184 changes only trakt_sync_writing(), and
-// every Trakt outbox trigger still asks it (so the one fix covers them all).
+// scripts/db-tests/trakt-sync-writer/scenarios.sql (the rule called directly and through a SECURITY DEFINER trigger
+// built like 117's). Static checks first: 184 changes only trakt_sync_writing(), and every real Trakt outbox trigger
+// still asks it (so the one fix covers them all).
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-trakt-sync-writer.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.

@@ -8,6 +8,10 @@
 -- now counts only on a service-role request: the request's JWT says role service_role, or PostgREST switched to that
 -- role (either one; a browser's request is `authenticated` in both, and neither can be forged from a browser). The
 -- transaction flag app.trakt_sync — set only by the database's own functions — is unchanged.
+-- The same rule decides more than the outbox, so a browser sending the header also passed those: the media_watches
+-- audit trail and its Undo (149's trg_audit WHEN), who may set a watch's Trakt link and source, the placeholder lock
+-- and the backfill source, which planned day an undated watch clears (all 149), and the rewatch guard (161). They
+-- all follow the service-role check now.
 --
 -- Same name, arguments and result as 117's; no trigger changes (they all call it). Re-runnable (CREATE OR REPLACE).
 -- No BEGIN/COMMIT: the deploy runs it as one transaction.

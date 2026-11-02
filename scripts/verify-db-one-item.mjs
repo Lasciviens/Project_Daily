@@ -68,6 +68,7 @@ let failed = null
 try {
   const target = withDb(url, db)
   psql(target, ['-f', join(dir, 'base.sql')])
+  psql(target, ['-f', mig('184_trakt_sync_writer_check.sql')])   // the real rule over base.sql's stand-in
   psql(target, ['-c', pieces])
   const files = [
     mig('135_calendar_outbox.sql'), mig('144_delete_with_undo.sql'),

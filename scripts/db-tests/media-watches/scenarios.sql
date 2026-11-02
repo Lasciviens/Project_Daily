@@ -64,6 +64,7 @@ end $$;
 -- ── 2. The Trakt pull gives E1's watches their real plays (a sync write) ────
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 with w as (select id, row_number() over (order by id) n from public.media_watches where episode_id = '22000000-0000-0000-0000-000000000001')
 update public.media_watches m set
   trakt_history_id = 1000 + w.n, source = 'trakt',
@@ -380,6 +381,7 @@ select public.t_clear();
 reset role;
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source)
 values ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000002', 2, 1, '2026-08-01 12:00:00+00', 2001, 'trakt');
 -- The summary's write for a new episode (plays 2): placeholders the history pull replaces.
@@ -469,6 +471,7 @@ end $$;
 reset role;
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 update public.media_watches set trakt_history_id = 1501, source = 'trakt'
  where tv_series_id = '20000000-0000-0000-0000-000000000003' and watched_at = '2018-06-01 12:00:00+00';
 commit;
@@ -497,6 +500,7 @@ select public.t_clear();
 reset role;
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 insert into public.media_watches (user_id, kind, movie_entry_id, watched_at, trakt_history_id, source)
 values ('00000000-0000-0000-0000-000000000001', 'movie', '11000000-0000-0000-0000-000000000005', now(), 7005, 'trakt');
 commit;
@@ -510,6 +514,7 @@ end $$;
 -- ── 13b. A sync write never removes or re-dates a linked watch ──────────────
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 update public.user_tv_episodes set repeat_count = 0, watched_at = '2020-02-02 12:00:00+00'
  where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 1;
 commit;
@@ -524,6 +529,7 @@ begin
 end $$;
 begin;
 select set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 update public.user_tv_episodes set repeat_count = 0
  where tv_series_id = '20000000-0000-0000-0000-000000000002' and season_number = 2 and episode_number = 2;
 commit;
@@ -538,10 +544,12 @@ do $$
 declare n0 bigint := (select count(*) from public.audit_logs where table_name = 'media_watches');
 begin
   perform set_config('request.headers', '{"x-trakt-sync":"1"}', true);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
   insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source)
   values ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000002', 3, 1, '2026-08-05 12:00:00+00', 2101, 'trakt');
   perform public.t_ok((select count(*) from public.audit_logs where table_name = 'media_watches') = n0, 'a sync write on media_watches is not audited (bulk-synced)');
   perform set_config('request.headers', '', true);
+  perform set_config('request.jwt.claims', '', true);
   insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at)
   values ('00000000-0000-0000-0000-000000000001', 'episode', '20000000-0000-0000-0000-000000000002', 3, 2, '2026-08-06 12:00:00+00');
   perform public.t_ok((select count(*) from public.audit_logs where table_name = 'media_watches') = n0 + 1, 'an app write is (Undo can take it back)');

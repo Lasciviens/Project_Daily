@@ -1,6 +1,8 @@
--- Migration 184's scenarios (the Trakt sync's own writes are known by who writes them): the real 117 (its outbox
--- triggers on movies, shows and episodes), then the real 184 twice (scripts/verify-db-trakt-sync-writer.mjs).
--- PostgREST's per-request settings are set here as it sets them: request.headers, request.jwt.claims and the role.
+-- Migration 184's scenarios (the Trakt sync's own writes are known by who writes them), run after the real 184 twice
+-- (scripts/verify-db-trakt-sync-writer.mjs). They call trakt_sync_writing() directly and through a SECURITY DEFINER
+-- trigger built like 117's outbox triggers (section 5); the static checks in the script prove every real outbox
+-- trigger asks it. PostgREST's per-request settings are set here as it sets them: request.headers,
+-- request.jwt.claims and the role.
 -- Each `ok` raises on a mismatch.
 create or replace function public.t_ok(c boolean, msg text) returns void language plpgsql as $$
 begin
@@ -45,11 +47,34 @@ select set_config('app.trakt_sync', 'on', true);
 select t_ok(public.trakt_sync_writing(), 'T3 a database function that set app.trakt_sync = on (its own import) still writes without queueing');
 commit;
 select t_ok(not public.trakt_sync_writing(), 'T3 …and only inside its own transaction');
-select public.t_request(null, null);
-select t_ok(not public.trakt_sync_writing(), 'T3 no request at all (a cron job, SQL): queued, as before');
 reset role;
+select public.t_request(null, null);
+select t_ok(not public.trakt_sync_writing(), 'T3 no request at all (a cron job or SQL, as the database''s own role): queued, as before');
 
 -- ── 4. The function is the one every Trakt trigger asks ─────────────────────
 select t_ok((select count(*) from pg_proc where proname = 'trakt_sync_writing' and pronamespace = 'public'::regnamespace) = 1
         and (select prosrc from pg_proc where proname = 'trakt_sync_writing' and pronamespace = 'public'::regnamespace) like '%service_role%',
   'T4 one trakt_sync_writing(), and it asks for the service role');
+
+-- ── 5. Inside a SECURITY DEFINER trigger, as the real outbox triggers run ───
+-- 117's triggers are SECURITY DEFINER (owned by the migration's role): the rule must still see the request's role
+-- there, not the trigger owner's.
+create table public.t_watch (id int primary key);
+create table public.t_queued (id int, sync boolean);
+create or replace function public.t_watch_queue() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.t_queued values (new.id, public.trakt_sync_writing());
+  return new;
+end $$;
+create trigger t_watch_queue after insert on public.t_watch for each row execute function public.t_watch_queue();
+grant insert on public.t_watch to authenticated, service_role;
+set role authenticated;
+select public.t_request('{"x-trakt-sync": "1"}', 'authenticated');
+insert into public.t_watch values (1);
+reset role;
+select t_ok((select not sync from public.t_queued where id = 1), 'T5 through a SECURITY DEFINER trigger, a browser''s write with the header is still queued for Trakt');
+set role service_role;
+select public.t_request('{"x-trakt-sync": "1"}', 'service_role');
+insert into public.t_watch values (2);
+reset role;
+select t_ok((select sync from public.t_queued where id = 2), 'T5 …and the sync''s own write (service role + header) is still not queued back');
