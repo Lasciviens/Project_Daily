@@ -82,7 +82,10 @@ it when the user asks for a raw/custom query `db_query` can't express (or litera
 
 **The security boundary is the DATABASE, not the text guard.** An adversarial review proved regex SQL parsing is
 bypassable (`FROM/**/tbl`, `FROM "tbl"`), so containment rests on RLS + the read-only transaction + **migration 044
-already revoking the OAuth-token tables from `authenticated`** + the hard row cap.
+already revoking the OAuth-token tables from `authenticated`** + the hard row cap + **the RPC's own checks (185)**:
+only an app user may call it, and it refuses comments, quoted names, `;`, settings changes, SQL-running built-ins,
+`pg_` names and system schemas. Without them a query could change the `role` setting and run as the service role,
+past the 044 grants (guardian review, 02.11.2026; `verify-db-read-query`).
 
 The edge guard is a best-effort UX filter that fails closed: strip comments first, reject quoted identifiers,
 `SELECT`/`WITH`-only, single statement, block `pg_` / `information_schema` / other schemas, check every `FROM`/`JOIN`

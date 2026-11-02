@@ -3343,9 +3343,12 @@ async function logQuery(
 //     client → RLS applies (rows scoped to the user; a service-role call would
 //     bypass RLS, which is why we build a dedicated user client here);
 //   • the RPC runs the query read-only (transaction_read_only) → no writes;
-//   • the OAuth-token tables are already revoked from the `authenticated` role
-//     (migration 044), so even if the text guard were bypassed the secrets are
-//     permission-denied at the DB; result rows are hard-capped (LIMIT 500).
+//   • the OAuth-token tables are revoked from the `authenticated` role (044),
+//     and the RPC itself (185) lets only an app user call it and refuses
+//     comments, quoted names, ";", settings changes, SQL-running built-ins,
+//     pg_ names and system schemas — a query that changed the `role` setting
+//     would otherwise run as the service role, past those grants; result rows
+//     are hard-capped (LIMIT 500).
 // The text guard below is a best-effort UX filter (clear errors, cheap block of
 // obvious system-catalog probes) layered on top — it is NOT relied on for
 // containment. It fails CLOSED: anything it can't vet is rejected. Don't re-add

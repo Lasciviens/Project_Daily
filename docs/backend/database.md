@@ -505,4 +505,5 @@ Before proposing any new table:
 - Does not generate Supabase client configuration — `src/integrations/supabase/client.ts` is the source of truth.
 - Does not write raw SQL for the AI to execute beyond the read-only, guarded
   `run_read_query` path (single `SELECT`/`WITH`, `LIMIT 500`, RLS applies via a
-  SECURITY INVOKER RPC). No DDL, no dynamic SQL built from model output.
+  SECURITY INVOKER RPC that only an app user may call and that refuses settings
+  changes and SQL-running built-ins — 185). No DDL, no dynamic SQL built from model output.
