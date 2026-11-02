@@ -56,6 +56,8 @@ const F = require('../src/shared/components/plan-modal/planForm.ts')
   ok(!('timeZone' in F.inputFromForm(edit, { ...ctx, item })), 'an edit that didn\'t pick a zone sends none (the database keeps the item\'s — a sheet opened abroad never re-zones it)')
   const picked = { ...edit, timeZone: 'Europe/Istanbul', zoneTouched: true }
   eq(F.inputFromForm(picked, { ...ctx, item }).timeZone, 'Europe/Istanbul', 'a zone picked in the sheet is sent')
+  const match = F.buildInitialForm({ mode: 'task', today: '2026-11-02', nextTime: '17:00', defaults: { date: '2026-11-12', startTime: '20:45', scheduled: true, timeZone: 'Europe/Oslo' } })
+  eq([match.timeZone, F.inputFromForm(match, ctx).timeZone], ['Europe/Oslo', 'Europe/Oslo'], 'a new item whose default time is on another clock (a match\'s kick-off on Oslo\'s) keeps that zone, even from a phone in Istanbul')
   const old = F.buildInitialForm({ mode: 'task', today: '2026-11-02', nextTime: '17:00', item: { ...item, timeZone: null } })
   eq(old.timeZone, null, 'an older item (no zone) shows the home zone…')
   ok(!('timeZone' in F.inputFromForm(old, { ...ctx, item })), '…and its save sends none')
@@ -74,6 +76,8 @@ eq(R.itemFromRows(task, null, null).timeZone, undefined, 'a task with no slot ha
 const D = require('../src/features/daily/dayItems.ts')
 eq([D.rowTimeZone({ item: { block } }), D.rowTimeZone({ item: { template: { time_zone: null, google_calendar_time_zone: 'Asia/Tokyo' } } }), D.rowTimeZone({ item: null })],
   ['Europe/Istanbul', 'Asia/Tokyo', null], 'a day row\'s zone: its slot\'s, else its plan\'s (else its Google series\'), else none')
+ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/football/hooks/useFootball.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
+  'a football plan (Plan it, a subscription, a moved kick-off) is on Oslo\'s clock and says so — its time is read there (osloParts)')
 ok(/zoneTag\(rowTimeZone\(row\)\)/.test(src('src/features/daily/components/DayAgendaRows.tsx')) && /row\.kind === 'event' \? null/.test(src('src/features/daily/components/DayAgendaRows.tsx')),
   'the time column shows the zone of a slot or plan whose clock isn\'t the phone\'s — never of a Google event (already on the phone\'s clock)')
 
@@ -157,16 +161,17 @@ ok(/icloud_etag, icloud_from, icloud_horizon, time_zone'\)/.test(fn) && /schedul
 ok(/readbackChangeOf\(item\.ics, o\.entity, `lasci-\$\{o\.entity\}-\$\{o\.id\}@lasciviens\.github\.io`, emoji, zones\.get\(keyOf\(x\)\) \?\? OSLO\)/.test(fn),
   'the read-back reads each iPhone change on its item\'s own clock')
 const block2 = fn.slice(fn.indexOf('// <icloud-pure>'), fn.indexOf('// </icloud-pure>'))
+const uidOf = (kind, id) => [`lasci-${kind}-${id}`, 'lasciviens.github.io'].join('@')
 const I = new Function(`${transform(block2.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}; return { readbackChangeOf, startOf }`)()
-const moved = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:lasci-slot-1@lasciviens.github.io', 'DTSTART;TZID=Europe/Oslo:20261112T150000', 'DTEND;TZID=Europe/Oslo:20261112T163000',
+const moved = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', `UID:${uidOf('slot', 1)}`, 'DTSTART;TZID=Europe/Oslo:20261112T150000', 'DTEND;TZID=Europe/Oslo:20261112T163000',
   'SUMMARY:Gym', 'LAST-MODIFIED:20261102T090000Z', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
-const inIstanbul = I.readbackChangeOf(moved, 'slot', 'lasci-slot-1@lasciviens.github.io', '', 'Europe/Istanbul')
+const inIstanbul = I.readbackChangeOf(moved, 'slot', uidOf('slot', 1), '', 'Europe/Istanbul')
 eq([inIstanbul.date, inIstanbul.time, inIstanbul.minutes], ['2026-11-12', '17:00', 90], 'an Istanbul item moved on an iPhone in Oslo to 15:00 Oslo time is 17:00 on its own clock')
-const atHome = I.readbackChangeOf(moved, 'slot', 'lasci-slot-1@lasciviens.github.io', '')
+const atHome = I.readbackChangeOf(moved, 'slot', uidOf('slot', 1), '')
 eq([atHome.date, atHome.time], ['2026-11-12', '15:00'], 'an item in the home zone reads on Oslo\'s clock, as before')
-const series = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:lasci-plan-2@lasciviens.github.io', 'DTSTART;TZID=Asia/Tokyo:20261103T070000', 'DTEND;TZID=Asia/Tokyo:20261103T080000',
+const series = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', `UID:${uidOf('plan', 2)}`, 'DTSTART;TZID=Asia/Tokyo:20261103T070000', 'DTEND;TZID=Asia/Tokyo:20261103T080000',
   'RRULE:FREQ=WEEKLY;BYDAY=TU', 'EXDATE;TZID=Asia/Tokyo:20261110T070000', 'SUMMARY:Run', 'LAST-MODIFIED:20261102T090000Z', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
-eq(I.readbackChangeOf(series, 'plan', 'lasci-plan-2@lasciviens.github.io', '', 'Asia/Tokyo').days, [{ originalDate: '2026-11-10', cancelled: true }],
+eq(I.readbackChangeOf(series, 'plan', uidOf('plan', 2), '', 'Asia/Tokyo').days, [{ originalDate: '2026-11-10', cancelled: true }],
   'a day taken out on the iPhone is read on the plan\'s clock (on Oslo\'s it would be the day before)')
 
 // ── The client sends the zone to the data API only ──

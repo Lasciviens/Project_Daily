@@ -16,7 +16,7 @@ import { useDeleteTask } from '../../todo/hooks/useTodos'
 import { isClosedTask } from '../../todo/taskRules'
 import { fetchRoster, searchFootball } from '../api/espnApi'
 import { createFollow, fetchFollows, fetchPlans, recordPlan, setFavourite, setSubscribed } from '../api/footballApi'
-import { buildAgenda, leagueMonths, MATCH_CATEGORY, matchItem, subscriptionLeavers, type FbMatch } from '../footballModel'
+import { buildAgenda, leagueMonths, MATCH_CATEGORY, MATCH_TIME_ZONE, matchItem, subscriptionLeavers, type FbMatch } from '../footballModel'
 import type { FootballFollow, FootballPlan, NewFollowInput } from '../types'
 import {
   ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, standingsQuery, teamFixturesQuery, teamInfoQuery, teamResultsQuery,
@@ -315,6 +315,7 @@ export function usePlanIt() {
       kind: 'task',
       defaults: {
         title: mi.title, notes: mi.notes ?? undefined, date: mi.date, dueDate: mi.date, domain: 'personal', category: MATCH_CATEGORY,
+        timeZone: MATCH_TIME_ZONE,
         ...(mi.time ? { startTime: mi.time, duration: mi.durationMinutes ?? undefined, scheduled: true } : {}),
       },
       onSaved: r => { if (r.taskId) record.mutate({ match: m, taskId: r.taskId }) },

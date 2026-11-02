@@ -93,6 +93,7 @@ begin
     else
       new.time_zone := public.app_request_time_zone();
     end if;
+    return new;  -- every value filled here was checked already (a plan's zone when it was stored)
   end if;
   if new.time_zone is not null and not public.time_zone_ok(new.time_zone) then
     raise exception 'Not a time zone the database knows' using errcode = '22023';
@@ -113,6 +114,7 @@ as $$
 begin
   if tg_op = 'INSERT' and new.time_zone is null then
     new.time_zone := public.app_request_time_zone();
+    return new;  -- checked by app_request_time_zone
   end if;
   if new.time_zone is not null and not public.time_zone_ok(new.time_zone) then
     raise exception 'Not a time zone the database knows' using errcode = '22023';

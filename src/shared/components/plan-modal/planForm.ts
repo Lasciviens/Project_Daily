@@ -132,7 +132,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     googleListTitle: DOMAIN_LABEL[domain],
     labels: [],
     labelsTouched: false,
-    timeZone: phoneTimeZone(),
+    timeZone: d.timeZone ?? phoneTimeZone(),
     zoneTouched: false,
     scope: 'all' as const,
     otherDate: null,

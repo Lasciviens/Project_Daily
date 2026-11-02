@@ -56,6 +56,8 @@ export interface PlanDefaults {
   date?: string             // yyyy-MM-dd
   startTime?: string        // HH:MM (24h)
   duration?: number         // minutes
+  /** The zone that day and time are on (183) — a match's kick-off is Oslo's clock; left out = the phone's. */
+  timeZone?: string
   category?: TimeBlockCategory
   color?: string
   recurrence?: RecurrenceMode

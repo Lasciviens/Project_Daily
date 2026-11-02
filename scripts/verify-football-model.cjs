@@ -216,14 +216,14 @@ eq(M.osloParts('2026-10-21T22:30Z'), { date: '2026-10-22', time: '00:30' }, 'aft
   const lille = fixtures.find(m => m.id === '401915396')
   eq(M.newMatchItem(lille), {
     title: '⚽ Lille – Galatasaray', notes: 'UEFA Champions League · League Phase · Decathlon Arena - Stade Pierre-Mauroy, Lille',
-    domain: 'personal', priority: 'medium', category: 'football', date: '2026-10-21', time: '18:45', durationMinutes: 120, google: 'calendar',
-  }, 'a new match item: personal, a Football slot (165), on Google Calendar like any timed item')
+    domain: 'personal', priority: 'medium', category: 'football', date: '2026-10-21', time: '18:45', durationMinutes: 120, timeZone: 'Europe/Oslo', google: 'calendar',
+  }, 'a new match item: personal, a Football slot (165), on Google Calendar like any timed item, its kick-off on Oslo\'s clock and saying so (183)')
   eq(M.newMatchItem({ ...lille, timeValid: false }).google, 'tasks', 'no kick-off yet: Google Tasks, like any item without a time')
   const mine = { taskId: 't1', blockId: 'b1', scope: 'item', title: 'Galatasaray away 🔥', notes: 'with Ali', domain: 'personal', priority: 'high',
     date: '2026-10-21', time: '18:45', durationMinutes: 150, deadline: null, repeat: null, google: 'both', googleTaskList: null, source: null }
   eq(M.movedMatchItem(mine, { ...lille, kickoff: '2026-10-22T19:00Z' }), {
-    ...mine, section: null, date: '2026-10-22', time: '21:00',
-  }, 'a moved kick-off moves day and time; the owner\'s title, notes, priority, length and Google choice stay')
+    ...mine, section: null, date: '2026-10-22', time: '21:00', timeZone: 'Europe/Oslo',
+  }, 'a moved kick-off moves day and time (on Oslo\'s clock, 183); the owner\'s title, notes, priority, length and Google choice stay')
   eq(M.movedMatchItem({ ...mine, durationMinutes: null }, lille).durationMinutes, null, 'an item that blocks no time keeps blocking none')
   eq(M.movedMatchItem({ ...mine, time: null, durationMinutes: null }, lille).durationMinutes, 120, 'an item with no time yet gets two hours with its kick-off')
   const plan = { kickoff_at: '2026-10-21T16:45Z', time_valid: true }

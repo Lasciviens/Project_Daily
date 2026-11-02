@@ -832,7 +832,7 @@ export function UnifiedPlanModal({
           creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown} calendarApp={calendarApp}
           occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
-          savedZone={editMode && item && (item.blockId || item.scheduleBlockId) ? item.timeZone ?? null : undefined}
+          savedZone={editMode && item && (item.blockId || item.scheduleBlockId) ? item.timeZone ?? null : defaults?.timeZone}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}
           exceptDates={scheduleBlock?.except_dates}
         />
