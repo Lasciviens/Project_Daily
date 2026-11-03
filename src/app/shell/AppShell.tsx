@@ -113,7 +113,12 @@ export function AppShell() {
       className={cx(
         // overflow-x-hidden: <main> is never a sideways scroller (iOS let Home
         // pan right "forever", 06.10.2026); strips scroll inside themselves.
-        'relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain',
+        // A stable gutter with a mouse or trackpad: the app's 5px scrollbar
+        // takes room there, so a section short enough not to scroll made the
+        // page — and every header bar on it — wider than a long one (owner,
+        // 03.11.2026: a bar never resizes on a tab switch). Touch screens
+        // draw their scrollbar over the page and keep the full width.
+        'relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [@media(pointer:fine)]:[scrollbar-gutter:stable]',
         phone && 'pb-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+16px)]',
       )}
       onScroll={e => { const y = (e.target as HTMLElement).scrollTop; reportScroll(y); scrollPositions.set(pathname, y) }}

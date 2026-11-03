@@ -46,8 +46,8 @@ export interface AmountChip { label: string; hint?: string; base: number }
 /**
  * The portion words offered wherever a portion is named (owner, 31.10.2026: "there are no type of portion, it's
  * manually written like '1 portion' '1 pc' … It should be options") — a food's preset ("1 slice") and a recipe's
- * serving word. The owner's own words already in use are offered after these (portionWordOptions), and "Other…"
- * still takes a new one.
+ * serving word. The owner's own words already in use are offered with these, A–Z (portionWordOptions), and
+ * "Other…" still takes a new one.
  */
 export const PORTION_WORDS = [
   'portion', 'serving', 'piece', 'slice', 'scoop', 'cup', 'glass', 'bowl', 'plate',
@@ -57,9 +57,13 @@ export const PORTION_WORDS = [
 /** A word fit to be offered: letters (any language), spaces and hyphens, at most 30 — never "2 slices (60 g)". */
 const OFFERABLE = /^[\p{L}][\p{L} -]{0,29}$/u
 
+/** A–Z as a reader expects: case and accents are ignored ("Muffin" sorts with "muffin", "şiş" beside "sis"). */
+export const AZ = new Intl.Collator('en', { sensitivity: 'base' })
+
 /**
- * The words a portion field offers: the usual ones, then the owner's own in use (foods' presets, recipes' serving
- * words — each once, any case), then the current value if it is none of them, so a saved word always shows.
+ * The words a portion field offers, A–Z (owner: "Portion name — sort by A-Z"; the field's "None" stays first
+ * and "Other…" last): the usual ones, the owner's own in use (foods' presets, recipes' serving words — each
+ * once, any case) and the current value if it is none of them, so a saved word always shows.
  */
 export function portionWordOptions(own: readonly (string | null | undefined)[], current = ''): string[] {
   const out: string[] = [...PORTION_WORDS]
@@ -70,7 +74,7 @@ export function portionWordOptions(own: readonly (string | null | undefined)[], 
   }
   const c = current.trim()
   if (c && !has(c)) out.push(c)
-  return out
+  return out.sort(AZ.compare)
 }
 
 /** One serving's word: the recipe's own (157) or "portion". */

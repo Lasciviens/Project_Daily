@@ -18,7 +18,7 @@ import { useEatPlannedEntry } from '../hooks/useMealPlan'
 import { MacroBar } from './MacroBar'
 import { MacroLine } from './MacroLine'
 import { MacroFigure } from './MacroTotalPeek'
-import { eatenTotals, splitTitleQty } from '../foodIngredients'
+import { eatenTotals, plannedTotals, splitTitleQty, withPlannedTotals } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
 import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
@@ -56,18 +56,43 @@ const SLOTS = SLOT_OPTIONS.map(o => ({ slot: o.id, label: o.label, icon: o.icon 
 // ring can shrink on a phone (the viewBox scales the stroke with it).
 // `overIs`: what going over the target means — too many calories is a warning
 // (danger), more protein than the target is the goal reached (success).
-function Ring({ consumed, target, size, stroke, color, label, overLabel, sizeClass, ready, overIs }: {
-  consumed: number; target: number; size: number; stroke: number; color: string; label: string; overLabel: string; sizeClass: string; ready: boolean
+// `withPlanned`: the day with its planned meals — a lighter arc past the eaten
+// one, in the over colour once the plan passes the target; the number in the
+// middle stays what was eaten.
+function Ring({ consumed, withPlanned, target, size, stroke, color, label, overLabel, sizeClass, ready, overIs }: {
+  consumed: number; withPlanned: number; target: number; size: number; stroke: number; color: string; label: string; overLabel: string; sizeClass: string; ready: boolean
   overIs: 'danger' | 'success'
 }) {
   const over = consumed > target
   const remaining = Math.abs(Math.round(target - consumed))
+  const share = (v: number) => (target > 0 ? v / target : 0)
   return (
-    <ProgressRing value={target > 0 ? consumed / target : 0} size={size} stroke={stroke} ready={ready}
-      color={over ? `rgb(var(--${overIs}))` : color} className={sizeClass}>
+    <ProgressRing value={share(consumed)} size={size} stroke={stroke} ready={ready}
+      color={over ? `rgb(var(--${overIs}))` : color} className={sizeClass}
+      ghost={share(withPlanned)} ghostColor={withPlanned > target ? `rgb(var(--${overIs}))` : color}>
       <AnimatedNumber value={remaining} ready={ready} align="center" className={cx('font-bold leading-none text-fg', size > 100 ? 'text-title sm:text-kpi' : 'text-ui sm:text-lead')} />
       <span className={cx('mt-0.5 text-micro leading-none', over ? (overIs === 'danger' ? 'text-danger' : 'text-success') : 'text-fg-muted')}>{over ? overLabel : label}</span>
     </ProgressRing>
+  )
+}
+
+/**
+ * What the day comes to with its planned meals (owner: "Total calories should
+ * not include planned ones but should show the result some where"). The dot
+ * matches the rings' lighter arc; going over the target is said, in the danger tone.
+ */
+function PlannedLine({ kcal, target }: { kcal: number; target: number }) {
+  const left = Math.round(target - kcal)
+  const over = target > 0 && left < 0
+  return (
+    <p className="mt-0.5 flex items-center gap-1.5 text-meta tabular-nums text-fg-muted" title="Planned meals count once you tick them eaten">
+      <span aria-hidden className="h-2 w-2 shrink-0 rounded-full opacity-40"
+        style={{ backgroundColor: over ? 'rgb(var(--danger))' : MACRO_COLOR.calories }} />
+      <MetaLine as="span" items={[
+        <>With planned <strong className="font-semibold text-fg-2">{kcal}</strong> kcal</>,
+        target > 0 && (over ? <span className="text-danger">{-left} over</span> : `${left} left`),
+      ]} />
+    </p>
   )
 }
 
@@ -103,6 +128,12 @@ export function FoodTodayTab({ date }: { date: string }) {
   const protein  = nut?.protein_g ?? 0
   const proteinLeft = Math.round(targets.protein - protein)
   const proteinHit  = targets.protein > 0 && proteinLeft <= 0
+  // The day's planned meals (not ticked eaten yet) are never in a total: the
+  // rings and the macro bar draw them lighter, and one line says what the day
+  // comes to with them.
+  const planned = plannedTotals(nut?.meals ?? [])
+  const withPlanned = withPlannedTotals(nut?.meals ?? [])
+  const hasPlanned = planned.calories > 0 || planned.protein_g > 0
 
   // One-line status in the collapsed (phone) Coach header.
   const coachSummary = coach.weightKg == null ? (coach.isLoading ? '…' : 'Set up') : coachShort(coach.decision)
@@ -326,9 +357,9 @@ export function FoodTodayTab({ date }: { date: string }) {
           <CardHeader title="Nutrition" variant="label" />
           <GoalSummary date={date} className="-mt-2 mb-2" />
           <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-            <Ring consumed={consumed} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
+            <Ring consumed={consumed} withPlanned={withPlanned.calories} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
               label="kcal left" overLabel="kcal over" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} overIs="danger" />
-            <Ring consumed={protein} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
+            <Ring consumed={protein} withPlanned={withPlanned.protein_g} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
               label="protein left" overLabel="protein over" sizeClass="h-[88px] w-[88px]" ready={nut != null} overIs="success" />
             <div className="min-w-[10rem] flex-1">
               <p className="text-body text-fg-muted tabular-nums">
@@ -339,20 +370,24 @@ export function FoodTodayTab({ date }: { date: string }) {
                   ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft} g)` : ''}</span>
                   : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein} g</strong> / {targets.protein} g protein · {proteinLeft} g left</span>}
               </p>
+              {hasPlanned && <PlannedLine kcal={withPlanned.calories} target={targets.calories} />}
             </div>
           </div>
-          {nut && nut.calories > 0 && (
+          {nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0) && (
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
-              <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false} />
+              <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false}
+                planned={hasPlanned ? { protein: planned.protein_g, carbs: planned.carbs_g, fat: planned.fat_g } : null} />
               {/* Each total opens a peek: the exact amount and the foods it came from. */}
-              <div className="mt-2 grid grid-cols-3 justify-items-start gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
-                <MacroFigure macro="protein_g" label="protein" value={nut.protein_g} color={MACRO_COLOR.protein} meals={nut.meals} />
-                <MacroFigure macro="carbs_g" label="carbs" value={nut.carbs_g} color={MACRO_COLOR.carbs} meals={nut.meals} />
-                <MacroFigure macro="fat_g" label="fat" value={nut.fat_g} color={MACRO_COLOR.fat} meals={nut.meals} />
-                <MacroFigure macro="fiber_g" label="fiber" value={nut.fiber_g} color={MACRO_COLOR.fiber} meals={nut.meals} />
-                {nut.sugar_g > 0 && <MacroFigure macro="sugar_g" label="sugar" value={nut.sugar_g} color={MACRO_COLOR.sugar} meals={nut.meals} />}
-              </div>
+              {nut.calories > 0 && (
+                <div className="mt-2 grid grid-cols-3 justify-items-start gap-x-3 gap-y-1 text-meta tabular-nums text-fg-2">
+                  <MacroFigure macro="protein_g" label="protein" value={nut.protein_g} color={MACRO_COLOR.protein} meals={nut.meals} />
+                  <MacroFigure macro="carbs_g" label="carbs" value={nut.carbs_g} color={MACRO_COLOR.carbs} meals={nut.meals} />
+                  <MacroFigure macro="fat_g" label="fat" value={nut.fat_g} color={MACRO_COLOR.fat} meals={nut.meals} />
+                  <MacroFigure macro="fiber_g" label="fiber" value={nut.fiber_g} color={MACRO_COLOR.fiber} meals={nut.meals} />
+                  {nut.sugar_g > 0 && <MacroFigure macro="sugar_g" label="sugar" value={nut.sugar_g} color={MACRO_COLOR.sugar} meals={nut.meals} />}
+                </div>
+              )}
             </div>
           )}
         </Card>),

@@ -130,6 +130,19 @@ near(F.dayMacroSources(small.map(F.diaryLineFromMeal), 'fat_g', recipes, library
 ok([totals.fiber_g, totals.sugar_g, totals.calories], [2, 1, 52], 'small fibre and sugar parts add up instead of rounding away; planned rows never count')
 ok(F.eatenTotals([{ source: 'log', ...M(191, 41, 0, 3, 0, 0) }]).fat_g, 3, 'a line without exact values counts its figures')
 
+// ── plannedTotals / withPlannedTotals: Today's lighter part and "With planned" ──
+const ate = { title: 'Chicken breast · 180g', source: 'log', ...M(191, 41, 0, 3, 0, 0), exact: M(190.8, 41.4, 0, 2.4, 0, 0) }
+const karn = { title: 'Karnıyarık', source: 'plan', ...M(380, 18, 22, 2, 0, 9), exact: M(380, 18, 22, 2.4, 0, 9) }
+const salad = { title: 'Green salad', source: 'plan', ...M(0, 0, 0, 0, 0, 0), exact: M(0, 0, 0, 0, 0, 0) }
+const day2 = [ate, karn, salad]
+ok(F.eatenTotals(day2), M(191, 41, 0, 2, 0, 0), 'the totals stay eaten-only')
+ok(F.plannedTotals(day2), M(380, 18, 22, 2, 0, 9), 'planned: the planned rows only (a one-off line with nothing typed adds nothing)')
+ok(F.withPlannedTotals(day2), M(571, 59, 22, 5, 0, 9), 'with planned: every row summed exactly, rounded once — 2.4 + 2.4 g fat is 5 g, not 2 + 2')
+const ticked = [ate, { ...karn, source: 'log' }, salad]
+ok([F.eatenTotals(ticked).calories, F.plannedTotals(ticked).calories, F.withPlannedTotals(ticked).calories], [571, 0, 571],
+  'ticked eaten, the row moves from planned to eaten: "with planned" stays 571 (counted once)')
+ok(F.plannedTotals([ate]), M(0, 0, 0, 0, 0, 0), 'a day with nothing planned: nothing lighter to draw')
+
 // ── formatting ───────────────────────────────────────────────────────────────
 ok([F.formatAmount(880, 'g'), F.formatAmount(5400, 'g'), F.formatAmount(18.75, 'ml'), F.formatAmount(1250, 'ml')], ['880 g', '5.4 kg', '19 ml', '1.3 l'], 'amounts')
 ok([F.oneDecimal(70.56), F.oneDecimal(3), F.oneDecimal(1234.56)], ['70.6', '3.0', '1,234.6'], 'one decimal')

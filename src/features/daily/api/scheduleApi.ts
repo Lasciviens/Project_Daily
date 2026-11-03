@@ -287,10 +287,12 @@ export interface TrainingDayTask {
   schedule_block_id: string
   occurrence_date: string
   first_plan_date?: string | null
+  /** The task's own title: a past day keeps the name it had, even after the template is renamed. */
+  title?: string | null
 }
 
 export async function fetchTrainingDayTasks(from: string, to: string): Promise<TrainingDayTask[]> {
-  const cols = 'id, status, closed_reason, hevy_workout_id, hevy_routine_id, schedule_block_id, occurrence_date'
+  const cols = 'id, title, status, closed_reason, hevy_workout_id, hevy_routine_id, schedule_block_id, occurrence_date'
   const read = (select: string) => supabase
     .from('tasks')
     .select(select)

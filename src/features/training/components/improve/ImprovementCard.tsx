@@ -82,7 +82,16 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
 
       {main.length > 0 && (
         <div className="border-t border-line pt-3">
-          <p className="section-label mb-1.5">Main lifts · estimated 1RM</p>
+          <p className="section-label mb-1.5 flex items-center gap-1.5">
+            Main lifts · estimated 1RM
+            {/* Says what est1RM (progressAggregate) and sessionTopValue (plan/improvement) do: change them together. */}
+            <InfoBubble label="What 1RM means">
+              <b>1RM</b> (one-rep max): the most you could lift for a single rep. Estimated from your logged sets, so you
+              never have to test it: each session&apos;s best set of 12 reps or fewer counts as weight × (1 + reps ÷ 30)
+              (the Epley formula; warm-ups and drop sets are left out). The kilos are the window&apos;s start → end. An
+              estimate can be about ±10% off, so watch the direction, not the exact number.
+            </InfoBubble>
+          </p>
           <ul className="flex flex-col gap-1.5">
             {main.map(c => (
               // Lift + change on one line, the 1RM figures under it: inline they

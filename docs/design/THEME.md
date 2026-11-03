@@ -279,7 +279,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Text that may not fit | `<Truncate lines as reveal fullText>` (`lines` 1–3, `reveal` auto\|popover\|more\|none) — cuts only when needed; adds a `title` and a mouse tooltip after 400ms. Outside a tappable element a tap, click or Enter opens a bubble (one line) or an in-place More / Less (2–3 lines); inside a tappable row only the hover tooltip. Text that fits costs one render and no listeners. The bubble (`TruncateBubble`) exists only while open and renders through Headless UI's `Portal`, so inside a popup it counts as part of the dialog; Esc and a press elsewhere close only the bubble. On `h2`–`h4` the button role goes on an inner span. `useIsTruncated` / `useTruncatedElement(ref, lines, textKey, nodeKey)` share one ResizeObserver; `node scripts/audit-text-overflow.mjs --static` lists bare `truncate` / `line-clamp` sites |
 | "a · b · c" meta lines | `<MetaLine items={[…]} />` — each fact (and its dot) is unbreakable, so a phone wraps between facts ("518 kcal · 50g protein ·" / "4g fiber"), never inside one ("4g" / "fiber"). Falsy items are skipped; items are short facts, never free user text. Prefer it over `.join(' · ')` for any macro / stats / "last done" line |
 | Counting number | `<AnimatedNumber value decimals format ready>` (tabular; counts on first appearance and on a real change) |
-| Progress ring | `<ProgressRing value size stroke color ready>` (sweeps with "More") |
+| Progress ring | `<ProgressRing value size stroke color ready ghost ghostColor>` (sweeps with "More"); `ghost` is a lighter arc (40 %) behind the value for what is still to come — Food's planned meals |
 | Menus | Headless UI `Menu` with `.menu` / `.menu-item` / `.menu-sep` / `.menu-label` |
 | Explain a term | `<InfoBubble label>` (`shared/components`) — the ⓘ popover; never a hand-rolled tooltip. `<HelpTip label>` is the "?" that also opens on hover |
 | Detail on demand (W5 peek) | `<HoverPeek trigger label? panelClassName>` (`shared/components`) — a button whose panel opens on hover with a mouse (and stays while the pointer moves into it), on tap, click or Enter; Esc or a press elsewhere closes. The panel renders only while open, through Headless UI's `Portal`. A value that opens one wears a dotted underline (Food's macro totals) |
@@ -372,6 +372,11 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   content. `PageContainer` is `@container/page` —
   `@[56rem]/page:` queries the page width.
   - `lead: n` puts side tracks before main (a left rail). Optional sections go in the last track.
+  - `early: true` on a step whose main is lowered starts it as soon as main at its cap and the step's
+    side tracks fit (`stepStartRem`; a 42rem main: three tracks from 92rem, four from 117rem) instead of
+    at the page's 100 / 128rem, so it never leaves room for another track empty (Training's Program at
+    1795 left 26.7rem). PageBoard steps such a board with `boardStepForWidth`; `boardWidthRem` gives no
+    header cap over it.
   - A `sticky` column pins only while it fits the scroll area (`StickyStack` in `PageBoard.tsx`
     re-checks on resize); a taller one scrolls with the page.
   - `boardWidthRem(layouts, step)` gives a board's widest width at a step. A page header above a
@@ -384,6 +389,17 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     `PageHeader steady` and a one-line subtitle (`<Truncate>`): its title column takes a fixed share of the
     row, so where the actions go depends on the width only. (A view switch that changes the page's own
     board — Work's Board / List — is not a section; it is left as it is.)
+    **The bar's box, lines and tab places are the same in every section** (owner, 03.11.2026: "should not
+    be reshaped, moved, resized when changing tabs"): a control only some sections have goes in a
+    `SteadySlot` (`src/shared/ui/SteadySlot.tsx` — every section's version in one grid cell, the hidden
+    ones `invisible` + `inert`, so the slot keeps the largest one's room everywhere: Training's Log and
+    Library views, Food's day picker and Add recipe), never `{tab === 'x' && …}` in the header; one that
+    would add a row only for one section sits under the bar instead (Shop's Owned on a phone). A header
+    width never follows the open section's board or its card count (Projects: the most cards any status
+    shows), and a switch label never changes with the open section (Projects' counts). With a mouse,
+    `<main>` keeps a stable scrollbar gutter, so a section too short to scroll doesn't make the page
+    wider. `scripts/verify-page-board.cjs` lists every page with a section switch in its header — a new
+    one fails until it is listed — and refuses a section-only part in a header.
     `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem
     via a callback ref.
   - Anything placed by PageBoard sizes its inner grids and rings on its own width (`@container` +
@@ -462,7 +478,7 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
 - **W4 · Charts: aspect-locked + capped** by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px).
 - **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap): `HoverPeek` (§5).
 - **W6 · Measurable.** At 402 / 1469 / 2450: no horizontal overflow; no single-line content > 640px, no auto-fill column > 384px, no text input > 512px, no chart svg > 896px; and at 1469 and 2450 the default view leaves at most one side track (24rem) empty. A page with fewer sections than columns documents where it stops. Check with `node scripts/audit-page-width.mjs --harness <dir>` (`--glance` checks Daily's glance cells full vs empty day).
-- **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`) or row (`rows: [[[…], { stack, span }], …]` instead of `columns`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
+- **W7 · PageBoard.** One main track (≤ 56rem, a layout may lower it) + 0–3 fixed 24rem side tracks, 1rem gaps. The step is measured on the page's OWN width, never the viewport: < 60rem one stack (phones, tablets) · 60–100rem main + 1 side (1280/1469 laptops) · 100–128rem main + 2 (1920) · ≥ 128rem main + 3 (2450). A layout that lowers main may mark a step `early`: it starts as soon as its tracks fit (§6.3). Each step declares which section goes in which column (`{ top, columns: [[…], { stack, span, sticky }], bottom, main, lead }`) or row (`rows: [[[…], { stack, span }], …]` instead of `columns`); columns are stacks (no masonry, no dense packing), so positions never depend on content. A section that moves column at a step change remounts (desktop resize only). Rules:
   - `lead: n` puts side tracks before main: a rail that drives or sums up the main column (a calendar, a day's totals, an add form) reads first on the left.
   - A section that can be empty goes in the last track, so an empty track is only ever at the far right. A card whose content is bounded (≤ 2 metrics, a few short rows) never spans; the window stops early with empty trailing tracks, documented in its board file (Cardio, Coach, Goal at 2450).
   - A band (`top`/`bottom`) spans only the tracks its own step declares, so a full-width band is declared at every step. Never put a collection in a `bottom` band under a much taller column (it starts after the tallest column ends); give it a column.

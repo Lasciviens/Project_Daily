@@ -27,7 +27,8 @@ function boardWidth(px, layouts, step) {
   if (l.tracks === 1) return px
   return B.columnWidthPx(px, l, 0, l.tracks)
 }
-const emptyAt = (px, layouts) => px - boardWidth(px, layouts, B.pageStepForWidth(px))
+// The step the board renders at (PageBoard): the page's, or a wider one that starts early.
+const emptyAt = (px, layouts) => px - boardWidth(px, layouts, B.boardStepForWidth(px, layouts))
 
 console.log('lead: side tracks before main')
 check('template without lead is unchanged', B.boardTemplate(3) === 'minmax(0,56rem) repeat(2,24rem)')
@@ -173,6 +174,17 @@ check('Training Program: balance (only with a current program) takes the last tr
   const cols = B.resolveBoardLayout(T.PROGRAM_BOARD, s).columns
   return eq(cols[cols.length - 1].stack, ['balance'])
 }))
+// Owner, 03.11.2026, on a 1795px screen: "the area is not efficiently used. Right side is empty."
+check('Training Program: its 42rem main takes the next track as soon as it fits — three tracks from 92rem, four from 117rem',
+  B.stepStartRem(T.PROGRAM_BOARD, 3) === 92 && B.stepStartRem(T.PROGRAM_BOARD, 4) === 117)
+check('Training Program at 1795 (the owner\'s screen): three tracks, the right side used (under 2rem empty; it was 26.7rem)', (() => {
+  const px = 1795 - 232 - 64
+  return B.boardStepForWidth(px, T.PROGRAM_BOARD) === 3 && emptyAt(px, T.PROGRAM_BOARD) < 2 * rem
+})(), `${emptyAt(1795 - 232 - 64, T.PROGRAM_BOARD)}px empty`)
+check('Training Program: no room for another track left empty at any page width from 60rem to the 131rem cap', (() => {
+  for (let px = 60 * rem; px <= B.BOARD_MAX_REM * rem; px += 4) if (emptyAt(px, T.PROGRAM_BOARD) >= 25 * rem) return false
+  return true
+})())
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

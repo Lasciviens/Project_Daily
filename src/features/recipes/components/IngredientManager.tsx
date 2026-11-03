@@ -10,11 +10,12 @@ import { Button, Card, IconButton, PageBoard, Truncate, cx } from '../../../shar
 import { IngredientList } from './IngredientList'
 import { sanitizeDecimal } from './foodLogUtils'
 import { PortionWordSelect } from './PortionWordSelect'
+import { FoodCategorySelect } from './FoodCategorySelect'
 import { presetWord } from '../foodAmount'
 import { INGREDIENT_BOARD } from '../foodBoards'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
-import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
+import type { IngredientLibraryItem } from '../types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Standalone food-library manager. The front door for adding basic foods +
@@ -22,7 +23,8 @@ import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
 //   • a full ADD *and* EDIT form matching the DB (name, unit, all 6 macros incl
 //     sugar, primary portion, category) — editing was previously impossible
 //     (updateIngredientLibraryItem was dead code; you had to delete + recreate).
-//   • category filter pills (Matvaretabellen food groups + Supplements).
+//   • category filter pills (Matvaretabellen food groups + Supplements, then
+//     the owner's own categories — "New category…" in the form adds one).
 //   • the food's serving preset (serving_label + grams) shown as a chip.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -217,10 +219,7 @@ export function IngredientManager({ focusId }: { focusId?: string | null } = {})
             </label>
             <label className="flex min-w-0 flex-col gap-0.5">
               <span className="text-micro text-fg-muted">Category</span>
-              <select value={f.group} onChange={e => set('group', e.target.value)} aria-label="Category" className="select">
-                <option value="">None</option>
-                {FOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              <FoodCategorySelect value={f.group} onChange={g => set('group', g)} />
             </label>
           </div>
           <Button variant="primary" icon={editingId ? undefined : <Plus />} onClick={handleSave} loading={busy} disabled={!f.name.trim()} className="self-start">

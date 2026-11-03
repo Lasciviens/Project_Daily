@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /* Verification — the food logger's search ranking and quick-add parsing
- * (src/features/recipes/foodSearch.ts), and that Recents read every page of
- * the diary (foodLogApi.fetchRecentFoods, against a stand-in for Supabase).
+ * (src/features/recipes/foodSearch.ts), that Recents read every page of
+ * the diary (foodLogApi.fetchRecentFoods, against a stand-in for Supabase), and
+ * that the online search asks Open Food Facts' full-text endpoint and keeps only
+ * products containing the typed words (openFoodFactsApi.searchFoodsByName,
+ * against a stand-in fetch fed the real answers of 03.11.2026).
  * Run: node scripts/verify-food-search.cjs */
 require('sucrase/register')
 // foodLogApi imports the live Supabase client: hand it a stand-in that serves
@@ -31,7 +34,7 @@ Module._load = function (request) {
   if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
   return origLoad.apply(this, arguments)
 }
-const { foldText, matchRank, rankMatches, parseQuickAdd, sortForSlot, usualForSlot } = require('../src/features/recipes/foodSearch')
+const { foldText, matchRank, rankMatches, parseQuickAdd, sortForSlot, usualForSlot, containsEveryWord } = require('../src/features/recipes/foodSearch')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -117,6 +120,77 @@ console.log('\n5 · Recents read every page of the 30 days')
     && reads.every(q => q.ops.filter(o => o[0] === 'order').map(o => o[1]).join() === 'created_at,id')
     && reads[1].ops.some(o => o[0] === 'range' && o[1] === 1000 && o[2] === 1999), JSON.stringify(reads.map(q => q.ops.filter(o => o[0] === 'range'))))
   check('only the columns Recents use (no select *)', !reads[0].ops.find(o => o[0] === 'select')[1].includes('*'))
+
+  console.log('\n6 · Online search (Open Food Facts) — only products that contain the typed words')
+  {
+    check('every word, folded', containsEveryWord('Grovt brød', 'brod') && containsEveryWord('Coca-Cola Original Taste', 'coca cola'))
+    check('a word inside a compound word', containsEveryWord('Kyllingfilet', 'kylling filet'))
+    check('a word typed without the space', containsEveryWord('7 Up', '7up'))
+    check('one missing word → no match', !containsEveryWord('Peanut Butter Smooth', 'gresham peanut butter'))
+    check('an empty or punctuation-only query matches nothing', !containsEveryWord('Skyr', '  ') && !containsEveryWord('Skyr', ' – '))
+    check('a number alone is never required (names write it their own way)', containsEveryWord('Skyr naturell', 'skyr 0%') && containsEveryWord('Coca-Cola Zero', 'cola 0'))
+    check('…unless the query is only numbers', containsEveryWord('7 Up', '7') && !containsEveryWord('Skyr', '0'))
+
+    const { searchFoodsByName } = require('../src/features/recipes/api/openFoodFactsApi')
+    const urls = []
+    let answer = []
+    global.fetch = async url => { urls.push(String(url)); return { ok: true, status: 200, json: async () => ({ products: answer }) } }
+    const off = (code, name, nameEn, brands, kcal) => ({ code, product_name: name, product_name_en: nameEn, brands, nutriments: kcal == null ? {} : { 'energy-kcal_100g': kcal } })
+    // What /api/v2/search answered on 03.11.2026 for "skyr", "chicken breast" and
+    // every other query: the most-scanned products (count 4,892,295 = all of OFF).
+    const mostScanned = [
+      off('6111246721261', 'Fromage Blanc Nature', 'Fromage Blanc Nature', 'Milky Food Professional, SODIPOL', 80.6),
+      off('6111035000430', 'Sidi Ali', 'sidi ali', 'Sidi Ali, سيدي علي', 0),
+      off('6111242100992', 'Perly', 'Perly', 'Jaouda, Perly', 97),
+      off('5449000054227', 'Coca-Cola Original Taste', 'Coca-Cola Original Taste', 'Coca-Cola', 42),
+    ]
+
+    answer = mostScanned
+    const r1 = await searchFoodsByName('skyr')
+    const u = new URL(urls[0])
+    check('asks the full-text endpoint /cgi/search.pl with the words (v2 /api/v2/search ignores search_terms)',
+      u.pathname === '/cgi/search.pl' && u.searchParams.get('search_terms') === 'skyr' && u.searchParams.get('search_simple') === '1'
+      && u.searchParams.get('action') === 'process' && u.searchParams.get('json') === '1', urls[0])
+    check('the most-scanned products never fill a search for something else (the owner\'s three)', r1.length === 0, JSON.stringify(r1.map(p => p.name)))
+    check('…nor a two-word search', (await searchFoodsByName('chicken breast')).length === 0)
+
+    // /cgi/search.pl for "skyr" (live, 03.11.2026) ranks popular, loosely related products first.
+    answer = [
+      mostScanned[0],
+      off('6111242100985', '', 'Fromage frais nature', 'Jaouda', 101),
+      off('3329770077003', 'Skyr nature 0%', 'Skyr nature 0%', 'Yoplait', 57),
+      mostScanned[1],
+      off('3033491454080', 'SKYR', 'Skyr', 'Danone', 57.5),
+      off('3023290030547', 'Skyr framboise', "siggi's Skyr Framboise", "siggi's", 87.9),
+      off('1234567890128', 'Skyr', 'Skyr', 'Example Dairy', null),
+    ]
+    const r2 = await searchFoodsByName('Skyr')
+    check('keeps the products that contain the word, in OFF\'s order, and still skips one with no kcal',
+      JSON.stringify(r2.map(p => p.name)) === JSON.stringify(['Skyr nature 0%', 'Skyr', "siggi's Skyr Framboise"]), JSON.stringify(r2.map(p => p.name)))
+
+    answer = [
+      off('1', 'Peanut Butter Crunchy', 'Peanut Butter Crunchy', 'Gresham', 600),
+      off('2', 'Peanut Butter Smooth', 'Peanut Butter Smooth', 'Example Spread', 590),
+      off('3', 'Oat Biscuits', 'Oat Biscuits', 'Gresham', 480),
+      off('4', 'Kyllingbrystfilet', 'Chicken breast fillet', 'Example Farm', 110),
+    ]
+    const r3 = await searchFoodsByName('gresham peanut butter')
+    check('the words may sit in the name and the brand together', r3.length === 1 && r3[0].name === 'Peanut Butter Crunchy', JSON.stringify(r3.map(p => p.name)))
+    const r4 = await searchFoodsByName('kyllingbryst')
+    check('the product\'s own-language name counts too (shown by its English name)', r4.length === 1 && r4[0].name === 'Chicken breast fillet', JSON.stringify(r4.map(p => p.name)))
+    check('asks for 50, so enough are left after the word check', new URL(urls[urls.length - 1]).searchParams.get('page_size') === '50')
+
+    // OFF's busy 503 page has no CORS header: in a browser fetch throws instead of answering 503. That is retried as busy.
+    let calls = 0
+    global.fetch = async () => { calls++; throw new TypeError('Failed to fetch') }
+    let said = ''
+    try { await searchFoodsByName('skyr') } catch (e) { said = e.message }
+    check('a request the browser reports as failed is tried 3 times, then says OFF is busy', calls === 3 && /busy/.test(said), `${calls} calls · ${said}`)
+    calls = 0
+    global.fetch = async () => { calls++; if (calls < 2) throw new TypeError('Load failed'); return { ok: true, status: 200, json: async () => ({ products: [off('1', 'Skyr naturell', 'Skyr', 'Q', 63)] }) } }
+    const again = await searchFoodsByName('skyr')
+    check('…and a later try that answers is used', calls === 2 && again.length === 1 && again[0].name === 'Skyr', JSON.stringify(again.map(p => p.name)))
+  }
 
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

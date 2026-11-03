@@ -5,11 +5,11 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { useRecipes } from '../hooks/useRecipes'
 import { USAGE_DAYS, useFoodUsage } from '../hooks/useFoodUsage'
 import {
-  FOOD_FLAGS, FOOD_SORTS, filterFoods, isHighProteinFood, portionMacros, proteinDensity, recipeUseCounts, sortFoods,
-  usageKey, type FoodFlag, type FoodSort,
+  FOOD_FLAGS, FOOD_SORTS, filterFoods, foodCategoryOptions, isHighProteinFood, portionMacros, proteinDensity, recipeUseCounts,
+  sortFoods, usageKey, type FoodFlag, type FoodSort,
 } from '../foodLibraryModel'
 import { checkMacroConsistency } from '../macroSanity'
-import { FOOD_GROUPS, type IngredientLibraryItem } from '../types'
+import type { IngredientLibraryItem } from '../types'
 import { FoodThumb } from './foodLogKit'
 import { MacroLine } from './MacroLine'
 import { MacroWarningBadge } from './MacroWarningBadge'
@@ -40,11 +40,12 @@ export function IngredientList({ library, isLoading, onEdit, onDelete, editingId
   const [sort, setSort] = useState<FoodSort>('az')
   const [limit, setLimit] = useState(PAGE)
 
+  // The built-in groups in their order, then the owner's own categories (A–Z) — those a food has.
   const presentGroups = useMemo(() => {
     const s = new Set<string>()
     let hasOther = false
     for (const i of library) { if (i.food_group) s.add(i.food_group); else hasOther = true }
-    return { ordered: FOOD_GROUPS.filter(g => s.has(g)), hasOther }
+    return { ordered: foodCategoryOptions([...s]).filter(g => s.has(g)), hasOther }
   }, [library])
 
   const shown = useMemo(

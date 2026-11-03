@@ -1,7 +1,8 @@
 // The Library (recipes) and Ingredients lists: usage from the diary, macro
 // density, filters and sorts. Pure (scripts/verify-food-library.cjs).
 import { foldText, rankMatches } from './foodSearch'
-import type { FoodCategory, IngredientLibraryItem, MealSlot, RecipeWithIngredients } from './types'
+import { AZ } from './foodAmount'
+import { FOOD_GROUPS, type FoodCategory, type IngredientLibraryItem, type MealSlot, type RecipeWithIngredients } from './types'
 
 // ── Usage from the diary ────────────────────────────────────────────────────
 /** One eaten diary row, as much as usage needs. */
@@ -266,6 +267,44 @@ export function macrosMismatch(f: Pick<IngredientLibraryItem, 'calories' | 'prot
   const implied = 4 * f.protein_g + 4 * f.carbs_g + 9 * f.fat_g
   const gap = Math.abs(implied - f.calories)
   return gap > Math.max(50, f.calories * 0.15)
+}
+
+// ── A food's category ───────────────────────────────────────────────────────
+// A category is the food's own text (`food_group`, migration 057, no CHECK):
+// the built-in groups, or one the owner typed (owner: "Category — Let me add
+// new category here"). An own category is offered while a food has it — there
+// is no list of categories of its own.
+
+/** The longest category a food takes (a filter pill and a list row show it whole). */
+export const CATEGORY_MAX = 40
+
+/**
+ * The categories a food's Category field (and the Foods filter) offers: the
+ * built-in groups in their order, then, A–Z and each once, the owner's own in
+ * use and the current value if it is none of them (a category just typed).
+ */
+export function foodCategoryOptions(inUse: readonly (string | null | undefined)[], current = ''): string[] {
+  const builtIn: readonly string[] = FOOD_GROUPS
+  const own: string[] = []
+  const known = (c: string) => builtIn.includes(c) || own.includes(c)
+  for (const raw of [...inUse, current]) {
+    const c = raw?.trim()
+    if (c && !known(c)) own.push(c)
+  }
+  return [...builtIn, ...own.sort(AZ.compare)]
+}
+
+/**
+ * A new category as typed, checked where it enters: control characters out,
+ * spaces collapsed, at most CATEGORY_MAX characters; one that matches an
+ * offered category but for case is that category ("dairy products" → "Dairy
+ * products"), so the same category never shows twice. Null when nothing is left.
+ */
+export function cleanCategory(raw: string, offered: readonly string[]): string | null {
+  const visible = [...raw].map(ch => (ch < ' ' || ch === '\u007f' ? ' ' : ch)).join('')
+  const c = [...visible.replace(/\s+/g, ' ').trim()].slice(0, CATEGORY_MAX).join('').trim()
+  if (!c) return null
+  return offered.find(o => o.toLowerCase() === c.toLowerCase()) ?? c
 }
 
 export interface FoodFilter {

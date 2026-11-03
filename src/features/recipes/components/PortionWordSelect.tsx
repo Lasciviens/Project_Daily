@@ -8,11 +8,11 @@ const OTHER = '__other__'
 
 /**
  * What one portion is called, picked from a list (owner, 31.10.2026: "it's manually written like '1 portion'
- * '1 pc' … It should be options"): the usual words and the owner's own in use (foodAmount.portionWordOptions),
- * then "Other…", which turns the field into a box for a new word. The box keeps what is typed as it is (spaces
- * too — "small bowl") and hands the word over, trimmed, when it is left or Enter is pressed; left empty, the list
- * comes back with the word as it was. The value is the word ('' = none); a food stores it as "1 <word>", a recipe
- * as the word.
+ * '1 pc' … It should be options"): "None" when the field may be empty, the usual words and the owner's own in
+ * use A–Z (foodAmount.portionWordOptions), then "Other…", which turns the field into a box for a new word. The
+ * box keeps what is typed as it is (spaces too — "small bowl") and hands the word over, trimmed, when it is left
+ * or Enter is pressed; left empty, the list comes back with the word as it was. The value is the word ('' =
+ * none); a food stores it as "1 <word>", a recipe as the word.
  */
 export function PortionWordSelect({ value, onChange, ariaLabel, noneLabel, emptyWord, className }: {
   value: string

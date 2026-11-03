@@ -72,19 +72,45 @@ export function splitTitleQty(title: string): { name: string; qty: string | null
   return { name: title.slice(0, idx), qty }
 }
 
+type DayRow = { source: 'plan' | 'log'; exact?: MacroAmounts } & MacroAmounts
+
+/** The rows that `keep` takes: their exact values summed, rounded once. */
+function sumRows(meals: readonly DayRow[], keep: (source: DayRow['source']) => boolean): MacroAmounts {
+  const out = zero()
+  for (const m of meals) {
+    if (!keep(m.source)) continue
+    for (const k of MACRO_KEYS) out[k] += m.exact?.[k] ?? m[k]
+  }
+  for (const k of MACRO_KEYS) out[k] = Math.round(out[k])
+  return out
+}
+
 /**
  * The day's eaten totals as Food · Today shows them: every eaten line's
  * exact values summed, rounded once — so a figure is the peek's exact total
  * rounded ("8.4 g" → "8g"), and many small parts never round away to 0.
  */
-export function eatenTotals(meals: readonly ({ source: 'plan' | 'log'; exact?: MacroAmounts } & MacroAmounts)[]): MacroAmounts {
-  const out = zero()
-  for (const m of meals) {
-    if (m.source !== 'log') continue
-    for (const k of MACRO_KEYS) out[k] += m.exact?.[k] ?? m[k]
-  }
-  for (const k of MACRO_KEYS) out[k] = Math.round(out[k])
-  return out
+export function eatenTotals(meals: readonly DayRow[]): MacroAmounts {
+  return sumRows(meals, s => s === 'log')
+}
+
+/**
+ * The day's planned rows (Meal plan, not ticked eaten yet), summed the same
+ * way. Never part of a total: Today draws them as the lighter part of the
+ * rings and the macro bar.
+ */
+export function plannedTotals(meals: readonly DayRow[]): MacroAmounts {
+  return sumRows(meals, s => s === 'plan')
+}
+
+/**
+ * What the day comes to if the planned rows are eaten too (Today's "With
+ * planned"). A row is planned or eaten, never both — Mark eaten flips the
+ * same row's status — so ticking one moves it from planned to eaten and
+ * this sum stays the same.
+ */
+export function withPlannedTotals(meals: readonly DayRow[]): MacroAmounts {
+  return sumRows(meals, () => true)
 }
 
 /** Today's DayMeal (eaten rows only) as a diary line; its exact values when it carries them. */

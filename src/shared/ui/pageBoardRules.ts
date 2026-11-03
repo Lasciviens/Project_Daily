@@ -90,6 +90,16 @@ export interface BoardLayout<K extends string> {
    * on the left. The columns still list tracks left to right.
    */
   lead?: number
+  /**
+   * Start this step as soon as its tracks fit — main at its (lowered, rem)
+   * cap plus its side tracks — when that comes before the page's own
+   * threshold (`stepStartRem`). For a board whose main is lowered: the page's
+   * steps assume a 56rem main, so a 42rem one left more than a whole side
+   * track empty just under the next step (Training's Program at 1795: 26.7rem
+   * empty right of a 67rem board; owner, 03.11.2026: "the right side is
+   * empty"). A header over such a board isn't capped (`boardWidthRem`).
+   */
+  early?: boolean
 }
 
 /** Step 1 is always one stack; wider steps are optional (a missing step uses the nearest one below). */
@@ -121,6 +131,44 @@ function normalizeCell<K extends string>(c: BoardCellSpec<K>): ResolvedCell<K> {
 
 function normalizeColumn<K extends string>(c: BoardColumnSpec<K>): ResolvedColumn<K> {
   return { ...normalizeCell(c), sticky: isCell(c) && !!(c as BoardColumn<K>).sticky }
+}
+
+const remOf = (css: string): number | null => {
+  const m = /^([\d.]+)rem$/.exec(css)
+  return m ? parseFloat(m[1]) : null
+}
+
+/**
+ * Where a declared step starts, in rem of page width: the page's threshold
+ * (60 / 100 / 128), or — for an `early` step with a rem main — as soon as main
+ * at its cap and the step's side tracks fit, when that is sooner (a 42rem main:
+ * three tracks from 92rem, four from 117rem).
+ */
+export function stepStartRem<K extends string>(layouts: BoardLayouts<K>, step: 2 | 3 | 4): number {
+  const page = BOARD.steps[step - 2]
+  const l = layouts[step]
+  const main = l?.early ? remOf(l.main ?? `${BOARD.main}rem`) : null
+  return main == null ? page : Math.min(page, main + (step - 1) * (BOARD.side + BOARD.gap))
+}
+
+/**
+ * The step a board renders at for its content width in px: the page's step,
+ * or a wider declared step that starts early (`early`) and already fits.
+ * Equal to `pageStepForWidth` for every board without an early step.
+ */
+export function boardStepForWidth<K extends string>(px: number, layouts: BoardLayouts<K>, remPx = 16): PageStep {
+  const step = pageStepForWidth(px, remPx)
+  const rem = px / (remPx > 0 ? remPx : 16)
+  for (const s of [4, 3, 2] as const) {
+    if (s <= step) break
+    if (layouts[s]?.early && rem >= stepStartRem(layouts, s)) return s
+  }
+  return step
+}
+
+/** True when the board may render wider than the page's step says (an early step above it). */
+function stepsEarlyAbove<K extends string>(layouts: BoardLayouts<K>, step: PageStep): boolean {
+  return ([2, 3, 4] as const).some(s => s > step && !!layouts[s]?.early)
 }
 
 /** The layout a step renders: the declared one, else the nearest declared step below it. */
@@ -184,6 +232,8 @@ export function validateBoardLayouts<K extends string>(layouts: BoardLayouts<K>,
       if (cols.length > 0 && rows.length > 0) problems.push(`step ${s}: columns and rows together — use one`)
       if (cols.length === 0 && rows.length === 0 && !(l.top?.length || l.bottom?.length)) problems.push(`step ${s}: nothing placed`)
       if (l.lead != null && (!Number.isInteger(l.lead) || l.lead < 0 || l.lead > s - 1)) problems.push(`step ${s}: lead ${l.lead} must be 0–${s - 1}`)
+      if (l.early && remOf(l.main ?? `${BOARD.main}rem`) == null) problems.push(`step ${s}: early needs a main cap in rem`)
+      else if (l.early && stepStartRem(layouts, s) >= BOARD.steps[s - 2]) problems.push(`step ${s}: early starts no sooner than the page's step (main too wide)`)
     }
     const keys = keysAt(layouts, s)
     const seen = new Set<string>()
@@ -217,11 +267,12 @@ export function columnWidthPx(pageWidth: number, layout: Pick<ResolvedLayout<str
  * or when the main cap is not in rem. A page header above a board that stops
  * short of the container (a 40rem picker track) caps itself to this, so its
  * right-hand controls line up with the board's last card instead of floating
- * past it.
+ * past it. Also null when a wider step starts early (`early`): at this page
+ * step the board may already be wider, and a header never stops short of it.
  */
 export function boardWidthRem<K extends string>(layouts: BoardLayouts<K>, step: PageStep): number | null {
   const l = resolveBoardLayout(layouts, step)
-  if (l.tracks <= 1) return null
+  if (l.tracks <= 1 || stepsEarlyAbove(layouts, step)) return null
   const m = /^([\d.]+)rem$/.exec(l.main)
   if (!m) return null
   return parseFloat(m[1]) + (l.tracks - 1) * (BOARD.side + BOARD.gap)

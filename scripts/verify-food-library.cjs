@@ -146,6 +146,24 @@ ok(M.recipeUseCounts([rec('A', { ingredients: [{ library_ingredient_id: 'x' }, {
 ok(M.portionMacros(food('Whey', { calories: 400, protein_g: 80, carbs_g: 8, fat_g: 6, serving_grams: 30 })), { grams: 30, calories: 120, protein_g: 24, carbs_g: 2.4, fat_g: 1.8 }, 'macros for one portion')
 ok(M.portionMacros(foods[0]), null, 'no portion preset → null')
 
+// A food's category (03.11.2026; owner: "Category — Let me add new category here"): free text on the food
+// (food_group, no CHECK), offered as the built-in groups, then the owner's own in use.
+{
+  const T = require('../src/features/recipes/types')
+  const opts = M.foodCategoryOptions(['Meat and poultry', 'Snacks', null, '  Leftovers ', 'Snacks', ''])
+  ok(opts.slice(0, T.FOOD_GROUPS.length), [...T.FOOD_GROUPS], 'the built-in groups first, in their order')
+  ok(opts.slice(T.FOOD_GROUPS.length), ['Leftovers', 'Snacks'], "then the owner's own in use, A–Z, trimmed, each once")
+  ok(M.foodCategoryOptions([], 'Sauces').slice(-1), ['Sauces'], 'a category just typed shows as the choice before any food has it')
+  ok(M.foodCategoryOptions([], 'Egg').length, T.FOOD_GROUPS.length, 'a built-in category is not offered twice')
+  ok([M.cleanCategory('  Fast   food\t', opts), M.cleanCategory('snacks', opts), M.cleanCategory('dairy PRODUCTS', opts)], ['Fast food', 'Snacks', 'Dairy products'],
+    'a typed category is tidied, and one that differs only in case is the existing one (never two "Snacks")')
+  ok([M.cleanCategory('   ', opts), M.cleanCategory('\u0000\n', opts)], [null, null], 'nothing typed → no category')
+  ok(M.cleanCategory('x'.repeat(60), opts).length, M.CATEGORY_MAX, `at most ${M.CATEGORY_MAX} characters`)
+  const withOwn = [...foods, food('Hummus', { food_group: 'Snacks' })]
+  ok(M.filterFoods(withOwn, { ...FF, group: 'Snacks' }, fu, used).map(f => f.id), ['Hummus'], "an own category filters like a built-in one")
+  ok(M.filterFoods(withOwn, { ...FF, group: '__other' }, fu, used).map(f => f.id), ['Lettost', 'Mystery'], 'Other is still only the foods with no category')
+}
+
 {
   const check = (m, c, d) => { assert.ok(c, d ? `${m} — ${d}` : m); n++ }
   const R = (id, title, cal, p) => ({ id, title, calories: cal, protein_g: p, carbs_g: 0, fat_g: 0, ingredients: [], is_temp: false })

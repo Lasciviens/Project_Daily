@@ -24,6 +24,22 @@ export function matchRank(name: string, foldedQuery: string): number | null {
   return null
 }
 
+/**
+ * Every word of the query appears in the text, folded: "kylling" finds
+ * "Kyllingfilet", "7up" finds "7 Up". Online results are checked with it, so a
+ * service that ignores the words can't fill the list with unrelated products.
+ */
+export function containsEveryWord(text: string, query: string): boolean {
+  const all = foldText(query).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  // A number alone ("skyr 0%", "cola 0") is never required — names write it their own way ("0,2 %", "Zero") — unless
+  // the query is only numbers.
+  const lettered = all.filter(w => /\p{L}/u.test(w))
+  const words = lettered.length ? lettered : all
+  if (!words.length) return false
+  const letters = foldText(text).replace(/[^\p{L}\p{N}]+/gu, '')
+  return words.every(w => letters.includes(w))
+}
+
 /** Sorts items by match rank (then shorter name first), dropping non-matches. */
 export function rankMatches<T>(items: T[], query: string, nameOf: (t: T) => string, limit = 20): T[] {
   const fq = foldText(query)

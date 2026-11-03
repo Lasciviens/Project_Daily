@@ -245,5 +245,99 @@ console.log('sectionsWidthRem (a page header keeps one size across its sections)
   check('Settings\' header width comes from every tab', /sectionsWidthRem\(Object\.values\(BOARD\)/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
 }
 
+console.log('early steps (a lowered main takes its next track as soon as it fits)')
+{
+  const lowered = { 1: ['a', 'b', 'c'], 2: { main: '42rem', columns: [['a'], ['b', 'c']] }, 3: { early: true, main: '42rem', columns: [['a'], ['b'], ['c']] } }
+  check('an early step starts once main at its cap and its side tracks fit: 42 + 2 × 25 = 92rem', B.stepStartRem(lowered, 3) === 92)
+  check('a step that isn\'t early starts at the page\'s threshold', B.stepStartRem(lowered, 2) === 60 && B.stepStartRem(HOME_BOARD, 3) === 100 && B.stepStartRem(HOME_BOARD, 4) === 128)
+  check('the board steps early, the page doesn\'t', B.boardStepForWidth(92 * 16, lowered) === 3 && B.boardStepForWidth(92 * 16 - 1, lowered) === 2 && B.pageStepForWidth(92 * 16) === 2)
+  check('a board without an early step steps with the page at every width', Object.values(W).concat([959, 960, 1599, 1600, 2047, 2048]).every(px =>
+    [HOME_BOARD, D.WEEK_BOARD, D.TASKS_BOARD, D.DAY_BOARD].every(b => B.boardStepForWidth(px, b) === B.pageStepForWidth(px))))
+  check('validate: early needs a main cap in rem', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, main: '60%', columns: [['a'], [], []] } }).some(p => /early needs a main cap in rem/.test(p)))
+  check('validate: early on a 56rem main gains nothing (106rem > 100rem) and is refused', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, columns: [['a'], [], []] } }).some(p => /early starts no sooner/.test(p)))
+  check('validate accepts an early step on a lowered main', B.validateBoardLayouts(lowered).length === 0)
+  check('no header cap over a board that may already be wider than the page\'s step says', B.boardWidthRem(lowered, 2) === null && B.boardWidthRem(lowered, 3) === 92
+    && B.sectionsWidthRem([lowered, D.WEEK_BOARD], 2) === null)
+}
+
+console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section switch never reshapes, moves or resizes the bar)')
+{
+  const fs = require('fs'), path = require('path')
+  const root = path.join(__dirname, '..')
+  // Source without line and JSX comments, so a comment can't pass or fail a check.
+  const code = f => fs.readFileSync(path.join(root, f), 'utf8').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+  /** The page header's JSX: from `<PageHeader` to its `</PageHeader>`, or to the `/>` closing a self-closing one. */
+  function headerOf(src) {
+    const at = src.indexOf('<PageHeader')
+    if (at < 0) return ''
+    const indent = /([ \t]*)$/.exec(src.slice(0, at))[1]
+    const ends = [src.indexOf('</PageHeader>', at), src.indexOf(`\n${indent}/>`, at)].filter(i => i >= 0)
+    return src.slice(at, ends.length ? Math.min(...ends) : undefined)
+  }
+  const SWITCH = /role="tablist"|<SegmentedControl\b|SectionTabs\b|className="pill-tab/
+  // Every page whose header holds a section switch, and how its bar keeps one size, the same lines and the
+  // same places in every section. A new one fails here until it is listed (and checked in a browser).
+  const PAGES = {
+    'src/features/books/pages/BooksPage.tsx': 'only the tabs',
+    'src/features/daily/pages/DailyPage.tsx': 'one cap for every section (sectionsWidthRem), a steady one-line title',
+    'src/features/developer/pages/DeveloperPage.tsx': 'every tab is the same list + detail board',
+    'src/features/football/pages/FootballPage.tsx': 'a filter: the same pills in every view',
+    'src/features/health/pages/HealthPage.tsx': 'only the tabs (the range bar sits under the bar)',
+    'src/features/media/pages/MediaPage.tsx': 'only the switch',
+    'src/features/projects/pages/ProjectsPage.tsx': 'one cap for every status (projectsHeaderCards), the counts on every status',
+    'src/features/recipes/pages/RecipesPage.tsx': 'each tab\'s controls in one SteadySlot',
+    'src/features/settings/pages/SettingsPage.tsx': 'one cap for every tab (sectionsWidthRem)',
+    'src/features/shop/pages/ShopPage.tsx': 'Owned\'s own controls under the bar on a phone, in its row from a tablet',
+    'src/features/training/pages/TrainingPage.tsx': 'the tabs\' own views in one SteadySlot after the tabs',
+  }
+  // Section-only header parts that are allowed, with why: they share a row that already has its height.
+  const ALLOWED = {
+    'src/features/shop/pages/ShopPage.tsx': [
+      /\{view === 'owned' && !isPhone && ownedTabs\(false\)\}/g, // Things | Stats: the same height as the view switch beside it
+      /\{view === 'owned' && !isPhone && <>/g, // Owned's other ways in, at the right end of the same row
+    ],
+  }
+  const pages = fs.readdirSync(path.join(root, 'src/features')).flatMap(feature => {
+    const dir = path.join(root, 'src/features', feature, 'pages')
+    return fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.tsx')).map(f => `src/features/${feature}/pages/${f}`) : []
+  })
+  const withSwitch = pages.filter(f => SWITCH.test(headerOf(code(f))))
+  check('every page with a section switch in its header is listed (a new one: list it, check it at 402 / 1469 / 2450)',
+    withSwitch.every(f => f in PAGES), withSwitch.filter(f => !(f in PAGES)).join(', '))
+  check('every listed page still has its switch', Object.keys(PAGES).every(f => withSwitch.includes(f)), Object.keys(PAGES).filter(f => !withSwitch.includes(f)).join(', '))
+  // A part rendered only for one section (`{tab === 'log' && …}`, `view === 'owned' ? <…> : …`) adds or drops a row.
+  const SECTION_ONLY = /\{\s*\w+\s*[!=]==\s*'[\w-]+'\s*&&|\b\w+\s*[!=]==\s*'[\w-]+'\s*\?\s*</g
+  for (const [f, how] of Object.entries(PAGES)) {
+    const src = code(f)
+    const name = path.basename(f, '.tsx')
+    let header = headerOf(src)
+    for (const re of ALLOWED[f] ?? []) header = header.replace(re, '')
+    check(`${name} (${how}): its header width never comes from the open section's board`, !/boardWidthRem\(\s*\w+\[/.test(src))
+    const only = header.match(SECTION_ONLY) ?? []
+    check(`${name}: nothing in its header shows for one section only (a SteadySlot keeps its room on the others)`, only.length === 0, only.join(' · '))
+  }
+  const training = code('src/features/training/pages/TrainingPage.tsx')
+  const trainingHeader = headerOf(training)
+  check('Training: Log\'s and Library\'s views sit in one SteadySlot right after the tabs, Sync at the far right',
+    /role="tablist"[\s\S]*<SteadySlot[\s\S]*show=\{viewsShown\}[\s\S]*log:[\s\S]*library:[\s\S]*ml-auto[\s\S]*<HevySyncButton/.test(trainingHeader) && /viewSlotOf\(tab\)/.test(training))
+  const Tt = require('../src/features/training/pages/trainingTabs')
+  check('Training: the views slot shows Log\'s and Library\'s views and stays empty on the other tabs', Tt.viewSlotOf('log') === 'log'
+    && Tt.viewSlotOf('library') === 'library' && Tt.TRAINING_TABS.filter(t => t.id !== 'log' && t.id !== 'library').every(t => Tt.viewSlotOf(t.id) === null))
+  const food = code('src/features/recipes/pages/RecipesPage.tsx')
+  check('Food: every tab\'s controls in one SteadySlot (Today, Library, the rest), so a phone keeps its second row on every tab',
+    /<SteadySlot[\s\S]*today:[\s\S]*library:[\s\S]*other:/.test(headerOf(food)) && !/max-sm:hidden'\)/.test(food) && !/phoneRowless/.test(food))
+  const shop = code('src/features/shop/pages/ShopPage.tsx')
+  check('Shop: on a phone Owned\'s Things | Stats and its menu sit under the bar, never in it',
+    !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)[\s\S]*\{moreWaysMenu\}/.test(shop))
+  const projects = code('src/features/projects/pages/ProjectsPage.tsx')
+  check('Projects: the header stops over the most cards any status shows, and the open status keeps its count',
+    /projectsHeaderCapRem\(projectsHeaderCards\(statusTally\(projects, 'all'\)/.test(projects) && !/shown\.length, width/.test(projects) && !/s !== status/.test(projects))
+  const slot = code('src/shared/ui/SteadySlot.tsx')
+  check('SteadySlot: every item in one grid cell, the hidden ones invisible and inert (no focus, no screen reader)',
+    /col-start-1 row-start-1/.test(slot) && /k !== show && 'invisible'/.test(slot) && /inert=\{k !== show\}/.test(slot))
+  check('the shell keeps a stable scrollbar gutter with a mouse (a section too short to scroll no longer widens the page)',
+    /\[@media\(pointer:fine\)\]:\[scrollbar-gutter:stable\]/.test(code('src/app/shell/AppShell.tsx')))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

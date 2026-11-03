@@ -38,12 +38,16 @@ eq(/UNIFIED_SELECT_181 = `\$\{UNIFIED_SELECT\}, eaten_time`/.test(nut) && /isMis
 eq(/isMissingEatenTime\(error\)/.test(src('src/features/recipes/api/foodLogApi.ts')), true, 'a log or an edit on a database without 181 saves without the time')
 eq(/eaten_time\(time HH:MM/.test(src('supabase/functions/ai-proxy/index.ts')), true, 'the assistant\'s catalogue names eaten_time')
 
-// ── Portion options ──
+// ── Portion options (A–Z since 03.11.2026; owner: "Portion name — sort by A-Z") ──
 const opts = A.portionWordOptions(['scoop', 'Muffin', '2 slices (60 g)', null, 'egg', 'muffin'], '')
-eq(opts.slice(0, A.PORTION_WORDS.length), [...A.PORTION_WORDS], 'the usual portion words first')
-eq(opts.slice(A.PORTION_WORDS.length), ['Muffin', 'egg'], 'then the owner\'s own words in use, each once (any case), never a label with numbers')
-eq(A.portionWordOptions([], '2 slices (60 g)').slice(-1), ['2 slices (60 g)'], 'a saved label that is none of them still shows (so it is never lost)')
+eq(opts, ['bar', 'bottle', 'bowl', 'can', 'cup', 'egg', 'glass', 'handful', 'Muffin', 'pack', 'piece', 'plate', 'portion', 'scoop', 'serving', 'slice', 'tablespoon', 'teaspoon'],
+  'the usual words and the owner\'s own in use, A–Z (case ignored), each once, never a label with numbers')
+eq(A.portionWordOptions([], '2 slices (60 g)').includes('2 slices (60 g)'), true, 'a saved label that is none of them still shows (so it is never lost)')
 eq(A.portionWordOptions([], 'Slice').length, A.PORTION_WORDS.length, 'a saved word in another case is the same choice')
+eq(A.portionWordOptions(['şiş', 'Øse']), ['bar', 'bottle', 'bowl', 'can', 'cup', 'glass', 'handful', 'Øse', 'pack', 'piece', 'plate', 'portion', 'scoop', 'serving', 'şiş', 'slice', 'tablespoon', 'teaspoon'],
+  'accents don\'t move a word out of its A–Z place ("Øse" with the o\'s, "şiş" with the s\'s)')
+eq(/\{noneLabel != null && <option value="">\{noneLabel\}<\/option>\}\s*\{words\.map\([^\n]*\n\s*<option value=\{OTHER\}>Other…<\/option>/.test(src('src/features/recipes/components/PortionWordSelect.tsx')), true,
+  'the field: "None" first, the words A–Z, "Other…" last')
 for (const f of ['NewFoodForm.tsx', 'IngredientManager.tsx', 'FoodLogModal.tsx', 'RecipeModal.tsx']) {
   eq(/<PortionWordSelect\b/.test(src(`src/features/recipes/components/${f}`)), true, `${f} picks the portion from the list`)
 }
