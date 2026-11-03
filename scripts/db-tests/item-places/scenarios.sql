@@ -165,6 +165,26 @@ begin
 end $$;
 reset role;
 
+-- ═══ P4b. A one-off turned into a repeat, and back, keeps its place (any writer, no place sent) ════
+set role authenticated;
+do $$
+declare r jsonb; v_plan uuid;
+begin
+  r := public.app_save_item('{"title": "Swim", "domain": "personal", "priority": "medium", "date": "2026-11-20", "time": "07:00",
+    "durationMinutes": 45, "google": "calendar", "today": "2026-11-02", "place": {"name": "Tøyenbadet", "locality": "Oslo"}}');
+  r := public.app_save_item(jsonb_build_object('title', 'Swim', 'domain', 'personal', 'priority', 'medium', 'date', '2026-11-20',
+    'time', '07:00', 'durationMinutes', 45, 'google', 'calendar', 'today', '2026-11-02',
+    'taskId', r ->> 'taskId', 'blockId', r ->> 'blockId', 'repeat', jsonb_build_object('kind', 'weekly', 'daysOfWeek', jsonb_build_array(5))));
+  v_plan := (r ->> 'scheduleBlockId')::uuid;
+  perform t_ok((select place ->> 'name' from public.schedule_blocks where id = v_plan) = 'Tøyenbadet',
+    'P4b a one-off turned into a repeat keeps its place, though the save sent none');
+  r := public.app_save_item(jsonb_build_object('title', 'Swim', 'domain', 'personal', 'priority', 'medium', 'date', '2026-11-27',
+    'time', '07:00', 'durationMinutes', 45, 'google', 'calendar', 'today', '2026-11-02', 'scope', 'all', 'scheduleBlockId', v_plan));
+  perform t_ok(r ->> 'blockId' is not null and public.t_place((r ->> 'blockId')::uuid) ->> 'name' = 'Tøyenbadet',
+    'P4b …and turned back into a one-off it keeps it too');
+end $$;
+reset role;
+
 -- ═══ P5. A changed place reaches Apple and Google ══════════════════════════
 insert into public.calendar_prefs (user_id, prefs) values ('00000000-0000-0000-0000-000000000001',
   '{"areas": {"personal": {"app": "apple", "enabled": true}}}')

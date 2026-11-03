@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The Add sheet's place (186; owner, 02.11.2026: "Dont we have something for
 //  entur entegration? Can we use that as location finding?"): one value on the
-//  facts line ("📍 Jernbanetorget, Oslo", × takes it off) or "+ Place", which
+//  facts line (a pin icon and "Jernbanetorget, Oslo"; a crossed-out pin when it
+//  has no map pin; × takes it off) or "+ Place", which
 //  opens a search — the saved Home/Work places (Settings → Places), EnTur's
 //  stops, addresses and named places as you type (the transit card's own
 //  search), and "Use … as typed" (a name, no map pin). Apple Calendar gets the
@@ -10,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
-import { Briefcase, Home, MapPin, Pencil, X } from 'lucide-react'
+import { Briefcase, Home, MapPin, MapPinOff, Pencil, X } from 'lucide-react'
 import { chipClass } from './fieldStyles'
 import { Truncate } from '../../ui'
 import { AddFact } from './ItemFacts'
@@ -31,19 +32,20 @@ export function PlaceFact({ value, onChange }: { value: ItemPlace | null; onChan
   if (editing) return <PlaceSearch onPick={pick} onClose={() => setEditing(false)} />
   if (!value) return <AddFact label="Place" onClick={() => setEditing(true)} />
   const pinned = value.lat !== undefined && value.lon !== undefined
+  const looking = !!pinFor && value.id === pinFor && !pinned
   return (
     <span className={chipClass('value', 'pr-0.5')}>
       <button type="button" onClick={() => setEditing(true)} className="inline-flex min-w-0 items-center gap-1"
         aria-label={`Place: ${placeLabel(value)}${pinned ? '' : ', no map pin'} — change it`}
-        title={pinned ? 'Apple Calendar gets its map pin (Time to Leave)' : 'Typed by hand: no map pin'}>
-        {pinned ? <MapPin aria-hidden /> : <Pencil aria-hidden />}
+        title={pinned ? 'Apple Calendar gets its map pin (Time to Leave)' : looking ? 'Finding its map pin…' : 'No map pin'}>
+        {pinned || looking ? <MapPin aria-hidden /> : <MapPinOff aria-hidden />}
         <bdi className="min-w-0"><Truncate className="max-w-[12rem]">{placeLabel(value)}</Truncate></bdi>
       </button>
       <button type="button" onClick={() => onChange(null)} aria-label="Remove the place"
         className="grid h-6 w-6 place-items-center rounded-full text-fg-muted hover:bg-surface-hover hover:text-fg">
         <X aria-hidden />
       </button>
-      {pinFor && value.id === pinFor && !pinned && <PinLookup place={value} onFound={p => { onChange(p); setPinFor(null) }} />}
+      {looking && <PinLookup place={value} onFound={p => { onChange(p); setPinFor(null) }} />}
     </span>
   )
 }
@@ -93,8 +95,9 @@ function PlaceSearch({ onPick, onClose }: { onPick: (p: ItemPlace) => void; onCl
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === 'Escape') { if (query) setQuery(''); else onClose() } }}
-          // Leaving the field keeps the place the item had: a half-typed search never becomes a place by itself.
-          onBlur={() => onClose()}
+          // Leaving the field with words typed and nothing picked (Save, another field) keeps them as a typed place —
+          // never dropped without a word (as the labels do); a picked option keeps the focus here, so it never adds twice.
+          onBlur={() => { if (typed) onPick(typed); else onClose() }}
           autoComplete="off"
           className="input input-sm h-8 w-52"
         />

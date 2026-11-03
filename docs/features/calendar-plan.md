@@ -19,7 +19,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 | 3 | An alert per event (e.g. Training 60 min before) | Wanted |
 | 4 | Colours | Wanted — on Apple only a **calendar's** colour shows, so this comes with 19 |
 | 5 | A description (notes) written by the app — a session's exercises, match details | Wanted, plain text |
-| 6 | Location (gym, stadium) with a map | **Built** 03.11.2026 (migration 186): a place on an item from EnTur's search, Home/Work or typed text; Apple gets the map pin (`docs/features/planning-calendar.md` → Places) |
+| 6 | Location (gym, stadium) with a map | **Built** 03.11.2026 (migration 186), not yet checked on the iPhone (the checklist's live test): a place on an item from EnTur's search, Home/Work or typed text; Apple gets the map pin (`docs/features/planning-calendar.md` → Places) |
 | 7 | A link back to the item in the app | Wanted — Apple's URL field works (confirmed) |
 | 11 | Attachments | **Dropped** ("we can skip 11") |
 | 12 | Maybe / private | Wanted, but on Apple's devices neither shows any difference for the owner's own events (Apple check, 29.10.2026). Fallback to decide: a "Maybe" calendar, or a "?" in the title |
@@ -30,7 +30,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 | 21 | Free/busy: find a free time | Wanted (Phase 3) |
 | 24 | Calendar colours in the app's own agenda | Wanted, with 19 |
 | 28 | Clear completed tasks | **Not applied** — turned into the rule "past days are never cleared" |
-| 32 | Travel time before an event | **Apple's Time to Leave** (owner, 03.11.2026): it works from the place's map pin (186) — no travel events of the app's own |
+| 32 | Travel time before an event | **Apple's Time to Leave** (owner, 03.11.2026): it should work from the place's map pin (186) — not yet seen on the iPhone; no travel events of the app's own |
 | 33 | Planned vs. done | Wanted (Phase 3) |
 | 35 | One calendar per area, a small colour set, emoji in titles | Wanted, with 19 |
 

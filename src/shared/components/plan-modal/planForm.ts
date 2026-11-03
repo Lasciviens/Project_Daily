@@ -24,7 +24,7 @@ import {
   clampDurationMinutes, pickRecurrence, taskSourceTypeForBlock, type RepeatFormFields,
 } from './planModal.config'
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
-import type { ItemPlace } from '../../../features/items/itemPlace'
+import { cleanPlace, type ItemPlace } from '../../../features/items/itemPlace'
 
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
@@ -139,7 +139,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     labels: [],
     labelsTouched: false,
     timeZone: d.timeZone ?? phoneTimeZone(),
-    place: d.place ?? null,
+    place: null,
     placeTouched: false,
     scope: 'all' as const,
     otherDate: null,
@@ -263,7 +263,7 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     // with the chip — always sent, so a one-off turned into a repeat (or back) keeps the clock it showed.
     timeZone: f.timeZone ?? SERVER_EVENT_TIME_ZONE,
     // Its place (186): a new item's, an edit's when the sheet knew it or the owner changed it.
-    ...(f.placeTouched || !ctx.item || ctx.item.place !== undefined ? { place: f.place } : {}),
+    ...(f.placeTouched || !ctx.item || ctx.item.place !== undefined ? { place: f.place ? cleanPlace(f.place) : null } : {}),
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,

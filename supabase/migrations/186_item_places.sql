@@ -3,7 +3,7 @@
 -- Time to Leave). docs/features/planning-calendar.md → Places.
 --
 -- A. time_blocks.place and schedule_blocks.place: where the item happens, as one small JSON object —
---    {"name": "SATS Majorstuen", "locality": "Oslo", "lat": 59.93, "lon": 10.71, "id": "NSR:StopPlace:…"}; only the
+--    {"name": "Jernbanetorget", "locality": "Oslo", "lat": 59.911, "lon": 10.75, "id": "NSR:StopPlace:58366"}; only the
 --    name is needed (a typed place has no pin). Apple Calendar gets the name and, with coordinates, its map pin (which
 --    is what lets the iPhone's Time to Leave work); Google gets the name. A place is written into iCalendar lines, so
 --    it is input (the warning in AGENTS.md): place_ok() takes only these keys, a name of 1–120 characters, a town of
@@ -12,9 +12,9 @@
 -- B. A new slot that names no place (the column's default '{}') takes its plan's when it is a day split off one (a
 --    training session moved to another day keeps its gym); anything else gets none. An explicit null stays null, so
 --    Undo puts a row back as it was.
--- C. The one item save takes `place` (the sheet's; none sent: the item keeps its own) — 183's body with only the
---    place lines added (verify-db-item-places compares them). A place that fails place_ok stops the save with a
---    message, never dropped without a word.
+-- C. The one item save takes `place` (the sheet's; none sent: the item keeps its own — also when a one-off becomes a
+--    repeat or a repeat a one-off) — 183's body with only the place lines added (verify-db-item-places compares
+--    them). A place that fails place_ok stops the save with a message, never dropped without a word.
 -- D. A place changed is a change of the event: Apple's queue triggers and Google's upsert trigger compare place too —
 --    183's bodies with only place added.
 --
@@ -32,7 +32,7 @@ set search_path = ''
 as $$
   select case
     when p is null or p = '{}'::jsonb then true
-    when jsonb_typeof(p) <> 'object' or length(p::text) > 400 then false
+    when jsonb_typeof(p) <> 'object' or length(p::text) > 600 then false
     when exists (select 1 from jsonb_object_keys(p) k where k not in ('name', 'locality', 'lat', 'lon', 'id')) then false
     when jsonb_typeof(p -> 'name') is distinct from 'string' then false
     when char_length(btrim(p ->> 'name')) not between 1 and 120 then false
@@ -138,6 +138,7 @@ declare
   -- 186: the sheet's place — no 'place' key: keep the item's; null: none; an object: checked below.
   v_has_place boolean := p_item ? 'place';
   v_place     jsonb := case when jsonb_typeof(p_item -> 'place') = 'object' then p_item -> 'place' end;
+  v_old_place jsonb;  -- a repeat turned into a one-off: the place it had
   v_src_type  text := nullif(p_item #>> '{source,type}', '');
   v_src_raw   text := nullif(p_item #>> '{source,id}', '');
   -- The sheet's extras: the slot's (and a repeat's) look, a window's start,
@@ -292,7 +293,8 @@ begin
                                           google_target, time_zone, place)
       values (v_user, v_title, v_notes, v_domain, v_priority, v_days, v_kind, v_interval, v_unit, v_dates, v_starts,
               v_time, v_end, v_busy, coalesce(v_color_in, 'blue'), v_category, v_google, coalesce(v_zone, ''),
-              case when v_has_place then v_place else '{}'::jsonb end)
+              case when v_has_place then v_place
+                   else coalesce((select x.place from public.time_blocks x where x.task_id = v_task_id and x.user_id = v_user), '{}'::jsonb) end)
       returning id into v_plan_id;
       if v_task_id is not null then
         -- The one-off it was: its slot goes with it (ON DELETE CASCADE), and the
@@ -359,7 +361,7 @@ begin
   -- goes (its series through the calendar outbox); days already split off stay.
   if v_repeat is null and v_plan_id is not null and v_scope = 'all' and not v_is_occ
      and v_task_id is null and v_block_id is null then
-    select s.google_calendar_event_id into v_replaced_event from public.schedule_blocks s where s.id = v_plan_id and s.user_id = v_user;
+    select s.google_calendar_event_id, s.place into v_replaced_event, v_old_place from public.schedule_blocks s where s.id = v_plan_id and s.user_id = v_user;
     delete from public.schedule_blocks where id = v_plan_id and user_id = v_user;
     if found then v_replaced_plan := v_plan_id; else v_replaced_event := null; end if;
     v_plan_id := null;
@@ -457,7 +459,7 @@ begin
               coalesce(v_color_in, 'accent'), coalesce(v_cat_in, public.item_default_category(v_domain, t.source_type)), v_task_id,
               case when v_bsrc is not null then v_bsrc_type else public.item_block_source(coalesce(v_src_type, t.source_type)) end,
               case when v_bsrc is not null then v_bsrc_id else coalesce(v_src_id, t.source_id) end,
-              v_season, v_episode, coalesce(v_zone, ''), case when v_has_place then v_place else '{}'::jsonb end)
+              v_season, v_episode, coalesce(v_zone, ''), case when v_has_place then v_place else coalesce(v_old_place, '{}'::jsonb) end)
       returning id into v_block_id;
     end if;
   elsif v_block_id is not null then

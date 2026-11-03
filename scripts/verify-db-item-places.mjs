@@ -27,14 +27,15 @@ const fail = msg => { console.error(`verify-db-item-places: ${msg}`); process.ex
     if (!live || back !== live) fail(`186's ${name} must be 183's with only the place lines added`)
   }
   same('app_save_item', s => s
-    .replace("\n  -- 186: the sheet's place — no 'place' key: keep the item's; null: none; an object: checked below.\n  v_has_place boolean := p_item ? 'place';\n  v_place     jsonb := case when jsonb_typeof(p_item -> 'place') = 'object' then p_item -> 'place' end;", '')
+    .replace("\n  -- 186: the sheet's place — no 'place' key: keep the item's; null: none; an object: checked below.\n  v_has_place boolean := p_item ? 'place';\n  v_place     jsonb := case when jsonb_typeof(p_item -> 'place') = 'object' then p_item -> 'place' end;\n  v_old_place jsonb;  -- a repeat turned into a one-off: the place it had", '')
+    .replace('select s.google_calendar_event_id, s.place into v_replaced_event, v_old_place from', 'select s.google_calendar_event_id into v_replaced_event from')
     .replace("\n  if v_has_place and jsonb_typeof(p_item -> 'place') not in ('object', 'null') then\n    raise exception 'That place can''t be saved' using errcode = '22023';\n  end if;\n  if v_place is not null and (v_place = '{}'::jsonb or not public.place_ok(v_place)) then\n    raise exception 'That place can''t be saved' using errcode = '22023';\n  end if;", '')
     .replace('\n        place = case when v_has_place then v_place else p.place end,', '')
     .replace('google_target, time_zone, place)', 'google_target, time_zone)')
-    .replace("coalesce(v_zone, ''),\n              case when v_has_place then v_place else '{}'::jsonb end)", "coalesce(v_zone, ''))")
+    .replace("coalesce(v_zone, ''),\n              case when v_has_place then v_place\n                   else coalesce((select x.place from public.time_blocks x where x.task_id = v_task_id and x.user_id = v_user), '{}'::jsonb) end)", "coalesce(v_zone, ''))")
     .replace('\n        place = case when v_has_place then v_place else b.place end,', '')
     .replace('season_number, episode_number, time_zone, place)', 'season_number, episode_number, time_zone)')
-    .replace("v_season, v_episode, coalesce(v_zone, ''), case when v_has_place then v_place else '{}'::jsonb end)", "v_season, v_episode, coalesce(v_zone, ''))"))
+    .replace("v_season, v_episode, coalesce(v_zone, ''), case when v_has_place then v_place else coalesce(v_old_place, '{}'::jsonb) end)", "v_season, v_episode, coalesce(v_zone, ''))"))
   same('icloud_time_block_changed', s => s.replace('new.time_zone, new.place, new.user_id', 'new.time_zone, new.user_id').replace('old.time_zone, old.place, old.user_id', 'old.time_zone, old.user_id'))
   same('icloud_schedule_block_changed', s => s.replace('new.time_zone, new.place, new.user_id', 'new.time_zone, new.user_id').replace('old.time_zone, old.place, old.user_id', 'old.time_zone, old.user_id'))
   same('enqueue_calendar_event_upsert', s => s.replace('new.time_zone, new.place)', 'new.time_zone)').replace('old.time_zone, old.place)', 'old.time_zone)'))

@@ -1042,7 +1042,7 @@ export interface BlockEventBody {
   start: EventTime
   end: EventTime
   transparency: 'opaque' | 'transparent'
-  /** The slot's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
   location?: string
 }
 
@@ -1100,13 +1100,23 @@ export function withTimePatch<B extends { start: EventTime; end: EventTime }>(bo
 }
 
 /**
+ * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
+ * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
+ * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body.
+ */
+export function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string }>(body: B): Omit<Omit<B, 'location'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null } {
+  const { location, ...rest } = body
+  return { ...withTimePatch(rest), location: location ?? null }
+}
+
+/**
  * The PATCH a push sends. A title push carries the summary and nothing else,
  * so ticking an item done never sends its old day or time back over a move
  * the owner made in Google Calendar. Anything but 'title' is the whole event,
  * its start and end through timePatch.
  */
-export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof withTimePatch<BlockEventBody>> {
-  return fields === 'title' ? { summary: body.summary } : withTimePatch(body)
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof fullEventPatch<BlockEventBody>> {
+  return fields === 'title' ? { summary: body.summary } : fullEventPatch(body)
 }
 
 /** The done mark's PATCH: the title with or without "✓ " — and only that. */

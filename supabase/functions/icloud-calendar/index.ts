@@ -445,7 +445,7 @@ interface BlockEventBody {
   start: EventTime
   end: EventTime
   transparency: 'opaque' | 'transparent'
-  /** The slot's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
   location?: string
 }
 
@@ -503,13 +503,23 @@ function withTimePatch<B extends { start: EventTime; end: EventTime }>(body: B):
 }
 
 /**
+ * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
+ * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
+ * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body.
+ */
+function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string }>(body: B): Omit<Omit<B, 'location'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null } {
+  const { location, ...rest } = body
+  return { ...withTimePatch(rest), location: location ?? null }
+}
+
+/**
  * The PATCH a push sends. A title push carries the summary and nothing else,
  * so ticking an item done never sends its old day or time back over a move
  * the owner made in Google Calendar. Anything but 'title' is the whole event,
  * its start and end through timePatch.
  */
-function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof withTimePatch<BlockEventBody>> {
-  return fields === 'title' ? { summary: body.summary } : withTimePatch(body)
+function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof fullEventPatch<BlockEventBody>> {
+  return fields === 'title' ? { summary: body.summary } : fullEventPatch(body)
 }
 
 /** The done mark's PATCH: the title with or without "✓ " — and only that. */
@@ -739,7 +749,7 @@ interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
-  /** The plan's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
   location?: string
 }
 
@@ -1256,13 +1266,18 @@ interface EventParts {
  *  is input). */
 function pinText(t: string, max: number): string {
   return Array.from(t.replace(/[^\p{L}\p{M}\p{N} .,'&()/+#@!?\u2013\u2014-]/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('').trim()
+    // A combining mark first would join the opening quote into one character (security review, 03.11.2026).
+    .replace(/^\p{M}+/u, '').trim()
 }
+/** Every quote in the pin line stands alone: a mark or a "prepend" letter beside it would join it into one character,
+ *  and a parser that reads characters, not code points, would miss the quote. */
+const pinQuotes = (line: string) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].filter(s => s.segment === '"').length
 /** The pin line exactly as locationLines builds it — the last guard refuses anything else. */
 const PIN_LINE = /^X-APPLE-STRUCTURED-LOCATION;VALUE=URI;(?:X-ADDRESS="[^"\p{Cc}]{1,80}";)?X-APPLE-RADIUS=70;X-TITLE="[^"\p{Cc}]{1,120}":geo:-?\d{1,2}\.\d{6},-?\d{1,3}\.\d{6}$/u
 
 /**
- * An event's place (186), in the form the owner's Apple check kept (29.10.2026): LOCATION as two lines (the name, then
- * the town), and with coordinates Apple's map pin (X-APPLE-STRUCTURED-LOCATION, a geo: point) plus the travel advisory
+ * An event's place (186), in the form the owner's Apple check kept (29.10.2026, which sent a full street address in
+ * X-ADDRESS; here it is the town): LOCATION as two lines (the name, then the town), and with coordinates Apple's map pin (X-APPLE-STRUCTURED-LOCATION, a geo: point) plus the travel advisory
  * that lets the iPhone's Time to Leave work. No coordinates: the name alone, no pin.
  */
 function locationLines(place: EventPlace | null | undefined): string[] {
@@ -1275,7 +1290,7 @@ function locationLines(place: EventPlace | null | undefined): string[] {
   if (!title) return lines
   const pin = `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;${address ? `X-ADDRESS="${address}";` : ''}X-APPLE-RADIUS=70;`
     + `X-TITLE="${title}":geo:${place.lat.toFixed(6)},${place.lon.toFixed(6)}`
-  if (!PIN_LINE.test(pin)) return lines
+  if (!PIN_LINE.test(pin) || pinQuotes(pin) !== (address ? 4 : 2)) return lines
   return [...lines, pin, 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC']
 }
 

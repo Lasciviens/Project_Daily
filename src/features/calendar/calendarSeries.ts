@@ -101,7 +101,7 @@ export interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
-  /** The plan's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
   location?: string
 }
 

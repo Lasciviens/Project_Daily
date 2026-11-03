@@ -47,8 +47,6 @@ check('a town equal to the name is left out; a bad id and stray coordinates are 
   eq(P.cleanPlace({ name: 'Oslo', locality: 'oslo', id: 'javascript:alert(1)', lat: 91, lon: 10 }), { name: 'Oslo' })
   && eq(P.cleanPlace({ name: 'X', lat: 59.9 }), { name: 'X' }) && eq(P.cleanPlace({ name: 'X', lat: NaN, lon: 1 }), { name: 'X' }))
 check('placeLabel: "name, town"', P.placeLabel({ name: 'Jernbanetorget', locality: 'Oslo' }) === 'Jernbanetorget, Oslo' && P.placeLabel({ name: 'Home' }) === 'Home')
-check('samePlace: by EnTur id, else by name and town', P.samePlace({ name: 'A', id: 'NSR:StopPlace:1' }, { name: 'B', id: 'NSR:StopPlace:1' })
-  && P.samePlace({ name: 'Gym' }, { name: 'gym' }) && !P.samePlace({ name: 'Gym', locality: 'Oslo' }, { name: 'Gym' }) && P.samePlace(null, null) && !P.samePlace({ name: 'A' }, null))
 check('placeOfRow: a stored object is read; anything else is no place',
   eq(P.placeOfRow({ name: 'Oslo S', lat: 59.91, lon: 10.75 }), { name: 'Oslo S', lat: 59.91, lon: 10.75 })
   && P.placeOfRow('Oslo S') === null && P.placeOfRow([]) === null && P.placeOfRow({}) === null && P.placeOfRow(null) === null)
@@ -74,7 +72,8 @@ const badRefused = refused.filter(p => P.isStorablePlace(p))
 check('isStorablePlace takes what place_ok takes', badOk.length === 0, JSON.stringify(badOk))
 check('…and refuses what place_ok refuses', badRefused.length === 0, JSON.stringify(badRefused))
 const odd = ['Gym\n\u2028', 'a'.repeat(500), '  ', 'Oslo"S', 'Tab\there']
-check('whatever cleanPlace gives back is storable', odd.every(n => { const c = P.cleanPlace({ name: n, locality: n, lat: 95, lon: 1, id: n }); return c === null || P.isStorablePlace(c) }))
+check('whatever cleanPlace gives back is storable — the longest place too', odd.every(n => { const c = P.cleanPlace({ name: n, locality: n, lat: 95, lon: 1, id: n }); return c === null || P.isStorablePlace(c) })
+  && P.isStorablePlace(P.cleanPlace({ name: 'n'.repeat(130), locality: 'l'.repeat(90), lat: -89.123456, lon: -179.123456, id: 'ABCDEFGHIJ:' + 'S'.repeat(40) + ':' + '9'.repeat(80) })))
 check('the id shape is the database\'s (186)', read('supabase/migrations/186_item_places.sql').includes(`(p ->> 'id') !~ '${P.PLACE_ID.source}'`))
 
 console.log('\n2. Google')
@@ -86,8 +85,7 @@ const slot = { date: '2026-11-12', start_time: '17:00', duration_minutes: 60, ti
 const withPlace = R.blockEventBody({ ...slot, place: { name: 'Jernbanetorget', locality: 'Oslo', lat: 59.91, lon: 10.75 } }, { done: false, timeZone: 'Europe/Oslo' })
 const noPlace = R.blockEventBody(slot, { done: false, timeZone: 'Europe/Oslo' })
 check('a slot with a place: Google\'s location is "name, town"', withPlace.location === 'Jernbanetorget, Oslo')
-check('a slot with no place sends no location at all (a place typed in Google Calendar stays)', !('location' in noPlace)
-  && !('location' in R.eventPatchFor(noPlace, 'all')))
+check('a new event with no place carries no location', !('location' in noPlace))
 check('a PATCH of the whole event carries the location; a title push never does',
   R.eventPatchFor(withPlace, 'all').location === 'Jernbanetorget, Oslo' && eq(Object.keys(R.eventPatchFor(withPlace, 'title')), ['summary']))
 check('an all-day slot carries it too', R.blockEventBody({ ...slot, start_time: null, place: { name: 'Hytta' } }, { done: false, timeZone: 'Europe/Oslo' }).location === 'Hytta')
@@ -113,6 +111,9 @@ check('a quote, : ; = and a line break never reach Apple\'s quoted parameters (a
 check('coordinates out of range, missing or not numbers: no pin', eq(I.locationLines({ name: 'X', lat: 91, lon: 0 }), ['LOCATION:X'])
   && eq(I.locationLines({ name: 'X', lat: 59 }), ['LOCATION:X']) && eq(I.locationLines({ name: 'X', lat: '59', lon: '10' }), ['LOCATION:X'])
   && eq(I.locationLines({ name: 'X', lat: Infinity, lon: 0 }), ['LOCATION:X']))
+const marked = I.locationLines({ name: '\u0301Gym', locality: '\u0301Oslo', lat: 59.9, lon: 10.7 })
+check('a combining mark first never joins a quote (it is dropped from the pin\'s text)', marked[1] === 'X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="Oslo";X-APPLE-RADIUS=70;X-TITLE="Gym":geo:59.900000,10.700000', JSON.stringify(marked))
+check('a "prepend" letter that would join the closing quote: no pin', I.locationLines({ name: 'Gym\u0D4E', lat: 59.9, lon: 10.7 }).length === 1)
 check('a name with nothing allowed in a pin keeps LOCATION and loses the pin', eq(I.locationLines({ name: '"""', lat: 1, lon: 1 }), ['LOCATION:"""']))
 const area = { key: 'personal', name: 'Lasci · Personal', emoji: '', color: '#3B82F6', alertMinutes: null, app: 'apple', enabled: true }
 const look = { notes: 'link', allDayAlert: null }
@@ -131,6 +132,14 @@ const bare = I.slotEvent({ id: '00000000-0000-0000-0000-0000000000cc', ...slot }
 check('an item with no place: no LOCATION line', !bare.ics.includes('LOCATION'))
 check('a stored place with a line break still writes the event (cleaned on read)', !!I.slotEvent({ id: '00000000-0000-0000-0000-0000000000dd', ...slot, place: { name: 'Gym\nX-INJECTED:1' } },
   { done: false, area, look, timeZone: 'Europe/Oslo', appUrl: 'https://example.com/app/', now }).ics.match(/\r\nLOCATION:Gym X-INJECTED:1\r\n/))
+
+check('a whole-event PATCH takes a place off Google (location null); a title PATCH never touches it',
+  R.eventPatchFor(noPlace, 'all').location === null && R.eventPatchFor(withPlace, 'all').location === 'Jernbanetorget, Oslo'
+  && !('location' in R.eventPatchFor(noPlace, 'title')) && !('location' in noPlace))
+check('a series update does the same', R.fullEventPatch(S.seriesEventFor({ ...plan, place: null }, { today: '2026-11-02', timeZone: 'Europe/Oslo' }).body).location === null)
+const linkSrc = read('src/features/calendar/api/linkBlockCalendarEvent.ts')
+check('a new Google event (the browser\'s create) carries the slot\'s place', /busy: block\.busy,\s*place: block\.place,/.test(linkSrc))
+check('a series update goes through fullEventPatch', (read('src/features/calendar/api/scheduleSeriesCalendar.ts').match(/fullEventPatch\(plan\.body\)/g) || []).length === 2)
 
 console.log('\n4. The functions read the place')
 const icloud = read('supabase/functions/icloud-calendar/index.ts')

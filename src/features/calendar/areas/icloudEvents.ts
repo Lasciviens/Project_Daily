@@ -239,13 +239,18 @@ interface EventParts {
  *  is input). */
 function pinText(t: string, max: number): string {
   return Array.from(t.replace(/[^\p{L}\p{M}\p{N} .,'&()/+#@!?\u2013\u2014-]/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('').trim()
+    // A combining mark first would join the opening quote into one character (security review, 03.11.2026).
+    .replace(/^\p{M}+/u, '').trim()
 }
+/** Every quote in the pin line stands alone: a mark or a "prepend" letter beside it would join it into one character,
+ *  and a parser that reads characters, not code points, would miss the quote. */
+const pinQuotes = (line: string) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)].filter(s => s.segment === '"').length
 /** The pin line exactly as locationLines builds it — the last guard refuses anything else. */
 const PIN_LINE = /^X-APPLE-STRUCTURED-LOCATION;VALUE=URI;(?:X-ADDRESS="[^"\p{Cc}]{1,80}";)?X-APPLE-RADIUS=70;X-TITLE="[^"\p{Cc}]{1,120}":geo:-?\d{1,2}\.\d{6},-?\d{1,3}\.\d{6}$/u
 
 /**
- * An event's place (186), in the form the owner's Apple check kept (29.10.2026): LOCATION as two lines (the name, then
- * the town), and with coordinates Apple's map pin (X-APPLE-STRUCTURED-LOCATION, a geo: point) plus the travel advisory
+ * An event's place (186), in the form the owner's Apple check kept (29.10.2026, which sent a full street address in
+ * X-ADDRESS; here it is the town): LOCATION as two lines (the name, then the town), and with coordinates Apple's map pin (X-APPLE-STRUCTURED-LOCATION, a geo: point) plus the travel advisory
  * that lets the iPhone's Time to Leave work. No coordinates: the name alone, no pin.
  */
 export function locationLines(place: EventPlace | null | undefined): string[] {
@@ -258,7 +263,7 @@ export function locationLines(place: EventPlace | null | undefined): string[] {
   if (!title) return lines
   const pin = `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;${address ? `X-ADDRESS="${address}";` : ''}X-APPLE-RADIUS=70;`
     + `X-TITLE="${title}":geo:${place.lat.toFixed(6)},${place.lon.toFixed(6)}`
-  if (!PIN_LINE.test(pin)) return lines
+  if (!PIN_LINE.test(pin) || pinQuotes(pin) !== (address ? 4 : 2)) return lines
   return [...lines, pin, 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC']
 }
 
