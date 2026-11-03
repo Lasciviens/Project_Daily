@@ -15,4 +15,4 @@ Background: `docs/features/shop.md`.
 - `priceRead.ts` and `fxNorgesBank.ts` are hand-mirrored into `shop-price` (their verify scripts compare them).
 - Never invent a price, a sale price or a "Could sell for".
 - Owned's "What I own" sums what the list shows — the filters and Mine · Sold or gone · All (`shownSummary`); Stats keeps the whole collection (`ownedSummary`).
-- Selling and adding an accessory live in the record, not on the Owned cards; Owned's ways to add live in the page header, not in the rail (owner, 14.10.2026).
+- Selling and adding an accessory live in the record, not on the Owned cards; Owned's ways to add live in the page header, not in the rail (owner, 14.10.2026) — on a phone in the row right under its bar, with Things | Stats, so the bar keeps one row on every view (03.11.2026).

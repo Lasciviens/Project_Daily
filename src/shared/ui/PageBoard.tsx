@@ -9,7 +9,8 @@ import { PageStepContext, usePageStep } from './usePageStep'
 //  COLUMNS: one main track (≤ 56rem) plus up to three 24rem side tracks. The
 //  step is measured on the board's OWN width (the page's content width, which
 //  the sidebar, a collapsed sidebar or a drawer all change), never on the
-//  viewport.
+//  viewport. A layout with a lowered main may start a step `early`, as soon
+//  as its tracks fit.
 //
 //  Each step declares which section goes in which column. Columns are stacks
 //  (no masonry, no dense packing), so a section's place never depends on its
@@ -106,7 +107,8 @@ function StickyStack<K extends string>({ keys, sections, className, style }: {
  * ```
  */
 export function PageBoard<K extends string>({ sections, layout, stackClassName, stackGap = 'gap-3 sm:gap-4', className }: PageBoardProps<K>) {
-  const { ref, step } = usePageStep<HTMLDivElement>()
+  // The board's own step: the page's, or a wider one that starts early (pageBoardRules.boardStepForWidth).
+  const { ref, step } = usePageStep<HTMLDivElement>(layout)
   const resolved = step == null ? null : resolveBoardLayout(layout, step)
 
   let body: ReactNode = null

@@ -85,3 +85,14 @@ export function projectsHeaderCapRem(cards: number, widthRem: number): number | 
   const cap = used * PROJECT_CARD.max + (used - 1) * PROJECT_CARD.gap
   return cap < widthRem ? cap : null
 }
+
+/**
+ * The cards the list header plans for: the most any status holds across both
+ * areas (`statusTally(projects, 'all')`), never the open status's or area's,
+ * so the header — and the status switch in it — keeps one size and place on a
+ * switch (owner, 03.11.2026: a tab switch never resizes the bar; it ran from
+ * one card's width to the page's). Six while loading.
+ */
+export function projectsHeaderCards(countsByStatus: Readonly<Record<string, number>>, loading: boolean): number {
+  return loading ? 6 : Math.max(0, ...Object.values(countsByStatus))
+}

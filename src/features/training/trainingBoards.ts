@@ -26,15 +26,18 @@ export const NEXT_BOARD: BoardLayouts<NextSection> = {
 // in a column rather than a band under everything (a band only starts after
 // the tallest column ends and left a hole under the shorter ones). Main
 // stops at 42rem: the plan's cards are capped there (a week grid or a
-// routine list stretched to 56rem is empty space).
+// routine list stretched to 56rem is empty space). So the board takes its
+// next track as soon as it fits (`early`: three tracks from 92rem, four from
+// 117rem) — on the page's own steps (100 / 128rem) the 67rem board left the
+// right side empty, 26.7rem of it on a 1795px screen (owner, 03.11.2026).
 export const PROGRAM_SECTIONS = ['current', 'schedule', 'planned', 'balance', 'routines'] as const
 export type ProgramSection = typeof PROGRAM_SECTIONS[number]
 const PROGRAM_MAIN = '42rem'
 export const PROGRAM_BOARD: BoardLayouts<ProgramSection> = {
   1: ['current', 'schedule', 'routines', 'planned', 'balance'],
   2: { main: PROGRAM_MAIN, columns: [['current', 'schedule', 'routines'], ['planned', 'balance']] },
-  3: { main: PROGRAM_MAIN, columns: [['current', 'schedule', 'routines'], ['planned'], ['balance']] },
-  4: { main: PROGRAM_MAIN, columns: [['current', 'routines'], ['schedule'], ['planned'], ['balance']] },
+  3: { early: true, main: PROGRAM_MAIN, columns: [['current', 'schedule', 'routines'], ['planned'], ['balance']] },
+  4: { early: true, main: PROGRAM_MAIN, columns: [['current', 'routines'], ['schedule'], ['planned'], ['balance']] },
 }
 
 // ── Progress ────────────────────────────────────────────────────────────────

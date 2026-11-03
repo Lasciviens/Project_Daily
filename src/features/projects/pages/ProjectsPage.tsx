@@ -7,7 +7,7 @@ import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useAllPhases, useOpenQuestions, useProjectTasks, useProjects } from '../hooks/useProjects'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectsHeroArt } from '../components/ProjectsHeroArt'
-import { projectsHeaderCapRem } from '../projectBoard'
+import { projectsHeaderCapRem, projectsHeaderCards } from '../projectBoard'
 import {
   AREA_LABEL, STATUS_LABEL, STATUS_ORDER, filterProjects, projectSummary, statusTally, type AreaFilter,
 } from '../projectModel'
@@ -46,9 +46,10 @@ export function ProjectsPage() {
     )]))
   }, [projects, phasesQ.data, tasksQ.data, questionsQ.data])
 
-  // The header stops over the last card (New project floated ~44rem past four cards at 2450).
+  // The header stops over the last card (New project floated ~44rem past four cards at 2450) — the most
+  // cards any status shows, so switching status or area never resizes it (projectsHeaderCards).
   const { ref: widthRef, width } = useElementWidthRem<HTMLDivElement>()
-  const headerCap = width == null ? null : projectsHeaderCapRem(projectsQ.isLoading ? 6 : shown.length, width)
+  const headerCap = width == null ? null : projectsHeaderCapRem(projectsHeaderCards(statusTally(projects, 'all'), projectsQ.isLoading), width)
   const loading = projectsQ.isLoading
   const newProject = () => modal.open({ kind: 'project' })
 
@@ -80,7 +81,8 @@ export function ProjectsPage() {
                 onChange={v => set('status', v, 'active')}
                 options={STATUS_ORDER.map(s => ({
                   value: s,
-                  label: <>{STATUS_LABEL[s]}{tally[s] > 0 && s !== status && <span className="ml-1 text-fg-faint tabular-nums">{tally[s]}</span>}</>,
+                  // The open status keeps its count too: a label that changed on a switch moved every tab.
+                  label: <>{STATUS_LABEL[s]}{tally[s] > 0 && <span className="ml-1 text-fg-faint tabular-nums">{tally[s]}</span>}</>,
                 }))}
               />
             )}

@@ -54,53 +54,64 @@ export function ShopPage() {
     else modal.open({ kind: 'shop-item', defaults: { list: view === 'quick' ? 'quick' : 'wishlist' } })
   }
 
+  const ownedTabs = (fullWidth: boolean) => (
+    <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
+      options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
+  )
+  // Owned's other ways in where the row has no room for their buttons.
+  const moreWaysMenu = (
+    <Menu as="div" className="@[72rem]/page:hidden">
+      <MenuButton className="icon-btn-bordered" aria-label="More ways to add" title="More ways to add">
+        <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
+      </MenuButton>
+      <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+      </MenuItems>
+    </Menu>
+  )
+
+  // The bar keeps one row and the view switch one width on every view (owner,
+  // 03.11.2026: a tab switch never reshapes the bar). On a phone Owned's own
+  // controls — Things | Stats and the menu of other ways in — sit in the row
+  // right under it instead of growing it by a row and narrowing the switch;
+  // from a tablet they share the bar's row, where they fit without moving it.
   return (
     <PageContainer>
       <PageHeader title="Shop" art={<ShopHeroArt />}>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1 sm:flex-none">
-              <SegmentedControl<View>
-                value={view}
-                onChange={v => set(v)}
-                fullWidth={isPhone}
-                options={[
-                  { value: 'wishlist', label: <>Wishlist{count(wishCount)}</> },
-                  { value: 'quick', label: <>Quick list{count(quickCount)}</> },
-                  { value: 'owned', label: 'Owned' },
-                ]}
-              />
-            </div>
-            {view === 'owned' && !isPhone && (
-              <SegmentedControl<OwnedTab> size="sm" value={ownedTab} onChange={t => set('owned', t)}
-                options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
-            )}
-            <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
-              {view === 'owned' && <>
-                {/* Owned's other ways in: buttons where the row has room, one menu where it has not. */}
-                <Button variant="ghost" icon={<History />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
-                <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
-                <Menu as="div" className="@[72rem]/page:hidden">
-                  <MenuButton className="icon-btn-bordered" aria-label="More ways to add" title="More ways to add">
-                    <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
-                  </MenuButton>
-                  <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-                    <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
-                    <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
-                  </MenuItems>
-                </Menu>
-              </>}
-              <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
-                <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
-              </Button>
-            </div>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 sm:flex-none">
+            <SegmentedControl<View>
+              value={view}
+              onChange={v => set(v)}
+              fullWidth={isPhone}
+              options={[
+                { value: 'wishlist', label: <>Wishlist{count(wishCount)}</> },
+                { value: 'quick', label: <>Quick list{count(quickCount)}</> },
+                { value: 'owned', label: 'Owned' },
+              ]}
+            />
           </div>
-          {view === 'owned' && isPhone && (
-            <SegmentedControl<OwnedTab> size="sm" fullWidth value={ownedTab} onChange={t => set('owned', t)}
-              options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
-          )}
+          {view === 'owned' && !isPhone && ownedTabs(false)}
+          <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+            {view === 'owned' && !isPhone && <>
+              {/* Owned's other ways in: buttons where the row has room, one menu where it has not. */}
+              <Button variant="ghost" icon={<History />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
+              <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+              {moreWaysMenu}
+            </>}
+            <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
+              <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
+            </Button>
+          </div>
         </div>
       </PageHeader>
+      {view === 'owned' && isPhone && (
+        <div className="mb-3 flex items-center gap-2 sm:mb-4">
+          <div className="min-w-0 flex-1">{ownedTabs(true)}</div>
+          {moreWaysMenu}
+        </div>
+      )}
 
       {view === 'quick'
         ? <QuickListView items={items} isLoading={isLoading} />

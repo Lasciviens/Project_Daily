@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Plus, UtensilsCrossed } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
-import { Button, PageContainer, PageHeader, SegmentedControl, cx, type SegmentedOption } from '../../../shared/ui'
+import { Button, PageContainer, PageHeader, SegmentedControl, SteadySlot, type SegmentedOption } from '../../../shared/ui'
 import { LibraryTab } from '../components/LibraryTab'
 import { FoodInsightsTab } from '../components/FoodInsightsTab'
 import { MealPlanWeek } from '../components/MealPlanWeek'
@@ -43,16 +43,21 @@ export function RecipesPage() {
   useDoseLink(date => { setTab('today'); setFoodDate(date) })
   useFollowToday(foodDate, setFoodDate)
 
-  const phoneRowless = tab !== 'today' && tab !== 'library'
   const addRecipe = () => modal.open({ kind: 'recipe' })
   // Logs into the VIEWED day, never a hardcoded today.
   const logFood = () => modal.open({ kind: 'food-log', date: foodDate })
+  const logButton = <Button variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
 
   // Two rows on a phone: the tabs, then the day picker with the actions on
   // its right (owner, 06.10.2026 — fewer rows before the first meal). They
   // share one row once both fit: the second group sizes on its content
   // (`flex-auto`), so it wraps under the tabs instead of running out of the
   // card. Shop is its own page now (no Food | Shop switch).
+  // The second group is the same on every tab (owner, 03.11.2026: a tab switch
+  // never reshapes the bar): each tab's version — Today: the day + Log food,
+  // Library: Add recipe + Log food, the rest: Log food — sits in one slot as
+  // wide as the widest, so whether it wraps depends on the width only and a
+  // phone keeps its second row on every tab.
   return (
     <PageContainer>
       <PageHeader title="Food" art={<FoodHeroArt />}>
@@ -60,16 +65,22 @@ export function RecipesPage() {
           <div className="w-full sm:w-auto [&_.seg-btn]:px-1.5 [&_.seg]:w-full sm:[&_.seg-btn]:px-3 sm:[&_.seg]:w-auto">
             <SegmentedControl options={TABS} value={tab} onChange={setTab} />
           </div>
-          {/* On a phone the second row only exists where it does something on
-              that tab (Today: the day + Log food; Library: Add recipe + Log food). */}
-          <div className={cx('flex min-w-0 flex-auto items-center gap-2', phoneRowless && 'max-sm:hidden')}>
-            {tab === 'today' && <FoodDateNav value={foodDate} onChange={setFoodDate} />}
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
-              {tab === 'library' && <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>}
-              <Button variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
-            </div>
-          </div>
+          <SteadySlot className="min-w-0 flex-auto" show={tab === 'today' || tab === 'library' ? tab : 'other'} items={{
+            today: (
+              <div className="flex items-center gap-2">
+                <FoodDateNav value={foodDate} onChange={setFoodDate} />
+                <div className="ml-auto shrink-0">{logButton}</div>
+              </div>
+            ),
+            library: (
+              <div className="flex items-center justify-end gap-2">
+                {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
+                <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>
+                {logButton}
+              </div>
+            ),
+            other: <div className="flex justify-end">{logButton}</div>,
+          }} />
         </div>
       </PageHeader>
 
