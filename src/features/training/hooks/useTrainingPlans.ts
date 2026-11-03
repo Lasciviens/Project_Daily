@@ -4,7 +4,7 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchFirstPlanDay, type TrainingPlanRef } from '../api/trainingPlanApi'
 import { useScheduleBlocks, useTrainingBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { buildPlansByDate } from '../components/calendar/calendarPlans'
-import { todayStr } from '../../../shared/utils/dateUtils'
+import { useTodayStr } from '../../../shared/hooks/useToday'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
 /** Planned training sessions per day of [from, to]: one-off training blocks +
@@ -23,7 +23,7 @@ export function useTrainingPlansByDate(from: string, to: string): {
   const blocks = blocksQ.data
   const templates = templatesQ.data
   const dayTasks = dayTasksQ.data
-  const today = todayStr()
+  const today = useTodayStr()
   const data = useMemo(() => buildPlansByDate(from, to, blocks ?? [], templates ?? [], dayTasks ?? [], today), [from, to, blocks, templates, dayTasks, today])
   return {
     data,

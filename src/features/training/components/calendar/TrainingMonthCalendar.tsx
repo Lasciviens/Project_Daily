@@ -51,7 +51,7 @@ export function TrainingMonthCalendar() {
 
   const { data: workouts = [] } = useHevyWorkoutsRange(from, to)
   const { data: activities = [] } = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 500 })
-  const { data: plansByDate } = useTrainingPlansByDate(from, to)
+  const { data: plansByDate, isError: plansFailed } = useTrainingPlansByDate(from, to)
   const { data: profile } = useAthleteProfile()
   const { skips, routineOf } = usePlanContext()
   const routineOfPlan = useCallback((p: CalendarPlanItem, date: string) => routineOf({ title: p.title, date, startHHMM: planStartHHMM(p) }), [routineOf])
@@ -81,6 +81,7 @@ export function TrainingMonthCalendar() {
         />
         <Legend />
       </div>
+      {plansFailed && <p className="text-meta text-warn">The planned sessions couldn't be read — the days show workouts only.</p>}
       <MonthGrid
         weeks={weeks}
         dayByDate={dayByDate}

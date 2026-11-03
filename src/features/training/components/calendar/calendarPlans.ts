@@ -43,13 +43,15 @@ export function buildPlansByDate(from: string, to: string, blocks: readonly Bloc
       const dateStr = ymd(cursor)
       if (today && dateStr < today) {
         // A past day: the sessions it really had — its day tasks, whatever weekday today's rule names (a template that
-        // is gone, or no longer training, has nothing to show them by). Before 156 (15.10.2026) days have no day
-        // tasks, so such a day shows only its workouts.
+        // is gone, or no longer training, has nothing to show them by). A day acted on (skipped, moved, ticked) was
+        // split into its own slot — the date is in except_dates and the slot carries the task — so the slot shows it,
+        // never the day task a second time (on the old day of a moved session either). Before 156 (15.10.2026) days
+        // have no day tasks, so such a day shows only its workouts.
         for (const task of dayTasks) {
           if (task.occurrence_date !== dateStr) continue
           const scheduleBlock = training.find(s => s.id === task.schedule_block_id)
-          if (!scheduleBlock) continue
-          push(dateStr, { id: `${scheduleBlock.id}__${dateStr}`, title: scheduleBlock.title, kind: 'recurring', scheduleBlock: scheduleBlock as ScheduleBlock, dayTask: task })
+          if (!scheduleBlock || scheduleBlock.except_dates?.includes(dateStr) || blocks.some(b => b.task_id === task.id)) continue
+          push(dateStr, { id: `${scheduleBlock.id}__${dateStr}`, title: task.title ?? scheduleBlock.title, kind: 'recurring', scheduleBlock: scheduleBlock as ScheduleBlock, dayTask: task })
         }
         continue
       }

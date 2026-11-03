@@ -61,10 +61,17 @@ export async function searchFoodsByName(query: string): Promise<BarcodeProduct[]
   const q = query.trim()
   if (!q) return []
   const fields = 'code,product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,image_front_url,image_url'
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&fields=${fields}&page_size=20&sort_by=popularity_key`
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&fields=${fields}&page_size=50&sort_by=popularity_key`
   let lastStatus = 0
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url, { headers: { 'User-Agent': 'LascisBoard/1.0 (personal food tracker)' } })
+    let res: Response
+    try {
+      res = await fetch(url, { headers: { 'User-Agent': 'LascisBoard/1.0 (personal food tracker)' } })
+    } catch {
+      // OFF's "busy" 503 page has no CORS header, so the browser reports a failed request, not the 503: tried again.
+      lastStatus = 503
+      continue
+    }
     lastStatus = res.status
     if (res.ok) {
       const json = await res.json() as { products?: Record<string, unknown>[] }

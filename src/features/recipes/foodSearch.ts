@@ -30,7 +30,11 @@ export function matchRank(name: string, foldedQuery: string): number | null {
  * service that ignores the words can't fill the list with unrelated products.
  */
 export function containsEveryWord(text: string, query: string): boolean {
-  const words = foldText(query).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  const all = foldText(query).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  // A number alone ("skyr 0%", "cola 0") is never required — names write it their own way ("0,2 %", "Zero") — unless
+  // the query is only numbers.
+  const lettered = all.filter(w => /\p{L}/u.test(w))
+  const words = lettered.length ? lettered : all
   if (!words.length) return false
   const letters = foldText(text).replace(/[^\p{L}\p{N}]+/gu, '')
   return words.every(w => letters.includes(w))

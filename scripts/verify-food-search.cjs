@@ -128,6 +128,8 @@ console.log('\n5 · Recents read every page of the 30 days')
     check('a word typed without the space', containsEveryWord('7 Up', '7up'))
     check('one missing word → no match', !containsEveryWord('Peanut Butter Smooth', 'gresham peanut butter'))
     check('an empty or punctuation-only query matches nothing', !containsEveryWord('Skyr', '  ') && !containsEveryWord('Skyr', ' – '))
+    check('a number alone is never required (names write it their own way)', containsEveryWord('Skyr naturell', 'skyr 0%') && containsEveryWord('Coca-Cola Zero', 'cola 0'))
+    check('…unless the query is only numbers', containsEveryWord('7 Up', '7') && !containsEveryWord('Skyr', '0'))
 
     const { searchFoodsByName } = require('../src/features/recipes/api/openFoodFactsApi')
     const urls = []
@@ -176,6 +178,18 @@ console.log('\n5 · Recents read every page of the 30 days')
     check('the words may sit in the name and the brand together', r3.length === 1 && r3[0].name === 'Peanut Butter Crunchy', JSON.stringify(r3.map(p => p.name)))
     const r4 = await searchFoodsByName('kyllingbryst')
     check('the product\'s own-language name counts too (shown by its English name)', r4.length === 1 && r4[0].name === 'Chicken breast fillet', JSON.stringify(r4.map(p => p.name)))
+    check('asks for 50, so enough are left after the word check', new URL(urls[urls.length - 1]).searchParams.get('page_size') === '50')
+
+    // OFF's busy 503 page has no CORS header: in a browser fetch throws instead of answering 503. That is retried as busy.
+    let calls = 0
+    global.fetch = async () => { calls++; throw new TypeError('Failed to fetch') }
+    let said = ''
+    try { await searchFoodsByName('skyr') } catch (e) { said = e.message }
+    check('a request the browser reports as failed is tried 3 times, then says OFF is busy', calls === 3 && /busy/.test(said), `${calls} calls · ${said}`)
+    calls = 0
+    global.fetch = async () => { calls++; if (calls < 2) throw new TypeError('Load failed'); return { ok: true, status: 200, json: async () => ({ products: [off('1', 'Skyr naturell', 'Skyr', 'Q', 63)] }) } }
+    const again = await searchFoodsByName('skyr')
+    check('…and a later try that answers is used', calls === 2 && again.length === 1 && again[0].name === 'Skyr', JSON.stringify(again.map(p => p.name)))
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

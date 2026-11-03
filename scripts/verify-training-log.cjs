@@ -381,6 +381,20 @@ console.log('\n== 167: a workout represents itself; a weekly day reads its own t
       && !week.has('2026-09-28') && !week.has('2026-10-01'))
     check('a day task of a template that is gone shows nothing on a past day', !buildPlansByDate('2026-09-21', '2026-09-27', [], [], [oldMon], '2026-09-28').has('2026-09-21'))
     check('no today given: the rules draw every day (older callers)', buildPlansByDate('2026-09-21', '2026-09-27', [], [twfs], [], null).has('2026-09-23'))
+    // A day acted on (skipped, moved, ticked) was split into its own slot: the slot shows it, never the day task twice.
+    const split = dayTask({ id: 'ts', occurrence_date: '2026-09-22', status: 'cancelled', closed_reason: null })
+    const moved = dayTask({ id: 'tv', occurrence_date: '2026-09-25', status: 'done' })
+    const splitWeek = buildPlansByDate('2026-09-21', '2026-09-27',
+      [{ id: 'bS', title: 'Upper B', date: '2026-09-22', task_id: 'ts' }, { id: 'bV', title: 'Upper B', date: '2026-09-26', task_id: 'tv' }],
+      [{ ...twfs, except_dates: ['2026-09-22', '2026-09-25'] }], [split, moved], '2026-09-28')
+    check('a skipped past day shows once — its slot, not its day task too', splitWeek.get('2026-09-22')?.length === 1 && splitWeek.get('2026-09-22')?.[0]?.id === 'bS')
+    check('a moved session shows on its new day only, never on its old day', !splitWeek.has('2026-09-25') && splitWeek.get('2026-09-26')?.[0]?.id === 'bV')
+    check('a slot found by its task alone also hides the day task (except_dates not loaded)',
+      !buildPlansByDate('2026-09-21', '2026-09-27', [{ id: 'bV', title: 'x', date: '2026-10-09', task_id: 'tv' }], [twfs], [moved], '2026-09-28').has('2026-09-25'))
+    const renamed = buildPlansByDate('2026-09-21', '2026-09-27', [], [{ ...twfs, title: 'Upper B v2' }], [dayTask({ id: 'tn', occurrence_date: '2026-09-23', title: 'Upper B' })], '2026-09-28')
+    check('a past day keeps its session\'s own name after the template is renamed', renamed.get('2026-09-23')?.[0]?.title === 'Upper B')
+    const cal = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/components/calendar/TrainingMonthCalendar.tsx'), 'utf8')
+    check('a failed read of the planned sessions says so (never looks like rest days)', /isError: plansFailed/.test(cal) && /plansFailed && <p className="text-meta text-warn">/.test(cal))
     const hook = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingPlans.ts'), 'utf8')
     check('the calendar\'s hook passes today, so past days never read today\'s rule', /buildPlansByDate\(from, to, blocks \?\? \[\], templates \?\? \[\], dayTasks \?\? \[\], today\)/.test(hook))
   }
