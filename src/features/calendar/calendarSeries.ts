@@ -54,7 +54,7 @@
 //  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { itemTimeZone, SERVER_EVENT_TIME_ZONE } from './calendarEventRules'
+import { eventPlace, itemTimeZone, placeText, SERVER_EVENT_TIME_ZONE } from './calendarEventRules'
 import {
   addDaysIso, dayNumber, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatKindOf, weeklyDaysOf,
   type RepeatRule,
@@ -85,6 +85,8 @@ export interface SeriesTemplate extends RepeatRule {
   google_calendar_time_zone?: string | null
   /** The zone the plan's times are in (183): the phone's when it was made. */
   time_zone?: string | null
+  /** Where the plan happens (186): the row's jsonb, read through calendarEventRules.eventPlace. */
+  place?: unknown
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -99,6 +101,8 @@ export interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
+  /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
+  location?: string
 }
 
 /** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
@@ -294,6 +298,8 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
   if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
 
   const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
+  const place = eventPlace(t.place)
+  const location = place ? { location: placeText(place) } : {}
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -303,6 +309,7 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
         end: { date: addDaysIso(first, 1) },
         recurrence,
         transparency: 'transparent',
+        ...location,
       },
     }
   }
@@ -317,6 +324,7 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
       transparency: t.busy === false ? 'transparent' : 'opaque',
+      ...location,
     },
   }
 }

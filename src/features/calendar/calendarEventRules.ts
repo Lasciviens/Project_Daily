@@ -85,6 +85,39 @@ export interface EventBlock {
   title: string | null
   /** false: no length — Free on Google (155). Missing before 155 = busy. */
   busy?: boolean | null
+  /** Where it happens (186): the row's jsonb, read through eventPlace. */
+  place?: unknown
+}
+
+/** An item's place as the calendars get it (186): a name, maybe a town, maybe a map pin. */
+export interface EventPlace { name: string; locality?: string; lat?: number; lon?: number }
+
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is dropped
+const PLACE_CONTROL = /[\x00-\x1F\x7F-\x9F\u2028\u2029]/g
+const placeLine = (t: unknown, max: number) => typeof t !== 'string' ? ''
+  : Array.from(t.replace(PLACE_CONTROL, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('').trim()
+const placeCoord = (n: unknown, limit: number): n is number => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= limit
+
+/**
+ * A row's place as the writers may use it (186). The column is checked by the database, but a stored value is still
+ * input (the warning in AGENTS.md — it lands in iCalendar lines and Google's bodies): only a name of up to 120
+ * characters, a town of up to 80, and coordinates in range are taken; anything else is no place, or no pin.
+ */
+export function eventPlace(raw: unknown): EventPlace | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  const name = placeLine(o.name, 120)
+  if (!name) return null
+  const out: EventPlace = { name }
+  const locality = placeLine(o.locality, 80)
+  if (locality && locality.toLowerCase() !== name.toLowerCase()) out.locality = locality
+  if (placeCoord(o.lat, 90) && placeCoord(o.lon, 180)) { out.lat = o.lat; out.lon = o.lon }
+  return out
+}
+
+/** "Jernbanetorget, Oslo": Google's `location`. */
+export function placeText(p: EventPlace): string {
+  return p.locality ? `${p.name}, ${p.locality}` : p.name
 }
 
 export type EventTime = { date: string } | { dateTime: string; timeZone: string }
@@ -95,6 +128,8 @@ export interface BlockEventBody {
   start: EventTime
   end: EventTime
   transparency: 'opaque' | 'transparent'
+  /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
+  location?: string
 }
 
 /**
@@ -107,8 +142,10 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   if (!ISO_DAY.test(b.date ?? '')) return null
   const summary = calendarTitle(b.title, opts.done)
   const start = clockMinutes(b.start_time)
+  const place = eventPlace(b.place)
+  const location = place ? { location: placeText(place) } : {}
   if (start === null) {
-    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent' }
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent', ...location }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
@@ -118,6 +155,7 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
     start: { dateTime: wallClockAt(b.date, start), timeZone },
     end: { dateTime: wallClockAt(b.date, start + length), timeZone },
     transparency: busy ? 'opaque' : 'transparent',
+    ...location,
   }
 }
 
@@ -148,13 +186,23 @@ export function withTimePatch<B extends { start: EventTime; end: EventTime }>(bo
 }
 
 /**
+ * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
+ * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
+ * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body.
+ */
+export function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string }>(body: B): Omit<Omit<B, 'location'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null } {
+  const { location, ...rest } = body
+  return { ...withTimePatch(rest), location: location ?? null }
+}
+
+/**
  * The PATCH a push sends. A title push carries the summary and nothing else,
  * so ticking an item done never sends its old day or time back over a move
  * the owner made in Google Calendar. Anything but 'title' is the whole event,
  * its start and end through timePatch.
  */
-export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof withTimePatch<BlockEventBody>> {
-  return fields === 'title' ? { summary: body.summary } : withTimePatch(body)
+export function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof fullEventPatch<BlockEventBody>> {
+  return fields === 'title' ? { summary: body.summary } : fullEventPatch(body)
 }
 
 /** The done mark's PATCH: the title with or without "✓ " — and only that. */

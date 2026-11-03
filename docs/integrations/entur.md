@@ -10,7 +10,7 @@ No key. Every request sends `ET-Client-Name: lasciviens-project-daily` (EnTur's 
 ## Endpoints we call
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
-| `GET https://api.entur.io/geocoder/v3/autocomplete?q=…&lang=no&limit=N&layers=stopPlace,address,street,poi,place&countries=no` | `ruterApi.searchStops` (limit 15), `ai-proxy` `geocodeCandidates` (the asked size) and `searchTransitStops` (8) | each stop search; the assistant's plan_trip and search_transit_stops | a 429 says "Rate limited — wait a moment and try again" |
+| `GET https://api.entur.io/geocoder/v3/autocomplete?q=…&lang=no&limit=N&layers=stopPlace,address,street,poi,place&countries=no` | `ruterApi.searchStops` (limit 15), `ai-proxy` `geocodeCandidates` (the asked size) and `searchTransitStops` (8) | each stop search (the transit card, Settings → Places, and the Add sheet's Place — 186, 03.11.2026, the same query); the assistant's plan_trip and search_transit_stops | a 429 says "Rate limited — wait a moment and try again" |
 | `POST https://api.entur.io/journey-planner/v3/graphql` | `ruterApi` (`gql`), `ai-proxy` | departures, trips, nearest stops | — |
 
 The query is built in one place, `geocoderQuery` in `src/features/home/api/enturGeocoder.ts`; its `<entur-geocoder>` block is copied verbatim into `ai-proxy` (`scripts/verify-entur-geocoder.cjs` compares them).
@@ -23,7 +23,7 @@ The query is built in one place, `geocoderQuery` in `src/features/home/api/entur
 | `properties.address.locality` (fallback `address.county`) | `"Oslo"` | `GeoPlace.locality` |
 | `properties.layer` | `stopPlace`, `address`, `street`, `poi`, `place`, `groupOfStopPlaces` | `GeoPlace.layer`: a stop → `venue`; `street` → `street`; the others → `address` (the app's names since v1, so the screens didn't change) |
 | `properties.stopPlaceTypes` | `["onstreetBus","onstreetTram","metroStation"]` (stops only) | `GeoPlace.category`, joined with ", " |
-| `geometry.coordinates` | `[lon, lat]` (GeoJSON order) | `GeoPlace.lat` / `lon`; a place that isn't a stop is kept only with a point |
+| `geometry.coordinates` | `[lon, lat]` (GeoJSON order) | `GeoPlace.lat` / `lon`; a place that isn't a stop is kept only with a point. An item's place keeps them (6 decimals) for Apple's map pin (`items/itemPlace.placeFromGeo`) |
 
 Nothing is written to EnTur. Saved stops (`user_transit_stops`) keep their `NSR:StopPlace` ids, which v3 did not change.
 

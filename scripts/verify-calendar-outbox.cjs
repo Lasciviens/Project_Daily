@@ -371,8 +371,8 @@ function wiringSection() {
     /\.in\('operation', \['delete', 'upsert'\]\)/.test(queueRead))
   check('before 155 (no requested_at) it reads the delete rows only', /\.eq\('operation', 'delete'\)/.test(f.slice(f.indexOf('drainCalendarDeletesBefore155(token: string'))))
   check('a row is removed only while it holds the request this run read (155: requested_at)', /if \(row\.requested_at\) removal = removal\.eq\('requested_at', row\.requested_at\)/.test(f))
-  check('an upsert PATCHes from the live row: a slot through blockEventBody (on its own zone\'s wall clock, 183), a series its title',
-    /\.select\('id, date, start_time, duration_minutes, title, busy, time_zone, task:tasks\(status\)'\)/.test(f)
+  check('an upsert PATCHes from the live row: a slot through blockEventBody (on its own zone\'s wall clock, 183, with its place, 186), a series its title',
+    /\.select\('id, date, start_time, duration_minutes, title, busy, time_zone, place, task:tasks\(status\)'\)/.test(f)
     && /blockEventBody\(block as unknown as EventBlock, \{\s*done: \(block as AnyRecord\)\.task\?\.status === 'done', timeZone: itemTimeZone\(\(block as AnyRecord\)\.time_zone\),/.test(f)
     && /\{ summary: stripDoneMark\(plan\.title\) \}/.test(f))
   check('it reads due rows only, oldest first',

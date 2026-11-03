@@ -76,7 +76,8 @@ console.log('\n3b · A done / reopen push is the title ONLY (never the day back 
 check('eventPatchFor(body, \'title\') carries the summary and nothing else', eq(Object.keys(R.eventPatchFor(busy, 'title')), ['summary'])
   && R.eventPatchFor(busy, 'title').summary === '✓ Gym')
 check('…no start, end or transparency in it', !('start' in R.eventPatchFor(busy, 'title')) && !('end' in R.eventPatchFor(busy, 'title')) && !('transparency' in R.eventPatchFor(busy, 'title')))
-const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null } }
+// A whole-event PATCH also carries the place (186): none is null, so a place taken off in the app leaves Google.
+const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null }, location: null }
 check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busyPatch) && eq(R.eventPatchFor(busy, undefined), busyPatch) && eq(R.eventPatchFor(busy, 'x'), busyPatch))
 
 console.log('\n3c · A PATCH clears the date form it does not use (Google merges objects; start and end must both be timed or both all-day)')

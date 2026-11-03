@@ -37,6 +37,8 @@ export interface ScheduleBlock {
   /** The zone the plan's times are in (183): the phone's when it was made,
    *  changed only by the owner in the sheet. Missing/null = the home zone. */
   time_zone?: string | null
+  /** Where the plan happens (186): {name, locality?, lat?, lon?, id?} as stored — read through items/itemPlace.placeOfRow. */
+  place?: unknown
   /** The day it was added to Google Calendar (148): the series starts on its
    *  first day on or after this, not at effective_from. Missing before 148. */
   google_calendar_from?: string | null
@@ -95,6 +97,8 @@ export interface TimeBlock {
   /** The zone its date and time are in (183): the phone's when it was made,
    *  its plan's for a day split off a plan. Missing/null = the home zone. */
   time_zone?:       string | null
+  /** Where the slot happens (186): {name, locality?, lat?, lon?, id?} as stored — read through items/itemPlace.placeOfRow. */
+  place?:           unknown
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null

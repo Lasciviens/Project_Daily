@@ -3,6 +3,8 @@
 // The shared contract between the data layer and the screens — extend it,
 // don't rename. Background: docs/features/tasks.md, planning-calendar.md.
 
+import type { ItemPlace } from './itemPlace'
+
 /** Where the item lives on Google. Old rows (null) keep today's behaviour until their next save. */
 export type GoogleTarget = 'tasks' | 'calendar' | 'both' | 'none'
 
@@ -47,6 +49,8 @@ export interface ItemInput {
   /** The zone the item's day and time are in (183, an IANA name). A new item's is the phone's; an edit sends one only
    *  when the owner picked another — absent or null = keep the item's (the database gives a new one the phone's). */
   timeZone?: string | null
+  /** Where it happens (186): a slot's or repeat's place. Absent = not known here, so the save keeps the item's; null = none. */
+  place?: ItemPlace | null
   /** The task's origin (tasks.source_type vocabulary: tv_series, not
    *  tv_episode); `id` may be null (a training session with no routine). */
   source?: { type: string; id: string | null } | null

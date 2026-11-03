@@ -26,6 +26,7 @@ import { GoogleListField } from './GoogleListField'
 import { TaskWindowField } from './TaskWindowField'
 import { AddFact, AreaFact, CategoryFact, FactRow, ListFact, PriorityFact } from './ItemFacts'
 import { LabelsFact } from './LabelsFact'
+import { PlaceFact } from './PlaceFact'
 import { DateInput } from '../DateInput'
 import { cx } from '../../ui'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
@@ -103,6 +104,8 @@ export function ItemForm({
   // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
   // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
   const showLabels = !repeating && !day && !hideTask('labels')
+  // A place belongs to a slot or a repeat (186): an item with a time, a repeat, or all day on a calendar.
+  const showPlace = !!form.time || repeating || allDay
   const open = (r: SheetRow) => form.shown.includes(r) && rows.includes(r)
   const addable = rows.filter(r => !VALUE_FACTS.includes(r) && !open(r))
 
@@ -156,7 +159,7 @@ export function ItemForm({
         />
       )}
 
-      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || showLabels || addable.length > 0) && (
+      {(rows.some(r => VALUE_FACTS.includes(r)) || showCategory || showLabels || showPlace || addable.length > 0) && (
         <div className="-ml-1.5 flex flex-wrap items-center gap-x-0.5 gap-y-1">
           {rows.includes('priority') && <PriorityFact value={form.priority} onChange={priority => patch({ priority })} />}
           {rows.includes('area') && <AreaFact value={form.domain} onChange={domain => patch({ domain })} />}
@@ -169,6 +172,7 @@ export function ItemForm({
             />
           )}
           {showLabels && <LabelsFact value={form.labels} onChange={labels => patch({ labels, labelsTouched: true })} />}
+          {showPlace && <PlaceFact value={form.place} onChange={place => patch({ place, placeTouched: true })} />}
           {addable.map(r => <AddFact key={r} label={ROW_LABEL[r]} onClick={() => patch({ shown: [...form.shown, r] })} />)}
         </div>
       )}

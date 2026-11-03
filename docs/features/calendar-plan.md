@@ -19,7 +19,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 | 3 | An alert per event (e.g. Training 60 min before) | Wanted |
 | 4 | Colours | Wanted — on Apple only a **calendar's** colour shows, so this comes with 19 |
 | 5 | A description (notes) written by the app — a session's exercises, match details | Wanted, plain text |
-| 6 | Location (gym, stadium) with a map | Wanted — iCloud keeps Apple's map pin and "Time to Leave" (confirmed 29.10.2026) |
+| 6 | Location (gym, stadium) with a map | **Built** 03.11.2026 (migration 186), not yet checked on the iPhone (the checklist's live test): a place on an item from EnTur's search, Home/Work or typed text; Apple gets the map pin (`docs/features/planning-calendar.md` → Places) |
 | 7 | A link back to the item in the app | Wanted — Apple's URL field works (confirmed) |
 | 11 | Attachments | **Dropped** ("we can skip 11") |
 | 12 | Maybe / private | Wanted, but on Apple's devices neither shows any difference for the owner's own events (Apple check, 29.10.2026). Fallback to decide: a "Maybe" calendar, or a "?" in the title |
@@ -30,7 +30,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 | 21 | Free/busy: find a free time | Wanted (Phase 3) |
 | 24 | Calendar colours in the app's own agenda | Wanted, with 19 |
 | 28 | Clear completed tasks | **Not applied** — turned into the rule "past days are never cleared" |
-| 32 | Travel time before an event | Wanted (Phase 3): Apple's Time to Leave, or a travel event built from the app's Entur trips |
+| 32 | Travel time before an event | **Apple's Time to Leave** (owner, 03.11.2026): it should work from the place's map pin (186) — not yet seen on the iPhone; no travel events of the app's own |
 | 33 | Planned vs. done | Wanted (Phase 3) |
 | 35 | One calendar per area, a small colour set, emoji in titles | Wanted, with 19 |
 
@@ -118,6 +118,6 @@ This matters for Phase 3: "find a free time" is only as good as the calendars th
   - **Not changed (limits):** the server's own day — repeat days made each hour, a training week, supplement doses, the brief, push reminders — is still Oslo's; other screens (Work, the week and month cards, training) show an item's time as stored, without its zone; the day list places a row by its own clock while "now" and "Next" are the phone's, so abroad an Oslo-time item can read as past or be skipped by Next, and rows on two clocks sort by their digits; at home a new item can be put only on the phone's (= Oslo's) clock — no picker for a trip ahead. Items made abroad before 183 stayed on Oslo time (pick their zone with the chip), and a Google event the browser made abroad before 183 moves to Oslo's clock on its next push. Not tried on a real iPhone abroad yet.
 - **2d · The move** — folded into 2b-2 (built there, per area, both ways). Google Tasks is untouched.
 
-**Phase 3 — planning with time (proposed).** Items 21, 32, 33: find a free time (from every calendar the app can read), travel time before an event, and a weekly planned vs. done.
+**Phase 3 — planning with time** (go 03.11.2026: "Now you can start to build the rest"; the owner's choices that day). In order, each its own PR: (1) a place on an item — built (186), which also gives travel time (32) through Apple's Time to Leave; (2) find a free time (21) from everything the app can read — its own items, the family Google calendars and the owner's own iCloud calendars, with a setting to leave any out; (3) planned vs. done (33) as a card on the Personal page; (4) Maybe (12) after the owner's own invitation test (from X's calendar, invite the iCloud address, answer Maybe on the iPhone).
 
 **Later, by the owner's word:** 15 (working location), 17 (instant sync).
