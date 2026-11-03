@@ -20,7 +20,7 @@ const fakeSupabase = {
       get(_, k) {
         if (k === 'then') return (res, rej) => Promise.resolve(answer(table, ops)).then(res, rej)
         if (k === 'maybeSingle') return () => Promise.resolve(answer(table, ops))
-        return (...args) => { ops.push([k, ...args]); if (k === 'update' || k === 'insert') writes.push({ table, op: k, row: args[0] }); return q }
+        return (...args) => { ops.push([k, ...args]); if (k === 'update' || k === 'insert') writes.push({ table, op: k, row: args[0], ops }); return q }
       },
     })
     return q
@@ -133,6 +133,31 @@ console.log('\n4 · Ticking a planned food eaten stores grams / ml (the units 10
   check('"2 piece" without a preset keeps its amount, no macros (nothing to count from)', w.quantity === 2 && w.unit === 'piece' && w.calories === null, JSON.stringify(w))
   w = await tick(null, 'g', lib())
   check('no amount → the food\'s portion (150 g), never 0', w.quantity === 150 && w.unit === 'g' && w.calories === 247.5, JSON.stringify(w))
+
+  console.log('\n5 · Today\'s "With planned": a planned meal counts once, before and after it is ticked')
+  {
+    await tick(150, 'g', lib())
+    const rows = writes.filter(x => x.table === 'food_log_entries')
+    check('Mark eaten flips the planned row itself: one update on its id, no new row', rows.length === 1 && rows[0].op === 'update' && rows[0].row.status === 'eaten'
+      && rows[0].ops.some(o => o[0] === 'eq' && o[1] === 'id' && o[2] === 'p1'), JSON.stringify(rows.map(r => [r.op, r.ops])))
+    const { eatenTotals, plannedTotals, withPlannedTotals } = require('../src/features/recipes/foodIngredients')
+    const none = { calories: null, protein_g: null, carbs_g: null, fat_g: null, fiber_g: null, sugar_g: null }
+    const lunch = { id: 'e1', meal_slot: 'lunch', status: 'eaten', recipe_id: null, library_ingredient_id: null, custom_title: 'Kebab', quantity: null, unit: null,
+      ...none, calories: 700, protein_g: 35, recipe: null, ingredient: null }
+    const dinner = { id: 'p1', meal_slot: 'dinner', status: 'planned', recipe_id: 'rec-karn', library_ingredient_id: null, custom_title: null, quantity: 1, unit: 'serving',
+      ...none, recipe: { title: 'Karnıyarık', calories: 380, protein_g: 18, carbs_g: 22, fat_g: 24, sugar_g: 9 }, ingredient: null }
+    const day = rows => rows.map(r => unifiedToMeal(r, '2026-11-03'))
+    const sums = meals => [eatenTotals(meals), plannedTotals(meals), withPlannedTotals(meals)].map(t => [t.calories, t.protein_g])
+    const before = sums(day([lunch, dinner]))
+    check('planned: eaten 700 kcal, planned 380, with planned 1080 — the totals stay eaten-only', JSON.stringify(before) === '[[700,35],[380,18],[1080,53]]', JSON.stringify(before))
+    const after = sums(day([lunch, { ...dinner, status: 'eaten', calories: 380, protein_g: 18, carbs_g: 22, fat_g: 24, fiber_g: 6, sugar_g: 9 }]))
+    check('ticked: eaten 1080, planned 0, with planned still 1080 (the same row moved, never counted twice)', JSON.stringify(after) === '[[1080,53],[0,0],[1080,53]]', JSON.stringify(after))
+    const fs = require('fs'), path = require('path')
+    const today = fs.readFileSync(path.join(__dirname, '../src/features/recipes/components/FoodTodayTab.tsx'), 'utf8')
+    check('Food · Today\'s rings and "1234 / 2300 kcal" read the eaten total; the lighter part and "With planned" come from foodIngredients',
+      /const consumed = nut\?\.calories \?\? 0/.test(today) && /plannedTotals\(nut\?\.meals \?\? \[\]\)/.test(today) && /withPlannedTotals\(nut\?\.meals \?\? \[\]\)/.test(today))
+    check('the day\'s totals are the eaten rows only (dayNutritionApi)', /\{ meals: allMeals, \.\.\.eatenTotals\(allMeals\) \}/.test(fs.readFileSync(path.join(__dirname, '../src/features/daily/api/dayNutritionApi.ts'), 'utf8')))
+  }
 
   console.log(`\n${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)

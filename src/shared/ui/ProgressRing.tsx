@@ -17,6 +17,10 @@ interface ProgressRingProps {
   children?: ReactNode
   /** False while the real value is still loading: stays empty on first load, then keeps the last real value. */
   ready?: boolean
+  /** A lighter arc behind the main one, 0..1 (clamped) — what is still to come (Food's planned meals). */
+  ghost?: number
+  /** The lighter arc's colour; the main colour when left out. */
+  ghostColor?: string
 }
 
 const SWEEP = 'stroke-dashoffset 600ms cubic-bezier(0.22, 1, 0.36, 1)'
@@ -27,16 +31,20 @@ const clamp01 = (v: number) => (Number.isFinite(v) ? Math.min(Math.max(v, 0), 1)
  * The one progress ring (calories, protein). With the motion set it
  * sweeps from empty when it appears and eases to a new value — and while a
  * new day loads it holds the last real value instead of draining to the
- * placeholder; otherwise it draws its value at once.
+ * placeholder; otherwise it draws its value at once. A `ghost` share draws
+ * as a lighter arc under the main one, so only its part past the value shows.
  */
-export function ProgressRing({ value, size, stroke, color, className, children, ready = true }: ProgressRingProps) {
+export function ProgressRing({ value, size, stroke, color, className, children, ready = true, ghost, ghostColor }: ProgressRingProps) {
   const motion = useMotion()
   const pct = clamp01(value)
+  const ghostPct = clamp01(ghost ?? 0)
   // Mounted empty, then filled on the next frame so the transition can run.
   const [armed, setArmed] = useState(!motion)
-  // The last share that came from real data.
+  // The last shares that came from real data.
   const [lastReal, setLastReal] = useState(pct)
+  const [lastGhost, setLastGhost] = useState(ghostPct)
   if (ready && lastReal !== pct) setLastReal(pct)
+  if (ready && lastGhost !== ghostPct) setLastGhost(ghostPct)
   useEffect(() => {
     if (armed || !ready) return
     const id = requestAnimationFrame(() => setArmed(true))
@@ -47,10 +55,18 @@ export function ProgressRing({ value, size, stroke, color, className, children, 
   const c = 2 * Math.PI * r
   const mid = size / 2
   const shown = motion ? ringShare({ armed, ready, value: pct, lastReal }) : pct
+  const ghostShown = motion ? ringShare({ armed, ready, value: ghostPct, lastReal: lastGhost }) : ghostPct
   return (
     <div className={cx('relative shrink-0', className)}>
       <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90" aria-hidden>
         <circle cx={mid} cy={mid} r={r} fill="none" strokeWidth={stroke} className="stroke-surface-2" />
+        {ghost != null && (
+          <circle
+            cx={mid} cy={mid} r={r} fill="none" strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={c} strokeDashoffset={c * (1 - ghostShown)} className="opacity-40"
+            style={{ stroke: ghostColor ?? color, transition: motion ? SWEEP : undefined }}
+          />
+        )}
         <circle
           cx={mid} cy={mid} r={r} fill="none" strokeWidth={stroke} strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={c * (1 - shown)}
