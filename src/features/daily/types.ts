@@ -31,9 +31,12 @@ export interface ScheduleBlock {
   /** The last day the event's RDATE list covers (the monthly kinds); null
    *  when the event carries every occurrence. */
   google_calendar_horizon?:  string | null
-  /** The zone the series is expanded in — set when it is created; only a
-   *  save from the planner changes it (background pushes reuse it). */
+  /** The zone Google's series was made in (147) — the plan's zone when it
+   *  names none of its own (calendarSeries.planTimeZone). */
   google_calendar_time_zone?: string | null
+  /** The zone the plan's times are in (183): the phone's when it was made,
+   *  changed only by the owner in the sheet. Missing/null = the home zone. */
+  time_zone?: string | null
   /** The day it was added to Google Calendar (148): the series starts on its
    *  first day on or after this, not at effective_from. Missing before 148. */
   google_calendar_from?: string | null
@@ -89,6 +92,9 @@ export interface TimeBlock {
    *  a nominal 15). Missing before it = busy. A slot with no start_time is
    *  the item's day with no time (its all-day presence on Google Calendar). */
   busy?:            boolean | null
+  /** The zone its date and time are in (183): the phone's when it was made,
+   *  its plan's for a day split off a plan. Missing/null = the home zone. */
+  time_zone?:       string | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null

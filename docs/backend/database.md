@@ -403,7 +403,7 @@ which door the write came through.
   `watched_at` NULL — the row stays so an Undo can put a watch back on it).
   A watch that names an `episode_id` that isn't there raises a foreign-key
   error (150's undo retries it after putting the episode back) instead of
-  making a second row for the episode. A sync write (x-trakt-sync) through
+  making a second row for the episode. A sync write (x-trakt-sync on a service-role request — 184; a browser's header counts for nothing) through
   the cache columns only ever ADDS placeholder watches — it never removes or
   re-dates one (trakt-api removes by Trakt play id); and the sync's writes to
   `media_watches` are not audited (`trg_audit … WHEN (NOT
@@ -505,4 +505,6 @@ Before proposing any new table:
 - Does not generate Supabase client configuration — `src/integrations/supabase/client.ts` is the source of truth.
 - Does not write raw SQL for the AI to execute beyond the read-only, guarded
   `run_read_query` path (single `SELECT`/`WITH`, `LIMIT 500`, RLS applies via a
-  SECURITY INVOKER RPC). No DDL, no dynamic SQL built from model output.
+  RPC with the caller's own rights — SECURITY DEFINER owned by `authenticated`, so
+  Postgres refuses a role change inside — that only an app user may call and that
+  refuses settings and SQL-running built-ins — 185). No DDL, no dynamic SQL built from model output.

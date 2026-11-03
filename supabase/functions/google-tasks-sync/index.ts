@@ -934,8 +934,23 @@ export async function drainCalendarRows(
 export const NOMINAL_EVENT_MINUTES = 15
 /** In front of a done item's event title (owner, 15.10.2026); Undo takes it off. */
 export const DONE_MARK = '✓ '
-/** The zone a server-side push uses (time_blocks keeps none): the owner's. */
+/** The home zone: the zone of an item that names none (made before 183, or by a server writer). The owner's. */
 export const SERVER_EVENT_TIME_ZONE = 'Europe/Oslo'
+/** An IANA zone name's shape ("Europe/Oslo", "America/Argentina/Buenos_Aires", "Etc/GMT+1") — 183's CHECK. */
+export const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
+
+/**
+ * The zone an item's times are in (183): its own when it is a zone this runtime knows, else the home zone. A
+ * stored or device value is data — it lands in iCalendar TZID lines and Google's event bodies (the warning in
+ * AGENTS.md) — so anything but a real zone name is never used.
+ */
+export function itemTimeZone(zone: string | null | undefined): string {
+  const z = typeof zone === 'string' ? zone.trim() : ''
+  if (z && z.length <= 64 && IANA_ZONE.test(z)) {
+    try { new Intl.DateTimeFormat('en', { timeZone: z }); return z } catch { /* not a zone this runtime knows */ }
+  }
+  return SERVER_EVENT_TIME_ZONE
+}
 
 /** The event title: "✓ " in front once the item is done (never twice). */
 export function calendarTitle(title: string | null | undefined, done: boolean): string {
@@ -1011,7 +1026,7 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
-  const timeZone = opts.timeZone && opts.timeZone.trim() ? opts.timeZone : SERVER_EVENT_TIME_ZONE
+  const timeZone = itemTimeZone(opts.timeZone)
   return {
     summary,
     start: { dateTime: wallClockAt(b.date, start), timeZone },
@@ -1107,26 +1122,29 @@ export function wallClockIn(instant: string, timeZone: string): { date: string; 
   return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
 }
 
-const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string): string | null => {
+/** A start's day: its date, or its instant's day in its own zone (else `zone`) — or in `zone` when `force`d. */
+const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string, force = false): string | null => {
   if (!t) return null
   if (t.date && ISO_DAY.test(t.date)) return t.date
-  if (t.dateTime) return wallClockIn(t.dateTime, t.timeZone || zone)?.date ?? null
+  if (t.dateTime) return wallClockIn(t.dateTime, force ? zone : (t.timeZone || zone))?.date ?? null
   return null
 }
 
 /**
  * A Google event as the change the read-back applies. Times are read as the
- * wall clock of the event's own zone (else the calendar's), the length from
- * the two instants (an all-day event: whole days), the title without "✓ ".
- * A cancelled entry may carry only its id (and, for one day of a series,
- * recurringEventId + originalStartTime — Google's reference). null for
- * something with no id.
+ * wall clock of the item's own zone when the caller knows the item (183: a
+ * slot's or plan's `time_zone` — the app stores its times in that zone,
+ * whatever zone Google shows the event in), else of the event's own zone
+ * (else the calendar's); the length from the two instants (an all-day event:
+ * whole days), the title without "✓ ". A cancelled entry may carry only its
+ * id (and, for one day of a series, recurringEventId + originalStartTime —
+ * Google's reference). null for something with no id.
  */
-export function readbackEvent(e: GoogleEventLike, calendarZone: string): ReadbackEvent | null {
+export function readbackEvent(e: GoogleEventLike, calendarZone: string, itemZone?: string | null): ReadbackEvent | null {
   if (!e || typeof e.id !== 'string' || !e.id) return null
-  const zone = (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
+  const zone = itemZone ? itemTimeZone(itemZone) : (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
   const seriesId = typeof e.recurringEventId === 'string' && e.recurringEventId ? e.recurringEventId : null
-  const originalDate = dayOf(e.originalStartTime, e.originalStartTime?.timeZone || zone)
+  const originalDate = dayOf(e.originalStartTime, itemZone ? zone : (e.originalStartTime?.timeZone || zone), !!itemZone)
   const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
   const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
   if (status === 'cancelled') {
@@ -1234,10 +1252,11 @@ async function patchCalendarEventOnce(token: string, calendarId: string, eventId
 type QueuedRow = CalendarOutboxRow & { payload?: AnyRecord }
 
 // An upsert (155): the event from the row that holds it NOW — a slot (its
-// day, time, length, Busy/Free, "✓ " when its task is done; Oslo's wall
-// clock, time_blocks keeps no zone) or a plan's series (its title only: the
-// rule itself is the app's — calendar/calendarSeries.ts). null = no live
-// slot or plan holds it any more (nothing to push).
+// day, time, length, Busy/Free, "✓ " when its task is done; on the slot's own
+// zone's wall clock, 183 — the home zone when it names none) or a plan's
+// series (its title only: the rule itself is the app's —
+// calendar/calendarSeries.ts). null = no live slot or plan holds it any more
+// (nothing to push).
 async function patchQueuedEvent(token: string, userId: string, row: QueuedRow): Promise<{ status: number | null; message: string } | null> {
   if (row.payload?.series) {
     const { data: plan, error } = await supabase.from('schedule_blocks')
@@ -1247,12 +1266,12 @@ async function patchQueuedEvent(token: string, userId: string, row: QueuedRow): 
     return patchCalendarEventOnce(token, row.calendar_id, row.event_id, { summary: stripDoneMark(plan.title) })
   }
   const { data: block, error } = await supabase.from('time_blocks')
-    .select('id, date, start_time, duration_minutes, title, busy, task:tasks(status)')
+    .select('id, date, start_time, duration_minutes, title, busy, time_zone, task:tasks(status)')
     .eq('user_id', userId).eq('google_calendar_event_id', row.event_id).limit(1).maybeSingle()
   if (error) throw error
   if (!block) return null
   const body = blockEventBody(block as unknown as EventBlock, {
-    done: (block as AnyRecord).task?.status === 'done', timeZone: SERVER_EVENT_TIME_ZONE,
+    done: (block as AnyRecord).task?.status === 'done', timeZone: itemTimeZone((block as AnyRecord).time_zone),
   })
   if (!body) return null
   // A done mark sends the title ONLY (payload.fields 'title'): never the slot's
@@ -1432,21 +1451,34 @@ async function readCalendarChanges(token: string, userId: string): Promise<Readb
   summary.read = items.length
 
   // Only events a slot or plan of this account stores are looked at.
-  const changes = items.map((e) => readbackEvent(e as GoogleEventLike, zone)).filter((e): e is ReadbackEvent => e !== null)
-  const ids = [...new Set(changes.flatMap((c) => [c.id, c.seriesId].filter((x): x is string => !!x)))]
+  const read = items.map((e) => ({ e: e as GoogleEventLike, c: readbackEvent(e as GoogleEventLike, zone) }))
+    .filter((x): x is { e: GoogleEventLike; c: ReadbackEvent } => x.c !== null)
+  const ids = [...new Set(read.flatMap(({ c }) => [c.id, c.seriesId].filter((x): x is string => !!x)))]
   const ours = new Set<string>()
+  // Each item's zone (183): a change is read on the clock of the zone its times are in, whatever zone Google shows.
+  const zones = new Map<string, string>()
   for (let i = 0; i < ids.length; i += 200) {
     const chunk = ids.slice(i, i + 200)
     const [blocks, plans] = await Promise.all([
-      supabase.from('time_blocks').select('google_calendar_event_id').eq('user_id', userId).in('google_calendar_event_id', chunk),
-      supabase.from('schedule_blocks').select('google_calendar_event_id').eq('user_id', userId).in('google_calendar_event_id', chunk),
+      supabase.from('time_blocks').select('google_calendar_event_id, time_zone').eq('user_id', userId).in('google_calendar_event_id', chunk),
+      supabase.from('schedule_blocks').select('google_calendar_event_id, time_zone, google_calendar_time_zone').eq('user_id', userId).in('google_calendar_event_id', chunk),
     ])
     if (blocks.error) throw blocks.error
     if (plans.error) throw plans.error
-    for (const r of [...(blocks.data ?? []), ...(plans.data ?? [])]) ours.add((r as AnyRecord).google_calendar_event_id)
+    for (const r of (blocks.data ?? []) as AnyRecord[]) {
+      ours.add(r.google_calendar_event_id)
+      zones.set(r.google_calendar_event_id, itemTimeZone(r.time_zone))
+    }
+    for (const r of (plans.data ?? []) as AnyRecord[]) {
+      ours.add(r.google_calendar_event_id)
+      const own = typeof r.time_zone === 'string' ? r.time_zone.trim() : ''
+      zones.set(r.google_calendar_event_id, itemTimeZone(own || r.google_calendar_time_zone))
+    }
   }
   let failures = 0
-  for (const c of changes) {
+  for (const x of read) {
+    const itemZone = zones.get(x.c.id) ?? (x.c.seriesId ? zones.get(x.c.seriesId) : undefined)
+    const c = itemZone ? readbackEvent(x.e, zone, itemZone) ?? x.c : x.c
     if (!ours.has(c.id) && !(c.seriesId && ours.has(c.seriesId))) continue
     const { data: outcome, error } = await supabase.rpc('apply_calendar_readback', { p_user: userId, p_event: c })
     if (error) {

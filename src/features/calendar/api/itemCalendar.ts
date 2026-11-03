@@ -1,7 +1,6 @@
 import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import {
   clearTimeBlockCalendarLinkIfMatches, fetchScheduleBlock, fetchTimeBlockByTaskId, fetchTimeBlockWithTask, updateTimeBlock,
 } from '../../daily/api/scheduleApi'
@@ -11,7 +10,7 @@ import { drainGoogleTasksOutbox } from '../../todo/api/googleTasksOutbox'
 import type { RepeatDayAnswer, SaveItemAnswer } from '../../items/itemApi'
 import { dropItemBlock, setRepeatDaysGoogleTasks } from '../../items/itemApi'
 import type { GoogleTarget } from '../../items/itemTypes'
-import { blockEventBody, eventPatchFor, type EventPushFields } from '../calendarEventRules'
+import { blockEventBody, eventPatchFor, itemTimeZone, type EventPushFields } from '../calendarEventRules'
 import { updateCalendarEvent } from './calendarApi'
 import { ensureLinkedCalendarEventRemoved, ensureValidCalendarToken } from './calendarTokenSync'
 import { linkBlockCalendarEvent } from './linkBlockCalendarEvent'
@@ -88,7 +87,7 @@ export async function pushBlockCalendarEvent(blockId: string, fields: EventPushF
   if (!block || !eventId) return 'not_linked'
   const token = await ensureValidCalendarToken()
   if (!token) return 'unknown'
-  const body = blockEventBody(block, { done: block.task_status === 'done', timeZone: LOCAL_TZ })
+  const body = blockEventBody(block, { done: block.task_status === 'done', timeZone: itemTimeZone(block.time_zone) })
   if (!body) return 'linked'
   try {
     await updateCalendarEvent(token, 'primary', eventId, { ...eventPatchFor(body, fields) })

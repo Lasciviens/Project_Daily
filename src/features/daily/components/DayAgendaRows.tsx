@@ -18,7 +18,8 @@ import { planFacts } from '../../training/plan/planFacts'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 import type { useDayPlanContext } from '../../training/hooks/usePlanContext'
 import type { TaskStatus } from '../../todo/types'
-import { hourLabel, repeatDayRequest, untilLabel, type DayRow } from '../dayItems'
+import { hourLabel, repeatDayRequest, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
+import { zoneTag } from '../../../shared/utils/timeZone'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  The rows of Daily's one day list (DayAgenda). A task row is the shared
@@ -54,12 +55,19 @@ function edgeOf(row: DayRow): string {
   return EDGE[tag] ?? EDGE.accent
 }
 
-/** The time column beside a timed row: start, where a span ends, its colour, an overlap. */
-export function TimeGutter({ row }: { row: DayRow }) {
+/** The time column beside a timed row: start, where a span ends, whose clock it is when not the phone's (183: "Oslo";
+ *  `hideZone` when the Schedule heading says it once for every row), its colour, an overlap. */
+export function TimeGutter({ row, hideZone = false }: { row: DayRow; hideZone?: boolean }) {
+  const zone = hideZone || row.kind === 'event' ? null : zoneTag(rowTimeZone(row))
   return (
     <div className={cx('flex w-12 shrink-0 flex-col items-end border-r-2 pr-1.5 pt-2.5 tabular-nums', edgeOf(row))}>
       <span className="text-meta font-semibold leading-none text-fg">{hourLabel(row.startHour ?? 0)}</span>
       {row.endHour !== null && <span className="mt-1 text-micro leading-none text-fg-muted">–{untilLabel(row.endHour)}</span>}
+      {zone && (
+        <span className="mt-1 flex max-w-full text-micro leading-none text-fg-muted">
+          <Truncate fullText={`${zone} time`}>{zone}</Truncate>
+        </span>
+      )}
       {row.overlaps && <AlertTriangle data-tone="danger" className="tone-text mt-1 h-3 w-3" aria-label="Overlaps another plan" />}
     </div>
   )

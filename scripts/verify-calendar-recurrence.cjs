@@ -224,9 +224,9 @@ console.log('\n6 · The horizon of the monthly kinds')
 
 console.log('\n6b · The zone a push uses, and the retry list')
 {
-  check('a save from the planner takes the device\'s zone (it may change it)', S.seriesPushZone('Europe/Oslo', 'America/New_York', true) === 'America/New_York')
-  check('any other push keeps the series\' own zone (opening the app abroad never re-zones it)', S.seriesPushZone('Europe/Oslo', 'America/New_York', false) === 'Europe/Oslo')
-  check('no stored zone: the device\'s, else Europe/Oslo', S.seriesPushZone(null, 'Asia/Tokyo', false) === 'Asia/Tokyo' && S.seriesPushZone('', '', false) === 'Europe/Oslo' && S.seriesPushZone(undefined, undefined, true) === 'Europe/Oslo')
+  check('a plan is pushed in its own zone (183) — never the device\'s at push time', S.planTimeZone({ time_zone: 'Europe/Istanbul', google_calendar_time_zone: 'Europe/Oslo' }) === 'Europe/Istanbul')
+  check('a plan with no zone of its own: the zone its Google series was made in', S.planTimeZone({ time_zone: null, google_calendar_time_zone: 'America/New_York' }) === 'America/New_York' && S.planTimeZone({ time_zone: '  ', google_calendar_time_zone: 'Asia/Tokyo' }) === 'Asia/Tokyo')
+  check('…else the home zone; anything but a real zone name never counts', S.planTimeZone({}) === 'Europe/Oslo' && S.planTimeZone({ time_zone: 'Not/AZone', google_calendar_time_zone: null }) === 'Europe/Oslo' && S.planTimeZone({ time_zone: null, google_calendar_time_zone: 'Europe/Oslo\r\nX:1' }) === 'Europe/Oslo')
   check('the retry list: garbage reads as empty', eq(S.parsePendingSeries('nope'), []) && eq(S.parsePendingSeries(null), []) && eq(S.parsePendingSeries('{"a":1}'), []))
   check('…entries without a plan id are dropped, odd block ids too',
     eq(S.parsePendingSeries(JSON.stringify([{ planId: 'p', blockIds: ['b', 7, '', 'b'] }, { blockIds: ['x'] }, null])), [{ planId: 'p', blockIds: ['b'] }]))

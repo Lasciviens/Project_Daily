@@ -158,10 +158,10 @@ eq(unfold(sneaky.ics).split('\r\n').filter(l => /^ATTENDEE/.test(l)).length, 0, 
 let guarded = false
 try { E.eventObject({ uid: 'x', body: { summary: 'x', start: { date: '2026-11-03' }, end: { date: '2026-11-04' }, transparency: 'transparent', recurrence: ['RRULE:FREQ=DAILY\r\nATTENDEE:mailto:ola@example.com'] }, area: DEFAULT_AREAS.personal, notes: null, link: 'https://example.com', now }) } catch { guarded = true }
 eq(guarded, true, 'the last guard refuses any event line that still holds a control character')
-const { seriesTimeZone, seriesPushZone } = require('../src/features/calendar/calendarSeries')
+const { seriesTimeZone, planTimeZone } = require('../src/features/calendar/calendarSeries')
 eq([seriesTimeZone('America/New_York'), seriesTimeZone('Etc/GMT+1'), seriesTimeZone('Europe/Oslo:20261102T070000\r\nATTENDEE:mailto:x@example.com'), seriesTimeZone('Not/AZone'), seriesTimeZone(null)],
   ['America/New_York', 'Etc/GMT+1', 'Europe/Oslo', 'Europe/Oslo', 'Europe/Oslo'], 'a stored zone is used only when it is a real zone name (never text that lands in TZID=)')
-eq(seriesPushZone('Europe/Oslo\r\nX:1', 'Europe/Oslo', false), 'Europe/Oslo', 'the stored zone of a background push goes through the same check (Google too)')
+eq(planTimeZone({ time_zone: 'Europe/Oslo\r\nX:1', google_calendar_time_zone: null }), 'Europe/Oslo', 'a plan\'s stored zone goes through the same check (Google too)')
 
 console.log('\n== The function ==')
 try { execFileSync('node', [path.join(__dirname, 'sync-icloud-shared.mjs'), '--check'], { stdio: 'pipe' }); eq(true, true, "the function's copy of the event rules is current (sync-icloud-shared)") }

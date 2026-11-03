@@ -81,6 +81,15 @@ export interface DayRows<T extends RowTask = Task> {
   cancelled: DayRow<T>[]
 }
 
+/** The zone a row's time is in (183): its slot's, else its plan's (else the one its Google series was made in); null
+ *  = the home zone. A Google event of the owner's own has none: it is placed on the phone's clock already. */
+export function rowTimeZone(row: Pick<DayRow, 'item'>): string | null {
+  const block = row.item?.block
+  if (block) return block.time_zone ?? null
+  const plan = row.item?.template
+  return plan ? plan.time_zone || plan.google_calendar_time_zone || null : null
+}
+
 /** Hours on a day as HH:MM (9.5 → "09:30"). */
 export function hourLabel(h: number): string {
   // Rounded as a whole, so 09:59:45 reads 10:00, never 09:60.

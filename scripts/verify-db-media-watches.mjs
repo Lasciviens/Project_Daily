@@ -1,7 +1,8 @@
 // Runs migration 149's scenarios (every watch keeps its own date — the
 // media_watches table, its cache and translation triggers, the per-play Trakt
 // outbox — and rewatch rounds) on a throwaway Postgres: a fresh database from
-// scripts/db-tests/media-watches/base.sql, then the real migration 144 (Undo,
+// scripts/db-tests/media-watches/base.sql, the real 184 (the Trakt sync's own
+// writes: a service-role request with x-trakt-sync), then the real migration 144 (Undo,
 // which the scenarios use), the real migration 149 twice (a re-run must be a
 // no-op) and the real migrations 150 and 151 ("Undo this save", whose undo of
 // a watch change must touch single plays only and show what goes to Trakt),
@@ -21,6 +22,7 @@ if (!url) {
 }
 
 const dir = join(root, 'scripts/db-tests/media-watches')
+const trakt184 = join(root, 'supabase/migrations/184_trakt_sync_writer_check.sql')
 const undo = join(root, 'supabase/migrations/144_delete_with_undo.sql')
 const mig = join(root, 'supabase/migrations/149_media_watches.sql')
 const undoSave = join(root, 'supabase/migrations/150_undo_save.sql')
@@ -33,7 +35,7 @@ psql(url, ['-c', `create database ${db}`])
 let failed = null
 try {
   const target = withDb(url, db)
-  for (const f of [join(dir, 'base.sql'), undo, mig, mig, undoSave, undoSaveFixes]) psql(target, ['-f', f])
+  for (const f of [join(dir, 'base.sql'), trakt184, undo, mig, mig, undoSave, undoSaveFixes]) psql(target, ['-f', f])
   // Each passing check prints a NOTICE ("ok  …") on stderr; a failing one raises.
   const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(dir, 'scenarios.sql')], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length

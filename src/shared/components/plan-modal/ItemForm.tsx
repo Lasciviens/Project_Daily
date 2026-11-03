@@ -20,7 +20,7 @@ import { Plus, Repeat, X } from 'lucide-react'
 import { RecurrenceField, Time24Field } from './fields'
 import { chipClass } from './fieldStyles'
 import { DateChip } from './DateChip'
-import { TimeChip, LengthChip } from './TimeChips'
+import { TimeChip, LengthChip, ZoneChip } from './TimeChips'
 import { GoogleChip } from './GoogleChip'
 import { GoogleListField } from './GoogleListField'
 import { TaskWindowField } from './TaskWindowField'
@@ -66,12 +66,14 @@ interface Props {
   savedKind?: 'one-off' | 'repeat'
   /** Editing a repeat: its saved start and what it counts from. */
   savedRepeat?: { start: string; anchor: RepeatAnchor | null }
+  /** Editing an item with a day and time: the zone it was saved in (183; null = the home zone). */
+  savedZone?: string | null
   exceptDates?: readonly string[]
 }
 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp,
-  occurrenceDate, savedKind, savedRepeat, exceptDates,
+  occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates,
 }: Props) {
   const titleId = useId()
   const notesId = useId()
@@ -138,6 +140,7 @@ export function ItemForm({
           />
         )}
         {form.time && <LengthChip duration={form.duration} onChange={duration => patch({ duration })} />}
+        {form.time && <ZoneChip zone={form.timeZone} savedZone={savedZone} onPick={timeZone => patch({ timeZone })} />}
         {canAddRepeat && (
           <button type="button" onClick={startRepeat} className={chipClass('add')}>
             <Repeat aria-hidden />Repeat

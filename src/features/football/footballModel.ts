@@ -414,6 +414,9 @@ const OSLO = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 })
 
+/** The zone a planned match's day and time are on (183): its kick-off is read on Norway's clock (osloParts). */
+export const MATCH_TIME_ZONE = 'Europe/Oslo'
+
 /** A kick-off's day and time in Norway: { date: 'YYYY-MM-DD', time: 'HH:MM' }. */
 export function osloParts(iso: string): { date: string; time: string } {
   const parts = Object.fromEntries(OSLO.formatToParts(new Date(iso)).map(p => [p.type, p.value]))
@@ -599,7 +602,7 @@ export function newMatchItem(m: FbMatch): ItemInput {
   const mi = matchItem(m)
   return {
     title: mi.title, notes: mi.notes, domain: 'personal', priority: 'medium', category: MATCH_CATEGORY,
-    date: mi.date, time: mi.time, durationMinutes: mi.durationMinutes,
+    date: mi.date, time: mi.time, durationMinutes: mi.durationMinutes, timeZone: MATCH_TIME_ZONE,
     google: defaultGoogleTarget({ time: mi.time, repeat: null }),
   }
 }
@@ -620,7 +623,7 @@ export function movedMatchItem(item: ItemInput, m: FbMatch): ItemInput {
   const mi = matchItem(m)
   return {
     ...item, scope: 'item', section: null, deadline: null,
-    date: mi.date, time: mi.time,
+    date: mi.date, time: mi.time, timeZone: MATCH_TIME_ZONE,
     durationMinutes: !mi.time ? null : item.time ? item.durationMinutes : MATCH_MINUTES,
   }
 }

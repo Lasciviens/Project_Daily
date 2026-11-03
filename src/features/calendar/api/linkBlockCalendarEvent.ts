@@ -2,9 +2,8 @@ import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { fetchTimeBlockWithTask, updateTimeBlock } from '../../daily/api/scheduleApi'
 import type { TimeBlockCalendarStatus } from '../../daily/api/scheduleSyncRules'
-import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import type { CalendarEvent } from '../types'
-import { blockEventBody } from '../calendarEventRules'
+import { blockEventBody, itemTimeZone } from '../calendarEventRules'
 import {
   blockEventId, createCalendarEvent, deleteCalendarEvent, getCalendarEvent, isCalendarConflict, isCalendarNotFound,
 } from './calendarApi'
@@ -54,7 +53,7 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr?: string, 
       duration_minutes: block.duration_minutes ?? durationMin ?? 60,
       title: block.title ?? title ?? '',
       busy: block.busy,
-    }, { done: block.task_status === 'done', timeZone: LOCAL_TZ })
+    }, { done: block.task_status === 'done', timeZone: itemTimeZone(block.time_zone) })
     if (!body) throw new Error('the slot has no day to show on Google Calendar')
     // A deterministic, client-supplied event id (this block's own uuid,
     // dashes stripped — hex-only, a valid subset of Calendar's base32hex

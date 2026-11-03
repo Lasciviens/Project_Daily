@@ -7,7 +7,7 @@
 // is where it runs (verify-icloud-events checks the copy is current).
 
 import type { AllDayAlert, AreaKey, CalendarArea, NotesMode } from './calendarAreas'
-import { blockEventBody, type BlockEventBody, type EventBlock, type EventTime } from '../calendarEventRules'
+import { blockEventBody, IANA_ZONE, itemTimeZone, type BlockEventBody, type EventBlock, type EventTime } from '../calendarEventRules'
 import { seriesEventFor, type SeriesPlan, type SeriesTemplate } from '../calendarSeries'
 
 /** What an item's area is read from: its slot's or plan's category and source, its task's. */
@@ -64,7 +64,7 @@ export function foldLine(line: string): string {
   return out.join('\r\n ')
 }
 
-/** The zone the app's times mean, as a VTIMEZONE (Europe/Oslo: CET/CEST). */
+/** The home zone as a VTIMEZONE (Europe/Oslo: CET/CEST) — written as is since Phase 1's live check. */
 export const VTIMEZONE_OSLO = [
   'BEGIN:VTIMEZONE', 'TZID:Europe/Oslo',
   'BEGIN:DAYLIGHT', 'TZOFFSETFROM:+0100', 'TZOFFSETTO:+0200', 'TZNAME:CEST', 'DTSTART:19700329T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU', 'END:DAYLIGHT',
@@ -75,9 +75,110 @@ export const VTIMEZONE_OSLO = [
 const ics8 = (day: string) => day.replace(/-/g, '')
 const icsStamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 
-/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. */
+const MINUTE = 60_000
+const pad = (n: number) => String(n).padStart(2, '0')
+
+const zoneClocks = new Map<string, Intl.DateTimeFormat>()
+/** `zone`'s UTC offset at instant `t`, in minutes (Oslo in summer: 120). One formatter per zone (making one is the slow part). */
+function zoneOffsetAt(t: number, zone: string): number {
+  let clock = zoneClocks.get(zone)
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-GB', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+    zoneClocks.set(zone, clock)
+  }
+  const p = Object.fromEntries(clock.formatToParts(new Date(t)).map(x => [x.type, x.value]))
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - t) / MINUTE)
+}
+
+/** Every change of `zone`'s offset in [from, to): its instant (to the minute) and the offsets on each side. */
+export function zoneTransitions(zone: string, from: number, to: number): { at: number; before: number; after: number }[] {
+  const out: { at: number; before: number; after: number }[] = []
+  const DAY = 1440 * MINUTE
+  let prev = zoneOffsetAt(from, zone)
+  for (let t = from + DAY; t <= to; t += DAY) {
+    const cur = zoneOffsetAt(t, zone)
+    if (cur === prev) continue
+    let lo = t - DAY
+    let hi = t
+    while (hi - lo > MINUTE) {
+      const mid = lo + Math.max(1, Math.floor((hi - lo) / MINUTE / 2)) * MINUTE
+      if (zoneOffsetAt(mid, zone) === prev) lo = mid
+      else hi = mid
+    }
+    out.push({ at: hi, before: prev, after: cur })
+    prev = cur
+  }
+  return out
+}
+
+const icsOffset = (m: number) => `${m < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(m) / 60))}${pad(Math.abs(m) % 60)}`
+const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+
+/**
+ * Any real zone as a VTIMEZONE (183: an item's own zone — RFC 5545 wants one for every TZID an object names), from
+ * the runtime's own zone data in the five years around `year` (two before, so even a southern summer that began the
+ * year before has its onset). A zone with no change there is one STANDARD; a change that falls on the same weekday
+ * of the same month at the same local time in every one of those years is a yearly rule (BYMONTH + BYDAY, as Oslo's);
+ * anything else — a zone that changed its rules — lists its changes, so nothing is promised past what is known. The
+ * home zone keeps VTIMEZONE_OSLO. Only a zone name the runtime knows gets here (itemTimeZone): anything else throws.
+ */
+const zoneDefinitions = new Map<string, string[]>()
+export function vtimezoneLines(zone: string, year: number): string[] {
+  if (zone === 'Europe/Oslo') return VTIMEZONE_OSLO
+  if (!IANA_ZONE.test(zone) || itemTimeZone(zone) !== zone) throw new Error('Not a zone this runtime knows — not written')
+  const y = Number.isInteger(year) && year > 1970 && year < 3000 ? year : new Date().getUTCFullYear()
+  const key = `${zone}|${y}`
+  const known = zoneDefinitions.get(key)
+  if (known) return known
+  const lines = zoneDefinition(zone, y)
+  // Bounded (security review, 02.11.2026): a run that meets many zones and years never grows it without end.
+  if (zoneDefinitions.size >= 200) zoneDefinitions.clear()
+  zoneDefinitions.set(key, lines)
+  return lines
+}
+
+function zoneDefinition(zone: string, y: number): string[] {
+  const YEARS = 5
+  const changes = zoneTransitions(zone, Date.UTC(y - 2, 0, 1), Date.UTC(y - 2 + YEARS, 0, 1))
+  const wall = (t: number, offset: number) => new Date(t + offset * MINUTE)
+  const stamp = (d: Date) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`
+  const part = (kind: 'STANDARD' | 'DAYLIGHT', before: number, after: number, start: string, rule?: string) =>
+    [`BEGIN:${kind}`, `TZOFFSETFROM:${icsOffset(before)}`, `TZOFFSETTO:${icsOffset(after)}`, `DTSTART:${start}`, ...(rule ? [rule] : []), `END:${kind}`]
+  if (!changes.length) {
+    const offset = zoneOffsetAt(Date.UTC(y, 0, 1), zone)
+    return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...part('STANDARD', offset, offset, '19700101T000000'), 'END:VTIMEZONE']
+  }
+  const parts: string[] = []
+  for (const kind of ['DAYLIGHT', 'STANDARD'] as const) {
+    const mine = changes.filter(c => (c.after > c.before) === (kind === 'DAYLIGHT'))
+    if (!mine.length) continue
+    const shape = mine.map(c => {
+      const d = wall(c.at, c.before)
+      const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()
+      return { d, month: d.getUTCMonth() + 1, weekday: d.getUTCDay(), nth: Math.ceil(d.getUTCDate() / 7), last: d.getUTCDate() + 7 > lastDay,
+        clock: `${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`, before: c.before, after: c.after }
+    })
+    const first = shape[0]
+    const same = shape.every(x => x.month === first.month && x.weekday === first.weekday && x.clock === first.clock
+      && x.before === first.before && x.after === first.after)
+    const nth = shape.every(x => x.nth === first.nth) ? String(first.nth) : shape.every(x => x.last) ? '-1' : null
+    const everyYear = shape.length === YEARS && new Set(shape.map(x => x.d.getUTCFullYear())).size === YEARS
+    if (same && nth && everyYear) {
+      parts.push(...part(kind, first.before, first.after, stamp(first.d), `RRULE:FREQ=YEARLY;BYMONTH=${first.month};BYDAY=${nth}${BYDAY[first.weekday]}`))
+    } else {
+      for (const x of shape) parts.push(...part(kind, x.before, x.after, stamp(x.d)))
+    }
+  }
+  return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...parts, 'END:VTIMEZONE']
+}
+
+/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
+ *  zone name's shape or the line is not written (183 — the zone is the item's, i.e. input). */
 function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   if ('date' in t) return `${name};VALUE=DATE:${ics8(t.date)}`
+  if (!IANA_ZONE.test(t.timeZone) || t.timeZone.length > 64) throw new Error('An event zone is not a zone name — not written')
   return `${name};TZID=${t.timeZone}:${t.dateTime.replace(/[-:]/g, '').slice(0, 15)}`
 }
 
@@ -136,7 +237,7 @@ export function eventObject(p: EventParts): string {
   const timed = !('date' in p.body.start)
   const title = areaTitle(p.body.summary, p.area)
   const notes = eventNotes(p.look.notes, p.notes, p.link)
-  const zones = timed && 'timeZone' in p.body.start && p.body.start.timeZone === 'Europe/Oslo' ? VTIMEZONE_OSLO : []
+  const zones = timed && 'timeZone' in p.body.start ? vtimezoneLines(p.body.start.timeZone, Number(p.body.start.dateTime.slice(0, 4))) : []
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Calendar//EN", 'CALSCALE:GREGORIAN', ...zones,
     'BEGIN:VEVENT',

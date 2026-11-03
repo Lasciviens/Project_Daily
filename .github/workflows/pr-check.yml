@@ -329,6 +329,45 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 182: a stored Hevy workout can't be changed from the browser
+      # (an update, emptying the table, Supabase's default grants included);
+      # it still reads them and deletes and puts back the ones Hevy no longer
+      # has (Check workouts with Hevy and its Undo), and the Hevy syncs
+      # (service role) and a SECURITY DEFINER rule like 166's relink still write.
+      - name: Hevy workouts no-update database scenarios
+        run: node scripts/verify-db-hevy-no-update.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 183: time zones from the phone on the live item chain (a
+      # zone per slot and plan: only names the database knows, the phone's
+      # for a new item, the plan's for a day split off it, kept by an edit;
+      # a changed zone reaches Apple's and Google's queues) and a food log's
+      # time on the phone's clock. Its re-created functions = their sources
+      # with only the zone lines added.
+      - name: Time zones database scenarios
+        run: node scripts/verify-db-time-zones.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 184: the Trakt sync's own writes are known by who writes
+      # them — x-trakt-sync counts only on a service-role request, so a browser
+      # can't keep its changes from reaching Trakt; the sync still never
+      # queues its own writes, and every Trakt outbox trigger asks this rule.
+      - name: Trakt sync writer database scenarios
+        run: node scripts/verify-db-trakt-sync-writer.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      # Migration 185: the assistant's live read query can't change a setting
+      # and only the app's own account may run it — 140's hole is reproduced
+      # first (Supabase's API roles: authenticator may become service_role),
+      # then every way around 140's pattern is refused and ordinary reads work.
+      - name: Read query lockdown database scenarios
+        run: node scripts/verify-db-read-query.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
       # large share of the errors come from eslint linting supabase/functions
       # (Deno code checked with browser globals). Narrow the ESLint scope and

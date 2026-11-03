@@ -2753,8 +2753,8 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   time_blocks: {
     access: 'rw',
     purpose: 'One-off day schedule / timeline blocks for a specific date.',
-    columns: 'id, date(date), title, start_time(time HH:MM:SS; null = the item\'s day with no time), duration_minutes(int), busy(bool, migration 155: false = "do it at 14:00" — no length, blocks no time, duration_minutes then holds a nominal 15), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|football|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, created_at, updated_at',
-    rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. To move an item (a block linked to a task) to another day or time, move this row (date / start_time) — the database keeps the task\'s day with it (its due follows unless the due is a deadline on another day); never move it by changing the task\'s due_date. To link a block to a task, set task_id — never set source_type to "task".',
+    columns: 'id, date(date), title, start_time(time HH:MM:SS; null = the item\'s day with no time), duration_minutes(int), busy(bool, migration 155: false = "do it at 14:00" — no length, blocks no time, duration_minutes then holds a nominal 15), color(blue|green|orange|purple|accent|red), category(daily|training|media|games|work|projects|football|other), task_id(uuid; the ONLY representation of "linked to a Task" — never source_type), source_type(training_session|movie|tv_episode|project_item|calendar|manual; the REAL originating entity, independent of task_id, never "task"), source_id(uuid), notes, time_zone(text, migration 183: the IANA zone its date and time are in, e.g. Europe/Istanbul; null = Europe/Oslo), created_at, updated_at',
+    rules: 'Set category to match the block type (e.g. "training" for a planned workout) — training/media/work calendar views filter by it. Times are wall-clock times in the block\'s time_zone: on a new block set time_zone to the user\'s current timezone (the TIME line of the context) when it isn\'t Europe/Oslo, or to the zone of a place the user names ("17:00 Istanbul time"); leave an existing block\'s time_zone alone unless the user asks — changing it moves its calendar event. Only a real IANA name is accepted. To move an item (a block linked to a task) to another day or time, move this row (date / start_time) — the database keeps the task\'s day with it (its due follows unless the due is a deadline on another day); never move it by changing the task\'s due_date. To link a block to a task, set task_id — never set source_type to "task".',
   },
   training_skips: {
     access: 'rw',
@@ -3339,13 +3339,18 @@ async function logQuery(
 // THE SECURITY BOUNDARY IS THE DATABASE, NOT THIS TEXT GUARD (an adversarial
 // review proved regex SQL-parsing is bypassable via comments/quoting). What
 // actually contains this:
-//   • the ai_run_read_query RPC is SECURITY INVOKER, called via a USER-JWT
-//     client → RLS applies (rows scoped to the user; a service-role call would
-//     bypass RLS, which is why we build a dedicated user client here);
+//   • the ai_run_read_query RPC has exactly the caller's rights (185: SECURITY
+//     DEFINER owned by `authenticated`, so Postgres refuses a role change
+//     inside it), called via a USER-JWT client → RLS applies (rows scoped to
+//     the user; a service-role call would bypass RLS, which is why we build a
+//     dedicated user client here);
 //   • the RPC runs the query read-only (transaction_read_only) → no writes;
-//   • the OAuth-token tables are already revoked from the `authenticated` role
-//     (migration 044), so even if the text guard were bypassed the secrets are
-//     permission-denied at the DB; result rows are hard-capped (LIMIT 500).
+//   • the OAuth-token tables are revoked from the `authenticated` role (044),
+//     and the RPC itself (185) lets only an app user call it and refuses
+//     comments, quoted names, ";", settings (set_config, current_setting …),
+//     SQL-running built-ins, pg_ names and system schemas — a query that
+//     changed the `role` setting would otherwise run as the service role,
+//     past those grants; result rows are hard-capped (LIMIT 500).
 // The text guard below is a best-effort UX filter (clear errors, cheap block of
 // obvious system-catalog probes) layered on top — it is NOT relied on for
 // containment. It fails CLOSED: anything it can't vet is rejected. Don't re-add

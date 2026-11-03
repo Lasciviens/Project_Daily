@@ -2,7 +2,6 @@ import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { rowsOf, type DeletedRows, type RowOverrides } from '../../../shared/utils/deletedRows'
-import { LOCAL_TZ } from '../../../shared/components/plan-modal/planModal.config'
 import {
   clearScheduleBlockCalendarLink, fetchScheduleBlock, fetchSeriesInstanceDays, fetchTimeBlockByTaskId, fetchTimeBlockWithTask,
   hasSeriesColumns, setScheduleBlockCalendarLink, updateTimeBlock, SERIES_NOT_MIGRATED,
@@ -13,7 +12,7 @@ import type { CalendarEvent } from '../types'
 import { withTimePatch } from '../calendarEventRules'
 import {
   addPendingSeries, isBeforeSeriesStart, needsHorizonTopUp, needsSeriesFromDay, parsePendingSeries, plansToAddToCalendar,
-  seriesEventForPush, seriesPushZone, SERIES_PENDING_KEY, type PendingSeries, type SeriesPlan,
+  planTimeZone, seriesEventForPush, SERIES_PENDING_KEY, type PendingSeries, type SeriesPlan,
 } from '../calendarSeries'
 import {
   blockEventId, createCalendarEvent, deleteCalendarEvent, getCalendarEvent, isCalendarConflict, isCalendarNotFound,
@@ -41,8 +40,9 @@ import { appleAreaOf } from '../areas/appleAreas'
 //      the series it already made instead of making a second one;
 //    · the link is written only while the plan has no series or this one,
 //      and cleared only while it still names this one (scheduleApi);
-//    · the zone: a save from the planner uses the device's, every other push
-//      the series' own (seriesPushZone);
+//    · the zone: the plan's own (calendarSeries.planTimeZone — the phone's
+//      when it was made, changed only in the sheet, 183), never the device's
+//      at push time: a push from abroad never re-zones a plan;
 //    · the start: the plan's first day on or after the day it was added to
 //      Google (148, stored with the link) — never its past weeks;
 //    · a push Google didn't take from the background (a day carried over,
@@ -55,13 +55,13 @@ import { appleAreaOf } from '../areas/appleAreas'
 type SeriesRow = Pick<ScheduleBlock,
   'id' | 'title' | 'start_time' | 'end_time' | 'days_of_week' | 'effective_from' | 'except_dates'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates'
-  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone' | 'google_calendar_from' | 'busy'>
+  | 'google_calendar_event_id' | 'google_calendar_horizon' | 'google_calendar_time_zone' | 'google_calendar_from' | 'busy'
+  | 'time_zone'>
 
-/** fromEditor: a save from the planner (may change the zone; reports failures).
- *  Every other caller is quiet and keeps the series' zone. */
+/** fromEditor: a save from the planner (reports failures). Every other caller is quiet. */
 interface PushMode { fromEditor: boolean }
 
-const zoneFor = (row: SeriesRow, mode: PushMode) => seriesPushZone(row.google_calendar_time_zone, LOCAL_TZ, mode.fromEditor)
+const zoneFor = (row: SeriesRow) => planTimeZone(row)
 const planFor = (row: SeriesRow, zone: string, keepDays: readonly string[] = []): SeriesPlan | null =>
   seriesEventForPush(row, { today: todayStr(), timeZone: zone, keepDays })
 const message = (err: unknown) => (err as Error)?.message ?? String(err)
@@ -143,7 +143,7 @@ async function removeSeries(row: SeriesRow, token: string, mode: PushMode): Prom
 async function pushSeries(row: SeriesRow, token: string, mode: PushMode): Promise<TimeBlockCalendarStatus> {
   const eventId = row.google_calendar_event_id
   if (!eventId) return 'not_linked'
-  const zone = zoneFor(row, mode)
+  const zone = zoneFor(row)
   let keepDays: string[]
   try { keepDays = await fetchSeriesInstanceDays(row.id, eventId) } catch (err) {
     // Without it a moved instance could get an EXDATE: don't push now.
@@ -192,7 +192,7 @@ export async function linkScheduleSeries(planId: string, mode: PushMode = { from
     if (row.google_calendar_event_id) return await pushSeries(row, token, mode)
     // Its area is on Apple Calendar (2b-2): its series is the server's, there — never one on Google as well.
     if (await appleAreaOf({ category: row.category, domain: row.domain })) return 'not_linked'
-    const zone = zoneFor(row, mode)
+    const zone = zoneFor(row)
     const plan = planFor(row, zone)
     if (!plan) {
       if (mode.fromEditor) toast.warning('Not added to Google Calendar: this plan has no day left to show')

@@ -13,6 +13,8 @@ import type { GoogleTarget, ItemInput, RepeatInput } from '../../../features/ite
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { cleanLabels } from '../../../features/todo/taskLabels'
+import { phoneTimeZone } from '../../utils/timeZone'
+import { SERVER_EVENT_TIME_ZONE } from '../../../features/calendar/calendarEventRules'
 import {
   columnsFromRepeatInput, defaultGoogleTarget, effectiveGoogleTarget, repeatFromQuick,
 } from '../../../features/items/sheetRules'
@@ -53,6 +55,9 @@ export interface PlanForm extends RepeatFormFields {
   /** The owner changed the labels here: only then are they sent (a save that didn't touch them keeps them — a sheet
    *  opened without its task's labels never wipes them). */
   labelsTouched: boolean
+  /** The zone the times are in (183): a new item's is the phone's (or the caller's — a match's kick-off is Oslo's); a
+   *  saved one's as stored (null = the home zone). The save sends exactly this — what the sheet shows is what is stored. */
+  timeZone: string | null
   /** A repeating item opened on one of its days: that day only, or the rule. */
   scope: 'day' | 'all'
   /** The rule's start while "This day" shows the day (and the day while "All days" shows the start). */
@@ -127,6 +132,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     googleListTitle: DOMAIN_LABEL[domain],
     labels: [],
     labelsTouched: false,
+    timeZone: d.timeZone ?? phoneTimeZone(),
     scope: 'all' as const,
     otherDate: null,
   }
@@ -156,6 +162,7 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     googleListTitle: DOMAIN_LABEL[item.domain],
     labels: item.labels ?? [],
     labelsTouched: false,
+    timeZone: item.timeZone ?? null,
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
   }
@@ -242,6 +249,9 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     googleTaskList: google === 'tasks' || google === 'both' ? ctx.googleTaskListId ?? ctx.item?.googleTaskList ?? null : null,
     // A task's labels, only when changed here (untouched, the database keeps them); a repeat's rule has none.
     ...(repeat || !f.labelsTouched ? {} : { labels: cleanLabels(f.labels) }),
+    // The zone the sheet shows (183): a new item's (the phone's), a saved one's (none = the home zone) or one picked
+    // with the chip — always sent, so a one-off turned into a repeat (or back) keeps the clock it showed.
+    timeZone: f.timeZone ?? SERVER_EVENT_TIME_ZONE,
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,

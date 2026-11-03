@@ -5,16 +5,21 @@
 //    reads "17:30" or "17:30–18:30" and taps open the picker again.
 //    "+ Blocks time" shows only once there is a time → a length (1 h) and its
 //    presets; "Doesn't block" takes the length off again.
+//    The zone chip (183) shows when an item's times are on another clock than
+//    the phone's ("Oslo time"), or while the phone is away from home; taps
+//    offer the item's zone, this phone's and Oslo's.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { CalendarDays, Clock, Hourglass, X } from 'lucide-react'
+import { CalendarDays, Clock, Globe, Hourglass, X } from 'lucide-react'
 import { Time24Field } from './fields'
 import { chipClass, choiceClass, CHIP_PANEL_CLASS } from './fieldStyles'
 import { shiftTime, clampDurationMinutes } from './planModal.config'
 import { slotLabel } from '../../../features/items/sheetRules'
 import { formatDurationMinutes } from '../../utils/formatDuration'
+import { phoneTimeZone, sameClock, zoneCity } from '../../utils/timeZone'
+import { itemTimeZone, SERVER_EVENT_TIME_ZONE } from '../../../features/calendar/calendarEventRules'
 
 const LENGTHS = [15, 30, 45, 60, 90, 120, 180] as const
 
@@ -130,5 +135,52 @@ function MinutesField({ duration, onChange }: { duration: number | null; onChang
         aria-label="Length in minutes" className="input input-sm w-[4.5rem] tabular-nums"
       />
     </label>
+  )
+}
+
+/**
+ * The zone the item's times are in (183), shown when it isn't the phone's clock — "Oslo time" on an item made at home,
+ * opened in Istanbul — or while the phone is away from the home clock, so a time typed abroad can still be put on
+ * Oslo's ("Dentist 10:00" after the trip). It offers the item's own zone, this phone's and the home zone (one per
+ * clock); the times stay as typed, the zone says which clock they are on.
+ */
+export function ZoneChip({ zone, savedZone, onPick }: {
+  /** The zone the sheet's times are in now (null = the home zone). */
+  zone: string | null
+  /** The zone the item was saved in, or a caller's (undefined for a new item on the phone's). */
+  savedZone?: string | null
+  onPick: (zone: string | null) => void
+}) {
+  const phone = phoneTimeZone()
+  if (!phone) return null
+  const current = itemTimeZone(zone)
+  const saved = savedZone === undefined ? null : itemTimeZone(savedZone)
+  const abroad = !sameClock(phone, SERVER_EVENT_TIME_ZONE)
+  if (!abroad && sameClock(current, phone) && (!saved || sameClock(saved, phone))) return null
+  const choices: string[] = []
+  for (const z of [saved, phone, SERVER_EVENT_TIME_ZONE]) {
+    if (z && !choices.some(c => sameClock(c, z))) choices.push(z)
+  }
+  return (
+    <Popover className="contents">
+      {({ close }) => (
+        <>
+          <PopoverButton className={chipClass('set')} aria-label={`Times are ${zoneCity(current)} time — change`}>
+            <Globe aria-hidden />{zoneCity(current)} time
+          </PopoverButton>
+          <PopoverPanel anchor="bottom start" modal={false} className={`${CHIP_PANEL_CLASS} w-max max-w-[calc(100vw-24px)]`}>
+            <div className="flex flex-col gap-1.5">
+              {choices.map(c => (
+                <button
+                  key={c} type="button" aria-pressed={sameClock(c, current)}
+                  onClick={() => { onPick(c); close() }}
+                  className={choiceClass(sameClock(c, current), 'justify-start', 'sm')}
+                >{zoneCity(c)} time{c === phone ? ' · this phone' : ''}</button>
+              ))}
+            </div>
+          </PopoverPanel>
+        </>
+      )}
+    </Popover>
   )
 }

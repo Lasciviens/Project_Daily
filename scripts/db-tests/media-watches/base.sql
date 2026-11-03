@@ -131,8 +131,11 @@ create table public.trakt_outbox (
   attempts integer not null default 0, next_retry_at timestamptz not null default now(), last_error text,
   created_at timestamptz not null default now(), seq bigserial
 );
-create or replace function public.trakt_sync_writing() returns boolean language sql stable as $$
-  select coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-trakt-sync', '') = '1'
+-- A stand-in for 184's rule so the triggers below can name it; the runner loads the real 184 right after this file.
+create or replace function public.trakt_sync_writing() returns boolean language sql stable set search_path = '' as $$
+  select (coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-trakt-sync', '') = '1'
+          and (coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') = 'service_role'
+               or coalesce(current_setting('role', true), '') = 'service_role'))
       or coalesce(current_setting('app.trakt_sync', true), '') = 'on'
 $$;
 create or replace function public.trakt_enqueue(p_user uuid, p_op text, p_key text, p_payload jsonb)

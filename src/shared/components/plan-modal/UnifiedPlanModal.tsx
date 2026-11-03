@@ -19,6 +19,16 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-02 · v21.8 · Time zones from the phone (migration 183, owner: "Time
+//                    zones should be based on location"): the sheet saves the
+//                    zone its times are on (`timeZone`) — a new item's is the
+//                    phone's (or the caller's: a match's kick-off is Oslo's), a
+//                    saved one's its own — so what it shows is what is stored.
+//                    The zone chip (ZoneChip) shows when that isn't the phone's
+//                    clock, or while the phone is away from Oslo's, and offers
+//                    the item's zone, this phone's and Oslo's. A repeat's series
+//                    is pushed in its own zone (calendarSeries.planTimeZone), no
+//                    longer the device's.
 //  2026-10-31 · v21.7 · The task's own labels (migration 180, owner: "an option
 //                    to add other labels"): "+ Label" on the facts line, the
 //                    owner's labels offered as they type, sent as `labels` with
@@ -823,6 +833,7 @@ export function UnifiedPlanModal({
           creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown} calendarApp={calendarApp}
           occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
+          savedZone={editMode && item && (item.blockId || item.scheduleBlockId) ? item.timeZone ?? null : defaults?.timeZone}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}
           exceptDates={scheduleBlock?.except_dates}
         />
