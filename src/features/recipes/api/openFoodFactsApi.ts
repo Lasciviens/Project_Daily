@@ -2,6 +2,7 @@
 // access-control-allow-origin: *), so the static GitHub Pages frontend can
 // call it directly with no edge-function proxy/deploy. Returns per-100g macros
 // shaped for recipe_ingredient_library (the library's canonical basis).
+import { containsEveryWord } from '../foodSearch'
 
 export interface BarcodeProduct {
   code:          string
@@ -44,15 +45,23 @@ function toProduct(p: Record<string, unknown>, fallbackCode = ''): BarcodeProduc
   }
 }
 
-// Name search (no barcode) — the PC/online path when you can't scan. OFF's
-// search endpoint is CORS-open + no-key but heavily rate-limited (503s under
-// load), so retry a couple of times and let the caller show a "busy" state.
-// Returns per-100g products (many will have null macros — filter/keep as needed).
+// The names and brand a result is shown with — what it must contain to count as a match.
+function namesAndBrand(p: Record<string, unknown>): string {
+  return [p.product_name_en, p.product_name, p.brands].filter((s): s is string => typeof s === 'string').join(' ')
+}
+
+// Name search (no barcode) — the PC/online path when you can't scan. Only OFF's
+// legacy /cgi/search.pl searches by words: /api/v2/search ignores search_terms
+// and answered every query with the most-scanned products in the database
+// (docs/integrations/open-food-facts.md). CORS-open + no-key but rate-limited
+// (503s under load), so retry a couple of times and let the caller show a "busy"
+// state. It still ranks popular, loosely related products first, so a product
+// whose names and brand lack a typed word is dropped.
 export async function searchFoodsByName(query: string): Promise<BarcodeProduct[]> {
   const q = query.trim()
   if (!q) return []
   const fields = 'code,product_name,product_name_en,brands,nutriments,serving_size,serving_quantity,image_front_url,image_url'
-  const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(q)}&fields=${fields}&page_size=20&sort_by=popularity_key`
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&fields=${fields}&page_size=20&sort_by=popularity_key`
   let lastStatus = 0
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(url, { headers: { 'User-Agent': 'LascisBoard/1.0 (personal food tracker)' } })
@@ -60,6 +69,7 @@ export async function searchFoodsByName(query: string): Promise<BarcodeProduct[]
     if (res.ok) {
       const json = await res.json() as { products?: Record<string, unknown>[] }
       return (json.products ?? [])
+        .filter(p => containsEveryWord(namesAndBrand(p), q))
         .map(p => toProduct(p))
         .filter(p => p.name && p.calories != null)   // a food with no kcal is useless to log
         .slice(0, 15)
