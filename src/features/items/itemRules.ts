@@ -283,6 +283,19 @@ const REPEAT_GOOGLE_WORDS: Partial<Record<GoogleTarget, string>> = {
   both: 'on Google Calendar and Google Tasks, one per day',
 }
 
+/** An item whose area shows in Apple Calendar (2b-2): the server sends its event after the save answered, so the
+ *  line names where it is going — never that it is there yet. A Google Task reads as on Google. */
+const APPLE_WORDS: Record<GoogleTarget, string | null> = {
+  tasks: GOOGLE_WORDS.tasks,
+  calendar: 'sending to Apple Calendar',
+  both: 'on Google Tasks · sending to Apple Calendar',
+  none: null,
+}
+const REPEAT_APPLE_WORDS: Partial<Record<GoogleTarget, string>> = {
+  tasks: REPEAT_GOOGLE_WORDS.tasks,
+  both: 'on Google Tasks, one per day · sending to Apple Calendar',
+}
+
 /** When the item is, as the toast says it: "15.10.2026 17:30–18:30", "Every week on Sun", "No date". */
 export function itemWhenText(input: Pick<ItemInput, 'date' | 'time' | 'durationMinutes' | 'repeat'>): string {
   const time = hhmm(input.time)
@@ -298,15 +311,18 @@ export function itemWhenText(input: Pick<ItemInput, 'date' | 'time' | 'durationM
 /**
  * The save's one result line (every action says its result): "Added ·
  * 15.10.2026 17:30–18:30 · on Google Calendar", "Saved for 15.10.2026 only ·
- * …", "Added · Every week on Sun · on Google Calendar".
+ * …", "Added · Every week on Sun · on Google Calendar". `calendarApp`: where
+ * the item's area shows (useItemCalendarApp) — an Apple area's line says
+ * "sending to Apple Calendar" (until 03.11.2026 it said Google Calendar).
  */
-export function describeSaved(input: ItemInput, saved: SavedItem): string {
+export function describeSaved(input: ItemInput, saved: SavedItem, calendarApp: 'google' | 'apple' = 'google'): string {
   const created = saved.created ?? (!input.taskId && !input.blockId && !input.scheduleBlockId)
   const day = saved.occurrenceDate ?? (input.scope === 'day' ? input.occurrenceDate : null)
   const verb = day ? `Saved for ${formatDate(day)} only` : created ? 'Added' : 'Saved'
   const parts = [verb, itemWhenText(day ? { ...input, repeat: null } : input)]
   if (input.deadline?.date) parts.push(`due ${formatDate(input.deadline.date)}${input.deadline.time ? ` ${hhmm(input.deadline.time)}` : ''}`)
-  const google = (input.repeat && !day ? REPEAT_GOOGLE_WORDS[input.google] : undefined) ?? GOOGLE_WORDS[input.google]
+  const [words, repeatWords] = calendarApp === 'apple' ? [APPLE_WORDS, REPEAT_APPLE_WORDS] : [GOOGLE_WORDS, REPEAT_GOOGLE_WORDS]
+  const google = (input.repeat && !day ? repeatWords[input.google] : undefined) ?? words[input.google]
   if (google) parts.push(google)
   return parts.join(' · ')
 }

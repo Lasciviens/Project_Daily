@@ -169,7 +169,9 @@ catch { eq(false, true, "the function's copy of the event rules is current — r
 const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-calendar/index.ts'), 'utf8')
 const { transform } = require('sucrase')
 const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
-const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, bareTitleFromSummary, readbackChangeOf }`)()
+const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, bareTitleFromSummary, readbackChangeOf,
+  drainItemOf, drainItemsOf, DRAIN_ITEM_ENTITIES, DRAIN_MAX_ITEMS, DRAIN_NAMED_MAX_MS, drainOrder, itemRowMayGo, retryDelayMs, ITEM_RETRY_GAP_MS,
+  sendFailureText, APP_FAULT, GUARD_REFUSALS, stepFailureText, APP_FAULT_STEP, faultFrames, ICloudError }`)()
 const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
 const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
 eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
@@ -322,8 +324,109 @@ const readFile = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
 eq(/BLOCK_EVENT_RESET: RowOverrides = \{ time_blocks: \{ google_calendar_event_id: null, icloud_area: null, icloud_etag: null \} \}/.test(readFile('src/features/calendar/api/deletedBlockEvents.ts'))
    && /icloud_area: null, icloud_etag: null, icloud_horizon: null/.test(readFile('src/features/calendar/api/scheduleSeriesCalendar.ts')), true,
   'Undo of a delete puts the item back without its old Apple link (the next read-back never takes it for deleted on the iPhone)')
-eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) throw e/.test(drainFn), true,
+eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?\n\s*throw e\n\s*\}/.test(drainFn), true,
   "iCloud's rate limit (503) stops the run instead of hammering it")
+
+console.log('\n== A save\'s own item goes first (03.11.2026) ==')
+// The owner: "the task did not come over to apple calendar" — it came minutes later: the drain sent the oldest 25 rows and
+// never the one just saved. A save now names its item; the server sends that row first and says what happened to it.
+{
+  const sid = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
+  eq([F.drainItemOf({ entity: 'slot', id: sid }), F.drainItemOf({ entity: 'plan', id: sid.toUpperCase() }), F.drainItemOf(undefined), F.drainItemOf(null)],
+    [{ entity: 'slot', id: sid }, { entity: 'plan', id: sid }, undefined, undefined],
+    'a save names its slot or its repeating plan by its uuid (kept lower case); none given is a plain drain')
+  eq(F.DRAIN_ITEM_ENTITIES, ['slot', 'plan'], "the kinds a save can name are the queue's own (173, 179) — a workout is never saved in the app (182)")
+  const refused = [
+    { entity: 'workout', id: sid }, { entity: 'time_blocks', id: sid }, { entity: 'task', id: sid }, { entity: 'SLOT', id: sid }, { entity: ['slot'], id: sid },
+    { entity: 'slot', id: `${sid} ` }, { entity: 'slot', id: `${sid}\r\nX: 1` }, { entity: 'slot', id: `../${sid}` }, { entity: 'slot', id: "x' or 1=1--" },
+    { entity: 'slot', id: 'b1' }, { entity: 'slot', id: 42 }, { entity: 'slot' }, { id: sid }, 'slot', 42, [sid], { entity: 'slot', id: `${sid},entity_id.neq.x` },
+  ]
+  eq(refused.map(F.drainItemOf), refused.map(() => null),
+    'anything else is refused (a workout, a table name, another case, a padded or broken id, an injected filter, a bare string)')
+  const handler = src.slice(src.indexOf("if (action === 'drain') {"), src.indexOf("if (action === 'remove') {"))
+  // A save names up to 3 rows in the order they must arrive (a "This day" edit: its plan's EXDATE, then the day).
+  const pid = '3d6f2cab-5e10-4b4c-8fa1-2a3b4c5d6e7f'
+  eq([F.drainItemsOf([{ entity: 'plan', id: pid }, { entity: 'slot', id: sid }]), F.drainItemsOf(undefined), F.drainItemsOf(null)],
+    [[{ entity: 'plan', id: pid }, { entity: 'slot', id: sid }], undefined, undefined], 'a save names its rows in their order; none given is a plain drain')
+  const refusedLists = [[], [{ entity: 'slot', id: sid }, { entity: 'slot', id: sid }], [{ entity: 'slot', id: sid }, { entity: 'workout', id: pid }],
+    Array.from({ length: 4 }, (_, i) => ({ entity: 'slot', id: `${sid.slice(0, -1)}${i}` })), { entity: 'slot', id: sid }, 'slot', [null], [sid]]
+  eq(refusedLists.map(F.drainItemsOf), refusedLists.map(() => null),
+    'refused: an empty list, a row named twice, any refused row, more than 3, a bare item, a string, a null or a bare id')
+  eq(F.DRAIN_MAX_ITEMS, 3, 'at most 3 rows per save')
+  eq(/const items = drainItemsOf\(body\.items\)\n\s*if \(items === null\) return answer\(\{ error: 'Bad request' \}, 400\)\n\s*const result = await drainAccount\(db, user\.id, creds, row\.area_calendars \?\? \{\}, \{ look: body\.look === true, items \}\)/.test(handler), true,
+    'a refused list answers 400 before the drain starts (no lease, no queue read, nothing sent)')
+  const own = drain.slice(drain.indexOf('for (const it of opts.items ?? []) {'), drain.indexOf('const maxMs = '))
+  eq(/db\.from\('icloud_outbox'\)\.select\('id, entity, entity_id, area, requested_at, attempts, next_try_at, last_error'\)\n\s*\.eq\('user_id', userId\)\.eq\('entity', it\.entity\)\.eq\('entity_id', it\.id\)\.maybeSingle\(\)/.test(own)
+    && (drain.match(/opts\.items/g) || []).length === 3 && !/opts\.items|\bit\.id\b/.test(drainOne), true,
+    "each named row only picks a row already in the caller's own queue (user, kind and id): it never reaches the event's address, calendar or area")
+  eq(drain.indexOf("eq('entity', it.entity)") > drain.indexOf('await readBackAccount(') && drain.indexOf("eq('entity', it.entity)") > drain.indexOf("update({ drain_until: lease })"), true,
+    'the named rows are sent inside the lease, after the changes from the iPhone are read (one drain at a time, as every drain)')
+  // The order: the save's rows first, in its order, then the queue oldest first without them — never more rows than a run sends.
+  const row = n => ({ id: n })
+  const queue = Array.from({ length: 25 }, (_, i) => row(i + 1))
+  const first = F.drainOrder([row(98), row(99)], queue, 25)
+  eq([first[0].id, first[1].id, first[2].id, first.length, first.some(q => q.id === 24)], [98, 99, 1, 25, false], "the save's rows go first, in its order, and take the run's places (never a 26th)")
+  const inQueue = F.drainOrder([row(7)], queue, 25)
+  eq([inQueue[0].id, inQueue.filter(q => q.id === 7).length, inQueue.length], [7, 1, 25], 'a row already in the batch is sent once, first')
+  eq(F.drainOrder([], queue.slice(0, 3), 25).map(q => q.id), [1, 2, 3], 'no rows named: the queue as read (oldest first)')
+  eq(/for \(const q of drainOrder\(own\.filter\(r => itemRowMayGo\(r, Date\.now\(\)\)\), \(queue \?\? \[\]\) as QueueRow\[\], DRAIN_MAX_ROWS\)\) \{\n\s*const mine = own\.find\(r => r\.id === q\.id\)\n\s*if \(!mine && Date\.now\(\) - started > maxMs\) break/.test(drain)
+    && /const maxMs = opts\.items\?\.length \? DRAIN_NAMED_MAX_MS : DRAIN_MAX_MS/.test(drain) && F.DRAIN_NAMED_MAX_MS === 8000, true,
+    "the drain runs that order within the same 25 rows; a save's run sends the backlog after its rows for 8 s at most (its lease goes back soon), the timer's for 20 s")
+  // The gap: a row in backoff goes early only when its last try is at least 10 s old.
+  const now = Date.parse('2026-11-03T12:00:00Z')
+  const failedAgo = (attempts, ms) => ({ attempts, next_try_at: new Date(now - ms + F.retryDelayMs(attempts)).toISOString() })
+  eq([F.itemRowMayGo({ attempts: 0, next_try_at: new Date(now).toISOString() }, now), F.itemRowMayGo({ attempts: 3, next_try_at: new Date(now - 1).toISOString() }, now)],
+    [true, true], 'a due row goes (just queued, or its retry time has come)')
+  eq([F.itemRowMayGo(failedAgo(1, 0), now), F.itemRowMayGo(failedAgo(1, 9_999), now), F.itemRowMayGo(failedAgo(1, 10_000), now), F.itemRowMayGo(failedAgo(4, 60_000), now)],
+    [false, false, true, true], 'a row in backoff goes early only 10 s or more after its last try (it failed just now: it waits)')
+  eq([F.itemRowMayGo(failedAgo(11, 9_000), now), F.itemRowMayGo(failedAgo(30, 9_000), now), F.itemRowMayGo(failedAgo(30, 10_000), now)], [false, false, true],
+    'also at the longest backoff (a day)')
+  eq([F.itemRowMayGo({ attempts: 0, next_try_at: new Date(now + 60_000).toISOString() }, now), F.itemRowMayGo({ attempts: 2, next_try_at: 'soon' }, now),
+      F.itemRowMayGo({ attempts: Number.NaN, next_try_at: new Date(now + 60_000).toISOString() }, now)],
+    [false, false, false], 'a row it cannot read the last try of waits for its own time')
+  eq(F.ITEM_RETRY_GAP_MS, 10_000, 'the gap is 10 s')
+  eq([F.retryDelayMs(1), F.retryDelayMs(2), F.retryDelayMs(11), F.retryDelayMs(40)], [120_000, 240_000, 86_400_000, 86_400_000], 'the backoff: 2 min, then twice as long, at most a day')
+  eq(/const retryAt = \(attempts: number\) => new Date\(Date\.now\(\) \+ retryDelayMs\(attempts\)\)\.toISOString\(\)/.test(src), true,
+    'a failure sets its retry time with the same delay the gap reads it back with')
+  // What the answer says about the item.
+  eq(/else said\.set\(keyOf\(it\.entity, it\.id\), \{ status: 'not-queued' \}\)/.test(drain)
+    && /if \(mine\) said\.set\(keyOf\(mine\.entity, mine\.entity_id\), \{ status: ITEM_STATUS\[result\] \}\)/.test(drain)
+    && /if \(mine\) said\.set\(keyOf\(mine\.entity, mine\.entity_id\), \{ status: 'failed', error: why, retryAt: next \}\)/.test(drain)
+    && /said\.set\(keyOf\(r\.entity, r\.entity_id\), \{ status: 'waiting', error: r\.last_error, retryAt: r\.next_try_at \}\)/.test(drain)
+    && /const items = opts\.items\?\.map\(it => \(\{ entity: it\.entity, id: it\.id, \.\.\.said\.get\(keyOf\(it\.entity, it\.id\)\)! \}\)\)/.test(drain)
+    && /const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = \{ put: 'sent', moved: 'sent', foreign: 'sent', kept: 'kept', removed: 'removed', none: 'none' \}/.test(src), true,
+    "the answer says each named row's own outcome, by its kind and id: sent, kept, removed, none, failed (its reason, its retry time), waiting, or not queued")
+  // A fault in the app's own code is never blamed on iCloud.
+  const net = new F.ICloudError('unreachable', 'iCloud did not answer')
+  eq([F.sendFailureText(net), F.sendFailureText(new F.ICloudError('invited', 'Has invitees'))], ['iCloud did not answer', 'Has invitees'], "iCloud's own failures say what iCloud did")
+  eq([F.sendFailureText(new TypeError("Cannot read properties of null (reading 'date')")), F.sendFailureText(new RangeError('Invalid time value')), F.sendFailureText('x'), F.sendFailureText(undefined)],
+    [F.APP_FAULT, F.APP_FAULT, F.APP_FAULT, F.APP_FAULT], 'a fault in the app\'s own code says so')
+  eq(F.APP_FAULT, 'The app could not build this event — a fault in the app, not in iCloud', '…in plain words')
+  eq([F.sendFailureText(new Error('An event line holds a control character — not written')), F.sendFailureText(new Error('An event zone is not a zone name — not written'))],
+    ['An event line holds a control character — not written', 'An event zone is not a zone name — not written'], "the event rules' own guards name what they refused")
+  eq([F.sendFailureText(new Error('Anything else — not written')), F.sendFailureText(new Error('An event line holds a control character — not written (x)'))],
+    [F.APP_FAULT, F.APP_FAULT], 'only the guards\' exact texts pass (an allow-list, never a pattern)')
+  const eventsSrc = fs.readFileSync(path.join(__dirname, '../src/features/calendar/areas/icloudEvents.ts'), 'utf8')
+  eq(F.GUARD_REFUSALS.length === 3 && F.GUARD_REFUSALS.every(g => eventsSrc.includes(`throw new Error('${g}')`)), true,
+    'each allowed text is one the event rules really throw (a changed guard text fails here)')
+  eq(/if \(e instanceof ICloudError && \(e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?if \(mine && q\.attempts >= 1\) await db\.from\('icloud_outbox'\)\.update\(\{ next_try_at: retryAt\(q\.attempts\) \}\)[^]*?throw e\n/.test(drain), true,
+    'a password refusal or iCloud\'s limit still records the save\'s own try, so the 10 s gap holds there too')
+  eq(/const why = sendFailureText\(e\)/.test(drain) && !/'iCloud did not answer'/.test(drain), true, 'the drain records that text on the row (the card and the save\'s warning show it)')
+  const davFn = src.slice(src.indexOf('async function dav('), src.indexOf('const READ_METHODS'))
+  eq(/text: await readCapped\(res\)\.catch\(noAnswer\)/.test(davFn) && /function noAnswer\(e: unknown\): never \{\n\s*throw e instanceof ICloudError \? e : new ICloudError\('unreachable', 'iCloud did not answer'\)/.test(src)
+    && /catch \{ throw new ICloudError\('redirect', /.test(davFn), true,
+    'an answer cut off mid-way (or a redirect to no address) stays iCloud\'s failure: "iCloud did not answer"')
+  eq(!/console\.error\([^)]*\$\{[^}]*\.message/.test(drain), true, 'an app fault is logged by its kind and code frames only (never a message that could hold item text)')
+  eq([F.stepFailureText(net), F.stepFailureText(new TypeError('x')), F.stepFailureText(undefined), F.APP_FAULT_STEP],
+    ['iCloud did not answer', F.APP_FAULT_STEP, F.APP_FAULT_STEP, 'Something went wrong in the app, not in iCloud'], 'any other step that fails says whose fault it is too')
+  eq([(src.match(/'iCloud did not answer'/g) || []).length, /Something went wrong talking to iCloud/.test(src), (src.match(/stepFailureText\(e\)/g) || []).length], [1, false, 6],
+    'only a real network failure says "iCloud did not answer" (noAnswer); the read-back, check, read, setup, the timer and a whole run say stepFailureText')
+  const err = new Error('Padel with Ola\nat secret line')
+  err.stack = 'Error: Padel with Ola\nat secret line\n    at drainOne (file:///index.ts:2391:9)\n    at async drainAccount (file:///index.ts:2800:20)'
+  const odd = new Error('x'); odd.stack = 'Something else\n    at drainOne (file:///index.ts:1:1)'
+  eq([F.faultFrames(err), F.faultFrames(odd), F.faultFrames('x'), F.faultFrames(undefined)], ['at drainOne (file:///index.ts:2391:9) | at async drainAccount (file:///index.ts:2800:20)', '', '', ''],
+    "the log gets a fault's code frames only — never its message, even one with a line that looks like a frame")
+}
 
 console.log(`\nverify-icloud-events: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

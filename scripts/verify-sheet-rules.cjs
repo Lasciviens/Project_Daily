@@ -255,6 +255,10 @@ console.log('\n== 8. The "Read as" line and Home\'s quick add ==')
   check('Home: plain text is a to-do for today on Google Tasks', plain.title === 'Buy 3 eggs' && plain.date === TODAY && plain.time === null && plain.google === 'tasks')
   check('Home: Keep text saves the words as typed', R.itemFromQuickAdd('Gym 17:30', null, TODAY, true).title === 'Gym 17:30')
   check('Home: no Google here → not on Google', R.itemFromQuickAdd('Buy milk', null, TODAY, false).google === 'none')
+  // 03.11.2026: no Google here, but the area is on Apple Calendar — only an item with a time goes there.
+  check('Home: no Google, Apple area, a time → on its calendar (Apple Calendar)', R.itemFromQuickAdd('Gym 17:30', parseQuickAdd('Gym 17:30', TODAY), TODAY, false, true).google === 'calendar')
+  check('Home: no Google, Apple area, no time → still on no calendar (never Google Tasks)', R.itemFromQuickAdd('Buy milk', null, TODAY, false, true).google === 'none')
+  check('Home: no Google, area not on Apple, a time → on no calendar', R.itemFromQuickAdd('Gym 17:30', parseQuickAdd('Gym 17:30', TODAY), TODAY, false, false).google === 'none')
   check('Home: nothing but parts → nothing to save', R.itemFromQuickAdd('tomorrow 17:30', parseQuickAdd('tomorrow 17:30', TODAY), TODAY, true) === null)
 }
 

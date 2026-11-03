@@ -147,10 +147,13 @@ export function readAsParts(parse: QuickAddResult, start: string): string[] {
 /**
  * One line typed into Home's quick add, as an item: what quick add read
  * (unless "Keep text"), on today when it names no day — Home's card is
- * today's list, and today files under Today. Google takes the default (none
- * while this device has no Google connection). Null when there is no title.
+ * today's list, and today files under Today. Google takes the default while
+ * this device has a Google connection. Without one, an item with a time in an
+ * area that goes to Apple Calendar goes there (`appleArea`, 03.11.2026 — it
+ * used to be saved with no calendar, so its event never went); anything else
+ * stays on no calendar, as before. Null when there is no title.
  */
-export function itemFromQuickAdd(text: string, parse: QuickAddResult | null, today: string, googleConnected: boolean): ItemInput | null {
+export function itemFromQuickAdd(text: string, parse: QuickAddResult | null, today: string, googleConnected: boolean, appleArea = false): ItemInput | null {
   const title = (parse ? parse.title : text).trim()
   if (!title) return null
   const date = parse?.date ?? today
@@ -164,6 +167,6 @@ export function itemFromQuickAdd(text: string, parse: QuickAddResult | null, tod
     time,
     durationMinutes: time ? parse?.durationMinutes ?? null : null,
     repeat,
-    google: googleConnected ? defaultGoogleTarget({ time, repeat }) : 'none',
+    google: googleConnected ? defaultGoogleTarget({ time, repeat }) : appleArea && time ? 'calendar' : 'none',
   }
 }

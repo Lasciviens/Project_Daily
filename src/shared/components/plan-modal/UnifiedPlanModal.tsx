@@ -19,6 +19,12 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-03 · v21.10 · The save's result line names the calendar the chip
+//                    names: "· sending to Apple Calendar" for an item whose
+//                    area shows in Apple Calendar (it said "on Google
+//                    Calendar"; owner: "the task did not come over to apple
+//                    calendar"). useSaveItem takes `calendarApp`, so it is
+//                    called after useItemCalendarApp.
 //  2026-11-03 · v21.9 · A place on an item (migration 186, owner: "Can we use
 //                    that [EnTur] as location finding?"): PlaceFact on the
 //                    facts line for an item with a time, a repeat or all day —
@@ -582,18 +588,6 @@ export function UnifiedPlanModal({
   const shownDay = timeBlock?.date ?? task?.due_date ?? occurrenceDate ?? null
   const outOfWeek = (input: ItemInput) => (session && input.scope !== 'all' && input.date && input.date !== shownDay
     && movesPastWeek(session.firstDay, input.date) ? input.date : null)
-  const save = useSaveItem({
-    after: async (input, saved) => {
-      const to = outOfWeek(input)
-      if (!to || !session) return null
-      carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, to)
-      return fetchPastWeekOutcome(session.taskId, to, { routineId: session.routineId, title: session.title })
-    },
-    describe: (input, outcome) => {
-      const to = outOfWeek(input)
-      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : undefined
-    },
-  })
   const del = useSheetDelete()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
@@ -625,6 +619,20 @@ export function UnifiedPlanModal({
   })
   const appleArea = calendarApp === 'apple'
   const choiceShown = googleConnected || appleArea
+  // Its result line names the calendar the chip names ("· sending to Apple Calendar" for an Apple area).
+  const save = useSaveItem({
+    after: async (input, saved) => {
+      const to = outOfWeek(input)
+      if (!to || !session) return null
+      carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, to)
+      return fetchPastWeekOutcome(session.taskId, to, { routineId: session.routineId, title: session.title })
+    },
+    describe: (input, outcome) => {
+      const to = outOfWeek(input)
+      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : undefined
+    },
+    calendarApp,
+  })
   // The title field's text; with quick add it can say more than form.title.
   const [typed, setTyped] = useState(form.title)
   const [parse, setParse] = useState<QuickAddResult | null>(null)

@@ -1984,11 +1984,124 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
 export const MOVE_FROM = ['today', 'all'] as const
 export type MoveFrom = typeof MOVE_FROM[number]
 
-// </icloud-pure>
-
 class ICloudError extends Error {
   constructor(public code: string, message: string) { super(message) }
 }
+
+// ── A save's own item goes first (03.11.2026) ─────────────────────────────────
+
+/** The queue's kinds a save can name: the outbox holds 'slot', 'plan' and (179) 'workout', but a workout is never
+ *  saved in the app (182), so a save names only its slot or its repeating plan. */
+export const DRAIN_ITEM_ENTITIES = ['slot', 'plan'] as const
+export interface DrainItem { entity: typeof DRAIN_ITEM_ENTITIES[number]; id: string }
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The item a save names for the drain (`item` in the body — browser input): a slot or a repeating plan by its uuid;
+ * none given → undefined, anything else → null (refused). It only picks which of the caller's own queued rows goes
+ * first — never a calendar, an area or an address (those come from the server's own records, ownEventUrl).
+ */
+export function drainItemOf(raw: unknown): DrainItem | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) return null
+  const { entity, id } = raw as Record<string, unknown>
+  if (typeof entity !== 'string' || !(DRAIN_ITEM_ENTITIES as readonly string[]).includes(entity)) return null
+  if (typeof id !== 'string' || !UUID_SHAPE.test(id)) return null
+  return { entity: entity as DrainItem['entity'], id: id.toLowerCase() }
+}
+
+/** How long a failed row waits: 2 min after its first failure, twice as long after each next one, at most a day. */
+export const retryDelayMs = (attempts: number) => Math.min(86_400_000, 60_000 * 2 ** Math.min(attempts, 11))
+
+/** A save's own row may go before its retry time (the owner just saved it), never within this long of its last
+ *  try: a script holding the session can't make one row reach iCloud more often than this. */
+export const ITEM_RETRY_GAP_MS = 10_000
+
+/**
+ * Whether the save's own queued row goes now: it is due, or its last try was at least ITEM_RETRY_GAP_MS ago. A
+ * failed try sets next_try_at to then + retryDelayMs(attempts), and every queue write resets both (attempts 0, due
+ * now), so the last try is next_try_at − retryDelayMs(attempts). A row it can't read waits for its own time.
+ */
+export function itemRowMayGo(row: { attempts: number; next_try_at: string }, nowMs: number): boolean {
+  const next = Date.parse(row.next_try_at)
+  if (!Number.isFinite(next)) return false
+  if (next <= nowMs) return true
+  if (!Number.isInteger(row.attempts) || row.attempts < 1) return false
+  return nowMs - (next - retryDelayMs(row.attempts)) >= ITEM_RETRY_GAP_MS
+}
+
+/** The most rows a save names: a "This day" edit's plan and its day, or a replaced row and the new one. */
+export const DRAIN_MAX_ITEMS = 3
+
+/**
+ * The rows a save names for the drain (`items` in the body — browser input), in the order they must arrive: 1 to
+ * DRAIN_MAX_ITEMS distinct ones, each checked as drainItemOf; none given → undefined, anything else → null (refused).
+ */
+export function drainItemsOf(raw: unknown): DrainItem[] | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > DRAIN_MAX_ITEMS) return null
+  const items: DrainItem[] = []
+  for (const r of raw) {
+    const item = drainItemOf(r)
+    if (!item || items.some(x => x.entity === item.entity && x.id === item.id)) return null
+    items.push(item)
+  }
+  return items
+}
+
+/** A run's order: the save's own rows first (in the save's order), then the queue as read (oldest first) without
+ *  them — at most `max` rows, so they take a run's places, never extra ones. */
+export function drainOrder<T extends { id: number }>(first: readonly T[], queue: readonly T[], max: number): T[] {
+  return [...first, ...queue.filter(q => !first.some(f => f.id === q.id))].slice(0, max)
+}
+
+/** A run a save asked for sends the backlog after its own rows for this long at most, so it gives its lease back
+ *  soon and the next save's rows go at once (the timer and the app's opening keep the full DRAIN_MAX_MS). */
+export const DRAIN_NAMED_MAX_MS = 8_000
+
+/** A send that failed in the app's own code: said as the app's fault, never as iCloud's. */
+export const APP_FAULT = 'The app could not build this event — a fault in the app, not in iCloud'
+
+/** The event rules' own guards (icloudEvents.ts, generated above): each names what it refused. Compared exactly — an
+ *  allow-list, never a pattern — so no other error's text ever reaches the row, the card or the browser. */
+export const GUARD_REFUSALS: readonly string[] = [
+  'Not a zone this runtime knows — not written',
+  'An event zone is not a zone name — not written',
+  'An event line holds a control character — not written',
+]
+
+/**
+ * Why a queued item wasn't sent, for its row, the card and the save's warning. iCloud's own failures (no answer, a
+ * refusal) are ICloudErrors with their own text (`dav` turns an answer cut off mid-way into one too); a guard of the
+ * event rules names what it refused ("… — not written"); anything else is a fault in the app's own code and says so —
+ * until 03.11.2026 every such fault read "iCloud did not answer".
+ */
+export function sendFailureText(e: unknown): string {
+  if (e instanceof ICloudError) return e.message
+  if (e instanceof Error && GUARD_REFUSALS.includes(e.message)) return e.message
+  return APP_FAULT
+}
+
+/** Any other step that failed (a read-back, the check, a whole run): said as the app's fault, never as iCloud's. */
+export const APP_FAULT_STEP = 'Something went wrong in the app, not in iCloud'
+
+/** Why a step failed: iCloud's own failures keep iCloud's words; anything else is a fault in the app's own code (or
+ *  its database) and says so — until 03.11.2026 these read "iCloud did not answer" or "…talking to iCloud". */
+export function stepFailureText(e: unknown): string {
+  return e instanceof ICloudError ? e.message : APP_FAULT_STEP
+}
+
+/** Where a fault happened, for the function's log: the stack's own frames ("at drainOne (…index.ts:2391:9)") and
+ *  nothing else — never the message, which could hold an item's text (even a line of it that looks like a frame:
+ *  the message is cut off first; a stack that doesn't start with it gives nothing). */
+export function faultFrames(e: unknown): string {
+  if (!(e instanceof Error) || typeof e.stack !== 'string') return ''
+  const head = e.message ? `${e.name}: ${e.message}` : e.name
+  if (!e.stack.startsWith(head)) return ''
+  return e.stack.slice(head.length).split('\n').map(l => l.trim()).filter(l => /^at /.test(l)).slice(0, 6).join(' | ')
+}
+
+// </icloud-pure>
 
 interface Creds { email: string; password: string }
 
@@ -2023,9 +2136,10 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
     }
     if ([301, 302, 303, 307, 308].includes(res.status)) {
       const loc = res.headers.get('location')
-      await res.body?.cancel()
+      await res.body?.cancel().catch(() => {})
       if (!loc) throw new ICloudError('redirect', `iCloud answered ${res.status} with nowhere to go`)
-      const next = new URL(loc, current)
+      let next: URL
+      try { next = new URL(loc, current) } catch { throw new ICloudError('redirect', `iCloud answered ${res.status} with a place that is no address`) }
       // A write goes only to the exact place the app built: a redirect may move it to another iCloud server, never
       // to another path (security check, 30.10.2026). Reads may follow iCloud wherever it points.
       if (!READ_METHODS.has(method) && res.status !== 303 && next.pathname !== new URL(current).pathname) {
@@ -2036,12 +2150,18 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
       if (res.status === 303) { method = 'GET'; body = undefined }
       continue
     }
-    if (res.status === 401) { await res.body?.cancel(); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
+    if (res.status === 401) { await res.body?.cancel().catch(() => {}); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
     // iCloud's rate limit (503, Retry-After): this run stops; the timer tries again.
-    if (res.status === 503) { await res.body?.cancel(); throw new ICloudError('busy', 'iCloud asked the app to wait (too many requests) — tried again in a few minutes') }
-    return { status: res.status, text: await readCapped(res), url: current, etag: res.headers.get('etag') }
+    if (res.status === 503) { await res.body?.cancel().catch(() => {}); throw new ICloudError('busy', 'iCloud asked the app to wait (too many requests) — tried again in a few minutes') }
+    return { status: res.status, text: await readCapped(res).catch(noAnswer), url: current, etag: res.headers.get('etag') }
   }
   throw new ICloudError('redirect', 'iCloud redirected too many times')
+}
+
+/** An answer that fails after the request went out (cut off mid-way, the time limit) is iCloud not answering —
+ *  never a fault in the app's own code (sendFailureText tells the two apart). */
+function noAnswer(e: unknown): never {
+  throw e instanceof ICloudError ? e : new ICloudError('unreachable', 'iCloud did not answer')
 }
 
 const READ_METHODS = new Set(['GET', 'PROPFIND', 'REPORT'])
@@ -2193,8 +2313,8 @@ const DRAIN_LEASE_MS = 150_000
 interface QueueRow { id: number; entity: 'slot' | 'plan' | 'workout'; entity_id: string; area: AreaKey | null; requested_at: string; attempts: number }
 type Db = SupabaseClient
 
-/** A failed row waits 1 min, then twice as long each time, at most a day. */
-const retryAt = (attempts: number) => new Date(Date.now() + Math.min(86_400_000, 60_000 * 2 ** Math.min(attempts, 11))).toISOString()
+/** When a row that failed `attempts` times is tried again (retryDelayMs). */
+const retryAt = (attempts: number) => new Date(Date.now() + retryDelayMs(attempts)).toISOString()
 
 /**
  * Puts one event at its own address; iCloud's new version (etag) when it gives one. With the version the app
@@ -2253,6 +2373,17 @@ async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan' | 'workout', id:
 }
 
 type DrainResult = 'put' | 'moved' | 'foreign' | 'kept' | 'removed' | 'none'
+
+/** What the drain did with the save's own item, for its answer (the save's warning gives the item's own reason, and
+ *  a retry only when one comes): in Apple Calendar, its copy kept for its replacement, removed, none (it doesn't go
+ *  there), failed now, waiting (tried moments ago — its retry time), or not queued at all. */
+type DrainItemStatus = 'sent' | 'kept' | 'removed' | 'none' | 'failed' | 'waiting' | 'not-queued'
+interface DrainItemOutcome { status: DrainItemStatus; error?: string | null; retryAt?: string | null }
+/** One named row's answer: which row (kind and id, as the save named it) and what happened to it. */
+type DrainItemAnswer = DrainItemOutcome & DrainItem
+/** A named row as read from the queue (its retry state, for itemRowMayGo and a "waiting" answer). */
+type OwnRow = QueueRow & { next_try_at: string; last_error: string | null }
+const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = { put: 'sent', moved: 'sent', foreign: 'sent', kept: 'kept', removed: 'removed', none: 'none' }
 
 /**
  * One queued slot or plan, read live, through drainStep: its Apple copy is put (the new copy first, then an old
@@ -2623,7 +2754,7 @@ async function readBackAccount(db: Db, c: Creds, userId: string, prefs: Calendar
       return { ...counts, renamed, problem: counts.problem ? `${prefs.areas[k].name}: ${counts.problem}` : null }
     } catch (e) {
       if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) throw e
-      const why = e instanceof ICloudError ? e.message : 'iCloud did not answer'
+      const why = stepFailureText(e)
       await db.from('icloud_sync_state').upsert({ user_id: userId, area: k, last_error: why }, { onConflict: 'user_id,area' })
       return { applied: 0, ignored: 0, failed: 1, calendars: 1, renamed: false, problem: `${prefs.areas[k].name}: ${why}` }
     }
@@ -2645,9 +2776,12 @@ const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0,
 /**
  * One account's queue, the app's own changes oldest first and settings re-sends after them, within a time budget. Each queued slot or plan is read live; a row goes only
  * while requested_at is what was read (a newer change waits). One drain at a time per account: a short lease.
+ * A save names its rows (`items`, 03.11.2026): those already in this account's queue go first, in the save's order,
+ * so a fresh item never waits behind a backlog for the timer, and the answer says what happened to each. Such a run
+ * sends the backlog after them for DRAIN_NAMED_MAX_MS at most, so the next save's rows don't wait for it either.
  */
-async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean }):
-  Promise<{ busy: true } | (DrainCounts & { waiting: number; readBack: Awaited<ReturnType<typeof readBackAccount>> })> {
+async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean; items?: DrainItem[] }):
+  Promise<{ busy: true } | (DrainCounts & { waiting: number; readBack: Awaited<ReturnType<typeof readBackAccount>>; items?: DrainItemAnswer[] })> {
   let started = Date.now()
   const nowIso = new Date().toISOString()
   const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
@@ -2678,25 +2812,54 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
       // The app's own changes first (oldest first), then re-sends for a settings change (changed_at null, 177).
       .order('changed_at', { ascending: true, nullsFirst: false }).order('requested_at', { ascending: true }).limit(DRAIN_MAX_ROWS)
     if (qError) throw new ICloudError('queue', 'The queue could not be read')
+    // The save's own rows: each one's row in THIS account's queue (an id picks among the caller's own queued rows,
+    // nothing else). They go first, in the save's order — also while one waits for a retry (the owner just saved it),
+    // but never within ITEM_RETRY_GAP_MS of its last try — and take the run's places.
+    const own: OwnRow[] = []
+    const said = new Map<string, DrainItemOutcome>()
+    const keyOf = (entity: string, id: string) => `${entity}:${id}`
+    for (const it of opts.items ?? []) {
+      const { data, error } = await db.from('icloud_outbox').select('id, entity, entity_id, area, requested_at, attempts, next_try_at, last_error')
+        .eq('user_id', userId).eq('entity', it.entity).eq('entity_id', it.id).maybeSingle()
+      if (error) throw new ICloudError('queue', 'The queue could not be read')
+      if (data) own.push(data as OwnRow)
+      else said.set(keyOf(it.entity, it.id), { status: 'not-queued' })
+    }
+    const maxMs = opts.items?.length ? DRAIN_NAMED_MAX_MS : DRAIN_MAX_MS
     const counts = emptyCounts()
-    for (const q of (queue ?? []) as QueueRow[]) {
-      if (Date.now() - started > DRAIN_MAX_MS) break
+    for (const q of drainOrder(own.filter(r => itemRowMayGo(r, Date.now())), (queue ?? []) as QueueRow[], DRAIN_MAX_ROWS)) {
+      const mine = own.find(r => r.id === q.id)
+      if (!mine && Date.now() - started > maxMs) break
       try {
-        counts[await drainOne(db, creds, userId, q, prefs, areaCals, today)]++
+        const result = await drainOne(db, creds, userId, q, prefs, areaCals, today)
+        counts[result]++
         await db.from('icloud_outbox').delete().eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+        if (mine) said.set(keyOf(mine.entity, mine.entity_id), { status: ITEM_STATUS[result] })
       } catch (e) {
-        if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) throw e
+        if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) {
+          // The whole run stops here, but the save's own row was just tried: its retry time moves on, so a row waiting
+          // for a retry still goes early at most once per ITEM_RETRY_GAP_MS (guardian review, 03.11.2026).
+          if (mine && q.attempts >= 1) await db.from('icloud_outbox').update({ next_try_at: retryAt(q.attempts) })
+            .eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+          throw e
+        }
         counts.failed++
-        // An event the guard refused (a control character in a field) says so; anything else is iCloud's.
-        const why = e instanceof ICloudError ? e.message : e instanceof Error && /control character/.test(e.message) ? e.message : 'iCloud did not answer'
-        await db.from('icloud_outbox').update({ attempts: q.attempts + 1, next_try_at: retryAt(q.attempts + 1), last_error: why })
+        // iCloud's failure says what iCloud did; a fault in the app's own code says so — never "iCloud did not answer".
+        const why = sendFailureText(e)
+        if (!(e instanceof ICloudError)) console.error(`icloud-calendar drain: app fault (${e instanceof Error ? e.name : 'unknown'}) ${faultFrames(e)}`)
+        const next = retryAt(q.attempts + 1)
+        await db.from('icloud_outbox').update({ attempts: q.attempts + 1, next_try_at: next, last_error: why })
           .eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+        if (mine) said.set(keyOf(mine.entity, mine.entity_id), { status: 'failed', error: why, retryAt: next })
       }
     }
+    // Tried moments ago (by another run): a row not sent now waits for its retry, with its own last problem.
+    for (const r of own) if (!said.has(keyOf(r.entity, r.entity_id))) said.set(keyOf(r.entity, r.entity_id), { status: 'waiting', error: r.last_error, retryAt: r.next_try_at })
+    const items = opts.items?.map(it => ({ entity: it.entity, id: it.id, ...said.get(keyOf(it.entity, it.id))! }))
     const { count: waiting } = await db.from('icloud_outbox').select('id', { count: 'exact', head: true }).eq('user_id', userId)
     // An item's problem lives on its queue row; the account's "Last problem" is a failed run's (the next run that goes
     // through clears it, clearRunProblem) or setup's.
-    return { ...counts, waiting: waiting ?? 0, readBack }
+    return { ...counts, waiting: waiting ?? 0, readBack, ...(items ? { items } : {}) }
   } finally {
     // Only this run's own lease is given back (a run that outlived it never frees the next run's).
     await db.from('icloud_credentials').update({ drain_until: null }).eq('user_id', userId).eq('drain_until', lease)
@@ -2889,15 +3052,17 @@ async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
       const result = await drainAccount(db, r.user_id, await openCreds(db, r.user_id, r), r.area_calendars ?? {}, { look: true })
       if ('busy' in result) { total.busy++; continue }
       await clearRunProblem(db, r.user_id)
-      const { readBack, ...counts } = result
+      // The timer names no rows (`items` are only a save's), so only counts are added up.
+      const { readBack, items: named, ...counts } = result
+      void named
       for (const [k, v] of Object.entries(counts)) total[k] = (total[k] ?? 0) + v
       total.readBackApplied = (total.readBackApplied ?? 0) + readBack.applied
       total.readBackFailed = (total.readBackFailed ?? 0) + readBack.failed
     } catch (e) {
       total.problems++
-      const message = e instanceof ICloudError ? e.message : 'Something went wrong talking to iCloud'
+      const message = stepFailureText(e)
       await db.from('icloud_credentials').update({ last_error: message }).eq('user_id', r.user_id)
-      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
+      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : `unexpected ${faultFrames(e)}`}`)
     }
   }
   return total
@@ -2969,7 +3134,7 @@ Deno.serve(async (req) => {
     try {
       return answer(await drainEveryAccount(db))
     } catch (e) {
-      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
+      console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : `unexpected ${faultFrames(e)}`}`)
       return answer({ error: 'The timer\'s run failed' }, 502)
     }
   }
@@ -3119,7 +3284,7 @@ Deno.serve(async (req) => {
         steps.push({ step: 'Read them back', ok: stored.size === written.filter(w => w.ok).length, detail: `${stored.size} read back` })
       } catch (e) {
         if (e instanceof ICloudError && e.code === 'auth') throw e
-        steps.push({ step: 'Read them back', ok: false, detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
+        steps.push({ step: 'Read them back', ok: false, detail: stepFailureText(e) })
       }
       const token = await syncToken(creds, cal.url)
       steps.push({ step: 'Changes since (sync token)', ok: !!token, detail: token ? 'iCloud gave a sync token — "Check changes" can follow your edits' : 'iCloud gave no sync token' })
@@ -3172,7 +3337,7 @@ Deno.serve(async (req) => {
           entry.events = parseMultistatus(r.text).responses.flatMap(x => { const d = xmlText(x.props, 'calendar-data'); return d ? readEventsOf(d) : [] })
         } catch (e) {
           if (e instanceof ICloudError && e.code === 'auth') throw e
-          entry.problem = e instanceof ICloudError ? e.message : 'iCloud did not answer'
+          entry.problem = stepFailureText(e)
         }
       }
       const repeats = calendars.flatMap(c => c.events).filter(e => e.repeats)
@@ -3213,7 +3378,7 @@ Deno.serve(async (req) => {
           }, { onConflict: 'user_id,area' })
         } catch (e) {
           if (e instanceof ICloudError && e.code === 'auth') throw e
-          areas.push({ area: key, name: area.name, state: 'failed', detail: e instanceof ICloudError ? e.message : 'iCloud did not answer' })
+          areas.push({ area: key, name: area.name, state: 'failed', detail: stepFailureText(e) })
         }
       }
       // A calendar not made is kept as the last problem until a run makes it, so a reload still says why.
@@ -3228,8 +3393,13 @@ Deno.serve(async (req) => {
 
     // Phase 2b: what changed goes to Apple Calendar — after a save, when the app opens, and on the timer (175).
     // `look`: also bring calendar names and colours back (the app's opening and the timer; a save skips it, for speed).
+    // `items`: the save's own slots and plans, sent first in its order (browser input: 1–3 distinct rows, each a kind
+    // from the allow-list and a uuid, refused otherwise; they only pick which of the caller's queued rows go first —
+    // never a calendar, area or address).
     if (action === 'drain') {
-      const result = await drainAccount(db, user.id, creds, row.area_calendars ?? {}, { look: body.look === true })
+      const items = drainItemsOf(body.items)
+      if (items === null) return answer({ error: 'Bad request' }, 400)
+      const result = await drainAccount(db, user.id, creds, row.area_calendars ?? {}, { look: body.look === true, items })
       if (!('busy' in result)) await clearRunProblem(db, user.id)
       return answer(result)
     }
@@ -3261,9 +3431,9 @@ Deno.serve(async (req) => {
     return answer({ error: 'Unknown action' }, 400)
   } catch (e) {
     // The message names no password, header or account URL (ICloudError texts only).
-    const message = e instanceof ICloudError ? e.message : 'Something went wrong talking to iCloud'
+    const message = stepFailureText(e)
     if (row) await db.from('icloud_credentials').update({ last_error: message }).eq('user_id', user.id)
-    console.error(`icloud-calendar ${action}: ${e instanceof ICloudError ? e.code : 'unexpected'}`)
+    console.error(`icloud-calendar ${action}: ${e instanceof ICloudError ? e.code : `unexpected ${faultFrames(e)}`}`)
     // Apple refusing the password is not this app's sign-in failing: 400, never 401.
     return answer({ error: message }, e instanceof ICloudError && e.code === 'auth' ? 400 : 502)
   }

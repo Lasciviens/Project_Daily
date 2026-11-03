@@ -131,7 +131,8 @@ export const toast = {
   error:   (msg: string) => useToastStore.getState().show(msg, 'error'),
   loading: (msg: string) => useToastStore.getState().show(msg, 'loading'),
   info:    (msg: string) => useToastStore.getState().show(msg, 'info'),
-  warning: (msg: string) => useToastStore.getState().show(msg, 'warning'),
+  /** `durationMs`: longer for a line with a reason and a time to read (Apple Calendar's send, appleSendRules). */
+  warning: (msg: string, durationMs?: number) => useToastStore.getState().show(msg, 'warning', durationMs),
   dismiss: (id: string)  => useToastStore.getState().dismiss(id),
   // The result of a done action with its Undo ("Task deleted · Undo").
   // onUndo runs if the user taps "Undo" before it expires.

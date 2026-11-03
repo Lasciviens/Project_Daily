@@ -71,21 +71,25 @@ export async function saveItemVia<A extends SaveItemAnswer>(
   if (answer?.taskId && input.labels?.length && answer.labels === null) {
     toast.warning('Saved without its labels — they need the latest database update (migration 180)')
   }
-  if (answer) void settleItemGoogle(answer, input.google).then(() => invalidate(qc, 'taskGraph'))
+  // The slot the screen opened with: a one-off turned into a repeat names its old event first (appleRowsOf).
+  if (answer) void settleItemGoogle(answer, input.google, input.blockId ?? null).then(() => invalidate(qc, 'taskGraph'))
   return answer
 }
 
 /**
  * THE item save — Add and edit, one-off or repeating, one day of a repeat
  * (scope 'day') or every day of it ('all'). "Added · 15.10.2026 17:30–18:30 ·
- * on Google Calendar". A caller whose save means more than that (a training
- * session moved out of its week, 167/169) reads back what happened (`after`,
- * once the database answered) and says it (`describe` — undefined keeps the
- * usual line).
+ * on Google Calendar" — "· sending to Apple Calendar" when the caller says the
+ * item's area shows there (`calendarApp`). A caller whose save means more than
+ * that (a training session moved out of its week, 167/169) reads back what
+ * happened (`after`, once the database answered) and says it (`describe` —
+ * undefined keeps the usual line).
  */
 export function useSaveItem(own?: {
   after?: (input: ItemInput, saved: SavedItem) => Promise<unknown>
   describe?: (input: ItemInput, after: unknown) => string | undefined
+  /** Where the item's area shows its calendar copy (useItemCalendarApp); Google when not said. */
+  calendarApp?: 'google' | 'apple'
 }) {
   const qc = useQueryClient()
   return useMutationWithFeedback<SavedItem, ItemInput>({
@@ -98,7 +102,7 @@ export function useSaveItem(own?: {
       }
       return own?.after ? { ...saved, after: await own.after(input, saved).catch(() => null) } : saved
     },
-    successMessage: (saved, input) => own?.describe?.(input, saved.after) ?? describeSaved(input, saved),
+    successMessage: (saved, input) => own?.describe?.(input, saved.after) ?? describeSaved(input, saved, own?.calendarApp),
     invalidates: ['taskGraph', qk.items.all],
   })
 }
