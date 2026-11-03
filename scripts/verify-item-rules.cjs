@@ -193,7 +193,7 @@ check('the sheet\'s delete is the data layer\'s (useDeleteItem)', /useDeleteItem
 check('the read-back state reads the run\'s outcome only (never the sync token)', /select\('last_run_at, last_clean_at, last_error, last_applied'\)/.test(api) && !/sync_token/.test(api))
 check('every hook mutation goes through useMutationWithFeedback', !/useMutation\(/.test(hooks) && (hooks.match(/useMutationWithFeedback</g) ?? []).length >= 5)
 check('deletes go through the one delete flow (useRowsDelete hooks / confirmDelete)', /useDeleteTask\(\)/.test(hooks) && /useDeleteScheduleBlock\(\)/.test(hooks) && /confirmDelete</.test(hooks))
-check('Google follows the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google\)/.test(hooks))
+check('Google follows the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google, input\.blockId \?\? null\)/.test(hooks))
 check('keys only from qk; groups for invalidation', !/queryKey: \[/.test(hooks) && /invalidates: \['taskGraph', qk\.items\.all\]/.test(hooks))
 check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026), with the calendar the caller names',
   /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved, own\?\.calendarApp\)/.test(hooks))
@@ -204,9 +204,8 @@ check('the Add sheet and Home\'s quick add name the calendar their chip / area n
   && /const calendarApp = useItemCalendarApp\(\{ domain: 'personal' \}\)\n\s*const save = useSaveItem\(\{ calendarApp \}\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
   && /domain: 'personal',/.test(read('src/features/items/sheetRules.ts').slice(read('src/features/items/sheetRules.ts').indexOf('export function itemFromQuickAdd'))))
 // 03.11.2026: with no Google connection on the device, Home's quick add sent 'none' — an Apple area's event never went.
-check('Home\'s quick add offers the calendar default for an Apple area even with no Google connection (as the Add sheet\'s choiceShown)',
-  /itemFromQuickAdd\(title, parse, day, googleConnected \|\| calendarApp === 'apple'\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
-  && /const choiceShown = googleConnected \|\| appleArea/.test(sheetModal))
+check('Home\'s quick add tells its builder whether the item\'s area is on Apple Calendar (no Google connection needed for that)',
+  /itemFromQuickAdd\(title, parse, day, googleConnected, calendarApp === 'apple'\)/.test(read('src/features/home/components/HomeDayCard.tsx')))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)

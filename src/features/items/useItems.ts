@@ -71,7 +71,8 @@ export async function saveItemVia<A extends SaveItemAnswer>(
   if (answer?.taskId && input.labels?.length && answer.labels === null) {
     toast.warning('Saved without its labels — they need the latest database update (migration 180)')
   }
-  if (answer) void settleItemGoogle(answer, input.google).then(() => invalidate(qc, 'taskGraph'))
+  // The slot the screen opened with: a one-off turned into a repeat names its old event first (appleRowsOf).
+  if (answer) void settleItemGoogle(answer, input.google, input.blockId ?? null).then(() => invalidate(qc, 'taskGraph'))
   return answer
 }
 

@@ -18,7 +18,7 @@ import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, syncScheduleSeriesAfterSave, takeSkippedDayOffCalendar,
 } from './scheduleSeriesCalendar'
 import { anyAreaOnAppleNow, appleAreaNow, appleAreaOf, drainICloudNow, drainICloudSoon, slotAreaInput } from '../areas/appleAreas'
-import { notInAppleText, stillInAppleText, type DrainItemRef } from '../areas/appleSendRules'
+import { APPLE_WARNING_MS, appleRowsOf, notInAppleText, stillInAppleText } from '../areas/appleSendRules'
 import type { AreaKey } from '../areas/calendarAreas'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,8 +170,10 @@ async function appleSideOf(answer: SaveItemAnswer): Promise<{ area: AreaKey; tab
 }
 
 /** Another run is sending the queue (often the app's own opening, or the timer): the save asks again after these
- *  pauses, so its item goes first in the next run instead of waiting for the timer. */
-const BUSY_WAITS_MS = [3000, 6000, 12000]
+ *  pauses (45 s in all — longer than a whole run of the app's opening), so its rows go first in the next run instead
+ *  of waiting for the timer. */
+const BUSY_WAITS_MS = [3000, 6000, 12000, 24000]
+
 
 /**
  * An item in an area on Apple Calendar, after its save: the queue goes to Apple now (Google Tasks first, so a
@@ -179,18 +181,19 @@ const BUSY_WAITS_MS = [3000, 6000, 12000]
  * is. A confirmed copy lets the old Google Task go, exactly like a confirmed Google Calendar event; one not
  * confirmed says why — the item's own reason from the server — and when it is tried again, or that it isn't.
  */
-async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, side: { area: AreaKey; table: 'time_blocks' | 'schedule_blocks'; id: string }): Promise<ItemGoogleOutcome> {
+async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, side: { area: AreaKey; table: 'time_blocks' | 'schedule_blocks'; id: string },
+  editedBlockId: string | null): Promise<ItemGoogleOutcome> {
   const wantsCal = google === 'calendar' || google === 'both'
   const wantsTasks = google === 'tasks' || google === 'both'
   const outcome: ItemGoogleOutcome = { calendar: wantsCal ? 'unknown' : 'off', tasks: answer.googleSync }
   if (answer.googleSync || wantsTasks) await drainTasks()
-  // The server sends only a row already queued for this item: the id picks which goes first, nothing else.
-  const item: DrainItemRef = { entity: side.table === 'time_blocks' ? 'slot' : 'plan', id: side.id }
-  let sent = await drainICloudNow({ item })
+  // The server sends only rows already queued for this account: the ids pick which go first, nothing else.
+  const items = appleRowsOf(answer, { entity: side.table === 'time_blocks' ? 'slot' : 'plan', id: side.id }, editedBlockId)
+  let sent = await drainICloudNow({ items })
   for (const wait of BUSY_WAITS_MS) {
     if (!sent.busy) break
     await new Promise(res => setTimeout(res, wait))
-    sent = await drainICloudNow({ item })
+    sent = await drainICloudNow({ items })
   }
   const said = { item: sent.item, problem: sent.problem, busy: sent.busy, now: new Date() }
   const now = await appleAreaNow(side.table, side.id)
@@ -208,14 +211,14 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
         void drainTasks()
       }
     } else if (outcome.calendar === 'unknown') {
-      toast.warning(notInAppleText({ ...said, keepsGoogleTask: google === 'calendar' && answer.googleSync }))
+      toast.warning(notInAppleText({ ...said, keepsGoogleTask: google === 'calendar' && answer.googleSync }), APPLE_WARNING_MS)
     }
     return outcome
   }
   if (now) {
     // The server keeps the Apple copy until the Google Task is there; it goes on its own once it is.
     outcome.calendar = 'unknown'
-    toast.warning(stillInAppleText({ ...said, toTasks: wantsTasks }))
+    toast.warning(stillInAppleText({ ...said, toTasks: wantsTasks }), APPLE_WARNING_MS)
     return outcome
   }
   if (answer.blockToDrop && answer.blockToDrop === answer.blockId) {
@@ -230,7 +233,7 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
  * in an area on Apple Calendar, its Apple side (settleItemApple).
  * Never throws; a failure is said once and logged.
  */
-export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTarget): Promise<ItemGoogleOutcome> {
+export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTarget, editedBlockId: string | null = null): Promise<ItemGoogleOutcome> {
   const wantsCal = google === 'calendar' || google === 'both'
   const wantsTasks = google === 'tasks' || google === 'both'
   const outcome: ItemGoogleOutcome = { calendar: wantsCal ? 'unknown' : 'off', tasks: answer.googleSync }
@@ -242,7 +245,7 @@ export async function settleItemGoogle(answer: SaveItemAnswer, google: GoogleTar
         logError(`Calendar: a replaced item's event not removed yet (the calendar outbox retries): ${message(err)}`, { eventId: answer.replacedEventId }))
     }
     const apple = await appleSideOf(answer)
-    if (apple) return await settleItemApple(answer, google, apple)
+    if (apple) return await settleItemApple(answer, google, apple, editedBlockId)
     // A replaced row may have had an Apple copy (its delete queued it): sent soon, quietly.
     drainICloudSoon()
     if (!connected()) return outcome

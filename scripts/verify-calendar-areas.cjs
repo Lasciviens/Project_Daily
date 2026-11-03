@@ -127,13 +127,13 @@ eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApp
    && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0 && /if \(error \|\| \(data \?\? \[\]\)\.length\) return true/.test(move), true,
   'a move that fails before anything moved puts the settings back; one that stopped part-way (some already in Apple) keeps the switch')
 eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
-eq(/const item: DrainItemRef = \{ entity: side\.table === 'time_blocks' \? 'slot' : 'plan', id: side\.id \}\n\s*let sent = await drainICloudNow\(\{ item \}\)/.test(appleSettle)
-   && /for \(const wait of BUSY_WAITS_MS\) \{\n\s*if \(!sent\.busy\) break/.test(appleSettle) && /const BUSY_WAITS_MS = \[3000, 6000, 12000\]/.test(settle), true,
-  'a save names its item, so the server sends it first; while another run is sending, it asks again after 3, 6 and 12 s')
+eq(/const items = appleRowsOf\(answer, \{ entity: side\.table === 'time_blocks' \? 'slot' : 'plan', id: side\.id \}, editedBlockId\)\n\s*let sent = await drainICloudNow\(\{ items \}\)/.test(appleSettle)
+   && /for \(const wait of BUSY_WAITS_MS\) \{\n\s*if \(!sent\.busy\) break/.test(appleSettle) && /const BUSY_WAITS_MS = \[3000, 6000, 12000, 24000\]/.test(settle), true,
+  'a save names its rows, so the server sends them first; while another run is sending, it asks again after 3, 6, 12 and 24 s (longer than a whole opening run)')
 eq(/const said = \{ item: sent\.item, problem: sent\.problem, busy: sent\.busy, now: new Date\(\) \}/.test(appleSettle)
-   && /toast\.warning\(notInAppleText\(\{ \.\.\.said, keepsGoogleTask: google === 'calendar' && answer\.googleSync \}\)\)/.test(appleSettle)
-   && /toast\.warning\(stillInAppleText\(\{ \.\.\.said, toTasks: wantsTasks \}\)\)/.test(appleSettle) && !/within minutes/.test(appleSettle), true,
-  'a save whose Apple copy is not confirmed says so, with the item\'s own outcome')
+   && /toast\.warning\(notInAppleText\(\{ \.\.\.said, keepsGoogleTask: google === 'calendar' && answer\.googleSync \}\), APPLE_WARNING_MS\)/.test(appleSettle)
+   && /toast\.warning\(stillInAppleText\(\{ \.\.\.said, toTasks: wantsTasks \}\), APPLE_WARNING_MS\)/.test(appleSettle) && !/within minutes/.test(appleSettle), true,
+  'a save whose Apple copy is not confirmed says so, with the item\'s own outcome, and the line stays long enough to read (8 s)')
 {
   // The warning's words (appleSendRules), run as they are.
   const W = require('../src/features/calendar/areas/appleSendRules')
@@ -142,33 +142,68 @@ eq(/const said = \{ item: sent\.item, problem: sent\.problem, busy: sent\.busy, 
   const at = (h, m, day = 3) => new Date(2026, 10, day, h, m).toISOString()
   const say = (item, extra = {}) => W.notInAppleText({ item, problem: null, busy: false, keepsGoogleTask: false, now, ...extra })
   eq(say(out('failed', 'iCloud answered 500 when an event was written', at(14, 34))),
-    'Saved · not in Apple Calendar yet (iCloud answered 500 when an event was written) — it is tried again after 14:34.',
-    "a failed send says the item's own reason and its own retry time (DD.MM.YYYY HH:MM rule: HH:MM today)")
-  eq(say(out('waiting', 'The app could not build this event — a fault in the app, not in iCloud', at(9, 15, 4))),
-    'Saved · not in Apple Calendar yet (The app could not build this event — a fault in the app, not in iCloud) — it is tried again after 04.11.2026 09:15.',
+    'Not in Apple Calendar: iCloud error 500 · next try 14:34',
+    "a failed send says the item's own reason (iCloud's status code) and its own retry time (HH:MM today)")
+  eq(say(out('waiting', 'iCloud could not be reached', at(9, 15, 4))), 'Not in Apple Calendar: iCloud could not be reached · next try 04.11.2026 09:15',
     'a row tried moments ago by another run: its last reason, its retry another day with the date')
-  eq([say(out('none')), say(out('removed'))].every(t => t === 'Saved · not sent to Apple Calendar — its area (Settings → Calendar) or its calendar choice doesn\'t send it there now.'), true,
+  // Where a retry can't help, the line says where the owner acts (or that the app needs a fix) — never a retry time.
+  eq([say(out('failed', W.SERVER_TEXT.appFault, at(14, 34))), say(null, { problem: W.SERVER_TEXT.auth }), say(out('failed', W.SERVER_TEXT.noCalendars, at(14, 34))),
+      say(out('failed', 'An event line holds a control character — not written', at(14, 34))), say(null, { problem: W.SERVER_TEXT.appStep })],
+    ['Not in Apple Calendar: a fault in the app, not iCloud · needs a fix', 'Not in Apple Calendar: Apple refused the password · Settings → Subscriptions',
+      'Not in Apple Calendar: its area calendars are missing · Settings → Calendar', 'Not in Apple Calendar: an event line holds a control character · change the item',
+      'Not in Apple Calendar: a fault in the app, not iCloud · needs a fix'],
+    'a refused password, missing area calendars, a fault in the app or a refused field: where to act, no retry promised')
+  eq([say(null, { problem: W.SERVER_TEXT.busy }), say(null, { busy: true }), say(null, { problem: 'Failed to fetch' }), say(null)],
+    ['Not in Apple Calendar: iCloud asked the app to wait · next try within minutes', 'Not in Apple Calendar: another send was running · next try within minutes',
+      'Not in Apple Calendar: no connection to the server · next try within minutes', 'Not in Apple Calendar yet · next try within minutes'],
+    "iCloud's limit, another run sending all along, no connection: one retry phrase, said once")
+  eq([say(out('none')), say(out('removed'))].every(x => x === 'Not sent to Apple Calendar: its calendar doesn\'t go there · Settings → Calendar'), true,
     'the server says it does not go to Apple Calendar: said plainly, and no retry is promised (none comes)')
-  eq(say(out('not-queued')), 'Saved · not in Apple Calendar — nothing waits to be sent for it; a change to it sends it.', 'nothing queued for it: no retry promised either')
-  eq([say(null, { problem: 'Apple did not accept the Apple ID or app-specific password' }), say(null, { busy: true })],
-    ['Saved · not in Apple Calendar yet (Apple did not accept the Apple ID or app-specific password) — it is tried again within minutes.',
-      'Saved · not in Apple Calendar yet (another send was running) — it is tried again within minutes.'],
-    'no word from the server about the item (the call failed, or another run sent all along): the call\'s reason, the next send')
+  eq([say(out('not-queued')), say(out('sent')), say(out('kept'))],
+    ['Not in Apple Calendar: nothing is queued for it · save it again', 'Sent to Apple Calendar · not confirmed yet', 'Sent to Apple Calendar · not confirmed yet'],
+    'nothing queued, or sent but not confirmed: no retry promised (none comes)')
   eq([say(out('failed', 'x', at(14, 34)), { keepsGoogleTask: true }), say(out('none'), { keepsGoogleTask: true })],
-    ["Apple Calendar hasn't confirmed the event yet (x), so the Google Task stays for now — save the item again to finish the move.",
-      "Saved · not sent to Apple Calendar — its area (Settings → Calendar) or its calendar choice doesn't send it there now, so its Google Task stays."],
-    'a move from Google Tasks keeps its Google Task until the Apple copy is confirmed, and says why')
+    ['Not in Apple Calendar: x · next try 14:34 · Google Task kept', "Not sent to Apple Calendar: its calendar doesn't go there · Settings → Calendar · Google Task kept"],
+    'a move from Google Tasks keeps its Google Task until the Apple copy is confirmed, and says so')
   const still = (item, toTasks = false) => W.stillInAppleText({ item, problem: null, busy: false, toTasks, now })
-  eq([still(out('kept'), true), still(null, true), still(out('failed', 'iCloud could not be reached', at(14, 34))), still(out('not-queued'))],
-    ["Google Tasks hasn't confirmed its copy yet, so the Apple Calendar event stays until it has.", "Google Tasks hasn't confirmed its copy yet, so the Apple Calendar event stays until it has.",
-      "Saved · its Apple Calendar event isn't removed yet (iCloud could not be reached) — it is tried again after 14:34.",
-      "Saved · its Apple Calendar event isn't removed — nothing waits to remove it; a change to it does."],
+  eq([still(out('kept'), true), still(null, true), still(out('failed', 'iCloud could not be reached', at(14, 34))), still(out('not-queued')), still(out('removed')), still(null)],
+    ['Apple Calendar event stays until Google Tasks has its copy', 'Apple Calendar event stays until Google Tasks has its copy',
+      'Apple Calendar event not removed: iCloud could not be reached · next try 14:34', 'Apple Calendar event not removed: nothing is queued · save it again',
+      'Apple Calendar event removed · not confirmed yet', 'Apple Calendar event not removed yet · next try within minutes'],
     'an Apple copy still there: waiting for its Google Task, or the removal\'s own reason and retry time')
+  // Every line fits a phone toast: short, one retry phrase at most, never one where the owner has to act.
+  const long = 'iCloud answered 500 when an event was written and then something else went wrong too'
+  const lines = [say(out('failed', long, at(14, 34)), { keepsGoogleTask: true }), say(out('failed', W.SERVER_TEXT.appFault, at(14, 34)), { keepsGoogleTask: true }),
+    still(out('failed', long, at(9, 15, 4))), say(null, { problem: W.SERVER_TEXT.auth }), say(out('none'), { keepsGoogleTask: true })]
+  eq(lines.every(l => l.length <= 112) && lines.every(l => (l.match(/next try|tried again/g) || []).length <= 1)
+     && !/next try/.test(lines[1]) && !/next try/.test(lines[3]), true, 'every warning is short (≤ 112 characters even with the longest reason), with at most one retry phrase')
+  eq(say(out('failed', 'iCloud answered 412 when an event was written', at(14, 34))).length <= 60, true, 'a usual one fits two short lines on a phone')
+  eq(W.APPLE_WARNING_MS, 8000, 'these warnings stay 8 s (a plain one 3 s)')
   eq([W.drainItemOutcome({ status: 'failed', error: ' why ', retryAt: '2026-11-03T13:34:00.000+00:00' }), W.drainItemOutcome({ status: 'sent' }),
       W.drainItemOutcome({ status: 'gone' }), W.drainItemOutcome(null), W.drainItemOutcome({ status: 'failed', error: 42, retryAt: 'soon' })],
     [{ status: 'failed', error: 'why', retryAt: '2026-11-03T13:34:00.000+00:00' }, { status: 'sent', error: null, retryAt: null }, null, null, { status: 'failed', error: null, retryAt: null }],
-    "the server's answer is checked where it enters (an unknown status, a missing answer from an older server, broken fields)")
-  eq(W.retryWhen(at(14, 0), now), 'it is tried again within minutes', 'a retry time already passed promises only the next send')
+    "one row's answer is checked where it enters (an unknown status, a missing answer from an older server, broken fields)")
+  const sid = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e', pid = '3d6f2cab-5e10-4b4c-8fa1-2a3b4c5d6e7f'
+  eq([W.outcomeFor([{ entity: 'plan', id: pid, status: 'sent' }, { entity: 'slot', id: sid, status: 'failed', error: 'x' }], { entity: 'slot', id: sid }),
+      W.outcomeFor([{ entity: 'plan', id: sid, status: 'sent' }], { entity: 'slot', id: sid }), W.outcomeFor(undefined, { entity: 'slot', id: sid }), W.outcomeFor({ status: 'sent' }, { entity: 'slot', id: sid })],
+    [{ status: 'failed', error: 'x', retryAt: null }, null, null, null], "the save reads its own item's answer by kind and id (never another row's, never a bare object)")
+  eq(W.retryWhen(at(14, 0), now), 'next try within minutes', 'a retry time already passed promises only the next send')
+  // The rows a save names, in the order they must arrive (the item itself last).
+  const base = { occurrence: false, scheduleBlockId: null, replacedScheduleBlockId: null }
+  const slot = { entity: 'slot', id: sid }, plan = { entity: 'plan', id: pid }, old = '4e7a3bcd-6f21-4c5d-9ab2-3b4c5d6e7f80'
+  eq([W.appleRowsOf(base, slot, null), W.appleRowsOf({ ...base, occurrence: true, scheduleBlockId: pid }, slot, null),
+      W.appleRowsOf({ ...base, replacedScheduleBlockId: old }, slot, sid), W.appleRowsOf({ ...base, scheduleBlockId: pid }, plan, old), W.appleRowsOf({ ...base, scheduleBlockId: pid }, plan, null)],
+    [[slot], [plan, slot], [{ entity: 'plan', id: old }, slot], [{ entity: 'slot', id: old }, plan], [plan]],
+    'a plain save names its item; a "This day" edit its series first; a repeat turned one-off its old series first; a one-off turned repeat its old event first')
+  // The words and the list are the server's own (icloud-calendar), copied exactly.
+  const fnText = read('supabase/functions/icloud-calendar/index.ts')
+  eq([fnText.includes(`throw new ICloudError('auth', '${W.SERVER_TEXT.auth}')`), fnText.includes(`const NO_AREA_CALENDAR = '${W.SERVER_TEXT.noCalendars}'`),
+      fnText.includes(`export const APP_FAULT = '${W.SERVER_TEXT.appFault}'`), fnText.includes(`export const APP_FAULT_STEP = '${W.SERVER_TEXT.appStep}'`),
+      fnText.includes(`throw new ICloudError('busy', '${W.SERVER_TEXT.busy}')`)], [true, true, true, true, true], "the server's texts the warnings recognise are its exact texts")
+  const statuses = /type DrainItemStatus = ([^\n]+)/.exec(fnText)?.[1].match(/'([a-z-]+)'/g)?.map(x => x.slice(1, -1))
+  eq(statuses, [...W.DRAIN_ITEM_STATUSES], "the statuses the browser knows are exactly the server's")
+  eq(read('src/features/calendar/areas/appleSendRules.ts').includes('export const MAX_DRAIN_ITEMS = 3') && /export const DRAIN_MAX_ITEMS = 3/.test(fnText), true,
+    'the browser names at most as many rows as the server takes')
 }
 eq(/save\.mutate\(\{ base: prefs, next: readCalendarPrefs\(form\) \}/.test(read('src/features/settings/components/CalendarTab.tsx'))
    && /saveCalendarPrefsChanges\(previous, next\)/.test(move) && /saveCalendarPrefsChanges\(next, previous\)/.test(move), true,

@@ -60,7 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| `supabase/functions/icloud-calendar/index.ts`, `src/features/calendar/api/itemCalendar.ts`, `src/features/calendar/areas/{appleAreas,appleSendRules}.ts`, `src/features/calendar/icloud/icloudApi.ts`, `src/features/home/components/HomeDayCard.tsx`, `src/features/items/{itemRules,useItems,sheetRules}.ts`, `src/shared/components/plan-modal/UnifiedPlanModal.tsx`, `scripts/verify-{icloud-events,item-rules,calendar-areas}.cjs`, `.claude/rules/planning.md`, `docs/features/{planning-calendar,calendar-plan,home}.md`, `docs/integrations/icloud-caldav.md` | Claude | Apple Calendar: a save's own item goes first, honest save messages, Home quick add on Apple | 03.11.2026 |
+| `supabase/functions/icloud-calendar/index.ts`, `src/features/calendar/api/itemCalendar.ts`, `src/features/calendar/areas/{appleAreas,appleSendRules}.ts`, `src/features/calendar/icloud/icloudApi.ts`, `src/features/home/components/HomeDayCard.tsx`, `src/features/items/{itemRules,useItems,sheetRules}.ts`, `src/shared/components/plan-modal/UnifiedPlanModal.tsx`, `src/app/store.ts`, `scripts/verify-{icloud-events,item-rules,calendar-areas,sheet-rules}.cjs`, `.claude/rules/planning.md`, `docs/features/{planning-calendar,calendar-plan,home,tasks}.md`, `docs/integrations/icloud-caldav.md` | Claude | Apple Calendar: a save's own item goes first, honest save messages, Home quick add on Apple | 03.11.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

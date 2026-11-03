@@ -8,7 +8,7 @@ import { AREA_KEYS, onApple, type AreaKey, type CalendarPrefs } from './calendar
 import { fetchCalendarPrefs } from './calendarPrefsApi'
 import { rememberCalendarPrefs, rememberedCalendarPrefs } from './calendarPrefsMemory'
 import { itemArea, type AreaInput } from './icloudEvents'
-import { drainItemOutcome, type DrainItemOutcome, type DrainItemRef } from './appleSendRules'
+import { outcomeFor, type DrainItemOutcome, type DrainItemRef } from './appleSendRules'
 import { drainICloudQueue } from '../icloud/icloudApi'
 
 const FRESH_MS = 60_000
@@ -75,20 +75,20 @@ export interface DrainOutcome {
   readBackApplied: number
   /** Calendars renamed or recoloured on the iPhone: Settings → Calendar must be read again. */
   calendarsRenamed: number
-  /** The save's own item, when the call named one: what the server did with it (null: not said — busy, a failed
+  /** The save's own item (the last row it named): what the server did with it (null: not said — busy, a failed
    *  call, an older server). */
   item: DrainItemOutcome | null
 }
 
-/** Sends what waits for Apple Calendar now — a save's own item first (`item`: only its row already queued) — and the
+/** Sends what waits for Apple Calendar now — a save's own rows first (`items`: only rows already queued) — and the
  *  timer catches whatever this misses within minutes. Quiet: the caller says what the item needs. */
-export async function drainICloudNow(opts: { look?: boolean; item?: DrainItemRef } = {}): Promise<DrainOutcome> {
+export async function drainICloudNow(opts: { look?: boolean; items?: DrainItemRef[] } = {}): Promise<DrainOutcome> {
   try {
-    const r = await drainICloudQueue(opts.look === true, opts.item)
+    const r = await drainICloudQueue(opts.look === true, opts.items)
     if ('busy' in r) return { busy: true, problem: null, readBackApplied: 0, calendarsRenamed: 0, item: null }
     return {
       busy: false, problem: null, readBackApplied: r.readBack?.applied ?? 0, calendarsRenamed: r.readBack?.calendarsRenamed ?? 0,
-      item: drainItemOutcome(r.item),
+      item: opts.items?.length ? outcomeFor(r.items, opts.items[opts.items.length - 1]) : null,
     }
   } catch (err) {
     logError(`Apple Calendar: the queue was not sent: ${(err as Error).message}`, { action: 'icloud_drain' })
