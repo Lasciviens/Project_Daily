@@ -99,7 +99,9 @@ function HomeQuickAdd({ day }: { day: string }) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const input = itemFromQuickAdd(title, parse, day, googleConnected)
+    // As the Add sheet (choiceShown): an Apple area takes the calendar default even with no Google connection here —
+    // with 'none' its event never went to Apple Calendar (03.11.2026).
+    const input = itemFromQuickAdd(title, parse, day, googleConnected || calendarApp === 'apple')
     if (!input) return
     setTitle('')
     setKeepText(false)

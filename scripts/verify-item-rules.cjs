@@ -203,6 +203,10 @@ check('the Add sheet and Home\'s quick add name the calendar their chip / area n
   && /\n    calendarApp,\n  \}\)/.test(sheetModal.slice(sheetModal.indexOf('const save = useSaveItem(')))
   && /const calendarApp = useItemCalendarApp\(\{ domain: 'personal' \}\)\n\s*const save = useSaveItem\(\{ calendarApp \}\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
   && /domain: 'personal',/.test(read('src/features/items/sheetRules.ts').slice(read('src/features/items/sheetRules.ts').indexOf('export function itemFromQuickAdd'))))
+// 03.11.2026: with no Google connection on the device, Home's quick add sent 'none' — an Apple area's event never went.
+check('Home\'s quick add offers the calendar default for an Apple area even with no Google connection (as the Add sheet\'s choiceShown)',
+  /itemFromQuickAdd\(title, parse, day, googleConnected \|\| calendarApp === 'apple'\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
+  && /const choiceShown = googleConnected \|\| appleArea/.test(sheetModal))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)
