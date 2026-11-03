@@ -2039,6 +2039,14 @@ export function drainOrder<T extends { id: number }>(first: T | null, queue: rea
 /** A send that failed in the app's own code: said as the app's fault, never as iCloud's. */
 export const APP_FAULT = 'The app could not build this event — a fault in the app, not in iCloud'
 
+/** The event rules' own guards (icloudEvents.ts, generated above): each names what it refused. Compared exactly — an
+ *  allow-list, never a pattern — so no other error's text ever reaches the row, the card or the browser. */
+export const GUARD_REFUSALS: readonly string[] = [
+  'Not a zone this runtime knows — not written',
+  'An event zone is not a zone name — not written',
+  'An event line holds a control character — not written',
+]
+
 /**
  * Why a queued item wasn't sent, for its row, the card and the save's warning. iCloud's own failures (no answer, a
  * refusal) are ICloudErrors with their own text (`dav` turns an answer cut off mid-way into one too); a guard of the
@@ -2047,7 +2055,7 @@ export const APP_FAULT = 'The app could not build this event — a fault in the 
  */
 export function sendFailureText(e: unknown): string {
   if (e instanceof ICloudError) return e.message
-  if (e instanceof Error && / — not written$/.test(e.message)) return e.message
+  if (e instanceof Error && GUARD_REFUSALS.includes(e.message)) return e.message
   return APP_FAULT
 }
 
@@ -2778,7 +2786,13 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
         await db.from('icloud_outbox').delete().eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
         if (mine) item = { status: ITEM_STATUS[result] }
       } catch (e) {
-        if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) throw e
+        if (e instanceof ICloudError && (e.code === 'auth' || e.code === 'busy')) {
+          // The whole run stops here, but the save's own row was just tried: its retry time moves on, so a row waiting
+          // for a retry still goes early at most once per ITEM_RETRY_GAP_MS (guardian review, 03.11.2026).
+          if (mine && q.attempts >= 1) await db.from('icloud_outbox').update({ next_try_at: retryAt(q.attempts) })
+            .eq('id', q.id).eq('user_id', userId).eq('requested_at', q.requested_at)
+          throw e
+        }
         counts.failed++
         // iCloud's failure says what iCloud did; a fault in the app's own code says so — never "iCloud did not answer".
         const why = sendFailureText(e)

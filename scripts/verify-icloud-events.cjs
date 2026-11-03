@@ -170,7 +170,7 @@ const src = fs.readFileSync(path.join(__dirname, '../supabase/functions/icloud-c
 const { transform } = require('sucrase')
 const pure = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
 const F = new Function(`${transform(pure.replace(/^export /gm, ''), { transforms: ['typescript'] }).code}\nreturn { ownEventUrl, drainStep, validEtag, onApple, ownEventOfHref, titleFromSummary, bareTitleFromSummary, readbackChangeOf,
-  drainItemOf, DRAIN_ITEM_ENTITIES, drainOrder, itemRowMayGo, retryDelayMs, ITEM_RETRY_GAP_MS, sendFailureText, APP_FAULT, ICloudError }`)()
+  drainItemOf, DRAIN_ITEM_ENTITIES, drainOrder, itemRowMayGo, retryDelayMs, ITEM_RETRY_GAP_MS, sendFailureText, APP_FAULT, GUARD_REFUSALS, ICloudError }`)()
 const cals = { work: { url: 'https://p67-caldav.icloud.com:443/123/calendars/lasci-work/' }, media: { url: 'https://evil.example/lasci-media/' } }
 const id = '2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e'
 eq(F.ownEventUrl('slot', id, 'work', cals), `https://p67-caldav.icloud.com/123/calendars/lasci-work/lasci-slot-${id}.ics`, "an event's address is its own file in the area calendar the app made")
@@ -323,7 +323,7 @@ const readFile = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
 eq(/BLOCK_EVENT_RESET: RowOverrides = \{ time_blocks: \{ google_calendar_event_id: null, icloud_area: null, icloud_etag: null \} \}/.test(readFile('src/features/calendar/api/deletedBlockEvents.ts'))
    && /icloud_area: null, icloud_etag: null, icloud_horizon: null/.test(readFile('src/features/calendar/api/scheduleSeriesCalendar.ts')), true,
   'Undo of a delete puts the item back without its old Apple link (the next read-back never takes it for deleted on the iPhone)')
-eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) throw e/.test(drainFn), true,
+eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?\n\s*throw e\n\s*\}/.test(drainFn), true,
   "iCloud's rate limit (503) stops the run instead of hammering it")
 
 console.log('\n== A save\'s own item goes first (03.11.2026) ==')
@@ -391,6 +391,13 @@ console.log('\n== A save\'s own item goes first (03.11.2026) ==')
   eq(F.APP_FAULT, 'The app could not build this event — a fault in the app, not in iCloud', '…in plain words')
   eq([F.sendFailureText(new Error('An event line holds a control character — not written')), F.sendFailureText(new Error('An event zone is not a zone name — not written'))],
     ['An event line holds a control character — not written', 'An event zone is not a zone name — not written'], "the event rules' own guards name what they refused")
+  eq([F.sendFailureText(new Error('Anything else — not written')), F.sendFailureText(new Error('An event line holds a control character — not written (x)'))],
+    [F.APP_FAULT, F.APP_FAULT], 'only the guards\' exact texts pass (an allow-list, never a pattern)')
+  const eventsSrc = fs.readFileSync(path.join(__dirname, '../src/features/calendar/areas/icloudEvents.ts'), 'utf8')
+  eq(F.GUARD_REFUSALS.length === 3 && F.GUARD_REFUSALS.every(g => eventsSrc.includes(`throw new Error('${g}')`)), true,
+    'each allowed text is one the event rules really throw (a changed guard text fails here)')
+  eq(/if \(e instanceof ICloudError && \(e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?if \(mine && q\.attempts >= 1\) await db\.from\('icloud_outbox'\)\.update\(\{ next_try_at: retryAt\(q\.attempts\) \}\)[^]*?throw e\n/.test(drain), true,
+    'a password refusal or iCloud\'s limit still records the save\'s own try, so the 10 s gap holds there too')
   eq(/const why = sendFailureText\(e\)/.test(drain) && !/'iCloud did not answer'/.test(drain), true, 'the drain records that text on the row (the card and the save\'s warning show it)')
   const davFn = src.slice(src.indexOf('async function dav('), src.indexOf('const READ_METHODS'))
   eq(/text: await readCapped\(res\)\.catch\(noAnswer\)/.test(davFn) && /function noAnswer\(e: unknown\): never \{\n\s*throw e instanceof ICloudError \? e : new ICloudError\('unreachable', 'iCloud did not answer'\)/.test(src)
