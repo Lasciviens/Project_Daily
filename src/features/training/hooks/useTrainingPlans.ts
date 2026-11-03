@@ -4,12 +4,14 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchFirstPlanDay, type TrainingPlanRef } from '../api/trainingPlanApi'
 import { useScheduleBlocks, useTrainingBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { buildPlansByDate } from '../components/calendar/calendarPlans'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
 /** Planned training sessions per day of [from, to]: one-off training blocks +
- *  recurring training templates projected onto each day, each projected day
- *  with its task when it has one (calendarPlans.ts). The calendar, the session
- *  popup and Personal's Training card read it, so all see the same plans. */
+ *  recurring training templates projected onto each day from today on, each
+ *  projected day with its task when it has one; a past day shows its stored
+ *  day tasks only (calendarPlans.ts). The calendar, the session popup and
+ *  Personal's Training card read it, so all see the same plans. */
 export function useTrainingPlansByDate(from: string, to: string): {
   data: Map<string, CalendarPlanItem[]>
   isLoading: boolean
@@ -21,7 +23,8 @@ export function useTrainingPlansByDate(from: string, to: string): {
   const blocks = blocksQ.data
   const templates = templatesQ.data
   const dayTasks = dayTasksQ.data
-  const data = useMemo(() => buildPlansByDate(from, to, blocks ?? [], templates ?? [], dayTasks ?? []), [from, to, blocks, templates, dayTasks])
+  const today = todayStr()
+  const data = useMemo(() => buildPlansByDate(from, to, blocks ?? [], templates ?? [], dayTasks ?? [], today), [from, to, blocks, templates, dayTasks, today])
   return {
     data,
     isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading,

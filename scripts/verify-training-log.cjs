@@ -367,6 +367,23 @@ console.log('\n== 167: a workout represents itself; a weekly day reads its own t
     [dayTask({ status: 'cancelled', closed_reason: 'missed' })])
   const item = (plans.get('2026-09-22') ?? [])[0]
   check('buildPlansByDate carries the day\'s task on its projection', item?.dayTask?.id === 't1')
+  // Owner, 03.11.2026: the schedule changed from Mon/Tue/Thu/Fri to Tue/Wed/Fri/Sat, and every past Wednesday read as
+  // skipped — today's rule was drawn onto past weeks. A past day shows its stored day tasks; the rule draws from today.
+  {
+    const twfs = { id: 'sb1', title: 'Upper B', start_time: '16:30:00', end_time: '17:30:00', days_of_week: [2, 3, 5, 6], category: 'training', effective_from: '2026-09-01' }
+    const oldMon = dayTask({ id: 'tm', occurrence_date: '2026-09-21', status: 'done', hevy_workout_id: 'w1' })
+    const oldThu = dayTask({ id: 'tt', occurrence_date: '2026-09-24', status: 'cancelled', closed_reason: 'missed' })
+    const week = buildPlansByDate('2026-09-21', '2026-10-04', [], [twfs], [oldMon, oldThu], '2026-09-28')
+    check('a past Wednesday the old schedule never had shows no session (no phantom Missed or Skipped)', !week.has('2026-09-23'))
+    check('a past Monday and Thursday show their stored sessions (the old schedule), each with its task',
+      week.get('2026-09-21')?.[0]?.dayTask?.id === 'tm' && week.get('2026-09-24')?.[0]?.dayTask?.id === 'tt' && week.get('2026-09-21')?.[0]?.id === 'sb1__2026-09-21')
+    check('from today on the current rule draws the days (Tue, Wed, Fri, Sat)', ['2026-09-29', '2026-09-30', '2026-10-02', '2026-10-03'].every(d => week.get(d)?.length === 1)
+      && !week.has('2026-09-28') && !week.has('2026-10-01'))
+    check('a day task of a template that is gone shows nothing on a past day', !buildPlansByDate('2026-09-21', '2026-09-27', [], [], [oldMon], '2026-09-28').has('2026-09-21'))
+    check('no today given: the rules draw every day (older callers)', buildPlansByDate('2026-09-21', '2026-09-27', [], [twfs], [], null).has('2026-09-23'))
+    const hook = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingPlans.ts'), 'utf8')
+    check('the calendar\'s hook passes today, so past days never read today\'s rule', /buildPlansByDate\(from, to, blocks \?\? \[\], templates \?\? \[\], dayTasks \?\? \[\], today\)/.test(hook))
+  }
   const missed = cs.matchDaySessions({ date: '2026-09-22', todayStr: '2026-09-24', plans: [item], workouts: [], hasActivity: false })
   check('a weekly day closed as missed reads "Not logged yet" while its week runs — never Skipped', missed.openPlans[0]?.status === 'pending')
   const skippedItem = { ...item, dayTask: dayTask({ status: 'cancelled', closed_reason: null }) }
