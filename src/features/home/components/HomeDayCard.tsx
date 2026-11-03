@@ -9,6 +9,7 @@ import { DayAgenda } from '../../daily/components/DayAgenda'
 import { useSaveItem } from '../../items/useItems'
 import { parseQuickAdd } from '../../items/quickAdd'
 import { itemFromQuickAdd } from '../../items/sheetRules'
+import { useItemCalendarApp } from '../../calendar/areas/useItemCalendarApp'
 import { ReadAsLine } from '../../items/components/ReadAsLine'
 import { useCalendarStore } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -88,7 +89,9 @@ function WeekHeader({ day, onDay }: { day: string; onDay: (day: string) => void 
  * says what it read and saves through the one item save.
  */
 function HomeQuickAdd({ day }: { day: string }) {
-  const save = useSaveItem()
+  // Quick add makes a Personal item (itemFromQuickAdd): the result line names that area's calendar.
+  const calendarApp = useItemCalendarApp({ domain: 'personal' })
+  const save = useSaveItem({ calendarApp })
   const googleConnected = !!useCalendarStore(s => s.accessToken)
   const [title, setTitle] = useState('')
   const [keepText, setKeepText] = useState(false)

@@ -119,7 +119,7 @@ eq(/if \(await appleAreaOf\(\{ category: row\.category, domain: row\.domain \}\)
 eq((series.match(/await createSeriesEvent\(/g) || []).length, 1, "the series is made in that one place only")
 const settle = read('src/features/calendar/api/itemCalendar.ts')
 const appleSettle = settle.slice(settle.indexOf('async function settleItemApple'), settle.indexOf('export async function settleItemGoogle'))
-eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainICloudNow()') && /outcome\.calendar === 'linked' && google === 'calendar'/.test(appleSettle)
+eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainICloudNow(') && /outcome\.calendar === 'linked' && google === 'calendar'/.test(appleSettle)
    && appleSettle.indexOf("outcome.calendar = now === side.area ? 'linked' : 'unknown'") < appleSettle.indexOf('google_sync_enabled: false'), true,
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
 const move = read('src/features/calendar/areas/areaMoveApi.ts')
@@ -127,8 +127,49 @@ eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApp
    && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0 && /if \(error \|\| \(data \?\? \[\]\)\.length\) return true/.test(move), true,
   'a move that fails before anything moved puts the settings back; one that stopped part-way (some already in Apple) keeps the switch')
 eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
-eq(/const why = sent\.problem/.test(appleSettle) && /Saved · not in Apple Calendar yet\$\{why\}/.test(appleSettle), true,
-  'a save whose Apple copy is not confirmed says so, with the reason')
+eq(/const item: DrainItemRef = \{ entity: side\.table === 'time_blocks' \? 'slot' : 'plan', id: side\.id \}\n\s*let sent = await drainICloudNow\(\{ item \}\)/.test(appleSettle)
+   && /for \(const wait of BUSY_WAITS_MS\) \{\n\s*if \(!sent\.busy\) break/.test(appleSettle) && /const BUSY_WAITS_MS = \[3000, 6000, 12000\]/.test(settle), true,
+  'a save names its item, so the server sends it first; while another run is sending, it asks again after 3, 6 and 12 s')
+eq(/const said = \{ item: sent\.item, problem: sent\.problem, busy: sent\.busy, now: new Date\(\) \}/.test(appleSettle)
+   && /toast\.warning\(notInAppleText\(\{ \.\.\.said, keepsGoogleTask: google === 'calendar' && answer\.googleSync \}\)\)/.test(appleSettle)
+   && /toast\.warning\(stillInAppleText\(\{ \.\.\.said, toTasks: wantsTasks \}\)\)/.test(appleSettle) && !/within minutes/.test(appleSettle), true,
+  'a save whose Apple copy is not confirmed says so, with the item\'s own outcome')
+{
+  // The warning's words (appleSendRules), run as they are.
+  const W = require('../src/features/calendar/areas/appleSendRules')
+  const now = new Date(2026, 10, 3, 14, 30)
+  const out = (status, error = null, retryAt = null) => ({ status, error, retryAt })
+  const at = (h, m, day = 3) => new Date(2026, 10, day, h, m).toISOString()
+  const say = (item, extra = {}) => W.notInAppleText({ item, problem: null, busy: false, keepsGoogleTask: false, now, ...extra })
+  eq(say(out('failed', 'iCloud answered 500 when an event was written', at(14, 34))),
+    'Saved · not in Apple Calendar yet (iCloud answered 500 when an event was written) — it is tried again after 14:34.',
+    "a failed send says the item's own reason and its own retry time (DD.MM.YYYY HH:MM rule: HH:MM today)")
+  eq(say(out('waiting', 'The app could not build this event — a fault in the app, not in iCloud', at(9, 15, 4))),
+    'Saved · not in Apple Calendar yet (The app could not build this event — a fault in the app, not in iCloud) — it is tried again after 04.11.2026 09:15.',
+    'a row tried moments ago by another run: its last reason, its retry another day with the date')
+  eq([say(out('none')), say(out('removed'))].every(t => t === 'Saved · not sent to Apple Calendar — its area (Settings → Calendar) or its calendar choice doesn\'t send it there now.'), true,
+    'the server says it does not go to Apple Calendar: said plainly, and no retry is promised (none comes)')
+  eq(say(out('not-queued')), 'Saved · not in Apple Calendar — nothing waits to be sent for it; a change to it sends it.', 'nothing queued for it: no retry promised either')
+  eq([say(null, { problem: 'Apple did not accept the Apple ID or app-specific password' }), say(null, { busy: true })],
+    ['Saved · not in Apple Calendar yet (Apple did not accept the Apple ID or app-specific password) — it is tried again within minutes.',
+      'Saved · not in Apple Calendar yet (another send was running) — it is tried again within minutes.'],
+    'no word from the server about the item (the call failed, or another run sent all along): the call\'s reason, the next send')
+  eq([say(out('failed', 'x', at(14, 34)), { keepsGoogleTask: true }), say(out('none'), { keepsGoogleTask: true })],
+    ["Apple Calendar hasn't confirmed the event yet (x), so the Google Task stays for now — save the item again to finish the move.",
+      "Saved · not sent to Apple Calendar — its area (Settings → Calendar) or its calendar choice doesn't send it there now, so its Google Task stays."],
+    'a move from Google Tasks keeps its Google Task until the Apple copy is confirmed, and says why')
+  const still = (item, toTasks = false) => W.stillInAppleText({ item, problem: null, busy: false, toTasks, now })
+  eq([still(out('kept'), true), still(null, true), still(out('failed', 'iCloud could not be reached', at(14, 34))), still(out('not-queued'))],
+    ["Google Tasks hasn't confirmed its copy yet, so the Apple Calendar event stays until it has.", "Google Tasks hasn't confirmed its copy yet, so the Apple Calendar event stays until it has.",
+      "Saved · its Apple Calendar event isn't removed yet (iCloud could not be reached) — it is tried again after 14:34.",
+      "Saved · its Apple Calendar event isn't removed — nothing waits to remove it; a change to it does."],
+    'an Apple copy still there: waiting for its Google Task, or the removal\'s own reason and retry time')
+  eq([W.drainItemOutcome({ status: 'failed', error: ' why ', retryAt: '2026-11-03T13:34:00.000+00:00' }), W.drainItemOutcome({ status: 'sent' }),
+      W.drainItemOutcome({ status: 'gone' }), W.drainItemOutcome(null), W.drainItemOutcome({ status: 'failed', error: 42, retryAt: 'soon' })],
+    [{ status: 'failed', error: 'why', retryAt: '2026-11-03T13:34:00.000+00:00' }, { status: 'sent', error: null, retryAt: null }, null, null, { status: 'failed', error: null, retryAt: null }],
+    "the server's answer is checked where it enters (an unknown status, a missing answer from an older server, broken fields)")
+  eq(W.retryWhen(at(14, 0), now), 'it is tried again within minutes', 'a retry time already passed promises only the next send')
+}
 eq(/save\.mutate\(\{ base: prefs, next: readCalendarPrefs\(form\) \}/.test(read('src/features/settings/components/CalendarTab.tsx'))
    && /saveCalendarPrefsChanges\(previous, next\)/.test(move) && /saveCalendarPrefsChanges\(next, previous\)/.test(move), true,
   'Settings → Calendar saves only the fields changed, over the settings as they are now (a name from the iPhone is never put back)')

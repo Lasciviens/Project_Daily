@@ -3,6 +3,7 @@
 // password is sent once (connect) and is never read back.
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
+import type { DrainItemOutcome, DrainItemRef } from '../areas/appleSendRules'
 import type { AreaKey } from '../areas/calendarAreas'
 
 export interface ICloudStatus {
@@ -48,6 +49,8 @@ export type ICloudDrain = { busy: true } | {
   waiting: number
   /** Changes made in Apple Calendar read back first (2c): how many the app took, and calendars renamed there. */
   readBack?: { applied: number; ignored: number; failed: number; calendars: number; calendarsRenamed: number; problem: string | null }
+  /** The save's own item, when the call named one: what happened to it (checked where it enters, drainItemOutcome). */
+  item?: DrainItemOutcome
 }
 
 /** An area's items for Apple Calendar: counted (dryRun) or queued. partial = more than one call reads. */
@@ -149,8 +152,9 @@ export const runICloudCheck = () => call<ICloudCheck>('check')
 export const fetchICloudChanges = () => call<ICloudChanges>('changes')
 export const readICloudCalendars = () => call<ICloudRead>('read')
 export const setupICloudCalendars = () => call<ICloudSetup>('setup')
-/** `look`: also bring calendar names and colours back from the iPhone (the app's opening; a save skips it, for speed). */
-export const drainICloudQueue = (look = false) => call<ICloudDrain>('drain', { look })
+/** `look`: also bring calendar names and colours back from the iPhone (the app's opening; a save skips it, for speed).
+ *  `item`: a save's own item — its queued row goes first, and the answer says what happened to it. */
+export const drainICloudQueue = (look = false, item?: DrainItemRef) => call<ICloudDrain>('drain', item ? { look, item } : { look })
 /** Where the items come from: today on, or every day they have. */
 export const moveAreaToApple = (area: AreaKey, from: 'today' | 'all', dryRun: boolean) => call<ICloudMove>('move', { area, from, dryRun })
 /** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */

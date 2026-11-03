@@ -18,6 +18,7 @@ import {
   carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, syncScheduleSeriesAfterSave, takeSkippedDayOffCalendar,
 } from './scheduleSeriesCalendar'
 import { anyAreaOnAppleNow, appleAreaNow, appleAreaOf, drainICloudNow, drainICloudSoon, slotAreaInput } from '../areas/appleAreas'
+import { notInAppleText, stillInAppleText, type DrainItemRef } from '../areas/appleSendRules'
 import type { AreaKey } from '../areas/calendarAreas'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,20 +169,30 @@ async function appleSideOf(answer: SaveItemAnswer): Promise<{ area: AreaKey; tab
   return area && block ? { area, table: 'time_blocks', id: block.id } : null
 }
 
+/** Another run is sending the queue (often the app's own opening, or the timer): the save asks again after these
+ *  pauses, so its item goes first in the next run instead of waiting for the timer. */
+const BUSY_WAITS_MS = [3000, 6000, 12000]
+
 /**
  * An item in an area on Apple Calendar, after its save: the queue goes to Apple now (Google Tasks first, so a
- * move to Tasks finds its Google Task), then the item's row says where its Apple copy is. A confirmed copy lets
- * the old Google Task go, exactly like a confirmed Google Calendar event.
+ * move to Tasks finds its Google Task) with this item's row first, then the item's row says where its Apple copy
+ * is. A confirmed copy lets the old Google Task go, exactly like a confirmed Google Calendar event; one not
+ * confirmed says why — the item's own reason from the server — and when it is tried again, or that it isn't.
  */
 async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, side: { area: AreaKey; table: 'time_blocks' | 'schedule_blocks'; id: string }): Promise<ItemGoogleOutcome> {
   const wantsCal = google === 'calendar' || google === 'both'
   const wantsTasks = google === 'tasks' || google === 'both'
   const outcome: ItemGoogleOutcome = { calendar: wantsCal ? 'unknown' : 'off', tasks: answer.googleSync }
   if (answer.googleSync || wantsTasks) await drainTasks()
-  let sent = await drainICloudNow()
-  // Another run is sending the queue (often the app's own opening): once more when it is done.
-  if (sent.busy) { await new Promise(res => setTimeout(res, 3000)); sent = await drainICloudNow() }
-  const why = sent.problem ? ` (${sent.problem})` : ''
+  // The server sends only a row already queued for this item: the id picks which goes first, nothing else.
+  const item: DrainItemRef = { entity: side.table === 'time_blocks' ? 'slot' : 'plan', id: side.id }
+  let sent = await drainICloudNow({ item })
+  for (const wait of BUSY_WAITS_MS) {
+    if (!sent.busy) break
+    await new Promise(res => setTimeout(res, wait))
+    sent = await drainICloudNow({ item })
+  }
+  const said = { item: sent.item, problem: sent.problem, busy: sent.busy, now: new Date() }
   const now = await appleAreaNow(side.table, side.id)
   if (wantsCal) {
     outcome.calendar = now === side.area ? 'linked' : 'unknown'
@@ -196,18 +207,15 @@ async function settleItemApple(answer: SaveItemAnswer, google: GoogleTarget, sid
         outcome.tasks = false
         void drainTasks()
       }
-    } else if (outcome.calendar === 'unknown' && google === 'calendar' && answer.googleSync) {
-      toast.warning(`Apple Calendar hasn't confirmed the event yet${why}, so the Google Task stays for now — save the item again to finish the move.`)
     } else if (outcome.calendar === 'unknown') {
-      toast.warning(`Saved · not in Apple Calendar yet${why} — it is tried again within minutes.`)
+      toast.warning(notInAppleText({ ...said, keepsGoogleTask: google === 'calendar' && answer.googleSync }))
     }
     return outcome
   }
   if (now) {
     // The server keeps the Apple copy until the Google Task is there; it goes on its own once it is.
     outcome.calendar = 'unknown'
-    toast.warning(wantsTasks ? 'Google Tasks hasn\'t confirmed its copy yet, so the Apple Calendar event stays until it has.'
-      : `Saved · its Apple Calendar event isn't removed yet${why} — it is tried again within minutes.`)
+    toast.warning(stillInAppleText({ ...said, toTasks: wantsTasks }))
     return outcome
   }
   if (answer.blockToDrop && answer.blockToDrop === answer.blockId) {

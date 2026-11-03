@@ -147,6 +147,30 @@ check('a repeat: its summary', R.describeSaved(item({ google: 'calendar', repeat
 check('one day of a repeat: "Saved for 25.10.2026 only"', R.describeSaved(item({ scope: 'day', scheduleBlockId: 'p', occurrenceDate: '2026-10-25', date: '2026-10-26', time: '08:00', google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' } }), saved({ created: false, occurrenceDate: '2026-10-25' }))
   === 'Saved for 25.10.2026 only · 26.10.2026 08:00 · on Google Calendar')
 check('an end past midnight wraps', R.endOf('23:30', 90) === '01:00')
+// An item whose area shows in Apple Calendar (2b-2): the line named Google Calendar (owner, 03.11.2026). The server sends
+// the event after the save answered, so the line says where it is going — never that it is there.
+const timed = item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' })
+const weekly = { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' }
+const appleLines = [
+  R.describeSaved(timed, saved({}), 'apple'),
+  R.describeSaved({ ...timed, google: 'both' }, saved({}), 'apple'),
+  R.describeSaved(item({ google: 'calendar', repeat: weekly }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }), 'apple'),
+  R.describeSaved(item({ google: 'both', repeat: weekly }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }), 'apple'),
+  R.describeSaved(item({ scope: 'day', scheduleBlockId: 'p', occurrenceDate: '2026-10-25', date: '2026-10-26', time: '08:00', google: 'calendar', repeat: weekly }), saved({ created: false, occurrenceDate: '2026-10-25' }), 'apple'),
+]
+check('an Apple area: "Added · 15.10.2026 17:30–18:30 · sending to Apple Calendar" (Both, a repeat and one day of it too)', eq(appleLines, [
+  'Added · 15.10.2026 17:30–18:30 · sending to Apple Calendar',
+  'Added · 15.10.2026 17:30–18:30 · on Google Tasks · sending to Apple Calendar',
+  'Added · Every week on Sun · sending to Apple Calendar',
+  'Added · Every week on Sun · on Google Tasks, one per day · sending to Apple Calendar',
+  'Saved for 25.10.2026 only · 26.10.2026 08:00 · sending to Apple Calendar',
+]), JSON.stringify(appleLines))
+check('…never that it is there yet, and never Google Calendar', appleLines.every(t => !/(in|on) Apple Calendar|Google Calendar/.test(t)))
+check('a Google Task in an Apple area is still "on Google Tasks"; no calendar says nothing', R.describeSaved(item({}), saved({}), 'apple') === 'Added · No date · on Google Tasks'
+  && R.describeSaved(item({ google: 'tasks', repeat: weekly }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }), 'apple') === 'Added · Every week on Sun · on Google Tasks, one per day'
+  && R.describeSaved(item({ date: TODAY, google: 'none' }), saved({}), 'apple') === 'Added · 15.10.2026')
+check('a Google area (or a caller that does not say) keeps "on Google Calendar"', R.describeSaved(timed, saved({}), 'google') === 'Added · 15.10.2026 17:30–18:30 · on Google Calendar'
+  && R.describeSaved(timed, saved({})) === 'Added · 15.10.2026 17:30–18:30 · on Google Calendar')
 check('repeat days: "Done for 15.10.2026", "Skipped …", "… open again"', R.describeRepeatDay('done', TODAY) === 'Done for 15.10.2026'
   && R.describeRepeatDay('skip', TODAY) === 'Skipped 15.10.2026' && R.describeRepeatDay('undo', TODAY) === '15.10.2026 open again')
 check('conversion lines', R.describeConverted(4) === 'Converted 4 old slots into items' && /Nothing to convert/.test(R.describeConverted(0))
@@ -171,7 +195,14 @@ check('every hook mutation goes through useMutationWithFeedback', !/useMutation\
 check('deletes go through the one delete flow (useRowsDelete hooks / confirmDelete)', /useDeleteTask\(\)/.test(hooks) && /useDeleteScheduleBlock\(\)/.test(hooks) && /confirmDelete</.test(hooks))
 check('Google follows the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google\)/.test(hooks))
 check('keys only from qk; groups for invalidation', !/queryKey: \[/.test(hooks) && /invalidates: \['taskGraph', qk\.items\.all\]/.test(hooks))
-check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026)', /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved\)/.test(hooks))
+check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026), with the calendar the caller names',
+  /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved, own\?\.calendarApp\)/.test(hooks))
+const sheetModal = read('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
+check('the Add sheet and Home\'s quick add name the calendar their chip / area names (useItemCalendarApp)',
+  sheetModal.indexOf('const calendarApp = useItemCalendarApp(') > 0 && sheetModal.indexOf('const calendarApp = useItemCalendarApp(') < sheetModal.indexOf('const save = useSaveItem(')
+  && /\n    calendarApp,\n  \}\)/.test(sheetModal.slice(sheetModal.indexOf('const save = useSaveItem(')))
+  && /const calendarApp = useItemCalendarApp\(\{ domain: 'personal' \}\)\n\s*const save = useSaveItem\(\{ calendarApp \}\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
+  && /domain: 'personal',/.test(read('src/features/items/sheetRules.ts').slice(read('src/features/items/sheetRules.ts').indexOf('export function itemFromQuickAdd'))))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)
