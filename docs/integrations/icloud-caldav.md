@@ -81,10 +81,11 @@ Built in `src/features/calendar/areas/icloudEvents.ts` from Google's own rules �
 | `DESCRIPTION` | Settings → Calendar → *Notes* (2b-3a): the slot's and task's notes and/or "Open in Lasci's Board" with a link to the day; left out when there's nothing to say |
 | `URL` | always: the link to the day |
 | `TRANSP` | Busy, or Free for no length and all day |
+| `LOCATION` + `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;X-ADDRESS="…";X-APPLE-RADIUS=70;X-TITLE="…":geo:lat,lon` + `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC` | the item's place (186): its name and town; with coordinates the map pin and Time to Leave — the Phase 1 form. The quoted parameters take only letters, digits, spaces and plain punctuation (an allow-list); the pin line must match the exact shape built (`icloudEvents.locationLines`) |
 
 Which items get one (2b-2): an item that wants a calendar (its Google choice is Calendar or Both; an older item: where it is) in an area whose **Shows in** is Apple Calendar. The drain's rule (`drainStep`): put it there, then its Google Calendar copy goes; an Apple copy stays until the copy that replaces it exists — its Google Calendar event (the area went back to Google) or its Google Task (moved to Tasks; a repeat waits for today's day task) — and the copy appearing queues the item again; otherwise it is removed. A stored version goes back in `If-Match` only as one quoted value (`validEtag`).
 
-Deliberately not written: `STATUS:TENTATIVE` and `CLASS:PRIVATE` (no visible effect on Apple, Phase 1), `ATTENDEE` (no invitations), `LOCATION` (the app keeps no place on a slot yet).
+Deliberately not written: `STATUS:TENTATIVE` and `CLASS:PRIVATE` (no visible effect on Apple, Phase 1), `ATTENDEE` (no invitations). A place changed on the iPhone isn't read back (the read-back takes the day, time and title).
 
 ## What an event in Apple Calendar can hold (research, 30.10.2026)
 

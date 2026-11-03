@@ -24,6 +24,7 @@ import {
   clampDurationMinutes, pickRecurrence, taskSourceTypeForBlock, type RepeatFormFields,
 } from './planModal.config'
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
+import type { ItemPlace } from '../../../features/items/itemPlace'
 
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
@@ -58,6 +59,11 @@ export interface PlanForm extends RepeatFormFields {
   /** The zone the times are in (183): a new item's is the phone's (or the caller's — a match's kick-off is Oslo's); a
    *  saved one's as stored (null = the home zone). The save sends exactly this — what the sheet shows is what is stored. */
   timeZone: string | null
+  /** Where it happens (186): EnTur's place, a saved Home/Work, or typed text. */
+  place: ItemPlace | null
+  /** The owner changed the place here. An edit sends it when it was known or changed (never a null over a place the
+   *  sheet wasn't told about). */
+  placeTouched: boolean
   /** A repeating item opened on one of its days: that day only, or the rule. */
   scope: 'day' | 'all'
   /** The rule's start while "This day" shows the day (and the day while "All days" shows the start). */
@@ -133,6 +139,8 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     labels: [],
     labelsTouched: false,
     timeZone: d.timeZone ?? phoneTimeZone(),
+    place: d.place ?? null,
+    placeTouched: false,
     scope: 'all' as const,
     otherDate: null,
   }
@@ -163,6 +171,8 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     labels: item.labels ?? [],
     labelsTouched: false,
     timeZone: item.timeZone ?? null,
+    place: item.place ?? null,
+    placeTouched: false,
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
   }
@@ -252,6 +262,8 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     // The zone the sheet shows (183): a new item's (the phone's), a saved one's (none = the home zone) or one picked
     // with the chip — always sent, so a one-off turned into a repeat (or back) keeps the clock it showed.
     timeZone: f.timeZone ?? SERVER_EVENT_TIME_ZONE,
+    // Its place (186): a new item's, an edit's when the sheet knew it or the owner changed it.
+    ...(f.placeTouched || !ctx.item || ctx.item.place !== undefined ? { place: f.place } : {}),
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,

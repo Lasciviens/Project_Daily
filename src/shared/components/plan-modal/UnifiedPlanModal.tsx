@@ -19,6 +19,13 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-03 · v21.9 · A place on an item (migration 186, owner: "Can we use
+//                    that [EnTur] as location finding?"): PlaceFact on the
+//                    facts line for an item with a time, a repeat or all day —
+//                    EnTur's search, the saved Home/Work places, or typed text.
+//                    The form carries `place`; an edit sends it only when the
+//                    sheet knew it (the rows had the column) or the owner
+//                    changed it, so no other save path wipes a place.
 //  2026-11-02 · v21.8 · Time zones from the phone (migration 183, owner: "Time
 //                    zones should be based on location"): the sheet saves the
 //                    zone its times are on (`timeZone`) — a new item's is the

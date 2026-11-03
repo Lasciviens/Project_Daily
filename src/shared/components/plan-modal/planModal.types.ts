@@ -6,6 +6,7 @@
 
 import type { TimeBlock, ScheduleBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, LiveTaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
+import type { ItemPlace } from '../../../features/items/itemPlace'
 
 // ── Mode — which alias opened a NEW item ──────────────────────────────────────
 // One item since migration 155: a task, its slot and its repeat are parts of
@@ -58,6 +59,8 @@ export interface PlanDefaults {
   duration?: number         // minutes
   /** The zone that day and time are on (183) — a match's kick-off is Oslo's clock; left out = the phone's. */
   timeZone?: string
+  /** Where it happens (186) — a caller that knows it (a match's stadium). */
+  place?: ItemPlace | null
   category?: TimeBlockCategory
   color?: string
   recurrence?: RecurrenceMode

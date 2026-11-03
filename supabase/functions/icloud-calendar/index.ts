@@ -402,6 +402,39 @@ interface EventBlock {
   title: string | null
   /** false: no length — Free on Google (155). Missing before 155 = busy. */
   busy?: boolean | null
+  /** Where it happens (186): the row's jsonb, read through eventPlace. */
+  place?: unknown
+}
+
+/** An item's place as the calendars get it (186): a name, maybe a town, maybe a map pin. */
+interface EventPlace { name: string; locality?: string; lat?: number; lon?: number }
+
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is dropped
+const PLACE_CONTROL = /[\x00-\x1F\x7F-\x9F\u2028\u2029]/g
+const placeLine = (t: unknown, max: number) => typeof t !== 'string' ? ''
+  : Array.from(t.replace(PLACE_CONTROL, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('').trim()
+const placeCoord = (n: unknown, limit: number): n is number => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= limit
+
+/**
+ * A row's place as the writers may use it (186). The column is checked by the database, but a stored value is still
+ * input (the warning in AGENTS.md — it lands in iCalendar lines and Google's bodies): only a name of up to 120
+ * characters, a town of up to 80, and coordinates in range are taken; anything else is no place, or no pin.
+ */
+function eventPlace(raw: unknown): EventPlace | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  const name = placeLine(o.name, 120)
+  if (!name) return null
+  const out: EventPlace = { name }
+  const locality = placeLine(o.locality, 80)
+  if (locality && locality.toLowerCase() !== name.toLowerCase()) out.locality = locality
+  if (placeCoord(o.lat, 90) && placeCoord(o.lon, 180)) { out.lat = o.lat; out.lon = o.lon }
+  return out
+}
+
+/** "Jernbanetorget, Oslo": Google's `location`. */
+function placeText(p: EventPlace): string {
+  return p.locality ? `${p.name}, ${p.locality}` : p.name
 }
 
 type EventTime = { date: string } | { dateTime: string; timeZone: string }
@@ -412,6 +445,8 @@ interface BlockEventBody {
   start: EventTime
   end: EventTime
   transparency: 'opaque' | 'transparent'
+  /** The slot's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  location?: string
 }
 
 /**
@@ -424,8 +459,10 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
   if (!ISO_DAY.test(b.date ?? '')) return null
   const summary = calendarTitle(b.title, opts.done)
   const start = clockMinutes(b.start_time)
+  const place = eventPlace(b.place)
+  const location = place ? { location: placeText(place) } : {}
   if (start === null) {
-    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent' }
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent', ...location }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
@@ -435,6 +472,7 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
     start: { dateTime: wallClockAt(b.date, start), timeZone },
     end: { dateTime: wallClockAt(b.date, start + length), timeZone },
     transparency: busy ? 'opaque' : 'transparent',
+    ...location,
   }
 }
 
@@ -685,6 +723,8 @@ interface SeriesTemplate extends RepeatRule {
   google_calendar_time_zone?: string | null
   /** The zone the plan's times are in (183): the phone's when it was made. */
   time_zone?: string | null
+  /** Where the plan happens (186): the row's jsonb, read through calendarEventRules.eventPlace. */
+  place?: unknown
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -699,6 +739,8 @@ interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
+  /** The plan's place (186), when it has one. None sends nothing: a place typed in Google Calendar stays. */
+  location?: string
 }
 
 /** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
@@ -893,6 +935,8 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
   if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
 
   const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
+  const place = eventPlace(t.place)
+  const location = place ? { location: placeText(place) } : {}
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -902,6 +946,7 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
         end: { date: addDaysIso(first, 1) },
         recurrence,
         transparency: 'transparent',
+        ...location,
       },
     }
   }
@@ -916,6 +961,7 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
       transparency: t.busy === false ? 'transparent' : 'opaque',
+      ...location,
     },
   }
 }
@@ -1201,6 +1247,36 @@ interface EventParts {
   notes:      string | null | undefined
   link:       string
   now:        Date
+  /** Where it happens (186): LOCATION, and with coordinates Apple's map pin. */
+  place?:     EventPlace | null
+}
+
+/** A value inside Apple's quoted parameters (X-TITLE="…"): letters, digits, spaces and plain punctuation only — a quote,
+ *  iCalendar's own : and ;, a control character or anything else becomes a space (an allow-list, not escaping: the place
+ *  is input). */
+function pinText(t: string, max: number): string {
+  return Array.from(t.replace(/[^\p{L}\p{M}\p{N} .,'&()/+#@!?\u2013\u2014-]/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('').trim()
+}
+/** The pin line exactly as locationLines builds it — the last guard refuses anything else. */
+const PIN_LINE = /^X-APPLE-STRUCTURED-LOCATION;VALUE=URI;(?:X-ADDRESS="[^"\p{Cc}]{1,80}";)?X-APPLE-RADIUS=70;X-TITLE="[^"\p{Cc}]{1,120}":geo:-?\d{1,2}\.\d{6},-?\d{1,3}\.\d{6}$/u
+
+/**
+ * An event's place (186), in the form the owner's Apple check kept (29.10.2026): LOCATION as two lines (the name, then
+ * the town), and with coordinates Apple's map pin (X-APPLE-STRUCTURED-LOCATION, a geo: point) plus the travel advisory
+ * that lets the iPhone's Time to Leave work. No coordinates: the name alone, no pin.
+ */
+function locationLines(place: EventPlace | null | undefined): string[] {
+  if (!place) return []
+  const lines = [`LOCATION:${icsEscape(place.locality ? `${place.name}\n${place.locality}` : place.name)}`]
+  if (typeof place.lat !== 'number' || typeof place.lon !== 'number' || !Number.isFinite(place.lat) || !Number.isFinite(place.lon)
+      || Math.abs(place.lat) > 90 || Math.abs(place.lon) > 180) return lines
+  const title = pinText(place.name, 120)
+  const address = place.locality ? pinText(place.locality, 80) : ''
+  if (!title) return lines
+  const pin = `X-APPLE-STRUCTURED-LOCATION;VALUE=URI;${address ? `X-ADDRESS="${address}";` : ''}X-APPLE-RADIUS=70;`
+    + `X-TITLE="${title}":geo:${place.lat.toFixed(6)},${place.lon.toFixed(6)}`
+  if (!PIN_LINE.test(pin)) return lines
+  return [...lines, pin, 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC']
 }
 
 /** One VCALENDAR with one VEVENT, lines folded, CRLF throughout. */
@@ -1219,6 +1295,7 @@ function eventObject(p: EventParts): string {
     ...(p.body.recurrence ?? []),
     `SUMMARY:${icsEscape(title)}`,
     ...(notes ? [`DESCRIPTION:${icsEscape(notes)}`] : []),
+    ...locationLines(p.place),
     `URL;VALUE=URI:${p.link}`,
     `TRANSP:${p.body.transparency === 'transparent' ? 'TRANSPARENT' : 'OPAQUE'}`,
     ...alarmLines(p.area.alertMinutes, timed, title, p.look.allDayAlert),
@@ -1240,7 +1317,7 @@ function slotEvent(
   if (!body) return null
   const uid = `lasci-slot-${block.id}@lasciviens.github.io`
   const notes = [block.notes?.trim(), o.taskNotes?.trim()].filter(Boolean).join('\n\n') || null
-  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now }) }
+  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now, place: eventPlace(block.place) }) }
 }
 
 /** A repeating plan's ONE series event (schedule_blocks), from the day it reached Apple Calendar (`icloud_from`). */
@@ -1252,7 +1329,7 @@ function planEvent(
   const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
-  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now }) }
+  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place) }) }
 }
 
 /** A moment as Oslo's wall clock ("2026-10-28T17:30:00"), or null for no real moment. */
@@ -2198,7 +2275,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
-      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone, place')
       .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
     if (error) throw new ICloudError('read', 'A slot could not be read')
     if (!b) {
@@ -2260,7 +2337,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   if (q.entity === 'workout') return drainWorkout(db, c, userId, q, prefs, areaCals, removeOld)
 
   const { data: p, error } = await db.from('schedule_blocks')
-    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone')
+    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone, place')
     .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
   if (error) throw new ICloudError('read', 'A repeating plan could not be read')
   if (!p) {

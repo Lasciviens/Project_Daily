@@ -36,6 +36,7 @@ import type { ScheduleBlock, TimeBlock, TimeBlockCategory } from '../daily/types
 import type { LiveTaskSection, Task, TaskDomain, TaskSection } from '../todo/types'
 import { liveSection, sectionForDay } from '../todo/taskRules'
 import { labelsOf } from '../todo/taskLabels'
+import { placeOfRow } from './itemPlace'
 import { repeatSummary, type RepeatKind, type RepeatRule, type RepeatUnit } from '../daily/recurrence'
 import { formatDate } from '../../shared/utils/dateFormat'
 import { NOMINAL_EVENT_MINUTES } from '../calendar/calendarEventRules'
@@ -169,6 +170,8 @@ type BlockRow = Pick<TimeBlock, 'id' | 'date' | 'title' | 'start_time' | 'durati
     busy?: boolean | null; google_target?: GoogleTarget | null; icloud_area?: string | null
     /** The zone its day and time are in (183); null = the home zone. */
     time_zone?: string | null
+    /** Where it happens (186): the jsonb as stored. */
+    place?: unknown
   }
 /** A repeat rule; since 155 it may have no time (an all-day repeat). */
 type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' | 'effective_from'
@@ -181,6 +184,8 @@ type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' 
     /** The zone its times are in (183) — else the one its Google series was made in (147). */
     time_zone?: string | null
     google_calendar_time_zone?: string | null
+    /** Where it happens (186): the jsonb as stored. */
+    place?: unknown
   }
 
 /** The minutes between a rule's start and end (crossing midnight). */
@@ -250,6 +255,9 @@ export function itemFromRows(task?: TaskRow | null, block?: BlockRow | null, pla
     ...(task && !plan ? { labels: labelsOf(task) } : {}),
     // The zone its times are in, as stored (183): a slot's, a plan's (else its Google series'). Null = the home zone.
     ...(plan ? { timeZone: plan.time_zone || plan.google_calendar_time_zone || null } : block ? { timeZone: block.time_zone ?? null } : {}),
+    // Its place (186), only when the rows read say (a row without the column leaves it unknown: the save keeps it).
+    ...(plan ? (plan.place !== undefined ? { place: placeOfRow(plan.place) } : {})
+      : block && block.place !== undefined ? { place: placeOfRow(block.place) } : {}),
     source,
   }
 }
