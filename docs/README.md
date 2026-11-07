@@ -39,6 +39,7 @@ board → `codex-shortcuts.md`.
 | [scriptable-food-logger.md](scriptable-food-logger.md) | Setup + full source of the Scriptable food logger: log food from recents, your own ingredient library, Open Food Facts search, or a scanned barcode. **Its script name is load-bearing** — the barcode Shortcut opens it by name. | 25.07.2026 |
 | [scriptable-widgets.md](scriptable-widgets.md) | Setup + full source of the 4 home-screen widgets and the quick-log runner. **Script names are load-bearing** — the deep links resolve by name. | 11.10.2026 |
 | [health-auto-export/](health-auto-export/README.md) | Importable Health Auto Export automation configs (`README.md` + `01`–`06`: recurring metrics, weekly reconciliation, recurring workouts, the two one-time backfills, and the 2-hourly sleep catch-up). Required app settings are **Export Version 2, Summarize ON, Time Grouping: Hours**. | 11.10.2026 |
+| [../scripts/harness/README.md](../scripts/harness/README.md) | The browser test harness: the real app on a mock Supabase with made-up data, for Playwright and the page audits (`audit-page-width`, `audit-text-overflow`) — how to start it, what data it serves, how to extend it. Nothing reaches the internet. | 07.11.2026 |
 
 ## Live coordination — read fresh every session, never summarise from memory
 
