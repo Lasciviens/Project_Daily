@@ -30,6 +30,8 @@ A project is a **header**, a **plan** and a few general **blocks**. A template o
 
 Every write says its result ("Task added", "Row added", "Decided", "Kitchen scale: On hold") and every delete asks and offers Undo (`useRowsDelete`; 144's `app_delete_rows` follows the new keys).
 
+**Loading (07.11.2026, layout shifts).** The list's cards wait for their projects' phases, tasks and questions as well, so each card is drawn once (its Next row used to land a moment later and push the cards under it); the loading cards are a loaded card's height. Until they are in, the header keeps what it had when they last loaded on this device — the status switch, the area switch only when both areas had projects, the cap over as many cards (`useLayoutMemory`; a failed read is never learned as "no projects"; THEME.md §5).
+
 **Order and saving (28.10.2026):** Move up / Move down follow the order shown (sort order, then the older first — `projectModel.movePlan`): two different sort orders swap; when two share one (the assistant adds a phase with the default 0) the list is numbered 0, 1, 2… in its new order. Before, a tie could move a phase the wrong way or two places. Enter in a popup while it is saving does nothing (it used to add a second project, phase, block or entry).
 
 ## The old items (migration 162)

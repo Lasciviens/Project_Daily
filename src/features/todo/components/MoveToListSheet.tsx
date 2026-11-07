@@ -30,11 +30,11 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
 // closed, and each one used to read the Google lists, on every page with a
 // task row and again on each return to the app.
 function ListChoices({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { data: lists = [], isLoading } = useGoogleTaskLists()
+  const { data: lists = [], isLoading, isError } = useGoogleTaskLists()
   const update = useUpdateTask()
   // While the lists load: rows of a list row's height (44px), as many as there were last time (three the first
-  // time), so the sheet opens at its size instead of growing when they land.
-  const loadingRows = useRememberedCount('sheet:taskLists', lists.length, !isLoading, 3)
+  // time), so the sheet opens at its size instead of growing when they land. A failed read is never learned.
+  const loadingRows = useRememberedCount('sheet:taskLists', lists.length, !isLoading && !isError, 3)
 
   function choose(googleTasklistLocalId: string | null) {
     update.mutate({ id: task.id, patch: { google_tasklist_id: googleTasklistLocalId } }, { onSuccess: onClose })

@@ -50,13 +50,15 @@ export function ProjectsPage() {
   // A card is drawn from its project's phases, tasks and questions too (read at once, with the projects): drawn
   // before them, each card grew a "Next" row a moment later and pushed the ones under it (a layout shift).
   const loading = projectsQ.isLoading || phasesQ.isLoading || tasksQ.isLoading || questionsQ.isLoading
+  // A failed read is never learned as "no projects" for the next visit.
+  const settled = !loading && !(projectsQ.isError || phasesQ.isError || tasksQ.isError || questionsQ.isError)
   // Until the cards are in, the header keeps what it had when they last loaded on this device (THEME.md §5), and it
   // changes with them, never before (shrunk first, it moved the loading cards up the page): the status switch shows
   // whenever there is a project (also the first time), the area switch only with both areas (kept for an account
   // with one, it dropped the cards when they landed), and it stops over as many cards as there were.
-  const hasProjects = useRememberedFlag('projects:any', projects.length > 0, !loading, true)
-  const showAreas = useRememberedFlag('projects:areas', twoAreas, !loading) || twoAreas
-  const headerCards = useRememberedCount('projects:cards', projectsHeaderCards(statusTally(projects, 'all'), false), !loading, projectsHeaderCards({}, true))
+  const hasProjects = useRememberedFlag('projects:any', projects.length > 0, settled, true)
+  const showAreas = useRememberedFlag('projects:areas', twoAreas, settled) || twoAreas
+  const headerCards = useRememberedCount('projects:cards', projectsHeaderCards(statusTally(projects, 'all'), false), settled, projectsHeaderCards({}, true))
   // The header stops over the last card (New project floated ~44rem past four cards at 2450) — the most
   // cards any status shows, so switching status or area never resizes it (projectsHeaderCards).
   const { ref: widthRef, width } = useElementWidthRem<HTMLDivElement>()

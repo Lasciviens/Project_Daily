@@ -35,7 +35,7 @@ function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => 
 }
 
 export function WorkPage() {
-  const { data: tasks = [], isLoading } = useWorkTasks()
+  const { data: tasks = [], isLoading, isError } = useWorkTasks()
   const createTask = useCreateTask()
   // THE task actions (useTaskActions) — the same as Daily's and Home's rows.
   const act = useTaskActions()
@@ -65,7 +65,7 @@ export function WorkPage() {
 
   // The same counts as Daily and Home (taskRules): done = closed today.
   const counts = countTasks(tasks, today, today)
-  const overdueRoom = useRememberedFlag('work:overdue', counts.overdue > 0, !isLoading)
+  const overdueRoom = useRememberedFlag('work:overdue', counts.overdue > 0, !isLoading && !isError)
 
   // Cards and rows hand over an id; the actions take the task.
   const byId = useCallback((id: string) => tasks.find(t => t.id === id), [tasks])
