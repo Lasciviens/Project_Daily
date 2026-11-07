@@ -3,9 +3,10 @@ import type { QueryClient } from '@tanstack/react-query'
 /**
  * Runs `run` at the browser's next quiet moment (requestIdleCallback, at the
  * latest after `timeout` ms). Safari has none, so a timer stands in there.
- * Returns the cancel, ready for an effect's cleanup.
+ * Returns the cancel. Only whenSettled calls it: on its own, on the iPhone, it
+ * ran at a fixed 1.5 s, while the open page was still reading its data.
  */
-export function whenIdle(run: () => void, timeout = 4000): () => void {
+function whenIdle(run: () => void, timeout = 4000): () => void {
   if ('requestIdleCallback' in window) {
     const id = window.requestIdleCallback(run, { timeout })
     return () => window.cancelIdleCallback(id)

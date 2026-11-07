@@ -6,7 +6,7 @@ import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
 import { noteRouterNavigation } from '../../shared/hooks/useHistoryDismiss'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
 import { preloadInTurn } from '../../shared/hooks/useIdlePreload'
-import { whenIdle, whenSettled } from '../../shared/utils/whenIdle'
+import { whenSettled } from '../../shared/utils/whenIdle'
 import { CommandBar } from '../../shared/components/CommandBar'
 import { Toaster } from '../../shared/components/Toaster'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
@@ -78,15 +78,18 @@ export function AppShell() {
     predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
 
-  // The shell's on-demand parts (shellParts.ts) load at the first quiet moment.
-  // The other pages' code (app/pages.ts) waits until the page opened first is
-  // drawn with its data: loading it earlier slowed that page's own first render.
+  // What the first download leaves out loads once the page opened first is
+  // drawn with its data (whenSettled): the shell's on-demand parts
+  // (shellParts.ts), then the other pages' code (app/pages.ts). Loading it
+  // earlier slowed that page's own first render; the iPhone has no idle
+  // callback, so the parts came at a fixed 1.5 s while the page still read.
   const [partsIn, setPartsIn] = useState(false)
   const [pageShown, setPageShown] = useState(false)
-  useEffect(() => whenIdle(() => { void preloadInTurn(SHELL_PARTS).then(() => setPartsIn(true)) }), [])
   useEffect(() => {
     if (!pageShown) return
-    return whenSettled(qc, () => { void preloadPages() })
+    return whenSettled(qc, () => {
+      void preloadInTurn(SHELL_PARTS).then(() => { setPartsIn(true); void preloadPages() })
+    })
   }, [pageShown, qc])
   // Ask AI and Requests mount closed once their code is in, as they did at
   // start before, so the first open slides in like every later one. Opened

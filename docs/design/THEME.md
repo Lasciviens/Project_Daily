@@ -180,8 +180,9 @@ const c = useChartColors()
 features, antialiased. `index.html` preloads its Latin file, so text starts in Inter; until a file
 arrives (a first visit, a cleared cache) text draws in `Inter Fallback` (`index.css`): Arial sized to
 Inter's widths (105.5 % regular, 101.5 % bold, measured on the app's own text) with Inter's ascent and
-descent, so the swap changes letter shapes and moves nothing. A new font gets the same: a preload and
-a measured stand-in (`verify-layout-shift`). **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
+descent, so the swap changes letter shapes and moves nothing. It stands in only for what Inter's Latin
+and Latin Extended files draw (their `unicode-range`): a character no Inter file has (→, ✓) draws in the
+system font. A new font gets the same: a preload and a measured stand-in (`verify-layout-shift`). **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
 duration. **The ONLY visible date format is `DD.MM.YYYY`** (`15.09.2026`, owner rule): times are
 `HH:MM` (24h), a weekday may lead (`Tue 15.09.2026`), ranges read `21.09.2026 – 27.09.2026`, and
 relative words (today, yesterday, 5 days ago) stay where they are used. Always go through

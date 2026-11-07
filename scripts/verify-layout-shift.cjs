@@ -31,6 +31,32 @@ check('each fallback face is sized and given Inter\'s line metrics (size-adjust,
   faces.length > 0 && faces.every(b => /size-adjust:\s*\d/.test(b) && /ascent-override:/.test(b) && /descent-override:/.test(b) && /line-gap-override:/.test(b)))
 check('the fallback faces are Arial (or its metric twin Liberation Sans) — the size-adjust was measured against it',
   faces.length > 0 && faces.every(b => /local\('Arial/.test(b) && /local\('Liberation Sans/.test(b)))
+// A unicode-range as merged code-point intervals, so two spellings of one range compare equal.
+function rangeSet(text) {
+  const iv = text.split(',').map(t => t.trim()).filter(Boolean).map(t => {
+    const m = /^U\+([0-9A-F]+)(?:-([0-9A-F]+))?$/i.exec(t)
+    return m ? [parseInt(m[1], 16), parseInt(m[2] ?? m[1], 16)] : null
+  })
+  if (!iv.length || iv.some(x => x == null)) return null
+  iv.sort((a, b) => a[0] - b[0])
+  const out = []
+  for (const [a, b] of iv) {
+    const last = out[out.length - 1]
+    if (last && a <= last[1] + 1) last[1] = Math.max(last[1], b)
+    else out.push([a, b])
+  }
+  return out
+}
+const rangeOf = (block) => { const m = /unicode-range:\s*([^;]+);/.exec(block); return m ? rangeSet(m[1]) : null }
+check('the fallback faces leave out what no Inter file draws (→ U+2192, ✓ U+2713): those keep the system font, never Arial for good',
+  faces.length > 0 && faces.every(b => { const r = rangeOf(b); return r != null && ![0x2192, 0x2713].some(c => r.some(([a, z]) => c >= a && c <= z)) }))
+if (fs.existsSync(wght)) {
+  const interFaces = [...fs.readFileSync(wght, 'utf8').matchAll(/@font-face\s*\{([^}]*)\}/g)].map(m => m[1])
+  const fileRange = (file) => { const b = interFaces.find(f => f.includes(`./files/${file}`)); const m = b && /unicode-range:\s*([^;]+);/.exec(b); return m ? m[1] : '' }
+  const want = JSON.stringify(rangeSet(`${fileRange('inter-latin-wght-normal.woff2')},${fileRange('inter-latin-ext-wght-normal.woff2')}`))
+  check('the fallback faces cover exactly what Inter\'s Latin and Latin Extended files draw (their unicode-range in wght.css)',
+    faces.length > 0 && want !== 'null' && faces.every(b => JSON.stringify(rangeOf(b)) === want))
+}
 check('the fallback faces sit at the top level, before any @layer (Tailwind owns what is inside one)',
   css.lastIndexOf("font-family: 'Inter Fallback'") >= 0 && css.lastIndexOf("font-family: 'Inter Fallback'") < css.indexOf('@layer'))
 const tw = code('tailwind.config.js')
@@ -42,6 +68,10 @@ check('a page that folds the sidebar (Games) is drawn folded from its first fram
   /selectSidebarCollapsed\(collapsesSidebar\(pathname\)\)/.test(shell) && /routeFolds \|\| s\.collapsed/.test(code('src/app/store.ts')))
 check('Back restores the offset once the page is tall enough (restoreScroll), not with one clamped scrollTo',
   /function restoreScroll\(/.test(shell) && /ResizeObserver/.test(shell) && /stopRestore = restoreScroll\(el, saved\)/.test(shell))
+
+check('the shell\'s panels, then the other pages, load once the first page is drawn with its data (whenSettled) — the iPhone has no idle callback, so a bare idle wait was a fixed 1.5 s while the page still read',
+  /whenSettled\(qc, \(\) => \{\s*void preloadInTurn\(SHELL_PARTS\)\.then\(\(\) => \{ setPartsIn\(true\); void preloadPages\(\) \}\)/.test(shell)
+  && !/\bwhenIdle\(/.test(shell) &&!/^export function whenIdle/m.test(code('src/shared/utils/whenIdle.ts')))
 
 console.log('Loading copies the loaded geometry')
 const carousel = code('src/features/home/components/GlanceCarousel.tsx')
