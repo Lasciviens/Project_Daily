@@ -40,7 +40,7 @@ logic is checked by `scripts/verify-*.cjs|mjs`.
 ## Quick start
 
 ```bash
-npm ci                            # Node 22, as in CI
+npm ci                            # Node 24, as in CI
 npm run dev                       # http://localhost:5173/Project_Daily/
 npm run build                     # type-check + production build
 npm run lint
