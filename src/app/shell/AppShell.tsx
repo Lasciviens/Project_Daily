@@ -27,6 +27,30 @@ import { PullToRefreshIndicator } from './PullToRefreshIndicator'
 // returning to a list lands where you left it; forward navs start at top.
 const scrollPositions = new Map<string, number>()
 
+/**
+ * Scrolls `el` to `top` once the page is tall enough. On a Back the page isn't laid out yet when the route
+ * changes (a PageBoard places its cards in a second pass, data may still be arriving), so a single scrollTo
+ * was clamped to the top and the page stayed there. The offset is set again each time the page grows, until it
+ * fits — or the user scrolls, taps or types first. Returns the stop.
+ */
+function restoreScroll(el: HTMLElement, top: number): () => void {
+  el.scrollTo({ top })
+  const page = el.lastElementChild
+  if (el.scrollTop >= top - 1 || !page || typeof ResizeObserver === 'undefined') return () => {}
+  const ro = new ResizeObserver(() => {
+    el.scrollTo({ top })
+    if (el.scrollTop >= top - 1) stop()
+  })
+  const input = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
+  function stop() {
+    ro.disconnect()
+    for (const type of input) el.removeEventListener(type, stop)
+  }
+  ro.observe(page)
+  for (const type of input) el.addEventListener(type, stop, { passive: true })
+  return stop
+}
+
 // Toasts clear the tab bar on phones; bottom-left of the content elsewhere
 // (right of the 68px rail, or of the full sidebar).
 const TOAST_POSITION = {
@@ -72,12 +96,12 @@ export function AppShell() {
 
   const reportScroll = useUIStore(s => s.reportScroll)
   const resetChrome = useUIStore(s => s.resetChrome)
-  // Desktop only: the tablet sidebar is always the rail.
-  const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed)
-  const rail = bp === 'tablet' || sidebarCollapsed
-
   const { pathname, key: locationKey } = useLocation()
   const navType = useNavigationType()
+
+  // Desktop only: the tablet sidebar is always the rail.
+  const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed(collapsesSidebar(pathname)))
+  const rail = bp === 'tablet' || sidebarCollapsed
 
   // The router's own pushes and replaces fire no popstate: tell the overlay
   // history tracking (useHistoryDismiss) where the router put us.
@@ -95,12 +119,14 @@ export function AppShell() {
   useLayoutEffect(() => {
     const el = pullToRefresh.containerProps.ref.current
     const saved = scrollPositions.get(pathname)
-    if (navType === 'POP' && saved != null && el) el.scrollTo({ top: saved })
+    let stopRestore: (() => void) | undefined
+    if (navType === 'POP' && saved != null && el) stopRestore = restoreScroll(el, saved)
     else el?.scrollTo({ top: 0 })
     resetChrome()
     useModalStore.getState().closeAll()
     // Before paint, so a page that folds the sidebar (Games) never flashes it open.
     useSidebarStore.getState().enterRoute(collapsesSidebar(pathname))
+    return () => stopRestore?.()
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Without View Transitions (pre-18 iOS Safari, the primary device) route

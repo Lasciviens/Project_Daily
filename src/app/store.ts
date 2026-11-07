@@ -81,8 +81,13 @@ export const useSidebarStore = create<SidebarState>()(
   ),
 )
 
-/** Whether the desktop sidebar is folded right now (the page's own state wins). */
-export const selectSidebarCollapsed = (s: SidebarState) => s.pageCollapsed ?? s.collapsed
+/**
+ * Whether the desktop sidebar is folded right now: the page's own state wins. Until the store has entered
+ * the route (`enterRoute`, which runs after the page's own first measures), the route's default does, so a
+ * page that folds the sidebar (Games) is drawn folded from its first frame: opened and then animated shut,
+ * it slid the whole page 164px on every load (a layout shift).
+ */
+export const selectSidebarCollapsed = (routeFolds: boolean) => (s: SidebarState) => s.pageCollapsed ?? (routeFolds || s.collapsed)
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
