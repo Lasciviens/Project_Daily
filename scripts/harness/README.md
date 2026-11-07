@@ -46,7 +46,15 @@ mock answers as the database does for the allowed owner.
    node scripts/audit-page-width.mjs --harness scripts/harness               # widths 402, 1469, 2450
    node scripts/audit-text-overflow.mjs --harness scripts/harness
    node scripts/audit-page-width.mjs --harness scripts/harness --routes daily:week --widths 402 --shots /tmp/shots
+   node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs     # layout shifts: CLS per page and tab switch
    ```
+
+   `audit-cls.mjs` loads each page at 402, 874 (the phone sideways), 1469 and 2450, records every
+   layout shift the browser reports (content moving after it was drawn) and, with `--tabs`, switches
+   each tab in the page header. `--slow 800` holds every mock answer 800 ms, so each loading copy is
+   on screen before its content replaces it. It names what moved by its component and exits 1 when a
+   page or a switch goes over the budget (`--budget`, default 0.1 — Chrome's "good"). Not in CI: the
+   numbers need a quiet machine and the harness's own data.
 
    Port 5371 taken? Start Vite on another port and add `--base http://127.0.0.1:<port>`.
    The scripts launch Playwright's Chromium (in the cloud container from

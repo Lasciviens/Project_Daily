@@ -177,7 +177,11 @@ const c = useChartColors()
 ## 3. Typography
 
 **Inter Variable** (bundled with `@fontsource-variable/inter`, works offline), `cv11` + `ss01`
-features, antialiased. **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
+features, antialiased. `index.html` preloads its Latin file, so text starts in Inter; until a file
+arrives (a first visit, a cleared cache) text draws in `Inter Fallback` (`index.css`): Arial sized to
+Inter's widths (105.5 % regular, 101.5 % bold, measured on the app's own text) with Inter's ascent and
+descent, so the swap changes letter shapes and moves nothing. A new font gets the same: a preload and
+a measured stand-in (`verify-layout-shift`). **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
 duration. **The ONLY visible date format is `DD.MM.YYYY`** (`15.09.2026`, owner rule): times are
 `HH:MM` (24h), a weekday may lead (`Tue 15.09.2026`), ranges read `21.09.2026 – 27.09.2026`, and
 relative words (today, yesterday, 5 days ago) stay where they are used. Always go through
@@ -306,6 +310,22 @@ faint chevron.
 geometry (no spinners in content areas). Empty says what goes here and offers the one action that
 fills it. Errors say what failed and offer a retry; render-time crashes are caught by `ErrorBoundary`.
 
+**Nothing moves when data lands** (owner, 07.11.2026: "Detect and fix layout shifts!"). A layout
+shift is drawn content moving because something above it changed size; the browser counts it (CLS).
+- A skeleton copies the loaded layout: the same grid, line and row heights, and a typical count — a
+  list at the top of a page about a screen of rows (`DayAgenda`) — never three generic bars.
+- What comes with the data keeps its room while loading: a header row (Projects' status switch,
+  Football's filter), counts and badges (Work's), a card that may appear (Books' Reading now), a
+  filter bar (Shop, Wishes), a line that grows a row (`DayAgenda`'s Next, Food's macro bar).
+- A card built from several database reads shows its loading copy until all of them answered (the
+  brief, Projects' cards, Training's Next, Health's insights, Games' three libraries); data from an
+  outside service (weather, rates, ESPN) fills in where it is.
+- A loading branch and the loaded branch of one element are keyed apart (`GlanceCarousel`).
+- A label whose text changes on a switch has one width (Daily's date: `w-[7.9em]`, the widest day).
+- Never hide content or add a delay to cover a shift.
+Check: `node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs` (≤ 0.1 per page and tab
+switch, at 402 / 874 / 1469 / 2450) and `scripts/verify-layout-shift.cjs`.
+
 **Icons.** `lucide-react` only. 16px inside buttons and rows, 18px in icon buttons, 20px in nav,
 22px in the phone tab bar; `strokeWidth` 2 (1.8–1.9 in the phone chrome). Icons are `aria-hidden` next to a
 text label. Emoji are allowed only as user-facing *content* (a meal slot, a season chip), never as
@@ -342,6 +362,9 @@ gets `h-full`. Header height `--app-header-h`, tab bar `--app-tabbar-h`, sidebar
 safe areas composed in `calc()` (e.g. `pb-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+16px)]`
 on `<main>`), never magic numbers. `--ios-viewport-gap` (`app/iosViewportFix.ts`) corrects the
 installed iOS PWA's short viewport; phone tab bars sit at `bottom: calc(-1 * var(--ios-viewport-gap))`.
+Back restores a page's scroll offset once the page is tall enough (`restoreScroll` in `AppShell`: a
+PageBoard lays out in a second pass, so one `scrollTo` was clamped to the top), and a page that folds
+the sidebar is drawn folded from its first frame (`selectSidebarCollapsed(routeFolds)`).
 
 Games is a `fullHeight` page with its own token set (`testGame.css`, `.tg-root` / `.tg-portal`) and
 its own left navigation panel; it uses the shell's `ModalHost` and `Toaster`. See `docs/features/games.md`.
@@ -806,7 +829,7 @@ chrome. English in the product (`AGENTS.md`).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
 - [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
 - [ ] Checked in the phone layout: compact, no extra lines, nothing squashed; hover-only actions have a touch path.
-- [ ] Loading, empty and error states present.
+- [ ] Loading, empty and error states present; loading copies the loaded geometry, so nothing moves when the data lands (§5).
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.
 - [ ] Data through hooks → api; keys from `qk`; stale from `STALE`; writes via `useMutationWithFeedback`
       with `invalidates`; no caller-side mutation toasts.
