@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /* Verification — the layout-shift causes found and fixed on 07.11.2026 stay fixed (THEME.md §5
- * "Loading", §3 "the font's stand-in"). A layout shift is content moving after it was drawn: a
- * skeleton shorter than what replaces it, a row that appears with the data, a font that swaps.
- * These checks read the source; the browser measure is scripts/audit-cls.mjs on the harness.
+ * "Nothing moves when data lands", §3 "the font's stand-in"). A layout shift is content moving after
+ * it was drawn: a skeleton shorter — or taller — than what replaces it, a row that appears with the
+ * data, a font that swaps. The layout memory (useLayoutMemory) runs here through sucrase; the other
+ * checks read the source. The browser measure is scripts/audit-cls.mjs on the harness, with every
+ * data shape (--data seed,light,empty).
  * Run: node scripts/verify-layout-shift.cjs */
 const fs = require('fs')
 const path = require('path')
@@ -73,36 +75,105 @@ check('the shell\'s panels, then the other pages, load once the first page is dr
   /whenSettled\(qc, \(\) => \{\s*void preloadInTurn\(SHELL_PARTS\)\.then\(\(\) => \{ setPartsIn\(true\); void preloadPages\(\) \}\)/.test(shell)
   && !/\bwhenIdle\(/.test(shell) &&!/^export function whenIdle/m.test(code('src/shared/utils/whenIdle.ts')))
 
+console.log('The layout memory: a part keeps the room it took last time')
+{
+  require('sucrase/register')
+  const store = new Map()
+  globalThis.localStorage = {
+    getItem: k => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)) },
+    removeItem: k => { store.delete(k) },
+  }
+  const MOD = path.join(root, 'src/shared/hooks/useLayoutMemory.ts')
+  const fresh = () => { delete require.cache[require.resolve(MOD)]; return require(MOD) }
+  let M = fresh()
+  M.rememberLayout('a', 12.5)
+  M.rememberLayout('b', true)
+  check('a size and a flag come back', M.rememberedLayout('a') === 12.5 && M.rememberedLayout('b') === true)
+  M = fresh()
+  check('…also on the next visit (localStorage)', M.rememberedLayout('a') === 12.5 && M.rememberedLayout('b') === true)
+  store.set('lasci.layoutMemory', JSON.stringify([['ok', 3], ['neg', -1], ['huge', 1e9], ['str', 'x'], [5, 1], 'junk', ['flag', false]]))
+  M = fresh()
+  check('device storage is input: only [string, number 0–400 | boolean] pairs are read back',
+    M.rememberedLayout('ok') === 3 && M.rememberedLayout('flag') === false && ['neg', 'huge', 'str'].every(k => M.rememberedLayout(k) === undefined))
+  store.set('lasci.layoutMemory', '{not json')
+  M = fresh()
+  check('unreadable storage starts empty', M.rememberedLayout('ok') === undefined)
+  for (let i = 0; i < 200; i++) M.rememberLayout(`k${i}`, i)
+  const kept = JSON.parse(store.get('lasci.layoutMemory'))
+  check('a bounded number of entries, the newest kept', kept.length <= 120 && M.rememberedLayout('k199') === 199 && M.rememberedLayout('k0') === undefined, `${kept.length}`)
+  M.forgetLayouts()
+  check('forgetLayouts empties the memory and the storage', M.rememberedLayout('k199') === undefined && !store.has('lasci.layoutMemory'))
+  check('sign-out forgets it (the counts belong to the account)', /forgetLayouts\(\)/.test(code('src/security/accountState.ts')))
+  const keep = code('src/shared/ui/KeepRoom.tsx')
+  check('KeepRoom leaves out only a loading copy, never content that is already here',
+    /const body = showSkeleton \? skeleton : children/.test(keep) && /if \(showSkeleton && \(last === 0/.test(keep))
+  check('KeepRoom measures only a loaded outcome worth planning by (not while loading, not a failed read)', /if \(loading \|\| !remember\) return/.test(keep))
+}
+
+console.log('Room only for what every outcome shows; the rest from the memory')
+const agenda = code('src/features/daily/components/DayAgenda.tsx')
+check('the day list keeps the room of its last load — the day, else the last today, else about an empty day\'s — not a screen of rows',
+  /<KeepRoom ids=\{roomIds\} loading=\{!settled \|\| width == null\} first=\{ROOM_DEFAULT_REM\[cols\]\}>/.test(agenda)
+    && /const ROOM_DEFAULT_REM: Record<1 \| 2, number> = \{ 1: 9\.75, 2: 8\.5 \}/.test(agenda) && /\[roomKey\(day, cols\), todayRoomKey\(cols\)\]/.test(agenda))
+check('the day list shows once its own reads are in (one time order); the extras\' reads start with the day\'s',
+  /\{!listReady \? <ListSkeleton/.test(agenda) && /useOpenWishes\(\)/.test(agenda) && /useTasksByWeek\(/.test(agenda)
+    && !/useOpenWishes\(|useTasksByWeek\(/.test(code('src/features/daily/components/DayAgendaExtras.tsx')))
+check('today\'s Next line keeps its room only when it showed last time', /const nextRoom = viewingToday && !settled && !hasNext && rememberedNext\(day\)/.test(agenda))
+const work = code('src/features/work/pages/WorkPage.tsx')
+check('Work: done and active keep their room; overdue only when the last visit had it',
+  /useRememberedFlag\('work:overdue', counts\.overdue > 0, !isLoading\)/.test(work) && /overdueRoom \? COUNT_ROOM : COUNT_ROOM\.slice\(0, 2\)/.test(work))
+const projects = code('src/features/projects/pages/ProjectsPage.tsx')
+check('Projects: the status switch keeps its room (every account with a project has it); the area switch only when it showed last time',
+  /const hasProjects = useRememberedFlag\('projects:any', projects\.length > 0, !loading, true\)/.test(projects)
+    && /const showAreas = useRememberedFlag\('projects:areas', twoAreas, !loading\) \|\| twoAreas/.test(projects)
+    && /\{showAreas && \(/.test(projects) && !/twoAreas \|\| loading\)/.test(projects)
+    && /<div key="loading" className=\{GRID\}>/.test(projects) && /<div key="cards" className=\{GRID\}>/.test(projects))
+const football = code('src/features/football/pages/FootballPage.tsx')
+check('Football: the filter row keeps its room only when it showed last time',
+  /useRememberedFlag\('football:filter', follows\.length > 1, !followsQ\.isLoading\)/.test(football) && /followsQ\.isLoading && filterRoom &&/.test(football))
+check('Football: the lists keep their room only while ESPN answers or a failed read is tried again; a final error is one line',
+  /const listsLoading = loading \|\| retrying/.test(football) && (football.match(/loading=\{listsLoading\}/g) || []).length === 2
+    && (football.match(/remember=\{failed\.length === 0\}/g) || []).length === 2 && !/MATCH_LIST_ROOM/.test(football))
+const food = code('src/features/recipes/components/FoodTodayTab.tsx')
+check('Food: the macro bar and each slot\'s rows keep their room only where a day had them last time (an empty day has neither)',
+  /useRememberedFlag\('food:macros', macrosShown, ready\)/.test(food) && /rememberedLayout\(`food:slot:\$\{slot\}`\) === true/.test(food))
+check('Shop and Wishes: the filters show while loading', /filters: \(all\.length > 0 \|\| isLoading\)/.test(code('src/features/shop/components/WishlistView.tsx'))
+  && /filters: \(wishes\.length > 0 \|\| isLoading\)/.test(code('src/features/wishes/pages/WishesPage.tsx')))
+check('Books: Reading now keeps its place while the library loads', /reading: isLoading \? <ReadingNowSkeleton \/>/.test(code('src/features/books/components/LibraryTab.tsx')))
+
+console.log('Each part shows as its own reads land, never held back for another part\'s')
+const brief = code('src/features/home/components/DailyBrief.tsx')
+const briefHook = code('src/features/home/hooks/useDailyBrief.ts')
+check('the brief: each section in its own KeepRoom, shown as its reads land (no wait for all eight)',
+  /pending: ReadonlySet<BriefSectionId>/.test(briefHook) && /ids=\{`brief:\$\{id\}`\} loading=\{pending\.has\(id\)\}/.test(brief)
+    && !/training\.isLoading \|\| profileLoading\s*\|\|\s*nutritionLoading/.test(briefHook))
+check('the brief draws its greeting at once', /<header ref=\{artContentRef\}/.test(brief) && !/BriefSkeleton/.test(brief))
+const next = code('src/features/training/components/next/NextTab.tsx')
+check('Training Next shows once the plan is in; missed, recovery and the muscle watch each keep their own room',
+  /if \(plan\.isLoading\) \{/.test(next) && !/missed\.isLoading|recovery\.isLoading|muscle\.isLoading/.test(next)
+    && /ids="training:recovery"/.test(next) && /ids="training:missed"/.test(code('src/features/training/components/program/MissedSessions.tsx'))
+    && /ids="muscleWatch:line"/.test(code('src/features/health/goal/MuscleWatchCard.tsx')))
+check('Training Next reads the muscle watch once (in MuscleWatchLine), never a second useMuscleWatch of its own', !/useMuscleWatch/.test(next))
+check('Games waits for all three libraries on the first load (one order: Steam and PlayStation rows landed between the retro games)',
+  /const firstLoad = retro\.isLoading \|\| steam\.isLoading \|\| psn\.isLoading \|\| !steamReady/.test(code('src/features/games/test-game/useTestGameLibrary.ts')))
+
 console.log('Loading copies the loaded geometry')
 const carousel = code('src/features/home/components/GlanceCarousel.tsx')
 check('a glance tile\'s loading copy and its screens never share a DOM node (keyed apart)', /key="loading"/.test(carousel) && /key="track"/.test(carousel))
 check('a glance tile\'s loading copy keeps the row of screen dots', /mt-1\.5 flex h-4 items-center/.test(carousel))
 check('weather waiting for the location counts as loading (the tile drew "—", then a skeleton, then the forecast)',
   /isLoading: query\.isLoading \|\| \(enabled && !geo\)/.test(code('src/features/home/hooks/useWeather.ts')))
-check('the brief draws its greeting at once and waits for all of its database reads',
-  /<header ref=\{artContentRef\}[^]*\{isLoading \? <BriefSkeleton/.test(code('src/features/home/components/DailyBrief.tsx'))
-    && /training\.isLoading \|\| profileLoading/.test(code('src/features/home/hooks/useDailyBrief.ts')))
-check('the day list\'s loading copy is the list\'s own grid, about a screen tall', /function ListSkeleton\(/.test(code('src/features/daily/components/DayAgenda.tsx')))
-check('Games waits for all three libraries on the first load (Steam and PlayStation rows landed between the retro games)',
-  /const firstLoad = retro\.isLoading \|\| steam\.isLoading \|\| psn\.isLoading \|\| !steamReady/.test(code('src/features/games/test-game/useTestGameLibrary.ts')))
-
-console.log('Rows and counts that come with the data keep their room')
 check('Daily\'s date label has one width for every day (the arrows never move on Yesterday / Tomorrow)',
   /labelClassName="w-\[[\d.]+em\]/.test(code('src/features/daily/pages/DailyPage.tsx')))
-const projects = code('src/features/projects/pages/ProjectsPage.tsx')
-check('Projects: the status switch shows while loading, and the cards wait for their phases, tasks and questions',
-  /\(projects\.length > 0 \|\| loading\) && \(\s*<SegmentedControl<ProjectStatus>/.test(projects) && /phasesQ\.isLoading \|\| tasksQ\.isLoading \|\| questionsQ\.isLoading/.test(projects))
-const football = code('src/features/football/pages/FootballPage.tsx')
-check('Football: the filter row keeps its place while what you follow loads', /\{followsQ\.isLoading && \(\s*<div aria-hidden/.test(football))
-check('Football: the match lists load as MatchListSkeleton, and a failed ESPN read keeps their room (MATCH_LIST_ROOM)',
-  /<MatchListSkeleton days=\{3\} \/>/.test(football) && /<MatchListSkeleton days=\{2\} \/>/.test(football)
-    && /MATCH_LIST_ROOM\[3\]/.test(football) && /MATCH_LIST_ROOM\[2\]/.test(football) && /\{!loading && problem\}/.test(football))
-check('Work: the three counts keep their room while the tasks load', /\{isLoading \? \(\s*\/\/[^\n]*\n[^]*?<span aria-hidden/.test(code('src/features/work/pages/WorkPage.tsx')))
-check('Shop and Wishes: the filters show while loading', /filters: \(all\.length > 0 \|\| isLoading\)/.test(code('src/features/shop/components/WishlistView.tsx'))
-  && /filters: \(wishes\.length > 0 \|\| isLoading\)/.test(code('src/features/wishes/pages/WishesPage.tsx')))
-check('Books: Reading now keeps its place while the library loads', /reading: isLoading \? <ReadingNowSkeleton \/>/.test(code('src/features/books/components/LibraryTab.tsx')))
-check('Training: Next waits for the lines above the exercises (missed, recovery, muscle watch)',
-  /plan\.isLoading \|\| missed\.isLoading \|\| recovery\.isLoading \|\| muscle\.isLoading/.test(code('src/features/training/components/next/NextTab.tsx')))
+for (const f of ['src/features/recipes/pages/RecipesPage.tsx', 'src/features/training/pages/TrainingPage.tsx', 'src/features/health/pages/HealthPage.tsx', 'src/features/books/pages/BooksPage.tsx']) {
+  const c = code(f)
+  check(`${path.basename(f, '.tsx')}: a lazy tab loads in a SkeletonTab (a screen of room), never a 0px div`,
+    /<Suspense fallback=\{<SkeletonTab \/>\}>/.test(c) && !/<Suspense fallback=\{<div aria-busy="true" \/>\}>/.test(c))
+}
+check('the task-row sheets open at their size: the parent picker\'s fallback is its body; the list sheet shows rows while loading',
+  /<Suspense fallback=\{<PickerSkeleton/.test(code('src/features/todo/components/SetParentTaskSheet.tsx'))
+    && /isLoading && Array\.from\(\{ length: Math\.max\(1, loadingRows\) \}/.test(code('src/features/todo/components/MoveToListSheet.tsx')))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

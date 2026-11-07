@@ -274,7 +274,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Page header art | `<PageHeader art={<XHeroArt />}>` — the page's drawing behind its header band; Home: `<PageHeroArt>` in its first card (§6.5) |
 | Status | `<ToneDot>` / `<TonePill>` / `data-tone` |
 | Empty state | `<EmptyState icon title description action bordered />` |
-| Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry |
+| Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first>` around a part whose data comes in on its own (it keeps the room the part took last time, §5); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days) |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
@@ -313,19 +313,33 @@ fills it. Errors say what failed and offer a retry; render-time crashes are caug
 
 **Nothing moves when data lands** (owner, 07.11.2026: "Detect and fix layout shifts!"). A layout
 shift is drawn content moving because something above it changed size; the browser counts it (CLS).
-- A skeleton copies the loaded layout: the same grid, line and row heights, and a typical count — a
-  list at the top of a page about a screen of rows (`DayAgenda`) — never three generic bars.
-- What comes with the data keeps its room while loading: a header row (Projects' status switch,
-  Football's filter), counts and badges (Work's), a card that may appear (Books' Reading now), a
-  filter bar (Shop, Wishes), a line that grows a row (`DayAgenda`'s Next, Food's macro bar).
-- A card built from several database reads shows its loading copy until all of them answered (the
-  brief, Projects' cards, Training's Next, Health's insights, Games' three libraries); data from an
-  outside service (weather, rates, ESPN) fills in where it is.
+How much room a part takes is the owner's data — a busy day or an empty one, an overdue count or none —
+so a loading copy sized for one account moves every other: a skeleton taller than its content is as bad
+as a shorter one.
+- Reserve only what every outcome shows: Work's done and active counts, Projects' status switch, the
+  brief's tasks, schedule and food lines, Training's recovery line. A part that only some data shows
+  (Work's overdue count, Projects' area switch, Football's filter, the muscle watch, a missed session)
+  keeps no room on a first visit.
+- After that the device remembers what each part looked like when its data last landed — a height, a
+  count, whether a row was there — and the next loading copy keeps that room
+  (`shared/hooks/useLayoutMemory.ts`: one localStorage entry of numbers and flags, cleared at sign-out):
+  `<KeepRoom>` for a part, `useRememberedFlag` / `useRememberedCount` for a row or a count. Daily's list
+  keeps its height per day (today: else the last today's; else about an empty day's).
+- Each part shows as its own reads land, with room kept for the parts still coming; nothing waits for
+  another part's reads (the brief's sections, Training Next's lines). A part waits for all of its own
+  reads when they make one order or one card: the day's list (tasks, slots and repeats in time order), a
+  project card, Games' shelves (three libraries), Health's ranked insights. Data from an outside service
+  (weather, rates, ESPN, Google's events) fills in where it is.
+- A failed read is one compact line, never kept room; the room comes back while it is tried again
+  (Football).
+- A skeleton copies the loaded grid and row heights. A lazy tab's fallback is `<SkeletonTab>` (a
+  screen of room) and a lazy sheet's its body at its size — never a 0px placeholder.
 - A loading branch and the loaded branch of one element are keyed apart (`GlanceCarousel`).
 - A label whose text changes on a switch has one width (Daily's date: `w-[7.9em]`, the widest day).
 - Never hide content or add a delay to cover a shift.
-Check: `node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs` (≤ 0.1 per page and tab
-switch, at 402 / 874 / 1469 / 2450) and `scripts/verify-layout-shift.cjs`.
+Check: `node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs --data seed,light,empty`
+— every data shape, never worse than before the change; `--revisit` measures the next visit, which the
+memory should bring to ≤ 0.1 per page and tab switch — and `scripts/verify-layout-shift.cjs`.
 
 **Icons.** `lucide-react` only. 16px inside buttons and rows, 18px in icon buttons, 20px in nav,
 22px in the phone tab bar; `strokeWidth` 2 (1.8–1.9 in the phone chrome). Icons are `aria-hidden` next to a
