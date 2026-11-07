@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import ts from 'typescript'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { stampComponentSources } from './src/features/devRequests/pick/componentSourceTransform'
+import { stampComponentSources } from './src/features/devRequests/pick/componentSourceTransform.ts'
 
 // Stamps each React component's root element with data-src="src/…/File.tsx#Name"
 // (Dev Requests → Pick on page names the component and file it picked from).
