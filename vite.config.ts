@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import ts from 'typescript'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { stampComponentSources } from './src/features/devRequests/pick/componentSourceTransform'
 
 // Stamps each React component's root element with data-src="src/…/File.tsx#Name"
@@ -27,6 +28,11 @@ function componentSourceStamp(): Plugin {
 }
 
 export default defineConfig({
+  resolve: {
+    // The app uses no Supabase Realtime, but supabase-js would bring realtime-js (16 kB gzip) to every page:
+    // the stub keeps the methods the client calls (verify-realtime-stub).
+    alias: [{ find: /^@supabase\/realtime-js$/, replacement: fileURLToPath(new URL('./src/integrations/supabase/realtimeStub.ts', import.meta.url)) }],
+  },
   plugins: [
     componentSourceStamp(),
     react(),

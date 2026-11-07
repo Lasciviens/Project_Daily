@@ -21,6 +21,7 @@ Background: `docs/platform-shell.md`.
 - A new page goes in `src/app/pages.ts` (and `PRELOAD_ORDER`) and `src/app/navigation.ts`.
 - A page's default tab is in its own code; another tab, window or heavy sheet is a `lazyPart` in its own `Suspense`, preloaded with `useIdlePreload` — never a static import that puts its charts in the first download. A panel the shell opens on demand goes in `shell/shellParts.ts`.
 - A sheet rendered closed (per row) keeps its queries inside the open sheet.
+- The app uses no Supabase Realtime: `vite.config.ts` aliases `@supabase/realtime-js` to `src/integrations/supabase/realtimeStub.ts` (16 kB gzip off every page; `verify-realtime-stub`). To use Realtime, remove the alias first; a channel throws.
 - `scripts/verify-bundle-budget.mjs` guards the first download (gzip, the shell and each page); raise a budget only on purpose, in that file, with the reason in the commit.
 - The service worker precaches every chunk on purpose (a late chunk after a deploy never 404s); never trim it to "what the shell needs".
 - Back closes only the top overlay; entries left behind are passed over (`historyEntries.ts`).
