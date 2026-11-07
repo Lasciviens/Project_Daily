@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Brain, Check, ChevronRight, CircleCheck, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
@@ -26,6 +26,7 @@ import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
+import { rememberLayout, rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { FOOD_TODAY_BOARD } from '../foodBoards'
 import { DishItemMenu, DishMenu } from './DishActions'
 import { GUESS_MARK, isGuessLine } from '../quickGuess'
@@ -142,6 +143,16 @@ export function FoodTodayTab({ date }: { date: string }) {
   for (const m of nut?.meals ?? []) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
+
+  // While the day loads, the macro bar and each slot's rows keep their room only where they showed when a day
+  // last loaded on this device (THEME.md §5): an empty day has neither, so room kept for them pulled it up.
+  const ready = nut != null
+  const macrosShown = !!nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0)
+  const macrosRoom = useRememberedFlag('food:macros', macrosShown, ready)
+  const slotsWithRows = SLOTS.map(({ slot }) => ((bySlot.get(slot)?.length ?? 0) > 0 ? '1' : '0')).join('')
+  useEffect(() => {
+    if (ready) SLOTS.forEach(({ slot }, i) => rememberLayout(`food:slot:${slot}`, slotsWithRows[i] === '1'))
+  }, [ready, slotsWithRows])
 
   // A meal slot's header — the same for every slot, Supplement included (its
   // Schedule button comes in as `extra`). A wide card puts the totals in the
@@ -373,9 +384,8 @@ export function FoodTodayTab({ date }: { date: string }) {
               {hasPlanned && <PlannedLine kcal={withPlanned.calories} target={targets.calories} />}
             </div>
           </div>
-          {/* The macro bar and its figures keep their room while the day loads: arriving with it, they pushed
-              every card under this one down (a layout shift). */}
-          {nut == null && (
+          {/* The macro bar and its figures keep their room while the day loads, when a day had them last time. */}
+          {!ready && macrosRoom && (
             <div aria-hidden className="mt-4 border-t border-line pt-3">
               <Skeleton rounded="rounded-full" className="h-2 w-full" />
               <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
@@ -383,7 +393,7 @@ export function FoodTodayTab({ date }: { date: string }) {
               </div>
             </div>
           )}
-          {nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0) && (
+          {nut && macrosShown && (
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
               <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false}
@@ -447,13 +457,15 @@ export function FoodTodayTab({ date }: { date: string }) {
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
               {slotHeader(slot, label, icon, slotTotals)}
-              {nut == null ? (
-                // A logged or planned row's room (with the column labels from 40rem) while the day loads: the
-                // empty "Add" row is shorter, so each slot grew as its rows landed and pushed the next ones.
-                <div aria-hidden className="flex flex-col">
-                  <span className="hidden h-6 @[40rem]:block" />
-                  <span className="flex h-[2.8125rem] items-center px-4"><Skeleton className="h-3 w-1/2" /></span>
-                </div>
+              {!ready ? (
+                // While the day loads: a logged or planned row's room (with the column labels from 40rem) where the
+                // slot had rows last time — the empty "Add" row is shorter — else the "Add" row's.
+                rememberedLayout(`food:slot:${slot}`) === true ? (
+                  <div aria-hidden className="flex flex-col">
+                    <span className="hidden h-6 @[40rem]:block" />
+                    <span className="flex h-[2.8125rem] items-center px-4"><Skeleton className="h-3 w-1/2" /></span>
+                  </div>
+                ) : <span aria-hidden className="flex h-11 items-center px-4"><Skeleton className="h-3 w-1/4" /></span>
               ) : meals.length > 0 ? (
                 <ul className="divide-y divide-line">
                   {slotRows(meals, slot)}

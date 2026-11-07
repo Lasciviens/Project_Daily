@@ -330,8 +330,10 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   check('Shop: on a phone Owned\'s Things | Stats and its menu sit under the bar, never in it',
     !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)[\s\S]*\{moreWaysMenu\}/.test(shop))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
+  // While loading, the count is the one remembered from the last load (useRememberedCount, THEME.md §5).
   check('Projects: the header stops over the most cards any status shows, and the open status keeps its count',
-    /projectsHeaderCapRem\(projectsHeaderCards\(statusTally\(projects, 'all'\)/.test(projects) && !/shown\.length, width/.test(projects) && !/s !== status/.test(projects))
+    /const headerCards = useRememberedCount\('projects:cards', projectsHeaderCards\(statusTally\(projects, 'all'\)/.test(projects)
+      && /projectsHeaderCapRem\(headerCards, width\)/.test(projects) && !/shown\.length, width/.test(projects) && !/s !== status/.test(projects))
   const slot = code('src/shared/ui/SteadySlot.tsx')
   check('SteadySlot: every item in one grid cell, the hidden ones invisible and inert (no focus, no screen reader)',
     /col-start-1 row-start-1/.test(slot) && /k !== show && 'invisible'/.test(slot) && /inert=\{k !== show\}/.test(slot))

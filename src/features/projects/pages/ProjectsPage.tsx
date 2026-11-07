@@ -4,6 +4,7 @@ import { FolderKanban, Plus } from 'lucide-react'
 import { Button, EmptyState, PageContainer, PageHeader, SegmentedControl, Skeleton } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
+import { useRememberedCount, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { useAllPhases, useOpenQuestions, useProjectTasks, useProjects } from '../hooks/useProjects'
 import { ProjectCard } from '../components/ProjectCard'
 import { ProjectsHeroArt } from '../components/ProjectsHeroArt'
@@ -46,13 +47,20 @@ export function ProjectsPage() {
     )]))
   }, [projects, phasesQ.data, tasksQ.data, questionsQ.data])
 
+  // A card is drawn from its project's phases, tasks and questions too (read at once, with the projects): drawn
+  // before them, each card grew a "Next" row a moment later and pushed the ones under it (a layout shift).
+  const loading = projectsQ.isLoading || phasesQ.isLoading || tasksQ.isLoading || questionsQ.isLoading
+  // Until the cards are in, the header keeps what it had when they last loaded on this device (THEME.md §5), and it
+  // changes with them, never before (shrunk first, it moved the loading cards up the page): the status switch shows
+  // whenever there is a project (also the first time), the area switch only with both areas (kept for an account
+  // with one, it dropped the cards when they landed), and it stops over as many cards as there were.
+  const hasProjects = useRememberedFlag('projects:any', projects.length > 0, !loading, true)
+  const showAreas = useRememberedFlag('projects:areas', twoAreas, !loading) || twoAreas
+  const headerCards = useRememberedCount('projects:cards', projectsHeaderCards(statusTally(projects, 'all'), false), !loading, projectsHeaderCards({}, true))
   // The header stops over the last card (New project floated ~44rem past four cards at 2450) — the most
   // cards any status shows, so switching status or area never resizes it (projectsHeaderCards).
   const { ref: widthRef, width } = useElementWidthRem<HTMLDivElement>()
-  const headerCap = width == null ? null : projectsHeaderCapRem(projectsHeaderCards(statusTally(projects, 'all'), projectsQ.isLoading), width)
-  // The cards wait for their phases, tasks and questions too (all read at once): drawn before them, each card
-  // grew a "Next" row a moment later and pushed the ones under it (a layout shift).
-  const loading = projectsQ.isLoading || phasesQ.isLoading || tasksQ.isLoading || questionsQ.isLoading
+  const headerCap = width == null ? null : projectsHeaderCapRem(headerCards, width)
   const newProject = () => modal.open({ kind: 'project' })
 
   return (
@@ -62,10 +70,11 @@ export function ProjectsPage() {
           <PageHeader
             title="Projects"
             art={<ProjectsHeroArt />}
-            actions={projects.length > 0 || loading ? (
-              <div className="flex items-center gap-2">
-                {/* While loading too: the switch arriving later widened (on a phone, heightened) the row. */}
-                {(twoAreas || loading) && (
+            actions={hasProjects ? (
+              // A phone's row is full width with New project at its end, so the area switch arriving beside it
+              // moves nothing sideways (as a right-aligned group, the whole row jumped 200px left).
+              <div className="flex items-center gap-2 max-md:w-full max-md:justify-end">
+                {showAreas && (
                   <SegmentedControl<AreaFilter>
                     size="sm"
                     value={area}
@@ -77,8 +86,7 @@ export function ProjectsPage() {
               </div>
             ) : undefined}
           >
-            {/* While loading too (without counts yet): the row arriving with the data pushed the cards down. */}
-            {(projects.length > 0 || loading) && (
+            {hasProjects && (
               <SegmentedControl<ProjectStatus>
                 size="sm"
                 value={status}
@@ -95,7 +103,8 @@ export function ProjectsPage() {
       </div>
 
       {loading ? (
-        <div className={GRID}>
+        // Keyed apart from the loaded grid: the cards replace the loading copy instead of moving into its place.
+        <div key="loading" className={GRID}>
           {/* A loaded card's height (title, meta, progress, Next row). */}
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-[9.625rem]" />)}
         </div>
@@ -112,7 +121,7 @@ export function ProjectsPage() {
           action={<Button variant="primary" icon={<Plus />} onClick={newProject}>New project</Button>}
         />
       ) : (
-        <div className={GRID}>
+        <div key="cards" className={GRID}>
           {shown.map(p => <ProjectCard key={p.id} project={p} summary={summaries.get(p.id)!} />)}
           {shown.length === 0 && (
             <p className="text-body text-fg-muted">No {STATUS_LABEL[status].toLowerCase()} projects{area !== 'all' ? ` in ${AREA_LABEL[area]}` : ''}.</p>

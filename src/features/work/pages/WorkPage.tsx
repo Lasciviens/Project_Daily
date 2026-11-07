@@ -18,6 +18,10 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { STATUS_TONE } from '../../todo/taskTones'
 import type { Task, TaskStatus } from '../../todo/types'
 import { railToggleFrom, workHeaderCapRem, workLayout, type WorkSection } from '../workBoard'
+import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
+
+/** The loading copy of the counts: "N done", "N active", "N overdue" pills' widths. */
+const COUNT_ROOM = ['w-[4.5rem]', 'w-[4.75rem]', 'w-[5.5rem]']
 
 function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -61,6 +65,7 @@ export function WorkPage() {
 
   // The same counts as Daily and Home (taskRules): done = closed today.
   const counts = countTasks(tasks, today, today)
+  const overdueRoom = useRememberedFlag('work:overdue', counts.overdue > 0, !isLoading)
 
   // Cards and rows hand over an id; the actions take the task.
   const byId = useCallback((id: string) => tasks.find(t => t.id === id), [tasks])
@@ -137,10 +142,11 @@ export function WorkPage() {
             actions={
               <>
                 {isLoading ? (
-                  // The three counts' room while the tasks load: the overdue count arriving later wrapped a
-                  // phone's bar onto a second line and pushed the board down (a layout shift).
+                  // The counts' room while the tasks load: done and active always show; overdue only when the last
+                  // visit had it — on a phone it wraps the bar onto a second line, and room kept for it on a day
+                  // without it dropped the board 40px when the tasks landed (a layout shift either way).
                   <span aria-hidden className="flex items-center gap-1.5">
-                    {['w-[4.5rem]', 'w-[4.75rem]', 'w-[5.5rem]'].map(w => <Skeleton key={w} rounded="rounded-full" className={`h-5 ${w}`} />)}
+                    {(overdueRoom ? COUNT_ROOM : COUNT_ROOM.slice(0, 2)).map(w => <Skeleton key={w} rounded="rounded-full" className={`h-5 ${w}`} />)}
                   </span>
                 ) : <span className="flex items-center gap-1.5" aria-label="Today at a glance">
                   <TonePill tone={STATUS_TONE.done} className="tabular-nums"><Check aria-hidden className="h-3 w-3" />{counts.done} done</TonePill>
