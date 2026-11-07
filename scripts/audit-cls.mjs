@@ -9,7 +9,7 @@
 // Runs against the mocked app harness (scripts/harness, its README says how to start the app):
 //   node scripts/audit-cls.mjs --harness scripts/harness [--base http://127.0.0.1:5371]
 //        [--routes home,daily] [--widths 402,874,1469,2450] [--slow 800] [--tabs] [--budget 0.1]
-//        [--data seed,light,empty] [--revisit] [--json]
+//        [--data seed,light,empty] [--revisit] [--at HH:MM] [--json]
 // --slow N holds every harness answer N ms, so each skeleton is on screen before its content
 // replaces it (the shifts a phone on a slow network sees). Exits 1 when a page goes over the budget.
 // --data picks whose account the harness plays, through its `tables` overrides (default seed):
@@ -22,6 +22,9 @@
 // short one moves the seed's (THEME.md §5), so check a change with all three.
 // --revisit loads each page once, then measures a second load in the same browser (what a page that
 // remembers its last layout — DayAgenda's rows — looks like on the next visit).
+// --at HH:MM starts the page's clock at that time today in Oslo and builds the data around it, so a part that
+// follows the hour — the brief's schedule line stops at 22:00 — can be measured at any time of day. Only `Date`
+// is shifted; it runs on, and timers, frames and `performance` stay real.
 // What moved is named by its component (the data-src stamp, vite.config.ts) and its old → new box.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -32,7 +35,12 @@ const args = process.argv.slice(2)
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const harness = opt('harness', process.env.APP_HARNESS)
 if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
-  console.error('usage: audit-cls.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b] [--widths 402,874,1469,2450] [--slow 800] [--tabs] [--budget 0.1] [--data seed,light,empty] [--revisit] [--json]')
+  console.error('usage: audit-cls.mjs --harness <dir containing mock-server.cjs> [--base url] [--routes a,b] [--widths 402,874,1469,2450] [--slow 800] [--tabs] [--budget 0.1] [--data seed,light,empty] [--revisit] [--at HH:MM] [--json]')
+  process.exit(2)
+}
+const AT = opt('at', null)
+if (AT != null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(AT)) {
+  console.error('--at takes a time of day, HH:MM (24 h)')
   process.exit(2)
 }
 const BASE = opt('base', 'http://127.0.0.1:5371')
@@ -50,22 +58,25 @@ const SHAPES = opt('data', 'seed').split(',')
 const { chromium } = require(path.resolve('node_modules/playwright'))
 // resolve, not join: require() reads "scripts/harness/…" (no ./) as a package name.
 const { installMocks, SESSION } = require(path.resolve(harness, 'mock-server.cjs'))
-const { buildTables, osloDay } = require(path.resolve(harness, 'seed.cjs'))
+const { buildTables, osloDay, osloInstant } = require(path.resolve(harness, 'seed.cjs'))
+/** The instant the page's clock shows (--at), else none: the real clock. */
+const AT_MS = AT == null ? null : Date.parse(osloInstant(osloDay(new Date()), AT))
+const now = () => (AT_MS == null ? new Date() : new Date(AT_MS))
 
 /** The `tables` overrides for a data shape (--data). */
 function tablesFor(shape) {
   if (shape === 'seed') return {}
-  const t = buildTables(new Date())
+  const t = buildTables(now())
   if (shape === 'empty') return Object.fromEntries(Object.keys(t).map(name => [name, []]))
   if (shape !== 'light') throw new Error(`--data ${shape}: seed, light or empty`)
-  const today = osloDay(new Date())
+  const today = osloDay(now())
   const ids = (rows) => new Set(rows.map(r => r.id))
   const tasks = new Set(['Buy a birthday card for Kari', 'Call the plumber about the kitchen tap', 'Prepare the Q4 planning slides', 'Review the onboarding checklist'])
   const projects = t.projects.filter(p => p.area === 'personal' && p.status === 'active')
   const projectIds = ids(projects)
   const routines = t.hevy_routines.slice(0, 2)
   const routineIds = ids(routines)
-  const workouts = t.hevy_workouts.filter(w => routineIds.has(w.routine_id) && Date.parse(w.start_time) >= Date.now() - 14 * 864e5)
+  const workouts = t.hevy_workouts.filter(w => routineIds.has(w.routine_id) && Date.parse(w.start_time) >= now().getTime() - 14 * 864e5)
   const workoutIds = ids(workouts)
   const workoutExercises = t.hevy_workout_exercises.filter(e => workoutIds.has(e.hevy_workout_id))
   const workoutExerciseIds = ids(workoutExercises)
@@ -129,7 +140,19 @@ async function measure(browser, route, width, shape) {
     viewport: { width: w, height: h }, deviceScaleFactor: 1, isMobile: phone, hasTouch: phone,
     timezoneId: 'Europe/Oslo', locale: 'en-GB', serviceWorkers: 'block', colorScheme: 'light',
   })
-  await installMocks(context, { tables: tablesFor(shape) })
+  await installMocks(context, { tables: tablesFor(shape), now: now() })
+  // --at: the page's clock starts at that time and runs on. Only `Date` is shifted — timers, frames and
+  // `performance` stay real (a frozen clock, Playwright's setFixedTime, changed the order the reads landed in).
+  if (AT_MS != null) {
+    await context.addInitScript((offset) => {
+      const RealDate = Date
+      class AtDate extends RealDate {
+        constructor(...args) { if (args.length === 0) super(RealDate.now() + offset); else super(...args) }
+        static now() { return RealDate.now() + offset }
+      }
+      globalThis.Date = AtDate
+    }, AT_MS - Date.now())
+  }
   // Registered after the mock, so it runs first: hold each answer, then hand it to the mock.
   if (SLOW) await context.route(u => u.hostname === 'mock.supabase.co', async (r) => { await new Promise(res => setTimeout(res, SLOW)); return r.fallback() })
   await context.addInitScript((session) => {
@@ -202,6 +225,6 @@ else {
     console.log(`\nOVER ${BUDGET}: ${r.data} ${r.route} @${r.width}`)
     for (const e of r.worst) for (const s of e.sources) console.log(`  ${e.phase} ${e.value.toFixed(3)}  ${s.src ?? '?'}  ${s.what}  ${JSON.stringify(s.from)} → ${JSON.stringify(s.to)}`)
   }
-  console.log(`\n${rows.length - over.length} of ${rows.length} within the budget (${BUDGET})${SLOW ? `, answers held ${SLOW} ms` : ''}${REVISIT ? ', second visit' : ''}`)
+  console.log(`\n${rows.length - over.length} of ${rows.length} within the budget (${BUDGET})${SLOW ? `, answers held ${SLOW} ms` : ''}${REVISIT ? ', second visit' : ''}${AT ? `, at ${AT}` : ''}`)
 }
 process.exit(over.length ? 1 : 0)

@@ -64,6 +64,14 @@ mock answers as the database does for the allowed owner.
    looks like once the page remembers its last layout (`useLayoutMemory`). That one should stay within
    the budget.
 
+   `--at HH:MM` starts the page's clock at that time today in Oslo and builds the data around it, so a
+   part that follows the hour can be measured at any time — the brief's schedule line stops at 22:00:
+   `--routes home --at 23:00`. Only `Date` is shifted and runs on; timers, frames and `performance` stay
+   real (a clock that stood still, Playwright's `clock.setFixedTime`, changed the order reads landed in).
+   Every mock answer is held the same time, so on a first visit several parts often land in one frame,
+   and which ones do varies between runs: a page whose first visit moves in steps (Home) can measure 0.08
+   one run and 0.6 the next. Compare a few runs, not one.
+
    Port 5371 taken? Start Vite on another port and add `--base http://127.0.0.1:<port>`.
    The scripts launch Playwright's Chromium (in the cloud container from
    `/opt/pw-browsers`; elsewhere `npx playwright install chromium`).

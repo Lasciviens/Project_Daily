@@ -919,4 +919,4 @@ function buildTables(now = new Date()) {
   return tables
 }
 
-module.exports = { OWNER, RELATIONS, buildTables, osloDay, addDays }
+module.exports = { OWNER, RELATIONS, buildTables, osloDay, osloInstant, addDays }
