@@ -15,6 +15,16 @@ language sql security definer set search_path = '' as $$
   select count(*) over (), o.changed_at, o.requested_at, o.area from public.icloud_outbox o where o.entity_id = p_id
 $$;
 grant execute on function public.t_q(uuid) to authenticated;
+-- Every day counts from the day the scenarios run (Europe/Oslo, as the app's rules read today), fixed once for the
+-- run: t_d(n) is today + n, t_mon(n) n days after Monday next week (the repeat below is weekly on Mondays). The
+-- read-back and the training rules compare with today, so a fixed date would change their answers once it passed.
+create table public.t_today as select (now() at time zone 'Europe/Oslo')::date as d;
+grant select on public.t_today to authenticated;
+create or replace function public.t_d(n integer) returns date language sql stable as $$ select d + n from public.t_today $$;
+create or replace function public.t_mon(n integer) returns date language sql stable as $$
+  select date_trunc('week', d::timestamp)::date + 7 + n from public.t_today
+$$;
+grant execute on function public.t_d(integer), public.t_mon(integer) to authenticated;
 
 -- X0. 179: the past trainings — every workout stored before 179 of an account whose Training is on Apple is queued
 --     once, named by a uuid made from Hevy's id (any id: a uuid or not).
@@ -36,7 +46,7 @@ do $$
 declare r jsonb;
 begin
   r := public.app_save_item('{"title": "Lyn – Vålerenga", "domain": "personal", "priority": "medium", "category": "football",
-    "date": "2026-11-12", "time": "19:00", "durationMinutes": 120, "google": "calendar", "today": "2026-10-30"}');
+    "time": "19:00", "durationMinutes": 120, "google": "calendar"}'::jsonb || jsonb_build_object('date', public.t_mon(10), 'today', public.t_d(0)));
   insert into public.t_keep values ('match', r);
 end $$;
 reset role;
@@ -68,9 +78,9 @@ update public.calendar_prefs set prefs = prefs || '{"notes": "link"}' where user
 select public.t_ok((select count(*) = 1 and bool_and(changed is null) from public.t_q(((select v from public.t_keep where k = 'match') ->> 'blockId')::uuid)),
   'X3: a notes change re-queues the match as a re-send, not as a change of the item');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', ((select v from public.t_keep where k = 'match') ->> 'blockId')::uuid,
-  'football', jsonb_build_object('date', '2026-11-13', 'time', '18:00', 'minutes', 120, 'lastModified', (now() - interval '1 minute')::text), '"v2"') = 'moved',
+  'football', jsonb_build_object('date', public.t_mon(11), 'time', '18:00', 'minutes', 120, 'lastModified', (now() - interval '1 minute')::text), '"v2"') = 'moved',
   'X3: an iPhone move made before the settings change is taken through the real slot rules');
-select public.t_ok((select t.due_date = '2026-11-13' from public.tasks t where t.id = ((select v from public.t_keep where k = 'match') ->> 'taskId')::uuid),
+select public.t_ok((select t.due_date = public.t_mon(11) from public.tasks t where t.id = ((select v from public.t_keep where k = 'match') ->> 'taskId')::uuid),
   'X3: …and the task''s due day follows the moved slot (the real item rules)');
 delete from public.icloud_outbox;
 
@@ -120,8 +130,8 @@ do $$
 declare r jsonb;
 begin
   r := public.app_save_item('{"title": "Lower B", "domain": "personal", "priority": "medium", "category": "training",
-    "date": "2026-11-02", "time": "07:00", "durationMinutes": 60, "google": "calendar", "today": "2026-10-30",
-    "repeat": {"kind": "weekly", "daysOfWeek": [1]}}');
+    "time": "07:00", "durationMinutes": 60, "google": "calendar",
+    "repeat": {"kind": "weekly", "daysOfWeek": [1]}}'::jsonb || jsonb_build_object('date', public.t_mon(0), 'today', public.t_d(0)));
   insert into public.t_keep values ('plan', r);
 end $$;
 reset role;
@@ -132,22 +142,22 @@ select public.t_ok((select count(*) = 1 from t_plan), 'X6: the save made one rep
 select public.t_ok((select count(*) >= 1 and bool_and(changed is not null) from public.t_q((select id from t_plan))),
   'X6: the training plan is queued for Apple as one series, as the app''s own change');
 delete from public.icloud_outbox;
-update public.schedule_blocks set icloud_area = 'training', icloud_from = '2026-11-02' where id = (select id from t_plan);
+update public.schedule_blocks set icloud_area = 'training', icloud_from = public.t_mon(0) where id = (select id from t_plan);
 select public.t_ok(not exists (select 1 from public.icloud_outbox), 'X6: the drain''s own write on the plan queues nothing');
 -- X7. One day of it becomes its own item (the real 156 item_occurrence, as the day popup does).
 set role authenticated;
-select public.item_occurrence((select id from t_plan), '2026-11-09', '2026-10-30');
+select public.item_occurrence((select id from t_plan), public.t_mon(7), public.t_d(0));
 reset role;
 select public.t_ok(exists (select 1 from public.icloud_outbox o join public.time_blocks b on b.id = o.entity_id
-                           where b.schedule_block_id = (select id from t_plan) and b.date = '2026-11-09' and o.changed_at is not null),
+                           where b.schedule_block_id = (select id from t_plan) and b.date = public.t_mon(7) and o.changed_at is not null),
   'X7: a day split off the training plan is queued for Apple as its own event');
 select public.t_ok(exists (select 1 from public.icloud_outbox where entity_id = (select id from t_plan))
-                   and (select '2026-11-09'::date = any (except_dates) from public.schedule_blocks where id = (select id from t_plan)),
+                   and (select public.t_mon(7) = any (except_dates) from public.schedule_blocks where id = (select id from t_plan)),
   'X7: …and the plan is sent again without that day (no day twice in Apple Calendar)');
 -- X8. The real 167 rule: a training day moved 7+ days reaches Apple too (its writes are queued like any change).
 delete from public.icloud_outbox;
 set role authenticated;
-update public.time_blocks set date = '2026-11-20' where schedule_block_id = (select id from t_plan) and date = '2026-11-09';
+update public.time_blocks set date = public.t_mon(18) where schedule_block_id = (select id from t_plan) and date = public.t_mon(7);
 reset role;
 select public.t_ok(exists (select 1 from public.icloud_outbox o join public.time_blocks b on b.id = o.entity_id
                            where b.schedule_block_id = (select id from t_plan) and o.changed_at is not null),
@@ -165,7 +175,7 @@ do $$
 declare r jsonb;
 begin
   r := public.app_save_item('{"title": "Test all-day", "domain": "personal", "priority": "medium", "category": "football",
-    "date": "2026-11-20", "time": null, "durationMinutes": null, "google": "calendar", "today": "2026-10-30"}');
+    "time": null, "durationMinutes": null, "google": "calendar"}'::jsonb || jsonb_build_object('date', public.t_mon(18), 'today', public.t_d(0)));
   insert into public.t_keep values ('allday', r);
 end $$;
 reset role;
@@ -178,7 +188,6 @@ update public.calendar_prefs set prefs = jsonb_set(prefs, '{areas,football,app}'
 select public.t_ok((select count(*) >= 1 and bool_and(changed is null) from public.t_q(((select v from public.t_keep where k = 'match') ->> 'blockId')::uuid)),
   'X10: an area switched back to Google re-queues its Apple events as re-sends (an iPhone edit from before still counts)');
 -- X11. A training session moved 9 days on the iPhone: 167/169's rule runs, and ITS writes are queued for Apple.
-create or replace function public.t_d(n integer) returns date language sql stable as $$ select (now() at time zone 'Europe/Oslo')::date + n $$;
 insert into public.hevy_routines (id, user_id, title) values ('x-lower', '00000000-0000-0000-0000-000000000001', 'Lower C');
 insert into public.tasks (id, user_id, title, domain, section, status, priority, due_date, due_time, source_type, hevy_routine_id, google_target) values
   ('00000000-0000-4000-8000-0000000b0101', '00000000-0000-0000-0000-000000000001', 'Lower C', 'personal', 'backlog', 'open', 'medium', public.t_d(1), '17:00', 'training_session', 'x-lower', 'calendar'),
