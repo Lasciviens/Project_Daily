@@ -169,15 +169,22 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
         : <button type="button" className={headerCls} aria-label={describe} onKeyDown={onKeyDown} onClick={e => { e.stopPropagation(); onClick?.() }}>{headerInner}</button>}
 
       {loading ? (
-        <div className="mt-1.5">
-          <Skeleton className="h-7 w-16" />
-          <Skeleton className="mt-1.5 h-3 w-24" />
+        // The loaded tile's geometry: a screen (value and hint, 3rem), then the row of the screen's name and
+        // dots, so the tile — and the tiles' row — keeps its height when the data lands (a layout shift).
+        // Keyed apart from the track: React reused the one div for both, so the tall track "moved" into it.
+        <div key="loading" aria-hidden className="flex flex-1 flex-col">
+          <div className="mt-1 flex min-h-12 flex-col justify-center gap-1.5">
+            <Skeleton className="h-5 w-16" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="mt-1.5 flex h-4 items-center"><Skeleton className="h-2 w-14" /></div>
         </div>
       ) : (
         // `relative`: a screen's absolutely placed sr-only text (the Money
         // tile's "unchanged since yesterday") would otherwise take the page as
         // its containing block, escape this track's clip and widen <main>.
         <div
+          key="track"
           ref={track}
           onScroll={onScroll}
           onPointerDown={onPointerDown}

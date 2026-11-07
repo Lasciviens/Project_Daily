@@ -36,17 +36,39 @@ function Line({ line, lead }: { line: BriefLine; lead?: boolean }) {
   return <Link to={line.href} className={linkCls}>{body}{chevron}</Link>
 }
 
-function BriefSkeleton() {
+/** A line's box: 20px, or a 44px row on touch (the brief's lines are links). */
+const LINE_BOX = 'flex min-h-5 items-center [@media(pointer:coarse)]:min-h-[44px]'
+/** Lines per section in the loading copy: a typical brief (tasks, schedule, training, food, watch, money). */
+const SKELETON_LINES = [2, 1, 2, 2, 1, 2]
+
+/**
+ * The loading copy of the headline and the sections, on the loaded card's own grid and line heights, so the
+ * brief arrives without pushing the cards under it (a layout shift, THEME.md §5).
+ */
+function BriefSkeleton({ sections, more }: { sections: number; more: boolean }) {
   return (
-    <div className="space-y-4">
-      <div className="space-y-2"><Skeleton className="h-6 w-44" /><Skeleton className="h-3 w-32" /></div>
-      <Skeleton className="h-5 w-3/4" />
-      {[0, 1, 2].map(i => (
-        <div key={i} className="grid grid-cols-[5.5rem_1fr] gap-3">
-          <Skeleton className="h-3 w-16" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-2/3" /></div>
+    <>
+      <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
+        <span className={cx(LINE_BOX, 'min-w-0 flex-1')}><Skeleton className="h-3.5 w-3/4" /></span>
+      </div>
+      <div className="@container">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
+          {SKELETON_LINES.slice(0, sections).map((lines, i) => (
+            <div key={i} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
+              <span className="flex h-4 items-center @[24rem]:mt-0.5"><Skeleton className="h-2.5 w-16" /></span>
+              <span className="min-w-0 space-y-0.5">
+                {Array.from({ length: lines }, (_, l) => (
+                  <span key={l} className={LINE_BOX}><Skeleton className={cx('h-3.5', l === lines - 1 ? 'w-2/3' : 'w-full')} /></span>
+                ))}
+                {/* Two sections side by side are narrower: their lines wrap once more. */}
+                <span className={cx(LINE_BOX, 'hidden @[46rem]:flex')}><Skeleton className="h-3.5 w-1/2" /></span>
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </div>
+      {more && <span className="mt-2 flex min-h-[44px] items-center"><Skeleton className="h-3 w-24" /></span>}
+    </>
   )
 }
 
@@ -70,13 +92,13 @@ export function DailyBrief() {
     <Card className="relative isolate">
       <PageHeroArt layerRef={artLayerRef} place={artPlace} behind={artBehind}><HomeHeroArt /></PageHeroArt>
       <div className="relative z-10">
-        {isLoading ? <BriefSkeleton /> : (
+        {/* The greeting and the date need no data: drawn at once, also while the rest loads. */}
+        <header ref={artContentRef} className="mb-3">
+          <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
+          <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
+        </header>
+        {isLoading ? <BriefSkeleton sections={isPhone ? PHONE_SECTIONS : SKELETON_LINES.length} more={isPhone} /> : (
           <>
-            <header ref={artContentRef} className="mb-3">
-              <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
-              <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
-            </header>
-
             <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
               <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />
               <div className="min-w-0 flex-1"><Line line={brief.headline} lead /></div>

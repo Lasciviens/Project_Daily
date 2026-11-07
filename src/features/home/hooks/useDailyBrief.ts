@@ -96,12 +96,12 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
   const { data: weather } = useWeather()
   const { data: currency } = useCurrencyRates()
   const training = useWeekTrainingStats()
-  const { data: profile } = useAthleteProfile()
-  const { data: nutrition } = useDayNutrition(date)
+  const { data: profile, isLoading: profileLoading } = useAthleteProfile()
+  const { data: nutrition, isLoading: nutritionLoading } = useDayNutrition(date)
   const { targets } = useDayTargets()
-  const { data: waterMl } = useWaterDay(date)
-  const { data: tvEntries } = useTVSeries()
-  const { data: movieEntries } = useMovies()
+  const { data: waterMl, isLoading: waterLoading } = useWaterDay(date)
+  const { data: tvEntries, isLoading: tvLoading } = useTVSeries()
+  const { data: movieEntries, isLoading: moviesLoading } = useMovies()
 
   // The series you touched last — the same next-episode query Daily's Watch next card uses.
   const current = useMemo(() => {
@@ -165,5 +165,10 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
     return buildDailyBrief(input)
   }, [hour, date, day.open, day.counts.done, day.ready, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
 
-  return { brief, isLoading: day.isLoading || overview.isLoading }
+  // Loading until every database read the brief is built from has answered (they run at once), not only the
+  // day's: drawn earlier, its sections landed one by one and each pushed the cards under it (a layout shift).
+  // Weather, rates and the next episode come from outside services and fill in when they come.
+  const isLoading = day.isLoading || overview.isLoading || training.isLoading || profileLoading
+    || nutritionLoading || waterLoading || tvLoading || moviesLoading
+  return { brief, isLoading }
 }

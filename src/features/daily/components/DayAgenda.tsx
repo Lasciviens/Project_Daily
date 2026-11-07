@@ -171,12 +171,15 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
     <div className="p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {/* min-h-5: the count pill's height, so the row doesn't grow when the counts land. */}
+          <div className="flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1">
             <h2 className="section-label">Day plan</h2>
             {counts.open > 0 && <TonePill tone="accent">{counts.open} open</TonePill>}
             {counts.done > 0 && <span className="text-meta tabular-nums text-fg-muted">{counts.done} done</span>}
             {missed > 0 && <span className="text-meta tabular-nums text-fg-muted">{missed} missed</span>}
           </div>
+          {/* Today's "Next:" line keeps its room while the day loads. */}
+          {list.isLoading && viewingToday && <span className="mt-0.5 flex h-4 items-center"><Skeleton className="h-3 w-40" /></span>}
           {next && (next.inProgress ? (
             <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${next.title} until ${untilLabel(next.endHour)}`}>
               Now: <span className="font-semibold text-fg-2">{next.title}</span> until {untilLabel(next.endHour)}
@@ -197,11 +200,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </div>
       </div>
 
-      {list.isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" rounded="rounded-row" />)}
-        </div>
-      ) : list.isError ? (
+      {list.isLoading ? <ListSkeleton /> : list.isError ? (
         // A failed read must never look like an empty day.
         <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
           Couldn't load the day's tasks.
@@ -267,6 +266,30 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 
 /** A part that sits in the Anytime column from a 54rem card. */
 const RIGHT = 'min-w-0 @[54rem]:col-start-2'
+
+/** Rows per part in the loading copy: about a screen of a busy day (Anytime, then the Schedule). */
+const SKELETON_ROWS = [5, 3]
+
+/**
+ * The loading copy of the list, on the loaded list's grid (from a 54rem card two columns) and row height
+ * (62px, a task row with its meta line). About a screen tall: on a full day what sits under the card — Daily's
+ * glance board, Home's transit — starts out of view and stays there when the rows land, instead of being pushed
+ * down the screen by them (a layout shift; THEME.md §5). A light day pulls it up by less than half a screen.
+ */
+function ListSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 @[54rem]:grid @[54rem]:grid-cols-2 @[54rem]:items-start @[54rem]:gap-x-6 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
+      {SKELETON_ROWS.map((rows, g) => (
+        <div key={g} className="min-w-0">
+          <span className="mb-1 flex h-4 items-center px-1"><Skeleton className="h-2.5 w-16" /></span>
+          <div className="flex flex-col gap-1">
+            {Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-[3.875rem]" rounded="rounded-row" />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 /** One part of the list. An empty part keeps its heading (with `empty`) only
  *  where it is a column of its own (54rem); in the one list it leaves no line. */
