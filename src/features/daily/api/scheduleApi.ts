@@ -1,6 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { todayStr } from '../../../shared/utils/dateUtils'
 import { updateCalendarEvent, deleteCalendarEvent, isCalendarNotFound } from '../../calendar/api/calendarApi'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { logError } from '../../../shared/utils/logError'
@@ -8,7 +7,6 @@ import { classifyCalendarPushFailure } from './scheduleSyncRules'
 import { blockEventBody, eventPatchFor, itemTimeZone } from '../../calendar/calendarEventRules'
 import type {
   ScheduleBlock, TimeBlock, CreateTimeBlockInput, UpdateTimeBlockInput,
-  CreateScheduleBlockInput, UpdateScheduleBlockInput,
 } from '../types'
 import type { TimeBlockCalendarStatus } from './scheduleSyncRules'
 
@@ -26,59 +24,6 @@ export async function fetchScheduleBlocks(): Promise<ScheduleBlock[]> {
 
 const isMissingColumn = (e: { code?: string; message?: string }) =>
   e.code === 'PGRST204' || e.code === '42703' || /column .* does not exist|could not find the '.*' column/i.test(e.message ?? '')
-
-// The repeat columns of migration 146. Before it is applied a weekly-style
-// repeat (every day / weekdays / weekly) still saves — the row simply goes
-// without them; any other kind can't be stored and says so by name.
-const REPEAT_COLUMNS = ['repeat_kind', 'repeat_interval', 'repeat_unit', 'repeat_dates'] as const
-export const REPEAT_NOT_MIGRATED = 'Repeating monthly, every N days/weeks/months or on picked dates needs migration 146 — migration 146 not applied yet.'
-
-/** The row without the 146 columns, or a named error when its repeat needs them. */
-function withoutRepeatColumns(row: Record<string, unknown>): Record<string, unknown> {
-  if (row.repeat_kind != null && row.repeat_kind !== 'weekly') throw new Error(REPEAT_NOT_MIGRATED)
-  const out = { ...row }
-  for (const c of REPEAT_COLUMNS) delete out[c]
-  return out
-}
-
-// effective_from is the template's first day: the start the planner picked,
-// else the client's own LOCAL today — never the column's CURRENT_DATE default,
-// which is the SERVER's UTC day and lands on yesterday for Oslo between 00:00
-// and 02:00. It is never retroactive by accident (081). Falls back without the
-// 146 columns (see withoutRepeatColumns) and then without effective_from
-// (before 081), the established 42703/PGRST204 pattern.
-export async function createScheduleBlock(input: CreateScheduleBlockInput): Promise<ScheduleBlock> {
-  const user = await requireUser()
-  let row: Record<string, unknown> = {
-    ...input, user_id: user.id, effective_from: input.effective_from ?? todayStr(),
-  }
-  for (let attempt = 0; ; attempt++) {
-    const { data, error } = await supabase.from('schedule_blocks').insert(row).select().single()
-    if (!error) return data
-    if (!isMissingColumn(error) || attempt >= 2) throw error
-    if (REPEAT_COLUMNS.some(c => c in row)) row = withoutRepeatColumns(row)
-    else if ('effective_from' in row) { row = { ...row }; delete row.effective_from }
-    else throw error
-  }
-}
-
-// A plain DB update. Its Google Calendar series (147) is pushed by the hook
-// (useUpdateScheduleBlock → calendar/api/scheduleSeriesCalendar.ts), which
-// reads the row this returns.
-export async function updateScheduleBlock(id: string, patch: UpdateScheduleBlockInput): Promise<ScheduleBlock> {
-  const write = (p: Record<string, unknown>) => supabase
-    .from('schedule_blocks')
-    .update({ ...p, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single()
-  const { data, error } = await write({ ...patch })
-  if (!error) return data
-  if (!isMissingColumn(error) || !REPEAT_COLUMNS.some(c => c in patch)) throw error
-  const retry = await write(withoutRepeatColumns({ ...patch }))
-  if (retry.error) throw retry.error
-  return retry.data
-}
 
 /** One repeating plan, read fresh (never cached): the Calendar series code
  *  decides "create an event or not" off it. `.single()` — a missing row is an
