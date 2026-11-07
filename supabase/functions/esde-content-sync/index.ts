@@ -27,7 +27,7 @@ const hashPattern = /^[a-f0-9]{64}$/
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 class Invalid extends Error {}
 const requireValue = (ok: unknown, message: string) => { if (!ok) throw new Invalid(message) }
-const digest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(n => n.toString(16).padStart(2, '0')).join('')
+const digest = async (bytes: Uint8Array<ArrayBuffer>) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(n => n.toString(16).padStart(2, '0')).join('')
 async function authenticate(given: string, expected: string) {
   const encoder = new TextEncoder(), a = await digest(encoder.encode(given)), b = await digest(encoder.encode(expected))
   let diff = 0

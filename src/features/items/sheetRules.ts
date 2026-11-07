@@ -10,7 +10,7 @@
 //  scripts/verify-sheet-rules.cjs (and itemRules by verify-item-rules.cjs).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { GoogleTarget, GoogleTargetProblem, ItemInput, RepeatInput } from './itemTypes'
+import type { GoogleTarget, ItemInput, RepeatInput } from './itemTypes'
 import type { QuickAddResult, QuickRepeat } from './quickAdd'
 import { repeatSummary, weekdayOfIso } from '../daily/recurrence'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
@@ -21,9 +21,6 @@ export {
   defaultGoogleTarget, googleTargetProblem, sectionForItem, itemFromRows, storedGoogleTarget, presentGoogleTarget,
   repeatInputFromColumns, type RepeatColumns,
 } from './itemRules'
-
-/** A Google choice's problem — the data layer's type (itemTypes.GoogleTargetProblem). */
-export type GoogleProblem = GoogleTargetProblem
 
 type Shape = Pick<ItemInput, 'time' | 'durationMinutes' | 'repeat'>
 

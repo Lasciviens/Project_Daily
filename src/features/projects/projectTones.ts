@@ -34,5 +34,3 @@ export const PROJECT_COLOR: Record<ProjectColor, string> = {
   amber:   'rgb(var(--warn))',
   rose:    'rgb(var(--chart-4))',
 }
-
-export const PROJECT_COLORS = Object.keys(PROJECT_COLOR) as ProjectColor[]

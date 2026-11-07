@@ -2,19 +2,16 @@ import { useMemo } from 'react'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import {
   fetchScheduleBlocks,
-  createScheduleBlock,
   updateScheduleBlock,
   fetchTimeBlocks,
   fetchTimeBlock,
   fetchTimeBlockByTaskId,
   fetchTrainingBlocksRange,
   fetchTrainingDayTasks,
-  createTimeBlock,
   updateTimeBlock,
 } from '../api/scheduleApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
-import { deleteRows } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import {
   SERIES_EVENT_RESET, relinkRestoredSeriesEvents, removeDeletedSeriesEvents, syncScheduleSeriesAfterSave,
@@ -24,9 +21,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { repeatDayKeys, repeatDaysOn, repeatsToDoBetween, repeatsToDoOn } from '../dayItems'
 import { TASK_GOOGLE_RESET, useDayTasks } from '../../todo/hooks/useTodos'
 import type { Task } from '../../todo/types'
-import type {
-  CreateTimeBlockInput, UpdateTimeBlockInput, CreateScheduleBlockInput, UpdateScheduleBlockInput, ScheduleBlock,
-} from '../types'
+import type { UpdateTimeBlockInput, UpdateScheduleBlockInput, ScheduleBlock } from '../types'
 import type { TimeBlockCalendarStatus } from '../api/scheduleSyncRules'
 
 export function useScheduleBlocks() {
@@ -105,18 +100,7 @@ export interface ScheduleBlockSaveResult {
 // Calendar" (undefined = no connection to ask with). The series' own failure
 // never fails the save — it is reported once by scheduleSeriesCalendar. The
 // 'schedule' group refreshes the day's Google events too (the series' instances).
-export function useCreateScheduleBlock() {
-  return useMutationWithFeedback({
-    action:      'create_schedule_block',
-    silent:      'the plan editor reports the save',
-    mutationFn:  async ({ input, gcal }: { input: CreateScheduleBlockInput; gcal?: boolean }): Promise<ScheduleBlockSaveResult> => {
-      const block = await createScheduleBlock(input)
-      return { block, calendarStatus: await syncScheduleSeriesAfterSave(block, gcal) }
-    },
-    invalidates: ['schedule'],
-  })
-}
-
+//
 // Real gap fixed (migration 077 completed the recurring model): there was no
 // way to edit an existing recurring template at all before this — only
 // create/delete existed at the API layer, so a schedule_blocks row, once
@@ -187,15 +171,7 @@ export function useTrainingDayTasks(from: string, to: string) {
 // 077 retired the old bidirectional date/time sync and the delete-cascade-to-
 // task behaviour; the only cross-table effects left are the one-way task-title
 // trigger and task_id's ON DELETE CASCADE).
-export function useCreateTimeBlock() {
-  return useMutationWithFeedback({
-    action:      'create_time_block',
-    silent:      'the plan editor reports the save',
-    mutationFn:  (input: CreateTimeBlockInput) => createTimeBlock(input),
-    invalidates: ['taskGraph'],
-  })
-}
-
+//
 // Covers postpone (+30m / +1d) and the plan editor's own block writes.
 // mutateAsync resolves the typed calendarStatus. `report: false` for the plan
 // editor, which reports the whole save itself.
@@ -230,15 +206,5 @@ export function useDeleteTimeBlock() {
     afterDelete: removeDeletedBlockEvents,
     overrides: () => BLOCK_EVENT_RESET,
     afterRestore: relinkRestoredBlockEvents,
-  })
-}
-
-/** The plan editor turning a task's slot off: one step of its save, which reports the result. */
-export function useRemoveSlotOnSave() {
-  return useMutationWithFeedback({
-    action: 'delete_time_block',
-    silent: "a step of the plan editor's save",
-    mutationFn: async (id: string) => { await removeDeletedBlockEvents(await deleteRows('time_blocks', [id])) },
-    invalidates: ['taskGraph'],
   })
 }

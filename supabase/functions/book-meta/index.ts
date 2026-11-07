@@ -63,7 +63,14 @@ const sameAuthor = (mine: string | null, theirs: string[] | undefined) => {
 }
 const year = (s: unknown) => { const m = String(s ?? '').match(/\d{4}/); return m ? Number(m[0]) : undefined }
 
-async function getJson(url: string): Promise<any> {
+// The fields the lookups below read from NB's catalogue items and Open Library's search docs (`fields=`).
+interface NbItem {
+  metadata?: { title?: string; pageCount?: unknown; originInfo?: { publisher?: string; issued?: unknown }; identifiers?: { isbn13?: string[] } }
+  _links?: { thumbnail_large?: { href?: string } }
+}
+interface OlDoc { title?: string; author_name?: string[]; cover_i?: number; isbn?: string[]; number_of_pages_median?: number; first_publish_year?: number; publisher?: string[] }
+
+async function getJson<T>(url: string): Promise<T | null> {
   const ctl = new AbortController()
   const t = setTimeout(() => ctl.abort(), 8000)
   try {
@@ -75,11 +82,11 @@ async function getJson(url: string): Promise<any> {
 
 async function fromNb(isbn: string | null, title: string, author: string | null, strict = false): Promise<Found | null> {
   const q = isbn ? `isbn:${isbn}` : `${title} ${author ?? ''}`.trim()
-  const d = await getJson(`https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(q)}&filter=mediatype:b%C3%B8ker&size=5`)
-  const items: any[] = d?._embedded?.items ?? []
+  const d = await getJson<{ _embedded?: { items?: NbItem[] } }>(`https://api.nb.no/catalog/v1/items?q=${encodeURIComponent(q)}&filter=mediatype:b%C3%B8ker&size=5`)
+  const items = d?._embedded?.items ?? []
   const item = items.find(i => isbn || (strict ? exactTitle(i?.metadata?.title ?? '', title) : sameTitle(i?.metadata?.title ?? '', title)))
   if (!item) return null
-  const m = item.metadata ?? {}
+  const m: NonNullable<NbItem['metadata']> = item.metadata ?? {}
   return {
     source: 'Nasjonalbiblioteket',
     // 200 px tall: NB refuses larger sizes for in-copyright books (checked live: 300 px → 403).
@@ -97,8 +104,8 @@ async function fromOpenLibrary(isbn: string | null, title: string, author: strin
   const url = isbn
     ? `https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&limit=3&fields=${fields}`
     : `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}${author ? `&author=${encodeURIComponent(author.split(/[,&;]| and /)[0])}` : ''}&limit=5&fields=${fields}`
-  const d = await getJson(url)
-  const doc = (d?.docs ?? []).find((x: any) => isbn ||
+  const d = await getJson<{ docs?: OlDoc[] }>(url)
+  const doc = (d?.docs ?? []).find(x => isbn ||
     (strict ? exactTitle(x?.title ?? '', title) && sameAuthor(author, x?.author_name) : sameTitle(x?.title ?? '', title)))
   if (!doc) return null
   return {

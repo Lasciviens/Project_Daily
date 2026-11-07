@@ -24,6 +24,15 @@ create or replace function public.t_queue() returns bigint language sql security
   select count(*) from public.icloud_outbox
 $$;
 grant execute on function public.t_queue() to authenticated;
+-- Day n of the read-back scenarios. The read-back compares with today: a repeat's day counts only from today on
+-- (Europe/Oslo; a plan's effective_from is the day it was saved) and a one-off move only within a year, so a fixed
+-- date passes only until it is past. Day 0 is Tuesday next week (the repeats are on Tuesdays), fixed once for the
+-- run. The queue scenarios keep fixed dates: nothing there compares with today.
+create table public.t_days as select date_trunc('week', now() at time zone 'Europe/Oslo')::date + 8 as day0;
+create or replace function public.t_day(n integer) returns date language sql stable as $$
+  select day0 + n from public.t_days
+$$;
+grant execute on function public.t_day(integer) to authenticated;
 
 select public.t_ok((select count(*) from pg_policies where tablename = 'icloud_outbox' and policyname = 'app_owner_lock') = 1, '173: the owner lock is on the queue');
 select public.t_ok(not exists (select 1 from information_schema.columns where table_schema = 'public'
@@ -225,8 +234,9 @@ select public.t_ok((select count(*) from public.icloud_outbox where user_id = '0
                    and (select count(*) from public.icloud_outbox where user_id = '00000000-0000-0000-0000-000000000002') = 0,
   '175: a Google Task made for an item in Apple Calendar queues its slot (only the owner''s own)');
 delete from public.icloud_outbox;
+-- (Day 0: 176's read-back moves this day below.)
 insert into public.tasks (id, user_id, title, schedule_block_id, occurrence_date)
-values ('10000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000001', 'Swim', '30000000-0000-0000-0000-000000000002', '2026-11-03');
+values ('10000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000001', 'Swim', '30000000-0000-0000-0000-000000000002', public.t_day(0));
 delete from public.icloud_outbox;
 update public.tasks set google_sync_enabled = true, google_task_id = 'gt-swim' where id = '10000000-0000-0000-0000-000000000022';
 select public.t_ok((select count(*) from public.icloud_outbox where entity = 'plan' and entity_id = '30000000-0000-0000-0000-000000000002') = 1,
@@ -243,12 +253,12 @@ reset role;
 -- A match moved and renamed on the iPhone: the slot and its task follow, iCloud's version is kept.
 insert into public.tasks (id, user_id, title, google_target) values ('10000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', 'Match', 'calendar');
 insert into public.time_blocks (id, user_id, date, title, start_time, duration_minutes, category, task_id, icloud_area)
-values ('20000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', '2026-11-12', 'Match', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000021', 'football');
+values ('20000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', public.t_day(9), 'Match', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000021', 'football');
 delete from public.icloud_outbox;
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football',
-  jsonb_build_object('date', '2026-11-13', 'time', '18:30', 'minutes', 90, 'busy', true, 'title', 'Match (moved)', 'lastModified', (now() + interval '1 minute')::text), '"e1"') = 'moved',
+  jsonb_build_object('date', public.t_day(10), 'time', '18:30', 'minutes', 90, 'busy', true, 'title', 'Match (moved)', 'lastModified', (now() + interval '1 minute')::text), '"e1"') = 'moved',
   '176: an event moved and renamed on the iPhone: moved');
-select public.t_ok((select (date, start_time, duration_minutes, icloud_etag) = ('2026-11-13'::date, '18:30'::time, 90, '"e1"') from public.time_blocks where id = '20000000-0000-0000-0000-000000000021')
+select public.t_ok((select (date, start_time, duration_minutes, icloud_etag) = (public.t_day(10), '18:30'::time, 90, '"e1"') from public.time_blocks where id = '20000000-0000-0000-0000-000000000021')
                    and (select title from public.tasks where id = '10000000-0000-0000-0000-000000000021') = 'Match (moved)',
   '176: …the slot has the new day, time and length, its task the new title, and iCloud''s version is kept (If-Match)');
 select public.t_ok((select count(*) from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000021') = 0,
@@ -256,20 +266,20 @@ select public.t_ok((select count(*) from public.icloud_outbox where entity_id = 
 -- The app's own change waiting to be sent, made after the iPhone's: the app's wins (and goes with iCloud's new version).
 select public.icloud_enqueue('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', null);
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football',
-  jsonb_build_object('date', '2026-11-20', 'time', '09:00', 'lastModified', '2020-01-01T00:00:00Z'), '"e2"') = 'stale',
+  jsonb_build_object('date', public.t_day(17), 'time', '09:00', 'lastModified', '2020-01-01T00:00:00Z'), '"e2"') = 'stale',
   '176: an iPhone change older than the app''s own change waiting to be sent: stale');
-select public.t_ok((select date from public.time_blocks where id = '20000000-0000-0000-0000-000000000021') = '2026-11-13',
+select public.t_ok((select date from public.time_blocks where id = '20000000-0000-0000-0000-000000000021') = public.t_day(10),
   '176: a change older than the app''s own waiting change is not applied (the app''s change wins and is sent)');
 delete from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000021';
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football',
-  jsonb_build_object('date', '2026-11-13', 'time', '19:00', 'foreign', true), '"e3"') = 'moved',
+  jsonb_build_object('date', public.t_day(10), 'time', '19:00', 'foreign', true), '"e3"') = 'moved',
   '176: a version the app didn''t write is someone else''s change, even with no stamp (nothing of the app''s waits): applied');
-select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football', '{"date":"2026-11-20","time":"09:00"}', '"own"') = 'stale',
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football', jsonb_build_object('date', public.t_day(17), 'time', '09:00'), '"own"') = 'stale',
   '176: a change with no LAST-MODIFIED stamp (the app''s own write read back) is never applied');
-select public.t_ok((select (date, icloud_etag) = ('2026-11-13'::date, '"own"') from public.time_blocks where id = '20000000-0000-0000-0000-000000000021'),
+select public.t_ok((select (date, icloud_etag) = (public.t_day(10), '"own"') from public.time_blocks where id = '20000000-0000-0000-0000-000000000021'),
   '176: …only iCloud''s version is kept');
-select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'training', '{"date":"2026-11-20"}', null) = 'not_ours'
-                   and public.apply_icloud_readback('00000000-0000-0000-0000-000000000002', 'slot', '20000000-0000-0000-0000-000000000021', 'football', '{"date":"2026-11-20"}', null) = 'not_ours',
+select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'training', jsonb_build_object('date', public.t_day(17)), null) = 'not_ours'
+                   and public.apply_icloud_readback('00000000-0000-0000-0000-000000000002', 'slot', '20000000-0000-0000-0000-000000000021', 'football', jsonb_build_object('date', public.t_day(17)), null) = 'not_ours',
   '176: only the slot''s own account, and only from the calendar its event is in');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', 'football', '{"date":"20.11.2026"}', null) = 'ignored'
                    and public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000021', '../work', '{}', null) = 'ignored',
@@ -285,9 +295,9 @@ select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-0000000
 select public.t_ok((select icloud_area from public.time_blocks where id = '20000000-0000-0000-0000-000000000021') is null
                    and (select google_target from public.tasks where id = '10000000-0000-0000-0000-000000000021') = 'none',
   '176: an event deleted on the iPhone: the item stays, off the calendar (never deleted)');
-insert into public.tasks (id, user_id, title, google_target, due_date) values ('10000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-000000000001', 'Birthday', 'calendar', '2026-11-14');
+insert into public.tasks (id, user_id, title, google_target, due_date) values ('10000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-000000000001', 'Birthday', 'calendar', public.t_day(11));
 insert into public.time_blocks (id, user_id, date, title, start_time, category, task_id, icloud_area)
-values ('20000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-000000000001', '2026-11-14', 'Birthday', null, 'football', '10000000-0000-0000-0000-000000000023', 'football');
+values ('20000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-000000000001', public.t_day(11), 'Birthday', null, 'football', '10000000-0000-0000-0000-000000000023', 'football');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000023', 'football', '{"deleted":true}', null) = 'unlinked',
   '176: an all-day presence deleted on the iPhone: unlinked');
 select public.t_ok(not exists (select 1 from public.time_blocks where id = '20000000-0000-0000-0000-000000000023')
@@ -301,15 +311,17 @@ select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-0000000
 select public.t_ok((select (title, icloud_etag) = ('Swim 2 km', '"p1"') from public.schedule_blocks where id = '30000000-0000-0000-0000-000000000002'),
   '176: a repeat renamed on the iPhone: the plan follows');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000002', 'training',
-  jsonb_build_object('lastModified', (now() + interval '3 minutes')::text, 'days',
-    '[{"originalDate":"2026-11-03","date":"2026-11-04","time":"07:00","minutes":45,"busy":true},{"originalDate":"2026-11-10","cancelled":true},{"originalDate":"2026-11-11","cancelled":true}]'::jsonb), null) = 'days',
+  jsonb_build_object('lastModified', (now() + interval '3 minutes')::text, 'days', jsonb_build_array(
+    jsonb_build_object('originalDate', public.t_day(0), 'date', public.t_day(1), 'time', '07:00', 'minutes', 45, 'busy', true),
+    jsonb_build_object('originalDate', public.t_day(7), 'cancelled', true),
+    jsonb_build_object('originalDate', public.t_day(8), 'cancelled', true))), null) = 'days',
   '176: days of a repeat moved or deleted on the iPhone are taken');
-select public.t_ok((select (date, start_time, duration_minutes) = ('2026-11-04'::date, '07:00'::time, 45) from public.time_blocks
-                     where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = '2026-11-03')
-                   and (select '2026-11-03'::date = any (except_dates) from public.schedule_blocks where id = '30000000-0000-0000-0000-000000000002'),
+select public.t_ok((select (date, start_time, duration_minutes) = (public.t_day(1), '07:00'::time, 45) from public.time_blocks
+                     where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = public.t_day(0))
+                   and (select public.t_day(0) = any (except_dates) from public.schedule_blocks where id = '30000000-0000-0000-0000-000000000002'),
   '176: …a moved day becomes an item of its own at its new day and time (the series leaves the day out)');
-select public.t_ok((select google_target from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = '2026-11-10') = 'none'
-                   and not exists (select 1 from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = '2026-11-11'),
+select public.t_ok((select google_target from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = public.t_day(7)) = 'none'
+                   and not exists (select 1 from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = public.t_day(8)),
   '176: …a deleted day is its own item off the calendar; a day that isn''t one of the repeat''s is left alone');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000002', 'training', '{"deleted":true}', null) = 'unlinked',
   '176: a repeat deleted on the iPhone: unlinked');
@@ -320,20 +332,20 @@ select public.t_ok((select icloud_area is null and icloud_from is null from publ
 reset role;
 update public.schedule_blocks set icloud_area = 'training' where id = '30000000-0000-0000-0000-000000000002';
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000002', 'training',
-  jsonb_build_object('lastModified', (now() + interval '5 minutes')::text, 'days', '[{"originalDate":"2026-10-06","cancelled":true}]'::jsonb), null) = 'same'
-                   and not exists (select 1 from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = '2026-10-06'),
+  jsonb_build_object('lastModified', (now() + interval '5 minutes')::text, 'days', jsonb_build_array(jsonb_build_object('originalDate', public.t_day(-28), 'cancelled', true))), null) = 'same'
+                   and not exists (select 1 from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date = public.t_day(-28)),
   '176: a past day deleted on the iPhone changes nothing (a past day is a record — never an overdue task made for it)');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000002', 'training',
   jsonb_build_object('lastModified', (now() + interval '6 minutes')::text, 'days',
-    (select jsonb_agg(jsonb_build_object('originalDate', d::date, 'cancelled', true)) from generate_series('2026-11-17'::date, '2028-12-31'::date, interval '7 days') d)), null) = 'days',
+    (select jsonb_agg(jsonb_build_object('originalDate', d::date, 'cancelled', true)) from generate_series(public.t_day(14), public.t_day(789), interval '7 days') d)), null) = 'days',
   '176: a series with a hundred deleted days is taken…');
-select public.t_ok((select count(*) from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date >= '2026-11-17') = 31,
+select public.t_ok((select count(*) from public.tasks where schedule_block_id = '30000000-0000-0000-0000-000000000002' and occurrence_date >= public.t_day(14)) = 31,
   '176: …but at most 31 days per change (a crafted series can''t make thousands of items)');
 insert into public.tasks (id, user_id, title, schedule_block_id, occurrence_date, google_target)
-values ('10000000-0000-0000-0000-000000000031', '00000000-0000-0000-0000-000000000001', 'Swim', '30000000-0000-0000-0000-000000000003', '2026-11-03', 'both');
+values ('10000000-0000-0000-0000-000000000031', '00000000-0000-0000-0000-000000000001', 'Swim', '30000000-0000-0000-0000-000000000003', public.t_day(0), 'both');
 update public.schedule_blocks set icloud_area = 'training', days_of_week = '{2}' where id = '30000000-0000-0000-0000-000000000003';
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000003', 'training',
-  jsonb_build_object('lastModified', (now() + interval '7 minutes')::text, 'days', '[{"originalDate":"2026-11-03","cancelled":true}]'::jsonb), null) = 'days',
+  jsonb_build_object('lastModified', (now() + interval '7 minutes')::text, 'days', jsonb_build_array(jsonb_build_object('originalDate', public.t_day(0), 'cancelled', true))), null) = 'days',
   '176: a day deleted on the iPhone of a repeat that is also on Google Tasks…');
 select public.t_ok((select google_target from public.tasks where id = '10000000-0000-0000-0000-000000000031') = 'tasks',
   '176: …keeps its Google Task (Both becomes Tasks, as for a single event)');
@@ -341,11 +353,11 @@ select public.t_ok((select google_target from public.tasks where id = '10000000-
 -- The app's rename on the task is newer than an iPhone move stamped before it: the move is not applied.
 insert into public.tasks (id, user_id, title, google_target) values ('10000000-0000-0000-0000-000000000032', '00000000-0000-0000-0000-000000000001', 'Run', 'calendar');
 insert into public.time_blocks (id, user_id, date, title, start_time, duration_minutes, category, task_id, icloud_area)
-values ('20000000-0000-0000-0000-000000000032', '00000000-0000-0000-0000-000000000001', '2026-11-20', 'Run', '07:00', 30, 'training', '10000000-0000-0000-0000-000000000032', 'training');
+values ('20000000-0000-0000-0000-000000000032', '00000000-0000-0000-0000-000000000001', public.t_day(17), 'Run', '07:00', 30, 'training', '10000000-0000-0000-0000-000000000032', 'training');
 update public.time_blocks set updated_at = now() - interval '1 hour' where id = '20000000-0000-0000-0000-000000000032';
 update public.tasks set title = 'Run 10 km' where id = '10000000-0000-0000-0000-000000000032';
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000032', 'training',
-  jsonb_build_object('date', '2026-11-21', 'time', '08:00', 'title', 'Run', 'lastModified', (now() - interval '10 minutes')::text), null) = 'stale',
+  jsonb_build_object('date', public.t_day(18), 'time', '08:00', 'title', 'Run', 'lastModified', (now() - interval '10 minutes')::text), null) = 'stale',
   '176: an iPhone change older than the app''s own last change to the task (a rename) is not applied');
 
 -- Settings → Calendar: a rename made on the iPhone changes only that calendar's name and colour.
@@ -366,7 +378,7 @@ reset role;
 -- 176, owner review: a deletion while the Google copy still exists keeps the item on Calendar there.
 insert into public.tasks (id, user_id, title, google_target) values ('10000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000001', 'Derby', 'calendar');
 insert into public.time_blocks (id, user_id, date, title, start_time, category, task_id, icloud_area, google_calendar_event_id)
-values ('20000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000001', '2026-11-22', 'Derby', '18:00', 'football', '10000000-0000-0000-0000-000000000041', 'football', '20000000000000000000000000000041');
+values ('20000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000001', public.t_day(19), 'Derby', '18:00', 'football', '10000000-0000-0000-0000-000000000041', 'football', '20000000000000000000000000000041');
 select public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000041', 'football', '{"deleted":true}', null);
 select public.t_ok((select google_target from public.tasks where id = '10000000-0000-0000-0000-000000000041') = 'calendar'
                    and (select icloud_area is null and google_calendar_event_id is not null from public.time_blocks where id = '20000000-0000-0000-0000-000000000041'),
@@ -374,10 +386,11 @@ select public.t_ok((select google_target from public.tasks where id = '10000000-
 delete from public.icloud_outbox;
 update public.schedule_blocks set icloud_area = 'training', except_dates = '{}' where id = '30000000-0000-0000-0000-000000000003';
 select public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'plan', '30000000-0000-0000-0000-000000000003', 'training',
-  jsonb_build_object('lastModified', (now() + interval '9 minutes')::text, 'days', '[{"originalDate":"2026-11-10","date":"2026-11-11","time":"06:00","minutes":30,"busy":true}]'::jsonb), null);
+  jsonb_build_object('lastModified', (now() + interval '9 minutes')::text, 'days', jsonb_build_array(
+    jsonb_build_object('originalDate', public.t_day(7), 'date', public.t_day(8), 'time', '06:00', 'minutes', 30, 'busy', true))), null);
 select public.t_ok((select count(*) from public.icloud_outbox where entity = 'plan' and entity_id = '30000000-0000-0000-0000-000000000003') = 1
                    and (select count(*) from public.icloud_outbox o join public.time_blocks b on b.id = o.entity_id
-                         where b.schedule_block_id = '30000000-0000-0000-0000-000000000003' and b.occurrence_date = '2026-11-10') = 1,
+                         where b.schedule_block_id = '30000000-0000-0000-0000-000000000003' and b.occurrence_date = public.t_day(7)) = 1,
   '176: a day of a repeat moved on the iPhone is queued on purpose: its own event, and the series'' EXDATE');
 
 -- ── 177: settings for every event re-queue every event in Apple Calendar ─────
@@ -413,8 +426,8 @@ insert into public.tasks (id, user_id, title, google_target) values
   ('10000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000001', 'Match 51', 'calendar'),
   ('10000000-0000-0000-0000-000000000052', '00000000-0000-0000-0000-000000000001', 'Match 52', 'calendar');
 insert into public.time_blocks (id, user_id, date, title, start_time, duration_minutes, category, task_id, icloud_area) values
-  ('20000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000001', '2026-11-12', 'Match 51', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000051', 'football'),
-  ('20000000-0000-0000-0000-000000000052', '00000000-0000-0000-0000-000000000001', '2026-11-12', 'Match 52', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000052', 'football');
+  ('20000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000001', public.t_day(9), 'Match 51', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000051', 'football'),
+  ('20000000-0000-0000-0000-000000000052', '00000000-0000-0000-0000-000000000001', public.t_day(9), 'Match 52', '20:00', 60, 'football', '10000000-0000-0000-0000-000000000052', 'football');
 select public.t_ok((select bool_and(changed_at = requested_at) from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
   '177: a change of the item itself is stamped as the app''s own change');
 delete from public.icloud_outbox;
@@ -422,12 +435,12 @@ update public.calendar_prefs set prefs = prefs || '{"notes":"link"}'::jsonb wher
 select public.t_ok((select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
   '177: a settings re-send is queued as a re-send, not as a change of the item');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000051', 'football',
-  jsonb_build_object('date', '2026-11-13', 'time', '18:30', 'lastModified', (now() - interval '1 minute')::text), '"m1"') = 'moved',
+  jsonb_build_object('date', public.t_day(10), 'time', '18:30', 'lastModified', (now() - interval '1 minute')::text), '"m1"') = 'moved',
   '177: an iPhone move made just before a settings change is taken (the re-send doesn''t win)');
-select public.t_ok((select (date, start_time) = ('2026-11-13'::date, '18:30'::time) from public.time_blocks where id = '20000000-0000-0000-0000-000000000051'),
+select public.t_ok((select (date, start_time) = (public.t_day(10), '18:30'::time) from public.time_blocks where id = '20000000-0000-0000-0000-000000000051'),
   '177: …the slot has the iPhone''s day and time, and the re-send goes out with them');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000052', 'football',
-  jsonb_build_object('date', '2026-11-14', 'time', '10:00', 'foreign', true), '"m2"') = 'moved',
+  jsonb_build_object('date', public.t_day(11), 'time', '10:00', 'foreign', true), '"m2"') = 'moved',
   '177: …also an unstamped edit the app didn''t write');
 update public.icloud_outbox set attempts = attempts + 1, last_error = 'iCloud did not answer' where entity_id = '20000000-0000-0000-0000-000000000051';
 select public.t_ok((select changed_at is null from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
@@ -436,7 +449,7 @@ select public.icloud_enqueue('00000000-0000-0000-0000-000000000001', 'slot', '20
 select public.t_ok((select changed_at is not null and changed_at = requested_at from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051'),
   '177: the app''s own change after a re-send is stamped as the app''s change');
 select public.t_ok(public.apply_icloud_readback('00000000-0000-0000-0000-000000000001', 'slot', '20000000-0000-0000-0000-000000000051', 'football',
-  jsonb_build_object('date', '2026-11-20', 'time', '09:00', 'lastModified', '2020-01-01T00:00:00Z'), '"m3"') = 'stale',
+  jsonb_build_object('date', public.t_day(17), 'time', '09:00', 'lastModified', '2020-01-01T00:00:00Z'), '"m3"') = 'stale',
   '177: …and it still wins over an older iPhone change');
 create temp table t_stamp as select changed_at from public.icloud_outbox where entity_id = '20000000-0000-0000-0000-000000000051';
 update public.calendar_prefs set prefs = prefs || '{"notes":"none"}'::jsonb where user_id = '00000000-0000-0000-0000-000000000001';

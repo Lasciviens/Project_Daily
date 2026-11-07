@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -46,7 +46,7 @@ interface Message { role: 'user' | 'assistant'; content: string; images?: string
 // meal / food label rides alongside the text and the tool loop still runs.
 function parseImageData(s: unknown): { mime_type: string; data: string } | null {
   if (typeof s !== 'string') return null
-  const m = /^data:([\w/+.\-]+);base64,(.+)$/s.exec(s.trim())
+  const m = /^data:([\w/+.-]+);base64,(.+)$/s.exec(s.trim())
   return m ? { mime_type: m[1], data: m[2] } : null
 }
 function partsForMessage(m: Message): AnyRecord[] {
@@ -61,7 +61,7 @@ function messagesToContents(messages: Message[]): AnyRecord[] {
 }
 
 // deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // True for a dotted-quad that lands in a loopback/private/link-local range.
 // 169.254.0.0/16 covers cloud metadata (169.254.169.254) too. A malformed
@@ -320,9 +320,10 @@ function supportsThinking(model: GeminiModel): boolean {
 // the second 3, the tail models 2 (they're the escape hatch, not the goal).
 const RETRIES_BY_POSITION = [4, 3, 2, 2]
 const RETRY_BASE_DELAY_MS = 700
-// Per-attempt hard ceiling. A single Gemini generation is normally 1-5s; 20s
-// bounds a genuinely hung connection (there was NO timeout before — a hang
-// blocked forever, and with up to 11 attempts total there was no upper bound).
+// Per-attempt ceiling: a generation normally takes 1-5 s, and without a limit
+// a hung connection held the request until the platform ended it. A timed-out
+// attempt moves the chain to the next model (a pool that hangs rarely answers
+// the same model's retry), so hangs cost at most one 20 s wait per model.
 const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 
 // Random spread on the backoff delay ("jitter") — without it, if this
@@ -370,12 +371,36 @@ async function fetchGeminiWithFallback(
     for (let attempt = 0; attempt < retries; attempt++) {
       // The key travels in a header, never the URL: a network error's message
       // quotes the URL, and it reaches the caller and app_error_logs (audit).
-      const res = await fetch(buildUrl(model), {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body:    JSON.stringify(buildBody(model)),
-      })
-      if (res.ok) return { res, modelUsed: model }
+      const signal = AbortSignal.timeout(GEMINI_ATTEMPT_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(buildUrl(model), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body:    JSON.stringify(buildBody(model)),
+          signal,
+        })
+      } catch (e) {
+        // Our own timeout is a failed attempt: on to the next model. Any other
+        // network error still ends the chain, as before.
+        if (!signal.aborted) throw e
+        lastRes = null
+        lastModel = model
+        break
+      }
+      if (res.ok) {
+        // The answer is read inside the attempt, under the same 20 s: one still arriving when the time runs out is a
+        // timed-out attempt (on to the next model), never a 500 half-way through reading it (guardian, 07.11.2026).
+        try {
+          const text = await res.text()
+          return { res: new Response(text, { status: res.status, statusText: res.statusText, headers: res.headers }), modelUsed: model }
+        } catch (e) {
+          if (!signal.aborted) throw e
+          lastRes = null
+          lastModel = model
+          break
+        }
+      }
       // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
       // to the next model in the chain. Real production bug this fixes: a
       // 404 mid-chain used to be returned as the final answer, aborting the
@@ -393,7 +418,12 @@ async function fetchGeminiWithFallback(
       }
     }
   }
-  return { res: lastRes!, modelUsed: lastModel }
+  // The last attempt timed out, so there is no answer to hand back. The
+  // message names no URL or key; the handler still passes it through hideSecrets.
+  if (!lastRes) {
+    throw new Error(`Gemini timed out: no model answered (the last, ${lastModel}, sent nothing within ${GEMINI_ATTEMPT_TIMEOUT_MS / 1000} s). Try again in a moment.`)
+  }
+  return { res: lastRes, modelUsed: lastModel }
 }
 
 const TOOLS = [
@@ -959,7 +989,7 @@ Deno.serve(async (req) => {
             const vecs = await embedTexts(key, chunk.map((c: AnyRecord) => c.text), 'RETRIEVAL_DOCUMENT')
             const upserts = chunk
               .map((c: AnyRecord, j: number) => vecs[j] ? { user_id: user.id, source_table: src.table, source_id: c.id, content: c.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
-              .filter(Boolean)
+              .filter(u => u !== null)
             if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
           }
           perTable[src.table] = n; indexed += n
@@ -1050,8 +1080,7 @@ async function callGemini(
   apiKey: string,
   messages: Message[],
   systemPrompt: string | undefined,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   preferredModel?: GeminiModel,
   authHeader?: string,
@@ -1318,8 +1347,7 @@ function rowLabel(r: AnyRecord): string {
 }
 
 async function proposeAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, name: string, args: AnyRecord,
+  supabase: SupabaseClient, userId: string, name: string, args: AnyRecord,
 ): Promise<{ ok: true; confirm: Confirm } | { ok: false; error: string }> {
   try {
     let summary = ''
@@ -1360,8 +1388,7 @@ async function proposeAction(
 // The person tapped Confirm or Cancel. Runs the stored action once, only for
 // the account that proposed it, only within 15 minutes.
 async function settleAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, id: string, decision: string, authHeader?: string,
+  supabase: SupabaseClient, userId: string, id: string, decision: string, authHeader?: string,
 ): Promise<{ text: string; steps?: string[] }> {
   const { data: row } = await supabase.from('ai_pending_actions')
     .update({ done_at: new Date().toISOString(), decision: decision === 'confirm' ? 'confirm' : 'cancel' })
@@ -1379,8 +1406,7 @@ async function settleAction(
 async function dispatch(
   name: string,
   args: AnyRecord,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   authHeader?: string,
   surface?: string,
@@ -2039,7 +2065,7 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
     }
   }).sort((a, b) => a.date.localeCompare(b.date))
 
-  const avgKey = (key: string) => {
+  const avgKey = (key: Exclude<keyof typeof daily[number], 'date'>) => {
     const vals = daily.map(d => d[key]).filter((v): v is number => v != null)
     return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
   }
@@ -3217,11 +3243,11 @@ function assertAccess(table: string, write: boolean): CatalogEntry {
   return e
 }
 
-// deno-lint-ignore no-explicit-any
-function parseJsonArg(raw: any, label: string): AnyRecord {
+function parseJsonArg(raw: unknown, label: string): AnyRecord {
   if (raw == null || raw === '') return {}
   if (typeof raw === 'object') return raw
-  try { return JSON.parse(raw) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
+  // JSON.parse reads its argument as text, as String() does.
+  try { return JSON.parse(String(raw)) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
 }
 
 // Applies a filter object to a Supabase query. Plain value = eq; null = IS NULL;

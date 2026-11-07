@@ -178,7 +178,8 @@ export function unifiedToMeal(row: UnifiedRow, date: string): DayMeal {
     // typed (planning "kebab 700 kcal" in the logger's plan mode, 26.10.2026).
     const servings = row.quantity ?? 1
     let title = row.custom_title ?? '—'
-    let calories = 0, protein_g = 0, carbs_g = 0, fat_g = 0, fiber_g = 0, sugar_g = 0
+    let calories: number, protein_g: number, carbs_g: number, fat_g: number, sugar_g: number
+    let fiber_g = 0
     if (row.recipe) {
       title = row.recipe.title
       calories = (row.recipe.calories ?? 0) * servings; protein_g = (row.recipe.protein_g ?? 0) * servings

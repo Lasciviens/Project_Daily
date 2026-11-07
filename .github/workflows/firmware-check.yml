@@ -1,10 +1,17 @@
 # Compiles the kitchen scale firmware (firmware/kitchen-scale, PlatformIO) on every PR
 # that touches it, so the owner never flashes code that doesn't build.
 # Its own workflow so the website's PR check stays as fast as before.
+# It runs on main too (after such a merge, or by hand) to save the PlatformIO cache:
+# a cache saved by a PR serves only that PR's later runs, main's serves every PR.
 name: Firmware check
 
 on:
   pull_request:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware-check.yml'
+  push:
     branches: [main]
     paths:
       - 'firmware/**'
@@ -27,8 +34,11 @@ jobs:
       - uses: actions/checkout@v5
 
       # The platform, the Arduino core and the toolchain are about 1 GB; keyed on
-      # platformio.ini so a version change downloads fresh.
-      - uses: actions/cache@v5
+      # platformio.ini so a version change downloads fresh. Only restored here;
+      # main saves it after the build (the last step).
+      - name: Restore the PlatformIO cache
+        id: pio-cache
+        uses: actions/cache/restore@v5
         with:
           path: ~/.platformio
           key: platformio-${{ hashFiles('firmware/kitchen-scale/platformio.ini') }}
@@ -39,3 +49,10 @@ jobs:
       - name: Build every program
         working-directory: firmware/kitchen-scale
         run: pio run -e display -e bench -e bench_native_usb
+
+      - name: Save the PlatformIO cache (main only)
+        if: github.ref == 'refs/heads/main' && steps.pio-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.platformio
+          key: ${{ steps.pio-cache.outputs.cache-primary-key }}

@@ -3,9 +3,9 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import {
-  fetchFoodLog, addFoodLogEntries, updateFoodLogEntry, fetchRecentFoods, fetchFoodLogRange,
+  fetchFoodLog, addFoodLogEntries, fetchRecentFoods, fetchFoodLogRange,
   fetchFoodLogEntry, fetchFoodFavorites, addFoodFavorite, removeFoodFavorite, hideRecentFood, saveFoodEntry, undoFoodEntrySave,
-  type EntrySave, type EntryUndo, type FoodLogPatch, type LoggedFood, type RecentFood,
+  type EntrySave, type EntryUndo, type LoggedFood, type RecentFood,
 } from '../api/foodLogApi'
 import { addPlannedEntries } from '../api/mealPlanApi'
 import { SLOT_OPTIONS } from '../components/foodLogUtils'
@@ -129,15 +129,6 @@ export function useSaveFoodEntry() {
     mutationFn: ({ save, before }: { save: EntrySave; before: FoodLogEntry; done: string; name: string }) => saveFoodEntry(save, before),
     invalidates: ['nutrition'],
     onSuccess: (u, v) => toast.undo(v.done, () => undo.mutate({ u, name: v.name })),
-  })
-}
-
-export function useUpdateFoodLogEntry() {
-  return useMutationWithFeedback({
-    action:         'update_food_log_entry',
-    successMessage: (_: void, v: { id: string; patch: FoodLogPatch; done?: string }) => v.done ?? 'Updated',
-    mutationFn:     ({ id, patch }: { id: string; patch: FoodLogPatch; done?: string }) => updateFoodLogEntry(id, patch),
-    invalidates:    ['nutrition'],
   })
 }
 

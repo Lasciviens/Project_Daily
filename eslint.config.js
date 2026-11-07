@@ -19,4 +19,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Every edge function carries the same <supabase-keys> block (verify-supabase-keys
+    // compares the copies), and most of them never call its publishableKey().
+    files: ['supabase/functions/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^publishableKey$' }],
+    },
+  },
 ])

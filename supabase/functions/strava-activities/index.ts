@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -39,7 +39,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
-async function refreshIfExpired(supabase: ReturnType<typeof createClient>, userId: string) {
+async function refreshIfExpired(supabase: SupabaseClient, userId: string) {
   const { data: token } = await supabase
     .from('strava_tokens')
     .select('access_token, refresh_token, expires_at')
