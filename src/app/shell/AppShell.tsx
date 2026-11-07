@@ -1,12 +1,12 @@
-import { Suspense, useEffect, useLayoutEffect } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../shared/query/keys'
 import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
 import { noteRouterNavigation } from '../../shared/hooks/useHistoryDismiss'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
-import { DevRequestsDrawer } from '../../features/devRequests/components/DevRequestsDrawer'
-import { AIPanel } from '../../features/ai/components/AIPanel'
+import { preloadInTurn } from '../../shared/hooks/useIdlePreload'
+import { whenIdle } from '../../shared/utils/whenIdle'
 import { CommandBar } from '../../shared/components/CommandBar'
 import { Toaster } from '../../shared/components/Toaster'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
@@ -16,6 +16,7 @@ import { selectSidebarCollapsed, useSidebarStore, useUIStore } from '../store'
 import { collapsesSidebar, isFullHeightRoute } from '../navigation'
 import { useAppBootstrap } from './useAppBootstrap'
 import { preloadPages } from '../pages'
+import { AIPanel, DevRequestsDrawer, SHELL_PARTS } from './shellParts'
 import { AppSidebar } from './AppSidebar'
 import { AppTopBar } from './AppTopBar'
 import { MobileHeader } from './MobileHeader'
@@ -53,16 +54,17 @@ export function AppShell() {
     predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
 
-  // The other pages' code, once the first page is up (see app/pages.ts).
-  useEffect(() => {
-    const start = () => { void preloadPages() }
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(start, { timeout: 4000 })
-      return () => window.cancelIdleCallback(id)
-    }
-    const id = setTimeout(start, 1500)
-    return () => clearTimeout(id)
-  }, [])
+  // Once the first page is up: the shell's on-demand parts (shellParts.ts),
+  // then the other pages' code (see app/pages.ts).
+  const [partsIn, setPartsIn] = useState(false)
+  useEffect(() => whenIdle(() => {
+    void preloadInTurn(SHELL_PARTS).then(() => { setPartsIn(true); return preloadPages() })
+  }), [])
+  // Ask AI and Requests mount closed once their code is in, as they did at
+  // start before, so the first open slides in like every later one. Opened
+  // before that, they mount at once. Once mounted they stay (a chat keeps its answer).
+  const aiShown = useLatch(useUIStore(s => s.isAIOpen) || (partsIn && AIPanel.isLoaded()))
+  const requestsShown = useLatch(useUIStore(s => s.isDevRequestsOpen) || (partsIn && DevRequestsDrawer.isLoaded()))
 
   const reportScroll = useUIStore(s => s.reportScroll)
   const resetChrome = useUIStore(s => s.resetChrome)
@@ -150,12 +152,19 @@ export function AppShell() {
         {main}
       </div>
       {phone && <BottomTabBar />}
-      <DevRequestsDrawer />
-      <AIPanel />
+      {requestsShown && <Suspense fallback={null}><DevRequestsDrawer /></Suspense>}
+      {aiShown && <Suspense fallback={null}><AIPanel /></Suspense>}
       <CommandBar />
       <ModalHost />
       <Toaster positionClassName={TOAST_POSITION[phone ? 'phone' : rail ? 'tablet' : 'desktop']} />
       <OfflineBanner />
     </div>
   )
+}
+
+/** True from the first render `on` is true, and from then on. */
+function useLatch(on: boolean): boolean {
+  const [latched, setLatched] = useState(on)
+  if (on && !latched) setLatched(true)
+  return latched || on
 }

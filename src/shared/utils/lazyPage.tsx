@@ -5,6 +5,8 @@ export interface LazyPart<P extends object> {
   (props: P): React.JSX.Element
   /** Loads the code ahead of time (idle time after start). */
   preload: () => Promise<void>
+  /** True once the code is in (it then renders without suspending). */
+  isLoaded: () => boolean
 }
 
 export type LazyPage = LazyPart<object>
@@ -30,6 +32,7 @@ export function lazyPart<P extends object>(name: string, load: () => Promise<Com
     return <C {...props} />
   }
   Part.preload = () => (pending ??= loadAndKeep().then(() => undefined, () => { pending = null }))
+  Part.isLoaded = () => Loaded != null
   return Part
 }
 
