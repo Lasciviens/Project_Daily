@@ -3,7 +3,10 @@
 #include <Arduino.h>
 
 void Hx711Reader::begin() {
-  pinMode(data_, INPUT);
+  // The pull-up keeps an unconnected DT line high ("not ready"), so a missing HX711
+  // shows as no readings instead of endless zeros. A connected HX711 drives the line
+  // itself and easily overrides the weak internal resistor.
+  pinMode(data_, INPUT_PULLUP);
   pinMode(clock_, OUTPUT);
   digitalWrite(clock_, LOW);
 }

@@ -134,6 +134,28 @@ void overload() {
   check(s.overloaded(), "a saturated HX711 reading is an overload");
 }
 
+void frozenReadings() {
+  ScaleCore s;
+  for (int i = 0; i < 19; i++) s.addReading(0);
+  check(!s.frozen(), "19 identical readings are not frozen yet");
+  s.addReading(0);
+  check(s.frozen(), "20 identical readings in a row are frozen (wiring fault)");
+  s.addReading(1);
+  check(!s.frozen(), "a different reading clears frozen at once");
+
+  ScaleCore noisy;
+  feed(noisy, 0, 60);
+  check(!noisy.frozen(), "a noisy real reading is never frozen");
+  // Values that repeat, but not 20 times in a row, are not frozen either.
+  for (int i = 0; i < 60; i++) noisy.addReading(EMPTY + (i % 20 == 0 ? 1 : 0));
+  check(!noisy.frozen(), "19 identical readings, then a change, are not frozen");
+
+  ScaleCore pinned;
+  for (int i = 0; i < 30; i++) pinned.addReading(8388607);
+  check(pinned.overloaded(), "a saturated HX711 is an overload");
+  check(!pinned.frozen(), "a saturated HX711 is an overload, not frozen");
+}
+
 }  // namespace
 
 int main() {
@@ -145,6 +167,7 @@ int main() {
   zeroTracking();
   tareWithPlate();
   overload();
+  frozenReadings();
   if (failed) {
     printf("%d failed, %d passed\n", failed, passed);
     return 1;
