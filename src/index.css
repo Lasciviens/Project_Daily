@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── The font's stand-in (THEME.md §3) ─────────────────────────────────────
+   Inter swaps in when its file arrives (font-display: swap). Until then text
+   draws in Arial scaled to Inter's widths and given Inter's line metrics
+   (ascent 0.969 em, descent 0.241 em, no gap), so the swap changes the letter
+   shapes and nothing moves; plain Arial is about 5 % narrower and re-wrapped
+   whole cards (a layout shift). Widths measured on the app's own text against
+   Liberation Sans, which has Arial's metrics: 105.5 % regular, 101.5 % bold. */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans');
+  font-weight: 100 549;
+  size-adjust: 105.5%;
+  ascent-override: 91.8%;
+  descent-override: 22.9%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('LiberationSans-Bold');
+  font-weight: 550 900;
+  size-adjust: 101.5%;
+  ascent-override: 95.4%;
+  descent-override: 23.8%;
+  line-gap-override: 0%;
+}
+
 @layer base {
   /* ── Design tokens (docs/design/THEME.md) ─────────────────────────────────
      RGB triplets so Tailwind's /<alpha> modifiers work. Components use the
