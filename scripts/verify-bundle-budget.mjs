@@ -23,16 +23,28 @@ const distArg = process.argv.indexOf('--dist')
 const dist = distArg > 0 ? process.argv[distArg + 1] : join(root, 'dist')
 const required = process.env.BUNDLE_BUDGET_REQUIRED === '1'
 
-// kB of gzip. Measured 07.11.2026 (in brackets) with ~5 % room.
-const SHELL_KB = 350                                   // [333] every page pays this first
-const PAGE_KB = {                                      // the shell plus the page's own code
-  'src/features/home/pages/HomePage.tsx': 565,         // [540]
-  'src/features/daily/pages/DailyPage.tsx': 550,       // [526]
-  'src/features/recipes/pages/RecipesPage.tsx': 515,   // [494] Food
-  'src/features/training/pages/TrainingPage.tsx': 460, // [438]
-  'src/features/health/pages/HealthPage.tsx': 450,     // [428]
+// kB of gzip. Measured 07.11.2026 (in brackets) with ~5 % room, page by page:
+// one shared ceiling let a page take back what was moved out of it (Books' Kobo
+// tab +67 kB, Shop's Stats +123 kB) and still pass. A new page gets its own line.
+const SHELL_KB = 350                                       // [333] every page pays this first
+const PAGE_KB = {                                          // the shell plus the page's own code
+  'src/features/home/pages/HomePage.tsx': 565,             // [541]
+  'src/features/daily/pages/DailyPage.tsx': 550,           // [527]
+  'src/features/recipes/pages/RecipesPage.tsx': 515,       // [494] Food
+  'src/features/settings/pages/SettingsPage.tsx': 540,     // [511]
+  'src/features/games/test-game/TestGamePage.tsx': 540,    // [514] Games
+  'src/features/training/pages/TrainingPage.tsx': 460,     // [439]
+  'src/features/health/pages/HealthPage.tsx': 450,         // [429]
+  'src/features/developer/pages/DeveloperPage.tsx': 415,   // [392]
+  'src/features/media/pages/MediaPage.tsx': 415,           // [392]
+  'src/features/shop/pages/ShopPage.tsx': 405,             // [385]
+  'src/features/books/pages/BooksPage.tsx': 385,           // [365]
+  'src/features/projects/pages/ProjectPage.tsx': 390,      // [370]
+  'src/features/work/pages/WorkPage.tsx': 390,             // [370]
+  'src/features/wishes/pages/WishesPage.tsx': 370,         // [353]
+  'src/features/football/pages/FootballPage.tsx': 365,     // [346]
+  'src/features/projects/pages/ProjectsPage.tsx': 365,     // [346]
 }
-const ANY_PAGE_KB = 600                                // every other page, Games included
 
 function skip(why) {
   if (required) { console.error(`verify-bundle-budget: ${why}`); process.exit(1) }
@@ -100,8 +112,9 @@ for (const key of Object.keys(PAGE_KB)) check(`${key} is still a page of the bui
 for (const key of pageKeys) {
   const own = [...closure(key)].filter(f => !shell.has(f))
   const kb = shellKb + sumKb(own)
-  const budget = PAGE_KB[key] ?? ANY_PAGE_KB
+  const budget = PAGE_KB[key]
   const name = key.replace(/^.*\//, '').replace(/\.tsx$/, '')
+  if (budget == null) { check(`${name} has its own budget in PAGE_KB (measured: ${kb.toFixed(0)} kB)`, false); continue }
   rows.push([name, kb, budget])
   check(`${name} ${kb.toFixed(0)} kB ≤ ${budget} kB`, kb <= budget)
 }
