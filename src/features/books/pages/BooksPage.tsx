@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { HERO_BAND_BLEED, PageBoard, PageContainer, PageHeader, cx } from '../../../shared/ui'
+import { HERO_BAND_BLEED, PageBoard, PageContainer, PageHeader, SkeletonTab, cx } from '../../../shared/ui'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { BooksHeroArt } from '../components/BooksHeroArt'
@@ -45,7 +45,7 @@ export function BooksPage() {
           ))}
         </div>
       </PageHeader>
-      <Suspense fallback={<div aria-busy="true" />}>
+      <Suspense fallback={<SkeletonTab />}>
         {tab === 'library' && <LibraryTab />}
         {tab === 'stats' && <StatsTab />}
         {tab === 'send' && <SendTab />}

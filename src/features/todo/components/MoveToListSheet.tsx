@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react'
 import { Sheet } from '../../../shared/components/Sheet'
-import { Truncate, cx } from '../../../shared/ui'
+import { Skeleton, Truncate, cx } from '../../../shared/ui'
+import { useRememberedCount } from '../../../shared/hooks/useLayoutMemory'
 import { useGoogleTaskLists } from '../hooks/useGoogleTaskLists'
 import { useUpdateTask } from '../hooks/useTodos'
 import type { Task } from '../types'
@@ -31,6 +32,9 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
 function ListChoices({ task, onClose }: { task: Task; onClose: () => void }) {
   const { data: lists = [], isLoading } = useGoogleTaskLists()
   const update = useUpdateTask()
+  // While the lists load: rows of a list row's height (44px), as many as there were last time (three the first
+  // time), so the sheet opens at its size instead of growing when they land.
+  const loadingRows = useRememberedCount('sheet:taskLists', lists.length, !isLoading, 3)
 
   function choose(googleTasklistLocalId: string | null) {
     update.mutate({ id: task.id, patch: { google_tasklist_id: googleTasklistLocalId } }, { onSuccess: onClose })
@@ -38,6 +42,9 @@ function ListChoices({ task, onClose }: { task: Task; onClose: () => void }) {
 
   return (
     <div className="flex flex-col gap-1.5 p-4" aria-busy={isLoading || undefined}>
+      {isLoading && Array.from({ length: Math.max(1, loadingRows) }, (_, i) => (
+        <Skeleton key={i} rounded="rounded-row" className="h-11" />
+      ))}
       {lists.length === 0 && !isLoading && (
         <p className="text-body text-fg-muted">
           No lists synced yet — tap Import in Settings → Subscriptions to pull your Google Task lists.

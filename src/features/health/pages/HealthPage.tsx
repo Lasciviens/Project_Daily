@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { PageContainer, PageHeader } from '../../../shared/ui'
+import { PageContainer, PageHeader, SkeletonTab } from '../../../shared/ui'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
@@ -69,7 +69,7 @@ export function HealthPage() {
               insights: <Guard name="Insights"><HealthInsightsCard hero={hero} /></Guard>,
             }} />
           ) : (
-            <Suspense fallback={<div aria-busy="true" />}>
+            <Suspense fallback={<SkeletonTab />}>
               <HealthSectionWindow section={section} range={range} win={win} hero={hero} onViewDay={viewDay} onOpenSection={setSection} />
             </Suspense>
           )}

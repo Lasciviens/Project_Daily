@@ -1,6 +1,6 @@
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { X } from 'lucide-react'
-import { Button } from '../../../shared/ui'
+import { Button, Skeleton } from '../../../shared/ui'
 import { useAllTasks, useSetParentTask } from '../hooks/useTodos'
 import { isOpenTask } from '../taskRules'
 import type { Task } from '../types'
@@ -69,6 +69,8 @@ export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose }: {
             autoFocus
           />
           <ComboboxOptions className="mt-2 max-h-64 overflow-y-auto rounded-row border border-line p-1">
+            {/* While every task loads: a few rows at a row's height, so the list doesn't grow under the field. */}
+            {isLoading && [0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-row" className="my-0.5 h-10" />)}
             {candidates.length === 0 && !isLoading && (
               <p className="px-3 py-2 text-body text-fg-muted">No matching tasks</p>
             )}

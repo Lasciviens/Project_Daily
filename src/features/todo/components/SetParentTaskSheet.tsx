@@ -1,5 +1,6 @@
 import { Suspense, useState } from 'react'
 import { Sheet } from '../../../shared/components/Sheet'
+import { Skeleton, SkeletonText } from '../../../shared/ui'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import type { Task } from '../types'
@@ -26,9 +27,22 @@ export function SetParentTaskSheet({ open, onClose, task, hasSubtasks }: Props) 
   const [query, setQuery] = useState('')
   return (
     <Sheet open={open} onClose={onClose} title="Set parent task" size="sm">
-      <Suspense fallback={<div aria-busy="true" className="p-4" />}>
+      <Suspense fallback={<PickerSkeleton task={task} hasSubtasks={hasSubtasks} />}>
         <ParentPicker task={task} hasSubtasks={hasSubtasks} query={query} onQuery={setQuery} onClose={onClose} />
       </Suspense>
     </Sheet>
+  )
+}
+
+/** The picker's loading copy, at its size: the Remove button when the task has a parent, then the search field (or
+ *  the note about subtasks) — the sheet opens at its size instead of growing when the code lands. */
+function PickerSkeleton({ task, hasSubtasks }: { task: Task; hasSubtasks: boolean }) {
+  return (
+    <div aria-busy="true" className="p-4">
+      {task.parent_task_id && <Skeleton className="mb-3 h-11 w-full" />}
+      {hasSubtasks
+        ? <SkeletonText lines={3} className="py-1" />
+        : <Skeleton className="h-10 w-full [@media(pointer:coarse)]:h-11" rounded="rounded-input" />}
+    </div>
   )
 }

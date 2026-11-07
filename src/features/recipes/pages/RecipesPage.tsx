@@ -5,7 +5,7 @@ import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
-import { Button, PageContainer, PageHeader, SegmentedControl, SteadySlot, type SegmentedOption } from '../../../shared/ui'
+import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab, SteadySlot, type SegmentedOption } from '../../../shared/ui'
 import { FoodTodayTab } from '../components/FoodTodayTab'
 import { FoodDateNav } from '../components/FoodDateNav'
 import { FoodHeroArt } from '../components/FoodHeroArt'
@@ -90,7 +90,7 @@ export function RecipesPage() {
         </div>
       </PageHeader>
 
-      <Suspense fallback={<div aria-busy="true" />}>
+      <Suspense fallback={<SkeletonTab />}>
         {tab === 'today' && <FoodTodayTab date={foodDate} />}
         {tab === 'ingredients' && <IngredientManager focusId={focusFood} />}
         {tab === 'plan' && <MealPlanWeek />}

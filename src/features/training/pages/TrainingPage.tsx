@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { PageContainer, PageHeader, SegmentedControl, SteadySlot } from '../../../shared/ui'
+import { PageContainer, PageHeader, SegmentedControl, SkeletonTab, SteadySlot } from '../../../shared/ui'
 import { TrainingHeroArt } from '../components/TrainingHeroArt'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
@@ -90,7 +90,7 @@ export function TrainingPage() {
 
       <div className="w-full min-w-0">
         <ErrorBoundary key={tab} label="Training">
-          <Suspense fallback={<div aria-busy="true" />}>
+          <Suspense fallback={<SkeletonTab />}>
             {(tab === 'next' || tab === 'progress') && (
               <TrainingProgressProvider>
                 {tab === 'next' ? <NextTab onGoTo={goTo} /> : <ProgressTab />}
