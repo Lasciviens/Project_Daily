@@ -44,7 +44,7 @@ for (const f of users) {
   const b = block(sources[f])
   check(`${f}: the same <supabase-keys> block`, b === reference)
   const outside = code(sources[f].replace(b ?? '', '')).split('\n')
-    .filter(l => /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(l) && !l.includes("['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET']"))
+    .filter(l => /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(l) && !l.includes("['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET', 'GOOGLE_CLIENT_SECRET']"))
   check(`${f}: no legacy key read outside it`, outside.length === 0, outside.map(l => l.trim()))
   const before = code(sources[f].slice(0, Math.max(0, sources[f].indexOf('// <supabase-keys>'))))
   check(`${f}: nothing uses a key before the block defines it`, sources[f].includes('// <supabase-keys>') && !/serviceKey\(\)|publishableKey\(\)/.test(before))

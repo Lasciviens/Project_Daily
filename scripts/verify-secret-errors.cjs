@@ -207,6 +207,64 @@ process.on('exit', () => {
     }
   }
 
+  // The routine tools write to the owner's real Hevy account (guardian, 07.11.2026). When hevy-api gives no answer,
+  // or fails after Hevy may have taken the write, the model is told the outcome is unknown and not to send it again;
+  // Hevy refusing it stays a plain failure. A network error names the service, never the URL it went to.
+  {
+    const realTimeout = AbortSignal.timeout
+    AbortSignal.timeout = () => new AbortController().signal // the waits are not what this tests
+    try {
+      const runTool = async (call, serviceAnswer) => {
+        const geminiBodies = [], hevyPosts = []
+        const fetchImpl = async (url, init = {}) => {
+          const u = String(url)
+          if (/:generateContent$/.test(u)) {
+            geminiBodies.push(JSON.parse(init.body))
+            const parts = geminiBodies.length === 1 ? [{ functionCall: call }] : [{ text: 'Told the user.' }]
+            return new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+          }
+          if (u.endsWith('/functions/v1/hevy-api')) { hevyPosts.push(JSON.parse(init.body)); return serviceAnswer(u) }
+          if (u.includes('api.entur.io')) return serviceAnswer(u)
+          return failing(url)
+        }
+        const handler = load('ai-proxy', { env, tables: { app_allowed_users: [] }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl })
+        const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'Make my push day' }] }) }))
+        const text = await res.text()
+        const told = (geminiBodies[1]?.contents ?? []).flatMap(c => c.parts ?? []).find(p => p.functionResponse)?.functionResponse?.response
+        return { status: res.status, told, hevyPosts }
+      }
+      const create = { name: 'create_hevy_routine', args: { title: 'Push day', exercises: [{ exercise_template_id: 'X1', sets: [{ type: 'normal', reps: 8 }] }] } }
+      const answer = (status, body) => async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+      let r = await runTool(create, failing)
+      check('ai-proxy: a routine create whose answer never came is "outcome unknown", and the model is told not to send it again',
+        r.status === 200 && r.hevyPosts.length === 1 && r.told?.outcome_unknown === true && /do not call create_hevy_routine again/.test(r.told?.error ?? ''),
+        `${r.status} ${JSON.stringify(r.told)}`)
+      r = await runTool(create, answer(500, { error: 'duplicate key value violates unique constraint' }))
+      check('ai-proxy: …and so is a hevy-api failure that can come after Hevy took it (its 500)', r.told?.outcome_unknown === true, JSON.stringify(r.told))
+      r = await runTool(create, answer(502, { error: 'Hevy API 400 POST /v1/routines: invalid exercise_template_id' }))
+      check('ai-proxy: Hevy refusing the routine stays a plain failure the model may correct',
+        r.told?.success === false && !r.told?.outcome_unknown && /^Hevy API 400/.test(r.told?.error ?? ''), JSON.stringify(r.told))
+      r = await runTool({ name: 'search_transit_stops', args: { query: 'Jernbanetorget' } }, failing)
+      check('ai-proxy: a tool\'s network error names the service, never the URL it went to (the search\'s words, the runtime\'s address)',
+        r.told?.error === 'EnTur could not be reached (network error)' && !/api\.entur\.io|Jernbanetorget/.test(JSON.stringify(r.told)), JSON.stringify(r.told))
+
+      // A confirmed action's answer is scrubbed like every other outgoing error: its text and its step.
+      const confirmFetch = async (url) => String(url).endsWith('/functions/v1/hevy-api')
+        ? new Response(JSON.stringify({ error: `Hevy API 401 PUT /v1/routines/r1: bad key ${SECRETS.GEMINI_API_KEY}` }), { status: 502, headers: { 'content-type': 'application/json' } })
+        : failing(url)
+      const pending = [{ id: 'pa1', user_id: 'owner', tool: 'update_hevy_routine', args: { routine_id: 'r1', title: 'Push day', exercises: [{ exercise_template_id: 'X1', sets: [] }] },
+        summary: 'update the routine Push day', done_at: null, expires_at: '2999-01-01T00:00:00.000Z' }]
+      const confirmHandler = load('ai-proxy', { env, tables: { app_allowed_users: [], ai_pending_actions: pending }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: confirmFetch })
+      const confirmed = await confirmHandler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ confirmAction: { id: 'pa1', decision: 'confirm' } }) }))
+      const confirmedText = await confirmed.text()
+      check('ai-proxy: a confirmed action\'s error reaches the browser without any key, in its text and its step',
+        confirmed.status === 200 && /That did not work/.test(confirmedText) && leaks(confirmedText).length === 0, confirmedText.slice(0, 300))
+    } finally {
+      AbortSignal.timeout = realTimeout
+    }
+  }
+
   // Keys travel in a header or a body, never in a URL (security review
   // 26.10.2026): Steam takes `x-webapi-key`, Twitch's token request a form body.
   const recorded = []

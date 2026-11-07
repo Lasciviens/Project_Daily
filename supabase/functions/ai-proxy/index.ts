@@ -329,7 +329,7 @@ const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 /**
  * A read from an outside service with a time limit: one that never answers fails after `ms`, named, instead
  * of holding the whole reply until the platform ends the function. The limit also covers reading the answer.
- * Only for reads: a write that runs out of time may still have landed, so the Hevy writes keep no limit.
+ * Only for reads: a write that runs out of time may still have landed (the Hevy writes: hevyRoutineWrite).
  */
 async function fetchWithin(service: string, ms: number, url: string, init: RequestInit = {}): Promise<Response> {
   const signal = AbortSignal.timeout(ms)
@@ -340,7 +340,8 @@ async function fetchWithin(service: string, ms: number, url: string, init: Reque
     return new Response(noBody ? null : text, { status: res.status, statusText: res.statusText, headers: res.headers })
   } catch (e) {
     if (signal.aborted) throw new Error(`${service} did not answer within ${ms / 1000} s`, { cause: e })
-    throw e
+    // Deno's own text quotes the whole URL (a search's words, the runtime's address): the service's name is enough.
+    throw new Error(`${service} could not be reached (network error)`, { cause: e })
   }
 }
 
@@ -365,7 +366,7 @@ function jitter(ms: number): number {
 // leaves (caller, model, app_error_logs, ai_query_log). Security audit.
 function hideSecrets(msg: string): string {
   let out = String(msg ?? '')
-  for (const v of [...['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET'].map(k => Deno.env.get(k)), serviceKey()]) {
+  for (const v of [...['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET', 'GOOGLE_CLIENT_SECRET'].map(k => Deno.env.get(k)), serviceKey()]) {
     if (v && v.length >= 8) out = out.split(v).join('[hidden]')
   }
   return out.replace(/([?&](?:key|apikey|api_key)=)[^&\s)"']+/gi, '$1[hidden]')
@@ -1217,7 +1218,11 @@ async function callGemini(
           // A tool that throws (an outside service down or out of time) is one failed step the model can
           // tell the user about, never the end of the whole reply.
           try { result = await dispatch(name, args, supabase, userId, authHeader, surface) }
-          catch (e) { result = { success: false, error: (e as Error)?.message || 'The tool failed' } }
+          catch (e) {
+            const msg = hideSecrets(String((e as Error)?.message ?? '')) || 'The tool failed'
+            console.error('[ai-proxy] tool', name, msg)
+            result = { success: false, error: msg }
+          }
         }
         if (result && typeof result.error === 'string') result.error = hideSecrets(result.error)
         steps.push(describeStep(name, args, result))
@@ -1418,6 +1423,8 @@ async function settleAction(
   if (!row) return { text: 'That confirmation has expired or was already used. Nothing was changed.' }
   if (decision !== 'confirm') return { text: 'Cancelled. Nothing was changed.' }
   const result = await dispatch(row.tool, row.args, supabase, userId, authHeader, 'general')
+  // Scrubbed like every other outgoing error: the text and the step reach the browser.
+  if (result && result.error != null) result.error = hideSecrets(String(result.error))
   const step = describeStep(row.tool, row.args, result)
   return result?.success === false
     ? { text: `That did not work: ${result.error ?? 'unknown error'}`, steps: [step] }
@@ -1486,6 +1493,38 @@ async function dispatch(
 // Hevy's inconsistent response shapes, re-upserts the result into our DB).
 // The user's own Authorization header is passed through so hevy-api's
 // owner check still applies.
+// The routine tools write to the owner's real Hevy account through hevy-api. When no answer comes (a time-out, a
+// broken connection) or hevy-api fails in a way that can come after Hevy took the write (a 5xx that is not Hevy
+// refusing it), the routine may already be created or changed: the result says so (`outcome_unknown`) and asks the
+// model not to send it again. A plain failure invited a retry in the same reply, and a second routine that the
+// app's Undo can't remove (guardian, 07.11.2026). 60 s covers hevy-api's own call to Hevy and its local copy.
+const HEVY_WRITE_TIMEOUT_MS = 60_000
+async function hevyRoutineWrite(
+  action: 'create_routine' | 'update_routine', payload: AnyRecord, authHeader: string,
+): Promise<{ ok: true; body: AnyRecord } | { ok: false; result: AnyRecord }> {
+  const unknown = action === 'create_routine'
+    ? 'Hevy did not confirm the routine. It may already have been created: do not call create_hevy_routine again; tell the user to check Hevy.'
+    : 'Hevy did not confirm the change. The routine may already be changed: tell the user to check it in Hevy before trying again.'
+  let res: Response
+  try {
+    res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+      body: JSON.stringify({ action, payload }),
+      signal: AbortSignal.timeout(HEVY_WRITE_TIMEOUT_MS),
+    })
+  } catch (e) {
+    console.error('[ai-proxy] hevy-api', action, hideSecrets(String((e as Error)?.message ?? e)))
+    return { ok: false, result: { success: false, outcome_unknown: true, error: unknown } }
+  }
+  const body: AnyRecord = await res.json().catch(() => ({}))
+  if (res.ok) return { ok: true, body }
+  const said = typeof body?.error === 'string' ? body.error.slice(0, 300) : `hevy-api ${res.status}`
+  // Hevy refusing the write (its 4xx, or hevy-api's own 400) leaves nothing behind.
+  const refused = res.status < 500 || /^Hevy API 4\d\d /.test(said)
+  return { ok: false, result: refused ? { success: false, error: said } : { success: false, outcome_unknown: true, error: `${unknown} (${said})` } }
+}
+
 async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
   if (!authHeader) return { success: false, error: 'No auth context for hevy-api call' }
   let exercises: unknown
@@ -1505,13 +1544,8 @@ async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   // so adding it here is sufficient; hevy-api itself needs no change.
   const payload: AnyRecord = { id: args.routine_id, title: args.title, exercises }
   if (typeof args.notes === 'string') payload.notes = args.notes
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify({ action: 'update_routine', payload }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
+  const write = await hevyRoutineWrite('update_routine', payload, authHeader)
+  if (!write.ok) return write.result
   return { success: true, message: 'Routine updated in Hevy and synced locally.' }
 }
 
@@ -1534,14 +1568,9 @@ async function createHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   const payload: AnyRecord = { title: args.title, exercises }
   if (args.notes) payload.notes = args.notes
   if (args.folder_id) payload.folder_id = args.folder_id
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify({ action: 'create_routine', payload }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
-  return { success: true, routine_id: body?.routine_id, message: 'Routine created in Hevy and synced locally.' }
+  const write = await hevyRoutineWrite('create_routine', payload, authHeader)
+  if (!write.ok) return write.result
+  return { success: true, routine_id: write.body?.routine_id, message: 'Routine created in Hevy and synced locally.' }
 }
 
 // ─── get_media ──────────────────────────────────────────────────────────────
