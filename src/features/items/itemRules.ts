@@ -39,13 +39,9 @@ import { labelsOf } from '../todo/taskLabels'
 import { placeOfRow } from './itemPlace'
 import { repeatSummary, type RepeatKind, type RepeatRule, type RepeatUnit } from '../daily/recurrence'
 import { formatDate } from '../../shared/utils/dateFormat'
-import { NOMINAL_EVENT_MINUTES } from '../calendar/calendarEventRules'
 import type {
   GoogleTarget, GoogleTargetProblem, ItemInput, RepeatDayAction, RepeatInput, SavedItem,
 } from './itemTypes'
-
-/** A time with no length is stored with this many minutes (never shown as a length). */
-export const ITEM_NOMINAL_MINUTES = NOMINAL_EVENT_MINUTES
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)/

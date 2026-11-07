@@ -8,7 +8,7 @@
 import { useId, type ReactNode } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Repeat } from 'lucide-react'
 import {
-  DURATION_PRESETS, CATEGORY_LABELS, RECURRENCE_OPTIONS, DAY_LABELS, DAY_NAMES, DAY_ORDER, REPEAT_UNIT_OPTIONS,
+  DURATION_PRESETS, RECURRENCE_OPTIONS, DAY_LABELS, DAY_NAMES, DAY_ORDER, REPEAT_UNIT_OPTIONS,
   displayDate, todayStr, dayPickerFor, litDays, toggleRepeatDay, pickRecurrence, recurrenceProblem, repeatPreview,
   type RepeatFormFields,
 } from './planModal.config'
@@ -19,7 +19,6 @@ import { MetaLine, cx } from '../../ui'
 import { SegmentedControl } from '../SegmentedControl'
 import { DateCalendar } from '../DateCalendar'
 import { choiceClass, chipClass } from './fieldStyles'
-import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { CustomRepeatKind, RecurrenceMode } from './planModal.types'
 
 const STEP_BTN =
@@ -192,28 +191,6 @@ export function DurationField({
   )
 }
 
-// ── Category select ───────────────────────────────────────────────────────────
-
-export function CategorySelect({
-  value, onChange, locked,
-}: {
-  value: TimeBlockCategory
-  onChange: (v: TimeBlockCategory) => void
-  locked?: boolean
-}) {
-  return (
-    <select
-      value={value} disabled={locked}
-      onChange={e => onChange(e.target.value as TimeBlockCategory)}
-      className="select disabled:opacity-60"
-    >
-      {(Object.entries(CATEGORY_LABELS) as [TimeBlockCategory, string][]).map(([v, l]) => (
-        <option key={v} value={v}>{l}</option>
-      ))}
-    </select>
-  )
-}
-
 // ── Recurrence — one line for the choice, the M–S day circles, Custom ────────
 //  The choice is a select so it stays ONE line at every width, whatever the
 //  number of options (owner, 13.10.2026). The circles show whenever days
@@ -361,38 +338,6 @@ export function RecurrenceField({
             ]}
           />
         )}
-    </div>
-  )
-}
-
-// ── Checkbox row ──────────────────────────────────────────────────────────────
-
-export function CheckboxRow({
-  checked, onChange, label, disabled, title,
-}: {
-  checked: boolean
-  onChange: (v: boolean) => void
-  label: string
-  disabled?: boolean
-  title?: string
-}) {
-  return (
-    <label className={cx('flex min-h-[44px] items-center gap-3', disabled ? 'cursor-default opacity-60' : 'cursor-pointer')} title={title}>
-      <input
-        type="checkbox" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)}
-        className="h-4 w-4 rounded accent-accent-500 disabled:cursor-default"
-      />
-      <span className="text-body text-fg-2">{label}</span>
-    </label>
-  )
-}
-
-/** Hairline section divider with an eyebrow label. */
-export function SectionDivider({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="-mb-1 flex items-center gap-2">
-      <span className="section-label">{children}</span>
-      <div className="h-px flex-1 bg-line" />
     </div>
   )
 }

@@ -158,7 +158,6 @@ export function moveGuess(items: readonly Pick<QuickGuessItem, 'id' | 'sort_orde
 
 /** Portion factors offered by the size switch; 1 is the default. */
 export const GUESS_FACTORS = [0.5, 1, 1.5, 2] as const
-export type GuessFactor = typeof GUESS_FACTORS[number]
 
 const FACTOR_LABEL: Record<number, string> = { 0.5: '½', 1: '1', 1.5: '1½', 2: '2', 3: '3' }
 /** "½", "1½", "2" — the factor as it is written in a title and on the switch. */

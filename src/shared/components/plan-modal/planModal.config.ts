@@ -4,7 +4,6 @@
 //  reused. Visual/behavioural defaults live here, NOT scattered in the modal.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { format, addDays, parseISO } from 'date-fns'
 import type { RepeatRow, TimeBlockCategory } from '../../../features/daily/types'
 import type { LiveTaskSection, TaskSourceType } from '../../../features/todo/types'
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
@@ -86,14 +85,6 @@ export function displayDate(iso: string): string {
   return formatWeekdayDate(iso) || iso
 }
 
-export function stepDate(iso: string, dir: 1 | -1): string {
-  try {
-    return format(addDays(parseISO(iso), dir), 'yyyy-MM-dd')
-  } catch {
-    return iso
-  }
-}
-
 /** Shift an HH:MM time by a signed number of minutes, wrapping within a day. */
 export function shiftTime(hhmm: string, deltaMin: number): string {
   const [h, m] = hhmm.split(':').map(Number)
@@ -115,11 +106,6 @@ export function nextPlanTime(): string {
 /** Round minutes UP to the next 15-min quarter (min 15). 44→45, 31→45, 90→90. */
 export function ceilToQuarter(min: number): number {
   return Math.max(15, Math.ceil(min / 15) * 15)
-}
-
-/** End time = start + duration, used when creating recurring schedule blocks. */
-export function endTimeFrom(startHHMM: string, durationMin: number): string {
-  return shiftTime(startHHMM, durationMin)
 }
 
 /** The To-Do section of a task planned for `iso` — taskRules.sectionForDay's
