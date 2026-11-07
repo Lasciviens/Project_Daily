@@ -260,6 +260,15 @@ process.on('exit', () => {
       const confirmedText = await confirmed.text()
       check('ai-proxy: a confirmed action\'s error reaches the browser without any key, in its text and its step',
         confirmed.status === 200 && /That did not work/.test(confirmedText) && leaks(confirmedText).length === 0, confirmedText.slice(0, 300))
+      // A confirmed routine change whose answer never came: the person reads that it may have gone through, never
+      // "That did not work" nor the model's own instruction ("tell the user…").
+      const unsure = load('ai-proxy', { env, tables: { app_allowed_users: [], ai_pending_actions: pending.map(r => ({ ...structuredClone(r), done_at: null, decision: null })) }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: failing })
+      const unsureRes = await unsure(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ confirmAction: { id: 'pa1', decision: 'confirm' } }) }))
+      const unsureBody = JSON.parse(await unsureRes.text())
+      check('ai-proxy: a confirmed Hevy change with no answer says it may have gone through, in words for the person',
+        unsureBody.text === 'Hevy didn\'t confirm the change. It may have gone through: check the routine in Hevy before trying again.'
+          && /^\? update_hevy_routine — not confirmed/.test(unsureBody.steps?.[0] ?? '') && !/tell the user|do not call/i.test(JSON.stringify(unsureBody)),
+        JSON.stringify(unsureBody))
     } finally {
       AbortSignal.timeout = realTimeout
     }

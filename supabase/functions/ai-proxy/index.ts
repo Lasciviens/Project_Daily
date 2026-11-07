@@ -1274,6 +1274,8 @@ async function callGemini(
 // One-line description of a tool call for the client-side activity trace.
 function describeStep(name: string, args: AnyRecord, result: AnyRecord): string {
   const tbl = args?.table ? ` ${args.table}` : ''
+  // A write whose answer never came (hevyRoutineWrite): neither done nor failed.
+  if (result?.outcome_unknown) return `? ${name}${tbl} — not confirmed: it may have gone through`
   if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
   if (result?.waiting_for_user) return `… ${name}${tbl} — waiting for your Confirm`
   let detail = ''
@@ -1426,6 +1428,11 @@ async function settleAction(
   // Scrubbed like every other outgoing error: the text and the step reach the browser.
   if (result && result.error != null) result.error = hideSecrets(String(result.error))
   const step = describeStep(row.tool, row.args, result)
+  // Only the Hevy routine writes can end unknown (hevyRoutineWrite). Its error text is written for the model
+  // ("tell the user…"); the person who tapped Confirm reads this instead (owner-critic, 07.11.2026).
+  if (result?.outcome_unknown) {
+    return { text: 'Hevy didn\'t confirm the change. It may have gone through: check the routine in Hevy before trying again.', steps: [step] }
+  }
   return result?.success === false
     ? { text: `That did not work: ${result.error ?? 'unknown error'}`, steps: [step] }
     : { text: `Done: ${row.summary}.`, steps: [step] }
