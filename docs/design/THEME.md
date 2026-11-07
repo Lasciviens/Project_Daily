@@ -750,7 +750,7 @@ More on results (13.10.2026, owner: "after what the user does, a message by its 
   "Saved", a sheet's `withProgress`, an Undo toast) or that is not a user action (autosave while
   typing, a drag whose list shows the order, a lookup whose results are the answer). A hook used both
   alone and as a step of a bigger save takes `{ report: false }` (`useCreateTask`, `useUpdateTask`,
-  `useUpdateTimeBlock`, `useUpdateProject`, `useUpdateItem`, `useCreateShopLink`).
+  `useUpdateTimeBlock`, `useUpdateProject`, `useUpdatePhase`, `useUpdateBlock`, `useCreateShopLink`).
 - The message comes from the write's own answer and its input — never a second read. `refresh: 'wait'`
   only for a flow that reads the refreshed cache right after.
 - Rollbacks use `snapshotCache` / `restoreCache` (`cachePatch.ts`); task writes apply the database's
