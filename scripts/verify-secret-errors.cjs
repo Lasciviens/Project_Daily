@@ -223,7 +223,7 @@ process.on('exit', () => {
             const parts = geminiBodies.length === 1 ? [{ functionCall: call }] : [{ text: 'Told the user.' }]
             return new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
           }
-          if (u.endsWith('/functions/v1/hevy-api')) { hevyPosts.push(JSON.parse(init.body)); return serviceAnswer(u) }
+          if (u.endsWith('/hevy-api')) { hevyPosts.push(JSON.parse(init.body)); return serviceAnswer(u) }
           if (u.includes('api.entur.io')) return serviceAnswer(u)
           return failing(url)
         }
@@ -250,7 +250,7 @@ process.on('exit', () => {
         r.told?.error === 'EnTur could not be reached (network error)' && !/api\.entur\.io|Jernbanetorget/.test(JSON.stringify(r.told)), JSON.stringify(r.told))
 
       // A confirmed action's answer is scrubbed like every other outgoing error: its text and its step.
-      const confirmFetch = async (url) => String(url).endsWith('/functions/v1/hevy-api')
+      const confirmFetch = async (url) => String(url).endsWith('/hevy-api')
         ? new Response(JSON.stringify({ error: `Hevy API 401 PUT /v1/routines/r1: bad key ${SECRETS.GEMINI_API_KEY}` }), { status: 502, headers: { 'content-type': 'application/json' } })
         : failing(url)
       const pending = [{ id: 'pa1', user_id: 'owner', tool: 'update_hevy_routine', args: { routine_id: 'r1', title: 'Push day', exercises: [{ exercise_template_id: 'X1', sets: [] }] },
