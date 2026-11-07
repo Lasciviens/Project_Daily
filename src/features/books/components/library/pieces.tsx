@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, BookOpen, Copy, ListOrdered, Plus, Tablet } from 'lucide-react'
-import { Button, Card, CardHeader, IconButton, Truncate } from '../../../../shared/ui'
+import { Button, Card, CardHeader, IconButton, Skeleton, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useCreateBook, useMergeBooks, useSaveQueueOrder } from '../../hooks/useLibrary'
@@ -32,6 +32,30 @@ export function ReadingNow({ books }: { books: Book[] }) {
                 </p>
               </div>
             </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+/**
+ * Reading now while the library loads: the card's own header and two book rows (a 56 × 84 cover in a 92px
+ * row). It used to appear only once the books had, and push Up next and All books down the page.
+ */
+export function ReadingNowSkeleton() {
+  return (
+    <Card>
+      <CardHeader title="Reading now" variant="label" icon={<BookOpen />} />
+      <ul aria-hidden className="grid grid-cols-1 gap-3 @container @[34rem]:grid-cols-2">
+        {[0, 1].map(i => (
+          <li key={i} className="flex items-center gap-3 p-1">
+            <Skeleton rounded="rounded-md" className="h-[5.25rem] w-14 shrink-0" />
+            <span className="flex min-w-0 flex-1 flex-col gap-2">
+              <Skeleton className="h-3.5 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton rounded="rounded-full" className="h-1.5 w-full" />
+            </span>
           </li>
         ))}
       </ul>

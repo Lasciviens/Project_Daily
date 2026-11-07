@@ -66,6 +66,13 @@ export function FootballPage() {
         art={<FootballHeroArt />}
         actions={<Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
       >
+        {/* The filter's row keeps its place while what you follow loads: arriving with it, it pushed the page
+            down and moved Follow to a row of its own on a phone (a layout shift). */}
+        {followsQ.isLoading && (
+          <div aria-hidden className="flex gap-1">
+            {[0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-full" className="h-[34px] w-24 [@media(pointer:coarse)]:h-[44px]" />)}
+          </div>
+        )}
         {follows.length > 1 && (
           <div className="scroll-x -mx-1 flex gap-1 px-1" role="group" aria-label="Show">
             <button type="button" aria-pressed={!filter} onClick={() => pick(null)} className="pill-tab shrink-0">All</button>

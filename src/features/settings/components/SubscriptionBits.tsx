@@ -119,7 +119,8 @@ export function SubscriptionSummary() {
   return (
     <Card className="flex flex-wrap items-center gap-x-6 gap-y-2">
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
+        {/* min-h-6: the ⓘ's height, so the row doesn't grow when it arrives with the subscriptions. */}
+        <div className="flex min-h-6 items-center gap-2">
           <p className="text-micro text-fg-faint">Subscriptions · per month</p>
           {perCurrency.length > 0 && (
             <InfoBubble label="About the exchange rates">

@@ -43,6 +43,8 @@ interface Props extends ActivityFilterState {
   set: (patch: Partial<ActivityFilterState>) => void
   tables: string[]
   hasLogs: boolean
+  /** The log is loading: Clear all keeps its room (unseen), so the bar doesn't wrap when it arrives. */
+  loading: boolean
   isFetching: boolean
   onRefresh: () => void
   onClear: () => void
@@ -51,7 +53,7 @@ interface Props extends ActivityFilterState {
 
 export function ActivityLogFilters({
   rangeHours, customFrom, customTo, tableFilter, opFilter, actorFilter,
-  set, tables, hasLogs, isFetching, onRefresh, onClear, clearing,
+  set, tables, hasLogs, loading, isFetching, onRefresh, onClear, clearing,
 }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const usingCustom = !!(customFrom || customTo)
@@ -105,14 +107,15 @@ export function ActivityLogFilters({
       {/* sm and up: everything inline */}
       <div className="hidden flex-col gap-2 sm:flex">
         <div className="flex flex-wrap items-center gap-2">
-          {typeSelect('w-auto')}
+          {/* One width: sized by its longest option, it widened when the log's types arrived and wrapped the bar. */}
+          {typeSelect('w-[11.5rem]')}
           {opSelect('w-auto')}
           {actorSelect('w-auto')}
           {rangeSelect('w-auto')}
           <div className="ml-auto flex items-center gap-1.5">
             {refreshButton}
-            {hasLogs && (
-              <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={onClear} loading={clearing} className="text-danger">
+            {(hasLogs || loading) && (
+              <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={onClear} loading={clearing} className={loading ? 'invisible' : 'text-danger'}>
                 Clear all
               </Button>
             )}

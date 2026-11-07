@@ -108,6 +108,7 @@ export function ActivityLogTab() {
         set={patch => setFilters(f => ({ ...f, ...patch }))}
         tables={tables}
         hasLogs={logs.length > 0}
+        loading={isLoading}
         isFetching={isFetching}
         onRefresh={() => { void refetch() }}
         onClear={() => { void handleClear() }}

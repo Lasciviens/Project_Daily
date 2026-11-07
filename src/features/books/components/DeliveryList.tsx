@@ -14,7 +14,8 @@ export function DeliveryList({ rows, loading }: { rows: BookDelivery[]; loading:
   return (
     <Card padded={false}>
       <div className="px-4 pt-4"><CardHeader title="Inbox" variant="label" icon={<Inbox />} subtitle="Kept until the Kobo has it, then 24 hours" /></div>
-      {loading ? <div className="p-4"><SkeletonText lines={3} /></div> : rows.length === 0 ? (
+      {/* As tall as the empty inbox (the usual answer) or three deliveries: it pushed the setup card down. */}
+      {loading ? <div aria-hidden className="flex min-h-[12.25rem] flex-col justify-center gap-3 px-4"><SkeletonText lines={3} /></div> : rows.length === 0 ? (
         <EmptyState icon={<BookOpen />} title="Nothing sent yet" description="Books you send appear here until the Kobo has them." />
       ) : (
         <ul className="divide-y divide-line">

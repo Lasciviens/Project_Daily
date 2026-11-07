@@ -11,11 +11,13 @@ import { useRecoveryNotes } from './useRecoveryNotes'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
+import { useMissedSessions } from '../../hooks/useTrainingSkips'
 import { TrainingPlanMenu } from '../session/TrainingPlanActions'
 import { sessionStatus } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import { NEXT_BOARD } from '../../trainingBoards'
 import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
+import { useMuscleWatch } from '../../../health/goal/useMuscleWatch'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -141,8 +143,13 @@ function ExerciseGrid({ children }: { children: ReactNode }) {
 /** The default Training tab: what to do next, set by set. */
 export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
+  // The lines above the exercises (missed sessions, recovery, the muscle watch) load with the plan (the same
+  // queries they read): drawn as each came, they pushed the heads-up and the exercises down (a layout shift).
+  const missed = useMissedSessions()
+  const recovery = useRecoveryNotes()
+  const muscle = useMuscleWatch()
 
-  if (plan.isLoading) {
+  if (plan.isLoading || missed.isLoading || recovery.isLoading || muscle.isLoading) {
     return (
       <div className="flex max-w-2xl flex-col gap-3">
         <Skeleton rounded="rounded-card" className="h-28" />

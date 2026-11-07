@@ -50,7 +50,9 @@ export function ProjectsPage() {
   // cards any status shows, so switching status or area never resizes it (projectsHeaderCards).
   const { ref: widthRef, width } = useElementWidthRem<HTMLDivElement>()
   const headerCap = width == null ? null : projectsHeaderCapRem(projectsHeaderCards(statusTally(projects, 'all'), projectsQ.isLoading), width)
-  const loading = projectsQ.isLoading
+  // The cards wait for their phases, tasks and questions too (all read at once): drawn before them, each card
+  // grew a "Next" row a moment later and pushed the ones under it (a layout shift).
+  const loading = projectsQ.isLoading || phasesQ.isLoading || tasksQ.isLoading || questionsQ.isLoading
   const newProject = () => modal.open({ kind: 'project' })
 
   return (
@@ -62,7 +64,8 @@ export function ProjectsPage() {
             art={<ProjectsHeroArt />}
             actions={projects.length > 0 || loading ? (
               <div className="flex items-center gap-2">
-                {twoAreas && (
+                {/* While loading too: the switch arriving later widened (on a phone, heightened) the row. */}
+                {(twoAreas || loading) && (
                   <SegmentedControl<AreaFilter>
                     size="sm"
                     value={area}
@@ -74,7 +77,8 @@ export function ProjectsPage() {
               </div>
             ) : undefined}
           >
-            {projects.length > 0 && (
+            {/* While loading too (without counts yet): the row arriving with the data pushed the cards down. */}
+            {(projects.length > 0 || loading) && (
               <SegmentedControl<ProjectStatus>
                 size="sm"
                 value={status}
@@ -92,7 +96,8 @@ export function ProjectsPage() {
 
       {loading ? (
         <div className={GRID}>
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-40" />)}
+          {/* A loaded card's height (title, meta, progress, Next row). */}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} rounded="rounded-card" className="h-[9.625rem]" />)}
         </div>
       ) : projectsQ.isError ? (
         <EmptyState

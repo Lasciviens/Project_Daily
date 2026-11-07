@@ -12,7 +12,7 @@ import type { ReadStatus } from '../types'
 import { BookTile } from './BookTile'
 import { FacetView } from './library/FacetView'
 import { NewsView } from './library/NewsView'
-import { AddBook, Duplicates, ReadingNow, UpNext } from './library/pieces'
+import { AddBook, Duplicates, ReadingNow, ReadingNowSkeleton, UpNext } from './library/pieces'
 
 const SORTS: { id: LibrarySort; label: string }[] = [
   { id: 'recent', label: 'Recently read' },
@@ -117,7 +117,7 @@ export function LibraryTab() {
   return (
     <PageBoard layout={LIBRARY_BOARD} stackGap="gap-4" sections={{
       tools,
-      reading: filtering || reading.length === 0 ? null : <ReadingNow books={reading} />,
+      reading: isLoading ? <ReadingNowSkeleton /> : filtering || reading.length === 0 ? null : <ReadingNow books={reading} />,
       queue: <UpNext books={books} />,
       grid: (
         <Card>

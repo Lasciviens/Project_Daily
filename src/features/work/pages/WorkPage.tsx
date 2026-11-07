@@ -136,13 +136,19 @@ export function WorkPage() {
             subtitle={<span className="hidden sm:inline">{formatWeekdayDate(new Date(), 'long')}</span>}
             actions={
               <>
-                <span className="flex items-center gap-1.5" aria-label="Today at a glance">
+                {isLoading ? (
+                  // The three counts' room while the tasks load: the overdue count arriving later wrapped a
+                  // phone's bar onto a second line and pushed the board down (a layout shift).
+                  <span aria-hidden className="flex items-center gap-1.5">
+                    {['w-[4.5rem]', 'w-[4.75rem]', 'w-[5.5rem]'].map(w => <Skeleton key={w} rounded="rounded-full" className={`h-5 ${w}`} />)}
+                  </span>
+                ) : <span className="flex items-center gap-1.5" aria-label="Today at a glance">
                   <TonePill tone={STATUS_TONE.done} className="tabular-nums"><Check aria-hidden className="h-3 w-3" />{counts.done} done</TonePill>
                   <TonePill tone={STATUS_TONE.in_progress} className="tabular-nums"><Zap aria-hidden className="h-3 w-3" />{counts.inProgress} active</TonePill>
                   {counts.overdue > 0 && (
                     <TonePill tone="danger" className="tabular-nums"><AlertTriangle aria-hidden className="h-3 w-3" />{counts.overdue} overdue</TonePill>
                   )}
-                </span>
+                </span>}
                 <Button variant="primary" icon={<Plus />} onClick={openNew} className="ml-auto sm:ml-0">New task</Button>
                 {canHideRail && (
                   <IconButton

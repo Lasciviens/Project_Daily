@@ -39,9 +39,13 @@ export function HeroTile({ icon, label, value, unit, sub, change, band, better, 
         <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
       </span>
       {isLoading ? (
+        // A loaded tile's rows — value, figure under it, range pill, aim (two lines) — so the tiles under this
+        // one keep their place when the numbers land (it was half as tall: a layout shift).
         <span className="flex flex-col gap-2" aria-busy="true">
-          <Skeleton className="h-8 w-32" />
+          <span className="flex h-[2.0625rem] items-center"><Skeleton className="h-7 w-32" /></span>
           <Skeleton className="h-4 w-44" />
+          <Skeleton rounded="rounded-full" className="h-5 w-40" />
+          <span className="flex h-[2.0625rem] flex-col justify-center gap-1.5"><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-2/3" /></span>
         </span>
       ) : empty ? (
         <span className="text-meta text-fg-muted">{empty}</span>

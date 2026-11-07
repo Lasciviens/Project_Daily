@@ -20,7 +20,7 @@ import { MacroLine } from './MacroLine'
 import { MacroFigure } from './MacroTotalPeek'
 import { eatenTotals, plannedTotals, splitTitleQty, withPlannedTotals } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
+import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, Skeleton, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
@@ -373,6 +373,16 @@ export function FoodTodayTab({ date }: { date: string }) {
               {hasPlanned && <PlannedLine kcal={withPlanned.calories} target={targets.calories} />}
             </div>
           </div>
+          {/* The macro bar and its figures keep their room while the day loads: arriving with it, they pushed
+              every card under this one down (a layout shift). */}
+          {nut == null && (
+            <div aria-hidden className="mt-4 border-t border-line pt-3">
+              <Skeleton rounded="rounded-full" className="h-2 w-full" />
+              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
+                {[0, 1, 2, 3].map(i => <span key={i} className="flex h-4 items-center"><Skeleton className="h-3 w-16" /></span>)}
+              </div>
+            </div>
+          )}
           {nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0) && (
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
@@ -437,7 +447,14 @@ export function FoodTodayTab({ date }: { date: string }) {
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
               {slotHeader(slot, label, icon, slotTotals)}
-              {meals.length > 0 ? (
+              {nut == null ? (
+                // A logged or planned row's room (with the column labels from 40rem) while the day loads: the
+                // empty "Add" row is shorter, so each slot grew as its rows landed and pushed the next ones.
+                <div aria-hidden className="flex flex-col">
+                  <span className="hidden h-6 @[40rem]:block" />
+                  <span className="flex h-[2.8125rem] items-center px-4"><Skeleton className="h-3 w-1/2" /></span>
+                </div>
+              ) : meals.length > 0 ? (
                 <ul className="divide-y divide-line">
                   {slotRows(meals, slot)}
                 </ul>
