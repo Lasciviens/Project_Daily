@@ -3,7 +3,12 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { readCalendarPrefs, rewritesEvents, type CalendarPrefs } from './calendarAreas'
 import { fetchCalendarPrefs, saveCalendarPrefsChanges } from './calendarPrefsApi'
-import { rememberCalendarPrefs } from './calendarPrefsMemory'
+import { rememberCalendarPrefs, rememberedCalendarPrefsRead } from './calendarPrefsMemory'
+
+// A read or save of the settings less than a minute old — the Apple Calendar checks at start read them first
+// (appleAreas.prefsNow) — is this query's first answer, with its own time: the page that opens right after
+// doesn't send the same request again. Later reads follow staleTime as before.
+const recentRead = () => rememberedCalendarPrefsRead(60_000)
 
 /** The saved calendar settings; `loaded` is false while only the defaults are shown — nothing saves from that state. */
 export function useCalendarPrefs() {
@@ -11,6 +16,8 @@ export function useCalendarPrefs() {
   const query = useQuery({
     queryKey: qk.calendarPrefs,
     queryFn: () => fetchCalendarPrefs().then(p => { rememberCalendarPrefs(p); return p }),
+    initialData: () => recentRead()?.prefs,
+    initialDataUpdatedAt: () => recentRead()?.at,
     placeholderData: readCalendarPrefs(null),
     staleTime: STALE.default,
   })
