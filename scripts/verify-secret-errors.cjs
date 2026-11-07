@@ -164,6 +164,49 @@ process.on('exit', () => {
     AbortSignal.timeout = realTimeout
   }
 
+  // A tool's outside reads have a time limit too (07.11.2026, fetchWithin): a service that never answers is one
+  // failed step the model is told about by name, and the reply goes on — a tool that threw used to end it.
+  {
+    const realTimeout = AbortSignal.timeout
+    const asked = []
+    AbortSignal.timeout = (ms) => {
+      asked.push(ms)
+      const c = new AbortController()
+      setTimeout(() => c.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError')), 5)
+      return c.signal
+    }
+    try {
+      const geminiBodies = []
+      let enturSignal = false
+      const fetchImpl = async (url, init = {}) => {
+        const u = String(url)
+        if (/:generateContent$/.test(u)) {
+          geminiBodies.push(JSON.parse(init.body))
+          const parts = geminiBodies.length === 1
+            ? [{ functionCall: { name: 'search_transit_stops', args: { query: 'Jernbanetorget' } } }]
+            : [{ text: 'EnTur is slow right now.' }]
+          return new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        if (u.includes('api.entur.io')) {
+          enturSignal = !!init.signal
+          if (!init.signal) throw new TypeError('no signal: this read would hang for ever')
+          return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }))
+        }
+        return failing(url)
+      }
+      const handler = load('ai-proxy', { env, tables: { app_allowed_users: [] }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl })
+      const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'Find the stop Jernbanetorget' }] }) }))
+      const text = await res.text()
+      const told = (geminiBodies[1]?.contents ?? []).flatMap(c => c.parts ?? []).find(p => p.functionResponse)?.functionResponse?.response
+      check('ai-proxy: a tool\'s outside read carries its own time limit (EnTur: 10 s)', enturSignal && asked.includes(10_000), JSON.stringify({ enturSignal, asked }))
+      check('ai-proxy: a tool whose service never answers is one failed step, named for the model, and the reply goes on',
+        res.status === 200 && JSON.parse(text).text === 'EnTur is slow right now.' && told?.success === false && told?.error === 'EnTur did not answer within 10 s',
+        `${res.status} ${text.slice(0, 200)} · ${JSON.stringify(told)}`)
+    } finally {
+      AbortSignal.timeout = realTimeout
+    }
+  }
+
   // Keys travel in a header or a body, never in a URL (security review
   // 26.10.2026): Steam takes `x-webapi-key`, Twitch's token request a form body.
   const recorded = []

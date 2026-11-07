@@ -326,6 +326,24 @@ const RETRY_BASE_DELAY_MS = 700
 // the same model's retry), so hangs cost at most one 20 s wait per model.
 const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 
+/**
+ * A read from an outside service with a time limit: one that never answers fails after `ms`, named, instead
+ * of holding the whole reply until the platform ends the function. The limit also covers reading the answer.
+ * Only for reads: a write that runs out of time may still have landed, so the Hevy writes keep no limit.
+ */
+async function fetchWithin(service: string, ms: number, url: string, init: RequestInit = {}): Promise<Response> {
+  const signal = AbortSignal.timeout(ms)
+  try {
+    const res = await fetch(url, { ...init, signal })
+    const text = await res.text()
+    const noBody = res.status === 204 || res.status === 205 || res.status === 304
+    return new Response(noBody ? null : text, { status: res.status, statusText: res.statusText, headers: res.headers })
+  } catch (e) {
+    if (signal.aborted) throw new Error(`${service} did not answer within ${ms / 1000} s`, { cause: e })
+    throw e
+  }
+}
+
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
 // the exact same schedule and re-hammers the just-recovering server at once
@@ -805,7 +823,7 @@ const vecLiteral = (v: number[]) => `[${v.join(',')}]`
 async function embedTexts(apiKey: string, texts: string[], taskType: string): Promise<(number[] | null)[]> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`
   const body = { requests: texts.map(t => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text: t.slice(0, 8000) }] }, taskType, outputDimensionality: EMBED_DIMS })) }
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
+  const res = await fetchWithin('Gemini embeddings', 20_000, url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
   const j = await res.json()
   return (j.embeddings ?? []).map((e: AnyRecord) => Array.isArray(e?.values) ? e.values as number[] : null)
@@ -951,7 +969,7 @@ Deno.serve(async (req) => {
           status: 503, headers: { ...headers, 'Content-Type': 'application/json' },
         })
       }
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
+      const r = await fetchWithin('Gemini', 10_000, 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
       const j = await r.json()
       const models = (j.models ?? [])
         .filter((m: AnyRecord) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
@@ -1196,7 +1214,10 @@ async function callGemini(
             else result = { success: false, error: proposal.error }
           }
         } else {
-          result = await dispatch(name, args, supabase, userId, authHeader, surface)
+          // A tool that throws (an outside service down or out of time) is one failed step the model can
+          // tell the user about, never the end of the whole reply.
+          try { result = await dispatch(name, args, supabase, userId, authHeader, surface) }
+          catch (e) { result = { success: false, error: (e as Error)?.message || 'The tool failed' } }
         }
         if (result && typeof result.error === 'string') result.error = hideSecrets(result.error)
         steps.push(describeStep(name, args, result))
@@ -1758,7 +1779,7 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   }
 
   // Exchange refresh token for a short-lived access token
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  const tokenRes = await fetchWithin('Google', 10_000, 'https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -1783,7 +1804,8 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   for (let page = 0; page < 8; page++) {
     const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' })
     if (pageToken) params.set('pageToken', pageToken)
-    const eventsRes = await fetch(
+    const eventsRes = await fetchWithin(
+      'Google Calendar', 15_000,
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
       { headers: { Authorization: `Bearer ${access_token}` } }
     )
@@ -2336,7 +2358,7 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
     }
   }`
 
-  const res = await fetch('https://api.entur.io/journey-planner/v3/graphql', {
+  const res = await fetchWithin('EnTur', 10_000, 'https://api.entur.io/journey-planner/v3/graphql', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', 'ET-Client-Name': 'lasciviens-project-daily' },
     body:    JSON.stringify({ query }),
@@ -2452,7 +2474,7 @@ function placeSynonyms(q: string): string[] {
 // AI a short list to ask the user about (so it clarifies in ONE follow-up turn
 // instead of firing more search tool calls).
 async function geocodeCandidates(query: string, size: number): Promise<ResolvedPlace[]> {
-  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, size)}`, {
+  const res = await fetchWithin('EnTur', 10_000, `${GEOCODER_V3}?${geocoderQuery(query, size)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return []
@@ -2589,7 +2611,7 @@ async function planTrip(supabase: AnyRecord, userId: string, args: AnyRecord): P
     }
   }`
 
-  const res = await fetch(JOURNEY_URL, {
+  const res = await fetchWithin('EnTur', 15_000, JOURNEY_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENTUR_CLIENT },
     body:    JSON.stringify({ query }),
@@ -2669,7 +2691,7 @@ async function searchTransitStops(args: AnyRecord): Promise<AnyRecord> {
   const query = (args.query ?? '').trim()
   if (!query) return { success: false, error: 'query is required' }
 
-  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, 8)}`, {
+  const res = await fetchWithin('EnTur', 10_000, `${GEOCODER_V3}?${geocoderQuery(query, 8)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return { success: false, error: `Geocoder error: ${res.status}` }
