@@ -8,13 +8,16 @@ import { duplicatePairs, formatDuration, moveInQueue, upNext } from '../../readi
 import type { Book } from '../../types'
 import { BookCover } from '../BookCover'
 
+/** Reading now shows the four read last. */
+export const READING_NOW_MAX = 4
+
 export function ReadingNow({ books }: { books: Book[] }) {
   const modal = useEntityModal()
   return (
     <Card>
       <CardHeader title="Reading now" variant="label" icon={<BookOpen />} />
       <ul className="grid grid-cols-1 gap-3 @container @[34rem]:grid-cols-2">
-        {books.slice(0, 4).map(b => (
+        {books.slice(0, READING_NOW_MAX).map(b => (
           <li key={b.id}>
             <button type="button" onClick={() => modal.open({ kind: 'book', id: b.id })}
               className="flex w-full items-center gap-3 rounded-control p-1 text-left hover:bg-surface-hover">
@@ -40,15 +43,15 @@ export function ReadingNow({ books }: { books: Book[] }) {
 }
 
 /**
- * Reading now while the library loads: the card's own header and two book rows (a 56 × 84 cover in a 92px
- * row). It used to appear only once the books had, and push Up next and All books down the page.
+ * Reading now while the library loads, as many books as it showed last time on this device (LibraryTab): the
+ * card's own header and a book's row each (a 56 × 84 cover in a 92px row), in the loaded card's grid.
  */
-export function ReadingNowSkeleton() {
+export function ReadingNowSkeleton({ books }: { books: number }) {
   return (
     <Card>
       <CardHeader title="Reading now" variant="label" icon={<BookOpen />} />
       <ul aria-hidden className="grid grid-cols-1 gap-3 @container @[34rem]:grid-cols-2">
-        {[0, 1].map(i => (
+        {Array.from({ length: Math.min(books, READING_NOW_MAX) }, (_, i) => (
           <li key={i} className="flex items-center gap-3 p-1">
             <Skeleton rounded="rounded-md" className="h-[5.25rem] w-14 shrink-0" />
             <span className="flex min-w-0 flex-1 flex-col gap-2">

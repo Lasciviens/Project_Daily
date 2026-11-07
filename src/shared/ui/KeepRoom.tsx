@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { rememberLayout, rememberedLayout } from '../hooks/useLayoutMemory'
 import { cx } from './cx'
 
@@ -22,19 +22,21 @@ function rememberedRoom(keys: readonly string[]): number | undefined {
  *
  * `skeleton` is shown while loading, else the children are, in the kept room (DayAgenda's rows while Google's
  * events still load). `ids`: the first remembered one is used, every one is written (DayAgenda: the day, then the
- * last today).
+ * last today). `as="span"` inside phrasing content (a tile that is a `<button>`).
  */
-export function KeepRoom({ ids, loading, skeleton, first, remember = true, className, children }: {
+export function KeepRoom({ ids, loading, skeleton, first, remember = true, as = 'div', className, children }: {
   ids: string | readonly string[]
   loading: boolean
   skeleton?: ReactNode
   first?: number | 'none'
   /** False: an outcome not to plan the next visit by (a failed read). */
   remember?: boolean
+  as?: 'div' | 'span'
   className?: string
   children?: ReactNode
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLElement | null>(null)
+  const setRef = useCallback((el: HTMLElement | null) => { ref.current = el }, [])
   const keys = typeof ids === 'string' ? [ids] : ids
   useLayoutEffect(() => {
     if (loading || !remember) return
@@ -53,9 +55,6 @@ export function KeepRoom({ ids, loading, skeleton, first, remember = true, class
     room = last ?? (typeof first === 'number' ? first : undefined)
   }
   // `empty:hidden`: a child that renders nothing leaves no gap in its stack.
-  return (
-    <div ref={ref} className={cx('empty:hidden', className)} style={room ? { minHeight: `${room}rem` } : undefined}>
-      {body}
-    </div>
-  )
+  const props = { ref: setRef, className: cx('empty:hidden', className), style: room ? { minHeight: `${room}rem` } : undefined }
+  return as === 'span' ? <span {...props}>{body}</span> : <div {...props}>{body}</div>
 }
