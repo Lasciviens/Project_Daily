@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { ToDoItem } from '../../todo/components/ToDoItem'
-import { isOpenTask } from '../../todo/taskRules'
 import { wishPeriodLabel } from '../../wishes/wishRules'
-import { ToneDot, Truncate, cx } from '../../../shared/ui'
+import { Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
 import type { WishItem } from '../../wishes/types'
 
@@ -23,7 +22,8 @@ import type { WishItem } from '../../wishes/types'
 //
 // Deliberately quieter than the "N open" pill in the header: a wish is a
 // nudge, the day's plan is the work.
-// The reads are DayAgenda's (useOpenWishes, useTasksByWeek): they start with the day's, so these land with it.
+// The reads are DayAgenda's (useOpenWishes, useTasksByWeek), started with the day's. The list never waits for them
+// (THEME.md §5): while they load, each band keeps its room where it showed last time (the skeletons below).
 export function OpenWishesRow({ wishes }: { wishes: readonly WishItem[] }) {
   if (wishes.length === 0) return null
 
@@ -50,10 +50,23 @@ export function OpenWishesRow({ wishes }: { wishes: readonly WishItem[] }) {
   )
 }
 
-/** Open tasks with no date read in this week (folded; from the old WeekWidget column). */
-export function UndatedThisWeek({ weekTasks }: { weekTasks: readonly Task[] }) {
+/** The wishes row's room while the wishes load: its 44px row. */
+export function OpenWishesRowSkeleton() {
+  return <Skeleton rounded="rounded-row" className="h-11" />
+}
+
+/** The band's room while this week's tasks load: its rule and its folded 44px header. */
+export function UndatedThisWeekSkeleton() {
+  return (
+    <div aria-hidden className="border-t border-line pt-1">
+      <span className="flex h-11 items-center px-1"><Skeleton className="h-3 w-40" /></span>
+    </div>
+  )
+}
+
+/** Open tasks with no date read in this week (folded; from the old WeekWidget column) — DayAgenda picks them. */
+export function UndatedThisWeek({ floating }: { floating: readonly Task[] }) {
   const [open, setOpen] = useState(false)
-  const floating = weekTasks.filter((t): t is Task => !t.due_date && isOpenTask(t))
   if (floating.length === 0) return null
   return (
     <div className="border-t border-line pt-1">

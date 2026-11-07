@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   fetchAllTasks,
@@ -323,13 +323,19 @@ export function useTaskById(id: string | null | undefined) {
   })
 }
 
-/** Several tasks by id in one request (e.g. the day agenda's linked-task details). */
+/**
+ * Several tasks by id in one request (e.g. the day agenda's linked-task details). A new set of ids (a delete or a
+ * move changes the day agenda's) keeps the tasks already read while it loads (`isPlaceholderData`), so the rows on
+ * screen keep their tasks instead of dropping them for a round trip.
+ */
 export function useTasksByIds(ids: readonly string[]) {
   return useQuery({
     queryKey: qk.tasks.byIds(ids),
     queryFn: () => fetchTasksByIds(ids),
     enabled: ids.length > 0,
     staleTime: STALE.live,
+    // Only while there is something to read: a disabled query would hold the old tasks for good.
+    placeholderData: ids.length > 0 ? keepPreviousData : undefined,
   })
 }
 

@@ -12,7 +12,8 @@ import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { useEntityModal } from '../../../shared/modals'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { rememberLayout, rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
+import { rememberLayout, rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
+import { isOpenTask } from '../../todo/taskRules'
 import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
 import { Button, IconButton, KeepRoom, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
@@ -24,7 +25,7 @@ import { zoneTag } from '../../../shared/utils/timeZone'
 import {
   ContinuationRow, EventRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
 } from './DayAgendaRows'
-import { OpenWishesRow, UndatedThisWeek } from './DayAgendaExtras'
+import { OpenWishesRow, OpenWishesRowSkeleton, UndatedThisWeek, UndatedThisWeekSkeleton } from './DayAgendaExtras'
 import type { CalendarEvent } from '../../calendar/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,15 +67,21 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 
   // The reads the day always had.
   const list = useDayTasks(day)
-  const { data: templates = [], isLoading: templatesLoading } = useScheduleBlocks()
-  const { data: blocks = [], isLoading: blocksLoading } = useTimeBlocks(day)
-  const { data: prevBlocks = [], isLoading: prevLoading } = useTimeBlocks(prevDay)
+  const { data: templates = [], isLoading: templatesLoading, isError: templatesError } = useScheduleBlocks()
+  const { data: blocks = [], isLoading: blocksLoading, isError: blocksError } = useTimeBlocks(day)
+  const { data: prevBlocks = [], isLoading: prevLoading, isError: prevError } = useTimeBlocks(prevDay)
   const { data: events, isFetching: calFetching, isLoading: eventsLoading } = useCalendarEventsForDay(day)
-  // The two extras' reads (open wishes, this week's undated tasks) start with the day's instead of once the list
-  // has drawn, so they land with it.
-  const { data: wishes = [], isLoading: wishesLoading } = useOpenWishes()
+  // The two extras' reads (open wishes, this week's undated tasks) start with the day's. They are bands of their
+  // own, never part of the list's order: the list doesn't wait for them, and each keeps its room while it loads
+  // where it showed last time (THEME.md §5).
+  const { data: wishes = [], isLoading: wishesLoading, isError: wishesError } = useOpenWishes()
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
-  const { data: weekTasks = [], isLoading: weekLoading } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
+  const { data: weekTasks = [], isLoading: weekLoading, isError: weekError } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
+  const floating = useMemo(() => weekTasks.filter(t => !t.due_date && isOpenTask(t)), [weekTasks])
+  const wishesRoom = useRememberedFlag('dayList:wishes', wishes.length > 0, !wishesLoading && !wishesError)
+  const undatedRoom = useRememberedFlag('dayList:undated', floating.length > 0, !weekLoading && !weekError)
+  const wishesBand = wishesLoading ? wishesRoom && <OpenWishesRowSkeleton /> : <OpenWishesRow wishes={wishes} />
+  const undatedBand = weekLoading ? undatedRoom && <UndatedThisWeekSkeleton /> : <UndatedThisWeek floating={floating} />
 
   // A repeat's day that is a task (156, made on its day) is that day's row and
   // state — also when it closed on another day (ticked late or ahead).
@@ -87,14 +94,23 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   // A slot whose task is not on this day's list (its date is another day) still ticks: its task by id.
   const onList = new Set(dayList.map(t => t.id))
   const linkedIds = [...new Set([...blocks, ...prevBlocks].map(b => b.task_id).filter((id): id is string => !!id && !onList.has(id)))].sort()
-  const { data: linkedTasks = [], isLoading: linkedLoading } = useTasksByIds(linkedIds)
+  const linked = useTasksByIds(linkedIds)
+  const linkedTasks = linked.data ?? []
   const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks, repeatDays: list.repeatDays })
-  // The list is one order across its reads (tasks, slots, repeats, the extras): it shows once they have all
+  // The list is one order across its reads (tasks, slots, repeats, the slots' tasks): it shows once they have all
   // answered, so a row never lands between rows already drawn. Google's events (an outside service) fill in where
   // they are; the list keeps its room until they have answered too.
-  const listReady = !list.isLoading && !templatesLoading && !blocksLoading && !prevLoading && !wishesLoading && !weekLoading
-    && !linkedLoading
+  const firstAnswer = !list.isLoading && !templatesLoading && !blocksLoading && !prevLoading
+    && !(linkedIds.length > 0 && (linked.isLoading || linked.isPlaceholderData))
+  // The loading copy is the day's first answer only. Once the list is drawn, a later read keeps the rows on screen:
+  // a delete or a move takes a task off the cached list while its slot is still cached, so the slot's task is read
+  // by id under a new key — that used to put the whole list back into skeleton rows for a round trip.
+  const [drawnDay, setDrawnDay] = useState<string | null>(null)
+  if (firstAnswer && drawnDay !== day) setDrawnDay(day)
+  const listReady = firstAnswer || drawnDay === day
   const settled = listReady && !eventsLoading
+  // A failed read is one line, never this day's room for the next visit.
+  const failed = list.isError || templatesError || blocksError || prevError
 
   // A repeat's day that is a task already counts with the tasks, never twice.
   const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)))
@@ -114,7 +130,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const roomIds = viewingToday ? [roomKey(day, cols), todayRoomKey(cols)] : [roomKey(day, cols)]
   const hasNext = !!next
   const nextRoom = viewingToday && !settled && !hasNext && rememberedNext(day)
-  useEffect(() => { if (settled && viewingToday) rememberNext(day, hasNext) }, [settled, viewingToday, day, hasNext])
+  useEffect(() => { if (settled && !failed && viewingToday) rememberNext(day, hasNext) }, [settled, failed, viewingToday, day, hasNext])
 
   // ONE Add: the one sheet, this day as its date (the section follows the
   // date: taskRules.sectionForDay — Today for today, else Backlog).
@@ -223,7 +239,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </div>
       </div>
 
-      <KeepRoom ids={roomIds} loading={!settled || width == null} first={ROOM_DEFAULT_REM[cols]}>
+      <KeepRoom ids={roomIds} loading={!settled || width == null} first={ROOM_DEFAULT_REM[cols]} remember={!failed}>
       {!listReady ? <ListSkeleton rem={listRoom(roomIds, cols)} /> : list.isError ? (
         // A failed read must never look like an empty day.
         <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
@@ -232,7 +248,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </p>
       ) : nothing ? (
         <>
-          <div className="mb-1.5 empty:hidden"><OpenWishesRow wishes={wishes} /></div>
+          <div className="mb-1.5 empty:hidden">{wishesBand}</div>
           {/* An empty day: quick adds at a time instead of an empty grid. */}
           <div className="py-4 text-center">
             <p className="mb-2.5 text-body text-fg-muted">Nothing planned</p>
@@ -244,7 +260,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
               ))}
             </div>
           </div>
-          <UndatedThisWeek weekTasks={weekTasks} />
+          {undatedBand}
         </>
       ) : (
         // One list of parts, every part a direct child. Phone: a column in
@@ -255,7 +271,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         // stretches the gaps between Anytime and Done (spacing is margins, so
         // a part that isn't there leaves no gap).
         <div className="flex flex-col gap-3 @[54rem]:grid @[54rem]:grid-cols-2 @[54rem]:grid-rows-[auto_auto_auto_auto_auto_1fr] @[54rem]:items-start @[54rem]:gap-x-6 @[54rem]:gap-y-0 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
-          <div className={cx('order-1 empty:hidden', RIGHT, '@[54rem]:row-start-1 @[54rem]:mb-3')}><OpenWishesRow wishes={wishes} /></div>
+          <div className={cx('order-1 empty:hidden', RIGHT, '@[54rem]:row-start-1 @[54rem]:mb-3')}>{wishesBand}</div>
           <Group label="Anytime" empty="Nothing without a time" className={cx('order-1', RIGHT, '@[54rem]:row-start-2')} count={rows.anytime.length}>
             {list1(rows.anytime)}
           </Group>
@@ -278,7 +294,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
               <div className="opacity-60">{list1(rows.cancelled)}</div>
             </Group>
           )}
-          <div className={cx('order-5 empty:hidden', RIGHT, '@[54rem]:row-start-5 @[54rem]:mt-3')}><UndatedThisWeek weekTasks={weekTasks} /></div>
+          <div className={cx('order-5 empty:hidden', RIGHT, '@[54rem]:row-start-5 @[54rem]:mt-3')}>{undatedBand}</div>
         </div>
       )}
       </KeepRoom>
