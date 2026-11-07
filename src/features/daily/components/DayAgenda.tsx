@@ -1,18 +1,21 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { format, isToday, subDays } from 'date-fns'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { endOfWeek, format, isToday, startOfWeek, subDays } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, RefreshCw } from 'lucide-react'
 import { useScheduleBlocks, useTimeBlocks } from '../hooks/useSchedule'
-import { useDayTasks, useTasksByIds } from '../../todo/hooks/useTodos'
+import { useDayTasks, useTasksByIds, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { useDayPlanContext } from '../../training/hooks/usePlanContext'
+import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { useEntityModal } from '../../../shared/modals'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
+import { rememberLayout, rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
 import { useCalendarStore, toast } from '../../../app/store'
 import { qk } from '../../../shared/query'
-import { Button, IconButton, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
+import { Button, IconButton, KeepRoom, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
@@ -63,10 +66,15 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 
   // The reads the day always had.
   const list = useDayTasks(day)
-  const { data: templates = [] } = useScheduleBlocks()
-  const { data: blocks = [] } = useTimeBlocks(day)
-  const { data: prevBlocks = [] } = useTimeBlocks(prevDay)
-  const { data: events, isFetching: calFetching } = useCalendarEventsForDay(day)
+  const { data: templates = [], isLoading: templatesLoading } = useScheduleBlocks()
+  const { data: blocks = [], isLoading: blocksLoading } = useTimeBlocks(day)
+  const { data: prevBlocks = [], isLoading: prevLoading } = useTimeBlocks(prevDay)
+  const { data: events, isFetching: calFetching, isLoading: eventsLoading } = useCalendarEventsForDay(day)
+  // The two extras' reads (open wishes, this week's undated tasks) start with the day's instead of once the list
+  // has drawn, so they land with it.
+  const { data: wishes = [], isLoading: wishesLoading } = useOpenWishes()
+  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+  const { data: weekTasks = [], isLoading: weekLoading } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
 
   // A repeat's day that is a task (156, made on its day) is that day's row and
   // state — also when it closed on another day (ticked late or ahead).
@@ -79,8 +87,14 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   // A slot whose task is not on this day's list (its date is another day) still ticks: its task by id.
   const onList = new Set(dayList.map(t => t.id))
   const linkedIds = [...new Set([...blocks, ...prevBlocks].map(b => b.task_id).filter((id): id is string => !!id && !onList.has(id)))].sort()
-  const { data: linkedTasks = [] } = useTasksByIds(linkedIds)
+  const { data: linkedTasks = [], isLoading: linkedLoading } = useTasksByIds(linkedIds)
   const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks, repeatDays: list.repeatDays })
+  // The list is one order across its reads (tasks, slots, repeats, the extras): it shows once they have all
+  // answered, so a row never lands between rows already drawn. Google's events (an outside service) fill in where
+  // they are; the list keeps its room until they have answered too.
+  const listReady = !list.isLoading && !templatesLoading && !blocksLoading && !prevLoading && !wishesLoading && !weekLoading
+    && !linkedLoading
+  const settled = listReady && !eventsLoading
 
   // A repeat's day that is a task already counts with the tasks, never twice.
   const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)))
@@ -92,6 +106,15 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const planCtx = useDayPlanContext(day, rows.timed.some(r => r.kind === 'training') || rows.anytime.some(r => r.kind === 'training'))
   // A task added while the day is on screen rises in; the day's own rows don't.
   const fresh = useNewIds([...onList], day, !list.isLoading)
+
+  // Until every read has answered, the list keeps the room it took when this day last loaded (THEME.md §5): what
+  // sits under the card stays where it is drawn, for a busy day and an empty one alike. Two columns from 54rem.
+  const { ref: rootRef, width } = useElementWidthRem<HTMLDivElement>()
+  const cols: 1 | 2 = width != null && width >= 54 ? 2 : 1
+  const roomIds = viewingToday ? [roomKey(day, cols), todayRoomKey(cols)] : [roomKey(day, cols)]
+  const hasNext = !!next
+  const nextRoom = viewingToday && !settled && !hasNext && rememberedNext(day)
+  useEffect(() => { if (settled && viewingToday) rememberNext(day, hasNext) }, [settled, viewingToday, day, hasNext])
 
   // ONE Add: the one sheet, this day as its date (the section follows the
   // date: taskRules.sectionForDay — Today for today, else Backlog).
@@ -167,7 +190,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   return (
     // The container is the whole pane (its padding included), so the columns
     // split where the card is 54rem wide, as the two panes did.
-    <div className={cx('@container', !bare && 'card')}>
+    <div ref={rootRef} className={cx('@container', !bare && 'card')}>
     <div className="p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -178,8 +201,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
             {counts.done > 0 && <span className="text-meta tabular-nums text-fg-muted">{counts.done} done</span>}
             {missed > 0 && <span className="text-meta tabular-nums text-fg-muted">{missed} missed</span>}
           </div>
-          {/* Today's "Next:" line keeps its room while the day loads. */}
-          {list.isLoading && viewingToday && <span className="mt-0.5 flex h-4 items-center"><Skeleton className="h-3 w-40" /></span>}
+          {/* Today's "Next:" line keeps its room while the day loads — when it showed last time. */}
+          {nextRoom && <span aria-hidden className="mt-0.5 flex h-4 items-center"><Skeleton className="h-3 w-40" /></span>}
           {next && (next.inProgress ? (
             <Truncate as="p" className="mt-0.5 text-meta text-fg-muted" fullText={`Now: ${next.title} until ${untilLabel(next.endHour)}`}>
               Now: <span className="font-semibold text-fg-2">{next.title}</span> until {untilLabel(next.endHour)}
@@ -200,7 +223,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </div>
       </div>
 
-      {list.isLoading ? <ListSkeleton /> : list.isError ? (
+      <KeepRoom ids={roomIds} loading={!settled || width == null} first={ROOM_DEFAULT_REM[cols]}>
+      {!listReady ? <ListSkeleton rem={listRoom(roomIds, cols)} /> : list.isError ? (
         // A failed read must never look like an empty day.
         <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
           Couldn't load the day's tasks.
@@ -208,7 +232,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </p>
       ) : nothing ? (
         <>
-          <div className="mb-1.5 empty:hidden"><OpenWishesRow /></div>
+          <div className="mb-1.5 empty:hidden"><OpenWishesRow wishes={wishes} /></div>
           {/* An empty day: quick adds at a time instead of an empty grid. */}
           <div className="py-4 text-center">
             <p className="mb-2.5 text-body text-fg-muted">Nothing planned</p>
@@ -220,7 +244,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
               ))}
             </div>
           </div>
-          <UndatedThisWeek />
+          <UndatedThisWeek weekTasks={weekTasks} />
         </>
       ) : (
         // One list of parts, every part a direct child. Phone: a column in
@@ -231,7 +255,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         // stretches the gaps between Anytime and Done (spacing is margins, so
         // a part that isn't there leaves no gap).
         <div className="flex flex-col gap-3 @[54rem]:grid @[54rem]:grid-cols-2 @[54rem]:grid-rows-[auto_auto_auto_auto_auto_1fr] @[54rem]:items-start @[54rem]:gap-x-6 @[54rem]:gap-y-0 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
-          <div className={cx('order-1 empty:hidden', RIGHT, '@[54rem]:row-start-1 @[54rem]:mb-3')}><OpenWishesRow /></div>
+          <div className={cx('order-1 empty:hidden', RIGHT, '@[54rem]:row-start-1 @[54rem]:mb-3')}><OpenWishesRow wishes={wishes} /></div>
           <Group label="Anytime" empty="Nothing without a time" className={cx('order-1', RIGHT, '@[54rem]:row-start-2')} count={rows.anytime.length}>
             {list1(rows.anytime)}
           </Group>
@@ -254,9 +278,10 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
               <div className="opacity-60">{list1(rows.cancelled)}</div>
             </Group>
           )}
-          <div className={cx('order-5 empty:hidden', RIGHT, '@[54rem]:row-start-5 @[54rem]:mt-3')}><UndatedThisWeek /></div>
+          <div className={cx('order-5 empty:hidden', RIGHT, '@[54rem]:row-start-5 @[54rem]:mt-3')}><UndatedThisWeek weekTasks={weekTasks} /></div>
         </div>
       )}
+      </KeepRoom>
 
       {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
@@ -267,24 +292,53 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 /** A part that sits in the Anytime column from a 54rem card. */
 const RIGHT = 'min-w-0 @[54rem]:col-start-2'
 
-/** Rows per part in the loading copy: about a screen of a busy day (Anytime, then the Schedule). */
-const SKELETON_ROWS = [5, 3]
+/**
+ * The list's room before a day has ever loaded on this device (rem), by column count: about an empty day's (on a
+ * phone its three quick-add chips take two rows; on a wide card the list's old 136px loading height). A skeleton
+ * sized for a busy day pulls a light day's page up as far as a short one pushes a busy day's down, so only the
+ * day's own last height is better than this.
+ */
+const ROOM_DEFAULT_REM: Record<1 | 2, number> = { 1: 9.75, 2: 8.5 }
+/** A task row with its meta line (62px) and the 4px between rows. */
+const ROW_REM = 3.875
+const ROW_GAP_REM = 0.25
+
+const roomKey = (day: string, cols: number) => `dayList:${day}:${cols}`
+const todayRoomKey = (cols: number) => `dayList:today:${cols}`
+const nextKey = (day: string) => `dayNext:${day}`
+const NEXT_TODAY = 'dayNext:today'
+
+/** The room the list keeps while it loads (KeepRoom's own lookup), for the loading copy's rows. */
+function listRoom(ids: readonly string[], cols: 1 | 2): number {
+  for (const id of ids) {
+    const v = rememberedLayout(id)
+    if (typeof v === 'number') return v
+  }
+  return ROOM_DEFAULT_REM[cols]
+}
+
+/** Whether today's "Next:" line showed when this day (else the last today) last loaded. */
+function rememberedNext(day: string): boolean {
+  const own = rememberedLayout(nextKey(day))
+  return typeof own === 'boolean' ? own : rememberedLayout(NEXT_TODAY) === true
+}
+
+function rememberNext(day: string, next: boolean) {
+  rememberLayout(nextKey(day), next)
+  rememberLayout(NEXT_TODAY, next)
+}
 
 /**
- * The loading copy of the list, on the loaded list's grid (from a 54rem card two columns) and row height
- * (62px, a task row with its meta line). About a screen tall: on a full day what sits under the card — Daily's
- * glance board, Home's transit — starts out of view and stays there when the rows land, instead of being pushed
- * down the screen by them (a layout shift; THEME.md §5). A light day pulls it up by less than half a screen.
+ * The loading copy of the list: task rows (62px, the loaded rows' height) filling the room the list keeps, in the
+ * loaded list's columns (two from a 54rem card).
  */
-function ListSkeleton() {
+function ListSkeleton({ rem }: { rem: number }) {
+  const rows = Math.max(1, Math.floor((rem + ROW_GAP_REM) / (ROW_REM + ROW_GAP_REM)))
   return (
-    <div className="flex flex-col gap-3 @[54rem]:grid @[54rem]:grid-cols-2 @[54rem]:items-start @[54rem]:gap-x-6 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
-      {SKELETON_ROWS.map((rows, g) => (
-        <div key={g} className="min-w-0">
-          <span className="mb-1 flex h-4 items-center px-1"><Skeleton className="h-2.5 w-16" /></span>
-          <div className="flex flex-col gap-1">
-            {Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-[3.875rem]" rounded="rounded-row" />)}
-          </div>
+    <div aria-hidden className="grid grid-cols-1 items-start @[54rem]:grid-cols-2 @[54rem]:gap-x-6 @[72rem]:grid-cols-[minmax(0,38rem)_minmax(0,34rem)]">
+      {[0, 1].map(col => (
+        <div key={col} className={cx('min-w-0 flex-col gap-1', col === 0 ? 'flex' : 'hidden @[54rem]:flex')}>
+          {Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-[3.875rem]" rounded="rounded-row" />)}
         </div>
       ))}
     </div>

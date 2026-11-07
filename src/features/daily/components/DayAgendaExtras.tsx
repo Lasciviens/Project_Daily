@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { endOfWeek, startOfWeek } from 'date-fns'
-import { useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { isOpenTask } from '../../todo/taskRules'
-import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { wishPeriodLabel } from '../../wishes/wishRules'
 import { ToneDot, Truncate, cx } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
+import type { WishItem } from '../../wishes/types'
 
 // The two extras of Daily's day list, both moved here from the old Tasks pane
 // (DayView) when the day became one list (15.10.2026).
@@ -25,8 +23,8 @@ import type { Task } from '../../todo/types'
 //
 // Deliberately quieter than the "N open" pill in the header: a wish is a
 // nudge, the day's plan is the work.
-export function OpenWishesRow() {
-  const { data: wishes = [] } = useOpenWishes()
+// The reads are DayAgenda's (useOpenWishes, useTasksByWeek): they start with the day's, so these land with it.
+export function OpenWishesRow({ wishes }: { wishes: readonly WishItem[] }) {
   if (wishes.length === 0) return null
 
   const labels = [...new Set(wishes.map(wishPeriodLabel).filter((l): l is string => !!l))]
@@ -53,10 +51,8 @@ export function OpenWishesRow() {
 }
 
 /** Open tasks with no date read in this week (folded; from the old WeekWidget column). */
-export function UndatedThisWeek() {
+export function UndatedThisWeek({ weekTasks }: { weekTasks: readonly Task[] }) {
   const [open, setOpen] = useState(false)
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
-  const { data: weekTasks = [] } = useTasksByWeek(weekStart, endOfWeek(weekStart, { weekStartsOn: 1 }))
   const floating = weekTasks.filter((t): t is Task => !t.due_date && isOpenTask(t))
   if (floating.length === 0) return null
   return (
