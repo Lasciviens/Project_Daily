@@ -18,7 +18,18 @@ interface Props {
 // google_tasklist_id change) or still local-only (just changes which list
 // the eventual first create targets).
 export function MoveToListSheet({ open, onClose, task }: Props) {
-  const { data: lists = [] } = useGoogleTaskLists()
+  return (
+    <Sheet open={open} onClose={onClose} title="Move to list" size="sm">
+      <ListChoices task={task} onClose={onClose} />
+    </Sheet>
+  )
+}
+
+// Mounted only while the sheet is open: every task row renders the sheet
+// closed, and each one used to read the Google lists, on every page with a
+// task row and again on each return to the app.
+function ListChoices({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { data: lists = [], isLoading } = useGoogleTaskLists()
   const update = useUpdateTask()
 
   function choose(googleTasklistLocalId: string | null) {
@@ -26,32 +37,30 @@ export function MoveToListSheet({ open, onClose, task }: Props) {
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Move to list" size="sm">
-      <div className="flex flex-col gap-1.5 p-4">
-        {lists.length === 0 && (
-          <p className="text-body text-fg-muted">
-            No lists synced yet — tap Import in Settings → Subscriptions to pull your Google Task lists.
-          </p>
-        )}
-        {lists.map(l => (
-          <button
-            key={l.id}
-            type="button"
-            onClick={() => choose(l.id === task.google_tasklist_id ? null : l.id)}
-            disabled={update.isPending}
-            aria-pressed={task.google_tasklist_id === l.id}
-            className={cx(
-              'row row-interactive justify-between border text-body press-feedback disabled:opacity-50',
-              task.google_tasklist_id === l.id
-                ? 'border-accent-500/30 bg-accent-50 font-semibold text-accent-700'
-                : 'border-line bg-surface text-fg-2',
-            )}
-          >
-            <Truncate>{l.title}</Truncate>
-            {task.google_tasklist_id === l.id && <Check className="h-4 w-4 shrink-0" aria-hidden />}
-          </button>
-        ))}
-      </div>
-    </Sheet>
+    <div className="flex flex-col gap-1.5 p-4" aria-busy={isLoading || undefined}>
+      {lists.length === 0 && !isLoading && (
+        <p className="text-body text-fg-muted">
+          No lists synced yet — tap Import in Settings → Subscriptions to pull your Google Task lists.
+        </p>
+      )}
+      {lists.map(l => (
+        <button
+          key={l.id}
+          type="button"
+          onClick={() => choose(l.id === task.google_tasklist_id ? null : l.id)}
+          disabled={update.isPending}
+          aria-pressed={task.google_tasklist_id === l.id}
+          className={cx(
+            'row row-interactive justify-between border text-body press-feedback disabled:opacity-50',
+            task.google_tasklist_id === l.id
+              ? 'border-accent-500/30 bg-accent-50 font-semibold text-accent-700'
+              : 'border-line bg-surface text-fg-2',
+          )}
+        >
+          <Truncate>{l.title}</Truncate>
+          {task.google_tasklist_id === l.id && <Check className="h-4 w-4 shrink-0" aria-hidden />}
+        </button>
+      ))}
+    </div>
   )
 }
