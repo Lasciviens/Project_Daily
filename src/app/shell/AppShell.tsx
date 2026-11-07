@@ -6,7 +6,7 @@ import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
 import { noteRouterNavigation } from '../../shared/hooks/useHistoryDismiss'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
 import { preloadInTurn } from '../../shared/hooks/useIdlePreload'
-import { whenIdle } from '../../shared/utils/whenIdle'
+import { whenIdle, whenSettled } from '../../shared/utils/whenIdle'
 import { CommandBar } from '../../shared/components/CommandBar'
 import { Toaster } from '../../shared/components/Toaster'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
@@ -54,12 +54,16 @@ export function AppShell() {
     predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
 
-  // Once the first page is up: the shell's on-demand parts (shellParts.ts),
-  // then the other pages' code (see app/pages.ts).
+  // The shell's on-demand parts (shellParts.ts) load at the first quiet moment.
+  // The other pages' code (app/pages.ts) waits until the page opened first is
+  // drawn with its data: loading it earlier slowed that page's own first render.
   const [partsIn, setPartsIn] = useState(false)
-  useEffect(() => whenIdle(() => {
-    void preloadInTurn(SHELL_PARTS).then(() => { setPartsIn(true); return preloadPages() })
-  }), [])
+  const [pageShown, setPageShown] = useState(false)
+  useEffect(() => whenIdle(() => { void preloadInTurn(SHELL_PARTS).then(() => setPartsIn(true)) }), [])
+  useEffect(() => {
+    if (!pageShown) return
+    return whenSettled(qc, () => { void preloadPages() })
+  }, [pageShown, qc])
   // Ask AI and Requests mount closed once their code is in, as they did at
   // start before, so the first open slides in like every later one. Opened
   // before that, they mount at once. Once mounted they stay (a chat keeps its answer).
@@ -137,6 +141,7 @@ export function AppShell() {
         {/* A page whose code is still loading (only in the first moments after start). */}
         <Suspense fallback={<div aria-busy="true" className="min-h-full" />}>
           <Outlet />
+          {!pageShown && <OnShown onShown={setPageShown} />}
         </Suspense>
       </div>
     </main>
@@ -160,6 +165,12 @@ export function AppShell() {
       <OfflineBanner />
     </div>
   )
+}
+
+/** Commits together with the page beside it in a Suspense boundary: the page is drawn. */
+function OnShown({ onShown }: { onShown: (shown: true) => void }) {
+  useEffect(() => onShown(true), [onShown])
+  return null
 }
 
 /** True from the first render `on` is true, and from then on. */
