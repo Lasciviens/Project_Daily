@@ -129,4 +129,10 @@ export default defineConfig({
     }),
   ],
   base: '/Project_Daily/',
+  build: {
+    // dist/.vite/manifest.json: every chunk's static imports, read by
+    // scripts/verify-bundle-budget.mjs (what a page downloads before it can
+    // render). The app never loads it and the service worker doesn't cache it.
+    manifest: true,
+  },
 })

@@ -55,6 +55,15 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # What the shell and each page download before they can render (gzip),
+      # against the budgets in the script (docs/platform-shell.md, "Code
+      # loading"). It reads this job's build; in "All verify scripts", which
+      # doesn't build, it skips — so it runs here, where a missing build fails.
+      - name: First-download budget
+        run: node scripts/verify-bundle-budget.mjs
+        env:
+          BUNDLE_BUDGET_REQUIRED: '1'
+
       # Pure-function regression suite for the Training -> Progress exercise
       # progress engine (src/features/training/progress-engine/) — this repo
       # has no unit-test runner by convention (see AGENTS.md), so these run
