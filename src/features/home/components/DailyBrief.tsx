@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
-import { Card, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
+import { Card, KeepRoom, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
+import { rememberLayout, rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { useDailyBrief } from '../hooks/useDailyBrief'
-import type { BriefLine } from '../briefRules'
+import { BRIEF_SECTION_ORDER, type BriefLine, type BriefSectionId } from '../briefRules'
 import { HomeHeroArt } from './HomeHeroArt'
 
 /** Tasks · Schedule · Training · Weather on a phone; the rest behind Show all. */
@@ -38,38 +39,30 @@ function Line({ line, lead }: { line: BriefLine; lead?: boolean }) {
 
 /** A line's box: 20px, or a 44px row on touch (the brief's lines are links). */
 const LINE_BOX = 'flex min-h-5 items-center [@media(pointer:coarse)]:min-h-[44px]'
-/** Lines per section in the loading copy: a typical brief (tasks, schedule, training, food, watch, money). */
-const SKELETON_LINES = [2, 1, 2, 2, 1, 2]
-
+/** A section's label column beside its lines once the card is 24rem wide. */
+const SECTION_GRID = 'grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3'
 /**
- * The loading copy of the headline and the sections, on the loaded card's own grid and line heights, so the
- * brief arrives without pushing the cards under it (a layout shift, THEME.md §5).
+ * The sections a first visit keeps room for (one line each): the ones every day shows — tasks ("Nothing on the
+ * list" when empty), the schedule and food. Training, weather, watch and money show only with some data, so their
+ * room is kept only once this device has seen them (KeepRoom).
  */
-function BriefSkeleton({ sections, more }: { sections: number; more: boolean }) {
+const ALWAYS: ReadonlySet<BriefSectionId> = new Set(['tasks', 'schedule', 'nutrition'])
+const shownKey = (id: BriefSectionId) => `brief:${id}:shown`
+
+/** A section still loading: its label and a line, in the loaded section's grid; KeepRoom gives it its last height. */
+function SectionSkeleton() {
   return (
     <>
-      <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
-        <span className={cx(LINE_BOX, 'min-w-0 flex-1')}><Skeleton className="h-3.5 w-3/4" /></span>
-      </div>
-      <div className="@container">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
-          {SKELETON_LINES.slice(0, sections).map((lines, i) => (
-            <div key={i} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
-              <span className="flex h-4 items-center @[24rem]:mt-0.5"><Skeleton className="h-2.5 w-16" /></span>
-              <span className="min-w-0 space-y-0.5">
-                {Array.from({ length: lines }, (_, l) => (
-                  <span key={l} className={LINE_BOX}><Skeleton className={cx('h-3.5', l === lines - 1 ? 'w-2/3' : 'w-full')} /></span>
-                ))}
-                {/* Two sections side by side are narrower: their lines wrap once more. */}
-                <span className={cx(LINE_BOX, 'hidden @[46rem]:flex')}><Skeleton className="h-3.5 w-1/2" /></span>
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {more && <span className="mt-2 flex min-h-[44px] items-center"><Skeleton className="h-3 w-24" /></span>}
+      <dt aria-hidden className="flex h-4 items-center @[24rem]:mt-0.5"><Skeleton className="h-2.5 w-16" /></dt>
+      <dd aria-hidden className={LINE_BOX}><Skeleton className="h-3.5 w-2/3" /></dd>
     </>
   )
+}
+
+/** Whether a section will most likely show: it showed when this device last had its data (else the first-visit rule). */
+function expected(id: BriefSectionId): boolean {
+  const last = rememberedLayout(shownKey(id))
+  return typeof last === 'boolean' ? last : ALWAYS.has(id)
 }
 
 /**
@@ -81,12 +74,20 @@ function BriefSkeleton({ sections, more }: { sections: number; more: boolean }) 
  * behind the top of this card, the page's first, placed beside the greeting.
  */
 export function DailyBrief() {
-  const { brief, isLoading } = useDailyBrief()
+  const { brief, headlineLoading, pending } = useDailyBrief()
   const isPhone = useBreakpoint() === 'phone'
   const [expanded, setExpanded] = useState(false)
-  const sections = isPhone && !expanded ? brief.sections.slice(0, PHONE_SECTIONS) : brief.sections
-  const hidden = brief.sections.length - sections.length
+  const byId = new Map(brief.sections.map(s => [s.id, s]))
+  // Every section in its place as its own data lands; one still loading keeps its place when it most likely shows.
+  const slots = BRIEF_SECTION_ORDER.filter(id => (pending.has(id) ? expected(id) : byId.has(id)))
+  const visible = isPhone && !expanded ? slots.slice(0, PHONE_SECTIONS) : slots
+  const hidden = slots.length - visible.length
   const { layerRef: artLayerRef, contentRef: artContentRef, place: artPlace, behind: artBehind } = useHeroArt<HTMLElement>()
+  // Which sections showed, for the next visit's room (every section, also the ones folded away on a phone).
+  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
+  useEffect(() => {
+    BRIEF_SECTION_ORDER.forEach((id, i) => { if (shown[i] !== '-') rememberLayout(shownKey(id), shown[i] === '1') })
+  }, [shown])
 
   return (
     <Card className="relative isolate">
@@ -97,41 +98,54 @@ export function DailyBrief() {
           <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
           <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
         </header>
-        {isLoading ? <BriefSkeleton sections={isPhone ? PHONE_SECTIONS : SKELETON_LINES.length} more={isPhone} /> : (
-          <>
-            <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
-              <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />
-              <div className="min-w-0 flex-1"><Line line={brief.headline} lead /></div>
-            </div>
+        <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
+          {headlineLoading
+            ? <Skeleton rounded="rounded-full" className="mt-1.5 h-2 w-2 shrink-0" />
+            : <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />}
+          <KeepRoom
+            ids="brief:headline" loading={headlineLoading} className="min-w-0 flex-1"
+            skeleton={<span aria-hidden className={LINE_BOX}><Skeleton className="h-3.5 w-3/4" /></span>}
+          >
+            <Line line={brief.headline} lead />
+          </KeepRoom>
+        </div>
 
-            {sections.length > 0 && (
-              // One column of sections; two side by side once the card is wide
-              // (a wide Home main track), so the right half isn't left empty.
-              <div className="@container">
-                <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
-                {sections.map(section => (
-                  <div key={section.id} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
-                    <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
-                    <dd className="min-w-0 space-y-0.5">
-                      {section.lines.map((line, i) => <Line key={i} line={line} />)}
-                    </dd>
-                  </div>
-                ))}
-                </dl>
-              </div>
-            )}
+        {slots.length > 0 && (
+          // One column of sections; two side by side once the card is wide
+          // (a wide Home main track), so the right half isn't left empty.
+          <div className="@container">
+            <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
+              {visible.map(id => {
+                const section = byId.get(id)
+                return (
+                  <KeepRoom
+                    key={id} ids={`brief:${id}`} loading={pending.has(id)} className={SECTION_GRID}
+                    skeleton={<SectionSkeleton />}
+                  >
+                    {section && (
+                      <>
+                        <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
+                        <dd className="min-w-0 space-y-0.5">
+                          {section.lines.map((line, i) => <Line key={i} line={line} />)}
+                        </dd>
+                      </>
+                    )}
+                  </KeepRoom>
+                )
+              })}
+            </dl>
+          </div>
+        )}
 
-            {isPhone && (hidden > 0 || expanded) && (
-              <button
-                type="button"
-                onClick={() => setExpanded(v => !v)}
-                aria-expanded={expanded}
-                className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
-              >
-                {expanded ? 'Show less' : `Show all (${hidden} more)`}
-              </button>
-            )}
-          </>
+        {isPhone && (hidden > 0 || expanded) && (
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            aria-expanded={expanded}
+            className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
+          >
+            {expanded ? 'Show less' : `Show all (${hidden} more)`}
+          </button>
         )}
       </div>
     </Card>

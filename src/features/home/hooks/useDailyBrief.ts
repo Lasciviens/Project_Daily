@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { differenceInCalendarDays, format, parseISO } from 'date-fns'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { buildDailyBrief, type BriefInput, type DailyBrief } from '../briefRules'
+import { buildDailyBrief, type BriefInput, type BriefSectionId, type DailyBrief } from '../briefRules'
 import { hoursFromNow, weatherLabel, type WeatherData } from '../api/weatherApi'
 import { useTodayOverview } from './useTodayOverview'
 import { useWeather } from './useWeather'
@@ -87,14 +87,22 @@ function dayLabel(date: string): string {
  * The one TMDB read is the shared next-episode query (cached, the same one
  * Daily's Watch next card uses), for one series only.
  */
-export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
+export interface BriefState {
+  brief: DailyBrief
+  /** The headline's reads (the day's tasks and schedule) are still on the way. */
+  headlineLoading: boolean
+  /** Sections whose reads are still on the way: each shows as its own data lands (THEME.md §5). */
+  pending: ReadonlySet<BriefSectionId>
+}
+
+export function useDailyBrief(): BriefState {
   const hour = useHourNow()
   const date = todayStr()
 
   const overview = useTodayOverview(date)
   const day = useDayTasks(date)
-  const { data: weather } = useWeather()
-  const { data: currency } = useCurrencyRates()
+  const { data: weather, isLoading: weatherLoading } = useWeather()
+  const { data: currency, isLoading: currencyLoading } = useCurrencyRates()
   const training = useWeekTrainingStats()
   const { data: profile, isLoading: profileLoading } = useAthleteProfile()
   const { data: nutrition, isLoading: nutritionLoading } = useDayNutrition(date)
@@ -109,7 +117,7 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
     for (const e of tvEntries ?? []) if (e.status === 'watching' && (!best || e.updated_at > best.updated_at)) best = e
     return best
   }, [tvEntries])
-  const { data: nextEp } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
+  const { data: nextEp, isLoading: nextEpLoading } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
 
   const brief = useMemo(() => {
     const next = overview.nextUp
@@ -165,10 +173,19 @@ export function useDailyBrief(): { brief: DailyBrief; isLoading: boolean } {
     return buildDailyBrief(input)
   }, [hour, date, day.open, day.counts.done, day.ready, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
 
-  // Loading until every database read the brief is built from has answered (they run at once), not only the
-  // day's: drawn earlier, its sections landed one by one and each pushed the cards under it (a layout shift).
-  // Weather, rates and the next episode come from outside services and fill in when they come.
-  const isLoading = day.isLoading || overview.isLoading || training.isLoading || profileLoading
-    || nutritionLoading || waterLoading || tvLoading || moviesLoading
-  return { brief, isLoading }
+  // Each section shows once its own reads are in, never waiting for another's; the card keeps the room of the
+  // ones still on the way (DailyBrief), so a section landing late doesn't push the cards under it.
+  const pending = useMemo(() => {
+    const out = new Set<BriefSectionId>()
+    if (!day.ready) out.add('tasks')
+    if (overview.isLoading) out.add('schedule')
+    if (training.isLoading || profileLoading || overview.isLoading) out.add('training')
+    if (weatherLoading) out.add('day')
+    if (nutritionLoading || waterLoading) out.add('nutrition')
+    if (tvLoading || moviesLoading || nextEpLoading) out.add('watch')
+    if (currencyLoading) out.add('money')
+    return out
+  }, [day.ready, overview.isLoading, training.isLoading, profileLoading, weatherLoading, nutritionLoading, waterLoading,
+    tvLoading, moviesLoading, nextEpLoading, currencyLoading])
+  return { brief, headlineLoading: !day.ready || overview.isLoading, pending }
 }

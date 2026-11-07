@@ -26,6 +26,9 @@ export interface BriefLine {
 
 export type BriefSectionId = 'day' | 'tasks' | 'schedule' | 'training' | 'nutrition' | 'watch' | 'money'
 
+/** The sections in reading order — `day` is the weather. */
+export const BRIEF_SECTION_ORDER: readonly BriefSectionId[] = ['tasks', 'schedule', 'training', 'day', 'nutrition', 'watch', 'money']
+
 export interface BriefSection {
   id: BriefSectionId
   title: string
