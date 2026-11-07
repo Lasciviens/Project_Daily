@@ -320,6 +320,11 @@ function supportsThinking(model: GeminiModel): boolean {
 // the second 3, the tail models 2 (they're the escape hatch, not the goal).
 const RETRIES_BY_POSITION = [4, 3, 2, 2]
 const RETRY_BASE_DELAY_MS = 700
+// Per-attempt ceiling: a generation normally takes 1-5 s, and without a limit
+// a hung connection held the request until the platform ended it. A timed-out
+// attempt moves the chain to the next model (a pool that hangs rarely answers
+// the same model's retry), so hangs cost at most one 20 s wait per model.
+const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
@@ -366,11 +371,23 @@ async function fetchGeminiWithFallback(
     for (let attempt = 0; attempt < retries; attempt++) {
       // The key travels in a header, never the URL: a network error's message
       // quotes the URL, and it reaches the caller and app_error_logs (audit).
-      const res = await fetch(buildUrl(model), {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body:    JSON.stringify(buildBody(model)),
-      })
+      const signal = AbortSignal.timeout(GEMINI_ATTEMPT_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(buildUrl(model), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body:    JSON.stringify(buildBody(model)),
+          signal,
+        })
+      } catch (e) {
+        // Our own timeout is a failed attempt: on to the next model. Any other
+        // network error still ends the chain, as before.
+        if (!signal.aborted) throw e
+        lastRes = null
+        lastModel = model
+        break
+      }
       if (res.ok) return { res, modelUsed: model }
       // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
       // to the next model in the chain. Real production bug this fixes: a
@@ -389,7 +406,12 @@ async function fetchGeminiWithFallback(
       }
     }
   }
-  return { res: lastRes!, modelUsed: lastModel }
+  // The last attempt timed out, so there is no answer to hand back. The
+  // message names no URL or key; the handler still passes it through hideSecrets.
+  if (!lastRes) {
+    throw new Error(`Gemini timed out: no model answered (the last, ${lastModel}, sent nothing within ${GEMINI_ATTEMPT_TIMEOUT_MS / 1000} s). Try again in a moment.`)
+  }
+  return { res: lastRes, modelUsed: lastModel }
 }
 
 const TOOLS = [

@@ -7,7 +7,9 @@
  *
  * Loads each REAL handler under Node (TypeScript stripped by sucrase) with a
  * stubbed Deno, an in-memory database and every outside call failing — no
- * network — and checks the answer contains none of the keys.
+ * network — and checks the answer contains none of the keys. Also ai-proxy's
+ * Gemini timeout: 20 s per attempt, a hung model hands over to the next one,
+ * and the answer when the last one hangs is scrubbed too (07.11.2026).
  *
  *   Run:  node scripts/verify-secret-errors.cjs
  */
@@ -80,6 +82,12 @@ const env = { ...SECRETS, HEVY_USER_ID: 'owner', SUPABASE_URL: 'u', SUPABASE_SER
 let ok = 0, bad = 0
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓', n) } else { bad++; console.log('  ✗', n, d ?? '') } }
 const leaks = (text) => Object.values(SECRETS).concat(env.SUPABASE_SERVICE_ROLE_KEY).filter(v => v.length > 10 && text.includes(v))
+// An await that never settles empties the event loop, and Node would end the
+// script with 0: a run that stops before the last line fails.
+let finished = false
+process.on('exit', () => {
+  if (!finished) { console.log('  ✗ the script ended before every check ran (an await never settled)'); process.exitCode = 1 }
+})
 
 ;(async () => {
   const cases = [
@@ -96,6 +104,53 @@ const leaks = (text) => Object.values(SECRETS).concat(env.SUPABASE_SERVICE_ROLE_
     const text = await res.text()
     const l = leaks(text)
     check(`${fn} ${body.action ?? 'chat'}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
+  }
+
+  // Gemini attempts time out (promised in 038f0168, wired 07.11.2026): every
+  // attempt asks for its own 20 s signal, a hung attempt moves the chain to
+  // the next model, and when the last one hangs the answer names no key.
+  // AbortSignal.timeout is shortened to 5 ms here; the length asked for is recorded.
+  const realTimeout = AbortSignal.timeout
+  const asked = []
+  AbortSignal.timeout = (ms) => {
+    asked.push(ms)
+    const c = new AbortController()
+    setTimeout(() => c.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError')), 5)
+    return c.signal
+  }
+  try {
+    const tried = []
+    // A Gemini call that never answers ends only when its signal fires, as Deno's fetch does.
+    const gemini = (answering) => async (url, init = {}) => {
+      const model = /\/models\/([^:/]+):generateContent$/.exec(String(url))?.[1]
+      if (!model) return failing(url)
+      tried.push({ model, signal: !!init.signal })
+      if (model === answering) {
+        return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hello' }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (!init.signal) throw new TypeError('no signal: this attempt would hang for ever')
+      return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }))
+    }
+    const chat = async (fetchImpl) => {
+      tried.length = 0
+      asked.length = 0
+      const handler = load('ai-proxy', { env, tables: { app_allowed_users: [] }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl })
+      const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }) }))
+      return { status: res.status, text: await res.text() }
+    }
+    let r = await chat(gemini('gemini-3.1-flash-lite'))
+    check('ai-proxy: a hung first model times out and the next model answers',
+      r.status === 200 && JSON.parse(r.text).text === 'hello' && JSON.parse(r.text).model === 'gemini-3.1-flash-lite'
+        && tried.map(t => t.model).join() === 'gemini-3.5-flash,gemini-3.1-flash-lite', `${r.status} ${r.text.slice(0, 200)} · ${tried.map(t => t.model).join()}`)
+    r = await chat(gemini(null))
+    check('ai-proxy: every Gemini attempt carries its own 20 s signal',
+      tried.length > 0 && tried.every(t => t.signal) && asked.length === tried.length && asked.every(ms => ms === 20_000), { asked, tried })
+    check('ai-proxy: when every model hangs, each is tried once and the chain ends',
+      tried.map(t => t.model).join() === 'gemini-3.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash,gemini-2.5-flash-lite', tried.map(t => t.model).join())
+    check('ai-proxy: …and answers 500 "Gemini timed out" without any key',
+      r.status === 500 && /^Gemini timed out/.test(JSON.parse(r.text).error ?? '') && leaks(r.text).length === 0, `${r.status} ${r.text.slice(0, 200)}`)
+  } finally {
+    AbortSignal.timeout = realTimeout
   }
 
   // Keys travel in a header or a body, never in a URL (security review
@@ -131,5 +186,6 @@ const leaks = (text) => Object.values(SECRETS).concat(env.SUPABASE_SERVICE_ROLE_
       && new URLSearchParams(twitch.init.body).get('client_secret') === SECRETS.IGDB_CLIENT_SECRET
       && new URLSearchParams(twitch.init.body).get('grant_type') === 'client_credentials')
   console.log(`\n${ok} passed, ${bad} failed`)
+  finished = true
   process.exit(bad ? 1 : 0)
 })()
