@@ -388,7 +388,19 @@ async function fetchGeminiWithFallback(
         lastModel = model
         break
       }
-      if (res.ok) return { res, modelUsed: model }
+      if (res.ok) {
+        // The answer is read inside the attempt, under the same 20 s: one still arriving when the time runs out is a
+        // timed-out attempt (on to the next model), never a 500 half-way through reading it (guardian, 07.11.2026).
+        try {
+          const text = await res.text()
+          return { res: new Response(text, { status: res.status, statusText: res.statusText, headers: res.headers }), modelUsed: model }
+        } catch (e) {
+          if (!signal.aborted) throw e
+          lastRes = null
+          lastModel = model
+          break
+        }
+      }
       // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
       // to the next model in the chain. Real production bug this fixes: a
       // 404 mid-chain used to be returned as the final answer, aborting the

@@ -121,12 +121,18 @@ process.on('exit', () => {
   try {
     const tried = []
     // A Gemini call that never answers ends only when its signal fires, as Deno's fetch does.
+    let slowBody = null
     const gemini = (answering) => async (url, init = {}) => {
       const model = /\/models\/([^:/]+):generateContent$/.exec(String(url))?.[1]
       if (!model) return failing(url)
       tried.push({ model, signal: !!init.signal })
       if (model === answering) {
         return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hello' }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (model === slowBody) {
+        // Headers in time, the answer itself never: the body fails when the attempt's signal fires, as Deno's fetch does.
+        const body = new ReadableStream({ start(c) { init.signal?.addEventListener('abort', () => c.error(init.signal.reason), { once: true }) } })
+        return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (!init.signal) throw new TypeError('no signal: this attempt would hang for ever')
       return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true }))
@@ -142,6 +148,11 @@ process.on('exit', () => {
     check('ai-proxy: a hung first model times out and the next model answers',
       r.status === 200 && JSON.parse(r.text).text === 'hello' && JSON.parse(r.text).model === 'gemini-3.1-flash-lite'
         && tried.map(t => t.model).join() === 'gemini-3.5-flash,gemini-3.1-flash-lite', `${r.status} ${r.text.slice(0, 200)} · ${tried.map(t => t.model).join()}`)
+    slowBody = 'gemini-3.5-flash'
+    r = await chat(gemini('gemini-3.1-flash-lite'))
+    slowBody = null
+    check('ai-proxy: an answer still arriving when the 20 s run out is a timed-out attempt too — the next model answers',
+      r.status === 200 && JSON.parse(r.text).text === 'hello' && JSON.parse(r.text).model === 'gemini-3.1-flash-lite', `${r.status} ${r.text.slice(0, 200)}`)
     r = await chat(gemini(null))
     check('ai-proxy: every Gemini attempt carries its own 20 s signal',
       tried.length > 0 && tried.every(t => t.signal) && asked.length === tried.length && asked.every(ms => ms === 20_000), { asked, tried })
