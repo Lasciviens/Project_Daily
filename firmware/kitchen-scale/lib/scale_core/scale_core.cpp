@@ -50,6 +50,11 @@ void ScaleCore::push(int32_t value) {
 }
 
 void ScaleCore::addReading(int32_t raw) {
+  if (sameRawCount_ > 0 && raw == lastRaw_) {
+    if (sameRawCount_ < config_.frozenReadings) sameRawCount_++;
+  } else {
+    sameRawCount_ = 1;
+  }
   lastRaw_ = raw;
   const int32_t value = spikeFiltered(raw);
 
@@ -110,7 +115,13 @@ bool ScaleCore::stable() const {
   return spreadCounts() <= limit;
 }
 
+bool ScaleCore::saturated() const { return lastRaw_ >= RAW_MAX || lastRaw_ <= RAW_MIN; }
+
 bool ScaleCore::overloaded() const {
-  if (lastRaw_ >= RAW_MAX || lastRaw_ <= RAW_MIN) return true;
+  if (saturated()) return true;
   return calibrated() && grams() > config_.capacityGrams;
+}
+
+bool ScaleCore::frozen() const {
+  return !saturated() && config_.frozenReadings > 0 && sameRawCount_ >= config_.frozenReadings;
 }

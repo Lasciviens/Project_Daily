@@ -14,7 +14,7 @@ Background, parts, board facts and the plan: `docs/kitchen-scale/README.md`.
 - Every version is pinned: the platform by its release URL, every library by its exact version.
 - The GT911 touch reader is read-only — never write the touch chip's configuration.
 - On-screen text is English; dates on the screen are DD.MM.YYYY, times HH:MM (24 h).
-- Weighing logic (filtering, tare, calibration, stable, zero tracking) lives only in `lib/scale_core`, with no Arduino calls; every program calls it, none re-implements it. Its checks run on a computer: `node scripts/verify-scale-core.mjs`.
+- Weighing logic (filtering, tare, calibration, stable, zero tracking, the frozen-reading check) lives only in `lib/scale_core`, with no Arduino calls; every program calls it, none re-implements it. Its checks run on a computer: `node scripts/verify-scale-core.mjs`.
 - Before a push: `pio run -e display -e bench -e bench_native_usb` in `firmware/kitchen-scale` (our `src/` builds with `-Werror`) and `node scripts/verify-scale-core.mjs`; CI repeats both.
 - The owner flashes and runs the device; a stage counts as done only with the owner's evidence (log lines, photos), recorded in the doc's progress log.
 - The scale talks only to its own edge function with its own secret — never `phone-gateway`, never a Supabase key with table access.

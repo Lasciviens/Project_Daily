@@ -25,6 +25,7 @@ bool showRaw = false;
 uint32_t lastPrintMs = 0;
 uint32_t lastReadingMs = 0;
 uint32_t lastSilentWarningMs = 0;
+uint32_t lastFrozenWarningMs = 0;
 uint32_t readingsThisSecond = 0;
 uint32_t readingsPerSecond = 0;
 uint32_t secondStartedMs = 0;
@@ -56,8 +57,10 @@ void printHelp() {
 }
 
 void loadCalibration() {
-  prefs.begin("scale", true);
-  const float cpg = prefs.getFloat("cpg", 0.0f);
+  // Read-write, so the first start creates the namespace instead of logging
+  // "nvs_open failed: NOT_FOUND"; isKey() avoids the matching error for a missing key.
+  prefs.begin("scale", false);
+  const float cpg = prefs.isKey("cpg") ? prefs.getFloat("cpg", 0.0f) : 0.0f;
   prefs.end();
   scale.setCountsPerGram(cpg);
   if (cpg != 0.0f) {
@@ -209,6 +212,13 @@ void warnIfSilent(uint32_t now) {
                 PIN_HX711_DT, PIN_HX711_SCK);
 }
 
+// Overload comes first: a saturated HX711 also repeats one value, and that is reported as OVERLOAD.
+void warnIfFrozen(uint32_t now) {
+  if (!scale.frozen() || scale.overloaded() || now - lastFrozenWarningMs < SILENT_WARNING_MS) return;
+  lastFrozenWarningMs = now;
+  Serial.println("Readings frozen: check the HX711 wiring (DT, SCK, VCC, GND)");
+}
+
 void printWeight(uint32_t now) {
   if (now - lastPrintMs < PRINT_EVERY_MS || noise.running || scale.readings() == 0) return;
   lastPrintMs = now;
@@ -245,6 +255,7 @@ void loop() {
   if (noise.running && now - noise.startedMs >= NOISE_TEST_MS) finishNoiseTest();
   finishWaiting(now);
   warnIfSilent(now);
+  warnIfFrozen(now);
   printWeight(now);
   delay(2);
 }

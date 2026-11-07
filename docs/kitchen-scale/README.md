@@ -10,6 +10,50 @@ This file is the project's one place for the parts in hand, the checked hardware
 
 Newest on top. One entry per real step: what was done, what was run or measured, what it showed.
 
+- **07.11.2026 · stage 1 bench program run on the dev board, HX711 not connected yet**
+  - Board (owner): ESP32-S3 dev board, two USB-C ports, AMS1117 3.3 V regulator, RGB LED, 2 × 22 pin holes with no headers soldered yet. HX711 wiring planned: VCC → 3V3, DT → GPIO 4, SCK → GPIO 5, GND → the GND next to TX (all at the module end of the board).
+  - Port: the cable sits in the bottom USB-C port. On the Mac it shows as `/dev/cu.usbmodem…`, but its USB ID is 1A86:55D3, "USB Single Serial": a WCH CH343 USB-serial chip, so this is the board's COM/UART port. macOS's built-in driver names the CH343 `cu.usbmodem…`, the same as the chip's own USB, so the port name alone does not tell the two apart. No extra driver was needed.
+  - esptool at upload (the same on every upload):
+    ```
+    Chip type:          ESP32-S3 (QFN56) (revision v0.2)
+    Features:           Wi-Fi, BT 5 (LE), Dual Core + LP Core, 240MHz, Embedded PSRAM 8MB (AP_3v3)
+    Crystal frequency:  40MHz
+    Auto-detected flash size: 16MB
+    ```
+    This confirms an N16R8 module: 16 MB flash, 8 MB PSRAM.
+  - `bench_native_usb` uploaded fine, but the bottom port gave only unreadable characters for 15 s: that program sends its log to the chip's own USB, not to the UART port. `bench` is the right program for this port.
+  - First run of `bench` v0.2.0 (115200 baud, 15 s):
+    ```
+    Kitchen scale - stage 1 bench - v0.2.0
+    [   507][E][Preferences.cpp:47] begin(): nvs_open failed: NOT_FOUND
+    Not calibrated yet: tare, put a known weight on, then type c <grams>.
+    Zeroing: keep the scale empty. Type h for commands.
+    raw 0  ...  (not calibrated)
+    Zeroed.
+    raw 0  stable  (not calibrated)
+    ```
+    and then `raw 0  stable  (not calibrated)` five times a second. Two faults:
+    - The DT pin had no pull-up. With nothing connected it floated low, which the HX711 uses to say "reading ready", so the program read endless zeros and called them stable instead of warning. A loose DT wire would have looked like an empty scale.
+    - The first start logged an `nvs_open failed` error line, because the calibration store did not exist yet (harmless, but it looked like a fault).
+  - Fixes in the same PR (firmware code changed, version string still v0.2.0):
+    - `lib/hx711_reader`: DT is read with the chip's internal pull-up. A missing HX711 now reads as "no reading"; a connected one drives the line itself and overrides the weak pull-up.
+    - `lib/scale_core`: `frozen()` is true after 20 identical raw readings in a row, which a real HX711's noise makes all but impossible. A saturated reading stays an overload, not frozen. The bench program then prints "Readings frozen: check the HX711 wiring (DT, SCK, VCC, GND)", and only when it is not an overload.
+    - Bench program: the calibration store is opened read-write and a missing key is not read, so the first start logs no error.
+  - Checks: `node scripts/verify-scale-core.mjs` passes 39 checks (7 new for the frozen check). Three deliberately broken copies of the frozen check each fail at least one check. `pio run -e display -e bench -e bench_native_usb` builds all three with no warnings.
+  - After the fix, `bench` re-uploaded, 15 s of log with no HX711 connected:
+    ```
+    Kitchen scale - stage 1 bench - v0.2.0
+    Not calibrated yet: tare, put a known weight on, then type c <grams>.
+    Zeroing: keep the scale empty. Type h for commands.
+    No reading from the HX711: check VCC to 3V3, GND to GND, DT to GPIO 4, SCK to GPIO 5.
+    No reading from the HX711: check VCC to 3V3, GND to GND, DT to GPIO 4, SCK to GPIO 5.
+    No reading from the HX711: check VCC to 3V3, GND to GND, DT to GPIO 4, SCK to GPIO 5.
+    Still not stable after 10 s: is something touching or shaking the scale?
+    No reading from the HX711: check VCC to 3V3, GND to GND, DT to GPIO 4, SCK to GPIO 5.
+    ```
+    The expected result with no HX711: the board, its UART port and the program work. Every reset also prints a short burst of unreadable characters before the first line.
+  - HX711 not connected yet. Not tested: the HX711, the load cell, the soldering, weighing, calibration, and the "Readings frozen" warning on a real fault.
+
 - **14.10.2026 · stage 1 code ready (not run on hardware yet)**
   - Weighing logic, `firmware/kitchen-scale/lib/scale_core`:
     - spike filter (median of 3 readings), then an average of 8 readings that restarts on a change over 4 g, so the number follows a new weight at once
@@ -315,7 +359,8 @@ Owner's answers, 14.10.2026:
 
 ## Open questions
 
-1. **Exact part names:** the ESP32-S3 dev board and its USB-C ports (one or two), the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+1. **Exact part names:** the HX711's colour, the load cell's capacity. Read them off the parts when they're out on the table.
+   - Dev board (answered 07.11.2026): ESP32-S3 N16R8 (confirmed by esptool), two USB-C ports, the bottom one through a WCH CH343 USB-serial chip (COM/UART, program `bench`), AMS1117 3.3 V regulator, RGB LED, 2 × 22 pin holes with no headers soldered yet.
 2. **GPIO 40/2/1:** do they reach header H1 or the speaker amplifier? Small 0 Ω resistors on the board decide this; the pin finder test will show it.
 
 Closed: **Relay back plate**: none (owner's photo of the back, 14.10.2026).
@@ -396,8 +441,12 @@ Needs the soldering iron. The program is `bench` in `firmware/kitchen-scale`.
 ### Flash and calibrate
 
 1. **Pick the USB port.** A dev board with two USB-C ports: use the one marked COM or UART, with the `bench` program. Only one port: use `bench_native_usb`.
+   - On the owner's board the COM/UART port is the bottom one.
+   - The port name doesn't tell you which is which: macOS's built-in driver shows the CH343 USB-serial chip as `/dev/cu.usbmodem…` too, just like the chip's own USB. Go by the port, not the name.
+   - The wrong program gives unreadable characters or nothing: `bench_native_usb` on the UART port printed only garbage.
 2. **Upload and open the log:** `pio run -e bench -t upload`, then `pio device monitor`.
    - The log shows "Zeroing...", then "Zeroed.", then lines like `raw 123456  stable  (not calibrated)`.
+   - With the HX711 missing or DT unplugged, it shows "No reading from the HX711: …" every 3 s instead. "Readings frozen: …" means the reading stopped changing, which is also a wiring fault.
 3. **Check the wiring:** press the platform lightly with a finger. The raw number must change by thousands; down instead of up is fine. If it doesn't move, or "No reading from the HX711" appears, recheck the wiring.
 4. **Calibrate:**
    - With the platform empty, type `t` and wait for "Zeroed.".
