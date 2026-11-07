@@ -33,13 +33,13 @@ mock answers as the database does for the allowed owner.
 2. Start the app on the mock (leave it running):
 
    ```sh
-   VITE_SUPABASE_URL=https://mock.supabase.co VITE_SUPABASE_ANON_KEY=mock-anon \
+   VITE_SUPABASE_URL=https://mock.supabase.co VITE_SUPABASE_PUBLISHABLE_KEY=mock-publishable \
    VITE_TMDB_API_KEY=mock VITE_GOOGLE_CLIENT_ID=mock-client.apps.googleusercontent.com \
    npx vite --port 5371 --strictPort --host 127.0.0.1
    ```
 
-   With a `.env.local` that sets `VITE_SUPABASE_PUBLISHABLE_KEY`, also pass
-   `VITE_SUPABASE_PUBLISHABLE_KEY=` (empty): the app prefers that key.
+   Values given on the command line win over a `.env.local` (Vite never
+   overwrites a variable that is already set), so the app talks to the mock.
 3. Run an audit:
 
    ```sh
