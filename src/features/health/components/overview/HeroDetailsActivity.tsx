@@ -7,6 +7,7 @@ import { HealthTrendChart } from '../HealthTrendChart'
 import { SLEEP_COLOR } from '../sleepStages'
 import { nightMissingText, weekRangeLabel } from '../../healthDateLabels'
 import { exerciseWeeks, rollingFor, type HealthHero } from './useHealthHero'
+import { MINUTES_EMPTY, STRENGTH_EMPTY } from './exerciseWeekCopy'
 import { DailyTrend } from './DailyTrend'
 import { MetricExplainer } from './MetricExplainer'
 import { SleepTimeline } from './SleepTimeline'
@@ -107,15 +108,6 @@ export function WeeklyBars({ data, refY, refLabel, label, unit, ariaLabel, color
       refLines={[{ y: refY, label: refLabel }]}
     />
   )
-}
-
-export const MINUTES_EMPTY = {
-  title: 'No exercise minutes in these weeks',
-  description: 'Apple’s exercise minutes show here once Health Auto Export sends them.',
-}
-export const STRENGTH_EMPTY = {
-  title: 'No strength days in these weeks',
-  description: 'Days with a Hevy workout show here.',
 }
 
 export function ExerciseDetail({ hero }: Props) {

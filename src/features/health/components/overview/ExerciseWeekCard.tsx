@@ -1,6 +1,7 @@
 import { Card, TonePill, useChartColors } from '../../../../shared/ui'
 import { exerciseWeeks, type HealthHero } from './useHealthHero'
-import { MINUTES_EMPTY, STRENGTH_EMPTY, WeeklyBars } from './HeroDetailsActivity'
+import { WeeklyBars } from './HeroDetailsActivity'
+import { MINUTES_EMPTY, STRENGTH_EMPTY } from './exerciseWeekCopy'
 import { num } from './heroFormat'
 
 // Weekly exercise against WHO 2020: Apple exercise minutes vs 150 a week and
