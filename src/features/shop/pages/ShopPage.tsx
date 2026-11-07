@@ -1,9 +1,12 @@
+import { Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
 import { listOf, quickGroups } from '../shopModel'
@@ -11,8 +14,11 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
 import { QuickListView } from '../components/QuickListView'
 import { OwnedView } from '../components/owned/OwnedView'
-import { ShopStatsView } from '../components/stats/ShopStatsView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
+
+// Stats (the only charts on the page) loads when opened, and in idle time once the page shows.
+const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
+const OTHER_VIEWS = [ShopStatsView]
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -37,6 +43,7 @@ export function ShopPage() {
     return n
   })
   const isPhone = useBreakpoint() === 'phone'
+  useIdlePreload(OTHER_VIEWS)
   const modal = useEntityModal()
   const { data: items = [], isLoading: itemsLoading } = useShopItems()
   const { data: categories = [], isLoading: catsLoading } = useShopCategories()
@@ -117,7 +124,7 @@ export function ShopPage() {
         ? <QuickListView items={items} isLoading={isLoading} />
         : view === 'owned'
           ? ownedTab === 'stats'
-            ? <ShopStatsView items={items} categories={categories} isLoading={isLoading} />
+            ? <Suspense fallback={<div aria-busy="true" />}><ShopStatsView items={items} categories={categories} isLoading={isLoading} /></Suspense>
             : <OwnedView items={items} categories={categories} isLoading={isLoading} />
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}
     </PageContainer>

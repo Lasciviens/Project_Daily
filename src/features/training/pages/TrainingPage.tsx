@@ -1,20 +1,27 @@
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { PageContainer, PageHeader, SegmentedControl, SteadySlot } from '../../../shared/ui'
 import { TrainingHeroArt } from '../components/TrainingHeroArt'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 import { HevySyncButton } from '../components/HevySyncButton'
 import { NextTab } from '../components/next/NextTab'
 import { TrainingProgressProvider } from '../components/next/TrainingProgressProvider'
-import { ProgramTab } from '../components/program/ProgramTab'
-import { ProgressTab } from '../components/ProgressTab'
-import { LogTab } from '../components/log/LogTab'
-import { LibraryTab } from '../components/HevyTab'
-import { PTCoachTab } from '../components/PTCoachTab'
 import {
   LIBRARY_VIEWS, LOG_VIEWS, TRAINING_TABS, movedLogView, parseLibraryView, parseLogView, parseTrainingTab, viewSlotOf,
   type LibraryView, type LogView, type TrainingTabId,
 } from './trainingTabs'
+
+// Next is in the page's own code; the other tabs load when opened, and in
+// idle time once the page shows (their charts and the body map were most of
+// the page's first download).
+const ProgramTab = lazyPart('training-program', () => import('../components/program/ProgramTab').then(m => m.ProgramTab))
+const ProgressTab = lazyPart('training-progress', () => import('../components/ProgressTab').then(m => m.ProgressTab))
+const LogTab = lazyPart('training-log', () => import('../components/log/LogTab').then(m => m.LogTab))
+const LibraryTab = lazyPart('training-library', () => import('../components/HevyTab').then(m => m.LibraryTab))
+const PTCoachTab = lazyPart('training-coach', () => import('../components/PTCoachTab').then(m => m.PTCoachTab))
+const OTHER_TABS = [ProgramTab, ProgressTab, LogTab, LibraryTab, PTCoachTab]
 
 // Training: Next (what to do today, set by set) · Program (the plan and what
 // it adds up to) · Progress (what changed) · Log (what you did: Hevy with the
@@ -26,6 +33,7 @@ import {
 export function TrainingPage() {
   const [params, setParams] = useSearchParams()
   const tab = parseTrainingTab(params.get('tab'))
+  useIdlePreload(OTHER_TABS)
   const rawView = params.get('view')
   const goTo = (next: TrainingTabId) => {
     setParams(p => { const n = new URLSearchParams(p); n.set('tab', next); n.delete('view'); return n }, { replace: true })
@@ -82,15 +90,17 @@ export function TrainingPage() {
 
       <div className="w-full min-w-0">
         <ErrorBoundary key={tab} label="Training">
-          {(tab === 'next' || tab === 'progress') && (
-            <TrainingProgressProvider>
-              {tab === 'next' ? <NextTab onGoTo={goTo} /> : <ProgressTab />}
-            </TrainingProgressProvider>
-          )}
-          {tab === 'program' && <ProgramTab />}
-          {tab === 'log' && <LogTab view={logView} />}
-          {tab === 'library' && <LibraryTab view={libraryView} />}
-          {tab === 'coach' && <PTCoachTab />}
+          <Suspense fallback={<div aria-busy="true" />}>
+            {(tab === 'next' || tab === 'progress') && (
+              <TrainingProgressProvider>
+                {tab === 'next' ? <NextTab onGoTo={goTo} /> : <ProgressTab />}
+              </TrainingProgressProvider>
+            )}
+            {tab === 'program' && <ProgramTab />}
+            {tab === 'log' && <LogTab view={logView} />}
+            {tab === 'library' && <LibraryTab view={libraryView} />}
+            {tab === 'coach' && <PTCoachTab />}
+          </Suspense>
         </ErrorBoundary>
       </div>
     </PageContainer>

@@ -1,14 +1,21 @@
+import { Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { HERO_BAND_BLEED, PageBoard, PageContainer, PageHeader, cx } from '../../../shared/ui'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 import { BooksHeroArt } from '../components/BooksHeroArt'
 import { DeliveryList } from '../components/DeliveryList'
 import { KoboSetupCard } from '../components/KoboSetupCard'
-import { KoboTab } from '../components/kobo/KoboTab'
 import { LibraryTab } from '../components/LibraryTab'
-import { StatsTab } from '../components/StatsTab'
 import { SendToKoboCard } from '../components/SendToKoboCard'
 import { useDeliveries, useKoboFeedState } from '../hooks/useBooks'
 import { BOOK_BOARD } from '../booksBoard'
+
+// Stats and Kobo load when opened, and in idle time once the page shows: the
+// Kobo settings catalogue alone was two thirds of the page's code.
+const StatsTab = lazyPart('books-stats', () => import('../components/StatsTab').then(m => m.StatsTab))
+const KoboTab = lazyPart('books-kobo', () => import('../components/kobo/KoboTab').then(m => m.KoboTab))
+const OTHER_TABS = [StatsTab, KoboTab]
 
 type Tab = 'library' | 'stats' | 'send' | 'kobo'
 const TABS: { id: Tab; label: string }[] = [
@@ -26,6 +33,7 @@ export function BooksPage() {
   const tab: Tab = TABS.some(t => t.id === asked) ? asked as Tab : 'library'
   // A tab starts clean: the other tabs' own address parts (view, section, area…) are dropped.
   const select = (next: Tab) => setParams(() => new URLSearchParams({ tab: next }), { replace: true })
+  useIdlePreload(OTHER_TABS)
   return (
     <PageContainer>
       <PageHeader title="Books" art={<BooksHeroArt />}>
@@ -37,10 +45,12 @@ export function BooksPage() {
           ))}
         </div>
       </PageHeader>
-      {tab === 'library' && <LibraryTab />}
-      {tab === 'stats' && <StatsTab />}
-      {tab === 'send' && <SendTab />}
-      {tab === 'kobo' && <KoboTab />}
+      <Suspense fallback={<div aria-busy="true" />}>
+        {tab === 'library' && <LibraryTab />}
+        {tab === 'stats' && <StatsTab />}
+        {tab === 'send' && <SendTab />}
+        {tab === 'kobo' && <KoboTab />}
+      </Suspense>
     </PageContainer>
   )
 }

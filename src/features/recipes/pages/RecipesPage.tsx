@@ -1,18 +1,23 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, UtensilsCrossed } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 import { Button, PageContainer, PageHeader, SegmentedControl, SteadySlot, type SegmentedOption } from '../../../shared/ui'
-import { LibraryTab } from '../components/LibraryTab'
-import { FoodInsightsTab } from '../components/FoodInsightsTab'
-import { MealPlanWeek } from '../components/MealPlanWeek'
-import { IngredientManager } from '../components/IngredientManager'
 import { FoodTodayTab } from '../components/FoodTodayTab'
 import { FoodDateNav } from '../components/FoodDateNav'
 import { FoodHeroArt } from '../components/FoodHeroArt'
 import { useDoseLink } from '../../supplements/hooks/useDoseLink'
 import { useFollowToday } from '../../../shared/hooks/useToday'
+
+// Today is in the page's own code; the other tabs load when opened, and in idle time once the page shows.
+const LibraryTab = lazyPart('food-library', () => import('../components/LibraryTab').then(m => m.LibraryTab))
+const IngredientManager = lazyPart<{ focusId?: string | null }>('food-ingredients', () => import('../components/IngredientManager').then(m => m.IngredientManager))
+const MealPlanWeek = lazyPart('food-plan', () => import('../components/MealPlanWeek').then(m => m.MealPlanWeek))
+const FoodInsightsTab = lazyPart('food-insights', () => import('../components/FoodInsightsTab').then(m => m.FoodInsightsTab))
+const OTHER_TABS = [LibraryTab, IngredientManager, MealPlanWeek, FoodInsightsTab]
 
 type Tab = 'today' | 'library' | 'ingredients' | 'plan' | 'insights'
 
@@ -42,6 +47,7 @@ export function RecipesPage() {
   // A supplement reminder's tap shows its day on Today, whichever tab was open.
   useDoseLink(date => { setTab('today'); setFoodDate(date) })
   useFollowToday(foodDate, setFoodDate)
+  useIdlePreload(OTHER_TABS)
 
   const addRecipe = () => modal.open({ kind: 'recipe' })
   // Logs into the VIEWED day, never a hardcoded today.
@@ -84,12 +90,14 @@ export function RecipesPage() {
         </div>
       </PageHeader>
 
-      {tab === 'today' && <FoodTodayTab date={foodDate} />}
-      {tab === 'ingredients' && <IngredientManager focusId={focusFood} />}
-      {tab === 'plan' && <MealPlanWeek />}
-      {tab === 'insights' && <FoodInsightsTab />}
+      <Suspense fallback={<div aria-busy="true" />}>
+        {tab === 'today' && <FoodTodayTab date={foodDate} />}
+        {tab === 'ingredients' && <IngredientManager focusId={focusFood} />}
+        {tab === 'plan' && <MealPlanWeek />}
+        {tab === 'insights' && <FoodInsightsTab />}
 
-      {tab === 'library' && <LibraryTab />}
+        {tab === 'library' && <LibraryTab />}
+      </Suspense>
     </PageContainer>
   )
 }
