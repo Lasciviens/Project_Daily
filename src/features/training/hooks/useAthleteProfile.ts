@@ -19,7 +19,8 @@ import type {
   AthleteProfile, UpsertAthleteProfileInput, CreateLimitationInput, UpdateLimitationInput,
   UpsertMusclePreferenceInput, UpsertExerciseTargetInput,
 } from '../types.athlete'
-import { toHealthProfile, type HealthProfile } from '../../health/benchmarks/healthBenchmarks'
+import { toHealthProfile } from '../../health/benchmarks/healthProfile'
+import type { HealthProfile } from '../../health/benchmarks/types'
 
 // One profile row per user + a separate list of limitations. Own query
 // namespaces; every mutation invalidates its own so the Training settings UI
