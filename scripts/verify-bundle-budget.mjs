@@ -26,24 +26,24 @@ const required = process.env.BUNDLE_BUDGET_REQUIRED === '1'
 // kB of gzip. Measured 07.11.2026 (in brackets) with ~5 % room, page by page:
 // one shared ceiling let a page take back what was moved out of it (Books' Kobo
 // tab +67 kB, Shop's Stats +123 kB) and still pass. A new page gets its own line.
-const SHELL_KB = 350                                       // [333] every page pays this first
+const SHELL_KB = 335                                       // [318] every page pays this first
 const PAGE_KB = {                                          // the shell plus the page's own code
-  'src/features/home/pages/HomePage.tsx': 565,             // [541]
-  'src/features/daily/pages/DailyPage.tsx': 550,           // [527]
-  'src/features/recipes/pages/RecipesPage.tsx': 515,       // [494] Food
-  'src/features/settings/pages/SettingsPage.tsx': 540,     // [511]
-  'src/features/games/test-game/TestGamePage.tsx': 540,    // [514] Games
-  'src/features/training/pages/TrainingPage.tsx': 460,     // [439]
-  'src/features/health/pages/HealthPage.tsx': 450,         // [429]
-  'src/features/developer/pages/DeveloperPage.tsx': 415,   // [392]
-  'src/features/media/pages/MediaPage.tsx': 415,           // [392]
-  'src/features/shop/pages/ShopPage.tsx': 405,             // [385]
-  'src/features/books/pages/BooksPage.tsx': 385,           // [365]
-  'src/features/projects/pages/ProjectPage.tsx': 390,      // [370]
-  'src/features/work/pages/WorkPage.tsx': 390,             // [370]
-  'src/features/wishes/pages/WishesPage.tsx': 370,         // [353]
-  'src/features/football/pages/FootballPage.tsx': 365,     // [346]
-  'src/features/projects/pages/ProjectsPage.tsx': 365,     // [346]
+  'src/features/home/pages/HomePage.tsx': 555,             // [527]
+  'src/features/daily/pages/DailyPage.tsx': 540,           // [512]
+  'src/features/games/test-game/TestGamePage.tsx': 525,    // [499] Games
+  'src/features/settings/pages/SettingsPage.tsx': 520,     // [495]
+  'src/features/recipes/pages/RecipesPage.tsx': 505,       // [479] Food
+  'src/features/training/pages/TrainingPage.tsx': 450,     // [424]
+  'src/features/health/pages/HealthPage.tsx': 435,         // [413]
+  'src/features/developer/pages/DeveloperPage.tsx': 400,   // [377]
+  'src/features/media/pages/MediaPage.tsx': 395,           // [376]
+  'src/features/shop/pages/ShopPage.tsx': 390,             // [370]
+  'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
+  'src/features/work/pages/WorkPage.tsx': 375,             // [355]
+  'src/features/books/pages/BooksPage.tsx': 370,           // [350]
+  'src/features/wishes/pages/WishesPage.tsx': 355,         // [337]
+  'src/features/football/pages/FootballPage.tsx': 350,     // [331]
+  'src/features/projects/pages/ProjectsPage.tsx': 350,     // [331]
 }
 
 function skip(why) {

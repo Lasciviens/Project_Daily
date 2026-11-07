@@ -47,6 +47,7 @@ mock answers as the database does for the allowed owner.
    node scripts/audit-text-overflow.mjs --harness scripts/harness
    node scripts/audit-page-width.mjs --harness scripts/harness --routes daily:week --widths 402 --shots /tmp/shots
    node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs     # layout shifts: CLS per page and tab switch
+   node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs --data seed,light,empty --revisit
    ```
 
    `audit-cls.mjs` loads each page at 402, 874 (the phone sideways), 1469 and 2450, records every
@@ -55,6 +56,13 @@ mock answers as the database does for the allowed owner.
    on screen before its content replaces it. It names what moved by its component and exits 1 when a
    page or a switch goes over the budget (`--budget`, default 0.1 — Chrome's "good"). Not in CI: the
    numbers need a quiet machine and the harness's own data.
+
+   `--data seed,light,empty` plays three accounts: the full seed, a light one (a little of everything)
+   and a new, empty one. A loading copy has to suit all three: one sized for the seed moves a light page
+   as much as a short one moves the seed's. A first visit should never move more than before the change.
+   `--revisit` loads each page once, then measures a second load in the same browser: what the next visit
+   looks like once the page remembers its last layout (`useLayoutMemory`). That one should stay within
+   the budget.
 
    Port 5371 taken? Start Vite on another port and add `--base http://127.0.0.1:<port>`.
    The scripts launch Playwright's Chromium (in the cloud container from
