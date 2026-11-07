@@ -19,5 +19,9 @@ Background: `docs/platform-shell.md`.
 - iOS zoom is prevented by `maximum-scale=1` + 16px text controls on touch; never per field.
 - The service worker uses `registerType: 'prompt'`: a new version waits and reloads only in the background or after 10 idle minutes, never with a dialog open or text in a field (`swUpdateRules.ts`). It caches no Supabase responses.
 - A new page goes in `src/app/pages.ts` (and `PRELOAD_ORDER`) and `src/app/navigation.ts`.
+- A page's default tab is in its own code; another tab, window or heavy sheet is a `lazyPart` in its own `Suspense`, preloaded with `useIdlePreload` — never a static import that puts its charts in the first download. A panel the shell opens on demand goes in `shell/shellParts.ts`.
+- A sheet rendered closed (per row) keeps its queries inside the open sheet.
+- `scripts/verify-bundle-budget.mjs` guards the first download (gzip, the shell and each page); raise a budget only on purpose, in that file, with the reason in the commit.
+- The service worker precaches every chunk on purpose (a late chunk after a deploy never 404s); never trim it to "what the shell needs".
 - Back closes only the top overlay; entries left behind are passed over (`historyEntries.ts`).
 - `iosViewportFix.ts` measures the standalone short-viewport gap with a fixed probe, never `innerHeight`.
