@@ -66,9 +66,11 @@ export function FootballPage() {
   const openFollow = () => modal.open({ kind: 'football-follow' })
   // The filter row comes with what you follow (two or more): its room is kept while they load only when it
   // showed last time — kept for one follow, it dropped the page when the follows landed.
-  const filterRoom = useRememberedFlag('football:filter', follows.length > 1, !followsQ.isLoading)
-  const comingKey = `football:coming:${picked ?? 'all'}`
-  const resultsKey = `football:results:${picked ?? 'all'}`
+  const filterRoom = useRememberedFlag('football:filter', follows.length > 1, !followsQ.isLoading && !followsQ.isError)
+  // Keyed by a follow the owner has, never by the raw `?f=` of a link (any text, any length).
+  const listKey = current ? filterKey(current) : 'all'
+  const comingKey = `football:coming:${listKey}`
+  const resultsKey = `football:results:${listKey}`
 
   const problem = failed.length > 0 && (
     <p className="text-meta text-fg-muted">
@@ -146,8 +148,9 @@ export function FootballPage() {
                     ids={resultsKey} loading={listsLoading} first={FIRST_ROOM.results} remember={failed.length === 0}
                     skeleton={results.length ? undefined : <MatchListSkeleton rem={listRoom(resultsKey, FIRST_ROOM.results)} rows={2} />}
                   >
+                    {/* A failed read never says "no results": Coming up's card has the one error line. */}
                     {results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
-                      : <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
+                      : failed.length === 0 && <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
                   </KeepRoom>
                 </Card>
               ),

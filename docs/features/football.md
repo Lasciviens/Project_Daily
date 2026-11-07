@@ -23,7 +23,7 @@ Favourite teams (26.10.2026, migration 168; owner: "A new football widget for fa
 - **Nothing followed yet:** the suggestions as one-tap buttons — the four the owner named (Galatasaray, Champions League, World Cup, Euro) and, since 25.10.2026 ("Add 5 top league"), the Premier League, LaLiga, Bundesliga, Serie A and Ligue 1 — and Search others. After the first, the rest are under Follow → Suggestions.
 - Layout (`footballBoard.ts`, `verify-feature-boards`): one column on a phone; from the laptop the matches in main and tables + Following beside; Results gets its own track at 1920 and Following one at 2450. A match list is at most 40rem wide (W2).
 
-While ESPN answers, each match list keeps the room of its last full answer on this device (`KeepRoom`; the lists' old loading height the first time), and again while a failed read is tried again; a read that failed is one line ("Couldn't read … Try again"), never kept room around it (07.11.2026).
+While ESPN answers, each match list keeps the room of its last full answer on this device (`KeepRoom`; the lists' old loading height the first time), and again while a failed read is tried again; a read that failed is one line ("Couldn't read … Try again" under Coming up), never kept room around it, and neither list then says it has nothing ("No matches in the next 30 days." / "No results in the last 10 days." show only when every read answered) (07.11.2026). The remembered room is keyed by a follow the owner has (`football:coming:<kind>:<ref>`, else `…:all`), never by the raw `?f=` of a link; the filter row's is learned only from an answered read of the follows.
 
 ## The popups
 
