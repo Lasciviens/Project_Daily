@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trophy } from 'lucide-react'
-import { Button, Card, CardHeader, EmptyState, PageBoard, PageContainer, PageHeader, Skeleton, ToneDot, cx } from '../../../shared/ui'
+import { Button, Card, CardHeader, EmptyState, KeepRoom, PageBoard, PageContainer, PageHeader, Skeleton, ToneDot, cx } from '../../../shared/ui'
+import { rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useEntityModal } from '../../../shared/modals'
 import { FootballHeroArt } from '../components/FootballHeroArt'
@@ -20,13 +21,14 @@ import type { FootballFollow } from '../types'
 const filterKey = (f: { kind: string; ref: string }) => `${f.kind}:${f.ref}`
 
 /**
- * The room MatchListSkeleton takes for 2 and 3 days (a day: heading 16 + 4 + label 20 + three 40px rows,
- * 44px on touch; 12px between days). A failed ESPN read keeps it, so Try again fills the same room: cut to
- * one line, the card pulled everything under it up the page and pushed it down again on the retry.
+ * The room (rem) each match list keeps while ESPN answers, before this device has seen it loaded — the
+ * height the lists' loading copies always had. After that, the height of its last full answer (KeepRoom). A
+ * failed read never keeps it: the card shrinks to its one error line, with the room back for Try again.
  */
-const MATCH_LIST_ROOM: Record<2 | 3, string> = {
-  2: 'min-h-[20.75rem] [@media(pointer:coarse)]:min-h-[22.25rem]',
-  3: 'min-h-[31.5rem] [@media(pointer:coarse)]:min-h-[33.75rem]',
+const FIRST_ROOM = { coming: 11.5, results: 8.5 }
+const listRoom = (key: string, first: number) => {
+  const last = rememberedLayout(key)
+  return typeof last === 'number' && last > 0 ? last : first
 }
 
 export function FootballPage() {
@@ -36,7 +38,9 @@ export function FootballPage() {
   const follows = useMemo(() => followsQ.data ?? [], [followsQ.data])
   const planned = usePlannedTasks()
   const now = useMinute()
-  const { agenda, loading, failed, retry } = useFootballAgenda(follows, now)
+  const { agenda, loading, failed, retrying, retry } = useFootballAgenda(follows, now)
+  // The lists keep their room while ESPN answers, and again while a failed read is tried again.
+  const listsLoading = loading || retrying
   const [params, setParams] = useSearchParams()
   const picked = params.get('f')
   const current = follows.find(f => filterKey(f) === picked)
@@ -60,6 +64,11 @@ export function FootballPage() {
   // A tournament picked in the filter shows all its matches; otherwise a busy night folds.
   const keep = filter?.kind === 'league' ? Infinity : 3
   const openFollow = () => modal.open({ kind: 'football-follow' })
+  // The filter row comes with what you follow (two or more): its room is kept while they load only when it
+  // showed last time — kept for one follow, it dropped the page when the follows landed.
+  const filterRoom = useRememberedFlag('football:filter', follows.length > 1, !followsQ.isLoading)
+  const comingKey = `football:coming:${picked ?? 'all'}`
+  const resultsKey = `football:results:${picked ?? 'all'}`
 
   const problem = failed.length > 0 && (
     <p className="text-meta text-fg-muted">
@@ -75,9 +84,7 @@ export function FootballPage() {
         art={<FootballHeroArt />}
         actions={<Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
       >
-        {/* The filter's row keeps its place while what you follow loads: arriving with it, it pushed the page
-            down and moved Follow to a row of its own on a phone (a layout shift). */}
-        {followsQ.isLoading && (
+        {followsQ.isLoading && filterRoom && (
           <div aria-hidden className="flex gap-1">
             {[0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-full" className="h-[34px] w-24 [@media(pointer:coarse)]:h-[44px]" />)}
           </div>
@@ -120,21 +127,28 @@ export function FootballPage() {
               next: (
                 <Card>
                   <CardHeader title="Coming up" variant="label" />
-                  <div className={cx('flex flex-col gap-2', failed.length > 0 && !coming.length && MATCH_LIST_ROOM[3])}>
-                    {loading && !coming.length ? <MatchListSkeleton days={3} />
-                      : coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
-                      : <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
+                  <KeepRoom
+                    ids={comingKey} loading={listsLoading} first={FIRST_ROOM.coming} remember={failed.length === 0}
+                    className="flex flex-col gap-2"
+                    skeleton={coming.length ? undefined : <MatchListSkeleton rem={listRoom(comingKey, FIRST_ROOM.coming)} />}
+                  >
+                    {coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
+                      : failed.length === 0 && <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
                     {/* Once every read answered: shown under the loading copy, it grew the card for a moment. */}
-                    {!loading && problem}
-                  </div>
+                    {!listsLoading && problem}
+                  </KeepRoom>
                 </Card>
               ),
               results: (
                 <Card>
                   <CardHeader title="Results" subtitle="Last 10 days" variant="label" />
-                  {loading && !results.length ? <MatchListSkeleton days={2} />
-                    : results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
-                    : <p className={cx('text-body text-fg-muted', failed.length > 0 && MATCH_LIST_ROOM[2])}>No results in the last 10 days.</p>}
+                  <KeepRoom
+                    ids={resultsKey} loading={listsLoading} first={FIRST_ROOM.results} remember={failed.length === 0}
+                    skeleton={results.length ? undefined : <MatchListSkeleton rem={listRoom(resultsKey, FIRST_ROOM.results)} rows={2} />}
+                  >
+                    {results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
+                      : <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
+                  </KeepRoom>
                 </Card>
               ),
               tables: leagues.length > 0 && (

@@ -23,6 +23,8 @@ Favourite teams (26.10.2026, migration 168; owner: "A new football widget for fa
 - **Nothing followed yet:** the suggestions as one-tap buttons — the four the owner named (Galatasaray, Champions League, World Cup, Euro) and, since 25.10.2026 ("Add 5 top league"), the Premier League, LaLiga, Bundesliga, Serie A and Ligue 1 — and Search others. After the first, the rest are under Follow → Suggestions.
 - Layout (`footballBoard.ts`, `verify-feature-boards`): one column on a phone; from the laptop the matches in main and tables + Following beside; Results gets its own track at 1920 and Following one at 2450. A match list is at most 40rem wide (W2).
 
+While ESPN answers, each match list keeps the room of its last full answer on this device (`KeepRoom`; the lists' old loading height the first time), and again while a failed read is tried again; a read that failed is one line ("Couldn't read … Try again"), never kept room around it (07.11.2026).
+
 ## The popups
 
 - `football-follow` — search ESPN (football only: teams and tournaments, the qualifiers are tournaments of their own), Follow per row; a team's row opens its club, followed or not (owner, 25.10.2026: "search teams and see their fixtures and be able to plan some matches"); suggestions before anything is typed.
