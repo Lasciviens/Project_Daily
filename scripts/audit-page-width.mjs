@@ -95,12 +95,15 @@ function measure() {
   }
 }
 
-// Runs in the page: "left/width" of every glance-board cell, relative to <main>.
+// Runs in the page: "left/width" of every glance-board cell, relative to <main>. The board under its label is a
+// stack: the Training and Food bands, then the grid of cards (TodaySummary.tsx); each band and each card is a cell.
 function glanceCells() {
   const label = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && /at a glance$/i.test(e.textContent.trim()))
-  const grid = label?.parentElement?.querySelector(':scope > .grid')
+  const stack = label?.nextElementSibling
+  if (!stack) return null
   const main = document.querySelector('main').getBoundingClientRect()
-  return grid ? [...grid.children].map(c => { const r = c.getBoundingClientRect(); return `${Math.round(r.left - main.left)}/${Math.round(r.width)}` }).join(' ') : null
+  const cells = [...stack.children].flatMap(c => c.classList.contains('grid') ? [...c.children] : [c])
+  return cells.map(c => { const r = c.getBoundingClientRect(); return `${Math.round(r.left - main.left)}/${Math.round(r.width)}` }).join(' ')
 }
 
 async function openPage(browser, width, route) {
