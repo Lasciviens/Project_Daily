@@ -14,7 +14,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
-!.env.local.example
 
 # Editor directories and files
 .vscode/*
@@ -26,9 +25,21 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-dist
 .claude/worktrees/
+.claude/settings.local.json
 transit-mockup.html
 
-# PlatformIO build output (firmware/)
+# Playwright output
+test-results/
+playwright-report/
+
+# Supabase CLI state
+supabase/.temp/
+supabase/.branches/
+
+# Written by a local `deno check`; no workflow or script reads it
+/deno.lock
+
+# PlatformIO build output and the editor files it writes (firmware/)
 .pio/
+firmware/**/.vscode/

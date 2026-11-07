@@ -50,8 +50,8 @@ node scripts/run-all-verify.mjs   # every verify script, as the PR check runs th
 The `verify-db-*` scripts need a throwaway Postgres in `VERIFY_DB_URL` and are
 skipped without one.
 
-Put the client variables in `.env.local` (names only here; `.env.example` is
-out of date). `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (the legacy `VITE_SUPABASE_ANON_KEY` still works) are required;
+Put the client variables in `.env.local`; `.env.example` lists every variable
+the code reads, by name. `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (the legacy `VITE_SUPABASE_ANON_KEY` still works) are required;
 `VITE_TMDB_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_STRAVA_CLIENT_ID`,
 `VITE_OXR_APP_ID` and `VITE_VAPID_PUBLIC_KEY` turn on their features. Every
 other key lives server-side only (Supabase Edge Function secrets and Vault):
