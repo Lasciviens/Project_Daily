@@ -53,6 +53,12 @@ export interface TodayOverview {
   plannedMinutes: number
   nextTraining: NextTrainingItem | null
   isLoading: boolean
+  /** The schedule's own reads (the day's slots and plans) failed: what's next is unknown, never "nothing". */
+  scheduleError: boolean
+  /** Reads the schedule's failed reads again. */
+  refetchSchedule: () => void
+  /** A failed schedule read is being tried again. */
+  scheduleRetrying: boolean
   /** Google Calendar's events for the day are still being read (kept out of isLoading: a token refresh
    *  or a slow Google must never put the brief back into a skeleton). */
   calendarLoading: boolean
@@ -90,6 +96,14 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const trainingDaysQ = useTrainingDayTasks(training.from, training.to)
   // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
   const nowMs = useNow(date === todayStr(), 60_000)
+  // A failed read with nothing cached: the schedule is unknown.
+  const blocksFailed = blocksQ.isError && blocksQ.data === undefined
+  const prevFailed = prevBlocksQ.isError && prevBlocksQ.data === undefined
+  const templatesFailed = templatesQ.isError && templatesQ.data === undefined
+  const { refetch: refetchBlocks } = blocksQ
+  const { refetch: refetchPrev } = prevBlocksQ
+  const { refetch: refetchTemplates } = templatesQ
+  const scheduleRetrying = (blocksFailed && blocksQ.isFetching) || (prevFailed && prevBlocksQ.isFetching) || (templatesFailed && templatesQ.isFetching)
 
   return useMemo(() => {
     const isToday = date === todayStr()
@@ -134,7 +148,15 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       // apart (calendarLoading).
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
         || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading,
+      scheduleError: blocksFailed || prevFailed || templatesFailed,
+      refetchSchedule: () => {
+        if (blocksFailed) void refetchBlocks()
+        if (prevFailed) void refetchPrev()
+        if (templatesFailed) void refetchTemplates()
+      },
+      scheduleRetrying,
       calendarLoading: calendarQ.isLoading,
     }
-  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading])
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading,
+    blocksFailed, prevFailed, templatesFailed, refetchBlocks, refetchPrev, refetchTemplates, scheduleRetrying])
 }

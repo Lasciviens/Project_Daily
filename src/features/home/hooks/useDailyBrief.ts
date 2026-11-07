@@ -87,12 +87,23 @@ function dayLabel(date: string): string {
  * The one TMDB read is the shared next-episode query (cached, the same one
  * Daily's Watch next card uses), for one series only.
  */
+export interface BriefFailure {
+  /** What failed, as the card says it: "Couldn't load today's tasks." */
+  text: string
+  retry: () => void
+  retrying: boolean
+}
+
 export interface BriefState {
   brief: DailyBrief
+  /** The local hour the brief was built for (its time-of-day rules, alwaysShown). */
+  hour: number
   /** The headline's reads (the day's tasks and schedule) are still on the way. */
   headlineLoading: boolean
   /** Sections whose reads are still on the way: each shows as its own data lands (THEME.md §5). */
   pending: ReadonlySet<BriefSectionId>
+  /** Sections whose own read failed: one line with Try again in the section's place, never an empty answer. */
+  failed: ReadonlyMap<BriefSectionId, BriefFailure>
 }
 
 export function useDailyBrief(): BriefState {
@@ -129,12 +140,12 @@ export function useDailyBrief(): BriefState {
       hour,
       today: date,
       weather: weatherInput(weather),
-      // The same day list as Home's tasks card and Daily (useDayTasks).
+      // The same day list as Home's tasks card and Daily (useDayTasks). A failed read stays null: no task claims.
       tasks: day.ready ? {
         open: day.open.map(t => ({ title: t.title, priority: t.priority, overdue: isOverdueOn(t, date), dueTime: t.due_time ?? null })),
         doneToday: day.counts.done,
       } : null,
-      schedule: overview.isLoading ? null : {
+      schedule: overview.isLoading || overview.scheduleError ? null : {
         next: next ? { title: next.title, startLabel: next.startLabel, startHour: next.startHour, inProgress: next.inProgress } : null,
         remainingCount: overview.upcoming.length,
       },
@@ -175,9 +186,10 @@ export function useDailyBrief(): BriefState {
 
   // Each section shows once its own reads are in, never waiting for another's; the card keeps the room of the
   // ones still on the way (DailyBrief), so a section landing late doesn't push the cards under it.
+  const tasksLoading = !day.ready && !day.isError
   const pending = useMemo(() => {
     const out = new Set<BriefSectionId>()
-    if (!day.ready) out.add('tasks')
+    if (tasksLoading) out.add('tasks')
     if (overview.isLoading) out.add('schedule')
     if (training.isLoading || profileLoading || overview.isLoading) out.add('training')
     if (weatherLoading) out.add('day')
@@ -185,7 +197,18 @@ export function useDailyBrief(): BriefState {
     if (tvLoading || moviesLoading || nextEpLoading) out.add('watch')
     if (currencyLoading) out.add('money')
     return out
-  }, [day.ready, overview.isLoading, training.isLoading, profileLoading, weatherLoading, nutritionLoading, waterLoading,
+  }, [tasksLoading, overview.isLoading, training.isLoading, profileLoading, weatherLoading, nutritionLoading, waterLoading,
     tvLoading, moviesLoading, nextEpLoading, currencyLoading])
-  return { brief, headlineLoading: !day.ready || overview.isLoading, pending }
+
+  // The day's own reads: a failure says so where the section goes (its other reads answer as nothing to say).
+  const { isError: tasksError, isFetching: tasksFetching, refetch: refetchTasks } = day
+  const failed = useMemo(() => {
+    const out = new Map<BriefSectionId, BriefFailure>()
+    if (tasksError) out.set('tasks', { text: 'Couldn\'t load today\'s tasks.', retry: () => { void refetchTasks() }, retrying: tasksFetching })
+    if (!overview.isLoading && overview.scheduleError) {
+      out.set('schedule', { text: 'Couldn\'t load today\'s schedule.', retry: overview.refetchSchedule, retrying: overview.scheduleRetrying })
+    }
+    return out
+  }, [tasksError, tasksFetching, refetchTasks, overview.isLoading, overview.scheduleError, overview.refetchSchedule, overview.scheduleRetrying])
+  return { brief, hour, headlineLoading: tasksLoading || overview.isLoading, pending, failed }
 }

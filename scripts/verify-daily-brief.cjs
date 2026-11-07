@@ -7,7 +7,7 @@
  */
 require('sucrase/register')
 
-const { buildDailyBrief, greetingFor, pickFocusTask, feelsLike, rainOutlook, temperatureOutlook, dayOfYear, pickWishlistTitle, nokTryComment } = require('../src/features/home/briefRules')
+const { buildDailyBrief, greetingFor, pickFocusTask, feelsLike, rainOutlook, temperatureOutlook, dayOfYear, pickWishlistTitle, nokTryComment, alwaysShown, BRIEF_SECTION_TITLE } = require('../src/features/home/briefRules')
 
 let passed = 0
 let failed = 0
@@ -226,6 +226,28 @@ console.log('\n11 · Determinism and section order')
   const input = { hour: 9, tasks: { open: [task('A')], doneToday: 0 }, weather: { tempC: 10, label: 'Cloudy', precipMm: 0, windMs: 2 }, nokTry: { rate: 3.2, changePct: 0 }, nutrition: { kcal: 0, kcalTarget: 2000, proteinG: 0, proteinTarget: 150 } }
   check('same input → same output', JSON.stringify(buildDailyBrief(input)) === JSON.stringify(buildDailyBrief(input)))
   check('actionable sections first', buildDailyBrief(input).sections.map(s => s.id).join(',') === 'tasks,day,nutrition,money')
+}
+
+console.log('\n12 · A first visit keeps room only for what every account shows (alwaysShown); no task claims without the tasks')
+{
+  // The emptiest account that still answered: no tasks, nothing scheduled, nothing eaten, the default calorie target.
+  const bare = (hour) => buildDailyBrief({ hour, today: '2026-11-07', tasks: { open: [], doneToday: 0 }, schedule: { next: null, remainingCount: 0 },
+    training: {}, watch: { next: null, wishlist: [] }, nutrition: { kcal: 0, kcalTarget: 2200, proteinG: 0, proteinTarget: 150 } })
+  const hours = Array.from({ length: 48 }, (_, i) => i / 2)
+  check('every hour: each section alwaysShown names shows for the emptiest account',
+    hours.every(h => [...alwaysShown(h)].every(id => sec(bare(h), id))), hours.filter(h => ![...alwaysShown(h)].every(id => sec(bare(h), id))).join(', '))
+  check('…and those are all it shows: room kept for anything else would be left empty',
+    hours.every(h => bare(h).sections.every(s => alwaysShown(h).has(s.id))), hours.filter(h => !bare(h).sections.every(s => alwaysShown(h).has(s.id))).join(', '))
+  check('the schedule is kept room for until 22:00 and not after (scheduleSection\'s own hour)',
+    alwaysShown(21.9).has('schedule') && !alwaysShown(22).has('schedule') && !alwaysShown(23.5).has('schedule') && alwaysShown(0).has('schedule'))
+  const noTasks = buildDailyBrief({ hour: 15, nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
+  check('tasks unread (a failed read): never "A clear day"', noTasks.headline.text === 'Nothing to report yet.' && !/task|clear day/i.test(noTasks.headline.text), noTasks.headline.text)
+  check('…and no Tasks section', !sec(noTasks, 'tasks'))
+  const next = buildDailyBrief({ hour: 15, schedule: { next: { title: 'Dentist', startLabel: '16:00', startHour: 16, inProgress: false }, remainingCount: 1 } })
+  check('…the schedule still leads the headline', next.headline.text === 'Next up at 16:00: Dentist.', next.headline.text)
+  const clear = buildDailyBrief({ hour: 15, tasks: { open: [], doneToday: 0 }, nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
+  check('tasks read and none open: "A clear day" stays', clear.headline.text === 'A clear day — nothing urgent.', clear.headline.text)
+  check('each section carries its label from BRIEF_SECTION_TITLE (the failed line uses the same)', bare(9).sections.every(s => s.title === BRIEF_SECTION_TITLE[s.id]))
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

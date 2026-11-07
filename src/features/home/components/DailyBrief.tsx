@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom'
 import { getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
-import { Card, KeepRoom, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
+import { Button, Card, KeepRoom, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
 import { rememberLayout, rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
-import { useDailyBrief } from '../hooks/useDailyBrief'
-import { BRIEF_SECTION_ORDER, type BriefLine, type BriefSectionId } from '../briefRules'
+import { useDailyBrief, type BriefFailure } from '../hooks/useDailyBrief'
+import { BRIEF_SECTION_ORDER, BRIEF_SECTION_TITLE, alwaysShown, type BriefLine, type BriefSectionId } from '../briefRules'
 import { HomeHeroArt } from './HomeHeroArt'
 
 /** Tasks · Schedule · Training · Weather on a phone; the rest behind Show all. */
@@ -41,12 +41,6 @@ function Line({ line, lead }: { line: BriefLine; lead?: boolean }) {
 const LINE_BOX = 'flex min-h-5 items-center [@media(pointer:coarse)]:min-h-[44px]'
 /** A section's label column beside its lines once the card is 24rem wide. */
 const SECTION_GRID = 'grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3'
-/**
- * The sections a first visit keeps room for (one line each): the ones every day shows — tasks ("Nothing on the
- * list" when empty), the schedule and food. Training, weather, watch and money show only with some data, so their
- * room is kept only once this device has seen them (KeepRoom).
- */
-const ALWAYS: ReadonlySet<BriefSectionId> = new Set(['tasks', 'schedule', 'nutrition'])
 const shownKey = (id: BriefSectionId) => `brief:${id}:shown`
 
 /** A section still loading: its label and a line, in the loaded section's grid; KeepRoom gives it its last height. */
@@ -59,10 +53,24 @@ function SectionSkeleton() {
   )
 }
 
-/** Whether a section will most likely show: it showed when this device last had its data (else the first-visit rule). */
-function expected(id: BriefSectionId): boolean {
+/** A section whose read failed: what failed and Try again, on the section's one line. */
+function FailedLine({ failure }: { failure: BriefFailure }) {
+  return (
+    <p className={cx(LINE_BOX, 'flex-wrap gap-x-2 text-body text-fg-muted')}>
+      {failure.text}
+      <Button variant="ghost" size="sm" loading={failure.retrying} onClick={failure.retry}>Try again</Button>
+    </p>
+  )
+}
+
+/**
+ * Whether a section still loading will most likely show: as it did when this device last had its data; with
+ * nothing remembered, when every outcome shows it at this hour (`alwaysShown`: tasks, food, the schedule until
+ * 22:00) — training, weather, watch and money show only with some data, so a first visit keeps them no room.
+ */
+function expected(id: BriefSectionId, always: ReadonlySet<BriefSectionId>): boolean {
   const last = rememberedLayout(shownKey(id))
-  return typeof last === 'boolean' ? last : ALWAYS.has(id)
+  return typeof last === 'boolean' ? last : always.has(id)
 }
 
 /**
@@ -74,17 +82,24 @@ function expected(id: BriefSectionId): boolean {
  * behind the top of this card, the page's first, placed beside the greeting.
  */
 export function DailyBrief() {
-  const { brief, headlineLoading, pending } = useDailyBrief()
+  const { brief, hour, headlineLoading, pending, failed } = useDailyBrief()
   const isPhone = useBreakpoint() === 'phone'
   const [expanded, setExpanded] = useState(false)
   const byId = new Map(brief.sections.map(s => [s.id, s]))
-  // Every section in its place as its own data lands; one still loading keeps its place when it most likely shows.
-  const slots = BRIEF_SECTION_ORDER.filter(id => (pending.has(id) ? expected(id) : byId.has(id)))
+  const always = alwaysShown(hour)
+  // Every section in its place as its own data lands (a failed read: its line); one still loading keeps its place
+  // when it will most likely show.
+  const slots = BRIEF_SECTION_ORDER.filter(id => failed.has(id) || (pending.has(id) ? expected(id, always) : byId.has(id)))
+  // A phone shows the first four, the rest behind Show all. On a first visit a section that only some data shows
+  // keeps no room, so when Training and Weather land they can still fold Food away (outside data fills in where it
+  // is); after that the memory gives them their places from the start. Keeping Food folded until they had answered
+  // measured worse (a light account's first visit 0.009 → 0.055) and changed nothing at night.
   const visible = isPhone && !expanded ? slots.slice(0, PHONE_SECTIONS) : slots
   const hidden = slots.length - visible.length
   const { layerRef: artLayerRef, contentRef: artContentRef, place: artPlace, behind: artBehind } = useHeroArt<HTMLElement>()
-  // Which sections showed, for the next visit's room (every section, also the ones folded away on a phone).
-  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
+  // Which sections showed, for the next visit's room (every section, also the ones folded away on a phone). A
+  // section still loading or whose read failed teaches nothing.
+  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) || failed.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
   useEffect(() => {
     BRIEF_SECTION_ORDER.forEach((id, i) => { if (shown[i] !== '-') rememberLayout(shownKey(id), shown[i] === '1') })
   }, [shown])
@@ -117,16 +132,17 @@ export function DailyBrief() {
             <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
               {visible.map(id => {
                 const section = byId.get(id)
+                const failure = failed.get(id)
                 return (
                   <KeepRoom
-                    key={id} ids={`brief:${id}`} loading={pending.has(id)} className={SECTION_GRID}
+                    key={id} ids={`brief:${id}`} loading={pending.has(id)} remember={!failure} className={SECTION_GRID}
                     skeleton={<SectionSkeleton />}
                   >
-                    {section && (
+                    {(section || failure) && (
                       <>
-                        <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
+                        <dt><SectionLabel className="@[24rem]:pt-0.5">{section?.title ?? BRIEF_SECTION_TITLE[id]}</SectionLabel></dt>
                         <dd className="min-w-0 space-y-0.5">
-                          {section.lines.map((line, i) => <Line key={i} line={line} />)}
+                          {failure ? <FailedLine failure={failure} /> : section?.lines.map((line, i) => <Line key={i} line={line} />)}
                         </dd>
                       </>
                     )}

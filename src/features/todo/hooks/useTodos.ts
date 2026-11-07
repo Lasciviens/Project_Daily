@@ -79,7 +79,7 @@ export function useDayTasks(day: string) {
   // late (or ahead) closes on the day of the tick, yet is still its own day's
   // state — the split above only lists what closed on `day`.
   const repeatDays = useMemo(() => (query.data ?? []).filter(t => t.schedule_block_id && t.occurrence_date), [query.data])
-  return { ...split, repeatDays, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
+  return { ...split, repeatDays, section: sectionForDay(day, today), isLoading: query.isLoading, isFetching: query.isFetching, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
 }
 
 /**
