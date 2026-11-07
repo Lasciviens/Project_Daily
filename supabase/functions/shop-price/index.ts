@@ -41,7 +41,7 @@
 // Fetch safety is news-article's: http/https only, private hosts and names
 // that resolve to one refused on every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
 
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -631,8 +631,7 @@ async function politeRead(url: string): Promise<PriceRead & { finalUrl: string }
  * point is added for every price read — except a repeat within the hour with
  * nothing changed (a second tap on Check now).
  */
-// deno-lint-ignore no-explicit-any
-async function checkRow(supabase: any, userId: string, item: Item, prev: Watch | null): Promise<CheckOutcome> {
+async function checkRow(supabase: SupabaseClient, userId: string, item: Item, prev: Watch | null): Promise<CheckOutcome> {
   const at = new Date().toISOString()
   const url = String(item.url)
   let read: (PriceRead & { finalUrl: string }) | null = null
@@ -682,8 +681,7 @@ async function checkRow(supabase: any, userId: string, item: Item, prev: Watch |
   return outcome
 }
 
-// deno-lint-ignore no-explicit-any
-async function watchesFor(supabase: any, ids: string[]): Promise<Map<string, Watch>> {
+async function watchesFor(supabase: SupabaseClient, ids: string[]): Promise<Map<string, Watch>> {
   const out = new Map<string, Watch>()
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await supabase.from('shop_price_watch').select(WATCH_COLUMNS).in('item_id', ids.slice(i, i + 200))
@@ -696,8 +694,7 @@ async function watchesFor(supabase: any, ids: string[]): Promise<Map<string, Wat
 const osloDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
 
 /** The links due a check: things to buy (a model while its wish is open) and things you own that can still go back. */
-// deno-lint-ignore no-explicit-any
-async function dueItems(supabase: any, userId: string): Promise<Item[]> {
+async function dueItems(supabase: SupabaseClient, userId: string): Promise<Item[]> {
   const today = osloDay(new Date().toISOString())
   const { data, error } = await supabase
     .from('shop_items')
@@ -730,8 +727,7 @@ interface RatesResult { needed: number; filled: number; pending: number; error?:
  * a business day to carry — and caches the ones it publishes in fx_rates_nok.
  * A day it has not published (today before 16:00, the future) stays missing.
  */
-// deno-lint-ignore no-explicit-any
-async function cacheRates(supabase: any, missing: readonly { c: string; d: string }[], today: string): Promise<{ rows: CalendarRate[]; error?: string }> {
+async function cacheRates(supabase: SupabaseClient, missing: readonly { c: string; d: string }[], today: string): Promise<{ rows: CalendarRate[]; error?: string }> {
   const start = new Date(Date.parse(`${missing.map(p => p.d).sort()[0]}T00:00:00Z`) - 7 * 86400_000).toISOString().slice(0, 10)
   const end = missing.map(p => p.d).sort().pop() as string
   const currencies = [...new Set(missing.map(p => p.c))]
@@ -762,8 +758,7 @@ const DAY_RATES_LIMIT = 60
  * fetched from Norges Bank and cached. Only TRY / EUR / USD, only days from
  * 1990 to today. A day Norges Bank has not published is left out.
  */
-// deno-lint-ignore no-explicit-any
-async function dayRates(supabase: any, raw: unknown): Promise<{ rates: { currency: string; day: string; nok_per_unit: number }[]; error?: string }> {
+async function dayRates(supabase: SupabaseClient, raw: unknown): Promise<{ rates: { currency: string; day: string; nok_per_unit: number }[]; error?: string }> {
   const today = osloDay(new Date().toISOString())
   const seen = new Set<string>()
   const pairs: { c: string; d: string }[] = []
@@ -806,8 +801,7 @@ async function dayRates(supabase: any, raw: unknown): Promise<{ rates: { currenc
  * by hand is never in the list (its column is not NULL), so nothing else
  * changes.
  */
-// deno-lint-ignore no-explicit-any
-async function fillRates(supabase: any, userId: string): Promise<RatesResult> {
+async function fillRates(supabase: SupabaseClient, userId: string): Promise<RatesResult> {
   const need = new Map<string, Set<string>>() // currency → days
   const want = (currency: string | null, day: string | null) => {
     if (!currency || currency === 'NOK' || !day) return
@@ -820,7 +814,8 @@ async function fillRates(supabase: any, userId: string): Promise<RatesResult> {
     .not('sale_price', 'is', null).neq('sale_currency', 'NOK').is('sale_fx_nok', null).limit(1000)
   const costs = await supabase.from('shop_item_costs').select('id, currency, spent_on').eq('user_id', userId)
     .neq('currency', 'NOK').is('fx_nok', null).limit(1000)
-  if (sold.error || costs.error) return { needed: 0, filled: 0, pending: 0, error: (sold.error ?? costs.error).message }
+  const readError = sold.error ?? costs.error
+  if (readError) return { needed: 0, filled: 0, pending: 0, error: readError.message }
   const boughtRows = (bought.data ?? []) as { id: string; currency: string; bought_at: string | null }[]
   const soldRows = (sold.data ?? []) as { id: string; sale_currency: string; disposed_on: string | null }[]
   const costRows = (costs.data ?? []) as { id: string; currency: string; spent_on: string }[]

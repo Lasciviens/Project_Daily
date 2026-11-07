@@ -105,8 +105,9 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, SERVICE_KEY)
 // <ss-shared>
 // GENERATED from src/features/games/scraper/ by scripts/sync-screenscraper-shared.mjs.
 // Do not edit here — edit the source and re-run the script.
+/* eslint-disable @typescript-eslint/no-unused-vars -- each function uses only part of these modules (linted in src/) */
 // deno-lint-ignore no-explicit-any
-type Rec = Record<string, any>
+type Rec = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
 // ── ssTypes.ts ──
 // The contract between the browser and the `screenscraper-sync` /
@@ -1412,6 +1413,7 @@ function planPatch(
   return plan
 }
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // </ss-shared>
 
 const scrub = (t: string) => scrubSecrets(t, SECRETS)
@@ -1975,7 +1977,9 @@ function estimateBytes(entry: SsMediaEntry, scale: number): number {
 }
 
 async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
-  let { game, platform, error: loadErr } = await loadGame(userId, input.gameId)
+  const loaded = await loadGame(userId, input.gameId)
+  const loadErr = loaded.error
+  let { game, platform } = loaded
   if (loadErr) return { game_id: input.gameId, outcome: 'error', reason: loadErr }
   if (!game) return { game_id: input.gameId, outcome: 'error', reason: 'game not found' }
 
@@ -2192,6 +2196,7 @@ async function applyOne(userId: string, input: ApplyInput): Promise<Rec> {
     let p = game[k] ?? null
     if (k === 'provider_data' && p && typeof p === 'object') {
       const { summary: _s, jeu: _j, ...small } = p as Rec
+      void _s; void _j
       p = small
     }
     priorAll[k] = p

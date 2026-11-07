@@ -148,7 +148,7 @@ type Action =
   | 'title_map' | 'title_trophies' | 'trophy_groups'
 
 // deno-lint-ignore no-explicit-any
-type AnyRec = Record<string, any>
+type AnyRec = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // Sony's own hard caps, not ours: played-games pages at 200, the
 // npTitleId→npCommunicationId bridge at 5 per request (a 6th 400s).

@@ -71,8 +71,9 @@ const text = (status: number, body: string, extra: Record<string, string> = {}) 
 // <ss-shared>
 // GENERATED from src/features/games/scraper/ by scripts/sync-screenscraper-shared.mjs.
 // Do not edit here — edit the source and re-run the script.
+/* eslint-disable @typescript-eslint/no-unused-vars -- each function uses only part of these modules (linted in src/) */
 // deno-lint-ignore no-explicit-any
-type Rec = Record<string, any>
+type Rec = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
 // ── ssTypes.ts ──
 // The contract between the browser and the `screenscraper-sync` /
@@ -1378,6 +1379,7 @@ function planPatch(
   return plan
 }
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // </ss-shared>
 
 function upstreamUrl(req: ProxyRequest): string {

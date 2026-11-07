@@ -366,6 +366,7 @@ async function snapshot(token: string, username: string | null) {
 // <trakt-shared>
 // GENERATED from src/features/media/trakt/ by scripts/sync-trakt-shared.mjs.
 // Do not edit here — edit the source and re-run the script.
+/* eslint-disable @typescript-eslint/no-unused-vars -- the function uses only part of these modules (linted in src/) */
 
 // ── traktTypes.ts ──
 // The shapes trakt-api's `snapshot` action returns (mirrors
@@ -1730,11 +1731,12 @@ function followListPending(a: FollowListAttempt, stillNew: Set<number>): number[
   return [...new Set(left)]
 }
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // </trakt-shared>
 
 // ── Library side (service role, one user, writes marked x-trakt-sync) ───────
 // deno-lint-ignore no-explicit-any
-type Db = any
+type Db = any // eslint-disable-line @typescript-eslint/no-explicit-any -- the helpers below take its query builders as loose records
 
 const TMDB = 'https://api.themoviedb.org/3'
 const TMDB_KEY = () => Deno.env.get('TMDB_API_KEY') ?? ''
@@ -3051,6 +3053,7 @@ async function storeScores(db: Db, type: 'movie' | 'show', scores: Map<number, S
     let { error } = await db.from(table).update(patch).eq('tmdb_id', tmdb)
     if (error && missingColumn(error)) {
       const { imdb_rating: _i, letterboxd_rating: _l, rt_url: _u, ...rest } = patch
+      void _i; void _l; void _u
       ;({ error } = await db.from(table).update(rest).eq('tmdb_id', tmdb))
     }
     if (error) throw error
@@ -3304,7 +3307,7 @@ async function fillFollowList(f: AnyRec, fresh: FollowTitle[], titles: FollowTit
 }
 
 // ── The two runs ─────────────────────────────────────────────────────────────
-const summary = ({ sentKeys: _k, ...rest }: Awaited<ReturnType<typeof drainOutbox>>) => rest
+const summary = ({ sentKeys: _k, ...rest }: Awaited<ReturnType<typeof drainOutbox>>) => { void _k; return rest }
 
 async function pendingKeys(db: Db, userId: string, sentKeys: string[]): Promise<Set<string>> {
   const { data: waiting, error } = await db.from('trakt_outbox').select('item_key').eq('user_id', userId)

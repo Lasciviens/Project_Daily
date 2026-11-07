@@ -49,8 +49,7 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
-// deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, unknown>
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -226,7 +225,8 @@ function platformStats(e: Entry, tz: string, now: string): AnyRecord {
  * when no variant reported anything — "never launched" is not the same claim
  * as "ES-DE recorded 0 launches", and only the second would be a fact.
  */
-function rollUp(rows: AnyRecord[]): AnyRecord {
+type VariantPlay = { esde_playcount: number | null; esde_playtime_seconds: number | null; esde_last_played: string | null }
+function rollUp(rows: VariantPlay[]): VariantPlay {
   let count: number | null = null, seconds: number | null = null, last: string | null = null
   for (const r of rows) {
     if (r.esde_playcount != null) count = (count ?? 0) + Number(r.esde_playcount)
@@ -381,7 +381,7 @@ Deno.serve(async (req) => {
         .from('games').select('id, play_status').eq('user_id', userId).in('id', updatedGameIds)
       const statusById = new Map((statusRows ?? []).map((r: AnyRecord) => [String(r.id), String(r.play_status)]))
 
-      const grouped = new Map<string, AnyRecord[]>()
+      const grouped = new Map<string, VariantPlay[]>()
       for (const v of variants ?? []) {
         const arr = grouped.get(v.game_id) ?? []
         arr.push(v); grouped.set(v.game_id, arr)

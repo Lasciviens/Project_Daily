@@ -77,8 +77,7 @@ type Action =
   | 'profile' | 'owned_games' | 'achievements' | 'level_badges'
   | 'app_details' | 'app_reviews' | 'current_players'
 
-// deno-lint-ignore no-explicit-any
-type AnyRec = Record<string, any>
+type AnyRec = Record<string, unknown>
 
 // A network failure's message quotes the request URL; the caller sees only
 // which service failed (security audit 10.10.2026). The key left the URL on
@@ -132,7 +131,7 @@ function detailsRow(appid: number, data: AnyRec | null) {
     name: data?.name ?? null,
     type: data?.type ?? null,
     genres: Array.isArray(data?.genres) ? data.genres.map((g: AnyRec) => g.description).filter(Boolean) : null,
-    metacritic_score: data?.metacritic?.score ?? null,
+    metacritic_score: (data?.metacritic as AnyRec | null | undefined)?.score ?? null,
     is_free: data?.is_free ?? null,
     details: data,                       // null for a delisted app — cached as a tombstone
     details_fetched_at: new Date().toISOString(),
@@ -209,9 +208,9 @@ Deno.serve(async (req: Request) => {
           })
         }
 
-        const schema = new Map<string, AnyRec>()
+        const schema = new Map<unknown, AnyRec>()
         for (const a of schemaRes?.game?.availableGameStats?.achievements ?? []) schema.set(a.name, a)
-        const rarity = new Map<string, number>()
+        const rarity = new Map<unknown, number>()
         for (const a of globalRes?.achievementpercentages?.achievements ?? []) {
           rarity.set(a.name, typeof a.percent === 'string' ? parseFloat(a.percent) : a.percent)
         }
@@ -265,7 +264,7 @@ Deno.serve(async (req: Request) => {
         const stale = ids.filter(id => {
           const row = byId.get(id)
           if (!row) return true
-          const at = row.details_fetched_at ? Date.parse(row.details_fetched_at) : 0
+          const at = row.details_fetched_at ? Date.parse(String(row.details_fetched_at)) : 0
           return at < cutoff
         })
 

@@ -56,6 +56,7 @@ const MAX_READ_PER_DAY = 40
 
 // <icloud-shared>
 // GENERATED from src/ by scripts/sync-icloud-shared.mjs. Do not edit here — edit the source and re-run the script.
+/* eslint-disable @typescript-eslint/no-unused-vars -- the function uses only part of these modules (linted in src/) */
 
 // ── src/features/daily/recurrence.ts ──
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1381,6 +1382,7 @@ function workoutEvent(
 /** Where an item's event lives in its area's calendar. */
 const eventFileName = (uid: string) => `${uid.replace(/@.*$/, '').replace(/[^a-z0-9-]/gi, '-')}.ics`
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // </icloud-shared>
 
 /** Credentials go only to iCloud's CalDAV hosts, over HTTPS: caldav.icloud.com and the account's pNN-caldav partition. */
@@ -2782,7 +2784,6 @@ const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0,
  */
 async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Record<string, { url?: string }>, opts: { look: boolean; items?: DrainItem[] }):
   Promise<{ busy: true } | (DrainCounts & { waiting: number; readBack: Awaited<ReturnType<typeof readBackAccount>>; items?: DrainItemAnswer[] })> {
-  let started = Date.now()
   const nowIso = new Date().toISOString()
   const lease = new Date(Date.now() + DRAIN_LEASE_MS).toISOString()
   const { data: leased, error: leaseError } = await db.from('icloud_credentials')
@@ -2798,7 +2799,7 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     const today = osloClock(new Date()).day
     // Changes made in Apple Calendar first (2c): a move made on the iPhone reaches the item before anything is sent.
     const readBack = await readBackAccount(db, creds, userId, prefs, areaCals, opts.look)
-    started = Date.now() // the send's own time budget starts after the read-back
+    const started = Date.now() // the send's own time budget starts after the read-back
     // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left (Google: needsHorizonTopUp).
     const { data: ending } = await db.from('schedule_blocks').select('id, icloud_area')
       .eq('user_id', userId).not('icloud_area', 'is', null).not('icloud_horizon', 'is', null)

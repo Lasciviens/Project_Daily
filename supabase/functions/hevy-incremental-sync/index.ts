@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
@@ -119,7 +118,7 @@ export async function upsertWorkoutToDb(
         .insert(
           exercise.sets.map((s) => ({
             user_id: userId,
-            hevy_exercise_id: (insertedExercise as any).id,
+            hevy_exercise_id: (insertedExercise as { id: string }).id,
             exercise_template_id: exercise.exercise_template_id,
             index: s.index,
             type: s.type,
@@ -230,7 +229,7 @@ export async function upsertRoutineToDb(
         .insert(
           exercise.sets.map((s) => ({
             user_id: userId,
-            hevy_routine_exercise_id: (insertedExercise as any).id,
+            hevy_routine_exercise_id: (insertedExercise as { id: string }).id,
             index: s.index,
             type: s.type,
             weight_kg: s.weight_kg,
@@ -276,9 +275,12 @@ export function hevyTemplateId(v: unknown): string | null {
   return typeof s === 'string' && HEVY_TEMPLATE_ID.test(s) ? s : null
 }
 
+/** A JSON object (an array too, as `typeof` says): each field is read and checked on its own. */
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object'
+
 /** One ExerciseTemplate, or null when it has no usable id, title or type. */
-export function cleanExerciseTemplate(raw: any): HevyTemplateRow | null {
-  if (!raw || typeof raw !== 'object') return null
+export function cleanExerciseTemplate(raw: unknown): HevyTemplateRow | null {
+  if (!isRecord(raw)) return null
   const id = hevyTemplateId(raw.id)
   const title = typeof raw.title === 'string' ? raw.title.trim() : ''
   const type = typeof raw.type === 'string' ? raw.type.trim() : ''
@@ -299,7 +301,7 @@ export function cleanExerciseTemplate(raw: any): HevyTemplateRow | null {
 
 // A column added by a migration that hasn't run (42703 from Postgres,
 // PGRST204 from PostgREST's schema cache).
-function isMissingColumn(error: any, column: string): boolean {
+function isMissingColumn(error: { code?: string; message?: string } | null, column: string): boolean {
   return (error?.code === '42703' || error?.code === 'PGRST204') && String(error?.message ?? '').includes(column)
 }
 
@@ -321,7 +323,7 @@ export async function upsertExerciseTemplatesToDb(
   // Before migration 154 there is no thumbnail_url: store the rest.
   if (error && isMissingColumn(error, 'thumbnail_url')) {
     ;({ error } = await supabase.from('hevy_exercise_templates')
-      .upsert(rows.map(({ thumbnail_url: _t, ...r }) => r), { onConflict: 'id' }))
+      .upsert(rows.map(({ thumbnail_url: _t, ...r }) => { void _t; return r }), { onConflict: 'id' }))
   }
   if (error) throw error
 
@@ -341,10 +343,10 @@ export async function upsertExerciseTemplatesToDb(
 }
 
 /** A GET with the key in its header. `data` is null on an empty or non-JSON body. */
-export async function hevyGetJson(path: string, hevyApiKey: string): Promise<{ status: number; data: any }> {
+export async function hevyGetJson(path: string, hevyApiKey: string): Promise<{ status: number; data: unknown }> {
   const res = await fetch(`https://api.hevyapp.com${path}`, { headers: { 'api-key': hevyApiKey } })
   const text = await res.text().catch(() => '')
-  let data: any = null
+  let data: unknown
   try { data = text ? JSON.parse(text) : null } catch { data = null }
   return { status: res.status, data }
 }
@@ -356,7 +358,7 @@ export async function fetchExerciseTemplateById(id: string, hevyApiKey: string):
   const { status, data } = await hevyGetJson(`/v1/exercise_templates/${encodeURIComponent(id)}`, hevyApiKey)
   if (status === 404) return null
   if (status < 200 || status >= 300) throw new Error(`Hevy API ${status}: GET /v1/exercise_templates/{id}`)
-  const raw = data?.exercise_template ?? data
+  const raw = isRecord(data) ? data.exercise_template ?? data : data
   return cleanExerciseTemplate(Array.isArray(raw) ? raw[0] : raw)
 }
 
@@ -404,9 +406,9 @@ export interface HevyUserInfo {
 }
 
 /** GET /v1/user/info answers { data: UserInfo }; a bare UserInfo is tolerated. */
-export function cleanUserInfo(body: any): HevyUserInfo | null {
-  const raw = body?.data ?? body
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+export function cleanUserInfo(body: unknown): HevyUserInfo | null {
+  const raw = isRecord(body) ? body.data ?? body : body
+  if (!isRecord(raw) || Array.isArray(raw)) return null
   const username = typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim().slice(0, 200) : null
   const info: HevyUserInfo = {
     username,
@@ -419,8 +421,8 @@ export function cleanUserInfo(body: any): HevyUserInfo | null {
 }
 
 /** GET /v1/workouts/count answers { workout_count }. */
-export function cleanWorkoutCount(body: any): number | null {
-  const n = body?.workout_count
+export function cleanWorkoutCount(body: unknown): number | null {
+  const n = isRecord(body) ? body.workout_count : undefined
   return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null
 }
 
@@ -480,7 +482,7 @@ export async function hevyListAll(
   key: string,
   pageSize: number,
   hevyApiKey: string,
-  onPage: (items: any[]) => Promise<void>,
+  onPage: (items: unknown[]) => Promise<void>,
 ): Promise<{ complete: boolean; total: number }> {
   let total = 0
   for (let page = 1; page <= 1000; page++) {
@@ -489,11 +491,12 @@ export async function hevyListAll(
     // Past the last page some lists answer 404 ("Page not found") instead of an empty list.
     if (status === 404 && page > 1) return { complete: true, total }
     if (status < 200 || status >= 300) throw new Error(`Hevy API ${status}: GET ${path}`)
-    const items = data?.[key]
+    const body: Record<string, unknown> = isRecord(data) ? data : {}
+    const items = body[key]
     if (!Array.isArray(items)) return { complete: false, total }
     if (items.length > 0) await onPage(items)
     total += items.length
-    const pageCount = Number(data?.page_count)
+    const pageCount = Number(body.page_count)
     if (Number.isFinite(pageCount) ? page >= pageCount : items.length === 0) return { complete: true, total }
     if (items.length === 0) return { complete: false, total }
   }
@@ -509,8 +512,9 @@ export async function syncAllRoutineFolders(
   const { total } = await hevyListAll('/v1/routine_folders', 'routine_folders', 10, hevyApiKey, async (items) => {
     const now = new Date().toISOString()
     const rows = items
-      .filter((f: any) => Number.isSafeInteger(f?.id) && f.id > 0 && typeof f?.title === 'string')
-      .map((f: any) => ({ id: f.id, user_id: userId, title: f.title, synced_at: now }))
+      .filter((f): f is { id: number; title: string } =>
+        isRecord(f) && typeof f.id === 'number' && Number.isSafeInteger(f.id) && f.id > 0 && typeof f.title === 'string')
+      .map((f) => ({ id: f.id, user_id: userId, title: f.title, synced_at: now }))
     if (rows.length === 0) return
     const { error } = await supabase.from('hevy_routine_folders').upsert(rows, { onConflict: 'id' })
     if (error) throw error
@@ -533,6 +537,8 @@ export async function syncAllExerciseTemplates(
   return stored
 }
 // ── End of the shared Hevy block (scripts/verify-hevy-api.cjs compares the four copies) ──
+// This function's own import sits here: the block above, its import line included, is the same in all four.
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
@@ -562,8 +568,7 @@ async function hevyGet(path: string) {
 // everything current without a full re-import. Folders and the library page
 // through the shared block's helpers (syncAllRoutineFolders reads every page;
 // it used to read only the first, at most 10 folders).
-// deno-lint-ignore no-explicit-any
-async function refreshRoutines(supabase: any, userId: string): Promise<number> {
+async function refreshRoutines(supabase: SupabaseClient, userId: string): Promise<number> {
   let page = 1
   let total = 0
   const seenIds = new Set<string>()
@@ -577,8 +582,7 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
     // page_count missing → read on until an empty page.
     const pageCount = data?.page_count != null && Number.isFinite(Number(data.page_count)) ? Number(data.page_count) : null
     if (!Array.isArray(data?.routines)) break
-    // deno-lint-ignore no-explicit-any
-    const routines: any[] = data.routines
+    const routines: HevyRoutine[] = data.routines
     if (routines.length === 0) { complete = pageCount == null || page >= pageCount; break }
     const now = new Date().toISOString()
     for (const routine of routines) {
@@ -602,8 +606,7 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
         }).select('id').single()
         if (exErr) throw exErr
         if ((ex.sets ?? []).length > 0) {
-          // deno-lint-ignore no-explicit-any
-          const { error: sErr } = await supabase.from('hevy_routine_sets').insert(ex.sets.map((s: any) => ({
+          const { error: sErr } = await supabase.from('hevy_routine_sets').insert(ex.sets.map((s) => ({
             user_id: userId, hevy_routine_exercise_id: exRow.id, index: s.index, type: s.type,
             weight_kg: s.weight_kg, reps: s.reps,
             rep_range_start: s.rep_range?.start ?? null, rep_range_end: s.rep_range?.end ?? null,
@@ -638,8 +641,7 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
   const { data: localRoutines, error: localErr } = await supabase
     .from('hevy_routines').select('id').eq('user_id', userId)
   if (localErr) throw localErr
-  // deno-lint-ignore no-explicit-any
-  const staleIds = (localRoutines ?? []).map((r: any) => r.id as string).filter((id: string) => !seenIds.has(id))
+  const staleIds = ((localRoutines ?? []) as { id: string }[]).map((r) => r.id).filter((id) => !seenIds.has(id))
   if (staleIds.length > 0) {
     const { error: staleErr } = await supabase.from('hevy_routines')
       .delete().eq('user_id', userId).in('id', staleIds)
@@ -648,21 +650,18 @@ async function refreshRoutines(supabase: any, userId: string): Promise<number> {
   return total
 }
 
-// deno-lint-ignore no-explicit-any
-async function refreshBodyMeasurements(supabase: any, userId: string): Promise<void> {
+async function refreshBodyMeasurements(supabase: SupabaseClient, userId: string): Promise<void> {
   let page = 1
   while (true) {
     const data = await hevyGet(`/v1/body_measurements?page=${page}&pageSize=10`)
-    // deno-lint-ignore no-explicit-any
-    const measurements: any[] = data.body_measurements ?? []
+    const measurements: Record<string, unknown>[] = data.body_measurements ?? []
     if (measurements.length === 0) break
     const now = new Date().toISOString()
     // Map explicit columns — do NOT spread ...m: Hevy's measurement object
     // carries its own numeric `id`, which would land in the uuid `id` column
     // ("invalid input syntax for type uuid").
     const { error } = await supabase.from('hevy_body_measurements').upsert(
-      // deno-lint-ignore no-explicit-any
-      measurements.map((m: any) => ({
+      measurements.map((m) => ({
         user_id: userId, date: m.date,
         weight_kg: m.weight_kg ?? null, lean_mass_kg: m.lean_mass_kg ?? null, fat_percent: m.fat_percent ?? null,
         neck_cm: m.neck_cm ?? null, shoulder_cm: m.shoulder_cm ?? null, chest_cm: m.chest_cm ?? null,
@@ -905,7 +904,7 @@ Deno.serve(async (req) => {
     const origin2 = req.headers.get('origin')
     const headers2 = corsHeaders(origin2)
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err) }),
+      JSON.stringify({ error: err instanceof Error ? err.message : (err as { message?: string } | null)?.message ?? JSON.stringify(err) }),
       { status: 500, headers: { ...headers2, 'Content-Type': 'application/json' } }
     )
   }

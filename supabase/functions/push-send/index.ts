@@ -47,8 +47,7 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
-// deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, unknown>
 const todayUTC = () => new Date().toISOString().slice(0, 10)
 const dateFromTodayUTC = (d: number) => { const x = new Date(); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10) }
 
@@ -95,7 +94,8 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
       .eq('user_id', userId).eq('category', 'training')
       .gte('date', today).lte('date', dateFromTodayUTC(3))
       .order('date', { ascending: true }).limit(10)
-    const next = (data as AnyRecord[] ?? []).find(b => !['cancelled', 'done'].includes(b.task?.status))
+    // A slot has at most one task: PostgREST answers it as an object (or null).
+    const next = ((data ?? []) as AnyRecord[]).find(b => !['cancelled', 'done'].includes((b.task as { status?: string | null } | null)?.status ?? ''))
     if (next) trLine = ` · 💪 ${next.title}`
   } catch { /* skip */ }
   // A wish period opening is announced ONCE, on the day period_start lands on
@@ -114,9 +114,9 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
     // named. A row with no label of its own can only be described by its dates,
     // which does not fit "<name> starts today" — hence the two phrasings.
     const groups = new Map<string, { n: number; named: boolean }>()
-    for (const w of (data ?? []) as AnyRecord[]) {
+    for (const w of (data ?? []) as { period_label: string | null; period_start: string; period_end: string | null }[]) {
       const named = !!labelText(w.period_label ?? '')
-      const key   = named ? labelText(w.period_label) : periodRange(w.period_start, w.period_end)
+      const key   = named ? labelText(w.period_label ?? '') : periodRange(w.period_start, w.period_end)
       const prev  = groups.get(key)
       groups.set(key, { n: (prev?.n ?? 0) + 1, named })
     }
@@ -276,7 +276,7 @@ async function sendReleaseReminders(userId: string): Promise<number> {
     if (!res.sent) continue
     n++
     await supabase.from('media_release_reminders')
-      .update({ sent_offsets: [...new Set([...(r.sent_offsets ?? []), ...due.marks])] }).eq('id', r.id)
+      .update({ sent_offsets: [...new Set([...((r.sent_offsets ?? []) as number[]), ...due.marks])] }).eq('id', r.id)
   }
   return n
 }

@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -46,7 +46,7 @@ interface Message { role: 'user' | 'assistant'; content: string; images?: string
 // meal / food label rides alongside the text and the tool loop still runs.
 function parseImageData(s: unknown): { mime_type: string; data: string } | null {
   if (typeof s !== 'string') return null
-  const m = /^data:([\w/+.\-]+);base64,(.+)$/s.exec(s.trim())
+  const m = /^data:([\w/+.-]+);base64,(.+)$/s.exec(s.trim())
   return m ? { mime_type: m[1], data: m[2] } : null
 }
 function partsForMessage(m: Message): AnyRecord[] {
@@ -61,7 +61,7 @@ function messagesToContents(messages: Message[]): AnyRecord[] {
 }
 
 // deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // True for a dotted-quad that lands in a loopback/private/link-local range.
 // 169.254.0.0/16 covers cloud metadata (169.254.169.254) too. A malformed
@@ -320,10 +320,6 @@ function supportsThinking(model: GeminiModel): boolean {
 // the second 3, the tail models 2 (they're the escape hatch, not the goal).
 const RETRIES_BY_POSITION = [4, 3, 2, 2]
 const RETRY_BASE_DELAY_MS = 700
-// Per-attempt hard ceiling. A single Gemini generation is normally 1-5s; 20s
-// bounds a genuinely hung connection (there was NO timeout before — a hang
-// blocked forever, and with up to 11 attempts total there was no upper bound).
-const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
 
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
@@ -1050,8 +1046,7 @@ async function callGemini(
   apiKey: string,
   messages: Message[],
   systemPrompt: string | undefined,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   preferredModel?: GeminiModel,
   authHeader?: string,
@@ -1318,8 +1313,7 @@ function rowLabel(r: AnyRecord): string {
 }
 
 async function proposeAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, name: string, args: AnyRecord,
+  supabase: SupabaseClient, userId: string, name: string, args: AnyRecord,
 ): Promise<{ ok: true; confirm: Confirm } | { ok: false; error: string }> {
   try {
     let summary = ''
@@ -1360,8 +1354,7 @@ async function proposeAction(
 // The person tapped Confirm or Cancel. Runs the stored action once, only for
 // the account that proposed it, only within 15 minutes.
 async function settleAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, id: string, decision: string, authHeader?: string,
+  supabase: SupabaseClient, userId: string, id: string, decision: string, authHeader?: string,
 ): Promise<{ text: string; steps?: string[] }> {
   const { data: row } = await supabase.from('ai_pending_actions')
     .update({ done_at: new Date().toISOString(), decision: decision === 'confirm' ? 'confirm' : 'cancel' })
@@ -1379,8 +1372,7 @@ async function settleAction(
 async function dispatch(
   name: string,
   args: AnyRecord,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   authHeader?: string,
   surface?: string,
@@ -3217,11 +3209,11 @@ function assertAccess(table: string, write: boolean): CatalogEntry {
   return e
 }
 
-// deno-lint-ignore no-explicit-any
-function parseJsonArg(raw: any, label: string): AnyRecord {
+function parseJsonArg(raw: unknown, label: string): AnyRecord {
   if (raw == null || raw === '') return {}
   if (typeof raw === 'object') return raw
-  try { return JSON.parse(raw) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
+  // JSON.parse reads its argument as text, as String() does.
+  try { return JSON.parse(String(raw)) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
 }
 
 // Applies a filter object to a Supabase query. Plain value = eq; null = IS NULL;

@@ -37,7 +37,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 // deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 const num = (v: unknown, d = 0): number => { const n = Number(v); return Number.isFinite(n) ? n : d }
 // The user's own calendar day (Europe/Oslo), never UTC: a log between 00:00
 // and 01:00/02:00 local time used to land on yesterday.
@@ -119,7 +119,9 @@ async function buildBriefContext(userId: string): Promise<string> {
       .select(cols)
       .eq('user_id', userId).eq('date', today)
       .order('start_time', { ascending: true }).limit(20)
-    let { data: blocks, error: blocksError } = await read('title, start_time, duration_minutes, busy, task:tasks(status)')
+    const first = await read('title, start_time, duration_minutes, busy, task:tasks(status)')
+    const blocksError = first.error
+    let blocks = first.data
     if (blocksError && (blocksError.code === '42703' || blocksError.code === 'PGRST204')) {
       ;({ data: blocks } = await read('title, start_time, duration_minutes, task:tasks(status)'))
     }
