@@ -955,7 +955,7 @@ Deno.serve(async (req) => {
             const vecs = await embedTexts(key, chunk.map((c: AnyRecord) => c.text), 'RETRIEVAL_DOCUMENT')
             const upserts = chunk
               .map((c: AnyRecord, j: number) => vecs[j] ? { user_id: user.id, source_table: src.table, source_id: c.id, content: c.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
-              .filter(Boolean)
+              .filter(u => u !== null)
             if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
           }
           perTable[src.table] = n; indexed += n
@@ -2031,7 +2031,7 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
     }
   }).sort((a, b) => a.date.localeCompare(b.date))
 
-  const avgKey = (key: string) => {
+  const avgKey = (key: Exclude<keyof typeof daily[number], 'date'>) => {
     const vals = daily.map(d => d[key]).filter((v): v is number => v != null)
     return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
   }

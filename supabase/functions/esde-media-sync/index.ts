@@ -28,7 +28,7 @@ const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body)
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 class Invalid extends Error {}
 function requireValue(ok: unknown, message: string): asserts ok { if (!ok) throw new Invalid(message) }
-const digest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(n => n.toString(16).padStart(2, '0')).join('')
+const digest = async (bytes: Uint8Array<ArrayBuffer>) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(n => n.toString(16).padStart(2, '0')).join('')
 async function authenticated(given: string, expected: string) {
   // Hash both to fixed length before comparing; never log credential material.
   const encoder = new TextEncoder()
@@ -130,7 +130,7 @@ Deno.serve(async req => {
       requireValue(typeof body.path === 'string' && body.path.length > 0 && body.path.length <= 4096, 'Invalid path')
       requireValue(typeof body.sha256 === 'string' && /^[a-f0-9]{64}$/.test(body.sha256), 'Invalid image hash')
       requireValue(typeof body.image_base64 === 'string' && body.image_base64.length <= 1400000, 'Invalid image')
-      let bytes: Uint8Array
+      let bytes: Uint8Array<ArrayBuffer>
       try { bytes = Uint8Array.from(atob(body.image_base64), c => c.charCodeAt(0)) } catch { throw new Invalid('Invalid base64') }
       const decoder = new TextDecoder()
       requireValue(bytes.length >= 20 && bytes.length <= 1000000 && decoder.decode(bytes.slice(0, 4)) === 'RIFF' && decoder.decode(bytes.slice(8, 12)) === 'WEBP', 'Expected WebP under 1 MB')

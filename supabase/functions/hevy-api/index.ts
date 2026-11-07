@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -61,7 +61,7 @@ export interface HevyWorkout {
 }
 
 export async function upsertWorkoutToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   workout: HevyWorkout,
 ) {
@@ -173,7 +173,7 @@ export interface HevyRoutine {
 }
 
 export async function upsertRoutineToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   routine: HevyRoutine,
 ) {
@@ -308,7 +308,7 @@ function isMissingColumn(error: { code?: string; message?: string } | null, colu
 /** Stores templates and their secondary muscles: one upsert, one delete and
  *  one insert for the whole batch (the library is a few hundred rows). */
 export async function upsertExerciseTemplatesToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   templates: HevyTemplateRow[],
 ) {
@@ -367,7 +367,7 @@ export async function fetchExerciseTemplateById(id: string, hevyApiKey: string):
  *  fetched by id and stored. One that Hevy can't return is skipped (it is
  *  tried again with the next workout that names it). Returns how many came. */
 export async function ensureExerciseTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   workouts: Array<{ exercises?: Array<{ exercise_template_id?: unknown }> }>,
   hevyApiKey: string,
@@ -432,7 +432,7 @@ export function cleanWorkoutCount(body: unknown): number | null {
  *  a status or "unexpected shape", never a header or a key), keeps the
  *  facts it already had, and says so in `error`; a good read clears it. */
 export async function refreshHevyAccount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<{ ok: boolean; hevy_workout_count: number | null; error: string | null }> {
@@ -505,7 +505,7 @@ export async function hevyListAll(
 
 /** Every routine folder, page by page (at most 10 per page), stored. */
 export async function syncAllRoutineFolders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -524,7 +524,7 @@ export async function syncAllRoutineFolders(
 
 /** Hevy's whole exercise library (custom exercises included), 100 per page. */
 export async function syncAllExerciseTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -630,7 +630,7 @@ function sanitizeWorkoutBody(payload: Record<string, unknown>): Record<string, u
 }
 
 async function handleCreateWorkout(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -644,7 +644,7 @@ async function handleCreateWorkout(
 }
 
 async function handleUpdateWorkout(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -665,7 +665,7 @@ async function handleUpdateWorkout(
 // The workout is saved in Hevy and here already: a template that can't be
 // fetched now arrives with the next Sync, so it never fails the save.
 async function ensureTemplatesQuietly(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   workouts: HevyWorkout[],
   hevyApiKey: string,
@@ -690,7 +690,7 @@ function stripNullRepRange(payload: unknown): void {
 }
 
 async function handleCreateRoutine(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: unknown,
@@ -704,7 +704,7 @@ async function handleCreateRoutine(
 }
 
 async function handleUpdateRoutine(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -724,7 +724,7 @@ async function handleUpdateRoutine(
 }
 
 async function handleUpsertBodyMeasurement(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -899,7 +899,7 @@ function hevyTitle(v: unknown): string {
 }
 
 async function handleCreateExerciseTemplate(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -954,7 +954,7 @@ function cleanFolder(raw: unknown): { id: number; title: string } | null {
 }
 
 async function handleCreateRoutineFolder(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
   payload: Record<string, unknown>,
@@ -988,7 +988,7 @@ async function handleCreateRoutineFolder(
 // (`not_in_hevy_workouts`) and the app offers to delete them, with Undo.
 
 async function handleSyncMissingWorkouts(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ) {
