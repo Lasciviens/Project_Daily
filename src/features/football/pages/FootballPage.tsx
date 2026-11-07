@@ -7,7 +7,7 @@ import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useEntityModal } from '../../../shared/modals'
 import { FootballHeroArt } from '../components/FootballHeroArt'
 import { FollowingCard } from '../components/FollowingCard'
-import { MatchList } from '../components/MatchList'
+import { MatchList, MatchListSkeleton } from '../components/MatchList'
 import { StandingsCard } from '../components/StandingsCard'
 import { TeamLogo } from '../components/TeamLogo'
 import { FOOTBALL_BOARD } from '../footballBoard'
@@ -18,6 +18,16 @@ import { useMinute } from '../hooks/useMinute'
 import type { FootballFollow } from '../types'
 
 const filterKey = (f: { kind: string; ref: string }) => `${f.kind}:${f.ref}`
+
+/**
+ * The room MatchListSkeleton takes for 2 and 3 days (a day: heading 16 + 4 + label 20 + three 40px rows,
+ * 44px on touch; 12px between days). A failed ESPN read keeps it, so Try again fills the same room: cut to
+ * one line, the card pulled everything under it up the page and pushed it down again on the retry.
+ */
+const MATCH_LIST_ROOM: Record<2 | 3, string> = {
+  2: 'min-h-[20.75rem] [@media(pointer:coarse)]:min-h-[22.25rem]',
+  3: 'min-h-[31.5rem] [@media(pointer:coarse)]:min-h-[33.75rem]',
+}
 
 export function FootballPage() {
   const qc = useQueryClient()
@@ -57,7 +67,6 @@ export function FootballPage() {
       <button type="button" className="font-semibold text-accent-600" onClick={retry}>Try again</button>
     </p>
   )
-  const rows = (n: number) => <div className="flex flex-col gap-2">{Array.from({ length: n }).map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
 
   return (
     <PageContainer>
@@ -111,20 +120,21 @@ export function FootballPage() {
               next: (
                 <Card>
                   <CardHeader title="Coming up" variant="label" />
-                  <div className="flex flex-col gap-2">
-                    {loading && !coming.length ? rows(4)
+                  <div className={cx('flex flex-col gap-2', failed.length > 0 && !coming.length && MATCH_LIST_ROOM[3])}>
+                    {loading && !coming.length ? <MatchListSkeleton days={3} />
                       : coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
                       : <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
-                    {problem}
+                    {/* Once every read answered: shown under the loading copy, it grew the card for a moment. */}
+                    {!loading && problem}
                   </div>
                 </Card>
               ),
               results: (
                 <Card>
                   <CardHeader title="Results" subtitle="Last 10 days" variant="label" />
-                  {loading && !results.length ? rows(3)
+                  {loading && !results.length ? <MatchListSkeleton days={2} />
                     : results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
-                    : <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
+                    : <p className={cx('text-body text-fg-muted', failed.length > 0 && MATCH_LIST_ROOM[2])}>No results in the last 10 days.</p>}
                 </Card>
               ),
               tables: leagues.length > 0 && (

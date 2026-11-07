@@ -1,10 +1,31 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Button, SectionLabel, Truncate, cx } from '../../../shared/ui'
+import { Button, SectionLabel, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import type { FbMatch } from '../footballModel'
 import { byDayAndLeague, dayLabel, type LeagueGroup } from '../footballView'
 import { MatchRow } from './MatchRow'
+
+/**
+ * The list's loading copy on its own spacing: a day's heading, a competition's label and three match rows
+ * per day (a competition shows three before it folds). ESPN's answer replaced four bars with a list twice as
+ * tall and pushed the cards under it down the page (a layout shift).
+ */
+export function MatchListSkeleton({ days }: { days: number }) {
+  return (
+    <div aria-hidden className="flex max-w-[40rem] flex-col gap-3">
+      {Array.from({ length: days }, (_, d) => (
+        <div key={d} className="flex flex-col gap-1">
+          <span className="flex h-4 items-center"><Skeleton className="h-3 w-28" /></span>
+          <div className="flex flex-col">
+            <span className="flex h-5 items-end px-3"><Skeleton className="h-2.5 w-24" /></span>
+            {[0, 1, 2].map(r => <span key={r} className="flex h-10 items-center px-3 [@media(pointer:coarse)]:h-11"><Skeleton className="h-3.5 w-full" /></span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 /**
  * Matches by day ("Today", "Wed 21.10.2026") and, inside a day, by
