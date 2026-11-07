@@ -378,11 +378,6 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # `npm run lint` is deliberately NOT a gate yet: it is red today, and a
-      # large share of the errors come from eslint linting supabase/functions
-      # (Deno code checked with browser globals). Narrow the ESLint scope and
-      # clear the real src/ findings first, then promote it to a step here.
-
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each
@@ -407,4 +402,11 @@ jobs:
 
       - name: Run every verify script
         run: node scripts/run-all-verify.mjs
+
+      # ESLint over the whole repo (src, scripts, edge functions): a new error
+      # fails the PR. It runs after a failed verify script too, so one push
+      # shows both.
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npx eslint .
 
