@@ -108,9 +108,10 @@ export function ActivityLogFilters({
       <div className="hidden flex-col gap-2 sm:flex">
         <div className="flex flex-wrap items-center gap-2">
           {/* One width, so the bar keeps its place when the log's types arrive (sized by its longest option, it
-              widened and wrapped the bar). 10rem keeps the row on one line with Clear all in the laptop's 48rem;
-              11.5rem put it on two. A longer type name is cut in the closed select, whole in its list. */}
-          {typeSelect('w-[10rem]')}
+              widened and wrapped the bar). 9.5rem keeps the row on one line with Clear all in the laptop's 48rem
+              with ~12px to spare; 10rem left 4px, which the stand-in font or a zoom could wrap, and 11.5rem put it
+              on two. A longer type name is cut in the closed select, whole in its list. */}
+          {typeSelect('w-[9.5rem]')}
           {opSelect('w-auto')}
           {actorSelect('w-auto')}
           {rangeSelect('w-auto')}

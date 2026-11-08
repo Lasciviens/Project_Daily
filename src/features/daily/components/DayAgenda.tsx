@@ -67,9 +67,9 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
 
   // The reads the day always had.
   const list = useDayTasks(day)
-  const { data: templates = [], isLoading: templatesLoading, isError: templatesError } = useScheduleBlocks()
-  const { data: blocks = [], isLoading: blocksLoading, isError: blocksError } = useTimeBlocks(day)
-  const { data: prevBlocks = [], isLoading: prevLoading, isError: prevError } = useTimeBlocks(prevDay)
+  const { data: templates = [], isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useScheduleBlocks()
+  const { data: blocks = [], isLoading: blocksLoading, isError: blocksError, refetch: refetchBlocks } = useTimeBlocks(day)
+  const { data: prevBlocks = [], isLoading: prevLoading, isError: prevError, refetch: refetchPrev } = useTimeBlocks(prevDay)
   const { data: events, isFetching: calFetching, isLoading: eventsLoading } = useCalendarEventsForDay(day)
   // The two extras' reads (open wishes, this week's undated tasks) start with the day's. They are bands of their
   // own, never part of the list's order: the list doesn't wait for them, and each keeps its room while it loads
@@ -109,8 +109,15 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   if (firstAnswer && drawnDay !== day) setDrawnDay(day)
   const listReady = firstAnswer || drawnDay === day
   const settled = listReady && !eventsLoading
-  // A failed read is one line, never this day's room for the next visit.
+  // A failed read is one line, never this day's room for the next visit — the slots' and plans' reads too: without
+  // them the list silently dropped the day's slots and its Next line named the wrong one (owner-critic, 07.11.2026).
   const failed = list.isError || templatesError || blocksError || prevError
+  const retryFailed = () => {
+    if (list.isError) void list.refetch()
+    if (templatesError) void refetchTemplates()
+    if (blocksError) void refetchBlocks()
+    if (prevError) void refetchPrev()
+  }
 
   // A repeat's day that is a task already counts with the tasks, never twice.
   const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)))
@@ -118,7 +125,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   // (yesterday's tail past midnight is yesterday's day, not one of today's).
   const missed = [...rows.timed, ...rows.anytime].filter(r => r.kind === 'repeat' && r.state === 'missed' && !r.spillover).length
   const planned = plannedMinutes(items)
-  const next = viewingToday ? aheadOnDay(items, true, nowHour)[0] : undefined
+  const next = viewingToday && !failed ? aheadOnDay(items, true, nowHour)[0] : undefined
   const planCtx = useDayPlanContext(day, rows.timed.some(r => r.kind === 'training') || rows.anytime.some(r => r.kind === 'training'))
   // A task added while the day is on screen rises in; the day's own rows don't.
   const fresh = useNewIds([...onList], day, !list.isLoading)
@@ -240,11 +247,11 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
       </div>
 
       <KeepRoom ids={roomIds} loading={!settled || width == null} first={ROOM_DEFAULT_REM[cols]} remember={!failed}>
-      {!listReady ? <ListSkeleton rem={listRoom(roomIds, cols)} /> : list.isError ? (
-        // A failed read must never look like an empty day.
+      {!listReady ? <ListSkeleton rem={listRoom(roomIds, cols)} /> : failed ? (
+        // A failed read must never look like an empty day, or a day without its slots.
         <p className="flex flex-wrap items-center gap-2 py-3 text-body text-fg-muted">
-          Couldn't load the day's tasks.
-          <Button variant="ghost" size="sm" onClick={() => void list.refetch()}>Try again</Button>
+          {list.isError ? 'Couldn\'t load the day\'s tasks.' : 'Couldn\'t load the day\'s plan.'}
+          <Button variant="ghost" size="sm" onClick={retryFailed}>Try again</Button>
         </p>
       ) : nothing ? (
         <>

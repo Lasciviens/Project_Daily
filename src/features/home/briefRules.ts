@@ -88,6 +88,8 @@ export interface BriefInput {
   today?: string
   weather?: BriefWeather | null
   tasks?: { open: BriefTask[]; doneToday: number } | null
+  /** Reads that failed (not ones still on the way): the headline names them rather than "Nothing to report yet". */
+  failedReads?: readonly ('tasks' | 'schedule')[]
   schedule?: {
     next?: { title: string; startLabel: string; startHour: number; inProgress: boolean } | null
     remainingCount: number
@@ -437,8 +439,8 @@ function moneySection(i: BriefInput): BriefSection | null {
 // ── Headline + assembly ──────────────────────────────────────────────────────
 
 /**
- * The single most useful sentence right now, in priority order. Without the day's tasks (their read failed) it
- * claims nothing about them: no count, and never "a clear day".
+ * The single most useful sentence right now, in priority order. "A clear day" only when both the tasks and the
+ * schedule were read: without one (its read failed) it claims nothing about them, and says which one failed.
  */
 function headlineFor(i: BriefInput, sections: BriefSection[]): BriefLine {
   const overdue = i.tasks?.open.filter(t => t.overdue).length ?? 0
@@ -448,7 +450,9 @@ function headlineFor(i: BriefInput, sections: BriefSection[]): BriefLine {
   if (i.schedule?.next) return { text: `Next up at ${i.schedule.next.startLabel}: ${i.schedule.next.title}.`, href: '/daily' }
   const open = i.tasks?.open.length ?? 0
   if (open) return { text: `${plural(open, 'open task')} today.`, href: '/daily' }
-  if (sections.length && i.tasks) return { text: 'A clear day — nothing urgent.', tone: 'success' }
+  if (sections.length && i.tasks && i.schedule) return { text: 'A clear day — nothing urgent.', tone: 'success' }
+  if (i.failedReads?.includes('tasks')) return { text: 'Today\'s tasks couldn\'t be read.', tone: 'neutral' }
+  if (i.failedReads?.includes('schedule')) return { text: 'Today\'s schedule couldn\'t be read.', tone: 'neutral' }
   return { text: 'Nothing to report yet.', tone: 'neutral' }
 }
 

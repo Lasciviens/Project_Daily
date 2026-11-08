@@ -39,6 +39,8 @@ export interface MissedSessions {
   isLoading: boolean
   items: RoutineAttention[]
   today: string
+  /** A read the list needs failed: no shape for the next visit's room (KeepRoom's remember). */
+  isError: boolean
 }
 
 /** Current-program routines not done for more than 7 days, with their skip
@@ -75,5 +77,5 @@ export function useMissedSessions(): MissedSessions {
     return missedSessionsFrom({ routines, program, lastTrained: lastTrainedByRoutine(history.sets), blocks, skips, today })
   }, [isLoading, routines, program, history, blocksData, blocksFailed, skipsData, skipsFailed, today])
 
-  return { isLoading, items, today }
+  return { isLoading, items, today, isError: routinesQ.isError || programQ.isError || historyQ.isError }
 }

@@ -143,9 +143,39 @@ console.log('A failed read is never learned as "nothing there"')
     ['Books\' Reading now', 'src/features/books/components/LibraryTab.tsx', /useRememberedCount\('books:reading', Math\.min\(reading\.length, READING_NOW_MAX\), !isLoading && !isError, 0\)/],
     ['the day list\'s room', 'src/features/daily/components/DayAgenda.tsx', /first=\{ROOM_DEFAULT_REM\[cols\]\} remember=\{!failed\}/],
     ['today\'s Next line', 'src/features/daily/components/DayAgenda.tsx', /if \(settled && !failed && viewingToday\) rememberNext\(day, hasNext\)/],
-    ['the brief\'s sections', 'src/features/home/components/DailyBrief.tsx', /pending\.has\(id\) \|\| failed\.has\(id\) \? '-'/],
+    ['the brief\'s sections', 'src/features/home/components/DailyBrief.tsx', /pending\.has\(id\) \|\| failed\.has\(id\) \|\| unsure\.has\(id\) \? '-'/],
+    ['the brief\'s headline', 'src/features/home/components/DailyBrief.tsx', /ids="brief:headline" loading=\{headlineLoading\} remember=\{failed\.size === 0 && unsure\.size === 0\}/],
+    ['Health\'s hero tiles', 'src/features/health/components/overview/HeroTile.tsx', /loading=\{!!isLoading\} remember=\{!failed\}/],
+    ['Training\'s recovery line', 'src/features/training/components/next/NextTab.tsx', /ids="training:recovery" loading=\{isLoading\} remember=\{!isError\}/],
+    ['Training\'s missed sessions', 'src/features/training/components/program/MissedSessions.tsx', /ids="training:missed" loading=\{isLoading\} remember=\{!isError\}/],
+    ['the muscle-watch line', 'src/features/health/goal/MuscleWatchCard.tsx', /ids="muscleWatch:line" loading=\{isLoading\} remember=\{!isError\}/],
   ]
   for (const [name, file, re] of sites) check(`${name}: learned only from an answered read`, re.test(code(file)))
+  check('Health passes each tile whether its reads failed (hero.failed)',
+    (code('src/features/health/components/overview/HealthHero.tsx').match(/ failed=\{hero\.failed\.(sleep|steps|exercise|rhr|weight|vitals)\}/g) || []).length === 6)
+  check('the brief leaves out of its memory a section a failed read left unsure (weather, rates, food, training, watch)',
+    /const unsure = useMemo/.test(code('src/features/home/hooks/useDailyBrief.ts')))
+
+  // Every place that keeps or learns room says what a failed read does: a new one can't slip through (owner-critic,
+  // 07.11.2026 — four places learned a failed read as "nothing there").
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const p = path.join(dir, e.name)
+    return e.isDirectory() ? walk(p) : /\.tsx?$/.test(e.name) ? [p] : []
+  })
+  const srcFiles = walk(path.join(root, 'src')).filter(f => !/shared[\\/](ui[\\/]KeepRoom\.tsx|hooks[\\/]useLayoutMemory\.ts)$/.test(f))
+  const noRemember = [], blindReady = []
+  for (const f of srcFiles) {
+    const src = fs.readFileSync(f, 'utf8')
+    const rel = path.relative(root, f)
+    for (const m of src.matchAll(/<KeepRoom\b([^>]*?)>/gs)) if (!/\bremember=/.test(m[1])) noRemember.push(rel)
+    for (const m of src.matchAll(/useRemembered(?:Flag|Count)\(([^\n]*)\)/g)) {
+      const ready = m[1].split(/,(?![^(]*\))/)[2]?.trim() ?? ''
+      const ok = /isError|Error\b|!error\b|failed|settled/.test(ready) || (ready === 'ready' && /const ready = \w+ != null/.test(src))
+      if (!ok) blindReady.push(`${rel}: ${ready || m[1]}`)
+    }
+  }
+  check('every <KeepRoom> says whether this outcome is one to remember (remember=…)', noRemember.length === 0, noRemember.join(', '))
+  check('every useRememberedFlag / useRememberedCount learns only when its read answered (an error term, or data present)', blindReady.length === 0, blindReady.join('; '))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
   check('Projects passes `settled` to all three of its memories', (projects.match(/, settled[,)]/g) || []).length === 3)
 }
@@ -198,8 +228,8 @@ check('Food: a failed day read is one line with Try again — never rings at zer
 {
   const filters = code('src/features/developer/components/ActivityLogFilters.tsx')
   const tab = code('src/features/developer/components/ActivityLogTab.tsx')
-  check('Developer: the Type select has one width that keeps the bar on one line with Clear all (10rem), and Clear all keeps its room only when the log had entries last time',
-    /typeSelect\('w-\[10rem\]'\)/.test(filters) && /\(hasLogs \|\| clearRoom\) &&/.test(filters)
+  check('Developer: the Type select has one width that keeps the bar on one line with Clear all (9.5rem, ~12px to spare), and Clear all keeps its room only when the log had entries last time',
+    /typeSelect\('w-\[9\.5rem\]'\)/.test(filters) && /\(hasLogs \|\| clearRoom\) &&/.test(filters)
       && /useRememberedFlag\('developer:log', logs\.length > 0, !isLoading && !error\) && isLoading/.test(tab) && /clearRoom=\{clearRoom\}/.test(tab))
 }
 check('Shop and Wishes: the filters show while loading', /filters: \(all\.length > 0 \|\| isLoading\)/.test(code('src/features/shop/components/WishlistView.tsx'))
@@ -209,7 +239,7 @@ check('Books: Reading now keeps room while the library loads only for as many bo
   /reading: isLoading \? readingRoom > 0 && <ReadingNowSkeleton books=\{readingRoom\} \/>/.test(library) && !/isLoading \? <ReadingNowSkeleton \/>/.test(library))
 const tile = code('src/features/health/components/overview/HeroTile.tsx')
 check('Health: each hero tile\'s middle keeps the room it took last time (a tile with readings is twice one without); a first visit one line and the Aim',
-  /<KeepRoom as="span" ids=\{`health:tile:\$\{id\}`\} loading=\{!!isLoading\} first=\{FIRST_ROOM_REM\}/.test(tile) && /const FIRST_ROOM_REM = 3\.5/.test(tile)
+  /<KeepRoom as="span" ids=\{`health:tile:\$\{id\}`\} loading=\{!!isLoading\} remember=\{!failed\} first=\{FIRST_ROOM_REM\}/.test(tile) && /const FIRST_ROOM_REM = 3\.5/.test(tile)
     && /absolute inset-0 flex flex-col gap-2 overflow-hidden/.test(tile)
     && (code('src/features/health/components/overview/HealthHero.tsx').match(/<HeroTile id="/g) || []).length === 6)
 

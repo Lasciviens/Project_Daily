@@ -165,6 +165,8 @@ export interface HealthHero {
   goalWeightKg: number | null
   /** False while the goal row is still loading (the defaults are showing). */
   goalLoaded: boolean
+  /** Per tile: a read it is drawn from failed. No shape for the next visit's room (HeroTile's KeepRoom). */
+  failed: Record<'sleep' | 'steps' | 'exercise' | 'rhr' | 'weight' | 'vitals', boolean>
 }
 
 /** Exercise minutes and strength days per week, for the weeks the period
@@ -386,5 +388,9 @@ export function useHealthHero(win: HealthWindow): HealthHero {
   return {
     anchor: A, from: F, days, isDay, today, isToday, ctx, profile, sleep, steps, exercise, rhr, weight, vitals,
     vo2: vo2Q.data ?? null, aims, goalWeightKg, goalLoaded,
+    failed: {
+      sleep: sleepQ.isError, steps: stepsQ.isError, exercise: exQ.isError || hevyQ.isError, rhr: rhrQ.isError,
+      weight: weightQ.isError || measQ.isError, vitals: hrvQ.isError || respQ.isError || spo2Q.isError || tempQ.isError,
+    },
   }
 }

@@ -141,7 +141,9 @@ export function FootballPage() {
                   </KeepRoom>
                 </Card>
               ),
-              results: (
+              // A failed read with no results to show leaves the card out: Coming up has the one error line, and an
+              // empty Results card under it read as "no results" (owner-critic, 07.11.2026).
+              results: (results.length > 0 || failed.length === 0 || listsLoading) && (
                 <Card>
                   <CardHeader title="Results" subtitle="Last 10 days" variant="label" />
                   <KeepRoom

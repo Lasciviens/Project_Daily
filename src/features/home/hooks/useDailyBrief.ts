@@ -104,6 +104,9 @@ export interface BriefState {
   pending: ReadonlySet<BriefSectionId>
   /** Sections whose own read failed: one line with Try again in the section's place, never an empty answer. */
   failed: ReadonlyMap<BriefSectionId, BriefFailure>
+  /** Sections a failed read leaves unsure (weather, rates, food, training, watch): shown or not, nothing to learn
+   *  from — the layout memory skips them, or one weather hiccup would keep no room for Weather next time. */
+  unsure: ReadonlySet<BriefSectionId>
 }
 
 export function useDailyBrief(): BriefState {
@@ -112,15 +115,15 @@ export function useDailyBrief(): BriefState {
 
   const overview = useTodayOverview(date)
   const day = useDayTasks(date)
-  const { data: weather, isLoading: weatherLoading } = useWeather()
-  const { data: currency, isLoading: currencyLoading } = useCurrencyRates()
+  const { data: weather, isLoading: weatherLoading, isError: weatherError } = useWeather()
+  const { data: currency, isLoading: currencyLoading, isError: currencyError } = useCurrencyRates()
   const training = useWeekTrainingStats()
-  const { data: profile, isLoading: profileLoading } = useAthleteProfile()
-  const { data: nutrition, isLoading: nutritionLoading } = useDayNutrition(date)
+  const { data: profile, isLoading: profileLoading, isError: profileError } = useAthleteProfile()
+  const { data: nutrition, isLoading: nutritionLoading, isError: nutritionError } = useDayNutrition(date)
   const { targets } = useDayTargets()
-  const { data: waterMl, isLoading: waterLoading } = useWaterDay(date)
-  const { data: tvEntries, isLoading: tvLoading } = useTVSeries()
-  const { data: movieEntries, isLoading: moviesLoading } = useMovies()
+  const { data: waterMl, isLoading: waterLoading, isError: waterError } = useWaterDay(date)
+  const { data: tvEntries, isLoading: tvLoading, isError: tvError } = useTVSeries()
+  const { data: movieEntries, isLoading: moviesLoading, isError: moviesError } = useMovies()
 
   // The series you touched last — the same next-episode query Daily's Watch next card uses.
   const current = useMemo(() => {
@@ -128,7 +131,7 @@ export function useDailyBrief(): BriefState {
     for (const e of tvEntries ?? []) if (e.status === 'watching' && (!best || e.updated_at > best.updated_at)) best = e
     return best
   }, [tvEntries])
-  const { data: nextEp, isLoading: nextEpLoading } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
+  const { data: nextEp, isLoading: nextEpLoading, isError: nextEpError } = useNextEpisode(current?.id ?? null, current?.tv_series.tmdb_id ?? null, current?.tv_series.number_of_episodes ?? null)
 
   const brief = useMemo(() => {
     const next = overview.nextUp
@@ -145,6 +148,10 @@ export function useDailyBrief(): BriefState {
         open: day.open.map(t => ({ title: t.title, priority: t.priority, overdue: isOverdueOn(t, date), dueTime: t.due_time ?? null })),
         doneToday: day.counts.done,
       } : null,
+      failedReads: [
+        ...(day.isError && !day.ready ? ['tasks' as const] : []),
+        ...(!overview.isLoading && overview.scheduleError ? ['schedule' as const] : []),
+      ],
       schedule: overview.isLoading || overview.scheduleError ? null : {
         next: next ? { title: next.title, startLabel: next.startLabel, startHour: next.startHour, inProgress: next.inProgress } : null,
         remainingCount: overview.upcoming.length,
@@ -182,7 +189,7 @@ export function useDailyBrief(): BriefState {
       nokTry: currency ? { rate: currency.primary.rate, changePct: currency.primary.changePct } : null,
     }
     return buildDailyBrief(input)
-  }, [hour, date, day.open, day.counts.done, day.ready, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
+  }, [hour, date, day.open, day.counts.done, day.ready, day.isError, overview, training, profile, weather, currency, nutrition, targets, waterMl, tvEntries, movieEntries, current, nextEp])
 
   // Each section shows once its own reads are in, never waiting for another's; the card keeps the room of the
   // ones still on the way (DailyBrief), so a section landing late doesn't push the cards under it.
@@ -210,5 +217,16 @@ export function useDailyBrief(): BriefState {
     }
     return out
   }, [tasksError, tasksFetching, refetchTasks, overview.isLoading, overview.scheduleError, overview.refetchSchedule, overview.scheduleRetrying])
-  return { brief, hour, headlineLoading: tasksLoading || overview.isLoading, pending, failed }
+  // A read that failed with nothing to show: its section's shown / not shown teaches the memory nothing.
+  const unsure = useMemo(() => {
+    const out = new Set<BriefSectionId>()
+    if (training.isError || (profileError && profile === undefined)) out.add('training')
+    if (weatherError && weather === undefined) out.add('day')
+    if ((nutritionError && nutrition === undefined) || (waterError && waterMl === undefined)) out.add('nutrition')
+    if ((tvError && tvEntries === undefined) || (moviesError && movieEntries === undefined) || (nextEpError && nextEp === undefined)) out.add('watch')
+    if (currencyError && currency === undefined) out.add('money')
+    return out
+  }, [training.isError, profileError, profile, weatherError, weather, nutritionError, nutrition, waterError, waterMl,
+    tvError, tvEntries, moviesError, movieEntries, nextEpError, nextEp, currencyError, currency])
+  return { brief, hour, headlineLoading: tasksLoading || overview.isLoading, pending, failed, unsure }
 }

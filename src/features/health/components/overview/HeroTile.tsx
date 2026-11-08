@@ -45,12 +45,14 @@ export interface HeroTileProps {
   /** What the short name stands for and means in everyday life. */
   plain: string
   isLoading?: boolean
+  /** A read the tile is drawn from failed: its height is not remembered for the next visit. */
+  failed?: boolean
   /** Shown instead of the value when there is no data. */
   empty?: string | null
   onOpen: () => void
 }
 
-export function HeroTile({ id, icon, label, value, unit, sub, change, band, better, aim, plain, isLoading, empty, onOpen }: HeroTileProps) {
+export function HeroTile({ id, icon, label, value, unit, sub, change, band, better, aim, plain, isLoading, failed, empty, onOpen }: HeroTileProps) {
   return (
     <button type="button" onClick={onOpen} aria-haspopup="dialog"
       className="card-interactive flex min-h-[44px] min-w-0 flex-col gap-2 p-4 text-left">
@@ -61,7 +63,7 @@ export function HeroTile({ id, icon, label, value, unit, sub, change, band, bett
       </span>
       {/* While the numbers load, the middle keeps the room this tile's took last time (THEME.md §5): a tile with
           readings is twice as tall as one without, and only the owner's data says which it will be. */}
-      <KeepRoom as="span" ids={`health:tile:${id}`} loading={!!isLoading} first={FIRST_ROOM_REM} skeleton={TILE_SKELETON}
+      <KeepRoom as="span" ids={`health:tile:${id}`} loading={!!isLoading} remember={!failed} first={FIRST_ROOM_REM} skeleton={TILE_SKELETON}
         className={cx('flex flex-col gap-2', isLoading && 'relative')}>
         {empty ? (
           <span className="text-meta text-fg-muted">{empty}</span>

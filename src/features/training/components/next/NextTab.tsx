@@ -81,13 +81,13 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
 const RECOVERY_BOX = 'flex max-w-2xl flex-col gap-1 rounded-row border border-line bg-surface px-3 py-2'
 
 function RecoveryLine() {
-  const { notes, isLoading } = useRecoveryNotes()
+  const { notes, isLoading, isError } = useRecoveryNotes()
   const inRail = useBoardStep() > 1
   // Its reads (last night, the resting heart rate) come in on their own: until then it keeps the room it took last
   // time, the first time its heading and one note — a note shows whenever the reads answer (KeepRoom, THEME.md §5).
   return (
     <KeepRoom
-      ids="training:recovery" loading={isLoading} className="flex flex-col"
+      ids="training:recovery" loading={isLoading} remember={!isError} className="flex flex-col"
       skeleton={(
         <div aria-hidden className={cx(RECOVERY_BOX, 'w-full flex-1')}>
           <span className="flex h-4 items-center"><Skeleton className="h-2.5 w-28" /></span>

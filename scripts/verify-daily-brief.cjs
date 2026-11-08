@@ -245,8 +245,14 @@ console.log('\n12 · A first visit keeps room only for what every account shows 
   check('…and no Tasks section', !sec(noTasks, 'tasks'))
   const next = buildDailyBrief({ hour: 15, schedule: { next: { title: 'Dentist', startLabel: '16:00', startHour: 16, inProgress: false }, remainingCount: 1 } })
   check('…the schedule still leads the headline', next.headline.text === 'Next up at 16:00: Dentist.', next.headline.text)
-  const clear = buildDailyBrief({ hour: 15, tasks: { open: [], doneToday: 0 }, nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
-  check('tasks read and none open: "A clear day" stays', clear.headline.text === 'A clear day — nothing urgent.', clear.headline.text)
+  const clear = buildDailyBrief({ hour: 15, tasks: { open: [], doneToday: 0 }, schedule: { next: null, remainingCount: 0 }, nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
+  check('tasks and schedule read, nothing open or next: "A clear day" stays', clear.headline.text === 'A clear day — nothing urgent.', clear.headline.text)
+  const noSchedule = buildDailyBrief({ hour: 15, tasks: { open: [], doneToday: 0 }, failedReads: ['schedule'], nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
+  check('schedule unread (a failed read) and no open tasks: never "A clear day" — it says the schedule couldn\'t be read',
+    noSchedule.headline.text === 'Today\'s schedule couldn\'t be read.' && noSchedule.headline.tone === 'neutral', noSchedule.headline.text)
+  const tasksFailed = buildDailyBrief({ hour: 15, failedReads: ['tasks'], nutrition: { kcal: 900, kcalTarget: 2200, proteinG: 60, proteinTarget: 150 } })
+  check('tasks unread with nothing else to say: the headline says so, never "Nothing to report yet" (it read as still loading)',
+    tasksFailed.headline.text === 'Today\'s tasks couldn\'t be read.' && tasksFailed.headline.tone === 'neutral', tasksFailed.headline.text)
   check('each section carries its label from BRIEF_SECTION_TITLE (the failed line uses the same)', bare(9).sections.every(s => s.title === BRIEF_SECTION_TITLE[s.id]))
 }
 

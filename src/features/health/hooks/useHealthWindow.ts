@@ -124,6 +124,7 @@ export interface SleepWindow {
   summary: WindowSummary
   isLoading: boolean
   isPlaceholderData: boolean
+  isError: boolean
 }
 
 export function useSleepWindow(win: HealthWindow): SleepWindow {
@@ -138,6 +139,7 @@ export function useSleepWindow(win: HealthWindow): SleepWindow {
       summary: summarizeWindow(rule.kind, nights.map(n => ({ date: n.date, value: n.total })), opts(win, rule.todayComplete)),
       isLoading: q.isLoading,
       isPlaceholderData: q.isPlaceholderData,
+      isError: q.isError,
     }
-  }, [data, win, q.isLoading, q.isPlaceholderData])
+  }, [data, win, q.isLoading, q.isPlaceholderData, q.isError])
 }

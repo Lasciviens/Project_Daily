@@ -82,7 +82,7 @@ function expected(id: BriefSectionId, always: ReadonlySet<BriefSectionId>): bool
  * behind the top of this card, the page's first, placed beside the greeting.
  */
 export function DailyBrief() {
-  const { brief, hour, headlineLoading, pending, failed } = useDailyBrief()
+  const { brief, hour, headlineLoading, pending, failed, unsure } = useDailyBrief()
   const isPhone = useBreakpoint() === 'phone'
   const [expanded, setExpanded] = useState(false)
   const byId = new Map(brief.sections.map(s => [s.id, s]))
@@ -99,7 +99,7 @@ export function DailyBrief() {
   const { layerRef: artLayerRef, contentRef: artContentRef, place: artPlace, behind: artBehind } = useHeroArt<HTMLElement>()
   // Which sections showed, for the next visit's room (every section, also the ones folded away on a phone). A
   // section still loading or whose read failed teaches nothing.
-  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) || failed.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
+  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) || failed.has(id) || unsure.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
   useEffect(() => {
     BRIEF_SECTION_ORDER.forEach((id, i) => { if (shown[i] !== '-') rememberLayout(shownKey(id), shown[i] === '1') })
   }, [shown])
@@ -118,7 +118,7 @@ export function DailyBrief() {
             ? <Skeleton rounded="rounded-full" className="mt-1.5 h-2 w-2 shrink-0" />
             : <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />}
           <KeepRoom
-            ids="brief:headline" loading={headlineLoading} className="min-w-0 flex-1"
+            ids="brief:headline" loading={headlineLoading} remember={failed.size === 0 && unsure.size === 0} className="min-w-0 flex-1"
             skeleton={<span aria-hidden className={LINE_BOX}><Skeleton className="h-3.5 w-3/4" /></span>}
           >
             <Line line={brief.headline} lead />
@@ -135,7 +135,7 @@ export function DailyBrief() {
                 const failure = failed.get(id)
                 return (
                   <KeepRoom
-                    key={id} ids={`brief:${id}`} loading={pending.has(id)} remember={!failure} className={SECTION_GRID}
+                    key={id} ids={`brief:${id}`} loading={pending.has(id)} remember={!failure && !unsure.has(id)} className={SECTION_GRID}
                     skeleton={<SectionSkeleton />}
                   >
                     {(section || failure) && (

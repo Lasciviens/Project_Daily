@@ -64,11 +64,11 @@ function MuscleWatchBody({ watch }: { watch: MuscleWatch }) {
  *  reading (the goal report and the training history) is slow: until it is in, the line keeps the room it took
  *  last time — none the first time, as it shows only on some days (KeepRoom, THEME.md §5). */
 export function MuscleWatchLine() {
-  const { watch, isLoading } = useMuscleWatch()
+  const { watch, isLoading, isError } = useMuscleWatch()
   const shown = watch && (watch.level === 'watch' || watch.level === 'likely_loss') ? watch : null
   return (
     <KeepRoom
-      ids="muscleWatch:line" loading={isLoading} first="none" className="flex flex-col"
+      ids="muscleWatch:line" loading={isLoading} remember={!isError} first="none" className="flex flex-col"
       skeleton={<Skeleton rounded="rounded-row" className="min-h-11 w-full max-w-2xl flex-1" />}
     >
       {shown && (

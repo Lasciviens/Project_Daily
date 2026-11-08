@@ -93,7 +93,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
       <div className="grid grid-cols-1 gap-3 @[36rem]:grid-cols-2 @[64rem]:grid-cols-3">
         {/* Only the night that ended on this day counts as "last night" — a
             missing night says so; it is never replaced by an older one. */}
-        <HeroTile id="sleep" icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
+        <HeroTile id="sleep" icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading} failed={hero.failed.sleep}
           empty={sleep.value == null ? (isDay ? `${nightMissingText(hero.anchor, hero.today)}.` : 'No sleep recorded in this period.') : null}
           value={counted(sleep.value, hm)}
           unit={isDay ? nightNoun(hero.anchor, hero.today) : '/night · average'}
@@ -107,7 +107,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(sleep.cls)} better="7–9 h is best, and a steady wake time" aim={hero.aims.sleep}
           plain={BENCHMARKS.sleep_duration.plain} />
 
-        <HeroTile id="steps" icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
+        <HeroTile id="steps" icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading} failed={hero.failed.steps}
           empty={steps.value == null ? `No steps recorded ${isDay ? 'that day' : 'in this period'}.` : null}
           value={counted(steps.value)} unit={isDay ? (steps.partial ? 'so far' : 'steps') : '/day · average'}
           sub={steps.todaySoFar != null ? <>Today so far {num(steps.todaySoFar)}</> : null}
@@ -115,7 +115,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(steps.cls)} better={BETTER_LABEL[betterFor(BENCHMARKS.step_count.higherIsBetter)]} aim={hero.aims.steps}
           plain={BENCHMARKS.step_count.plain} />
 
-        <HeroTile id="exercise" icon={<Dumbbell />} label="Exercise" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
+        <HeroTile id="exercise" icon={<Dumbbell />} label="Exercise" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading} failed={hero.failed.exercise}
           empty={exercise.minutes == null && exercise.strengthDays === 0 ? `No exercise minutes or workouts ${isDay ? 'that day' : 'in this period'}.` : null}
           value={counted(exercise.minutes ?? 0)} unit={exUnit}
           sub={isDay
@@ -125,7 +125,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(exercise.cls)} better={BETTER_LABEL.higher} aim={hero.aims.exercise}
           plain={TILE_PLAIN.exercise} />
 
-        <HeroTile id="rhr" icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
+        <HeroTile id="rhr" icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading} failed={hero.failed.rhr}
           empty={rhr.value == null ? (isDay ? 'No resting heart-rate reading that day.' : 'No resting heart-rate readings in this period.') : null}
           value={counted(rhr.value)} unit={`bpm${avg}`}
           sub={rhr.baseline ? <>Your usual {num(rhr.baseline.median)} bpm</> : 'Your usual needs 14 days of readings'}
@@ -133,7 +133,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(rhr.cls)} better={BETTER_LABEL.lower} aim={hero.aims.rhr}
           plain={BENCHMARKS.resting_heart_rate.plain} />
 
-        <HeroTile id="weight" icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
+        <HeroTile id="weight" icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading} failed={hero.failed.weight}
           empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
           value={counted(weight.value ?? weight.lastKg, v => num(v, 1))} unit={weight.value == null ? 'kg · last weigh-in' : `kg${avg}`}
           sub={<>
@@ -144,7 +144,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={bodyCls} better={BETTER_LABEL.range} aim={hero.aims.weight}
           plain={TILE_PLAIN.weight} />
 
-        <HeroTile id="vitals" icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
+        <HeroTile id="vitals" icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading} failed={hero.failed.vitals}
           empty={vitals.hrv == null && vitals.summary.checked === 0 ? `Not enough overnight readings ${isDay ? 'that night' : 'in this period'}.` : null}
           value={counted(vitals.hrv)} unit={`ms HRV${avg}`}
           sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
