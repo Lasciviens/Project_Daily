@@ -1,5 +1,5 @@
 // Weighing logic shared by every scale firmware: spike filter, smoothing, tare,
-// calibration, the "stable" flag and zero tracking.
+// calibration, the "stable" flag, zero tracking and the frozen-reading check.
 // Pure C++ with no Arduino calls, so scripts/verify-scale-core.mjs can test it on a computer.
 #pragma once
 #include <stdint.h>
@@ -15,6 +15,9 @@ struct ScaleConfig {
   int32_t jumpCountsUncalibrated = 2000;
   int32_t stableSpreadCountsUncalibrated = 500;
   int32_t minCalibrationCounts = 1000;    // a known weight must move the reading at least this much
+  // A real HX711 never gives the exact same count this many times in a row (its noise
+  // moves the last digits), so that many identical readings mean a wiring fault.
+  uint8_t frozenReadings = 20;
 };
 
 class ScaleCore {
@@ -44,6 +47,9 @@ class ScaleCore {
   int32_t displayGrams() const;     // rounded to whole grams
   bool stable() const;
   bool overloaded() const;
+  // The last frozenReadings raw readings were identical: a wiring fault, not a weight.
+  // A saturated reading is reported by overloaded() instead.
+  bool frozen() const;
   uint8_t readings() const { return count_; }  // readings in the current window
 
  private:
@@ -51,6 +57,7 @@ class ScaleCore {
   void restartWindow(int32_t value);
   void push(int32_t value);
   float spreadCounts() const;
+  bool saturated() const;           // the HX711 is pinned at the end of its range
 
   ScaleConfig config_;
   int32_t window_[MAX_WINDOW];
@@ -61,6 +68,7 @@ class ScaleCore {
   int32_t recent_[3];               // the last raw readings, for the median-of-3 spike filter
   uint8_t recentCount_ = 0;
   int32_t lastRaw_ = 0;
+  uint32_t sameRawCount_ = 0;       // how many readings in a row equal lastRaw_
 
   int32_t offset_ = 0;
   float countsPerGram_ = 0.0f;
