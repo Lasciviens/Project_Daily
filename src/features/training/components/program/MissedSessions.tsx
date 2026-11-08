@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarCheck, CalendarPlus, SkipForward, Undo2 } from 'lucide-react'
-import { Button, Card, cx } from '../../../../shared/ui'
+import { Button, Card, KeepRoom, Skeleton, cx } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { useEntityModal } from '../../../../shared/modals'
 import { openPlanRoutine } from '../../planTraining'
@@ -108,14 +108,22 @@ export function MissedSessionsList({ items, today, className }: { items: readonl
 }
 
 /** The Next tab's version: its own card, overdue and skipped only (a
- *  replanned session already shows up as the next planned one). */
+ *  replanned session already shows up as the next planned one). While its
+ *  reads load it keeps the room it took last time — none the first time, as
+ *  most days have nothing missed (KeepRoom, THEME.md §5). */
 export function MissedSessionsCard() {
-  const { items, today } = useMissedSessions()
+  const { items, today, isLoading, isError } = useMissedSessions()
   const shown = items.filter(a => a.kind !== 'replanned')
-  if (shown.length === 0) return null
   return (
-    <Card className="max-w-2xl">
-      <MissedSessionsList items={shown} today={today} />
-    </Card>
+    <KeepRoom
+      ids="training:missed" loading={isLoading} remember={!isError} first="none" className="flex flex-col"
+      skeleton={<Skeleton rounded="rounded-card" className="min-h-24 max-w-2xl flex-1" />}
+    >
+      {shown.length > 0 && (
+        <Card className="max-w-2xl">
+          <MissedSessionsList items={shown} today={today} />
+        </Card>
+      )}
+    </KeepRoom>
   )
 }

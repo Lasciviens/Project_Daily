@@ -1,5 +1,4 @@
-// deno-lint-ignore-file no-explicit-any
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -62,7 +61,7 @@ export interface HevyWorkout {
 }
 
 export async function upsertWorkoutToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   workout: HevyWorkout,
 ) {
@@ -119,7 +118,7 @@ export async function upsertWorkoutToDb(
         .insert(
           exercise.sets.map((s) => ({
             user_id: userId,
-            hevy_exercise_id: (insertedExercise as any).id,
+            hevy_exercise_id: (insertedExercise as { id: string }).id,
             exercise_template_id: exercise.exercise_template_id,
             index: s.index,
             type: s.type,
@@ -174,7 +173,7 @@ export interface HevyRoutine {
 }
 
 export async function upsertRoutineToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   routine: HevyRoutine,
 ) {
@@ -230,7 +229,7 @@ export async function upsertRoutineToDb(
         .insert(
           exercise.sets.map((s) => ({
             user_id: userId,
-            hevy_routine_exercise_id: (insertedExercise as any).id,
+            hevy_routine_exercise_id: (insertedExercise as { id: string }).id,
             index: s.index,
             type: s.type,
             weight_kg: s.weight_kg,
@@ -276,9 +275,12 @@ export function hevyTemplateId(v: unknown): string | null {
   return typeof s === 'string' && HEVY_TEMPLATE_ID.test(s) ? s : null
 }
 
+/** A JSON object (an array too, as `typeof` says): each field is read and checked on its own. */
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object'
+
 /** One ExerciseTemplate, or null when it has no usable id, title or type. */
-export function cleanExerciseTemplate(raw: any): HevyTemplateRow | null {
-  if (!raw || typeof raw !== 'object') return null
+export function cleanExerciseTemplate(raw: unknown): HevyTemplateRow | null {
+  if (!isRecord(raw)) return null
   const id = hevyTemplateId(raw.id)
   const title = typeof raw.title === 'string' ? raw.title.trim() : ''
   const type = typeof raw.type === 'string' ? raw.type.trim() : ''
@@ -299,14 +301,14 @@ export function cleanExerciseTemplate(raw: any): HevyTemplateRow | null {
 
 // A column added by a migration that hasn't run (42703 from Postgres,
 // PGRST204 from PostgREST's schema cache).
-function isMissingColumn(error: any, column: string): boolean {
+function isMissingColumn(error: { code?: string; message?: string } | null, column: string): boolean {
   return (error?.code === '42703' || error?.code === 'PGRST204') && String(error?.message ?? '').includes(column)
 }
 
 /** Stores templates and their secondary muscles: one upsert, one delete and
  *  one insert for the whole batch (the library is a few hundred rows). */
 export async function upsertExerciseTemplatesToDb(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   templates: HevyTemplateRow[],
 ) {
@@ -321,7 +323,7 @@ export async function upsertExerciseTemplatesToDb(
   // Before migration 154 there is no thumbnail_url: store the rest.
   if (error && isMissingColumn(error, 'thumbnail_url')) {
     ;({ error } = await supabase.from('hevy_exercise_templates')
-      .upsert(rows.map(({ thumbnail_url: _t, ...r }) => r), { onConflict: 'id' }))
+      .upsert(rows.map(({ thumbnail_url: _t, ...r }) => { void _t; return r }), { onConflict: 'id' }))
   }
   if (error) throw error
 
@@ -341,10 +343,10 @@ export async function upsertExerciseTemplatesToDb(
 }
 
 /** A GET with the key in its header. `data` is null on an empty or non-JSON body. */
-export async function hevyGetJson(path: string, hevyApiKey: string): Promise<{ status: number; data: any }> {
+export async function hevyGetJson(path: string, hevyApiKey: string): Promise<{ status: number; data: unknown }> {
   const res = await fetch(`https://api.hevyapp.com${path}`, { headers: { 'api-key': hevyApiKey } })
   const text = await res.text().catch(() => '')
-  let data: any = null
+  let data: unknown
   try { data = text ? JSON.parse(text) : null } catch { data = null }
   return { status: res.status, data }
 }
@@ -356,7 +358,7 @@ export async function fetchExerciseTemplateById(id: string, hevyApiKey: string):
   const { status, data } = await hevyGetJson(`/v1/exercise_templates/${encodeURIComponent(id)}`, hevyApiKey)
   if (status === 404) return null
   if (status < 200 || status >= 300) throw new Error(`Hevy API ${status}: GET /v1/exercise_templates/{id}`)
-  const raw = data?.exercise_template ?? data
+  const raw = isRecord(data) ? data.exercise_template ?? data : data
   return cleanExerciseTemplate(Array.isArray(raw) ? raw[0] : raw)
 }
 
@@ -365,7 +367,7 @@ export async function fetchExerciseTemplateById(id: string, hevyApiKey: string):
  *  fetched by id and stored. One that Hevy can't return is skipped (it is
  *  tried again with the next workout that names it). Returns how many came. */
 export async function ensureExerciseTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   workouts: Array<{ exercises?: Array<{ exercise_template_id?: unknown }> }>,
   hevyApiKey: string,
@@ -404,9 +406,9 @@ export interface HevyUserInfo {
 }
 
 /** GET /v1/user/info answers { data: UserInfo }; a bare UserInfo is tolerated. */
-export function cleanUserInfo(body: any): HevyUserInfo | null {
-  const raw = body?.data ?? body
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+export function cleanUserInfo(body: unknown): HevyUserInfo | null {
+  const raw = isRecord(body) ? body.data ?? body : body
+  if (!isRecord(raw) || Array.isArray(raw)) return null
   const username = typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim().slice(0, 200) : null
   const info: HevyUserInfo = {
     username,
@@ -419,8 +421,8 @@ export function cleanUserInfo(body: any): HevyUserInfo | null {
 }
 
 /** GET /v1/workouts/count answers { workout_count }. */
-export function cleanWorkoutCount(body: any): number | null {
-  const n = body?.workout_count
+export function cleanWorkoutCount(body: unknown): number | null {
+  const n = isRecord(body) ? body.workout_count : undefined
   return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null
 }
 
@@ -430,7 +432,7 @@ export function cleanWorkoutCount(body: any): number | null {
  *  a status or "unexpected shape", never a header or a key), keeps the
  *  facts it already had, and says so in `error`; a good read clears it. */
 export async function refreshHevyAccount(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<{ ok: boolean; hevy_workout_count: number | null; error: string | null }> {
@@ -480,7 +482,7 @@ export async function hevyListAll(
   key: string,
   pageSize: number,
   hevyApiKey: string,
-  onPage: (items: any[]) => Promise<void>,
+  onPage: (items: unknown[]) => Promise<void>,
 ): Promise<{ complete: boolean; total: number }> {
   let total = 0
   for (let page = 1; page <= 1000; page++) {
@@ -489,11 +491,12 @@ export async function hevyListAll(
     // Past the last page some lists answer 404 ("Page not found") instead of an empty list.
     if (status === 404 && page > 1) return { complete: true, total }
     if (status < 200 || status >= 300) throw new Error(`Hevy API ${status}: GET ${path}`)
-    const items = data?.[key]
+    const body: Record<string, unknown> = isRecord(data) ? data : {}
+    const items = body[key]
     if (!Array.isArray(items)) return { complete: false, total }
     if (items.length > 0) await onPage(items)
     total += items.length
-    const pageCount = Number(data?.page_count)
+    const pageCount = Number(body.page_count)
     if (Number.isFinite(pageCount) ? page >= pageCount : items.length === 0) return { complete: true, total }
     if (items.length === 0) return { complete: false, total }
   }
@@ -502,15 +505,16 @@ export async function hevyListAll(
 
 /** Every routine folder, page by page (at most 10 per page), stored. */
 export async function syncAllRoutineFolders(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
   const { total } = await hevyListAll('/v1/routine_folders', 'routine_folders', 10, hevyApiKey, async (items) => {
     const now = new Date().toISOString()
     const rows = items
-      .filter((f: any) => Number.isSafeInteger(f?.id) && f.id > 0 && typeof f?.title === 'string')
-      .map((f: any) => ({ id: f.id, user_id: userId, title: f.title, synced_at: now }))
+      .filter((f): f is { id: number; title: string } =>
+        isRecord(f) && typeof f.id === 'number' && Number.isSafeInteger(f.id) && f.id > 0 && typeof f.title === 'string')
+      .map((f) => ({ id: f.id, user_id: userId, title: f.title, synced_at: now }))
     if (rows.length === 0) return
     const { error } = await supabase.from('hevy_routine_folders').upsert(rows, { onConflict: 'id' })
     if (error) throw error
@@ -520,7 +524,7 @@ export async function syncAllRoutineFolders(
 
 /** Hevy's whole exercise library (custom exercises included), 100 per page. */
 export async function syncAllExerciseTemplates(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -564,7 +568,7 @@ async function hevyGet(path: string, hevyApiKey: string) {
 // Step 3: Routines
 // ---------------------------------------------------------------------------
 async function syncRoutines(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -597,7 +601,7 @@ async function syncRoutines(
 // Step 4: Workouts
 // ---------------------------------------------------------------------------
 async function syncWorkouts(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -633,7 +637,7 @@ async function syncWorkouts(
 // Step 5: Body Measurements
 // ---------------------------------------------------------------------------
 async function syncBodyMeasurements(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   userId: string,
   hevyApiKey: string,
 ): Promise<number> {
@@ -797,7 +801,7 @@ Deno.serve(async (req) => {
       workouts = await syncWorkouts(supabase, user.id, hevyApiKey)
       bodyMeasurements = await syncBodyMeasurements(supabase, user.id, hevyApiKey)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err)
+      const msg = err instanceof Error ? err.message : (err as { message?: string } | null)?.message ?? JSON.stringify(err)
       // 'Hevy API error …' (hevyGet) and 'Hevy API <status>: …' (the shared block).
       if (msg.includes('Hevy API')) {
         return new Response(JSON.stringify({ error: msg }), {
@@ -839,7 +843,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error
       ? err.message
-      : (err as any)?.message ?? JSON.stringify(err)
+      : (err as { message?: string } | null)?.message ?? JSON.stringify(err)
     console.error('hevy-initial-sync error:', msg)
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,

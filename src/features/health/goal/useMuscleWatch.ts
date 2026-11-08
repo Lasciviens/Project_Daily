@@ -21,9 +21,9 @@ const MAX_WINDOW_DAYS = 182
  *  the Goal progress card opens on, so the cache is shared) plus the training
  *  history's current-program lifts and sessions. Health → Goal progress, the
  *  Overview insights and Training → Next / Progress all read it here. */
-export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolean } {
+export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolean; isError: boolean } {
   const d = useGoalReport(28)
-  const { data: history, isLoading: loadingHistory } = useTrainingHistory()
+  const { data: history, isLoading: loadingHistory, isError: historyFailed } = useTrainingHistory()
   const { data: program } = useCurrentProgramRoutines()
   const { data: profile } = useAthleteProfile()
   const report = d.report
@@ -67,5 +67,6 @@ export function useMuscleWatch(): { watch: MuscleWatch | null; isLoading: boolea
     })
   }, [report, history, program, profile, phaseStart, muscleGoal])
 
-  return { watch, isLoading: !watch && (d.isLoading || loadingHistory) }
+  // isError: a failed read is no shape for the next visit's room (KeepRoom's remember).
+  return { watch, isLoading: !watch && (d.isLoading || loadingHistory), isError: !watch && (d.isError || historyFailed) }
 }

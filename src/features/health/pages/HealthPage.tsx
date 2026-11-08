@@ -1,29 +1,12 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
-import { PageContainer, PageHeader, useBoardStep, type BoardLayouts } from '../../../shared/ui'
-import { keysAt } from '../../../shared/ui/pageBoardRules'
-import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
+import { Suspense } from 'react'
+import { PageContainer, PageHeader, SkeletonTab } from '../../../shared/ui'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useHealthProfile } from '../../training/hooks/useAthleteProfile'
-import { GoalReportCard } from '../goal/GoalReportCard'
 import { HealthRangeBar } from '../components/HealthRangeBar'
 import { useRangeWindow } from '../components/dateNavModel'
-import { ActivityRings } from '../components/ActivityRings'
-import { SleepSection } from '../components/SleepSection'
-import { StepsSection } from '../components/StepsSection'
-import { EnergySection } from '../components/EnergySection'
-import { HeartSection } from '../components/HeartSection'
-import { VitalsReadingCard } from '../components/VitalsReadingCard'
-import { BodyScaleCard } from '../components/BodySection'
-import { WeeklyChangesCard } from '../components/body/WeeklyChangesCard'
-import { HevyMeasurementsCard } from '../components/body/HevyMeasurementsCard'
-import { CardioFitnessSection } from '../components/CardioFitnessSection'
-import { HealthWorkoutsList } from '../components/HealthWorkoutsList'
-import { MetricMiniGrid } from '../components/MetricMiniGrid'
-import { ACTIVITY_EXTRA_METRICS, CARDIO_EXTRA_METRICS, HABIT_METRICS, MOBILITY_METRICS, SLEEP_EXTRA_METRICS } from '../components/miniMetrics'
-import { HEALTH_SECTIONS, type HealthRange } from '../components/sectionTypes'
-import {
-  ACTIVITY_BOARD, BODY_BOARD, CARDIO_BOARD, HEART_BOARD, OVERVIEW_BOARD, SLEEP_BOARD,
-} from '../healthBoards'
+import { HEALTH_SECTIONS } from '../components/sectionTypes'
+import { OVERVIEW_BOARD } from '../healthBoards'
 import { HealthProfileCard } from '../components/profile/HealthProfileCard'
 import { useHealthPageRange } from '../components/overview/useHealthPageRange'
 import { useHealthSection } from '../components/overview/useHealthSection'
@@ -31,11 +14,7 @@ import { useHealthHero } from '../components/overview/useHealthHero'
 import { HealthHero } from '../components/overview/HealthHero'
 import { HealthInsightsCard } from '../components/overview/HealthInsightsCard'
 import { HealthSectionTabs, SectionPanel } from '../components/overview/SectionPanel'
-import { SleepTimingCard } from '../components/overview/SleepTimingCard'
-import { ExerciseWeekCard } from '../components/overview/ExerciseWeekCard'
-import { TrendCard } from '../components/overview/TrendCard'
-import { buildTrendStats } from '../healthTrendStats'
-import { hm, num, signed, signedHm } from '../components/overview/heroFormat'
+import { HealthGuard as Guard } from '../components/HealthGuard'
 import { HealthHeroArt } from '../components/HealthHeroArt'
 
 // Health's own page, in windows (tabs) laid out by the metric ranking
@@ -47,10 +26,12 @@ import { HealthHeroArt } from '../components/HealthHeroArt'
 // window except Goal progress (its own window); the open window is ?section=. Only the open window mounts, so a window's
 // queries run when you open it. (The alerts strip from the plan needs Health
 // Auto Export's notification arrays ingested first — not built.)
-
-function Guard({ name, children }: { name: string; children: ReactNode }) {
-  return <ErrorBoundary label={name} action={`health_${name.toLowerCase().replace(/\W+/g, '_')}`}>{children}</ErrorBoundary>
-}
+//
+// Overview is in the page's own code; the other windows (HealthSectionWindows.tsx)
+// load when one opens, and in idle time once the page shows: their charts
+// were most of the page's first download.
+const HealthSectionWindow = lazyPart('health-windows', () => import('../components/HealthSectionWindows').then(m => m.HealthSectionWindow))
+const OTHER_WINDOWS = [HealthSectionWindow]
 
 export function HealthPage() {
   const range = useHealthPageRange()
@@ -61,11 +42,8 @@ export function HealthPage() {
   const { data: profile } = useHealthProfile()
   const profileIncomplete = profile != null && (profile.birthYear == null || profile.sex == null || profile.heightCm == null)
   const viewDay = (date: string) => { setPeriod('day'); setAnchor(date) }
-  const miniWindow = { from: win.from, to: win.to, period }
-  const exclude = hero.isToday ? anchor : null
-  // Every trend card reads the period picked in the range bar.
-  const picked = { from: win.from, to: anchor }
   const label = HEALTH_SECTIONS.find(s => s.id === section)?.label ?? 'Health'
+  useIdlePreload(OTHER_WINDOWS)
 
   return (
     <PageContainer>
@@ -84,98 +62,19 @@ export function HealthPage() {
 
         {/* Keyed by window so switching away resets one that crashed. */}
         <Guard key={section} name={label}>
-          {section === 'overview' && (
+          {section === 'overview' ? (
             <SectionPanel id="overview" layout={OVERVIEW_BOARD} stackGap="gap-4" sections={{
               hero: <Guard name="Hero"><HealthHero hero={hero} onViewDay={viewDay} onOpenSection={setSection} /></Guard>,
               profile: profileIncomplete && <HealthProfileCard />,
               insights: <Guard name="Insights"><HealthInsightsCard hero={hero} /></Guard>,
             }} />
-          )}
-
-          {section === 'sleep' && (
-            <SectionPanel id="sleep" note="Nights are filed under the morning you woke up." layout={SLEEP_BOARD} sections={{
-              sleep: <Guard name="Sleep"><SleepCard range={range} /></Guard>,
-              timing: <Guard name="Sleep timing"><SleepTimingCard sleep={hero.sleep} from={win.from} to={anchor} /></Guard>,
-              trend: <TrendCard title="Sleep trend" stats={buildTrendStats(hero.sleep.nights, { ...picked, direction: 'up' })}
-                format={hm} formatDelta={signedHm} per="per night" direction="up" />,
-              breathing: <MetricMiniGrid title="Breathing during sleep" metrics={SLEEP_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
-            }} />
-          )}
-
-          {section === 'activity' && (
-            <SectionPanel id="activity" layout={ACTIVITY_BOARD} sections={{
-              rings: <Guard name="Activity rings"><ActivityRings win={win} /></Guard>,
-              steps: <Guard name="Steps"><StepsSection range={range} /></Guard>,
-              stepsTrend: <TrendCard title="Steps trend" stats={buildTrendStats(hero.steps.series, { ...picked, exclude, direction: 'up' })}
-                format={v => num(v)} formatDelta={v => signed(v)} direction="up" rateUnit="steps/day per week" />,
-              exercise: <Guard name="Weekly exercise"><ExerciseWeekCard hero={hero} /></Guard>,
-              energy: <Guard name="Energy"><EnergySection range={range} /></Guard>,
-              note: (
-                <p className="text-meta text-fg-muted">
-                  What you eat lives in <Link to="/recipes" className="font-medium text-accent-600 underline underline-offset-2">Food</Link>;{' '}
-                  <button type="button" className="font-medium text-accent-600 underline underline-offset-2" onClick={() => setSection('goal')}>Goal progress</button> compares it with this burn.
-                </p>
-              ),
-              // Non-strength Apple workouts; strength sessions live under Training.
-              workouts: <Guard name="Other workouts"><HealthWorkoutsList win={win} /></Guard>,
-              more: <MetricMiniGrid title="More activity" metrics={ACTIVITY_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
-              mobility: <MetricMiniGrid title="Mobility" metrics={MOBILITY_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
-              // Moved from Body, which shows the smart scale only (owner).
-              habits: <MetricMiniGrid title="Daily habits & environment" metrics={HABIT_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
-            }} />
-          )}
-
-          {section === 'heart' && (
-            <SectionPanel id="heart" note="Each against your own usual range." layout={HEART_BOARD} sections={{
-              vitals: <Guard name="Vitals reading"><VitalsReadingCard range={range} /></Guard>,
-              heart: <Guard name="Heart"><HeartSection range={range} /></Guard>,
-              rhrTrend: <TrendCard title="Resting heart rate trend" stats={buildTrendStats(hero.rhr.series, { ...picked, direction: 'down' })}
-                format={v => num(v)} formatDelta={v => `${signed(v)} bpm`} direction="down" rateUnit="bpm/week" />,
-              hrvTrend: <TrendCard title="HRV trend" stats={buildTrendStats(hero.vitals.hrvSeries, { ...picked, direction: 'up' })}
-                format={v => num(v)} formatDelta={v => `${signed(v)} ms`} direction="up" />,
-            }} />
-          )}
-
-          {section === 'body' && (
-            // Scale readings only in the charts and the weekly changes; the Hevy log keeps its own card.
-            <SectionPanel id="body" layout={BODY_BOARD} sections={{
-              scale: <Guard name="Body"><BodyScaleCard range={range} /></Guard>,
-              weekly: <Guard name="Weekly changes"><WeeklyChangesCard range={range} /></Guard>,
-              hevy: <Guard name="Logged in Hevy"><HevyMeasurementsCard anchor={anchor} /></Guard>,
-            }} />
-          )}
-
-          {section === 'goal' && (
-            <section id="health-panel-goal" role="tabpanel" aria-labelledby="health-tab-goal" className="flex min-w-0 flex-col gap-3">
-              <p className="text-meta text-fg-muted">Your weight, fat and muscle against the phase you picked — cut, maintain or gain — and your own goals.</p>
-              {/* Lays its own cards out (healthBoards.ts → GOAL_BOARD). */}
-              <Guard name="Goal progress"><GoalReportCard /></Guard>
-            </section>
-          )}
-
-          {section === 'cardio' && (
-            <SectionPanel id="cardio" layout={CARDIO_BOARD} sections={{
-              vo2: <Guard name="Cardio fitness"><CardioCard range={range} /></Guard>,
-              recovery: <MetricMiniGrid title="Recovery and effort" metrics={CARDIO_EXTRA_METRICS} window={miniWindow} onViewDay={viewDay} hideWhenEmpty standalone="h3" />,
-            }} />
+          ) : (
+            <Suspense fallback={<SkeletonTab />}>
+              <HealthSectionWindow section={section} range={range} win={win} hero={hero} onViewDay={viewDay} onOpenSection={setSection} />
+            </Suspense>
           )}
         </Guard>
       </div>
     </PageContainer>
   )
-}
-
-/** True when the board gives `key` a card of its own at the current width. */
-function usePlacedApart(layout: BoardLayouts<string>, key: string): boolean {
-  return keysAt(layout, useBoardStep()).includes(key)
-}
-
-/** The sleep card; its breathing grid moves into its own card once there is a track for it. */
-function SleepCard({ range }: { range: HealthRange }) {
-  return <SleepSection range={range} extras={!usePlacedApart(SLEEP_BOARD, 'breathing')} />
-}
-
-/** VO₂ max; its recovery grid moves into its own card once there is a track for it. */
-function CardioCard({ range }: { range: HealthRange }) {
-  return <CardioFitnessSection range={range} extras={!usePlacedApart(CARDIO_BOARD, 'recovery')} />
 }

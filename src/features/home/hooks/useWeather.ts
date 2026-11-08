@@ -24,5 +24,7 @@ export function useWeather({ enabled = true, refetchInterval = false }: { enable
     refetchInterval: refetchInterval || 30 * 60_000,
     enabled: enabled && !!geo,
   })
-  return { ...query, geo }
+  // Waiting for the location is loading too: a disabled query isn't, so the tile drew its empty "—" screen,
+  // then a skeleton, then the forecast — each a different height (a layout shift).
+  return { ...query, isLoading: query.isLoading || (enabled && !geo), geo }
 }

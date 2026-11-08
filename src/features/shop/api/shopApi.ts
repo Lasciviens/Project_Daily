@@ -294,11 +294,6 @@ export async function createShopCost(input: CreateShopCostInput): Promise<ShopIt
   return data
 }
 
-export async function updateShopCost(id: string, patch: Partial<Pick<ShopItemCost, 'label' | 'amount' | 'currency' | 'spent_on' | 'fx_nok'>>): Promise<void> {
-  const { error } = await supabase.from('shop_item_costs').update(patch).eq('id', id)
-  if (error) throw error
-}
-
 // ─── The price watch ──────────────────────────────────────────────────────────
 
 export async function fetchPriceWatches(): Promise<ShopPriceWatch[]> {

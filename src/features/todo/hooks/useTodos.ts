@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
   fetchAllTasks,
@@ -79,7 +79,7 @@ export function useDayTasks(day: string) {
   // late (or ahead) closes on the day of the tick, yet is still its own day's
   // state — the split above only lists what closed on `day`.
   const repeatDays = useMemo(() => (query.data ?? []).filter(t => t.schedule_block_id && t.occurrence_date), [query.data])
-  return { ...split, repeatDays, section: sectionForDay(day, today), isLoading: query.isLoading, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
+  return { ...split, repeatDays, section: sectionForDay(day, today), isLoading: query.isLoading, isFetching: query.isFetching, ready: query.data !== undefined, isError: query.isError && query.data === undefined, refetch: query.refetch }
 }
 
 /**
@@ -323,13 +323,19 @@ export function useTaskById(id: string | null | undefined) {
   })
 }
 
-/** Several tasks by id in one request (e.g. the day agenda's linked-task details). */
+/**
+ * Several tasks by id in one request (e.g. the day agenda's linked-task details). A new set of ids (a delete or a
+ * move changes the day agenda's) keeps the tasks already read while it loads (`isPlaceholderData`), so the rows on
+ * screen keep their tasks instead of dropping them for a round trip.
+ */
 export function useTasksByIds(ids: readonly string[]) {
   return useQuery({
     queryKey: qk.tasks.byIds(ids),
     queryFn: () => fetchTasksByIds(ids),
     enabled: ids.length > 0,
     staleTime: STALE.live,
+    // Only while there is something to read: a disabled query would hold the old tasks for good.
+    placeholderData: ids.length > 0 ? keepPreviousData : undefined,
   })
 }
 

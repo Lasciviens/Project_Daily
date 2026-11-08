@@ -11,7 +11,7 @@
 //   node scripts/audit-text-overflow.mjs --harness <dir with mock-server.cjs> \
 //        [--base http://127.0.0.1:5371] [--routes home,daily] [--widths 402,1469,2450] [--json]
 //   node scripts/audit-text-overflow.mjs --static [--src src]   (source scan only, no browser)
-// The harness is NOT part of the repo; nothing here talks to a real backend.
+// The harness is scripts/harness (its README says how to start the app); nothing here talks to a real backend.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -58,14 +58,18 @@ const HEIGHT = { 402: 874, 1469: 680, 2450: 1130 }
 const asJson = args.includes('--json')
 
 const { chromium } = require(path.resolve('node_modules/playwright'))
-const { installMocks, SESSION } = require(path.join(harness, 'mock-server.cjs'))
+// resolve, not join: require() reads "scripts/harness/…" (no ./) as a package name.
+const { installMocks, SESSION } = require(path.resolve(harness, 'mock-server.cjs'))
 
 function chromePath() {
   const root = '/opt/pw-browsers'
   if (!fs.existsSync(root)) return undefined
   for (const d of fs.readdirSync(root).filter(d => /^chromium-\d+$/.test(d)).sort()) {
-    const p = `${root}/${d}/chrome-linux/chrome`
-    if (fs.existsSync(p)) return p
+    // Chrome for Testing builds unpack to chrome-linux64, older ones to chrome-linux.
+    for (const sub of ['chrome-linux64', 'chrome-linux']) {
+      const p = `${root}/${d}/${sub}/chrome`
+      if (fs.existsSync(p)) return p
+    }
   }
   return undefined
 }

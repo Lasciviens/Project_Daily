@@ -68,7 +68,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 // deno-lint-ignore no-explicit-any
-type AnyRec = Record<string, any>
+type AnyRec = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // ─── Token + rate limit ─────────────────────────────────────────────────────
 

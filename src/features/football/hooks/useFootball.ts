@@ -111,6 +111,8 @@ export function useFootballAgenda(follows: readonly FootballFollow[], now: strin
     agenda,
     loading: results.some(r => r.isLoading),
     failed,
+    /** A failed read is being read again (Try again). */
+    retrying: results.some(r => r.isError && r.isFetching),
     retry: () => { for (const r of results) if (r.isError) void r.refetch() },
   }
 }

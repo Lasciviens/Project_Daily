@@ -155,22 +155,3 @@ export interface RepeatRow {
   repeat_dates:    string[] | null
 }
 
-export interface CreateScheduleBlockInput extends Partial<Omit<RepeatRow, 'days_of_week'>> {
-  title:        string
-  days_of_week: number[]
-  start_time:   string
-  end_time:     string
-  color?:       string
-  category?:    TimeBlockCategory
-  /** The first day (and the anchor of a monthly / every-N repeat); today when left out. */
-  effective_from?: string
-}
-
-export interface UpdateScheduleBlockInput extends Partial<RepeatRow> {
-  title?:        string
-  start_time?:   string
-  end_time?:     string
-  color?:        string
-  category?:     TimeBlockCategory
-  effective_from?: string
-}

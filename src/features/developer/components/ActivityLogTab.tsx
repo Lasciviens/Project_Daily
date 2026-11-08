@@ -8,6 +8,7 @@ import { ActivityLogFilters, type ActivityFilterState } from './ActivityLogFilte
 import { openUndoSave } from '../hooks/useUndoSave'
 import { DETAIL_PANE_FROM, LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
 import { confirmDelete } from '../../../shared/modals'
+import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 
 // CRUD audit trail as a readable timeline. Range is a preset (incl. 1h) OR an
 // explicit from/to window; type/operation/actor filter the loaded rows. On a
@@ -51,6 +52,9 @@ export function ActivityLogTab() {
 
   const { data: logs = [], isLoading, isFetching, error, refetch } = useAuditLogs({ rangeHours, customFrom, customTo })
   const clearLogs = useClearAuditLogs()
+  // Clear all comes with a log: while it loads, its room is kept only when the log had entries last time on this
+  // device (an empty log's bar lost it when the data landed: THEME.md §5).
+  const clearRoom = useRememberedFlag('developer:log', logs.length > 0, !isLoading && !error) && isLoading
 
   const tables = useMemo(() => [...new Set(logs.map(l => l.table_name))].sort(), [logs])
 
@@ -108,6 +112,7 @@ export function ActivityLogTab() {
         set={patch => setFilters(f => ({ ...f, ...patch }))}
         tables={tables}
         hasLogs={logs.length > 0}
+        clearRoom={clearRoom}
         isFetching={isFetching}
         onRefresh={() => { void refetch() }}
         onClear={() => { void handleClear() }}

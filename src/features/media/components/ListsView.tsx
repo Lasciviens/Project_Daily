@@ -119,7 +119,8 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail }) {
 
         <div className="card flex min-w-0 flex-col gap-3 p-4 sm:p-5">
           {!current ? (
-            loading ? <Skeleton className="h-40 w-full" /> : (
+            // As tall as "No lists yet" (a list's covers are taller still): 160px pushed Following down on arrival.
+            loading ? <Skeleton className="h-[17rem] w-full" /> : (
               <EmptyState icon={<ListVideo />} title="No lists yet"
                 description="Add titles yourself, or let a list fill itself from a franchise, studio, keyword or person."
                 action={<Button variant="primary" icon={<ListPlus />} onClick={() => setNaming(true)}>New list</Button>} />

@@ -51,7 +51,8 @@ export default {
         accent: scale('accent', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]),
       },
       fontFamily: {
-        sans: ['"Inter Variable"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        // "Inter Fallback" (index.css) is Arial sized to Inter, so the swap to Inter moves nothing.
+        sans: ['"Inter Variable"', '"Inter Fallback"', 'Inter', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
       },
       fontSize: {
         // The type scale (THEME.md §3). Each step carries its line-height.

@@ -141,7 +141,8 @@ export function WishesPage() {
         stackGap="gap-5"
         sections={{
           add: <WishQuickAdd />,
-          filters: wishes.length > 0 && <WishFilters kind={kind} status={status} onKind={setKind} onStatus={setStatus} />,
+          // While loading too: arriving with the wishes, the filters pushed the list down (a layout shift).
+          filters: (wishes.length > 0 || isLoading) && <WishFilters kind={kind} status={status} onKind={setKind} onStatus={setStatus} />,
           groups: groupsSection,
         }}
       />

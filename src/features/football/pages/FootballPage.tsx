@@ -2,12 +2,13 @@ import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trophy } from 'lucide-react'
-import { Button, Card, CardHeader, EmptyState, PageBoard, PageContainer, PageHeader, Skeleton, ToneDot, cx } from '../../../shared/ui'
+import { Button, Card, CardHeader, EmptyState, KeepRoom, PageBoard, PageContainer, PageHeader, Skeleton, ToneDot, cx } from '../../../shared/ui'
+import { rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useEntityModal } from '../../../shared/modals'
 import { FootballHeroArt } from '../components/FootballHeroArt'
 import { FollowingCard } from '../components/FollowingCard'
-import { MatchList } from '../components/MatchList'
+import { MatchList, MatchListSkeleton } from '../components/MatchList'
 import { StandingsCard } from '../components/StandingsCard'
 import { TeamLogo } from '../components/TeamLogo'
 import { FOOTBALL_BOARD } from '../footballBoard'
@@ -19,6 +20,17 @@ import type { FootballFollow } from '../types'
 
 const filterKey = (f: { kind: string; ref: string }) => `${f.kind}:${f.ref}`
 
+/**
+ * The room (rem) each match list keeps while ESPN answers, before this device has seen it loaded — the
+ * height the lists' loading copies always had. After that, the height of its last full answer (KeepRoom). A
+ * failed read never keeps it: the card shrinks to its one error line, with the room back for Try again.
+ */
+const FIRST_ROOM = { coming: 11.5, results: 8.5 }
+const listRoom = (key: string, first: number) => {
+  const last = rememberedLayout(key)
+  return typeof last === 'number' && last > 0 ? last : first
+}
+
 export function FootballPage() {
   const qc = useQueryClient()
   const modal = useEntityModal()
@@ -26,7 +38,9 @@ export function FootballPage() {
   const follows = useMemo(() => followsQ.data ?? [], [followsQ.data])
   const planned = usePlannedTasks()
   const now = useMinute()
-  const { agenda, loading, failed, retry } = useFootballAgenda(follows, now)
+  const { agenda, loading, failed, retrying, retry } = useFootballAgenda(follows, now)
+  // The lists keep their room while ESPN answers, and again while a failed read is tried again.
+  const listsLoading = loading || retrying
   const [params, setParams] = useSearchParams()
   const picked = params.get('f')
   const current = follows.find(f => filterKey(f) === picked)
@@ -50,6 +64,13 @@ export function FootballPage() {
   // A tournament picked in the filter shows all its matches; otherwise a busy night folds.
   const keep = filter?.kind === 'league' ? Infinity : 3
   const openFollow = () => modal.open({ kind: 'football-follow' })
+  // The filter row comes with what you follow (two or more): its room is kept while they load only when it
+  // showed last time — kept for one follow, it dropped the page when the follows landed.
+  const filterRoom = useRememberedFlag('football:filter', follows.length > 1, !followsQ.isLoading && !followsQ.isError)
+  // Keyed by a follow the owner has, never by the raw `?f=` of a link (any text, any length).
+  const listKey = current ? filterKey(current) : 'all'
+  const comingKey = `football:coming:${listKey}`
+  const resultsKey = `football:results:${listKey}`
 
   const problem = failed.length > 0 && (
     <p className="text-meta text-fg-muted">
@@ -57,7 +78,6 @@ export function FootballPage() {
       <button type="button" className="font-semibold text-accent-600" onClick={retry}>Try again</button>
     </p>
   )
-  const rows = (n: number) => <div className="flex flex-col gap-2">{Array.from({ length: n }).map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
 
   return (
     <PageContainer>
@@ -66,6 +86,11 @@ export function FootballPage() {
         art={<FootballHeroArt />}
         actions={<Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
       >
+        {followsQ.isLoading && filterRoom && (
+          <div aria-hidden className="flex gap-1">
+            {[0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-full" className="h-[34px] w-24 [@media(pointer:coarse)]:h-[44px]" />)}
+          </div>
+        )}
         {follows.length > 1 && (
           <div className="scroll-x -mx-1 flex gap-1 px-1" role="group" aria-label="Show">
             <button type="button" aria-pressed={!filter} onClick={() => pick(null)} className="pill-tab shrink-0">All</button>
@@ -104,20 +129,31 @@ export function FootballPage() {
               next: (
                 <Card>
                   <CardHeader title="Coming up" variant="label" />
-                  <div className="flex flex-col gap-2">
-                    {loading && !coming.length ? rows(4)
-                      : coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
-                      : <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
-                    {problem}
-                  </div>
+                  <KeepRoom
+                    ids={comingKey} loading={listsLoading} first={FIRST_ROOM.coming} remember={failed.length === 0}
+                    className="flex flex-col gap-2"
+                    skeleton={coming.length ? undefined : <MatchListSkeleton rem={listRoom(comingKey, FIRST_ROOM.coming)} />}
+                  >
+                    {coming.length ? <MatchList matches={coming} planned={planned} featured={followed} keep={keep} />
+                      : failed.length === 0 && <p className="text-body text-fg-muted">No matches in the next 30 days.</p>}
+                    {/* Once every read answered: shown under the loading copy, it grew the card for a moment. */}
+                    {!listsLoading && problem}
+                  </KeepRoom>
                 </Card>
               ),
-              results: (
+              // A failed read with no results to show leaves the card out: Coming up has the one error line, and an
+              // empty Results card under it read as "no results" (owner-critic, 07.11.2026).
+              results: (results.length > 0 || failed.length === 0 || listsLoading) && (
                 <Card>
                   <CardHeader title="Results" subtitle="Last 10 days" variant="label" />
-                  {loading && !results.length ? rows(3)
-                    : results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
-                    : <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
+                  <KeepRoom
+                    ids={resultsKey} loading={listsLoading} first={FIRST_ROOM.results} remember={failed.length === 0}
+                    skeleton={results.length ? undefined : <MatchListSkeleton rem={listRoom(resultsKey, FIRST_ROOM.results)} rows={2} />}
+                  >
+                    {/* A failed read never says "no results": Coming up's card has the one error line. */}
+                    {results.length ? <MatchList matches={results} planned={planned} featured={followed} keep={keep} days={4} />
+                      : failed.length === 0 && <p className="text-body text-fg-muted">No results in the last 10 days.</p>}
+                  </KeepRoom>
                 </Card>
               ),
               tables: leagues.length > 0 && (

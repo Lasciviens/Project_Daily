@@ -177,7 +177,12 @@ const c = useChartColors()
 ## 3. Typography
 
 **Inter Variable** (bundled with `@fontsource-variable/inter`, works offline), `cv11` + `ss01`
-features, antialiased. **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
+features, antialiased. `index.html` preloads its Latin file, so text starts in Inter; until a file
+arrives (a first visit, a cleared cache) text draws in `Inter Fallback` (`index.css`): Arial sized to
+Inter's widths (105.5 % regular, 101.5 % bold, measured on the app's own text) with Inter's ascent and
+descent, so the swap changes letter shapes and moves nothing. It stands in only for what Inter's Latin
+and Latin Extended files draw (their `unicode-range`): a character no Inter file has (→, ✓) draws in the
+system font. A new font gets the same: a preload and a measured stand-in (`verify-layout-shift`). **Tabular numbers** (`tabular-nums`) on every count, KPI, date, time and
 duration. **The ONLY visible date format is `DD.MM.YYYY`** (`15.09.2026`, owner rule): times are
 `HH:MM` (24h), a weekday may lead (`Tue 15.09.2026`), ranges read `21.09.2026 – 27.09.2026`, and
 relative words (today, yesterday, 5 days ago) stay where they are used. Always go through
@@ -269,7 +274,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Page header art | `<PageHeader art={<XHeroArt />}>` — the page's drawing behind its header band; Home: `<PageHeroArt>` in its first card (§6.5) |
 | Status | `<ToneDot>` / `<TonePill>` / `data-tone` |
 | Empty state | `<EmptyState icon title description action bordered />` |
-| Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry |
+| Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first remember>` around a part whose data comes in on its own (it keeps the room the part took last time, §5; `as="span"` inside a button); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days) |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
@@ -305,6 +310,47 @@ faint chevron.
 **Empty / error / loading.** Every async surface renders all three. Loading copies the final
 geometry (no spinners in content areas). Empty says what goes here and offers the one action that
 fills it. Errors say what failed and offer a retry; render-time crashes are caught by `ErrorBoundary`.
+
+**Nothing moves when data lands** (owner, 07.11.2026: "Detect and fix layout shifts!"). A layout
+shift is drawn content moving because something above it changed size; the browser counts it (CLS).
+How much room a part takes is the owner's data — a busy day or an empty one, an overdue count or none —
+so a loading copy sized for one account moves every other: a skeleton taller than its content is as bad
+as a shorter one.
+- Reserve only what every outcome shows: Work's done and active counts, Projects' status switch, the
+  brief's tasks and food lines and its schedule line until 22:00 (`briefRules.alwaysShown` — from 22:00
+  the schedule shows only with something still to come), a Health tile's first line and Aim, Training's
+  recovery line. A part that only some data shows (Work's overdue count, Projects' area switch,
+  Football's filter, Books' Reading now, the muscle watch, a missed session) keeps no room on a first
+  visit.
+- After that the device remembers what each part looked like when its data last landed — a height, a
+  count, whether a row was there — and the next loading copy keeps that room
+  (`shared/hooks/useLayoutMemory.ts`: one localStorage entry of numbers and flags, cleared at sign-out):
+  `<KeepRoom>` for a part, `useRememberedFlag` / `useRememberedCount` for a row or a count. Daily's list
+  keeps its height per day (today: else the last today's; else about an empty day's). The memory learns
+  only from an answered read (`ready` is `!isLoading && !isError`; KeepRoom's `remember={false}` on a
+  failure): a failed read is never "nothing there". Its keys are the app's own and short (at most 100
+  characters, never a raw URL value); the least recently used go first.
+- Each part shows as its own reads land, with room kept for the parts still coming; nothing waits for
+  another part's reads (the brief's sections, Training Next's lines). A part waits for all of its own
+  reads when they make one order or one card: the day's list (tasks, slots and repeats in time order —
+  the open wishes and this week's undated tasks are bands of their own, each with its remembered room), a
+  project card, Games' shelves (three libraries), Health's ranked insights. Data from an outside service
+  (weather, rates, ESPN, Google's events) fills in where it is. Once drawn, a part keeps its content
+  through later reads; its loading copy is for its first answer only (Daily's list after a delete).
+- A failed read is one compact line with Try again, never kept room and never an answer — no "No
+  results", no zero, no empty day, and no loading copy that stays (the brief's tasks, Food's day); the
+  room comes back while it is tried again (Football).
+- A skeleton copies the loaded grid and row heights. A lazy tab's fallback is `<SkeletonTab>` (a
+  screen of room) and a lazy sheet's its body at its size — never a 0px placeholder.
+- A loading branch and the loaded branch of one element are keyed apart (`GlanceCarousel`).
+- A label whose text changes on a switch has one width (Daily's date: `w-[7.9em]`, the widest day).
+- Never hide content or add a delay to cover a shift.
+Check: `node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs --data seed,light,empty`
+— every data shape, never worse than before the change; `--revisit` measures the next visit, which the
+memory should bring to ≤ 0.1 per page and tab switch; `--at HH:MM` sets the page's clock, for a part that
+follows the hour (the brief's schedule at night) — and `scripts/verify-layout-shift.cjs`. The harness
+answers every read after the same hold, so several parts often land in one frame: a first visit's number
+varies from run to run, so compare a few runs, not one.
 
 **Icons.** `lucide-react` only. 16px inside buttons and rows, 18px in icon buttons, 20px in nav,
 22px in the phone tab bar; `strokeWidth` 2 (1.8–1.9 in the phone chrome). Icons are `aria-hidden` next to a
@@ -342,6 +388,9 @@ gets `h-full`. Header height `--app-header-h`, tab bar `--app-tabbar-h`, sidebar
 safe areas composed in `calc()` (e.g. `pb-[calc(var(--app-tabbar-h)+env(safe-area-inset-bottom)+16px)]`
 on `<main>`), never magic numbers. `--ios-viewport-gap` (`app/iosViewportFix.ts`) corrects the
 installed iOS PWA's short viewport; phone tab bars sit at `bottom: calc(-1 * var(--ios-viewport-gap))`.
+Back restores a page's scroll offset once the page is tall enough (`restoreScroll` in `AppShell`: a
+PageBoard lays out in a second pass, so one `scrollTo` was clamped to the top), and a page that folds
+the sidebar is drawn folded from its first frame (`selectSidebarCollapsed(routeFolds)`).
 
 Games is a `fullHeight` page with its own token set (`testGame.css`, `.tg-root` / `.tg-portal`) and
 its own left navigation panel; it uses the shell's `ModalHost` and `Toaster`. See `docs/features/games.md`.
@@ -750,7 +799,7 @@ More on results (13.10.2026, owner: "after what the user does, a message by its 
   "Saved", a sheet's `withProgress`, an Undo toast) or that is not a user action (autosave while
   typing, a drag whose list shows the order, a lookup whose results are the answer). A hook used both
   alone and as a step of a bigger save takes `{ report: false }` (`useCreateTask`, `useUpdateTask`,
-  `useUpdateTimeBlock`, `useUpdateProject`, `useUpdateItem`, `useCreateShopLink`).
+  `useUpdateTimeBlock`, `useUpdateProject`, `useUpdatePhase`, `useUpdateBlock`, `useCreateShopLink`).
 - The message comes from the write's own answer and its input — never a second read. `refresh: 'wait'`
   only for a flow that reads the refreshed cache right after.
 - Rollbacks use `snapshotCache` / `restoreCache` (`cachePatch.ts`); task writes apply the database's
@@ -806,7 +855,7 @@ chrome. English in the product (`AGENTS.md`).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
 - [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
 - [ ] Checked in the phone layout: compact, no extra lines, nothing squashed; hover-only actions have a touch path.
-- [ ] Loading, empty and error states present.
+- [ ] Loading, empty and error states present; loading copies the loaded geometry, so nothing moves when the data lands (§5).
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.
 - [ ] Data through hooks → api; keys from `qk`; stale from `STALE`; writes via `useMutationWithFeedback`
       with `invalidates`; no caller-side mutation toasts.

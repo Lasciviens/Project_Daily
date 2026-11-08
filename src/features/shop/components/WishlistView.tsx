@@ -178,7 +178,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
             note={filtersActive(filters) ? `${shown.length} of ${all.length} items match the filters.` : undefined}
           />
         ),
-        filters: all.length > 0 && (
+        // While loading too: arriving with the items, the filters pushed the list down (a layout shift).
+        filters: (all.length > 0 || isLoading) && (
           <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={isPhone} />
         ),
         groups: groupsSection,

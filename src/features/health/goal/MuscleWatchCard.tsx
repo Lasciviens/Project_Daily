@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
-import { SkeletonText, ToneDot, TonePill } from '../../../shared/ui'
+import { KeepRoom, Skeleton, SkeletonText, ToneDot, TonePill } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import type { EvidenceTier, MuscleWatch } from './muscleWatch'
 import { MUSCLE_WATCH_LEVEL as LEVEL_COPY } from './goalCopy'
@@ -60,18 +60,26 @@ function MuscleWatchBody({ watch }: { watch: MuscleWatch }) {
   )
 }
 
-/** One line outside Goal progress (Training → Next / Progress) — only when there is something to watch. */
+/** One line outside Goal progress (Training → Next / Progress) — only when there is something to watch. Its
+ *  reading (the goal report and the training history) is slow: until it is in, the line keeps the room it took
+ *  last time — none the first time, as it shows only on some days (KeepRoom, THEME.md §5). */
 export function MuscleWatchLine() {
-  const { watch } = useMuscleWatch()
-  if (!watch || (watch.level !== 'watch' && watch.level !== 'likely_loss')) return null
-  const tone = LEVEL_COPY[watch.level].tone
+  const { watch, isLoading, isError } = useMuscleWatch()
+  const shown = watch && (watch.level === 'watch' || watch.level === 'likely_loss') ? watch : null
   return (
-    <Link to={MUSCLE_WATCH_HREF}
-      className="flex min-h-[44px] w-full max-w-2xl items-start gap-2 rounded-row border border-line bg-surface px-3 py-2 text-body text-fg-2 hover:bg-surface-2">
-      <ShieldAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
-      <ToneDot tone={tone} className="mt-1.5 shrink-0" />
-      <span className="min-w-0 flex-1">{watch.headline}</span>
-      <ChevronRight aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
-    </Link>
+    <KeepRoom
+      ids="muscleWatch:line" loading={isLoading} remember={!isError} first="none" className="flex flex-col"
+      skeleton={<Skeleton rounded="rounded-row" className="min-h-11 w-full max-w-2xl flex-1" />}
+    >
+      {shown && (
+        <Link to={MUSCLE_WATCH_HREF}
+          className="flex min-h-[44px] w-full max-w-2xl items-start gap-2 rounded-row border border-line bg-surface px-3 py-2 text-body text-fg-2 hover:bg-surface-2">
+          <ShieldAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
+          <ToneDot tone={LEVEL_COPY[shown.level].tone} className="mt-1.5 shrink-0" />
+          <span className="min-w-0 flex-1">{shown.headline}</span>
+          <ChevronRight aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-fg-muted" />
+        </Link>
+      )}
+    </KeepRoom>
   )
 }

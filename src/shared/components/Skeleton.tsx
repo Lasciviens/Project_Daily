@@ -46,3 +46,17 @@ export function SkeletonCard({ className = '' }: { className?: string }) {
     </div>
   )
 }
+
+/**
+ * A tab whose code is still on its way (a lazyPart's Suspense fallback; THEME.md §5): a screen's worth of room
+ * with two cards — never a 0px placeholder, which blanked the page under the tab bar and collapsed it until the
+ * code landed.
+ */
+export function SkeletonTab() {
+  return (
+    <div aria-busy="true" className="flex min-h-[60vh] flex-col gap-3 sm:gap-4">
+      <Skeleton rounded="rounded-card" className="h-40 w-full max-w-2xl" />
+      <Skeleton rounded="rounded-card" className="h-64 w-full max-w-2xl" />
+    </div>
+  )
+}

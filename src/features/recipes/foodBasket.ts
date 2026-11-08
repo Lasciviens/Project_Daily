@@ -18,7 +18,6 @@ export type LogItem = BasketItem | RecipeBasketItem | CustomBasketItem
 
 export const isRecipeItem = (it: LogItem): it is RecipeBasketItem => 'kind' in it && it.kind === 'recipe'
 export const isCustomItem = (it: LogItem): it is CustomBasketItem => 'kind' in it && it.kind === 'custom'
-export const isFoodItem = (it: LogItem): it is BasketItem => !('kind' in it)
 
 /** A basket amount is grams, or ml for a drink stored per 100 ml. */
 export const amountUnit = (u: string | null | undefined): 'g' | 'ml' => (u?.trim().toLowerCase() === 'ml' ? 'ml' : 'g')

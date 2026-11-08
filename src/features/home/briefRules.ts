@@ -26,6 +26,14 @@ export interface BriefLine {
 
 export type BriefSectionId = 'day' | 'tasks' | 'schedule' | 'training' | 'nutrition' | 'watch' | 'money'
 
+/** The sections in reading order — `day` is the weather. */
+export const BRIEF_SECTION_ORDER: readonly BriefSectionId[] = ['tasks', 'schedule', 'training', 'day', 'nutrition', 'watch', 'money']
+
+/** Each section's label (also on a section whose read failed). */
+export const BRIEF_SECTION_TITLE: Record<BriefSectionId, string> = {
+  tasks: 'Tasks', schedule: 'Schedule', training: 'Training', day: 'Weather', nutrition: 'Food', watch: 'Watch', money: 'NOK → TRY',
+}
+
 export interface BriefSection {
   id: BriefSectionId
   title: string
@@ -80,6 +88,8 @@ export interface BriefInput {
   today?: string
   weather?: BriefWeather | null
   tasks?: { open: BriefTask[]; doneToday: number } | null
+  /** Reads that failed (not ones still on the way): the headline names them rather than "Nothing to report yet". */
+  failedReads?: readonly ('tasks' | 'schedule')[]
   schedule?: {
     next?: { title: string; startLabel: string; startHour: number; inProgress: boolean } | null
     remainingCount: number
@@ -254,7 +264,7 @@ function daySection(i: BriefInput): BriefSection | null {
     const wetT = t.precipMm < 1 ? '' : /rain|shower|sleet|drizzle|snow/i.test(t.label) ? ` (${amount})` : `, rain (${amount})`
     lines.push({ text: `Tomorrow ${deg(t.minC)} to ${deg(t.maxC)}, ${t.label.toLowerCase()}${wetT}.` })
   }
-  return { id: 'day', title: 'Weather', lines }
+  return { id: 'day', title: BRIEF_SECTION_TITLE.day, lines }
 }
 
 // ── Tasks / schedule / training / food ──────────────────────────────────────
@@ -266,7 +276,7 @@ function tasksSection(i: BriefInput): BriefSection | null {
   const lines: BriefLine[] = []
   if (!t.open.length) {
     lines.push({ text: t.doneToday ? `All clear — ${plural(t.doneToday, 'task')} done today.` : 'Nothing on the list for today.', tone: 'success', href: '/daily' })
-    return { id: 'tasks', title: 'Tasks', lines }
+    return { id: 'tasks', title: BRIEF_SECTION_TITLE.tasks, lines }
   }
   const high = t.open.filter(x => x.priority === 'high').length
   const parts = [`${plural(t.open.length, 'open task')}`]
@@ -277,8 +287,11 @@ function tasksSection(i: BriefInput): BriefSection | null {
   lines.push({ text: parts.join(' · '), href: '/daily' })
   const focus = pickFocusTask(t.open)
   if (focus) lines.push({ text: `Start with “${focus.title}”${focus.overdue ? ' (overdue)' : focus.dueTime ? ` (due ${focus.dueTime.slice(0, 5)})` : ''}.`, href: '/daily' })
-  return { id: 'tasks', title: 'Tasks', lines }
+  return { id: 'tasks', title: BRIEF_SECTION_TITLE.tasks, lines }
 }
+
+/** From this hour an empty schedule is left out: the line shows only with something still to come. */
+const SCHEDULE_QUIET_FROM = 22
 
 function scheduleSection(i: BriefInput): BriefSection | null {
   const s = i.schedule
@@ -286,10 +299,19 @@ function scheduleSection(i: BriefInput): BriefSection | null {
   if (s.next) {
     const after = s.remainingCount > 1 ? ` · ${s.remainingCount - 1} more today` : ''
     const text = s.next.inProgress ? `Now: ${s.next.title}${after}` : `Next: ${s.next.startLabel} ${s.next.title}${after}`
-    return { id: 'schedule', title: 'Schedule', lines: [{ text, tone: s.next.inProgress ? 'info' : undefined, href: '/daily' }] }
+    return { id: 'schedule', title: BRIEF_SECTION_TITLE.schedule, lines: [{ text, tone: s.next.inProgress ? 'info' : undefined, href: '/daily' }] }
   }
-  if (i.hour < 22) return { id: 'schedule', title: 'Schedule', lines: [{ text: 'Nothing else scheduled today.', href: '/daily' }] }
+  if (i.hour < SCHEDULE_QUIET_FROM) return { id: 'schedule', title: BRIEF_SECTION_TITLE.schedule, lines: [{ text: 'Nothing else scheduled today.', href: '/daily' }] }
   return null
+}
+
+/**
+ * The sections every account's brief shows at this hour, whatever its data — what a first visit keeps room for
+ * (THEME.md §5): the tasks (an empty list says so), food (the calorie target has a default) and, until 22:00, the
+ * schedule ("Nothing else scheduled today."; after that only with something still to come).
+ */
+export function alwaysShown(hour: number): ReadonlySet<BriefSectionId> {
+  return new Set<BriefSectionId>(hour < SCHEDULE_QUIET_FROM ? ['tasks', 'schedule', 'nutrition'] : ['tasks', 'nutrition'])
 }
 
 function trainingSection(i: BriefInput): BriefSection | null {
@@ -311,7 +333,7 @@ function trainingSection(i: BriefInput): BriefSection | null {
     const left = t.weekTarget - t.weekSessions
     lines.push({ text: left > 0 ? `${t.weekSessions} of ${t.weekTarget} sessions this week.` : `Weekly target reached (${t.weekSessions}/${t.weekTarget}).`, tone: left > 0 ? 'neutral' : 'success' })
   }
-  return lines.length ? { id: 'training', title: 'Training', lines } : null
+  return lines.length ? { id: 'training', title: BRIEF_SECTION_TITLE.training, lines } : null
 }
 
 function nutritionSection(i: BriefInput): BriefSection | null {
@@ -330,7 +352,7 @@ function nutritionSection(i: BriefInput): BriefSection | null {
   if (n.waterTarget && n.waterMl != null && i.hour >= 12 && n.waterMl < n.waterTarget * (i.hour / 24)) {
     lines.push({ text: `Water ${(n.waterMl / 1000).toFixed(1)} L of ${(n.waterTarget / 1000).toFixed(1)} L — behind pace.`, tone: 'info' })
   }
-  return { id: 'nutrition', title: 'Food', lines }
+  return { id: 'nutrition', title: BRIEF_SECTION_TITLE.nutrition, lines }
 }
 
 // ── Watch ────────────────────────────────────────────────────────────────────
@@ -387,7 +409,7 @@ function watchSection(i: BriefInput): BriefSection | null {
     const year = pick.releaseDate ? `${pick.releaseDate.slice(0, 4)}, ` : ''
     lines.push({ text: `From your wishlist: ${pick.title} (${year}${pick.mediaType === 'movie' ? 'film' : 'series'})`, media: { tmdbId: pick.tmdbId, mediaType: pick.mediaType } })
   }
-  return lines.length ? { id: 'watch', title: 'Watch', lines } : null
+  return lines.length ? { id: 'watch', title: BRIEF_SECTION_TITLE.watch, lines } : null
 }
 
 // ── Money ────────────────────────────────────────────────────────────────────
@@ -411,12 +433,15 @@ function moneySection(i: BriefInput): BriefSection | null {
   const lines: BriefLine[] = [{ text: `1 NOK = ${c.rate.toFixed(2)} TRY` }]
   const move = nokTryComment(c.changePct)
   if (move) lines.push(move)
-  return { id: 'money', title: 'NOK → TRY', lines }
+  return { id: 'money', title: BRIEF_SECTION_TITLE.money, lines }
 }
 
 // ── Headline + assembly ──────────────────────────────────────────────────────
 
-/** The single most useful sentence right now, in priority order. */
+/**
+ * The single most useful sentence right now, in priority order. "A clear day" only when both the tasks and the
+ * schedule were read: without one (its read failed) it claims nothing about them, and says which one failed.
+ */
 function headlineFor(i: BriefInput, sections: BriefSection[]): BriefLine {
   const overdue = i.tasks?.open.filter(t => t.overdue).length ?? 0
   if (overdue) return { text: `${plural(overdue, 'task')} overdue — clear ${overdue === 1 ? 'it' : 'them'} first.`, tone: 'danger', href: '/daily' }
@@ -425,7 +450,9 @@ function headlineFor(i: BriefInput, sections: BriefSection[]): BriefLine {
   if (i.schedule?.next) return { text: `Next up at ${i.schedule.next.startLabel}: ${i.schedule.next.title}.`, href: '/daily' }
   const open = i.tasks?.open.length ?? 0
   if (open) return { text: `${plural(open, 'open task')} today.`, href: '/daily' }
-  if (sections.length) return { text: 'A clear day — nothing urgent.', tone: 'success' }
+  if (sections.length && i.tasks && i.schedule) return { text: 'A clear day — nothing urgent.', tone: 'success' }
+  if (i.failedReads?.includes('tasks')) return { text: 'Today\'s tasks couldn\'t be read.', tone: 'neutral' }
+  if (i.failedReads?.includes('schedule')) return { text: 'Today\'s schedule couldn\'t be read.', tone: 'neutral' }
   return { text: 'Nothing to report yet.', tone: 'neutral' }
 }
 

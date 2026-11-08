@@ -14,10 +14,6 @@ import { nokPerUnit, type UsdRates } from './fx'
 
 // ── What a row is ────────────────────────────────────────────────────────────
 
-export const isGeneral = (i: Pick<ShopItem, 'kind'>): boolean => i.kind === 'general'
-export const isModel = (i: Pick<ShopItem, 'option_for'>): boolean => !!i.option_for
-export const isAccessory = (i: Pick<ShopItem, 'accessory_of'>): boolean => !!i.accessory_of
-
 /**
  * A thing you have or had: a bought row on the wishlist side that you kept —
  * never a quick-list errand (groceries are used up), a general wish, or
@@ -30,7 +26,6 @@ export function isPossession(i: ShopItem): boolean {
 export const isMine = (i: ShopItem): boolean => isPossession(i) && !i.disposal
 /** Sold, given away, broke, lost… — a returned thing never was yours, so it is not "gone". */
 export const isGone = (i: ShopItem): boolean => isPossession(i) && !!i.disposal && i.disposal !== 'returned'
-export const isReturned = (i: ShopItem): boolean => isPossession(i) && i.disposal === 'returned'
 
 export type OwnState = 'to_buy' | 'mine' | 'gone' | 'returned' | 'not_kept' | 'dropped' | 'fulfilled'
 
@@ -170,7 +165,6 @@ export function moneyCtx(costs: readonly ShopItemCost[], rates: UsdRates | null)
   for (const list of map.values()) list.sort((a, b) => a.spent_on.localeCompare(b.spent_on) || a.created_at.localeCompare(b.created_at))
   return { costs: map, rates }
 }
-export const NO_MONEY: MoneyCtx = { costs: new Map(), rates: null }
 
 const priceCurrency = (i: Pick<ShopItem, 'currency' | 'region'>): ShopCurrency => i.currency ?? (i.region === 'TR' ? 'TRY' : 'NOK')
 
@@ -232,16 +226,6 @@ export function accessoriesByItem(items: readonly ShopItem[]): Map<string, ShopI
   }
   for (const list of out.values()) list.sort((a, b) => (boughtOn(a) ?? '').localeCompare(boughtOn(b) ?? '') || a.title.localeCompare(b.title))
   return out
-}
-
-/** An item with the accessories still on it — what "with its accessories" means for money. */
-export interface Thing { item: ShopItem; accessories: ShopItem[] }
-
-/** The thing's own cost and its accessories', and the two together. */
-export function thingCost(t: Thing, ctx: MoneyCtx): { own: Amount; accessories: Amount; total: Amount } {
-  const own = costOf(t.item, ctx)
-  const accessories = add(...t.accessories.map(a => costOf(a, ctx)))
-  return { own, accessories, total: add(own, accessories) }
 }
 
 // ── Per month ────────────────────────────────────────────────────────────────

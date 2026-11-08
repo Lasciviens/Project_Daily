@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Activity, Dumbbell, Footprints, HeartPulse, Moon, Scale } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals'
 import { Button, AnimatedNumber } from '../../../../shared/ui'
+import { useIdlePreload } from '../../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../../shared/utils/lazyPage'
 import { HEALTH_SECTIONS, type HealthSectionId } from '../sectionTypes'
 import { fmtClock } from '../../healthTrendStats'
 import type { HealthHero as Hero } from './useHealthHero'
 import { HeroTile } from './HeroTile'
 import { changeTone, hm, num, signed, signedHm } from './heroFormat'
-import { ExerciseDetail, SleepDetail, StepsDetail } from './HeroDetailsActivity'
-import { RhrDetail, VitalsDetail, WeightDetail } from './HeroDetailsBody'
 import { fmtDayMonth } from '../healthFormat'
 import { nightMissingText, nightNoun } from '../../healthDateLabels'
 import { BENCHMARKS, BETTER_LABEL, TILE_PLAIN, betterFor } from '../../benchmarks/healthBenchmarks'
@@ -17,6 +17,16 @@ import { BENCHMARKS, BETTER_LABEL, TILE_PLAIN, betterFor } from '../../benchmark
 function counted(v: number | null | undefined, format: (v: number) => string = x => num(x)) {
   return v == null || !Number.isFinite(v) ? '—' : <AnimatedNumber value={v} format={format} />
 }
+
+// A tile's sheet (its chart, ladder and sources) loads when it opens, and in
+// idle time once the tiles show: the charts stay out of the page's first download.
+const SleepDetail = lazyPart('health-detail-sleep', () => import('./HeroDetailsActivity').then(m => m.SleepDetail))
+const StepsDetail = lazyPart('health-detail-steps', () => import('./HeroDetailsActivity').then(m => m.StepsDetail))
+const ExerciseDetail = lazyPart('health-detail-exercise', () => import('./HeroDetailsActivity').then(m => m.ExerciseDetail))
+const RhrDetail = lazyPart('health-detail-rhr', () => import('./HeroDetailsBody').then(m => m.RhrDetail))
+const WeightDetail = lazyPart('health-detail-weight', () => import('./HeroDetailsBody').then(m => m.WeightDetail))
+const VitalsDetail = lazyPart('health-detail-vitals', () => import('./HeroDetailsBody').then(m => m.VitalsDetail))
+const DETAILS = [SleepDetail, StepsDetail, ExerciseDetail, RhrDetail, WeightDetail, VitalsDetail]
 
 // "How you're doing": the six tier-1 tiles from the metric ranking
 // (docs/training-health/research/research-rank.json), in its order. No
@@ -45,6 +55,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
   onOpenSection?: (id: HealthSectionId) => void
 }) {
   const [open, setOpen] = useState<TileId | null>(null)
+  useIdlePreload(DETAILS)
   // "View this day" from a sheet's chart closes the sheet first.
   const viewDay = (date: string) => { setOpen(null); onViewDay(date) }
   const target = open ? HEALTH_SECTIONS.find(s => s.id === TILE_SECTION[open]) : undefined
@@ -82,7 +93,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
       <div className="grid grid-cols-1 gap-3 @[36rem]:grid-cols-2 @[64rem]:grid-cols-3">
         {/* Only the night that ended on this day counts as "last night" — a
             missing night says so; it is never replaced by an older one. */}
-        <HeroTile icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading}
+        <HeroTile id="sleep" icon={<Moon />} label="Sleep" onOpen={() => setOpen('sleep')} isLoading={sleep.isLoading} failed={hero.failed.sleep}
           empty={sleep.value == null ? (isDay ? `${nightMissingText(hero.anchor, hero.today)}.` : 'No sleep recorded in this period.') : null}
           value={counted(sleep.value, hm)}
           unit={isDay ? nightNoun(hero.anchor, hero.today) : '/night · average'}
@@ -96,7 +107,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(sleep.cls)} better="7–9 h is best, and a steady wake time" aim={hero.aims.sleep}
           plain={BENCHMARKS.sleep_duration.plain} />
 
-        <HeroTile icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading}
+        <HeroTile id="steps" icon={<Footprints />} label="Steps" onOpen={() => setOpen('steps')} isLoading={steps.isLoading} failed={hero.failed.steps}
           empty={steps.value == null ? `No steps recorded ${isDay ? 'that day' : 'in this period'}.` : null}
           value={counted(steps.value)} unit={isDay ? (steps.partial ? 'so far' : 'steps') : '/day · average'}
           sub={steps.todaySoFar != null ? <>Today so far {num(steps.todaySoFar)}</> : null}
@@ -104,7 +115,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(steps.cls)} better={BETTER_LABEL[betterFor(BENCHMARKS.step_count.higherIsBetter)]} aim={hero.aims.steps}
           plain={BENCHMARKS.step_count.plain} />
 
-        <HeroTile icon={<Dumbbell />} label="Exercise" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading}
+        <HeroTile id="exercise" icon={<Dumbbell />} label="Exercise" onOpen={() => setOpen('exercise')} isLoading={exercise.isLoading} failed={hero.failed.exercise}
           empty={exercise.minutes == null && exercise.strengthDays === 0 ? `No exercise minutes or workouts ${isDay ? 'that day' : 'in this period'}.` : null}
           value={counted(exercise.minutes ?? 0)} unit={exUnit}
           sub={isDay
@@ -114,7 +125,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(exercise.cls)} better={BETTER_LABEL.higher} aim={hero.aims.exercise}
           plain={TILE_PLAIN.exercise} />
 
-        <HeroTile icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading}
+        <HeroTile id="rhr" icon={<HeartPulse />} label="Resting heart rate" onOpen={() => setOpen('rhr')} isLoading={rhr.isLoading} failed={hero.failed.rhr}
           empty={rhr.value == null ? (isDay ? 'No resting heart-rate reading that day.' : 'No resting heart-rate readings in this period.') : null}
           value={counted(rhr.value)} unit={`bpm${avg}`}
           sub={rhr.baseline ? <>Your usual {num(rhr.baseline.median)} bpm</> : 'Your usual needs 14 days of readings'}
@@ -122,7 +133,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={band(rhr.cls)} better={BETTER_LABEL.lower} aim={hero.aims.rhr}
           plain={BENCHMARKS.resting_heart_rate.plain} />
 
-        <HeroTile icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading}
+        <HeroTile id="weight" icon={<Scale />} label="Weight" onOpen={() => setOpen('weight')} isLoading={weight.isLoading} failed={hero.failed.weight}
           empty={weight.lastKg == null ? 'No weigh-ins yet.' : null}
           value={counted(weight.value ?? weight.lastKg, v => num(v, 1))} unit={weight.value == null ? 'kg · last weigh-in' : `kg${avg}`}
           sub={<>
@@ -133,7 +144,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
           band={bodyCls} better={BETTER_LABEL.range} aim={hero.aims.weight}
           plain={TILE_PLAIN.weight} />
 
-        <HeroTile icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading}
+        <HeroTile id="vitals" icon={<Activity />} label="Overnight vitals" onOpen={() => setOpen('vitals')} isLoading={vitals.isLoading} failed={hero.failed.vitals}
           empty={vitals.hrv == null && vitals.summary.checked === 0 ? `Not enough overnight readings ${isDay ? 'that night' : 'in this period'}.` : null}
           value={counted(vitals.hrv)} unit={`ms HRV${avg}`}
           sub={vitals.hrvRange ? <>Your usual {num(vitals.hrvRange.low)}–{num(vitals.hrvRange.high)} ms</> : 'Usual range needs 14 days of HRV'}
@@ -144,12 +155,14 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
       </div>
 
       <ModalShell open={open != null} onClose={() => setOpen(null)} title={open ? TITLES[open] : ''} size="lg" footer={footer}>
-        {open === 'sleep' && <SleepDetail hero={hero} onViewDay={viewDay} />}
-        {open === 'steps' && <StepsDetail hero={hero} onViewDay={viewDay} />}
-        {open === 'exercise' && <ExerciseDetail hero={hero} onViewDay={viewDay} />}
-        {open === 'rhr' && <RhrDetail hero={hero} onViewDay={viewDay} />}
-        {open === 'weight' && <WeightDetail hero={hero} onViewDay={viewDay} />}
-        {open === 'vitals' && <VitalsDetail hero={hero} onViewDay={viewDay} />}
+        <Suspense fallback={<div aria-busy="true" />}>
+          {open === 'sleep' && <SleepDetail hero={hero} onViewDay={viewDay} />}
+          {open === 'steps' && <StepsDetail hero={hero} onViewDay={viewDay} />}
+          {open === 'exercise' && <ExerciseDetail hero={hero} onViewDay={viewDay} />}
+          {open === 'rhr' && <RhrDetail hero={hero} onViewDay={viewDay} />}
+          {open === 'weight' && <WeightDetail hero={hero} onViewDay={viewDay} />}
+          {open === 'vitals' && <VitalsDetail hero={hero} onViewDay={viewDay} />}
+        </Suspense>
       </ModalShell>
     </section>
   )

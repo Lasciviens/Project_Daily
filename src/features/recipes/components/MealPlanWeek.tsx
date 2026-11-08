@@ -119,9 +119,11 @@ export function MealPlanWeek() {
                 )}>
                 <div className="text-micro font-semibold uppercase opacity-80">{format(day, 'EEE')}</div>
                 <div className="text-ui font-bold leading-tight tabular-nums">{format(day, 'd')}</div>
-                {kcalByDay.get(format(day, 'yyyy-MM-dd')) ? (
-                  <div className="text-micro tabular-nums opacity-80">{Math.round(kcalByDay.get(format(day, 'yyyy-MM-dd'))!)}</div>
-                ) : null}
+                {/* The kcal line keeps its room on a day with nothing planned: the row of days grew 12px when
+                    the week's plans arrived (a layout shift). */}
+                <div className="text-micro tabular-nums opacity-80">
+                  {kcalByDay.get(format(day, 'yyyy-MM-dd')) ? Math.round(kcalByDay.get(format(day, 'yyyy-MM-dd'))!) : ' '}
+                </div>
               </button>
             )
           })}

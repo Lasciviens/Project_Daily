@@ -12,7 +12,8 @@ import type { ReadStatus } from '../types'
 import { BookTile } from './BookTile'
 import { FacetView } from './library/FacetView'
 import { NewsView } from './library/NewsView'
-import { AddBook, Duplicates, ReadingNow, UpNext } from './library/pieces'
+import { AddBook, Duplicates, READING_NOW_MAX, ReadingNow, ReadingNowSkeleton, UpNext } from './library/pieces'
+import { useRememberedCount } from '../../../shared/hooks/useLayoutMemory'
 
 const SORTS: { id: LibrarySort; label: string }[] = [
   { id: 'recent', label: 'Recently read' },
@@ -33,7 +34,7 @@ const VIEW_IDS: View[] = ['books', 'want', 'author', 'collection', 'category', '
 
 /** Library: every book, what you want to read next, and the library by author, collection, category and subject. News stays apart. */
 export function LibraryTab() {
-  const { data: all = [], isLoading } = useLibrary(true, { includeNews: true })
+  const { data: all = [], isLoading, isError } = useLibrary(true, { includeNews: true })
   const books = useMemo(() => all.filter(b => b.kind !== 'news'), [all])
   const news = useMemo(() => all.filter(b => b.kind === 'news'), [all])
   const [params, setParams] = useSearchParams()
@@ -60,6 +61,9 @@ export function LibraryTab() {
     && matchesSearch(b, query)), sort), [books, status, where, query, sort])
   const reading = useMemo(() => sortForLibrary(books.filter(b => b.read_status === 'reading'), 'recent'), [books])
   const filtering = status !== 'all' || query.trim() !== '' || where !== 'all'
+  // Reading now comes with the data (a book being read): while the library loads it keeps the room of as many books
+  // as it showed last time on this device — none the first time, when a library may have none (THEME.md §5).
+  const readingRoom = useRememberedCount('books:reading', Math.min(reading.length, READING_NOW_MAX), !isLoading && !isError, 0)
 
   const tools = (
     <Card className="flex flex-col gap-3">
@@ -117,7 +121,8 @@ export function LibraryTab() {
   return (
     <PageBoard layout={LIBRARY_BOARD} stackGap="gap-4" sections={{
       tools,
-      reading: filtering || reading.length === 0 ? null : <ReadingNow books={reading} />,
+      reading: isLoading ? readingRoom > 0 && <ReadingNowSkeleton books={readingRoom} />
+        : filtering || reading.length === 0 ? null : <ReadingNow books={reading} />,
       queue: <UpNext books={books} />,
       grid: (
         <Card>

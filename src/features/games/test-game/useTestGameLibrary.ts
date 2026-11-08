@@ -23,7 +23,7 @@ export interface TestGameLibrary {
   countedGames: TgGame[]
   /** Platform keys left out of stats (synced, migration 133). */
   excludedPlatforms: string[]
-  /** The retro library has not arrived yet (every view needs it). */
+  /** A library has not arrived yet: every view waits for all three on the first load (`games` is empty until then). */
   isLoading: boolean
   isError: boolean
   error: unknown
@@ -37,6 +37,9 @@ export interface TestGameLibrary {
   /** Refetch both provider libraries. */
   retryProviders: () => void
 }
+
+/** The same empty list on every render while the libraries load (a fresh `[]` broke every memo downstream). */
+const NO_GAMES: TgGame[] = []
 
 /** FNV-1a over the sorted id list: a key that changes when ANY id changes,
  *  not only the count or the two ends. */
@@ -83,9 +86,13 @@ export function useTestGameLibrary(): TestGameLibrary {
   // Games arriving a beat later read as loading; a failed type read shows
   // them unclassified (nothing hidden) rather than holding them back.
   const steamReady = steamIds.length === 0 || steamTypes.data !== undefined || steamTypes.isError
+  // Every view waits for all three libraries on the first load (Steam's store types are one database round
+  // trip more), so the shelves, the phone grid and the platform list fill once: the Steam and PlayStation rows
+  // used to land between the retro games a moment after those painted and move every card (a layout shift).
+  const firstLoad = retro.isLoading || steam.isLoading || psn.isLoading || !steamReady
   const games = useMemo(
-    () => deriveGames([...(retro.data ?? []), ...(steamReady ? steam.games : []), ...psn.games], steamTypes.data),
-    [retro.data, steam.games, psn.games, steamTypes.data, steamReady],
+    () => (firstLoad ? NO_GAMES : deriveGames([...(retro.data ?? []), ...(steamReady ? steam.games : []), ...psn.games], steamTypes.data)),
+    [firstLoad, retro.data, steam.games, psn.games, steamTypes.data, steamReady],
   )
 
   const refetchRetro = retro.refetch
@@ -111,9 +118,7 @@ export function useTestGameLibrary(): TestGameLibrary {
     games,
     countedGames: counted,
     excludedPlatforms,
-    // The retro library is the one every view needs; the two provider
-    // libraries arrive into an already-painted page.
-    isLoading: retro.isLoading,
+    isLoading: firstLoad,
     isError: retro.isError,
     error: retro.error,
     refetch,

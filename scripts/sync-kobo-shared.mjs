@@ -26,12 +26,15 @@ function transform(file) {
   return `// ── ${file} ──\n${out.join('\n').trim()}\n`
 }
 
+// ESLint checks the modules in src/; the function uses only part of them.
 const block = [
   OPEN,
   '// GENERATED from src/features/books/ by scripts/sync-kobo-shared.mjs.',
   '// Do not edit here — edit the source and re-run the script.',
+  '/* eslint-disable @typescript-eslint/no-unused-vars -- the function uses only part of these modules (linted in src/) */',
   '',
   ...SOURCES.map(transform),
+  '/* eslint-enable @typescript-eslint/no-unused-vars */',
   CLOSE,
 ].join('\n')
 

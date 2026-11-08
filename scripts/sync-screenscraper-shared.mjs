@@ -36,14 +36,18 @@ function transform(file) {
   return `// ── ${file} ──\n${out.join('\n').trim()}\n`
 }
 
+// ESLint checks the modules in src/; here each function uses only part of them, and `Rec` keeps
+// the source's own exception (the line form, so Deno's ignore still sits right above it).
 const block = [
   OPEN,
   '// GENERATED from src/features/games/scraper/ by scripts/sync-screenscraper-shared.mjs.',
   '// Do not edit here — edit the source and re-run the script.',
+  '/* eslint-disable @typescript-eslint/no-unused-vars -- each function uses only part of these modules (linted in src/) */',
   '// deno-lint-ignore no-explicit-any',
-  'type Rec = Record<string, any>',
+  'type Rec = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any',
   '',
   ...SOURCES.map(transform),
+  '/* eslint-enable @typescript-eslint/no-unused-vars */',
   CLOSE,
 ].join('\n')
 

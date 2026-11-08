@@ -8,5 +8,10 @@ export function rememberCalendarPrefs(prefs: CalendarPrefs): void { known = { pr
 export function forgetCalendarPrefs(): void { known = null }
 /** The remembered settings while they are younger than `freshMs`, else null. */
 export function rememberedCalendarPrefs(freshMs: number): CalendarPrefs | null {
-  return known && Date.now() - known.at < freshMs ? known.prefs : null
+  return rememberedCalendarPrefsRead(freshMs)?.prefs ?? null
+}
+
+/** The remembered settings with the time they were read or saved, while younger than `freshMs`, else null. */
+export function rememberedCalendarPrefsRead(freshMs: number): { prefs: CalendarPrefs; at: number } | null {
+  return known && Date.now() - known.at < freshMs ? known : null
 }

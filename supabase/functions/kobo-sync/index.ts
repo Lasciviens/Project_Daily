@@ -29,7 +29,7 @@
 // are deleted through the Storage API (never by deleting storage.objects
 // rows, which leaves the file behind) and their rows set to `expired`.
 
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -58,6 +58,7 @@ const COVER_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 
 // <kobo-shared>
 // GENERATED from src/features/books/ by scripts/sync-kobo-shared.mjs.
 // Do not edit here — edit the source and re-run the script.
+/* eslint-disable @typescript-eslint/no-unused-vars -- the function uses only part of these modules (linted in src/) */
 
 // ── opdsFeed.ts ──
 // The Send to Kobo OPDS feed — pure and import-free, GENERATED into
@@ -1593,6 +1594,7 @@ function cleanDeviceFacts(raw: Record<string, unknown>, nowIso?: string): Device
   return out
 }
 
+/* eslint-enable @typescript-eslint/no-unused-vars */
 // </kobo-shared>
 
 
@@ -1616,8 +1618,7 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
 const text = (body: string, status: number) => new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-// deno-lint-ignore no-explicit-any
-type Db = any
+type Db = SupabaseClient
 
 async function sweep(db: Db, userId: string): Promise<number> {
   const { data, error } = await db.from('book_deliveries')

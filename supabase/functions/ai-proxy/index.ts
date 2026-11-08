@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -46,7 +46,7 @@ interface Message { role: 'user' | 'assistant'; content: string; images?: string
 // meal / food label rides alongside the text and the tool loop still runs.
 function parseImageData(s: unknown): { mime_type: string; data: string } | null {
   if (typeof s !== 'string') return null
-  const m = /^data:([\w/+.\-]+);base64,(.+)$/s.exec(s.trim())
+  const m = /^data:([\w/+.-]+);base64,(.+)$/s.exec(s.trim())
   return m ? { mime_type: m[1], data: m[2] } : null
 }
 function partsForMessage(m: Message): AnyRecord[] {
@@ -61,7 +61,7 @@ function messagesToContents(messages: Message[]): AnyRecord[] {
 }
 
 // deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // True for a dotted-quad that lands in a loopback/private/link-local range.
 // 169.254.0.0/16 covers cloud metadata (169.254.169.254) too. A malformed
@@ -320,10 +320,30 @@ function supportsThinking(model: GeminiModel): boolean {
 // the second 3, the tail models 2 (they're the escape hatch, not the goal).
 const RETRIES_BY_POSITION = [4, 3, 2, 2]
 const RETRY_BASE_DELAY_MS = 700
-// Per-attempt hard ceiling. A single Gemini generation is normally 1-5s; 20s
-// bounds a genuinely hung connection (there was NO timeout before — a hang
-// blocked forever, and with up to 11 attempts total there was no upper bound).
+// Per-attempt ceiling: a generation normally takes 1-5 s, and without a limit
+// a hung connection held the request until the platform ended it. A timed-out
+// attempt moves the chain to the next model (a pool that hangs rarely answers
+// the same model's retry), so hangs cost at most one 20 s wait per model.
 const GEMINI_ATTEMPT_TIMEOUT_MS = 20_000
+
+/**
+ * A read from an outside service with a time limit: one that never answers fails after `ms`, named, instead
+ * of holding the whole reply until the platform ends the function. The limit also covers reading the answer.
+ * Only for reads: a write that runs out of time may still have landed (the Hevy writes: hevyRoutineWrite).
+ */
+async function fetchWithin(service: string, ms: number, url: string, init: RequestInit = {}): Promise<Response> {
+  const signal = AbortSignal.timeout(ms)
+  try {
+    const res = await fetch(url, { ...init, signal })
+    const text = await res.text()
+    const noBody = res.status === 204 || res.status === 205 || res.status === 304
+    return new Response(noBody ? null : text, { status: res.status, statusText: res.statusText, headers: res.headers })
+  } catch (e) {
+    if (signal.aborted) throw new Error(`${service} did not answer within ${ms / 1000} s`, { cause: e })
+    // Deno's own text quotes the whole URL (a search's words, the runtime's address): the service's name is enough.
+    throw new Error(`${service} could not be reached (network error)`, { cause: e })
+  }
+}
 
 // Random spread on the backoff delay ("jitter") — without it, if this
 // function is ever invoked concurrently (e.g. two tabs), every retry lands on
@@ -346,7 +366,7 @@ function jitter(ms: number): number {
 // leaves (caller, model, app_error_logs, ai_query_log). Security audit.
 function hideSecrets(msg: string): string {
   let out = String(msg ?? '')
-  for (const v of [...['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET'].map(k => Deno.env.get(k)), serviceKey()]) {
+  for (const v of [...['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET', 'GOOGLE_CLIENT_SECRET'].map(k => Deno.env.get(k)), serviceKey()]) {
     if (v && v.length >= 8) out = out.split(v).join('[hidden]')
   }
   return out.replace(/([?&](?:key|apikey|api_key)=)[^&\s)"']+/gi, '$1[hidden]')
@@ -370,12 +390,36 @@ async function fetchGeminiWithFallback(
     for (let attempt = 0; attempt < retries; attempt++) {
       // The key travels in a header, never the URL: a network error's message
       // quotes the URL, and it reaches the caller and app_error_logs (audit).
-      const res = await fetch(buildUrl(model), {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body:    JSON.stringify(buildBody(model)),
-      })
-      if (res.ok) return { res, modelUsed: model }
+      const signal = AbortSignal.timeout(GEMINI_ATTEMPT_TIMEOUT_MS)
+      let res: Response
+      try {
+        res = await fetch(buildUrl(model), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body:    JSON.stringify(buildBody(model)),
+          signal,
+        })
+      } catch (e) {
+        // Our own timeout is a failed attempt: on to the next model. Any other
+        // network error still ends the chain, as before.
+        if (!signal.aborted) throw e
+        lastRes = null
+        lastModel = model
+        break
+      }
+      if (res.ok) {
+        // The answer is read inside the attempt, under the same 20 s: one still arriving when the time runs out is a
+        // timed-out attempt (on to the next model), never a 500 half-way through reading it (guardian, 07.11.2026).
+        try {
+          const text = await res.text()
+          return { res: new Response(text, { status: res.status, statusText: res.statusText, headers: res.headers }), modelUsed: model }
+        } catch (e) {
+          if (!signal.aborted) throw e
+          lastRes = null
+          lastModel = model
+          break
+        }
+      }
       // 404 = THIS model id doesn't exist (retired/renamed) — skip straight
       // to the next model in the chain. Real production bug this fixes: a
       // 404 mid-chain used to be returned as the final answer, aborting the
@@ -393,7 +437,12 @@ async function fetchGeminiWithFallback(
       }
     }
   }
-  return { res: lastRes!, modelUsed: lastModel }
+  // The last attempt timed out, so there is no answer to hand back. The
+  // message names no URL or key; the handler still passes it through hideSecrets.
+  if (!lastRes) {
+    throw new Error(`Gemini timed out: no model answered (the last, ${lastModel}, sent nothing within ${GEMINI_ATTEMPT_TIMEOUT_MS / 1000} s). Try again in a moment.`)
+  }
+  return { res: lastRes, modelUsed: lastModel }
 }
 
 const TOOLS = [
@@ -775,7 +824,7 @@ const vecLiteral = (v: number[]) => `[${v.join(',')}]`
 async function embedTexts(apiKey: string, texts: string[], taskType: string): Promise<(number[] | null)[]> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents`
   const body = { requests: texts.map(t => ({ model: `models/${EMBED_MODEL}`, content: { parts: [{ text: t.slice(0, 8000) }] }, taskType, outputDimensionality: EMBED_DIMS })) }
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
+  const res = await fetchWithin('Gemini embeddings', 20_000, url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body) })
   if (!res.ok) throw new Error(`embed ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
   const j = await res.json()
   return (j.embeddings ?? []).map((e: AnyRecord) => Array.isArray(e?.values) ? e.values as number[] : null)
@@ -921,7 +970,7 @@ Deno.serve(async (req) => {
           status: 503, headers: { ...headers, 'Content-Type': 'application/json' },
         })
       }
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
+      const r = await fetchWithin('Gemini', 10_000, 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } })
       const j = await r.json()
       const models = (j.models ?? [])
         .filter((m: AnyRecord) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
@@ -959,7 +1008,7 @@ Deno.serve(async (req) => {
             const vecs = await embedTexts(key, chunk.map((c: AnyRecord) => c.text), 'RETRIEVAL_DOCUMENT')
             const upserts = chunk
               .map((c: AnyRecord, j: number) => vecs[j] ? { user_id: user.id, source_table: src.table, source_id: c.id, content: c.text.slice(0, 4000), embedding: vecLiteral(vecs[j]!), updated_at: new Date().toISOString() } : null)
-              .filter(Boolean)
+              .filter(u => u !== null)
             if (upserts.length) { await supabase.from('ai_embeddings').upsert(upserts, { onConflict: 'user_id,source_table,source_id' }); n += upserts.length }
           }
           perTable[src.table] = n; indexed += n
@@ -1050,8 +1099,7 @@ async function callGemini(
   apiKey: string,
   messages: Message[],
   systemPrompt: string | undefined,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   preferredModel?: GeminiModel,
   authHeader?: string,
@@ -1167,7 +1215,14 @@ async function callGemini(
             else result = { success: false, error: proposal.error }
           }
         } else {
-          result = await dispatch(name, args, supabase, userId, authHeader, surface)
+          // A tool that throws (an outside service down or out of time) is one failed step the model can
+          // tell the user about, never the end of the whole reply.
+          try { result = await dispatch(name, args, supabase, userId, authHeader, surface) }
+          catch (e) {
+            const msg = hideSecrets(String((e as Error)?.message ?? '')) || 'The tool failed'
+            console.error('[ai-proxy] tool', name, msg)
+            result = { success: false, error: msg }
+          }
         }
         if (result && typeof result.error === 'string') result.error = hideSecrets(result.error)
         steps.push(describeStep(name, args, result))
@@ -1219,6 +1274,8 @@ async function callGemini(
 // One-line description of a tool call for the client-side activity trace.
 function describeStep(name: string, args: AnyRecord, result: AnyRecord): string {
   const tbl = args?.table ? ` ${args.table}` : ''
+  // A write whose answer never came (hevyRoutineWrite): neither done nor failed.
+  if (result?.outcome_unknown) return `? ${name}${tbl} — not confirmed: it may have gone through`
   if (result?.success === false) return `✗ ${name}${tbl} — ${result.error ?? 'error'}`
   if (result?.waiting_for_user) return `… ${name}${tbl} — waiting for your Confirm`
   let detail = ''
@@ -1318,8 +1375,7 @@ function rowLabel(r: AnyRecord): string {
 }
 
 async function proposeAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, name: string, args: AnyRecord,
+  supabase: SupabaseClient, userId: string, name: string, args: AnyRecord,
 ): Promise<{ ok: true; confirm: Confirm } | { ok: false; error: string }> {
   try {
     let summary = ''
@@ -1360,8 +1416,7 @@ async function proposeAction(
 // The person tapped Confirm or Cancel. Runs the stored action once, only for
 // the account that proposed it, only within 15 minutes.
 async function settleAction(
-  // deno-lint-ignore no-explicit-any
-  supabase: any, userId: string, id: string, decision: string, authHeader?: string,
+  supabase: SupabaseClient, userId: string, id: string, decision: string, authHeader?: string,
 ): Promise<{ text: string; steps?: string[] }> {
   const { data: row } = await supabase.from('ai_pending_actions')
     .update({ done_at: new Date().toISOString(), decision: decision === 'confirm' ? 'confirm' : 'cancel' })
@@ -1370,7 +1425,14 @@ async function settleAction(
   if (!row) return { text: 'That confirmation has expired or was already used. Nothing was changed.' }
   if (decision !== 'confirm') return { text: 'Cancelled. Nothing was changed.' }
   const result = await dispatch(row.tool, row.args, supabase, userId, authHeader, 'general')
+  // Scrubbed like every other outgoing error: the text and the step reach the browser.
+  if (result && result.error != null) result.error = hideSecrets(String(result.error))
   const step = describeStep(row.tool, row.args, result)
+  // Only the Hevy routine writes can end unknown (hevyRoutineWrite). Its error text is written for the model
+  // ("tell the user…"); the person who tapped Confirm reads this instead (owner-critic, 07.11.2026).
+  if (result?.outcome_unknown) {
+    return { text: 'Hevy didn\'t confirm the change. It may have gone through: check the routine in Hevy before trying again.', steps: [step] }
+  }
   return result?.success === false
     ? { text: `That did not work: ${result.error ?? 'unknown error'}`, steps: [step] }
     : { text: `Done: ${row.summary}.`, steps: [step] }
@@ -1379,8 +1441,7 @@ async function settleAction(
 async function dispatch(
   name: string,
   args: AnyRecord,
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   authHeader?: string,
   surface?: string,
@@ -1439,6 +1500,38 @@ async function dispatch(
 // Hevy's inconsistent response shapes, re-upserts the result into our DB).
 // The user's own Authorization header is passed through so hevy-api's
 // owner check still applies.
+// The routine tools write to the owner's real Hevy account through hevy-api. When no answer comes (a time-out, a
+// broken connection) or hevy-api fails in a way that can come after Hevy took the write (a 5xx that is not Hevy
+// refusing it), the routine may already be created or changed: the result says so (`outcome_unknown`) and asks the
+// model not to send it again. A plain failure invited a retry in the same reply, and a second routine that the
+// app's Undo can't remove (guardian, 07.11.2026). 60 s covers hevy-api's own call to Hevy and its local copy.
+const HEVY_WRITE_TIMEOUT_MS = 60_000
+async function hevyRoutineWrite(
+  action: 'create_routine' | 'update_routine', payload: AnyRecord, authHeader: string,
+): Promise<{ ok: true; body: AnyRecord } | { ok: false; result: AnyRecord }> {
+  const unknown = action === 'create_routine'
+    ? 'Hevy did not confirm the routine. It may already have been created: do not call create_hevy_routine again; tell the user to check Hevy.'
+    : 'Hevy did not confirm the change. The routine may already be changed: tell the user to check it in Hevy before trying again.'
+  let res: Response
+  try {
+    res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+      body: JSON.stringify({ action, payload }),
+      signal: AbortSignal.timeout(HEVY_WRITE_TIMEOUT_MS),
+    })
+  } catch (e) {
+    console.error('[ai-proxy] hevy-api', action, hideSecrets(String((e as Error)?.message ?? e)))
+    return { ok: false, result: { success: false, outcome_unknown: true, error: unknown } }
+  }
+  const body: AnyRecord = await res.json().catch(() => ({}))
+  if (res.ok) return { ok: true, body }
+  const said = typeof body?.error === 'string' ? body.error.slice(0, 300) : `hevy-api ${res.status}`
+  // Hevy refusing the write (its 4xx, or hevy-api's own 400) leaves nothing behind.
+  const refused = res.status < 500 || /^Hevy API 4\d\d /.test(said)
+  return { ok: false, result: refused ? { success: false, error: said } : { success: false, outcome_unknown: true, error: `${unknown} (${said})` } }
+}
+
 async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<AnyRecord> {
   if (!authHeader) return { success: false, error: 'No auth context for hevy-api call' }
   let exercises: unknown
@@ -1458,13 +1551,8 @@ async function updateHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   // so adding it here is sufficient; hevy-api itself needs no change.
   const payload: AnyRecord = { id: args.routine_id, title: args.title, exercises }
   if (typeof args.notes === 'string') payload.notes = args.notes
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify({ action: 'update_routine', payload }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
+  const write = await hevyRoutineWrite('update_routine', payload, authHeader)
+  if (!write.ok) return write.result
   return { success: true, message: 'Routine updated in Hevy and synced locally.' }
 }
 
@@ -1487,14 +1575,9 @@ async function createHevyRoutine(args: AnyRecord, authHeader?: string): Promise<
   const payload: AnyRecord = { title: args.title, exercises }
   if (args.notes) payload.notes = args.notes
   if (args.folder_id) payload.folder_id = args.folder_id
-  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hevy-api`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify({ action: 'create_routine', payload }),
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: body?.error ?? `hevy-api ${res.status}` }
-  return { success: true, routine_id: body?.routine_id, message: 'Routine created in Hevy and synced locally.' }
+  const write = await hevyRoutineWrite('create_routine', payload, authHeader)
+  if (!write.ok) return write.result
+  return { success: true, routine_id: write.body?.routine_id, message: 'Routine created in Hevy and synced locally.' }
 }
 
 // ─── get_media ──────────────────────────────────────────────────────────────
@@ -1732,7 +1815,7 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   }
 
   // Exchange refresh token for a short-lived access token
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  const tokenRes = await fetchWithin('Google', 10_000, 'https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -1757,7 +1840,8 @@ async function getCalendarEvents(supabase: AnyRecord, userId: string, args: AnyR
   for (let page = 0; page < 8; page++) {
     const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' })
     if (pageToken) params.set('pageToken', pageToken)
-    const eventsRes = await fetch(
+    const eventsRes = await fetchWithin(
+      'Google Calendar', 15_000,
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
       { headers: { Authorization: `Bearer ${access_token}` } }
     )
@@ -2039,7 +2123,7 @@ async function getHealthStats(supabase: AnyRecord, userId: string, args: AnyReco
     }
   }).sort((a, b) => a.date.localeCompare(b.date))
 
-  const avgKey = (key: string) => {
+  const avgKey = (key: Exclude<keyof typeof daily[number], 'date'>) => {
     const vals = daily.map(d => d[key]).filter((v): v is number => v != null)
     return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
   }
@@ -2310,7 +2394,7 @@ async function getNextTransit(supabase: AnyRecord, userId: string, args: AnyReco
     }
   }`
 
-  const res = await fetch('https://api.entur.io/journey-planner/v3/graphql', {
+  const res = await fetchWithin('EnTur', 10_000, 'https://api.entur.io/journey-planner/v3/graphql', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', 'ET-Client-Name': 'lasciviens-project-daily' },
     body:    JSON.stringify({ query }),
@@ -2426,7 +2510,7 @@ function placeSynonyms(q: string): string[] {
 // AI a short list to ask the user about (so it clarifies in ONE follow-up turn
 // instead of firing more search tool calls).
 async function geocodeCandidates(query: string, size: number): Promise<ResolvedPlace[]> {
-  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, size)}`, {
+  const res = await fetchWithin('EnTur', 10_000, `${GEOCODER_V3}?${geocoderQuery(query, size)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return []
@@ -2563,7 +2647,7 @@ async function planTrip(supabase: AnyRecord, userId: string, args: AnyRecord): P
     }
   }`
 
-  const res = await fetch(JOURNEY_URL, {
+  const res = await fetchWithin('EnTur', 15_000, JOURNEY_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENTUR_CLIENT },
     body:    JSON.stringify({ query }),
@@ -2643,7 +2727,7 @@ async function searchTransitStops(args: AnyRecord): Promise<AnyRecord> {
   const query = (args.query ?? '').trim()
   if (!query) return { success: false, error: 'query is required' }
 
-  const res = await fetch(`${GEOCODER_V3}?${geocoderQuery(query, 8)}`, {
+  const res = await fetchWithin('EnTur', 10_000, `${GEOCODER_V3}?${geocoderQuery(query, 8)}`, {
     headers: { 'ET-Client-Name': ENTUR_CLIENT },
   })
   if (!res.ok) return { success: false, error: `Geocoder error: ${res.status}` }
@@ -3217,11 +3301,11 @@ function assertAccess(table: string, write: boolean): CatalogEntry {
   return e
 }
 
-// deno-lint-ignore no-explicit-any
-function parseJsonArg(raw: any, label: string): AnyRecord {
+function parseJsonArg(raw: unknown, label: string): AnyRecord {
   if (raw == null || raw === '') return {}
   if (typeof raw === 'object') return raw
-  try { return JSON.parse(raw) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
+  // JSON.parse reads its argument as text, as String() does.
+  try { return JSON.parse(String(raw)) } catch { throw new Error(`Invalid JSON for ${label}: ${raw}`) }
 }
 
 // Applies a filter object to a Supabase query. Plain value = eq; null = IS NULL;

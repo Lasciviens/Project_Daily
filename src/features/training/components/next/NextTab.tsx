@@ -1,6 +1,6 @@
 import { CalendarClock, CalendarPlus, Dumbbell, Moon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Button, Card, EmptyState, PageBoard, Skeleton, ToneDot, useBoardStep } from '../../../../shared/ui'
+import { Button, Card, EmptyState, KeepRoom, PageBoard, Skeleton, ToneDot, cx, useBoardStep } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { openPlanRoutine } from '../../planTraining'
@@ -8,6 +8,7 @@ import { daysBetween } from '../../plan/nextSession'
 import type { TrainingTabId } from '../../pages/trainingTabs'
 import { useNextPlan, type NextPlan } from './useNextPlan'
 import { useRecoveryNotes } from './useRecoveryNotes'
+import type { RecoveryNote } from '../../plan/recovery'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
 import { MissedSessionsCard } from '../program/MissedSessions'
@@ -75,14 +76,33 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
   )
 }
 
+/** The recovery line's box: in the wide page's rail it fills the rail like the cards above it (`w-full`); in the
+ *  phone stack it hugs its text (`w-fit`). */
+const RECOVERY_BOX = 'flex max-w-2xl flex-col gap-1 rounded-row border border-line bg-surface px-3 py-2'
+
 function RecoveryLine() {
-  const { notes, isLoading } = useRecoveryNotes()
-  // In the wide page's rail it fills the rail like the cards above it; in the
-  // phone stack it hugs its text.
+  const { notes, isLoading, isError } = useRecoveryNotes()
   const inRail = useBoardStep() > 1
-  if (isLoading || notes.length === 0) return null
+  // Its reads (last night, the resting heart rate) come in on their own: until then it keeps the room it took last
+  // time, the first time its heading and one note — a note shows whenever the reads answer (KeepRoom, THEME.md §5).
   return (
-    <div className={`flex ${inRail ? 'w-full' : 'w-fit'} max-w-2xl flex-col gap-1 rounded-row border border-line bg-surface px-3 py-2`}>
+    <KeepRoom
+      ids="training:recovery" loading={isLoading} remember={!isError} className="flex flex-col"
+      skeleton={(
+        <div aria-hidden className={cx(RECOVERY_BOX, 'w-full flex-1')}>
+          <span className="flex h-4 items-center"><Skeleton className="h-2.5 w-28" /></span>
+          <span className="flex h-5 items-center"><Skeleton className="h-3.5 w-2/3" /></span>
+        </div>
+      )}
+    >
+      {notes.length > 0 && <RecoveryNotes notes={notes} inRail={inRail} />}
+    </KeepRoom>
+  )
+}
+
+function RecoveryNotes({ notes, inRail }: { notes: RecoveryNote[]; inRail: boolean }) {
+  return (
+    <div className={cx(RECOVERY_BOX, inRail ? 'w-full' : 'w-fit')}>
       <p className="section-label flex items-center gap-1.5">
         <Moon aria-hidden className="h-3.5 w-3.5" /> Recovery context
         <InfoBubble>
@@ -138,7 +158,9 @@ function ExerciseGrid({ children }: { children: ReactNode }) {
   )
 }
 
-/** The default Training tab: what to do next, set by set. */
+/** The default Training tab: what to do next, set by set. The session and its exercises show once the plan is in;
+ *  the lines above the exercises (missed sessions, recovery, the muscle watch) come in on their own reads, each
+ *  keeping its room until then (KeepRoom), so they never push the exercises down nor hold them back. */
 export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
 

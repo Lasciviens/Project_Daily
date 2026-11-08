@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { ChevronRight } from 'lucide-react'
-import { Card, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
+import { Button, Card, KeepRoom, PageHeroArt, SectionLabel, Skeleton, ToneDot, Truncate, cx, useHeroArt } from '../../../shared/ui'
+import { rememberLayout, rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
-import { useDailyBrief } from '../hooks/useDailyBrief'
-import type { BriefLine } from '../briefRules'
+import { useDailyBrief, type BriefFailure } from '../hooks/useDailyBrief'
+import { BRIEF_SECTION_ORDER, BRIEF_SECTION_TITLE, alwaysShown, type BriefLine, type BriefSectionId } from '../briefRules'
 import { HomeHeroArt } from './HomeHeroArt'
 
 /** Tasks · Schedule · Training · Weather on a phone; the rest behind Show all. */
@@ -36,18 +37,40 @@ function Line({ line, lead }: { line: BriefLine; lead?: boolean }) {
   return <Link to={line.href} className={linkCls}>{body}{chevron}</Link>
 }
 
-function BriefSkeleton() {
+/** A line's box: 20px, or a 44px row on touch (the brief's lines are links). */
+const LINE_BOX = 'flex min-h-5 items-center [@media(pointer:coarse)]:min-h-[44px]'
+/** A section's label column beside its lines once the card is 24rem wide. */
+const SECTION_GRID = 'grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3'
+const shownKey = (id: BriefSectionId) => `brief:${id}:shown`
+
+/** A section still loading: its label and a line, in the loaded section's grid; KeepRoom gives it its last height. */
+function SectionSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="space-y-2"><Skeleton className="h-6 w-44" /><Skeleton className="h-3 w-32" /></div>
-      <Skeleton className="h-5 w-3/4" />
-      {[0, 1, 2].map(i => (
-        <div key={i} className="grid grid-cols-[5.5rem_1fr] gap-3">
-          <Skeleton className="h-3 w-16" /><div className="space-y-1.5"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-2/3" /></div>
-        </div>
-      ))}
-    </div>
+    <>
+      <dt aria-hidden className="flex h-4 items-center @[24rem]:mt-0.5"><Skeleton className="h-2.5 w-16" /></dt>
+      <dd aria-hidden className={LINE_BOX}><Skeleton className="h-3.5 w-2/3" /></dd>
+    </>
   )
+}
+
+/** A section whose read failed: what failed and Try again, on the section's one line. */
+function FailedLine({ failure }: { failure: BriefFailure }) {
+  return (
+    <p className={cx(LINE_BOX, 'flex-wrap gap-x-2 text-body text-fg-muted')}>
+      {failure.text}
+      <Button variant="ghost" size="sm" loading={failure.retrying} onClick={failure.retry}>Try again</Button>
+    </p>
+  )
+}
+
+/**
+ * Whether a section still loading will most likely show: as it did when this device last had its data; with
+ * nothing remembered, when every outcome shows it at this hour (`alwaysShown`: tasks, food, the schedule until
+ * 22:00) — training, weather, watch and money show only with some data, so a first visit keeps them no room.
+ */
+function expected(id: BriefSectionId, always: ReadonlySet<BriefSectionId>): boolean {
+  const last = rememberedLayout(shownKey(id))
+  return typeof last === 'boolean' ? last : always.has(id)
 }
 
 /**
@@ -59,57 +82,86 @@ function BriefSkeleton() {
  * behind the top of this card, the page's first, placed beside the greeting.
  */
 export function DailyBrief() {
-  const { brief, isLoading } = useDailyBrief()
+  const { brief, hour, headlineLoading, pending, failed, unsure } = useDailyBrief()
   const isPhone = useBreakpoint() === 'phone'
   const [expanded, setExpanded] = useState(false)
-  const sections = isPhone && !expanded ? brief.sections.slice(0, PHONE_SECTIONS) : brief.sections
-  const hidden = brief.sections.length - sections.length
+  const byId = new Map(brief.sections.map(s => [s.id, s]))
+  const always = alwaysShown(hour)
+  // Every section in its place as its own data lands (a failed read: its line); one still loading keeps its place
+  // when it will most likely show.
+  const slots = BRIEF_SECTION_ORDER.filter(id => failed.has(id) || (pending.has(id) ? expected(id, always) : byId.has(id)))
+  // A phone shows the first four, the rest behind Show all. On a first visit a section that only some data shows
+  // keeps no room, so when Training and Weather land they can still fold Food away (outside data fills in where it
+  // is); after that the memory gives them their places from the start. Keeping Food folded until they had answered
+  // measured worse (a light account's first visit 0.009 → 0.055) and changed nothing at night.
+  const visible = isPhone && !expanded ? slots.slice(0, PHONE_SECTIONS) : slots
+  const hidden = slots.length - visible.length
   const { layerRef: artLayerRef, contentRef: artContentRef, place: artPlace, behind: artBehind } = useHeroArt<HTMLElement>()
+  // Which sections showed, for the next visit's room (every section, also the ones folded away on a phone). A
+  // section still loading or whose read failed teaches nothing.
+  const shown = BRIEF_SECTION_ORDER.map(id => (pending.has(id) || failed.has(id) || unsure.has(id) ? '-' : byId.has(id) ? '1' : '0')).join('')
+  useEffect(() => {
+    BRIEF_SECTION_ORDER.forEach((id, i) => { if (shown[i] !== '-') rememberLayout(shownKey(id), shown[i] === '1') })
+  }, [shown])
 
   return (
     <Card className="relative isolate">
       <PageHeroArt layerRef={artLayerRef} place={artPlace} behind={artBehind}><HomeHeroArt /></PageHeroArt>
       <div className="relative z-10">
-        {isLoading ? <BriefSkeleton /> : (
-          <>
-            <header ref={artContentRef} className="mb-3">
-              <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
-              <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
-            </header>
+        {/* The greeting and the date need no data: drawn at once, also while the rest loads. */}
+        <header ref={artContentRef} className="mb-3">
+          <h1 id="daily-brief-title" className="text-title font-bold tracking-tight text-fg sm:text-head">{brief.greeting}</h1>
+          <p className="text-meta tabular-nums text-fg-muted">{formatWeekdayDate(new Date(), 'long')} · Week {getISOWeek(new Date())}</p>
+        </header>
+        <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
+          {headlineLoading
+            ? <Skeleton rounded="rounded-full" className="mt-1.5 h-2 w-2 shrink-0" />
+            : <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />}
+          <KeepRoom
+            ids="brief:headline" loading={headlineLoading} remember={failed.size === 0 && unsure.size === 0} className="min-w-0 flex-1"
+            skeleton={<span aria-hidden className={LINE_BOX}><Skeleton className="h-3.5 w-3/4" /></span>}
+          >
+            <Line line={brief.headline} lead />
+          </KeepRoom>
+        </div>
 
-            <div className="mb-4 flex items-start gap-2 rounded-row bg-surface-2 px-3 py-2.5">
-              <ToneDot tone={brief.headline.tone ?? 'accent'} className="mt-1.5 shrink-0" />
-              <div className="min-w-0 flex-1"><Line line={brief.headline} lead /></div>
-            </div>
+        {slots.length > 0 && (
+          // One column of sections; two side by side once the card is wide
+          // (a wide Home main track), so the right half isn't left empty.
+          <div className="@container">
+            <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
+              {visible.map(id => {
+                const section = byId.get(id)
+                const failure = failed.get(id)
+                return (
+                  <KeepRoom
+                    key={id} ids={`brief:${id}`} loading={pending.has(id)} remember={!failure && !unsure.has(id)} className={SECTION_GRID}
+                    skeleton={<SectionSkeleton />}
+                  >
+                    {(section || failure) && (
+                      <>
+                        <dt><SectionLabel className="@[24rem]:pt-0.5">{section?.title ?? BRIEF_SECTION_TITLE[id]}</SectionLabel></dt>
+                        <dd className="min-w-0 space-y-0.5">
+                          {failure ? <FailedLine failure={failure} /> : section?.lines.map((line, i) => <Line key={i} line={line} />)}
+                        </dd>
+                      </>
+                    )}
+                  </KeepRoom>
+                )
+              })}
+            </dl>
+          </div>
+        )}
 
-            {sections.length > 0 && (
-              // One column of sections; two side by side once the card is wide
-              // (a wide Home main track), so the right half isn't left empty.
-              <div className="@container">
-                <dl className="grid grid-cols-1 gap-x-8 gap-y-3 @[46rem]:grid-cols-2">
-                {sections.map(section => (
-                  <div key={section.id} className="grid min-w-0 grid-cols-1 gap-0.5 @[24rem]:grid-cols-[6.5rem_minmax(0,1fr)] @[24rem]:gap-3">
-                    <dt><SectionLabel className="@[24rem]:pt-0.5">{section.title}</SectionLabel></dt>
-                    <dd className="min-w-0 space-y-0.5">
-                      {section.lines.map((line, i) => <Line key={i} line={line} />)}
-                    </dd>
-                  </div>
-                ))}
-                </dl>
-              </div>
-            )}
-
-            {isPhone && (hidden > 0 || expanded) && (
-              <button
-                type="button"
-                onClick={() => setExpanded(v => !v)}
-                aria-expanded={expanded}
-                className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
-              >
-                {expanded ? 'Show less' : `Show all (${hidden} more)`}
-              </button>
-            )}
-          </>
+        {isPhone && (hidden > 0 || expanded) && (
+          <button
+            type="button"
+            onClick={() => setExpanded(v => !v)}
+            aria-expanded={expanded}
+            className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
+          >
+            {expanded ? 'Show less' : `Show all (${hidden} more)`}
+          </button>
         )}
       </div>
     </Card>

@@ -1,12 +1,12 @@
-import { Suspense, useEffect, useLayoutEffect } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../shared/query/keys'
 import { usePullToRefresh } from '../../shared/hooks/usePullToRefresh'
 import { noteRouterNavigation } from '../../shared/hooks/useHistoryDismiss'
 import { useBreakpoint } from '../../shared/hooks/useBreakpoint'
-import { DevRequestsDrawer } from '../../features/devRequests/components/DevRequestsDrawer'
-import { AIPanel } from '../../features/ai/components/AIPanel'
+import { preloadInTurn } from '../../shared/hooks/useIdlePreload'
+import { whenSettled } from '../../shared/utils/whenIdle'
 import { CommandBar } from '../../shared/components/CommandBar'
 import { Toaster } from '../../shared/components/Toaster'
 import { OfflineBanner } from '../../shared/components/OfflineBanner'
@@ -16,6 +16,7 @@ import { selectSidebarCollapsed, useSidebarStore, useUIStore } from '../store'
 import { collapsesSidebar, isFullHeightRoute } from '../navigation'
 import { useAppBootstrap } from './useAppBootstrap'
 import { preloadPages } from '../pages'
+import { AIPanel, DevRequestsDrawer, SHELL_PARTS } from './shellParts'
 import { AppSidebar } from './AppSidebar'
 import { AppTopBar } from './AppTopBar'
 import { MobileHeader } from './MobileHeader'
@@ -25,6 +26,30 @@ import { PullToRefreshIndicator } from './PullToRefreshIndicator'
 // Remembered scroll offsets per route — restored on a Back (POP) nav so
 // returning to a list lands where you left it; forward navs start at top.
 const scrollPositions = new Map<string, number>()
+
+/**
+ * Scrolls `el` to `top` once the page is tall enough. On a Back the page isn't laid out yet when the route
+ * changes (a PageBoard places its cards in a second pass, data may still be arriving), so a single scrollTo
+ * was clamped to the top and the page stayed there. The offset is set again each time the page grows, until it
+ * fits — or the user scrolls, taps or types first. Returns the stop.
+ */
+function restoreScroll(el: HTMLElement, top: number): () => void {
+  el.scrollTo({ top })
+  const page = el.lastElementChild
+  if (el.scrollTop >= top - 1 || !page || typeof ResizeObserver === 'undefined') return () => {}
+  const ro = new ResizeObserver(() => {
+    el.scrollTo({ top })
+    if (el.scrollTop >= top - 1) stop()
+  })
+  const input = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
+  function stop() {
+    ro.disconnect()
+    for (const type of input) el.removeEventListener(type, stop)
+  }
+  ro.observe(page)
+  for (const type of input) el.addEventListener(type, stop, { passive: true })
+  return stop
+}
 
 // Toasts clear the tab bar on phones; bottom-left of the content elsewhere
 // (right of the 68px rail, or of the full sidebar).
@@ -53,25 +78,33 @@ export function AppShell() {
     predicate: query => query.queryKey[0] !== qk.external.geolocation()[0],
   }))
 
-  // The other pages' code, once the first page is up (see app/pages.ts).
+  // What the first download leaves out loads once the page opened first is
+  // drawn with its data (whenSettled): the shell's on-demand parts
+  // (shellParts.ts), then the other pages' code (app/pages.ts). Loading it
+  // earlier slowed that page's own first render; the iPhone has no idle
+  // callback, so the parts came at a fixed 1.5 s while the page still read.
+  const [partsIn, setPartsIn] = useState(false)
+  const [pageShown, setPageShown] = useState(false)
   useEffect(() => {
-    const start = () => { void preloadPages() }
-    if ('requestIdleCallback' in window) {
-      const id = window.requestIdleCallback(start, { timeout: 4000 })
-      return () => window.cancelIdleCallback(id)
-    }
-    const id = setTimeout(start, 1500)
-    return () => clearTimeout(id)
-  }, [])
+    if (!pageShown) return
+    return whenSettled(qc, () => {
+      void preloadInTurn(SHELL_PARTS).then(() => { setPartsIn(true); void preloadPages() })
+    })
+  }, [pageShown, qc])
+  // Ask AI and Requests mount closed once their code is in, as they did at
+  // start before, so the first open slides in like every later one. Opened
+  // before that, they mount at once. Once mounted they stay (a chat keeps its answer).
+  const aiShown = useLatch(useUIStore(s => s.isAIOpen) || (partsIn && AIPanel.isLoaded()))
+  const requestsShown = useLatch(useUIStore(s => s.isDevRequestsOpen) || (partsIn && DevRequestsDrawer.isLoaded()))
 
   const reportScroll = useUIStore(s => s.reportScroll)
   const resetChrome = useUIStore(s => s.resetChrome)
-  // Desktop only: the tablet sidebar is always the rail.
-  const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed)
-  const rail = bp === 'tablet' || sidebarCollapsed
-
   const { pathname, key: locationKey } = useLocation()
   const navType = useNavigationType()
+
+  // Desktop only: the tablet sidebar is always the rail.
+  const sidebarCollapsed = useSidebarStore(selectSidebarCollapsed(collapsesSidebar(pathname)))
+  const rail = bp === 'tablet' || sidebarCollapsed
 
   // The router's own pushes and replaces fire no popstate: tell the overlay
   // history tracking (useHistoryDismiss) where the router put us.
@@ -89,12 +122,14 @@ export function AppShell() {
   useLayoutEffect(() => {
     const el = pullToRefresh.containerProps.ref.current
     const saved = scrollPositions.get(pathname)
-    if (navType === 'POP' && saved != null && el) el.scrollTo({ top: saved })
+    let stopRestore: (() => void) | undefined
+    if (navType === 'POP' && saved != null && el) stopRestore = restoreScroll(el, saved)
     else el?.scrollTo({ top: 0 })
     resetChrome()
     useModalStore.getState().closeAll()
     // Before paint, so a page that folds the sidebar (Games) never flashes it open.
     useSidebarStore.getState().enterRoute(collapsesSidebar(pathname))
+    return () => stopRestore?.()
   }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Without View Transitions (pre-18 iOS Safari, the primary device) route
@@ -135,6 +170,7 @@ export function AppShell() {
         {/* A page whose code is still loading (only in the first moments after start). */}
         <Suspense fallback={<div aria-busy="true" className="min-h-full" />}>
           <Outlet />
+          {!pageShown && <OnShown onShown={setPageShown} />}
         </Suspense>
       </div>
     </main>
@@ -150,12 +186,25 @@ export function AppShell() {
         {main}
       </div>
       {phone && <BottomTabBar />}
-      <DevRequestsDrawer />
-      <AIPanel />
+      {requestsShown && <Suspense fallback={null}><DevRequestsDrawer /></Suspense>}
+      {aiShown && <Suspense fallback={null}><AIPanel /></Suspense>}
       <CommandBar />
       <ModalHost />
       <Toaster positionClassName={TOAST_POSITION[phone ? 'phone' : rail ? 'tablet' : 'desktop']} />
       <OfflineBanner />
     </div>
   )
+}
+
+/** Commits together with the page beside it in a Suspense boundary: the page is drawn. */
+function OnShown({ onShown }: { onShown: (shown: true) => void }) {
+  useEffect(() => onShown(true), [onShown])
+  return null
+}
+
+/** True from the first render `on` is true, and from then on. */
+function useLatch(on: boolean): boolean {
+  const [latched, setLatched] = useState(on)
+  if (on && !latched) setLatched(true)
+  return latched || on
 }

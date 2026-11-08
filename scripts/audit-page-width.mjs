@@ -15,8 +15,8 @@
 // A route `daily:week` opens /daily and then picks the "Week" tab (same for
 // month/tasks). `--glance` instead checks Daily's glance board at every width:
 // each cell's x and width must be identical on a full day and an empty one
-// (docs/features/daily.md, "boxes never change position"). The harness is NOT part
-// of the repo; nothing here talks to a real backend.
+// (docs/features/daily.md, "boxes never change position"). The harness is
+// scripts/harness (its README says how to start the app); nothing here talks to a real backend.
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -39,14 +39,18 @@ const asJson = args.includes('--json')
 const glance = args.includes('--glance')
 
 const { chromium } = require(path.resolve('node_modules/playwright'))
-const { installMocks, SESSION } = require(path.join(harness, 'mock-server.cjs'))
+// resolve, not join: require() reads "scripts/harness/…" (no ./) as a package name.
+const { installMocks, SESSION } = require(path.resolve(harness, 'mock-server.cjs'))
 
 function chromePath() {
   const root = '/opt/pw-browsers'
   if (!fs.existsSync(root)) return undefined
   for (const d of fs.readdirSync(root).filter(d => /^chromium-\d+$/.test(d)).sort()) {
-    const p = `${root}/${d}/chrome-linux/chrome`
-    if (fs.existsSync(p)) return p
+    // Chrome for Testing builds unpack to chrome-linux64, older ones to chrome-linux.
+    for (const sub of ['chrome-linux64', 'chrome-linux']) {
+      const p = `${root}/${d}/${sub}/chrome`
+      if (fs.existsSync(p)) return p
+    }
   }
   return undefined
 }
@@ -91,12 +95,15 @@ function measure() {
   }
 }
 
-// Runs in the page: "left/width" of every glance-board cell, relative to <main>.
+// Runs in the page: "left/width" of every glance-board cell, relative to <main>. The board under its label is a
+// stack: the Training and Food bands, then the grid of cards (TodaySummary.tsx); each band and each card is a cell.
 function glanceCells() {
   const label = [...document.querySelectorAll('main *')].find(e => e.children.length === 0 && /at a glance$/i.test(e.textContent.trim()))
-  const grid = label?.parentElement?.querySelector(':scope > .grid')
+  const stack = label?.nextElementSibling
+  if (!stack) return null
   const main = document.querySelector('main').getBoundingClientRect()
-  return grid ? [...grid.children].map(c => { const r = c.getBoundingClientRect(); return `${Math.round(r.left - main.left)}/${Math.round(r.width)}` }).join(' ') : null
+  const cells = [...stack.children].flatMap(c => c.classList.contains('grid') ? [...c.children] : [c])
+  return cells.map(c => { const r = c.getBoundingClientRect(); return `${Math.round(r.left - main.left)}/${Math.round(r.width)}` }).join(' ')
 }
 
 async function openPage(browser, width, route) {

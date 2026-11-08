@@ -24,8 +24,7 @@ const supabase = createClient(
   serviceKey()
 )
 
-// deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, unknown>
 
 interface HealthWorkout {
   id: string
@@ -36,15 +35,13 @@ interface HealthWorkout {
   activeEnergyBurned?: { qty: number; units: string }
   totalEnergy?: { qty: number; units: string }
   heartRate?: { avg?: number; min?: number; max?: number }
-  // deno-lint-ignore no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface HealthMetricPoint {
   date: string
   source?: string
-  // deno-lint-ignore no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
 }
 
 interface HealthMetricGroup {
@@ -68,8 +65,8 @@ function safeIso(s: string | undefined): string | null {
 // upsert. Unwrap either shape, or null if neither.
 function numOrQty(v: unknown): number | null {
   if (typeof v === 'number') return v
-  if (v && typeof v === 'object' && typeof (v as AnyRecord).qty === 'number') return (v as AnyRecord).qty
-  return null
+  const qty = v && typeof v === 'object' ? (v as AnyRecord).qty : undefined
+  return typeof qty === 'number' ? qty : null
 }
 
 // REAL BUG (2026-09-06, live-confirmed): Health Auto Export's `source` field
@@ -134,8 +131,8 @@ Deno.serve(async (req) => {
     )
   }
 
-  let workouts: HealthWorkout[] = []
-  let metrics: HealthMetricGroup[] = []
+  let workouts: HealthWorkout[]
+  let metrics: HealthMetricGroup[]
   try {
     const body = await req.json()
     const data = body?.data ?? {}

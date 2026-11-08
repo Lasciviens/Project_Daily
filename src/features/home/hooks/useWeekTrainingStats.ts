@@ -23,6 +23,8 @@ export interface WeekTrainingStats {
   lastWorkoutAt: string | null
   hasData: boolean
   isLoading: boolean
+  /** A read failed with nothing to show. */
+  isError: boolean
 }
 
 /**
@@ -69,8 +71,9 @@ export function useWeekTrainingStats(): WeekTrainingStats {
       lastWorkoutAt: lastWorkout ? workoutAt(lastWorkout) : null,
       hasData: (recent.data?.length ?? 0) > 0 || workouts.length > 0 || activities.length > 0,
       isLoading: week.isLoading || recent.isLoading || strava.isLoading,
+      isError: (week.isError && !week.data) || (recent.isError && !recent.data) || (strava.isError && !strava.data),
     }
-  }, [week.data, recent.data, strava.data, week.isLoading, recent.isLoading, strava.isLoading, today])
+  }, [week.data, recent.data, strava.data, week.isLoading, recent.isLoading, strava.isLoading, week.isError, recent.isError, strava.isError, today])
 }
 
 /** Weeks of history read for the streak — longer streaks read as "26+". */

@@ -3,7 +3,7 @@ import { localDayOf } from '../../../shared/utils/dateUtils'
 import {
   APPLE_BODY_METRICS, mergeBodyweight, splitAppleBodyRows, type BodyweightPoint, type BodyweightReading,
 } from '../bodyweight'
-import { fetchAllPages, fetchHealthMetricsBatch, fetchLatestHealthValue } from './healthApi'
+import { fetchAllPages, fetchHealthMetricsBatch, fetchLatestHealthValue, type HealthMetric } from './healthApi'
 
 // Reads for the ONE bodyweight series (see bodyweight.ts for the precedence
 // and why). Three tables, each read on its own and never joined in SQL:
@@ -72,10 +72,14 @@ async function readReport(from: string, to: string): Promise<BodyweightReading[]
     }))
 }
 
+/** How the scale's Apple Health rows are read: from the table, or (useBodyweightSeries) through the query cache,
+ *  so the same metrics and days read elsewhere on the screen at the same time share one request. */
+export type MetricBatchReader = (metricNames: readonly string[], from: string, to: string) => Promise<Record<string, HealthMetric[]>>
+
 // One request for all three metrics; every row keeps its own instant and
 // source, so the split can tell the scale's rows from ones Hevy wrote.
-async function readApple(from: string, to: string): Promise<{ scale: BodyweightReading[]; hevy: BodyweightReading[] }> {
-  const byMetric = await fetchHealthMetricsBatch(APPLE_BODY_METRICS, from, to)
+async function readApple(from: string, to: string, readBatch: MetricBatchReader): Promise<{ scale: BodyweightReading[]; hevy: BodyweightReading[] }> {
+  const byMetric = await readBatch(APPLE_BODY_METRICS, from, to)
   const rows = Object.values(byMetric).flat().map(r => ({
     metric: r.metric_name, date: r.date, at: r.recorded_at, source: r.source,
     qty: typeof r.value?.qty === 'number' ? r.value.qty : null,
@@ -85,8 +89,10 @@ async function readApple(from: string, to: string): Promise<{ scale: BodyweightR
 
 /** Every day in [from, to] with a weight, one point per day, tagged with the
  *  source that won the day. */
-export async function fetchBodyweightSeries(from: string, to: string): Promise<BodyweightPoint[]> {
-  const [hevy, report, apple] = await Promise.all([readHevy(from, to), readReport(from, to), readApple(from, to)])
+export async function fetchBodyweightSeries(
+  from: string, to: string, readBatch: MetricBatchReader = fetchHealthMetricsBatch,
+): Promise<BodyweightPoint[]> {
+  const [hevy, report, apple] = await Promise.all([readHevy(from, to), readReport(from, to), readApple(from, to, readBatch)])
   return mergeBodyweight({ scale: apple.scale, report, hevy: [...hevy, ...apple.hevy] }, { from, to })
 }
 

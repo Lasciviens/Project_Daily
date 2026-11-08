@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Brain, Check, ChevronRight, CircleCheck, Copy, Plus, X } from 'lucide-react'
 import { useDayNutrition } from '../../daily/hooks/useDayNutrition'
 import { useDayTargets } from '../../daily/hooks/useDayTargets'
@@ -20,12 +20,13 @@ import { MacroLine } from './MacroLine'
 import { MacroFigure } from './MacroTotalPeek'
 import { eatenTotals, plannedTotals, splitTitleQty, withPlannedTotals } from '../foodIngredients'
 import { WaterTracker } from '../../daily/components/summary/WaterTracker'
-import { AnimatedNumber, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, TonePill, Truncate, cx } from '../../../shared/ui'
+import { AnimatedNumber, Button, Card, CardHeader, IconButton, MetaLine, PageBoard, ProgressRing, Skeleton, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatLocalDate } from '../../../shared/utils/dateUtils'
 import { MACRO_COLOR } from '../macroColors'
 import type { MealSlot } from '../types'
 import { groupDayMeals, type DayMeal, type MealGroupRow } from '../../daily/api/dayNutritionApi'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
+import { rememberLayout, rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { FOOD_TODAY_BOARD } from '../foodBoards'
 import { DishItemMenu, DishMenu } from './DishActions'
 import { GUESS_MARK, isGuessLine } from '../quickGuess'
@@ -99,7 +100,7 @@ function PlannedLine({ kcal, target }: { kcal: number; target: number }) {
 const PLANNED_PILL = <TonePill tone="neutral" className="shrink-0">Planned</TonePill>
 
 export function FoodTodayTab({ date }: { date: string }) {
-  const { data: nut } = useDayNutrition(date)
+  const { data: nut, isError: nutError, isFetching: nutFetching, refetch: refetchNut } = useDayNutrition(date)
   const { targets, update } = useDayTargets()
   const modal = useEntityModal()
   const coach = useNutritionCoach(targets)
@@ -142,6 +143,19 @@ export function FoodTodayTab({ date }: { date: string }) {
   for (const m of nut?.meals ?? []) {
     const arr = bySlot.get(m.meal_slot) ?? []; arr.push(m); bySlot.set(m.meal_slot, arr)
   }
+
+  // While the day loads, the macro bar and each slot's rows keep their room only where they showed when a day
+  // last loaded on this device (THEME.md §5): an empty day has neither, so room kept for them pulled it up.
+  const ready = nut != null
+  // A failed read is one line with Try again: never rings at zero or empty slots, and never loading rows that stay.
+  const failed = !ready && nutError
+  const loading = !ready && !failed
+  const macrosShown = !!nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0)
+  const macrosRoom = useRememberedFlag('food:macros', macrosShown, ready)
+  const slotsWithRows = SLOTS.map(({ slot }) => ((bySlot.get(slot)?.length ?? 0) > 0 ? '1' : '0')).join('')
+  useEffect(() => {
+    if (ready) SLOTS.forEach(({ slot }, i) => rememberLayout(`food:slot:${slot}`, slotsWithRows[i] === '1'))
+  }, [ready, slotsWithRows])
 
   // A meal slot's header — the same for every slot, Supplement included (its
   // Schedule button comes in as `extra`). A wide card puts the totals in the
@@ -356,24 +370,40 @@ export function FoodTodayTab({ date }: { date: string }) {
         <Card>
           <CardHeader title="Nutrition" variant="label" />
           <GoalSummary date={date} className="-mt-2 mb-2" />
-          <div className="flex flex-wrap items-center gap-4 sm:gap-5">
-            <Ring consumed={consumed} withPlanned={withPlanned.calories} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
-              label="kcal left" overLabel="kcal over" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} overIs="danger" />
-            <Ring consumed={protein} withPlanned={withPlanned.protein_g} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
-              label="protein left" overLabel="protein over" sizeClass="h-[88px] w-[88px]" ready={nut != null} overIs="success" />
-            <div className="min-w-[10rem] flex-1">
-              <p className="text-body text-fg-muted tabular-nums">
-                <AnimatedNumber value={consumed} ready={nut != null} className="text-title font-bold text-fg" /> / {targets.calories} kcal
-              </p>
-              <p className="mt-0.5 text-meta tabular-nums">
-                {proteinHit
-                  ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft} g)` : ''}</span>
-                  : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein} g</strong> / {targets.protein} g protein · {proteinLeft} g left</span>}
-              </p>
-              {hasPlanned && <PlannedLine kcal={withPlanned.calories} target={targets.calories} />}
+          {failed ? (
+            <p className="flex flex-wrap items-center gap-2 text-body text-fg-muted">
+              Couldn't load the day's food.
+              <Button variant="ghost" size="sm" loading={nutFetching} onClick={() => void refetchNut()}>Try again</Button>
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-4 sm:gap-5">
+              <Ring consumed={consumed} withPlanned={withPlanned.calories} target={targets.calories} size={134} stroke={11} color={MACRO_COLOR.calories}
+                label="kcal left" overLabel="kcal over" sizeClass="h-[104px] w-[104px] sm:h-[128px] sm:w-[128px]" ready={nut != null} overIs="danger" />
+              <Ring consumed={protein} withPlanned={withPlanned.protein_g} target={targets.protein} size={92} stroke={9} color={MACRO_COLOR.protein}
+                label="protein left" overLabel="protein over" sizeClass="h-[88px] w-[88px]" ready={nut != null} overIs="success" />
+              <div className="min-w-[10rem] flex-1">
+                <p className="text-body text-fg-muted tabular-nums">
+                  <AnimatedNumber value={consumed} ready={nut != null} className="text-title font-bold text-fg" /> / {targets.calories} kcal
+                </p>
+                <p className="mt-0.5 text-meta tabular-nums">
+                  {proteinHit
+                    ? <span className="inline-flex items-center gap-1 font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />Protein hit{proteinLeft < 0 ? ` (+${-proteinLeft} g)` : ''}</span>
+                    : <span className="text-fg-muted"><strong className="font-semibold text-fg-2">{protein} g</strong> / {targets.protein} g protein · {proteinLeft} g left</span>}
+                </p>
+                {hasPlanned && <PlannedLine kcal={withPlanned.calories} target={targets.calories} />}
+              </div>
             </div>
-          </div>
-          {nut && (nut.calories > 0 || planned.protein_g + planned.carbs_g + planned.fat_g > 0) && (
+          )}
+          {/* The macro bar and its figures keep their room while the day loads, when a day had them last time. */}
+          {loading && macrosRoom && (
+            <div aria-hidden className="mt-4 border-t border-line pt-3">
+              <Skeleton rounded="rounded-full" className="h-2 w-full" />
+              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-1">
+                {[0, 1, 2, 3].map(i => <span key={i} className="flex h-4 items-center"><Skeleton className="h-3 w-16" /></span>)}
+              </div>
+            </div>
+          )}
+          {nut && macrosShown && (
             <div className="mt-4 border-t border-line pt-3">
               {/* The gram figures carry the colour key, so the bar's own % legend is off. */}
               <MacroBar protein={nut.protein_g} carbs={nut.carbs_g} fat={nut.fat_g} showLegend={false}
@@ -437,7 +467,17 @@ export function FoodTodayTab({ date }: { date: string }) {
           return (
             <Card key={slot} padded={false} className="@container overflow-hidden">
               {slotHeader(slot, label, icon, slotTotals)}
-              {meals.length > 0 ? (
+              {/* A failed read: the slot's header alone (its Log still works) — the one error line is on Nutrition. */}
+              {failed ? null : loading ? (
+                // While the day loads: a logged or planned row's room (with the column labels from 40rem) where the
+                // slot had rows last time — the empty "Add" row is shorter — else the "Add" row's.
+                rememberedLayout(`food:slot:${slot}`) === true ? (
+                  <div aria-hidden className="flex flex-col">
+                    <span className="hidden h-6 @[40rem]:block" />
+                    <span className="flex h-[2.8125rem] items-center px-4"><Skeleton className="h-3 w-1/2" /></span>
+                  </div>
+                ) : <span aria-hidden className="flex h-11 items-center px-4"><Skeleton className="h-3 w-1/4" /></span>
+              ) : meals.length > 0 ? (
                 <ul className="divide-y divide-line">
                   {slotRows(meals, slot)}
                 </ul>

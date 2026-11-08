@@ -1,10 +1,36 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { Button, SectionLabel, Truncate, cx } from '../../../shared/ui'
+import { Button, SectionLabel, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import type { FbMatch } from '../footballModel'
 import { byDayAndLeague, dayLabel, type LeagueGroup } from '../footballView'
 import { MatchRow } from './MatchRow'
+
+/** A day of the list in rem: its heading (1 + 0.25), a competition's label (1.25) and three 2.5rem rows. */
+const DAY_REM = 10
+const DAY_GAP_REM = 0.75
+
+/**
+ * The list's loading copy on its own spacing: a day's heading, a competition's label and match rows (a
+ * competition shows three before it folds), as many days as fit `rem` — the room the list keeps while ESPN
+ * answers (FootballPage) — with `rows` rows in a short one.
+ */
+export function MatchListSkeleton({ rem, rows = 3 }: { rem: number; rows?: number }) {
+  const days = Math.max(1, Math.floor((rem + DAY_GAP_REM) / (DAY_REM + DAY_GAP_REM)))
+  return (
+    <div aria-hidden className="flex max-w-[40rem] flex-col gap-3">
+      {Array.from({ length: days }, (_, d) => (
+        <div key={d} className="flex flex-col gap-1">
+          <span className="flex h-4 items-center"><Skeleton className="h-3 w-28" /></span>
+          <div className="flex flex-col">
+            <span className="flex h-5 items-end px-3"><Skeleton className="h-2.5 w-24" /></span>
+            {Array.from({ length: days > 1 ? 3 : rows }, (_, r) => <span key={r} className="flex h-10 items-center px-3 [@media(pointer:coarse)]:h-11"><Skeleton className="h-3.5 w-full" /></span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 /**
  * Matches by day ("Today", "Wed 21.10.2026") and, inside a day, by

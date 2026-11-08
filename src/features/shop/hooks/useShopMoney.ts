@@ -7,7 +7,7 @@ import { logError } from '../../../shared/utils/logError'
 import { qk, STALE } from '../../../shared/query'
 import {
   createShopCost, createShopLink, fetchShopCosts, fetchShopLinks,
-  recordSale, undoSale, updateShopCost, type SaleInput,
+  recordSale, undoSale, type SaleInput,
 } from '../api/shopApi'
 import { fillRates } from '../api/shopPriceApi'
 import { moneyCtx, ratesPending, type MoneyCtx } from '../ownModel'
@@ -87,15 +87,6 @@ export function useCreateShopCost() {
     successMessage: (row) => (row.amount < 0 ? `Added ${row.label} (money back)` : `Added ${row.label}`),
     mutationFn:  (input: CreateShopCostInput) => createShopCost(input),
     onSuccess:   (row: ShopItemCost) => { if (row.currency !== 'NOK' && row.fx_nok == null) fill() },
-    invalidates: [qk.shop.costs()],
-  })
-}
-
-export function useUpdateShopCost() {
-  return useMutationWithFeedback({
-    action:      'update_shop_cost',
-    successMessage: 'Cost saved',
-    mutationFn:  ({ id, patch }: { id: string; patch: Parameters<typeof updateShopCost>[1] }) => updateShopCost(id, patch),
     invalidates: [qk.shop.costs()],
   })
 }

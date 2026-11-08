@@ -46,7 +46,11 @@ function TrainingSummary() {
   return (
     <>
       {stats.isLoading ? (
-        <div className="flex gap-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-14 flex-1" />)}</div>
+        // The stats and the last workout's row, as loaded: the cards under this one keep their place.
+        <div className="space-y-3">
+          <div className="flex gap-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-14 flex-1" />)}</div>
+          <Skeleton className="h-11" rounded="rounded-row" />
+        </div>
       ) : !stats.hasData ? (
         <EmptyState title="No training yet" description="Sync Hevy or connect Strava in Settings → Subscriptions." className="py-4" />
       ) : (

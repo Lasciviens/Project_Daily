@@ -115,7 +115,9 @@ export function DailyPage() {
           <DateNav
             size="md"
             label={formatWeekdayDate(viewDate)}
-            labelClassName="min-w-[120px] text-head font-bold tracking-tight text-fg sm:text-page"
+            // One width for every day (the widest, "Wed 04.11.2026", is 7.84em; "Fri" is 6.9em): the arrows and
+            // Today never move when Yesterday / Today / Tomorrow switch the date.
+            labelClassName="w-[7.9em] text-head font-bold tracking-tight text-fg sm:text-page"
             onPrev={() => { setViewDate(d => addDays(d, -1)); setMode(m => (m === 'diary' ? m : 'day')) }}
             onNext={() => { setViewDate(d => addDays(d,  1)); setMode(m => (m === 'diary' ? m : 'day')) }}
             onToday={() => { setViewDate(new Date()); setMode(m => (m === 'diary' ? m : 'day')) }}

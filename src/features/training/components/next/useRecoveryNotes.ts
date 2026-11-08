@@ -12,13 +12,13 @@ const BASELINE_DAYS = 60
 /** Last night's sleep and resting heart rate vs your own usual level — two
  *  plain lines, no score (plan/recovery.ts). Reads the Health page's hooks,
  *  so it shares their cache. */
-export function useRecoveryNotes(): { notes: RecoveryNote[]; isLoading: boolean } {
+export function useRecoveryNotes(): { notes: RecoveryNote[]; isLoading: boolean; isError: boolean } {
   const today = useTodayStr()
   const yesterday = shiftDateStr(today, -1)
   const weekStart = shiftDateStr(today, -6)
   const baseFrom = shiftDateStr(today, -(BASELINE_DAYS + 7))
-  const { data: sleep, isLoading: loadingSleep } = useSleepData(yesterday, today)
-  const { data: rhr, isLoading: loadingRhr } = useHealthDaily('resting_heart_rate', baseFrom, today)
+  const { data: sleep, isLoading: loadingSleep, isError: sleepFailed } = useSleepData(yesterday, today)
+  const { data: rhr, isLoading: loadingRhr, isError: rhrFailed } = useHealthDaily('resting_heart_rate', baseFrom, today)
 
   const notes = useMemo(() => {
     // Only the night that ended today counts as "last night" — never an older
@@ -35,5 +35,6 @@ export function useRecoveryNotes(): { notes: RecoveryNote[]; isLoading: boolean 
     ].filter((n): n is RecoveryNote => n != null)
   }, [sleep, rhr, today, weekStart, baseFrom])
 
-  return { notes, isLoading: loadingSleep || loadingRhr }
+  // isError: a failed read is no shape for the next visit's room (KeepRoom's remember).
+  return { notes, isLoading: loadingSleep || loadingRhr, isError: sleepFailed || rhrFailed }
 }

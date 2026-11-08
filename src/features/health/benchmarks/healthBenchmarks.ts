@@ -41,18 +41,7 @@ export { normalizeSpo2 } from './classifyCardio'
 
 // ─── Profile → context ──────────────────────────────────────────────────────
 
-/** Maps an athlete_profile row (or anything shaped like one) to the three health fields. */
-export function toHealthProfile(
-  row: { birth_year?: number | string | null; sex?: string | null; height_cm?: number | string | null } | null | undefined,
-): HealthProfile {
-  const num = (v: unknown) => {
-    if (v == null || v === '') return null
-    const n = Number(v)
-    return Number.isFinite(n) ? n : null
-  }
-  const sex = row?.sex === 'male' || row?.sex === 'female' ? (row.sex as Sex) : null
-  return { birthYear: num(row?.birth_year), sex, heightCm: num(row?.height_cm) }
-}
+export { toHealthProfile } from './healthProfile'
 
 /**
  * Age in whole years on `todayIso` (yyyy-MM-dd or a full ISO timestamp).

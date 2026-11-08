@@ -60,7 +60,7 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| `src/features/training/{components/calendar,components/improve/ImprovementCard.tsx,hooks/useTrainingPlans.ts,pages,trainingBoards.ts}`, `src/features/recipes/` (search, Today's Nutrition, category, portion words), `src/features/{shop,projects}/pages`, `src/features/daily/api/scheduleApi.ts`, `src/app/shell/AppShell.tsx`, `src/shared/ui/{PageBoard,SteadySlot,pageBoardRules,usePageStep,ProgressRing,index}`, the matching `scripts/verify-*.cjs`, `docs/design/THEME.md`, `docs/features/{training,food,shop,projects}.md`, `docs/integrations/open-food-facts.md`, `docs/platform-shell.md`, `.claude/rules/{training,food,ui,shop}.md` | Claude | Backlog 03.11: Training calendar 1.1, 1RM ⓘ, steady tab bars, Program columns, food search, Food Today (PR #598) | 03.11.2026 |
+| Repo-wide cleanup (PR #600): `package.json`/`package-lock.json`, `.github/workflows/*`, `.gitignore`, `.env.example`, `eslint.config.js`, `scripts/harness/`, `scripts/audit-*.mjs`, `scripts/db-tests/icloud-{events,cross}/`, lint-only edits across `supabase/functions/*` and `src/`, layout-shift and performance fixes across `src/` (in progress), `CLAUDE.md` (audit note), docs as listed in the PR — not `firmware/` or `docs/kitchen-scale/` (#599) | Claude | Deep cleanup: hygiene, errors, layout shifts, performance (PR #600) | 07.11.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

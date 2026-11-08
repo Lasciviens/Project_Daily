@@ -97,7 +97,7 @@ const supabase = createClient(
 )
 
 // deno-lint-ignore no-explicit-any
-type AnyRecord = Record<string, any>
+type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
 // The block between the <google-tasks-rules> markers is a HAND MIRROR of
 // src/features/todo/api/googleTasksRules.ts — edit it there, then copy the
@@ -1598,6 +1598,7 @@ Deno.serve(async (req) => {
     let { error } = await supabase.from('google_tasks_sync_state').upsert(row, { onConflict: 'user_id' })
     if (error && 'last_full_sync_at' in row && (error.code === '42703' || error.code === 'PGRST204')) {
       const { last_full_sync_at: _unused, ...older } = row
+      void _unused
       ;({ error } = await supabase.from('google_tasks_sync_state').upsert(older, { onConflict: 'user_id' }))
     }
     if (error) console.error(`google-tasks-sync: sync state not saved: ${error.message}`)

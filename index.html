@@ -21,6 +21,11 @@
       })()
     </script>
     <link rel="icon" type="image/svg+xml" href="/Project_Daily/favicon.svg" />
+    <!-- Inter's Latin file downloads with the page instead of after the app's
+         first render, so text starts in Inter rather than swapping into it (a
+         layout shift: docs/design/THEME.md §3). Vite rewrites the path to the
+         same built file the stylesheet's @font-face uses. -->
+    <link rel="preload" href="/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <!-- maximum-scale=1 kills iOS Safari's AUTO-zoom on input focus (the
          "screen zooms in when tapping the chat box and stays zoomed / frame
          misaligned" bug — it fires whenever the focused control's font-size
