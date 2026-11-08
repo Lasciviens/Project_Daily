@@ -43,8 +43,8 @@ interface Props extends ActivityFilterState {
   set: (patch: Partial<ActivityFilterState>) => void
   tables: string[]
   hasLogs: boolean
-  /** The log is loading: Clear all keeps its room (unseen), so the bar doesn't wrap when it arrives. */
-  loading: boolean
+  /** The log is loading and had entries last time: Clear all keeps its room (unseen) until they land. */
+  clearRoom: boolean
   isFetching: boolean
   onRefresh: () => void
   onClear: () => void
@@ -53,7 +53,7 @@ interface Props extends ActivityFilterState {
 
 export function ActivityLogFilters({
   rangeHours, customFrom, customTo, tableFilter, opFilter, actorFilter,
-  set, tables, hasLogs, loading, isFetching, onRefresh, onClear, clearing,
+  set, tables, hasLogs, clearRoom, isFetching, onRefresh, onClear, clearing,
 }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const usingCustom = !!(customFrom || customTo)
@@ -107,15 +107,17 @@ export function ActivityLogFilters({
       {/* sm and up: everything inline */}
       <div className="hidden flex-col gap-2 sm:flex">
         <div className="flex flex-wrap items-center gap-2">
-          {/* One width: sized by its longest option, it widened when the log's types arrived and wrapped the bar. */}
-          {typeSelect('w-[11.5rem]')}
+          {/* One width, so the bar keeps its place when the log's types arrive (sized by its longest option, it
+              widened and wrapped the bar). 10rem keeps the row on one line with Clear all in the laptop's 48rem;
+              11.5rem put it on two. A longer type name is cut in the closed select, whole in its list. */}
+          {typeSelect('w-[10rem]')}
           {opSelect('w-auto')}
           {actorSelect('w-auto')}
           {rangeSelect('w-auto')}
           <div className="ml-auto flex items-center gap-1.5">
             {refreshButton}
-            {(hasLogs || loading) && (
-              <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={onClear} loading={clearing} className={loading ? 'invisible' : 'text-danger'}>
+            {(hasLogs || clearRoom) && (
+              <Button size="sm" variant="ghost" icon={<Trash2 />} onClick={onClear} loading={clearing} className={clearRoom ? 'invisible' : 'text-danger'}>
                 Clear all
               </Button>
             )}

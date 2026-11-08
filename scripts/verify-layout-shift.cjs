@@ -195,6 +195,13 @@ check('Food: the macro bar and each slot\'s rows keep their room only where a da
 check('Food: a failed day read is one line with Try again — never rings at zero, empty slots or loading rows that stay',
   /const failed = !ready && nutError/.test(food) && /Couldn't load the day's food\./.test(food) && /\{failed \? null : loading \? \(/.test(food)
     && /\{loading && macrosRoom && \(/.test(food))
+{
+  const filters = code('src/features/developer/components/ActivityLogFilters.tsx')
+  const tab = code('src/features/developer/components/ActivityLogTab.tsx')
+  check('Developer: the Type select has one width that keeps the bar on one line with Clear all (10rem), and Clear all keeps its room only when the log had entries last time',
+    /typeSelect\('w-\[10rem\]'\)/.test(filters) && /\(hasLogs \|\| clearRoom\) &&/.test(filters)
+      && /useRememberedFlag\('developer:log', logs\.length > 0, !isLoading && !error\) && isLoading/.test(tab) && /clearRoom=\{clearRoom\}/.test(tab))
+}
 check('Shop and Wishes: the filters show while loading', /filters: \(all\.length > 0 \|\| isLoading\)/.test(code('src/features/shop/components/WishlistView.tsx'))
   && /filters: \(wishes\.length > 0 \|\| isLoading\)/.test(code('src/features/wishes/pages/WishesPage.tsx')))
 const library = code('src/features/books/components/LibraryTab.tsx')
