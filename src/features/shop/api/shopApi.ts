@@ -87,6 +87,38 @@ export async function createShopItem(input: CreateShopItemInput): Promise<ShopIt
   return data as ShopItem
 }
 
+// ─── Daily's Shopping card ────────────────────────────────────────────────────
+
+/**
+ * The columns Daily's Shopping card reads: what it shows (title, region) and
+ * every column shopModel's quickDue / quickFromWishlist look at
+ * (scripts/verify-shop-api.cjs fails when the rules read one more).
+ */
+export const QUICK_ROW_COLUMNS = [
+  'id', 'title', 'region', 'list', 'status', 'priority', 'kind', 'option_for', 'errand', 'wait_for_deal', 'platform', 'planned_date', 'created_at',
+] as const
+export type ShopQuickRow = Pick<ShopItem, typeof QUICK_ROW_COLUMNS[number]>
+
+/**
+ * Every row the quick list may ask to pick up: still to buy, and on the quick
+ * list, an errand or waiting for a deal. Which of them, and in what order, is
+ * the Shop page's own rule (useQuickToPickUp); this read only leaves out the
+ * rest — everything bought, ticked or dropped, and every other wish.
+ */
+export async function fetchQuickRows(): Promise<ShopQuickRow[]> {
+  return allPages<ShopQuickRow>((from, to) => supabase
+    .from('shop_items')
+    .select(QUICK_ROW_COLUMNS.join(', '))
+    .eq('status', 'wishlist')
+    .or('list.eq.quick,errand.is.true,wait_for_deal.is.true')
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .range(from, to)
+    .overrideTypes<ShopQuickRow[], { merge: false }>())
+}
+
+// ─── Changing and deleting ────────────────────────────────────────────────────
+
 /** The row as stored after the change (the database's rules fill the rest); one that isn't there is an error, never a silent no-op. */
 export async function updateShopItem(id: string, patch: UpdateShopItemInput): Promise<ShopItem> {
   const user = await requireUser()

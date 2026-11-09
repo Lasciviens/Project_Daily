@@ -3,9 +3,7 @@ import { Link } from 'react-router-dom'
 import { Cell, CellHeader, CellLink } from './cellKit'
 import { Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
-import { useBuyNow, useShopItems } from '../../../shop/hooks/useShop'
-import { quickDue, quickFromWishlist } from '../../../shop/shopModel'
-import type { ShopItem } from '../../../shop/types'
+import { useBuyNow, useQuickToPickUp } from '../../../shop/hooks/useShop'
 import { REGION_FLAG } from '../../../shop/shopMeta'
 
 /** How many quick-list rows the cell lists before "+N more". */
@@ -15,13 +13,13 @@ const SHOWN = 6
 // "this should only show something I have added as buy next time"; answer
 // 18.10.2026: "Quick list items only"): quick-list rows (not No rush),
 // wishlist errands and deals due at their store — the Shop page's own
-// `quickDue` + `quickFromWishlist`. A tick buys it, with Undo (`useBuyNow`).
+// `quickDue` + `quickFromWishlist`, over a narrow read of just those rows
+// (`useQuickToPickUp`). A tick buys it, with Undo (`useBuyNow`).
 // Wishlist plans for the day and top-wishlist hints are no longer shown here.
 export function ShopCard({ date }: { date: string }) {
-  const { data: items = [] } = useShopItems()
+  const { data: quick = [] } = useQuickToPickUp(date)
   const modal = useEntityModal()
   const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
-  const quick = [...quickDue(items), ...quickFromWishlist(items, date)]
   const more = quick.length - SHOWN
 
   return (
@@ -30,7 +28,7 @@ export function ShopCard({ date }: { date: string }) {
 
       {quick.length > 0 ? (
         <ul className="flex flex-col">
-          {quick.slice(0, SHOWN).map((i: ShopItem) => (
+          {quick.slice(0, SHOWN).map(i => (
             <li key={i.id} className="flex items-center gap-1">
               <button
                 type="button"
