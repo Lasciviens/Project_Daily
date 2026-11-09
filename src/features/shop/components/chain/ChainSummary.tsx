@@ -11,9 +11,9 @@ import type { Headline } from './chainText'
  * its "Could sell for"), what it cost and brought back, how much of your own
  * money went in on top of the sales, and what is back in hand.
  */
-export function ChainSummary({ chain, outcome, head, toSell }: { chain: Chain | null; outcome: DraftOutcome | null; head: Headline; toSell: boolean }) {
-  // A loss on things you used is their cost of use (neutral); only a chain bought to sell shows its profit in green.
-  const tone = head.sign != null && head.sign > 0 && toSell ? 'text-success' : 'text-fg'
+export function ChainSummary({ chain, outcome, head }: { chain: Chain | null; outcome: DraftOutcome | null; head: Headline }) {
+  // A profit is green (owner, 09.11.2026); a loss on things you used is their cost of use — neutral.
+  const tone = head.sign != null && head.sign > 0 ? 'text-success' : 'text-fg'
   return (
     <Card className="flex flex-col gap-2" aria-live="polite">
       <p className="section-label">{head.label}</p>

@@ -22,7 +22,7 @@ function Cell({ label, children, hint, strong }: { label: string; children: Reac
 }
 
 /** "If sold now": made / cost you, at "Could sell for" — the whole chain's when it is in one, with this thing's own beside it. */
-function IfSoldCell({ sold, resale, chained }: { sold: IfSold | null; resale: boolean; chained: boolean }) {
+function IfSoldCell({ sold, chained }: { sold: IfSold | null; chained: boolean }) {
   if (!sold) return <Cell label="If sold now" hint='needs "Could sell for"'>—</Cell>
   const main = sold.route ?? sold.own
   const signed = (a: Amount) => (!complete(a) ? null : `${a.nok >= 0 ? '+' : '−'}${money(Math.abs(a.nok))}`)
@@ -30,7 +30,7 @@ function IfSoldCell({ sold, resale, chained }: { sold: IfSold | null; resale: bo
   return (
     <Cell label="If sold now" strong hint={chained ? (signed(sold.own) ? `this one alone ${signed(sold.own)}` : 'with the chain') : 'at "Could sell for"'}>
       {complete(main)
-        ? <span className={cx(made && resale && 'text-success')}>{main.nok >= 0 ? 'Made ' : 'Cost you '}{money(Math.abs(main.nok))}</span>
+        ? <span className={cx(made && 'text-success')}>{main.nok >= 0 ? 'Made ' : 'Cost you '}{money(Math.abs(main.nok))}</span>
         : <AmountText amount={main} />}
     </Cell>
   )
@@ -86,7 +86,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
         final
           ? <Cell key="f" label="Final cost" hint={chain?.name ? `with earlier things in ${chain.name}` : 'with earlier things in its chain'}><AmountText amount={final.total} /></Cell>
           : <Cell key="m" label={perWords?.label ?? 'Per month'} hint={per ? 'paid − could sell for' : 'needs "Could sell for"'}>{perWords ? `≈ ${money(perWords.nok)}${perWords.aMonth ? ' a month' : ''}` : '—'}</Cell>,
-        <IfSoldCell key="s" sold={ifSoldNow(item, accessories, ctx, final)} resale={!!item.for_resale} chained={!!final} />,
+        <IfSoldCell key="s" sold={ifSoldNow(item, accessories, ctx, final)} chained={!!final} />,
       )
     } else {
       const got = add(gotOf(item) ?? ZERO, ...together.map(a => gotOf(a) ?? ZERO))
@@ -96,7 +96,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
         <Cell key="g" label="Got back" hint={together.length ? `with ${together.length} accessor${together.length === 1 ? 'y' : 'ies'}` : item.sold_to ?? undefined}><AmountText amount={got} /></Cell>,
         <Cell key="k" label="Kept">{from && item.disposed_on ? durationLabel(from, item.disposed_on) : '—'}</Cell>,
         <Cell key="r" label={profit ? 'Made' : 'Cost you'} hint={per ? `≈ ${money(per.nok)}/month` : undefined}>
-          {profit ? <span className={item.for_resale ? 'text-success' : undefined}>{money(-result.nok)}</span> : <AmountText amount={result} />}
+          {profit ? <span className="text-success">{money(-result.nok)}</span> : <AmountText amount={result} />}
         </Cell>,
       )
     }

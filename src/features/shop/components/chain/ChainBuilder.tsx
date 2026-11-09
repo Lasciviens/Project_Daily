@@ -7,7 +7,6 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { storeNames } from '../../shopModel'
 import { complete, type MoneyCtx } from '../../ownModel'
 import { chainPath } from '../../chainModel'
-import { boughtToSell } from '../../statsModel'
 import {
   copiedOf, draftChain, draftOutcome, draftProblems, draftRows, hasContent, ratePairs, resolveSteps, stepView,
 } from '../../chainDraft'
@@ -163,7 +162,7 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
             </div>
           </div>
           <aside className="flex flex-col gap-3 @[46rem]:sticky @[46rem]:top-0 @[46rem]:self-start">
-            <ChainSummary chain={chain} outcome={outcome} head={head} toSell={!!chain && boughtToSell(chain)} />
+            <ChainSummary chain={chain} outcome={outcome} head={head} />
           </aside>
         </div>
       </div>

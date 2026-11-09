@@ -3,7 +3,7 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { ExternalLink, Package } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
-import { amountReason, hostOf, money, pendingWords, webUrl } from './shopFormat'
+import { amountReason, hostOf, money, num, pendingWords, webUrl } from './shopFormat'
 
 // Shop's shared display pieces: an Amount that is never shown as a number
 // unless it is complete, a value with a detail on demand, and an item's
@@ -13,10 +13,11 @@ import { amountReason, hostOf, money, pendingWords, webUrl } from './shopFormat'
  * "4 500 NOK" when the sum is complete; "20 100 NOK + 4 500 TRY pending" when
  * only a rate is waiting (the waiting part muted, never at today's rate); else
  * `unknown` ("Unknown") — the reason on hover / long-press either way.
- * `pending="unknown"` keeps a narrow cell to `unknown` instead.
+ * `pending="unknown"` keeps a narrow cell to `unknown` instead; `bare` leaves
+ * " NOK" off a complete sum where the line already says it is NOK.
  */
-export function AmountText({ amount, signed = false, className, unknown = 'Unknown', pending = 'sum' }: {
-  amount: Amount; signed?: boolean; className?: string; unknown?: ReactNode; pending?: 'sum' | 'unknown'
+export function AmountText({ amount, signed = false, className, unknown = 'Unknown', pending = 'sum', bare = false }: {
+  amount: Amount; signed?: boolean; className?: string; unknown?: ReactNode; pending?: 'sum' | 'unknown'; bare?: boolean
 }) {
   if (!complete(amount)) {
     const words = pending === 'sum' ? pendingWords(amount, signed) : null
@@ -32,7 +33,7 @@ export function AmountText({ amount, signed = false, className, unknown = 'Unkno
     return <span className={cx('text-fg-muted', className)} title={amountReason(amount)}>{unknown}</span>
   }
   const n = Math.round(amount.nok)
-  return <span className={cx('whitespace-nowrap tabular-nums', className)}>{signed && n > 0 ? '+' : ''}{money(n)}</span>
+  return <span className={cx('whitespace-nowrap tabular-nums', className)}>{signed && n > 0 ? '+' : ''}{bare ? num(n) : money(n)}</span>
 }
 
 /**

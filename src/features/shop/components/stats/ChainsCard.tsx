@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react'
 import { Button, Truncate, cx, useChartColors } from '../../../../shared/ui'
 import { chainPath, type Chain } from '../../chainModel'
 import { complete } from '../../ownModel'
-import { boughtToSell, filterChains, type ChainShow } from '../../statsModel'
+import { filterChains, type ChainShow } from '../../statsModel'
 import { money } from '../shopFormat'
 import { CardFilter, StatsCard, Swatch } from './statsKit'
 import { countReason, num } from './statsFormat'
@@ -14,10 +14,10 @@ const SHOWS = [{ value: 'all' as const, label: 'All' }, { value: 'going' as cons
 /**
  * Things you sold to pay for the next one: "RP4 Pro → RP5 → RP6" (or the
  * chain's name, with that path under it), what the chain cost you in the end
- * (or made), and how much of the money came back. A loss on things you used
- * is just what using them cost — only things bought to sell show a profit in
- * green. Going or ended (everything in it sold or gone, no wish left). A
- * chain opens its own popup.
+ * (or made), and how much of the money came back. A profit is green (owner,
+ * 09.11.2026); a net cost on things you used is just what using them cost —
+ * neutral, never red. Going or ended (everything in it sold or gone, no wish
+ * left). A chain opens its own popup.
  */
 export function ChainsCard({ chains, onOpen, onNew }: { chains: Chain[]; onOpen: (id: string) => void; onNew: () => void }) {
   const c = useChartColors()
@@ -49,7 +49,7 @@ export function ChainsCard({ chains, onOpen, onNew }: { chains: Chain[]; onOpen:
 function ChainRow({ chain, colors, onOpen }: { chain: Chain; colors: [string, string]; onOpen: () => void }) {
   const known = complete(chain.net)
   const profit = known && Math.round(chain.net.nok) < 0
-  const tone = profit && boughtToSell(chain) ? 'success' : undefined
+  const tone = profit ? 'success' : undefined
   const first = chain.nodes.find(n => n.state !== 'wish')
   const totals = complete(chain.paid) && complete(chain.got) ? { paid: chain.paid.nok, got: chain.got.nok } : null
   const scale = totals ? Math.max(totals.paid, totals.got, 1) : 1

@@ -1,15 +1,11 @@
 // Words and numbers for the Stats screen: counts, whole-unit amounts and the
 // reason a sum is not a number yet. Pure.
 import type { Amount } from '../../ownModel'
-import { amountWords, NBSP } from '../shopFormat'
+import { amountWords, num } from '../shopFormat'
+
+export { num }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 1 ? one : many}`
-
-/** "4 490" — whole units, thousands with a no-break space (a number never breaks across lines), a true minus, no currency (the unit sits beside it). */
-export function num(n: number): string {
-  const r = Math.round(n)
-  return `${r < 0 ? '−' : ''}${String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)}`
-}
 
 /** "Price missing", "Rate pending" — why an amount is not a number (short, for a row). */
 export function shortReason(a: Amount): string {

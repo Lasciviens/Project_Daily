@@ -94,7 +94,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
               <Pair label="Got back"><AmountText amount={got} />{together.length > 0 && ` with ${together.length} accessor${together.length === 1 ? 'y' : 'ies'}`}</Pair>
             )}
             {held && result && (complete(result) && result.nok < 0
-              ? <Pair label="Made"><span className={item.for_resale ? 'text-success' : undefined}>{money(-result.nok)}</span></Pair>
+              ? <Pair label="Made"><span className="text-success">{money(-result.nok)}</span></Pair>
               : <Pair label="Cost you"><AmountText amount={result} />{per && complete(result) && result.nok > 0 && <span className="text-fg-muted"> · ≈ {money(per.nok)}/month</span>}</Pair>)}
           </>
         ) : (

@@ -372,12 +372,6 @@ export function filterChains(chains: readonly Chain[], show: ChainShow): Chain[]
   return show === 'all' ? [...chains] : chains.filter(c => chainEnded(c) === (show === 'ended'))
 }
 
-/** Every thing in the chain you have or had was bought to sell later — only then is its result a profit or a loss. */
-export function boughtToSell(chain: Chain): boolean {
-  const things = chain.nodes.filter(n => n.state !== 'wish')
-  return things.length > 0 && things.every(n => !!n.item.for_resale)
-}
-
 export interface TimelineAxis {
   /** 1 January of the first year. */
   from: string

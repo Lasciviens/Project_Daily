@@ -13,6 +13,12 @@ export function money(n: number, currency = 'NOK'): string {
   return formatMoney(Math.round(n), currency)
 }
 
+/** "4 490" — whole units, thousands with a no-break space, a true minus, no currency (the unit sits beside it). */
+export function num(n: number): string {
+  const r = Math.round(n)
+  return `${r < 0 ? '−' : ''}${String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)}`
+}
+
 /** "≈ 2 500 NOK": the sign stays with its number. */
 export const approx = (text: string): string => `≈${NBSP}${text}`
 
