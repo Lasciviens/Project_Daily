@@ -685,13 +685,13 @@ console.log('\n15 · Stats follows the picked year (owner, 09.11.2026: "Follow t
   check('this year and all time: what Owned\'s Mine shows (the whole collection)', ['2026', null].every(y => {
     const s = S.ownedAt(items, PC, P(y))
     return s.things === whole.mine && s.accessories === whole.accessories && s.paid.nok === whole.paid.nok && s.worth.nok === whole.worth.nok && s.valued === whole.valued && !s.past && s.day === TODAY
-  }) && now.things === 2 && now.stillYours === 3)
+  }) && now.things === 2 && now.stillYours === 2)
   const y24 = S.ownedAt(items, PC, P('2024'))
   check('at 31.12.2024: the RP5 and the lamp, with the case, the grip and the SD card — paid by then', y24.things === 2 && y24.accessories === 3 && y24.paid.nok === 2800 + 800 + 199 + 349 + 399 && y24.day === '2024-12-31' && y24.past)
-  check('…what they could sell for then is never made up: only the SD card is still yours, and it has no "Could sell for"', y24.stillYours === 1 && y24.valued === 0 && y24.worth.nok === 0)
+  check('…what they could sell for then is never made up: neither thing is still yours (only the SD card, with no "Could sell for")', y24.stillYours === 0 && y24.valued === 0 && y24.worth.nok === 0)
   const y25 = S.ownedAt(items, PC, P('2025'))
   check('at 31.12.2025: the TV\'s 790 extra (paid 01.03.2026) is not counted yet; its value is today\'s, the given-away lamp\'s is not known', y25.things === 3 && y25.paid.nok === 2800 + 9990 + 800 + 199 + 349 + 399
-    && y25.stillYours === 2 && y25.valued === 1 && y25.worth.nok === 6000)
+    && y25.stillYours === 1 && y25.valued === 1 && y25.worth.nok === 6000)
   const cats25 = S.ownedByCategory(items, [], PC, 'top', P('2025'))
   check('by category at the year\'s end: the same things, cost and value as You own', cats25.length === 1 && cats25[0].paid.nok === y25.paid.nok && cats25[0].worth.nok === y25.worth.nok
     && cats25[0].count === y25.things && cats25[0].stillYours === y25.stillYours && cats25[0].ids.length === y25.ids.length)

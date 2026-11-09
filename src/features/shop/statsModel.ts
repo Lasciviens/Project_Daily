@@ -80,7 +80,7 @@ export interface OwnedAt {
   accessories: number
   /** What they had cost by that day. */
   paid: Amount
-  /** How many of them (accessories too) are still yours today. */
+  /** How many of the things (not accessories) are still yours today. */
   stillYours: number
   /** "Could sell for" of the ones still yours that have one, at today's rate — known only for them. */
   worth: Amount
@@ -101,7 +101,7 @@ export function ownedAt(items: readonly ShopItem[], ctx: MoneyCtx, p: Period): O
     ids.push(i.id)
     paid.push(costAt(i, ctx, p))
     if (!isMine(i)) continue
-    stillYours++
+    if (!i.accessory_of) stillYours++
     const v = valueNowOf(i, ctx)
     if (v) { worth.push(v); valued++ }
   }
@@ -229,7 +229,7 @@ export function yearTotals(items: readonly ShopItem[], ctx: MoneyCtx, year: stri
 
 export interface CategoryRow {
   key: string; title: string; count: number; paid: Amount; worth: Amount; valued: number; ids: string[]
-  /** How many of its rows (accessories too) are still yours today — only they can have a "Could sell for". */
+  /** How many of its things (not accessories) are still yours today — only what is still yours has a "Could sell for". */
   stillYours: number
 }
 
@@ -267,7 +267,7 @@ export function ownedByCategory(items: readonly ShopItem[], categories: readonly
     const row = out.get(key) ?? { key, title, count: 0, paid: ZERO, worth: ZERO, valued: 0, ids: [], stillYours: 0 }
     if (!i.accessory_of) row.count++
     row.paid = add(row.paid, p ? costAt(i, ctx, p) : costOf(i, ctx))
-    if (isMine(i)) row.stillYours++
+    if (isMine(i) && !i.accessory_of) row.stillYours++
     const v = valueNowOf(i, ctx)
     if (v) { row.worth = add(row.worth, v); row.valued++ }
     row.ids.push(i.id)

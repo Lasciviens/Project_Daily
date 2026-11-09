@@ -33,9 +33,8 @@ function ownedRow(i: ShopItem, d: StatsData): DrillRow {
 
 /** A past year: "Could sell for" keeps no history, so only the things still yours have one — today's. */
 function valueThen(s: OwnedAt): string {
-  const all = s.things + s.accessories
-  const still = !s.stillYours ? 'None of them is still yours.'
-    : `${s.stillYours === all ? 'All' : `${s.stillYours} of ${all}`} still yours${s.valued ? ` could sell for ${moneyWord(s.worth)} today (${s.valued} valued)` : ', none with a "Could sell for"'}.`
+  const still = !s.stillYours ? 'None of the things is still yours.'
+    : `${s.stillYours === s.things ? 'All' : `${s.stillYours} of the ${s.things}`} still yours${s.valued ? ` could sell for ${moneyWord(s.worth)} today (${s.valued} valued)` : ', none with a "Could sell for"'}.`
   return `What they could sell for then is not known: "Could sell for" keeps no history. ${still}`
 }
 
