@@ -19,7 +19,7 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
   /** The money chains to pick from: id and name (or path). */
   chains: readonly { id: string; title: string }[]
   collapsible: boolean
-  /** Fold / open all categories, at the end of the folded row. */
+  /** Fold / open all categories: an icon at the end of the folded row, else words at the end of the bar. */
   fold?: ReactNode
 }) {
   const [open, setOpen] = useState<boolean | null>(null)
@@ -73,6 +73,7 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
           <X aria-hidden className="h-4 w-4" /> Clear filters
         </button>
       )}
+      {!collapsible && <span className="ml-2">{fold}</span>}
     </div>
   )
 }

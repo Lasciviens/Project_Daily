@@ -128,7 +128,6 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      {!folded && <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} />}
       {groups.map(group => {
         const t = totalsIn(group.items, 'NOK', rates, models, watches)
         return (
@@ -181,7 +180,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
         // While loading too: arriving with the items, the filters pushed the list down (a layout shift).
         filters: (all.length > 0 || isLoading) && (
           <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={folded}
-            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact />} />
+            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} />} />
         ),
         groups: groupsSection,
       }}

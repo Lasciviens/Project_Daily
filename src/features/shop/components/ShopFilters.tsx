@@ -6,10 +6,10 @@ import { SortSelect } from './shopKit'
 import type { ShopCategory } from '../types'
 
 /**
- * Search, sort and the three filters. In the wide pages' rail they are all
- * shown; on a phone or a short screen (`collapsible`) the filters fold behind
- * one button, beside the sort and `fold` (fold all categories), so the list
- * starts on the first screen.
+ * Search, sort and the three filters, and `fold` (fold all categories). In
+ * the wide pages' rail they are all shown, Fold all under them; on a phone or
+ * a short screen (`collapsible`) the filters fold behind one button, beside
+ * the sort and Fold all as an icon, so the list starts on the first screen.
  */
 export function ShopFilters({ filters, onChange, sort, onSort, categories, collapsible = false, fold }: {
   filters: WishlistFilters
@@ -67,11 +67,16 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
           </select>
         </div>
       )}
-      {filtersActive(filters) && (
-        <button type="button" onClick={() => onChange(NO_FILTERS)}
-          className="flex min-h-[44px] w-fit items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
-          <X aria-hidden className="h-4 w-4" /> Clear filters
-        </button>
+      {(filtersActive(filters) || !collapsible) && (
+        <div className="flex flex-wrap items-center gap-x-4">
+          {filtersActive(filters) && (
+            <button type="button" onClick={() => onChange(NO_FILTERS)}
+              className="flex min-h-[44px] w-fit items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
+              <X aria-hidden className="h-4 w-4" /> Clear filters
+            </button>
+          )}
+          {!collapsible && fold}
+        </div>
       )}
     </div>
   )

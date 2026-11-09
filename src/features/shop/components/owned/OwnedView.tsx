@@ -101,7 +101,6 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
           </p>
         )
         : <p className="text-body text-fg-muted">{filters.show === 'gone' ? 'Nothing sold or gone yet.' : 'Nothing is yours right now.'}</p>)}
-      {!folded && foldAll(false)}
       {groups.map(group => (
         <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)} card={card} />
       ))}
@@ -145,7 +144,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
         coming: filters.show !== 'gone' && deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
-            collapsible={folded} fold={foldAll(true)} />
+            collapsible={folded} fold={foldAll(folded)} />
         ),
         groups: list,
       }}
