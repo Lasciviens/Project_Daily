@@ -444,9 +444,10 @@ end $$;
 reset role;
 drop table public.t_shop_receipts, public.t_shop_notes, public.t_shop_secret;
 -- Why Shop keeps its own restore: 144's generic app_restore_rows puts a group back in one statement in
--- the order it read the rows, and a case read before its phone can't find it (the rules refuse it). The
--- case is read first whichever way the rows are read (by key: its id is lower; in storage: the phone was
--- written last).
+-- the order it read the rows, and a case read before its phone can't find it (the rules refuse it).
+-- app_delete_rows reads in no set order (the plan and where the rows sit decide; a run once got the
+-- phone first), so the snapshot is put in key order here, as an index scan reads it: the case's id is
+-- lower, so it comes first.
 set role authenticated;
 do $$
 declare s jsonb; e text;
@@ -456,7 +457,9 @@ begin
   update public.shop_items set accessory_of = 'c6200000-0000-0000-0000-00000000000b' where id = 'c6200000-0000-0000-0000-00000000000a';
   update public.shop_items set notes = 'Black' where id = 'c6200000-0000-0000-0000-00000000000b';
   s := public.app_delete_rows('shop_items', array['c6200000-0000-0000-0000-00000000000b', 'c6200000-0000-0000-0000-00000000000a']);
-  perform t_ok(s -> 'groups' -> 0 -> 'rows' -> 0 ->> 'title' = 'Old case', 'S6 (144''s snapshot holds the case first)');
+  s := jsonb_set(s, '{groups,0,rows}', (select jsonb_agg(r order by r ->> 'id') from jsonb_array_elements(s -> 'groups' -> 0 -> 'rows') r));
+  perform t_ok(s -> 'groups' -> 0 ->> 'table' = 'shop_items' and s -> 'groups' -> 0 -> 'rows' -> 0 ->> 'title' = 'Old case',
+    'S6 (144''s snapshot in key order: the case first)');
   e := t_err(format('select public.app_restore_rows(%L::jsonb)', s));
   perform t_ok(e like '23514 An accessory belongs to an item%', 'S6 144''s generic restore can''t put a phone and its older case back (' || e || ')');
   perform public.shop_restore_items(jsonb_build_object('items', (select jsonb_agg(r) from jsonb_array_elements(s -> 'groups' -> 0 -> 'rows') r)));
