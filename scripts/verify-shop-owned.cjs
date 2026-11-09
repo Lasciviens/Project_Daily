@@ -417,6 +417,24 @@ console.log('\n11 · Deadlines and the Owned view')
   check('rail follows "Bought to sell": none here, so all zero', resale.mine === 0 && resale.gone === 0 && resale.paid.nok === 0 && O.complete(resale.paid))
   const otherCat = view({ ...O.NO_OWNED_FILTERS, show: 'all', category: 'none' })
   check('rail follows the category: none without one', otherCat.mine + otherCat.gone + otherCat.accessories === 0)
+
+  // The summary line opens Stats on the same things (owner, 09.11.2026); the tab is not a filter.
+  check('Mine · Sold or gone · All is a tab, never counted as a filter', O.ownedFilterCount(O.NO_OWNED_FILTERS) === 0 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, show: 'gone' }) === 0
+    && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, q: '  ' }) === 0 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, q: 'rp', category: 'el' }) === 2 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, resaleOnly: true, chain: 'c' }) === 2)
+  const scopeFor = (f) => O.statsScopeOf(f, O.ownedCards(RPc, cats, f).map(x => x.id))
+  const allF = { ...O.NO_OWNED_FILTERS, show: 'all' }
+  check('nothing listed: nothing to open', O.statsScopeOf(O.NO_OWNED_FILTERS, []) === null)
+  check('All with no filter opens the whole collection (no pick)', S.scopeCount(scopeFor(allF)) === 0)
+  check('a category or a money chain is picked as itself; "no category" as Stats\' own key',
+    scopeFor({ ...allF, category: 'gc' }).categories.join() === 'gc' && scopeFor({ ...allF, category: 'gc' }).things.length === 0
+    && O.statsScopeOf({ ...allF, category: 'none' }, ['x']).categories.join() === S.NO_CATEGORY && O.statsScopeOf({ ...allF, chain: 'rp4' }, ['rp4']).chains.join() === 'rp4')
+  check('what Stats cannot pick (Mine, Sold or gone, a search, Bought to sell) picks the listed things', scopeFor(O.NO_OWNED_FILTERS).things.join() === 'rp6'
+    && scopeFor({ ...O.NO_OWNED_FILTERS, show: 'gone' }).things.join() === 'rp4,rp5' && scopeFor({ ...allF, q: 'rp5' }).things.join() === 'rp5'
+    && O.statsScopeOf({ ...allF, resaleOnly: true }, ['a']).things.join() === 'a')
+  const mineScoped = S.scopeItems(RPc, scopeFor(O.NO_OWNED_FILTERS), cats, [])
+  const statsOwn = O.ownedSummary(mineScoped, CTX)
+  check('…so Stats\' "You own" on them says what the Mine line says (the accessory rides along)', mineScoped.map(x => x.id).join() === 'rp6,sd'
+    && statsOwn.mine === mineView.mine && statsOwn.accessories === mineView.accessories && statsOwn.paid.nok === mineView.paid.nok && statsOwn.worth.nok === mineView.worth.nok)
   check('accessories by item (possessions only)', acc.get('rp5').map(x => x.id).join() === 'case,grip' && acc.get('rp6').map(x => x.id).join() === 'sd')
   const sorted = O.sortOwned([RP[0], RP[1], RP[4]], 'kept', CTX, TODAY, acc)
   check('sort by time kept', sorted.map(x => x.id).join() === 'rp5,rp4,rp6')

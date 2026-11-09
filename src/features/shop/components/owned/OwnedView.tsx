@@ -12,18 +12,26 @@ import { groupByCategory } from '../../shopModel'
 import { CARD_GRID, CategorySection, FoldAll } from '../CategorySection'
 import { useCollapsedGroups } from '../../hooks/useCollapsedGroups'
 import {
-  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned,
+  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned, statsScopeOf,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
 import { OWNED_BOARD } from '../../shopBoard'
 import { OwnedCard } from './OwnedCard'
-import { OwnedSummaryCard, ComingUpCard } from './OwnedRail'
+import { OwnedSummaryLine, ComingUpCard } from './OwnedRail'
 import { OwnedFiltersCard } from './OwnedFilters'
+import type { StatsScope } from '../../statsModel'
 import type { ShopCategory, ShopItem } from '../../types'
 
-/** Owned → Things: what you have (by category), what is coming up, and what you had. */
-export function OwnedView({ items, categories, isLoading }: { items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean }) {
+/**
+ * Owned → Things: what you have (by category), what is coming up, and what
+ * you had; a summary line above the list opens Stats on the same things.
+ */
+export function OwnedView({ items, categories, isLoading, onStats }: {
+  items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean
+  /** Open Stats narrowed to these things. */
+  onStats: (scope: StatsScope) => void
+}) {
   const modal = useEntityModal()
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
@@ -54,6 +62,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
   // The summary follows what the list shows: the filters and Mine · Sold or gone · All.
   const summary = useMemo(() => shownSummary(shown, acc, ctx, gone.length), [shown, acc, ctx, gone.length])
   const filtered = ownedFilterCount(filters) > 0
+  const scope = useMemo(() => statsScopeOf(filters, shown.map(i => i.id)), [filters, shown])
   const deadlines = useMemo(() => comingUp(items, today), [items, today])
   const fold = useCollapsedGroups('owned')
   const anything = useMemo(() => ownedCards(items, categories, { ...NO_OWNED_FILTERS, show: 'all' }).length > 0, [items, categories])
@@ -126,8 +135,13 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       layout={OWNED_BOARD}
       stackGap="gap-4"
       sections={{
-        summary: anything && <OwnedSummaryCard summary={summary} show={filters.show} filtered={filtered} />,
-        coming: deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
+        // Nothing shown, nothing to sum: the list's own line says so.
+        summary: anything && shown.length > 0 && (
+          <OwnedSummaryLine summary={summary} show={filters.show} filtered={filtered}
+            onStats={scope ? () => onStats(scope) : undefined} onShowGone={() => setFilters(f => ({ ...f, show: 'gone' }))} />
+        ),
+        // Return windows and complaint rights are about things still yours: not under Sold or gone.
+        coming: filters.show !== 'gone' && deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
             collapsible={folded} fold={foldAll(true)} />

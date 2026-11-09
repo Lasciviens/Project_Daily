@@ -35,12 +35,17 @@ import { scopeOptions } from './statsScopeOptions'
  * Filter narrows the whole screen to categories, chains, things or stores.
  * Every number opens the things behind it; a thing opens its own record.
  */
-export function ShopStatsView({ items: allItems, categories, isLoading }: { items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean }) {
+export function ShopStatsView({ items: allItems, categories, isLoading, scope, onScope: setScope, year: picked, onYear: setPicked }: {
+  items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean
+  /** The Filter (kept by the page, so Owned's summary line can open Stats on its own things). */
+  scope: StatsScope; onScope: (s: StatsScope) => void
+  /** The picked period: a year, all time (null), or not picked yet (undefined: this year when it has data). */
+  year: string | null | undefined; onYear: (y: string | null) => void
+}) {
   const modal = useEntityModal()
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
   const today = todayStr()
-  const [scope, setScope] = useState<StatsScope>(NO_SCOPE)
   const [scopeOpen, setScopeOpen] = useState(false)
   // Chains always from every row and link (a partial list would cut them), then narrowed.
   const allChains = useMemo(() => chainsWithThings(chainsOf(allItems, links, ctx)), [allItems, links, ctx])
@@ -49,7 +54,6 @@ export function ShopStatsView({ items: allItems, categories, isLoading }: { item
   const anyYears = useMemo(() => statsYears(allItems, ctx).length > 0, [allItems, ctx])
   const years = useMemo(() => statsYears(items, ctx), [items, ctx])
   // Until a period is picked: this year when it has data, else all time.
-  const [picked, setPicked] = useState<string | null | undefined>(undefined)
   const fallback = years.includes(today.slice(0, 4)) ? today.slice(0, 4) : null
   const year = picked === undefined || (picked !== null && !years.includes(picked)) ? fallback : picked
   const [drill, setDrill] = useState<Drill | null>(null)

@@ -6,7 +6,7 @@
 import type { ShopCategory, ShopItem } from './types'
 import { categoryPath, fold } from './shopModel'
 import {
-  add, boughtOn, costOf, daysBetween, gotOf, isMine, isPossession, minus, nokAt, paidOf, perMonth, valueNowOf, ZERO,
+  add, boughtOn, costOf, daysBetween, gotOf, isMine, isPossession, minus, NO_CATEGORY, nokAt, paidOf, perMonth, valueNowOf, ZERO,
   accessoriesByItem, type Amount, type MoneyCtx, type OwnedShow, type PerMonth,
 } from './ownModel'
 import type { Chain } from './chainModel'
@@ -75,8 +75,8 @@ export function yearTotals(items: readonly ShopItem[], ctx: MoneyCtx, year: stri
 
 export interface CategoryRow { key: string; title: string; count: number; paid: Amount; worth: Amount; valued: number; ids: string[] }
 
-/** The key of rows without a category (a scope pick, a category row). */
-export const NO_CATEGORY = '__none__'
+/** The key of rows without a category (a scope pick, a category row) — one key with Owned's filter. */
+export { NO_CATEGORY }
 
 /** By top category, or by subcategory (a top category's own things — no subcategory — get a row of their own). */
 export type CategoryLevel = 'top' | 'sub'

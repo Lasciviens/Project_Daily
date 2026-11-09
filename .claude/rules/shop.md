@@ -15,5 +15,5 @@ Background: `docs/features/shop.md`.
 - `priceRead.ts` and `fxNorgesBank.ts` are hand-mirrored into `shop-price` (their verify scripts compare them).
 - Never invent a price, a sale price or a "Could sell for".
 - A profit (made money, a chain ahead) is green — the success tone — on every screen (owner, 09.11.2026; before, only for things bought to sell). A loss on a thing you use is its cost of use: neutral, never red. A chain's running result has the header's sign: + ahead, − a net cost.
-- Owned's "What I own" sums what the list shows — the filters and Mine · Sold or gone · All (`shownSummary`); Stats keeps the whole collection (`ownedSummary`).
+- Owned's summary is one line right above the list (owner, 09.11.2026 — no card): it sums what the list shows, the filters and Mine · Sold or gone · All (`shownSummary`), and a tap opens Stats on the same things (`statsScopeOf`). Mine · Sold or gone · All is a tab, never counted as a filter. Stats' "You own" keeps the whole collection (`ownedSummary`).
 - Selling and adding an accessory live in the record, not on the Owned cards; Owned's ways to add live in the page header, not in the rail (owner, 14.10.2026) — on a phone in the row right under its bar, with Things | Stats, so the bar keeps one row on every view (03.11.2026).

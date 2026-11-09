@@ -9,6 +9,7 @@
 // "Unknown · 1 price missing" instead of a number that looks complete.
 
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem, ShopItemCost } from './types'
+import type { StatsScope } from './statsModel'
 import { categoryPath, fold, listOf, localDay } from './shopModel'
 import { nokPerUnit, type UsdRates } from './fx'
 
@@ -416,6 +417,30 @@ export function ownedCards(items: readonly ShopItem[], categories: readonly Shop
     const hay = fold([i.title, i.notes ?? '', i.platform ?? '', i.sold_to ?? '', i.serial ?? '', path.topName, path.subName ?? ''].join(' '))
     return words.every(w => hay.includes(w))
   })
+}
+
+/** A filter's key for "no category" (Owned's filter says 'none'; Stats' scope and rows use this). */
+export const NO_CATEGORY = '__none__'
+
+/** Owned's "Bought to sell", a search, or Mine / Sold or gone: what the list shows is narrower than any Stats pick. */
+const narrowerThanStats = (f: OwnedFilters) => f.q.trim() !== '' || f.resaleOnly || f.show !== 'all'
+
+/**
+ * The Stats filter for what Owned's list shows, so its summary line opens
+ * Stats on the same things: a category or a money chain is picked as itself;
+ * what Stats cannot pick (a search, "Bought to sell", Mine or Sold or gone)
+ * picks the things the list shows (`shown`: its cards' ids). All, with no
+ * filter, is everything: no pick at all. Null when the list shows nothing.
+ */
+export function statsScopeOf(f: OwnedFilters, shown: readonly string[]): StatsScope | null {
+  if (!shown.length) return null
+  if (narrowerThanStats(f)) return { categories: [], chains: [], things: [...shown], stores: [] }
+  return {
+    categories: f.category === 'all' ? [] : [f.category === 'none' ? NO_CATEGORY : f.category],
+    chains: f.chain === 'all' ? [] : [f.chain],
+    things: [],
+    stores: [],
+  }
 }
 
 /** The filters beyond Mine · Sold or gone · All (the tab is not a filter): how many are set. */
