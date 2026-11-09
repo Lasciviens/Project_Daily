@@ -6,7 +6,7 @@ import { bestMatch } from '../../wishModel'
 import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, perMonthWords, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
 import { finalCostOf, ifSoldNow, type Chain, type IfSold } from '../../chainModel'
 import { AmountText } from '../shopKit'
-import { money, moneyRange } from '../shopFormat'
+import { hostOf, money, moneyRange } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
 import type { RecordState } from './recordState'
 import type { ShopItem, ShopPriceWatch } from '../../types'
@@ -65,7 +65,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
     const now = watch && watch.url === item.url && watch.low != null ? watch : null
     cells.push(
       <Cell key="p" label="Price" strong>{item.price != null ? money(item.price, cur) : '—'}</Cell>,
-      <Cell key="n" label="Price now" hint={now ? `${now.source === 'prisjakt' ? 'Prisjakt' : 'the shop'} · ${formatDate(now.last_ok_at ?? now.checked_at)}` : item.url ? 'not checked yet' : 'add a link to watch it'}>
+      <Cell key="n" label="Price now" hint={now ? `${now.source === 'prisjakt' ? 'Prisjakt' : hostOf(item.url) ?? 'the shop'} · ${formatDate(now.last_ok_at ?? now.checked_at)}` : item.url ? 'not checked yet' : 'add a link to watch it'}>
         {now ? money(now.low as number, (now.currency ?? cur).toUpperCase()) : '—'}
       </Cell>,
       <Cell key="t" label="Target">{item.target_price != null ? money(item.target_price, cur) : '—'}</Cell>,

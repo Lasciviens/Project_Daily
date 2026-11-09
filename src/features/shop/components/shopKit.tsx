@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { Package } from 'lucide-react'
+import { ExternalLink, Package } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
-import { amountReason, money, pendingWords } from './shopFormat'
+import { amountReason, hostOf, money, pendingWords, webUrl } from './shopFormat'
 
 // Shop's shared display pieces: an Amount that is never shown as a number
 // unless it is complete, a value with a detail on demand, and an item's
@@ -33,6 +33,23 @@ export function AmountText({ amount, signed = false, className, unknown = 'Unkno
   }
   const n = Math.round(amount.nok)
   return <span className={cx('whitespace-nowrap tabular-nums', className)}>{signed && n > 0 ? '+' : ''}{money(n)}</span>
+}
+
+/**
+ * The product's page, opened in a new tab: "power.no ↗" (or `children`).
+ * Only a web link (http or https) becomes a link; anything else is plain text.
+ */
+export function SiteLink({ url, children, className }: { url: string | null | undefined; children?: ReactNode; className?: string }) {
+  const href = webUrl(url)
+  const label = children ?? hostOf(url) ?? 'the shop'
+  if (!href) return <span className={className}>{label}</span>
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className={cx('inline-flex items-center gap-0.5 font-semibold text-accent-600 hover:underline', className)}>
+      {label}<ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
+      <span className="sr-only"> (opens in a new tab)</span>
+    </a>
+  )
 }
 
 /** A square picture with a quiet placeholder; a picture that fails to load falls back too. */

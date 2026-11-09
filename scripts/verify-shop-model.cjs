@@ -229,5 +229,14 @@ console.log('the quick list page: groups, adds and Buy again')
   check('…and leaves them out when that row had none', eq(M.buyAgainInput(M.buyAgain([{ ...bought, ean: null, image_url: null }])[0]), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick' }))
 }
 
+console.log('\nThe product link (the price watch, the wishlist card, the record — owner, 09.11.2026)')
+{
+  const SF = require('../src/features/shop/components/shopFormat')
+  check('a web link opens; its site is named without "www."', SF.webUrl('https://www.power.no/tv/p-1/') === 'https://www.power.no/tv/p-1/' && SF.hostOf('https://www.power.no/tv/p-1/') === 'power.no' && SF.hostOf('http://prisjakt.no/product.php?p=1') === 'prisjakt.no')
+  check('anything but http(s) is never a link (javascript:, data:, a bare word)', [
+    'javascript:alert(1)', ' JavaScript:alert(1)', 'data:text/html,<b>x</b>', 'ftp://example.com/x', 'power.no', '', null,
+  ].every(u => SF.webUrl(u) === null && SF.hostOf(u) === null))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

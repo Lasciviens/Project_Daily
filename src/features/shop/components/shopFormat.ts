@@ -59,6 +59,23 @@ export function amountReason(a: Amount): string {
   return parts.join(' · ')
 }
 
+/** The link when it is a web page (http or https), else null — a link never runs code (javascript:, data:). */
+export function webUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
+/** "power.no" — the site of a web link, without "www."; null for anything else. */
+export function hostOf(url: string | null | undefined): string | null {
+  const u = webUrl(url)
+  return u ? new URL(u).hostname.replace(/^www\./, '') : null
+}
+
 /** The picture to show: the row's own, else its price watch's (when the watch is for the current link). */
 export function imageOf(item: Pick<ShopItem, 'image_url' | 'url'>, watch?: ShopPriceWatch | null): string | null {
   if (item.image_url) return item.image_url

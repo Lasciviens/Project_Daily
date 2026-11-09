@@ -6,7 +6,7 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { categoryPath, currencyOf, type CategoryPath } from '../../shopModel'
 import { addDays, addMonths, complaintYears, daysBetween, DISPOSAL_LABEL, durationLabel, paidOf, complete, savedOf } from '../../ownModel'
-import { money, moneyRange } from '../shopFormat'
+import { money, moneyRange, webUrl } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
 import { MoneyEditor, Toggle } from './factKit'
 import type { RecordDraft } from './useRecordDraft'
@@ -80,9 +80,9 @@ export function commonFacts(c: FactCtx, state: 'buy' | 'general' | 'owned'): Fac
       editor: <select value={v.region ?? ''} onChange={e => set({ region: (e.target.value || null) as ShopRegion | null })} aria-label="Country" className="select max-w-xs">
         <option value="">Anywhere</option><option value="NO">🇳🇴 Norway</option><option value="TR">🇹🇷 Turkey</option>
       </select> },
-    { id: 'link', label: 'Link', filled: !!v.url, chip: 'Link', value: v.url
-        ? <a href={v.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{host(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
-        : null,
+    { id: 'link', label: 'Link', filled: !!v.url, chip: 'Link', value: v.url && webUrl(v.url)
+        ? <a href={webUrl(v.url) as string} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{host(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
+        : v.url,
       hint: !v.url ? undefined : 'A Prisjakt or shop link: its price is checked every morning.',
       editor: <input type="url" inputMode="url" value={v.url ?? ''} onChange={e => set({ url: e.target.value.trim() || null })} placeholder="https://www.prisjakt.no/…" aria-label="Link" className="input" autoFocus /> },
     { id: 'notes', label: 'Notes', filled: !!v.notes, chip: 'Notes', value: <span className="whitespace-pre-line">{v.notes}</span>,
