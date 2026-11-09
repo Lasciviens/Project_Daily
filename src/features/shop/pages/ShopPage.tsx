@@ -60,7 +60,7 @@ export function ShopPage() {
   const wishCount = items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for).length
   const quickCount = quickGroups(items, todayStr()).reduce((n, g) => n + g.items.length, 0)
   // Counts only where there is room for them (a phone's three segments are tight).
-  const count = (n: number) => !isPhone && n > 0 && <span className="ml-1 tabular-nums text-fg-faint">{n}</span>
+  const count = (n: number) => !isPhone && n > 0 && <span className="ml-1 tabular-nums text-fg-muted">{n}</span>
 
   function add() {
     if (view === 'owned') modal.open({ kind: 'shop-own' })

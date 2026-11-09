@@ -86,7 +86,7 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
             <DateInput value={on} onChange={setOn} min={from} max={today} aria-label="On" className="input w-[10rem] tabular-nums" />
           </div>
           <div>
-            <label className="field-label" htmlFor="sell-to">{how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-faint">(optional)</span></label>
+            <label className="field-label" htmlFor="sell-to">{how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-muted">(optional)</span></label>
             <input id="sell-to" value={to} onChange={e => setTo(e.target.value)} placeholder={how === 'traded_in' ? 'Apple, POWER…' : 'FINN, a friend…'} className="input" />
           </div>
         </div>
@@ -94,7 +94,7 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
           <div>
             <span className="field-label">{how === 'returned' ? 'Refunded' : 'Got'}</span>
             <MoneyEditor label="Got" amount={got} currency={currency} onAmount={setGot} onCurrency={setCurrency} />
-            {got == null && <p className="mt-1 text-meta text-fg-faint">Without an amount the result stays Unknown — you can add it later.</p>}
+            {got == null && <p className="mt-1 text-meta text-fg-muted">Without an amount the result stays Unknown — you can add it later.</p>}
           </div>
         )}
         {accessories.length > 0 && (
@@ -120,12 +120,12 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
                 </li>
               ))}
             </ul>
-            {shares && sold.length > 1 && <p className="mt-1 text-meta text-fg-faint">The money is split by what each cost: {item.title} gets {shares.get(item.id)} {currency}.</p>}
+            {shares && sold.length > 1 && <p className="mt-1 text-meta text-fg-muted">The money is split by what each cost: {item.title} gets {shares.get(item.id)} {currency}.</p>}
           </div>
         )}
         {money && targets.length > 0 && (
           <div>
-            <label className="field-label" htmlFor="sell-target">Money goes to <span className="font-normal text-fg-faint">(optional)</span></label>
+            <label className="field-label" htmlFor="sell-target">Money goes to <span className="font-normal text-fg-muted">(optional)</span></label>
             <select id="sell-target" value={target} onChange={e => setTarget(e.target.value)} className="select">
               <option value="">Nowhere in particular</option>
               {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? (t.kind === 'general' ? ' (a wish)' : ' (to buy)') : ''}</option>)}

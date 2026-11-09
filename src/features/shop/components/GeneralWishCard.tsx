@@ -46,7 +46,7 @@ export function GeneralWishCard({ wish, models, watches, rates, onOpen, onOpenMo
                 <button type="button" onClick={() => onOpenModel(m.id)} className="flex min-h-[44px] w-full items-center gap-2 px-2.5 text-left hover:bg-surface-hover">
                   <Truncate as="span" className="min-w-0 flex-1 text-meta text-fg-2">{m.title}</Truncate>
                   {m === best && <TonePill tone="info" className="shrink-0">Best</TonePill>}
-                  {reqs.length > 0 && <span className="shrink-0 text-micro tabular-nums text-fg-faint">{c.met}/{reqs.length}</span>}
+                  {reqs.length > 0 && <span className="shrink-0 text-micro tabular-nums text-fg-muted">{c.met}/{reqs.length}</span>}
                   <span className="shrink-0 text-meta tabular-nums text-fg-muted">{p ? money(p.amount, p.currency) : '—'}</span>
                 </button>
               </li>

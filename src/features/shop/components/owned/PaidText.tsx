@@ -9,7 +9,7 @@ import type { ShopItem } from '../../types'
  */
 export function PaidText({ item }: { item: ShopItem }) {
   if (item.got_as_gift && !item.price) return <>Gift</>
-  if (item.price == null) return <span className="text-fg-faint">Price not set</span>
+  if (item.price == null) return <span className="text-fg-muted">Price not set</span>
   const c = currencyOf(item)
   if (c === 'NOK') return <>{money(item.price)}</>
   const nok = paidOf(item)
@@ -17,8 +17,8 @@ export function PaidText({ item }: { item: ShopItem }) {
     <>
       {money(item.price, c)}
       {complete(nok)
-        ? <span className="text-fg-faint"> ≈ {money(nok.nok)}</span>
-        : <span className="text-fg-faint" title="Norges Bank publishes the day's rate after 16:00 on weekdays; it is filled in by itself"> · rate pending</span>}
+        ? <span className="text-fg-muted"> ≈ {money(nok.nok)}</span>
+        : <span className="text-fg-muted" title="Norges Bank publishes the day's rate after 16:00 on weekdays; it is filled in by itself"> · rate pending</span>}
     </>
   )
 }

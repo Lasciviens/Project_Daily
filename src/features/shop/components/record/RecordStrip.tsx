@@ -16,7 +16,7 @@ function Cell({ label, children, hint, strong }: { label: string; children: Reac
     <div className="min-w-0 rounded-row border border-line bg-surface-2 px-3 py-2">
       <p className="section-label">{label}</p>
       <p className={cx('mt-0.5 text-ui tabular-nums text-fg', strong && 'font-semibold')}>{children}</p>
-      {hint != null && <Truncate as="p" className="text-micro text-fg-faint">{hint}</Truncate>}
+      {hint != null && <Truncate as="p" className="text-micro text-fg-muted">{hint}</Truncate>}
     </div>
   )
 }

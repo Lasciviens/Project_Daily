@@ -63,7 +63,7 @@ export function AccessorySheet({ parent, onClose }: { parent: ShopItem; onClose:
           <input ref={input} id="acc-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="Case, memory card, controller…" autoFocus className="input" enterKeyHint="next" />
         </div>
         <div>
-          <span className="field-label">{owned ? 'Paid' : 'Price'} <span className="font-normal text-fg-faint">(0 if it came with it)</span></span>
+          <span className="field-label">{owned ? 'Paid' : 'Price'} <span className="font-normal text-fg-muted">(0 if it came with it)</span></span>
           <MoneyEditor label="Price" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

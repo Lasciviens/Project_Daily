@@ -149,7 +149,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
                 <li key={item.id} className="flex items-center gap-2 py-1 pl-3 pr-1">
                   <button type="button" onClick={() => modal.open({ kind: 'shop-item', id: item.id })} className="min-h-[44px] min-w-0 flex-1 text-left text-body text-fg-2">
                     {item.title}
-                    {listOf(item) === 'quick' && <span className="ml-1.5 text-meta text-fg-faint">· quick list</span>}
+                    {listOf(item) === 'quick' && <span className="ml-1.5 text-meta text-fg-muted">· quick list</span>}
                   </button>
                   <Button size="sm" variant="ghost" icon={<Undo2 />} onClick={() => update.mutate({ id: item.id, patch: { status: 'wishlist' } })}>Put back</Button>
                 </li>

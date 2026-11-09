@@ -66,7 +66,7 @@ export function StepMore({ s, set, categories, stores, listId }: {
           <textarea value={s.notes} onChange={e => set({ notes: e.target.value })} rows={2} placeholder="Notes" aria-label="Notes" className="input resize-y" />
           <input type="url" inputMode="url" value={s.url} onChange={e => set({ url: e.target.value })} placeholder="Link (https://…)" aria-label="Link" className="input max-w-md" />
           <div>
-            <span className="field-label">Accessories bought with it <span className="font-normal normal-case tracking-normal text-fg-faint">(they leave with it)</span></span>
+            <span className="field-label">Accessories bought with it <span className="font-normal normal-case tracking-normal text-fg-muted">(they leave with it)</span></span>
             {s.accessories.length > 0 && (
               <ul className="mb-2 flex flex-col gap-2">
                 {s.accessories.map(a => (

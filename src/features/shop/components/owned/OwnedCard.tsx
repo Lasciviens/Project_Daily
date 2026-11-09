@@ -142,7 +142,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
             <li key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 text-meta">
               <Truncate as="span" className="min-w-0 flex-1 text-fg-2">{a.title}</Truncate>
               <span className="shrink-0 tabular-nums text-fg-muted"><PaidText item={a} /></span>
-              {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-faint">{DISPOSAL_LABEL[a.disposal]}</span>}
+              {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-muted">{DISPOSAL_LABEL[a.disposal]}</span>}
             </li>
           ))}
         </ul>

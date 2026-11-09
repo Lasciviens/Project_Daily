@@ -42,7 +42,7 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
           </button>
         )}
       </div>
-      {hint && !open && <p className="ml-[8.5rem] pl-1 text-meta text-fg-faint max-[380px]:ml-[6.5rem]">{hint}</p>}
+      {hint && !open && <p className="ml-[8.5rem] pl-1 text-meta text-fg-muted max-[380px]:ml-[6.5rem]">{hint}</p>}
     </div>
   )
 }
