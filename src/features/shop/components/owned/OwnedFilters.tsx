@@ -1,18 +1,16 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { SegmentedControl, cx } from '../../../../shared/ui'
-import { NO_OWNED_FILTERS, OWNED_SORT_LABEL, type OwnedFilters, type OwnedShow, type OwnedSort } from '../../ownModel'
+import { NO_OWNED_FILTERS, OWNED_SORT_LABEL, ownedFilterCount, type OwnedFilters, type OwnedShow, type OwnedSort } from '../../ownModel'
+import { SortSelect } from '../shopKit'
 import type { ShopCategory } from '../../types'
-
-const SORTS = Object.keys(OWNED_SORT_LABEL) as OwnedSort[]
-const active = (f: OwnedFilters) => f.q.trim() !== '' || f.category !== 'all' || f.show !== 'mine' || f.resaleOnly || f.chain !== 'all'
 
 /**
  * The bar above your things: search, what to show (yours / sold or gone /
- * all), the order, and — folded on a phone — category or subcategory, money
- * chain and "bought to sell".
+ * all — a tab, not a filter), the order, and — folded on a phone or a short
+ * screen — category or subcategory, money chain and "bought to sell".
  */
-export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, chains, collapsible }: {
+export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, chains, collapsible, fold }: {
   filters: OwnedFilters
   onChange: (f: OwnedFilters) => void
   sort: OwnedSort
@@ -21,6 +19,8 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
   /** The money chains to pick from: id and name (or path). */
   chains: readonly { id: string; title: string }[]
   collapsible: boolean
+  /** Fold / open all categories, at the end of the folded row. */
+  fold?: ReactNode
 }) {
   const [open, setOpen] = useState<boolean | null>(null)
   const set = (patch: Partial<OwnedFilters>) => onChange({ ...filters, ...patch })
@@ -38,15 +38,14 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
         <SegmentedControl<OwnedShow> size="sm" fullWidth={collapsible} value={filters.show} onChange={show => set({ show })}
           options={[{ value: 'mine', label: 'Mine' }, { value: 'gone', label: 'Sold or gone' }, { value: 'all', label: 'All' }]} />
       </div>
-      <select value={sort} onChange={e => onSort(e.target.value as OwnedSort)} aria-label="Sort" className={cx('select', collapsible ? 'min-w-0 flex-1' : 'w-auto')}>
-        {SORTS.map(s => <option key={s} value={s}>{OWNED_SORT_LABEL[s]}</option>)}
-      </select>
+      <SortSelect value={sort} labels={OWNED_SORT_LABEL} onChange={onSort} className={collapsible ? 'min-w-0 flex-1' : 'w-auto'} />
       {collapsible && (
         <button type="button" aria-expanded={showMore} onClick={() => setOpen(!showMore)}
           className={cx('btn-secondary min-w-0 flex-1 justify-center gap-1.5', picked > 0 && 'text-accent-600')}>
           <SlidersHorizontal aria-hidden className="h-4 w-4" /> Filters{picked > 0 ? ` · ${picked}` : ''}
         </button>
       )}
+      {collapsible && fold}
       {showMore && <>
         <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={cx('select', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')}>
           <option value="all">All categories</option>
@@ -68,8 +67,8 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
           Bought to sell
         </label>
       </>}
-      {active(filters) && (
-        <button type="button" onClick={() => onChange(NO_OWNED_FILTERS)}
+      {ownedFilterCount(filters) > 0 && (
+        <button type="button" onClick={() => onChange({ ...NO_OWNED_FILTERS, show: filters.show })}
           className="flex min-h-[44px] w-fit items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
           <X aria-hidden className="h-4 w-4" /> Clear filters
         </button>

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { ExternalLink, Package } from 'lucide-react'
-import { cx } from '../../../shared/ui'
+import { ChevronDown, ExternalLink, Package } from 'lucide-react'
+import { Truncate, cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
 import { amountReason, hostOf, money, num, pendingWords, webUrl } from './shopFormat'
 
@@ -50,6 +50,30 @@ export function SiteLink({ url, children, className }: { url: string | null | un
       {label}<ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
       <span className="sr-only"> (opens in a new tab)</span>
     </a>
+  )
+}
+
+/**
+ * A sort choice that says what it is: "Sort: Newest first" in a select's box;
+ * the native select lies invisible over it (the phone's own picker, the keys),
+ * so the box keeps the row's text size — a visible select is 16px on touch.
+ */
+export function SortSelect<T extends string>({ value, labels, onChange, className }: {
+  value: T
+  labels: Record<T, string>
+  onChange: (v: T) => void
+  className?: string
+}) {
+  return (
+    <span className={cx('select relative flex items-center gap-1 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
+      <span className="shrink-0 font-normal text-fg-muted">Sort:</span>
+      <Truncate as="span" className="min-w-0">{labels[value]}</Truncate>
+      <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
+      <select aria-label="Sort" value={value} onChange={e => onChange(e.target.value as T)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-control opacity-0">
+        {(Object.keys(labels) as T[]).map(k => <option key={k} value={k}>{labels[k]}</option>)}
+      </select>
+    </span>
   )
 }
 

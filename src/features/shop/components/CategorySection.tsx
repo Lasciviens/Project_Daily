@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { ChevronDown } from 'lucide-react'
-import { Truncate, cx } from '../../../shared/ui'
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { IconButton, Truncate, cx } from '../../../shared/ui'
 import type { CategoryGroup } from '../shopModel'
 import type { ShopItem } from '../types'
 
@@ -12,7 +12,8 @@ export const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem
 /**
  * One category as a full-width section with a folding header (count and a
  * total stay visible when folded) and all its cards in one aligned grid, in
- * subcategory order, each labelled with its subcategory.
+ * subcategory order: each subcategory's label once, across the grid, above
+ * its cards.
  */
 export function CategorySection({ group, collapsed, onToggle, aside, card }: {
   group: CategoryGroup
@@ -23,7 +24,7 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
   card: (item: ShopItem) => ReactNode
 }) {
   const id = `shop-cat-${group.key}`
-  // With subcategories, every card carries its own (one grid, so the rows stay full and aligned).
+  // With subcategories, each group of cards gets its label once — a row of its own in the one grid, so the cards' rows stay aligned.
   const labelled = group.subs.some(sub => sub.title)
   return (
     <section className="flex flex-col gap-2">
@@ -36,26 +37,36 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
       </button>
       {!collapsed && (
         <div id={id} className={CARD_GRID}>
-          {group.subs.flatMap(sub => sub.items.map(item => (
-            <div key={item.id} className="flex min-w-0 flex-col gap-1">
-              {labelled && <Truncate as="p" className="section-label">{sub.title ?? 'Other'}</Truncate>}
-              <div className="flex flex-1 flex-col [&>*]:flex-1">{card(item)}</div>
-            </div>
-          )))}
+          {group.subs.flatMap(sub => [
+            labelled && <Truncate key={`label:${sub.key}`} as="p" className="section-label col-span-full -mb-1 pt-1 first:pt-0">{sub.title ?? 'Other'}</Truncate>,
+            ...sub.items.map(item => <div key={item.id} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>),
+          ])}
         </div>
       )}
     </section>
   )
 }
 
-/** "Fold all" / "Open all" for the sections on screen. */
-export function FoldAll({ keys, collapsed, onSet }: { keys: string[]; collapsed: ReadonlySet<string>; onSet: (keys: string[], fold: boolean) => void }) {
+/**
+ * "Fold all" / "Open all" for the sections on screen: a line above them, or
+ * (`compact`, on a phone) an icon button in the filter row, so it costs no
+ * line of its own.
+ */
+export function FoldAll({ keys, collapsed, onSet, compact }: { keys: string[]; collapsed: ReadonlySet<string>; onSet: (keys: string[], fold: boolean) => void; compact?: boolean }) {
   if (keys.length < 2) return null
   const allFolded = keys.every(k => collapsed.has(k))
+  const label = allFolded ? 'Open all categories' : 'Fold all categories'
+  if (compact) {
+    return (
+      <IconButton bordered label={label} onClick={() => onSet(keys, !allFolded)} className="shrink-0">
+        {allFolded ? <ChevronsUpDown aria-hidden /> : <ChevronsDownUp aria-hidden />}
+      </IconButton>
+    )
+  }
   return (
     <button type="button" onClick={() => onSet(keys, !allFolded)}
       className="flex min-h-[44px] w-fit items-center text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
-      {allFolded ? 'Open all categories' : 'Fold all categories'}
+      {label}
     </button>
   )
 }

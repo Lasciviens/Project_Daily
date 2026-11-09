@@ -418,9 +418,14 @@ export function ownedCards(items: readonly ShopItem[], categories: readonly Shop
   })
 }
 
+/** The filters beyond Mine · Sold or gone · All (the tab is not a filter): how many are set. */
+export function ownedFilterCount(f: OwnedFilters): number {
+  return Number(f.q.trim() !== '') + Number(f.category !== 'all') + Number(f.resaleOnly) + Number(f.chain !== 'all')
+}
+
 export type OwnedSort = 'recent' | 'price' | 'month' | 'title' | 'kept'
 export const OWNED_SORT_LABEL: Record<OwnedSort, string> = {
-  recent: 'Newest first', price: 'Paid: most first', month: 'Per month: most first', title: 'A–Z', kept: 'Kept longest',
+  recent: 'Newest first', price: 'Paid, most first', month: 'Per month, most first', title: 'A–Z', kept: 'Kept longest',
 }
 
 export function sortOwned(list: readonly ShopItem[], sort: OwnedSort, ctx: MoneyCtx, today: string, acc: Map<string, ShopItem[]>): ShopItem[] {

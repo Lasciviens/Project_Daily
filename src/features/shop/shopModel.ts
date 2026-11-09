@@ -117,8 +117,8 @@ export type ShopSort = 'priority' | 'price-desc' | 'price-asc' | 'planned' | 'ne
 
 export const SORT_LABEL: Record<ShopSort, string> = {
   priority: 'Priority',
-  'price-desc': 'Price: high to low',
-  'price-asc': 'Price: low to high',
+  'price-desc': 'Price, high to low',
+  'price-asc': 'Price, low to high',
   planned: 'Buy-on date',
   newest: 'Newest',
   title: 'A–Z',

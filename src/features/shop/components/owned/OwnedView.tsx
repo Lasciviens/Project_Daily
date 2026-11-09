@@ -4,15 +4,15 @@ import { Button, EmptyState, PageBoard, Skeleton, Truncate, cx } from '../../../
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { useBreakpoint } from '../../../../shared/hooks/useBreakpoint'
 import { useDeleteShopItems } from '../../hooks/useShop'
 import { useShopLinks, useShopMoney, useUndoSale } from '../../hooks/useShopMoney'
 import { useWatchMap } from '../../hooks/useShopPrices'
+import { useFoldedFilters } from '../../hooks/useFoldedFilters'
 import { groupByCategory } from '../../shopModel'
 import { CARD_GRID, CategorySection, FoldAll } from '../CategorySection'
 import { useCollapsedGroups } from '../../hooks/useCollapsedGroups'
 import {
-  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, shownSummary, sortOwned,
+  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
@@ -28,7 +28,7 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const today = todayStr()
-  const isPhone = useBreakpoint() === 'phone'
+  const folded = useFoldedFilters()
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
   const watches = useWatchMap()
@@ -53,10 +53,11 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
   )
   // The summary follows what the list shows: the filters and Mine · Sold or gone · All.
   const summary = useMemo(() => shownSummary(shown, acc, ctx, gone.length), [shown, acc, ctx, gone.length])
-  const filtered = filters.q.trim() !== '' || filters.category !== 'all' || filters.resaleOnly || filters.chain !== 'all'
+  const filtered = ownedFilterCount(filters) > 0
   const deadlines = useMemo(() => comingUp(items, today), [items, today])
   const fold = useCollapsedGroups('owned')
   const anything = useMemo(() => ownedCards(items, categories, { ...NO_OWNED_FILTERS, show: 'all' }).length > 0, [items, categories])
+  const foldAll = (compact: boolean) => <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={compact} />
 
   const card = (item: ShopItem) => (
     <OwnedCard
@@ -82,13 +83,15 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
       action={<Button icon={<PackagePlus />} onClick={() => modal.open({ kind: 'shop-own' })}>Add something I own</Button>} />
   ) : (
     <div className="flex flex-col gap-4">
-      {shown.length === 0 && (
-        <p className="text-body text-fg-muted">
-          Nothing matches these filters.{' '}
-          <button type="button" onClick={() => setFilters(NO_OWNED_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
-        </p>
-      )}
-      <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} />
+      {shown.length === 0 && (filtered
+        ? (
+          <p className="text-body text-fg-muted">
+            Nothing matches these filters.{' '}
+            <button type="button" onClick={() => setFilters({ ...NO_OWNED_FILTERS, show: filters.show })} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
+          </p>
+        )
+        : <p className="text-body text-fg-muted">{filters.show === 'gone' ? 'Nothing sold or gone yet.' : 'Nothing is yours right now.'}</p>)}
+      {!folded && foldAll(false)}
       {groups.map(group => (
         <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)} card={card} />
       ))}
@@ -126,7 +129,8 @@ export function OwnedView({ items, categories, isLoading }: { items: ShopItem[];
         summary: anything && <OwnedSummaryCard summary={summary} show={filters.show} filtered={filtered} />,
         coming: deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
         filters: anything && (
-          <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions} collapsible={isPhone} />
+          <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
+            collapsible={folded} fold={foldAll(true)} />
         ),
         groups: list,
       }}
