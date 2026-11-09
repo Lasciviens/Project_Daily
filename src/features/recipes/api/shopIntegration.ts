@@ -2,8 +2,7 @@
 // Shop's quick list (the errand list — migration 134), still filed under
 // Groceries → Recipe Ingredients. Crosses the feature boundary deliberately —
 // this is the one place Recipes talks to Shop's API directly.
-import { fetchShopCategories, createShopCategory, createShopItem, needsShopMigration } from '../../shop/api/shopApi'
-import type { CreateShopItemInput } from '../../shop/types'
+import { fetchShopCategories, createShopCategory, createShopItem } from '../../shop/api/shopApi'
 import type { RecipeIngredient } from '../types'
 
 const TOP_CATEGORY = 'Groceries'
@@ -26,24 +25,15 @@ export async function addMissingIngredientsToShop(
   if (!ingredients.length) return 0
   const categoryId = await resolveTargetCategory()
 
-  // Before migration 134 there is no quick list: the rows go on the wishlist as before.
-  let list: CreateShopItemInput['list'] = 'quick'
   for (const ing of ingredients) {
     const qty = ing.quantity != null ? `${ing.quantity}${ing.unit ?? ''}` : null
-    const input: CreateShopItemInput = {
+    await createShopItem({
       category_id: categoryId,
       title:       ing.name,
       notes:       [qty, `for ${recipeTitle}`].filter(Boolean).join(' · '),
       source_type: 'manual',
-      list,
-    }
-    try {
-      await createShopItem(input)
-    } catch (err) {
-      if (list !== 'quick' || !needsShopMigration(err)) throw err
-      list = 'wishlist'
-      await createShopItem({ ...input, list })
-    }
+      list:        'quick',
+    })
   }
   return ingredients.length
 }

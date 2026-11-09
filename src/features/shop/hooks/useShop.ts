@@ -129,8 +129,9 @@ export function useBuyNow(onDetails?: (id: string) => void) {
 /**
  * THE shop delete: asks ("Its 2 accessories go too."), deletes the row and
  * the accessories bought for it (deleteScope), "Deleted Kindle · Undo" — Undo
- * puts them back with their links, costs and accessories (shop_restore_items,
- * migration 137; its own order of parents and links, which the shop rules need).
+ * puts them back with their links, costs, accessories and price history
+ * (shop_restore_items, migration 187: the rows first, then their parents and
+ * links, which the shop rules need).
  */
 export function useDeleteShopItems() {
   const items = useShopItems().data ?? []
