@@ -1,6 +1,7 @@
 import { ChevronRight, CornerDownRight } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../../../shared/modals'
 import { Truncate, cx } from '../../../../shared/ui'
+import { negate } from '../../ownModel'
 import { AmountText } from '../shopKit'
 import { shortReason } from './statsFormat'
 import type { DrillContent, DrillRow } from './drillTypes'
@@ -51,7 +52,7 @@ export function DrillRowButton({ row, onOpen }: { row: DrillRow; onOpen: () => v
     : a
       ? (
         <span data-tone={row.tone} className={cx('text-body font-semibold', row.tone && 'tone-text')}>
-          <AmountText amount={row.negate ? { ...a, nok: -a.nok } : a} signed={row.signed} unknown={shortReason(a)} />
+          <AmountText amount={row.negate ? negate(a) : a} signed={row.signed} unknown={shortReason(a)} />
         </span>
       )
       : null

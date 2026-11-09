@@ -4,8 +4,8 @@ import { Button, EmptyState, PageBoard, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
+import { useFoldedFilters } from '../hooks/useFoldedFilters'
 import { useBuyNow, useDeleteShopItems, useUpdateShopItem } from '../hooks/useShop'
 import { useShopRates } from '../hooks/useShopRates'
 import { useShopLinks, useShopMoney } from '../hooks/useShopMoney'
@@ -32,7 +32,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const update = useUpdateShopItem()
   const remove = useDeleteShopItems()
   const today = todayStr()
-  const isPhone = useBreakpoint() === 'phone'
+  const folded = useFoldedFilters()
   const [filters, setFilters] = useState<WishlistFilters>(NO_FILTERS)
   const [sort, setSort] = useState<ShopSort>('priority')
   const [showDropped, setShowDropped] = useState(false)
@@ -128,7 +128,6 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} />
       {groups.map(group => {
         const t = totalsIn(group.items, 'NOK', rates, models, watches)
         return (
@@ -149,7 +148,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
                 <li key={item.id} className="flex items-center gap-2 py-1 pl-3 pr-1">
                   <button type="button" onClick={() => modal.open({ kind: 'shop-item', id: item.id })} className="min-h-[44px] min-w-0 flex-1 text-left text-body text-fg-2">
                     {item.title}
-                    {listOf(item) === 'quick' && <span className="ml-1.5 text-meta text-fg-faint">· quick list</span>}
+                    {listOf(item) === 'quick' && <span className="ml-1.5 text-meta text-fg-muted">· quick list</span>}
                   </button>
                   <Button size="sm" variant="ghost" icon={<Undo2 />} onClick={() => update.mutate({ id: item.id, patch: { status: 'wishlist' } })}>Put back</Button>
                 </li>
@@ -180,7 +179,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
         ),
         // While loading too: arriving with the items, the filters pushed the list down (a layout shift).
         filters: (all.length > 0 || isLoading) && (
-          <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={isPhone} />
+          <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={folded}
+            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} />} />
         ),
         groups: groupsSection,
       }}

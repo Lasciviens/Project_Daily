@@ -48,7 +48,8 @@ function axisTicks(rows: MonthRow[], withYear: boolean, plotPx: number): { ticks
 /**
  * Money out (below zero) and money back (above) per month, in NOK at each
  * day's rate. Only the amounts that are known are drawn; the rest are counted
- * under the chart. A bar opens that month's purchases and sales.
+ * under the chart. A bar — or its month's column — opens that month's
+ * purchases and sales; with a keyboard, the months' list under the chart does.
  */
 export function MoneyChart({ rows, withYear, onMonth }: { rows: MonthRow[]; withYear: boolean; onMonth: (month: string) => void }) {
   const c = useChartColors()
@@ -58,6 +59,11 @@ export function MoneyChart({ rows, withYear, onMonth }: { rows: MonthRow[]; with
   const scale = useMemo(() => valueScale(data), [data])
   const note = notCounted(add(...rows.flatMap(r => [r.spent, r.got])))
   const empty = rows.every(r => r.ids.length === 0)
+  const open = (p: Point | undefined) => { if (p && p.row.ids.length) onMonth(p.month) }
+  // A bar hands over its own point (a first tap on a phone too). A click
+  // beside a bar, in its month's column, goes through the chart, whose index
+  // recharts 3 passes as text ("4"), or null before a touch has shown the tooltip.
+  const openBar = (bar: { payload?: unknown }, _index: number, e: { stopPropagation: () => void }) => { e.stopPropagation(); open(bar.payload as Point | undefined) }
 
   if (empty) return <p className="text-body text-fg-muted">Nothing was bought or sold in these months.</p>
   return (
@@ -66,7 +72,7 @@ export function MoneyChart({ rows, withYear, onMonth }: { rows: MonthRow[]; with
         <ResponsiveContainer width="100%" height="100%" onResize={w => setWidth(w)}>
           <BarChart
             data={data} stackOffset="sign" margin={{ top: 6, right: 4, bottom: 0, left: 0 }} barCategoryGap="22%"
-            onClick={s => { const p = typeof s?.activeIndex === 'number' ? data[s.activeIndex] : undefined; if (p && p.row.ids.length) onMonth(p.month) }}
+            onClick={s => { const i = s?.activeIndex == null ? NaN : Number(s.activeIndex); open(Number.isInteger(i) ? data[i] : undefined) }}
           >
             <CartesianGrid vertical={false} stroke={c.grid} />
             <XAxis dataKey="month" ticks={ticks} interval={0} tickFormatter={label} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: c.axis }} tickMargin={6} />
@@ -75,23 +81,29 @@ export function MoneyChart({ rows, withYear, onMonth }: { rows: MonthRow[]; with
             <ReferenceLine y={0} stroke={c.axis} strokeOpacity={0.6} />
             <Tooltip cursor={{ fill: c.grid, fillOpacity: 0.45 }} isAnimationActive={false}
               content={p => <MoneyTip row={p.active ? (p.payload?.[0]?.payload as Point | undefined)?.row : undefined} withYear={withYear} colors={[c.series[0], c.series[1]]} />} />
-            <Bar dataKey="out" name="Spent" stackId="money" fill={c.series[0]} maxBarSize={24} radius={[4, 4, 0, 0]} className="cursor-pointer" />
-            <Bar dataKey="back" name="Got back" stackId="money" fill={c.series[1]} maxBarSize={24} radius={[4, 4, 0, 0]} className="cursor-pointer" />
+            <Bar dataKey="out" name="Spent" stackId="money" fill={c.series[0]} maxBarSize={24} radius={[4, 4, 0, 0]} className="cursor-pointer" onClick={openBar} />
+            <Bar dataKey="back" name="Got back" stackId="money" fill={c.series[1]} maxBarSize={24} radius={[4, 4, 0, 0]} className="cursor-pointer" onClick={openBar} />
           </BarChart>
         </ResponsiveContainer>
       </div>
       {note && <p className="text-meta text-fg-muted">{note}</p>}
-      {/* The values for screen readers, in a clipped box (a table ignores a 1px width). */}
-      <div className="sr-only">
-        <table>
-          <caption>Money spent and got back by month, in NOK</caption>
-          <thead><tr><th scope="col">Month</th><th scope="col">Spent</th><th scope="col">Got back</th></tr></thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.month}><th scope="row">{monthName(r.month, true)}</th><td>{cell(r.spent)}</td><td>{cell(r.got)}</td></tr>
-            ))}
-          </tbody>
-        </table>
+      {/* The months as a list: read by screen readers, and shown once a keyboard
+          reaches it — each month with money moving opens like its bar. */}
+      <div className="sr-only focus-within:not-sr-only">
+        <p className="mb-1 text-meta text-fg-muted">Money spent and got back by month, in NOK</p>
+        <ul className="flex flex-wrap gap-1.5">
+          {rows.map(r => (
+            <li key={r.month}>
+              {r.ids.length
+                ? (
+                  <button type="button" onClick={() => onMonth(r.month)} className="chip press-feedback tabular-nums hover:bg-surface-hover">
+                    {monthName(r.month, true)}: {cell(r.spent)} spent · {cell(r.got)} got back
+                  </button>
+                )
+                : <span className="chip text-fg-muted">{monthName(r.month, true)}: nothing</span>}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )

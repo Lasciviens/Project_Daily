@@ -6,7 +6,7 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { categoryPath, currencyOf, type CategoryPath } from '../../shopModel'
 import { addDays, addMonths, complaintYears, daysBetween, DISPOSAL_LABEL, durationLabel, paidOf, complete, savedOf } from '../../ownModel'
-import { money } from '../shopFormat'
+import { money, moneyRange, webUrl } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
 import { MoneyEditor, Toggle } from './factKit'
 import type { RecordDraft } from './useRecordDraft'
@@ -39,7 +39,7 @@ export interface FactCtx {
   parents?: readonly ShopItem[]
 }
 
-const faint = (t: string) => <span className="text-fg-faint">{t}</span>
+const quiet = (t: string) => <span className="text-fg-muted">{t}</span>
 const host = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url } }
 const pathText = (p: CategoryPath) => (p.topId ? [p.topName, p.subName].filter(Boolean).join(' › ') : 'No category')
 
@@ -80,9 +80,9 @@ export function commonFacts(c: FactCtx, state: 'buy' | 'general' | 'owned'): Fac
       editor: <select value={v.region ?? ''} onChange={e => set({ region: (e.target.value || null) as ShopRegion | null })} aria-label="Country" className="select max-w-xs">
         <option value="">Anywhere</option><option value="NO">🇳🇴 Norway</option><option value="TR">🇹🇷 Turkey</option>
       </select> },
-    { id: 'link', label: 'Link', filled: !!v.url, chip: 'Link', value: v.url
-        ? <a href={v.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{host(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
-        : null,
+    { id: 'link', label: 'Link', filled: !!v.url, chip: 'Link', value: v.url && webUrl(v.url)
+        ? <a href={webUrl(v.url) as string} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{host(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
+        : v.url,
       hint: !v.url ? undefined : 'A Prisjakt or shop link: its price is checked every morning.',
       editor: <input type="url" inputMode="url" value={v.url ?? ''} onChange={e => set({ url: e.target.value.trim() || null })} placeholder="https://www.prisjakt.no/…" aria-label="Link" className="input" autoFocus /> },
     { id: 'notes', label: 'Notes', filled: !!v.notes, chip: 'Notes', value: <span className="whitespace-pre-line">{v.notes}</span>,
@@ -97,7 +97,7 @@ export function buyFacts(c: FactCtx): FactDef[] {
   const { v, set } = c
   const cur = currencyOf(v)
   return [
-    { id: 'price', label: 'Price', filled: v.price != null, chip: 'Price', value: v.price != null ? <>{money(v.price, cur)}{v.price_source === 'ai_estimate' && faint(' (estimate)')}</> : null,
+    { id: 'price', label: 'Price', filled: v.price != null, chip: 'Price', value: v.price != null ? <>{money(v.price, cur)}{v.price_source === 'ai_estimate' && quiet(' (estimate)')}</> : null,
       editor: <MoneyEditor label="Price" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus /> },
     { id: 'priority', label: 'Priority', filled: true, value: { low: 'Low', medium: 'Medium', high: 'High' }[v.priority],
       editor: <SegmentedControl<ShopPriority> size="sm" value={v.priority} onChange={p => set({ priority: p })}
@@ -131,7 +131,7 @@ export function generalFacts(c: FactCtx): FactDef[] {
   const cur = currencyOf(v)
   return [
     { id: 'range', label: 'Price range', filled: v.price_min != null || v.price_max != null, chip: 'Price range',
-      value: `${v.price_min != null ? money(v.price_min, cur).replace(` ${cur}`, '') : '…'}–${v.price_max != null ? money(v.price_max, cur) : '…'}`,
+      value: v.price_min != null && v.price_max != null ? moneyRange(v.price_min, v.price_max, cur) : `${v.price_min != null ? money(v.price_min, cur) : '…'}–${v.price_max != null ? money(v.price_max, cur) : '…'}`,
       editor: (
         <div className="flex max-w-sm items-center gap-2">
           <DecimalInput value={v.price_min ?? null} onValue={x => set({ price_min: x })} aria-label="From" placeholder="From" className="input min-w-0 flex-1 tabular-nums" autoFocus />
@@ -166,12 +166,12 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
         {c.parents.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
       </select>,
     }] : []),
-    { id: 'bought', label: 'Bought on', filled: !!c.boughtDay, value: <>{v.approx_dates ? '≈ ' : ''}{formatDate(c.boughtDay)}{!gone && c.boughtDay ? faint(` · ${durationLabel(c.boughtDay, today)} ago`) : ''}</>,
+    { id: 'bought', label: 'Bought on', filled: !!c.boughtDay, value: <>{v.approx_dates ? '≈ ' : ''}{formatDate(c.boughtDay)}{!gone && c.boughtDay ? quiet(` · ${durationLabel(c.boughtDay, today)} ago`) : ''}</>,
       editor: <>
         <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
         <Toggle checked={!!v.approx_dates} onChange={x => set({ approx_dates: x })}>Roughly — from memory</Toggle>
       </> },
-    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.used ? faint(' · used') : ''}</>,
+    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.used ? quiet(' · used') : ''}</>,
       editor: <>
         <MoneyEditor label="Paid" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus />
         <div className="flex flex-wrap gap-x-4">
@@ -182,7 +182,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
   ]
   if (cur !== 'NOK' && v.price != null) {
     facts.push({ id: 'rate', label: 'Exchange rate', filled: true,
-      value: complete(paid) && v.fx_nok ? <>1 {cur} = {v.fx_nok} NOK{faint(v.fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(c.boughtDay)}`)}</> : faint('Waiting for Norges Bank\'s rate of that day'),
+      value: complete(paid) && v.fx_nok ? <>1 {cur} = {v.fx_nok} NOK{quiet(v.fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(c.boughtDay)}`)}</> : quiet('Waiting for Norges Bank\'s rate of that day'),
       editor: <>
         <p className="text-meta text-fg-muted">The rate you paid at (NOK for 1 {cur}), e.g. your card's — or leave it to Norges Bank's rate of the day.</p>
         <DecimalInput value={v.fx_nok ?? null} onValue={r => set({ fx_nok: r, fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit" className="input w-[10rem] tabular-nums" autoFocus />
@@ -200,7 +200,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
     const returnDays = c.watch?.return_days ?? null
     facts.push(
       { id: 'returnBy', label: 'Return by', filled: !!v.return_by, chip: 'Return by',
-        value: <>{formatDate(v.return_by)}{v.return_by && v.return_by >= today ? faint(` · ${daysBetween(today, v.return_by)} days left`) : v.return_by ? faint(' · passed') : ''}</>,
+        value: <>{formatDate(v.return_by)}{v.return_by && v.return_by >= today ? quiet(` · ${daysBetween(today, v.return_by)} days left`) : v.return_by ? quiet(' · passed') : ''}</>,
         editor: <>
           <DateInput value={v.return_by ?? ''} onChange={d => set({ return_by: d || null })} aria-label="Return by" className="input w-[10rem] tabular-nums" />
           {c.boughtDay && (
@@ -225,7 +225,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
           )}
         </> },
       { id: 'value', label: 'Could sell for', filled: v.value_now != null, chip: 'Could sell for',
-        value: <>{v.value_now != null && money(v.value_now, v.value_currency ?? 'NOK')}{v.value_on ? faint(` · ${formatDate(v.value_on)}`) : ''}</>,
+        value: <>{v.value_now != null && money(v.value_now, v.value_currency ?? 'NOK')}{v.value_on ? quiet(` · ${formatDate(v.value_on)}`) : ''}</>,
         hint: 'Your own estimate (FINN, a trade-in offer). It is dated, so you can see when it gets old.',
         editor: <MoneyEditor label="Could sell for" amount={v.value_now ?? null} currency={v.value_currency ?? 'NOK'} onAmount={p => set({ value_now: p })} onCurrency={x => set({ value_currency: x })} autoFocus /> },
     )

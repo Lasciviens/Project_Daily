@@ -69,7 +69,7 @@ check('required and past → attention', S.needsAttention(sub({ requirement: 're
 check('required and fine → no', !S.needsAttention(sub({ requirement: 'required', renews_on: '2026-12-01' }), '2026-09-29'))
 check('info never needs attention', !S.needsAttention(sub({ active: false }), '2026-09-29'))
 check('DD.MM.YYYY date', S.formatDay('2026-10-12') === '12.10.2026')
-check('price labels', S.priceLabel(sub({ price: 99 })) === '99 NOK / month' && S.priceLabel(sub({ price: 12.5, billing_cycle: 'yearly', currency: 'eur' })) === '12.50 EUR / year' && S.priceLabel(sub({ billing_cycle: 'free' })) === 'Free' && S.priceLabel(sub({})) === null)
+check('price labels', S.priceLabel(sub({ price: 99 })) === '99\u00a0NOK / month' && S.priceLabel(sub({ price: 12.5, billing_cycle: 'yearly', currency: 'eur' })) === '12.50\u00a0EUR / year' && S.priceLabel(sub({ billing_cycle: 'free' })) === 'Free' && S.priceLabel(sub({})) === null)
 
 console.log('\ncurrencies')
 {
@@ -85,9 +85,9 @@ console.log('\ncurrencies')
   const eq = S.equivalents(100, 'NOK', R)
   check('equivalents: the other three in list order', J(eq.map(e => e.currency)) === J(['TRY', 'USD', 'EUR']) && eq[0].amount === 400 && eq[1].amount === 10 && eq[2].amount === 8, J(eq))
   check('equivalents skip a currency without a rate', J(S.equivalents(100, 'NOK', { NOK: 10 }).map(e => e.currency)) === J(['USD']))
-  check('approx line', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]) === '≈ 1 234 TRY · 32 USD · 0.85 EUR', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]))
+  check('approx line', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]) === '≈ 1\u00a0234\u00a0TRY · 32\u00a0USD · 0.85\u00a0EUR', S.approxLine([{ currency: 'TRY', amount: 1234.4 }, { currency: 'USD', amount: 32.2 }, { currency: 'EUR', amount: 0.853 }]))
   check('approx line empty → null', S.approxLine([]) === null)
-  check('money groups thousands', S.formatMoney(12345.5, 'try') === '12 345.50 TRY' && S.formatMoney(999, 'NOK') === '999 NOK')
+  check('money groups thousands with no-break spaces (a number never breaks across lines), a true minus', S.formatMoney(12345.5, 'try') === '12\u00a0345.50\u00a0TRY' && S.formatMoney(999, 'NOK') === '999\u00a0NOK' && S.formatMoney(-1250, 'NOK') === '\u22121\u00a0250\u00a0NOK')
   const total = S.monthlyTotalIn([
     sub({ price: 100 }), sub({ price: 400, currency: 'TRY' }), sub({ price: 120, currency: 'USD', billing_cycle: 'yearly' }),
     sub({ price: 5, currency: 'GBP' }), sub({ price: 999, currency: 'TRY', active: false }),

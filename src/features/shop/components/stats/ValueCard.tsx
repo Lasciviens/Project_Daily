@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { boughtOn, DISPOSAL_LABEL, durationLabel, type OwnedShow } from '../../ownModel'
-import { showsIn, valueEnds, type ValueRow } from '../../statsModel'
+import { showsIn, valueEnds, type Period, type ValueRow } from '../../statsModel'
 import { CardFilter, StatsCard } from './statsKit'
 import { num } from './statsFormat'
 import { join, type DrillRow } from './drillTypes'
@@ -11,9 +11,12 @@ const SHOWS = [{ value: 'all' as const, label: 'All' }, { value: 'mine' as const
 /**
  * Value for money: cost of use per month — what a thing cost, less what came
  * back or it could sell for, per month you had it — the dearest five and the
- * cheapest five. Only things with an honest number are ranked.
+ * cheapest five. Only things with an honest number are ranked; a year ranks
+ * the things you had in it (each by its whole-life number; Still yours and
+ * Gone are how things stand today).
  */
-export function ValueCard({ rows: all, today, onOpen }: { rows: ValueRow[]; today: string; onOpen: (id: string) => void }) {
+export function ValueCard({ rows: all, period, onOpen }: { rows: ValueRow[]; period: Period; onOpen: (id: string) => void }) {
+  const today = period.today
   const [show, setShow] = useState<OwnedShow>('all')
   const rows = all.filter(r => showsIn(r.item, show))
   const { dearest, cheapest } = valueEnds(rows, 5)
@@ -22,9 +25,12 @@ export function ValueCard({ rows: all, today, onOpen }: { rows: ValueRow[]; toda
     sub: join([durationLabel(boughtOn(i) as string, i.disposed_on ?? today), i.disposal ? DISPOSAL_LABEL[i.disposal] : 'still yours']),
   })
   return (
-    <StatsCard title="Cost of use per month" subtitle="Cost, less what came back or it could sell for, per month you had it">
+    <StatsCard
+      title="Cost of use per month"
+      subtitle={`${period.year ? `Things you had in ${period.year}: c` : 'C'}ost, less what came back or it could sell for, per month you had it`}
+    >
       {all.length === 0
-        ? <p className="text-body text-fg-muted">Set &quot;Could sell for&quot; on what you own — or sell something — to see what each thing costs you per month.</p>
+        ? <p className="text-body text-fg-muted">{period.year ? `Nothing you had in ${period.year} has a number yet. ` : ''}Set &quot;Could sell for&quot; on what you own — or sell something — to see what each thing costs you per month.</p>
         : (
           <>
             <CardFilter label="Show" options={SHOWS} value={show} onChange={setShow} />

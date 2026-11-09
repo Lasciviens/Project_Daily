@@ -23,7 +23,7 @@ export function ShopTotalsCard({ label, totals, rates, ratesDate, failed, note, 
   return (
     <Card className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <p className="text-micro text-fg-faint">{label}</p>
+        <p className="text-micro text-fg-muted">{label}</p>
         <InfoBubble label="About the totals">
           {rates
             ? <>Prices in another currency are converted with <strong>Open Exchange Rates</strong>{ratesDate ? ` (rates of ${formatDate(ratesDate)})` : ''}. They are approximate — your bank's rate will differ a little.</>

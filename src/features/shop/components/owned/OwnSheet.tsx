@@ -112,12 +112,12 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <Toggle checked={used} onChange={setUsed}>Bought used</Toggle>
         </div>
         <div>
-          <label htmlFor="own-store" className="field-label">Bought at <span className="font-normal text-fg-faint">(optional)</span></label>
+          <label htmlFor="own-store" className="field-label">Bought at <span className="font-normal text-fg-muted">(optional)</span></label>
           <input id="own-store" value={store} onChange={e => setStore(e.target.value)} className="input max-w-sm" />
         </div>
         {sources.length > 0 && (
           <div>
-            <label htmlFor="own-from" className="field-label">Paid with money from <span className="font-normal text-fg-faint">(optional)</span></label>
+            <label htmlFor="own-from" className="field-label">Paid with money from <span className="font-normal text-fg-muted">(optional)</span></label>
             <select id="own-from" value={paidFrom} onChange={e => setPaidFrom(e.target.value)} className="select">
               <option value="">Nothing I sold</option>
               {sources.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
@@ -143,7 +143,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
                 <DateInput value={left} onChange={setLeft} min={day || undefined} max={today} aria-label="Left on" className="input w-[10rem] tabular-nums" />
               </div>
               <div>
-                <label htmlFor="own-to" className="field-label">To <span className="font-normal text-fg-faint">(optional)</span></label>
+                <label htmlFor="own-to" className="field-label">To <span className="font-normal text-fg-muted">(optional)</span></label>
                 <input id="own-to" value={soldTo} onChange={e => setSoldTo(e.target.value)} className="input" />
               </div>
             </div>
@@ -155,7 +155,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
             )}
             {money && targets.length > 0 && (
               <div>
-                <label htmlFor="own-moneyto" className="field-label">Money went to <span className="font-normal text-fg-faint">(optional)</span></label>
+                <label htmlFor="own-moneyto" className="field-label">Money went to <span className="font-normal text-fg-muted">(optional)</span></label>
                 <select id="own-moneyto" value={moneyTo} onChange={e => setMoneyTo(e.target.value)} className="select">
                   <option value="">Nothing in particular</option>
                   {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? ' (to buy)' : ''}</option>)}

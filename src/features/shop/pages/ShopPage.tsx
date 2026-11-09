@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
@@ -15,6 +15,7 @@ import { WishlistView } from '../components/WishlistView'
 import { QuickListView } from '../components/QuickListView'
 import { OwnedView } from '../components/owned/OwnedView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
+import type { StatsScope } from '../statsModel'
 
 // Stats (the only charts on the page) loads when opened, and in idle time once the page shows.
 const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
@@ -23,6 +24,7 @@ const OTHER_VIEWS = [ShopStatsView]
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
 const VIEWS: View[] = ['wishlist', 'quick', 'owned']
+const WHOLE_COLLECTION: StatsScope = { categories: [], chains: [], things: [], stores: [] }
 
 /**
  * Shop — the Wishlist (someday purchases, general wishes with their models,
@@ -43,6 +45,10 @@ export function ShopPage() {
     return n
   })
   const isPhone = useBreakpoint() === 'phone'
+  // Stats' filter and period live here, so Owned's summary line can open Stats on its own things.
+  const [statsScope, setStatsScope] = useState<StatsScope>(WHOLE_COLLECTION)
+  const [statsYear, setStatsYear] = useState<string | null | undefined>(undefined)
+  const openStats = (scope: StatsScope) => { setStatsScope(scope); setStatsYear(null); set('owned', 'stats') }
   useIdlePreload(OTHER_VIEWS)
   const modal = useEntityModal()
   const { data: items = [], isLoading: itemsLoading } = useShopItems()
@@ -54,7 +60,7 @@ export function ShopPage() {
   const wishCount = items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for).length
   const quickCount = quickGroups(items, todayStr()).reduce((n, g) => n + g.items.length, 0)
   // Counts only where there is room for them (a phone's three segments are tight).
-  const count = (n: number) => !isPhone && n > 0 && <span className="ml-1 tabular-nums text-fg-faint">{n}</span>
+  const count = (n: number) => !isPhone && n > 0 && <span className="ml-1 tabular-nums text-fg-muted">{n}</span>
 
   function add() {
     if (view === 'owned') modal.open({ kind: 'shop-own' })
@@ -124,8 +130,13 @@ export function ShopPage() {
         ? <QuickListView items={items} isLoading={isLoading} />
         : view === 'owned'
           ? ownedTab === 'stats'
-            ? <Suspense fallback={<div aria-busy="true" />}><ShopStatsView items={items} categories={categories} isLoading={isLoading} /></Suspense>
-            : <OwnedView items={items} categories={categories} isLoading={isLoading} />
+            ? (
+              <Suspense fallback={<div aria-busy="true" />}>
+                <ShopStatsView items={items} categories={categories} isLoading={isLoading}
+                  scope={statsScope} onScope={setStatsScope} year={statsYear} onYear={setStatsYear} />
+              </Suspense>
+            )
+            : <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}
     </PageContainer>
   )

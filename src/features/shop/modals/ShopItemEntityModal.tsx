@@ -12,13 +12,13 @@ import { ShopRecord } from '../components/record/ShopRecord'
  */
 export function ShopItemEntityModal({ request, onClose }: EntityModalProps<'shop-item'>) {
   if (!request.id) return <ShopItemSheet defaults={request.defaults} onClose={onClose} />
-  return <ShopItemByIdModal id={request.id} onClose={onClose} />
+  return <ShopItemByIdModal id={request.id} fact={request.fact} onClose={onClose} />
 }
 
-function ShopItemByIdModal({ id, onClose }: { id: string; onClose: () => void }) {
+function ShopItemByIdModal({ id, fact, onClose }: { id: string; fact?: 'value'; onClose: () => void }) {
   const query = useShopItem(id)
   const first = useFirstLoaded(query.data, query)
   const item = query.data ?? first
   if (!item) return <EntityModalPending query={query} what="item" onClose={onClose} />
-  return listOf(item) === 'quick' ? <ShopItemSheet item={item} onClose={onClose} /> : <ShopRecord item={item} onClose={onClose} />
+  return listOf(item) === 'quick' ? <ShopItemSheet item={item} onClose={onClose} /> : <ShopRecord item={item} openFact={fact} onClose={onClose} />
 }

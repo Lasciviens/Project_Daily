@@ -217,7 +217,7 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
           </div>
         </div>
         <div>
-          <label htmlFor={`${id}-req`} className="field-label">Must have <span className="font-normal text-fg-faint">(one per line)</span></label>
+          <label htmlFor={`${id}-req`} className="field-label">Must have <span className="font-normal text-fg-muted">(one per line)</span></label>
           <textarea id={`${id}-req`} value={draft.requirements} onChange={e => onChange({ requirements: e.target.value })} rows={3}
             placeholder={'Pen support\n11 inch or bigger'} className="input resize-none" />
         </div>

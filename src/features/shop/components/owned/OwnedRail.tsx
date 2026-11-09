@@ -1,55 +1,67 @@
-import { Card, CardHeader, TonePill, Truncate } from '../../../../shared/ui'
-import { InfoBubble } from '../../../../shared/components/InfoBubble'
+import type { KeyboardEvent } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { Card, CardHeader, MetaLine, TonePill, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import type { Deadline, OwnedShow, ShownSummary } from '../../ownModel'
+import { complete, minus, type Deadline, type OwnedShow, type ShownSummary } from '../../ownModel'
 import { AmountText } from '../shopKit'
-import { amountReason } from '../shopFormat'
-import { complete } from '../../ownModel'
+import { money } from '../shopFormat'
 
-const SUMMARY_TITLE: Record<OwnedShow, string> = { mine: 'What I own', gone: 'What I had', all: 'What I own and had' }
+const HEAD: Record<OwnedShow, string> = { mine: 'Mine', gone: 'Sold or gone', all: 'Mine and gone' }
 const things = (n: number) => `${n} thing${n === 1 ? '' : 's'}`
+const accessories = (n: number) => `${n} accessor${n === 1 ? 'y' : 'ies'}`
 
 /**
- * "What I own" for what the list shows (the filters and Mine · Sold or gone ·
- * All): how many things, what they cost, what the valued ones could sell for,
- * and what the gone ones brought back.
+ * One line above the list that sums up what it shows — the tab and the
+ * filters (owner, 09.11.2026: the "What I own" card took a screen and said
+ * little): "Mine · 10 things + 4 accessories · paid 39 900 NOK · could sell
+ * for 21 400 NOK (6 of 14)"; "Sold or gone · 6 things · paid 19 238 NOK · got
+ * back 16 380 NOK · cost you 2 858 NOK". A tap opens Stats on the same
+ * things (`onStats`, absent when the list is empty); under Mine, "6 sold or
+ * gone" switches the tab.
  */
-export function OwnedSummaryCard({ summary, show, filtered }: { summary: ShownSummary; show: OwnedShow; filtered: boolean }) {
+export function OwnedSummaryLine({ summary, show, filtered, onStats, onShowGone }: {
+  summary: ShownSummary
+  show: OwnedShow
+  filtered: boolean
+  onStats?: () => void
+  onShowGone: () => void
+}) {
   const yours = summary.mine + summary.accessories
+  const result = show === 'gone' ? minus(summary.got, summary.paid) : null
+  const line = (
+    <MetaLine as="span" items={[
+      <span key="h" className="font-semibold text-fg">{HEAD[show]}{filtered ? ', filtered' : ''}</span>,
+      show === 'gone' ? things(summary.gone)
+        : `${things(summary.mine)}${summary.accessories ? ` + ${accessories(summary.accessories)}` : ''}${show === 'all' && summary.gone ? `, ${summary.gone} gone` : ''}`,
+      <span key="p">paid <AmountText amount={summary.paid} className="text-fg-2" /></span>,
+      show !== 'gone' && (summary.valued
+        ? <span key="v">could sell for <AmountText amount={summary.worth} className="text-fg-2" />{summary.valued < yours ? ` (${summary.valued} of ${yours})` : ''}</span>
+        : yours > 0 && 'no "Could sell for" yet'),
+      show !== 'mine' && summary.gone > 0 && <span key="g">got back <AmountText amount={summary.got} className="text-fg-2" /></span>,
+      result && complete(result) && summary.gone > 0 && (Math.round(result.nok) > 0
+        ? <span key="r" className="text-success">made {money(result.nok)}</span>
+        : <span key="r">cost you {money(-result.nok)}</span>),
+    ]} />
+  )
+  // An inline "button", so the line wraps like text and "6 sold or gone" follows on its last line.
+  const open = onStats && ((e: KeyboardEvent<HTMLSpanElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStats() } })
   return (
-    <Card className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <p className="text-micro text-fg-faint">{SUMMARY_TITLE[show]}{filtered && ' · filtered'}</p>
-        <InfoBubble label="About these numbers">
-          The numbers follow the filters and Mine · Sold or gone · All.
-          Each purchase is counted in NOK at the exchange rate of the day it was bought (Norges Bank's), so a lira price keeps its worth from back then.
-          "Could sell for" is your own estimate; only things that have one are added up there.
-        </InfoBubble>
-      </div>
-      <p className="text-lead font-semibold tabular-nums text-fg">
-        {show === 'gone' ? things(summary.gone) : <>
-          {things(summary.mine)}
-          {summary.accessories > 0 && <span className="text-body font-normal text-fg-muted"> + {summary.accessories} accessor{summary.accessories === 1 ? 'y' : 'ies'}</span>}
-        </>}
-      </p>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-line pt-2 text-meta">
-        <div><dt className="text-fg-muted">Paid</dt><dd className="font-semibold text-fg"><AmountText amount={summary.paid} /></dd></div>
-        {show !== 'gone' && (
-          <div>
-            <dt className="text-fg-muted">Could sell for</dt>
-            <dd className="font-semibold text-fg">{summary.valued ? <AmountText amount={summary.worth} /> : <span className="font-normal text-fg-faint">Not set yet</span>}</dd>
-          </div>
-        )}
-        {show !== 'mine' && summary.gone > 0 && (
-          <div><dt className="text-fg-muted">Got back</dt><dd className="font-semibold text-fg"><AmountText amount={summary.got} /></dd></div>
-        )}
-        {show !== 'gone' && summary.valued > 0 && summary.valued < yours && (
-          <p className="col-span-2 text-fg-faint">{summary.valued} of {yours} have a "Could sell for"</p>
-        )}
-        {!complete(summary.paid) && <p className="col-span-2 text-fg-faint">Paid is Unknown until: {amountReason(summary.paid)}.</p>}
-        {show !== 'gone' && summary.gone > 0 && <p className="col-span-2 text-fg-muted">{summary.gone} sold or gone</p>}
-      </dl>
-    </Card>
+    <p className="text-meta tabular-nums text-fg-muted">
+      {onStats && open
+        ? (
+          <span role="button" tabIndex={0} onClick={onStats} onKeyDown={open} title="Open these in Stats"
+            className="cursor-pointer rounded-sm decoration-line-strong underline-offset-2 hover:underline">
+            {line}
+            <span className="sr-only"> — open in Stats</span>
+            <ChevronRight aria-hidden className="ml-0.5 inline h-3.5 w-3.5 align-[-2px] text-fg-muted" />
+          </span>
+        )
+        : line}
+      {show === 'mine' && summary.gone > 0 && <>
+        {' · '}
+        <button type="button" onClick={onShowGone} className="whitespace-nowrap font-semibold text-accent-600 hover:underline">{summary.gone} sold or gone</button>
+      </>}
+    </p>
   )
 }
 
