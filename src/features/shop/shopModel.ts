@@ -255,7 +255,7 @@ export function totalsIn(items: readonly ShopItem[], target: ShopCurrency, rates
 export function totalsLabel(t: Totals): string {
   const parts = t.unconverted.map(u => formatMoney(u.amount, u.currency))
   const main = t.max > t.amount
-    ? `${formatMoney(t.amount, t.currency).replace(` ${t.currency}`, '')}–${formatMoney(t.max, t.currency)}`
+    ? `${formatMoney(t.amount, t.currency).slice(0, -(t.currency.length + 1))}–${formatMoney(t.max, t.currency)}`
     : formatMoney(t.amount, t.currency)
   return (t.amount !== 0 || t.max !== 0 || !parts.length ? [main, ...parts] : parts).join(' + ')
 }
@@ -266,7 +266,7 @@ export function approxOther(amount: number, from: ShopCurrency, rates: UsdRates 
   const to = otherCurrency(from)
   const v = convertAmount(amount, from, to, rates)
   if (v == null) return null
-  return `≈ ${formatMoney(Math.abs(v) >= 10 ? Math.round(v) : Math.round(v * 100) / 100, to)}`
+  return `≈\u00a0${formatMoney(Math.abs(v) >= 10 ? Math.round(v) : Math.round(v * 100) / 100, to)}`
 }
 
 /** "1 299 NOK" / "1 299 NOK (est.)" for a card, or null without a price. */

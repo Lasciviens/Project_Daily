@@ -107,13 +107,34 @@ export function addDays(day: string, days: number): string {
 /**
  * A NOK sum: the known part, how many amounts are missing (never written
  * down) and how many wait for their day's rate. Only a complete sum (both 0)
- * is a number; anything else reads "Unknown" with the reason.
+ * is a number. A missing amount makes it "Unknown" with the reason; amounts
+ * that only wait for a rate are kept in their own currency (`waiting`), so a
+ * screen can say "20 100 NOK + 4 500 TRY pending" — never at today's rate.
  */
-export interface Amount { nok: number; missing: number; pending: number }
+export interface Amount {
+  nok: number
+  missing: number
+  pending: number
+  /** The amounts waiting for a rate, by currency, as they count in the sum (a refund or a sale taken off is below 0). */
+  waiting?: Readonly<Record<string, number>>
+}
 
 export const ZERO: Amount = { nok: 0, missing: 0, pending: 0 }
 export const MISSING: Amount = { nok: 0, missing: 1, pending: 0 }
 export const PENDING: Amount = { nok: 0, missing: 0, pending: 1 }
+
+/** One amount waiting for its rate, kept in its own currency. */
+export const pendingIn = (amount: number, currency: string): Amount => ({ ...PENDING, waiting: { [currency.toUpperCase()]: amount } })
+
+function mergeWaiting(parts: [Readonly<Record<string, number>> | undefined, number][]): Record<string, number> | undefined {
+  let out: Record<string, number> | undefined
+  for (const [w, k] of parts) {
+    if (!w) continue
+    out = out ?? {}
+    for (const [c, v] of Object.entries(w)) out[c] = (out[c] ?? 0) + v * k
+  }
+  return out
+}
 
 export function add(...xs: (Amount | null | undefined)[]): Amount {
   let nok = 0, missing = 0, pending = 0
@@ -121,16 +142,37 @@ export function add(...xs: (Amount | null | undefined)[]): Amount {
     if (!x) continue
     nok += x.nok; missing += x.missing; pending += x.pending
   }
-  return { nok, missing, pending }
+  const waiting = mergeWaiting(xs.map(x => [x?.waiting, 1]))
+  return waiting ? { nok, missing, pending, waiting } : { nok, missing, pending }
 }
 export function minus(a: Amount, b: Amount): Amount {
-  return { nok: a.nok - b.nok, missing: a.missing + b.missing, pending: a.pending + b.pending }
+  const waiting = mergeWaiting([[a.waiting, 1], [b.waiting, -1]])
+  const out = { nok: a.nok - b.nok, missing: a.missing + b.missing, pending: a.pending + b.pending }
+  return waiting ? { ...out, waiting } : out
 }
 export function scale(a: Amount, k: number): Amount {
-  return { nok: a.nok * k, missing: a.missing, pending: a.pending }
+  const waiting = mergeWaiting([[a.waiting, k]])
+  const out = { nok: a.nok * k, missing: a.missing, pending: a.pending }
+  return waiting ? { ...out, waiting } : out
 }
+/** The same sum taken off (a refund shown as "−1 490 NOK"). */
+export const negate = (a: Amount): Amount => scale(a, -1)
 export const complete = (a: Amount): boolean => a.missing === 0 && a.pending === 0
 export const known = (nok: number): Amount => ({ nok, missing: 0, pending: 0 })
+
+/**
+ * What waits for a rate, when that is all that keeps the sum from being a
+ * number: each currency's amount (whole units, none at 0). Null when a price
+ * is missing, nothing is pending, or the waiting amounts are not known.
+ */
+export function waitingParts(a: Amount): { currency: string; amount: number }[] | null {
+  if (a.missing || !a.pending || !a.waiting) return null
+  const parts = Object.entries(a.waiting)
+    .map(([currency, v]) => ({ currency, amount: Math.round(v) }))
+    .filter(p => p.amount !== 0)
+    .sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount) || x.currency.localeCompare(y.currency))
+  return parts.length ? parts : null
+}
 
 /**
  * A purchase, sale or cost in NOK at the rate frozen on its row: NOK is
@@ -139,15 +181,17 @@ export const known = (nok: number): Amount => ({ nok, missing: 0, pending: 0 })
  */
 export function nokAt(amount: number | null | undefined, currency: ShopCurrency | string | null | undefined, frozenRate: number | null | undefined): Amount {
   if (amount == null || !Number.isFinite(amount)) return MISSING
-  if ((currency ?? 'NOK').toUpperCase() === 'NOK') return known(amount)
-  return frozenRate != null && Number.isFinite(frozenRate) && frozenRate > 0 ? known(amount * frozenRate) : PENDING
+  const c = (currency ?? 'NOK').toUpperCase()
+  if (c === 'NOK') return known(amount)
+  return frozenRate != null && Number.isFinite(frozenRate) && frozenRate > 0 ? known(amount * frozenRate) : pendingIn(amount, c)
 }
 
 /** What something is worth NOW in NOK, at today's rate (pending while today's rates are not loaded). */
 export function nokNow(amount: number | null | undefined, currency: ShopCurrency | string | null | undefined, rates: UsdRates | null): Amount {
   if (amount == null || !Number.isFinite(amount)) return MISSING
-  const r = nokPerUnit((currency ?? 'NOK').toUpperCase(), rates)
-  return r == null ? PENDING : known(amount * r)
+  const c = (currency ?? 'NOK').toUpperCase()
+  const r = nokPerUnit(c, rates)
+  return r == null ? pendingIn(amount, c) : known(amount * r)
 }
 
 /**

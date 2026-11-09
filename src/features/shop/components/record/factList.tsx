@@ -6,7 +6,7 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { categoryPath, currencyOf, type CategoryPath } from '../../shopModel'
 import { addDays, addMonths, complaintYears, daysBetween, DISPOSAL_LABEL, durationLabel, paidOf, complete, savedOf } from '../../ownModel'
-import { money } from '../shopFormat'
+import { money, moneyRange } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
 import { MoneyEditor, Toggle } from './factKit'
 import type { RecordDraft } from './useRecordDraft'
@@ -131,7 +131,7 @@ export function generalFacts(c: FactCtx): FactDef[] {
   const cur = currencyOf(v)
   return [
     { id: 'range', label: 'Price range', filled: v.price_min != null || v.price_max != null, chip: 'Price range',
-      value: `${v.price_min != null ? money(v.price_min, cur).replace(` ${cur}`, '') : '…'}–${v.price_max != null ? money(v.price_max, cur) : '…'}`,
+      value: v.price_min != null && v.price_max != null ? moneyRange(v.price_min, v.price_max, cur) : `${v.price_min != null ? money(v.price_min, cur) : '…'}–${v.price_max != null ? money(v.price_max, cur) : '…'}`,
       editor: (
         <div className="flex max-w-sm items-center gap-2">
           <DecimalInput value={v.price_min ?? null} onValue={x => set({ price_min: x })} aria-label="From" placeholder="From" className="input min-w-0 flex-1 tabular-nums" autoFocus />

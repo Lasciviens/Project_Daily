@@ -1,13 +1,54 @@
 import { formatMoney } from '../../settings/subscriptionRules'
-import type { Amount } from '../ownModel'
+import { complete, waitingParts, type Amount } from '../ownModel'
 import type { ShopItem, ShopPriceWatch } from '../types'
 
 // Shop's display helpers (not components): money in whole units, why a sum
 // is unknown, the picture to show, the final-cost sentence.
 
-/** "2 500 NOK" — whole units (øre and kuruş are noise in these sums). */
+/** A space a line never breaks at: in a number, between it and its unit, after "≈". */
+export const NBSP = '\u00a0'
+
+/** "2 500 NOK" — whole units (øre and kuruş are noise in these sums), one unbreakable piece. */
 export function money(n: number, currency = 'NOK'): string {
   return formatMoney(Math.round(n), currency)
+}
+
+/** "≈ 2 500 NOK": the sign stays with its number. */
+export const approx = (text: string): string => `≈${NBSP}${text}`
+
+/** "5 000–8 000 NOK": a range in one currency, the unit once. */
+export function moneyRange(min: number, max: number, currency = 'NOK'): string {
+  return `${money(min, currency).slice(0, -(currency.length + 1))}–${money(max, currency)}`
+}
+
+/**
+ * A sum that only waits for a rate, in two parts: the known NOK (null when
+ * nothing is known yet) and what waits, in its own currency — "20 100 NOK" and
+ * "+ 4 500 TRY pending". Null when the sum is complete, a price is missing,
+ * or the waiting amounts are not known. Never at today's rate.
+ */
+export function pendingWords(a: Amount, signed = false): { known: string | null; waiting: string } | null {
+  if (complete(a)) return null
+  const parts = waitingParts(a)
+  if (!parts) return null
+  const n = Math.round(a.nok)
+  const known = n !== 0 ? `${signed && n > 0 ? '+' : ''}${money(n)}` : null
+  const each = parts.map((p, i) => {
+    const m = money(Math.abs(p.amount), p.currency)
+    if (i === 0 && !known) return p.amount < 0 ? `−${m}` : signed ? `+${m}` : m
+    return `${p.amount < 0 ? '−' : '+'} ${m}`
+  })
+  return { known, waiting: `${each.join(' ')} pending` }
+}
+
+/** "4 500 NOK", "20 100 NOK + 4 500 TRY pending", or null for a sum with a price missing. */
+export function amountWords(a: Amount, signed = false): string | null {
+  if (complete(a)) {
+    const n = Math.round(a.nok)
+    return `${signed && n > 0 ? '+' : ''}${money(n)}`
+  }
+  const p = pendingWords(a, signed)
+  return p ? [p.known, p.waiting].filter(Boolean).join(' ') : null
 }
 
 /** Why a sum is not a number: "1 price missing · 1 rate pending". */

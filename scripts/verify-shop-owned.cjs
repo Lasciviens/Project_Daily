@@ -120,6 +120,20 @@ console.log('\n5 · Money is never silently 0')
     && O.ratesPending([], [cost('x', 5, 'EUR', '2026-01-01')]) && !O.ratesPending([item({ price: 10, currency: 'NOK', fx_nok: null })], [])
     && !O.ratesPending([(() => { const r = item({ price: 10, currency: 'TRY' }); delete r.fx_nok; return r })()], []))
   check('"Could sell for" is today\'s worth (today\'s rate)', O.valueNowOf(item({ value_now: 2000, value_currency: 'TRY' }), CTX).nok === 500)
+
+  // A pending rate keeps its amount in its own currency (owner, 09.11.2026: the known sum + "4 500 TRY pending").
+  const SF = require('../src/features/shop/components/shopFormat')
+  const plain = s => (s == null ? s : s.replace(/ /g, ' '))
+  const lira = O.paidOf(item({ price: 4500, currency: 'TRY', fx_nok: null }))
+  check('a purchase waiting for its rate keeps its 4 500 TRY (no NOK number made up)', lira.pending === 1 && lira.nok === 0 && lira.waiting.TRY === 4500)
+  const sum = O.add(O.known(20100), lira, O.nokAt(40, 'EUR', null))
+  check('a sum keeps what waits, by currency', sum.nok === 20100 && JSON.stringify(O.waitingParts(sum)) === '[{"currency":"TRY","amount":4500},{"currency":"EUR","amount":40}]')
+  check('…and says so: the known part + what waits, never at today\'s rate', plain(SF.amountWords(sum)) === '20 100 NOK + 4 500 TRY + 40 EUR pending' && plain(SF.amountWords(lira)) === '4 500 TRY pending')
+  const back = O.minus(O.known(1000), O.nokAt(4500, 'TRY', null))
+  check('taken off, a waiting amount is below 0 ("1 000 NOK − 4 500 TRY pending")', O.waitingParts(back)[0].amount === -4500 && plain(SF.amountWords(back)) === '1 000 NOK − 4 500 TRY pending')
+  check('shares and refunds scale it (a chain\'s share, a refund taken off)', O.scale(lira, 0.5).waiting.TRY === 2250 && O.negate(lira).waiting.TRY === -4500 && O.negate(lira).pending === 1)
+  check('a missing price still makes it Unknown (no "pending" sum then)', O.waitingParts(O.add(lira, O.MISSING)) === null && SF.amountWords(O.add(lira, O.MISSING)) === null)
+  check('a complete sum is just its number; a "Could sell for" waiting for today\'s rates keeps its currency too', plain(SF.amountWords(O.known(4500))) === '4 500 NOK' && O.nokNow(2000, 'TRY', null).waiting.TRY === 2000)
 }
 
 console.log('\n6 · Cost of use per month')

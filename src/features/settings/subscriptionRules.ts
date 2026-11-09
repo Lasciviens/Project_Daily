@@ -135,17 +135,21 @@ export function formatDay(date: string): string {
   return `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`
 }
 
-/** "1 234" — thousands grouped with a space, whatever the browser locale. */
+/** A space a line never breaks at: inside a number, and between it and its currency. */
+const NBSP = ' '
+
+/** "1 234" — thousands grouped with a no-break space, whatever the browser locale. */
 function groupThousands(intText: string): string {
-  return intText.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return intText.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP)
 }
 
+/** "12 345.50 TRY", "−300 NOK" — one unbreakable piece, with a true minus. */
 export function formatMoney(amount: number, currency: string): string {
   const rounded = Math.round(amount * 100) / 100
   const neg = rounded < 0
   const abs = Math.abs(rounded)
   const [int, dec] = (Number.isInteger(abs) ? String(abs) : abs.toFixed(2)).split('.')
-  return `${neg ? '-' : ''}${groupThousands(int)}${dec ? '.' + dec : ''} ${currency.toUpperCase()}`
+  return `${neg ? '−' : ''}${groupThousands(int)}${dec ? '.' + dec : ''}${NBSP}${currency.toUpperCase()}`
 }
 
 // ── Currencies ───────────────────────────────────────────────────────────────

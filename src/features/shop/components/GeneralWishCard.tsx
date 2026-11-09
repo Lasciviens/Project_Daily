@@ -2,7 +2,7 @@ import { Plus } from 'lucide-react'
 import { TonePill, Truncate } from '../../../shared/ui'
 import { currencyOf, priceNow, wishRange } from '../shopModel'
 import { bestMatch, metCount, openModels, requirementsOf } from '../wishModel'
-import { money } from './shopFormat'
+import { money, moneyRange } from './shopFormat'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import type { ShopItem, ShopPriceWatch } from '../types'
 
@@ -31,7 +31,7 @@ export function GeneralWishCard({ wish, models, watches, rates, onOpen, onOpenMo
       <button type="button" onClick={onOpen} className="min-h-[44px] text-left">
         <span className="block text-ui font-semibold leading-snug text-fg">{wish.title}</span>
         <span className="block text-meta tabular-nums text-fg-muted">
-          Any model{range ? ` · ${money(range.min, cur).replace(` ${cur}`, '')}–${money(range.max, cur)}` : ''}
+          Any model{range ? ` · ${moneyRange(range.min, range.max, cur)}` : ''}
           {` · ${open.length} model${open.length === 1 ? '' : 's'}`}
           {prices.length > 0 && ` · from ${money(Math.min(...prices.map(p => p.amount)), prices[0].currency)}`}
         </span>

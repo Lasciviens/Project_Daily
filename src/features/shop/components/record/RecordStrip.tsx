@@ -6,7 +6,7 @@ import { bestMatch } from '../../wishModel'
 import { add, boughtOn, complete, costOf, durationLabel, gotOf, minus, perMonth, perMonthWords, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
 import { finalCostOf, ifSoldNow, type Chain, type IfSold } from '../../chainModel'
 import { AmountText } from '../shopKit'
-import { money } from '../shopFormat'
+import { money, moneyRange } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
 import type { RecordState } from './recordState'
 import type { ShopItem, ShopPriceWatch } from '../../types'
@@ -56,7 +56,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
     const prices = open.map(m => priceNow(m, watches.get(m.id))).filter((p): p is NonNullable<typeof p> => !!p)
     const best = bestMatch(item, models, m => priceNow(m, watches.get(m.id)))
     cells.push(
-      <Cell key="r" label="Price range">{range ? `${money(range.min, cur).replace(` ${cur}`, '')}–${money(range.max, cur)}` : '—'}</Cell>,
+      <Cell key="r" label="Price range">{range ? moneyRange(range.min, range.max, cur) : '—'}</Cell>,
       <Cell key="m" label="Models">{open.length} in the running</Cell>,
       <Cell key="f" label="From">{prices.length ? money(Math.min(...prices.map(p => p.amount)), prices[0].currency) : '—'}</Cell>,
       <Cell key="b" label="Best match" hint={best ? undefined : 'none yet'}>{best ? <Truncate as="span">{best.title}</Truncate> : '—'}</Cell>,
