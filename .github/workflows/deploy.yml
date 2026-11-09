@@ -157,11 +157,14 @@ jobs:
         if: steps.gate.outputs.backend == 'true'
         run: npm ci --ignore-scripts
 
-      # Pinned to a commit (v1.7.3, 24.09.2026): a third-party action in the
-      # job that holds the database password. Still a Node 20 action (GitHub
-      # runs it on Node 24 and warns); v3 installs the CLI a new way (bun +
-      # npm), so it moves only after the first automatic deploys have run.
-      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb
+      # Pinned to a commit (v3.2.0, 02.11.2026): a third-party action in the
+      # job that holds the database password. v3 is a composite action: it
+      # installs the CLI pinned below from npm with Bun, and its own steps
+      # (actions/setup-node, oven-sh/setup-bun) are pinned by commit; it sets
+      # up Node only when the job has none ≥ 20 (this job has 24). Moved from
+      # v1.7.3, a Node 20 action that warned on every deploy, on 09.11.2026
+      # (owner) once the first automatic deploys had run.
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13
         if: steps.gate.outputs.backend == 'true'
         with:
           version: 2.118.0

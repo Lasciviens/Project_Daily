@@ -60,7 +60,8 @@
 | Files | Claimed by | Task | Since |
 |---|---|---|---|
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
-| Repo-wide cleanup (PR #600): `package.json`/`package-lock.json`, `.github/workflows/*`, `.gitignore`, `.env.example`, `eslint.config.js`, `scripts/harness/`, `scripts/audit-*.mjs`, `scripts/db-tests/icloud-{events,cross}/`, lint-only edits across `supabase/functions/*` and `src/`, layout-shift and performance fixes across `src/` (in progress), `CLAUDE.md` (audit note), docs as listed in the PR — not `firmware/` or `docs/kitchen-scale/` (#599) | Claude | Deep cleanup: hygiene, errors, layout shifts, performance (PR #600) | 07.11.2026 |
+| `.github/workflows/deploy.yml` (setup-cli v3.2.0), `supabase/functions/esde-content-sync/index.ts` and `docs/termux-widgets.md` (the RP6 branch's original-upload block), `docs/games/esde-quota-cleanup-2026-09-16.md`, `docs/backend/edge-functions.md` | Claude | Housekeeping after PR #600: the deploy's Supabase CLI action, the RP6 quota block | 09.11.2026 |
+| `src/features/shop/**`, `supabase/functions/shop-price/`, new `supabase/migrations/` for Shop, `docs/features/shop.md`, `.claude/rules/shop.md` (planning; nothing changed yet) | Claude | Shop renovation (phased; plan first, owner decides) | 09.11.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every
