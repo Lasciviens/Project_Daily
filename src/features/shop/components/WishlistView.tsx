@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, Plus, ShoppingBag, Undo2 } from 'lucide-react'
 import { Button, EmptyState, PageBoard, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
-import { toast } from '../../../app/store'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
 import { useFoldedFilters } from '../hooks/useFoldedFilters'
@@ -70,12 +69,6 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const taskById = new Map(tasks.map(t => [t.id, t]))
 
   function plan(item: ShopItem) {
-    // Before migration 134 the row has no task_id column: the task would be
-    // made and the link then refused — and a second tap would make another.
-    if (!('list' in item)) {
-      toast.warning('Plan it needs migration 134 (Shop lists) — apply it first.')
-      return
-    }
     modal.open({
       kind: 'task',
       config: { heading: 'Plan this purchase' },

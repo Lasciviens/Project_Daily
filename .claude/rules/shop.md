@@ -11,7 +11,7 @@ Background: `docs/features/shop.md`.
 - A possession is `list='wishlist' AND kind='item' AND status='bought'` and kept (`ownModel.isPossession`); quick-list ticks never are.
 - Selling never deletes: it writes the disposal facts (one `shop_record_sale` call, Undo `shop_undo_sale`); accessories sold together share a `sale_group`.
 - Deleting a shop item takes the accessories bought for it (`shopModel.deleteScope`), the same from every screen.
-- `shop_price_watch`/`shop_price_points` are written only by `shop-price`, never `shop_items`.
+- `shop_price_watch`/`shop_price_points` are written only by `shop-price` (Delete's Undo puts them back through `shop_restore_price_history`), never `shop_items`.
 - `priceRead.ts` and `fxNorgesBank.ts` are hand-mirrored into `shop-price` (their verify scripts compare them).
 - Never invent a price, a sale price or a "Could sell for".
 - Stats follows the picked period (owner, 09.11.2026): a year is seen from 31.12 (today for this year), each card names it, and the definitions live in pure `statsModel.ts` (`periodOf`, `ownedAt`, `costOfUseIn`). "Could sell for" has no history: a past year knows it only for things still yours today — say so, never fill it in.
