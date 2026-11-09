@@ -387,6 +387,18 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 187: Shop's rules on the real Shop chain (029–138, 144, 150,
+      # 151) — every bug of the 09.11.2026 review shown without 187 and fixed
+      # with it (Delete's Undo order and price history, forged rates, the
+      # purchase day, sale groups and the sale's Undo, money links re-checked,
+      # a wish's kind, restores over defaults), then rates, links, selling,
+      # the chain builder's save, web links, Activity Undo and deleting an
+      # account.
+      - name: Shop rules database scenarios
+        run: node scripts/verify-db-shop-rules.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each
