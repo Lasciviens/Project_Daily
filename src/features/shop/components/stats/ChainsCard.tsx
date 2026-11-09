@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react'
 import { Button, Truncate, cx, useChartColors } from '../../../../shared/ui'
 import { chainPath, type Chain } from '../../chainModel'
 import { complete } from '../../ownModel'
-import { filterChains, type ChainShow } from '../../statsModel'
+import { chainsIn, filterChains, type ChainShow, type Period } from '../../statsModel'
 import { money } from '../shopFormat'
 import { CardFilter, StatsCard, Swatch } from './statsKit'
 import { countReason, num } from './statsFormat'
@@ -17,23 +17,25 @@ const SHOWS = [{ value: 'all' as const, label: 'All' }, { value: 'going' as cons
  * (or made), and how much of the money came back. A profit is green (owner,
  * 09.11.2026); a net cost on things you used is just what using them cost —
  * neutral, never red. Going or ended (everything in it sold or gone, no wish
- * left). A chain opens its own popup.
+ * left). A year shows the chains with a step in it — a thing bought or gone
+ * then — each with its whole result. A chain opens its own popup.
  */
-export function ChainsCard({ chains, onOpen, onNew }: { chains: Chain[]; onOpen: (id: string) => void; onNew: () => void }) {
+export function ChainsCard({ chains: all, period, onOpen, onNew }: { chains: Chain[]; period: Period; onOpen: (id: string) => void; onNew: () => void }) {
   const c = useChartColors()
   const [picked, setPicked] = useState<ChainShow>('all')
-  if (!chains.length) return null
+  if (!all.length) return null
+  const chains = chainsIn(all, period)
   const show = chains.length > 1 ? picked : 'all'
   const shown = filterChains(chains, show)
   return (
     <StatsCard
       title="Money chains"
-      subtitle="Sold one thing, paid the next with the money"
+      subtitle={period.year ? `With a step in ${period.year} · sold one thing, paid the next with the money` : 'Sold one thing, paid the next with the money'}
       action={<span className="flex gap-3"><Swatch color={c.series[1]} label="Got back" /><Swatch color={c.series[0]} label="Net cost" /></span>}
     >
       {chains.length > 1 && <CardFilter label="Show" options={SHOWS} value={show} onChange={setPicked} />}
       {shown.length === 0
-        ? <p className="text-body text-fg-muted">{show === 'ended' ? 'No chain has ended yet.' : 'Every chain has ended.'}</p>
+        ? <p className="text-body text-fg-muted">{!chains.length ? `No chain had a step in ${period.year}.` : show === 'ended' ? 'No chain has ended yet.' : 'Every chain has ended.'}</p>
         : (
           <ul className="-mx-3 flex flex-col">
             {shown.map(ch => <li key={ch.id}><ChainRow chain={ch} colors={[c.series[0], c.series[1]]} onOpen={() => onOpen(ch.id)} /></li>)}

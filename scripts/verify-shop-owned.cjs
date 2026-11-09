@@ -501,8 +501,10 @@ console.log('\n12 · Stats')
   check('the chart: a year\'s 12 months, or the last 24', JSON.stringify(S.chartMonths('2025', TODAY)) === '{"from":"2025-01","to":"2025-12"}' && JSON.stringify(S.chartMonths(null, TODAY)) === '{"from":"2024-11","to":"2026-10"}' && S.moneyByMonth(items, SC, S.chartMonths(null, '2026-01-15').from, '2026-01').length === 24)
   check('a period\'s months for its drill-down', JSON.stringify(S.periodMonths(['2026', '2023', '2024'], null)) === '{"from":"2023-01","to":"2026-12"}' && S.periodMonths([], null) === null && S.periodMonths([], '2025').to === '2025-12')
   check('months in words', S.monthsLabel(21) === '1 year 9 months' && S.monthsLabel(12) === '1 year' && S.monthsLabel(1) === '1 month' && S.monthsLabel(25.2) === '2 years 1 month' && S.monthsLabel(0.4) === 'under a month')
-  const use = S.costOfUseNow(items, SC, TODAY)
-  check('cost of use now: only honest numbers count, of every thing still yours (not accessories, not gifts for others)', use.things.map(x => x.id).sort().join() === 'rp6,trq,tv' && use.rows.length === 1 && near(use.nok, O.perMonth(items.find(x => x.id === 'rp6'), SC, TODAY).nok))
+  const use = S.costOfUseIn(items, SC, S.periodOf(null, TODAY))
+  check('cost of use, all time: every thing you had (not accessories, returns or gifts for others); only honest numbers count',
+    use.things.map(x => x.id).sort().join() === 'rp4,rp5,rp6,trq,tv' && use.rows.map(r => r.item.id).sort().join() === 'rp4,rp5,rp6')
+  check('…all time is each thing\'s whole cost of use: RP4 590 + RP5 with what left in its sale 548 + RP6 at "Could sell for" 490', near(use.nok, 590 + 548 + 490, 1e-6))
   check('why a thing has no number yet', S.costOfUseGap(items.find(x => x.id === 'tv'), SC, TODAY) === 'no_value'
     && S.costOfUseGap(item({ price: 100, bought_at: at('2026-09-20'), value_now: 50 }), SC, TODAY) === 'new'
     && S.costOfUseGap(item({ price: 100, currency: 'EUR', fx_nok: null, bought_at: at('2025-01-01'), value_now: 50 }), SC, TODAY) === 'pending'
@@ -611,7 +613,7 @@ console.log('\n14 · Stats filters: the scope, card filters, subcategories, acce
   const tops = S.ownedByCategory(items, CATS, CTX)
   const sumNok = rows => rows.reduce((s2, r) => s2 + r.paid.nok, 0)
   check('…every row once: the subcategory rows add up to the top rows', sumNok(subs) === sumNok(tops) && subs.reduce((n2, r) => n2 + r.ids.length, 0) === tops.reduce((n2, r) => n2 + r.ids.length, 0) && S.ownedByCategory(items, CATS, CTX, 'top').length === tops.length)
-  const data = { items, categories: CATS, ctx: CTX, today: TODAY, years: S.statsYears(items, CTX), byId: new Map(items.map(i => [i.id, i])) }
+  const data = { items, categories: CATS, ctx: CTX, today: TODAY, years: S.statsYears(items, CTX), period: S.periodOf(null, TODAY), byId: new Map(items.map(i => [i.id, i])) }
   const drillSums = subs.every(r => {
     const c = SD.drillContent({ kind: 'category', key: r.key, level: 'sub' }, data)
     const rows = c.groups.flatMap(g => g.rows).filter(x => !x.header)
@@ -656,6 +658,85 @@ console.log('\n14 · Stats filters: the scope, card filters, subcategories, acce
   check('searching things: a hit keeps its item; an item\'s hit keeps its accessories', found === 'rp5,grip' && SO.filterThingOptions(opts.things, 'lamp').map(o => o.key).join() === 'lamp,shade' && SO.filterThingOptions(opts.things, '  ').length === opts.things.length)
   const chips = SO.scopeChips({ categories: ['ph'], chains: [], things: ['case'], stores: ['power', 'nope'] }, opts)
   check('chips name each pick by section, a store as last written (a pick no longer offered says so)', chips.map(c => `${c.word}:${c.label}`).join() === 'Category:Electronics › Phones,Thing:Case,Store:POWER,Store:Not found', chips.map(c => `${c.word}:${c.label}`).join())
+}
+
+console.log('\n15 · Stats follows the picked year (owner, 09.11.2026: "Follow the year")')
+{
+  // TODAY is 08.10.2026. RP4 2023 → sold 01.03.2024; RP5 + case 2024 → sold 15.05.2026 (grip bought 01.05.2024);
+  // RP6 16.05.2026, still yours (could sell for 4 000); the SD card 01.04.2024, on the RP6 now.
+  const TV = item({ id: 'tv', title: 'TV', price: 9990, bought_at: at('2025-02-10'), value_now: 6000 })
+  const OLD = item({ id: 'old', title: 'Old lamp', price: 800, bought_at: at('2024-06-01'), value_now: 300, disposal: 'given', disposed_on: '2026-02-01' })
+  const items = [...RP, TV, OLD,
+    item({ id: 'ret', price: 1500, bought_at: at('2025-03-05'), disposal: 'returned', disposed_on: '2025-03-20', sale_price: 1500 }),
+    item({ id: 'gift', price: 600, bought_at: at('2025-03-10'), kept: false })]
+  const PC = ctx([cost('tv', 790, 'NOK', '2026-03-01')])
+  const P = y => S.periodOf(y, TODAY)
+  check('a past year is seen from 31.12; this year and all time from today', JSON.stringify(P('2025')) === JSON.stringify({ year: '2025', from: '2025-01-01', to: '2025-12-31', today: TODAY, past: true })
+    && P('2026').to === TODAY && !P('2026').past && P(null).from === null && P(null).to === TODAY && !P(null).past)
+  const rp4 = RP[0]
+  check('had at a day\'s end: not on the day it left; a returned thing never', S.hadOn(rp4, '2024-02-29') && !S.hadOn(rp4, '2024-03-01') && !S.hadOn(rp4, '2022-12-31')
+    && !S.hadOn(items.find(x => x.id === 'ret'), '2025-03-10') && !S.hadOn(items.find(x => x.id === 'gift'), '2025-12-31'))
+  check('had in a period / went in it', S.hadIn(rp4, P('2024')) && !S.hadIn(rp4, P('2025')) && S.wentIn(rp4, P('2024')) && !S.wentIn(RP[1], P('2025')) && S.wentIn(RP[1], P('2026')) && S.wentIn(rp4, P(null)))
+  check('what it had cost by a day: an extra cost counts from its own day', S.costBy(TV, PC, '2026-02-28').nok === 9990 && S.costBy(TV, PC, '2026-03-01').nok === 10780)
+
+  // You own at the period's end.
+  const now = S.ownedAt(items, PC, P('2026'))
+  const whole = O.ownedSummary(items, PC)
+  check('this year and all time: what Owned\'s Mine shows (the whole collection)', ['2026', null].every(y => {
+    const s = S.ownedAt(items, PC, P(y))
+    return s.things === whole.mine && s.accessories === whole.accessories && s.paid.nok === whole.paid.nok && s.worth.nok === whole.worth.nok && s.valued === whole.valued && !s.past && s.day === TODAY
+  }) && now.things === 2 && now.stillYours === 3)
+  const y24 = S.ownedAt(items, PC, P('2024'))
+  check('at 31.12.2024: the RP5 and the lamp, with the case, the grip and the SD card — paid by then', y24.things === 2 && y24.accessories === 3 && y24.paid.nok === 2800 + 800 + 199 + 349 + 399 && y24.day === '2024-12-31' && y24.past)
+  check('…what they could sell for then is never made up: only the SD card is still yours, and it has no "Could sell for"', y24.stillYours === 1 && y24.valued === 0 && y24.worth.nok === 0)
+  const y25 = S.ownedAt(items, PC, P('2025'))
+  check('at 31.12.2025: the TV\'s 790 extra (paid 01.03.2026) is not counted yet; its value is today\'s, the given-away lamp\'s is not known', y25.things === 3 && y25.paid.nok === 2800 + 9990 + 800 + 199 + 349 + 399
+    && y25.stillYours === 2 && y25.valued === 1 && y25.worth.nok === 6000)
+  const cats25 = S.ownedByCategory(items, [], PC, 'top', P('2025'))
+  check('by category at the year\'s end: the same things, cost and value as You own', cats25.length === 1 && cats25[0].paid.nok === y25.paid.nok && cats25[0].worth.nok === y25.worth.nok
+    && cats25[0].count === y25.things && cats25[0].stillYours === y25.stillYours && cats25[0].ids.length === y25.ids.length)
+
+  // Cost of use in the period.
+  const all = S.costOfUseIn(items, PC, P(null))
+  const years = ['2023', '2024', '2025', '2026'].map(y => S.costOfUseIn(items, PC, P(y)))
+  check('cost of use: the years add up exactly to all time', near(years.reduce((s, u) => s + u.nok, 0), all.nok, 1e-6) && all.rows.length === 5)
+  const share = (u, id) => u.rows.find(r => r.item.id === id)
+  check('…and so does each thing (its share = its cost of use × its days in the year ÷ all its days)', all.rows.every(r => near(years.reduce((s, u) => s + (share(u, r.item.id)?.nok ?? 0), 0), r.nok, 1e-6) && near(r.nok, r.per.used.nok, 1e-6)))
+  const d = (a, b) => O.daysBetween(a, b)
+  check('2024: the RP4 for its 60 days of 2024, the RP5 for its 305 (its result shared over its 804 days)', near(share(years[1], 'rp4').nok, 590 * 60 / d('2023-01-10', '2024-03-01'), 1e-6)
+    && near(share(years[1], 'rp5').nok, 548 * d('2024-03-02', '2025-01-01') / d('2024-03-02', '2026-05-15'), 1e-6) && near(share(years[1], 'rp5').months, 305 / 30.4375, 1e-9))
+  check('…a thing still yours counts at today\'s "Could sell for" (≈): the TV in 2025 and 2026', share(years[2], 'tv') && share(years[3], 'tv') && near(share(years[2], 'tv').nok + share(years[3], 'tv').nok, 10780 - 6000, 1e-6))
+  check('…a past year covers 12 months, this one up to today (for "a month")', years[1].months === 12 && years[2].months === 12 && near(years[3].months, O.monthsBetween('2026-01-01', TODAY), 1e-9))
+  check('…the things you had in 2025: no return, no gift for someone else, accessories ride with their item', years[2].things.map(x => x.id).sort().join() === 'old,rp5,tv')
+  check('why a gone thing has no number: its sale amount missing, or under a month', S.costOfUseGap(item({ price: 100, bought_at: at('2025-01-01'), disposal: 'sold', disposed_on: '2025-06-01' }), PC, TODAY) === 'missing'
+    && S.costOfUseGap(item({ price: 100, bought_at: at('2025-01-01'), disposal: 'sold', disposed_on: '2025-01-10', sale_price: 50 }), PC, TODAY) === 'new')
+
+  // Sales, chains and the timeline in the period.
+  const rs = [
+    item({ id: 'f0', for_resale: true, price: 1000, bought_at: at('2025-11-01'), disposal: 'sold', disposed_on: '2025-11-21', sale_price: 1300 }),
+    item({ id: 'f1', for_resale: true, price: 1000, bought_at: at('2025-12-01'), disposal: 'sold', disposed_on: '2026-01-21', sale_price: 1500 }),
+    item({ id: 'f2', for_resale: true, price: 2000, bought_at: at('2026-02-01') }),
+  ]
+  const r25 = S.resaleSummary(rs, PC, P('2025')), r26 = S.resaleSummary(rs, PC, P('2026'))
+  check('resale: the sales made in the year, and what was still held at its end', r25.sold === 1 && r25.bought === 2 && r25.holding === 1 && r25.result.nok === 300 && r26.sold === 1 && r26.holding === 1 && r26.result.nok === 500)
+  check('…all time is every sale', S.resaleSummary(rs, PC, P(null)).sold === 2 && S.resaleSummary(rs, PC, P(null)).result.nok === 800 && S.resaleSummary(rs, PC, P('2023')) === null)
+  check('kept for: the things that went in the year', S.keptRows(items, P('2024')).map(r => r.item.id).join() === 'rp4' && S.keptRows(items, P('2026')).map(r => r.item.id).sort().join() === 'old,rp5' && S.keptRows(items, P('2025')).length === 0)
+  const chain = C.chainsOf(RP, RP_LINKS, CTX)
+  check('chains with a step in the year (a thing bought or gone then); all time every chain', S.chainsIn(chain, P('2024')).length === 1 && S.chainsIn(chain, P('2025')).length === 0 && S.chainsIn(chain, P('2026')).length === 1 && S.chainsIn(chain, P(null)).length === 1)
+  const tl = (y, show) => S.timelineRows(items, [], show, P(y)).rows.map(r => `${r.item.id}${r.gone ? '×' : ''}`).sort().join()
+  check('the timeline of a year: the things you had in it; gone only when they went in it', tl('2024', 'all') === 'old,rp4×,rp5' && tl('2025', 'all') === 'old,rp5,tv' && tl('2026', 'all') === 'old×,rp5×,rp6,tv')
+  check('…Mine is what you still had at the year\'s end', tl('2024', 'mine') === 'old,rp5' && tl('2024', 'gone') === 'rp4×' && S.timelineRows(items, [], 'all', P('2024')).rows.find(r => r.item.id === 'rp5').to === null)
+  const ax = S.yearAxis(P('2025'))
+  check('a year\'s axis: 1 January to 31 December, a mark each quarter', ax.from === '2025-01-01' && ax.to === '2025-12-31' && ax.quarters.map(q => q.day.slice(5)).join() === '01-01,04-01,07-01,10-01' && ax.quarters[0].at === 0 && near(ax.quarters[1].at, 90 / 364, 1e-9))
+  check('…this year\'s ends today, with only the quarters begun', S.yearAxis(S.periodOf('2026', '2026-05-10')).to === '2026-05-10' && S.yearAxis(S.periodOf('2026', '2026-05-10')).quarters.length === 2)
+  check('the value ranking: the things you had in the year', S.valueRanking(items, PC, TODAY, P('2024')).map(v => v.item.id).sort().join() === 'old,rp4,rp5' && S.valueRanking(items, PC, TODAY, P(null)).length === S.valueRanking(items, PC, TODAY).length)
+  const SD = require('../src/features/shop/components/stats/statsDrill')
+  const data = (y) => ({ items, categories: [], ctx: PC, today: TODAY, years: S.statsYears(items, PC), period: P(y), byId: new Map(items.map(x => [x.id, x])) })
+  const useRows = SD.drillContent({ kind: 'use' }, data('2024')).groups.find(g => g.key === 'counted').rows
+  check('the cost of use list is the tile\'s rows, dearest first, each with its ≈ share', useRows.map(r => r.id).join() === years[1].rows.map(r => r.item.id).join() && useRows.every(r => r.text.startsWith('≈ ')))
+  const own25 = SD.drillContent({ kind: 'own' }, data('2025'))
+  check('the You own list for a past year says what is not known, and its rows add up to what was paid by then', /not known/.test(own25.subtitle) && own25.title === 'What you owned at 31.12.2025'
+    && near(own25.groups.flatMap(g => g.rows).filter(r => !r.header).reduce((s, r) => s + r.amount.nok, 0), y25.paid.nok, 1e-6))
 }
 
 console.log('\nR2 · chain names, "If sold now", Owned filters (migration 138)')

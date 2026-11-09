@@ -1,6 +1,6 @@
 // Words and numbers for the Stats screen: counts, whole-unit amounts and the
 // reason a sum is not a number yet. Pure.
-import type { Amount } from '../../ownModel'
+import { complete, type Amount } from '../../ownModel'
 import { amountWords, num } from '../shopFormat'
 
 export { num }
@@ -30,6 +30,12 @@ export function notCounted(a: Amount): string | null {
 /** "1 price missing", "2 rates pending", "1 price missing · 2 rates pending" — for a total that is not a number. */
 export function countReason(a: Amount): string {
   return [a.missing && `${plural(a.missing, 'price')} missing`, a.pending && `${plural(a.pending, 'rate')} pending`].filter(Boolean).join(' · ')
+}
+
+/** A sum for a tile's one-line hint: "83 216", "83 216 + pending" while only a rate waits (never at today's rate), else "unknown". */
+export function shortSum(a: Amount): string {
+  if (complete(a)) return num(a.nok)
+  return a.missing ? 'unknown' : `${num(a.nok)} + pending`
 }
 
 /** "+1 101" / "−300" / "0" — a result with its sign. */
