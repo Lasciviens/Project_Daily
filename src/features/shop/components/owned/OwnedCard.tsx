@@ -24,6 +24,8 @@ interface Props {
   onUndoSale: () => void
   onChain: () => void
   onDelete: () => void
+  /** Open the record at its "Could sell for" (an estimate over six months old). */
+  onUpdateValue: () => void
 }
 
 /** One "label  value" line of a card's money list. */
@@ -38,7 +40,7 @@ function Pair({ label, children, className }: { label: string; children: ReactNo
  * 14.10.2026). A loss on a thing you use is its cost of use — neutral. Selling
  * and adding an accessory live in the record.
  */
-export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen, onUndoSale, onChain, onDelete }: Props) {
+export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen, onUndoSale, onChain, onDelete, onUpdateValue }: Props) {
   const [showAcc, setShowAcc] = useState(false)
   const gone = !!item.disposal
   const from = boughtOn(item)
@@ -104,7 +106,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
             {value && (
               <Pair label="Could sell for" className={stale ? 'text-warn' : undefined}>
                 {item.value_on ? <Peek detail={`Your estimate from ${formatDate(item.value_on)}`}><AmountText amount={value} /></Peek> : <AmountText amount={value} />}
-                {stale && ' · update it'}
+                {stale && <> · <button type="button" onClick={onUpdateValue} className="font-semibold text-accent-600 hover:underline">update it</button></>}
               </Pair>
             )}
           </>

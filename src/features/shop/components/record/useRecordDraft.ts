@@ -6,9 +6,10 @@ import type { ShopItem, UpdateShopItemInput } from '../../types'
 /** A record's edits before Save: only what changed, on top of the live row. */
 export type RecordDraft = Partial<ShopItem> & { bought_day?: string }
 
-export function useRecordDraft(item: ShopItem) {
+/** `open`: the fact whose editor shows first (an old "Could sell for"'s "update it"). */
+export function useRecordDraft(item: ShopItem, open: string | null = null) {
   const [draft, setDraft] = useState<RecordDraft>({})
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(open)
   /** The value shown: the edit when there is one, else the row's. */
   const value = <K extends keyof ShopItem>(k: K): ShopItem[K] => (k in draft ? (draft as ShopItem)[k] : item[k])
   const boughtDay = draft.bought_day ?? (item.bought_at ? localDay(item.bought_at) : '')

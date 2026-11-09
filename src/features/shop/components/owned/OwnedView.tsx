@@ -81,6 +81,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
       onUndoSale={() => undoSale.mutate(item.id)}
       onChain={() => modal.open({ kind: 'shop-chain', id: item.id })}
       onDelete={() => void remove.run(item)}
+      onUpdateValue={() => modal.open({ kind: 'shop-item', id: item.id, fact: 'value' })}
     />
   )
 

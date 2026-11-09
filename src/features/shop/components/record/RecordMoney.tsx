@@ -104,7 +104,7 @@ function LinkPicker({ label, candidates, onPick }: { label: string; candidates: 
   if (!candidates.length) return null
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="chip mt-1 min-h-[44px] gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
+      <button type="button" onClick={() => setOpen(true)} className="chip mr-1.5 mt-1 min-h-[44px] gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
         <Plus aria-hidden className="h-3 w-3" /> {label}
       </button>
     )

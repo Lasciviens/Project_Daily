@@ -8,6 +8,7 @@ import { useRecordSale } from '../../hooks/useShopMoney'
 import { boughtOn, complete, costOf, DISPOSAL_LABEL, isMine, PAID_BACK, splitSale, type MoneyCtx } from '../../ownModel'
 import { categoryPath, defaultCurrencyFor, listOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
+import { money as moneyText } from '../shopFormat'
 import { PaidText } from './PaidText'
 import { SaleResult } from './SaleResult'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
@@ -29,6 +30,8 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
   const [to, setTo] = useState('')
   const [got, setGot] = useState<number | null>(null)
   const [currency, setCurrency] = useState<ShopCurrency>(item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
+  // Your own "Could sell for", one tap away (it fills nothing by itself: never a made-up sale price).
+  const estimate = item.value_now != null ? { amount: item.value_now, currency: (item.value_currency ?? 'NOK') as ShopCurrency } : null
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(accessories.map(a => a.id)))
   const [moveTo, setMoveTo] = useState<Record<string, string>>({})
   const [target, setTarget] = useState('')
@@ -94,6 +97,12 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
           <div>
             <span className="field-label">{how === 'returned' ? 'Refunded' : 'Got'}</span>
             <MoneyEditor label="Got" amount={got} currency={currency} onAmount={setGot} onCurrency={setCurrency} />
+            {estimate && how !== 'returned' && (got !== estimate.amount || currency !== estimate.currency) && (
+              <button type="button" onClick={() => { setGot(estimate.amount); setCurrency(estimate.currency) }}
+                className="chip mt-2 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">
+                Use your estimate {moneyText(estimate.amount, estimate.currency)}
+              </button>
+            )}
             {got == null && <p className="mt-1 text-meta text-fg-muted">Without an amount the result stays Unknown — you can add it later.</p>}
           </div>
         )}
