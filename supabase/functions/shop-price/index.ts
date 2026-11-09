@@ -693,30 +693,44 @@ async function watchesFor(supabase: SupabaseClient, ids: string[]): Promise<Map<
 
 const osloDay = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
 
-/** The links due a check: things to buy (a model while its wish is open) and things you own that can still go back. */
+const PAGE = 1000
+
+/**
+ * The links due a check: things to buy (a model while its general wish is
+ * open) and things you own that can still go back. The database filters them
+ * and they are read page by page, so rows that are not due (things kept past
+ * their return day, gone, general wishes) can never push a due one out.
+ */
 async function dueItems(supabase: SupabaseClient, userId: string): Promise<Item[]> {
   const today = osloDay(new Date().toISOString())
-  const { data, error } = await supabase
-    .from('shop_items')
-    .select('id, url, status, kind, option_for, disposal, return_by')
-    .eq('user_id', userId)
-    .eq('list', 'wishlist')
-    .in('status', ['wishlist', 'bought'])
-    .not('url', 'is', null)
-    .limit(1000)
-  if (error) throw error
-  type R = Item & { status: string; kind: string; option_for: string | null; disposal: string | null; return_by: string | null }
-  const rows = (data ?? []) as R[]
-  const wishIds = [...new Set(rows.map(r => r.option_for).filter((x): x is string => !!x))]
-  const openWish = new Set<string>()
-  if (wishIds.length) {
-    const { data: wishes, error: wErr } = await supabase.from('shop_items').select('id').in('id', wishIds).eq('status', 'wishlist')
-    if (wErr) throw wErr
-    for (const w of (wishes ?? []) as { id: string }[]) openWish.add(w.id)
+  type R = Item & { status: string; option_for: string | null }
+  const rows: R[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('shop_items')
+      .select('id, url, status, option_for')
+      .eq('user_id', userId)
+      .eq('list', 'wishlist')
+      .eq('kind', 'item')
+      .not('url', 'is', null)
+      .or(`status.eq.wishlist,and(status.eq.bought,disposal.is.null,return_by.gte.${today})`)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    rows.push(...((data ?? []) as R[]))
+    if (!data || data.length < PAGE) break
   }
-  return rows.filter(r => /^https?:\/\//i.test(String(r.url)) && r.kind === 'item' && (
-    r.status === 'wishlist' ? (!r.option_for || openWish.has(r.option_for)) : (!r.disposal && !!r.return_by && r.return_by >= today)
-  ))
+  // A model to buy is due while its general wish is still to buy (a bought model goes on by its return day).
+  const wishIds = [...new Set(rows.filter(r => r.status === 'wishlist' && r.option_for).map(r => r.option_for as string))]
+  const openWish = new Set<string>()
+  for (let i = 0; i < wishIds.length; i += 200) {
+    const { data, error } = await supabase.from('shop_items').select('id')
+      .eq('user_id', userId).eq('status', 'wishlist').in('id', wishIds.slice(i, i + 200))
+    if (error) throw error
+    for (const w of (data ?? []) as { id: string }[]) openWish.add(w.id)
+  }
+  return rows.filter(r => /^https?:\/\//i.test(String(r.url)) && (r.status !== 'wishlist' || !r.option_for || openWish.has(r.option_for)))
 }
 
 interface RatesResult { needed: number; filled: number; pending: number; error?: string }
