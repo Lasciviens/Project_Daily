@@ -38,6 +38,7 @@ Full background and history: `docs/backend/database.md`.
 - A claim query with per-row ordering uses a `NOT EXISTS` anti-join inside the CTE that carries `FOR UPDATE … SKIP LOCKED` — never a window function upstream of the lock (079; check `EXPLAIN` shows `LockRows`).
 - An RPC scoped through `effective_user_id(p_user_id)` needs `p_user_id` at every service-role call site (a service role has no `auth.uid()`).
 - A new uniqueness constraint over old data: backfill and de-duplicate first, then create the index.
+- A trigger that keeps another audited table in step fires after `trg_audit` and checks the state between the tables when the transaction ends (a deferred constraint trigger) — Activity's Undo puts rows back newest first; a row it derives from a new parent is written deferred with `ON CONFLICT DO NOTHING`; an ownership check refuses with 23503, so a restore retries the row once its parent is back (192; `docs/backend/database.md` point 17).
 
 ## The assistant and cron
 - A new user table is invisible to the assistant until added to `DB_CATALOG` in `supabase/functions/ai-proxy/index.ts` with a deliberate `rw`/`ro` (synced tables are `ro`).
