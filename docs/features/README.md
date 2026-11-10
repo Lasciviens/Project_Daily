@@ -9,6 +9,8 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Tasks — one table, one model, one action hook | — | [tasks.md](tasks.md) | `tasks.md` |
 | Planning, schedule, Google Calendar and Tasks | — | [planning-calendar.md](planning-calendar.md) | `planning.md` |
 | Calendar plan — Apple first (the owner's wishes and phases) | — | [calendar-plan.md](calendar-plan.md) | `planning.md` |
+| Shop renovation plan — decisions, what is done, the three steps left | — | [shop-plan.md](shop-plan.md) | `shop.md` |
+| One item screen plan — Apple Calendar style, the owner's answers | — | [item-screen-plan.md](item-screen-plan.md) | `planning.md` |
 | One delete, with Undo | — | [delete-undo.md](delete-undo.md) | `database.md`, `ui.md` |
 | Wishes | `/#/wishes` | [wishes.md](wishes.md) | `wishes.md` |
 | Food (diary, plan, recipes, foods, insights) | `/#/recipes` | [food.md](food.md) | `food.md` |
