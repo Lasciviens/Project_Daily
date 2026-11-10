@@ -12,8 +12,12 @@
 //     time) and signals.sql (190: what Needs a look remembers — Snooze, Got it and their exact Undo, the
 //     signal list and the bounds, each account its own rows — deal days, stock in the price history, the
 //     price figures of many things in one call, and NaN and infinity kept out, and categories inside one account —
-//     cross-account-old.sql plants old links across accounts before 190, which 190 must cut).
-// Static checks of 187, 188 and 190 first.
+//     cross-account-old.sql plants old links across accounts before 190, which 190 must cut), then 192 twice and
+//     resale.sql (192: ad notes, trade-in quotes, the value history, listings and how a sale closes them, the ad
+//     templates and hand-over checklists with their Norwegian and English defaults, each account its own rows, links
+//     never fetched and https only, Activity's Undo of an estimate and of a sale with its listing, Delete's Undo
+//     bringing every row back, deleting an account).
+// Static checks of 187, 188, 190 and 192 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
@@ -143,6 +147,62 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (problems.length) fail(`migration 190 has ${problems.join('; ')}`)
 }
 
+// Static, 192: six tables, each the account's own (user_id with auth.uid() by default, the owner policy with
+// (select auth.uid()), row level security right after it, the owner lock at the end, audited, the app and the service
+// role granted, signed out nothing); the four about a thing cascade from shop_items; every function pinned, run as the
+// caller, revoked from signed out; the resale trigger fires after trg_audit and a listing's thing is checked when the
+// transaction ends (Activity's Undo puts a sale's rows back newest first); an ad's link is https only and never a
+// column named url (the assistant may write shop_items.url, never an ad's); nothing of 191's (stores) is named; the
+// only top-level writes are the seeds.
+{
+  const src = readFileSync(mig('192_shop_resale.sql'), 'utf8')
+  const sql = src.replace(/--.*$/gm, '')
+  const problems = []
+  const TABLES = ['shop_ad_notes', 'shop_trade_in_quotes', 'shop_value_history', 'shop_listings', 'shop_ad_templates', 'shop_handover_checklists']
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
+  if (/\bnet\.http_|vault\./i.test(sql)) problems.push('a call outside the database')
+  if (/shop_stores?\b|shop_store_rules|store_id/i.test(sql)) problems.push('a name from migration 191 (stores) — 192 must not depend on it')
+  const tables = [...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi)].map(m => m[1])
+  if (tables.join() !== TABLES.join()) problems.push(`creates ${tables.join(', ') || 'no table'} (expected ${TABLES.join(', ')})`)
+  for (const t of TABLES) {
+    const body = sql.match(new RegExp(`create table if not exists public\\.${t} \\(([\\s\\S]*?)\\n\\);\\s*alter table public\\.${t} enable row level security;`, 'i'))?.[1]
+    if (!body) { problems.push(`no row level security right after ${t}`); continue }
+    if (!/user_id\s+uuid not null default auth\.uid\(\) references auth\.users\(id\) on delete cascade/i.test(body)) problems.push(`${t}: user_id without auth.uid() by default`)
+    if (!/^\s*id\s+uuid primary key default gen_random_uuid\(\)/m.test(body)) problems.push(`${t}: not one id primary key (Activity's Undo needs it)`)
+    if (!/created_at\s+timestamptz not null default now\(\)/.test(body) || !/updated_at\s+timestamptz not null default now\(\)/.test(body)) problems.push(`${t}: no created_at / updated_at`)
+    if (/^\s*url\s/m.test(body)) problems.push(`${t}: a column named url (the assistant may write url — an ad's link is ad_url)`)
+    if (t !== 'shop_ad_templates' && t !== 'shop_handover_checklists' && !/item_id\s+uuid not null references public\.shop_items\(id\) on delete cascade/i.test(body)) problems.push(`${t}: item_id is not a cascading link to shop_items`)
+    if (/\bad_url\b/.test(body) && !/ad_url ~ '\^https:\/\//.test(body)) problems.push(`${t}: ad_url is not https only`)
+    if (!new RegExp(`create policy "Users manage own ${t}" on public\\.${t}\\s+for all using \\(\\(select auth\\.uid\\(\\)\\) = user_id\\) with check \\(\\(select auth\\.uid\\(\\)\\) = user_id\\);`, 'i').test(sql)) problems.push(`${t}: no owner policy with (select auth.uid())`)
+    if (!new RegExp(`revoke all on public\\.${t} from anon;\\s*grant select, insert, update, delete on public\\.${t} to authenticated;\\s*grant select, insert, update, delete on public\\.${t} to service_role;`, 'i').test(sql)) problems.push(`${t}: grants are not the app's and the service role's, anon revoked`)
+    if (new RegExp(`on public\\.${t} to [^;]*anon`, 'i').test(sql)) problems.push(`${t}: a grant to anon`)
+    if (!new RegExp(`create trigger trg_audit after insert or update or delete on public\\.${t}\\s+for each row execute function public\\.log_audit\\(\\);`, 'i').test(sql)) problems.push(`${t}: no audit trigger`)
+    if (!new RegExp(`select public\\.owner_lock_apply\\('public\\.${t}'\\);`, 'i').test(sql)) problems.push(`no owner_lock_apply for ${t}`)
+  }
+  if (!/(select public\.owner_lock_apply\('public\.\w+'\);\s*){6}$/i.test(sql)) problems.push('the owner lock is not the last thing it does')
+  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
+  const names = fns.map(([, name]) => name).sort().join()
+  if (names !== 'shop_add_resale_defaults,shop_items_resale,shop_items_value_first,shop_link_on_host,shop_listings_rules,shop_listings_thing_check,shop_resale_default_checklists,shop_resale_default_templates,shop_resale_rows_rules') problems.push(`functions ${names}`)
+  for (const [body, name] of fns) {
+    if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
+    if (/security definer/i.test(body)) problems.push(`${name}: SECURITY DEFINER (every 192 function runs as the caller)`)
+    if (!new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon`).test(sql)) problems.push(`no revoke for ${name}`)
+  }
+  if (!/grant execute on function public\.shop_add_resale_defaults\(\) to authenticated;/.test(sql)) problems.push('shop_add_resale_defaults not granted to authenticated')
+  if (!/v_user is null or not public\.is_app_user\(\)/.test(fns.find(([, n]) => n === 'shop_add_resale_defaults')?.[0] ?? '')) problems.push('shop_add_resale_defaults does not refuse a caller who is not an app user')
+  const trig = sql.match(/create trigger (\w+) after update on public\.shop_items\s+for each row execute function public\.shop_items_resale\(\);/i)?.[1]
+  if (!trig || !(trig > 'trg_audit')) problems.push(`the resale trigger on shop_items (${trig ?? 'none'}) does not sort after trg_audit`)
+  if (!/create constraint trigger trg_shop_items_value_first after insert on public\.shop_items\s+deferrable initially deferred\s+for each row execute function public\.shop_items_value_first\(\);/i.test(sql)
+      || !/on conflict \(item_id, valued_on\) do nothing;/.test(fns.find(([, n]) => n === 'shop_items_value_first')?.[0] ?? '')) problems.push('a new thing\'s first estimate is not recorded when the transaction ends, after a restore\'s own rows')
+  if (!/create constraint trigger trg_shop_listings_thing after insert or update on public\.shop_listings\s+deferrable initially deferred\s+for each row execute function public\.shop_listings_thing_check\(\);/i.test(sql)) problems.push('a listing\'s thing is not checked when the transaction ends (a deferred constraint trigger)')
+  const rules = fns.find(([, n]) => n === 'shop_listings_rules')?.[0] ?? ''
+  if (/disposal/.test(rules)) problems.push('the listing\'s before-trigger reads how the thing left (Activity\'s Undo passes a moment where the listing is back before the thing — that check is the deferred one)')
+  const top = sql.replace(/\$\$[\s\S]*?\$\$/g, '')
+  const writes = [...top.matchAll(/^(insert into|update|delete from) (public\.\w+)/gim)].map(m => m[2])
+  if (writes.join() !== 'public.shop_ad_templates,public.shop_handover_checklists') problems.push(`top-level writes to ${writes.join(', ') || 'nothing'} (expected only the two seeds)`)
+  if (problems.length) fail(`migration 192 has ${problems.join('; ')}`)
+}
+
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
 if (!url) {
   console.log('verify-db-shop-rules: static checks passed; database scenarios skipped (no VERIFY_DB_URL / DEPLOY_TEST_DB_URL)')
@@ -201,13 +261,15 @@ try {
   step('links across accounts from before 190', () => psql(n, ['-f', join(dir, 'cross-account-old.sql')]))
   step('190', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   step('190 again', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
+  step('192', () => psql(n, ['-f', mig('192_shop_resale.sql')]))
+  step('192 again', () => psql(n, ['-f', mig('192_shop_resale.sql')]))
   let passed = 0
-  for (const file of ['scenarios.sql', 'site-policies.sql', 'signals.sql']) {
+  for (const file of ['scenarios.sql', 'site-policies.sql', 'signals.sql', 'resale.sql']) {
     const sc = run(n, join(dir, file))
     passed += (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
     if (sc.status !== 0) throw Object.assign(new Error(`${file} failed`), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
   }
-  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188 and 190 (twice each), and ${passed} scenarios passed`
+  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188, 190 and 192 (twice each), and ${passed} scenarios passed`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)

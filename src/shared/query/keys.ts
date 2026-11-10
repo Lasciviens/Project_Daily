@@ -117,6 +117,15 @@ export const qk = {
     /** Kassalapp prices per chain for the quick list's matched products. */
     grocery: (eans: string) => ['shop', 'grocery', eans] as const,
     grocerySearch: (q: string) => ['shop', 'grocery-search', q] as const,
+    /** Resale and selling (migration 192): ad notes, trade-in quotes, listings, ad templates, hand-over checklists. */
+    resale: () => ['shop', 'resale'] as const,
+    adNotes: () => ['shop', 'resale', 'ad-notes'] as const,
+    tradeIns: () => ['shop', 'resale', 'trade-ins'] as const,
+    listings: () => ['shop', 'resale', 'listings'] as const,
+    adTemplates: () => ['shop', 'resale', 'ad-templates'] as const,
+    handovers: () => ['shop', 'resale', 'handovers'] as const,
+    /** Every "Could sell for" with its day (192) — under items: a value edit is an item write, so it refreshes this too. */
+    valueHistory: () => ['shop', 'items', 'value-history'] as const,
   },
   media: {
     movies: ['movies'] as const,
