@@ -9,7 +9,7 @@
  *   6. The hand-over checklist: steps edited as rows back to text, the limits, the ticks by the step's words (an
  *      edited step starts unticked), at most 20 things kept, a stored book read back safely.
  *   7. The screens: the record's new parts load in their own chunks, the ad is never posted (no fetch), a link out
- *      is no-referrer, sign-out clears the ticks.
+ *      is no-referrer, a pasted link goes through normalizeAdUrl, amounts stay in 192's bounds, sign-out clears the ticks.
  * Run: node scripts/verify-shop-selling.cjs */
 require('sucrase/register')
 const fs = require('fs')
@@ -149,6 +149,13 @@ console.log('7. the screens')
   check('Use fills the draft, never the row', resale.includes('d.set({ value_now: n, value_currency: \'NOK\' })') && !/useUpdateShopItem/.test(resale))
   check('sign-out clears the hand-over ticks', read('src/security/accountState.ts').includes("'lasci.shop.handover'")
     && read('src/features/shop/hooks/useShopSelling.ts').includes("HANDOVER_TICKS_KEY = 'lasci.shop.handover'"))
+  check('a pasted link goes through normalizeAdUrl (note an ad, the ad\'s link), never sent as typed',
+    (resale.match(/normalizeAdUrl\(url\)/g) || []).length === 1 && (listingUi.match(/normalizeAdUrl\(url\)/g) || []).length === 1
+    && !/ad_url: link,[^}]*\burl\.trim\(\)/.test(resale) && !/ad_url: url/.test(listingUi + resale))
+  check('amounts are below a billion (isPrice) and a listing\'s price has at most two decimals (twoDecimals)',
+    /priced = price != null && isPrice\(price\)/.test(resale) && /priced = amount != null && isPrice\(amount\)/.test(resale)
+    && /isPrice\(price\) && twoDecimals\(price\)/.test(ad) && /!isPrice\(price\) \|\| !twoDecimals\(price\)/.test(listingUi)
+    && /!isPrice\(next\[i\.id\]\)/.test(read('src/features/shop/components/record/UpdateValuesSheet.tsx')))
   check('Sold comes from the sell flow, never a listing write', !/status: 'sold'/.test(listingUi) && listingUi.includes("kind: 'shop-sell'"))
 }
 

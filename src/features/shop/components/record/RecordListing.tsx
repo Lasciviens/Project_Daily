@@ -10,7 +10,7 @@ import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { priceChangePatch, priceChangeWords, useChangeListing, useListings } from '../../hooks/useShopResale'
 import { listingNudge, priceNow } from '../../listingNudge'
 import { categoryPath } from '../../shopModel'
-import { isAdUrl } from '../../resaleRows'
+import { isPrice, normalizeAdUrl, twoDecimals } from '../../resaleRows'
 import { endedListingsOf, listingTag, listingWords, openListingOf, priceCuts } from '../../sellingModel'
 import { money, num } from '../shopFormat'
 import { AddressLink } from './AddressLink'
@@ -121,7 +121,7 @@ function PriceForm({ listing, onSave, onCancel, busy }: { listing: ShopListing; 
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button size="sm" variant="primary" disabled={price == null || price < 0 || price === now} loading={busy} onClick={() => price != null && onSave(price)}>Save the price</Button>
+        <Button size="sm" variant="primary" disabled={price == null || !isPrice(price) || !twoDecimals(price) || price === now} loading={busy} onClick={() => price != null && onSave(price)}>Save the price</Button>
       </div>
     </div>
   )
@@ -131,13 +131,14 @@ function PriceForm({ listing, onSave, onCancel, busy }: { listing: ShopListing; 
 function AdLinkForm({ listing, onDone }: { listing: ShopListing; onDone: () => void }) {
   const change = useChangeListing()
   const [url, setUrl] = useState('')
-  const ok = isAdUrl(url.trim())
+  const link = url.trim() ? normalizeAdUrl(url) : null
+  const ok = link !== null
   return (
     <div className="flex flex-wrap items-center gap-2">
       <input type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.finn.no/…" aria-label="The ad's link" className="input min-w-0 max-w-md flex-1" autoFocus />
       <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
       <Button size="sm" variant="primary" disabled={!ok} loading={change.isPending}
-        onClick={() => change.mutate({ listing, patch: { ad_url: url.trim() }, done: 'The ad\'s link saved', today: todayStr() }, { onSuccess: onDone })}>Save</Button>
+        onClick={() => link && change.mutate({ listing, patch: { ad_url: link }, done: 'The ad\'s link saved', today: todayStr() }, { onSuccess: onDone })}>Save</Button>
     </div>
   )
 }

@@ -10,7 +10,7 @@ import {
   useTradeInQuotes, useValueHistory,
 } from '../../hooks/useShopResale'
 import { CONDITION_LABEL, resaleEvidence, type ResaleEvidenceRow, type ResaleRange } from '../../resaleEvidence'
-import { isAdUrl, marketplaceOf, RESALE_CONDITIONS } from '../../resaleRows'
+import { isPrice, marketplaceOf, normalizeAdUrl, RESALE_CONDITIONS } from '../../resaleRows'
 import { endedListingsOf, estimateHistory, HANDED_OVER, hasOldEstimate, listingWords, marketplacesOf, oldEstimates } from '../../sellingModel'
 import { money, moneyRange, num } from '../shopFormat'
 import { MoneyEditor } from './factKit'
@@ -189,17 +189,20 @@ function AdNoteForm({ itemId, known, onDone }: { itemId: string; known: readonly
   const [currency, setCurrency] = useState<ShopCurrency>('NOK')
   const [asking, setAsking] = useState(true)
   const [condition, setCondition] = useState<ResaleCondition | null>(null)
-  const link = url.trim()
-  const ok = isAdUrl(link)
-  const host = ok ? marketplaceOf(link, known) : null
+  // The link as it is stored (the URL parser's form, printable ASCII only); null: not one ad link.
+  const link = url.trim() ? normalizeAdUrl(url) : null
+  const ok = link !== null
+  const host = link ? marketplaceOf(link, known) : null
+  const priced = price != null && isPrice(price)
   const save = () => {
-    if (!ok || price == null) return
+    if (!link || !priced) return
     create.mutate({ item_id: itemId, ad_url: link, marketplace: host, price, currency, asking, condition, noted_on: todayStr() }, { onSuccess: onDone })
   }
   return (
     <div className="mb-2 flex flex-col gap-2 rounded-row bg-surface-2 p-2">
       <input type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://www.finn.no/…" aria-label="The ad's link" className="input max-w-md" autoFocus />
-      {link && !ok && <p className="text-meta text-danger">One https:// address — paste it from the address bar.</p>}
+      {url.trim() && !ok && <p className="text-meta text-danger">One https:// address — paste it from the address bar.</p>}
+      {price != null && !priced && <p className="text-meta text-danger">A price from 0 below a billion.</p>}
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-[11rem]"><MoneyEditor label="Price" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} /></div>
         <div className="seg" role="group" aria-label="Asking or sold">
@@ -211,7 +214,7 @@ function AdNoteForm({ itemId, known, onDone }: { itemId: string; known: readonly
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 text-meta text-fg-muted">{host ? `On ${host}. ` : ''}The app never opens or reads the link.</span>
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
-        <Button size="sm" variant="primary" onClick={save} disabled={!ok || price == null} loading={create.isPending}>Note it</Button>
+        <Button size="sm" variant="primary" onClick={save} disabled={!ok || !priced} loading={create.isPending}>Note it</Button>
       </div>
     </div>
   )
@@ -225,8 +228,9 @@ function QuoteForm({ itemId, onDone }: { itemId: string; onDone: () => void }) {
   const [currency, setCurrency] = useState<ShopCurrency>('NOK')
   const [condition, setCondition] = useState<ResaleCondition | null>(null)
   const [on, setOn] = useState(todayStr)
+  const priced = amount != null && isPrice(amount)
   const save = () => {
-    if (!dealer.trim() || amount == null) return
+    if (!dealer.trim() || amount == null || !priced) return
     create.mutate({ item_id: itemId, dealer: dealer.trim(), amount, currency, condition, quoted_on: on }, { onSuccess: onDone })
   }
   return (
@@ -239,7 +243,7 @@ function QuoteForm({ itemId, onDone }: { itemId: string; onDone: () => void }) {
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
-        <Button size="sm" variant="primary" onClick={save} disabled={!dealer.trim() || amount == null} loading={create.isPending}>Add the quote</Button>
+        <Button size="sm" variant="primary" onClick={save} disabled={!dealer.trim() || !priced} loading={create.isPending}>Add the quote</Button>
       </div>
     </div>
   )

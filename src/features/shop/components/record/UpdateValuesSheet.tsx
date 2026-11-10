@@ -8,6 +8,7 @@ import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { useUpdateValues } from '../../hooks/useShopSelling'
 import { durationLabel } from '../../ownModel'
 import { oldEstimates } from '../../sellingModel'
+import { isPrice } from '../../resaleRows'
 import { money } from '../shopFormat'
 import type { ShopItem } from '../../types'
 
@@ -23,6 +24,8 @@ export function UpdateValuesSheet({ items, today, onClose }: { items: readonly S
   const [next, setNext] = useState<Record<string, number | null>>({})
   const [on, setOn] = useState(today)
   const changed = useMemo(() => rows.filter(i => next[i.id] != null), [rows, next])
+  // An estimate is below a billion (192): one that isn't holds the Save back and says so.
+  const wrong = changed.filter(i => !isPrice(next[i.id]))
 
   function submit() {
     save.mutate({
@@ -36,7 +39,7 @@ export function UpdateValuesSheet({ items, today, onClose }: { items: readonly S
       footer={
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={onClose} disabled={save.isPending}>Cancel</Button>
-          <Button variant="primary" className="ml-auto" onClick={submit} disabled={!changed.length || !on} loading={save.isPending}>
+          <Button variant="primary" className="ml-auto" onClick={submit} disabled={!changed.length || wrong.length > 0 || !on} loading={save.isPending}>
             {changed.length ? `Save ${changed.length}` : 'Save'}
           </Button>
         </div>
@@ -46,6 +49,7 @@ export function UpdateValuesSheet({ items, today, onClose }: { items: readonly S
           <span className="text-meta text-fg-muted">Valued on</span>
           <DateInput value={on} onChange={v => v && setOn(v)} max={today} aria-label="Valued on" className="input w-[10rem] tabular-nums" />
         </div>
+        {wrong.length > 0 && <p className="text-meta text-danger">An estimate is from 0 below a billion: {wrong.map(i => i.title).join(', ')}.</p>}
         {rows.length === 0 ? <p className="text-body text-fg-muted">No estimate is over six months old.</p> : (
           <ul className="flex flex-col divide-y divide-line rounded-row border border-line">
             {rows.map(i => {

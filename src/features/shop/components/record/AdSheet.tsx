@@ -6,7 +6,7 @@ import { toast } from '../../../../app/store'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useAddResaleDefaults, useAdTemplates, useChangeListing, useCreateListing, useUpdateAdTemplate } from '../../hooks/useShopResale'
 import { CONDITION_LABEL } from '../../resaleEvidence'
-import { RESALE_CONDITIONS } from '../../resaleRows'
+import { isPrice, RESALE_CONDITIONS, twoDecimals } from '../../resaleRows'
 import { categoryNamesOf, fillAd, templateFor, unknownFields, AD_FIELDS } from '../../resaleTexts'
 import { adClipboardText, adFactsOf, adPriceOf, marketplaceLink, marketplacesOf } from '../../sellingModel'
 import { boughtOn, isMine } from '../../ownModel'
@@ -48,6 +48,8 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
   const body = edited?.body ?? filled?.body ?? ''
   const [editingTemplate, setEditingTemplate] = useState(false)
   const link = marketplaceLink(where)
+  // A listing's price is below a billion with at most two decimals (192).
+  const listable = price != null && isPrice(price) && twoDecimals(price)
 
   async function copy() {
     try {
@@ -62,7 +64,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
     const text = adClipboardText(title, body)
     if (listing) {
       change.mutate({ listing, patch: { ad_text: text, marketplace: where }, done: 'Ad saved to the listing', today }, { onSuccess: onClose })
-    } else if (price != null) {
+    } else if (listable && price != null) {
       create.mutate({ input: { item_id: item.id, price, currency, marketplace: where, ad_text: text, status: 'listed' }, title: item.title, today }, { onSuccess: onClose })
     }
   }
@@ -72,8 +74,8 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
       footer={
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={onClose} variant="ghost">Close</Button>
-          <Button className="ml-auto" onClick={keep} disabled={!listing && price == null} loading={create.isPending || change.isPending}
-            title={!listing && price == null ? 'Add an asking price to list it' : undefined}>
+          <Button className="ml-auto" onClick={keep} disabled={!listing && !listable} loading={create.isPending || change.isPending}
+            title={!listing && !listable ? 'Add an asking price (below a billion, at most two decimals) to list it' : undefined}>
             {listing ? 'Save to the listing' : 'Mark it listed'}
           </Button>
           <Button variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!body.trim()}>Copy the ad</Button>
