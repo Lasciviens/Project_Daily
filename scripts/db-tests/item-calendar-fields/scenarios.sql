@@ -211,6 +211,17 @@ select t_ok(public.repeat_count_end('weekly', '{2,4}', null, null, null, '2026-1
         and public.repeat_count_end('weekly', '{}', null, null, null, '2026-11-02', 1) is null
         and public.repeat_count_end('weekly', '{1}', null, null, null, '2026-11-02', 0) is null,
   'C5 the Nth day per kind (weekly, every 3 days, every 2 weeks, monthly clamped, picked dates once each); none when it never comes');
+-- The day search is the trigger's alone: no signed-in account calls it (up to 7306 days of work a call).
+set test.uid = '00000000-0000-0000-0000-000000000003';
+set role authenticated;
+select t_ok(public.t_refused($q$select public.repeat_count_end('weekly', '{2}', null, null, null, '2026-11-03', 999)$q$) like '42501 %',
+  'C5 an account the owner lock keeps out can''t call repeat_count_end');
+reset role;
+reset test.uid;
+set role authenticated;
+select t_ok(public.t_refused($q$select public.repeat_count_end('weekly', '{2}', null, null, null, '2026-11-03', 999)$q$) like '42501 %',
+  'C5 …nor can the owner''s own session (only the trigger, as the definer)');
+reset role;
 set role authenticated;
 do $$
 declare r jsonb; e text; v_plan uuid; p public.schedule_blocks;

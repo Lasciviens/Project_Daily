@@ -34,8 +34,10 @@ const fail = msg => { console.error(`verify-db-item-calendar-fields: ${msg}`); p
     const added = []
     for (const l of mine) {
       if (i < live.length && l === live[i]) i++
-      // An old line that now goes on (a value list: `end)` → `end,`), or one that gets the new names.
+      // An old line that now goes on (a value list: `end)` → `end,`), one that gets the new names, or a search_path
+      // tightened to '' (apply_calendar_readback, security review 10.11.2026).
       else if (i < live.length && !mine.includes(live[i]) && (l.replace(/,$/, ')') === live[i]
+        || (live[i] === 'set search_path = public' && l === "set search_path = ''")
         || (NEW.test(l) && l.trim().slice(0, 12) === live[i].trim().slice(0, 12)))) { i++; if (NEW.test(l)) added.push(l) }
       else added.push(l)
     }
@@ -63,11 +65,17 @@ const fail = msg => { console.error(`verify-db-item-calendar-fields: ${msg}`); p
   if (/\bnet\.http_|vault\.|googleapis|icloud\.com/i.test(sql)) problems.push('a call outside the database')
   if (/create table/i.test(sql)) problems.push('a new table')
   if (/^(update|insert into|delete from) /im.test(sql)) problems.push('a top-level write (193 backfills nothing)')
-  for (const name of ['item_alerts_ok(integer[])', 'item_url_ok(text)', 'time_block_calendar_fill()', 'schedule_block_repeat_end()',
-    'repeat_count_end(text, integer[], integer, text, date[], date, integer)']) {
+  for (const name of ['item_alerts_ok(integer[])', 'item_url_ok(text)', 'time_block_calendar_fill()']) {
     if (!sql.includes(`grant execute on function public.${name} to authenticated, service_role`)) problems.push(`no grant for ${name}`)
     if (!sql.includes(`revoke all on function public.${name} from public, anon`)) problems.push(`no revoke for ${name}`)
   }
+  // The count's day search (up to 7306 days a call) only through its trigger, which runs as the definer.
+  for (const name of ['schedule_block_repeat_end()', 'repeat_count_end(text, integer[], integer, text, date[], date, integer)']) {
+    if (!sql.includes(`revoke all on function public.${name} from public, anon, authenticated`)) problems.push(`${name} is callable by a signed-in account`)
+    if (!sql.includes(`grant execute on function public.${name} to service_role`)) problems.push(`no service-role grant for ${name}`)
+  }
+  if (!/function public\.schedule_block_repeat_end\(\)\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = ''/.test(src193)) problems.push('schedule_block_repeat_end is not SECURITY DEFINER with search_path \'\'')
+  if (!/function public\.apply_calendar_readback\([^)]*\)\nreturns text\nlanguage plpgsql\nsecurity definer\nset search_path = ''/.test(src193)) problems.push("apply_calendar_readback's search_path is not ''")
   for (const name of ['apply_calendar_readback(uuid, jsonb)', 'apply_icloud_readback(uuid, text, uuid, text, jsonb, text)']) {
     if (!sql.includes(`revoke all on function public.${name} from public, anon, authenticated`)) problems.push(`${name} is not kept to the service role`)
   }

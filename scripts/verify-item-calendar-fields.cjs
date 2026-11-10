@@ -188,6 +188,9 @@ console.log('\n== The read-back from the iPhone (icloud-calendar) ==')
     ['-60', '-1440', '0', '540', 'NONE', null, null, null, null, null],
     'alarms read as minutes from the start (an hour, a day, at the time, 09:00); Apple\'s marker as none; an absolute time, one from the end, seconds, junk: unreadable')
   const uid = 'lasci-slot-2c5e1b9a-4d0f-4a3b-9e7c-1f2a3b4c5d6e@lasciviens.github.io'
+  eq([X.masterAlarms(`BEGIN:VEVENT\r\nUID:${uid}\r\nEND:VALARM\r\nBEGIN:VALARM\r\nTRIGGER:-PT5M\r\nEND:VALARM\r\nEND:VEVENT`, uid),
+      X.masterAlarms(`BEGIN:VEVENT\r\nUID:${uid}\r\nBEGIN:VALARM\r\nTRIGGER:-PT5M\r\nEND:VALARM\r\nEND:VEVENT`, uid)],
+    [null, [['TRIGGER:-PT5M']]], 'a stray END inside an event: its alarms are not read (never a guess); a well-formed one is')
   // Edited as iCloud would hand it back: the parser unfolds lines, so the tests edit the unfolded text.
   const mineEvent = { ics: unfold(slot({ url: null }).ics) }
   const row = { alerts: null, url: null, travel_minutes: null, place: null }

@@ -192,9 +192,12 @@ end;
 $$;
 
 -- With a count the end day is the database's, for every writer (a rule edit moves it; a hand-written one is replaced).
+-- SECURITY DEFINER (it reads only NEW, with search_path ''), so repeat_count_end — up to 7306 days of work a call —
+-- is not callable by a signed-in account at all (security review, 10.11.2026).
 create or replace function public.schedule_block_repeat_end()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -788,7 +791,7 @@ create or replace function public.apply_calendar_readback(p_user uuid, p_event j
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_id      text := nullif(p_event ->> 'id', '');
@@ -1178,10 +1181,10 @@ revoke all on function public.item_url_ok(text) from public, anon;
 grant execute on function public.item_url_ok(text) to authenticated, service_role;
 revoke all on function public.time_block_calendar_fill() from public, anon;
 grant execute on function public.time_block_calendar_fill() to authenticated, service_role;
-revoke all on function public.repeat_count_end(text, integer[], integer, text, date[], date, integer) from public, anon;
-grant execute on function public.repeat_count_end(text, integer[], integer, text, date[], date, integer) to authenticated, service_role;
-revoke all on function public.schedule_block_repeat_end() from public, anon;
-grant execute on function public.schedule_block_repeat_end() to authenticated, service_role;
+revoke all on function public.repeat_count_end(text, integer[], integer, text, date[], date, integer) from public, anon, authenticated;
+grant execute on function public.repeat_count_end(text, integer[], integer, text, date[], date, integer) to service_role;
+revoke all on function public.schedule_block_repeat_end() from public, anon, authenticated;
+grant execute on function public.schedule_block_repeat_end() to service_role;
 -- The read-backs stay the service role's only (a SECURITY DEFINER function a browser could otherwise call).
 revoke all on function public.apply_calendar_readback(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.apply_calendar_readback(uuid, jsonb) to service_role;

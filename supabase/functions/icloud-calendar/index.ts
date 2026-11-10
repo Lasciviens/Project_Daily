@@ -2289,7 +2289,8 @@ export function masterAlarms(ics: string, uid: string): string[][] | null {
     if (line === 'END:VEVENT') { if (cur) events.push(cur); cur = null; continue }
     if (!cur) continue
     if (/^BEGIN:/.test(line)) { if (depth === 0 && line === 'BEGIN:VALARM') alarm = []; depth++; continue }
-    if (/^END:/.test(line)) { depth--; if (depth === 0 && line === 'END:VALARM') cur.alarms.push(alarm); continue }
+    // A stray END inside an event: the object isn't one the app can read safely (never a guess at its alarms).
+    if (/^END:/.test(line)) { depth--; if (depth < 0) return null; if (depth === 0 && line === 'END:VALARM') cur.alarms.push(alarm); continue }
     if (depth === 1) { alarm.push(line); continue }
     if (depth > 1) continue
     if (/^UID[;:]/.test(line)) cur.uid = textOf(line).trim()
