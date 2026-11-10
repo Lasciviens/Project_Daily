@@ -74,10 +74,16 @@ function types(node: Json): string[] {
   return (Array.isArray(t) ? t : [t]).filter((x): x is string => typeof x === 'string').map(x => x.replace(/^https?:\/\/schema\.org\//, ''))
 }
 
-/** Parses "9 990,00", "9990.00", "kr 1.299,-", 2490 → a number, else null. */
+/** The longest text read as a price: "kr 1 234 567,00" and the like are far shorter (a page's longer text is no price). */
+const PRICE_TEXT_MAX = 64
+
+/**
+ * Parses "9 990,00", "9990.00", "kr 1.299,-", 2490 → a number, else null. A text longer than PRICE_TEXT_MAX is
+ * none, before any pattern runs on it (80 000 dashes took 4.9 s through the trailing-dash pattern).
+ */
 export function parsePrice(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : null
-  if (typeof v !== 'string') return null
+  if (typeof v !== 'string' || v.length > PRICE_TEXT_MAX) return null
   let s = v.replace(/[^\d.,-]/g, '').replace(/,-$/, '').replace(/-+$/, '')
   if (!/\d/.test(s)) return null
   const lastComma = s.lastIndexOf(','), lastDot = s.lastIndexOf('.')
@@ -97,13 +103,26 @@ export function parsePrice(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-/** Every JSON-LD node on the page, flattening arrays and `@graph`. */
+/**
+ * Every JSON-LD node on the page, flattening arrays and `@graph`. One pass over the page: each `<script` tag, its
+ * `>` and its `</script>` are found in turn, and the scan stops at the first tag that never ends or never closes —
+ * one pattern over the whole page took 6.4 s on 256 KiB of unclosed "<script " (it rescanned the rest for each).
+ */
 export function jsonLdNodes(html: string): Json[] {
   const out: Json[] = []
-  const re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html))) {
-    const raw = m[1].trim().replace(/^<!--/, '').replace(/-->$/, '').replace(/^\/\/<!\[CDATA\[/, '').replace(/\/\/\]\]>$/, '').trim()
+  const open = /<script/gi, close = /<\/script>/gi
+  for (let at = 0; ;) {
+    open.lastIndex = at
+    const tag = open.exec(html)
+    if (!tag) break
+    const tagEnd = html.indexOf('>', tag.index)
+    if (tagEnd < 0) break
+    close.lastIndex = tagEnd + 1
+    const end = close.exec(html)
+    if (!end) break
+    at = end.index + end[0].length
+    if (!/type\s*=\s*["']application\/ld\+json["']/i.test(html.slice(tag.index, tagEnd))) continue
+    const raw = html.slice(tagEnd + 1, end.index).trim().replace(/^<!--/, '').replace(/-->$/, '').replace(/^\/\/<!\[CDATA\[/, '').replace(/\/\/\]\]>$/, '').trim()
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { continue }
     const stack: unknown[] = [parsed]
@@ -312,21 +331,30 @@ export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsR
   return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
 }
 
-/** Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? A two-pointer match: no backtracking blow-up, whatever the pattern. */
+/**
+ * Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? Leftmost-greedy over
+ * the pieces between the `*`s: the first piece must start the path, each next one is found once, after where the
+ * last one ended (for `*` alone the leftmost find is always a match if any is), and the last one must end the path
+ * when the pattern ends in `$`. One search per piece — a two-pointer match that retried took a minute on 5 000
+ * hostile rules and a 16 000-character path.
+ */
 function robotsMatch(pattern: string, path: string): boolean {
   const anchored = pattern.endsWith('$')
-  const p = anchored ? pattern.slice(0, -1) : pattern
-  let i = 0, j = 0, star = -1, mark = 0
-  while (j < path.length) {
-    if (i < p.length && p[i] !== '*' && p[i] === path[j]) { i++; j++ }
-    else if (i < p.length && p[i] === '*') { star = i++; mark = j }
-    else if (i === p.length && !anchored) return true
-    else if (star >= 0) { i = star + 1; j = ++mark }
-    else return false
+  const pieces = (anchored ? pattern.slice(0, -1) : pattern).split('*')
+  if (!path.startsWith(pieces[0])) return false
+  let pos = pieces[0].length
+  if (pieces.length === 1) return !anchored || pos === path.length
+  for (let k = 1; k < pieces.length - 1; k++) {
+    const at = path.indexOf(pieces[k], pos)
+    if (at < 0) return false
+    pos = at + pieces[k].length
   }
-  while (i < p.length && p[i] === '*') i++
-  return i === p.length
+  const last = pieces[pieces.length - 1]
+  return anchored ? path.length - last.length >= pos && path.endsWith(last) : path.indexOf(last, pos) >= 0
 }
+
+/** The longest path + query matched against robots rules and read (as a link is kept, 2 048 characters): a longer one is not read now. */
+export const MAX_PATH_CHARS = 2048
 
 /**
  * Whether robots rules let us read `pathAndQuery` (RFC 9309 §2.2.2): the longest matching pattern decides,

@@ -12,7 +12,7 @@
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
-const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows } = require('../src/features/shop/priceRead')
+const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows, MAX_PATH_CHARS } = require('../src/features/shop/priceRead')
 const W = require('../src/features/shop/watchWords')
 const { formatTime } = require('../src/shared/utils/dateFormat')
 
@@ -222,6 +222,39 @@ console.log('\n9 · robots.txt (RFC 9309), on the files the sites served on 10.1
   const t0 = Date.now()
   const slow = may(hostile, '/' + 'a'.repeat(2000))
   check('a hostile file (3 000 rules of nested wildcards on a 2 000-letter path) is answered in time, without backtracking blow-up', slow === true && Date.now() - t0 < 3000, `${Date.now() - t0} ms`)
+}
+
+console.log('\n17 · A hostile page or robots.txt costs no more than a moment (the guardian review, 10.11.2026)')
+{
+  const timed = (fn) => { const t = process.hrtime.bigint(); const r = fn(); return { r, ms: Number(process.hrtime.bigint() - t) / 1e6 } }
+  const may = (text, p) => robotsAllows(robotsRules(text), p)
+  // (a) 5 000 rules "*a…ab" against a long path of a's: the old two-pointer matcher retried every star (9.3 s on 2 000 characters, 59 s on 16 000).
+  const rules = robotsRules('User-agent: *\n' + Array.from({ length: 5000 }, () => `Disallow: *${'a'.repeat(90)}b`).join('\n'))
+  // A link's path is cut at 2 048 characters before it is ever matched (fetchPage); 16 000 shows the matcher stays linear past that.
+  for (const [n, bound] of [[2000, 1500], [16000, 4000]]) {
+    const { r, ms } = timed(() => robotsAllows(rules, '/' + 'a'.repeat(n)))
+    check(`5 000 hostile rules against a ${n}-character path: answered (allowed — no b) in ${Math.round(ms)} ms (bound ${bound} ms)`, r === true && ms < bound, `${ms} ms`)
+  }
+  const { r: hit, ms: hitMs } = timed(() => robotsAllows(rules, '/' + 'a'.repeat(1999) + 'b'))
+  check('…and the same rules still disallow the path they match, as fast', hit === false && hitMs < 1500, `${hitMs} ms`)
+  check('the matcher keeps its answers: anchored, wildcards, pieces in order', !may('User-agent: *\nDisallow: /a*b*c$', '/axxbyyc') && may('User-agent: *\nDisallow: /a*b*c$', '/axxbyycd')
+    && may('User-agent: *\nDisallow: /a*c*b', '/abc') && !may('User-agent: *\nDisallow: /*.pdf$', '/x/y.pdf') && may('User-agent: *\nDisallow: /*.pdf$', '/x/y.pdf?z') && !may('User-agent: *\nDisallow: /p*', '/p'))
+  check('a link longer than a kept one is never matched: the fetch refuses a path + query over 2 048 characters (MAX_PATH_CHARS)', MAX_PATH_CHARS === 2048)
+  // (c) a price text far longer than any price: 80 000 dashes cost 4.9 s through the trailing-dash pattern.
+  const { r: dashes, ms: dashMs } = timed(() => parsePrice('-'.repeat(80000) + '1'))
+  check(`a price text of 80 000 dashes is no price, in ${Math.round(dashMs)} ms (bound 200 ms)`, dashes === null && dashMs < 200, `${dashMs} ms`)
+  const sixtyFour = ('kr 1 299,-').padStart(64, ' ')
+  check('…a price text of 64 characters still reads, 65 does not', parsePrice(sixtyFour) === 1299 && parsePrice(' ' + sixtyFour) === null)
+  const { r: viaPage, ms: pageMs } = timed(() => readPrice(`<script type="application/ld+json">${JSON.stringify({ '@type': 'Product', name: 'x', offers: { '@type': 'Offer', price: '-'.repeat(80000) + '1' } })}</script>`, 'https://shop.example/p'))
+  check(`…through a page too: no price, in ${Math.round(pageMs)} ms (bound 200 ms)`, viaPage.status === 'no_price' && pageMs < 200, `${pageMs} ms`)
+  // (d) 256 KiB of "<script " with no ">": one pattern over the whole page rescanned the rest for each (6.4 s).
+  const { r: tags, ms: tagMs } = timed(() => jsonLdNodes('<script '.repeat(32768)))
+  check(`256 KiB of unclosed "<script " is read in one pass: nothing, in ${Math.round(tagMs)} ms (bound 300 ms)`, tags.length === 0 && tagMs < 300, `${tagMs} ms`)
+  const { r: tagsPage, ms: tagsPageMs } = timed(() => readPrice('<script '.repeat(32768), 'https://shop.example/p'))
+  check(`…the same page through readPrice: no price, in ${Math.round(tagsPageMs)} ms (bound 300 ms)`, tagsPage.status === 'no_price' && tagsPageMs < 300, `${tagsPageMs} ms`)
+  const block = b => `<script type="application/ld+json">${JSON.stringify(b)}</script>`
+  check('the one-pass reader still takes every block, in any case and with other scripts between', jsonLdNodes(`<SCRIPT TYPE='application/ld+json'>{"@type":"Product","name":"A"}</SCRIPT><script>var x = "<b>"</script>${block({ '@type': 'Product', name: 'B' })}`).map(n => n.name).join() === 'A,B')
+  check('…and stops at the first script that never closes (what follows it is not read)', jsonLdNodes(`${block({ '@type': 'Product', name: 'A' })}<script>never closed${block({ '@type': 'Product', name: 'B' })}`).map(n => n.name).join() === 'A')
 }
 
 console.log('\n13 · What the app says under a pasted link (watchWords.readNote, the add sheet and Add a model alike)')
@@ -469,6 +502,14 @@ async function handlerChecks() {
   call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked })
   r = await call({ action: 'read', url: plain })
   check('a robots.txt that answers 404 sets no rules: the page is read', r.result?.status === 'ok' && r.result?.low === 9990 && robotsAsked.length === 1 && fetched.length === 1)
+
+  const long = `https://plain.example/p?${'q'.repeat(3000)}`
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(long), pages: { [long]: { body: page(TCL) } }, fetched, writes, robotsAsked })
+  r = await call({ action: 'read', url: long })
+  const lc = await call({ action: 'check', ids: ['i1'] })
+  check('a link with a path + query over 2 048 characters is not read now: status error, "The link is too long to read" — no robots.txt asked, no page fetched',
+    r.error === 'The link is too long to read' && lc.results?.[0]?.status === 'error' && lc.results?.[0]?.error === 'The link is too long to read' && fetched.length === 0 && robotsAsked.length === 0, JSON.stringify([r, lc]))
 
   const hop = 'https://other.example/item'
   fetched = []; writes = []; robotsAsked = []
