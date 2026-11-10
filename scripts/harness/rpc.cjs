@@ -3,7 +3,8 @@
 // Each answer has the real function's shape, worked out from the made-up rows.
 // A function missing here answers [] (postgrest.cjs) and HARNESS_LOG=1 names it.
 // Writes made through an RPC (saving an item, ticking a repeat's day) are not
-// simulated: add an answer here when a test needs one.
+// simulated unless a test needed one (Needs a look's three, Shop's sale and
+// delete with their Undo): add an answer here when a test needs one.
 
 const { randomUUID } = require('node:crypto')
 
@@ -71,6 +72,74 @@ const RPCS = {
   shop_signal_snooze: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, snoozed_until: a.p_until }), a.p_subject),
   shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null }), a.p_subject),
   shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null), a.p_subject),
+
+  // 137/187: a sale as one call — the thing and the accessories sold with it get the disposal facts (each its own
+  // share), kept accessories move or stand alone, the money may go to another thing; what Undo needs is kept on
+  // the row (`sale_undo`, as 187 does). Rates: NOK only (fx 1), else pending.
+  shop_record_sale: (a, store) => {
+    const items = store.tables.shop_items ?? []
+    const rows = a.p_rows ?? []
+    const group = rows.length > 1 ? randomUUID() : null
+    const fields = ['disposal', 'disposed_on', 'sale_price', 'sale_currency', 'sale_fx_nok', 'sale_fx_source', 'sold_to', 'sale_group', 'accessory_of']
+    for (const r of rows) {
+      const it = items.find(i => i.id === r.id)
+      if (!it) continue
+      const before = Object.fromEntries(fields.map(f => [f, it[f] ?? null]))
+      Object.assign(it, {
+        disposal: a.p_disposal, disposed_on: a.p_on, sale_price: r.sale_price, sale_currency: a.p_currency,
+        sale_fx_nok: a.p_currency === 'NOK' ? 1 : null, sale_fx_source: a.p_currency === 'NOK' ? 'fixed' : null,
+        sold_to: a.p_sold_to ?? null, sale_group: group, sale_undo: { row: before, keep: [], link: null }, updated_at: new Date().toISOString(),
+      })
+    }
+    const first = items.find(i => i.id === rows[0]?.id)
+    for (const k of a.p_keep ?? []) {
+      const acc = items.find(i => i.id === k.id)
+      if (!acc) continue
+      first?.sale_undo.keep.push({ id: acc.id, accessory_of: acc.accessory_of ?? null })
+      acc.accessory_of = k.move_to ?? null
+    }
+    if (a.p_to && first) {
+      const link = { id: randomUUID(), user_id: store.ownerId, from_id: first.id, to_id: a.p_to, amount: a.p_to_amount ?? null, created_at: new Date().toISOString() }
+      ;(store.tables.shop_item_links ??= []).push(link)
+      first.sale_undo.link = link.id
+    }
+    return null
+  },
+  shop_undo_sale: (a, store) => {
+    const items = store.tables.shop_items ?? []
+    const it = items.find(i => i.id === a.p_id)
+    if (!it || !it.sale_undo) return null
+    const undo = it.sale_undo
+    const together = it.sale_group ? items.filter(i => i.sale_group === it.sale_group) : [it]
+    for (const r of together) { if (r.sale_undo) Object.assign(r, r.sale_undo.row, { sale_undo: null }) }
+    for (const k of undo.keep) { const acc = items.find(i => i.id === k.id); if (acc) acc.accessory_of = k.accessory_of }
+    if (undo.link) store.tables.shop_item_links = (store.tables.shop_item_links ?? []).filter(l => l.id !== undo.link)
+    return null
+  },
+  // 187: Delete answers the snapshot its Undo puts back (the rows, their links and costs); restore writes it back.
+  shop_delete_items: (a, store) => {
+    const ids = new Set(a.p_ids ?? [])
+    const take = (name, hit) => {
+      const all = store.tables[name] ?? []
+      const out = all.filter(hit)
+      store.tables[name] = all.filter(r => !hit(r))
+      return out
+    }
+    return {
+      items: take('shop_items', r => ids.has(r.id)),
+      links: take('shop_item_links', r => ids.has(r.from_id) || ids.has(r.to_id)),
+      costs: take('shop_item_costs', r => ids.has(r.item_id)),
+      children: [],
+    }
+  },
+  shop_restore_items: (a, store) => {
+    const s = a.p_snapshot ?? {}
+    for (const [name, key] of [['shop_items', 'items'], ['shop_item_links', 'links'], ['shop_item_costs', 'costs']]) {
+      const rows = (store.tables[name] ??= [])
+      for (const r of s[key] ?? []) if (!rows.some(x => x.id === r.id)) rows.push(r)
+    }
+    return null
+  },
 
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),

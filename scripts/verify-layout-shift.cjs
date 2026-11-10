@@ -239,6 +239,16 @@ check('Shop and Wishes: the filters show while loading — Shop\'s only where th
     && /filters: \(wishes\.length > 0 \|\| isLoading\)/.test(code('src/features/wishes/pages/WishesPage.tsx')))
 check('Shop: the tiles wait for their own reads and the default pictures, so nothing appears under a drawn tile',
   /const tilesLoading = isLoading \|\| watchQ\.isLoading \|\| stats\.loading \|\| !pictures\.ready/.test(wishlist))
+const owned = code('src/features/shop/components/owned/OwnedView.tsx')
+check('Shop Owned: the filter bar keeps its room while loading where it showed last time (the first visit keeps it — it arriving after the read moved the list 0.16 on a phone), the summary line keeps its own, Fold all keeps its place in the row, and the rows wait for the default pictures (step A)',
+  /const showFilters = useRememberedFlag\('shop:ownedFilters', anything, !isLoading && !itemsQ\.isError, true\)/.test(owned)
+    && /filters: showFilters && \(/.test(owned)
+    && /<KeepRoom ids="shop:ownedSummary" loading=\{isLoading\} remember=\{!itemsQ\.isError\}/.test(owned)
+    && /pending=\{isLoading && foldable\}/.test(owned)
+    && /const listLoading = isLoading \|\| !pictures\.ready/.test(owned))
+check('Shop: Owned\'s Things loads on its own in a SkeletonTab (a screen of room), preloaded with Stats in idle time',
+  /<Suspense fallback=\{<SkeletonTab \/>\}>\s*<OwnedView /.test(code('src/features/shop/pages/ShopPage.tsx'))
+    && /const OTHER_VIEWS = \[OwnedView, ShopStatsView\]/.test(code('src/features/shop/pages/ShopPage.tsx')))
 const library = code('src/features/books/components/LibraryTab.tsx')
 check('Books: Reading now keeps room while the library loads only for as many books as it showed last time (none the first time)',
   /reading: isLoading \? readingRoom > 0 && <ReadingNowSkeleton books=\{readingRoom\} \/>/.test(library) && !/isLoading \? <ReadingNowSkeleton \/>/.test(library))

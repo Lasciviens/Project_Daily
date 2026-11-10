@@ -66,7 +66,9 @@ const BOARDS = [
   ['Training · Coach', T.COACH_BOARD, T.COACH_SECTIONS, false],
 ]
 // Sections that live inside another card on a phone and become their own card on a wide page.
-const INSIDE_ON_PHONE = { 'Health · sleep': ['breathing'], 'Health · cardio': ['recovery'], 'Health · goal': ['goals', 'protein', 'energy'] }
+const INSIDE_ON_PHONE = { 'Health · sleep': ['breathing'], 'Health · cardio': ['recovery'], 'Health · goal': ['goals', 'protein', 'energy'],
+  // Owned's side pane: on a phone the record opens full screen instead (step A, 10.11.2026).
+  'Shop · Owned': ['pane'] }
 
 console.log('every layout')
 for (const [name, board, sections] of BOARDS) {
@@ -106,10 +108,10 @@ check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIEN
 check('Ingredients + Log + Wishes: the collection spans every other track', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => B.resolveBoardLayout(b, s).columns[1].span === s - 1)))
 check('Wishes: nothing sits above the rail (the intro line is in the header band)', [2, 3, 4].every(s => eq(B.resolveBoardLayout(Wi.WISH_BOARD, s).top, [])))
-check('Shop Owned: the summary line right above the things, first; Needs a look (in Coming up\'s place) in a sticky rail on the right (owner, 14.10.2026 / 09.11.2026)', [2, 3, 4].every(s => {
+check('Shop Owned: the summary line right above the things, first; Needs a look (in Coming up\'s place) in a sticky rail on the right, where a tapped row\'s record takes its place (owner, 14.10.2026 / 09.11.2026; the side pane, 10.11.2026)', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(Sh.OWNED_BOARD, s)
   const last = l.columns[l.columns.length - 1]
-  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['summary', 'groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['look']) && last.sticky
+  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['summary', 'groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['look', 'pane']) && last.sticky
 }))
 check('Shop Owned on a phone: Needs a look (one line) first, then the filters and the summary line right above the things', eq(Sh.OWNED_BOARD[1], ['look', 'filters', 'summary', 'groups']))
 check('Shop Wishlist: Owned\'s shape — the filters across the top, the tiles in every track but the last, Needs a look in a sticky rail on the right (owner, 14.10.2026)', [2, 3, 4].every(s => {
