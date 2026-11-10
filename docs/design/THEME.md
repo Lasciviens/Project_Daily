@@ -471,8 +471,10 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     (Needs a look), a tapped row's detail takes that part's place in the same track — the list keeps its
     tracks and its scroll, nothing reflows — and closing it (Back through `useHistoryDismiss`, ×, Esc)
     brings the part back. No first-row fallback: it opens on a tap, and a change not saved asks before
-    it closes or another row opens. The pane is a `card` of the same `max-h-[calc(100dvh-7rem)]`, its header
-    (title, state, ×) and footer fixed and its body scrolling; the detail is the same component as the
+    it closes or another row opens. The pane is a `card` as tall as the room it has on screen (its bottom
+    1rem above the screen's while the page's top still shows above it; at most the sticky rail's room,
+    `max-h-[calc(100dvh-7rem)]`), so its footer is never below the screen — its header (title, state, ×) and
+    footer fixed and its body scrolling; the detail is the same component as the
     phone's full-screen popup (one body, two frames), sized on its own width (`@container`). Below 60rem
     the section is absent and a tap opens the popup.
 - **Collections**: `grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start` (column count

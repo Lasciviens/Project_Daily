@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { X } from 'lucide-react'
 import { IconButton, TonePill, Truncate } from '../../../../shared/ui'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
@@ -38,6 +38,32 @@ export function RecordPane({ id, fact, onClose, onOpen, onDirty }: {
   )
 }
 
+/**
+ * The pane's bottom stays 1rem above the screen's while the page is not yet scrolled to where the rail sticks
+ * (the page's top shows above it): its height is the room it has on screen, so its footer and the end of its
+ * body are never below the screen — and once it sticks, the sticky rail's room (PANE_HEIGHT). The list never
+ * moves for it; the pane is alone in its track.
+ */
+function useFitToScreen(ref: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    const scroller = el?.closest<HTMLElement>('[data-app-scroller]')
+    if (!el || !scroller) return
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    const fit = () => {
+      const room = Math.floor(scroller.getBoundingClientRect().bottom - el.getBoundingClientRect().top - rem)
+      el.style.maxHeight = `${Math.max(20 * rem, room)}px`
+    }
+    fit()
+    scroller.addEventListener('scroll', fit, { passive: true })
+    window.addEventListener('resize', fit)
+    return () => {
+      scroller.removeEventListener('scroll', fit)
+      window.removeEventListener('resize', fit)
+    }
+  }, [ref])
+}
+
 function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: 'value'; onClose: () => void; onDirty: (dirty: boolean) => void }) {
   const r = useShopRecord(item, fact, onClose)
   const ref = useRef<HTMLElement>(null)
@@ -46,6 +72,7 @@ function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: '
   useEffect(() => () => onDirty(false), [onDirty])
   // The record takes the focus as it opens, without scrolling the page (the list keeps its place).
   useEffect(() => { ref.current?.focus({ preventScroll: true }) }, [])
+  useFitToScreen(ref)
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return
     e.stopPropagation()
