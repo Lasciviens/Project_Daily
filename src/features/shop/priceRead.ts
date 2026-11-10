@@ -290,27 +290,50 @@ export interface RobotsRule { allow: boolean; pattern: string }
 /** The product token our User-Agent names (`LascisBoard/1.0`): robots.txt's group for it applies, else its `*` group. */
 export const ROBOTS_TOKEN = 'LascisBoard'
 
-/** At most this many rules are read from one robots.txt (a hostile file can't make every check slow). */
-const ROBOTS_RULE_CAP = 5000
+/** The most rules read for our token from one robots.txt: more is a file that can't be read (not read now), never "allowed". */
+export const ROBOTS_RULE_CAP = 5000
 
-/** A robots.txt path, or a URL's path + query, with its octets percent-encoded one way (RFC 9309 §2.2.2): non-ASCII, spaces and controls encoded, hex in capitals. */
+/** Characters a URL may carry plain or percent-encoded alike (RFC 3986's unreserved ones): "%73" is "s". */
+const ROBOTS_UNRESERVED = /^[A-Za-z0-9._~-]$/
+
+/** Printable characters the URL parser percent-encodes in a path or a query: encoded on both sides, so a rule's `"` meets a link's `%22`. */
+const ROBOTS_ENCODED = '"\'<>`{}'
+
+/**
+ * A robots.txt path, or a URL's path + query, in one form for comparing (RFC 9309 §2.2.2): an encoded unreserved
+ * character decoded ("/%73earch" is "/search"), every other `%XX` kept, its hex in capitals ("%2F" stays "%2F"), and
+ * spaces, controls, non-ASCII and the characters the URL parser encodes (`"` `'` `<` `>` `` ` `` `{` `}`)
+ * percent-encoded as UTF-8 — the same on both sides, whichever way either was written.
+ */
 function robotsPath(s: string): string {
   let out = ''
-  for (const ch of s) {
-    const code = ch.codePointAt(0) as number
-    if (code > 0x20 && code < 0x7f) out += ch
+  for (let i = 0; i < s.length;) {
+    const hex = s[i] === '%' ? s.slice(i + 1, i + 3) : ''
+    if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+      const c = String.fromCharCode(parseInt(hex, 16))
+      out += ROBOTS_UNRESERVED.test(c) ? c : `%${hex.toUpperCase()}`
+      i += 3
+      continue
+    }
+    const code = s.codePointAt(i) as number
+    const ch = String.fromCodePoint(code)
+    i += ch.length
+    if (code > 0x20 && code < 0x7f && !ROBOTS_ENCODED.includes(ch)) out += ch
+    else if (code < 0x80) out += `%${code.toString(16).toUpperCase().padStart(2, '0')}`
     else { try { out += encodeURIComponent(ch) } catch { out += '%EF%BF%BD' } }
   }
-  return out.replace(/%[0-9a-f]{2}/gi, m => m.toUpperCase())
+  return out
 }
 
 /**
  * The rules a robots.txt gives `token` (RFC 9309): the groups that name it (any case, a version after "/"
  * left out), else those for `*`, their rules combined; [] when there are none — nothing is disallowed. An
  * empty `Disallow:` disallows nothing. Rules before any user-agent line, and records robots.txt doesn't
- * define (Sitemap, Crawl-delay …), are left out and end no group.
+ * define (Sitemap, Crawl-delay …), are left out and end no group. null when the groups for it hold more than
+ * ROBOTS_RULE_CAP rules: such a file is not read (the page isn't read now) — dropping rules past a cap could
+ * drop the one that refuses a page.
  */
-export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] {
+export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] | null {
   type Group = { agents: string[]; rules: RobotsRule[]; ruled: boolean }
   const groups: Group[] = []
   let current: Group | null = null
@@ -330,7 +353,8 @@ export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsR
   }
   const named = groups.filter(g => g.agents.includes(token.toLowerCase()))
   const chosen = named.length ? named : groups.filter(g => g.agents.includes('*'))
-  return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
+  const rules = chosen.flatMap(g => g.rules)
+  return rules.length > ROBOTS_RULE_CAP ? null : rules
 }
 
 /**

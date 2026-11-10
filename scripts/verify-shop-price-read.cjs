@@ -12,7 +12,7 @@
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
-const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows, MAX_PATH_CHARS } = require('../src/features/shop/priceRead')
+const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows, MAX_PATH_CHARS, ROBOTS_RULE_CAP } = require('../src/features/shop/priceRead')
 const W = require('../src/features/shop/watchWords')
 const { formatTime } = require('../src/shared/utils/dateFormat')
 
@@ -238,6 +238,24 @@ console.log('\n9 · robots.txt (RFC 9309), on the files the sites served on 10.1
     && !may('\uFEFFUser-agent: * # all\r\nDisallow: /a # not a\r\n', '/a'))
   check('octets compared one way: an encoded path matches its pattern, whatever the case of its hex', !may('User-agent: *\nDisallow: /blåbær', '/bl%C3%A5b%C3%A6r') && !may('User-agent: *\nDisallow: /a%2fb', '/a%2Fb'))
   check('/robots.txt itself is always allowed', may('User-agent: *\nDisallow: /', '/robots.txt'))
+  // RFC 9309 §2.2.2: an encoded unreserved character is the character (the reviewer's robots_enc.cjs: these passed).
+  const seen = u => { const x = new URL(u); return x.pathname + x.search }
+  const shopRules = 'User-agent: *\nDisallow: /private\nDisallow: /~staff\nDisallow: /search\nDisallow: /*?q=\n'
+  check('a link that spells a refused path with encoded letters is refused too: /%70rivate, /%7Estaff, /%73earch, ?%71=',
+    ['https://shop.example/%70rivate/x', 'https://shop.example/%7Estaff', 'https://shop.example/%73earch?x', 'https://shop.example/p?%71=1']
+      .every(u => !may(shopRules, seen(u))), ['https://shop.example/%70rivate/x', 'https://shop.example/%7Estaff', 'https://shop.example/%73earch?x', 'https://shop.example/p?%71=1'].map(u => `${seen(u)}:${may(shopRules, seen(u))}`).join(' '))
+  check('…Prisjakt\'s own Disallow: /search?* refuses /%73earch?search=x', !may(prisjakt, seen('https://www.prisjakt.no/%73earch?search=x')))
+  check('…while case still counts (/PRIVATE is another path), and a reserved %2F stays itself', may(shopRules, seen('https://shop.example/PRIVATE/x'))
+    && may('User-agent: *\nDisallow: /a/b', '/a%2Fb') && !may('User-agent: *\nDisallow: /a%2fb', '/a%2Fb'))
+  check('a rule with " < > { } ` or \' meets the link the URL parser encoded, in the path and in the query',
+    !may('User-agent: *\nDisallow: /a"b', seen('https://shop.example/a"b')) && !may('User-agent: *\nDisallow: /x{y}', seen('https://shop.example/x{y}'))
+    && !may('User-agent: *\nDisallow: /<p>', seen('https://shop.example/<p>')) && !may('User-agent: *\nDisallow: /`t`', seen('https://shop.example/`t`'))
+    && !may('User-agent: *\nDisallow: /*?q={x}', seen('https://shop.example/s?q={x}')) && !may("User-agent: *\nDisallow: /*?q='x'", seen("https://shop.example/s?q='x'"))
+    && !may('User-agent: *\nDisallow: /a%22b', seen('https://shop.example/a"b')), ['/a"b', '/x{y}', '/s?q={x}', "/s?q='x'"].map(p => seen('https://shop.example' + p)).join(' '))
+  const many = n => 'User-agent: *\n' + Array.from({ length: n }, (_, i) => `Disallow: /p${i}`).join('\n')
+  check(`a file with more than ${ROBOTS_RULE_CAP} rules for us is not read (null: the page isn't read now) — never rules dropped past a cap`,
+    robotsRules(many(ROBOTS_RULE_CAP + 1)) === null && robotsRules(many(ROBOTS_RULE_CAP))?.length === ROBOTS_RULE_CAP
+    && robotsRules('User-agent: other\n' + many(ROBOTS_RULE_CAP + 1).replace('User-agent: *\n', '') + '\nUser-agent: *\nDisallow: /x')?.length === 1)
   const hostile = 'User-agent: *\n' + Array.from({ length: 3000 }, () => 'Disallow: /*a*a*a*a*a*a*a*a*a*a*b').join('\n')
   const t0 = Date.now()
   const slow = may(hostile, '/' + 'a'.repeat(2000))
@@ -530,6 +548,14 @@ async function handlerChecks() {
   const lc = await call({ action: 'check', ids: ['i1'] })
   check('a link with a path + query over 2 048 characters is not read now: status error, "The link is too long to read" — no robots.txt asked, no page fetched',
     r.error === 'The link is too long to read' && lc.results?.[0]?.status === 'error' && lc.results?.[0]?.error === 'The link is too long to read' && fetched.length === 0 && robotsAsked.length === 0, JSON.stringify([r, lc]))
+
+  fetched = []; writes = []; robotsAsked = []
+  const tooMany = 'User-agent: *\n' + Array.from({ length: 5001 }, (_, i) => `Disallow: /p${i}`).join('\n')
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked, robots: { 'https://plain.example/robots.txt': { body: tooMany } } })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const tw = writes.find(x => x.table === 'shop_price_watch')?.row
+  check('a robots.txt with more rules for us than 5 000 is "not read now": status error, "The site\'s rules for apps are too long to read", the page never fetched',
+    r.results?.[0]?.status === 'error' && tw?.error === "The site's rules for apps are too long to read" && fetched.length === 0, JSON.stringify([r, tw?.error]))
 
   const hop = 'https://other.example/item'
   fetched = []; writes = []; robotsAsked = []
