@@ -11,7 +11,7 @@ import { osloDay } from './groceryModel'
 import { nextWorkingDay } from './norwayHolidays'
 import { addMonths } from './ownModel'
 import { hostOn, isSearchPattern, linkHost } from './storeRows'
-import type { ShopLawRule, ShopRuleExclusion, ShopStore, ShopStoreRule } from './types'
+import type { ShopLawRule, ShopNewOffer, ShopRuleExclusion, ShopStore, ShopStoreRule } from './types'
 
 const ZONE = 'Europe/Oslo'
 const NBSP = ' '
@@ -59,10 +59,21 @@ export function storeSitePolicy(store: ShopStore, policyHosts: readonly string[]
   return null
 }
 
-/** The store whose name a price site shows for an offer ("Elkjøp" = "elkjop"): the same letters, or null. */
+/**
+ * The store whose name a price site shows for an offer: the same letters as its name ("Elkjøp" = "elkjop") or as one
+ * of its web addresses ("Proshop.no" = proshop.no), else null.
+ */
 export function storeOfShopName(name: string, stores: readonly ShopStore[]): ShopStore | null {
   const key = fold(name)
-  return key ? stores.find(s => fold(s.name) === key) ?? null : null
+  return key ? stores.find(s => fold(s.name) === key || s.hosts.some(h => fold(h) === key)) ?? null : null
+}
+
+/** A watch's new offers (191's new_offers) as offers price match reads, each shop found among the stores by its name. */
+export function offersOfWatch(newOffers: readonly ShopNewOffer[] | null | undefined, stores: readonly ShopStore[]): PriceOffer[] {
+  return (newOffers ?? []).map(o => ({
+    storeId: o.shop_name ? storeOfShopName(o.shop_name, stores)?.id ?? null : null, shop: o.shop_name ?? `Shop ${o.shop_id}`,
+    price: o.price, currency: o.currency, condition: 'new' as const, inStock: o.in_stock,
+  }))
 }
 
 /**
@@ -91,6 +102,17 @@ export function rulesInForce(store: ShopStore, rules: readonly ShopStoreRule[]):
   return rules.filter(r => r.store_id === store.id && !r.off && tierMatches(r, store))
 }
 
+/**
+ * A rule Ask AI wrote that the owner hasn't edited (guardian review, 10.11.2026): its free text is the assistant's,
+ * so it is named by its kind, its source comes first, and its date never wins on its own.
+ */
+export const unchecked = (rule: ShopStoreRule): boolean => rule.origin === 'ask_ai' && !rule.owner_edited
+
+/** A rule's name with its source in front when the assistant wrote it: "from Ask AI — check it: Elkjøp's 365-day returns". */
+function namedWithSource(rule: ShopStoreRule, store: ShopStore): string {
+  return unchecked(rule) ? `${sourceWords(rule)}: ${ruleName(rule, store)}` : `${ruleName(rule, store)}, ${sourceWords(rule)}`
+}
+
 /** Where a rule's facts come from: "typed 12.11.2026", "from Ask AI — check it", "read 10.11.2026". */
 export function sourceWords(rule: ShopStoreRule): string {
   if (rule.owner_edited) {
@@ -103,8 +125,8 @@ export function sourceWords(rule: ShopStoreRule): string {
 
 /** A rule's name: "Elkjøp's 30-day open purchase", "… for Kundeklubb members", "Elkjøp's Christmas returns". */
 export function ruleName(rule: ShopStoreRule, store: ShopStore): string {
-  const tier = rule.member_tier ? ` for ${rule.member_tier} members` : ''
-  if (rule.label) return `${possessive(store.name)} ${rule.label}${tier}`
+  const tier = rule.member_tier && !unchecked(rule) ? ` for ${rule.member_tier} members` : ''
+  if (rule.label && !unchecked(rule)) return `${possessive(store.name)} ${rule.label}${tier}`
   switch (rule.kind) {
     case 'open_purchase': return `${possessive(store.name)} ${rule.days}-day open purchase${tier}`
     case 'return': return `${possessive(store.name)} ${rule.days}-day returns${tier}`
@@ -268,6 +290,10 @@ function storeReturns(store: ShopStore, rules: readonly ShopStoreRule[], p: Purc
     if (!day) continue
     const h = holds(rule, p)
     if (h.holds === 'no') continue
+    if (unchecked(rule)) {
+      notes.push(`${namedWithSource(rule, store)} — until ${formatDate(day)}, not counted until you check it`)
+      continue
+    }
     if (h.holds === 'maybe') {
       notes.push(`${ruleName(rule, store)} may give until ${formatDate(day)} — if ${h.unknown.map(e => EXCLUSION_WORDS[e]).join(' and ')} (${sourceWords(rule)})`)
       continue
@@ -283,7 +309,7 @@ function storeReturns(store: ShopStore, rules: readonly ShopStoreRule[], p: Purc
     const conflict = new Set(group.map(g => g.day)).size > 1
     const words = conflict
       ? `${store.name} says ${group.map(g => `${g.rule.days !== null ? `${g.rule.days} days` : `until ${formatDate(g.day)}`} (${sourceWords(g.rule)})`).join(' and ')} — the earlier date is shown`
-      : `${ruleName(first.rule, store)}, ${sourceWords(first.rule)}`
+      : namedWithSource(first.rule, store)
     out.push({ day: first.day, name: ruleName(first.rule, store), words, ruleIds: group.map(g => g.rule.id), lawSlug: null, unsure: conflict, legalLastDay: null, fromStart: first.rule.kind !== 'seasonal_return' || first.rule.days !== null })
   }
   return out
@@ -323,7 +349,8 @@ export function purchaseDeadlines(
       words: `Return by ${formatDate(best.day)} — ${best.words}${also}${legalWords}${candidates.some(c => c.fromStart) ? fromWords : ''}`,
       legalLastDay: legal && legal > best.day ? legal : null, from,
       ruleIds: candidates.flatMap(c => c.ruleIds), lawSlug: candidates.find(c => c.lawSlug)?.lawSlug ?? null,
-      unsure: candidates.some(c => c.unsure),
+      // A rule Ask AI wrote and nobody checked may say more: the date shown is the earlier one, and unsure.
+      unsure: candidates.some(c => c.unsure) || (ctx.store ? rulesInForce(ctx.store, ctx.rules).some(r => RETURN_KINDS.has(r.kind) && unchecked(r)) : false),
     }
   }
 
@@ -375,8 +402,10 @@ export interface PriceMatch {
   /** The store's own new price on the same list, when it has one, and what the match saves on it. */
   ownPrice: number | null
   saves:    number | null
-  /** "Elkjøp matches Power: 2 990 there, read 05:23". */
+  /** "Elkjøp matches Power: 2 990 there, read 05:23 — its price match, typed 10.11.2026". */
   words:    string
+  /** The store's price-match rule is one Ask AI wrote and nobody checked. */
+  unsure:   boolean
   /** What the store's terms leave out that the list can't tell ("Elkjøp doesn't match campaign prices — check Power's isn't one"). */
   caveats:  string[]
 }
@@ -421,12 +450,15 @@ export function priceMatches(stores: readonly ShopStore[], rules: readonly ShopS
       }
     }
     if (!best || (own !== null && best.offer.price >= own)) continue
-    const caveats = best.rule.exclusions.filter(e => CAVEAT[e])
-      .map(e => `${store.name} doesn't match ${CAVEAT[e]} — check ${possessive(best!.name)} isn't one`)
+    const caveats = [
+      ...(unchecked(best.rule) ? [`${possessive(store.name)} price match is from Ask AI — check it before you ask at the till`] : []),
+      ...best.rule.exclusions.filter(e => CAVEAT[e]).map(e => `${store.name} doesn't match ${CAVEAT[e]} — check ${possessive(best!.name)} isn't one`),
+    ]
     out.push({
       store, rule: best.rule, offer: best.offer, matches: best.name, price: best.offer.price, currency: best.offer.currency,
       ownPrice: own, saves: own !== null ? own - best.offer.price : null,
-      words: `${store.name} matches ${best.name}: ${num(best.offer.price)} there, read ${readWords(readAt, now)}`, caveats,
+      words: `${store.name} matches ${best.name}: ${num(best.offer.price)} there, read ${readWords(readAt, now)} — its price match, ${sourceWords(best.rule)}`,
+      caveats, unsure: unchecked(best.rule),
     })
   }
   return out.sort((a, b) => (b.saves ?? -1) - (a.saves ?? -1) || a.price - b.price || a.store.name.localeCompare(b.store.name, 'en'))

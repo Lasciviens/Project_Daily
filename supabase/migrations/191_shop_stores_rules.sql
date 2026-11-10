@@ -16,12 +16,12 @@
 --    A seeded or page-read rule is never deleted by the app — it is turned off (`off`), so a later seed can't bring
 --    it back.
 -- 3. shop_law_rules — Norway's consumer law (Norway only, owner 10.11.2026), one row per rule, each citing its law:
---    the right to cancel (angrerett) — 14 days from receipt for a purchase at a distance (online, by phone) from a
---    business; none in a shop, none from a private seller (FINN) — and the right to complain (reklamasjon): 2 years,
---    5 for a thing meant to last much longer (forbrukerkjøpsloven § 27); 2 years between private persons
---    (kjøpsloven § 32). Counted from the day the buyer got the thing. The texts were written from the laws as
---    published on Lovdata; they were not re-read live for this change (no live sites in it) — `checked_on` is the
---    day the rows were written.
+--    the right to cancel (angrerett, angrerettloven §§ 1, 6, 21) — 14 days from receipt for a purchase at a distance
+--    (online, by phone) or away from the shop from a business, a last day on a weekend or holiday moving to the next
+--    working day; none in a shop; none from a private seller (the seller decides, never the marketplace) — and the
+--    right to complain (reklamasjon): 2 years from delivery, 5 for a thing or a part of it meant to last much longer
+--    (forbrukerkjøpsloven § 27); 2 years between private persons (kjøpsloven § 32). Checked against Stortinget's
+--    enacted texts, Forbrukertilsynet and Forbrukerrådet on 10.11.2026 (`checked_on`); `law_url` points at Lovdata.
 --    · No user_id: the law is the same for every account (reference data, like 188's shop_site_policies). App users
 --      read it (owner lock); only migrations and the service role write it.
 --    · No audit trigger: not user-authored — written only by migrations (their history is git).
@@ -30,6 +30,12 @@
 --    = the owner turned it off); any other slug is a deal day of the owner's own. Reset = the row goes (190's row
 --    shows again). 190's shared rows stay as they are and a migration may change them freely: the owner's row is
 --    another row, so their edit is never overwritten.
+-- 5. shop_items gains a purchase's own facts: bought_channel (online, in_store), arrived_on (on or after the purchase's
+--    Oslo day, not after today), extra_warranty_until, receipt_note (≤ 2 000 characters), search_opened_on ("Search
+--    opened 10.11.2026" on a wish) — each bounded, the cross-column rules in shop_items_rules' new step h (190's
+--    function word for word otherwise). shop_price_watch gains new_offers: Prisjakt's new offers, one per shop, at
+--    most 50, each {shop_id, shop_name, price, currency, in_stock}, checked by shop_new_offers_ok and carried through
+--    Delete's Undo (shop_restore_price_history, 190's with the column). 190's signal list gains price_match.
 --
 -- Per account or shared? The stores and their rules are PER ACCOUNT (user_id, the owner policy, audited, the
 -- owner lock), seeded into each account by shop_store_seed(); the law stays shared. Why: the owner edits the rules
@@ -55,7 +61,11 @@
 --      origin 'ask_ai' ("from Ask AI — check it"), its source is what it wrote, it may cite only the store's own
 --      pages, and it may change or delete only its own rules the owner hasn't edited. A later page reader gets its
 --      own door in its own migration; until then nothing else writes these tables as the service role;
---    · anyone else (a migration, the SQL editor, a cascade of a deleted account) — trusted, as written.
+--    · anyone else (a migration, the SQL editor, a cascade of a deleted account) — trusted, as written. So no
+--      SECURITY DEFINER function may write these tables but the seed's trigger (it would run as its owner, trusted);
+--      verify-db-shop-rules checks every migration for one.
+--    Free text (a label, a member tier, the store's words, a name) is one line, squeezed, with no control, zero-width
+--    or direction characters (shop_plain_text_ok) — whoever writes it.
 --
 -- Seeds: only what has a source; unknown rules are left out, never guessed (owner, 10.11.2026). Stores: Prisjakt,
 -- FINN, Tise, Elkjøp, Power, Jernia, Komplett, Proshop, Clas Ohlson, XXL, Jula and Dustin. Rules: Elkjøp's 30-day
@@ -66,12 +76,14 @@
 -- shows its form: Elkjøp's (`/search?q=`, its product page's search form, 10.11.2026).
 --
 -- Seeded into every account in app_allowed_users now, and into an account added later (a trigger on
--- app_allowed_users, the SQL editor's insert). The audit trigger is attached after the first seed, so Activity
--- doesn't list the seed as a change of the owner's.
+-- app_allowed_users, the SQL editor's insert). A seed's own writes are not the owner's changes: the first seed runs
+-- before the audit trigger is attached, and every seed run takes its own rows out of its transaction's audit log
+-- (that account, these two tables), so Activity never lists a seed nor offers an Undo of it.
 --
--- Functions: search_path ''; the rules triggers and the resets run as the caller; only the trigger that seeds a new
+-- Functions: search_path ''; the rules triggers and the resets run as the caller; 190's shop_restore_price_history
+-- stays SECURITY DEFINER for signed-in callers (bound to the rows Undo put back, as before); the trigger that seeds a new
 -- account is SECURITY DEFINER (it runs the seed for the account just added, nothing else) and no role may call it;
--- the seed itself is for migrations only. Safe to re-run: a second run writes nothing. Adds rows only (the seeds).
+-- the seed itself is for migrations only. Safe to re-run: a second run writes nothing. Adds tables, columns and rows (the seeds); changes no row.
 -- No BEGIN/COMMIT: the deploy runs it as one transaction.
 
 -- ─── 0. Small checks the tables use ──────────────────────────────────────────
@@ -159,20 +171,48 @@ as $$
     else false end
 $$;
 
+-- One line of text as the app shows it: whitespace runs (spaces, tabs, line breaks, no-break and other Unicode
+-- spaces) squeezed to one space, the ends trimmed, blank = none (guardian review, 10.11.2026: a rule's label came
+-- in with line breaks and no-break-space padding).
+create or replace function public.shop_one_line(p text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select nullif(pg_catalog.btrim(pg_catalog.regexp_replace(p, '[[:space:]\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+', ' ', 'g')), '')
+$$;
+
+-- Text that can't pass for something else on screen (the same review: a label with U+202E turned its words
+-- around and "read 10.11.2026" typed into it imitated a source): no control characters, no zero-width or
+-- direction marks (U+200B–U+200F, U+202A–U+202E, U+2066–U+2069, U+FEFF). `p_lines` lets line breaks through
+-- (an ad template, a receipt note); one line must also be squeezed (shop_one_line).
+create or replace function public.shop_plain_text_ok(p text, p_lines boolean default false)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p is null or (
+    p !~ '[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]'
+    and case when p_lines then p !~ '[\u0001-\u0009\u000b-\u001f\u007f-\u009f]'
+             else p !~ '[[:cntrl:]\u0080-\u009f]' and p = public.shop_one_line(p) end)
+$$;
+
 -- ─── 1. Stores and marketplaces ──────────────────────────────────────────────
 create table if not exists public.shop_stores (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
   seed_key      text check (seed_key is null or seed_key ~ '^[a-z][a-z0-9_]{0,39}$'),
   kind          text not null check (kind in ('shop', 'marketplace', 'price_site', 'refurbisher')),
-  name          text not null check (char_length(name) between 1 and 80 and name = btrim(name)),
+  name          text not null check (char_length(name) between 1 and 80 and public.shop_plain_text_ok(name)),
   country       text not null check (country ~ '^[A-Z]{2}$'),
   currency      text not null check (currency ~ '^[A-Z]{3}$'),
   hosts         text[] not null check (public.shop_hosts_ok(hosts)),
   search_url    text check (search_url is null or public.shop_search_url_ok(search_url, hosts)),
-  ad_template   text check (ad_template is null or char_length(ad_template) between 1 and 4000),
+  ad_template   text check (ad_template is null or (char_length(ad_template) between 1 and 4000 and public.shop_plain_text_ok(ad_template, true))),
   ad_language   text check (ad_language is null or ad_language ~ '^[a-z]{2,3}$'),
-  member_tier   text check (member_tier is null or (char_length(member_tier) between 1 and 60 and member_tier = btrim(member_tier))),
+  member_tier   text check (member_tier is null or (char_length(member_tier) between 1 and 60 and public.shop_plain_text_ok(member_tier))),
   hidden        boolean not null default false,
   origin        text not null default 'owner' check (origin in ('seed', 'page', 'owner')),
   source_url    text check (source_url is null or public.shop_https_ok(source_url)),
@@ -235,14 +275,16 @@ begin
     return old;
   end if;
 
-  new.name := pg_catalog.btrim(new.name);
-  new.member_tier := nullif(pg_catalog.btrim(new.member_tier), '');
+  new.name := public.shop_one_line(new.name);
+  new.member_tier := public.shop_one_line(new.member_tier);
   new.hosts := array(select distinct pg_catalog.lower(pg_catalog.btrim(h)) from pg_catalog.unnest(new.hosts) h order by 1);
   if tg_op = 'UPDATE' then
+    if v_door <> 'trusted' then new.id := old.id; end if;
     new.user_id := old.user_id;
     new.created_at := old.created_at;
-  else
-    new.created_at := least(coalesce(new.created_at, pg_catalog.now()), pg_catalog.now());
+  elsif v_door <> 'trusted' then
+    -- A first time between 2000 and now (an Undo puts the row's own back; '-infinity' would hide it).
+    new.created_at := least(greatest(coalesce(new.created_at, pg_catalog.now()), timestamptz '2000-01-01 00:00:00+00'), pg_catalog.now());
   end if;
   if v_door = 'owner' then
     if tg_op = 'INSERT' then
@@ -273,7 +315,7 @@ begin
         and new.edited_at is not distinct from old.edited_at then
     new.edited_at := pg_catalog.now();
   else
-    new.edited_at := least(coalesce(new.edited_at, pg_catalog.now()), pg_catalog.now());
+    new.edited_at := least(greatest(coalesce(new.edited_at, pg_catalog.now()), timestamptz '2000-01-01 00:00:00+00'), pg_catalog.now());
   end if;
   return new;
 end;
@@ -299,9 +341,9 @@ create table if not exists public.shop_store_rules (
   store_id       uuid not null references public.shop_stores(id) on delete cascade,
   seed_key       text check (seed_key is null or seed_key ~ '^[a-z][a-z0-9_]{0,39}$'),
   kind           text not null check (kind in ('open_purchase', 'return', 'seasonal_return', 'price_match', 'price_protection')),
-  label          text check (label is null or (char_length(label) between 1 and 60 and label = btrim(label))),
+  label          text check (label is null or (char_length(label) between 1 and 60 and public.shop_plain_text_ok(label))),
   days           smallint check (days is null or days between 1 and 400),
-  member_tier    text check (member_tier is null or (char_length(member_tier) between 1 and 60 and member_tier = btrim(member_tier))),
+  member_tier    text check (member_tier is null or (char_length(member_tier) between 1 and 60 and public.shop_plain_text_ok(member_tier))),
   window_from    text check (window_from is null or public.shop_month_day_ok(window_from)),
   window_to      text check (window_to is null or public.shop_month_day_ok(window_to)),
   return_until   text check (return_until is null or public.shop_month_day_ok(return_until)),
@@ -312,7 +354,7 @@ create table if not exists public.shop_store_rules (
   against        text check (against is null or against in ('listed', 'any', 'own')),
   against_stores uuid[] check (against_stores is null
                  or (coalesce(array_ndims(against_stores), 0) = 1 and cardinality(against_stores) between 1 and 50 and array_position(against_stores, null) is null)),
-  words          text check (words is null or char_length(words) between 1 and 2000),
+  words          text check (words is null or (char_length(words) between 1 and 2000 and public.shop_plain_text_ok(words))),
   source_url     text check (source_url is null or public.shop_https_ok(source_url)),
   read_on        date check (read_on is null or (read_on >= date '2000-01-01' and read_on < date '2100-01-01')),
   origin         text not null default 'owner' check (origin in ('seed', 'page', 'owner', 'ask_ai')),
@@ -387,27 +429,31 @@ begin
     if v_door = 'owner' and old.origin in ('seed', 'page') then
       raise exception 'A rule from the store''s own pages is turned off, not deleted (a later update would bring it back)' using errcode = '23514';
     end if;
-    if v_door = 'service' and old.origin <> 'ask_ai' then
-      raise exception 'The assistant may delete only rules it wrote itself' using errcode = '42501';
+    if v_door = 'service' and (old.origin <> 'ask_ai' or old.owner_edited) then
+      raise exception 'The assistant may delete only rules it wrote itself, and none you have edited' using errcode = '42501';
     end if;
     return old;
   end if;
 
-  new.label := nullif(pg_catalog.btrim(new.label), '');
-  new.member_tier := nullif(pg_catalog.btrim(new.member_tier), '');
-  new.words := nullif(pg_catalog.btrim(new.words), '');
+  new.label := public.shop_one_line(new.label);
+  new.member_tier := public.shop_one_line(new.member_tier);
+  new.words := public.shop_one_line(new.words);
   new.exclusions := array(select distinct e from pg_catalog.unnest(coalesce(new.exclusions, '{}'::text[])) e order by 1);
   if new.against_stores is not null then
     new.against_stores := array(select distinct s from pg_catalog.unnest(new.against_stores) s order by 1);
   end if;
   if tg_op = 'UPDATE' then
+    if v_door <> 'trusted' then new.id := old.id; end if;
     new.user_id := old.user_id;
     new.created_at := old.created_at;
     if new.store_id is distinct from old.store_id and v_door <> 'trusted' then
       raise exception 'A rule stays with its store — add it to the other store instead' using errcode = '23514';
     end if;
-  else
-    new.created_at := least(coalesce(new.created_at, pg_catalog.now()), pg_catalog.now());
+  elsif v_door = 'service' then
+    new.created_at := pg_catalog.now();
+  elsif v_door = 'owner' then
+    -- A first time between 2000 and now (an Undo puts the row's own back; '-infinity' would hide it).
+    new.created_at := least(greatest(coalesce(new.created_at, pg_catalog.now()), timestamptz '2000-01-01 00:00:00+00'), pg_catalog.now());
   end if;
 
   select s.hosts into v_hosts from public.shop_stores s where s.id = new.store_id and s.user_id = new.user_id;
@@ -457,7 +503,7 @@ begin
         and new.edited_at is not distinct from old.edited_at then
     new.edited_at := pg_catalog.now();
   else
-    new.edited_at := least(coalesce(new.edited_at, pg_catalog.now()), pg_catalog.now());
+    new.edited_at := least(greatest(coalesce(new.edited_at, pg_catalog.now()), timestamptz '2000-01-01 00:00:00+00'), pg_catalog.now());
   end if;
   return new;
 end;
@@ -562,21 +608,21 @@ create table if not exists public.shop_law_rules (
   days         smallint check (days is null or days between 1 and 400),
   years        smallint check (years is null or years between 1 and 10),
   long_lasting boolean,
-  counts_from  text check (counts_from is null or counts_from = 'receipt'),
+  counts_from  text check (counts_from is null or counts_from in ('receipt', 'delivery')),
   to_workday   boolean not null default false,
   name         text not null check (char_length(btrim(name)) between 1 and 80),
-  summary      text not null check (char_length(btrim(summary)) between 1 and 600),
+  summary      text not null check (char_length(btrim(summary)) between 1 and 1200),
   law          text not null check (char_length(btrim(law)) between 1 and 200),
   law_url      text not null check (law_url ~ '^https://lovdata\.no/[^[:space:][:cntrl:]"<>`\\]*$' and char_length(law_url) <= 2048),
   checked_on   date not null,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
-  -- A right to cancel has days when it gives one; a right to complain has years (and says whether it is the one for
-  -- things meant to last much longer); a right counts from receipt.
+  -- A right to cancel has days when it gives one, counted from receipt; a right to complain has years (and says
+  -- whether it is the one for things meant to last much longer), counted from delivery.
   constraint shop_law_rules_shape check (
     (kind = 'cancel' and years is null and long_lasting is null and gives_right = (days is not null)
-       and (counts_from is not null) = gives_right and (to_workday is false or gives_right))
-    or (kind = 'complaint' and gives_right and days is null and years is not null and counts_from is not null and not to_workday))
+       and (counts_from = 'receipt') = gives_right and (counts_from is null or counts_from = 'receipt') and (to_workday is false or gives_right))
+    or (kind = 'complaint' and gives_right and days is null and years is not null and counts_from = 'delivery' and not to_workday))
 );
 alter table public.shop_law_rules enable row level security;
 do $$ begin
@@ -596,41 +642,56 @@ drop trigger if exists trg_shop_law_rules_updated_at on public.shop_law_rules;
 create trigger trg_shop_law_rules_updated_at before update on public.shop_law_rules
   for each row execute function public.update_updated_at();
 
--- The seeds (written 10.11.2026 from the laws as published on Lovdata; the names on screen English, the Norwegian
--- word after it):
---   cancel_distance_business  angrerettloven (LOV-2014-06-20-27): a purchase at a distance (online, by phone) or
---                             away from the shop, from a business — 14 days from the day the thing was received; a
---                             last day on a Saturday, Sunday or public holiday moves to the next working day.
---   cancel_in_store_business  the same law covers distance and off-premises sales only: a shop purchase has no right
---                             to cancel — only the store's own open purchase or returns.
---   cancel_private            the law covers a business selling to a consumer: none from a private seller (FINN).
---   complaint_business        forbrukerkjøpsloven § 27 (LOV-2002-06-21-34): 2 years from receipt …
---   complaint_business_long   … 5 years for a thing that, in normal use, is meant to last considerably longer.
---   complaint_private         kjøpsloven § 32 (LOV-1988-05-13-27): 2 years from receipt between private persons.
+-- The seeds — checked against Stortinget's enacted texts, Forbrukertilsynet and Forbrukerrådet on 10.11.2026
+-- (Lovdata answers apps with robots Disallow: /, so it wasn't read; law_url still points at Lovdata, with the §
+-- where it helps). The names on screen are English, the Norwegian word after it:
+--   cancel_distance_business  angrerettloven §§ 1, 6 and 21 (LOV-2014-06-20-27): a purchase at a distance (online,
+--                             by phone) or away from the shop, from a business — 14 days from the day the consumer
+--                             gets the goods into physical possession (the last parcel or part; a subscription
+--                             from its first delivery), the day of receipt not counted (§ 6 (1): receipt + 14); a
+--                             last day on a Saturday, holiday or høytidsdag moves to the next working day (§ 6 (2));
+--                             a message sent in time is enough (§ 20); without the seller's information about it,
+--                             12 months after the deadline, or 14 days after the information came within them
+--                             (§ 21 (3), (4)); none away from the shop for 300 kr or less, shipping included (§ 2 g);
+--                             the exceptions of § 22 named.
+--   cancel_in_store_business  the same law covers distance and off-premises sales only (§ 1): a shop purchase has no
+--                             right to cancel — only the store's own open purchase or returns.
+--   cancel_private            the law covers a business selling to a consumer (§ 1): none from a private seller —
+--                             it is the seller that decides, never the marketplace (a business on FINN gives 14 days).
+--   complaint_business        forbrukerkjøpsloven § 27 (2) (LOV-2002-06-21-34, as amended in 2023): 2 years from
+--                             delivery (§ 7: when the consumer takes it over; at installation when the seller installs
+--                             it), within a reasonable time after finding the fault — two months is always in time
+--                             (§ 27 (1)) …
+--   complaint_business_long   … 5 years when the thing, or a part of it, is meant to last considerably longer in
+--                             normal use.
+--   complaint_private         kjøpsloven § 32 (LOV-1988-05-13-27): 2 years absolute between private persons, within
+--                             a reasonable time after the buyer found the fault or should have; no two-month minimum,
+--                             no 5-year rule; the buyer must examine the thing; a longer warranty or agreed period
+--                             extends it.
 insert into public.shop_law_rules (slug, country, kind, channel, seller, gives_right, days, years, long_lasting, counts_from, to_workday, name, summary, law, law_url, checked_on) values
   ('cancel_distance_business', 'NO', 'cancel', 'distance', 'business', true, 14, null, null, 'receipt', true,
    'Right to cancel (angrerett)',
-   'Bought online, by phone or away from the shop from a business: 14 days to cancel for any reason, from the day you got the thing. A last day on a Saturday, Sunday or public holiday moves to the next working day.',
-   'Angrerettloven (LOV-2014-06-20-27)', 'https://lovdata.no/lov/2014-06-20-27', '2026-11-10'),
+   'Bought online, by phone or away from the shop from a business: 14 days to cancel from the day you got the thing into your hands — the last parcel or part, a subscription''s first delivery — the day it came not counted. A last day on a Saturday, Sunday or public holiday moves to the next working day. Sending your message before the deadline is enough (§ 20). If the seller didn''t tell you about the right, it lasts 12 months more — or ends 14 days after the seller tells you, within those 12 months (§ 21). Not away from the shop for 300 kr or less, shipping included (§ 2 g); not for custom-made goods, perishables, sealed hygiene goods once opened, sealed media or software once opened, or newspapers (§ 22).',
+   'Angrerettloven §§ 1, 6 and 21 (LOV-2014-06-20-27)', 'https://lovdata.no/lov/2014-06-20-27/§21', '2026-11-10'),
   ('cancel_in_store_business', 'NO', 'cancel', 'in_store', 'business', false, null, null, null, null, false,
    'No right to cancel in a shop',
    'Bought in a shop: the law gives no right to cancel. Only what the store itself offers counts (open purchase, returns).',
-   'Angrerettloven (LOV-2014-06-20-27) — distance and off-premises sales only', 'https://lovdata.no/lov/2014-06-20-27', '2026-11-10'),
+   'Angrerettloven § 1 (LOV-2014-06-20-27) — distance and off-premises sales only', 'https://lovdata.no/lov/2014-06-20-27/§1', '2026-11-10'),
   ('cancel_private', 'NO', 'cancel', 'any', 'private', false, null, null, null, null, false,
    'No right to cancel from a private seller',
-   'Bought from a private person (FINN, Tise): no right to cancel — the law covers purchases from a business.',
-   'Angrerettloven (LOV-2014-06-20-27) — a business selling to a consumer', 'https://lovdata.no/lov/2014-06-20-27', '2026-11-10'),
-  ('complaint_business', 'NO', 'complaint', 'any', 'business', true, null, 2, false, 'receipt', false,
+   'Bought from a private person: no right to cancel — the law covers purchases from a business. It is the seller that counts, not the marketplace: a business selling on FINN or Tise gives 14 days like any other.',
+   'Angrerettloven § 1 (LOV-2014-06-20-27) — a business selling to a consumer', 'https://lovdata.no/lov/2014-06-20-27/§1', '2026-11-10'),
+  ('complaint_business', 'NO', 'complaint', 'any', 'business', true, null, 2, false, 'delivery', false,
    'Right to complain (reklamasjon)',
-   'Bought from a business: 2 years from the day you got it to complain about a fault, within a reasonable time after you found it (two months is always in time).',
+   'Bought from a business: 2 years from delivery — the day you took it over, or when the seller installed it (§ 7) — to complain about a fault, within a reasonable time after you found it (two months is always in time).',
    'Forbrukerkjøpsloven § 27 (LOV-2002-06-21-34)', 'https://lovdata.no/lov/2002-06-21-34/§27', '2026-11-10'),
-  ('complaint_business_long', 'NO', 'complaint', 'any', 'business', true, null, 5, true, 'receipt', false,
+  ('complaint_business_long', 'NO', 'complaint', 'any', 'business', true, null, 5, true, 'delivery', false,
    'Right to complain (reklamasjon), 5 years',
-   'Bought from a business, a thing that in normal use is meant to last considerably longer (a TV, a computer, a phone): 5 years from the day you got it.',
+   'Bought from a business, a thing, or a part of it, that in normal use is meant to last considerably longer (a TV, a computer, a phone): 5 years from delivery.',
    'Forbrukerkjøpsloven § 27 (LOV-2002-06-21-34)', 'https://lovdata.no/lov/2002-06-21-34/§27', '2026-11-10'),
-  ('complaint_private', 'NO', 'complaint', 'any', 'private', true, null, 2, null, 'receipt', false,
+  ('complaint_private', 'NO', 'complaint', 'any', 'private', true, null, 2, null, 'delivery', false,
    'Right to complain from a private seller (reklamasjon)',
-   'Bought from a private person: 2 years from the day you got it to complain about a fault, within a reasonable time after you found it. No 5-year rule.',
+   'Bought from a private person: 2 years from the day you took it over to complain about a fault, within a reasonable time after you found it or should have found it — no two-month minimum here, and no 5-year rule. You must examine the thing (an undersøkelsesplikt). A longer warranty or an agreed period extends it.',
    'Kjøpsloven § 32 (LOV-1988-05-13-27)', 'https://lovdata.no/lov/1988-05-13-27/§32', '2026-11-10')
 on conflict (slug) do nothing;
 
@@ -638,6 +699,7 @@ comment on table public.shop_law_rules is
   'Norway''s consumer law for purchases, one rule a row, each citing its law (angrerett, reklamasjon): reference data, the same for every account; written by migrations and the service role only.';
 comment on column public.shop_law_rules.channel is 'distance = online, by phone or away from the shop; in_store = in a shop; any = both.';
 comment on column public.shop_law_rules.long_lasting is 'complaint: true = the rule for things meant to last considerably longer (5 years), false = the others, null = one rule for all.';
+comment on column public.shop_law_rules.counts_from is 'receipt = the day the goods came into the consumer''s hands (angrerett, not counted itself); delivery = when the consumer took it over, or at installation (reklamasjon).';
 comment on column public.shop_law_rules.to_workday is 'The last day moves to the next working day when it falls on a Saturday, Sunday or public holiday (src/features/shop/norwayHolidays.ts).';
 
 -- ─── 4. Deal days the owner edits ────────────────────────────────────────────
@@ -645,7 +707,7 @@ create table if not exists public.shop_deal_day_edits (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
   slug        text not null check (slug ~ '^[a-z][a-z0-9_]{0,39}$'),
-  name        text not null check (char_length(name) between 1 and 80 and name = btrim(name)),
+  name        text not null check (char_length(name) between 1 and 80 and public.shop_plain_text_ok(name)),
   rule_kind   text not null check (rule_kind in ('fixed', 'nth_weekday')),
   month       smallint not null check (month between 1 and 12),
   day         smallint check (day between 1 and 31),
@@ -658,6 +720,8 @@ create table if not exists public.shop_deal_day_edits (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   constraint shop_deal_day_edits_one unique (user_id, slug),
+  -- A first time from 2000 on ('-infinity' would sort the edit out of sight; guardian review, 10.11.2026).
+  constraint shop_deal_day_edits_created_check check (created_at >= timestamptz '2000-01-01 00:00:00+00'),
   -- 190's rule shapes: a fixed day every year has (no 29.02), or the n-th weekday of a month.
   constraint shop_deal_day_edits_rule_check check (
     (rule_kind = 'fixed' and weekday is null and nth is null and day is not null
@@ -813,6 +877,11 @@ begin
       n := n + 1;
     end if;
   end loop;
+  -- The seed's own writes are not the owner's changes: they leave this transaction's audit log (this account, these
+  -- two tables), so Activity never lists a seed and never offers an Undo of it — which would fail, a seeded row is
+  -- never deleted by the app.
+  delete from public.audit_logs a
+   where a.tx_id = pg_catalog.txid_current() and a.user_id = p_user and a.table_name in ('shop_stores', 'shop_store_rules');
   return n;
 end;
 $$;
@@ -836,7 +905,8 @@ create trigger trg_shop_store_seed after insert on public.app_allowed_users
 
 select public.shop_store_seed(a.user_id) from public.app_allowed_users a;
 
--- Audited from here on (the owner's edits; Activity can undo them — one id primary key each).
+-- Audited from here on (the owner's edits; Activity can undo them — one id primary key each). A later seed run
+-- takes its own rows out of the log again (shop_store_seed).
 drop trigger if exists trg_audit on public.shop_stores;
 create trigger trg_audit after insert or update or delete on public.shop_stores
   for each row execute function public.log_audit();
@@ -844,7 +914,338 @@ drop trigger if exists trg_audit on public.shop_store_rules;
 create trigger trg_audit after insert or update or delete on public.shop_store_rules
   for each row execute function public.log_audit();
 
--- ─── 6. Grants on the functions ──────────────────────────────────────────────
+-- ─── 6. A purchase's own facts on shop_items ─────────────────────────────────
+-- How it was bought (online or in a shop: the right to cancel depends on it), the day it arrived (Arrived:
+-- deadlines count from it), an extra warranty's last day, a receipt note (text only, as decided), and the day a
+-- search was opened for a wish on a marketplace ("Search opened 10.11.2026" — the app can't know a marketplace's
+-- own saved searches). Each column is bounded here; what crosses columns is step h of shop_items_rules (below).
+-- Delete's Undo and Activity's Undo carry them as every other column (shop_restore_items and app_restore_rows
+-- name the snapshot's own columns).
+alter table public.shop_items add column if not exists bought_channel text;
+alter table public.shop_items add column if not exists arrived_on date;
+alter table public.shop_items add column if not exists extra_warranty_until date;
+alter table public.shop_items add column if not exists receipt_note text;
+alter table public.shop_items add column if not exists search_opened_on date;
+alter table public.shop_items drop constraint if exists shop_items_bought_channel_check;
+alter table public.shop_items add constraint shop_items_bought_channel_check
+  check (bought_channel is null or bought_channel in ('online', 'in_store'));
+alter table public.shop_items drop constraint if exists shop_items_arrived_on_check;
+alter table public.shop_items add constraint shop_items_arrived_on_check
+  check (arrived_on is null or (arrived_on >= date '2000-01-01' and arrived_on < date '2100-01-01'));
+alter table public.shop_items drop constraint if exists shop_items_extra_warranty_until_check;
+alter table public.shop_items add constraint shop_items_extra_warranty_until_check
+  check (extra_warranty_until is null or (extra_warranty_until >= date '2000-01-01' and extra_warranty_until < date '2100-01-01'));
+alter table public.shop_items drop constraint if exists shop_items_receipt_note_check;
+alter table public.shop_items add constraint shop_items_receipt_note_check
+  check (receipt_note is null or (char_length(receipt_note) between 1 and 2000 and public.shop_plain_text_ok(receipt_note, true)));
+alter table public.shop_items drop constraint if exists shop_items_search_opened_on_check;
+alter table public.shop_items add constraint shop_items_search_opened_on_check
+  check (search_opened_on is null or (search_opened_on >= date '2000-01-01' and search_opened_on < date '2100-01-01'));
+comment on column public.shop_items.bought_channel is 'How it was bought: online (at a distance — the right to cancel applies from a business) or in_store. Only while bought.';
+comment on column public.shop_items.arrived_on is 'The day it arrived (Arrived): on or after the purchase''s Oslo day, not after today; deadlines count from it. Only while bought.';
+comment on column public.shop_items.extra_warranty_until is 'The last day of an extra warranty (bought or given), on or after the purchase day. Only while bought.';
+comment on column public.shop_items.receipt_note is 'Where the receipt is, as text (at most 2 000 characters).';
+comment on column public.shop_items.search_opened_on is 'The day the owner last opened a marketplace search for this wish ("Search opened 10.11.2026"). Set by the app.';
+
+-- 190's one before-trigger on shop_items (187's with step g), re-created word for word with step h.
+create or replace function public.shop_items_rules()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  p      record;
+  v_link text;
+begin
+  -- 0. Links are web addresses. A link written now: completed (no scheme → https://) or refused. An older
+  --    link that never was one: completed, or kept in the notes instead — never a reason to refuse the row.
+  if tg_op = 'INSERT' or new.url is distinct from old.url then
+    v_link := public.shop_web_link(new.url);
+    if v_link is null and nullif(pg_catalog.btrim(new.url), '') is not null then
+      raise exception 'A link is one web address (https://…)' using errcode = '23514';
+    end if;
+    new.url := v_link;
+  elsif new.url !~* '^https?://' then
+    v_link := public.shop_web_link(new.url);
+    if v_link is null then
+      new.notes := concat_ws(E'\n', nullif(new.notes, ''), 'Link: ' || new.url);
+    end if;
+    new.url := v_link;
+  end if;
+  if tg_op = 'INSERT' or new.image_url is distinct from old.image_url or new.image_url !~* '^https?://' then
+    new.image_url := public.shop_web_link(new.image_url);
+  end if;
+
+  -- a. A price without a currency: the region's (134's rule), else NOK.
+  if new.price is not null and new.currency is null then
+    new.currency := case when new.region = 'TR' then 'TRY' else 'NOK' end;
+  end if;
+
+  -- a2. A parent's kind is fixed while it has children: a general wish's models, an item's accessories.
+  if tg_op = 'UPDATE' and new.kind is distinct from old.kind then
+    if old.kind = 'general' and exists (select 1 from public.shop_items c where c.option_for = new.id) then
+      raise exception 'A general wish with models stays a general wish — take its models off first' using errcode = '23514';
+    end if;
+    if old.kind = 'item' and exists (select 1 from public.shop_items c where c.accessory_of = new.id) then
+      raise exception 'A thing with accessories stays a thing — take its accessories off first' using errcode = '23514';
+    end if;
+  end if;
+
+  -- b. Bought: stamped once, and kept while bought (a write that clears it keeps the day). Leaving
+  --    'bought' while sold or gone is refused, whatever the write sends — the sale is undone first.
+  if new.status = 'bought' then
+    if tg_op = 'INSERT' or old.status is distinct from 'bought' then
+      new.bought_at := coalesce(new.bought_at, now());
+    else
+      new.bought_at := coalesce(new.bought_at, old.bought_at);
+    end if;
+  else
+    if tg_op = 'UPDATE' and old.status = 'bought' and old.disposal is not null then
+      raise exception 'Undo the sale first — "%" is sold or gone', new.title using errcode = '23514';
+    end if;
+    new.bought_at := null;
+    new.market_price := null;
+    new.market_currency := null;
+    new.disposal := null;
+  end if;
+
+  -- c. Gone: always with a day (today in Oslo when none is sent), never before it was bought. What an
+  --    Undo of the sale needs goes with the sale.
+  if new.disposal is null then
+    new.disposed_on := null;
+    new.sale_price := null;
+    new.sale_currency := null;
+    new.sold_to := null;
+    new.sale_group := null;
+    new.sale_undo := null;
+  else
+    new.disposed_on := coalesce(new.disposed_on, (now() at time zone 'Europe/Oslo')::date);
+    if new.bought_at is not null and new.disposed_on < public.oslo_day(new.bought_at) then
+      raise exception 'It cannot leave (%) before it was bought (%)', new.disposed_on, public.oslo_day(new.bought_at) using errcode = '23514';
+    end if;
+    if new.sale_price is not null and new.sale_currency is null then
+      new.sale_currency := coalesce(new.currency, 'NOK');
+    end if;
+  end if;
+
+  -- d. The purchase rate: NOK needs none. A rate the write sends (or relabels) is typed by hand —
+  --    "Norges Bank" only when it is exactly Norges Bank's rate of that day here (a row put back, a save
+  --    undone). Otherwise Norges Bank's rate of the day it was bought, looked up again when the rate is
+  --    cleared or the currency or the day changes (NULL until cached: "rate pending", never today's).
+  if new.status <> 'bought' or new.price is null then
+    new.fx_nok := null;
+    new.fx_source := null;
+  elsif new.currency = 'NOK' then
+    new.fx_nok := 1;
+    new.fx_source := 'fixed';
+  elsif new.fx_nok is not null and (tg_op = 'INSERT' or new.fx_nok is distinct from old.fx_nok
+                                    or new.fx_source is distinct from old.fx_source) then
+    new.fx_source := case when new.fx_source = 'norges_bank'
+                               and new.fx_nok = public.shop_rate(new.currency, public.oslo_day(new.bought_at))
+                          then 'norges_bank' else 'manual' end;
+  elsif new.fx_nok is null or tg_op = 'INSERT' or old.status is distinct from 'bought'
+        or new.currency is distinct from old.currency
+        or public.oslo_day(new.bought_at) is distinct from public.oslo_day(old.bought_at) then
+    new.fx_nok := public.shop_rate(new.currency, public.oslo_day(new.bought_at));
+    new.fx_source := case when new.fx_nok is null then null else 'norges_bank' end;
+  end if;
+
+  -- e. The same for money back, on the day it left.
+  if new.sale_price is null then
+    new.sale_fx_nok := null;
+    new.sale_fx_source := null;
+  elsif new.sale_currency = 'NOK' then
+    new.sale_fx_nok := 1;
+    new.sale_fx_source := 'fixed';
+  elsif new.sale_fx_nok is not null and (tg_op = 'INSERT' or new.sale_fx_nok is distinct from old.sale_fx_nok
+                                         or new.sale_fx_source is distinct from old.sale_fx_source) then
+    new.sale_fx_source := case when new.sale_fx_source = 'norges_bank'
+                                    and new.sale_fx_nok = public.shop_rate(new.sale_currency, new.disposed_on)
+                               then 'norges_bank' else 'manual' end;
+  elsif new.sale_fx_nok is null or tg_op = 'INSERT' or old.sale_price is null
+        or new.sale_currency is distinct from old.sale_currency or new.disposed_on is distinct from old.disposed_on then
+    new.sale_fx_nok := public.shop_rate(new.sale_currency, new.disposed_on);
+    new.sale_fx_source := case when new.sale_fx_nok is null then null else 'norges_bank' end;
+  end if;
+
+  -- f. Parents: a model's general wish, an accessory's item — the owner's own, one level deep both
+  --    ways; a child without a category takes its parent's.
+  if new.option_for is not null and (tg_op = 'INSERT' or new.option_for is distinct from old.option_for) then
+    select user_id, kind, category_id into p from public.shop_items where id = new.option_for;
+    if not found or p.user_id <> new.user_id or p.kind <> 'general' then
+      raise exception 'A model belongs to a general wish of the same owner' using errcode = '23514';
+    end if;
+    new.category_id := coalesce(new.category_id, p.category_id);
+  end if;
+  if new.accessory_of is not null and (tg_op = 'INSERT' or new.accessory_of is distinct from old.accessory_of) then
+    select user_id, kind, accessory_of as parent, category_id into p from public.shop_items where id = new.accessory_of;
+    if not found or p.user_id <> new.user_id or p.kind <> 'item' or p.parent is not null then
+      raise exception 'An accessory belongs to an item of the same owner that is not an accessory itself' using errcode = '23514';
+    end if;
+    if tg_op = 'UPDATE' and exists (select 1 from public.shop_items where accessory_of = new.id) then
+      raise exception 'An item with accessories of its own cannot become an accessory' using errcode = '23514';
+    end if;
+    new.category_id := coalesce(new.category_id, p.category_id);
+  end if;
+
+  -- g. Its category is one of the owner's own (190): a foreign key ignores row level security, so another
+  --    account could otherwise file its things under the owner's categories (and the owner's delete would reach
+  --    them). Checked after f, which may take the parent's category.
+  if new.category_id is not null and (tg_op = 'INSERT' or new.category_id is distinct from old.category_id
+                                      or new.user_id is distinct from old.user_id)
+     and not exists (select 1 from public.shop_categories c where c.id = new.category_id and c.user_id = new.user_id) then
+    raise exception 'A thing goes in one of your own categories' using errcode = '23514';
+  end if;
+
+  -- h. The purchase's own facts (191): how it was bought, when it arrived, an extra warranty — only while it is
+  --    bought (they go with the purchase, as its market price does); it arrived on or after the day it was bought
+  --    and not after today (Oslo); an extra warranty ends on or after the day it was bought. A search opened for a
+  --    wish is never in the future. A receipt note is text, blank = none.
+  if new.status <> 'bought' then
+    new.bought_channel := null;
+    new.arrived_on := null;
+    new.extra_warranty_until := null;
+  else
+    if new.arrived_on < public.oslo_day(new.bought_at) then
+      raise exception 'It cannot arrive (%) before it was bought (%)', new.arrived_on, public.oslo_day(new.bought_at) using errcode = '23514';
+    end if;
+    if new.arrived_on > (now() at time zone 'Europe/Oslo')::date then
+      raise exception 'It cannot have arrived after today (%)', new.arrived_on using errcode = '23514';
+    end if;
+    if new.extra_warranty_until < public.oslo_day(new.bought_at) then
+      raise exception 'An extra warranty ends on or after the day it was bought (%)', public.oslo_day(new.bought_at) using errcode = '23514';
+    end if;
+  end if;
+  if new.search_opened_on > (now() at time zone 'Europe/Oslo')::date then
+    raise exception 'A search cannot be opened after today (%)', new.search_opened_on using errcode = '23514';
+  end if;
+  new.receipt_note := nullif(pg_catalog.btrim(new.receipt_note), '');
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_shop_items_rules on public.shop_items;
+create trigger trg_shop_items_rules
+  before insert or update on public.shop_items
+  for each row execute function public.shop_items_rules();
+
+-- ─── 7. Prisjakt's new offers on the price watch (price match) ───────────────
+-- The new offers in Prisjakt's own offer list at the last read that had it: one per shop, its cheapest, cheapest
+-- first, at most 50 — each {shop_id, shop_name, price, currency, in_stock}: Prisjakt's number for the shop, the
+-- shop's name as the offer row gives it (shop.name, verified on four saved product pages, 10.11.2026), the price,
+-- its currency, and whether that shop has it in stock (null = Prisjakt doesn't say). Written by shop-price from
+-- the offer list it already reads; null for a shop's own page and before 191. Bounded and checked: an array of at
+-- most 50 objects with exactly these five keys, a whole shop number, a name of 1–120 characters on one line without
+-- control, zero-width or direction characters (or null; shop_plain_text_ok), a price from 0 below a billion (a JSON number: NaN and infinity can't be one), three
+-- capitals, a boolean or null; at most 16 KiB in all.
+create or replace function public.shop_new_offers_ok(p jsonb)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p is null or (
+    jsonb_typeof(p) = 'array' and jsonb_array_length(p) <= 50 and octet_length(p::text) <= 16384
+    and not exists (
+      select 1 from jsonb_array_elements(p) e
+       where not case when jsonb_typeof(e) <> 'object' then false
+               when (select count(*) from jsonb_object_keys(e)) <> 5
+                    or not (e ?& array['shop_id', 'shop_name', 'price', 'currency', 'in_stock']) then false
+               when jsonb_typeof(e -> 'shop_id') <> 'number' or (e ->> 'shop_id') !~ '^[1-9][0-9]{0,9}$' then false
+               when jsonb_typeof(e -> 'price') <> 'number' then false
+               when not ((e ->> 'price')::numeric >= 0 and (e ->> 'price')::numeric < 1000000000) then false
+               when jsonb_typeof(e -> 'currency') <> 'string' or (e ->> 'currency') !~ '^[A-Z]{3}$' then false
+               when jsonb_typeof(e -> 'in_stock') not in ('boolean', 'null') then false
+               when jsonb_typeof(e -> 'shop_name') = 'null' then true
+               when jsonb_typeof(e -> 'shop_name') <> 'string' then false
+               else char_length(e ->> 'shop_name') between 1 and 120 and public.shop_plain_text_ok(e ->> 'shop_name')
+             end))
+$$;
+alter table public.shop_price_watch add column if not exists new_offers jsonb;
+alter table public.shop_price_watch drop constraint if exists shop_price_watch_new_offers_check;
+alter table public.shop_price_watch add constraint shop_price_watch_new_offers_check check (public.shop_new_offers_ok(new_offers));
+comment on column public.shop_price_watch.new_offers is
+  'Prisjakt''s new offers at the last read of its offer list: one per shop (its cheapest), cheapest first, at most 50, each {shop_id, shop_name, price, currency, in_stock}. Null for a shop''s own page. Written by shop-price only.';
+
+-- Delete's Undo carries it (190's helper, re-created with new_offers on the watch; checked like the rest).
+create or replace function public.shop_restore_price_history(p_watches jsonb, p_points jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user  uuid := (select auth.uid());
+  v_stamp text := pg_catalog.txid_current()::text || '/' || extract(epoch from pg_catalog.now())::text;
+  v_set   text := coalesce(pg_catalog.current_setting('app.shop_restored', true), '');
+  v_back  uuid[];
+  n       integer := 0;
+  k       integer;
+begin
+  if v_user is null or not public.is_app_user() then
+    raise exception 'Not allowed' using errcode = '42501';
+  end if;
+  if jsonb_typeof(coalesce(p_watches, '[]'::jsonb)) <> 'array' or jsonb_typeof(coalesce(p_points, '[]'::jsonb)) <> 'array' then
+    raise exception 'Not a price history' using errcode = '22023';
+  end if;
+  if pg_catalog.split_part(v_set, '|', 1) = v_stamp then
+    v_back := pg_catalog.string_to_array(nullif(pg_catalog.split_part(v_set, '|', 2), ''), ',')::uuid[];
+  end if;
+  insert into public.shop_price_watch (item_id, user_id, url, checked_at, status, error, source, name, image, low, high,
+                                       offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at,
+                                       condition, used_low, refurbished_low, new_offers)
+  select w.item_id, v_user, public.shop_web_link(w.url), least(w.checked_at, now()), w.status, left(w.error, 500),
+         case when w.source in ('prisjakt', 'store') then w.source end, left(w.name, 300), public.shop_web_link(w.image),
+         case when w.low >= 0 and w.low < 'Infinity' then w.low end,
+         case when w.high >= 0 and w.high < 'Infinity' then w.high end,
+         case when w.offers between 0 and 100000 then w.offers end,
+         case when w.currency ~ '^[A-Z]{3}$' then w.currency end, w.in_stock,
+         case when w.was >= 0 and w.was < 'Infinity' then w.was end,
+         case when w.return_days between 0 and 100000 then w.return_days end,
+         case when w.last_ok_at is null then null else least(w.last_ok_at, now()) end,
+         case when w.prev_low >= 0 and w.prev_low < 'Infinity' then w.prev_low end,
+         case when w.prev_at is null then null else least(w.prev_at, now()) end,
+         case when w.condition in ('new', 'mixed', 'unknown') then w.condition end,
+         case when w.used_low >= 0 and w.used_low < 'Infinity' then w.used_low end,
+         case when w.refurbished_low >= 0 and w.refurbished_low < 'Infinity' then w.refurbished_low end,
+         case when public.shop_new_offers_ok(w.new_offers) then w.new_offers end
+    from jsonb_populate_recordset(null::public.shop_price_watch, coalesce(p_watches, '[]'::jsonb)) w
+   where w.item_id = any (v_back) and w.checked_at is not null
+     and exists (select 1 from public.shop_items i where i.id = w.item_id and i.user_id = v_user)
+  on conflict (item_id) do nothing;
+  get diagnostics k = row_count;
+  n := n + k;
+  insert into public.shop_price_points (id, user_id, item_id, checked_at, low, high, offers, currency, source,
+                                        condition, used_low, refurbished_low, in_stock)
+  select coalesce(p.id, gen_random_uuid()), v_user, p.item_id, least(p.checked_at, now()), p.low,
+         case when p.high >= 0 and p.high < 'Infinity' then p.high end,
+         case when p.offers between 0 and 100000 then p.offers end,
+         case when p.currency ~ '^[A-Z]{3}$' then p.currency end, case when p.source in ('prisjakt', 'store') then p.source end,
+         case when p.condition in ('new', 'mixed', 'unknown') then p.condition end,
+         case when p.used_low >= 0 and p.used_low < 'Infinity' then p.used_low end,
+         case when p.refurbished_low >= 0 and p.refurbished_low < 'Infinity' then p.refurbished_low end,
+         p.in_stock
+    from (select x.* from jsonb_populate_recordset(null::public.shop_price_points, coalesce(p_points, '[]'::jsonb)) x
+           where x.item_id = any (v_back) and x.checked_at is not null and x.low >= 0 and x.low < 'Infinity'
+             and exists (select 1 from public.shop_items i where i.id = x.item_id and i.user_id = v_user)
+           order by x.checked_at desc
+           limit 20000) p
+  on conflict (id) do nothing;
+  get diagnostics k = row_count;
+  return n + k;
+end;
+$$;
+
+-- ─── 8. A Needs-a-look row for a price match ─────────────────────────────────
+-- 190's allow-list of signals gains price_match (a store you have matches a cheaper price elsewhere). Price
+-- protection reuses cheaper_returnable. src/features/shop/signalStates.ts's SHOP_SIGNALS changes with it
+-- (verify-shop-signals compares them).
+alter table public.shop_signal_states drop constraint if exists shop_signal_states_signal_check;
+alter table public.shop_signal_states add constraint shop_signal_states_signal_check check (signal in (
+  'at_target', 'lowest_seen', 'back_in_stock', 'fake_before', 'deal_day', 'cheaper_returnable',
+  'return_closing', 'complaint_ending', 'old_value', 'old_wish', 'tidy_up', 'price_match'));
+
+-- ─── 9. Grants on the functions ──────────────────────────────────────────────
 -- The checks run inside the tables' CHECK constraints, as whoever writes.
 revoke all on function public.shop_host_ok(text) from public, anon;
 revoke all on function public.shop_hosts_ok(text[]) from public, anon;
@@ -864,11 +1265,21 @@ grant execute on function public.shop_search_url_ok(text, text[]) to authenticat
 grant execute on function public.shop_month_day_ok(text) to authenticated, service_role;
 grant execute on function public.shop_store_facts(public.shop_stores) to authenticated, service_role;
 grant execute on function public.shop_store_rule_facts(public.shop_store_rules) to authenticated, service_role;
+revoke all on function public.shop_one_line(text) from public, anon;
+revoke all on function public.shop_plain_text_ok(text, boolean) from public, anon;
+grant execute on function public.shop_one_line(text) to authenticated, service_role;
+grant execute on function public.shop_plain_text_ok(text, boolean) to authenticated, service_role;
+revoke all on function public.shop_new_offers_ok(jsonb) from public, anon;
+grant execute on function public.shop_new_offers_ok(jsonb) to authenticated, service_role;
 -- Trigger functions and the seed: nobody calls them.
 revoke all on function public.shop_stores_rules() from public, anon, authenticated, service_role;
 revoke all on function public.shop_store_rules_rules() from public, anon, authenticated, service_role;
 revoke all on function public.shop_store_seed_new_user() from public, anon, authenticated, service_role;
 revoke all on function public.shop_store_seed(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.shop_items_rules() from public, anon, authenticated, service_role;
+-- 190's Undo helper, as 188 and 190 granted it: signed-in callers only (it binds itself to the rows Undo put back).
+revoke all on function public.shop_restore_price_history(jsonb, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.shop_restore_price_history(jsonb, jsonb) to authenticated;
 -- The resets: the app's, for app users (each checks is_app_user itself).
 revoke all on function public.shop_store_rule_reset(uuid) from public, anon;
 revoke all on function public.shop_store_reset(uuid) from public, anon;

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  AlarmClock, BadgeAlert, CalendarClock, Check, ChevronDown, ChevronRight, Hourglass, ListChecks, MoreHorizontal, PackageCheck,
+  AlarmClock, ArrowLeftRight, BadgeAlert, CalendarClock, Check, ChevronDown, ChevronRight, Hourglass, ListChecks, MoreHorizontal, PackageCheck,
   RotateCcw, ShieldAlert, Tag, Target, TrendingDown, Undo2, type LucideIcon,
 } from 'lucide-react'
 import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
@@ -19,6 +19,7 @@ import { addDays } from '../ownModel'
 const ICON: Record<LookKind, LucideIcon> = {
   return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
   fake_before: BadgeAlert, deal_day: CalendarClock, complaint_ending: ShieldAlert, old_value: Tag, old_wish: Hourglass, tidy_up: ListChecks,
+  price_match: ArrowLeftRight,
 }
 const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show' }
 /** The rail shows this many rows, then "N more". */

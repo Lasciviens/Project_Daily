@@ -1,4 +1,5 @@
 import { supabase } from '../../../integrations/supabase/client'
+import { parseNewOffers } from '../storeRows'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { defaultCurrencyFor } from '../shopModel'
 import { draftRows, type ChainDraft, type Copied } from '../chainDraft'
@@ -120,6 +121,10 @@ export async function fetchQuickRows(): Promise<ShopQuickRow[]> {
 // ─── Changing and deleting ────────────────────────────────────────────────────
 
 /** The row as stored after the change (the database's rules fill the rest); one that isn't there is an error, never a silent no-op. */
+/** A purchase's own facts (migration 191): a write of one before 191 is applied says so by name. Remove once 191 ran everywhere. */
+const COLUMNS_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'] as const
+export const NEEDS_191_ITEM = 'Not saved — migration 191 is not applied (how it was bought, Arrived, extra warranty, receipt, search opened)'
+
 export async function updateShopItem(id: string, patch: UpdateShopItemInput): Promise<ShopItem> {
   const user = await requireUser()
   const { data, error } = await supabase
@@ -128,6 +133,7 @@ export async function updateShopItem(id: string, patch: UpdateShopItemInput): Pr
     .eq('id', id)
     .eq('user_id', user.id)
     .select()
+  if (error && (error.code === 'PGRST204' || error.code === '42703') && COLUMNS_191.some(c => c in patch)) throw new Error(NEEDS_191_ITEM)
   if (error) throw error
   if (!data?.length) throw new Error('Not saved — this item is not there any more.')
   return data[0] as ShopItem
@@ -279,7 +285,8 @@ export async function fetchPriceWatches(): Promise<ShopPriceWatch[]> {
     .order('item_id', { ascending: true })
     .range(from, to))
   const num = (v: unknown) => (v == null ? null : Number(v))
-  return rows.map(w => ({ ...w, low: num(w.low), high: num(w.high), was: num(w.was), prev_low: num(w.prev_low), used_low: num(w.used_low), refurbished_low: num(w.refurbished_low) }))
+  return rows.map(w => ({ ...w, low: num(w.low), high: num(w.high), was: num(w.was), prev_low: num(w.prev_low), used_low: num(w.used_low), refurbished_low: num(w.refurbished_low),
+    new_offers: parseNewOffers(w.new_offers) }))
 }
 
 /** How many of a row's latest price reads its history shows (two years of daily checks fit). */

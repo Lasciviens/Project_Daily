@@ -68,7 +68,7 @@ export const SNOOZE_DAYS = 7
 const TONE_RANK: Record<LookTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
 const KIND_RANK: Record<LookKind, number> = {
   return_closing: 0, cheaper_returnable: 1, at_target: 2, lowest_seen: 3, back_in_stock: 4, fake_before: 5, deal_day: 6,
-  complaint_ending: 7, old_value: 8, old_wish: 9, tidy_up: 10,
+  complaint_ending: 7, old_value: 8, old_wish: 9, tidy_up: 10, price_match: 11,
 }
 
 const money = (n: number, currency: string) => formatMoney(Math.round(n), currency)

@@ -293,7 +293,7 @@ const ids = rows => rows.map(r => r.id).join()
     check('an Undo sends the row\'s own fields only (its id, first time, snooze, Got it) — never user_id or updated_at',
       Object.keys(rpcCalls[0]?.args.p_state ?? {}).sort().join() === 'created_at,dismissed_at,id,signature,snoozed_until')
 
-    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'price_match' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
+    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'made_up_signal' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
     const states = await N.fetchSignalStates()
     check('the states read back: a signal this app doesn\'t know (a newer database) is left out', states.map(s => s.id).join() === `${uuid(9001)},${uuid(9003)}`)
     failing.shop_signal_states = { code: 'PGRST205', message: 'Could not find the table public.shop_signal_states' }

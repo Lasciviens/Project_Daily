@@ -5,7 +5,7 @@
 import { dealRuleOf, isDay, parseDealDay } from './dealDays'
 import { osloDay } from './groceryModel'
 import type {
-  ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopRuleAgainst, ShopRuleExclusion, ShopRuleOrigin,
+  ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopNewOffer, ShopRuleAgainst, ShopRuleExclusion, ShopRuleOrigin,
   ShopRulePayout, ShopStore, ShopStoreFacts, ShopStoreKind, ShopStoreRule, ShopStoreRuleFacts, ShopStoreRuleKind,
 } from './types'
 
@@ -202,12 +202,12 @@ export function parseLawRule(row: unknown): ShopLawRule | null {
   const days = r.days == null ? null : int(r.days, 1, 400), years = r.years == null ? null : int(r.years, 1, 10)
   if ((r.days != null && days === null) || (r.years != null && years === null)) return null
   if (r.kind === 'cancel' ? r.gives_right !== (days !== null) || years !== null : !r.gives_right || years === null || days !== null) return null
-  const name = text(r.name, 80), summary = text(r.summary, 600), law = text(r.law, 200)
+  const name = text(r.name, 80), summary = text(r.summary, 1200), law = text(r.law, 200)
   if (!name || !summary || !law || !isShownLink(r.law_url) || linkHost(r.law_url) !== 'lovdata.no' || !isDay(r.checked_on)) return null
   return {
     id: r.id, slug: r.slug, country: 'NO', kind: r.kind, channel: r.channel as ShopLawRule['channel'], seller: r.seller,
     gives_right: r.gives_right, days, years, long_lasting: typeof r.long_lasting === 'boolean' ? r.long_lasting : null,
-    counts_from: r.counts_from === 'receipt' ? 'receipt' : null, to_workday: r.to_workday === true,
+    counts_from: r.counts_from === 'receipt' || r.counts_from === 'delivery' ? r.counts_from : null, to_workday: r.to_workday === true,
     name, summary, law, law_url: r.law_url, checked_on: r.checked_on,
   }
 }
@@ -270,4 +270,27 @@ export function dealSlugOf(name: string): string | null {
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '').slice(0, 40).replace(/_+$/, '')
   return SEED_KEY_RE.test(slug) ? slug : null
+}
+
+// ── Prisjakt's new offers (shop_price_watch.new_offers, 191) ────────────────
+
+/** A shop name a screen may show: one line, 1–120 characters, no control, zero-width or direction characters (191's check). */
+const plainName = (v: unknown): v is string => typeof v === 'string' && v.length >= 1 && v.length <= 120 && v === v.replace(/\s+/g, ' ').trim()
+  && ![...v].some(ch => { const c = ch.codePointAt(0) as number; return c < 0x20 || (c >= 0x7f && c <= 0x9f) || (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) || c === 0xfeff })
+
+/** The new offers read back, checked as 191 checks them: at most 50, each whole; anything else is none (null). */
+export function parseNewOffers(v: unknown): ShopNewOffer[] | null {
+  if (!Array.isArray(v) || v.length > 50) return null
+  const out: ShopNewOffer[] = []
+  for (const o of v) {
+    if (!o || typeof o !== 'object') return null
+    const r = o as Record<string, unknown>
+    if (!(typeof r.shop_id === 'number' && Number.isSafeInteger(r.shop_id) && r.shop_id > 0 && r.shop_id < 1e10)) return null
+    if (!(typeof r.price === 'number' && Number.isFinite(r.price) && r.price >= 0 && r.price < 1e9)) return null
+    if (typeof r.currency !== 'string' || !/^[A-Z]{3}$/.test(r.currency)) return null
+    if (r.in_stock !== null && typeof r.in_stock !== 'boolean') return null
+    if (r.shop_name !== null && !plainName(r.shop_name)) return null
+    out.push({ shop_id: r.shop_id, shop_name: r.shop_name as string | null, price: r.price, currency: r.currency, in_stock: r.in_stock as boolean | null })
+  }
+  return out
 }

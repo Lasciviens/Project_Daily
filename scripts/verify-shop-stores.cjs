@@ -207,8 +207,11 @@ check('Elkjøp\'s search link for "Sony WH-1000XM5": its pattern, the words URL-
   && S.searchLinkFor(store.elkjop, 'Bose & Co #1') === 'https://www.elkjop.no/search?q=Bose%20%26%20Co%20%231')
 check('…none without words or a pattern (Power), nor when a pattern points elsewhere (the last-line guard)', S.searchLinkFor(store.elkjop, ' ') === null && S.searchLinkFor(store.power, 'x') === null
   && S.searchLinkFor({ ...store.elkjop, search_url: 'https://attacker.example/?q={q}' }, 'x') === null && S.searchLinkFor(store.elkjop, 'x'.repeat(201)) === null)
-check('a price site\'s shop name finds its store: "Elkjop", "ELKJØP" → Elkjøp; "Power.no" → none', S.storeOfShopName('Elkjop', stores) === store.elkjop
-  && S.storeOfShopName('ELKJØP', stores) === store.elkjop && S.storeOfShopName('Power.no', stores) === null && S.storeOfShopName('', stores) === null)
+check('a price site\'s shop name finds its store: "Elkjop", "ELKJØP" → Elkjøp; "Proshop.no" → Proshop (its address); "Powerhouse" → none', S.storeOfShopName('Elkjop', stores) === store.elkjop
+  && S.storeOfShopName('ELKJØP', stores) === store.elkjop && S.storeOfShopName('Proshop.no', stores) === store.proshop && S.storeOfShopName('Powerhouse', stores) === null && S.storeOfShopName('', stores) === null)
+check('a watch\'s new offers become price-match offers, each shop found by its name or address (none guessed)', JSON.stringify(S.offersOfWatch([
+  { shop_id: 324, shop_name: 'Elkjøp', price: 2990, currency: 'NOK', in_stock: true }, { shop_id: 16091, shop_name: 'Proshop.no', price: 3000, currency: 'NOK', in_stock: null },
+  { shop_id: 9, shop_name: null, price: 1, currency: 'NOK', in_stock: true }], stores).map(o => [o.storeId, o.shop, o.condition])) === JSON.stringify([[store.elkjop.id, 'Elkjøp', 'new'], [store.proshop.id, 'Proshop.no', 'new'], [null, 'Shop 9', 'new']]))
 
 const dl = (p, st, extra = []) => S.purchaseDeadlines(p, { store: st, rules: [...rules, ...extra], law })
 let d = dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'business' }, store.elkjop)
@@ -258,7 +261,7 @@ check('another store\'s rule, or one for a tier the owner hasn\'t, never counts'
 d = dl({ boughtOn: '2026-11-10', arrivedOn: '2026-11-15', channel: 'online', seller: 'business' }, null)
 check('online from a business, arrived Sunday 15.11: cancel by 29.11.2026 (a Sunday) — the law\'s last day, Monday 30.11.2026, named',
   d.returnBy?.day === '2026-11-29' && d.returnBy.legalLastDay === '2026-11-30' && d.returnBy.lawSlug === 'cancel_distance_business'
-  && d.returnBy.words === 'Return by 29.11.2026 — the right to cancel (angrerett), 14 days, Angrerettloven (LOV-2014-06-20-27); by law to 30.11.2026 (29.11.2026 is not a working day)', d.returnBy?.words)
+  && d.returnBy.words === 'Return by 29.11.2026 — the right to cancel (angrerett), 14 days, Angrerettloven §§ 1, 6 and 21 (LOV-2014-06-20-27); by law to 30.11.2026 (29.11.2026 is not a working day)', d.returnBy?.words)
 d = dl({ boughtOn: '2027-03-08', arrivedOn: '2027-03-11', channel: 'online', seller: 'business' }, null)
 check('…arrived 11.03.2027: its 14th day is Maundy Thursday — by law Tuesday 30.03.2027, past Easter', d.returnBy?.day === '2027-03-25' && d.returnBy.legalLastDay === '2027-03-30')
 d = dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'business' }, null)
@@ -312,9 +315,9 @@ const offers = [
 ]
 const READ = '2026-11-10T04:23:00Z', NOW = '2026-11-10T12:00:00Z'
 let m = S.priceMatches(stores, [...rules, match()], offers, READ, NOW)
-check('"Elkjøp matches Power: 2 990 there, read 05:23" — saving 500 on its own 3 490', m.length === 1 && m[0].words === 'Elkjøp matches Power: 2 990 there, read 05:23'
+check('"Elkjøp matches Power: 2 990 there, read 05:23" — saving 500 on its own 3 490', m.length === 1 && m[0].words === 'Elkjøp matches Power: 2 990 there, read 05:23 — its price match, typed 10.11.2026' && !m[0].unsure
   && m[0].saves === 500 && m[0].ownPrice === 3490 && m[0].store === store.elkjop, JSON.stringify(m.map(x => x.words)))
-check('…read on another day: "read 09.11.2026"', S.priceMatches(stores, [...rules, match()], offers, '2026-11-09T20:00:00Z', NOW)[0]?.words.endsWith('read 09.11.2026'))
+check('…read on another day: "read 09.11.2026"', S.priceMatches(stores, [...rules, match()], offers, '2026-11-09T20:00:00Z', NOW)[0]?.words.includes('there, read 09.11.2026 —'))
 m = S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null })], offers, READ, NOW)
 check('against any: the cheapest new offer in stock (or stock unknown) in NOK from a shop — never used, refurbished, out of stock, a marketplace, another currency or a broken price',
   m.length === 1 && m[0].matches === 'Power' && m[0].price === 2990)
@@ -331,6 +334,31 @@ check('a marketplace seller\'s offer counts unless the store excludes them', S.p
   && S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null, exclusions: ['marketplace_seller'] })], seller, READ, NOW)[0]?.price === 2990)
 m = S.priceMatches(stores, [...rules, match({ exclusions: ['campaign'] })], offers, READ, NOW)
 check('what the list can\'t tell is a caveat: "Elkjøp doesn\'t match campaign prices — check Power\'s isn\'t one"', eq(m[0]?.caveats, ['Elkjøp doesn\'t match campaign prices — check Power\'s isn\'t one']))
+
+// The guardian review (10.11.2026): what Ask AI wrote and nobody checked never reads as fact.
+const fromAi = over => R.parseStoreRule({ ...rule.elkjop_open_purchase, id: uuid(), seed_key: null, origin: 'ask_ai', source_facts: null, owner_edited: false, edited_at: null, ...over })
+m = S.priceMatches(stores, [...rules, match({ origin: 'ask_ai', owner_edited: false, edited_at: null, against: 'any', against_stores: null })], offers, READ, NOW)
+check('a price match Ask AI wrote says so: its words name the source, a caveat says check it, it is unsure', m[0]?.unsure === true
+  && m[0].words.endsWith('— its price match, from Ask AI — check it') && m[0].caveats[0] === 'Elkjøp\'s price match is from Ask AI — check it before you ask at the till', JSON.stringify(m[0]))
+const ai365 = fromAi({ kind: 'return', days: 365, label: 'returns, read 10.11.2026 on elkjop.no', member_tier: null, words: null })
+d = dl({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.elkjop, [ai365])
+check('a 365-day return Ask AI wrote beside the seeded 30 days: the 30 days count (10.12.2026), unsure; the 365 is a note with its source first, its label left out',
+  d.returnBy?.day === '2026-12-10' && d.returnBy.unsure && !d.returnBy.words.includes('365')
+  && d.notes.includes('from Ask AI — check it: Elkjøp\'s 365-day returns — until 10.11.2027, not counted until you check it') && !d.notes.some(x => x.includes('read 10.11.2026 on elkjop.no')), JSON.stringify(d))
+check('…once the owner edited it, it counts as theirs (typed)', dl({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.elkjop,
+  [{ ...ai365, owner_edited: true, edited_at: '2026-11-11T10:00:00Z' }]).returnBy?.day === '2027-11-10')
+check('an Ask AI rule\'s label and member tier never reach its name (its kind does)', S.ruleName({ ...ai365, member_tier: 'Gold' }, store.elkjop) === 'Elkjøp\'s 365-day returns'
+  && S.ruleName({ ...ai365, owner_edited: true }, store.elkjop) === 'Elkjøp\'s returns, read 10.11.2026 on elkjop.no')
+
+// The seller decides the right to cancel, never the marketplace (the law check, 10.11.2026).
+d = dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'business' }, store.finn)
+check('a business selling on FINN gives the right to cancel: 14 days, 24.11.2026 (the seller decides, not the marketplace)', d.returnBy?.day === '2026-11-24' && d.returnBy.lawSlug === 'cancel_distance_business', JSON.stringify(d))
+check('…a private seller on Tise gives none (the seller decides)', dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'private' }, store.tise).returnBy === null)
+check('the law\'s words: angrerett §§ 1, 6 and 21 with the exceptions of § 22 and the 300 kr rule; reklamasjon from delivery; kjøpsloven § 32 with the duty to examine',
+  /§ 22/.test(law[0].summary) && /300 kr/.test(law[0].summary) && /12 months/.test(law[0].summary) && /§ 20/.test(law[0].summary) && law[0].law_url === 'https://lovdata.no/lov/2014-06-20-27/§21'
+  && law.find(l => l.slug === 'complaint_business_long').summary.includes('a thing, or a part of it,') && law.filter(l => l.kind === 'complaint').every(l => l.counts_from === 'delivery')
+  && /undersøkelsesplikt/.test(law.find(l => l.slug === 'complaint_private').summary) && /should have found it/.test(law.find(l => l.slug === 'complaint_private').summary)
+  && law.find(l => l.slug === 'cancel_private').summary.includes('a business selling on FINN or Tise gives 14 days'))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

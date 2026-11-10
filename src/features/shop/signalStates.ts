@@ -6,10 +6,10 @@ import type { ShopSignal, ShopSignalState, ShopSignalStateFields, ShopSignalWrit
 // Every signal once — a missing or an unknown key is a type error here, so the list and ShopSignal can't drift.
 const ALL: Record<ShopSignal, true> = {
   at_target: true, lowest_seen: true, back_in_stock: true, fake_before: true, deal_day: true, cheaper_returnable: true,
-  return_closing: true, complaint_ending: true, old_value: true, old_wish: true, tidy_up: true,
+  return_closing: true, complaint_ending: true, old_value: true, old_wish: true, tidy_up: true, price_match: true,
 }
 
-/** The database's allow-list (190's CHECK on shop_signal_states.signal), in its order. */
+/** The database's allow-list (190's CHECK on shop_signal_states.signal, with 191's price_match), in its order. */
 export const SHOP_SIGNALS = Object.keys(ALL) as ShopSignal[]
 
 export function isShopSignal(x: unknown): x is ShopSignal {
