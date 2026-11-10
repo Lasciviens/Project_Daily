@@ -3,7 +3,7 @@ import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
-import { asTail, mixedWords, morningReads, retryWords } from '../../watchWords'
+import { asTail, coversOf, historyOf, leftOutWords, mixedWords, morningReads, retryWords, type Covers } from '../../watchWords'
 import { hostOf, money } from '../shopFormat'
 import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
@@ -66,7 +66,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
           )}
           {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
           <WatchAnswer item={item} watch={current} today={today} />
-          <Sparkline points={points} currency={cur} />
+          <Sparkline points={points} covers={coversOf(current)} currency={cur} />
           <p className="text-micro text-fg-muted">
             {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
             {refused && !current.last_ok_at ? null : <>{' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}</>}
@@ -96,11 +96,15 @@ function WatchAnswer({ item, watch, today }: { item: ShopItem; watch: ShopPriceW
   )
 }
 
-/** The lowest price over the checks, with its lowest and highest marked. */
-function Sparkline({ points, currency }: { points: ShopPricePoint[]; currency: string }) {
+/**
+ * The lowest price over the checks, with its lowest and highest marked — only prices of the watch's own kind
+ * (`historyOf`: a new price is never set against a used one), and a line naming the ones left out.
+ */
+function Sparkline({ points, covers, currency }: { points: ShopPricePoint[]; covers: Covers; currency: string }) {
   const colors = useChartColors()
-  const rows = points.filter(p => (p.currency ?? currency).toUpperCase() === currency)
-  if (rows.length < 2) return null
+  const { rows, leftOut } = historyOf(points, covers, currency)
+  const note = leftOutWords(leftOut)
+  if (rows.length < 2) return note ? <p className="text-micro text-fg-muted">{note}</p> : null
   const lows = rows.map(p => p.low)
   const min = Math.min(...lows), max = Math.max(...lows)
   const span = max - min || 1
@@ -117,6 +121,7 @@ function Sparkline({ points, currency }: { points: ShopPricePoint[]; currency: s
         <span>{formatDate(rows[0].checked_at)}</span>
         <span>lowest {money(min, currency)} · highest {money(max, currency)}</span>
       </p>
+      {note && <p className="text-micro text-fg-muted">{note}</p>}
     </div>
   )
 }

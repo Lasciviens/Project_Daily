@@ -7,7 +7,7 @@ import { formatDate, formatTime } from '../../shared/utils/dateFormat'
 import { osloDay } from './groceryModel'
 import { addDays } from './ownModel'
 import type { PriceReadResult } from './api/shopPriceApi'
-import type { ShopItem, ShopPriceWatch } from './types'
+import type { ShopItem, ShopPricePoint, ShopPriceWatch } from './types'
 
 /**
  * The note under a pasted link (the add sheet's and Add a model's): what was read and when, or why there is no
@@ -67,6 +67,29 @@ export type Covers = 'new' | 'mixed' | 'unknown'
 /** What a watch's (or a point's) price covers; one read before 188 says nothing, and on Prisjakt it may mix in used offers. */
 export function coversOf(w: { condition: Covers | null; source: string | null }): Covers {
   return w.condition ?? (w.source === 'prisjakt' ? 'mixed' : 'unknown')
+}
+
+/**
+ * The price history the record draws and sums up: only the points of the watch's own kind, in its currency — a
+ * Prisjakt point from before 188 counts as mixed — so "lowest" never sets a used price against a new one; and the
+ * points of another kind it leaves out, with what they covered.
+ */
+export function historyOf<P extends Pick<ShopPricePoint, 'condition' | 'source' | 'currency'>>(points: readonly P[], covers: Covers, currency: string): { rows: P[]; leftOut: { count: number; covers: Covers[] } } {
+  const ofCurrency = points.filter(p => (p.currency ?? currency).toUpperCase() === currency)
+  const rows = ofCurrency.filter(p => coversOf(p) === covers)
+  const other = ofCurrency.filter(p => coversOf(p) !== covers)
+  return { rows, leftOut: { count: other.length, covers: [...new Set(other.map(coversOf))] } }
+}
+
+/** "Left out: 4 prices that mixed in used offers" under the history, or null when nothing was left out. */
+export function leftOutWords(leftOut: { count: number; covers: Covers[] }): string | null {
+  const n = leftOut.count
+  if (!n) return null
+  const what = leftOut.covers.length !== 1 ? 'of another kind'
+    : leftOut.covers[0] === 'mixed' ? 'that mixed in used offers'
+    : leftOut.covers[0] === 'new' ? 'of new offers only'
+    : 'from the shop\'s own page'
+  return `Left out: ${n} ${n === 1 ? 'price' : 'prices'} ${what}`
 }
 
 /** ", new and used" after "Prisjakt" when its price may be a used one (mixed, or read before 188), else nothing. */

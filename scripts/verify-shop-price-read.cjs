@@ -286,6 +286,17 @@ console.log('\n16 · What a price covers, and why a watch shows no price now (th
     st('blocked').text === 'blocks apps' && st('blocked').warn && st('blocked').retry === 'the morning check tries again on 17.11.2026'
     && st('error').text === "couldn't check 10.11.2026" && st('error').warn && st('error').retry === 'the morning check tries again')
   const hint = (status, condition = null) => W.noPriceHint({ status, checked_at: at, condition })
+  const pt = (low, condition, source = 'prisjakt', currency = 'NOK') => ({ low, condition, source, currency })
+  const points = [pt(6990, null), pt(6790, null), pt(6590, 'mixed'), pt(16252, 'new'), pt(16115, 'new'), pt(1, 'new', 'prisjakt', 'EUR')]
+  const h = W.historyOf(points, 'new', 'NOK')
+  check('the history of a new-only watch draws its new points only — the 6 590 refurbished low is never its "lowest"', h.rows.map(p => p.low).join() === '16252,16115'
+    && Math.min(...h.rows.map(p => p.low)) === 16115, JSON.stringify(h))
+  check('…a Prisjakt point from before 188 counts as mixed, and what is left out is named: "Left out: 3 prices that mixed in used offers"', h.leftOut.count === 3
+    && W.leftOutWords(h.leftOut) === 'Left out: 3 prices that mixed in used offers', JSON.stringify(h.leftOut))
+  check('…a mixed watch draws its mixed points (the old ones too) and leaves the new ones out; one price in the singular',
+    W.historyOf(points, 'mixed', 'NOK').rows.length === 3 && W.leftOutWords(W.historyOf(points, 'mixed', 'NOK').leftOut) === 'Left out: 2 prices of new offers only'
+    && W.leftOutWords({ count: 1, covers: ['unknown'] }) === "Left out: 1 price from the shop's own page" && W.leftOutWords({ count: 2, covers: ['new', 'unknown'] }) === 'Left out: 2 prices of another kind')
+  check('…nothing left out, no line', W.leftOutWords(W.historyOf([pt(5, 'unknown', 'store'), pt(6, null, 'store')], 'unknown', 'NOK').leftOut) === null)
   check('the strip without a price names the refusal, "no new offer", or "couldn\'t check 10.11.2026" — never "not checked yet" for a link that was checked',
     hint('not_allowed') === 'apps may not read it' && hint('no_price', 'new') === 'no new offer' && hint('no_price') === 'no price on the page'
     && hint('blocked') === "couldn't check 10.11.2026" && hint('error') === "couldn't check 10.11.2026")
