@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { logError } from '../../../shared/utils/logError'
+import { formatTime } from '../../../shared/utils/dateFormat'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { fetchPricePoints, fetchPriceWatches } from '../api/shopApi'
@@ -39,10 +40,15 @@ export function useCheckPrices() {
   return useMutationWithFeedback({
     action:         'check_shop_prices',
     loadingMessage: 'Checking the price…',
-    successMessage: (r: PriceCheckOutcome[]) => (r.length === 1 ? 'Price checked' : `Checked ${r.length} links · ${r.filter(x => x.status === 'ok').length} with a price`),
+    successMessage: (r: PriceCheckOutcome[]) => {
+      const one = r.length === 1 ? r[0] : null
+      // Read under an hour ago: that read is the answer, and the toast says when the next can be.
+      if (one?.reused && one.checkedAt) return `Checked at ${formatTime(one.checkedAt)} — the next read can be after ${formatTime(Date.parse(one.checkedAt) + 3600_000)}`
+      return r.length === 1 ? 'Price checked' : `Checked ${r.length} links · ${r.filter(x => x.status === 'ok').length} with a price`
+    },
     mutationFn:     async (ids: string[]) => {
       const r = await checkItemPrices(ids)
-      if (r.length === 1 && r[0].status !== 'ok') throw new Error(r[0].error ?? 'No price found on the page')
+      if (r.length === 1 && r[0].status !== 'ok' && !r[0].reused) throw new Error(r[0].error ?? 'No price found on the page')
       return r
     },
     invalidates:    (_d, ids) => [qk.shop.watches(), ...ids.map(id => qk.shop.points(id))],

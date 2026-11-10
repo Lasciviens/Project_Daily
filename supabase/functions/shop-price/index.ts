@@ -50,6 +50,10 @@
 // POST { action: 'read', url }          → { result }   a preview, nothing stored (a listed site:
 //                                                     status not_allowed + its `site`, never fetched)
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
+//   A read the owner starts reuses one from the last hour: `check` answers from a watch of the same link
+//   checked under an hour ago, and `read` and `check` share the last hour's reads in memory (by account and
+//   exact link), so pasting a link and saving it is one read. The answer says so (`reused`, `checkedAt`).
+//   The sweep keeps its own rule (a link at most once in 20 h).
 // POST { action: 'rates' }              → { rates }    fill the caller's pending rates
 // POST { action: 'day_rates', pairs: [{ currency, day }] (≤ 60) }
 //                                       → { rates: [{ currency, day, nok_per_unit }] }
@@ -920,6 +924,9 @@ interface CheckOutcome {
   low: number | null
   currency: string | null
   error?: string
+  /** True when no new read was made: the answer is a read from the last hour, of `checkedAt`. */
+  reused?: boolean
+  checkedAt?: string
 }
 
 const WATCH_COLUMNS = 'item_id, url, checked_at, status, error, source, name, image, low, high, offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at, condition, used_low, refurbished_low'
@@ -930,6 +937,28 @@ const missingTable = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|Could not find the table/i.test(e.message ?? ''))
 
 const lastByHost = new Map<string, number>()
+
+/** A link the owner reads again within this long is answered from the last read (B, 10.11.2026). */
+const REUSE_MS = 3600_000
+const recentReads = new Map<string, { read: PriceRead & { finalUrl: string }; at: number }>()
+
+/**
+ * The link's read: one from the last hour by the same account (a paste preview, a check), else a new one.
+ * A listed site is refused first, whatever is remembered.
+ */
+async function readOnce(userId: string, url: string, listed: readonly string[]): Promise<{ read: PriceRead & { finalUrl: string }; at: number; reused: boolean }> {
+  const site = listedSite(url, listed)
+  if (site) throw new SiteRefused(site)
+  const key = `${userId}\n${url}`
+  const hit = recentReads.get(key)
+  if (hit && Date.now() - hit.at < REUSE_MS) return { ...hit, reused: true }
+  const read = await politeRead(url, listed)
+  const at = Date.now()
+  recentReads.delete(key)
+  recentReads.set(key, { read, at })
+  if (recentReads.size > 200) recentReads.delete(recentReads.keys().next().value as string)
+  return { read, at, reused: false }
+}
 
 async function politeRead(url: string, listed: readonly string[]): Promise<PriceRead & { finalUrl: string }> {
   const site = listedSite(url, listed)
@@ -974,12 +1003,19 @@ function notAllowedRead(url: string): PriceRead {
  * second tap on Check now).
  */
 async function checkRow(supabase: SupabaseClient, userId: string, item: Item, prev: Watch | null, listed: readonly string[]): Promise<CheckOutcome> {
-  const at = new Date().toISOString()
+  let at = new Date().toISOString()
   const url = String(item.url)
   let read: (PriceRead & { finalUrl: string }) | null = null
   let failure: string | null = null
   let refused: string | null = null
-  try { read = await politeRead(url, listed) } catch (e) {
+  let reused = false
+  try {
+    const got = await readOnce(userId, url, listed)
+    read = got.read
+    reused = got.reused
+    // A read from the last hour is stored as of when it was made.
+    at = new Date(got.at).toISOString()
+  } catch (e) {
     if (e instanceof SiteRefused || e instanceof RobotsRefused) refused = e.message
     failure = e instanceof FetchError ? e.message : 'Could not read the page'
   }
@@ -1009,7 +1045,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
       condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow,
       status: 'ok', error: null,
     }
-    outcome = { id: item.id, status: 'ok', low: read.low, currency: read.currency }
+    outcome = { id: item.id, status: 'ok', low: read.low, currency: read.currency, ...(reused ? { reused, checkedAt: at } : {}) }
     const repeat = same && same.status === 'ok' && same.last_ok_at && Date.parse(at) - Date.parse(same.last_ok_at) < 3600_000
       && same.low === read.low && same.high === read.high && same.offers === read.offers && same.condition === read.condition
     if (!repeat) {
@@ -1033,7 +1069,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
       ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error,
       ...(read?.condition === 'new' ? { used_low: read.usedLow, refurbished_low: read.refurbishedLow } : {}),
     }
-    outcome = { id: item.id, status, low: null, currency: null, error: error ?? undefined }
+    outcome = { id: item.id, status, low: null, currency: null, error: error ?? undefined, ...(reused ? { reused, checkedAt: at } : {}) }
   }
   const { error } = await supabase.from('shop_price_watch').upsert({ item_id: item.id, user_id: userId, url, checked_at: at, ...row }, { onConflict: 'item_id' })
   if (error) return { ...outcome, status: 'error', error: missingTable(error) ? NOT_MIGRATED : error.message }
@@ -1283,8 +1319,8 @@ Deno.serve(async (req: Request) => {
     const url = typeof body.url === 'string' ? body.url.trim() : ''
     if (!url) return json({ error: 'url required' }, 400)
     try {
-      const r = await politeRead(url, await listedSites(supabase))
-      return json({ result: { ...r, at: new Date().toISOString() } })
+      const got = await readOnce(userId, url, await listedSites(supabase))
+      return json({ result: { ...got.read, at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}) } })
     } catch (e) {
       if (e instanceof SiteRefused || e instanceof RobotsRefused) {
         return json({ result: { ...notAllowedRead(url), site: e.site, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
@@ -1311,7 +1347,13 @@ Deno.serve(async (req: Request) => {
     const results: CheckOutcome[] = []
     for (const item of (data ?? []) as Item[]) {
       if (!item.url || !/^https?:\/\//i.test(item.url)) { results.push({ id: item.id, status: 'error', low: null, currency: null, error: 'No link to check' }); continue }
-      results.push(await checkRow(supabase, userId, item, watches.get(item.id) ?? null, listed))
+      // Checked under an hour ago (the same link): that check is the answer — no new read.
+      const w = watches.get(item.id)
+      if (w && w.url === item.url && Date.now() - Date.parse(w.checked_at) < REUSE_MS) {
+        results.push({ id: item.id, status: w.status as CheckOutcome['status'], low: w.low, currency: w.currency, error: w.error ?? undefined, reused: true, checkedAt: w.checked_at })
+        continue
+      }
+      results.push(await checkRow(supabase, userId, item, w ?? null, listed))
     }
     return json({ results })
   }

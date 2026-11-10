@@ -230,7 +230,8 @@ function shopPrice({ db, pages, fetched, writes, robots = {}, robotsAsked = [] }
     })
     return q
   }
-  const client = { from: builder, auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) } }
+  // The JWT names the account: 'Bearer other-jwt' is a second app user, anything else the owner.
+  const client = { from: builder, auth: { getUser: async (t) => ({ data: { user: { id: t === 'other-jwt' ? 'other' : 'owner' } }, error: null }) } }
   const fetchStub = async (url) => {
     if (new URL(String(url)).pathname === '/robots.txt') {
       robotsAsked.push(String(url))
@@ -254,9 +255,10 @@ function shopPrice({ db, pages, fetched, writes, robots = {}, robotsAsked = [] }
 }
 const FINN = 'https://www.finn.no/recommerce/forsale/item/1'
 const listed = [{ host: 'finn.no' }, { host: 'tise.com' }]
-/** The database: the listed sites, one item on `itemUrl`, no watch, nothing waiting for a rate. */
-const dbWith = (itemUrl, policies = { data: listed, error: null }) => (table, ops) => {
+/** The database: the listed sites, one item on `itemUrl`, its watch (none by default), nothing waiting for a rate. */
+const dbWith = (itemUrl, policies = { data: listed, error: null }, watch = null) => (table, ops) => {
   if (table === 'shop_site_policies') return policies
+  if (table === 'shop_price_watch' && watch) return { data: [watch], error: null }
   if (table === 'shop_items') {
     if (ops.some(([op]) => op === 'maybeSingle')) return { data: { url: itemUrl }, error: null }
     if (ops.some(([op, a]) => op === 'select' && /option_for/.test(String(a)))) return { data: [{ id: 'i1', url: itemUrl, status: 'wishlist', option_for: null }], error: null }
@@ -369,6 +371,45 @@ async function handlerChecks() {
   r = await call({ action: 'read', url: plain })
   check('a robots.txt that redirects to a private address is refused like a page would be — nothing fetched there', /not allowed/i.test(r.error ?? '')
     && fetched.length === 0 && !robotsAsked.some(u => u.includes('127.0.0.1')), JSON.stringify(r) + ' ' + robotsAsked.join(' '))
+
+  console.log('\n11 · A read the owner starts reuses one from the last hour (the real handler, scripted)')
+  const watchOf = (minutesAgo, url = plain, extra = {}) => ({ item_id: 'i1', url, checked_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), status: 'ok', error: null,
+    source: 'store', name: 'TV', image: null, low: 9490, high: null, offers: null, currency: 'NOK', in_stock: true, was: null, return_days: null,
+    last_ok_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), prev_low: null, prev_at: null, condition: 'unknown', used_low: null, refurbished_low: null, ...extra })
+  const tv = { [plain]: { body: page(TCL) } }
+  fetched = []; writes = []
+  const recent = watchOf(10)
+  call = shopPrice({ db: dbWith(plain, undefined, recent), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch of the same link checked 10 minutes ago is the answer — no fetch, nothing written, said so (reused, checkedAt)',
+    fetched.length === 0 && writes.length === 0 && r.results?.[0]?.reused === true && r.results?.[0]?.low === 9490 && r.results?.[0]?.checkedAt === recent.checked_at, JSON.stringify(r))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, plain, { status: 'blocked', low: null })), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('…the same when that check was blocked: Check now tries again only after the hour', fetched.length === 0 && r.results?.[0]?.status === 'blocked' && r.results?.[0]?.reused === true)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(70)), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch from over an hour ago is read again', fetched.length === 1 && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused && r.results?.[0]?.low === 9990)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, 'https://plain.example/old')), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch of another (older) link is no answer: the new link is read', fetched.length === 1 && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: tv, fetched, writes })
+  const pasted = await call({ action: 'read', url: plain })
+  const twice = await call({ action: 'read', url: plain })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const saved = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('paste, paste again, then save: one read — the second preview and the check after the save reuse it (said so), stored as of when it was read',
+    fetched.length === 1 && pasted.result?.status === 'ok' && !pasted.result?.reused && twice.result?.reused === true && twice.result?.at === pasted.result?.at
+    && r.results?.[0]?.reused === true && r.results?.[0]?.status === 'ok' && saved?.checked_at === pasted.result?.at && saved?.low === 9990, JSON.stringify([pasted.result?.at, twice.result, r, saved?.checked_at]))
+  const other = await call({ action: 'read', url: plain }, { authorization: 'Bearer other-jwt' })
+  check('…another account\'s read of the same link is its own', fetched.length === 2 && other.result?.status === 'ok' && !other.result?.reused)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10)), pages: tv, fetched, writes })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('the sweep keeps its own rule: a link checked under 20 h ago is not due', r.checked === 0 && fetched.length === 0, JSON.stringify(r))
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {
