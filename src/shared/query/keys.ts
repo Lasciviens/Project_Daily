@@ -117,6 +117,8 @@ export const qk = {
     /** Kassalapp prices per chain for the quick list's matched products. */
     grocery: (eans: string) => ['shop', 'grocery', eans] as const,
     grocerySearch: (q: string) => ['shop', 'grocery-search', q] as const,
+    /** A scanned barcode's product (Kassalapp's /products/ean). */
+    groceryEan: (ean: string) => ['shop', 'grocery-ean', ean] as const,
   },
   media: {
     movies: ['movies'] as const,

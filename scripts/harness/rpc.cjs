@@ -72,6 +72,22 @@ const RPCS = {
   shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null }), a.p_subject),
   shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null), a.p_subject),
 
+  // 187: Shop's delete — the owner's rows by id, with their links and extra costs; the answer is the snapshot
+  // Undo restores from (children are the accessories the app sends along: deleteScope).
+  shop_delete_items: (args, store) => {
+    const ids = new Set(args.p_ids || [])
+    const take = (table, keep) => {
+      const all = store.tables[table] || []
+      const gone = all.filter(r => r.user_id === store.ownerId && !keep(r))
+      store.tables[table] = all.filter(r => !gone.includes(r))
+      return gone
+    }
+    const items = take('shop_items', r => !ids.has(r.id))
+    const links = take('shop_item_links', r => !ids.has(r.from_id) && !ids.has(r.to_id))
+    const costs = take('shop_item_costs', r => !ids.has(r.item_id))
+    return { items, links, costs, children: [] }
+  },
+
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),
 

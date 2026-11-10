@@ -26,6 +26,13 @@ const RELATIONS = {
   'user_tv_episodes.media_watches': { kind: 'many', local: 'id', foreign: 'episode_id' },
 }
 
+// Column defaults an insert gets from the database when the app leaves them out (the migrations'
+// DEFAULTs), for the tables a test inserts into: without them a new quick-list row has no status and
+// is on no list.
+const DEFAULTS = {
+  shop_items: { status: 'wishlist', priority: 'medium', source_type: 'manual', list: 'wishlist', kind: 'item', kept: true }, // 029, 134, 137
+}
+
 // ── Dates on Oslo's clock ────────────────────────────────────────────────────
 
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -737,6 +744,15 @@ function buildTables(now = new Date()) {
     shopItem('Oats', 'Groceries', { list: 'quick', errand: true, price: 35 }),
     shopItem('Light bulbs E27', 'Home', { list: 'quick', errand: true, platform: 'Hardware store' }),
     shopItem('Stamps', null, { list: 'quick', errand: true, planned_date: today }),
+    // Past quick-list ticks (Buy again, step C): bananas every 6 days and coffee every week are due,
+    // dish soap every 4 weeks too; bread was bought yesterday and a birthday card once (Bought before);
+    // oats are on the list already, so they are never suggested.
+    ...[-23, -17, -11, -5].map(n => shopItem('Bananas', 'Groceries', { list: 'quick', status: 'bought', bought_at: at(n, '17:30'), platform: 'Kiwi' })),
+    ...[-29, -22, -15, -8].map(n => shopItem('Coffee', 'Groceries', { list: 'quick', status: 'bought', bought_at: at(n, '17:40') })),
+    ...[-90, -62, -33].map(n => shopItem('Dish soap', 'Home', { list: 'quick', status: 'bought', bought_at: at(n, '18:10') })),
+    ...[-7, -4, -1].map(n => shopItem('Bread', 'Groceries', { list: 'quick', status: 'bought', bought_at: at(n, '08:15') })),
+    shopItem('Birthday card', null, { list: 'quick', status: 'bought', bought_at: at(-40, '12:00') }),
+    ...[-20, -10].map(n => shopItem('Oats', 'Groceries', { list: 'quick', status: 'bought', bought_at: at(n, '17:50') })),
   ]
   tables.shop_item_costs = [{
     id: '5c050000-0000-4000-8000-000000000001', user_id: owner, item_id: laptop.id, label: 'Extended warranty', amount: 990, currency: 'NOK',
@@ -930,4 +946,4 @@ function buildTables(now = new Date()) {
   return tables
 }
 
-module.exports = { OWNER, RELATIONS, buildTables, osloDay, osloInstant, addDays }
+module.exports = { OWNER, RELATIONS, DEFAULTS, buildTables, osloDay, osloInstant, addDays }

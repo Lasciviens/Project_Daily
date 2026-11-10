@@ -342,11 +342,13 @@ class Store {
    * @param tables   { name: rows[] } — rows are used as they are (copy first if they are shared)
    * @param relations { 'parent.embed': { kind: 'one'|'many', local, foreign } } — embeds the naming rules can't infer
    * @param ownerId  the signed-in user's id (filled into inserts without user_id)
+   * @param defaults { table: { column: value } } — the database's column defaults an insert gets when it leaves them out
    */
-  constructor({ tables = {}, relations = {}, ownerId = null, log = null } = {}) {
+  constructor({ tables = {}, relations = {}, ownerId = null, log = null, defaults = {} } = {}) {
     this.tables = tables
     this.relations = relations
     this.ownerId = ownerId
+    this.defaults = defaults
     this.log = log || (() => {})
   }
 
@@ -489,6 +491,7 @@ class Store {
     if (known.has('user_id') || !known.size) out.user_id = this.ownerId
     if (known.has('created_at') || !known.size) out.created_at = now
     if (known.has('updated_at')) out.updated_at = now
+    Object.assign(out, this.defaults[table])
     for (const [k, v] of Object.entries(row)) if (v !== undefined) out[k] = v
     if (out.id === null || out.id === undefined) out.id = this.newId(table)
     return out

@@ -5,8 +5,8 @@ import { Button, MetaLine, Skeleton, Truncate } from '../../../../shared/ui'
 import { useDebouncedValue } from '../../../../shared/hooks/useDebouncedValue'
 import { formatMoney } from '../../../settings/subscriptionRules'
 import { useUpdateShopItem } from '../../hooks/useShop'
-import { SEARCH_MIN_CHARS, useGrocerySearch } from '../../hooks/useShopPrices'
-import { chainName, matchPatch, type GroceryHit, type GroceryPrice } from '../../groceryModel'
+import { SEARCH_MIN_CHARS, useGrocerySearch } from '../../hooks/useGrocery'
+import { chainName, matchPatch, unmatchPatch, type GroceryHit, type GroceryPrice } from '../../groceryModel'
 import { ItemThumb } from '../shopKit'
 import type { ShopItem } from '../../types'
 
@@ -21,7 +21,8 @@ interface Props {
 /**
  * "Find a price": pick the product a quick-list row is (Kassalapp's search),
  * so it is priced at every chain. Saves the EAN — and the picture when the
- * row has none — quietly; the row's price chip is the confirmation.
+ * row has none, or had only the old product's (`matchPatch`) — quietly; the
+ * row's picture and price chip are the confirmation.
  */
 export function FindPriceSheet({ item, open, current, onClose }: Props) {
   return (
@@ -38,17 +39,19 @@ function FindPriceBody({ item, current, onDone }: { item: ShopItem; current?: Gr
   const [query, setQuery] = useState(item.title)
   const q = useDebouncedValue(query.trim(), 350)
   const search = useGrocerySearch(q)
+  const hits = search.data ?? []
+  // The row's product until now, when the search shows it: a picture that is exactly its picture came with that match.
+  const was = item.ean ? hits.find(h => h.ean === item.ean) ?? null : null
 
   function pick(hit: GroceryHit) {
-    update.mutate({ id: item.id, patch: matchPatch(item, hit), quiet: true })
+    update.mutate({ id: item.id, patch: matchPatch(item, hit, was), quiet: true })
     onDone()
   }
   function unmatch() {
-    update.mutate({ id: item.id, patch: { ean: null }, quiet: true })
+    update.mutate({ id: item.id, patch: unmatchPatch(item, was), quiet: true })
     onDone()
   }
 
-  const hits = search.data ?? []
   const results = q.length < SEARCH_MIN_CHARS ? <p className="text-body text-fg-muted">Type at least three letters.</p>
     : search.isError ? (
       <div className="flex flex-col items-start gap-2">

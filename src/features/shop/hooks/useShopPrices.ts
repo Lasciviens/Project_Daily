@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
@@ -6,12 +6,10 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { fetchPricePoints, fetchPriceWatches } from '../api/shopApi'
 import { checkItemPrices, type PriceCheckOutcome } from '../api/shopPriceApi'
-import { fetchGroceryPrices, searchGroceries } from '../api/groceryApi'
 import { checkToast } from '../watchWords'
-import type { GroceryHit } from '../groceryModel'
 import type { ShopPriceWatch } from '../types'
 
-// The price watch (shop-price, migration 137) and grocery prices (Kassalapp).
+// The price watch (shop-price, migration 137). Grocery prices (Kassalapp): useGrocery.ts.
 
 export function useShopWatches() {
   return useQuery({ queryKey: qk.shop.watches(), queryFn: fetchPriceWatches, staleTime: STALE.default })
@@ -72,46 +70,4 @@ export function useQuietCheck() {
       .then(() => Promise.all([qc.invalidateQueries({ queryKey: qk.shop.watches() }), qc.invalidateQueries({ queryKey: qk.shop.priceStatsAll })]))
       .catch((e: Error) => logError(`shop_quiet_check: ${e.message}`, { action: 'shop_quiet_check' }))
   }
-}
-
-/** Kassalapp's search takes at least 3 characters (its spec's `minLength: 3`; shorter is a 422). */
-export const SEARCH_MIN_CHARS = 3
-
-/** Products for a quick-list row (Kassalapp), while typing — from `SEARCH_MIN_CHARS`. */
-export function useGrocerySearch(query: string) {
-  const q = query.trim()
-  return useQuery({
-    queryKey: qk.shop.grocerySearch(q.toLowerCase()),
-    queryFn: () => searchGroceries(q),
-    enabled: q.length >= SEARCH_MIN_CHARS,
-    staleTime: STALE.hour,
-    retry: false,
-  })
-}
-
-/** Today's price of every matched product at each chain (one bulk call). */
-export function useGroceryPrices(eans: readonly string[]) {
-  const key = [...new Set(eans)].filter(Boolean).sort().join(',')
-  return useQuery({
-    queryKey: qk.shop.grocery(key),
-    queryFn: () => fetchGroceryPrices(key.split(',')),
-    enabled: key.length > 0,
-    staleTime: STALE.hour,
-    retry: false,
-  })
-}
-
-/**
- * Looks a scanned barcode up through Kassalapp's search (it takes an EAN as
- * the query), on the same cache entry `useGrocerySearch` reads — a code
- * scanned twice in an hour costs one call. A failed lookup is asked again.
- */
-export function useScanLookup(): (code: string) => Promise<GroceryHit[]> {
-  const qc = useQueryClient()
-  return useCallback((code: string) => qc.fetchQuery({
-    queryKey: qk.shop.grocerySearch(code.toLowerCase()),
-    queryFn: () => searchGroceries(code),
-    staleTime: STALE.hour,
-    retry: false,
-  }), [qc])
 }

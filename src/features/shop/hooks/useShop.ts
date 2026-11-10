@@ -5,7 +5,7 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { confirmDelete } from '../../../shared/modals'
 import { deleteScope, quickDue, quickFromWishlist } from '../shopModel'
 import { qk, STALE } from '../../../shared/query'
-import { mapRowsInCache, restoreCache, snapshotCache, type CacheSnapshot } from '../../../shared/query/cachePatch'
+import { mapRowsInCache, removeRowsFromCache, restoreCache, snapshotCache, type CacheSnapshot } from '../../../shared/query/cachePatch'
 import {
   fetchShopCategories, createShopCategory,
   fetchShopItems, createShopItem, updateShopItem, deleteShopItems, restoreShopItems,
@@ -88,6 +88,35 @@ export function useCreateShopItem() {
     mutationFn:     ({ input }: { input: CreateShopItemInput; quiet?: boolean }) => createShopItem(input),
     invalidates:    [qk.shop.items()],
   })
+}
+
+/**
+ * Buy again in one tap: a fresh quick-list row from an earlier purchase
+ * (`buyAgainInput`), "On the quick list · Milk · Undo". The stored row goes
+ * into the cached list as soon as the database answers, so the suggestion
+ * leaves at once; Undo takes that fresh row off again (the shop delete — a
+ * row made a moment ago has nothing hanging on it) and says so.
+ */
+export function useAddAgain() {
+  const qc = useQueryClient()
+  const undo = useMutationWithFeedback({
+    action:         'undo_shop_buy_again',
+    successMessage: (_d: unknown, row: ShopItem) => `Taken off the quick list · ${row.title}`,
+    mutationFn:     async (row: ShopItem) => { await deleteShopItems([row.id]) },
+    onSuccess:      (_d, row) => removeRowsFromCache(qc, qk.shop.items(), new Set([row.id])),
+    invalidates:    SHOP_ROWS,
+  })
+  const add = useMutationWithFeedback({
+    action:      'shop_buy_again',
+    silent:      'its toast with Undo reports it',
+    mutationFn:  (input: CreateShopItemInput) => createShopItem(input),
+    onSuccess:   (row: ShopItem) => {
+      qc.setQueryData<ShopItem[]>(qk.shop.items(), rows => (rows && !rows.some(r => r.id === row.id) ? [...rows, row] : rows))
+      toast.undo(`On the quick list · ${row.title}`, () => undo.mutate(row))
+    },
+    invalidates: [qk.shop.items()],
+  })
+  return { add: (input: CreateShopItemInput) => add.mutate(input), busy: add.isPending }
 }
 
 /** `row`: the row as it was before an earlier write, for an Undo that brings it back onto Daily's list. */

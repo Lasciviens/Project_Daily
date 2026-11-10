@@ -301,7 +301,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
   {
     id: 'kassalapp', name: 'Kassalapp', provider: 'kassal.app', category: 'Food', official: true,
     docsUrl: 'https://kassal.app/api',
-    purpose: 'Norwegian branded groceries with price and nutrition, listed first in online food search; on Shop\'s quick list, each matched item\'s price at every chain with a current price (read daily only from Meny, Spar, Joker, Oda, Bunnpris, Europris, Engrosnett, Havaristen, Holdbart, Fudi, Leske and FastCandy).',
+    purpose: 'Norwegian branded groceries with price and nutrition, listed first in online food search; on Shop\'s quick list, a scanned barcode\'s product and each matched item\'s price at every chain with a current price (read daily only from Meny, Spar, Joker, Oda, Bunnpris, Europris, Engrosnett, Havaristen, Holdbart, Fudi, Leske and FastCandy).',
     transports: ['edge'],
     connection: 'Through the food-search edge function so the personal key stays server-side.',
     edgeFunctions: ['food-search'], endpoints: ['kassal.app/api/v1'],

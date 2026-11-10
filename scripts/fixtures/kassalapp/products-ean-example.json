@@ -1,0 +1,199 @@
+{
+  "data": {
+    "ean": "7039010019828",
+    "products": [
+      {
+        "id": 283,
+        "name": "Grandiosa Pizza Pepperoni 500g Stabburet",
+        "vendor": "Orkla foods norge as",
+        "brand": "Grandiosa",
+        "description": null,
+        "ingredients": "Hvetemel, vann, ost 23% ( jarlsberg, mozzarella), pepperonipølse 10 % ( storfekjøtt, vann, krydder, salt, stivelse, melkeprotein, sukker,  druesukker, hvetefiber, stabilisator (e450, e451), konserveringsmiddel ( e250)), tomatpuré, gjær, rapsolje, krydder, sukker, salt",
+        "url": "https://meny.no/Varer/middag/pizza/pizza/grandiosa-pizza-7039010019828",
+        "image": "https://res.cloudinary.com/norgesgruppen/image/upload/v1642055086/Product/7039010019828.jpg",
+        "store": {
+          "name": "Meny",
+          "code": "MENY_NO",
+          "url": "https://meny.no/Varer",
+          "logo": "http://localhost/logos/Meny.svg"
+        },
+        "current_price": {
+          "price": 72.9,
+          "unit_price": 151.88,
+          "date": "2023-01-26T17:55:24.000000Z"
+        },
+        "weight": 500,
+        "weight_unit": "g",
+        "price_history": [
+          {
+            "price": 72.9,
+            "date": "2023-01-26T17:55:24.000000Z"
+          }
+        ],
+        "kassalapp": {
+          "url": "http://localhost/vare/283-grandiosa-pizza-pepperoni-500g-stabburet-7039010019828",
+          "opengraph": null
+        },
+        "created_at": "2023-01-26T17:55:24.000000Z",
+        "updated_at": "2023-01-26T17:55:24.000000Z"
+      },
+      {
+        "id": 4204,
+        "name": "Grandiosa Pizza Pepperoni 500g Stabburet",
+        "vendor": "Orkla foods norge as",
+        "brand": "Grandiosa",
+        "description": null,
+        "ingredients": "Hvetemel, vann, ost 23% ( jarlsberg, mozzarella), pepperonipølse 10 % ( storfekjøtt, vann, krydder, salt, stivelse, melkeprotein, sukker,  druesukker, hvetefiber, stabilisator (e450, e451), konserveringsmiddel ( e250)), tomatpuré, gjær, rapsolje, krydder, sukker, salt",
+        "url": "https://spar.no/nettbutikk/varer/middag/pizza/pizza/grandiosa-pizza-7039010019828",
+        "image": "https://res.cloudinary.com/norgesgruppen/image/upload/v1642055086/Product/7039010019828.jpg",
+        "store": {
+          "name": "SPAR",
+          "code": "SPAR_NO",
+          "url": "https://spar.no/nettbutikk/varer",
+          "logo": "http://localhost/logos/Spar.svg"
+        },
+        "current_price": {
+          "price": 69.9,
+          "unit_price": 156.04,
+          "date": "2023-01-27T18:56:03.000000Z"
+        },
+        "weight": 500,
+        "weight_unit": "g",
+        "price_history": [
+          {
+            "price": 69.9,
+            "date": "2023-01-27T18:56:03.000000Z"
+          }
+        ],
+        "kassalapp": {
+          "url": "http://localhost/vare/4204-grandiosa-pizza-pepperoni-500g-stabburet-7039010019828",
+          "opengraph": null
+        },
+        "created_at": "2023-01-27T18:56:03.000000Z",
+        "updated_at": "2023-01-27T18:56:03.000000Z"
+      }
+    ],
+    "allergens": [
+      {
+        "code": "blotdyr",
+        "display_name": "Bløtdyr",
+        "contains": "NO"
+      },
+      {
+        "code": "egg",
+        "display_name": "Egg",
+        "contains": "NO"
+      },
+      {
+        "code": "fisk",
+        "display_name": "Fisk",
+        "contains": "NO"
+      },
+      {
+        "code": "gluten",
+        "display_name": "Gluten",
+        "contains": "YES"
+      },
+      {
+        "code": "lupiner",
+        "display_name": "Lupiner",
+        "contains": "NO"
+      },
+      {
+        "code": "melk",
+        "display_name": "Melk",
+        "contains": "YES"
+      },
+      {
+        "code": "notter",
+        "display_name": "Nøtter",
+        "contains": "NO"
+      },
+      {
+        "code": "peanotter",
+        "display_name": "Peanøtter",
+        "contains": "NO"
+      },
+      {
+        "code": "selleri",
+        "display_name": "Selleri",
+        "contains": "NO"
+      },
+      {
+        "code": "sennep",
+        "display_name": "Sennep",
+        "contains": "NO"
+      },
+      {
+        "code": "sesam",
+        "display_name": "Sesam",
+        "contains": "NO"
+      },
+      {
+        "code": "skalldyr",
+        "display_name": "Skalldyr",
+        "contains": "NO"
+      },
+      {
+        "code": "soya",
+        "display_name": "Soya",
+        "contains": "NO"
+      },
+      {
+        "code": "sulfitt",
+        "display_name": "Sulfitt",
+        "contains": "NO"
+      }
+    ],
+    "nutrition": [
+      {
+        "code": "energi_kcal",
+        "display_name": "Kalorier",
+        "amount": 233,
+        "unit": "kcal"
+      },
+      {
+        "code": "energi_kj",
+        "display_name": "Energi",
+        "amount": 975,
+        "unit": "kj"
+      },
+      {
+        "code": "fett_totalt",
+        "display_name": "Fett",
+        "amount": 8.3,
+        "unit": "g"
+      },
+      {
+        "code": "karbohydrater",
+        "display_name": "Karbohydrater",
+        "amount": 28,
+        "unit": "g"
+      },
+      {
+        "code": "mettet_fett",
+        "display_name": "Mettet fett",
+        "amount": 4.5,
+        "unit": "g"
+      },
+      {
+        "code": "protein",
+        "display_name": "Protein",
+        "amount": 11,
+        "unit": "g"
+      },
+      {
+        "code": "salt",
+        "display_name": "Salt",
+        "amount": 1,
+        "unit": "g"
+      },
+      {
+        "code": "sukkerarter",
+        "display_name": "Sukkerarter",
+        "amount": 3.1,
+        "unit": "g"
+      }
+    ]
+  }
+}

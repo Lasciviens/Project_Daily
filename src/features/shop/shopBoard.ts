@@ -24,11 +24,14 @@ export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
   4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, LOOK_RAIL] },
 }
 
-//   1  the add box first (capture is the point), the list, the grocery
-//      basket (it sums up the list above it), then buy again.
-//   2+ add box, basket and buy-again chips in a sticky rail (the basket — a
-//      few short lines — above the chips, which can run long); the stores'
-//      lists take the rest and flow into columns by their own width.
+//   1  the add box first (capture is the point), the list — led by Buy
+//      again, what your own ticks say is due (step C, 10.11.2026: one compact
+//      group right above the stores; inside `list`, so it takes the
+//      skeleton's place instead of pushing the list) — the grocery basket (it
+//      sums up the list above it), then what you bought before.
+//   2+ add box, basket and bought-before chips in a sticky rail (the basket —
+//      a few short lines — above the chips, which can run long); the list
+//      takes the rest and flows into columns by its own width.
 export const QUICK_SECTIONS = ['add', 'basket', 'again', 'list'] as const
 export type QuickSection = typeof QUICK_SECTIONS[number]
 

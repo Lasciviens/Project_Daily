@@ -2,7 +2,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
-import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
@@ -12,14 +12,16 @@ import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
 import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
-import { QuickListView } from '../components/QuickListView'
 import { OwnedView } from '../components/owned/OwnedView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
 import type { StatsScope } from '../statsModel'
 
-// Stats (the only charts on the page) loads when opened, and in idle time once the page shows.
+// Stats (the only charts on the page) and the Quick list (its grocery prices,
+// Buy again and the scanner) load when opened, and in idle time once the page
+// shows: the Wishlist, the default view, keeps the page's first download.
 const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
-const OTHER_VIEWS = [ShopStatsView]
+const QuickListView = lazyPart('shop-quick', () => import('../components/QuickListView').then(m => m.QuickListView))
+const OTHER_VIEWS = [QuickListView, ShopStatsView]
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -127,7 +129,11 @@ export function ShopPage() {
       )}
 
       {view === 'quick'
-        ? <QuickListView items={items} isLoading={isLoading} />
+        ? (
+          <Suspense fallback={<SkeletonTab />}>
+            <QuickListView items={items} isLoading={isLoading} />
+          </Suspense>
+        )
         : view === 'owned'
           ? ownedTab === 'stats'
             ? (
