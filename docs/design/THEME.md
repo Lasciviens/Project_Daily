@@ -467,6 +467,14 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   them (`max-h-[calc(100dvh-7rem)] overflow-y-auto`), spanning two tracks from 100rem. The picked row is
   `bg-accent-50` + `aria-current`. The pane falls back to the first listed row (`paneSelection`) and is
   never empty while the list isn't.
+  - **The pane in a rail's place** (Shop's Owned, `RecordPane`): where the sticky rail already holds a part
+    (Needs a look), a tapped row's detail takes that part's place in the same track — the list keeps its
+    tracks and its scroll, nothing reflows — and closing it (Back through `useHistoryDismiss`, ×, Esc)
+    brings the part back. No first-row fallback: it opens on a tap, and a change not saved asks before
+    it closes or another row opens. The pane is a `card` of the same `max-h-[calc(100dvh-7rem)]`, its header
+    (title, state, ×) and footer fixed and its body scrolling; the detail is the same component as the
+    phone's full-screen popup (one body, two frames), sized on its own width (`@container`). Below 60rem
+    the section is absent and a tap opens the popup.
 - **Collections**: `grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start` (column count
   follows width, cards keep their size); in a wide track use `repeat(auto-fill,minmax(MIN,1fr))`
   (auto-fill with a fixed maximum counts by the maximum). A section's own grid counts its columns by its
@@ -486,6 +494,13 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   above its own tiles; one grid, so a row's tiles still line up), the column count being auto-fill's own
   (`tileColumns`, measured before the first paint). A wide list deals its sections into column stacks by its
   own width (`categoryColumns`: 33rem a stack — one on a phone and at 1469, two at 1920, three at 2450).
+- **Compact rows** (Shop's Owned): a collection read as a list — one row per thing, the same two lines every
+  time (a 40px picture square — `RowPicture`, the tiles' well at a row's size — then the name and the number on
+  the first line; the facts, cut at the end, and at most one `TonePill` on the second, which is always as tall as
+  the pill), so a column of them lines up; rows sit in one `card` per group, divided by `divide-line`, each
+  group's label once above its card. Sub-items (accessories) follow their row as indented one-line rows, so a
+  group varies in height: a wide list deals its groups into column stacks by its own width (`rowStacks`: 21rem
+  and up, each at most 40rem — W2 — and never more stacks than groups), never a row grid.
 - **Widgets** adapt to their own box with container queries (`@container`, `@sm:` … `@4xl:`), not the
   viewport.
 - **Glance tiles on phones**: 2 columns (`grid-cols-2 gap-3`), each tile opens its detail in a popup.
