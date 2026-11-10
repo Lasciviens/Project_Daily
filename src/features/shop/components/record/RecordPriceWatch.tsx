@@ -3,6 +3,7 @@ import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
+import { asTail, retryWords } from '../../watchWords'
 import { hostOf, money } from '../shopFormat'
 import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
@@ -30,6 +31,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const sameCurrency = cur === currencyOf(item)
   const cheaper = owned && low != null && sameCurrency && item.price != null && low < item.price && item.return_by && item.return_by >= today
   const open = <SiteLink url={item.url}>Open at {site}</SiteLink>
+  const retry = current ? retryWords(item, current, today) : null
 
   return (
     <Card>
@@ -78,7 +80,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
             </p>
           ) : failed && (
             <p className="text-meta text-warn">
-              Couldn't check {formatDate(current.checked_at)}: {current.error ?? 'no price on the page'}.
+              Couldn't check {formatDate(current.checked_at)}: {asTail(current.error ?? 'The site didn\'t answer')}{retry ? ` — ${retry}` : ''}.
               {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
             </p>
           )}

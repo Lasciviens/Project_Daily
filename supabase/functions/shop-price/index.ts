@@ -66,8 +66,9 @@
 //   general wish is open) and things you own that can still be returned —
 //   no check in 20 h, oldest first, ≤ 40 per run, 1.5 s between two calls to
 //   one host, stopping after 100 s (the rest wait for tomorrow). A link whose
-//   last answer was a bot check (blocked) or a refusal (not_allowed) is not
-//   asked again while it is unchanged — Check now still tries, once an hour.
+//   last answer was a refusal (not_allowed) is not asked again while it is
+//   unchanged; one whose last answer was a bot check (blocked) is asked again
+//   on the 7th Oslo day after that check. Check now still tries, once an hour.
 //
 // Fetch safety is news-article's: http/https only, private hosts and names
 // that resolve to one refused on every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
@@ -116,6 +117,8 @@ const TIMEOUT_MS = 8000
 const USER_LIMIT = 10
 const SWEEP_LIMIT = 40
 const DUE_HOURS = 20
+/** A link whose last answer was a bot check is asked again by the sweep on the 7th Oslo day after (watchWords.ts says the same day). */
+const BLOCKED_RETRY_DAYS = 7
 const HOST_GAP_MS = 1500
 
 function isPrivateIPv4(ip: string): boolean {
@@ -1403,8 +1406,11 @@ Deno.serve(async (req: Request) => {
       return json({ rates, error: missingTable(e as { code?: string }) ? NOT_MIGRATED : (e as Error).message }, 500)
     }
     const due = Date.now() - DUE_HOURS * 3600_000
-    // A bot check or a refusal answers the same every morning: the same link isn't asked again (Check now still tries).
-    const settled = (w: Watch | undefined, i: Item) => !!w && w.url === i.url && (w.status === 'blocked' || w.status === 'not_allowed')
+    // A refusal answers the same every morning: the same link isn't asked again. A bot check may be lifted, so it
+    // is asked again on the 7th Oslo day after its last check (the screens say which day). Check now still tries.
+    const retryBefore = addDay(osloDay(new Date().toISOString()), -BLOCKED_RETRY_DAYS)
+    const settled = (w: Watch | undefined, i: Item) => !!w && w.url === i.url
+      && (w.status === 'not_allowed' || (w.status === 'blocked' && osloDay(w.checked_at) > retryBefore))
     const queue = items
       .filter(i => { const w = watches.get(i.id); return !settled(w, i) && (!w || w.url !== i.url || Date.parse(w.checked_at) < due) })
       .sort((a, b) => (watches.get(a.id)?.checked_at ?? '').localeCompare(watches.get(b.id)?.checked_at ?? ''))

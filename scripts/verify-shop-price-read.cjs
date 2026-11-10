@@ -248,6 +248,27 @@ console.log('\n13 · What the app says under a pasted link (watchWords.readNote,
     && note({ status: 'not_allowed' }) === "That site doesn't let apps read its pages — type the name and price yourself.")
 }
 
+console.log('\n15 · When the morning check tries a link again (watchWords, the card and the record)')
+{
+  const fn = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/shop-price/index.ts'), 'utf8')
+  check('the app and shop-price wait the same 7 days after a bot check', Number(/const BLOCKED_RETRY_DAYS = (\d+)/.exec(fn)?.[1]) === W.BLOCKED_RETRY_DAYS && W.BLOCKED_RETRY_DAYS === 7)
+  check('…counted in Oslo days: a check at 23:30 Oslo time on 09.11 (22:30 UTC) is asked again on 16.11', W.blockedRetryDay('2026-11-09T22:30:00Z') === '2026-11-16'
+    && W.blockedRetryDay('2026-11-09T23:30:00Z') === '2026-11-17')
+  const toBuy = { list: 'wishlist', kind: 'item', status: 'wishlist', url: 'https://shop.example/p', disposal: null, return_by: null }
+  const today = '2026-11-10'
+  check('the morning check reads a thing to buy, and one you have while it can still go back — nothing else',
+    W.morningReads(toBuy, today) && W.morningReads({ ...toBuy, status: 'bought', return_by: '2026-11-10' }, today)
+    && !W.morningReads({ ...toBuy, status: 'bought', return_by: '2026-11-09' }, today) && !W.morningReads({ ...toBuy, status: 'bought', return_by: '2026-12-01', disposal: 'sold' }, today)
+    && !W.morningReads({ ...toBuy, status: 'bought' }, today) && !W.morningReads({ ...toBuy, kind: 'general' }, today) && !W.morningReads({ ...toBuy, list: 'quick' }, today) && !W.morningReads({ ...toBuy, url: null }, today))
+  const at = '2026-11-10T05:23:00Z'
+  check('a bot check: "the morning check tries again on 17.11.2026"', W.retryWords(toBuy, { status: 'blocked', checked_at: at }, today) === 'the morning check tries again on 17.11.2026')
+  check('…once that day has come, without a date; a failed check: "the morning check tries again"', W.retryWords(toBuy, { status: 'blocked', checked_at: at }, '2026-11-17') === 'the morning check tries again'
+    && W.retryWords(toBuy, { status: 'error', checked_at: at }, today) === 'the morning check tries again')
+  check('…nothing for a refusal or a page without a price, nor for a row the morning check doesn\'t read', W.retryWords(toBuy, { status: 'not_allowed', checked_at: at }, today) === null
+    && W.retryWords(toBuy, { status: 'no_price', checked_at: at }, today) === null && W.retryWords({ ...toBuy, status: 'bought', return_by: '2026-10-01' }, { status: 'blocked', checked_at: at }, today) === null)
+  check('a sentence from shop-price ends one of ours: its first word in small letters, a site\'s name as it is', W.asTail("The site didn't answer") === "the site didn't answer" && W.asTail('elkjop.no blocks apps') === 'elkjop.no blocks apps')
+}
+
 // ── 8 · The real shop-price handler never fetches a listed site ──────────────
 // Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`;
 // a robots.txt from `robots` (an unscripted one answers 404: no rules), counted apart in `robotsAsked`.
@@ -463,7 +484,14 @@ async function handlerChecks() {
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('the sweep keeps its own rule: a link checked under 20 h ago is not due', r.checked === 0 && fetched.length === 0, JSON.stringify(r))
 
-  console.log('\n12 · The sweep doesn\'t ask again what said no (the real handler, scripted)')
+  console.log('\n12 · The sweep doesn\'t ask again what said no, and asks a bot check again after a week (the real handler, scripted)')
+  for (const [status, days, asked] of [['blocked', 6, false], ['blocked', 7, true], ['not_allowed', 7, false], ['not_allowed', 60, false]]) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(days * 24 * 60, plain, { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+    check(`a ${status} answer ${days} days ago is ${asked ? '' : 'not '}asked again by the sweep${status === 'blocked' ? ' (a bot check: on the 7th Oslo day)' : ' (a refusal: never, while the link is unchanged)'}`,
+      r.checked === (asked ? 1 : 0) && fetched.length === (asked ? 1 : 0), JSON.stringify(r))
+  }
   for (const status of ['blocked', 'not_allowed']) {
     fetched = []; writes = []
     call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status, low: null })), pages: tv, fetched, writes })

@@ -6,6 +6,7 @@ import type { UsdRates } from '../../settings/subscriptionRules'
 import { approxOther, currencyOf, priceLabel } from '../shopModel'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import { complete, type Amount } from '../ownModel'
+import { retryWords } from '../watchWords'
 import { ItemThumb, SiteLink } from './shopKit'
 import { imageOf, money, webUrl } from './shopFormat'
 import type { ShopItem, ShopPriceWatch } from '../types'
@@ -43,6 +44,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
   const nowCur = (now?.currency ?? currencyOf(item)).toUpperCase()
   const atTarget = now && item.target_price != null && nowCur === currencyOf(item) && (now.low as number) <= item.target_price
   const dealOpen = item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
+  const retry = now ? retryWords(item, now, today) : null
   // The product's page: in the "Now …" line when there is one, else as its own link.
   const link = !now && !noNew ? webUrl(item.url) : null
 
@@ -86,7 +88,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
               Now {money(now.low as number, nowCur)} {now.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>}
               {now.prev_low != null && now.prev_low !== now.low && <> · {(now.low as number) < now.prev_low ? '↓' : '↑'} {money(Math.abs((now.low as number) - now.prev_low), nowCur)}</>}
               {atTarget && ' · at your target'}
-              {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}</span>}
+              {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}{retry ? ` — ${retry}` : ''}</span>}
             </span>
           )}
           {noNew && <span className="text-fg-muted">No new offer on <SiteLink url={item.url}>Prisjakt</SiteLink></span>}
