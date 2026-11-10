@@ -1,6 +1,7 @@
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk } from '../../../shared/query'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { createShopCost } from '../api/shopApi'
 import { REBATE_LABEL, type RebateKind } from '../complaintModel'
 import { money } from '../components/shopFormat'
@@ -21,14 +22,16 @@ export function useMoneyBack() {
     action:      'record_shop_money_back',
     silent:      'its toast with Undo reports it',
     mutationFn:  (input: MoneyBackInput) => createShopCost({
-      item_id: input.item_id, label: REBATE_LABEL[input.kind], amount: -Math.abs(input.amount), currency: input.currency, spent_on: input.spent_on,
+      item_id: input.item_id, label: REBATE_LABEL[input.kind], amount: -Math.abs(input.amount), currency: input.currency, spent_on: input.spent_on ?? todayStr(),
     }),
     invalidates: [qk.shop.costs()],
     onSuccess:   (row: ShopItemCost, input: MoneyBackInput) => {
       if (row.currency !== 'NOK' && row.fx_nok == null) fill()
       const words = `Got ${money(Math.abs(row.amount), row.currency)} back${input.kind === 'other' ? '' : ' · counted as saved'}`
       toast.undo(words, () => {
-        del.remove.mutateAsync([row.id]).then(() => toast.success('Money back taken off')).catch(() => { /* its hook toasted the failure */ })
+        del.remove.mutateAsync([row.id])
+          .then(gone => (gone ? toast.success('Money back taken off') : toast.info('It was taken off already')))
+          .catch(() => { /* its hook toasted the failure */ })
       })
     },
   })

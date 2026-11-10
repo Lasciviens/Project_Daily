@@ -141,6 +141,16 @@ const RPCS = {
     return null
   },
 
+  // 144: the one delete with Undo — only the rows themselves (nothing deleted with them is simulated); NULL when none was there.
+  app_delete_rows: (a, store) => {
+    const ids = new Set(a.p_ids ?? [])
+    const all = store.tables[a.p_table] ?? []
+    const rows = all.filter(r => ids.has(r.id))
+    if (!rows.length) return null
+    store.tables[a.p_table] = all.filter(r => !ids.has(r.id))
+    return { v: 1, root: a.p_table, deleted: rows.length, groups: [{ table: a.p_table, pk: 'id', rows }], links: [], touched: [], hidden: [] }
+  },
+
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),
 
