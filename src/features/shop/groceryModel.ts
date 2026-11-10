@@ -194,18 +194,29 @@ export function scanMatch(hits: readonly GroceryHit[] | undefined, code: string)
 const PICTURE_MAX = 2048
 
 /**
- * A picture's link as a row may keep it: one http(s) web address of up to
- * 2 048 characters, "//cdn…" made https — never a path, a data:, blob: or
- * javascript: link, nor one with a space or a control character. The rule of
- * priceRead's `webImage` and the database's `shop_web_link`, for pictures
- * that come from Kassalapp.
+ * A picture's link as a row may keep it, for pictures that come from
+ * Kassalapp: one web address on a public host name, as https (an http: or
+ * "//cdn…" link is made https), of up to 2 048 characters — never a path, a
+ * data:, blob: or javascript: link, one with a space, a control character, a
+ * user or password part, an IP address (v4 or v6) for a host, localhost,
+ * a .local or .localhost name, or a single-label host. Mirrored in
+ * `food-search` (`verify-shop-quick` compares the two).
  */
 export function webPicture(s: unknown): string | null {
   const v = typeof s === 'string' ? s.trim() : ''
   if (!v || v.length > PICTURE_MAX || /\s/.test(v) || [...v].some(ch => ch < ' ' || ch === '\u007f')) return null
-  if (/^https?:\/\/[^/?#]+/i.test(v)) return v
-  return /^\/\/[^/?#]+/.test(v) ? `https:${v}` : null
+  let url: URL
+  try { url = new URL(v.startsWith('//') ? `https:${v}` : v) } catch { return null }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) return null
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (!host.includes('.') || host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null
+  if (host === 'localhost' || /\.(local|localhost)$/.test(host)) return null
+  url.protocol = 'https:'
+  return url.href.length <= PICTURE_MAX ? url.href : null
 }
+
+/** The most a grocery price may be: anything from 10 000 000 up is no price (a misread or hostile answer). */
+export const PRICE_MAX = 1e7
 
 /** Text from an answer: a string, trimmed and at most `max` characters, else null. */
 function textOf(v: unknown, max = 300): string | null {
@@ -221,7 +232,7 @@ function textOf(v: unknown, max = 300): string | null {
  * One product as `food-search` answers it (`grocery_search`, `grocery_ean`),
  * checked where it enters the app: an EAN of 8–14 digits and a name, or no
  * hit at all; a brand and a store as short text; a picture only as a web
- * link (`webPicture`); a price only as a finite amount of zero or more.
+ * link (`webPicture`); a price only as an amount from 0 up to below `PRICE_MAX`.
  */
 export function groceryHitOf(raw: unknown): GroceryHit | null {
   if (!raw || typeof raw !== 'object') return null
@@ -229,12 +240,15 @@ export function groceryHitOf(raw: unknown): GroceryHit | null {
   const ean = typeof r.ean === 'string' && /^\d{8,14}$/.test(r.ean) ? r.ean : null
   const name = textOf(r.name)
   if (!ean || !name) return null
-  const price = typeof r.price === 'number' && Number.isFinite(r.price) && r.price >= 0 ? r.price : null
+  const price = typeof r.price === 'number' && Number.isFinite(r.price) && r.price >= 0 && r.price < PRICE_MAX ? r.price : null
   return { ean, name, brand: textOf(r.brand), image: webPicture(r.image), price, store: textOf(r.store, 100) }
 }
 
-/** The same picture link, compared exactly (a trailing space aside). */
-const samePicture = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.trim() === b.trim()
+/** The same picture link, compared exactly in its kept form (`webPicture`: an older row may hold the http: spelling of it). */
+function samePicture(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = webPicture(a)
+  return x != null && x === webPicture(b)
+}
 
 /**
  * Picking a product for a row: its EAN, and its picture (a web link only)

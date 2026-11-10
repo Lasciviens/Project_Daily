@@ -188,12 +188,22 @@ function shortText(v: unknown, max = 300): string | null {
   return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
 }
 
-/** A picture only as an http(s) web link of up to 2 048 characters ("//cdn…" made https) — never a path, data: or javascript:. */
+/**
+ * A picture only as a web address on a public host name, made https (http: and "//cdn…" too), of up to
+ * 2 048 characters — never a path, data: or javascript:, a user or password part, an IP address (v4 or v6),
+ * localhost, a .local / .localhost name or a single-label host. The app's `groceryModel.webPicture`, mirrored.
+ */
 function webPicture(v: unknown): string | null {
   const s = typeof v === 'string' ? v.trim() : ''
   if (!s || s.length > PICTURE_MAX || /\s/.test(s) || [...s].some(ch => ch < ' ' || ch === '\u007f')) return null
-  if (/^https?:\/\/[^/?#]+/i.test(s)) return s
-  return /^\/\/[^/?#]+/.test(s) ? `https:${s}` : null
+  let url: URL
+  try { url = new URL(s.startsWith('//') ? `https:${s}` : s) } catch { return null }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) return null
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (!host.includes('.') || host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null
+  if (host === 'localhost' || /\.(local|localhost)$/.test(host)) return null
+  url.protocol = 'https:'
+  return url.href.length <= PICTURE_MAX ? url.href : null
 }
 
 const asObject = (v: unknown): Record<string, unknown> | null =>
@@ -202,10 +212,13 @@ const asObject = (v: unknown): Record<string, unknown> | null =>
 /** An object, or the first object of a list (the spec's shape for `store` and `current_price`), else null. */
 const oneObject = (v: unknown) => asObject(Array.isArray(v) ? v[0] : v)
 
-/** An amount: a finite number of 0 or more, or such a number written as text ("72.90", "72,90"), else null. */
+/** The most a grocery price may be (the app's `PRICE_MAX`): from 10 000 000 up it is a misread or hostile answer. */
+const PRICE_MAX = 1e7
+
+/** An amount: a number from 0 up to below `PRICE_MAX`, or such a number written as text ("72.90", "72,90"), else null. */
 function amount(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && /^\s*\d+([.,]\d+)?\s*$/.test(v) ? Number(v.replace(',', '.')) : NaN
-  return Number.isFinite(n) && n >= 0 ? n : null
+  return Number.isFinite(n) && n >= 0 && n < PRICE_MAX ? n : null
 }
 
 /** A chain's price row: its amount and its date when that reads as an ISO time. */

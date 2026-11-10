@@ -3,7 +3,7 @@
 // ("Milk — usually every 6 days, last 5 days ago") — and the rest of what was
 // bought from it before. Only the owner's own ticks count (a quick-list row
 // with status 'bought', on its local day); nothing is guessed from outside.
-// Pure — scripts/verify-shop-buy-again.cjs runs it against fixtures.
+// Pure — scripts/verify-shop-quick.cjs runs it against fixtures.
 import { daysBetween } from './ownModel'
 import { boughtDay, buyAgain, fold, listOf, quickOpen, type BuyAgain } from './shopModel'
 import type { ShopItem } from './types'
@@ -12,10 +12,14 @@ import type { ShopItem } from './types'
 export const MIN_DAYS = 3
 /** Only the latest gaps count, so the rhythm follows today's habit, not last year's. */
 export const RECENT_GAPS = 8
+/** Two gaps are a rhythm only when the longer is at most this many times the shorter (stamps 40 / 110 are not). */
+export const TWO_GAPS_RATIO = 1.5
+/** A rhythm longer than about 8 weeks is a thing bought now and then: Bought before has it, Buy again doesn't nag. */
+export const MAX_EVERY = 56
 /** Due from 80 % of the usual gap ("every 6 days" is due on day 5). */
 export const DUE_AT = 0.8
-/** Past three usual gaps the habit has stopped: no longer suggested (Bought before still has it). */
-export const LAPSED_AFTER = 3
+/** How long past its usual gap a thing is still suggested: one more gap, two weeks at most — then the habit has stopped. */
+export const LAPSE_DAYS = 14
 
 /** A thing bought at a steady rhythm and due again. `row` is its latest purchase (what a re-add copies). */
 export interface DueAgain extends BuyAgain {
@@ -36,22 +40,29 @@ function median(sorted: readonly number[]): number {
 /**
  * A thing's rhythm from its purchase days (yyyy-mm-dd, sorted, one per day):
  * the median of the recent gaps, or null when there are too few days or the
- * gaps don't agree — more than half of them must lie within half the usual
- * gap of it (7, 7, 30 is "every 7 days"; 2 and 40 is no rhythm at all).
+ * gaps don't agree. Two gaps must be close — the longer at most 1.5 × the
+ * shorter (5 and 7 is a rhythm; 40 and 110 is not). Three or more need a
+ * majority within half the median of it (7, 7, 30 is "every 7 days"; 2, 3,
+ * 40, 41 is no rhythm at all).
  */
 export function rhythmOf(days: readonly string[]): number | null {
   if (days.length < MIN_DAYS) return null
   const gaps: number[] = []
   for (let i = Math.max(1, days.length - RECENT_GAPS); i < days.length; i++) gaps.push(daysBetween(days[i - 1], days[i]))
   if (gaps.some(g => !(g > 0))) return null
-  const m = median([...gaps].sort((a, b) => a - b))
+  const sorted = [...gaps].sort((a, b) => a - b)
+  if (gaps.length === 2 && sorted[1] > sorted[0] * TWO_GAPS_RATIO) return null
+  const m = median(sorted)
   const close = gaps.filter(g => Math.abs(g - m) <= m / 2).length
   return close * 2 > gaps.length ? Math.max(1, Math.round(m)) : null
 }
 
-/** Whether a rhythm says buy again now: from 80 % of the gap, until three gaps have passed. */
+/** The last day a rhythm still suggests a thing: one usual gap past due, two weeks at most. */
+export const lapsesAfter = (every: number): number => every + Math.min(every, LAPSE_DAYS)
+
+/** Whether a rhythm says buy again now: from 80 % of the gap until it lapses (`lapsesAfter`); never past 8 weeks' rhythm. */
 export function isDue(every: number, since: number): boolean {
-  return since >= Math.max(1, Math.round(every * DUE_AT)) && since <= every * LAPSED_AFTER
+  return every <= MAX_EVERY && since >= Math.max(1, Math.round(every * DUE_AT)) && since <= lapsesAfter(every)
 }
 
 /** The open quick-list rows' titles (folded) and products (EAN): a thing on the list is never suggested. */
