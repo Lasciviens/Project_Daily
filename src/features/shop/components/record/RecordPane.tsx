@@ -52,7 +52,7 @@ function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: '
     void r.close()
   }
   return (
-    <section ref={ref} tabIndex={-1} aria-label={item.title} onKeyDown={onKeyDown}
+    <section ref={ref} tabIndex={-1} aria-label={item.title} onKeyDown={onKeyDown} data-record-pane
       className={`card flex ${PANE_HEIGHT} flex-col overflow-hidden outline-none`}>
       <header className="flex shrink-0 items-center gap-2 border-b border-line py-2 pl-4 pr-2">
         <div className="min-w-0 flex-1">

@@ -64,6 +64,8 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const [sort, setSort] = useState<OwnedSort>('recent')
   const [picked, setPicked] = useState<Picked | null>(null)
   const dirty = useRef(false)
+  // The row (or Needs-a-look row) that opened the pane: the focus goes back to it when the pane closes.
+  const opener = useRef<HTMLElement | null>(null)
   const seq = useRef(0)
   useIdlePreload(PANE_PARTS)
 
@@ -101,10 +103,18 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const pick = useCallback(async (id: string, fact?: 'value') => {
     if (dirty.current && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return
     dirty.current = false
+    const from = document.activeElement
+    if (from instanceof HTMLElement && !from.closest('[data-record-pane]')) opener.current = from
     setPicked(p => (p && p.id === id && !fact ? p : { id, fact, seq: ++seq.current }))
   }, [modal])
   const openThing = (id: string, pane: boolean) => (pane ? void pick(id) : modal.open({ kind: 'shop-item', id }))
-  const closePane = useCallback(() => { dirty.current = false; setPicked(null) }, [])
+  const closePane = useCallback(() => {
+    dirty.current = false
+    setPicked(null)
+    const back = opener.current
+    opener.current = null
+    if (back) requestAnimationFrame(() => { if (back.isConnected) back.focus({ preventScroll: true }) })
+  }, [])
   const onDirty = useCallback((d: boolean) => { dirty.current = d }, [])
 
   const rows: RowContext = {
