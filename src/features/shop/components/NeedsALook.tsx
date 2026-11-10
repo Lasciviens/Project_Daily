@@ -21,6 +21,19 @@ export interface LookActions {
   onBought: (look: Look) => void
 }
 
+/** Its state: still loading, a read that failed (one line with Try again — never an answer), or the rows. */
+interface LookState { looks: readonly Look[]; loading: boolean; failed: boolean; onRetry: () => void }
+
+/** A failed read: one compact line, never "nothing needs a look". */
+function LookFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <span className="text-body text-fg-muted">
+      Couldn't load what needs a look.{' '}
+      <button type="button" onClick={onRetry} className="font-semibold text-accent-600 hover:underline">Try again</button>
+    </span>
+  )
+}
+
 /** The kind's icon on its tone: the icon and the words say it, never the colour alone. */
 function LookIcon({ look, small = false }: { look: Look; small?: boolean }) {
   const Icon = ICON[look.kind]
@@ -97,15 +110,17 @@ function LookSkeleton({ rows }: { rows: number }) {
 }
 
 /** The rail's card: three rows, then "N more"; its room is kept while it loads. */
-export function NeedsALookPanel({ looks, loading, ...actions }: { looks: readonly Look[]; loading: boolean } & LookActions) {
+export function NeedsALookPanel({ looks, loading, failed, onRetry, ...actions }: LookState & LookActions) {
   return (
     <Card>
       <CardHeader title="Needs a look" variant="label" className="mb-1"
-        action={!loading && looks.length > 0 ? <span className="count-badge">{looks.length}</span> : undefined} />
-      <KeepRoom ids="shop:look" loading={loading} skeleton={<LookSkeleton rows={SHOWN} />}>
-        {looks.length
-          ? <LookList looks={looks} limit={SHOWN} {...actions} />
-          : <p className="py-1 text-body text-fg-muted">Nothing needs a look. A price at your target, a return window or complaint right closing and an old estimate show here.</p>}
+        action={!loading && !failed && looks.length > 0 ? <span className="count-badge">{looks.length}</span> : undefined} />
+      <KeepRoom ids="shop:look" loading={loading} remember={!failed} skeleton={<LookSkeleton rows={SHOWN} />}>
+        {failed
+          ? <p className="py-1"><LookFailed onRetry={onRetry} /></p>
+          : looks.length
+            ? <LookList looks={looks} limit={SHOWN} {...actions} />
+            : <p className="py-1 text-body text-fg-muted">Nothing needs a look. A price at your target, a return window or complaint right closing and an old estimate show here.</p>}
       </KeepRoom>
     </Card>
   )
@@ -116,9 +131,10 @@ export function NeedsALookPanel({ looks, loading, ...actions }: { looks: readonl
  * urgent row's tone; it opens every row in a sheet. One line in every outcome,
  * loading included, so nothing under it moves.
  */
-export function NeedsALookLine({ looks, loading, ...actions }: { looks: readonly Look[]; loading: boolean } & LookActions) {
+export function NeedsALookLine({ looks, loading, failed, onRetry, ...actions }: LookState & LookActions) {
   const [open, setOpen] = useState(false)
   if (loading) return <Skeleton rounded="rounded-row" className="h-11 w-full" />
+  if (failed) return <p className="flex h-11 items-center rounded-row border border-line bg-surface px-3"><LookFailed onRetry={onRetry} /></p>
   const line = lookLine(looks)
   if (!line.count) {
     return (
@@ -147,6 +163,6 @@ export function NeedsALookLine({ looks, loading, ...actions }: { looks: readonly
 }
 
 /** The line on a phone (one stack), the rail's card on a wide page. */
-export function NeedsALook(props: { looks: readonly Look[]; loading: boolean } & LookActions) {
+export function NeedsALook(props: LookState & LookActions) {
   return useBoardStep() === 1 ? <NeedsALookLine {...props} /> : <NeedsALookPanel {...props} />
 }

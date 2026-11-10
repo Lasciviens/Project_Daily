@@ -7,7 +7,7 @@ import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../projects/projectBoard'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
 import { useFoldedFilters } from '../hooks/useFoldedFilters'
-import { useBuyNow, useDeleteShopItems, useUpdateShopItem } from '../hooks/useShop'
+import { useBuyNow, useDeleteShopItems, useShopItems, useUpdateShopItem } from '../hooks/useShop'
 import { useShopRates } from '../hooks/useShopRates'
 import { useShopLinks, useShopMoney } from '../hooks/useShopMoney'
 import { useShopWatches } from '../hooks/useShopPrices'
@@ -65,6 +65,10 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     return out
   }, [all, watches, history.byId])
   const looks = useMemo(() => needsALook(items, watches, today), [items, watches, today])
+  // Needs a look reads the things and their price reads: either failing is a failed answer, never "nothing".
+  const itemsQ = useShopItems()
+  const lookFailed = (!isLoading && itemsQ.isError) || (!watchQ.isLoading && watchQ.isError)
+  const retryLook = () => { void itemsQ.refetch(); void watchQ.refetch() }
   const { ref: listRef, width: listRem } = useElementWidthRem()
   const models = useMemo(() => modelsByWish(items), [items])
   const { ctx } = useShopMoney()
@@ -221,7 +225,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
             fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} />} />
         ),
         // In every outcome (loading, nothing, something): one line on a phone, the rail's card on a wide page.
-        look: <NeedsALook looks={looks} loading={isLoading || watchQ.isLoading} onOpen={openLook} onBought={buyLook} />,
+        look: <NeedsALook looks={looks} loading={isLoading || watchQ.isLoading} failed={lookFailed} onRetry={retryLook} onOpen={openLook} onBought={buyLook} />,
         // Measured in every state (loading, empty, the list), so the stacks never change when the list lands.
         groups: <div ref={listRef}>{groupsSection}</div>,
       }}
