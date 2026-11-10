@@ -106,6 +106,13 @@ FINN's own robots.txt allows an ad page (`/recommerce/forsale/item/…`) for `*`
 
 ## Log
 
+### 10.11.2026 — the owner-style and guardian reviews of phase 1, fixed before it shipped
+
+- **The screens say the true result**: a kept price of another kind goes when Prisjakt's list has no new offer ("No new offer on Prisjakt", never a used price in green); a Prisjakt price that may be a used one says "new and used"; a refusal is shown in a neutral tone with the kept price's day; the history compares like with like and names what it leaves out; one vocabulary ("apps"), from `watchWords.ts`, the same in the add sheet and Add a model.
+- **The sweep asks a bot check again after 7 days** (it had stopped for good after one), and the card and the record say the day; Check now is not offered for a refused link, tries a failed check again at once, and its toasts are honest ("Already checked at 06:23 — try after 07:23").
+- **Security** (guardian): a hostile page or robots.txt costs a moment (robots matched piece by piece, a 2 048-character path cap, a 64-character price text, one JSON-LD pass); a review can't pass for the offer list (text rows left out, one list only); robots rules and links compared in one form, more than 5 000 rules not read; the whole `shop_site_policies` list read; page text bounded; Prisjakt told by its host; a restore can't plant a watch "checked just now" (187, 188).
+- Checked by `verify-shop-price-read` (the real handler, scripted, and the hostile inputs timed), `verify-db-shop-rules` and `verify-db-read-query` on a throwaway Postgres. Not tested against the live sites (no request sent).
+
 ### 10.11.2026 — new offers only, sites that may not be read, robots.txt, once an hour (Shop phase 1, migration 188)
 
 - **The condition fix**: the price now, its high and its shops come from the new rows of Prisjakt's own offer list (live page `p=12105530`, fetched once for the fixture: 159 rows, `condition` New / Refurbished / Used); the cheapest used and refurbished rows are kept as `used_low` / `refurbished_low`; every watch and point says what its price covers (`condition`). Visible: some Prisjakt cards go up (iPhone 15 Pro: 6 590 → 16 115).
