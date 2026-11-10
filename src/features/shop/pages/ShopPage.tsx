@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
+import { FileText, History, Link2, MoreHorizontal, Plus } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -72,15 +72,16 @@ export function ShopPage() {
     <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
       options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
   )
-  // Owned's other ways in where the row has no room for their buttons.
+  // Owned's other ways in (buttons too where the row has room for them) and the insurance list.
   const moreWaysMenu = (
-    <Menu as="div" className="@[72rem]/page:hidden">
-      <MenuButton className="icon-btn-bordered" aria-label="More ways to add" title="More ways to add">
+    <Menu as="div">
+      <MenuButton className="icon-btn-bordered" aria-label="More" title="More">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
       </MenuItems>
     </Menu>
   )

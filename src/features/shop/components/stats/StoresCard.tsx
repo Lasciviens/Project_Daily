@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Truncate, useChartColors } from '../../../../shared/ui'
 import { complete } from '../../ownModel'
-import { orderStores, type StoreOrder, type StoreRow } from '../../statsModel'
+import { orderStores, type StoreOrder, type StoreRow, type StoreScore } from '../../statsModel'
 import { AmountText } from '../shopKit'
 import { CardFilter, HBar, StatsCard } from './statsKit'
-import { plural, shortReason } from './statsFormat'
+import { num, plural, shortReason } from './statsFormat'
 
 const SHOWN = 6
 const ORDERS = [{ value: 'spent' as const, label: 'Spent' }, { value: 'count' as const, label: 'Purchases' }]
@@ -16,11 +16,26 @@ function currencyMix(currencies: Record<string, number>): string | null {
   return list.length === 1 ? `in ${list[0][0]}` : list.map(([cur, n]) => `${n} in ${cur}`).join(' · ')
 }
 
+/** The store's scorecard in words: "1 returned · 2 claims · 500 back · kept 62 %" (only what happened). */
+function scoreFacts(s: StoreScore | undefined): string[] {
+  if (!s) return []
+  return [
+    s.returned > 0 && `${s.returned} returned`,
+    s.claims > 0 && plural(s.claims, 'claim'),
+    s.matches > 0 && plural(s.matches, 'price match', 'price matches'),
+    (s.claims > 0 || s.matches > 0) && (complete(s.back) ? `${num(s.back.nok)} back` : 'money back pending'),
+    s.keptShare != null && `kept ${Math.round(s.keptShare * 100)} % when sold`,
+  ].filter((x): x is string => !!x)
+}
+
 /**
- * Where you buy: stores by what you spent there in the period (in NOK at each
- * day's rate), or by how many purchases. A store opens its purchases.
+ * Where you buy — a store scorecard: stores by what you spent there in the
+ * period (in NOK at each day's rate), or by how many purchases, and what came
+ * of those purchases: returns, claims, price matches and the money they
+ * brought back, and the share of the price kept when sold. A store opens its
+ * purchases.
  */
-export function StoresCard({ rows: given, year, onPick }: { rows: StoreRow[]; year: string | null; onPick: (key: string) => void }) {
+export function StoresCard({ rows: given, scores, year, onPick }: { rows: StoreRow[]; scores: Map<string, StoreScore>; year: string | null; onPick: (key: string) => void }) {
   const c = useChartColors()
   const [all, setAll] = useState(false)
   const [order, setOrder] = useState<StoreOrder>('spent')
@@ -43,7 +58,7 @@ export function StoresCard({ rows: given, year, onPick }: { rows: StoreRow[]; ye
                       <AmountText amount={r.spent} unknown={shortReason(r.spent)} className="shrink-0 text-meta font-semibold text-fg-2" />
                     </span>
                     <HBar value={complete(r.spent) ? r.spent.nok : 0} max={max} color={c.series[0]} />
-                    <span className="text-micro tabular-nums text-fg-muted">{[plural(r.count, 'purchase'), currencyMix(r.currencies)].filter(Boolean).join(' · ')}</span>
+                    <span className="text-micro tabular-nums text-fg-muted">{[plural(r.count, 'purchase'), currencyMix(r.currencies), ...scoreFacts(scores.get(r.key))].filter(Boolean).join(' · ')}</span>
                   </button>
                 </li>
               ))}

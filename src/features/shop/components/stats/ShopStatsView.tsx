@@ -7,8 +7,9 @@ import type { ShopCategory, ShopItem } from '../../types'
 import { chainsOf } from '../../chainModel'
 import {
   byStore, chainsWithThings, chartMonths, costOfUseIn, keptRows, moneyByMonth, NO_SCOPE, ownedAt, periodOf, periodTotals, resaleSummary,
-  scopeChains, scopeItems, scopeThingCount, statsYears, valueRanking, type StatsScope,
+  scopeChains, scopeItems, scopeThingCount, statsYears, storeScores, valueRanking, type StatsScope,
 } from '../../statsModel'
+import { KeptValueCard, SavedCard, WaitCard, WhyCard, YearVsCard } from './OwningCards'
 import { useShopLinks, useShopMoney } from '../../hooks/useShopMoney'
 import { STATS_BOARD, type StatsSection } from '../../shopBoard'
 import { drillContent } from './statsDrill'
@@ -74,6 +75,7 @@ export function ShopStatsView({ items: allItems, categories, isLoading, scope, o
   }, [items, period])
   const chains = useMemo(() => scopeChains(allChains, items, scope), [allChains, items, scope])
   const stores = useMemo(() => byStore(items, year ?? undefined), [items, year])
+  const scores = useMemo(() => storeScores(items, ctx, period), [items, ctx, period])
   const value = useMemo(() => valueRanking(items, ctx, today, period), [items, ctx, today, period])
   const content = useMemo(() => (drill ? drillContent(drill, data) : null), [drill, data])
 
@@ -90,15 +92,21 @@ export function ShopStatsView({ items: allItems, categories, isLoading, scope, o
 
   const openDrill = (d: Drill) => { setDrill(d); setDrillOpen(true) }
   const openItem = (id: string) => modal.open({ kind: 'shop-item', id })
+  const openThings = (ids: string[], title: string) => openDrill({ kind: 'things', ids, title: `${title} · ${year ?? 'all time'}` })
   const sections: Record<StatsSection, ReactNode> = {
     tiles: <StatsTiles period={period} totals={totals} owned={owned} use={use} resale={resale} kept={kept} onDrill={openDrill} />,
     money: <MoneyCard rows={months} year={year} data={data} onMonth={month => openDrill({ kind: 'month', month })} onOpen={openItem} />,
     timeline: <OwnershipTimeline items={items} categories={categories} period={period} onOpen={openItem} />,
     chains: <ChainsCard chains={chains} period={period} onOpen={id => modal.open({ kind: 'shop-chain', id })} onNew={() => modal.open({ kind: 'shop-chain-builder' })} />,
     categories: <CategoriesCard data={data} onPick={(key, level) => openDrill({ kind: 'category', key, level })} />,
-    stores: <StoresCard rows={stores} year={year} onPick={key => openDrill({ kind: 'store', key, year })} />,
+    stores: <StoresCard rows={stores} scores={scores} year={year} onPick={key => openDrill({ kind: 'store', key, year })} />,
     value: <ValueCard rows={value} period={period} onOpen={openItem} />,
     resale: <ResaleCard summary={resale} data={data} onOpen={openItem} />,
+    compare: <YearVsCard data={data} />,
+    why: <WhyCard data={data} onOpen={openThings} />,
+    saved: <SavedCard data={data} onOpen={openItem} />,
+    wait: <WaitCard data={data} onOpen={openItem} />,
+    kept: <KeptValueCard data={data} onOpen={openThings} />,
   }
 
   return (

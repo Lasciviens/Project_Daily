@@ -2,7 +2,7 @@
 // builder per kind of number, shared by every tile, bar and row on the
 // screen. A drill-down's rows add up to the number that opened it.
 import { formatMonthYear } from '../../../../shared/utils/dateFormat'
-import { add, DISPOSAL_LABEL, minus } from '../../ownModel'
+import { add, boughtOn, DISPOSAL_LABEL, minus, paidOf } from '../../ownModel'
 import { moneyEvents, periodMonths, type MoneyEvent } from '../../statsModel'
 import { moneyWord } from './statsFormat'
 import { dayOf, join, native, type Drill, type DrillContent, type DrillRow, type StatsData } from './drillTypes'
@@ -58,5 +58,16 @@ function drillRows(drill: Drill, d: StatsData): DrillContent {
     case 'resale': return resaleDrill(d)
     case 'category': return categoryDrill(d, drill.key, drill.level)
     case 'store': return storeDrill(d, drill.key, drill.year)
+    case 'things': return thingsDrill(drill.ids, drill.title, d)
   }
+}
+
+/** A card's group: each thing with what it cost at its day's rate, how and when it left. */
+function thingsDrill(ids: readonly string[], title: string, d: StatsData): DrillContent {
+  const rows = ids.map(id => d.byId.get(id)).filter((i): i is NonNullable<typeof i> => !!i).map((i): DrillRow => ({
+    key: i.id, id: i.id, title: i.title, amount: paidOf(i),
+    sub: join([`Bought ${dayOf(i, boughtOn(i))}`, i.platform, i.disposal && `${DISPOSAL_LABEL[i.disposal].toLowerCase()} ${dayOf(i, i.disposed_on)}`]),
+  }))
+  const total = add(...rows.map(r => r.amount))
+  return { title, subtitle: `${rows.length} thing${rows.length === 1 ? '' : 's'} · paid ${moneyWord(total)}`, groups: [{ key: 'things', title: null, total, rows }], empty: 'Nothing here.' }
 }

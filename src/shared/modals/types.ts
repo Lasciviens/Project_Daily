@@ -79,6 +79,10 @@ export type EntityModalRequest =
   | { kind: 'shop-own'; had?: boolean }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
+  /** Something's wrong with one of your things: the complaint right, the letter, repair or replace, money back. */
+  | { kind: 'shop-complaint'; id: string }
+  /** Everything you own and its value, as a CSV file or a print. */
+  | { kind: 'shop-insurance' }
   /** A project's details by `id`, or a new project from a template (no id). */
   | { kind: 'project'; id?: string }
   /** Add a phase to a project, or edit one by `id`. */
