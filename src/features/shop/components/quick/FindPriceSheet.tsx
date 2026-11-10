@@ -5,7 +5,7 @@ import { Button, MetaLine, Skeleton, Truncate } from '../../../../shared/ui'
 import { useDebouncedValue } from '../../../../shared/hooks/useDebouncedValue'
 import { formatMoney } from '../../../settings/subscriptionRules'
 import { useUpdateShopItem } from '../../hooks/useShop'
-import { useGrocerySearch } from '../../hooks/useShopPrices'
+import { SEARCH_MIN_CHARS, useGrocerySearch } from '../../hooks/useShopPrices'
 import { chainName, matchPatch, type GroceryHit, type GroceryPrice } from '../../groceryModel'
 import { ItemThumb } from '../shopKit'
 import type { ShopItem } from '../../types'
@@ -49,7 +49,7 @@ function FindPriceBody({ item, current, onDone }: { item: ShopItem; current?: Gr
   }
 
   const hits = search.data ?? []
-  const results = q.length < 2 ? <p className="text-body text-fg-muted">Type at least two letters.</p>
+  const results = q.length < SEARCH_MIN_CHARS ? <p className="text-body text-fg-muted">Type at least three letters.</p>
     : search.isError ? (
       <div className="flex flex-col items-start gap-2">
         <p className="text-body text-danger">{search.error.message || 'The search failed.'}</p>

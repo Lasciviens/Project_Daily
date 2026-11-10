@@ -3,7 +3,7 @@ import { Store } from 'lucide-react'
 import { Button, Card, CardHeader, Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { formatMoney } from '../../../settings/subscriptionRules'
-import { basketByChain, basketLines, type BasketLine, type GroceryPrice } from '../../groceryModel'
+import { basketByChain, basketLines, leftOutNote, type BasketLine, type GroceryPrice } from '../../groceryModel'
 import type { ShopItem } from '../../types'
 
 /** Chains shown before "Show all": the full baskets lead, so these are the ones that matter. */
@@ -13,6 +13,8 @@ interface Props {
   /** The quick list's open rows (the ones with a product get priced). */
   rows: readonly ShopItem[]
   prices: ReadonlyMap<string, GroceryPrice>
+  /** Oslo's today (`priceToday`): a price not checked in the 14 days up to it is left out. */
+  today: string
   loading: boolean
   error: Error | null
   onRetry: () => void
@@ -26,14 +28,16 @@ function coverage(l: BasketLine, priced: number): string {
 }
 
 /**
- * What the matched quick-list rows cost at each chain Kassalapp follows —
- * full baskets first (only they compare), the rest with what they lack.
- * REMA 1000 publishes no prices, so it never appears.
+ * What the matched quick-list rows cost at each chain with a current
+ * Kassalapp price — full baskets first (only they compare), the rest with
+ * what they lack. Old prices (REMA 1000, Kiwi and Coop still come back with
+ * theirs, often from 2024) are left out after 14 days, and the footer says so.
  */
-export function QuickBasketCard({ rows, prices, loading, error, onRetry }: Props) {
+export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }: Props) {
   const [all, setAll] = useState(false)
-  const basket = useMemo(() => basketByChain(rows, prices), [rows, prices])
+  const basket = useMemo(() => basketByChain(rows, prices, today), [rows, prices, today])
   const lines = useMemo(() => basketLines(basket), [basket])
+  const leftOut = leftOutNote(basket)
   const matched = rows.filter(r => r.ean).length
   const total = rows.length
   const subtitle = matched === 0 || loading || error ? undefined
@@ -85,6 +89,7 @@ export function QuickBasketCard({ rows, prices, loading, error, onRetry }: Props
       {body}
       <div className="mt-3 border-t border-line pt-3 text-meta text-fg-muted">
         {basket.oldest && !loading && !error && <p className="tabular-nums">Prices from {formatDate(basket.oldest)} · Kassalapp</p>}
+        {leftOut && !loading && !error && <Truncate as="p" className="tabular-nums">{leftOut}</Truncate>}
         <p>REMA 1000 publishes no prices, so it can’t be compared.</p>
       </div>
     </Card>
