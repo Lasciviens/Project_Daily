@@ -4,10 +4,12 @@
 // taken back at the end, as production has them), then copied twice:
 //   · without 187: scripts/db-tests/shop-rules/bugs.sql — every bug the 09.11.2026 review found must
 //     still show (a check that passes here no longer proves anything);
-//   · with 187, applied twice (a re-run must be a no-op): bugs.sql — every check must pass — then
-//     scenarios.sql (rates, wishes and models, link loops, selling and its Undo, Delete's Undo with the
-//     price watch and later tables, the chain builder's save, web links, Activity Undo, deleting an account).
-// Static checks of 187 first.
+//   · with 187, applied twice (a re-run must be a no-op): bugs.sql — every check must pass — then 188
+//     twice, then scenarios.sql (rates, wishes and models, link loops, selling and its Undo, Delete's Undo
+//     with the price watch and later tables, the chain builder's save, web links, Activity Undo, deleting an
+//     account) and site-policies.sql (188: the sites shop-price never reads, who reads and writes that list,
+//     the condition of a price, and Delete's Undo carrying it).
+// Static checks of 187 and 188 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
@@ -47,6 +49,33 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
     if (new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to [^;]*(anon|service_role)`).test(sql)) problems.push(`${name} granted wider than needed`)
   }
   if (problems.length) fail(`migration 187 has ${problems.join('; ')}`)
+}
+
+// Static, 188: its one table follows every rule for a table without user_id (row level security, the owner lock,
+// grants: the app reads, only the service role writes, signed out nothing; no audit, with the header's reason),
+// and the helper it re-creates is still pinned, a definer for signed-in callers only, and carries the condition.
+{
+  const src = readFileSync(mig('188_shop_site_policies.sql'), 'utf8')
+  const sql = src.replace(/--.*$/gm, '')
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
+  const tables = [...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi)].map(m => m[1])
+  if (tables.join() !== 'shop_site_policies') problems.push(`creates ${tables.join(', ') || 'no table'} (expected shop_site_policies only)`)
+  if (!/create table if not exists public\.shop_site_policies \([\s\S]*?\);\s*alter table public\.shop_site_policies enable row level security;/i.test(sql)) problems.push('no row level security right after the table')
+  if (!/select public\.owner_lock_apply\('public\.shop_site_policies'\);\s*$/i.test(sql)) problems.push('no owner_lock_apply at the end')
+  if (!/revoke all on public\.shop_site_policies from anon, authenticated;/i.test(sql)) problems.push('no revoke from anon and authenticated')
+  if (!/grant select on public\.shop_site_policies to authenticated;/i.test(sql)) problems.push('no read grant for the app')
+  if (/grant [^;]*(insert|update|delete)[^;]* on public\.shop_site_policies to [^;]*authenticated/i.test(sql)) problems.push('a write grant for the app')
+  if (/on public\.shop_site_policies to [^;]*anon/i.test(sql)) problems.push('a grant to anon')
+  if (!/grant select, insert, update, delete on public\.shop_site_policies to service_role;/i.test(sql)) problems.push('no service-role grant')
+  if (/for (insert|update|delete|all)\b[^;]*on public\.shop_site_policies|on public\.shop_site_policies for (insert|update|delete|all)\b/i.test(sql)) problems.push('a browser write policy')
+  if (/trg_audit/i.test(sql) || !/No audit trigger: /.test(src)) problems.push('an audit trigger, or no reason in the header why there is none')
+  if (!/No user_id: /.test(src)) problems.push('no reason in the header for having no user_id')
+  const helper = sql.match(/create or replace function public\.shop_restore_price_history\([\s\S]*?\n\$\$;/i)?.[0] ?? ''
+  if (!/security definer/i.test(helper) || !/set search_path = ''/.test(helper)) problems.push('the helper is not a definer pinned to search_path \'\'')
+  for (const col of ['condition', 'used_low', 'refurbished_low']) if ((helper.match(new RegExp(`\\b${col}\\b`, 'g')) || []).length < 4) problems.push(`the helper does not carry ${col} through both inserts`)
+  if (!/revoke all on function public\.shop_restore_price_history\(jsonb, jsonb\) from public, anon, authenticated, service_role;\s*grant execute on function public\.shop_restore_price_history\(jsonb, jsonb\) to authenticated;/i.test(sql)) problems.push('the helper is not granted to authenticated only')
+  if (problems.length) fail(`migration 188 has ${problems.join('; ')}`)
 }
 
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
@@ -102,10 +131,15 @@ try {
   const after = bugAnswers(n)
   const still = BUGS.filter(id => after.get(id)?.answer !== 'ok')
   if (still.length) throw new Error(`with 187 these bugs still show:\n${still.map(id => `  ${id}: ${after.get(id)?.what ?? 'no answer'}`).join('\n')}`)
-  const sc = run(n, join(dir, 'scenarios.sql'))
-  const passed = (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
-  if (sc.status !== 0) throw Object.assign(new Error('scenarios failed'), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
-  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), and ${passed} scenarios passed`
+  step('188', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
+  step('188 again', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
+  let passed = 0
+  for (const file of ['scenarios.sql', 'site-policies.sql']) {
+    const sc = run(n, join(dir, file))
+    passed += (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
+    if (sc.status !== 0) throw Object.assign(new Error(`${file} failed`), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
+  }
+  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188 (twice), and ${passed} scenarios passed`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)
