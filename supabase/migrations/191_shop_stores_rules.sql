@@ -32,7 +32,7 @@
 --    another row, so their edit is never overwritten.
 -- 5. shop_items gains a purchase's own facts: bought_channel (online, in_store), arrived_on (on or after the purchase's
 --    Oslo day, not after today), extra_warranty_until, receipt_note (≤ 2 000 characters), search_opened_on ("Search
---    opened 10.11.2026" on a wish) — each bounded, the cross-column rules in shop_items_rules' new step h (190's
+--    opened 10.11.2026" on a wish) and facts (autofill's facts, each with its source and confidence) — each bounded, the cross-column rules in shop_items_rules' new step h (190's
 --    function word for word otherwise). shop_price_watch gains new_offers: Prisjakt's new offers, one per shop, at
 --    most 50, each {shop_id, shop_name, price, currency, in_stock}, checked by shop_new_offers_ok and carried through
 --    Delete's Undo (shop_restore_price_history, 190's with the column). 190's signal list gains price_match.
@@ -941,6 +941,34 @@ alter table public.shop_items add constraint shop_items_receipt_note_check
 alter table public.shop_items drop constraint if exists shop_items_search_opened_on_check;
 alter table public.shop_items add constraint shop_items_search_opened_on_check
   check (search_opened_on is null or (search_opened_on >= date '2000-01-01' and search_opened_on < date '2100-01-01'));
+-- What autofill learned about a thing, each fact with its source (owner-approved: saved facts keep their source):
+-- an object of at most 8 KiB whose keys come from a list (brand, model, ean, condition, return_days, prisjakt_id,
+-- specs), each {value, source, confidence} — the value not null, the source one plain line of 1–200 characters
+-- (shop_plain_text_ok), the confidence exact, likely or check. The assistant reads it, never writes it (AI_NO_WRITE).
+create or replace function public.shop_item_facts_ok(p jsonb)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select p is null or (
+    jsonb_typeof(p) = 'object' and octet_length(p::text) <= 8192
+    and not exists (
+      select 1 from jsonb_each(p) f
+       where not case
+               when f.key not in ('brand', 'model', 'ean', 'condition', 'return_days', 'prisjakt_id', 'specs') then false
+               when jsonb_typeof(f.value) <> 'object' then false
+               when (select count(*) from jsonb_object_keys(f.value)) <> 3 or not (f.value ?& array['value', 'source', 'confidence']) then false
+               when jsonb_typeof(f.value -> 'value') = 'null' then false
+               when jsonb_typeof(f.value -> 'confidence') <> 'string' or (f.value ->> 'confidence') not in ('exact', 'likely', 'check') then false
+               when jsonb_typeof(f.value -> 'source') <> 'string' then false
+               else char_length(f.value ->> 'source') between 1 and 200 and public.shop_plain_text_ok(f.value ->> 'source')
+             end))
+$$;
+alter table public.shop_items add column if not exists facts jsonb;
+alter table public.shop_items drop constraint if exists shop_items_facts_check;
+alter table public.shop_items add constraint shop_items_facts_check check (public.shop_item_facts_ok(facts));
+comment on column public.shop_items.facts is 'What autofill learned, each fact with its source: {brand|model|ean|condition|return_days|prisjakt_id|specs: {value, source, confidence: exact|likely|check}}, at most 8 KiB.';
 comment on column public.shop_items.bought_channel is 'How it was bought: online (at a distance — the right to cancel applies from a business) or in_store. Only while bought.';
 comment on column public.shop_items.arrived_on is 'The day it arrived (Arrived): on or after the purchase''s Oslo day, not after today; deadlines count from it. Only while bought.';
 comment on column public.shop_items.extra_warranty_until is 'The last day of an extra warranty (bought or given), on or after the purchase day. Only while bought.';
@@ -1269,6 +1297,8 @@ revoke all on function public.shop_one_line(text) from public, anon;
 revoke all on function public.shop_plain_text_ok(text, boolean) from public, anon;
 grant execute on function public.shop_one_line(text) to authenticated, service_role;
 grant execute on function public.shop_plain_text_ok(text, boolean) to authenticated, service_role;
+revoke all on function public.shop_item_facts_ok(jsonb) from public, anon;
+grant execute on function public.shop_item_facts_ok(jsonb) to authenticated, service_role;
 revoke all on function public.shop_new_offers_ok(jsonb) from public, anon;
 grant execute on function public.shop_new_offers_ok(jsonb) to authenticated, service_role;
 -- Trigger functions and the seed: nobody calls them.

@@ -176,7 +176,7 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (/trg_audit[^;]*shop_law_rules/i.test(sql) || !/No audit trigger: not user-authored/.test(src) || !/No user_id: the law is the same for every account/.test(src)) problems.push('the law: an audit trigger, or the header does not say why there is no audit or user_id')
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
   const names = fns.map(([, name]) => name).sort().join()
-  if (names !== 'shop_host_ok,shop_host_on,shop_hosts_ok,shop_https_ok,shop_items_rules,shop_link_host,shop_month_day_ok,shop_new_offers_ok,shop_one_line,shop_plain_text_ok,shop_restore_price_history,shop_search_url_ok,shop_store_facts,shop_store_reset,shop_store_rule_facts,shop_store_rule_reset,shop_store_rules_rules,shop_store_seed,shop_store_seed_new_user,shop_stores_rules') problems.push(`functions ${names}`)
+  if (names !== 'shop_host_ok,shop_host_on,shop_hosts_ok,shop_https_ok,shop_item_facts_ok,shop_items_rules,shop_link_host,shop_month_day_ok,shop_new_offers_ok,shop_one_line,shop_plain_text_ok,shop_restore_price_history,shop_search_url_ok,shop_store_facts,shop_store_reset,shop_store_rule_facts,shop_store_rule_reset,shop_store_rules_rules,shop_store_seed,shop_store_seed_new_user,shop_stores_rules') problems.push(`functions ${names}`)
   const definer = new Set(['shop_store_seed_new_user', 'shop_restore_price_history'])
   for (const [body, name] of fns) {
     if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
@@ -200,7 +200,7 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (!signals190 || signals191?.trim() !== `${signals190.trim()}, 'price_match'`) problems.push(`the signal list is not 190's with price_match (${signals191})`)
   for (const [col, check] of [['bought_channel', "bought_channel in ('online', 'in_store')"], ['arrived_on', "arrived_on >= date '2000-01-01'"],
     ['extra_warranty_until', "extra_warranty_until >= date '2000-01-01'"], ['receipt_note', 'char_length(receipt_note) between 1 and 2000'],
-    ['search_opened_on', "search_opened_on >= date '2000-01-01'"]]) {
+    ['search_opened_on', "search_opened_on >= date '2000-01-01'"], ['facts', 'check (public.shop_item_facts_ok(facts))']]) {
     if (!new RegExp(`alter table public\\.shop_items add column if not exists ${col} `).test(sql) || !sql.includes(check)) problems.push(`shop_items.${col} has no column or no check`)
   }
   if (!/add constraint shop_price_watch_new_offers_check check \(public\.shop_new_offers_ok\(new_offers\)\);/.test(sql)) problems.push('new_offers is not checked')

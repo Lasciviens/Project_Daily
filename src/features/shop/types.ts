@@ -117,8 +117,14 @@ export interface ShopItem {
   /** Where the receipt is, as text (≤ 2 000 characters). */
   receipt_note?:         string | null
   /** The day a marketplace search was last opened for this wish ("Search opened 10.11.2026"). Set by the app. */
-  search_opened_on?:     string | null
+  search_opened_on?:     string | null  /** What autofill learned, each fact with its source and how sure it is (migration 191). */
+  facts?:                ShopItemFacts | null
 }
+
+/** The facts autofill may save (191's allow-list), each with its source. */
+export type ShopFactKey = 'brand' | 'model' | 'ean' | 'condition' | 'return_days' | 'prisjakt_id' | 'specs'
+export interface ShopFact { value: unknown; source: string; confidence: 'exact' | 'likely' | 'check' }
+export type ShopItemFacts = Partial<Record<ShopFactKey, ShopFact>>
 
 /** How a thing was bought (migration 191). */
 export type ShopBoughtChannel = 'online' | 'in_store'
@@ -524,6 +530,7 @@ export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
   extra_warranty_until?: string | null
   receipt_note?:         string | null
   search_opened_on?:     string | null
+  facts?:                ShopItemFacts | null
 }
 
 export interface CreateShopCostInput {

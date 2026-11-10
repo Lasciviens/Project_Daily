@@ -200,8 +200,8 @@ function checkAiWriteGroup() {
     const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo'].filter(c => !re.test(c))
     check('every Shop column the database fills is closed to the assistant (rates, sale_undo)', !open.length && !re.test('sale_price') && !re.test('sale_group'), open.join(', '))
     // A store rule's seed link, its source and its edited flag (191): the database's own.
-    const rulesOpen = ['seed_key', 'source_facts', 'owner_edited'].filter(c => !re.test(c))
-    check('a store rule\'s seed key, source and owner_edited are closed to the assistant (its facts are not)', !rulesOpen.length && !re.test('days') && !re.test('words') && !re.test('origin'), rulesOpen.join(', '))
+    const rulesOpen = ['seed_key', 'source_facts', 'owner_edited', 'search_opened_on', 'facts'].filter(c => !re.test(c))
+    check('a store rule\'s seed key, source and owner_edited, a wish\'s search day and autofill\'s facts are closed to the assistant (a rule\'s own fields are not)', !rulesOpen.length && !re.test('days') && !re.test('words') && !re.test('origin'), rulesOpen.join(', '))
   }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)

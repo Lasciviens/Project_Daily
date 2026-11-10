@@ -536,9 +536,9 @@ reset role;
 -- ═══ R9. A purchase's own facts on shop_items ════════════════════════════════
 select t_ok((select count(*) = 5 from information_schema.columns where table_name = 'shop_items'
               and column_name in ('bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'))
-        and (select count(*) = 5 from pg_constraint where conrelid = 'public.shop_items'::regclass and conname in (
+        and (select count(*) = 6 from pg_constraint where conrelid = 'public.shop_items'::regclass and conname in (
               'shop_items_bought_channel_check', 'shop_items_arrived_on_check', 'shop_items_extra_warranty_until_check',
-              'shop_items_receipt_note_check', 'shop_items_search_opened_on_check')),
+              'shop_items_receipt_note_check', 'shop_items_search_opened_on_check', 'shop_items_facts_check')),
   'R9 shop_items has bought_channel, arrived_on, extra_warranty_until, receipt_note and search_opened_on, each with its check');
 set role authenticated;
 do $$
@@ -570,6 +570,29 @@ begin
   perform t_ok((select bought_channel = 'online' and arrived_on = '2026-11-05' and extra_warranty_until = '2029-11-05' and receipt_note = E'In the mail,\nfolder 3'
                        and search_opened_on = '2026-11-01' from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'),
     'R9 Delete''s Undo puts the purchase''s facts back');
+end $$;
+-- Autofill's facts, each with its source.
+do $$
+declare s jsonb;
+  v_facts constant jsonb := '{"brand": {"value": "Sony", "source": "prisjakt.no product page", "confidence": "exact"},
+                              "ean": {"value": "4548736132610", "source": "barcode scan", "confidence": "exact"},
+                              "specs": {"value": {"colour": "Black"}, "source": "title", "confidence": "check"}}';
+begin
+  update public.shop_items set facts = v_facts where id = 'dd000000-0000-0000-0000-000000000040';
+  perform t_ok((select facts = v_facts from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'),
+    'R9 autofill''s facts save, each with its source and confidence');
+  perform t_ok(bool_and(t_err(format($q$update public.shop_items set facts = %L where id = 'dd000000-0000-0000-0000-000000000040'$q$, f)) like '23514 %'),
+    'R9 …and only as facts: an object, keys from the list, each {value, source, confidence} with a known confidence, a plain source of 1–200 characters, a value, at most 8 KiB')
+    from unnest(array['[]', '"Sony"', '{"price": {"value": 1, "source": "x", "confidence": "exact"}}',
+                      '{"brand": "Sony"}', '{"brand": {"value": "Sony", "source": "x"}}', '{"brand": {"value": "Sony", "source": "x", "confidence": "sure"}}',
+                      '{"brand": {"value": "Sony", "source": "x", "confidence": "exact", "url": "https://attacker.example/"}}',
+                      '{"brand": {"value": null, "source": "x", "confidence": "exact"}}', '{"brand": {"value": "Sony", "source": "", "confidence": "exact"}}',
+                      '{"brand": {"value": "Sony", "source": 7, "confidence": "exact"}}',
+                      '{"brand": {"value": "Sony", "source": "Prisjakt‮", "confidence": "exact"}}',
+                      '{"specs": {"value": "' || repeat('x', 8200) || '", "source": "x", "confidence": "check"}}']) f;
+  s := public.shop_delete_items(array['dd000000-0000-0000-0000-000000000040']::uuid[]);
+  perform public.shop_restore_items(s);
+  perform t_ok((select facts = v_facts from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'), 'R9 Delete''s Undo puts the facts back');
 end $$;
 -- Not bought any more: the purchase's facts go with it; a note and an opened search stay.
 update public.shop_items set status = 'wishlist' where id = 'dd000000-0000-0000-0000-000000000040';

@@ -122,7 +122,7 @@ export async function fetchQuickRows(): Promise<ShopQuickRow[]> {
 
 /** The row as stored after the change (the database's rules fill the rest); one that isn't there is an error, never a silent no-op. */
 /** A purchase's own facts (migration 191): a write of one before 191 is applied says so by name. Remove once 191 ran everywhere. */
-const COLUMNS_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'] as const
+const COLUMNS_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on', 'facts'] as const
 export const NEEDS_191_ITEM = 'Not saved — migration 191 is not applied (how it was bought, Arrived, extra warranty, receipt, search opened)'
 
 export async function updateShopItem(id: string, patch: UpdateShopItemInput): Promise<ShopItem> {
