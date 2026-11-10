@@ -410,6 +410,26 @@ async function handlerChecks() {
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(10)), pages: tv, fetched, writes })
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('the sweep keeps its own rule: a link checked under 20 h ago is not due', r.checked === 0 && fetched.length === 0, JSON.stringify(r))
+
+  console.log('\n12 · The sweep doesn\'t ask again what said no (the real handler, scripted)')
+  for (const status of ['blocked', 'not_allowed']) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+    check(`a link whose last answer was ${status} is not asked again by the sweep while it is unchanged (two days on)`, r.checked === 0 && fetched.length === 0 && writes.filter(w => w.table !== 'shop_price_points').length === 0, JSON.stringify(r))
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, 'https://plain.example/old', { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+    check(`…but a new link is (the old one said ${status})`, r.checked === 1 && fetched.length === 1, JSON.stringify(r))
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 60, plain, { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'check', ids: ['i1'] })
+    check(`…and Check now still tries (its ${status} answer is over an hour old)`, fetched.length === 1 && r.results?.[0]?.status === 'ok', JSON.stringify(r))
+  }
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "plain.example's robots rules couldn't be read — not read now", low: null })), pages: tv, fetched, writes })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('a link whose last check failed (an error — robots.txt unreachable, say) is tried again the next morning', r.checked === 1 && fetched.length === 1, JSON.stringify(r))
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {
