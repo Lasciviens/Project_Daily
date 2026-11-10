@@ -4,12 +4,15 @@
  * and its hand mirror in supabase/functions/shop-price/index.ts.
  * The fixtures are the JSON-LD blocks of real pages, fetched 08.10.2026 and
  * trimmed (Prisjakt product group + product, an Elkjøp product page, a
- * Cloudflare check page). Run: node scripts/verify-shop-price-read.cjs
+ * Cloudflare check page), and a Prisjakt product page fetched once on
+ * 10.11.2026 (scripts/fixtures/prisjakt/: its schema.org block and its own
+ * offer list, where each offer says New, Refurbished or Used).
+ * Run: node scripts/verify-shop-price-read.cjs
  */
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
-const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes } = require('../src/features/shop/priceRead')
+const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows } = require('../src/features/shop/priceRead')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -117,5 +120,324 @@ for (const [raw, want] of [['9990', 9990], ['9 990,00', 9990], ['9.990', 9990], 
 check('a Prisjakt product link is recognised', isPrisjaktUrl('https://www.prisjakt.no/product.php?p=16929131&a-116257=Frost') && isPrisjaktUrl('https://prisjakt.no/produkt.php?p=1'))
 check('a Prisjakt search or a shop is not a product link', !isPrisjaktUrl('https://www.prisjakt.no/search?search=x') && !isPrisjaktUrl('https://www.elkjop.no/product/x/1') && !isPrisjaktUrl('not a url'))
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+console.log('\n6 · Prisjakt\'s own offer list: the price now is its new offers (live page, 10.11.2026)')
+{
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8')
+  const link = 'https://www.prisjakt.no/product.php?p=12105530'
+  const push = s => `<script>self.__next_f.push([1,${JSON.stringify(s)}])</script>`
+  // The page's offer rows, to build variants of it from.
+  const flightOf = h => [...h.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)].map(m => JSON.parse(m[1])).join('')
+  const flight = flightOf(html)
+  const at = flight.indexOf('"offerRows":') + '"offerRows":'.length
+  const end = flight.indexOf(',"trackingScope"', at)
+  const rows = JSON.parse(flight.slice(at, end))
+  const withRows = list => html.replace(/<body>[\s\S]*<\/body>/, `<body>${push(flight.slice(0, at) + JSON.stringify(list) + flight.slice(end))}</body>`)
+  check('the fixture is the live page\'s list: 159 offers — 2 new, 107 refurbished, 50 used', rows.length === 159
+    && rows.filter(r => r.condition === 'New').length === 2 && rows.filter(r => r.condition === 'Refurbished').length === 107 && rows.filter(r => r.condition === 'Used').length === 50)
+
+  const g = readPrice(html, link)
+  check('the price now is the cheapest NEW offer, the high the dearest new one, from 2 shops', g.status === 'ok' && g.low === 16115 && g.high === 16252 && g.offers === 2 && g.currency === 'NOK', JSON.stringify(g))
+  check('…it says so (condition new), with the cheapest used and refurbished offers beside it', g.condition === 'new' && g.usedLow === 5990 && g.refurbishedLow === 6490)
+  check('…and the name and picture still come from the page\'s schema.org block', g.name === 'Apple iPhone 15 Pro 128GB' && g.image.endsWith('/12105530.jpg') && g.brand === 'Apple' && g.source === 'prisjakt')
+  const schemaOnly = readPrice(html.replace(/<body>[\s\S]*<\/body>/, '<body></body>'), link)
+  check('the bug it fixes: the schema.org figures alone read a refurbished 6 590 as the lowest (now marked mixed)', schemaOnly.low === 6590 && schemaOnly.condition === 'mixed' && schemaOnly.usedLow === null, JSON.stringify(schemaOnly))
+  const split = html.replace(/<body>[\s\S]*<\/body>/, `<body>${push(flight.slice(0, at + 4000))}${push(flight.slice(at + 4000))}</body>`)
+  check('the list split over two of the page\'s chunks reads the same', readPrice(split, link).low === 16115 && readPrice(split, link).refurbishedLow === 6490)
+  const colour = readPrice(html, `${link}&a-116257=Blue`)
+  check('a link to one colour on a page that lists every colour: the rows don\'t say their colour, so its schema.org figures, marked mixed', colour.condition === 'mixed' && colour.low === 6758 && /Blue$/.test(colour.name), JSON.stringify(colour))
+  const one = readPrice(withRows(rows.filter(r => r.variantId === 17634616)), `${link}&a-116257=Black+Titanium`)
+  check('a colour\'s link on a page that lists that one colour: its new offers', one.condition === 'new' && one.low === 16115 && one.usedLow === 5990 && one.refurbishedLow === 6490, JSON.stringify(one))
+  const usedOnly = readPrice(withRows(rows.filter(r => r.condition !== 'New')), link)
+  check('no new offer: no price now (never a used or refurbished one), the used and refurbished lows kept', usedOnly.status === 'no_price' && usedOnly.low === null && usedOnly.condition === 'new'
+    && usedOnly.usedLow === 5990 && usedOnly.refurbishedLow === 6490 && usedOnly.name === 'Apple iPhone 15 Pro 128GB', JSON.stringify(usedOnly))
+  const none = readPrice(withRows([]), link)
+  check('an empty offer list: no price, nothing made up', none.status === 'no_price' && none.condition === 'new' && none.usedLow === null && none.refurbishedLow === null)
+  const other = readPrice(withRows(rows.map(r => ({ ...r, productId: 999 }))), link)
+  check('rows of another product are not this one\'s: its schema.org figures, marked mixed', other.condition === 'mixed' && other.low === 6590)
+  const odd = readPrice(withRows([{ ...rows[0], condition: 'New', price: { amount: 'NaN', currency: 'NOK' } }, { ...rows[1], condition: 'New', price: { amount: -5, currency: 'NOK' } }, { ...rows[2], condition: 'New', price: { amount: 15990, currency: 'NOK' } }]), link)
+  check('a row without a real price is left out', odd.low === 15990 && odd.offers === 1, JSON.stringify(odd))
+  const broken = readPrice(html.replace(/<body>[\s\S]*<\/body>/, `<body>${push(flight.slice(0, at + 5000))}</body>`), link)
+  check('a list cut short (not JSON) is not read: its schema.org figures, marked mixed', broken.condition === 'mixed' && broken.low === 6590)
+  check('a shop\'s own page says nothing about its condition: unknown', readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848').condition === 'unknown')
+  check('a Prisjakt page without the list (the 08.10.2026 fixtures): mixed, as before', readPrice(page(ORG, PIXEL), 'https://www.prisjakt.no/product.php?p=16929131').condition === 'mixed')
+}
+
+console.log('\n7 · Sites whose terms forbid automated reading (shop_site_policies)')
+{
+  const hosts = ['finn.no', 'tise.com', 'ads.finn.no']
+  check('the exact host', listedSite('https://finn.no/', hosts) === 'finn.no')
+  check('www, m. and any subdomain of it', listedSite('https://www.finn.no/recommerce/forsale/item/1', hosts) === 'finn.no' && listedSite('https://m.finn.no/x', hosts) === 'finn.no')
+  check('capitals, a trailing dot and a port change nothing', listedSite('https://WWW.Finn.NO./a', hosts) === 'finn.no' && listedSite('https://tise.com:443/p', hosts) === 'tise.com')
+  check('the most specific listed host wins', listedSite('https://x.ads.finn.no/', hosts) === 'ads.finn.no')
+  check('not a look-alike: notfinn.no, finn.no.example.com', listedSite('https://notfinn.no/', hosts) === null && listedSite('https://finn.no.example.com/', hosts) === null)
+  check('not a link that only names it in its path or query', listedSite('https://www.prisjakt.no/search?q=finn.no', hosts) === null && listedSite('https://shop.example/finn.no', hosts) === null)
+  check('not a link that is no URL; an empty list lists nothing', listedSite('finn.no', hosts) === null && listedSite('https://finn.no/', []) === null)
+}
+
+console.log('\n9 · robots.txt (RFC 9309), on the files the sites served on 10.11.2026')
+{
+  const file = name => fs.readFileSync(path.join(__dirname, 'fixtures/robots', name), 'utf8')
+  const may = (text, p) => robotsAllows(robotsRules(text), p)
+  const prisjakt = file('www.prisjakt.no.txt'), elkjop = file('www.elkjop.no.txt'), power = file('www.power.no.txt'), jernia = file('www.jernia.no.txt'), finn = file('www.finn.no.txt')
+  check('Prisjakt: a product page may be read', may(prisjakt, '/product.php?p=12105530'))
+  check('Prisjakt: …a link to one colour too (&a-116257=Frost)', may(prisjakt, '/product.php?p=16929131&a-116257=Frost'))
+  check('Prisjakt: a search may not (Disallow: /search?*)', !may(prisjakt, '/search?search=iphone+15') && !may(prisjakt, '/search?q=x'))
+  check('Prisjakt: a product\'s offer pages may not (/product.php?o=*&offset=*)', !may(prisjakt, '/product.php?o=1&offset=20'))
+  check('Prisjakt: the bots it names are not us (their Disallow: / is not ours)', may(prisjakt, '/c/mobiltelefoner'))
+  check('Elkjøp: a product page may be read', may(elkjop, '/product/tv-lyd-og-smarte-hjem/tv/899848/tcl-65-mqled75k'))
+  check('Elkjøp: its search may not — /search, /search/…, /search?…', !may(elkjop, '/search') && !may(elkjop, '/search?q=tv') && !may(elkjop, '/search/tv'))
+  check('Elkjøp: …while /searchlight is another path ($ ends the match)', may(elkjop, '/searchlight'))
+  check('Elkjøp: the * group, not AdsBot-Google\'s (which allows ?utm_ links)', !may(elkjop, '/cart?utm_source=x'))
+  check('Power: its search may not, a product page may', !may(power, '/search/?q=tv') && may(power, '/tv-og-lyd/tv/tcl-65-mqled75k/p-3701020/'))
+  check('Jernia: Allow: / lets every page be read', may(jernia, '/search?q=x') && may(jernia, '/'))
+  check('FINN, as its file says: an ad page itself is not disallowed there (its terms forbid it — shop_site_policies)', may(finn, '/recommerce/forsale/item/123456789'))
+  check('FINN: Disallow: /privacy$ refuses /privacy, not /privacy-policy', !may(finn, '/privacy') && may(finn, '/privacy-policy'))
+  check('FINN: an Allow beside a Disallow — homes ad pages allowed, new-building ones refused', may(finn, '/realestate/homes/ad.html?finnkode=1') && !may(finn, '/realestate/newbuildings/ad.html?finnkode=1'))
+  check('FINN: wildcards (/*?sort=, */gallery.html, /profile*)', !may(finn, '/bap/forsale/search.html?sort=1') && !may(finn, '/x/gallery.html') && !may(finn, '/profile/ads'))
+  check('an empty file allows everything', may('', '/anything?x=1'))
+  check('our own group wins over *, any case, its version left out', !may('User-agent: *\nAllow: /\n\nUser-agent: lascisboard/2.0\nDisallow: /p', '/p?x') && may('User-agent: *\nDisallow: /\n\nUser-Agent: LascisBoard\nAllow: /', '/x'))
+  check('two groups for one agent are combined; user-agent lines in a row share their rules',
+    !may('User-agent: *\nDisallow: /a\n\nUser-agent: *\nDisallow: /b', '/b') && !may('User-agent: x\nUser-agent: *\nDisallow: /c', '/c'))
+  check('an empty Disallow disallows nothing — and still ends its group', may('User-agent: *\nDisallow:', '/x') && may('User-agent: *\nDisallow:\nUser-agent: other\nDisallow: /', '/x'))
+  check('the longest match decides; on a tie Allow wins', may('User-agent: *\nDisallow: /shop\nAllow: /shop/item', '/shop/item/1') && !may('User-agent: *\nAllow: /shop\nDisallow: /shop/cart', '/shop/cart')
+    && may('User-agent: *\nDisallow: /x\nAllow: /x', '/x'))
+  check('Sitemap and Crawl-delay lines end no group; rules before any user-agent are ignored; comments, CRLF and a BOM are fine',
+    !may('User-agent: *\nSitemap: https://x.example/s.xml\nDisallow: /a', '/a') && may('Disallow: /a\nUser-agent: *\nAllow: /', '/a')
+    && !may('\uFEFFUser-agent: * # all\r\nDisallow: /a # not a\r\n', '/a'))
+  check('octets compared one way: an encoded path matches its pattern, whatever the case of its hex', !may('User-agent: *\nDisallow: /blåbær', '/bl%C3%A5b%C3%A6r') && !may('User-agent: *\nDisallow: /a%2fb', '/a%2Fb'))
+  check('/robots.txt itself is always allowed', may('User-agent: *\nDisallow: /', '/robots.txt'))
+  const hostile = 'User-agent: *\n' + Array.from({ length: 3000 }, () => 'Disallow: /*a*a*a*a*a*a*a*a*a*a*b').join('\n')
+  const t0 = Date.now()
+  const slow = may(hostile, '/' + 'a'.repeat(2000))
+  check('a hostile file (3 000 rules of nested wildcards on a 2 000-letter path) is answered in time, without backtracking blow-up', slow === true && Date.now() - t0 < 3000, `${Date.now() - t0} ms`)
+}
+
+// ── 8 · The real shop-price handler never fetches a listed site ──────────────
+// Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`;
+// a robots.txt from `robots` (an unscripted one answers 404: no rules), counted apart in `robotsAsked`.
+const { transform } = require('sucrase')
+function shopPrice({ db, pages, fetched, writes, robots = {}, robotsAsked = [] }) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/shop-price/index.ts'), 'utf8')
+    .replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
+  const code = transform(src, { transforms: ['typescript'] }).code
+  const builder = (table) => {
+    const ops = []
+    const q = new Proxy({}, {
+      get: (_, op) => {
+        if (op === 'then') return (res, rej) => Promise.resolve(db(table, ops)).then(res, rej)
+        return (...args) => { ops.push([op, ...args]); if (['insert', 'upsert', 'update', 'delete'].includes(op)) writes.push({ table, op, row: args[0] }); return q }
+      },
+    })
+    return q
+  }
+  // The JWT names the account: 'Bearer other-jwt' is a second app user, anything else the owner.
+  const client = { from: builder, auth: { getUser: async (t) => ({ data: { user: { id: t === 'other-jwt' ? 'other' : 'owner' } }, error: null }) } }
+  const fetchStub = async (url) => {
+    if (new URL(String(url)).pathname === '/robots.txt') {
+      robotsAsked.push(String(url))
+      const r = robots[String(url)]
+      if (r instanceof Error) throw r
+      if (!r) return new Response('Not found', { status: 404 })
+      return new Response(r.status >= 300 && r.status < 400 ? null : (r.body ?? ''), { status: r.status ?? 200, headers: r.headers ?? { 'content-type': 'text/plain' } })
+    }
+    fetched.push(String(url))
+    const page = pages[String(url)]
+    if (!page) throw new TypeError(`unexpected fetch ${url}`)
+    return new Response(page.status >= 300 && page.status < 400 ? null : (page.body ?? '<html><title>t</title></html>'),
+      { status: page.status ?? 200, headers: page.headers ?? { 'content-type': 'text/html; charset=utf-8' } })
+  }
+  const env = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a', HEVY_USER_ID: 'owner', SHOP_PRICE_CRON_SECRET: 'cron-secret' }
+  const deno = { env: { get: k => env[k] }, errors: {}, serve: f => { handler = f } }
+  let handler
+  new Function('Deno', 'createClient', 'fetch', 'console', code)(deno, () => client, fetchStub, { ...console, log: () => {}, warn: () => {} })
+  return (body, headers = { authorization: 'Bearer owner-jwt' }) =>
+    handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })).then(r => r.json())
+}
+const FINN = 'https://www.finn.no/recommerce/forsale/item/1'
+const listed = [{ host: 'finn.no' }, { host: 'tise.com' }]
+/** The database: the listed sites, one item on `itemUrl`, its watch (none by default), nothing waiting for a rate. */
+const dbWith = (itemUrl, policies = { data: listed, error: null }, watch = null) => (table, ops) => {
+  if (table === 'shop_site_policies') return policies
+  if (table === 'shop_price_watch' && watch) return { data: [watch], error: null }
+  if (table === 'shop_items') {
+    if (ops.some(([op]) => op === 'maybeSingle')) return { data: { url: itemUrl }, error: null }
+    if (ops.some(([op, a]) => op === 'select' && /option_for/.test(String(a)))) return { data: [{ id: 'i1', url: itemUrl, status: 'wishlist', option_for: null }], error: null }
+    if (ops.some(([op, a]) => op === 'select' && a === 'id, url')) return { data: [{ id: 'i1', url: itemUrl }], error: null }
+    return { data: [], error: null }
+  }
+  return { data: [], error: null }
+}
+
+async function handlerChecks() {
+  console.log('\n8 · shop-price never fetches a site whose terms forbid automated reading (the real handler, scripted)')
+  let fetched = [], writes = []
+  let call = shopPrice({ db: dbWith(FINN), pages: {}, fetched, writes })
+  let r = await call({ action: 'read', url: FINN })
+  check('read: a FINN ad is not_allowed, names finn.no, and nothing is fetched', r.result?.status === 'not_allowed' && r.result?.site === 'finn.no' && fetched.length === 0, JSON.stringify(r) + ' ' + fetched.join(' '))
+  r = await call({ action: 'read', url: 'https://M.TISE.COM/p/1' })
+  check('read: a subdomain of a listed site in capitals too', r.result?.status === 'not_allowed' && r.result?.site === 'tise.com' && fetched.length === 0)
+
+  fetched = []; writes = []
+  const short = 'https://go.example/x'
+  call = shopPrice({ db: dbWith(short), pages: { [short]: { status: 302, headers: { location: FINN } } }, fetched, writes })
+  r = await call({ action: 'read', url: short })
+  check('read: a link that redirects to a listed site is refused at that hop — the site itself is never asked', r.result?.status === 'not_allowed' && r.result?.site === 'finn.no'
+    && fetched.length === 1 && fetched[0] === short, JSON.stringify(r) + ' fetched ' + fetched.join(' '))
+
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(FINN), pages: {}, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const watch = writes.find(w => w.table === 'shop_price_watch' && w.op === 'upsert')?.row
+  check('check: no fetch; the watch says not_allowed in plain words, and no price point is added', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
+    && watch?.status === 'not_allowed' && watch?.error === "finn.no's terms don't allow automated reading" && !writes.some(w => w.table === 'shop_price_points'),
+    JSON.stringify(r) + ' ' + JSON.stringify(watch))
+
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(FINN), pages: {}, fetched, writes })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('sweep: a due FINN link is not fetched either; its watch says not_allowed', r.checked === 1 && r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
+    && writes.some(w => w.table === 'shop_price_watch' && w.row?.status === 'not_allowed'), JSON.stringify(r) + ' fetched ' + fetched.join(' '))
+
+  fetched = []; writes = []
+  const shop = 'https://shop.example/p'
+  call = shopPrice({ db: dbWith(shop, { data: null, error: { code: 'XX000', message: 'boom' } }), pages: { [shop]: { status: 200, body: page(TCL) } }, fetched, writes })
+  r = await call({ action: 'read', url: shop })
+  const c = await call({ action: 'check', ids: ['i1'] })
+  const sw = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('the list can\'t be read: read, check and the sweep fetch nothing (fail closed) and say why', fetched.length === 0 && /nothing was fetched/.test(r.error ?? '')
+    && /nothing was fetched/.test(c.error ?? '') && /nothing was fetched/.test(sw.error ?? ''), JSON.stringify([r, c, sw]))
+
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(shop), pages: { [shop]: { status: 200, body: page(TCL) } }, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const point = writes.find(w => w.table === 'shop_price_points')?.row
+  const w2 = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('a shop that is not listed is still read: its price, condition unknown, on the watch and its point', r.results?.[0]?.status === 'ok' && fetched.length === 1
+    && w2?.low === 9990 && w2?.condition === 'unknown' && point?.condition === 'unknown' && point?.low === 9990, JSON.stringify(r) + JSON.stringify(w2))
+
+  console.log('\n10 · …and reads a page only where the site\'s robots.txt allows it (the real handler, scripted)')
+  const PJ_ROBOTS = { 'https://www.prisjakt.no/robots.txt': { body: fs.readFileSync(path.join(__dirname, 'fixtures/robots/www.prisjakt.no.txt'), 'utf8') } }
+  const search = 'https://www.prisjakt.no/search?search=iphone'
+  let robotsAsked = []
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS, robotsAsked })
+  r = await call({ action: 'read', url: search })
+  check('read: a Prisjakt search is not_allowed by its robots rules — said so, the page never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'www.prisjakt.no'
+    && r.result?.reason === "www.prisjakt.no's robots rules don't allow reading this page" && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify(r))
+  const product = 'https://www.prisjakt.no/product.php?p=12105530'
+  const iphone = { body: fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8') }
+  call = shopPrice({ db: dbWith(product), pages: { [product]: iphone, [`${product}&a-116257=Frost`]: iphone }, fetched, writes, robots: PJ_ROBOTS, robotsAsked: (robotsAsked = []) })
+  r = await call({ action: 'read', url: product })
+  const again = await call({ action: 'read', url: `${product}&a-116257=Frost` })
+  check('read: a product page it allows is read (its new offers), and the rules come from memory the next time', r.result?.status === 'ok' && r.result?.low === 16115
+    && again.result?.status === 'ok' && robotsAsked.length === 1 && fetched.length === 2, JSON.stringify([r.result?.status, again.result?.status, robotsAsked]))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const robotsWatch = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('check: the same — no fetch; the watch says not_allowed with the robots wording', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
+    && robotsWatch?.status === 'not_allowed' && robotsWatch?.error === "www.prisjakt.no's robots rules don't allow reading this page", JSON.stringify(robotsWatch))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('sweep: the same — no fetch, not_allowed', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0, JSON.stringify(r))
+
+  const plain = 'https://plain.example/p'
+  for (const [what, answer, expect] of [['answers 503', { status: 503 }, /plain\.example's robots rules couldn't be read \(it answered 503\) — not read now/],
+    ['gives no answer (a network error)', new TypeError('network'), /plain\.example's robots rules couldn't be read — not read now/]]) {
+    fetched = []; writes = []; robotsAsked = []
+    call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robots: { 'https://plain.example/robots.txt': answer }, robotsAsked })
+    const c1 = await call({ action: 'check', ids: ['i1'] })
+    const c2 = await call({ action: 'read', url: plain })
+    const w = writes.find(x => x.table === 'shop_price_watch')?.row
+    check(`a robots.txt that ${what}: the page is not read now (status error, in plain words), and the answer is kept for a while`, c1.results?.[0]?.status === 'error'
+      && expect.test(w?.error ?? '') && expect.test(c2.error ?? '') && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify([c1, c2, robotsAsked]))
+  }
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked })
+  r = await call({ action: 'read', url: plain })
+  check('a robots.txt that answers 404 sets no rules: the page is read', r.result?.status === 'ok' && r.result?.low === 9990 && robotsAsked.length === 1 && fetched.length === 1)
+
+  const hop = 'https://other.example/item'
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { status: 302, headers: { location: hop } }, [hop]: { body: page(TCL) } }, fetched, writes, robotsAsked,
+    robots: { 'https://other.example/robots.txt': { body: 'User-agent: *\nDisallow: /item' } } })
+  r = await call({ action: 'read', url: plain })
+  check('a redirect to another host asks that host\'s robots.txt and keeps to it: its page is never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'other.example'
+    && fetched.length === 1 && fetched[0] === plain && robotsAsked.includes('https://other.example/robots.txt'), JSON.stringify(r) + ' ' + fetched.join(' '))
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked,
+    robots: { 'https://plain.example/robots.txt': { status: 301, headers: { location: 'http://127.0.0.1/robots.txt' } } } })
+  r = await call({ action: 'read', url: plain })
+  check('a robots.txt that redirects to a private address is refused like a page would be — nothing fetched there', /not allowed/i.test(r.error ?? '')
+    && fetched.length === 0 && !robotsAsked.some(u => u.includes('127.0.0.1')), JSON.stringify(r) + ' ' + robotsAsked.join(' '))
+
+  console.log('\n11 · A read the owner starts reuses one from the last hour (the real handler, scripted)')
+  const watchOf = (minutesAgo, url = plain, extra = {}) => ({ item_id: 'i1', url, checked_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), status: 'ok', error: null,
+    source: 'store', name: 'TV', image: null, low: 9490, high: null, offers: null, currency: 'NOK', in_stock: true, was: null, return_days: null,
+    last_ok_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(), prev_low: null, prev_at: null, condition: 'unknown', used_low: null, refurbished_low: null, ...extra })
+  const tv = { [plain]: { body: page(TCL) } }
+  fetched = []; writes = []
+  const recent = watchOf(10)
+  call = shopPrice({ db: dbWith(plain, undefined, recent), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch of the same link checked 10 minutes ago is the answer — no fetch, nothing written, said so (reused, checkedAt)',
+    fetched.length === 0 && writes.length === 0 && r.results?.[0]?.reused === true && r.results?.[0]?.low === 9490 && r.results?.[0]?.checkedAt === recent.checked_at, JSON.stringify(r))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, plain, { status: 'blocked', low: null })), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('…the same when that check was blocked: Check now tries again only after the hour', fetched.length === 0 && r.results?.[0]?.status === 'blocked' && r.results?.[0]?.reused === true)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(FINN, undefined, watchOf(10, FINN, { status: 'not_allowed', low: null, error: "finn.no's terms don't allow automated reading" })), pages: {}, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('…but a refusal is answered as itself, never "the next read can be after …" (and still nothing is fetched)', fetched.length === 0
+    && r.results?.[0]?.status === 'not_allowed' && !r.results?.[0]?.reused && r.results?.[0]?.error === "finn.no's terms don't allow automated reading", JSON.stringify(r))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(70)), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch from over an hour ago is read again', fetched.length === 1 && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused && r.results?.[0]?.low === 9990)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, 'https://plain.example/old')), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('check: a watch of another (older) link is no answer: the new link is read', fetched.length === 1 && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: tv, fetched, writes })
+  const pasted = await call({ action: 'read', url: plain })
+  const twice = await call({ action: 'read', url: plain })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const saved = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('paste, paste again, then save: one read — the second preview and the check after the save reuse it (said so), stored as of when it was read',
+    fetched.length === 1 && pasted.result?.status === 'ok' && !pasted.result?.reused && twice.result?.reused === true && twice.result?.at === pasted.result?.at
+    && r.results?.[0]?.reused === true && r.results?.[0]?.status === 'ok' && saved?.checked_at === pasted.result?.at && saved?.low === 9990, JSON.stringify([pasted.result?.at, twice.result, r, saved?.checked_at]))
+  const other = await call({ action: 'read', url: plain }, { authorization: 'Bearer other-jwt' })
+  check('…another account\'s read of the same link is its own', fetched.length === 2 && other.result?.status === 'ok' && !other.result?.reused)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10)), pages: tv, fetched, writes })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('the sweep keeps its own rule: a link checked under 20 h ago is not due', r.checked === 0 && fetched.length === 0, JSON.stringify(r))
+
+  console.log('\n12 · The sweep doesn\'t ask again what said no (the real handler, scripted)')
+  for (const status of ['blocked', 'not_allowed']) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+    check(`a link whose last answer was ${status} is not asked again by the sweep while it is unchanged (two days on)`, r.checked === 0 && fetched.length === 0 && writes.filter(w => w.table !== 'shop_price_points').length === 0, JSON.stringify(r))
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, 'https://plain.example/old', { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+    check(`…but a new link is (the old one said ${status})`, r.checked === 1 && fetched.length === 1, JSON.stringify(r))
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 60, plain, { status, low: null })), pages: tv, fetched, writes })
+    r = await call({ action: 'check', ids: ['i1'] })
+    check(`…and Check now still tries (its ${status} answer is over an hour old)`, fetched.length === 1 && r.results?.[0]?.status === 'ok', JSON.stringify(r))
+  }
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "plain.example's robots rules couldn't be read — not read now", low: null })), pages: tv, fetched, writes })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('a link whose last check failed (an error — robots.txt unreachable, say) is tried again the next morning', r.checked === 1 && fetched.length === 1, JSON.stringify(r))
+}
+
+handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {
+  console.log(`\n${passed} passed, ${failed} failed`)
+  process.exit(failed ? 1 : 0)
+})

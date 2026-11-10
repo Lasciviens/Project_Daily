@@ -2263,14 +2263,6 @@ async function createShopCategoryFn(supabase: AnyRecord, userId: string, args: A
 const SHOP_LISTS = ['wishlist', 'quick']
 const SHOP_CURRENCIES = ['NOK', 'TRY', 'EUR', 'USD']
 const REGION_CURRENCY: Record<string, string> = { TR: 'TRY', NO: 'NOK' }
-// Columns migration 134 adds that create_shop_item writes (the retry drops them).
-const SHOP_134_COLUMNS = ['list', 'currency']
-
-// 42703 = Postgres "column does not exist", PGRST204 = PostgREST "Could not
-// find the 'x' column … in the schema cache" — only when it names one of them.
-const SHOP_134_COLUMN_RE = new RegExp(`\\b(${SHOP_134_COLUMNS.join('|')})\\b`)
-const isMissingShop134Column = (e: AnyRecord | null | undefined): boolean =>
-  (e?.code === '42703' || e?.code === 'PGRST204') && SHOP_134_COLUMN_RE.test(String(e?.message ?? ''))
 
 async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   const list = args.list == null || args.list === '' ? 'wishlist' : String(args.list).toLowerCase()
@@ -2313,33 +2305,11 @@ async function createShopItemFn(supabase: AnyRecord, userId: string, args: AnyRe
   }
   if (currency) row.currency = currency
 
-  const insert = (r: AnyRecord) => supabase.from('shop_items').insert(r).select().single()
-  let { data, error } = await insert(row)
-
-  // Before migration 134 there is no list/currency column (and category_id is
-  // still NOT NULL): retry once without them — every item is a wishlist item
-  // then, so it needs a subcategory again.
-  let warning: string | undefined
-  if (error && isMissingShop134Column(error)) {
-    if (!categoryId) {
-      return { success: false, error: `The quick list is not available yet (database migration 134 is not applied), so this item can only go on the wishlist. ${needsCategory}` }
-    }
-    // Before 134 a price has no currency of its own: the app shows it in the
-    // region's currency, so a different one would be shown wrong (100 EUR as 100 kr).
-    if (currency && currency !== regionCurrency) {
-      return { success: false, error: `A price in ${currency} can't be stored yet (database migration 134 is not applied) — only in ${regionCurrency} for this region. Tell the user, or save it without the price.` }
-    }
-    const legacy: AnyRecord = { ...row }
-    for (const c of SHOP_134_COLUMNS) delete legacy[c]
-    ;({ data, error } = await insert(legacy))
-    if (!error && list === 'quick') warning = 'Database migration 134 is not applied yet, so the quick list could not be used — it was saved on the wishlist. Tell the user.'
-  }
-
+  const { data, error } = await supabase.from('shop_items').insert(row).select().single()
   if (error) return { success: false, error: error.message }
   return {
-    success: true, item_id: data.id, title: data.title, list: data.list ?? 'wishlist', category_id: data.category_id,
-    ...(data.price != null ? { price: data.price, currency: data.currency ?? null } : {}),
-    ...(warning ? { warning } : {}),
+    success: true, item_id: data.id, title: data.title, list: data.list, category_id: data.category_id,
+    ...(data.price != null ? { price: data.price, currency: data.currency } : {}),
   }
 }
 
@@ -2915,11 +2885,10 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
       'Never estimate, look up or invent a price, a sale price or a "Could sell for": store only amounts the user stated, with their currency (none given: TR → TRY, otherwise NOK) and price_source="manual".',
       'Marking bought: update status to bought — never write bought_at, fx_nok, fx_source, sale_fx_nok or sale_fx_source (the database fills them, at the rate of the day).',
       'Selling or giving something away NEVER deletes the row: set disposal, disposed_on and, when there was money back, sale_price + sale_currency (and sold_to when known). If its accessories went with it, set the same facts on each accessory with its share of the money and one shared sale_group uuid. Confirm before writing.',
-      'Undoing a sale: set disposal to null (the rest is cleared by the database). A sold row cannot go back to status=wishlist until its sale is undone.',
+      'Undoing a sale: set disposal to null (the rest is cleared by the database) — for things sold together, on every row of their sale_group in ONE update (filter by sale_group): the database refuses taking one back alone. A sold row cannot go back to status=wishlist until its sale is undone.',
       'A general wish has no price of its own and is never bought itself — add its models as rows with option_for and buy a model.',
       'To plan a purchase as a task, create the tasks row first, then set this item\'s task_id to its id.',
       'Naming a money chain: set chain_name on the chain\'s thing that already carries a name, else on its oldest thing (a chain = things joined by shop_item_links); null removes it. Two names in one chain: the oldest thing\'s wins.',
-      'Columns from migration 138 (chain_name), 137 (kind, accessory_of, disposal, …) or 134 (list, currency, bought_at, task_id): if a write says one does not exist, retry without it and tell the user what could not be stored.',
     ].join(' '),
   },
   shop_item_links: {
@@ -2936,14 +2905,20 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   shop_price_watch: {
     access: 'ro',
-    purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest and how many shops, or the shop\'s own price), written by the daily price check.',
-    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at',
-    rules: 'Say where and when a price is from ("Prisjakt\'s lowest on 08.10.2026"). A blocked or failed check keeps the last price read — say it is from last_ok_at.',
+    purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest new offer and how many shops, or the shop\'s own price), written by the daily price check.',
+    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error|not_allowed — the site\'s terms forbid automated reading, never fetched), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at, condition(new — Prisjakt\'s new offers only | mixed — new, used and refurbished alike | unknown — a shop\'s own page | null — read before 10.11.2026), used_low, refurbished_low(the cheapest used / refurbished offer on Prisjakt)',
+    rules: 'Say where and when a price is from ("Prisjakt\'s lowest new price on 08.10.2026"). A blocked, failed or not_allowed check keeps the last price read — say it is from last_ok_at. A price with condition mixed or null may be a used or refurbished one: say so. used_low and refurbished_low are offers seen, never what the user\'s own thing could sell for.',
   },
   shop_price_points: {
     access: 'ro',
     purpose: 'Every price read of a shop item\'s link — the history behind shop_price_watch.',
-    columns: 'id, item_id, checked_at, low, high, offers, currency, source',
+    columns: 'id, item_id, checked_at, low, high, offers, currency, source, condition(as shop_price_watch.condition), used_low, refurbished_low',
+  },
+  shop_site_policies: {
+    access: 'ro',
+    purpose: 'Sites the price check never reads because their terms forbid automated reading (FINN, Tise): a link is on one when its host is that host or a subdomain of it. The same for every account.',
+    columns: 'id, host, no_automated_reading(boolean), reason, source_url(the terms that say so), checked_on(date), created_at, updated_at',
+    rules: 'Never read or fetch such a site for the user; give them the link to open it themselves. Only migrations change this list.',
   },
   fx_rates_nok: {
     access: 'ro',
@@ -3338,7 +3313,7 @@ function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
 // scopes it. An embed inside a shared catalogue table (no user_id) could reach
 // other accounts' rows — movies(user_movie_entries(*)) lists everyone's — so
 // nothing may be embedded inside one (security audit 10.10.2026).
-const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'screenscraper_systems', 'link_rules'])
+const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'shop_site_policies', 'screenscraper_systems', 'link_rules'])
 function selectProblem(select: unknown): string | null {
   if (select == null || select === '') return null
   if (typeof select !== 'string' || select.length > 2000) return 'select must be a short Postgrest select string.'
@@ -3628,10 +3603,15 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // and a background job then changes or deletes that object; the app sets them
 // itself. A repeat's day link and its missed marker (schedule_block_id,
 // occurrence_date, closed_reason — migration 156) are the database's own: a
-// made-up one would hide or duplicate a day of a repeat. Play counts are capped
-// at the app's own 1–99 plays, because each extra play becomes a Trakt history
-// write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key))$/
+// made-up one would hide or duplicate a day of a repeat. So are Shop's frozen
+// NOK rates (fx_nok/fx_source, sale_fx_nok/sale_fx_source — on shop_items and
+// shop_item_costs): a rate a write sends is kept as typed by hand (187), so a
+// made-up one would change what a purchase, a sale or a cost was worth. And a
+// sale's Undo record (sale_undo, 187), which tells shop_undo_sale what to put
+// back: a forged one would move rows and remove a money link at the user's next
+// Undo, with no Confirm card. Play counts are capped at the app's own 1–99
+// plays, because each extra play becomes a Trakt history write.
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key)|(sale_)?fx_(nok|source)|sale_undo)$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {

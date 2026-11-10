@@ -11,6 +11,13 @@
 //     (a link with `a-NNN=Colour` picks that variant). Prices are numbers.
 //   · Elkjøp: `Product` with `offers: [Offer {price: "9990", priceCurrency,
 //     availability, eligibleCustomerType}]` and `gtin13`.
+// Verified live on 10.11.2026 (scripts/fixtures/prisjakt/): Prisjakt's
+// AggregateOffer mixes new, refurbished and used offers (an iPhone 15 Pro read
+// 6 590 while its only new offers were 16 115 and 16 252). Its page also
+// streams its own offer list to React (`self.__next_f.push([1, "…"])`):
+// `offerRows`, one row per offer with `productId`, `variantId`, `condition`
+// ("New" | "Refurbished" | "Used"), `price {amount, currency}`, `shopId` and
+// `stockStatus`. The price now is read from its new offers only.
 // A Cloudflare challenge page ("Just a moment…") is reported as `blocked`,
 // never as a missing price.
 //
@@ -18,7 +25,16 @@
 // supabase/functions/shop-price/index.ts (Deno cannot import from src/).
 
 // <price-read>
-export type PriceReadStatus = 'ok' | 'no_price' | 'blocked'
+/** 'not_allowed': the link is on a site whose terms forbid automated reading (shop_site_policies, migration 188) — never fetched. */
+export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
+
+/**
+ * What `low`, `high` and `offers` cover: 'new' — Prisjakt's own offer list,
+ * new offers only; 'mixed' — Prisjakt's schema.org figures, read when its page
+ * has no offer list (they mix new, refurbished and used offers); 'unknown' —
+ * a shop's own page, which doesn't say.
+ */
+export type PriceCondition = 'new' | 'mixed' | 'unknown'
 
 export interface PriceRead {
   status: PriceReadStatus
@@ -27,11 +43,11 @@ export interface PriceRead {
   image: string | null
   brand: string | null
   gtin: string | null
-  /** The lowest price on the page (Prisjakt: the cheapest shop). */
+  /** The lowest price on the page (Prisjakt: the cheapest new offer). */
   low: number | null
-  /** The highest offer (Prisjakt) — equal to `low` for a single shop. */
+  /** The highest offer (Prisjakt: the dearest new one) — equal to `low` for a single shop. */
   high: number | null
-  /** How many shops sell it (Prisjakt), else null. */
+  /** How many shops sell it (Prisjakt: new), else null. */
   offers: number | null
   currency: string | null
   inStock: boolean | null
@@ -39,6 +55,12 @@ export interface PriceRead {
   was: number | null
   /** The shop's own return window for everyone (not a members-only one), in days — "30-day open purchase". */
   returnDays: number | null
+  /** What low, high and offers cover. */
+  condition: PriceCondition
+  /** The cheapest used offer in Prisjakt's offer list, else null (evidence for resale). */
+  usedLow: number | null
+  /** The cheapest refurbished offer in Prisjakt's offer list, else null. */
+  refurbishedLow: number | null
   /** 'prisjakt' when the page is Prisjakt's, else 'store'. */
   source: 'prisjakt' | 'store'
 }
@@ -190,10 +212,14 @@ function groupSummary(variants: Json[]): OfferSummary | null {
   return out
 }
 
+/** The variant a Prisjakt link names (`a-116257=Frost`), as `a-116257=frost`. */
+function linkAttrs(pageUrl: string): string[] {
+  try { return [...new URL(pageUrl).searchParams.entries()].filter(([k]) => /^a-\d+$/.test(k)).map(([k, v]) => `${k}=${v}`.toLowerCase()) } catch { return [] }
+}
+
 /** The Prisjakt variant the link points at (`a-116257=Frost`), matched on the variant's own url. */
 function variantFor(variants: Json[], pageUrl: string): Json | null {
-  let attrs: string[] = []
-  try { attrs = [...new URL(pageUrl).searchParams.entries()].filter(([k]) => /^a-\d+$/.test(k)).map(([k, v]) => `${k}=${v}`.toLowerCase()) } catch { attrs = [] }
+  const attrs = linkAttrs(pageUrl)
   if (!attrs.length) return null
   return variants.find(v => {
     const u = String(v.url ?? '').toLowerCase()
@@ -221,11 +247,214 @@ export function isPrisjaktUrl(url: string): boolean {
   } catch { return false }
 }
 
+/**
+ * The listed site a link is on — its host, or a subdomain of it ("m.finn.no"
+ * is on finn.no) — out of `hosts` (shop_site_policies, migration 188), else
+ * null. The most specific listed host wins.
+ */
+export function listedSite(url: string, hosts: readonly string[]): string | null {
+  let host: string
+  try { host = new URL(url).hostname.toLowerCase().replace(/\.+$/, '') } catch { return null }
+  let best: string | null = null
+  for (const raw of hosts) {
+    const h = String(raw).trim().toLowerCase().replace(/\.+$/, '')
+    if (h && (host === h || host.endsWith(`.${h}`)) && (!best || h.length > best.length)) best = h
+  }
+  return best
+}
+
+/** One rule of a robots.txt group: allow or disallow the paths a pattern matches (`*` any characters, a final `$` the end). */
+export interface RobotsRule { allow: boolean; pattern: string }
+
+/** The product token our User-Agent names (`LascisBoard/1.0`): robots.txt's group for it applies, else its `*` group. */
+export const ROBOTS_TOKEN = 'LascisBoard'
+
+/** At most this many rules are read from one robots.txt (a hostile file can't make every check slow). */
+const ROBOTS_RULE_CAP = 5000
+
+/** A robots.txt path, or a URL's path + query, with its octets percent-encoded one way (RFC 9309 §2.2.2): non-ASCII, spaces and controls encoded, hex in capitals. */
+function robotsPath(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const code = ch.codePointAt(0) as number
+    if (code > 0x20 && code < 0x7f) out += ch
+    else { try { out += encodeURIComponent(ch) } catch { out += '%EF%BF%BD' } }
+  }
+  return out.replace(/%[0-9a-f]{2}/gi, m => m.toUpperCase())
+}
+
+/**
+ * The rules a robots.txt gives `token` (RFC 9309): the groups that name it (any case, a version after "/"
+ * left out), else those for `*`, their rules combined; [] when there are none — nothing is disallowed. An
+ * empty `Disallow:` disallows nothing. Rules before any user-agent line, and records robots.txt doesn't
+ * define (Sitemap, Crawl-delay …), are left out and end no group.
+ */
+export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] {
+  type Group = { agents: string[]; rules: RobotsRule[]; ruled: boolean }
+  const groups: Group[] = []
+  let current: Group | null = null
+  for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)) {
+    const line = raw.replace(/#.*$/, '').trim()
+    const colon = line.indexOf(':')
+    if (colon < 1) continue
+    const key = line.slice(0, colon).trim().toLowerCase()
+    const value = line.slice(colon + 1).trim()
+    if (key === 'user-agent') {
+      if (!current || current.ruled) { current = { agents: [], rules: [], ruled: false }; groups.push(current) }
+      current.agents.push(value.split('/')[0].trim().toLowerCase())
+    } else if ((key === 'allow' || key === 'disallow') && current) {
+      current.ruled = true
+      if (value) current.rules.push({ allow: key === 'allow', pattern: robotsPath(value) })
+    }
+  }
+  const named = groups.filter(g => g.agents.includes(token.toLowerCase()))
+  const chosen = named.length ? named : groups.filter(g => g.agents.includes('*'))
+  return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
+}
+
+/** Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? A two-pointer match: no backtracking blow-up, whatever the pattern. */
+function robotsMatch(pattern: string, path: string): boolean {
+  const anchored = pattern.endsWith('$')
+  const p = anchored ? pattern.slice(0, -1) : pattern
+  let i = 0, j = 0, star = -1, mark = 0
+  while (j < path.length) {
+    if (i < p.length && p[i] !== '*' && p[i] === path[j]) { i++; j++ }
+    else if (i < p.length && p[i] === '*') { star = i++; mark = j }
+    else if (i === p.length && !anchored) return true
+    else if (star >= 0) { i = star + 1; j = ++mark }
+    else return false
+  }
+  while (i < p.length && p[i] === '*') i++
+  return i === p.length
+}
+
+/**
+ * Whether robots rules let us read `pathAndQuery` (RFC 9309 §2.2.2): the longest matching pattern decides,
+ * Allow wins a tie, no match is allowed, and /robots.txt itself always is.
+ */
+export function robotsAllows(rules: readonly RobotsRule[], pathAndQuery: string): boolean {
+  const path = robotsPath(pathAndQuery || '/')
+  if (path === '/robots.txt') return true
+  let best: RobotsRule | null = null
+  for (const r of rules) {
+    if (!robotsMatch(r.pattern, path)) continue
+    if (!best || r.pattern.length > best.pattern.length || (r.pattern.length === best.pattern.length && r.allow)) best = r
+  }
+  return !best || best.allow
+}
+
+/** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
+function nextFlight(html: string): string {
+  const out: string[] = []
+  const marker = 'self.__next_f.push([1,"'
+  let at = html.indexOf(marker)
+  while (at >= 0) {
+    const start = at + marker.length - 1
+    let end = start + 1
+    while (end < html.length && html[end] !== '"') end += html[end] === '\\' ? 2 : 1
+    if (end >= html.length) break
+    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') out.push(s) } catch { /* not a JSON string: skipped */ }
+    at = html.indexOf(marker, end)
+  }
+  return out.join('')
+}
+
+/** The JSON array or object that starts at text[start], parsed — else null. */
+function jsonAt(text: string, start: number): unknown {
+  if (text[start] !== '[' && text[start] !== '{') return null
+  let depth = 0
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '"') {
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++
+    } else if (ch === '[' || ch === '{') {
+      depth++
+    } else if ((ch === ']' || ch === '}') && --depth === 0) {
+      try { return JSON.parse(text.slice(start, i + 1)) } catch { return null }
+    }
+  }
+  return null
+}
+
+interface OfferRow { condition: string; price: number; currency: string | null; shop: string | null; variant: string | null }
+
+/**
+ * Prisjakt's own offer list for product `productId`: the `offerRows` its
+ * product page streams (one row per offer). A row of another product, or one
+ * without a condition or a price, is left out. null: the page has no such
+ * list, or none of its rows is this product's — then only its schema.org
+ * figures are known.
+ */
+function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
+  const flight = nextFlight(html)
+  const key = '"offerRows":'
+  const at = flight.indexOf(key)
+  if (at < 0) return null
+  const rows = jsonAt(flight, at + key.length)
+  if (!Array.isArray(rows)) return null
+  const out: OfferRow[] = []
+  for (const r of rows) {
+    if (!isObj(r) || String(r.productId) !== productId || typeof r.condition !== 'string' || !isObj(r.price)) continue
+    const price = parsePrice(r.price.amount)
+    if (price == null) continue
+    out.push({
+      condition: r.condition.toLowerCase(), price, currency: firstString(r.price.currency)?.toUpperCase() ?? null,
+      shop: r.shopId == null ? null : String(r.shopId),
+      variant: /^\d+$/.test(String(r.variantId ?? '')) ? String(r.variantId) : null,
+    })
+  }
+  return rows.length && !out.length ? null : out
+}
+
+/**
+ * The rows a link's price comes from: all of them, or — for a link that names
+ * a variant (a colour) — that variant's, known only when the page lists one
+ * variant (a row doesn't say its colour); null when that can't be told.
+ */
+function offersFor(rows: OfferRow[], pageUrl: string): OfferRow[] | null {
+  if (!rows.length || !linkAttrs(pageUrl).length) return rows
+  const variants = new Set(rows.map(r => r.variant).filter(v => v != null))
+  return variants.size === 1 ? rows.filter(r => r.variant != null) : null
+}
+
+/** The new offers' low, high and shops, and the cheapest used and refurbished offer. */
+function byCondition(rows: OfferRow[]): { low: number | null; high: number | null; offers: number | null; currency: string | null; usedLow: number | null; refurbishedLow: number | null } {
+  const cheapest = (c: string): OfferRow | null => rows.filter(r => r.condition === c).reduce<OfferRow | null>((m, r) => (!m || r.price < m.price ? r : m), null)
+  const fresh = rows.filter(r => r.condition === 'new')
+  const best = cheapest('new')
+  return {
+    low: best?.price ?? null,
+    high: fresh.length ? Math.max(...fresh.map(r => r.price)) : null,
+    offers: fresh.length ? new Set(fresh.map((r, i) => r.shop ?? `row ${i}`)).size : null,
+    currency: best?.currency ?? rows[0]?.currency ?? null,
+    usedLow: cheapest('used')?.price ?? null,
+    refurbishedLow: cheapest('refurbished')?.price ?? null,
+  }
+}
+
 /** The price a product page shows, or why there is none. */
 export function readPrice(html: string, pageUrl: string): PriceRead {
   const source: PriceRead['source'] = /prisjakt\.no/i.test(pageUrl) ? 'prisjakt' : 'store'
-  const empty: PriceRead = { status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null, was: null, returnDays: null, source }
+  const empty: PriceRead = {
+    status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
+    was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
+  }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
+  const fromSchema = schemaPrice(html, pageUrl, empty)
+  const product = isPrisjaktUrl(pageUrl) ? new URL(pageUrl).searchParams.get('p') : null
+  const rows = product ? prisjaktOfferRows(html, product) : null
+  const scope = rows ? offersFor(rows, pageUrl) : null
+  if (!scope) return fromSchema
+  const c = byCondition(scope)
+  return {
+    ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
+    currency: c.currency ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
+    condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
+  }
+}
+
+/** What the page's schema.org data says: a product's (or the linked variant's) offers. */
+function schemaPrice(html: string, pageUrl: string, empty: PriceRead): PriceRead {
   const nodes = jsonLdNodes(html)
   const products = nodes.filter(n => { const t = types(n); return t.includes('Product') || t.includes('ProductGroup') })
   for (const p of products) {

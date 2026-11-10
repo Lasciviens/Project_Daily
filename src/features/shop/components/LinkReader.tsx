@@ -1,15 +1,20 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link2 } from 'lucide-react'
 import { Button } from '../../../shared/ui'
 import { logError } from '../../../shared/utils/logError'
+import { formatTime } from '../../../shared/utils/dateFormat'
 import { readPriceLink } from '../api/shopPriceApi'
 import { SHOP_CURRENCIES } from '../shopModel'
 import type { ShopCurrency } from '../types'
+import { hostOf } from './shopFormat'
+import { SiteLink } from './shopKit'
 
 /**
  * Paste a Prisjakt or shop link: its name, price and picture fill the form
- * (a page that blocks automatic reads says so — then type them). The link is
- * kept, and its price is checked every morning.
+ * (a page that blocks automatic reads says so — then type them; a page whose
+ * site's terms or robots rules forbid reading it is never read and says so,
+ * with the link to open it). The link is kept, and its price is checked every
+ * morning.
  */
 export function LinkReader({ url, onUrl, onRead }: {
   url: string
@@ -17,7 +22,7 @@ export function LinkReader({ url, onUrl, onRead }: {
   onRead: (r: { title: string | null; price: number | null; currency: ShopCurrency | null; image: string | null }) => void
 }) {
   const [reading, setReading] = useState(false)
-  const [note, setNote] = useState<string | null>(null)
+  const [note, setNote] = useState<ReactNode>(null)
   const [readFor, setReadFor] = useState('')
 
   async function read(u = url.trim()) {
@@ -25,10 +30,15 @@ export function LinkReader({ url, onUrl, onRead }: {
     setReading(true); setNote(null); setReadFor(u)
     try {
       const r = await readPriceLink(u)
+      if (r.status === 'not_allowed') {
+        setNote(<>{r.reason ?? `${r.site ?? hostOf(u) ?? 'That site'}'s terms don't allow automated reading`} — <SiteLink url={u}>open it yourself</SiteLink></>)
+        return
+      }
       const c = (r.currency ?? '').toUpperCase()
       onRead({ title: r.name, price: r.low, currency: SHOP_CURRENCIES.includes(c as ShopCurrency) ? c as ShopCurrency : null, image: r.image })
+      const when = r.reused ? `read at ${formatTime(r.at)}` : 'read just now'
       setNote(r.status === 'ok'
-        ? (r.source === 'prisjakt' ? `Prisjakt's lowest${r.offers ? ` of ${r.offers} shops` : ''}, read just now.` : 'The shop\'s price, read just now.')
+        ? (r.source === 'prisjakt' ? `Prisjakt's lowest${r.offers ? ` of ${r.offers} shops` : ''}, ${when}.` : `The shop's price, ${when}.`)
         : r.status === 'blocked' ? 'That site blocks automatic reads — type the price yourself.' : 'No price on that page — type it yourself.')
     } catch (e) {
       setNote((e as Error).message)

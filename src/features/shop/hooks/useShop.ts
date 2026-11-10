@@ -1,13 +1,15 @@
+import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { confirmDelete } from '../../../shared/modals'
-import { deleteScope } from '../shopModel'
+import { deleteScope, quickDue, quickFromWishlist } from '../shopModel'
 import { qk, STALE } from '../../../shared/query'
+import { mapRowsInCache, restoreCache, snapshotCache, type CacheSnapshot } from '../../../shared/query/cachePatch'
 import {
   fetchShopCategories, createShopCategory,
   fetchShopItems, createShopItem, updateShopItem, deleteShopItems, restoreShopItems,
-  type ShopSnapshot,
+  fetchQuickRows, type ShopQuickRow, type ShopSnapshot,
 } from '../api/shopApi'
 import type { CreateShopCategoryInput, CreateShopItemInput, ShopItem, UpdateShopItemInput } from '../types'
 
@@ -48,6 +50,29 @@ export function useShopItem(id: string) {
   return useQuery({ ...itemsQuery, select: (rows: ShopItem[]) => rows.find(r => r.id === id) ?? null })
 }
 
+/**
+ * Daily's Shopping card: what the quick list asks to pick up on `date` — its
+ * rows (not No rush), then wishlist errands and deals due at their store —
+ * by the Shop page's own rules over a narrow read, never every shop row.
+ * While it loads, the Shop page's whole list stands in when it is already
+ * here (the same rules pick the same rows from it).
+ */
+export function useQuickToPickUp(date: string) {
+  const qc = useQueryClient()
+  const pickUp = useCallback((rows: ShopQuickRow[]): ShopQuickRow[] => {
+    // The rules read only QUICK_ROW_COLUMNS (scripts/verify-shop-api.cjs), so the narrow rows go through as they are.
+    const all = rows as ShopItem[]
+    return [...quickDue(all), ...quickFromWishlist(all, date)]
+  }, [date])
+  return useQuery({
+    queryKey:        qk.shop.quick(),
+    queryFn:         fetchQuickRows,
+    staleTime:       STALE.short,
+    select:          pickUp,
+    placeholderData: () => qc.getQueryData<ShopItem[]>(qk.shop.items()),
+  })
+}
+
 /** `quiet`: the quick list's own add box shows the row appear instead of a toast. */
 export function useCreateShopItem() {
   return useMutationWithFeedback({
@@ -62,7 +87,8 @@ export function useCreateShopItem() {
   })
 }
 
-type UpdateVars = { id: string; patch: UpdateShopItemInput; quiet?: boolean }
+/** `row`: the row as it was before an earlier write, for an Undo that brings it back onto Daily's list. */
+type UpdateVars = { id: string; patch: UpdateShopItemInput; quiet?: boolean; row?: ShopQuickRow }
 
 /** The before-trigger's day rules, mirrored so a row lands in the right place before the server answers. */
 function applyPatch(r: ShopItem, patch: UpdateShopItemInput, now: string): ShopItem {
@@ -73,9 +99,10 @@ function applyPatch(r: ShopItem, patch: UpdateShopItemInput, now: string): ShopI
 }
 
 /**
- * Optimistic: a tick on the quick list or a status flip shows at once and
- * rolls back on failure. A status flip toasts unless `quiet` (ticking off
- * groceries one by one would bury the screen in toasts); field edits never do.
+ * Optimistic: a tick on the quick list or a status flip shows at once — in
+ * every cached list of shop rows, the page's and Daily's — and rolls back on
+ * failure. A status flip toasts unless `quiet` (ticking off groceries one by
+ * one would bury the screen in toasts); field edits never do.
  */
 export function useUpdateShopItem() {
   const qc = useQueryClient()
@@ -91,18 +118,18 @@ export function useUpdateShopItem() {
         : patch.chain_name !== undefined ? (patch.chain_name ? 'Chain named' : 'Name removed')
         : undefined,
     mutationFn:  ({ id, patch }: UpdateVars) => updateShopItem(id, patch),
-    onMutate: async ({ id, patch }: UpdateVars) => {
+    onMutate: async ({ id, patch, row }: UpdateVars) => {
       await qc.cancelQueries({ queryKey: qk.shop.items() })
-      const before = qc.getQueryData<ShopItem[]>(qk.shop.items())
-      if (before) {
-        const now = new Date().toISOString()
-        qc.setQueryData<ShopItem[]>(qk.shop.items(), before.map(r => (r.id === id ? applyPatch(r, patch, now) : r)))
-      }
+      const before = snapshotCache(qc, qk.shop.items())
+      // Daily's narrow read holds only rows to buy: a row an earlier write bought (and its refresh took out) comes back with it.
+      if (row) qc.setQueryData<ShopQuickRow[]>(qk.shop.quick(), rows => (rows && !rows.some(r => r.id === id) ? [...rows, row] : rows))
+      const now = new Date().toISOString()
+      mapRowsInCache<ShopItem>(qc, qk.shop.items(), new Set([id]), r => applyPatch(r, patch, now))
       return { before }
     },
     onError: (_e, _v, ctx) => {
-      const c = ctx as { before?: ShopItem[] } | undefined
-      if (c?.before) qc.setQueryData(qk.shop.items(), c.before)
+      const c = ctx as { before?: CacheSnapshot } | undefined
+      if (c?.before) restoreCache(qc, c.before)
     },
     invalidates: [qk.shop.items()],
   })
@@ -115,10 +142,10 @@ export function useUpdateShopItem() {
  */
 export function useBuyNow(onDetails?: (id: string) => void) {
   const update = useUpdateShopItem()
-  return (item: ShopItem) => {
+  return (item: ShopQuickRow) => {
     update.mutate({ id: item.id, patch: { status: 'bought' }, quiet: true }, {
       onSuccess: () => {
-        const undo = () => update.mutate({ id: item.id, patch: { status: 'wishlist' }, quiet: true })
+        const undo = () => update.mutate({ id: item.id, patch: { status: 'wishlist' }, quiet: true, row: item })
         if (onDetails) toast.doneWith(`Bought · ${item.title}`, { label: 'Add details', onClick: () => onDetails(item.id) }, undo)
         else toast.undo(`Bought · ${item.title}`, undo)
       },
@@ -129,8 +156,9 @@ export function useBuyNow(onDetails?: (id: string) => void) {
 /**
  * THE shop delete: asks ("Its 2 accessories go too."), deletes the row and
  * the accessories bought for it (deleteScope), "Deleted Kindle · Undo" — Undo
- * puts them back with their links, costs and accessories (shop_restore_items,
- * migration 137; its own order of parents and links, which the shop rules need).
+ * puts them back with their links, costs, accessories and price history
+ * (shop_restore_items, migration 187: the rows first, then their parents and
+ * links, which the shop rules need).
  */
 export function useDeleteShopItems() {
   const items = useShopItems().data ?? []

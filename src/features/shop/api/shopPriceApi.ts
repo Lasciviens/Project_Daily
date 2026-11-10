@@ -8,7 +8,11 @@ import { rateKey, type RatePair } from '../chainDraft'
 // before it is saved; `check` re-reads saved rows into the price watch; a
 // daily cron does both for everything due.
 
-export type PriceReadResult = PriceRead & { at: string; finalUrl: string }
+/**
+ * With status not_allowed (nothing was fetched): `site`, the host whose terms or robots rules refuse it, and
+ * `reason`, that in one plain sentence ("finn.no's terms don't allow automated reading").
+ */
+export type PriceReadResult = PriceRead & { at: string; finalUrl: string; site?: string; reason?: string; reused?: boolean }
 
 function notDeployed(error: unknown): boolean {
   const msg = (error as { message?: string; context?: { status?: number } })?.message ?? ''
@@ -18,7 +22,7 @@ function notDeployed(error: unknown): boolean {
 
 const NOT_DEPLOYED = 'Price checks need the shop-price function — deploy it first (see the PR\'s steps).'
 
-/** The price on a link right now; nothing is stored. Throws a plain sentence on failure. */
+/** The price on a link right now (or as read within the last hour: `reused`); nothing is stored. Throws a plain sentence on failure. */
 export async function readPriceLink(url: string): Promise<PriceReadResult> {
   const { data, error } = await supabase.functions.invoke('shop-price', { body: { action: 'read', url } })
   if (error) throw new Error(notDeployed(error) ? NOT_DEPLOYED : 'Could not check the price — try again in a moment.')
@@ -26,7 +30,11 @@ export async function readPriceLink(url: string): Promise<PriceReadResult> {
   return data.result as PriceReadResult
 }
 
-export interface PriceCheckOutcome { id: string; status: 'ok' | 'no_price' | 'blocked' | 'error'; low: number | null; currency: string | null; error?: string }
+/** `reused`: no new read was made — the answer is the check of `checkedAt`, under an hour ago (the next read can be an hour after it). */
+export interface PriceCheckOutcome {
+  id: string; status: 'ok' | 'no_price' | 'blocked' | 'error' | 'not_allowed'; low: number | null; currency: string | null; error?: string
+  reused?: boolean; checkedAt?: string
+}
 
 /** Re-reads saved rows' links (≤ 10) into the price watch. */
 export async function checkItemPrices(ids: readonly string[]): Promise<PriceCheckOutcome[]> {
