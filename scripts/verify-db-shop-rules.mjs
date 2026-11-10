@@ -16,7 +16,10 @@
 //     resale.sql (192: ad notes, trade-in quotes, the value history, listings and how a sale closes them, the ad
 //     templates and hand-over checklists with their Norwegian and English defaults, each account its own rows, links
 //     never fetched and https only, Activity's Undo of an estimate and of a sale with its listing, Delete's Undo
-//     bringing every row back, deleting an account).
+//     bringing every row back, deleting an account), and undo-retry.sql — Activity's Undo of a Shop delete of a thing
+//     with an extra cost and a snoozed Needs-a-look row, which must fail on a copy taken before 192 (187's and 190's
+//     rules refused those rows with 23514 before their thing was back) and pass after it, and Delete's Undo of the
+//     same, which passes on both.
 // Static checks of 187, 188, 190 and 192 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
@@ -182,7 +185,15 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (!/(select public\.owner_lock_apply\('public\.\w+'\);\s*){6}$/i.test(sql)) problems.push('the owner lock is not the last thing it does')
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
   const names = fns.map(([, name]) => name).sort().join()
-  if (names !== 'shop_add_resale_defaults,shop_items_resale,shop_items_value_first,shop_link_on_host,shop_listings_rules,shop_listings_thing_check,shop_resale_default_checklists,shop_resale_default_templates,shop_resale_rows_rules') problems.push(`functions ${names}`)
+  if (names !== 'shop_add_resale_defaults,shop_item_costs_rules,shop_items_resale,shop_items_value_first,shop_link_on_host,shop_listings_rules,shop_listings_thing_check,shop_resale_default_checklists,shop_resale_default_templates,shop_resale_rows_rules,shop_signal_states_rules') problems.push(`functions ${names}`)
+  // 187's and 190's rules, word for word but for the code of the "not one of your own" refusal (23514 → 23503).
+  for (const [file, name, refusal] of [['187_shop_integrity.sql', 'shop_item_costs_rules', 'A cost belongs to one of your own items'],
+                                       ['190_shop_needs_a_look.sql', 'shop_signal_states_rules', 'Needs a look remembers only your own things']]) {
+    const fnOf = text => (text.match(new RegExp(`create or replace function public\\.${name}\\(\\)[\\s\\S]*?\\n\\$\\$;`)) || [''])[0]
+    const was = fnOf(readFileSync(mig(file), 'utf8'))
+    const refuse = code => `raise exception '${refusal}' using errcode = '${code}';`
+    if (!was.includes(refuse('23514')) || fnOf(src) !== was.replace(refuse('23514'), refuse('23503'))) problems.push(`${name} is not ${file.slice(0, 3)}'s with 23503 for a thing not (yet) yours`)
+  }
   for (const [body, name] of fns) {
     if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
     if (/security definer/i.test(body)) problems.push(`${name}: SECURITY DEFINER (every 192 function runs as the caller)`)
@@ -213,6 +224,18 @@ const withDb = (u, name) => { const x = new URL(u); x.pathname = `/${name}`; ret
 const psql = (u, args) => execFileSync('psql', [u, '-v', 'ON_ERROR_STOP=1', '-q', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 const step = (name, fn) => { try { fn() } catch (e) { console.error(`FAILED at ${name}:\n${(e.stderr || e.message).toString().split('\n').filter(l => /ERROR|LINE|CONTEXT|DETAIL|FAIL/.test(l)).slice(0, 8).join('\n')}`); throw e } }
 const run = (target, file) => spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', file], { encoding: 'utf8' })
+/** undo-retry.sql's answers: id → 'ok' | 'WRONG'. */
+const retryAnswers = (target) => {
+  const r = run(target, join(dir, 'undo-retry.sql'))
+  if (r.status !== 0) throw Object.assign(new Error('undo-retry.sql stopped'), { stderr: r.stderr })
+  const out = new Map()
+  for (const m of r.stderr.matchAll(/NOTICE: {2}retry (\S+) {2}(ok|WRONG) {2}(.*)/g)) out.set(m[1], { answer: m[2], what: m[3] })
+  return out
+}
+const RETRY = ['activity_both', 'activity_cost', 'activity_signal', 'delete_undo']
+/** The cases only 192 fixes (Delete's Undo passes before it too: it puts the thing back before its rows). */
+const RETRY_FIXED_BY_192 = ['activity_both', 'activity_cost', 'activity_signal']
+
 /** bugs.sql's answers: id → 'ok' | 'WRONG'. */
 const bugAnswers = (target) => {
   const r = run(target, join(dir, 'bugs.sql'))
@@ -223,7 +246,7 @@ const bugAnswers = (target) => {
 }
 
 const pid = process.pid
-const tpl = `t187tpl_${pid}`, old = `t187old_${pid}`, neu = `t187new_${pid}`
+const tpl = `t187tpl_${pid}`, old = `t187old_${pid}`, neu = `t187new_${pid}`, pre = `t187pre_${pid}`
 let code = 0
 let summary = ''
 psql(url, ['-c', `create database ${tpl}`])
@@ -261,6 +284,14 @@ try {
   step('links across accounts from before 190', () => psql(n, ['-f', join(dir, 'cross-account-old.sql')]))
   step('190', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   step('190 again', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
+  // Before 192 (a copy): Activity's Undo of those deletes must fail — else the scenario proves nothing.
+  psql(url, ['-c', `create database ${pre} template ${neu}`])
+  const pre192 = retryAnswers(withDb(url, pre))
+  psql(url, ['-c', `drop database if exists ${pre}`])
+  if (RETRY.some(id => !pre192.has(id))) throw new Error(`undo-retry.sql answered ${[...pre192.keys()].join(', ')} before 192 — expected ${RETRY.join(', ')}`)
+  const passingAlready = RETRY_FIXED_BY_192.filter(id => pre192.get(id).answer === 'ok')
+  if (passingAlready.length) throw new Error(`without 192 these Undo cases already pass, so they prove nothing: ${passingAlready.join(', ')}`)
+  if (pre192.get('delete_undo').answer !== 'ok') throw new Error(`before 192 Delete's Undo failed too: ${pre192.get('delete_undo').what}`)
   step('192', () => psql(n, ['-f', mig('192_shop_resale.sql')]))
   step('192 again', () => psql(n, ['-f', mig('192_shop_resale.sql')]))
   let passed = 0
@@ -268,14 +299,21 @@ try {
     const sc = run(n, join(dir, file))
     passed += (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
     if (sc.status !== 0) throw Object.assign(new Error(`${file} failed`), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
+    // signals.sql's Q6 runs 190 again, which re-creates its rule as 190 wrote it; 192 runs again after it, in the
+    // deploy's order (and a third run must be a no-op too).
+    if (file === 'signals.sql') step('192 after 190 ran again', () => psql(n, ['-f', mig('192_shop_resale.sql')]))
   }
-  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188, 190 and 192 (twice each), and ${passed} scenarios passed`
+  const with192 = retryAnswers(n)
+  const stillFailing = RETRY.filter(id => with192.get(id)?.answer !== 'ok')
+  if (stillFailing.length) throw new Error(`with 192 these Undo cases still fail:\n${stillFailing.map(id => `  ${id}: ${with192.get(id)?.what ?? 'no answer'}`).join('\n')}`)
+  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188, 190 and 192 (twice each; 192 once more after signals.sql re-runs 190), ${passed} scenarios passed, `
+    + `and ${RETRY_FIXED_BY_192.length} Undo cases failing before 192 pass with it (${RETRY.length - RETRY_FIXED_BY_192.length} passing on both)`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)
   if (e.stderr) console.error(e.stderr.toString().split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE|DETAIL/.test(l)).slice(0, 20).join('\n'))
 } finally {
-  for (const db of [neu, old, tpl]) {
+  for (const db of [pre, neu, old, tpl]) {
     try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
   }
 }
