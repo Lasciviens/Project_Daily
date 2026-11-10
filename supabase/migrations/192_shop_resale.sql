@@ -70,6 +70,15 @@
 -- changes nothing when neither "Could sell for" nor how the thing left changed — so deleting an account (cascades
 -- and SET NULL updates) never reaches it with an insert for a vanishing user.
 --
+-- 7. Two older rules refuse with a foreign key's code too. 187's shop_item_costs_rules ("A cost belongs to one of your
+--    own items") and 190's shop_signal_states_rules ("Needs a look remembers only your own things") refused a row
+--    whose thing is not (yet) the account's own with a check violation (23514), so Activity's Undo of a Shop delete
+--    — which puts rows back table by table and retries only a foreign key's or a unique key's refusal in a later
+--    round — stopped at a thing's extra cost or snoozed Needs-a-look row before the thing itself was back. Both are
+--    re-created word for word but for that one code (23503); every other refusal of theirs keeps its own. Shop's
+--    own Delete with Undo was not affected (it puts the thing back before its rows), and another account's thing
+--    is refused as before.
+--
 -- Functions: search_path '', SECURITY INVOKER (row level security and the owner lock apply), granted to signed-in
 -- callers only where the app calls them. Safe to re-run. Writes rows only for the seeds (each app user's default
 -- templates and checklists, those they lack). No BEGIN/COMMIT: the deploy runs it as one transaction.
@@ -585,6 +594,57 @@ drop trigger if exists trg_audit on public.shop_handover_checklists;
 create trigger trg_audit after insert or update or delete on public.shop_handover_checklists
   for each row execute function public.log_audit();
 
+-- ─── 7. 187's and 190's rules: a thing not (yet) yours is a foreign key's refusal ─
+-- 187's, word for word but for the code of its first refusal (23503: a restore retries it once the thing is back).
+create or replace function public.shop_item_costs_rules()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from public.shop_items where id = new.item_id and user_id = new.user_id) then
+    raise exception 'A cost belongs to one of your own items' using errcode = '23503';
+  end if;
+  if new.currency = 'NOK' then
+    new.fx_nok := 1;
+    new.fx_source := 'fixed';
+  elsif new.fx_nok is not null and (tg_op = 'INSERT' or new.fx_nok is distinct from old.fx_nok
+                                    or new.fx_source is distinct from old.fx_source) then
+    new.fx_source := case when new.fx_source = 'norges_bank' and new.fx_nok = public.shop_rate(new.currency, new.spent_on)
+                          then 'norges_bank' else 'manual' end;
+  elsif new.fx_nok is null or tg_op = 'INSERT' or new.currency is distinct from old.currency
+        or new.spent_on is distinct from old.spent_on then
+    new.fx_nok := public.shop_rate(new.currency, new.spent_on);
+    new.fx_source := case when new.fx_nok is null then null else 'norges_bank' end;
+  end if;
+  return new;
+end;
+$$;
+
+-- 190's, word for word but for the code of its first refusal (23503, as above).
+create or replace function public.shop_signal_states_rules()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if new.item_id is not null and not exists (
+    select 1 from public.shop_items i where i.id = new.item_id and i.user_id = new.user_id
+  ) then
+    raise exception 'Needs a look remembers only your own things' using errcode = '23503';
+  end if;
+  if new.dismissed_at is not null and new.dismissed_at > pg_catalog.now() then
+    new.dismissed_at := pg_catalog.now();
+  end if;
+  if tg_op = 'INSERT' then
+    new.created_at := least(greatest(coalesce(new.created_at, pg_catalog.now()), timestamptz '2000-01-01 00:00:00+00'), pg_catalog.now());
+    new.updated_at := pg_catalog.now();
+  end if;
+  return new;
+end;
+$$;
+
 -- ─── The default texts ───────────────────────────────────────────────────────
 -- The ad templates, in Norwegian (the owner's decision): one for finn.no, one for tise.com, one for any other
 -- marketplace. The fields: {name} the thing, {condition} its condition in the template's language, {bought} the
@@ -682,6 +742,8 @@ revoke all on function public.shop_listings_rules() from public, anon, authentic
 revoke all on function public.shop_listings_thing_check() from public, anon, authenticated, service_role;
 revoke all on function public.shop_items_resale() from public, anon, authenticated, service_role;
 revoke all on function public.shop_items_value_first() from public, anon, authenticated, service_role;
+revoke all on function public.shop_item_costs_rules() from public, anon, authenticated, service_role;
+revoke all on function public.shop_signal_states_rules() from public, anon, authenticated, service_role;
 revoke all on function public.shop_resale_default_templates() from public, anon;
 revoke all on function public.shop_resale_default_checklists() from public, anon;
 revoke all on function public.shop_add_resale_defaults() from public, anon;
