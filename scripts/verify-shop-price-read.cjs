@@ -269,6 +269,28 @@ console.log('\n15 · When the morning check tries a link again (watchWords, the 
   check('a sentence from shop-price ends one of ours: its first word in small letters, a site\'s name as it is', W.asTail("The site didn't answer") === "the site didn't answer" && W.asTail('elkjop.no blocks apps') === 'elkjop.no blocks apps')
 }
 
+console.log('\n16 · What a price covers, and why a watch shows no price now (the card\'s line, the record\'s strip)')
+{
+  check('a Prisjakt price read before 188 (no condition) counts as mixed; a shop\'s as unknown', W.coversOf({ condition: null, source: 'prisjakt' }) === 'mixed'
+    && W.coversOf({ condition: null, source: 'store' }) === 'unknown' && W.coversOf({ condition: 'new', source: 'prisjakt' }) === 'new')
+  check('a Prisjakt price that may be a used one says ", new and used" — a new one or a shop\'s says nothing more', W.mixedWords({ condition: 'mixed', source: 'prisjakt' }) === ', new and used'
+    && W.mixedWords({ condition: null, source: 'prisjakt' }) === ', new and used' && W.mixedWords({ condition: 'new', source: 'prisjakt' }) === '' && W.mixedWords({ condition: 'unknown', source: 'store' }) === '')
+  const toBuy = { list: 'wishlist', kind: 'item', status: 'wishlist', url: 'https://shop.example/p', disposal: null, return_by: null }
+  const at = '2026-11-10T05:23:00Z', today = '2026-11-10'
+  const st = (status, condition = null) => W.stateWords(toBuy, { status, checked_at: at, condition }, today)
+  check('a price now needs no words', st('ok') === null)
+  check('a refusal is the site\'s answer, not a failure: "apps may not read it", neutral', JSON.stringify(st('not_allowed')) === JSON.stringify({ text: 'apps may not read it', warn: false, retry: null }))
+  check('a page without a price is an answer too: "no new offer" (Prisjakt\'s list), "no price on the page", neutral', st('no_price', 'new').text === 'no new offer' && !st('no_price', 'new').warn
+    && st('no_price', 'unknown').text === 'no price on the page' && !st('no_price').warn)
+  check('a bot check ("blocks apps") or a failed check ("couldn\'t check 10.11.2026"): the warning tone, with when the morning check tries again',
+    st('blocked').text === 'blocks apps' && st('blocked').warn && st('blocked').retry === 'the morning check tries again on 17.11.2026'
+    && st('error').text === "couldn't check 10.11.2026" && st('error').warn && st('error').retry === 'the morning check tries again')
+  const hint = (status, condition = null) => W.noPriceHint({ status, checked_at: at, condition })
+  check('the strip without a price names the refusal, "no new offer", or "couldn\'t check 10.11.2026" — never "not checked yet" for a link that was checked',
+    hint('not_allowed') === 'apps may not read it' && hint('no_price', 'new') === 'no new offer' && hint('no_price') === 'no price on the page'
+    && hint('blocked') === "couldn't check 10.11.2026" && hint('error') === "couldn't check 10.11.2026")
+}
+
 // ── 8 · The real shop-price handler never fetches a listed site ──────────────
 // Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`;
 // a robots.txt from `robots` (an unscripted one answers 404: no rules), counted apart in `robotsAsked`.

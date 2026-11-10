@@ -6,7 +6,7 @@ import type { UsdRates } from '../../settings/subscriptionRules'
 import { approxOther, currencyOf, priceLabel } from '../shopModel'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import { complete, type Amount } from '../ownModel'
-import { retryWords } from '../watchWords'
+import { mixedWords, stateWords } from '../watchWords'
 import { ItemThumb, SiteLink } from './shopKit'
 import { imageOf, money, webUrl } from './shopFormat'
 import type { ShopItem, ShopPriceWatch } from '../types'
@@ -31,6 +31,36 @@ interface Props {
   onDelete: () => void
 }
 
+/**
+ * The card's line about the link's price: "Now 16 115 NOK on Prisjakt · ↓ 300 · at your target" — ", new and used"
+ * when Prisjakt's price may be a used one — or, when the last check read no price, the last price read with its day
+ * and why: a refusal or a page without a price in a neutral tone (they are answers), a bot check or a failed check
+ * in the warning tone with when the morning check tries again; "No new offer on Prisjakt" when none is kept.
+ */
+function WatchLine({ item, watch, today }: { item: ShopItem; watch: ShopPriceWatch; today: string }) {
+  const cur = (watch.currency ?? currencyOf(item)).toUpperCase()
+  const where = watch.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>
+  if (watch.low == null) return <span className="text-fg-muted">No new offer on <SiteLink url={item.url}>Prisjakt</SiteLink></span>
+  const low = watch.low
+  const state = stateWords(item, watch, today)
+  if (!state) {
+    const atTarget = item.target_price != null && cur === currencyOf(item) && low <= item.target_price
+    return (
+      <span className={cx(atTarget ? 'text-success' : 'text-fg-muted')}>
+        Now {money(low, cur)} {where}{mixedWords(watch)}
+        {watch.prev_low != null && watch.prev_low !== low && <> · {low < watch.prev_low ? '↓' : '↑'} {money(Math.abs(low - watch.prev_low), cur)}</>}
+        {atTarget && ' · at your target'}
+      </span>
+    )
+  }
+  return (
+    <span className="text-fg-muted">
+      {money(low, cur)} {where}{mixedWords(watch)}, {formatDate(watch.last_ok_at ?? watch.checked_at)}
+      {' · '}<span className={cx(state.warn && 'text-warn')}>{state.text}{state.retry ? ` — ${state.retry}` : ''}</span>
+    </span>
+  )
+}
+
 /** One wishlist row: what, how much, where and when — and the two everyday actions. */
 export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdit, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
   const price = priceLabel(item)
@@ -38,15 +68,11 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
   const late = item.planned_date != null && item.planned_date < today && !item.wait_for_deal
   const taskDone = task?.status === 'done'
   const current = watch && watch.url === item.url ? watch : null
-  const now = current && current.low != null ? current : null
-  // Prisjakt's offer list had no new offer, and the watch holds no price: that is the answer, said as it is.
-  const noNew = !now && current?.status === 'no_price' && current.condition === 'new'
-  const nowCur = (now?.currency ?? currencyOf(item)).toUpperCase()
-  const atTarget = now && item.target_price != null && nowCur === currencyOf(item) && (now.low as number) <= item.target_price
+  // A price read (now, or the last one with its day), or Prisjakt's list without a new offer: the card says it.
+  const said = current && (current.low != null || (current.status === 'no_price' && current.condition === 'new')) ? current : null
   const dealOpen = item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
-  const retry = now ? retryWords(item, now, today) : null
-  // The product's page: in the "Now …" line when there is one, else as its own link.
-  const link = !now && !noNew ? webUrl(item.url) : null
+  // The product's page: in the price line when there is one, else as its own link.
+  const link = !said ? webUrl(item.url) : null
 
   return (
     <div className="card flex flex-col gap-2 p-3">
@@ -81,17 +107,9 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
         </Menu>
       </div>
 
-      {(now || noNew || item.wait_for_deal || afterSale || item.reason) && (
+      {(said || item.wait_for_deal || afterSale || item.reason) && (
         <div className="flex flex-col gap-0.5 text-meta tabular-nums">
-          {now && (
-            <span className={cx(atTarget ? 'text-success' : 'text-fg-muted')}>
-              Now {money(now.low as number, nowCur)} {now.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>}
-              {now.prev_low != null && now.prev_low !== now.low && <> · {(now.low as number) < now.prev_low ? '↓' : '↑'} {money(Math.abs((now.low as number) - now.prev_low), nowCur)}</>}
-              {atTarget && ' · at your target'}
-              {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}{retry ? ` — ${retry}` : ''}</span>}
-            </span>
-          )}
-          {noNew && <span className="text-fg-muted">No new offer on <SiteLink url={item.url}>Prisjakt</SiteLink></span>}
+          {said && <WatchLine item={item} watch={said} today={today} />}
           {item.wait_for_deal && (
             <span className={cx(dealOpen ? 'text-warn' : 'text-fg-muted')}>
               {dealOpen ? 'Deal on now' : `Deal from ${formatDate(item.planned_date)}`}{item.platform ? ` at ${item.platform}` : ''}

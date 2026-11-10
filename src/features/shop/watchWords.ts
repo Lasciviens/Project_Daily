@@ -1,7 +1,8 @@
 // What the price watch says on screen, in one vocabulary (owner, 10.11.2026: plain words, "apps", the true result):
-// the note under a pasted link, and when the morning check tries a link again. shop-price writes the site's own
-// answer ("finn.no doesn't let apps read its pages", "elkjop.no blocks apps with a browser check"); these add what
-// to do about it. Pure — verify-shop-price-read runs it.
+// the note under a pasted link, what a price covers, why a watch has no price now (the card's line, the record's
+// strip) and when the morning check tries a link again. shop-price writes the site's own answer ("finn.no doesn't
+// let apps read its pages", "elkjop.no blocks apps with a browser check"); these add what to do about it.
+// Pure — verify-shop-price-read runs it.
 import { formatDate, formatTime } from '../../shared/utils/dateFormat'
 import { osloDay } from './groceryModel'
 import { addDays } from './ownModel'
@@ -58,6 +59,42 @@ export function retryWords(item: Pick<ShopItem, 'list' | 'kind' | 'status' | 'ur
   if (watch.status !== 'blocked') return null
   const day = blockedRetryDay(watch.checked_at)
   return day && day > today ? `the morning check tries again on ${formatDate(day)}` : 'the morning check tries again'
+}
+
+/** What a price covers: Prisjakt's new offers, its figures that mix in used ones, or a shop's own price. */
+export type Covers = 'new' | 'mixed' | 'unknown'
+
+/** What a watch's (or a point's) price covers; one read before 188 says nothing, and on Prisjakt it may mix in used offers. */
+export function coversOf(w: { condition: Covers | null; source: string | null }): Covers {
+  return w.condition ?? (w.source === 'prisjakt' ? 'mixed' : 'unknown')
+}
+
+/** ", new and used" after "Prisjakt" when its price may be a used one (mixed, or read before 188), else nothing. */
+export function mixedWords(w: Pick<ShopPriceWatch, 'condition' | 'source'>): string {
+  return w.source === 'prisjakt' && coversOf(w) === 'mixed' ? ', new and used' : ''
+}
+
+/**
+ * In a few words, why the price a watch keeps is an old one (the card's line): a refusal isn't a failure
+ * (neutral), a page without a price neither; a bot check or a failed check is (`warn`), with when the morning
+ * check tries again (`retry`). Null for a price now.
+ */
+export function stateWords(item: Pick<ShopItem, 'list' | 'kind' | 'status' | 'url' | 'disposal' | 'return_by'>, watch: Pick<ShopPriceWatch, 'status' | 'checked_at' | 'condition'>, today: string): { text: string; warn: boolean; retry: string | null } | null {
+  if (watch.status === 'ok') return null
+  if (watch.status === 'not_allowed') return { text: 'apps may not read it', warn: false, retry: null }
+  if (watch.status === 'no_price') return { text: watch.condition === 'new' ? 'no new offer' : 'no price on the page', warn: false, retry: null }
+  const retry = retryWords(item, watch, today)
+  return { text: watch.status === 'blocked' ? 'blocks apps' : `couldn't check ${formatDate(watch.checked_at)}`, warn: true, retry }
+}
+
+/**
+ * The strip's hint under "Price now" when there is no price: the refusal named, "no new offer", or "couldn't
+ * check 10.11.2026" — never "not checked yet" for a link that was checked.
+ */
+export function noPriceHint(watch: Pick<ShopPriceWatch, 'status' | 'checked_at' | 'condition'>): string {
+  if (watch.status === 'not_allowed') return 'apps may not read it'
+  if (watch.status === 'no_price') return watch.condition === 'new' ? 'no new offer' : 'no price on the page'
+  return `couldn't check ${formatDate(watch.checked_at)}`
 }
 
 /** A sentence from shop-price as the end of one of ours: "The site didn't answer" → "the site didn't answer" (a site's name stays). */

@@ -3,7 +3,7 @@ import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
-import { asTail, retryWords } from '../../watchWords'
+import { asTail, mixedWords, morningReads, retryWords } from '../../watchWords'
 import { hostOf, money } from '../shopFormat'
 import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
@@ -23,7 +23,6 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const { data: points = [] } = useShopPricePoints(item.url ? item.id : null)
   if (!item.url) return null
   const cur = (current?.currency ?? currencyOf(item)).toUpperCase()
-  const failed = current && current.status !== 'ok'
   const refused = current?.status === 'not_allowed'
   const low = current?.low ?? null
   const site = hostOf(item.url) ?? 'the shop'
@@ -31,14 +30,13 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const sameCurrency = cur === currencyOf(item)
   const cheaper = owned && low != null && sameCurrency && item.price != null && low < item.price && item.return_by && item.return_by >= today
   const open = <SiteLink url={item.url}>Open at {site}</SiteLink>
-  const retry = current ? retryWords(item, current, today) : null
 
   return (
     <Card>
       <CardHeader title="Price now" variant="label" className="mb-2"
         action={<Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
       {!current ? (
-        <p className="text-body text-fg-muted">Not checked yet — the morning check reads it, or tap Check now. {open}</p>
+        <p className="text-body text-fg-muted">Not checked yet — {morningReads(item, today) ? 'the morning check reads it, or tap Check now' : 'tap Check now'}. {open}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {low != null ? (
@@ -46,7 +44,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
               <span className="text-lead font-semibold tabular-nums text-fg">{money(low, cur)}</span>
               <span className="text-meta text-fg-muted">
                 {current.source === 'prisjakt'
-                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
+                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{mixedWords(current)}{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
                   : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
               </span>
             </p>
@@ -67,23 +65,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
             </p>
           )}
           {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
-          {refused ? (
-            <p className="text-meta text-fg-muted">
-              {current.error ?? `${site} doesn't let apps read its pages`}, so its price isn't checked.
-              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
-            </p>
-          ) : current.status === 'no_price' ? (
-            // The page answered, without a price: that is the result, not a failed check.
-            <p className="text-meta text-fg-muted">
-              {current.error ?? 'No price on the page'} ({formatDate(current.checked_at)}).
-              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
-            </p>
-          ) : failed && (
-            <p className="text-meta text-warn">
-              Couldn't check {formatDate(current.checked_at)}: {asTail(current.error ?? 'The site didn\'t answer')}{retry ? ` — ${retry}` : ''}.
-              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
-            </p>
-          )}
+          <WatchAnswer item={item} watch={current} today={today} />
           <Sparkline points={points} currency={cur} />
           <p className="text-micro text-fg-muted">
             {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
@@ -92,6 +74,25 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
         </div>
       )}
     </Card>
+  )
+}
+
+/**
+ * Why the last check read no price — the line under the price (the footer's "Read …" dates a price kept from
+ * before): a refusal and a page without a price are the site's answers, in a neutral tone; a bot check and a
+ * failed check are failures, in the warning tone, with when the morning check tries again.
+ */
+function WatchAnswer({ item, watch, today }: { item: ShopItem; watch: ShopPriceWatch; today: string }) {
+  if (watch.status === 'ok') return null
+  if (watch.status === 'not_allowed') {
+    return <p className="text-meta text-fg-muted">{watch.error ?? `${hostOf(item.url) ?? 'The site'} doesn't let apps read its pages`}, so its price isn't checked.</p>
+  }
+  if (watch.status === 'no_price') return <p className="text-meta text-fg-muted">{watch.error ?? 'No price on the page'}.</p>
+  const retry = retryWords(item, watch, today)
+  return (
+    <p className="text-meta text-warn">
+      Couldn't check {formatDate(watch.checked_at)}: {asTail(watch.error ?? 'The site didn\'t answer')}{retry ? ` — ${retry}` : ''}.
+    </p>
   )
 }
 
