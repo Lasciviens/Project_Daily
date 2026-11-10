@@ -1347,6 +1347,7 @@ const TABLE_WORDS: Record<string, [string, string]> = {
   supplement_schedules: ['supplement schedule', 'supplement schedules'],
   supplement_dose_state: ['supplement dose state', 'supplement dose states'],
   recipes: ['recipe', 'recipes'], shop_items: ['shop item', 'shop items'], wish_items: ['wish', 'wishes'],
+  shop_ad_notes: ['noted ad', 'noted ads'], shop_trade_in_quotes: ['trade-in quote', 'trade-in quotes'], shop_listings: ['listing', 'listings'],
   dev_requests: ['request', 'requests'], books: ['book', 'books'],
   user_movie_entries: ['film in your library', 'films in your library'],
   user_tv_entries: ['show in your library', 'shows in your library'], user_tv_episodes: ['watched episode', 'watched episodes'],
@@ -1363,7 +1364,7 @@ const dayText = (v: unknown) => {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : ''
 }
 function rowLabel(r: AnyRecord): string {
-  const named = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content
+  const named = r.title ?? r.name ?? r.custom_title ?? r.label ?? r.content ?? r.dealer ?? r.marketplace
   const day = dayText(r.date ?? r.due_date ?? r.watched_at)
   let text: string
   if (named) text = String(named)
@@ -2933,6 +2934,50 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
     columns: 'id, host, no_automated_reading(boolean), reason, source_url(the terms that say so), checked_on(date), created_at, updated_at',
     rules: 'Never read or fetch such a site for the user; give them the link to open it themselves. Only migrations change this list.',
   },
+  // Resale and selling (migration 192). The owner types ad notes, trade-in quotes and listings, so those are rw —
+  // but an ad's link (ad_url) is the owner's paste only (AI_NO_WRITE: a steered turn could plant a link the owner
+  // then taps). The value history is the database's; templates and hand-over checklists are edited in the app only
+  // (a step taken out of a checklist could leave a phone signed in to iCloud when it is handed over).
+  shop_ad_notes: {
+    access: 'rw',
+    purpose: 'Ads for the same thing the user noted by hand ("+ Note an ad"): evidence for what one of their things could sell for. The link is never fetched.',
+    columns: 'id, item_id(uuid FK shop_items), ad_url(https — the user pastes it in the app; never set it), marketplace(the marketplace\'s host: finn.no, tise.com — or null), price(numeric), currency(NOK|TRY|EUR|USD), condition(new|like_new|good|fair|for_parts, nullable), asking(true = what the seller asks — asking, not sold; false = what it sold for), noted_on(date), created_at, updated_at',
+    rules: 'A note needs the ad\'s link, which only the user pastes in the app — so never add one; you may correct a note\'s price, condition, day or asking when the user says so. Never fetch or open the link, and never invent a price.',
+  },
+  shop_trade_in_quotes: {
+    access: 'rw',
+    purpose: 'Trade-in quotes the user typed: what a dealer offered for one of their things (the floor of what it fetches).',
+    columns: 'id, item_id(uuid FK shop_items), dealer(who offered it, as the user named it), amount(numeric), currency(NOK|TRY|EUR|USD), condition(new|like_new|good|fair|for_parts, nullable), quoted_on(date), note(up to 500 characters), created_at, updated_at',
+    rules: 'Only a quote the user told you in this conversation, with its amount and currency as they said it — never estimate or look one up.',
+  },
+  shop_value_history: {
+    access: 'ro',
+    purpose: 'Every "Could sell for" estimate with its day (one per thing and day), kept by the database from shop_items.value_now / value_currency / value_on since 10.11.2026.',
+    columns: 'id, item_id(uuid FK shop_items), valued_on(date), value(numeric), currency(NOK|TRY|EUR|USD), created_at, updated_at',
+    rules: 'To change an estimate, update shop_items.value_now / value_on with the user\'s own number — the history follows by itself.',
+  },
+  shop_listings: {
+    access: 'rw',
+    purpose: 'Selling one of the user\'s things: listed (the ad written) → for_sale (the ad is up) → sold (only from recording the sale on shop_items) or withdrawn (taken down unsold), with its dated price changes.',
+    columns: 'id, item_id(uuid FK shop_items), marketplace(host, e.g. finn.no, or null), ad_url(the ad\'s link — never set it), status(listed|for_sale|sold|withdrawn), listed_on(date), for_sale_on(date — set by the database when it goes up), ended_on(date), currency(NOK|TRY|EUR|USD), prices(jsonb array, oldest first: [{"on": "yyyy-mm-dd", "price": number}] — the first the asking price, the last the price now), ad_text, closed_by_sale(boolean — the database\'s), created_at, updated_at',
+    rules: [
+      'Only when the user says they listed, put up, lowered or took down an ad for one of their things (one open listing per thing; only a thing they have).',
+      'Never set status=sold: selling is recording the sale on shop_items (disposal, disposed_on, sale_price), and the database then closes the listing itself; undoing the sale opens it again.',
+      'A price change appends {"on": today, "price": new price} to prices — keep every earlier entry as it is. Never write closed_by_sale.',
+    ].join(' '),
+  },
+  shop_ad_templates: {
+    access: 'ro',
+    purpose: 'The user\'s ad texts per marketplace (null = any other) and category (null = any), in Norwegian by default: a title and a body with {name}, {condition}, {bought}, {price} and {accessories}.',
+    columns: 'id, marketplace, category, language(nb|en), title, body, created_at, updated_at',
+    rules: 'You may draft an ad from a template when asked, in the template\'s language; the user edits the templates in the app.',
+  },
+  shop_handover_checklists: {
+    access: 'ro',
+    purpose: 'What to do before handing a thing over, per category (phones, game consoles, computers …): one step per line.',
+    columns: 'id, category, steps(one per line), created_at, updated_at',
+    rules: 'Read the steps out when asked; never shorten or skip one. The user edits them in the app.',
+  },
   fx_rates_nok: {
     access: 'ro',
     purpose: 'Norges Bank\'s daily exchange rates to NOK for TRY, EUR and USD (one row per calendar day; a weekend carries Friday\'s). Shop uses them to freeze a purchase\'s or a sale\'s NOK value on its own day.',
@@ -3632,9 +3677,12 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // made-up one would change what a purchase, a sale or a cost was worth. And a
 // sale's Undo record (sale_undo, 187), which tells shop_undo_sale what to put
 // back: a forged one would move rows and remove a money link at the user's next
-// Undo, with no Confirm card. Play counts are capped at the app's own 1–99
+// Undo, with no Confirm card. An ad's link (ad_url on shop_ad_notes and
+// shop_listings, 192) is the owner's own paste: a steered turn could plant a
+// link the owner then taps; and a listing's closed_by_sale is the database's
+// (the sale's Undo opens a listing marked so). Play counts are capped at the app's own 1–99
 // plays, because each extra play becomes a Trakt history write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key)|(sale_)?fx_(nok|source)|sale_undo)$/
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key)|(sale_)?fx_(nok|source)|sale_undo|ad_url|closed_by_sale)$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {
