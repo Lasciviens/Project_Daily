@@ -124,6 +124,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       icon={iconOf(item)}
       task={item.task_id ? taskById.get(item.task_id) ?? null : null}
       today={today}
+      rates={rates}
       watch={watches.get(item.id) ?? null}
       facts={factOf(item.id)}
       afterSale={afterSale.get(item.id) ?? null}

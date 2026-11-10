@@ -10,6 +10,7 @@ import { addDays, daysBetween, isMine, isPossession, PAID_BACK, valueAgeDays, VA
 import { currencyOf, listOf, localDay, type Money } from './shopModel'
 import { isSignalHidden, signalSignature, signalStateKey, signalStateMap } from './signalStates'
 import { atTarget, backInStock, cleanPrice, fakeBefore, lowestIn60, readPrice, type PriceFacts } from './wishTile'
+import { mixedWords } from './watchWords'
 import type { DealAhead } from './dealDays'
 import type { ShopItem, ShopPriceWatch, ShopSignal, ShopSignalState } from './types'
 
@@ -104,7 +105,8 @@ const facts = (...xs: (string | null | false | undefined)[]): string[] => xs.fil
 /** A wish's price for its row: its own (a general wish's range), never a guess. */
 function wishPrice(i: ShopItem, watch: ShopPriceWatch | null | undefined): string | null {
   const now = readPrice(i, watch)
-  if (now) return money(now.amount, now.currency)
+  // A Prisjakt figure that may be a used one says so, as on every screen (", new and used").
+  if (now) return `${money(now.amount, now.currency)}${watch ? mixedWords(watch) : ''}`
   if (i.kind === 'general' && (i.price_min != null || i.price_max != null)) {
     const lo = i.price_min ?? i.price_max as number, hi = i.price_max ?? i.price_min as number
     return lo === hi ? money(lo, currencyOf(i)) : `${money(lo, currencyOf(i)).replace(/\s\S+$/, '')}–${money(hi, currencyOf(i))}`

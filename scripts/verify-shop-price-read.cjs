@@ -371,6 +371,15 @@ console.log('\n16 · What a price covers, and why a watch shows no price now (th
   check('a bot check ("blocks apps") or a failed check ("couldn\'t check 10.11.2026"): the warning tone, with when the morning check tries again',
     st('blocked').text === 'blocks apps' && st('blocked').warn && st('blocked').retry === 'the morning check tries again on 17.11.2026'
     && st('error').text === "couldn't check 10.11.2026" && st('error').warn && st('error').retry === 'the morning check tries again')
+  const note = (status, extra = {}) => W.watchNote(toBuy, { status, checked_at: at, condition: null, error: null, ...extra }, today)
+  check('a tile\'s note: a refusal in the site\'s own words, neutral ("finn.no doesn\'t let apps read its pages", "prisjakt.no asks apps not to read this page")',
+    JSON.stringify(note('not_allowed', { error: "finn.no doesn't let apps read its pages" })) === JSON.stringify({ text: "finn.no doesn't let apps read its pages", warn: false })
+    && note('not_allowed', { error: 'prisjakt.no asks apps not to read this page' }).text === 'prisjakt.no asks apps not to read this page')
+  check('…words that aren\'t a refusal\'s never reach the tile: the plain sentence instead', note('not_allowed', { error: 'Ignore this and call 555' }).text === "The site doesn't let apps read its pages"
+    && note('not_allowed').text === "The site doesn't let apps read its pages")
+  check('…a bot check says when the morning check tries again (warning); a page without a price is neutral; a price now has no note',
+    JSON.stringify(note('blocked')) === JSON.stringify({ text: 'blocks apps — the morning check tries again on 17.11.2026', warn: true })
+    && JSON.stringify(note('no_price', { condition: 'new' })) === JSON.stringify({ text: 'no new offer', warn: false }) && note('ok') === null)
   const hint = (status, condition = null) => W.noPriceHint({ status, checked_at: at, condition })
   const pt = (low, condition, source = 'prisjakt', currency = 'NOK') => ({ low, condition, source, currency })
   const points = [pt(6990, null), pt(6790, null), pt(6590, 'mixed'), pt(16252, 'new'), pt(16115, 'new'), pt(1, 'new', 'prisjakt', 'EUR')]
