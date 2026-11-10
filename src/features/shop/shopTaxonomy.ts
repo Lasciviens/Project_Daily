@@ -4,7 +4,9 @@
 //
 // Nothing here is ever written by itself: a category picker lists the owner's
 // own categories first, then the ones below the owner doesn't have yet
-// ("Suggested"), and picking one creates it then. Names are matched case-,
+// ("Suggested"), and picking one creates it then; "Add the suggested
+// categories" makes them all at once, on the owner's tap (`suggestedPlan`,
+// owner 10.11.2026). Names are matched case-,
 // space- and "&"/"and"-insensitively, and through a few other names for the
 // same thing (`aka`), so a suggestion never repeats what the owner has; the
 // owner's own names always win. The list holds migration 030's seed, so its
@@ -220,6 +222,66 @@ export function suggestedSubs(categories: readonly Cat[], topId: string | null |
   if (!top) return []
   const had = ownerKeys(categories)
   return top.subs.filter(s => !keysOf(s).some(k => had.has(k))).map(s => s.name)
+}
+
+/** What "Add the suggested categories" makes: top categories with their subcategories, and subcategories under the owner's own tops. */
+export interface SuggestedPlan {
+  tops: { name: string; subs: string[] }[]
+  under: { parentId: string; subs: string[] }[]
+  /** Rows in all. */
+  count: number
+}
+
+/**
+ * Every suggestion the pickers offer, each once (owner, 10.11.2026: added once, on the owner's tap): the
+ * suggested tops (`suggestedTops`) with their subcategories, and the subcategories suggested under the owner's
+ * own tops (`suggestedSubs`) — none the owner has anywhere under any of its names, and none twice: a taxonomy
+ * top the owner has under two names ("Electronics" and "Tech") gets its subcategories once, under the one with
+ * its own name, else the first by name. Once it is made, nothing is suggested and this plan is empty.
+ */
+export function suggestedPlan(categories: readonly Cat[]): SuggestedPlan {
+  const had = ownerKeys(categories)
+  const fresh = (subs: readonly TaxonomySub[]) => subs.filter(s => {
+    const keys = keysOf(s)
+    if (keys.some(k => had.has(k))) return false
+    for (const k of keys) had.add(k)
+    return true
+  }).map(s => s.name)
+  const ownTops = categories.filter(c => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+  const under: SuggestedPlan['under'] = []
+  for (const top of TAXONOMY) {
+    const mine = ownTops.filter(c => taxonomyTopOf(c.name) === top)
+    const target = mine.find(c => categoryKey(c.name) === categoryKey(top.name)) ?? mine[0]
+    const subs = target ? fresh(top.subs) : []
+    if (target && subs.length) under.push({ parentId: target.id, subs })
+  }
+  const tops = suggestedTops(categories).map(name => ({ name, subs: fresh(TAXONOMY.find(t => t.name === name)?.subs ?? []) }))
+  const count = tops.reduce((n, t) => n + 1 + t.subs.length, 0) + under.reduce((n, u) => n + u.subs.length, 0)
+  return { tops, under, count }
+}
+
+/**
+ * A picker's pick as the categories stand now: a suggestion ("suggest:Headphones") that has been made since —
+ * by "Add the suggested categories" — becomes the owner's category of that name (under its top), so the select
+ * shows what it holds; one still suggested stays; one neither made there nor suggested any more (made under the
+ * owner's other top of the same kind) is no pick — never a second row on Save. Anything else stays as it is.
+ */
+export function pickWithMade<P extends { topId: string; subId: string }>(pick: P, categories: readonly Cat[]): P {
+  const S = 'suggest:'
+  const named = (name: string, parentId: string | null) =>
+    categories.find(c => (c.parent_id ?? null) === parentId && categoryKey(c.name) === categoryKey(name))?.id
+  const offered = (names: readonly string[], name: string) => names.some(n => categoryKey(n) === categoryKey(name))
+  let topId = pick.topId
+  if (topId.startsWith(S)) {
+    const name = topId.slice(S.length)
+    topId = named(name, null) ?? (offered(suggestedTops(categories), name) ? topId : '')
+  }
+  let subId = topId ? pick.subId : ''
+  if (subId.startsWith(S)) {
+    const name = subId.slice(S.length)
+    subId = (topId.startsWith(S) ? undefined : named(name, topId)) ?? (offered(suggestedSubs(categories, topId), name) ? subId : '')
+  }
+  return topId === pick.topId && subId === pick.subId ? pick : { ...pick, topId, subId }
 }
 
 // ── Default pictures ─────────────────────────────────────────────────────────
