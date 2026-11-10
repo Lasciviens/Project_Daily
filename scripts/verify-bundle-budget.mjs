@@ -37,7 +37,7 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/health/pages/HealthPage.tsx': 435,         // [413]
   'src/features/developer/pages/DeveloperPage.tsx': 400,   // [377]
   'src/features/media/pages/MediaPage.tsx': 395,           // [376]
-  'src/features/shop/pages/ShopPage.tsx': 390,             // [370]
+  'src/features/shop/pages/ShopPage.tsx': 391,             // [370] +1 on 10.11.2026: the header's "Add the suggested categories" (its taxonomy and writes load lazily)
   'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
   'src/features/work/pages/WorkPage.tsx': 375,             // [355]
   'src/features/books/pages/BooksPage.tsx': 370,           // [350]

@@ -3,7 +3,10 @@
  * (src/features/shop/shopTaxonomy.ts, components/categoryIcons.ts): the
  * taxonomy's shape and English names, that it holds migration 030's seed so a
  * seeded category is matched and never suggested again, how names match
- * (case, spaces, "&"/"and", other names), what a picker suggests, and which
+ * (case, spaces, "&"/"and", other names), what a picker suggests, what
+ * "Add the suggested categories" makes (`suggestedPlan`: each suggestion once,
+ * never a name the owner has, nothing suggested after) and how an open pick
+ * follows it (`pickWithMade`), and which
  * picture a category gets — the taxonomy's, a guess from the owner's own
  * name, else its top category's.
  * Run: node scripts/verify-shop-taxonomy.cjs */
@@ -112,6 +115,116 @@ console.log('what a picker suggests')
   check('a new account: every top, in the taxonomy\'s order', eq(T.suggestedTops([]), T.TAXONOMY.map(t => t.name)))
   const subNamed = T.suggestedTops([{ id: 'x', name: 'Pets', parent_id: null }, { id: 'y', name: 'Groceries', parent_id: 'x' }])
   check('a top whose own name the owner uses for a subcategory is not suggested', !subNamed.includes('Groceries'))
+}
+
+console.log('"Add the suggested categories" (owner, 10.11.2026: added once, on the owner\'s tap)')
+{
+  // The rows a plan makes, as the API writes them: tops, then the subcategories under them and under the owner's tops.
+  let n = 0
+  const apply = (cats, plan) => {
+    const out = cats.map(c => ({ ...c }))
+    for (const t of plan.tops) {
+      const top = { id: `m${++n}`, name: t.name, parent_id: null }
+      out.push(top, ...t.subs.map(s => ({ id: `m${++n}`, name: s, parent_id: top.id })))
+    }
+    for (const u of plan.under) out.push(...u.subs.map(s => ({ id: `m${++n}`, name: s, parent_id: u.parentId })))
+    return out
+  }
+  const names = plan => [...plan.tops.flatMap(t => [t.name, ...t.subs]), ...plan.under.flatMap(u => u.subs)]
+  const suggestsNothing = cats => T.suggestedTops(cats).length === 0 && cats.filter(c => !c.parent_id).every(c => T.suggestedSubs(cats, c.id).length === 0)
+  const sameLevelTwice = cats => {
+    const seen = new Set()
+    for (const c of cats) { const k = `${c.parent_id ?? '-'}|${K(c.name)}`; if (seen.has(k)) return k; seen.add(k) }
+    return null
+  }
+  const total = T.TAXONOMY.reduce((s, t) => s + 1 + t.subs.length, 0)
+
+  const empty = T.suggestedPlan([])
+  check('a new account: the whole taxonomy, tops with their subcategories', empty.count === total && empty.tops.length === T.TAXONOMY.length && empty.under.length === 0, `${empty.count}/${total}`)
+
+  const sql = fs.readFileSync(path.join(__dirname, '../supabase/migrations/030_shop_seed_categories.sql'), 'utf8')
+  const seed = JSON.parse(/taxonomy jsonb := '(\[[\s\S]*?\])'::jsonb/.exec(sql)[1])
+  const cats = []
+  for (const s of seed) {
+    const top = { id: `t${++n}`, name: s.top, parent_id: null }
+    cats.push(top, ...s.subs.map(sub => ({ id: `s${++n}`, name: sub, parent_id: top.id })))
+  }
+  const plan = T.suggestedPlan(cats)
+  check('with 030\'s seed: everything else, once — the taxonomy less the seeded rows', plan.count === total - cats.length && names(plan).length === plan.count, `${plan.count} = ${total} − ${cats.length}?`)
+  check('…the two new tops with their subcategories, and the rest under the seed\'s own tops', eq(plan.tops.map(t => t.name), ['Garden & DIY', 'Car'])
+    && plan.under.every(u => cats.some(c => c.id === u.parentId && !c.parent_id)) && plan.under.find(u => u.parentId === cats.find(c => c.name === 'Electronics').id)?.subs.includes('Headphones'))
+  check('…never a seeded one again (Phones, TV & Audio, Kitchen …)', !names(plan).some(x => cats.some(c => K(c.name) === K(x))))
+  const after = apply(cats, plan)
+  check('once made: nothing is suggested any more (the action and the Suggested group go)', suggestsNothing(after) && T.suggestedPlan(after).count === 0)
+  check('…and nothing in the list twice at one level', sameLevelTwice(after) === null, sameLevelTwice(after))
+  check('a second tap makes nothing', eq(T.suggestedPlan(after), { tops: [], under: [], count: 0 }))
+
+  // The owner's own names win: their name for a thing stays, and the taxonomy's isn't added beside it.
+  const own = [
+    { id: 'h', name: 'Home', parent_id: null }, { id: 'k', name: 'kitchen', parent_id: 'h' },
+    { id: 'e', name: 'Electronics', parent_id: null }, { id: 'te', name: 'Tech', parent_id: null }, { id: 'hp', name: 'Earbuds', parent_id: 'te' },
+    { id: 'g', name: 'Gaming', parent_id: null }, { id: 'c', name: 'consoles', parent_id: 'g' }, { id: 'tv', name: 'tv and audio', parent_id: 'e' },
+    { id: 'r', name: 'Retro stuff', parent_id: null }, { id: 'x', name: 'Car', parent_id: 'r' },
+  ]
+  const p2 = T.suggestedPlan(own)
+  const made2 = names(p2)
+  check('"Home" stays the owner\'s: no Home & Living beside it — its subcategories go under "Home", less "kitchen"', !p2.tops.some(t => t.name === 'Home & Living')
+    && p2.under.find(u => u.parentId === 'h')?.subs.includes('Furniture') && !made2.includes('Kitchen'), JSON.stringify(p2.under.find(u => u.parentId === 'h')))
+  check('other names count: "Earbuds" is Headphones, "consoles" Game Consoles, "tv and audio" TV & Audio — none added', !made2.includes('Headphones') && !made2.includes('Game Consoles') && !made2.includes('TV & Audio'))
+  check('"Gaming" is Hobby & Games: no second top, its subcategories under "Gaming"', !p2.tops.some(t => t.name === 'Hobby & Games') && p2.under.find(u => u.parentId === 'g')?.subs.includes('Board Games'))
+  check('Electronics and Tech are one taxonomy top: its subcategories once, under the one with its own name', !p2.under.some(u => u.parentId === 'te')
+    && p2.under.filter(u => u.parentId === 'e').length === 1 && p2.under.find(u => u.parentId === 'e').subs.includes('Tablets'))
+  check('a top whose name the owner uses for a subcategory ("Car" under Retro stuff) is not made', !p2.tops.some(t => t.name === 'Car'))
+  check('an owner top that is no taxonomy top ("Retro stuff") gets nothing', !p2.under.some(u => u.parentId === 'r'))
+  const after2 = apply(own, p2)
+  check('the owner\'s rows are all still there, as they were', own.every(o => after2.some(c => c.id === o.id && c.name === o.name && c.parent_id === o.parent_id)))
+  check('once made: nothing is suggested, nothing twice', suggestsNothing(after2) && T.suggestedPlan(after2).count === 0 && sameLevelTwice(after2) === null, sameLevelTwice(after2))
+
+  // Many accounts: the taxonomy's names and other names in any case and "&"/"and", at either level, with names of their own.
+  let seedN = 11
+  const rand = () => (seedN = (seedN * 1103515245 + 12345) % 2147483648) / 2147483648
+  const pick = a => a[Math.floor(rand() * a.length)]
+  const spell = s => pick([s, s.toLowerCase(), s.toUpperCase(), s.replace(/ & /g, ' and '), ` ${s} `])
+  const pool = [...T.TAXONOMY.flatMap(t => [t.name, ...(t.aka ?? []), ...t.subs.flatMap(s => [s.name, ...(s.aka ?? [])])]), 'Stuff', 'Odds and ends', 'Pets', 'Gifts']
+  const bad = []
+  for (let a = 0; a < 400 && bad.length < 3; a++) {
+    const acct = []
+    const tops = Array.from({ length: 1 + Math.floor(rand() * 8) }, () => ({ id: `a${++n}`, name: spell(pick(pool)), parent_id: null }))
+    for (const t of tops) if (!acct.some(c => !c.parent_id && K(c.name) === K(t.name))) acct.push(t)
+    for (let i = Math.floor(rand() * 12); i > 0; i--) {
+      const sub = { id: `a${++n}`, name: spell(pick(pool)), parent_id: pick(acct).id }
+      if (!acct.some(c => c.parent_id === sub.parent_id && K(c.name) === K(sub.name))) acct.push(sub)
+    }
+    const pl = T.suggestedPlan(acct)
+    const had = new Set(acct.map(c => K(c.name)))
+    const subKeys = pl.tops.flatMap(t => t.subs).concat(pl.under.flatMap(u => u.subs)).map(s => T.taxonomySubOf(s))
+      .flatMap(s => [s.name, ...(s.aka ?? [])].map(K))
+    const res = apply(acct, pl)
+    const why = pl.count !== names(pl).length ? 'count'
+      : pl.tops.some(t => had.has(K(t.name))) ? 'a top the owner has'
+      : subKeys.some(k => had.has(k)) ? 'a subcategory the owner has under one of its names'
+      : new Set(subKeys).size !== subKeys.length ? 'a subcategory twice'
+      : !T.suggestedTops(acct).every(x => pl.tops.some(t => t.name === x)) ? 'a suggested top left out'
+      : !acct.filter(c => !c.parent_id).every(c => T.suggestedSubs(acct, c.id).every(s => names(pl).includes(s))) ? 'a suggested subcategory left out'
+      : !suggestsNothing(res) ? 'still suggests something after'
+      : sameLevelTwice(res) ? `twice: ${sameLevelTwice(res)}`
+      : null
+    if (why) bad.push(`${why}: ${acct.map(c => `${c.parent_id ? '  ' : ''}${c.name}`).join(' / ')}`)
+  }
+  check('400 made-up accounts: exactly what the pickers suggest, each once — never a name the owner has, nothing suggested after', bad.length === 0, bad.join(' | '))
+
+  // The pick in an open picker follows: a suggestion made since is that row; one still suggested stays.
+  const pickNow = { topId: 'suggest:Car', subId: 'suggest:EV Charging' }
+  const carRow = after.find(c => c.name === 'Car' && !c.parent_id)
+  const evRow = after.find(c => c.name === 'EV Charging' && c.parent_id === carRow.id)
+  check('a picked suggestion made since is the made row (top and subcategory)', eq(T.pickWithMade(pickNow, after), { topId: carRow.id, subId: evRow.id }))
+  check('…one not made yet stays the same pick (the same object: nothing to change)', T.pickWithMade(pickNow, cats) === pickNow)
+  const elec = cats.find(c => c.name === 'Electronics').id
+  const mine = { topId: elec, subId: cats.find(c => c.name === 'Phones').id }
+  check('…the owner\'s own ids are left alone', T.pickWithMade(mine, after) === mine && T.pickWithMade({ topId: '', subId: '' }, after).topId === '')
+  const elecHp = after.find(c => c.name === 'Headphones' && c.parent_id === elec).id
+  check('…a suggested subcategory under the owner\'s top becomes the row made there', T.pickWithMade({ topId: elec, subId: 'suggest:Headphones' }, after).subId === elecHp)
+  check('…one made under the owner\'s other top of the same kind is no pick — never a second row on Save', T.pickWithMade({ topId: 'te', subId: 'suggest:Tablets' }, after2).subId === '')
 }
 
 console.log('default pictures')

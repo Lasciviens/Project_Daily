@@ -237,7 +237,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/books/api/libraryApi.ts': [1, 'merging two books deletes the duplicate'],
     'src/features/books/api/koboControlApi.ts': [2, 'a Kobo sleep image (its file is deleted: no Undo) and its storage cleanup'],
     'src/features/books/api/booksApi.ts': [3, 'Kobo inbox housekeeping (files leave storage: no Undo)'],
-    'src/features/shop/api/shopCategoryApi.ts': [1, 'Undo of a suggested category just added from a picker (the undo itself: its things move to its parent first)'],
+    'src/features/shop/api/shopCategoryApi.ts': [2, 'Undo of a suggested category just added from a picker (the undo itself: its things move to its parent first), and Undo of Add the suggested categories (the rows it made, only those still empty and as made)'],
   }
   const walk = dir => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap(e =>
     e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : [])
