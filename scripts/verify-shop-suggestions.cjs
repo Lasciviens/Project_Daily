@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-/* Verification — Shop's phase 2 prototype rules: "Needs a look"
- * (src/features/shop/shopSuggestions.ts) and the Wishlist's picture tiles
- * (src/features/shop/wishTile.ts): which rows show, their tone, words and
- * order; the tile's one belt, its price history, initials, tints, and how the
- * tiles and categories fill the width.
+/* Verification — Shop's "Needs a look" (src/features/shop/shopSuggestions.ts)
+ * and the Wishlist's picture tiles (src/features/shop/wishTile.ts): which rows
+ * show, their tone, words, action and order; what a snooze or Got it hides
+ * and what brings a row back; the clean price history (a used, refurbished or
+ * pre-188 price never counts); the tile's one belt, its history bar,
+ * initials, tints, and how the tiles and categories fill the width.
  * Run: node scripts/verify-shop-suggestions.cjs */
 require('sucrase/register')
 const S = require('../src/features/shop/shopSuggestions')
@@ -34,26 +35,77 @@ function item(p) {
 const mine = p => item({ status: 'bought', bought_at: at(-20), price: 1000, ...p })
 function watch(i, low, p = {}) {
   return { item_id: i.id, user_id: 'u', url: i.url, checked_at: at(0), status: 'ok', error: null, source: 'store', name: null, image: null,
-    low, high: null, offers: null, currency: 'NOK', in_stock: true, was: null, return_days: null, last_ok_at: at(0), prev_low: null, prev_at: null, ...p }
+    low, high: null, offers: null, currency: 'NOK', in_stock: true, was: null, return_days: null, last_ok_at: at(0), prev_low: null, prev_at: null,
+    condition: 'unknown', used_low: null, refurbished_low: null, ...p }
 }
-const looks = (items, watches = []) => S.needsALook(items, new Map(watches.map(w => [w.item_id, w])), TODAY)
+const facts = p => ({ currency: 'NOK', lowAll: null, highAll: null, readsAll: 0, low60: null, high60: null, reads60: 0, since60: null, backInStock: false, ...p })
+const looks = (items, watches = [], more = {}) => S.needsALook(items, {
+  watches: new Map(watches.map(w => [w.item_id, w])), facts: new Map(Object.entries(more.facts ?? {})), deals: more.deals ?? [],
+}, TODAY)
 const kinds = ls => ls.map(l => l.kind)
+const BLACK_FRIDAY = { key: 'black_friday', name: 'Black Friday', day: '2026-11-27' }
 
 console.log('at your target')
 {
   const hp = item({ title: 'Headphones', url: 'https://www.elkjop.no/p/1', target_price: 2990, price: 3490 })
   const ls = looks([hp], [watch(hp, 2990)])
-  check('a read price at or under the target is a success row with Bought', eq(kinds(ls), ['at_target']) && ls[0].tone === 'success' && ls[0].action === 'bought')
+  check('a clean read price at or under the target is a success row with Bought', eq(kinds(ls), ['at_target']) && ls[0].tone === 'success' && ls[0].action === 'bought')
   check('its words: "At your target" · the price, and where it was read apart (from the link, any length: the part that may wrap)',
     eq(ls[0].facts.map(sp), ['At your target', '2 990 NOK']) && sp(ls[0].where) === 'at elkjop.no', JSON.stringify(ls[0]))
   check('"at" stays with its site (a no-break space)', ls[0].where === 'at' + String.fromCharCode(160) + 'elkjop.no')
-  check('Prisjakt says Prisjakt', sp(looks([hp], [watch(hp, 2900, { source: 'prisjakt' })])[0].where) === 'at Prisjakt')
+  check('Prisjakt\'s new offers say Prisjakt', sp(looks([hp], [watch(hp, 2900, { source: 'prisjakt', condition: 'new' })])[0].where) === 'at Prisjakt')
+  check('a Prisjakt figure for new and used together is never "at target"', looks([hp], [watch(hp, 2500, { source: 'prisjakt', condition: 'mixed' })]).length === 0)
+  check('…nor a read from before migration 188 (no condition)', looks([hp], [watch(hp, 2500, { condition: null })]).length === 0)
   check('no other row carries a site', looks([mine({ return_by: day(1) })]).every(l => l.where === null))
   check('a typed price at the target is never "at target" (no read, no row)', looks([item({ price: 2990, target_price: 2990 })]).length === 0)
   check('a read of an older link is not this link\'s price', looks([hp], [watch({ ...hp, url: 'https://old.example.com/x' }, 2000)]).length === 0)
   check('a read in another currency is not compared with the target', looks([hp], [watch(hp, 2000, { currency: 'EUR' })]).length === 0)
   check('above the target: nothing', looks([hp], [watch(hp, 3000)]).length === 0)
   check('a javascript: link never becomes a site name', looks([{ ...hp, url: 'javascript:alert(1)' }], [watch({ ...hp, url: 'javascript:alert(1)' }, 2990)])[0].where === null)
+  check('its signature is the price: a lower one is news again', ls[0].signature === '2990 NOK' && looks([hp], [watch(hp, 2790)])[0].signature === '2790 NOK')
+}
+
+console.log('the wish\'s price history: lowest in 60 days, back in stock, a "before" never seen')
+{
+  const tv = item({ title: 'OLED TV', url: 'https://www.power.no/p/2', price: 18990 })
+  const f60 = facts({ lowAll: 16990, highAll: 19990, readsAll: 9, low60: 17490, high60: 18990, reads60: 6, since60: day(-58) })
+  const low = looks([tv], [watch(tv, 17490)], { facts: { [tv.id]: f60 } })
+  check('today at the lowest of the last 60 days: "Lowest in 60 days" · the price, Bought', eq(kinds(low), ['lowest']) && low[0].action === 'bought'
+    && eq(low[0].facts.map(sp), ['Lowest in 60 days', '17 490 NOK']) && low[0].tone === 'success')
+  check('…not when it was the same price all along, or with one read', looks([tv], [watch(tv, 17490)], { facts: { [tv.id]: facts({ low60: 17490, high60: 17490, reads60: 4 }) } }).length === 0
+    && looks([tv], [watch(tv, 17490)], { facts: { [tv.id]: facts({ low60: 17490, high60: 17490, reads60: 1 }) } }).length === 0)
+  check('…not above the 60 days\' low', looks([tv], [watch(tv, 17990)], { facts: { [tv.id]: f60 } }).length === 0)
+  check('…and not on a mixed Prisjakt figure', looks([tv], [watch(tv, 17490, { source: 'prisjakt', condition: 'mixed' })], { facts: { [tv.id]: f60 } }).length === 0)
+  const both = looks([{ ...tv, target_price: 17500 }], [watch(tv, 17490)], { facts: { [tv.id]: f60 } })
+  check('one buy row a wish: at target wins over the lowest', eq(kinds(both), ['at_target']))
+  const back = looks([tv], [watch(tv, 17990)], { facts: { [tv.id]: facts({ backInStock: true }) } })
+  check('back in stock after a read without: "Back in stock" · the price, Bought', eq(kinds(back), ['back']) && sp(back[0].facts.join(' · ')) === 'Back in stock · 17 990 NOK')
+  check('…not while the watch says out of stock', looks([tv], [watch(tv, 17990, { in_stock: false })], { facts: { [tv.id]: facts({ backInStock: true }) } }).length === 0)
+  const fake = looks([tv], [watch(tv, 17490, { was: 21990 })], { facts: { [tv.id]: { ...f60, low60: 16990 } } })
+  check('a "before" price above every clean price in 60 days: a warn row, Open', kinds(fake).includes('fake_before')
+    && fake.find(l => l.kind === 'fake_before').tone === 'warn' && fake.find(l => l.kind === 'fake_before').action === 'open')
+  check('its words name the "before" and the price now', sp(fake.find(l => l.kind === 'fake_before').facts.join(' · ')) === '"Before" 21 990 NOK not seen in 60 days · now 17 490 NOK',
+    sp(fake.find(l => l.kind === 'fake_before').facts.join(' · ')))
+  check('a "before" that was seen: nothing', !kinds(looks([tv], [watch(tv, 17490, { was: 18990 })], { facts: { [tv.id]: f60 } })).includes('fake_before'))
+  check('a history shorter than a month never says "never seen"', !kinds(looks([tv], [watch(tv, 17490, { was: 21990 })], { facts: { [tv.id]: { ...f60, since60: day(-20) } } })).includes('fake_before'))
+}
+
+console.log('a deal day ahead')
+{
+  const hp = item({ title: 'Headphones', target_price: 2990, price: 3490 })
+  const fryer = item({ title: 'Air fryer', wait_for_deal: true, price: 1790 })
+  const plain = item({ title: 'Foam roller', price: 299 })
+  const ls = looks([hp, fryer, plain], [], { deals: [BLACK_FRIDAY, { key: 'mellomdagssalg', name: 'Mellomdagssalg', day: '2026-12-27' }] })
+  const deal = ls.find(l => l.kind === 'deal_day')
+  check('one row for the next deal day within three weeks: Black Friday 27.11.2026, in 17 days', !!deal && ls.filter(l => l.kind === 'deal_day').length === 1
+    && deal.title === 'Black Friday' && sp(deal.facts.join(' · ')) === '27.11.2026 · in 17 days · 2 wishes to watch', deal && sp(deal.facts.join(' · ')))
+  check('it lists the wishes with a target or waiting for a deal (never the others), Show', deal.action === 'list' && eq(deal.things.map(t => t.title), ['Headphones', 'Air fryer'])
+    && eq(deal.things[0].facts.map(sp), ['now 3 490 NOK', 'target 2 990 NOK']) && eq(deal.things[1].facts.map(sp), ['now 1 790 NOK', 'waiting for a deal']))
+  check('a row about no one thing', deal.itemId === null && deal.key === 'deal_day:black_friday' && deal.signature === 'black_friday 2026-11-27')
+  check('no wish to watch: no row', !looks([plain], [], { deals: [BLACK_FRIDAY] }).some(l => l.kind === 'deal_day'))
+  check('a deal day more than three weeks ahead: no row', !looks([hp], [], { deals: [{ key: 'm', name: 'Mellomdagssalg', day: '2026-12-27' }] }).some(l => l.kind === 'deal_day'))
+  check('the nearest first: 11.11 tomorrow before Black Friday', looks([hp], [], { deals: [BLACK_FRIDAY, { key: 'singles_day', name: "Singles' Day", day: '2026-11-11' }] })
+    .find(l => l.kind === 'deal_day').title === "Singles' Day")
 }
 
 console.log('owned things: money to claim, returns, complaint rights, old estimates')
@@ -93,9 +145,11 @@ console.log('old wishes and tidy-up')
   const tidy = looks([noDay, rate, fresh, noSum])
   check('one tidy-up row counts the things and says what each lacks', eq(kinds(tidy), ['tidy']) && tidy[0].title === '3 things to tidy up'
     && eq(tidy[0].facts, ['1 without a purchase day', '1 rate pending', '1 sale without an amount']), JSON.stringify(tidy[0] && tidy[0].facts))
+  check('…and lists every one of them with its reason (Show), not only the first', tidy[0].action === 'list' && tidy[0].itemId === null
+    && eq(tidy[0].things.map(t => [t.title, t.facts.join()]), [['Chair', 'no purchase day'], ['Carpet', 'rate pending'], ['Monitor', 'sale without an amount']]))
   check('a rate is pending only after three days (Norges Bank publishes after 16:00; the page fetches it)', looks([fresh]).length === 0)
   check('a column that is absent (before migration 134) is not "missing"', looks([mine({ bought_at: undefined })]).length === 0)
-  check('the tidy-up row opens the first of them', tidy[0].itemId === noDay.id && tidy[0].action === 'open')
+  check('a new thing to tidy up changes its signature (so Got it lets it back)', looks([noDay])[0].signature !== tidy[0].signature)
 }
 
 console.log('the order and the phone\'s line')
@@ -105,33 +159,72 @@ console.log('the order and the phone\'s line')
   const all = looks([
     item({ title: 'Grinder', created_at: at(-200) }), mine({ title: 'Vacuum', value_now: 1, value_on: day(-300) }), mine({ title: 'Chair', bought_at: null }),
     mine({ title: 'Brush', warranty_until: day(38) }), hp, espresso, mine({ title: 'Earbuds', return_by: day(1) }),
-  ], [watch(hp, 2990), watch(espresso, 3990)])
-  check('danger, then warn (money to claim), success, then info: dates, estimates, wishes, tidy-up',
-    eq(kinds(all), ['return', 'cheaper', 'at_target', 'complaint', 'value', 'wish', 'tidy']), kinds(all).join(','))
+  ], [watch(hp, 2990), watch(espresso, 3990)], { deals: [BLACK_FRIDAY] })
+  check('danger, then warn (money to claim), success, then info: the deal day, dates, estimates, wishes, tidy-up',
+    eq(kinds(all), ['return', 'cheaper', 'at_target', 'deal_day', 'complaint', 'value', 'wish', 'tidy']), kinds(all).join(','))
   const line = S.lookLine(all)
-  check('the line: "7 need a look · 500 NOK to claim", in the first row\'s tone', line.count === 7 && line.words === '7 need a look' && sp(line.claim) === '500 NOK to claim' && line.tone === 'danger')
+  check('the line: "8 need a look · 500 NOK to claim", in the first row\'s tone', line.count === 8 && line.words === '8 need a look' && sp(line.claim) === '500 NOK to claim' && line.tone === 'danger')
   check('one: "1 needs a look"; none: "Nothing needs a look", no tone', S.lookLine(all.slice(0, 1)).words === '1 needs a look' && S.lookLine([]).words === 'Nothing needs a look' && S.lookLine([]).tone === null)
   check('no money to claim: no claim words', S.lookLine(all.filter(l => l.kind !== 'cheaper')).claim === null)
   check('keys are unique', new Set(all.map(l => l.key)).size === all.length)
+  check('every row has a signature', all.every(l => typeof l.signature === 'string' && l.signature.length > 0))
 }
 
-console.log('the tile: one belt, the price history')
+console.log('Snooze and Got it')
 {
-  const pts = lows => lows.map((low, i) => ({ id: `p${i}`, item_id: 'x', checked_at: at(-i), low, high: null, offers: null, currency: 'NOK', source: 'store' }))
-  check('no history: one read, or one price all along', T.priceSpan(pts([100]), 'NOK') === null && T.priceSpan(pts([100, 100, 100]), 'NOK') === null)
-  check('a history: lowest, highest, reads', eq(T.priceSpan(pts([120, 100, 140]), 'NOK'), { low: 100, high: 140, reads: 3, currency: 'NOK' }))
-  check('reads in another currency are left out', T.priceSpan([...pts([100, 140]), { ...pts([10])[0], currency: 'EUR' }], 'NOK').reads === 2)
-  const span = T.priceSpan(pts([100, 140]), 'NOK')
+  const hp = item({ id: 'hp', title: 'Headphones', url: 'https://www.elkjop.no/p/1', target_price: 2990 })
+  const earbuds = mine({ id: 'eb', title: 'Earbuds', return_by: day(1) })
+  const ls = looks([hp, earbuds], [watch(hp, 2990)])
+  check('a snooze lasts a week: from 10.11.2026 to 17.11.2026', S.snoozeUntil(TODAY) === '2026-11-17')
+  const split = st => S.splitLooks(ls, st, TODAY)
+  const snoozed = split([{ item_id: 'hp', signal: 'at_target', until: day(7), signature: null }])
+  check('a snoozed row is hidden until its day, the others show', eq(kinds(snoozed.shown), ['return']) && eq(kinds(snoozed.hidden), ['at_target']))
+  check('…on its day it shows again', S.splitLooks(ls, [{ item_id: 'hp', signal: 'at_target', until: TODAY, signature: null }], TODAY).hidden.length === 0)
+  const gotIt = split([{ item_id: 'eb', signal: 'return', until: null, signature: earbuds.return_by }])
+  check('Got it hides a row while it says the same', eq(kinds(gotIt.shown), ['at_target']) && eq(kinds(gotIt.hidden), ['return']))
+  const cheaper = looks([hp], [watch(hp, 2790)])
+  check('…and lets it back when it says something new (a lower price)', S.splitLooks(cheaper, [{ item_id: 'hp', signal: 'at_target', until: null, signature: '2990 NOK' }], TODAY).shown.length === 1)
+  check('a state for another thing or another kind of row hides nothing', split([{ item_id: 'eb', signal: 'at_target', until: day(7), signature: null }, { item_id: 'hp', signal: 'return', until: day(7), signature: null }]).hidden.length === 0)
+  const tidy = looks([mine({ title: 'Chair', bought_at: null })])
+  check('a row about no one thing is kept by its kind alone (tidy-up)', S.splitLooks(tidy, [{ item_id: null, signal: 'tidy', until: day(3), signature: null }], TODAY).hidden.length === 1)
+}
+
+console.log('the clean price history')
+{
+  const pts = (rows) => rows.map(([d, low, extra = {}], i) => ({ id: `p${i}`, item_id: 'x', checked_at: at(d), low, high: null, offers: null, currency: 'NOK', source: 'store',
+    condition: 'unknown', used_low: null, refurbished_low: null, ...extra }))
+  const f = T.factsFromPoints(pts([[-200, 15990], [-50, 17990], [-20, 16990], [0, 17490]]), 'NOK', TODAY)
+  check('all time and the last 60 days, with their reads and where the 60 days start', f.lowAll === 15990 && f.highAll === 17990 && f.readsAll === 4
+    && f.low60 === 16990 && f.high60 === 17990 && f.reads60 === 3 && f.since60 === day(-50), JSON.stringify(f))
+  const mixed = T.factsFromPoints(pts([[-10, 9990, { condition: 'mixed', source: 'prisjakt' }], [-5, 8000, { condition: null }], [-2, 12990, { condition: 'new' }], [0, 13490]]), 'NOK', TODAY)
+  check('a mixed Prisjakt figure and a read from before 188 never count', mixed.lowAll === 12990 && mixed.readsAll === 2, JSON.stringify(mixed))
+  check('reads in another currency are left out', T.factsFromPoints(pts([[-3, 100, { currency: 'EUR' }], [-2, 900], [0, 950]]), 'NOK', TODAY).readsAll === 2)
+  check('back in stock: the last read in stock right after one without', T.factsFromPoints(pts([[-2, 900, { in_stock: false }], [0, 950, { in_stock: true }]]), 'NOK', TODAY).backInStock
+    && !T.factsFromPoints(pts([[-2, 900, { in_stock: true }], [0, 950, { in_stock: true }]]), 'NOK', TODAY).backInStock
+    && !T.factsFromPoints(pts([[-2, 900], [0, 950]]), 'NOK', TODAY).backInStock)
+  check('no history: one clean read, or one price all along', T.spanOf(T.factsFromPoints(pts([[0, 100]]), 'NOK', TODAY)) === null && T.spanOf(T.factsFromPoints(pts([[-2, 100], [0, 100]]), 'NOK', TODAY)) === null)
+  check('a history: lowest, highest, reads', eq(T.spanOf(f), { low: 15990, high: 17990, reads: 4, currency: 'NOK' }))
+  const span = T.spanOf(facts({ lowAll: 100, highAll: 140, readsAll: 2 }))
   check('today\'s place, clamped to the ends', T.spanPosition(120, span) === 0.5 && T.spanPosition(90, span) === 0 && T.spanPosition(150, span) === 1)
+  const ids = T.watchedWishIds([item({ id: 'b', url: 'https://x.example.com/1' }), item({ id: 'a', url: 'https://x.example.com/2' }), item({ id: 'c', url: 'javascript:x' }),
+    item({ id: 'd', url: 'https://x.example.com/3', option_for: 'w' }), item({ id: 'e', url: 'https://x.example.com/4', kind: 'general' }), mine({ id: 'f', url: 'https://x.example.com/5' })])
+  check('the histories read: open wishes with a web link, sorted (never a model, a general wish or a thing you own)', eq(ids, ['a', 'b']))
+}
+
+console.log('the tile: one belt')
+{
   const hp = item({ url: 'https://www.elkjop.no/p/1', target_price: 2990, wait_for_deal: true, reason: 'need' })
-  const ctx = (low, s) => ({ watch: watch(hp, low), span: s, today: TODAY })
-  const hist = T.priceSpan(pts([2990, 3490]), 'NOK')
-  check('the order: at target, then lowest seen, then deal on, then need it', T.beltOf(hp, ctx(2990, hist)) === 'at_target'
+  const hist = facts({ lowAll: 2990, highAll: 3490, readsAll: 2 })
+  const ctx = (low, f, w = {}) => ({ watch: watch(hp, low, w), facts: f, today: TODAY })
+  check('the order: at target, lowest seen, back in stock, deal on, need it', T.beltOf(hp, ctx(2990, hist)) === 'at_target'
     && T.beltOf({ ...hp, target_price: 2000 }, ctx(2990, hist)) === 'lowest'
+    && T.beltOf({ ...hp, target_price: 2000 }, ctx(3100, { ...hist, backInStock: true })) === 'back'
     && T.beltOf({ ...hp, target_price: 2000 }, ctx(3100, hist)) === 'deal'
     && T.beltOf({ ...hp, target_price: 2000, wait_for_deal: false }, ctx(3100, hist)) === 'need'
     && T.beltOf({ ...hp, target_price: 2000, wait_for_deal: false, reason: 'fun' }, ctx(3100, hist)) === null)
-  check('lowest seen needs a history: one read is not "lowest"', T.beltOf({ ...hp, target_price: null, wait_for_deal: false, reason: null }, ctx(2990, null)) === null)
+  check('lowest seen needs a history: one read is not "lowest"', T.beltOf({ ...hp, target_price: null, wait_for_deal: false, reason: null }, ctx(2990, facts({ lowAll: 2990, highAll: 2990, readsAll: 1 }))) === null)
+  check('a mixed or pre-188 price wears no price belt', T.beltOf({ ...hp, wait_for_deal: false, reason: null }, ctx(2990, hist, { condition: 'mixed' })) === null
+    && T.beltOf({ ...hp, wait_for_deal: false, reason: null }, ctx(2990, hist, { condition: null })) === null)
   check('a deal starts on its day (none set: on now)', T.dealOn({ wait_for_deal: true, planned_date: day(1) }, TODAY) === false
     && T.dealOn({ wait_for_deal: true, planned_date: TODAY }, TODAY) && T.dealOn({ wait_for_deal: true, planned_date: null }, TODAY) && !T.dealOn({ wait_for_deal: false, planned_date: null }, TODAY))
   check('a general wish never wears a price belt', T.beltOf({ ...hp, kind: 'general' }, ctx(2990, hist)) === 'deal')

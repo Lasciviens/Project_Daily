@@ -11,6 +11,9 @@
  *   3. A row's price history is its newest reads, oldest first: the line reaches the last check.
  *   4. updateShopItem is scoped to the user and reads its row back; a row that isn't there (or is
  *      someone else's) is an error, never a silent no-op.
+ *   5. The Undo of a category added from a picker's suggestions (shopCategoryApi.removeNewCategory)
+ *      moves what was put in it — or in a subcategory under it — to its parent, then removes it;
+ *      every read and write is the owner's own rows only.
  * Run: node scripts/verify-shop-api.cjs */
 require('sucrase/register')
 const fs = require('fs')
@@ -31,7 +34,9 @@ function from(table) {
   const b = {
     select(cols = '*') { if (st.op === 'select') st.cols = cols; else st.returning = true; return b },
     update(patch) { st.op = 'update'; st.patch = patch; return b },
+    delete() { st.op = 'delete'; return b },
     eq(c, v) { st.eqs.push([c, v]); st.preds.push(r => r[c] === v); return b },
+    in(c, vs) { st.eqs.push([c, vs]); st.preds.push(r => vs.includes(r[c])); return b },
     // PostgREST's or=(a.eq.x,b.is.true,…) — the flat forms shopApi sends.
     or(expr) {
       st.ors = expr
@@ -67,6 +72,10 @@ function from(table) {
       for (const r of hit) Object.assign(r, st.patch)
       return { data: st.returning ? hit.map(r => ({ ...r })) : null, error: null }
     }
+    if (st.op === 'delete') {
+      tables[table] = rows.filter(r => !hit.includes(r))
+      return { data: null, error: null }
+    }
     let out = [...hit].sort(cmp)
     if (st.range) out = out.slice(st.range[0], st.range[1] + 1)
     if (st.limit != null) out = out.slice(0, st.limit)
@@ -89,6 +98,7 @@ Module._resolveFilename = function (request, parent, ...rest) {
 require.cache['stub:supabase'] = { id: 'stub:supabase', filename: 'stub:supabase', loaded: true, exports: { supabase: { from } } }
 require.cache['stub:requireUser'] = { id: 'stub:requireUser', filename: 'stub:requireUser', loaded: true, exports: { requireUser: async () => ({ id: 'u' }) } }
 const A = require('../src/features/shop/api/shopApi.ts')
+const C = require('../src/features/shop/api/shopCategoryApi.ts')
 Module._resolveFilename = origResolve
 const M = require('../src/features/shop/shopModel')
 
@@ -194,6 +204,31 @@ const ids = rows => rows.map(r => r.id).join()
     check('someone else\'s row: nothing changes, and the edit fails', theirs && /^Not saved/.test(theirs.message) && tables.shop_items[1].title === 'Theirs', theirs?.message)
     const gone = await fails('gone')
     check('a row that is gone: an error, never a silent no-op', gone && /^Not saved/.test(gone.message), gone?.message)
+  }
+
+  console.log('\n5 · Undo of an added category')
+  {
+    tables.shop_categories = [
+      { id: 'top', user_id: 'u', name: 'Electronics', parent_id: null }, { id: 'new', user_id: 'u', name: 'Headphones', parent_id: 'top' },
+      { id: 'newTop', user_id: 'u', name: 'Garden & DIY', parent_id: null }, { id: 'under', user_id: 'u', name: 'Tools', parent_id: 'newTop' },
+      { id: 'theirs', user_id: 'someone', name: 'Headphones', parent_id: 'x' },
+    ]
+    tables.shop_items = [
+      { id: 'a', user_id: 'u', category_id: 'new' }, { id: 'b', user_id: 'u', category_id: 'top' },
+      { id: 'c', user_id: 'u', category_id: 'under' }, { id: 'd', user_id: 'someone', category_id: 'new' },
+    ]
+    calls.length = 0
+    await C.removeNewCategory('new', 'top')
+    const cat = id => tables.shop_categories.find(c => c.id === id)
+    const at = id => tables.shop_items.find(i => i.id === id).category_id
+    check('a subcategory: what was put in it moves to its top category, and it goes', !cat('new') && at('a') === 'top' && at('b') === 'top')
+    check('every read and write is scoped to the owner (another account\'s rows stay as they were)',
+      calls.every(c => c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && at('d') === 'new' && !!cat('theirs'))
+    await C.removeNewCategory('newTop', null)
+    check('a top category: what was in it or under it has no category, and it goes', !cat('newTop') && at('c') === null)
+    let threw = null
+    try { await C.removeNewCategory('newTop', null) } catch (e) { threw = e }
+    check('Undo twice: a category already gone is no error', threw === null, threw?.message)
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

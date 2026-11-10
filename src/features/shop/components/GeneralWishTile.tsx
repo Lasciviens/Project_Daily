@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { Plus, type LucideIcon } from 'lucide-react'
 import { IconButton, MetaLine, TonePill, Truncate } from '../../../shared/ui'
 import { currencyOf, priceNow, wishRange, type Money } from '../shopModel'
 import { SHOP_PRIORITY_TONE } from '../shopMeta'
@@ -10,16 +10,19 @@ import type { UsdRates } from '../../settings/subscriptionRules'
 import type { ShopItem, ShopPriceWatch } from '../types'
 
 /**
- * A general wish as a picture tile: up to three of its models' pictures,
- * "from 2 299 NOK" (its cheapest model now) and "Any model · 1 500–3 500".
+ * A general wish as a picture tile: up to three of its models' pictures
+ * (else its category's default picture, else its initials), "from 2 299 NOK"
+ * (its cheapest model now) and "Any model · 1 500–3 500".
  * Compare (with the models' count) opens the record on its models; + adds one.
  */
-export function GeneralWishTile({ wish, models, watches, rates, topId, today, onOpen, onAddModel }: {
+export function GeneralWishTile({ wish, models, watches, rates, topId, icon, today, onOpen, onAddModel }: {
   wish: ShopItem
   models: ShopItem[]
   watches: ReadonlyMap<string, ShopPriceWatch>
   rates: UsdRates | null
   topId: string | null
+  /** Its category's default picture, for a wish whose models have no picture. */
+  icon?: LucideIcon | null
   today: string
   onOpen: () => void
   onAddModel: () => void
@@ -38,7 +41,7 @@ export function GeneralWishTile({ wish, models, watches, rates, topId, today, on
   return (
     <div className="card flex flex-col p-1.5">
       <button type="button" onClick={onOpen} className="flex flex-col rounded-row text-left">
-        <PictureWell srcs={pictures} initials={initialsOf(wish.title)} tint={tintOf(topId)} belt={belt}
+        <PictureWell srcs={pictures} icon={icon} initials={initialsOf(wish.title)} tint={tintOf(topId)} belt={belt}
           corner={wish.priority !== 'medium' && (
             <TonePill tone={SHOP_PRIORITY_TONE[wish.priority]}>{wish.priority === 'high' ? 'High' : 'Low'}<span className="sr-only"> priority</span></TonePill>
           )} />

@@ -1,11 +1,12 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { MetaLine, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { currencyOf, priceLabel, watchedPrice } from '../shopModel'
 import { SHOP_PRIORITY_TONE } from '../shopMeta'
 import { complete, type Amount } from '../ownModel'
-import { beltOf, dealOn, initialsOf, tintOf, type PriceSpan } from '../wishTile'
+import { beltOf, dealOn, initialsOf, isClean, spanOf, tintOf, type PriceFacts } from '../wishTile'
 import { SiteLink } from './shopKit'
 import { imageOf, money, num, webUrl } from './shopFormat'
 import { HistoryBar, PictureWell } from './tileKit'
@@ -16,13 +17,15 @@ interface Props {
   item: ShopItem
   /** Its top category: the tint of a tile with no picture. */
   topId: string | null
+  /** Its category's default picture, for a tile with no picture of its own (useCategoryPictures). */
+  icon?: LucideIcon | null
   /** The task it was planned as, when loaded. */
   task?: Pick<Task, 'id' | 'due_date' | 'status'> | null
   today: string
   /** The link's last price read (shop-price). */
   watch?: ShopPriceWatch | null
-  /** The price history's lowest and highest, when there is a history. */
-  span?: PriceSpan | null
+  /** What its clean price history says (usePriceStats). */
+  facts?: PriceFacts | null
   /** A planned sale's money towards it: what would still be needed. */
   afterSale?: { needed: Amount; from: string } | null
   onOpen: () => void
@@ -41,11 +44,16 @@ interface Props {
  * lowest and highest seen. Bought is one tap; everything else is in ⋯. The
  * picture and the title open the record.
  */
-export function WishTile({ item, topId, task, today, watch, span, afterSale, onOpen, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
+export function WishTile({ item, topId, icon, task, today, watch, facts, afterSale, onOpen, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
   const read = watch && watch.url === item.url ? watch : null
   const now = watchedPrice(item, read)
   const cur = currencyOf(item)
-  const belt = beltOf(item, { watch: read, span, today })
+  const belt = beltOf(item, { watch: read, facts, today })
+  const span = spanOf(facts)
+  // Prisjakt's mixed figures (no offer list) may be a used or refurbished price: said beside it, never a belt.
+  const mixed = !!now && !!read && !isClean(read) && read.condition === 'mixed'
+  // A site whose terms or robots rules forbid reading it: never read — said plainly, not as a failed check.
+  const refused = read?.status === 'not_allowed'
   const src = imageOf(item, read)
   const change = read && now && read.prev_low != null && read.prev_low !== now.amount ? now.amount - read.prev_low : null
   const deal = dealOn(item, today)
@@ -61,7 +69,7 @@ export function WishTile({ item, topId, task, today, watch, span, afterSale, onO
   return (
     <div className="card flex flex-col p-1.5">
       <button type="button" onClick={onOpen} className="flex flex-col rounded-row text-left">
-        <PictureWell srcs={src ? [src] : []} initials={initialsOf(item.title)} tint={tintOf(topId)} belt={belt}
+        <PictureWell srcs={src ? [src] : []} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} belt={belt}
           corner={item.priority !== 'medium' && (
             <TonePill tone={SHOP_PRIORITY_TONE[item.priority]}>{item.priority === 'high' ? 'High' : 'Low'}<span className="sr-only"> priority</span></TonePill>
           )} />
@@ -81,18 +89,21 @@ export function WishTile({ item, topId, task, today, watch, span, afterSale, onO
               {change < 0 ? '↓' : '↑'} {num(Math.abs(change))}<span className="sr-only"> since the last read</span>
             </span>
           ),
+          mixed && <span key="m" title="Prisjakt's figure for new, refurbished and used offers together">new and used</span>,
           target != null && `target ${target}`,
           deal && belt !== 'deal' && 'Deal on',
           item.wait_for_deal && !deal && item.planned_date && `Deal from ${formatDate(item.planned_date)}`,
           item.planned_date && !item.wait_for_deal && <span key="b" className={late ? 'text-warn' : undefined}>Buy on {formatDate(item.planned_date)}</span>,
           item.task_id && (taskDone ? 'Task done' : `Task${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
-          read && read.status !== 'ok' && <span key="f" className="text-warn">couldn't check {formatDate(read.checked_at)}</span>,
+          refused && <span key="r" title={read?.error ?? undefined}>not read automatically</span>,
+          read && read.status !== 'ok' && !refused && <span key="f" className="text-warn">couldn't check {formatDate(read.checked_at)}</span>,
+          read && read.status === 'ok' && read.in_stock === false && <span key="s" className="text-warn">out of stock</span>,
         ]} />
         {item.wait_for_deal && item.deal_note && <Truncate as="p" className="text-meta text-fg-muted">{item.deal_note}</Truncate>}
         {afterSale && complete(afterSale.needed) && (
           <p className="break-words text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>
         )}
-        {span && now && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
+        {span && now && !mixed && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
       </div>
 
       <div className="mt-auto flex items-center gap-1 border-t border-line pt-1">

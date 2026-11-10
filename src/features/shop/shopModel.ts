@@ -77,6 +77,19 @@ export function categoryPath(categoryId: string | null | undefined, categories: 
   return top ? { topId: top.id, topName: top.name, subName: cat.name } : { topId: cat.id, topName: cat.name, subName: null }
 }
 
+/** A category picker's pair: the top category and the subcategory, '' for none. */
+export interface CategoryPick { topId: string; subId: string }
+
+/** A single category id (a subcategory, or a top category itself) as a picker's pair. */
+export function pickOf(categoryId: string | null | undefined, categories: readonly ShopCategory[]): CategoryPick {
+  const cat = categoryId ? categories.find(c => c.id === categoryId) : undefined
+  if (!cat) return { topId: '', subId: '' }
+  return cat.parent_id ? { topId: cat.parent_id, subId: cat.id } : { topId: cat.id, subId: '' }
+}
+
+/** …and back: the subcategory, else the top category, else none. */
+export const categoryIdOf = (p: CategoryPick): string | null => p.subId || p.topId || null
+
 // ── Wishlist: filters, sort, groups ──────────────────────────────────────────
 
 export type RegionFilter = 'all' | ShopRegion | 'none'

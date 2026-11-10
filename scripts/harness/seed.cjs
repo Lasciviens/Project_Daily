@@ -747,10 +747,12 @@ function buildTables(now = new Date()) {
     item_id: headphones.id, user_id: owner, url: headphones.url, checked_at: at(-1, '05:00'), status: 'ok', error: null, source: 'store',
     name: 'Noise-cancelling headphones', image: null, low: 3190, high: 3690, offers: 4, currency: 'NOK', in_stock: true, was: 3490,
     return_days: 30, last_ok_at: at(-1, '05:00'), prev_low: 3290, prev_at: at(-8, '05:00'),
+    condition: 'unknown', used_low: null, refurbished_low: null,
   }]
   tables.shop_price_points = [-30, -20, -8, -1].map((n, i) => ({
     id: `5c060000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, item_id: headphones.id, user_id: owner, checked_at: at(n, '05:00'),
     low: [3490, 3390, 3290, 3190][i], high: 3690, offers: 4, currency: 'NOK', source: 'store',
+    condition: 'unknown', used_low: null, refurbished_low: null,
   }))
 
   // ── Work ───────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { listOf } from '../../shopModel'
 import { MoneyEditor, Toggle } from '../record/factKit'
+import { CategoryPicker } from '../CategoryPicker'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
 
 const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'broken', 'lost', 'other']
@@ -42,8 +43,6 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const [soldTo, setSoldTo] = useState('')
   const [paidFrom, setPaidFrom] = useState('')
   const [moneyTo, setMoneyTo] = useState('')
-  const tops = categories.filter(c => !c.parent_id)
-  const subs = topId ? categories.filter(c => c.parent_id === topId) : []
   const money = how === 'sold' || how === 'traded_in' || how === 'other'
   const sources = items.filter(i => isPossession(i) && !i.accessory_of && i.disposal)
   const targets = items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i)))
@@ -87,14 +86,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <input id="own-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <select value={topId} onChange={e => { setTopId(e.target.value); setSubId('') }} aria-label="Category" className="select">
-            <option value="">No category</option>
-            {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <select value={subId} onChange={e => setSubId(e.target.value)} disabled={!topId} aria-label="Subcategory" className="select disabled:opacity-50">
-            <option value="">{topId ? 'No subcategory' : 'Subcategory'}</option>
-            {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <CategoryPicker categories={categories} value={{ topId, subId }} onChange={p => { setTopId(p.topId); setSubId(p.subId) }} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

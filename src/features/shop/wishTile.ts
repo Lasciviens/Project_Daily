@@ -1,34 +1,104 @@
-// A wish's picture tile (phase 2 prototype): which one belt it wears, where
-// today's price sits in its history, and the designed face of a thing with no
-// picture. Pure — scripts/verify-shop-suggestions.cjs.
+// A wish's picture tile: which one belt it wears, where today's price sits in
+// its history, and the designed face of a thing with no picture. Pure —
+// scripts/verify-shop-suggestions.cjs.
 import type { Tone } from '../../shared/ui/Tone'
-import { currencyOf, watchedPrice, type Money } from './shopModel'
+import { addDays } from './ownModel'
+import { currencyOf, listOf, watchedPrice, type Money } from './shopModel'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from './types'
 
 /** One belt per tile, the first that holds in this order. */
-export type BeltKind = 'at_target' | 'lowest' | 'deal' | 'need'
-export const BELT_ORDER: readonly BeltKind[] = ['at_target', 'lowest', 'deal', 'need']
+export type BeltKind = 'at_target' | 'lowest' | 'back' | 'deal' | 'need'
+export const BELT_ORDER: readonly BeltKind[] = ['at_target', 'lowest', 'back', 'deal', 'need']
 export const BELT: Record<BeltKind, { label: string; tone: Tone }> = {
   at_target: { label: 'At target', tone: 'success' },
   lowest:    { label: 'Lowest seen', tone: 'success' },
+  back:      { label: 'Restocked', tone: 'success' },
   deal:      { label: 'Deal on', tone: 'warn' },
   need:      { label: 'Need it', tone: 'highlight' },
 }
 
-/** The lowest and highest price read from a row's link, and how many reads. */
-export interface PriceSpan { low: number; high: number; reads: number; currency: string }
+/**
+ * A read whose price is a new offer's or a shop's own page's (migration 188's
+ * `condition`). Prisjakt's mixed figures, and any read from before 188, may be
+ * a used or refurbished price: they never make a wish "at target" or "lowest".
+ */
+export function isClean(read: { condition?: ShopPriceWatch['condition'] | null }): boolean {
+  return read.condition === 'new' || read.condition === 'unknown'
+}
+
+/** The price read from the row's link when it is clean, else null. */
+export function cleanPrice(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined): Money | null {
+  return watch && isClean(watch) ? watchedPrice(item, watch) : null
+}
 
 /**
- * The history's lowest and highest in `currency` — null unless there is a
- * history: two reads or more that differ (one read, or one price all along,
- * places nothing).
+ * What a wish's clean price history says (usePriceStats): its lowest and
+ * highest clean price ever and over the last 60 days with how many reads, the
+ * day the 60 days' first one was, and whether its last read is in stock right
+ * after one that was not.
  */
-export function priceSpan(points: readonly ShopPricePoint[], currency: string): PriceSpan | null {
+export interface PriceFacts {
+  currency: string
+  lowAll: number | null
+  highAll: number | null
+  readsAll: number
+  low60: number | null
+  high60: number | null
+  reads60: number
+  since60: string | null
+  backInStock: boolean
+}
+
+/** How far back "Lowest in 60 days" and the "before" price check look. */
+export const WINDOW_DAYS = 60
+
+/**
+ * A row's price history as PriceFacts, from its points in any order: clean
+ * reads in `currency` only (a point's day is its UTC date — the sweep reads
+ * at 05:00 Oslo time). In stock only where a point says so.
+ */
+export function factsFromPoints(points: readonly (ShopPricePoint & { in_stock?: boolean | null })[], currency: string, today: string): PriceFacts {
   const cur = currency.toUpperCase()
-  const lows = points.filter(p => (p.currency ?? cur).toUpperCase() === cur && Number.isFinite(p.low)).map(p => p.low)
-  if (lows.length < 2) return null
-  const low = Math.min(...lows), high = Math.max(...lows)
-  return high > low ? { low, high, reads: lows.length, currency: cur } : null
+  const clean = points
+    .filter(p => isClean(p) && (p.currency ?? cur).toUpperCase() === cur && Number.isFinite(p.low))
+    .sort((a, b) => a.checked_at.localeCompare(b.checked_at))
+  const from = addDays(today, -WINDOW_DAYS)
+  const recent = clean.filter(p => p.checked_at.slice(0, 10) >= from)
+  const lows = clean.map(p => p.low)
+  const lows60 = recent.map(p => p.low)
+  const [last, before] = [...points].sort((a, b) => b.checked_at.localeCompare(a.checked_at))
+  return {
+    currency: cur,
+    lowAll: lows.length ? Math.min(...lows) : null,
+    highAll: lows.length ? Math.max(...lows) : null,
+    readsAll: lows.length,
+    low60: lows60.length ? Math.min(...lows60) : null,
+    high60: lows60.length ? Math.max(...lows60) : null,
+    reads60: lows60.length,
+    since60: recent.length ? recent[0].checked_at.slice(0, 10) : null,
+    backInStock: !!last && !!before && last.in_stock === true && before.in_stock === false,
+  }
+}
+
+/**
+ * The wishes whose price history is read (usePriceStats, one call): those
+ * still to buy with a web link, never a general wish's model; sorted, so the
+ * Wishlist and Needs a look ask with the same ids.
+ */
+export function watchedWishIds(items: readonly ShopItem[]): string[] {
+  return items
+    .filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for && i.kind !== 'general' && /^https?:\/\//i.test(i.url ?? ''))
+    .map(i => i.id)
+    .sort()
+}
+
+/** The lowest and highest clean price ever read from a row's link, and how many reads. */
+export interface PriceSpan { low: number; high: number; reads: number; currency: string }
+
+/** The history's span — null unless there is one: two clean reads or more that differ. */
+export function spanOf(f: PriceFacts | null | undefined): PriceSpan | null {
+  if (!f || f.lowAll == null || f.highAll == null || f.readsAll < 2 || !(f.highAll > f.lowAll)) return null
+  return { low: f.lowAll, high: f.highAll, reads: f.readsAll, currency: f.currency }
 }
 
 /** Where `now` sits between the lowest (0) and the highest (1) seen. */
@@ -36,15 +106,38 @@ export function spanPosition(now: number, span: PriceSpan): number {
   return Math.min(1, Math.max(0, (now - span.low) / (span.high - span.low)))
 }
 
-/** The price read from the row's link is at or under its target (the same currency only; a typed price never counts). */
+/** The clean price read from the row's link is at or under its target (the same currency only; a typed price never counts). */
 export function atTarget(item: ShopItem, watch: ShopPriceWatch | null | undefined): boolean {
-  const now = watchedPrice(item, watch)
+  const now = cleanPrice(item, watch)
   return !!now && item.target_price != null && now.currency === currencyOf(item) && now.amount <= item.target_price
 }
 
-/** Today's read is the lowest the history has seen (and it has been higher). */
-export function atLowest(now: Money | null, span: PriceSpan | null): boolean {
+/** Today's clean read is the lowest the history has seen (and it has been higher). */
+export function atLowest(now: Money | null, facts: PriceFacts | null | undefined): boolean {
+  const span = spanOf(facts)
   return !!now && !!span && now.currency === span.currency && now.amount <= span.low
+}
+
+/** Today's clean read is the lowest of the last 60 days' (which have seen it higher). */
+export function lowestIn60(now: Money | null, f: PriceFacts | null | undefined): boolean {
+  return !!now && !!f && f.low60 != null && f.high60 != null && f.reads60 >= 2 && f.high60 > f.low60
+    && now.currency === f.currency && now.amount <= f.low60
+}
+
+/**
+ * The shop's "before" price (`was`) is above every clean price read in the
+ * last 60 days, and those reads reach back a month at least: a "before" the
+ * link never showed.
+ */
+export function fakeBefore(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined, f: PriceFacts | null | undefined, today: string): boolean {
+  const now = cleanPrice(item, watch)
+  return !!now && !!f && watch?.was != null && f.high60 != null && f.since60 != null && f.since60 <= addDays(today, -30)
+    && now.currency === f.currency && watch.was > f.high60
+}
+
+/** Back in stock: the last read has it again, right after one without (and the price now is clean and in stock). */
+export function backInStock(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined, f: PriceFacts | null | undefined): boolean {
+  return !!f?.backInStock && !!cleanPrice(item, watch) && watch?.in_stock !== false
 }
 
 /** Waiting for a deal that has started (or has no start day). */
@@ -52,11 +145,13 @@ export function dealOn(item: Pick<ShopItem, 'wait_for_deal' | 'planned_date'>, t
   return !!item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
 }
 
-/** The tile's one belt: at target · lowest seen · deal on · need it, or none. */
-export function beltOf(item: ShopItem, ctx: { watch?: ShopPriceWatch | null; span?: PriceSpan | null; today: string }): BeltKind | null {
+/** The tile's one belt: at target · lowest seen · restocked · deal on · need it, or none. */
+export function beltOf(item: ShopItem, ctx: { watch?: ShopPriceWatch | null; facts?: PriceFacts | null; today: string }): BeltKind | null {
+  const one = item.kind !== 'general'
   const holds: Record<BeltKind, () => boolean> = {
-    at_target: () => item.kind !== 'general' && atTarget(item, ctx.watch),
-    lowest:    () => item.kind !== 'general' && atLowest(watchedPrice(item, ctx.watch), ctx.span ?? null),
+    at_target: () => one && atTarget(item, ctx.watch),
+    lowest:    () => one && atLowest(cleanPrice(item, ctx.watch), ctx.facts),
+    back:      () => one && backInStock(item, ctx.watch, ctx.facts),
     deal:      () => dealOn(item, ctx.today),
     need:      () => item.reason === 'need',
   }

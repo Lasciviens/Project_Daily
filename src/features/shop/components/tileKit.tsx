@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { BELT, packGroups, spanPosition, tileColumns, type BeltKind, type PriceSpan } from '../wishTile'
@@ -57,11 +58,16 @@ export function PackedTiles({ id, subs, card }: {
 /**
  * The 4:3 picture well. Up to three photos on the soft well colour, each
  * multiplied onto it, so a store photo's white ground takes the well's colour
- * (dimmed in dark, no glare); with none, the thing's initials on its
- * category's tint. The belt crosses the top-left corner, `corner` sits top right.
+ * (dimmed in dark, no glare); with none, its category's default picture — a
+ * line icon drawn large on the category's tint, like Apple's placeholders —
+ * else the thing's initials on the tint. A photo that fails to load falls
+ * back the same way. The belt crosses the top-left corner, `corner` sits top
+ * right.
  */
-export function PictureWell({ srcs, initials, tint, belt, corner }: {
+export function PictureWell({ srcs, icon: Icon, initials, tint, belt, corner }: {
   srcs: readonly string[]
+  /** The category's default picture (useCategoryPictures), when it has one. */
+  icon?: LucideIcon | null
   initials: string
   /** The category's tint, 1–6 (wishTile.tintOf). */
   tint: number
@@ -77,11 +83,15 @@ export function PictureWell({ srcs, initials, tint, belt, corner }: {
   )
   return (
     <span data-tint={shown.length ? undefined : tint}
-      className={cx('@container relative block aspect-[4/3] w-full overflow-hidden rounded-row', shown.length ? 'bg-well' : 'tint-fill')}>
+      className={cx('@container relative block aspect-[4/3] w-full overflow-hidden rounded-row', shown.length ? 'bg-well' : Icon ? 'tint-well' : 'tint-fill')}>
       {shown.length === 0 ? (
-        <svg aria-hidden viewBox="0 0 100 75" className="tint-ink absolute inset-0 h-full w-full">
-          <text x="50" y="40" textAnchor="middle" dominantBaseline="middle" fill="currentColor" fontSize="26" fontWeight="700" letterSpacing="1">{initials}</text>
-        </svg>
+        Icon
+          ? <Icon aria-hidden strokeWidth={1.5} className="tint-ink absolute left-1/2 top-1/2 aspect-square h-[44%] w-auto -translate-x-1/2 -translate-y-1/2 opacity-75" />
+          : (
+            <svg aria-hidden viewBox="0 0 100 75" className="tint-ink absolute inset-0 h-full w-full">
+              <text x="50" y="40" textAnchor="middle" dominantBaseline="middle" fill="currentColor" fontSize="26" fontWeight="700" letterSpacing="1">{initials}</text>
+            </svg>
+          )
       ) : shown.length === 1 ? (
         img(shown[0], 'absolute inset-0 h-full w-full p-[6%]')
       ) : (
