@@ -44,6 +44,16 @@ function LookIcon({ look, small = false }: { look: Look; small?: boolean }) {
   )
 }
 
+/**
+ * The facts as one "a · b · c" line; where a price was read follows its price
+ * as one piece ("2 990 NOK at elkjop.no") that only an overlong address breaks.
+ */
+function lookFacts(look: Look) {
+  if (!look.where || !look.facts.length) return look.facts
+  const last = look.facts[look.facts.length - 1]
+  return [...look.facts.slice(0, -1), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
+}
+
 /** One row: what, what is due and the money involved, and its one action. */
 function LookRow({ look, onOpen, onBought }: { look: Look } & LookActions) {
   const text = (
@@ -51,8 +61,7 @@ function LookRow({ look, onOpen, onBought }: { look: Look } & LookActions) {
       <LookIcon look={look} />
       <span className="min-w-0 flex-1">
         <Truncate as="span" className="block text-body font-medium text-fg">{look.title}</Truncate>
-        <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted"
-          items={[...look.facts, look.where && <span key="w" className="whitespace-normal break-words">{look.where}</span>]} />
+        <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted" items={lookFacts(look)} />
       </span>
     </>
   )

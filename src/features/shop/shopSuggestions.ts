@@ -23,7 +23,7 @@ export interface Look {
   title: string
   /** What is due and the money involved, as short facts: "Return by 11.11.2026", "tomorrow", "paid 1 990 NOK". */
   facts: string[]
-  /** Where a price was read ("at elkjop.no"): from the link, so of any length — the one part that may wrap. */
+  /** Where the last fact's price was read ("at elkjop.no", one piece): from the link, so of any length — the one part that may wrap. */
   where: string | null
   action: LookAction
   /** Money you can get back: cheaper now than you paid, while it can still be returned. */
@@ -46,6 +46,8 @@ const KIND_RANK: Record<LookKind, number> = { return: 0, cheaper: 1, at_target: 
 
 const money = (n: number, currency: string) => formatMoney(Math.round(n), currency)
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+/** A space a line never breaks at. */
+const NBSP = String.fromCharCode(160)
 
 /** "today", "tomorrow", "in 5 days". */
 export function whenWords(daysLeft: number): string {
@@ -112,7 +114,7 @@ export function needsALook(items: readonly ShopItem[], watches: ReadonlyMap<stri
       if (i.kind !== 'general' && atTarget(i, watch)) {
         const now = watchedPrice(i, watch) as Money
         const site = siteOf(i, watch)
-        push({ kind: 'at_target', tone: 'success', itemId: i.id, action: 'bought', where: site ? `at ${site}` : null,
+        push({ kind: 'at_target', tone: 'success', itemId: i.id, action: 'bought', where: site ? `at${NBSP}${site}` : null,
           facts: facts('At your target', money(now.amount, now.currency)) }, i)
       }
       const age = daysBetween(localDay(i.created_at), today)
