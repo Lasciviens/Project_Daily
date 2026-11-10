@@ -31,6 +31,15 @@ function signalWrite(store, itemId, signal, change, subject = null) {
   return { before, after }
 }
 
+/** 191's resets: the row's facts become its source's again; answers the row before and after. */
+function resetToSource(store, table, id) {
+  const row = store.rows(table).find(r => r.id === id)
+  if (!row || !row.source_facts) return { before: null, after: null }
+  const before = { ...row }
+  Object.assign(row, row.source_facts, { owner_edited: false, edited_at: null, updated_at: new Date().toISOString() })
+  return { before, after: { ...row } }
+}
+
 const RPCS = {
   // 190: Needs a look's price figures from the clean reads (condition new or unknown), as shop_price_stats answers.
   shop_price_stats: (args, store) => {
@@ -71,6 +80,10 @@ const RPCS = {
   shop_signal_snooze: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, snoozed_until: a.p_until }), a.p_subject),
   shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null }), a.p_subject),
   shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null), a.p_subject),
+
+  // 191: a rule or a store back to its source — the row before and after (the facts from source_facts, not edited).
+  shop_store_rule_reset: (a, store) => resetToSource(store, 'shop_store_rules', a.p_id),
+  shop_store_reset: (a, store) => resetToSource(store, 'shop_stores', a.p_id),
 
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),

@@ -24,6 +24,8 @@ import { RecordAccessories } from './RecordAccessories'
 import { RecordMoney } from './RecordMoney'
 import { RecordCosts } from './RecordCosts'
 import { RecordModels } from './RecordModels'
+import { RecordPurchase } from '../purchase/RecordPurchase'
+import { LookElsewhere } from '../purchase/LookElsewhere'
 import { patchOf, useRecordDraft } from './useRecordDraft'
 import type { ShopItem } from '../../types'
 
@@ -54,7 +56,7 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
-  const buy = useBuyNow()
+  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   const d = useRecordDraft(item, openFact ?? null)
   const state = recordState(item)
   const owned = state === 'mine' || state === 'gone'
@@ -197,7 +199,9 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
           </div>
           <div className="flex min-w-0 flex-col gap-3">
             {state === 'general' && <RecordModels wish={item} models={models} watches={watches} />}
+            {state === 'mine' && <RecordPurchase item={item} today={today} />}
             <RecordPriceWatch item={item} watch={watches.get(item.id) ?? null} owned={owned} today={today} />
+            {state === 'buy' && <LookElsewhere item={item} today={today} />}
             {!item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={accessories} ctx={ctx} canAdd={state === 'mine'} />}
             <RecordMoney item={item} items={items} links={links} ctx={ctx} chain={chain} />
             {(owned || item.status === 'bought') && <RecordCosts itemId={item.id} costs={ctx.costs.get(item.id) ?? costs.filter(c => c.item_id === item.id)} />}

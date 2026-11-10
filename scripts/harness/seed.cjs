@@ -737,6 +737,8 @@ function buildTables(now = new Date()) {
     shopItem('Oats', 'Groceries', { list: 'quick', errand: true, price: 35 }),
     shopItem('Light bulbs E27', 'Home', { list: 'quick', errand: true, platform: 'Hardware store' }),
     shopItem('Stamps', null, { list: 'quick', errand: true, planned_date: today }),
+    // 191: bought online at Elkjøp five days ago, not arrived yet (the record's Purchase card, Just bought).
+    shopItem('Espresso machine', 'Home', { status: 'bought', bought_at: at(-5, '12:00'), price: 4990, platform: 'Elkjøp', url: 'https://www.elkjop.no/product/mock/espresso-machine/100001', bought_channel: 'online' }),
   ]
   tables.shop_item_costs = [{
     id: '5c050000-0000-4000-8000-000000000001', user_id: owner, item_id: laptop.id, label: 'Extended warranty', amount: 990, currency: 'NOK',
@@ -758,6 +760,61 @@ function buildTables(now = new Date()) {
     id: `5c070000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, slug, name, rule_kind, month, day: d, weekday, nth, offset_days, length_days,
     source_url: null, checked_on: '2026-11-10', ...stamp(-1),
   }))
+  // 191: the stores and marketplaces as 191 seeds them (FINN and Tise with a search link of the harness's own, so
+  // "Look on FINN" has one), their rules — Elkjøp's open purchase edited to 45 days while its source says 30 (a
+  // conflict), its 50 days for Kundeklubb members, Power's 90 days and the owner's own 60 (two sources that
+  // disagree) — Norway's law, the sites apps may not read, and no deal-day edits.
+  const storeId = n => `5c080000-0000-4000-8000-${String(n).padStart(12, '0')}`
+  const storeRow = (n, seed_key, facts, extra = {}) => ({
+    id: storeId(n), user_id: owner, seed_key, origin: 'seed', member_tier: null, hidden: false, owner_edited: false, edited_at: null,
+    search_url: null, ad_template: null, ad_language: null, country: 'NO', currency: 'NOK', read_on: null, ...facts,
+    source_facts: { search_url: null, ad_template: null, ad_language: null, country: 'NO', currency: 'NOK', read_on: null, ...facts }, ...stamp(-1), ...extra,
+  })
+  tables.shop_stores = [
+    storeRow(1, 'prisjakt', { kind: 'price_site', name: 'Prisjakt', hosts: ['prisjakt.no'], source_url: 'https://www.prisjakt.no/information/brukervilkar', read_on: '2026-11-10' }),
+    storeRow(2, 'finn', { kind: 'marketplace', name: 'FINN', hosts: ['finn.no'], source_url: 'https://www.finn.no/vilkar/brukervilkar-finn', read_on: '2026-11-10' },
+      { search_url: 'https://www.finn.no/recommerce/forsale/search?q={q}', owner_edited: true }),
+    storeRow(3, 'tise', { kind: 'marketplace', name: 'Tise', hosts: ['tise.com'], source_url: 'https://tise.com/terms', read_on: '2026-11-10' }),
+    storeRow(4, 'elkjop', { kind: 'shop', name: 'Elkjøp', hosts: ['elkjop.no'], search_url: 'https://www.elkjop.no/search?q={q}', source_url: 'https://www.elkjop.no/product/mock/tv/899848', read_on: '2026-11-10' }),
+    storeRow(5, 'power', { kind: 'shop', name: 'Power', hosts: ['power.no'], source_url: 'https://www.power.no/mock/p-4229993/', read_on: '2026-11-10' }),
+    storeRow(6, 'jernia', { kind: 'shop', name: 'Jernia', hosts: ['jernia.no'], source_url: 'https://www.jernia.no/produkter/12310223', read_on: '2026-11-10' }),
+    storeRow(7, 'komplett', { kind: 'shop', name: 'Komplett', hosts: ['komplett.no'], source_url: 'https://www.komplett.no/' }),
+    storeRow(8, 'clas_ohlson', { kind: 'shop', name: 'Clas Ohlson', hosts: ['clasohlson.com'], source_url: 'https://www.clasohlson.com/no/' }),
+  ]
+  const ruleRow = (n, store, seed_key, facts, extra = {}) => {
+    const all = { kind: 'return', label: null, days: null, member_tier: null, window_from: null, window_to: null, return_until: null, exclusions: [],
+      payout: null, against: null, against_stores: null, words: null, source_url: null, read_on: null, off: false, ...facts }
+    return { id: `5c090000-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, store_id: storeId(store), seed_key, origin: 'seed',
+      ...all, source_facts: seed_key ? all : null, owner_edited: false, edited_at: null, ...stamp(-1), ...extra }
+  }
+  const elkjopPage = { source_url: 'https://www.elkjop.no/product/mock/tv/899848', read_on: '2026-11-10' }
+  tables.shop_store_rules = [
+    { ...ruleRow(1, 4, 'elkjop_open_purchase', { kind: 'open_purchase', days: 30, words: '30-dagers åpent kjøp med uåpnet emballasje.', ...elkjopPage }), days: 45, owner_edited: true, edited_at: at(-1, '20:15') },
+    ruleRow(2, 4, 'elkjop_open_purchase_club', { kind: 'open_purchase', days: 50, member_tier: 'Kundeklubb', words: '50 dagers åpent kjøp med uåpnet emballasje.', ...elkjopPage }),
+    ruleRow(3, 5, 'power_return', { kind: 'return', days: 90, source_url: 'https://www.power.no/mock/p-4229993/', read_on: '2026-11-10' }),
+    ruleRow(4, 5, null, { kind: 'return', days: 60, words: 'Typed from the help centre.' }, { origin: 'owner', owner_edited: true, edited_at: at(-1, '20:20') }),
+  ]
+  const lovdata = (law, url) => ({ law, law_url: url, checked_on: '2026-11-10' })
+  const cancelLaw = lovdata('Angrerettloven (LOV-2014-06-20-27)', 'https://lovdata.no/lov/2014-06-20-27')
+  tables.shop_law_rules = [
+    { id: '5c0a0000-0000-4000-8000-000000000001', slug: 'cancel_distance_business', country: 'NO', kind: 'cancel', channel: 'distance', seller: 'business', gives_right: true, days: 14, years: null, long_lasting: null, counts_from: 'receipt', to_workday: true,
+      name: 'Right to cancel (angrerett)', summary: 'Bought online from a business: 14 days to cancel, from the day you got the thing.', ...cancelLaw },
+    { id: '5c0a0000-0000-4000-8000-000000000002', slug: 'cancel_in_store_business', country: 'NO', kind: 'cancel', channel: 'in_store', seller: 'business', gives_right: false, days: null, years: null, long_lasting: null, counts_from: null, to_workday: false,
+      name: 'No right to cancel in a shop', summary: 'Bought in a shop: the law gives no right to cancel.', ...cancelLaw },
+    { id: '5c0a0000-0000-4000-8000-000000000003', slug: 'cancel_private', country: 'NO', kind: 'cancel', channel: 'any', seller: 'private', gives_right: false, days: null, years: null, long_lasting: null, counts_from: null, to_workday: false,
+      name: 'No right to cancel from a private seller', summary: 'Bought from a private person: no right to cancel.', ...cancelLaw },
+    { id: '5c0a0000-0000-4000-8000-000000000004', slug: 'complaint_business', country: 'NO', kind: 'complaint', channel: 'any', seller: 'business', gives_right: true, days: null, years: 2, long_lasting: false, counts_from: 'receipt', to_workday: false,
+      name: 'Right to complain (reklamasjon)', summary: 'Bought from a business: 2 years to complain about a fault.', ...lovdata('Forbrukerkjøpsloven § 27 (LOV-2002-06-21-34)', 'https://lovdata.no/lov/2002-06-21-34/§27') },
+    { id: '5c0a0000-0000-4000-8000-000000000005', slug: 'complaint_business_long', country: 'NO', kind: 'complaint', channel: 'any', seller: 'business', gives_right: true, days: null, years: 5, long_lasting: true, counts_from: 'receipt', to_workday: false,
+      name: 'Right to complain (reklamasjon), 5 years', summary: 'A thing meant to last considerably longer: 5 years.', ...lovdata('Forbrukerkjøpsloven § 27 (LOV-2002-06-21-34)', 'https://lovdata.no/lov/2002-06-21-34/§27') },
+    { id: '5c0a0000-0000-4000-8000-000000000006', slug: 'complaint_private', country: 'NO', kind: 'complaint', channel: 'any', seller: 'private', gives_right: true, days: null, years: 2, long_lasting: null, counts_from: 'receipt', to_workday: false,
+      name: 'Right to complain from a private seller (reklamasjon)', summary: 'Bought from a private person: 2 years.', ...lovdata('Kjøpsloven § 32 (LOV-1988-05-13-27)', 'https://lovdata.no/lov/1988-05-13-27/§32') },
+  ]
+  tables.shop_site_policies = [
+    { host: 'finn.no', no_automated_reading: true, reason: 'Its terms forbid automated reading.', source_url: 'https://www.finn.no/vilkar/brukervilkar-finn', checked_on: '2026-11-10' },
+    { host: 'tise.com', no_automated_reading: true, reason: 'Its terms forbid scraping and bots.', source_url: 'https://tise.com/terms', checked_on: '2026-11-10' },
+  ]
+  tables.shop_deal_day_edits = []
   tables.shop_price_points = [-30, -20, -8, -1].map((n, i) => ({
     id: `5c060000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, item_id: headphones.id, user_id: owner, checked_at: at(n, '05:00'),
     low: [3490, 3390, 3290, 3190][i], high: 3690, offers: 4, currency: 'NOK', source: 'store',

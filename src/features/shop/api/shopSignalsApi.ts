@@ -3,9 +3,7 @@ import { requireUser } from '../../../shared/utils/requireUser'
 import { isDay } from '../dealDays'
 import { parsePriceStats, priceStatsBatches } from '../priceStats'
 import { isShopSignal, parseSignalState, parseSignalWrite, SIGNATURE_RE, SUBJECT_RE } from '../signalStates'
-import { effectiveDealDays } from '../storeRows'
 import { allPages } from './shopApi'
-import { fetchDealDayRows } from './shopStoresApi'
 import type { ShopDealDay, ShopPriceStats, ShopSignal, ShopSignalState, ShopSignalStateFields, ShopSignalWrite } from '../types'
 
 // Needs a look's data (migration 190): what the owner did with its rows (shop_signal_states, written through
@@ -94,7 +92,9 @@ export function clearSignalState(key: SignalKey): Promise<ShopSignalWrite> {
  * rows alone.
  */
 export async function fetchDealDays(): Promise<ShopDealDay[]> {
-  return effectiveDealDays(await fetchDealDayRows())
+  // Loaded on demand: the stores' module (its writes, its checks) stays out of the Shop page's first download.
+  const { fetchCountedDealDays } = await import('./shopStoresApi')
+  return fetchCountedDealDays()
 }
 
 /**

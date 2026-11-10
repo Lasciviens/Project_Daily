@@ -221,8 +221,11 @@ export interface DraftRowsOptions {
   rates?: ReadonlyMap<string, number> | null
 }
 
-/** Every column of a row, so a row written in one go never leaves a NOT NULL column empty (shop_restore_items reads them all). */
-export type FullShopItem = Required<ShopItem>
+/**
+ * Every column of a row, so a row written in one go never leaves a NOT NULL column empty (shop_restore_items reads
+ * them all) — but migration 191's purchase facts, which may be empty and which a chain doesn't know.
+ */
+export type FullShopItem = Required<Omit<ShopItem, 'bought_channel' | 'arrived_on' | 'extra_warranty_until' | 'receipt_note' | 'search_opened_on'>>
 
 /** A day's local noon — the same instant the other Shop forms store for a day. */
 export function middayOf(day: string): string {

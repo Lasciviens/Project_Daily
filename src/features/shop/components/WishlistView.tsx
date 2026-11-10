@@ -62,7 +62,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const models = useMemo(() => modelsByWish(items), [items])
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
+  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   // "After selling X": the plans towards each wish, projected at "Could sell for".
   const afterSale = useMemo(() => {
     const out = new Map<string, { needed: Amount; from: string }>()

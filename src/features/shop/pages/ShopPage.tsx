@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
+import { History, Link2, ListChecks, MoreHorizontal, Plus } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -71,15 +71,19 @@ export function ShopPage() {
     <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
       options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
   )
-  // Owned's other ways in where the row has no room for their buttons.
-  const moreWaysMenu = (
-    <Menu as="div" className="@[72rem]/page:hidden">
-      <MenuButton className="icon-btn-bordered" aria-label="More ways to add" title="More ways to add">
+  // The header's one ⋯ on every view (the bar keeps its shape): Stores and rules, and Owned's other ways in
+  // where the row has no room for their buttons.
+  const moreMenu = (
+    <Menu as="div">
+      <MenuButton className="icon-btn-bordered" aria-label="More" title="Stores and rules, more ways to add">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores and rules</button></MenuItem>
+        {view === 'owned' && <>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item @[72rem]/page:hidden"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item @[72rem]/page:hidden"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        </>}
       </MenuItems>
     </Menu>
   )
@@ -111,8 +115,8 @@ export function ShopPage() {
               {/* Owned's other ways in: buttons where the row has room, one menu where it has not. */}
               <Button variant="ghost" icon={<History />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
               <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
-              {moreWaysMenu}
             </>}
+            {moreMenu}
             <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
             </Button>
@@ -122,7 +126,6 @@ export function ShopPage() {
       {view === 'owned' && isPhone && (
         <div className="mb-3 flex items-center gap-2 sm:mb-4">
           <div className="min-w-0 flex-1">{ownedTabs(true)}</div>
-          {moreWaysMenu}
         </div>
       )}
 
