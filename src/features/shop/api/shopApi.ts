@@ -279,7 +279,7 @@ export async function fetchPriceWatches(): Promise<ShopPriceWatch[]> {
     .order('item_id', { ascending: true })
     .range(from, to))
   const num = (v: unknown) => (v == null ? null : Number(v))
-  return rows.map(w => ({ ...w, low: num(w.low), high: num(w.high), was: num(w.was), prev_low: num(w.prev_low) }))
+  return rows.map(w => ({ ...w, low: num(w.low), high: num(w.high), was: num(w.was), prev_low: num(w.prev_low), used_low: num(w.used_low), refurbished_low: num(w.refurbished_low) }))
 }
 
 /** How many of a row's latest price reads its history shows (two years of daily checks fit). */
@@ -294,5 +294,8 @@ export async function fetchPricePoints(itemId: string): Promise<ShopPricePoint[]
     .order('checked_at', { ascending: false })
     .limit(POINTS_SHOWN)
   if (error) throw error
-  return (data ?? []).reverse().map(p => ({ ...p, low: Number(p.low), high: p.high == null ? null : Number(p.high) }))
+  return (data ?? []).reverse().map(p => ({
+    ...p, low: Number(p.low), high: p.high == null ? null : Number(p.high),
+    used_low: p.used_low == null ? null : Number(p.used_low), refurbished_low: p.refurbished_low == null ? null : Number(p.refurbished_low),
+  }))
 }

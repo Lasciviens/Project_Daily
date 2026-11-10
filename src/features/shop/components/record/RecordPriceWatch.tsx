@@ -12,7 +12,8 @@ import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
  * shop's own price, with where it was read — a link to the product's page —
  * and when, the trend, the history, and what it means here — at your target,
  * or cheaper than you paid while it can still be returned. A blocked check
- * says so and keeps the last price read.
+ * says so and keeps the last price read; a link on a site whose terms forbid
+ * automated reading is never read, and the card says so with the link to open.
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
   const check = useCheckPrices()
@@ -21,6 +22,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   if (!item.url) return null
   const cur = (current?.currency ?? currencyOf(item)).toUpperCase()
   const failed = current && current.status !== 'ok'
+  const refused = current?.status === 'not_allowed'
   const low = current?.low ?? null
   const site = hostOf(item.url) ?? 'the shop'
   const target = item.target_price
@@ -45,7 +47,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
                   : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
               </span>
             </p>
-          ) : <p className="text-meta">{open}</p>}
+          ) : !refused && <p className="text-meta">{open}</p>}
           {current.prev_low != null && low != null && current.prev_low !== low && (
             <TonePill tone={low < current.prev_low ? 'success' : 'warn'} className="w-fit tabular-nums">
               {low < current.prev_low ? '↓' : '↑'} {money(Math.abs(low - current.prev_low), cur)} since {formatDate(current.prev_at)}
@@ -62,7 +64,12 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
             </p>
           )}
           {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
-          {failed && (
+          {refused ? (
+            <p className="text-meta text-fg-muted">
+              {current.error ?? `${site} doesn't allow automated reading`} — <SiteLink url={item.url}>open it yourself</SiteLink>
+              {low != null && current.last_ok_at && <> The price above is from {formatDate(current.last_ok_at)}.</>}
+            </p>
+          ) : failed && (
             <p className="text-meta text-warn">
               Couldn't check {formatDate(current.checked_at)}: {current.error ?? 'no price on the page'}.
               {low != null && current.last_ok_at && <> The price above is from {formatDate(current.last_ok_at)}.</>}
@@ -71,7 +78,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
           <Sparkline points={points} currency={cur} />
           <p className="text-micro text-fg-muted">
             {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
-            {' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}
+            {refused && !current.last_ok_at ? null : <>{' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}</>}
           </p>
         </div>
       )}

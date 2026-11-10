@@ -8,7 +8,8 @@ import { rateKey, type RatePair } from '../chainDraft'
 // before it is saved; `check` re-reads saved rows into the price watch; a
 // daily cron does both for everything due.
 
-export type PriceReadResult = PriceRead & { at: string; finalUrl: string }
+/** `site`: with status not_allowed, the listed site the link is on (it was never fetched). */
+export type PriceReadResult = PriceRead & { at: string; finalUrl: string; site?: string }
 
 function notDeployed(error: unknown): boolean {
   const msg = (error as { message?: string; context?: { status?: number } })?.message ?? ''
@@ -26,7 +27,7 @@ export async function readPriceLink(url: string): Promise<PriceReadResult> {
   return data.result as PriceReadResult
 }
 
-export interface PriceCheckOutcome { id: string; status: 'ok' | 'no_price' | 'blocked' | 'error'; low: number | null; currency: string | null; error?: string }
+export interface PriceCheckOutcome { id: string; status: 'ok' | 'no_price' | 'blocked' | 'error' | 'not_allowed'; low: number | null; currency: string | null; error?: string }
 
 /** Re-reads saved rows' links (≤ 10) into the price watch. */
 export async function checkItemPrices(ids: readonly string[]): Promise<PriceCheckOutcome[]> {

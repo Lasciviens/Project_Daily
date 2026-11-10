@@ -10,9 +10,21 @@
 //    block between the <price-read> markers is a HAND MIRROR of
 //    src/features/shop/priceRead.ts (scripts/verify-shop-price-read.cjs fails
 //    while the two differ).
+//    A Prisjakt page's schema.org figures mix new, refurbished and used
+//    offers; its own offer list marks each one, so the price now is its new
+//    offers only, and the cheapest used and refurbished ones are kept beside
+//    it. Every watch and point says what its price covers (`condition`,
+//    migration 188: new, mixed, unknown). A price of another kind than the
+//    last one starts its own trend (no "↑ 9 525 since …" from a refurbished
+//    price to a new one).
 //    Each check upserts shop_price_watch (the last result; a failed check
 //    keeps the last price read and says why) and, when a price was read, adds
 //    one shop_price_points row. It never writes shop_items.
+// 1b. Sites that may not be read. A link on a site in shop_site_policies
+//    (migration 188: its terms forbid automated reading — finn.no, tise.com)
+//    is never fetched — not by read, check or the sweep, not as a redirect
+//    hop — and says so (status not_allowed). The list is data, read on every
+//    request; when it can't be read, nothing is fetched (fail closed).
 // 2. Rates. Norges Bank's daily rates to NOK (data.norges-bank.no, no key) for
 //    the purchases, sales and extra costs still waiting for theirs: fetched,
 //    cached in fx_rates_nok, then those rows are touched so the database's own
@@ -25,7 +37,8 @@
 //   · the daily cron's `x-cron-secret: <SHOP_PRICE_CRON_SECRET>` (acts as
 //     HEVY_USER_ID; only the `sweep` action).
 //
-// POST { action: 'read', url }          → { result }   a preview, nothing stored
+// POST { action: 'read', url }          → { result }   a preview, nothing stored (a listed site:
+//                                                     status not_allowed + its `site`, never fetched)
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
 // POST { action: 'rates' }              → { rates }    fill the caller's pending rates
 // POST { action: 'day_rates', pairs: [{ currency, day }] (≤ 60) }
@@ -40,6 +53,7 @@
 //
 // Fetch safety is news-article's: http/https only, private hosts and names
 // that resolve to one refused on every redirect hop (≤ 5), 8 s, 3 MB, text/html only.
+// A listed site (1b) is refused on every hop too.
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 
@@ -195,6 +209,9 @@ async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promis
 }
 
 class FetchError extends Error { constructor(public code: string, message: string) { super(message) } }
+/** A link (or a redirect hop) on a site whose terms forbid automated reading: never fetched. */
+class SiteRefused extends FetchError { constructor(public site: string) { super('not_allowed_site', notAllowedText(site)) } }
+const notAllowedText = (site: string) => `${site}'s terms don't allow automated reading`
 
 async function readCapped(res: Response): Promise<Uint8Array> {
   const reader = res.body?.getReader()
@@ -223,8 +240,11 @@ function decode(bytes: Uint8Array, contentType: string | null): string {
   try { return new TextDecoder((charset ?? 'utf-8').toLowerCase()).decode(bytes) } catch { return new TextDecoder('utf-8').decode(bytes) }
 }
 
-/** The page's HTML; a 403/503 with a Cloudflare check comes back as HTML too, so the reader can say "blocked". */
-async function fetchPage(rawUrl: string): Promise<{ html: string; finalUrl: string }> {
+/**
+ * The page's HTML; a 403/503 with a Cloudflare check comes back as HTML too, so the reader can say "blocked".
+ * `listed`: the sites never to read (shop_site_policies) — checked on every hop before anything is asked of it.
+ */
+async function fetchPage(rawUrl: string, listed: readonly string[]): Promise<{ html: string; finalUrl: string }> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS)
   try {
@@ -233,6 +253,8 @@ async function fetchPage(rawUrl: string): Promise<{ html: string; finalUrl: stri
       let url: URL
       try { url = new URL(current) } catch { throw new FetchError('bad_url', 'Not a link') }
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new FetchError('bad_url', 'Only http and https links can be read')
+      const site = listedSite(url.toString(), listed)
+      if (site) throw new SiteRefused(site)
       if (url.username || url.password || isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, ctl.signal)) {
         throw new FetchError('not_allowed', 'This address is not allowed')
       }
@@ -264,7 +286,16 @@ async function fetchPage(rawUrl: string): Promise<{ html: string; finalUrl: stri
 }
 
 // <price-read>
-export type PriceReadStatus = 'ok' | 'no_price' | 'blocked'
+/** 'not_allowed': the link is on a site whose terms forbid automated reading (shop_site_policies, migration 188) — never fetched. */
+export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
+
+/**
+ * What `low`, `high` and `offers` cover: 'new' — Prisjakt's own offer list,
+ * new offers only; 'mixed' — Prisjakt's schema.org figures, read when its page
+ * has no offer list (they mix new, refurbished and used offers); 'unknown' —
+ * a shop's own page, which doesn't say.
+ */
+export type PriceCondition = 'new' | 'mixed' | 'unknown'
 
 export interface PriceRead {
   status: PriceReadStatus
@@ -273,11 +304,11 @@ export interface PriceRead {
   image: string | null
   brand: string | null
   gtin: string | null
-  /** The lowest price on the page (Prisjakt: the cheapest shop). */
+  /** The lowest price on the page (Prisjakt: the cheapest new offer). */
   low: number | null
-  /** The highest offer (Prisjakt) — equal to `low` for a single shop. */
+  /** The highest offer (Prisjakt: the dearest new one) — equal to `low` for a single shop. */
   high: number | null
-  /** How many shops sell it (Prisjakt), else null. */
+  /** How many shops sell it (Prisjakt: new), else null. */
   offers: number | null
   currency: string | null
   inStock: boolean | null
@@ -285,6 +316,12 @@ export interface PriceRead {
   was: number | null
   /** The shop's own return window for everyone (not a members-only one), in days — "30-day open purchase". */
   returnDays: number | null
+  /** What low, high and offers cover. */
+  condition: PriceCondition
+  /** The cheapest used offer in Prisjakt's offer list, else null (evidence for resale). */
+  usedLow: number | null
+  /** The cheapest refurbished offer in Prisjakt's offer list, else null. */
+  refurbishedLow: number | null
   /** 'prisjakt' when the page is Prisjakt's, else 'store'. */
   source: 'prisjakt' | 'store'
 }
@@ -436,10 +473,14 @@ function groupSummary(variants: Json[]): OfferSummary | null {
   return out
 }
 
+/** The variant a Prisjakt link names (`a-116257=Frost`), as `a-116257=frost`. */
+function linkAttrs(pageUrl: string): string[] {
+  try { return [...new URL(pageUrl).searchParams.entries()].filter(([k]) => /^a-\d+$/.test(k)).map(([k, v]) => `${k}=${v}`.toLowerCase()) } catch { return [] }
+}
+
 /** The Prisjakt variant the link points at (`a-116257=Frost`), matched on the variant's own url. */
 function variantFor(variants: Json[], pageUrl: string): Json | null {
-  let attrs: string[] = []
-  try { attrs = [...new URL(pageUrl).searchParams.entries()].filter(([k]) => /^a-\d+$/.test(k)).map(([k, v]) => `${k}=${v}`.toLowerCase()) } catch { attrs = [] }
+  const attrs = linkAttrs(pageUrl)
   if (!attrs.length) return null
   return variants.find(v => {
     const u = String(v.url ?? '').toLowerCase()
@@ -467,11 +508,134 @@ export function isPrisjaktUrl(url: string): boolean {
   } catch { return false }
 }
 
+/**
+ * The listed site a link is on — its host, or a subdomain of it ("m.finn.no"
+ * is on finn.no) — out of `hosts` (shop_site_policies, migration 188), else
+ * null. The most specific listed host wins.
+ */
+export function listedSite(url: string, hosts: readonly string[]): string | null {
+  let host: string
+  try { host = new URL(url).hostname.toLowerCase().replace(/\.+$/, '') } catch { return null }
+  let best: string | null = null
+  for (const raw of hosts) {
+    const h = String(raw).trim().toLowerCase().replace(/\.+$/, '')
+    if (h && (host === h || host.endsWith(`.${h}`)) && (!best || h.length > best.length)) best = h
+  }
+  return best
+}
+
+/** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
+function nextFlight(html: string): string {
+  const out: string[] = []
+  const marker = 'self.__next_f.push([1,"'
+  let at = html.indexOf(marker)
+  while (at >= 0) {
+    const start = at + marker.length - 1
+    let end = start + 1
+    while (end < html.length && html[end] !== '"') end += html[end] === '\\' ? 2 : 1
+    if (end >= html.length) break
+    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') out.push(s) } catch { /* not a JSON string: skipped */ }
+    at = html.indexOf(marker, end)
+  }
+  return out.join('')
+}
+
+/** The JSON array or object that starts at text[start], parsed — else null. */
+function jsonAt(text: string, start: number): unknown {
+  if (text[start] !== '[' && text[start] !== '{') return null
+  let depth = 0
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '"') {
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++
+    } else if (ch === '[' || ch === '{') {
+      depth++
+    } else if ((ch === ']' || ch === '}') && --depth === 0) {
+      try { return JSON.parse(text.slice(start, i + 1)) } catch { return null }
+    }
+  }
+  return null
+}
+
+interface OfferRow { condition: string; price: number; currency: string | null; shop: string | null; variant: string | null }
+
+/**
+ * Prisjakt's own offer list for product `productId`: the `offerRows` its
+ * product page streams (one row per offer). A row of another product, or one
+ * without a condition or a price, is left out. null: the page has no such
+ * list, or none of its rows is this product's — then only its schema.org
+ * figures are known.
+ */
+function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
+  const flight = nextFlight(html)
+  const key = '"offerRows":'
+  const at = flight.indexOf(key)
+  if (at < 0) return null
+  const rows = jsonAt(flight, at + key.length)
+  if (!Array.isArray(rows)) return null
+  const out: OfferRow[] = []
+  for (const r of rows) {
+    if (!isObj(r) || String(r.productId) !== productId || typeof r.condition !== 'string' || !isObj(r.price)) continue
+    const price = parsePrice(r.price.amount)
+    if (price == null) continue
+    out.push({
+      condition: r.condition.toLowerCase(), price, currency: firstString(r.price.currency)?.toUpperCase() ?? null,
+      shop: r.shopId == null ? null : String(r.shopId),
+      variant: /^\d+$/.test(String(r.variantId ?? '')) ? String(r.variantId) : null,
+    })
+  }
+  return rows.length && !out.length ? null : out
+}
+
+/**
+ * The rows a link's price comes from: all of them, or — for a link that names
+ * a variant (a colour) — that variant's, known only when the page lists one
+ * variant (a row doesn't say its colour); null when that can't be told.
+ */
+function offersFor(rows: OfferRow[], pageUrl: string): OfferRow[] | null {
+  if (!rows.length || !linkAttrs(pageUrl).length) return rows
+  const variants = new Set(rows.map(r => r.variant).filter(v => v != null))
+  return variants.size === 1 ? rows.filter(r => r.variant != null) : null
+}
+
+/** The new offers' low, high and shops, and the cheapest used and refurbished offer. */
+function byCondition(rows: OfferRow[]): { low: number | null; high: number | null; offers: number | null; currency: string | null; usedLow: number | null; refurbishedLow: number | null } {
+  const cheapest = (c: string): OfferRow | null => rows.filter(r => r.condition === c).reduce<OfferRow | null>((m, r) => (!m || r.price < m.price ? r : m), null)
+  const fresh = rows.filter(r => r.condition === 'new')
+  const best = cheapest('new')
+  return {
+    low: best?.price ?? null,
+    high: fresh.length ? Math.max(...fresh.map(r => r.price)) : null,
+    offers: fresh.length ? new Set(fresh.map((r, i) => r.shop ?? `row ${i}`)).size : null,
+    currency: best?.currency ?? rows[0]?.currency ?? null,
+    usedLow: cheapest('used')?.price ?? null,
+    refurbishedLow: cheapest('refurbished')?.price ?? null,
+  }
+}
+
 /** The price a product page shows, or why there is none. */
 export function readPrice(html: string, pageUrl: string): PriceRead {
   const source: PriceRead['source'] = /prisjakt\.no/i.test(pageUrl) ? 'prisjakt' : 'store'
-  const empty: PriceRead = { status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null, was: null, returnDays: null, source }
+  const empty: PriceRead = {
+    status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
+    was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
+  }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
+  const fromSchema = schemaPrice(html, pageUrl, empty)
+  const product = isPrisjaktUrl(pageUrl) ? new URL(pageUrl).searchParams.get('p') : null
+  const rows = product ? prisjaktOfferRows(html, product) : null
+  const scope = rows ? offersFor(rows, pageUrl) : null
+  if (!scope) return fromSchema
+  const c = byCondition(scope)
+  return {
+    ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
+    currency: c.currency ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
+    condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
+  }
+}
+
+/** What the page's schema.org data says: a product's (or the linked variant's) offers. */
+function schemaPrice(html: string, pageUrl: string, empty: PriceRead): PriceRead {
   const nodes = jsonLdNodes(html)
   const products = nodes.filter(n => { const t = types(n); return t.includes('Product') || t.includes('ProductGroup') })
   for (const p of products) {
@@ -594,6 +758,7 @@ type Watch = {
   name: string | null; image: string | null; low: number | null; high: number | null; offers: number | null
   currency: string | null; in_stock: boolean | null; was: number | null; return_days: number | null
   last_ok_at: string | null; prev_low: number | null; prev_at: string | null
+  condition: PriceCondition | null; used_low: number | null; refurbished_low: number | null
 }
 
 interface CheckOutcome {
@@ -604,7 +769,7 @@ interface CheckOutcome {
   error?: string
 }
 
-const WATCH_COLUMNS = 'item_id, url, checked_at, status, error, source, name, image, low, high, offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at'
+const WATCH_COLUMNS = 'item_id, url, checked_at, status, error, source, name, image, low, high, offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at, condition, used_low, refurbished_low'
 const POINTS_KEEP_DAYS = 730
 const SWEEP_BUDGET_MS = 100_000
 const NOT_MIGRATED = 'Apply migration 137 first'
@@ -613,30 +778,58 @@ const missingTable = (e: { code?: string; message?: string } | null) =>
 
 const lastByHost = new Map<string, number>()
 
-async function politeRead(url: string): Promise<PriceRead & { finalUrl: string }> {
+async function politeRead(url: string, listed: readonly string[]): Promise<PriceRead & { finalUrl: string }> {
+  const site = listedSite(url, listed)
+  if (site) throw new SiteRefused(site)
   let host = ''
   try { host = new URL(url).hostname } catch { /* checked by fetchPage */ }
   const last = lastByHost.get(host) ?? 0
   const wait = last + HOST_GAP_MS - Date.now()
   if (wait > 0) await new Promise(r => setTimeout(r, wait))
   lastByHost.set(host, Date.now())
-  const { html, finalUrl } = await fetchPage(url)
+  const { html, finalUrl } = await fetchPage(url, listed)
   return { ...readPrice(html, finalUrl), finalUrl }
 }
 
 /**
- * One check. The watch keeps the last price really read: a blocked or failed
- * check updates only its time, status and error. `prev_low` is the last
- * DIFFERENT price before the current one (the card's "↓ 500 since …"), and a
- * point is added for every price read — except a repeat within the hour with
- * nothing changed (a second tap on Check now).
+ * The sites never to read (shop_site_policies, migration 188), as hosts. Throws when the list can't be read,
+ * so the caller fetches nothing (fail closed).
  */
-async function checkRow(supabase: SupabaseClient, userId: string, item: Item, prev: Watch | null): Promise<CheckOutcome> {
+async function listedSites(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase.from('shop_site_policies').select('host').eq('no_automated_reading', true).limit(1000)
+  if (error) throw new FetchError('site_rules', missingTable(error) ? 'Apply migration 188 first' : 'Could not read which sites may be read — nothing was fetched')
+  return ((data ?? []) as { host: string }[]).map(r => r.host).filter(h => typeof h === 'string' && h.length > 0)
+}
+
+/** What a read says about a link on a listed site: nothing was fetched. */
+function notAllowedRead(url: string): PriceRead {
+  return {
+    status: 'not_allowed', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null,
+    inStock: null, was: null, returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null,
+    source: isPrisjaktUrl(url) ? 'prisjakt' : 'store',
+  }
+}
+
+/**
+ * One check. The watch keeps the last price really read: a blocked or failed
+ * check updates only its time, status and error — and so does a link on a
+ * listed site, which is never fetched (not_allowed). `prev_low` is the last
+ * DIFFERENT price before the current one (the card's "↓ 500 since …") of the
+ * same kind: a price that covers something else than the last one (new offers
+ * only now, all offers before 188) starts its own trend. A point is added for
+ * every price read — except a repeat within the hour with nothing changed (a
+ * second tap on Check now).
+ */
+async function checkRow(supabase: SupabaseClient, userId: string, item: Item, prev: Watch | null, listed: readonly string[]): Promise<CheckOutcome> {
   const at = new Date().toISOString()
   const url = String(item.url)
   let read: (PriceRead & { finalUrl: string }) | null = null
   let failure: string | null = null
-  try { read = await politeRead(url) } catch (e) { failure = e instanceof FetchError ? e.message : 'Could not read the page' }
+  let refused: string | null = null
+  try { read = await politeRead(url, listed) } catch (e) {
+    if (e instanceof SiteRefused) refused = e.site
+    failure = e instanceof FetchError ? e.message : 'Could not read the page'
+  }
 
   // The link may have changed while the page was read (that deletes the watch); never save a price for the old one.
   const { data: now } = await supabase.from('shop_items').select('url').eq('id', item.id).eq('user_id', userId).maybeSingle()
@@ -647,33 +840,46 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     source: same?.source ?? null, name: same?.name ?? null, image: same?.image ?? null, low: same?.low ?? null, high: same?.high ?? null,
     offers: same?.offers ?? null, currency: same?.currency ?? null, in_stock: same?.in_stock ?? null, was: same?.was ?? null,
     return_days: same?.return_days ?? null, last_ok_at: same?.last_ok_at ?? null, prev_low: same?.prev_low ?? null, prev_at: same?.prev_at ?? null,
+    condition: same?.condition ?? null, used_low: same?.used_low ?? null, refurbished_low: same?.refurbished_low ?? null,
   }
+  // What the kept price covers: a price read before 188 says nothing — Prisjakt's then mixed every offer.
+  const keptCovers: PriceCondition = kept.condition ?? (kept.source === 'prisjakt' ? 'mixed' : 'unknown')
   let row: Record<string, unknown>
   let outcome: CheckOutcome
   if (read && read.status === 'ok' && read.low != null) {
-    const changed = kept.low != null && kept.low !== read.low
+    const comparable = kept.low != null && keptCovers === read.condition
+    const changed = comparable && kept.low !== read.low
     row = {
       source: read.source, name: read.name, image: read.image, low: read.low, high: read.high, offers: read.offers,
       currency: read.currency, in_stock: read.inStock, was: read.was, return_days: read.returnDays, last_ok_at: at,
-      prev_low: changed ? kept.low : kept.prev_low, prev_at: changed ? kept.last_ok_at : kept.prev_at,
+      prev_low: changed ? kept.low : comparable ? kept.prev_low : null, prev_at: changed ? kept.last_ok_at : comparable ? kept.prev_at : null,
+      condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow,
       status: 'ok', error: null,
     }
     outcome = { id: item.id, status: 'ok', low: read.low, currency: read.currency }
     const repeat = same && same.status === 'ok' && same.last_ok_at && Date.parse(at) - Date.parse(same.last_ok_at) < 3600_000
-      && same.low === read.low && same.high === read.high && same.offers === read.offers
+      && same.low === read.low && same.high === read.high && same.offers === read.offers && same.condition === read.condition
     if (!repeat) {
       const { error } = await supabase.from('shop_price_points').insert({
         user_id: userId, item_id: item.id, checked_at: at, low: read.low, high: read.high, offers: read.offers, currency: read.currency, source: read.source,
+        condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow,
       })
       if (error) return { ...outcome, status: 'error', error: missingTable(error) ? NOT_MIGRATED : error.message }
     }
   } else {
-    const status = read ? read.status : 'error'
-    const error = read
-      ? (read.status === 'blocked' ? 'The site asked for a browser check — it blocks automatic reads' : 'No price found on the page')
-      : failure
-    // A page that answered without a price still tells its name and picture.
-    row = { ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error }
+    const status = refused ? 'not_allowed' : read ? read.status : 'error'
+    const onlyResale = read?.condition === 'new' && (read.usedLow != null || read.refurbishedLow != null)
+    const error = refused
+      ? notAllowedText(refused)
+      : read
+        ? (read.status === 'blocked' ? 'The site asked for a browser check — it blocks automatic reads'
+          : onlyResale ? 'No new offer on Prisjakt — only used or refurbished ones' : 'No price found on the page')
+        : failure
+    // A page that answered without a price still tells its name and picture (and Prisjakt its used and refurbished offers).
+    row = {
+      ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error,
+      ...(read?.condition === 'new' ? { used_low: read.usedLow, refurbished_low: read.refurbishedLow } : {}),
+    }
     outcome = { id: item.id, status, low: null, currency: null, error: error ?? undefined }
   }
   const { error } = await supabase.from('shop_price_watch').upsert({ item_id: item.id, user_id: userId, url, checked_at: at, ...row }, { onConflict: 'item_id' })
@@ -924,9 +1130,10 @@ Deno.serve(async (req: Request) => {
     const url = typeof body.url === 'string' ? body.url.trim() : ''
     if (!url) return json({ error: 'url required' }, 400)
     try {
-      const r = await politeRead(url)
+      const r = await politeRead(url, await listedSites(supabase))
       return json({ result: { ...r, at: new Date().toISOString() } })
     } catch (e) {
+      if (e instanceof SiteRefused) return json({ result: { ...notAllowedRead(url), site: e.site, at: new Date().toISOString(), finalUrl: url } })
       return json({ error: e instanceof FetchError ? e.message : 'Could not read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)
     }
   }
@@ -941,11 +1148,15 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await supabase.from('shop_items').select('id, url').eq('user_id', userId).in('id', ids)
     if (error) return json({ error: error.message }, 200)
     let watches: Map<string, Watch>
-    try { watches = await watchesFor(supabase, ids) } catch (e) { return json({ error: missingTable(e as { code?: string }) ? NOT_MIGRATED : (e as Error).message }, 200) }
+    let listed: string[]
+    try {
+      listed = await listedSites(supabase)
+      watches = await watchesFor(supabase, ids)
+    } catch (e) { return json({ error: missingTable(e as { code?: string }) ? NOT_MIGRATED : (e as Error).message }, 200) }
     const results: CheckOutcome[] = []
     for (const item of (data ?? []) as Item[]) {
       if (!item.url || !/^https?:\/\//i.test(item.url)) { results.push({ id: item.id, status: 'error', low: null, currency: null, error: 'No link to check' }); continue }
-      results.push(await checkRow(supabase, userId, item, watches.get(item.id) ?? null))
+      results.push(await checkRow(supabase, userId, item, watches.get(item.id) ?? null, listed))
     }
     return json({ results })
   }
@@ -954,7 +1165,9 @@ Deno.serve(async (req: Request) => {
     const rates = await fillRates(supabase, userId)
     let items: Item[]
     let watches: Map<string, Watch>
+    let listed: string[]
     try {
+      listed = await listedSites(supabase)
       items = await dueItems(supabase, userId)
       watches = await watchesFor(supabase, items.map(i => i.id))
     } catch (e) {
@@ -968,7 +1181,7 @@ Deno.serve(async (req: Request) => {
     const results: CheckOutcome[] = []
     for (const item of queue) {
       if (Date.now() - started > SWEEP_BUDGET_MS) break
-      results.push(await checkRow(supabase, userId, item, watches.get(item.id) ?? null))
+      results.push(await checkRow(supabase, userId, item, watches.get(item.id) ?? null, listed))
     }
     // History older than two years goes.
     const cutoff = new Date(Date.now() - POINTS_KEEP_DAYS * 86400_000).toISOString()

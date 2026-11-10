@@ -2905,14 +2905,20 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   },
   shop_price_watch: {
     access: 'ro',
-    purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest and how many shops, or the shop\'s own price), written by the daily price check.',
-    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at',
-    rules: 'Say where and when a price is from ("Prisjakt\'s lowest on 08.10.2026"). A blocked or failed check keeps the last price read — say it is from last_ok_at.',
+    purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest new offer and how many shops, or the shop\'s own price), written by the daily price check.',
+    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error|not_allowed — the site\'s terms forbid automated reading, never fetched), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at, condition(new — Prisjakt\'s new offers only | mixed — new, used and refurbished alike | unknown — a shop\'s own page | null — read before 10.11.2026), used_low, refurbished_low(the cheapest used / refurbished offer on Prisjakt)',
+    rules: 'Say where and when a price is from ("Prisjakt\'s lowest new price on 08.10.2026"). A blocked, failed or not_allowed check keeps the last price read — say it is from last_ok_at. A price with condition mixed or null may be a used or refurbished one: say so. used_low and refurbished_low are offers seen, never what the user\'s own thing could sell for.',
   },
   shop_price_points: {
     access: 'ro',
     purpose: 'Every price read of a shop item\'s link — the history behind shop_price_watch.',
-    columns: 'id, item_id, checked_at, low, high, offers, currency, source',
+    columns: 'id, item_id, checked_at, low, high, offers, currency, source, condition(as shop_price_watch.condition), used_low, refurbished_low',
+  },
+  shop_site_policies: {
+    access: 'ro',
+    purpose: 'Sites the price check never reads because their terms forbid automated reading (FINN, Tise): a link is on one when its host is that host or a subdomain of it. The same for every account.',
+    columns: 'id, host, no_automated_reading(boolean), reason, source_url(the terms that say so), checked_on(date), created_at, updated_at',
+    rules: 'Never read or fetch such a site for the user; give them the link to open it themselves. Only migrations change this list.',
   },
   fx_rates_nok: {
     access: 'ro',
@@ -3307,7 +3313,7 @@ function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
 // scopes it. An embed inside a shared catalogue table (no user_id) could reach
 // other accounts' rows — movies(user_movie_entries(*)) lists everyone's — so
 // nothing may be embedded inside one (security audit 10.10.2026).
-const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'screenscraper_systems', 'link_rules'])
+const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'shop_site_policies', 'screenscraper_systems', 'link_rules'])
 function selectProblem(select: unknown): string | null {
   if (select == null || select === '') return null
   if (typeof select !== 'string' || select.length > 2000) return 'select must be a short Postgrest select string.'
