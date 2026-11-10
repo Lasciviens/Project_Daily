@@ -11,7 +11,7 @@ Background: `docs/features/shop.md`.
 - A possession is `list='wishlist' AND kind='item' AND status='bought'` and kept (`ownModel.isPossession`); quick-list ticks never are.
 - Selling never deletes: it writes the disposal facts (one `shop_record_sale` call, Undo `shop_undo_sale`); accessories sold together share a `sale_group`.
 - Deleting a shop item takes the accessories bought for it (`shopModel.deleteScope`), the same from every screen.
-- `shop_price_watch`/`shop_price_points` are written only by `shop-price`, never `shop_items`.
+- `shop_price_watch`/`shop_price_points` are written only by `shop-price` (Delete's Undo puts them back through `shop_restore_price_history`, 187), never `shop_items`.
 - `priceRead.ts` and `fxNorgesBank.ts` are hand-mirrored into `shop-price` (their verify scripts compare them).
 - Never read a site whose terms forbid automated reading: the list is data — `shop_site_policies` (188), a host or its subdomains — never a store name in code (owner, 10.11.2026). `shop-price` checks it before every fetch and every redirect hop, in `read`, `check` and the sweep, and fails closed when it can't read it; the answer is `not_allowed`, shown in plain words with the link to open it yourself.
 - Read a page only where its site's robots.txt allows it — every site, every request (`read`, `check`, the sweep, each redirect hop), through the page fetch's own guards; never a site name in code. A disallowed path is `not_allowed` in the robots wording ("…'s robots rules don't allow reading this page", never the terms' wording); a robots.txt that can't be read means "not read now" (`error`), never "allowed"; a 4xx means no rules (RFC 9309).

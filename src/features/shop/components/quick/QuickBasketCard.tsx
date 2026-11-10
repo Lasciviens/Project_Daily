@@ -90,7 +90,6 @@ export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }
       <div className="mt-3 border-t border-line pt-3 text-meta text-fg-muted">
         {basket.oldest && !loading && !error && <p className="tabular-nums">Prices from {formatDate(basket.oldest)} · Kassalapp</p>}
         {leftOut && !loading && !error && <Truncate as="p" className="tabular-nums">{leftOut}</Truncate>}
-        <p>REMA 1000 publishes no prices, so it can’t be compared.</p>
       </div>
     </Card>
   )
