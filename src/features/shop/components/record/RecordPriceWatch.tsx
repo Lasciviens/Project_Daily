@@ -3,6 +3,7 @@ import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
+import { asTail, coversOf, historyOf, leftOutWords, mixedWords, morningReads, retryWords, type Covers } from '../../watchWords'
 import { hostOf, money } from '../shopFormat'
 import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
@@ -12,7 +13,10 @@ import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
  * shop's own price, with where it was read — a link to the product's page —
  * and when, the trend, the history, and what it means here — at your target,
  * or cheaper than you paid while it can still be returned. A blocked check
- * says so and keeps the last price read.
+ * says so and keeps the last price read; a link on a site that doesn't let
+ * apps read it (its terms, or its robots.txt) is never read, and the card
+ * says so in a neutral tone — it is the site's answer, not a failure — with
+ * no Check now (it could only say no again).
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
   const check = useCheckPrices()
@@ -20,7 +24,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const { data: points = [] } = useShopPricePoints(item.url ? item.id : null)
   if (!item.url) return null
   const cur = (current?.currency ?? currencyOf(item)).toUpperCase()
-  const failed = current && current.status !== 'ok'
+  const refused = current?.status === 'not_allowed'
   const low = current?.low ?? null
   const site = hostOf(item.url) ?? 'the shop'
   const target = item.target_price
@@ -31,9 +35,10 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   return (
     <Card>
       <CardHeader title="Price now" variant="label" className="mb-2"
-        action={<Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
+        // A refused link is never read, so Check now could only say no again: it isn't offered.
+        action={refused ? undefined : <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
       {!current ? (
-        <p className="text-body text-fg-muted">Not checked yet — the morning check reads it, or tap Check now. {open}</p>
+        <p className="text-body text-fg-muted">Not checked yet — {morningReads(item, today) ? 'the morning check reads it, or tap Check now' : 'tap Check now'}. {open}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {low != null ? (
@@ -41,11 +46,11 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
               <span className="text-lead font-semibold tabular-nums text-fg">{money(low, cur)}</span>
               <span className="text-meta text-fg-muted">
                 {current.source === 'prisjakt'
-                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
+                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{mixedWords(current)}{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
                   : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
               </span>
             </p>
-          ) : <p className="text-meta">{open}</p>}
+          ) : !refused && <p className="text-meta">{open}</p>}
           {current.prev_low != null && low != null && current.prev_low !== low && (
             <TonePill tone={low < current.prev_low ? 'success' : 'warn'} className="w-fit tabular-nums">
               {low < current.prev_low ? '↓' : '↑'} {money(Math.abs(low - current.prev_low), cur)} since {formatDate(current.prev_at)}
@@ -62,16 +67,11 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
             </p>
           )}
           {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
-          {failed && (
-            <p className="text-meta text-warn">
-              Couldn't check {formatDate(current.checked_at)}: {current.error ?? 'no price on the page'}.
-              {low != null && current.last_ok_at && <> The price above is from {formatDate(current.last_ok_at)}.</>}
-            </p>
-          )}
-          <Sparkline points={points} currency={cur} />
+          <WatchAnswer item={item} watch={current} today={today} />
+          <Sparkline points={points} covers={coversOf(current)} currency={cur} />
           <p className="text-micro text-fg-muted">
             {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
-            {' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}
+            {refused && !current.last_ok_at ? null : <>{' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}</>}
           </p>
         </div>
       )}
@@ -79,11 +79,34 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   )
 }
 
-/** The lowest price over the checks, with its lowest and highest marked. */
-function Sparkline({ points, currency }: { points: ShopPricePoint[]; currency: string }) {
+/**
+ * Why the last check read no price — the line under the price (the footer's "Read …" dates a price kept from
+ * before): a refusal and a page without a price are the site's answers, in a neutral tone; a bot check and a
+ * failed check are failures, in the warning tone, with when the morning check tries again.
+ */
+function WatchAnswer({ item, watch, today }: { item: ShopItem; watch: ShopPriceWatch; today: string }) {
+  if (watch.status === 'ok') return null
+  if (watch.status === 'not_allowed') {
+    return <p className="text-meta text-fg-muted">{watch.error ?? `${hostOf(item.url) ?? 'The site'} doesn't let apps read its pages`}, so its price isn't checked.</p>
+  }
+  if (watch.status === 'no_price') return <p className="text-meta text-fg-muted">{watch.error ?? 'No price on the page'}.</p>
+  const retry = retryWords(item, watch, today)
+  return (
+    <p className="text-meta text-warn">
+      Couldn't check {formatDate(watch.checked_at)}: {asTail(watch.error ?? 'The site didn\'t answer')}{retry ? ` — ${retry}` : ''}.
+    </p>
+  )
+}
+
+/**
+ * The lowest price over the checks, with its lowest and highest marked — only prices of the watch's own kind
+ * (`historyOf`: a new price is never set against a used one), and a line naming the ones left out.
+ */
+function Sparkline({ points, covers, currency }: { points: ShopPricePoint[]; covers: Covers; currency: string }) {
   const colors = useChartColors()
-  const rows = points.filter(p => (p.currency ?? currency).toUpperCase() === currency)
-  if (rows.length < 2) return null
+  const { rows, leftOut } = historyOf(points, covers, currency)
+  const note = leftOutWords(leftOut)
+  if (rows.length < 2) return note ? <p className="text-micro text-fg-muted">{note}</p> : null
   const lows = rows.map(p => p.low)
   const min = Math.min(...lows), max = Math.max(...lows)
   const span = max - min || 1
@@ -100,6 +123,7 @@ function Sparkline({ points, currency }: { points: ShopPricePoint[]; currency: s
         <span>{formatDate(rows[0].checked_at)}</span>
         <span>lowest {money(min, currency)} · highest {money(max, currency)}</span>
       </p>
+      {note && <p className="text-micro text-fg-muted">{note}</p>}
     </div>
   )
 }

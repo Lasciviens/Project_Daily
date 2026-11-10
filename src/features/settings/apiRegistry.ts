@@ -301,7 +301,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
   {
     id: 'kassalapp', name: 'Kassalapp', provider: 'kassal.app', category: 'Food', official: true,
     docsUrl: 'https://kassal.app/api',
-    purpose: 'Norwegian branded groceries with price and nutrition, listed first in online food search; on Shop\'s quick list, each matched item\'s price at every chain it follows (Coop, Kiwi, Meny, Spar, Joker, Oda, Bunnpris).',
+    purpose: 'Norwegian branded groceries with price and nutrition, listed first in online food search; on Shop\'s quick list, each matched item\'s price at every chain with a current price (read daily only from Meny, Spar, Joker, Oda, Bunnpris, Europris, Engrosnett, Havaristen, Holdbart, Fudi, Leske and FastCandy).',
     transports: ['edge'],
     connection: 'Through the food-search edge function so the personal key stays server-side.',
     edgeFunctions: ['food-search'], endpoints: ['kassal.app/api/v1'],
@@ -310,7 +310,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     usedIn: [{ label: 'Log food — online search', path: '/recipes' }, { label: 'Shop — quick list prices', path: '/shop?view=quick' }],
     cost: 'personal-key',
     limits: '60 calls a minute on the free plan; the quick list prices every matched item in one bulk call (≤ 100 EANs).',
-    caveats: ['REMA 1000 publishes no prices online, so it never appears in the chain comparison.'],
+    caveats: ['REMA 1000, Kiwi and Coop have no current prices: their old ones still come back, often from 2024, and the quick list leaves out a price not checked in 14 days (the basket names them).'],
     since: '19.07.2026', sinceFrom: 'supabase/functions/food-search/index.ts',
   },
   {

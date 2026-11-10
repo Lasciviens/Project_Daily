@@ -17,7 +17,7 @@ export async function searchGroceries(query: string): Promise<GroceryHit[]> {
   return (data?.products ?? []) as GroceryHit[]
 }
 
-/** Each EAN's current price at every chain Kassalapp follows. An older function without the mode answers nothing. */
+/** Each EAN's last price at every chain that lists it, old ones too (groceryModel leaves those out). An older function without the mode answers nothing. */
 export async function fetchGroceryPrices(eans: readonly string[]): Promise<GroceryPrice[]> {
   const list = [...new Set(eans)].filter(Boolean).slice(0, 100)
   if (!list.length) return []

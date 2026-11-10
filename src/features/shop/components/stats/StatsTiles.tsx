@@ -45,7 +45,7 @@ export function StatsTiles({ period: p, totals: t, owned, use, resale, kept, onD
         <StatTile
           icon={icon(<Wallet />)} label={`Net spend · ${when}`}
           value={netKnown ? num(t.net.nok) : 'Unknown'} unit={netKnown ? 'NOK' : undefined}
-          hint={netKnown ? `Spent ${num(t.spent.nok)} · ${short ? 'back' : 'got back'} ${num(t.got.nok)}` : countReason(t.net)}
+          hint={netKnown ? (short ? `−${num(t.spent.nok)} · +${num(t.got.nok)}` : `Spent ${num(t.spent.nok)} · got back ${num(t.got.nok)}`) : countReason(t.net)}
           onClick={() => onDrill({ kind: 'period', year: p.year })}
         />
         <StatTile

@@ -266,8 +266,12 @@ console.log('\n10 · The draft kept on this device')
   check('two steps with one key are refused', D.parseDraft({ steps: [{ key: 'k' }, { key: 'k' }] }) === null)
 }
 
-console.log('\n11 · A row carries every column (shop_restore_items reads them all)')
+// Since 187 shop_restore_items writes only the keys a row names (the rest take their defaults), but a
+// column the app writes still belongs on the row: one the chain builder forgot would be saved empty.
+// Exempt: what only the database writes — a sale's Undo record (sale_undo, written by shop_record_sale).
+console.log('\n11 · A row carries every column the app writes')
 {
+  const DATABASE_ONLY = new Set(['sale_undo'])
   const dir = path.join(__dirname, '..', 'supabase', 'migrations')
   const files = fs.readdirSync(dir).filter(f => /\.sql$/.test(f))
   const cols = new Set()
@@ -278,8 +282,9 @@ console.log('\n11 · A row carries every column (shop_restore_items reads them a
     for (const block of sql.matchAll(/ALTER TABLE public\.shop_items([\s\S]*?);/gi)) for (const m of block[1].matchAll(/ADD COLUMN IF NOT EXISTS\s+(\w+)/gi)) cols.add(m[1])
   }
   const row = live(rp()).items[0]
-  const missing = [...cols].filter(c => !(c in row))
-  check(`every shop_items column the migrations add is on the row (${cols.size})`, cols.size >= 55 && missing.length === 0, missing.join(', '))
+  const missing = [...cols].filter(c => !(c in row) && !DATABASE_ONLY.has(c))
+  check(`every shop_items column the migrations add is on the row (${cols.size}, less the database's own)`, cols.size >= 56 && missing.length === 0, missing.join(', '))
+  check('the database\'s own columns exist (a renamed one would leave this list stale)', [...DATABASE_ONLY].every(c => cols.has(c)), [...DATABASE_ONLY].filter(c => !cols.has(c)).join(', '))
   const linkKeys = Object.keys(live(rp()).links[0]).sort().join()
   check('a link carries id, user_id, from_id, to_id, amount, created_at', linkKeys === 'amount,created_at,from_id,id,to_id,user_id')
 }

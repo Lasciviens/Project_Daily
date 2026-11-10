@@ -7,13 +7,16 @@ import { useCreateShopItem } from '../../hooks/useShop'
 import { useQuietCheck } from '../../hooks/useShopPrices'
 import { readPriceLink } from '../../api/shopPriceApi'
 import { currencyOf, SHOP_CURRENCIES } from '../../shopModel'
+import { readNote } from '../../watchWords'
 import { MoneyEditor } from '../record/factKit'
 import { ItemThumb } from '../shopKit'
 import type { ShopCurrency, ShopItem } from '../../types'
 
 /**
  * Add a model to a general wish. A Prisjakt or shop link fills the name,
- * price and picture, and the morning check keeps its price fresh.
+ * price and picture, with the add sheet's note (`readNote`: what was read and
+ * when, or why there is no price), and the morning check keeps its price
+ * fresh where the site lets apps read it.
  */
 export function ModelSheet({ wish, onClose }: { wish: ShopItem; onClose: () => void }) {
   const create = useCreateShopItem()
@@ -32,11 +35,11 @@ export function ModelSheet({ wish, onClose }: { wish: ShopItem; onClose: () => v
     setReading(true); setNote(null)
     try {
       const r = await readPriceLink(u)
+      setNote(readNote(r))
+      if (r.status === 'not_allowed') return
       if (r.name && !title.trim()) setTitle(r.name)
       if (r.low != null) { setPrice(r.low); if (r.currency && SHOP_CURRENCIES.includes(r.currency as ShopCurrency)) setCurrency(r.currency as ShopCurrency) }
       if (r.image) setImage(r.image)
-      setNote(r.status === 'ok' ? `${r.source === 'prisjakt' ? `Prisjakt: lowest of ${r.offers ?? 'several'} shops` : 'The shop\'s price'} — read just now.`
-        : r.status === 'blocked' ? 'The site blocks automatic reads — type the price yourself.' : 'No price on that page — type it yourself.')
     } catch (e) {
       setNote((e as Error).message)
       logError(`shop_read_link: ${(e as Error).message}`, { action: 'shop_read_link' })

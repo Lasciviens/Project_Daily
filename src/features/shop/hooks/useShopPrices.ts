@@ -1,11 +1,13 @@
 import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { fetchPricePoints, fetchPriceWatches } from '../api/shopApi'
 import { checkItemPrices, type PriceCheckOutcome } from '../api/shopPriceApi'
 import { fetchGroceryPrices, searchGroceries } from '../api/groceryApi'
+import { checkToast } from '../watchWords'
 import type { GroceryHit } from '../groceryModel'
 import type { ShopPriceWatch } from '../types'
 
@@ -32,17 +34,28 @@ export function useShopPricePoints(itemId: string | null) {
 }
 
 /**
- * "Check now": re-reads the links. One link that read nothing is an error
- * with the reason (the watch still records the check); several report a count.
+ * "Check now": re-reads the links (or answers with the check from the last
+ * hour, said so). A price is the result; a site's answer without one — a bot
+ * check, no price — is a warning in its words (`checkToast`); a failed check
+ * is an error with the reason (the watch still records it, and shop-price
+ * never answers a failure from the last hour, so a second tap tries again).
+ * Several links report a count.
  */
 export function useCheckPrices() {
   return useMutationWithFeedback({
     action:         'check_shop_prices',
     loadingMessage: 'Checking the price…',
-    successMessage: (r: PriceCheckOutcome[]) => (r.length === 1 ? 'Price checked' : `Checked ${r.length} links · ${r.filter(x => x.status === 'ok').length} with a price`),
+    successMessage: (r: PriceCheckOutcome[]) => {
+      const t = checkToast(r)
+      return t.tone === 'success' ? t.text : undefined
+    },
+    onSuccess:      (r: PriceCheckOutcome[]) => {
+      const t = checkToast(r)
+      if (t.tone === 'warning') toast.warning(t.text)
+    },
     mutationFn:     async (ids: string[]) => {
       const r = await checkItemPrices(ids)
-      if (r.length === 1 && r[0].status !== 'ok') throw new Error(r[0].error ?? 'No price found on the page')
+      if (r.length === 1 && r[0].status === 'error') throw new Error(r[0].error ?? 'Couldn\'t check the price')
       return r
     },
     invalidates:    (_d, ids) => [qk.shop.watches(), ...ids.map(id => qk.shop.points(id))],
@@ -60,13 +73,16 @@ export function useQuietCheck() {
   }
 }
 
-/** Products for a quick-list row (Kassalapp), while typing. */
+/** Kassalapp's search takes at least 3 characters (its spec's `minLength: 3`; shorter is a 422). */
+export const SEARCH_MIN_CHARS = 3
+
+/** Products for a quick-list row (Kassalapp), while typing — from `SEARCH_MIN_CHARS`. */
 export function useGrocerySearch(query: string) {
   const q = query.trim()
   return useQuery({
     queryKey: qk.shop.grocerySearch(q.toLowerCase()),
     queryFn: () => searchGroceries(q),
-    enabled: q.length >= 2,
+    enabled: q.length >= SEARCH_MIN_CHARS,
     staleTime: STALE.hour,
     retry: false,
   })
