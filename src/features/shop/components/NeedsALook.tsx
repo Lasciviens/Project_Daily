@@ -51,7 +51,8 @@ function LookRow({ look, onOpen, onBought }: { look: Look } & LookActions) {
       <LookIcon look={look} />
       <span className="min-w-0 flex-1">
         <Truncate as="span" className="block text-body font-medium text-fg">{look.title}</Truncate>
-        <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted" items={look.facts} />
+        <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted"
+          items={[...look.facts, look.where && <span key="w" className="whitespace-normal break-words">{look.where}</span>]} />
       </span>
     </>
   )

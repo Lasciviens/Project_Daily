@@ -44,13 +44,15 @@ console.log('at your target')
   const hp = item({ title: 'Headphones', url: 'https://www.elkjop.no/p/1', target_price: 2990, price: 3490 })
   const ls = looks([hp], [watch(hp, 2990)])
   check('a read price at or under the target is a success row with Bought', eq(kinds(ls), ['at_target']) && ls[0].tone === 'success' && ls[0].action === 'bought')
-  check('its words: "At your target" · the price and where it was read', eq(ls[0].facts.map(sp), ['At your target', '2 990 NOK at elkjop.no']), JSON.stringify(ls[0].facts))
-  check('Prisjakt says Prisjakt', sp(looks([hp], [watch(hp, 2900, { source: 'prisjakt' })])[0].facts[1]) === '2 900 NOK at Prisjakt')
+  check('its words: "At your target" · the price, and where it was read apart (from the link, any length: the part that may wrap)',
+    eq(ls[0].facts.map(sp), ['At your target', '2 990 NOK']) && ls[0].where === 'at elkjop.no', JSON.stringify(ls[0]))
+  check('Prisjakt says Prisjakt', looks([hp], [watch(hp, 2900, { source: 'prisjakt' })])[0].where === 'at Prisjakt')
+  check('no other row carries a site', looks([mine({ return_by: day(1) })]).every(l => l.where === null))
   check('a typed price at the target is never "at target" (no read, no row)', looks([item({ price: 2990, target_price: 2990 })]).length === 0)
   check('a read of an older link is not this link\'s price', looks([hp], [watch({ ...hp, url: 'https://old.example.com/x' }, 2000)]).length === 0)
   check('a read in another currency is not compared with the target', looks([hp], [watch(hp, 2000, { currency: 'EUR' })]).length === 0)
   check('above the target: nothing', looks([hp], [watch(hp, 3000)]).length === 0)
-  check('a javascript: link never becomes a site name', !looks([{ ...hp, url: 'javascript:alert(1)' }], [watch({ ...hp, url: 'javascript:alert(1)' }, 2990)])[0].facts.join(' ').includes('alert'))
+  check('a javascript: link never becomes a site name', looks([{ ...hp, url: 'javascript:alert(1)' }], [watch({ ...hp, url: 'javascript:alert(1)' }, 2990)])[0].where === null)
 }
 
 console.log('owned things: money to claim, returns, complaint rights, old estimates')

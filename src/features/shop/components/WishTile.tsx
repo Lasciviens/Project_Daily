@@ -72,7 +72,8 @@ export function WishTile({ item, topId, task, today, watch, span, afterSale, onO
           <span className={cx('whitespace-nowrap text-ui tabular-nums', now || own ? 'font-semibold text-fg' : 'text-fg-muted')}>
             {now ? money(now.amount, now.currency) : own ?? 'No price yet'}
           </span>
-          {where && <span className="whitespace-nowrap">{where}{item.region === 'TR' && <span title="Buy it in Turkey"> 🇹🇷</span>}</span>}
+          {/* From the link (or typed): of any length, so it may wrap — never out of the tile. */}
+          {where && <span className="min-w-0 break-words">{where}{item.region === 'TR' && <span title="Buy it in Turkey"> 🇹🇷</span>}</span>}
         </p>
         <MetaLine className="text-meta tabular-nums text-fg-muted" items={[
           change != null && (
@@ -89,7 +90,7 @@ export function WishTile({ item, topId, task, today, watch, span, afterSale, onO
         ]} />
         {item.wait_for_deal && item.deal_note && <Truncate as="p" className="text-meta text-fg-muted">{item.deal_note}</Truncate>}
         {afterSale && complete(afterSale.needed) && (
-          <p className="text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>
+          <p className="break-words text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>
         )}
         {span && now && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
       </div>

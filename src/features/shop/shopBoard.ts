@@ -6,17 +6,19 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 //   top, the summary line inside `groups` right above the picture tiles, and
 //   "Needs a look" in a sticky rail on the RIGHT, where Owned has Coming up
 //   (owner, 14.10.2026).
-//   1  phone, tablet — the filters, Needs a look as ONE line (it opens a
-//      sheet; owner, 09.11.2026: the first screen is the things), the groups.
+//   1  phone, tablet — Needs a look as ONE line (it opens a sheet; owner,
+//      09.11.2026: the first screen is the things), the filters, the groups.
+//      The line leads: the filters go away for an empty wishlist, and nothing
+//      that stays may sit under them (a layout shift).
 //   2+ the groups take every track but the last, so the tiles (10rem and up)
 //      gain columns as the page widens; Needs a look is the last track.
-export const WISHLIST_SECTIONS = ['filters', 'look', 'groups'] as const
+export const WISHLIST_SECTIONS = ['look', 'filters', 'groups'] as const
 export type WishlistSection = typeof WISHLIST_SECTIONS[number]
 
 const LOOK_RAIL = { stack: ['look'], sticky: true } as const
 
 export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
-  1: ['filters', 'look', 'groups'],
+  1: ['look', 'filters', 'groups'],
   2: { top: ['filters'], columns: [['groups'], LOOK_RAIL] },
   3: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, LOOK_RAIL] },
   4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, LOOK_RAIL] },

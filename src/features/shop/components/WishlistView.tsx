@@ -159,9 +159,10 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     )
   }
 
+  // The loading copy and the list are keyed apart (THEME §5), each measured for the stacks before it paints.
   const tilesLoading = isLoading || watchQ.isLoading || history.loading
   const groupsSection = tilesLoading ? (
-    <div aria-busy="true" className="flex flex-col gap-4">
+    <div key="loading" ref={listRef} aria-busy="true" className="flex flex-col gap-4">
       <Skeleton className="h-4 w-72 max-w-full" />
       <section className="flex flex-col gap-2">
         <span className="flex min-h-[44px] items-center"><Skeleton className="h-5 w-44" /></span>
@@ -173,7 +174,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       description="Things you want to buy someday — with a price, where to buy them and when."
       action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })}>Add item</Button>} />
   ) : (
-    <div className="flex flex-col gap-4">
+    <div key="list" ref={listRef} className="flex flex-col gap-4">
       {all.length > 0 && (
         <WishlistSummaryLine totals={totals} shown={shown.length} all={all.length} filtered={filtersActive(filters)}
           rates={rates} ratesDate={ratesDate} failed={failed} />
@@ -222,12 +223,11 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
         // While loading too: arriving with the items, the filters pushed the list down (a layout shift).
         filters: (all.length > 0 || isLoading) && (
           <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={folded}
-            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} />} />
+            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} pending={tilesLoading} />} />
         ),
         // In every outcome (loading, nothing, something): one line on a phone, the rail's card on a wide page.
         look: <NeedsALook looks={looks} loading={isLoading || watchQ.isLoading} failed={lookFailed} onRetry={retryLook} onOpen={openLook} onBought={buyLook} />,
-        // Measured in every state (loading, empty, the list), so the stacks never change when the list lands.
-        groups: <div ref={listRef}>{groupsSection}</div>,
+        groups: groupsSection,
       }}
     />
   )

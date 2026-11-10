@@ -23,6 +23,8 @@ export interface Look {
   title: string
   /** What is due and the money involved, as short facts: "Return by 11.11.2026", "tomorrow", "paid 1 990 NOK". */
   facts: string[]
+  /** Where a price was read ("at elkjop.no"): from the link, so of any length — the one part that may wrap. */
+  where: string | null
   action: LookAction
   /** Money you can get back: cheaper now than you paid, while it can still be returned. */
   claim: Money | null
@@ -101,8 +103,8 @@ export function tidyReasons(i: ShopItem, today: string): { noDay: boolean; rate:
 export function needsALook(items: readonly ShopItem[], watches: ReadonlyMap<string, ShopPriceWatch>, today: string): Look[] {
   const out: Look[] = []
   const tidy = { things: [] as ShopItem[], noDay: 0, rate: 0, noAmount: 0 }
-  const push = (l: Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order'> & Partial<Pick<Look, 'claim' | 'daysLeft' | 'order'>>, i: ShopItem) =>
-    out.push({ key: `${l.kind}:${i.id}`, title: i.title, claim: null, daysLeft: null, order: 0, ...l })
+  const push = (l: Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'where'> & Partial<Pick<Look, 'claim' | 'daysLeft' | 'order' | 'where'>>, i: ShopItem) =>
+    out.push({ key: `${l.kind}:${i.id}`, title: i.title, claim: null, daysLeft: null, order: 0, where: null, ...l })
 
   for (const i of items) {
     const watch = watches.get(i.id)
@@ -110,8 +112,8 @@ export function needsALook(items: readonly ShopItem[], watches: ReadonlyMap<stri
       if (i.kind !== 'general' && atTarget(i, watch)) {
         const now = watchedPrice(i, watch) as Money
         const site = siteOf(i, watch)
-        push({ kind: 'at_target', tone: 'success', itemId: i.id, action: 'bought',
-          facts: facts('At your target', `${money(now.amount, now.currency)}${site ? ` at ${site}` : ''}`) }, i)
+        push({ kind: 'at_target', tone: 'success', itemId: i.id, action: 'bought', where: site ? `at ${site}` : null,
+          facts: facts('At your target', money(now.amount, now.currency)) }, i)
       }
       const age = daysBetween(localDay(i.created_at), today)
       // A general wish's models are counted through the wish.
@@ -162,7 +164,7 @@ export function needsALook(items: readonly ShopItem[], watches: ReadonlyMap<stri
   if (tidy.things.length) {
     const first = tidy.things[0]
     out.push({
-      key: 'tidy', kind: 'tidy', tone: 'info', itemId: first.id, action: 'open', claim: null, daysLeft: null, order: 0,
+      key: 'tidy', kind: 'tidy', tone: 'info', itemId: first.id, action: 'open', claim: null, daysLeft: null, order: 0, where: null,
       title: `${plural(tidy.things.length, 'thing')} to tidy up`,
       facts: facts(
         tidy.noDay > 0 && `${tidy.noDay} without a purchase day`,
