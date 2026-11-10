@@ -46,12 +46,14 @@ end $$;
 create or replace function public.update_updated_at() returns trigger language plpgsql as $$
 begin new.updated_at := now(); return new; end $$;
 
--- What 134's task_id points at.
+-- What 134's task_id points at, with its owner policy as production has it (139's owner lock goes on top).
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title text not null
 );
+alter table public.tasks enable row level security;
+create policy "own tasks" on public.tasks for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- 037's audit log and 140's trigger function (verbatim but for the retention sweep).
 create table public.audit_logs (

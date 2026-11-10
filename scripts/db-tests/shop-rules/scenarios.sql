@@ -472,6 +472,39 @@ begin
     'S6 a row whose parent was deleted since comes back on its own');
 end $$;
 reset role;
+-- What a row points at that is gone since — its category, its task, its money link's other end — stays out
+-- and the row comes back (one foreign key error used to refuse the whole Undo). A stranger's category is
+-- not the caller's to point at: it counts as gone.
+insert into public.shop_categories (id, user_id, name) values ('c6300000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-000000000002', 'Their garden');
+set role authenticated;
+do $$
+declare s jsonb; e text;
+begin
+  insert into public.shop_categories (id, name) values
+    ('c6300000-0000-0000-0000-0000000000a1', 'Garden'), ('c6300000-0000-0000-0000-0000000000a2', 'Tools');
+  insert into public.tasks (id, title) values
+    ('c6300000-0000-0000-0000-0000000000b1', 'Mow the lawn'), ('c6300000-0000-0000-0000-0000000000b2', 'Fix the fence');
+  insert into public.shop_items (id, title, price, status, bought_at, category_id, task_id) values
+    ('c6300000-0000-0000-0000-00000000000a', 'Mower', 3000, 'bought', '2026-04-01 12:00+02', 'c6300000-0000-0000-0000-0000000000a1', 'c6300000-0000-0000-0000-0000000000b1'),
+    ('c6300000-0000-0000-0000-00000000000b', 'Saw', 400, 'bought', '2026-04-01 12:00+02', 'c6300000-0000-0000-0000-0000000000a2', 'c6300000-0000-0000-0000-0000000000b2');
+  insert into public.shop_items (id, title, status) values ('c6300000-0000-0000-0000-00000000000c', 'Robot mower', 'wishlist');
+  insert into public.shop_item_links (from_id, to_id) values ('c6300000-0000-0000-0000-00000000000a', 'c6300000-0000-0000-0000-00000000000c');
+  s := public.shop_delete_items(array['c6300000-0000-0000-0000-00000000000a', 'c6300000-0000-0000-0000-00000000000b']::uuid[]);
+  delete from public.shop_categories where id = 'c6300000-0000-0000-0000-0000000000a1';
+  delete from public.tasks where id = 'c6300000-0000-0000-0000-0000000000b2';
+  perform public.shop_delete_items(array['c6300000-0000-0000-0000-00000000000c']::uuid[]);
+  e := t_err(format('select public.shop_restore_items(%L::jsonb)', s));
+  perform t_ok(e = 'done'
+               and (select category_id is null and task_id = 'c6300000-0000-0000-0000-0000000000b1' from public.shop_items where id = 'c6300000-0000-0000-0000-00000000000a')
+               and (select category_id = 'c6300000-0000-0000-0000-0000000000a2' and task_id is null from public.shop_items where id = 'c6300000-0000-0000-0000-00000000000b')
+               and not exists (select 1 from public.shop_item_links where from_id = 'c6300000-0000-0000-0000-00000000000a'),
+    'S6 Undo after the category, the task and the money link''s other end were deleted: the rows come back without just those, the rest kept (' || e || ')');
+  perform public.shop_restore_items(jsonb_build_object('items', jsonb_build_array(jsonb_build_object(
+    'id', 'c6300000-0000-0000-0000-00000000000d', 'title', 'Hose', 'status', 'wishlist', 'category_id', 'c6300000-0000-0000-0000-0000000000a9'))));
+  perform t_ok((select category_id is null from public.shop_items where id = 'c6300000-0000-0000-0000-00000000000d'),
+    'S6 a snapshot pointing at a stranger''s category: that link stays out (a foreign key alone would have kept it)');
+end $$;
+reset role;
 -- A table added later that points at shop_items: its rows go with a delete and come back with Undo.
 create table public.t_shop_receipts (
   id uuid primary key default gen_random_uuid(),
@@ -520,6 +553,53 @@ begin
 end $$;
 reset role;
 drop table public.t_shop_receipts, public.t_shop_notes, public.t_shop_secret;
+-- Later tables the browser can read but not write back: one with no INSERT, one whose pointer it may not
+-- update, one whose own row level security refuses the insert. Delete names the first two in `hidden`
+-- (their rows don't come back), Undo still brings the thing back, and a snapshot that names them in
+-- `more` anyway is skipped there, never refused.
+create table public.t_shop_scans (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
+  item_id uuid not null references public.shop_items(id) on delete cascade, note text);
+create table public.t_shop_marks (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
+  item_id uuid references public.shop_items(id) on delete set null);
+create table public.t_shop_tags (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  item_id uuid not null references public.shop_items(id) on delete cascade, tag text);
+alter table public.t_shop_scans enable row level security;
+alter table public.t_shop_marks enable row level security;
+alter table public.t_shop_tags enable row level security;
+create policy own on public.t_shop_scans for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy own on public.t_shop_marks for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy own_read on public.t_shop_tags for select using ((select auth.uid()) = user_id);
+revoke all on public.t_shop_scans, public.t_shop_marks, public.t_shop_tags from authenticated;
+grant select on public.t_shop_scans, public.t_shop_marks to authenticated;
+grant select, insert on public.t_shop_tags to authenticated;
+insert into public.shop_items (id, user_id, title, price, status, bought_at) values
+  ('c6400000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', 'Drill', 900, 'bought', '2026-04-01 12:00+02');
+insert into public.t_shop_scans (user_id, item_id, note) values ('00000000-0000-0000-0000-000000000001', 'c6400000-0000-0000-0000-00000000000a', 'Receipt scan');
+insert into public.t_shop_marks (id, user_id, item_id) values ('c6400000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000001', 'c6400000-0000-0000-0000-00000000000a');
+insert into public.t_shop_tags (user_id, item_id, tag) values ('00000000-0000-0000-0000-000000000001', 'c6400000-0000-0000-0000-00000000000a', 'tools');
+set role authenticated;
+do $$
+declare s jsonb; e text;
+begin
+  s := public.shop_delete_items(array['c6400000-0000-0000-0000-00000000000a']::uuid[]);
+  perform t_ok(s -> 'hidden' @> '["t_shop_scans", "t_shop_marks"]' and jsonb_array_length(s -> 'hidden') = 2
+               and jsonb_array_length(s -> 'more') = 1 and s -> 'more' -> 0 ->> 'table' = 't_shop_tags',
+    'S6 a later table the caller can read but not write back (no INSERT, no UPDATE of its pointer) is named in hidden, its rows not kept');
+  e := t_err(format('select public.shop_restore_items(%L::jsonb)', s));
+  perform t_ok(e = 'done' and exists (select 1 from public.shop_items where id = 'c6400000-0000-0000-0000-00000000000a')
+               and not exists (select 1 from public.t_shop_tags where item_id = 'c6400000-0000-0000-0000-00000000000a'),
+    'S6 …Undo brings the drill back; the tag its own table''s rules refuse the caller stays out (' || e || ')');
+  e := t_err(format('select public.shop_restore_items(%L::jsonb)', jsonb_build_object('items', '[]'::jsonb, 'more', jsonb_build_array(
+    jsonb_build_object('table', 't_shop_scans', 'col', 'item_id', 'action', 'deleted', 'rows', jsonb_build_array(jsonb_build_object(
+      'user_id', auth.uid(), 'item_id', 'c6400000-0000-0000-0000-00000000000a', 'note', 'Smuggled'))),
+    jsonb_build_object('table', 't_shop_marks', 'col', 'item_id', 'action', 'emptied', 'rows', jsonb_build_array(jsonb_build_object(
+      'id', 'c6400000-0000-0000-0000-0000000000e1', 'item_id', 'c6400000-0000-0000-0000-00000000000a')))))));
+  perform t_ok(e = 'done' and not exists (select 1 from public.t_shop_scans where note = 'Smuggled')
+               and (select item_id is null from public.t_shop_marks where id = 'c6400000-0000-0000-0000-0000000000e1'),
+    'S6 …and a snapshot naming those tables in more anyway is skipped there, not refused (' || e || ')');
+end $$;
+reset role;
+drop table public.t_shop_scans, public.t_shop_marks, public.t_shop_tags;
 -- Why Shop keeps its own restore: 144's generic app_restore_rows puts a group back in one statement in
 -- the order it read the rows, and a case read before its phone can't find it (the rules refuse it).
 -- app_delete_rows reads in no set order (the plan and where the rows sit decide; a run once got the

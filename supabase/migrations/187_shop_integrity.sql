@@ -7,8 +7,11 @@
 --
 --  1. Delete's Undo (shop_restore_items) puts the rows back first and their parents after (an accessory's
 --     item, a model's wish): 137 ordered "parents first" by date, so a case bought before the phone model
---     it was moved under came back before the phone, the rule refused it and both stayed deleted. The
---     chain builder saves through the same function.
+--     it was moved under came back before the phone, the rule refused it and both stayed deleted. What a
+--     row points at that is gone since — its category, its task (every single-column foreign key of
+--     shop_items into the app's tables, from the catalogue), a money link's other end — stays out, as
+--     that row's own delete left it; one foreign key error used to refuse the whole Undo. A row pointing
+--     at a stranger's row counts it as gone. The chain builder saves through the same function.
 --  2. Delete takes a row's price watch and its history (ON DELETE CASCADE): shop_delete_items now keeps
 --     them in its snapshot, and shop_restore_items puts them back through shop_restore_price_history
 --     (SECURITY DEFINER — the browser has no write on those tables). It writes only for the rows that same
@@ -584,8 +587,11 @@ $$;
 
 -- Deletes the rows and returns everything needed to put them back: their links and costs, their price
 -- watch and history (which the delete takes with it), the children whose parent pointer it empties, and
--- the rows of any later table that points at shop_items (`more`; a table the caller may not read is
--- named in `hidden`).
+-- the rows of any later table that points at shop_items (`more`). A table whose rows the caller may not
+-- read, or could not put back (no INSERT where the delete takes its rows, no UPDATE of the column where
+-- it empties it), is named in `hidden` instead: its rows go with the delete and don't come back with
+-- Undo — a table whose rows must come back gets its own restore in shop_restore_items, as the price
+-- watch has.
 create or replace function public.shop_delete_items(p_ids uuid[])
 returns jsonb
 language plpgsql
@@ -625,9 +631,14 @@ begin
     begin
       execute format('select coalesce(jsonb_agg(to_jsonb(x)), ''[]'') from %s x where x.%I = any ($1)', r.tbl, r.col)
         into v_rows using p_ids;
-      if jsonb_array_length(v_rows) > 0 then
+      if jsonb_array_length(v_rows) = 0 then
+        null;
+      elsif (case r.action when 'c' then pg_catalog.has_table_privilege(r.tbl, 'INSERT')
+                           else pg_catalog.has_column_privilege(r.tbl, r.col, 'UPDATE') end) then
         v_more := v_more || jsonb_build_array(jsonb_build_object(
           'table', r.name, 'col', r.col, 'action', case r.action when 'c' then 'deleted' else 'emptied' end, 'rows', v_rows));
+      else
+        v_hidden := v_hidden || to_jsonb(r.name);
       end if;
     exception when insufficient_privilege then
       v_hidden := v_hidden || to_jsonb(r.name);
@@ -711,7 +722,9 @@ $$;
 -- trigger checks what comes back, and anything refused leaves nothing. The rows first (from the keys
 -- they name), then their parents, costs, links, the children the delete unlinked, the price history and
 -- the rows of later tables. A link that is no web address (only rows from before 187 have one) goes back
--- into the notes. A snapshot from before 187 (no watches, points or more) is put back as far as it goes.
+-- into the notes. What a row points at that is gone since (its category, its task, a money link's other
+-- end) is left out, as that row's own delete left it — never a reason to refuse the Undo. A snapshot
+-- from before 187 (no watches, points or more) is put back as far as it goes.
 create or replace function public.shop_restore_items(p_snapshot jsonb)
 returns void
 language plpgsql
@@ -719,23 +732,40 @@ security invoker
 set search_path = ''
 as $$
 declare
-  r      jsonb;
-  c      jsonb;
-  m      jsonb;
-  v_cols text;
-  v_url  text;
-  v_id   uuid;
-  v_ids  uuid[] := '{}';
-  v_par  uuid;
-  v_tbl  regclass;
-  v_col  text;
-  v_pk   text;
+  r       jsonb;
+  c       jsonb;
+  m       jsonb;
+  f       jsonb;
+  v_fks   jsonb;
+  v_there boolean;
+  v_cols  text;
+  v_url   text;
+  v_id    uuid;
+  v_ids   uuid[] := '{}';
+  v_par   uuid;
+  v_tbl   regclass;
+  v_col   text;
+  v_pk    text;
 begin
   if jsonb_typeof(p_snapshot) is distinct from 'object' then
     raise exception 'Not a Shop snapshot' using errcode = '22023';
   end if;
 
-  -- 1. The rows, without their parents (a parent may come later in the list).
+  -- shop_items' single-column foreign keys into the app's own tables, from the catalogue (its category,
+  -- its task, any added later); its own parents come in step 2, and auth.users is not the app's.
+  select coalesce(jsonb_agg(jsonb_build_object('col', a.attname, 'ref', k.confrelid::oid, 'refcol', ra.attname)), '[]'::jsonb)
+    into v_fks
+    from pg_catalog.pg_constraint k
+    join pg_catalog.pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
+    join pg_catalog.pg_attribute ra on ra.attrelid = k.confrelid and ra.attnum = k.confkey[1]
+    join pg_catalog.pg_class rc on rc.oid = k.confrelid
+    join pg_catalog.pg_namespace rn on rn.oid = rc.relnamespace and rn.nspname = 'public'
+   where k.contype = 'f' and k.conrelid = 'public.shop_items'::regclass and array_length(k.conkey, 1) = 1
+     and k.confrelid <> 'public.shop_items'::regclass;
+
+  -- 1. The rows, without their parents (a parent may come later in the list). A foreign key whose row is
+  --    gone since — or one the caller can't see, which is not theirs — comes back empty (as that row's
+  --    delete empties it, SET NULL). A table the caller may not read at all: its foreign key decides.
   for r in select value from jsonb_array_elements(coalesce(p_snapshot -> 'items', '[]'::jsonb)) loop
     if jsonb_typeof(r) <> 'object' then
       raise exception 'Not a Shop row' using errcode = '22023';
@@ -744,6 +774,16 @@ begin
     if v_url is not null and public.shop_web_link(v_url) is null then
       r := r || jsonb_build_object('url', null, 'notes', concat_ws(E'\n', nullif(r ->> 'notes', ''), 'Link: ' || v_url));
     end if;
+    for f in select value from jsonb_array_elements(v_fks) loop
+      continue when nullif(r ->> (f ->> 'col'), '') is null
+                 or not pg_catalog.has_column_privilege((f ->> 'ref')::oid, f ->> 'refcol', 'SELECT');
+      execute format('select exists (select 1 from %s t where t.%I = (select x.%I from jsonb_populate_record(null::public.shop_items, $1) x))',
+                     (f ->> 'ref')::oid::regclass, f ->> 'refcol', f ->> 'col')
+        into v_there using r;
+      if not v_there then
+        r := jsonb_set(r, array[f ->> 'col'], 'null'::jsonb);
+      end if;
+    end loop;
     v_cols := public.shop_named_columns('public.shop_items'::regclass, r, array['accessory_of', 'option_for']);
     if v_cols is null then
       raise exception 'Not a Shop row' using errcode = '22023';
@@ -766,7 +806,8 @@ begin
   -- A general wish that came back is fulfilled exactly while one of its models is bought.
   perform public.shop_recompute_wish(i.id) from public.shop_items i where i.id = any (v_ids) and i.kind = 'general';
 
-  -- 3. Costs and links (a link that exists again is skipped).
+  -- 3. Costs and links (a link that exists again is skipped, and so is one whose other end is gone since:
+  --    that thing's delete took the link with it).
   for r in select value from jsonb_array_elements(coalesce(p_snapshot -> 'costs', '[]'::jsonb)) loop
     v_cols := public.shop_named_columns('public.shop_item_costs'::regclass, r);
     if v_cols is null then
@@ -780,6 +821,8 @@ begin
     if v_cols is null then
       raise exception 'Not a Shop link' using errcode = '22023';
     end if;
+    continue when not exists (select 1 from public.shop_items i where i.id = (r ->> 'from_id')::uuid)
+               or not exists (select 1 from public.shop_items i where i.id = (r ->> 'to_id')::uuid);
     execute format('insert into public.shop_item_links (%s) select %s from jsonb_populate_record(null::public.shop_item_links, $1) on conflict do nothing',
                    v_cols, v_cols) using r;
   end loop;
@@ -812,7 +855,10 @@ begin
 
   -- 6. Rows of later tables that point at shop_items: deleted ones back, emptied pointers back (while
   --    still empty). Only what shop_delete_items keeps: a table that really points at shop_items with a
-  --    foreign key that deletes (deleted) or empties (emptied), never one of Shop's own five.
+  --    foreign key that deletes (deleted) or empties (emptied), never one of Shop's own five. A row the
+  --    caller may not write back (no grant — shop_delete_items names such a table in `hidden`, but an
+  --    older or forged snapshot may still carry it — or its table's own row level security refuses it),
+  --    or whose other links are gone since, stays out; the rest of the Undo goes on.
   for m in select value from jsonb_array_elements(coalesce(p_snapshot -> 'more', '[]'::jsonb)) loop
     v_tbl := to_regclass(format('public.%I', m ->> 'table'));
     v_col := m ->> 'col';
@@ -825,19 +871,23 @@ begin
          and k.confdeltype = case m ->> 'action' when 'deleted' then 'c' when 'emptied' then 'n' end
          and cc.relname not in ('shop_items', 'shop_item_links', 'shop_item_costs', 'shop_price_watch', 'shop_price_points'));
     for r in select value from jsonb_array_elements(coalesce(m -> 'rows', '[]'::jsonb)) loop
-      if m ->> 'action' = 'deleted' then
-        v_cols := public.shop_named_columns(v_tbl, r);
-        continue when v_cols is null;
-        execute format('insert into %s (%s) select %s from jsonb_populate_record(null::%s, $1) on conflict do nothing',
-                       v_tbl, v_cols, v_cols, v_tbl) using r;
-      else
-        select a.attname::text into v_pk
-          from pg_catalog.pg_index x join pg_catalog.pg_attribute a on a.attrelid = x.indrelid and a.attnum = x.indkey[0]
-         where x.indrelid = v_tbl and x.indisprimary and x.indnatts = 1;
-        continue when v_pk is null;
-        execute format('update %s t set %I = ($1 ->> %L)::uuid where t.%I::text = ($1 ->> %L) and t.%I is null',
-                       v_tbl, v_col, v_col, v_pk, v_pk, v_col) using r;
-      end if;
+      begin
+        if m ->> 'action' = 'deleted' then
+          v_cols := public.shop_named_columns(v_tbl, r);
+          continue when v_cols is null;
+          execute format('insert into %s (%s) select %s from jsonb_populate_record(null::%s, $1) on conflict do nothing',
+                         v_tbl, v_cols, v_cols, v_tbl) using r;
+        else
+          select a.attname::text into v_pk
+            from pg_catalog.pg_index x join pg_catalog.pg_attribute a on a.attrelid = x.indrelid and a.attnum = x.indkey[0]
+           where x.indrelid = v_tbl and x.indisprimary and x.indnatts = 1;
+          continue when v_pk is null;
+          execute format('update %s t set %I = ($1 ->> %L)::uuid where t.%I::text = ($1 ->> %L) and t.%I is null',
+                         v_tbl, v_col, v_col, v_pk, v_pk, v_col) using r;
+        end if;
+      exception when insufficient_privilege or foreign_key_violation then
+        null;  -- this row stays out: the caller may not write it there, or what it points at is gone
+      end;
     end loop;
   end loop;
 end;
