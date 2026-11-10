@@ -32,7 +32,7 @@ function IfSoldCell({ sold, chained, monthly }: { sold: IfSold | null; chained: 
   const signed = (a: Amount) => (!complete(a) ? null : `${a.nok >= 0 ? '+' : '−'}${money(Math.abs(a.nok))}`)
   const made = complete(main) && main.nok > 0
   return (
-    <Cell label="Net if sold now" strong hint={chained ? (signed(sold.own) ? `this one alone ${signed(sold.own)}` : 'with the chain') : monthly ?? 'at "Could sell for"'}>
+    <Cell label="Net if sold now" strong hint={chained ? [signed(sold.own) ? `alone ${signed(sold.own)}` : 'with the chain', monthly].filter(Boolean).join(' · ') : monthly ?? 'at "Could sell for"'}>
       {complete(main)
         ? <span className={cx(made && 'text-success')}>{main.nok >= 0 ? 'Made ' : 'Cost you '}{money(Math.abs(main.nok))}</span>
         : <AmountText amount={main} />}

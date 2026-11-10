@@ -1,5 +1,5 @@
 // Owned's compact rows (step A, plan approved 10.11.2026): one row per thing —
-// its picture, its name and what it cost on the first line; its facts (store,
+// its picture, its name and what was paid on the first line; its facts (store,
 // how long it has been yours, what it could sell for) and at most one tone
 // tag on the second. Wide lists deal their categories into column stacks of
 // rows (`rowStacks`), never wider than a content row may be (THEME W2).
@@ -8,7 +8,7 @@ import type { Tone } from '../../shared/ui/Tone'
 import { formatDate } from '../../shared/utils/dateFormat'
 import { formatMoney } from '../settings/subscriptionRules'
 import {
-  add, boughtOn, complete, costOf, daysBetween, DISPOSAL_LABEL, gotOf, minus, monthsBetween, valueAgeDays, valueNowOf, VALUE_STALE_DAYS,
+  add, boughtOn, complete, costOf, daysBetween, DISPOSAL_LABEL, gotOf, minus, monthsBetween, paidOf, valueAgeDays, valueNowOf, VALUE_STALE_DAYS,
   type MoneyCtx,
 } from './ownModel'
 import { currencyOf } from './shopModel'
@@ -116,14 +116,15 @@ export function rowFacts(i: ShopItem, accessories: readonly ShopItem[], ctx: Mon
 }
 
 /**
- * What the price column says: what it cost, in NOK at its day's rate
- * ("13 990"); a price still waiting for its rate in its own currency ("4 500
+ * What the price column says: what was paid, in NOK at its day's rate
+ * ("13 990" — the record's "Paid"; extra costs are its Costs, never added
+ * here); a price still waiting for its rate in its own currency ("4 500
  * TRY", `pending`); "Gift"; "—" with no price.
  */
-export function rowPrice(i: ShopItem, ctx: MoneyCtx): { text: string; pending: boolean } {
+export function rowPrice(i: ShopItem): { text: string; pending: boolean } {
   if (i.got_as_gift && !i.price) return { text: 'Gift', pending: false }
   if (i.price == null) return { text: '—', pending: false }
-  const paid = costOf(i, ctx)
+  const paid = paidOf(i)
   if (complete(paid)) return { text: num(paid.nok), pending: false }
   return { text: money(i.price, currencyOf(i)), pending: true }
 }

@@ -22,7 +22,7 @@ export function RecordSection({ id, title, summary, open, onToggle, action, chil
     <section className="rounded-row border border-line bg-surface">
       <div className={cx('flex items-center gap-1', open && action != null && 'pr-1')}>
         <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}
-          className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-row px-3 text-left transition-colors hover:bg-surface-hover">
+          className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-row px-3 text-left transition-colors hover:bg-surface-hover">
           <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-muted transition-transform', !open && '-rotate-90')} />
           <h3 className="shrink-0 text-body font-semibold text-fg">{title}</h3>
           {!open && summary != null && summary !== '' && (

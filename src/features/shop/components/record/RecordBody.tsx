@@ -37,8 +37,9 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const { item, state, d, today, owned } = r
   const openRecord = useOpenRecord()
   const watch = r.watches.get(item.id) ?? null
-  const { looks } = useNeedsALook(r.items, false)
-  const nudge = useMemo(() => nudgeFor(item, looks), [item, looks])
+  const { looks, loading: looksLoading } = useNeedsALook(r.items, false)
+  // Only once its reads have answered: a nudge from part of the data would come and go as the rest lands.
+  const nudge = useMemo(() => (looksLoading ? null : nudgeFor(item, looks)), [looksLoading, item, looks])
   const itemCosts = useMemo(() => r.ctx.costs.get(item.id) ?? r.costs.filter(c => c.item_id === item.id), [r.ctx.costs, r.costs, item.id])
   const story = useMemo(() => storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }), [item, r.items, r.links, itemCosts, today])
   const resale = state === 'mine' || state === 'gone'

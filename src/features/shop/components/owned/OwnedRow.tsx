@@ -38,7 +38,7 @@ export function OwnedRow({ item, accessories, chain, watch, ctx, today, topId, i
   const selected = picked === item.id
   const facts = rowFacts(item, accessories, ctx, today, chain)
   const tag = rowTag(item, watch, today)
-  const price = rowPrice(item, ctx)
+  const price = rowPrice(item)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   return (
     <li>
@@ -73,7 +73,7 @@ export function OwnedRow({ item, accessories, chain, watch, ctx, today, topId, i
                 <CornerDownRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
                 <Truncate as="span" className="min-w-0 flex-1 text-fg-2">{a.title}</Truncate>
                 {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-muted">{DISPOSAL_LABEL[a.disposal]}</span>}
-                <span className="shrink-0 tabular-nums text-fg-muted">{rowPrice(a, ctx).text}</span>
+                <span className="shrink-0 tabular-nums text-fg-muted">{rowPrice(a).text}</span>
               </button>
             </li>
           ))}
