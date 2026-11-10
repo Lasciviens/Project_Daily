@@ -107,7 +107,23 @@ export interface ShopItem {
   sale_group?:      string | null
   /** Migration 138: the name of the money chain this thing carries (see chainModel.chainNameHolder). */
   chain_name?:      string | null
+  /**
+   * The add sheet's facts with their sources (autofillModel.factsToSave) — a planned jsonb column, not in the
+   * database yet: until it is, a save drops it (createShopItem retries without it) and reads never have it.
+   */
+  facts?:           ShopSavedFacts | null
 }
+
+/** A fact the add sheet filled in, as a row keeps it: its value, its source ("elkjop.no", "you"), how sure, when found. */
+export interface ShopSavedFact {
+  value:      unknown
+  source:     string
+  origin:     'link' | 'scan' | 'title'
+  confidence: 'exact' | 'likely' | 'check'
+  at:         string
+}
+/** By fact (autofillModel.FactKey: title, price, brand, model, ean, condition, returnDays, prisjaktId, specs …). */
+export type ShopSavedFacts = Partial<Record<string, ShopSavedFact>>
 
 /**
  * "Paid with money from": `to_id` was (or will be) bought with what selling
@@ -338,6 +354,8 @@ export interface CreateShopItemInput {
   wait_for_deal?: boolean
   target_price?:  number | null
   deal_note?:     string | null
+  /** The add sheet's facts (a planned column — see ShopItem.facts). */
+  facts?:         ShopSavedFacts | null
 }
 
 export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
