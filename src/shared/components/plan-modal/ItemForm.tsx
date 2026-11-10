@@ -8,7 +8,6 @@
 //    LOCATION   ⌖ Location                               (a time, a repeat or all day)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat
-//    INVITEES   Not yet
 //    OPTIONS    Calendar  Google Calendar · busy  ·  List (a Google Task's)
 //    DETAILS    Notes
 //    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
@@ -24,7 +23,7 @@ import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
 import { FieldMark, MarkHost } from './FieldMark'
-import { NoteRow, Section, TapRow } from './ItemRows'
+import { Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
@@ -130,13 +129,6 @@ export function ItemForm({
           />
         </Section>
 
-        <Section title="Invitees">
-          <TapRow label="Invitees" value="Not yet" open={open === 'invitees'} onClick={() => toggle('invitees')} />
-          {open === 'invitees' && (
-            <NoteRow>Invitees come once one invitation has been tried from the iPhone: how Apple sends it, and what the other person sees.</NoteRow>
-          )}
-        </Section>
-
         {showGoogle && (
           <Section title="Options">
             <CalendarRow shape={shape} target={target} app={calendarApp} dated={!!form.date || repeating} refused={refused}
@@ -148,6 +140,7 @@ export function ItemForm({
                 onPick={googleListTitle => patch({ googleListTitle, shown: form.shown.filter(r => r !== 'list') })}
                 onNew={() => patch({ googleListTitle: '', shown: [...form.shown.filter(r => r !== 'list'), 'list'] })}
                 onType={googleListTitle => patch({ googleListTitle })}
+                onDone={() => patch({ shown: form.shown.filter(r => r !== 'list') })}
               />
             )}
           </Section>

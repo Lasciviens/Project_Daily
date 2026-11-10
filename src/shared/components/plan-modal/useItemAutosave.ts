@@ -4,11 +4,14 @@
 //  line says "Saving…", then "Saved". One save at a time — a change made while
 //  one runs goes right after it, with what it answered (a slot it made). A
 //  form that can't be saved (no title, an incomplete repeat, an end before
-//  the start) says why and waits. Closing the screen sends what is left first.
+//  the start) says why and waits. A change held back (itemScreenRules.
+//  heldChange: a new list's name being typed, a slot about to go) waits for
+//  the screen to close. Closing the screen sends what is left first.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { formContentKey, type PlanForm } from './planForm'
+import { heldChange } from './itemScreenRules'
 
 /** How long a change waits for the next one (a word being typed, a drag) before it is saved. */
 export const AUTOSAVE_DELAY_MS = 700
@@ -19,6 +22,7 @@ export type PersistResult = 'saved' | 'kept'
 export type AutosaveLine =
   | { kind: 'idle' }
   | { kind: 'saving' }
+  | { kind: 'held'; reason: string }
   | { kind: 'saved' }
   | { kind: 'blocked'; reason: string }
   | { kind: 'failed' }
@@ -79,11 +83,13 @@ export function useItemAutosave({ enabled, form, problem, persist }: {
   }, [])
 
   const dirty = enabled && key !== savedKey
+  // Only `flush` sends a held change (when the screen closes).
+  const hold = dirty ? heldChange(form, JSON.parse(savedKey) as Partial<PlanForm>) : null
   useEffect(() => {
-    if (!dirty || problem || key === failedKey) return
+    if (!dirty || problem || hold || key === failedKey) return
     const id = window.setTimeout(() => { void run() }, AUTOSAVE_DELAY_MS)
     return () => window.clearTimeout(id)
-  }, [dirty, key, problem, failedKey, run])
+  }, [dirty, key, problem, hold, failedKey, run])
 
   /** Before the screen closes: what waits is sent now. */
   const flush = useCallback(async (): Promise<FlushResult> => {
@@ -97,6 +103,7 @@ export function useItemAutosave({ enabled, form, problem, persist }: {
   const line: AutosaveLine = !enabled ? { kind: 'idle' }
     : dirty && problem ? { kind: 'blocked', reason: problem }
     : dirty && key === failedKey && !saving ? { kind: 'failed' }
+    : dirty && hold && !saving ? { kind: 'held', reason: hold }
     : saving || dirty ? { kind: 'saving' }
     : savedOnce ? { kind: 'saved' }
     : { kind: 'idle' }

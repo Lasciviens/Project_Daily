@@ -113,6 +113,22 @@ console.log('\n== 5. The Calendar row\'s red dot ==')
   check('no row (a new item) or no time: no dot', !R.appleRefused(null, true, now) && !R.appleRefused({ icloud_area: null }, true, now))
 }
 
+console.log('\n== 5b. What an edit holds back until the screen closes ==')
+{
+  const saved = { date: '2026-11-10', time: '17:30' }
+  check('a slot taken away (no day) waits for the screen to close', R.heldChange({ date: null, time: null, shown: [] }, saved) === 'Saves when you close it')
+  check('…and no time (All-day on) too', R.heldChange({ date: '2026-11-10', time: null, shown: [] }, saved) === 'Saves when you close it')
+  check('a time added, or any other change, saves by itself', R.heldChange({ date: '2026-11-10', time: '18:00', shown: [] }, saved) === null
+    && R.heldChange({ date: '2026-11-10', time: '09:00', shown: [] }, { date: '2026-11-10', time: null }) === null)
+  check('a new list\'s name being typed waits (each word would make a Google list)', R.heldChange({ date: '2026-11-10', time: '17:30', shown: ['list'] }, saved) === 'Saves when the list name is done')
+  const auto = src('src/shared/components/plan-modal/useItemAutosave.ts')
+  check('the timer never sends a held change; closing does (flush)', /if \(!dirty \|\| problem \|\| hold \|\| key === failedKey\) return/.test(auto) && !/hold/.test(auto.slice(auto.indexOf('const flush'), auto.indexOf('const line'))))
+  const options = src('src/shared/components/plan-modal/OptionsSection.tsx')
+  check('a new list\'s name is done on Enter or when the field is left', /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); onDone\(\) \}/.test(options) && /onBlur=\{onDone\}/.test(options))
+  const sheet = src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
+  check('a failed save before closing asks "Close without saving your last change?", never traps the screen', /title: 'Close without saving your last change\?'/.test(sheet))
+}
+
 console.log('\n== 6. Settings → Calendar → "Show where each field goes" ==')
 {
   check('shown by default', A.readCalendarSettings(null).showMarks === true && A.readCalendarSettings({}).showMarks === A.DEFAULT_SHOW_MARKS)
@@ -143,7 +159,8 @@ console.log('\n== 7. The screen keeps its data paths ==')
     && fs.existsSync(path.join(__dirname, '../src/assets/marks/apple.svg')) && fs.existsSync(path.join(__dirname, '../src/assets/marks/google.svg')))
   check('the Calendar row\'s mark always shows; the others follow the setting', /<FieldMark always goes=/.test(src('src/shared/components/plan-modal/OptionsSection.tsx')) && /if \(!on && !always && !refused\) return null/.test(marks))
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')
-  check('Apple\'s headers, and no ✨ yet (step 4)', ['"Location"', '"Time"', '"Invitees"', '"Options"', '"Details"', '"Planning"'].every(h => form.includes(`title=${h}`)) && !/Sparkles|ai-proxy/.test(form))
+  check('Apple\'s headers, and no ✨ yet (step 4); no Invitees until they work', ['"Location"', '"Time"', '"Options"', '"Details"', '"Planning"'].every(h => form.includes(`title=${h}`))
+    && !form.includes('title="Invitees"') && !/Sparkles|ai-proxy/.test(form))
   const time = src('src/shared/components/plan-modal/TimeSection.tsx')
   check('Repeat shows its next dates for every choice', /alwaysPreview/.test(time))
   check('the timeline reads the day as Daily does (buildDaySchedule), without this item', /buildDaySchedule\(/.test(src('src/shared/components/plan-modal/DayTimeline.tsx')))

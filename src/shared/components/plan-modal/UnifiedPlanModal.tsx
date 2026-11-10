@@ -24,7 +24,7 @@
 //  2026-11-10 · v22 · The item screen, step 1 (docs/features/item-screen-plan.md;
 //                    owner, 10.11.2026: the plan and its five answers). Drawn as
 //                    iOS Calendar's event screen: grouped rows under Location,
-//                    Time, Invitees, Options, Details and Planning; labels left,
+//                    Time, Options, Details and Planning; labels left,
 //                    values right, fixed widths. The data and its rules are as
 //                    before (sheetRules, planForm, quick add, the Google target,
 //                    the Apple send, zones, places, the section, today's date):
@@ -48,6 +48,10 @@
 //                    saves by itself ("Saving…", "Saved" under the heading) and
 //                    sends what is left when it closes. Each save after the first
 //                    names the slot the first one made, so no second slot.
+//                    A change that takes the slot away (no day, no time) and a
+//                    new list's name being typed wait for the screen to close
+//                    (heldChange); a failed save before closing asks "Close
+//                    without saving your last change?".
 //                    (f) A mark on every row for where its field goes, behind
 //                    Settings → Calendar → "Show where each field goes".
 //  2026-11-03 · v21.10 · The save's result line names the calendar the chip
@@ -616,6 +620,7 @@ function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | nul
 function SaveLine({ line, onRetry }: { line: AutosaveLine; onRetry: () => void }) {
   if (line.kind === 'saving') return <span aria-live="polite">Saving…</span>
   if (line.kind === 'saved') return <span aria-live="polite">Saved</span>
+  if (line.kind === 'held') return <span aria-live="polite">{line.reason}</span>
   if (line.kind === 'blocked') return <span data-tone="warn" className="tone-text" aria-live="polite">Not saved: {line.reason}</span>
   if (line.kind === 'failed') {
     return (
@@ -881,8 +886,15 @@ export function UnifiedPlanModal({
     if (closing.current) return
     closing.current = true
     const done = await autosave.flush()
+    // A failed save never traps the screen: the owner decides (the save's own toast said why). Back comes here too.
+    const leave = done.kind !== 'failed' || await entityModal.confirm({
+      title: 'Close without saving your last change?',
+      message: "It couldn't be saved. Close now, or stay and try again.",
+      confirmLabel: 'Close without saving',
+      cancelLabel: 'Stay',
+    })
     closing.current = false
-    if (done.kind === 'failed') return
+    if (!leave) return
     if (done.kind === 'problem') toast.warning(`Your last change wasn't saved: ${done.reason}`)
     onClose()
   }

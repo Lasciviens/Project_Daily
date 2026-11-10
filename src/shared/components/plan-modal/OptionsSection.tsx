@@ -56,13 +56,15 @@ export function CalendarRow({ shape, target, app, dated, refused, open, toggle, 
  * own list as the row's value; opened, the lists and "New list…", which turns the row into a field for a name (made
  * on Google when the item is saved). A name not on Google yet says "new".
  */
-export function GoogleListRow({ value, typing, onPick, onNew, onType, open, toggle, mark }: {
+export function GoogleListRow({ value, typing, onPick, onNew, onType, onDone, open, toggle, mark }: {
   value: string
   /** "New list…" was picked: the row is a field. */
   typing: boolean
   onPick: (title: string) => void
   onNew: () => void
   onType: (title: string) => void
+  /** The name is done (Enter, or the field left): only then is it saved — and looked up or made on Google. */
+  onDone: () => void
   open: PanelKey | null
   toggle: (k: PanelKey | null) => void
   mark?: ReactNode
@@ -77,6 +79,7 @@ export function GoogleListRow({ value, typing, onPick, onNew, onType, open, togg
     return (
       <Row label="New list" mark={mark}>
         <input autoFocus value={value} onChange={e => onType(e.target.value)} placeholder="Its name" maxLength={100}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onDone() } }} onBlur={onDone} enterKeyHint="done"
           aria-label="New Google Tasks list" className="input-bare w-40 min-w-0 pb-0 text-right text-lead" />
       </Row>
     )

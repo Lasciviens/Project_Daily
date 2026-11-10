@@ -31,7 +31,9 @@ export function MarkHost({ on, children }: { on: boolean; children: ReactNode })
     const box = host.current?.getBoundingClientRect()
     const r = el.getBoundingClientRect()
     if (!box) return
-    setBubble({ text, left: Math.min(Math.max(8, r.left - box.left + r.width / 2), box.width - 8), top: r.top - box.top })
+    // Kept inside the screen: centred on the mark, at least half its widest (15rem) from either edge.
+    const half = Math.min(120, box.width / 2 - 8)
+    setBubble({ text, left: Math.min(Math.max(half + 8, r.left - box.left + r.width / 2), box.width - half - 8), top: r.top - box.top })
   }, [])
   return (
     <BubbleContext.Provider value={{ show, on }}>
@@ -39,7 +41,7 @@ export function MarkHost({ on, children }: { on: boolean; children: ReactNode })
         {children}
         {bubble && (
           <span role="status" style={{ left: bubble.left, top: bubble.top }}
-            className="pointer-events-none absolute z-10 max-w-[15rem] -translate-x-1/2 -translate-y-[calc(100%+6px)] whitespace-nowrap rounded-control bg-fg px-2 py-1 text-meta text-surface shadow-menu motion-pop-in">
+            className="pointer-events-none absolute z-10 w-max max-w-[min(15rem,calc(100%-16px))] -translate-x-1/2 -translate-y-[calc(100%+6px)] whitespace-normal text-center rounded-control bg-fg px-2 py-1 text-meta text-surface shadow-menu motion-pop-in">
             {bubble.text}
           </span>
         )}

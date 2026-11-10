@@ -158,6 +158,23 @@ export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
   }
 }
 
+// ── What an edit holds back until the screen closes ───────────────────────────
+
+/**
+ * An edit saves by itself, except a change that must wait for the screen to close: a new Google Tasks list's name
+ * still being typed (each saved word would make a list on Google), and a change that takes the slot away — no day,
+ * or no time, where the saved item had one (the slot goes with its colour, its episode and its calendar event). A
+ * stray tap on Date or All-day, turned back before the screen closes, then sends nothing. Null: nothing waits.
+ */
+export function heldChange(
+  f: { date: string | null; time: string | null; shown: readonly string[] },
+  saved: { date?: string | null; time?: string | null },
+): string | null {
+  if (f.shown.includes('list')) return 'Saves when the list name is done'
+  if ((saved.date && !f.date) || (saved.time && !f.time)) return 'Saves when you close it'
+  return null
+}
+
 // ── The Calendar row's red dot ───────────────────────────────────────────────
 
 /** How long a change may take to reach Apple Calendar (the save sends it at once; the timer every 5 minutes). */

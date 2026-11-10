@@ -35,7 +35,7 @@ import type { PlanModalConfig } from './planModal.types'
 
 export type PanelKey =
   | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'zone' | 'repeat'
-  | 'calendar' | 'list' | 'category' | 'deadline' | 'dTime' | 'window' | 'invitees'
+  | 'calendar' | 'list' | 'category' | 'deadline' | 'dTime' | 'window'
 
 const SECTION_LABEL = { inbox: 'Inbox', today: 'Today', backlog: 'Backlog' } as const
 
