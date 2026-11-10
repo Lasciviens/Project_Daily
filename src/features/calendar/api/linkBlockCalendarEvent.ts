@@ -54,6 +54,8 @@ export async function linkBlockCalendarEvent(blockId: string, dateStr?: string, 
       title: block.title ?? title ?? '',
       busy: block.busy,
       place: block.place,
+      show_as: block.show_as,
+      alerts: block.alerts,
     }, { done: block.task_status === 'done', timeZone: itemTimeZone(block.time_zone) })
     if (!body) throw new Error('the slot has no day to show on Google Calendar')
     // A deterministic, client-supplied event id (this block's own uuid,

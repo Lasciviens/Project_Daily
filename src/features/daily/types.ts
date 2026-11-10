@@ -1,6 +1,19 @@
 import type { RepeatKind, RepeatUnit } from './recurrence'
 
-export interface ScheduleBlock {
+/** An item's calendar fields (migration 193), on its slot and on its repeat — read through calendarEventRules'
+ *  event* readers (a stored value is input) and items/itemCalendarFields for the screen. Missing before 193. */
+export interface ItemCalendarColumns {
+  /** Alert and Second Alert: minutes before (Apple's list; all day: day offsets at 09:00); [] = none; null = the area's own. */
+  alerts?:         number[] | null
+  /** Show As: null = by its length (Busy with one, Free without and all day). */
+  show_as?:        'busy' | 'free' | null
+  /** Its own https link (Apple's URL field); null = the link to its day in the app. */
+  url?:            string | null
+  /** Travel Time: 0 = none, 5–120 minutes; null = automatic (Time to Leave from the place's pin). */
+  travel_minutes?: number | null
+}
+
+export interface ScheduleBlock extends ItemCalendarColumns {
   id:           string
   user_id:      string
   title:        string
@@ -39,6 +52,10 @@ export interface ScheduleBlock {
   time_zone?: string | null
   /** Where the plan happens (186): {name, locality?, lat?, lon?, id?} as stored — read through items/itemPlace.placeOfRow. */
   place?: unknown
+  /** End Repeat (193): the last day it may occur, included; null = never. With repeat_count, the database's Nth day. */
+  repeat_until?: string | null
+  /** End Repeat "after N times" (193): 1–999; null = no count. */
+  repeat_count?: number | null
   /** The day it was added to Google Calendar (148): the series starts on its
    *  first day on or after this, not at effective_from. Missing before 148. */
   google_calendar_from?: string | null
@@ -59,7 +76,7 @@ export interface ScheduleBlock {
 
 export type TimeBlockCategory = 'daily' | 'training' | 'media' | 'games' | 'work' | 'projects' | 'football' | 'other'
 
-export interface TimeBlock {
+export interface TimeBlock extends ItemCalendarColumns {
   id:               string
   user_id:          string
   date:             string
@@ -139,6 +156,9 @@ export interface UpdateTimeBlockInput {
   color?:                     string
   /** false: no length (155). */
   busy?:                      boolean | null
+  /** Show As and the alerts (193): a change of either is pushed to its Google event. */
+  show_as?:                   'busy' | 'free' | null
+  alerts?:                    number[] | null
   google_calendar_event_id?:  string | null
   /** Only ever set on an edit that links a previously-standalone block to a
    *  freshly-created Task ("Also add to Tasks" on an existing block) — see
