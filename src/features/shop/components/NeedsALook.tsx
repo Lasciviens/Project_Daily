@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  AlarmClock, BadgeAlert, CalendarClock, Check, ChevronDown, ChevronRight, Hourglass, ListChecks, MoreHorizontal, PackageCheck,
-  RotateCcw, ShieldAlert, Tag, Target, TrendingDown, Undo2, type LucideIcon,
+  AlarmClock, ArrowUpRight, BadgeAlert, CalendarClock, Check, ChevronDown, ChevronRight, Hourglass, ListChecks, MoreHorizontal, PackageCheck,
+  RotateCcw, Scale, ShieldAlert, Tag, Target, TrendingDown, Undo2, type LucideIcon,
 } from 'lucide-react'
 import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { lookLine, SNOOZE_DAYS, type Look, type LookKind, type LookThing } from '../shopSuggestions'
 import { addDays } from '../ownModel'
+import { isShopSignal } from '../signalStates'
 
 // "Needs a look": on a wide page a card in the right rail (owner, 14.10.2026:
 // where Coming up sat), on a phone one line that opens every row in a sheet
@@ -19,8 +20,9 @@ import { addDays } from '../ownModel'
 const ICON: Record<LookKind, LucideIcon> = {
   return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
   fake_before: BadgeAlert, deal_day: CalendarClock, complaint_ending: ShieldAlert, old_value: Tag, old_wish: Hourglass, tidy_up: ListChecks,
+  price_match: Scale,
 }
-const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show' }
+const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show', claim: 'Claim' }
 /** The rail shows this many rows, then "N more". */
 const SHOWN = 3
 
@@ -28,6 +30,8 @@ export interface LookActions {
   /** Open the thing (an old "Could sell for": at that fact). */
   onOpen: (look: Look) => void
   onBought: (look: Look) => void
+  /** Money to claim: how, and "Got 500 back". */
+  onClaim: (look: Look) => void
   onSnooze: (look: Look) => void
   onGotIt: (look: Look) => void
   onShowAgain: (look: Look) => void
@@ -94,7 +98,7 @@ function LookMenu({ look, today, onSnooze, onGotIt }: { look: Look; today: strin
 /** One row: what, what is due and the money involved; its one action, and ⋯. */
 function LookRow({ look, today, actions, onList }: { look: Look; today: string; actions: LookActions; onList: (look: Look) => void }) {
   const open = () => (look.action === 'list' ? onList(look) : actions.onOpen(look))
-  const act = () => (look.action === 'bought' ? actions.onBought(look) : open())
+  const act = () => (look.action === 'bought' ? actions.onBought(look) : look.action === 'claim' ? actions.onClaim(look) : open())
   return (
     <li className="flex items-start gap-0.5">
       <button type="button" onClick={open} className="flex min-w-0 flex-1 items-start gap-2.5 rounded-row px-2 py-2 text-left transition-colors hover:bg-surface-hover">
@@ -104,13 +108,20 @@ function LookRow({ look, today, actions, onList }: { look: Look; today: string; 
           <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted" items={lookFacts(look)} />
         </span>
       </button>
+      {look.link && (
+        <a href={look.link} target="_blank" rel="noopener noreferrer" title={look.link} aria-label={`Open the offers: ${look.title}`}
+          className="icon-btn mt-1 h-8 w-8 shrink-0 text-fg-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
+          <ArrowUpRight aria-hidden className="h-4 w-4" />
+        </a>
+      )}
       <span className="flex shrink-0 items-center pt-1">
         <button type="button" onClick={act} aria-label={`${ACTION[look.action]}: ${look.title}`}
           className={cx('btn-ghost btn-sm gap-1 px-2', look.action === 'bought' ? 'text-fg-2' : 'text-accent-600')}>
           {look.action === 'bought' && <Check aria-hidden className="h-4 w-4" />}
           {ACTION[look.action]}
         </button>
-        <LookMenu look={look} today={today} onSnooze={() => actions.onSnooze(look)} onGotIt={() => actions.onGotIt(look)} />
+        {/* A kind the database doesn't list yet (price_match before 191) can't be remembered: no Snooze or Got it. */}
+        {isShopSignal(look.kind) && <LookMenu look={look} today={today} onSnooze={() => actions.onSnooze(look)} onGotIt={() => actions.onGotIt(look)} />}
       </span>
     </li>
   )

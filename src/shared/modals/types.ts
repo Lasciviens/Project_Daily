@@ -79,6 +79,12 @@ export type EntityModalRequest =
   | { kind: 'shop-own'; had?: boolean }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
+  /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
+  | { kind: 'shop-just-bought'; id: string }
+  /** Money to claim on a thing (price protection, cheaper while returnable): how, and "Got 500 back". */
+  | { kind: 'shop-claim'; id: string }
+  /** Shop's stores and marketplaces with their rules, and the deal days (a drawer; from the Shop header's ⋯). */
+  | { kind: 'shop-stores' }
   /** A project's details by `id`, or a new project from a template (no id). */
   | { kind: 'project'; id?: string }
   /** Add a phase to a project, or edit one by `id`. */

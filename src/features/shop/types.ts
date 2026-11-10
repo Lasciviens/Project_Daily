@@ -107,6 +107,17 @@ export interface ShopItem {
   sale_group?:      string | null
   /** Migration 138: the name of the money chain this thing carries (see chainModel.chainNameHolder). */
   chain_name?:      string | null
+  // Migration 191 (Just bought, "Look on FINN") — absent before it is applied.
+  /** Bought online (at a distance: the right to cancel) or in a shop; null = not said. */
+  bought_channel?:       'online' | 'in_store' | null
+  /** yyyy-mm-dd: the day Arrived was tapped; null = not yet, so every count starts on the purchase day. */
+  arrived_on?:           string | null
+  /** yyyy-mm-dd: an extra warranty bought with it (its price is a cost row). */
+  extra_warranty_until?: string | null
+  /** The receipt as a text note (no files). */
+  receipt_note?:         string | null
+  /** yyyy-mm-dd: the last day a marketplace search for it was opened from the app (never fetched). */
+  search_opened_on?:     string | null
 }
 
 /**
@@ -173,6 +184,8 @@ export interface ShopPriceWatch {
   /** The cheapest used / refurbished offer in Prisjakt's offer list. */
   used_low:        number | null
   refurbished_low: number | null
+  /** Migration 191: Prisjakt's new offers, one per shop as read (checked by purchaseModel.offersOfWatch); absent before it. */
+  new_offers?:     unknown
 }
 
 /** One read of a row's link — the price history (migration 137). */
@@ -483,6 +496,11 @@ export interface CreateShopItemInput {
 
 export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
   task_id?:         string | null
+  bought_channel?:       'online' | 'in_store' | null
+  arrived_on?:           string | null
+  extra_warranty_until?: string | null
+  receipt_note?:         string | null
+  search_opened_on?:     string | null
   meets?:           Record<string, boolean> | null
   serial?:          string | null
   value_now?:       number | null

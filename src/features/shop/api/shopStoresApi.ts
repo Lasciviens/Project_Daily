@@ -6,7 +6,7 @@ import {
   rulePatchProblem, type StoreRulePatch,
 } from '../storeRows'
 import { allPages } from './shopApi'
-import type { ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopStore, ShopStoreRule } from '../types'
+import type { ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopStore, ShopStoreRule, ShopStoreRuleFacts } from '../types'
 
 // Stores, marketplaces and their rules, Norway's law and the owner's deal-day edits (migration 191), and which
 // sites forbid apps to read them (188). Every row is checked where it enters (storeRows). An edit answers the row
@@ -119,6 +119,33 @@ export async function resetStoreRule(id: string): Promise<RowChange<ShopStoreRul
   const before = parseStoreRule(d.before), after = parseStoreRule(d.after)
   if (!before || !after) throw new Error('The rule was reset, but its answer could not be read — reload to see it')
   return { before, after }
+}
+
+/** A new rule's facts before the owner fills them: none (a kind's own fields come from the form). */
+export const BLANK_RULE: Omit<ShopStoreRuleFacts, 'kind'> = {
+  label: null, days: null, member_tier: null, window_from: null, window_to: null, return_until: null, exclusions: [], payout: null,
+  against: null, against_stores: null, words: null, source_url: null, read_on: null, off: false,
+}
+
+/** Add a rule of the owner's own to a store (the database makes it origin 'owner': "typed by you"). */
+export async function addStoreRule(storeId: string, facts: ShopStoreRuleFacts): Promise<ShopStoreRule> {
+  const user = await requireUser()
+  const problem = rulePatchProblem(facts, {})
+  if (problem) throw new Error(problem)
+  const payload: Record<string, unknown> = { store_id: storeId, user_id: user.id }
+  for (const k of RULE_FACTS) payload[k] = facts[k]
+  const { data, error } = await supabase.from('shop_store_rules').insert(payload).select('*').maybeSingle()
+  if (error) throw fail(error)
+  const rule = parseStoreRule(data)
+  if (!rule) throw new Error('The rule was saved, but its answer could not be read — reload to see it')
+  return rule
+}
+
+/** Take a rule the owner added away again (its Undo; the database refuses a seeded or page-read one — those are turned off). */
+export async function removeOwnStoreRule(id: string): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('shop_store_rules').delete().eq('id', id).eq('user_id', user.id).eq('origin', 'owner')
+  if (error) throw fail(error)
 }
 
 // ── A store: edit (the member tier too), reset, Undo ─────────────────────────
