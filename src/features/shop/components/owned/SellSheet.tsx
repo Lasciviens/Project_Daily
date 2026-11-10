@@ -8,6 +8,7 @@ import { useRecordSale } from '../../hooks/useShopMoney'
 import { boughtOn, complete, costOf, DISPOSAL_LABEL, isMine, PAID_BACK, splitSale, type MoneyCtx } from '../../ownModel'
 import { categoryPath, defaultCurrencyFor, listOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
+import { money as moneyText } from '../shopFormat'
 import { PaidText } from './PaidText'
 import { SaleResult } from './SaleResult'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
@@ -29,6 +30,8 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
   const [to, setTo] = useState('')
   const [got, setGot] = useState<number | null>(null)
   const [currency, setCurrency] = useState<ShopCurrency>(item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
+  // Your own "Could sell for", one tap away (it fills nothing by itself: never a made-up sale price).
+  const estimate = item.value_now != null ? { amount: item.value_now, currency: (item.value_currency ?? 'NOK') as ShopCurrency } : null
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(accessories.map(a => a.id)))
   const [moveTo, setMoveTo] = useState<Record<string, string>>({})
   const [target, setTarget] = useState('')
@@ -86,7 +89,7 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
             <DateInput value={on} onChange={setOn} min={from} max={today} aria-label="On" className="input w-[10rem] tabular-nums" />
           </div>
           <div>
-            <label className="field-label" htmlFor="sell-to">{how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-faint">(optional)</span></label>
+            <label className="field-label" htmlFor="sell-to">{how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-muted">(optional)</span></label>
             <input id="sell-to" value={to} onChange={e => setTo(e.target.value)} placeholder={how === 'traded_in' ? 'Apple, POWER…' : 'FINN, a friend…'} className="input" />
           </div>
         </div>
@@ -94,7 +97,13 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
           <div>
             <span className="field-label">{how === 'returned' ? 'Refunded' : 'Got'}</span>
             <MoneyEditor label="Got" amount={got} currency={currency} onAmount={setGot} onCurrency={setCurrency} />
-            {got == null && <p className="mt-1 text-meta text-fg-faint">Without an amount the result stays Unknown — you can add it later.</p>}
+            {estimate && how !== 'returned' && (got !== estimate.amount || currency !== estimate.currency) && (
+              <button type="button" onClick={() => { setGot(estimate.amount); setCurrency(estimate.currency) }}
+                className="chip mt-2 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">
+                Use your estimate {moneyText(estimate.amount, estimate.currency)}
+              </button>
+            )}
+            {got == null && <p className="mt-1 text-meta text-fg-muted">Without an amount the result stays Unknown — you can add it later.</p>}
           </div>
         )}
         {accessories.length > 0 && (
@@ -120,12 +129,12 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
                 </li>
               ))}
             </ul>
-            {shares && sold.length > 1 && <p className="mt-1 text-meta text-fg-faint">The money is split by what each cost: {item.title} gets {shares.get(item.id)} {currency}.</p>}
+            {shares && sold.length > 1 && <p className="mt-1 text-meta text-fg-muted">The money is split by what each cost: {item.title} gets {shares.get(item.id)} {currency}.</p>}
           </div>
         )}
         {money && targets.length > 0 && (
           <div>
-            <label className="field-label" htmlFor="sell-target">Money goes to <span className="font-normal text-fg-faint">(optional)</span></label>
+            <label className="field-label" htmlFor="sell-target">Money goes to <span className="font-normal text-fg-muted">(optional)</span></label>
             <select id="sell-target" value={target} onChange={e => setTarget(e.target.value)} className="select">
               <option value="">Nowhere in particular</option>
               {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? (t.kind === 'general' ? ' (a wish)' : ' (to buy)') : ''}</option>)}

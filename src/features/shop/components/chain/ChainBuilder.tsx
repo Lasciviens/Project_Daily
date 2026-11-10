@@ -7,7 +7,6 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { storeNames } from '../../shopModel'
 import { complete, type MoneyCtx } from '../../ownModel'
 import { chainPath } from '../../chainModel'
-import { boughtToSell } from '../../statsModel'
 import {
   copiedOf, draftChain, draftOutcome, draftProblems, draftRows, hasContent, ratePairs, resolveSteps, stepView,
 } from '../../chainDraft'
@@ -117,7 +116,7 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
             )}
             {!from && (
               <div>
-                <label htmlFor="chain-name" className="field-label">Name <span className="font-normal normal-case tracking-normal text-fg-faint">(optional)</span></label>
+                <label htmlFor="chain-name" className="field-label">Name <span className="font-normal normal-case tracking-normal text-fg-muted">(optional)</span></label>
                 <input id="chain-name" value={d.draft.name} onChange={e => d.setName(e.target.value)} maxLength={80} placeholder="Handheld ladder…" className="input max-w-md" />
               </div>
             )}
@@ -159,11 +158,11 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
             </ol>
             <div>
               <Button icon={<Plus />} onClick={d.add}>Add next thing</Button>
-              <p className="mt-1 text-meta text-fg-faint">Paid with the money from {steps[steps.length - 1]?.title.trim() || 'the last thing'} — you can change that.</p>
+              <p className="mt-1 text-meta text-fg-muted">Paid with the money from {steps[steps.length - 1]?.title.trim() || 'the last thing'} — you can change that.</p>
             </div>
           </div>
           <aside className="flex flex-col gap-3 @[46rem]:sticky @[46rem]:top-0 @[46rem]:self-start">
-            <ChainSummary chain={chain} outcome={outcome} head={head} toSell={!!chain && boughtToSell(chain)} />
+            <ChainSummary chain={chain} outcome={outcome} head={head} />
           </aside>
         </div>
       </div>

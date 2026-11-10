@@ -1,13 +1,13 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ArrowRight, Ban, CalendarPlus, Check, ExternalLink, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import { approxOther, currencyOf, priceLabel } from '../shopModel'
 import { REGION_FLAG, SHOP_PRIORITY_TONE } from '../shopMeta'
 import { complete, type Amount } from '../ownModel'
-import { ItemThumb } from './shopKit'
-import { imageOf, money } from './shopFormat'
+import { ItemThumb, SiteLink } from './shopKit'
+import { imageOf, money, webUrl } from './shopFormat'
 import type { ShopItem, ShopPriceWatch } from '../types'
 import type { Task } from '../../todo/types'
 
@@ -40,6 +40,8 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
   const nowCur = (now?.currency ?? currencyOf(item)).toUpperCase()
   const atTarget = now && item.target_price != null && nowCur === currencyOf(item) && (now.low as number) <= item.target_price
   const dealOpen = item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
+  // The product's page: in the "Now …" line when there is one, else as its own link.
+  const link = !now ? webUrl(item.url) : null
 
   return (
     <div className="card flex flex-col gap-2 p-3">
@@ -78,7 +80,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
         <div className="flex flex-col gap-0.5 text-meta tabular-nums">
           {now && (
             <span className={cx(atTarget ? 'text-success' : 'text-fg-muted')}>
-              Now {money(now.low as number, nowCur)} {now.source === 'prisjakt' ? 'on Prisjakt' : 'at the shop'}
+              Now {money(now.low as number, nowCur)} {now.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>}
               {now.prev_low != null && now.prev_low !== now.low && <> · {(now.low as number) < now.prev_low ? '↓' : '↑'} {money(Math.abs((now.low as number) - now.prev_low), nowCur)}</>}
               {atTarget && ' · at your target'}
               {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}</span>}
@@ -94,16 +96,16 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
           {afterSale && complete(afterSale.needed) && (
             <span className="text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</span>
           )}
-          {item.reason && <span className="text-fg-faint">{item.reason === 'need' ? 'Need it' : 'Just for fun'}</span>}
+          {item.reason && <span className="text-fg-muted">{item.reason === 'need' ? 'Need it' : 'Just for fun'}</span>}
         </div>
       )}
 
-      {(price || item.platform || (item.planned_date && !item.wait_for_deal) || item.task_id || item.url) && (
+      {(price || item.platform || (item.planned_date && !item.wait_for_deal) || item.task_id || link) && (
         <div className="ml-4 flex flex-wrap items-center gap-1.5">
           {price && (
             <span className="chip tabular-nums" title={approx ?? undefined}>
               {price}
-              {approx && <span className="ml-1 font-normal text-fg-faint">{approx}</span>}
+              {approx && <span className="ml-1 font-normal text-fg-muted">{approx}</span>}
             </span>
           )}
           {item.platform && <span className="chip">{item.platform}</span>}
@@ -117,12 +119,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
               </TonePill>
             </button>
           )}
-          {item.url && (
-            <a href={item.url} target="_blank" rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center gap-1 px-1 text-meta font-semibold text-accent-600 hover:underline">
-              Link <ExternalLink aria-hidden className="h-3 w-3" />
-            </a>
-          )}
+          {link && <SiteLink url={link} className="min-h-[44px] px-1 text-meta">Link</SiteLink>}
         </div>
       )}
 

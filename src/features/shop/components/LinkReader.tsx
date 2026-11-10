@@ -38,7 +38,7 @@ export function LinkReader({ url, onUrl, onRead }: {
 
   return (
     <div>
-      <label htmlFor="shop-link" className="field-label">Link <span className="font-normal text-fg-faint">(optional — Prisjakt or a shop)</span></label>
+      <label htmlFor="shop-link" className="field-label">Link <span className="font-normal text-fg-muted">(optional — Prisjakt or a shop)</span></label>
       <div className="flex max-w-xl gap-2">
         <input id="shop-link" type="url" inputMode="url" value={url} onChange={e => onUrl(e.target.value)}
           onPaste={e => { const t = e.clipboardData.getData('text').trim(); if (/^https?:\/\//i.test(t)) setTimeout(() => { void read(t) }, 0) }}

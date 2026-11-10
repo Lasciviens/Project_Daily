@@ -4,7 +4,7 @@ import type { Tone } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import type { ShopCategory, ShopItem } from '../../types'
 import type { Amount, MoneyCtx } from '../../ownModel'
-import type { CategoryLevel } from '../../statsModel'
+import type { CategoryLevel, Period } from '../../statsModel'
 import { dayLabel, money } from '../shopFormat'
 
 export type Drill =
@@ -50,9 +50,17 @@ export interface StatsData {
   today: string
   /** Years with money moving, newest first. */
   years: string[]
+  /** The picked period: what you own is counted at its end, cost of use and sales inside it. */
+  period: Period
   /** Every row, filtered or not — so an accessory's item can head it. */
   byId: Map<string, ShopItem>
 }
+
+/** "today", or "at 31.12.2025" for a past year — where a period's "You own" is counted. */
+export const atEnd = (p: Period) => (p.past ? `at ${formatDate(p.to)}` : 'today')
+
+/** "in 2025", or "in all" for all time. */
+export const inPeriod = (p: Period) => (p.year ? `in ${p.year}` : 'in all')
 
 /** "≈ 01.03.2022" for a day added from memory, else "01.03.2022". */
 export const dayOf = (i: Pick<ShopItem, 'approx_dates'>, day: string | null | undefined) => dayLabel(day, i.approx_dates, formatDate)

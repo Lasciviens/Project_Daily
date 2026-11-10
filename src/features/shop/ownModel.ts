@@ -9,6 +9,7 @@
 // "Unknown · 1 price missing" instead of a number that looks complete.
 
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem, ShopItemCost } from './types'
+import type { StatsScope } from './statsModel'
 import { categoryPath, fold, listOf, localDay } from './shopModel'
 import { nokPerUnit, type UsdRates } from './fx'
 
@@ -107,13 +108,34 @@ export function addDays(day: string, days: number): string {
 /**
  * A NOK sum: the known part, how many amounts are missing (never written
  * down) and how many wait for their day's rate. Only a complete sum (both 0)
- * is a number; anything else reads "Unknown" with the reason.
+ * is a number. A missing amount makes it "Unknown" with the reason; amounts
+ * that only wait for a rate are kept in their own currency (`waiting`), so a
+ * screen can say "20 100 NOK + 4 500 TRY pending" — never at today's rate.
  */
-export interface Amount { nok: number; missing: number; pending: number }
+export interface Amount {
+  nok: number
+  missing: number
+  pending: number
+  /** The amounts waiting for a rate, by currency, as they count in the sum (a refund or a sale taken off is below 0). */
+  waiting?: Readonly<Record<string, number>>
+}
 
 export const ZERO: Amount = { nok: 0, missing: 0, pending: 0 }
 export const MISSING: Amount = { nok: 0, missing: 1, pending: 0 }
 export const PENDING: Amount = { nok: 0, missing: 0, pending: 1 }
+
+/** One amount waiting for its rate, kept in its own currency. */
+export const pendingIn = (amount: number, currency: string): Amount => ({ ...PENDING, waiting: { [currency.toUpperCase()]: amount } })
+
+function mergeWaiting(parts: [Readonly<Record<string, number>> | undefined, number][]): Record<string, number> | undefined {
+  let out: Record<string, number> | undefined
+  for (const [w, k] of parts) {
+    if (!w) continue
+    out = out ?? {}
+    for (const [c, v] of Object.entries(w)) out[c] = (out[c] ?? 0) + v * k
+  }
+  return out
+}
 
 export function add(...xs: (Amount | null | undefined)[]): Amount {
   let nok = 0, missing = 0, pending = 0
@@ -121,16 +143,37 @@ export function add(...xs: (Amount | null | undefined)[]): Amount {
     if (!x) continue
     nok += x.nok; missing += x.missing; pending += x.pending
   }
-  return { nok, missing, pending }
+  const waiting = mergeWaiting(xs.map(x => [x?.waiting, 1]))
+  return waiting ? { nok, missing, pending, waiting } : { nok, missing, pending }
 }
 export function minus(a: Amount, b: Amount): Amount {
-  return { nok: a.nok - b.nok, missing: a.missing + b.missing, pending: a.pending + b.pending }
+  const waiting = mergeWaiting([[a.waiting, 1], [b.waiting, -1]])
+  const out = { nok: a.nok - b.nok, missing: a.missing + b.missing, pending: a.pending + b.pending }
+  return waiting ? { ...out, waiting } : out
 }
 export function scale(a: Amount, k: number): Amount {
-  return { nok: a.nok * k, missing: a.missing, pending: a.pending }
+  const waiting = mergeWaiting([[a.waiting, k]])
+  const out = { nok: a.nok * k, missing: a.missing, pending: a.pending }
+  return waiting ? { ...out, waiting } : out
 }
+/** The same sum taken off (a refund shown as "−1 490 NOK"). */
+export const negate = (a: Amount): Amount => scale(a, -1)
 export const complete = (a: Amount): boolean => a.missing === 0 && a.pending === 0
 export const known = (nok: number): Amount => ({ nok, missing: 0, pending: 0 })
+
+/**
+ * What waits for a rate, when that is all that keeps the sum from being a
+ * number: each currency's amount (whole units, none at 0). Null when a price
+ * is missing, nothing is pending, or the waiting amounts are not known.
+ */
+export function waitingParts(a: Amount): { currency: string; amount: number }[] | null {
+  if (a.missing || !a.pending || !a.waiting) return null
+  const parts = Object.entries(a.waiting)
+    .map(([currency, v]) => ({ currency, amount: Math.round(v) }))
+    .filter(p => p.amount !== 0)
+    .sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount) || x.currency.localeCompare(y.currency))
+  return parts.length ? parts : null
+}
 
 /**
  * A purchase, sale or cost in NOK at the rate frozen on its row: NOK is
@@ -139,15 +182,17 @@ export const known = (nok: number): Amount => ({ nok, missing: 0, pending: 0 })
  */
 export function nokAt(amount: number | null | undefined, currency: ShopCurrency | string | null | undefined, frozenRate: number | null | undefined): Amount {
   if (amount == null || !Number.isFinite(amount)) return MISSING
-  if ((currency ?? 'NOK').toUpperCase() === 'NOK') return known(amount)
-  return frozenRate != null && Number.isFinite(frozenRate) && frozenRate > 0 ? known(amount * frozenRate) : PENDING
+  const c = (currency ?? 'NOK').toUpperCase()
+  if (c === 'NOK') return known(amount)
+  return frozenRate != null && Number.isFinite(frozenRate) && frozenRate > 0 ? known(amount * frozenRate) : pendingIn(amount, c)
 }
 
 /** What something is worth NOW in NOK, at today's rate (pending while today's rates are not loaded). */
 export function nokNow(amount: number | null | undefined, currency: ShopCurrency | string | null | undefined, rates: UsdRates | null): Amount {
   if (amount == null || !Number.isFinite(amount)) return MISSING
-  const r = nokPerUnit((currency ?? 'NOK').toUpperCase(), rates)
-  return r == null ? PENDING : known(amount * r)
+  const c = (currency ?? 'NOK').toUpperCase()
+  const r = nokPerUnit(c, rates)
+  return r == null ? pendingIn(amount, c) : known(amount * r)
 }
 
 /**
@@ -374,9 +419,38 @@ export function ownedCards(items: readonly ShopItem[], categories: readonly Shop
   })
 }
 
+/** A filter's key for "no category" (Owned's filter says 'none'; Stats' scope and rows use this). */
+export const NO_CATEGORY = '__none__'
+
+/** Owned's "Bought to sell", a search, or Mine / Sold or gone: what the list shows is narrower than any Stats pick. */
+const narrowerThanStats = (f: OwnedFilters) => f.q.trim() !== '' || f.resaleOnly || f.show !== 'all'
+
+/**
+ * The Stats filter for what Owned's list shows, so its summary line opens
+ * Stats on the same things: a category or a money chain is picked as itself;
+ * what Stats cannot pick (a search, "Bought to sell", Mine or Sold or gone)
+ * picks the things the list shows (`shown`: its cards' ids). All, with no
+ * filter, is everything: no pick at all. Null when the list shows nothing.
+ */
+export function statsScopeOf(f: OwnedFilters, shown: readonly string[]): StatsScope | null {
+  if (!shown.length) return null
+  if (narrowerThanStats(f)) return { categories: [], chains: [], things: [...shown], stores: [] }
+  return {
+    categories: f.category === 'all' ? [] : [f.category === 'none' ? NO_CATEGORY : f.category],
+    chains: f.chain === 'all' ? [] : [f.chain],
+    things: [],
+    stores: [],
+  }
+}
+
+/** The filters beyond Mine · Sold or gone · All (the tab is not a filter): how many are set. */
+export function ownedFilterCount(f: OwnedFilters): number {
+  return Number(f.q.trim() !== '') + Number(f.category !== 'all') + Number(f.resaleOnly) + Number(f.chain !== 'all')
+}
+
 export type OwnedSort = 'recent' | 'price' | 'month' | 'title' | 'kept'
 export const OWNED_SORT_LABEL: Record<OwnedSort, string> = {
-  recent: 'Newest first', price: 'Paid: most first', month: 'Per month: most first', title: 'A–Z', kept: 'Kept longest',
+  recent: 'Newest first', price: 'Paid, most first', month: 'Per month, most first', title: 'A–Z', kept: 'Kept longest',
 }
 
 export function sortOwned(list: readonly ShopItem[], sort: OwnedSort, ctx: MoneyCtx, today: string, acc: Map<string, ShopItem[]>): ShopItem[] {

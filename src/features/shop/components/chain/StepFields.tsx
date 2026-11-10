@@ -35,7 +35,7 @@ export function NokLine({ amount, currency, day, typed, onTyped, loading, label 
     <div className="mt-1 flex flex-col gap-1 text-meta text-fg-muted">
       <p className="tabular-nums">
         {complete(amount)
-          ? <>= {money(amount.nok)} <span className="text-fg-faint">· {typed != null ? 'your rate' : `Norges Bank's rate of ${formatDate(day)}`}</span></>
+          ? <>= {money(amount.nok)} <span className="text-fg-muted">· {typed != null ? 'your rate' : `Norges Bank's rate of ${formatDate(day)}`}</span></>
           : !day ? 'In NOK once the day is set'
           : loading ? 'Looking up Norges Bank\'s rate of that day…'
           : 'NOK: rate pending — Norges Bank has no rate for that day yet'}
@@ -120,7 +120,7 @@ export function StepLeave({ s, set, got, problems, today, loading }: {
               <Problem problems={problems} field="leftOn" />
             </div>
             <div>
-              <label className="field-label" htmlFor={`to-${s.key}`}>{s.disposal === 'given' ? 'Given to' : s.disposal === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-faint">(optional)</span></label>
+              <label className="field-label" htmlFor={`to-${s.key}`}>{s.disposal === 'given' ? 'Given to' : s.disposal === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-muted">(optional)</span></label>
               <input id={`to-${s.key}`} value={s.soldTo} onChange={e => set({ soldTo: e.target.value })} placeholder={s.disposal === 'traded_in' ? 'Apple, POWER…' : 'FINN, a friend…'} className="input max-w-md" />
             </div>
           </div>
@@ -129,13 +129,13 @@ export function StepLeave({ s, set, got, problems, today, loading }: {
               <span className="field-label">Got</span>
               <MoneyEditor label="Got" amount={s.got} currency={gotCurrency} onAmount={v => set({ got: v })} onCurrency={c => set({ gotCurrency: c })} />
               <NokLine amount={got} currency={gotCurrency} day={s.leftOn} typed={s.gotRate} onTyped={gotRate => set({ gotRate })} loading={loading} label="Got" />
-              {s.got == null && <p className="mt-1 text-meta text-fg-faint">Without an amount the result stays Unknown.</p>}
+              {s.got == null && <p className="mt-1 text-meta text-fg-muted">Without an amount the result stays Unknown.</p>}
             </div>
           )}
         </div>
       ) : (
         <div>
-          <span className="field-label">Could sell for <span className="font-normal normal-case tracking-normal text-fg-faint">(optional — shows what the whole chain would come to)</span></span>
+          <span className="field-label">Could sell for <span className="font-normal normal-case tracking-normal text-fg-muted">(optional — shows what the whole chain would come to)</span></span>
           <MoneyEditor label="Could sell for" amount={s.valueNow} currency={s.valueCurrency ?? s.currency} onAmount={valueNow => set({ valueNow })} onCurrency={valueCurrency => set({ valueCurrency })} />
         </div>
       )}

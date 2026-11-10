@@ -70,7 +70,7 @@ console.log('Cells')
   check('a date is yyyy-MM-dd (DateInput\'s value)', eq(M.parseCell(date, '2026-10-14'), { ok: true, value: '2026-10-14' }) && M.parseCell(date, '14.10.2026').ok === false)
   check('text is trimmed and capped at 500', eq(M.parseCell(text, '  HX711 '), { ok: true, value: 'HX711' }) && M.parseCell(text, 'x'.repeat(600)).value.length === 500)
   check('shown: money with its currency, a date as DD.MM.YYYY, a link without its scheme, a tick as Yes',
-    M.cellText(money, 1250, 'NOK') === '1 250 NOK' && M.cellText(date, '2026-10-14') === '14.10.2026'
+    M.cellText(money, 1250, 'NOK') === '1\u00a0250\u00a0NOK' && M.cellText(date, '2026-10-14') === '14.10.2026'
     && M.cellText(link, 'https://www.github.com/x/') === 'github.com/x' && M.cellText(chk, true) === 'Yes' && M.cellText(chk, false) === '')
   check('a cell of the wrong shape shows nothing (never "NaN" or "[object Object]")',
     M.cellText(num, 'x') === '' && M.cellText(money, NaN) === '' && M.cellText(date, 5) === '' && M.cellText(text, null) === '')
