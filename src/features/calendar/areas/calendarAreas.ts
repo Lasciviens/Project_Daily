@@ -102,6 +102,26 @@ export const areaSlug = (key: AreaKey) => `lasci-${key}/`
 export const appleColor = (hex: string) => `${hex.toUpperCase()}FF`
 // </calendar-areas>
 
+/**
+ * Settings → Calendar's choices for the app itself, kept in the same document (`calendar_prefs.prefs`, no migration):
+ * whether the item screen shows where each field goes (owner, 10.11.2026: "a setting in Settings → Calendar"). The
+ * server reads the document with its copy of readCalendarPrefs above, which leaves these alone, and its own writes
+ * (176's read-back of a renamed calendar) change only `areas` — so they are kept.
+ */
+export interface CalendarSettings extends CalendarPrefs {
+  /** The item screen's marks: a small Apple, Google or app mark on every row. */
+  showMarks: boolean
+}
+
+/** The marks show until the owner turns them off. */
+export const DEFAULT_SHOW_MARKS = true
+
+/** The saved settings and the app's own choices, checked where they enter. */
+export function readCalendarSettings(raw: unknown): CalendarSettings {
+  const top = isRecord(raw) ? raw : {}
+  return { ...readCalendarPrefs(raw), showMarks: typeof top.showMarks === 'boolean' ? top.showMarks : DEFAULT_SHOW_MARKS }
+}
+
 /** What a saved choice is checked against in the form (the same limits readCalendarPrefs applies). */
 export function areaProblem(a: CalendarArea): string | null {
   if (!a.name.trim()) return 'Give the calendar a name'
