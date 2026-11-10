@@ -954,7 +954,10 @@ const missingTable = (e: { code?: string; message?: string } | null) =>
 
 const lastByHost = new Map<string, number>()
 
-/** A link the owner reads again within this long is answered from the last read (B, 10.11.2026). */
+/**
+ * A link the owner reads again within this long is answered from the last read: the owner's limit (10.11.2026)
+ * — what the owner starts (a paste, a save, Check now) reads a page at most once an hour.
+ */
 const REUSE_MS = 3600_000
 const recentReads = new Map<string, { read: PriceRead & { finalUrl: string }; at: number }>()
 

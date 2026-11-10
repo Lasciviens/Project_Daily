@@ -2906,7 +2906,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   shop_price_watch: {
     access: 'ro',
     purpose: 'The last price read from each shop item\'s link (Prisjakt\'s lowest new offer and how many shops, or the shop\'s own price), written by the daily price check.',
-    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error|not_allowed — the site\'s terms forbid automated reading, never fetched), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at, condition(new — Prisjakt\'s new offers only | mixed — new, used and refurbished alike | unknown — a shop\'s own page | null — read before 10.11.2026), used_low, refurbished_low(the cheapest used / refurbished offer on Prisjakt)',
+    columns: 'item_id, url, checked_at, status(ok|no_price|blocked|error|not_allowed — the site doesn\'t let apps read it (its terms or its robots.txt), never fetched), error, source(prisjakt|store), name, low, high, offers, currency, in_stock, was(a struck-out "before" price), return_days, last_ok_at, prev_low, prev_at, condition(new — Prisjakt\'s new offers only | mixed — new, used and refurbished alike | unknown — a shop\'s own page | null — read before migration 188), used_low, refurbished_low(the cheapest used / refurbished offer on Prisjakt)',
     rules: 'Say where and when a price is from ("Prisjakt\'s lowest new price on 08.10.2026"). A blocked, failed or not_allowed check keeps the last price read — say it is from last_ok_at. A price with condition mixed or null may be a used or refurbished one: say so. used_low and refurbished_low are offers seen, never what the user\'s own thing could sell for.',
   },
   shop_price_points: {
