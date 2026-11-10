@@ -297,6 +297,17 @@ console.log('\n16 · What a price covers, and why a watch shows no price now (th
     W.historyOf(points, 'mixed', 'NOK').rows.length === 3 && W.leftOutWords(W.historyOf(points, 'mixed', 'NOK').leftOut) === 'Left out: 2 prices of new offers only'
     && W.leftOutWords({ count: 1, covers: ['unknown'] }) === "Left out: 1 price from the shop's own page" && W.leftOutWords({ count: 2, covers: ['new', 'unknown'] }) === 'Left out: 2 prices of another kind')
   check('…nothing left out, no line', W.leftOutWords(W.historyOf([pt(5, 'unknown', 'store'), pt(6, null, 'store')], 'unknown', 'NOK').leftOut) === null)
+  const t = (o) => W.checkToast([o])
+  const t6 = '2026-11-10T05:23:00.000Z'
+  check('Check now with a price: "Price checked"; the check from the last hour: "Already checked at 06:23 — try after 07:23", one phone line',
+    t({ status: 'ok' }).text === 'Price checked' && t({ status: 'ok', reused: true, checkedAt: t6 }).tone === 'success'
+    && t({ status: 'ok', reused: true, checkedAt: t6 }).text === `Already checked at ${formatTime(t6)} — try after ${formatTime(Date.parse(t6) + 3600_000)}`
+    && t({ status: 'ok', reused: true, checkedAt: t6 }).text.length <= 42)
+  check('…a bot check, fresh or from the last hour, is a warning in its own words — never a green "checked"',
+    JSON.stringify(t({ status: 'blocked', error: 'elkjop.no blocks apps with a browser check' })) === JSON.stringify({ tone: 'warning', text: 'elkjop.no blocks apps with a browser check' })
+    && JSON.stringify(t({ status: 'blocked', error: 'elkjop.no blocks apps with a browser check', reused: true, checkedAt: t6 })) === JSON.stringify({ tone: 'warning', text: `Already checked at ${formatTime(t6)} — elkjop.no blocks apps with a browser check` }))
+  check('…no price is a warning too ("No new offer on Prisjakt, …"); several links: a count', t({ status: 'no_price', error: 'No new offer on Prisjakt, only used or refurbished ones' }).tone === 'warning'
+    && W.checkToast([{ status: 'ok' }, { status: 'blocked' }]).text === 'Checked 2 links · 1 with a price')
   check('the strip without a price names the refusal, "no new offer", or "couldn\'t check 10.11.2026" — never "not checked yet" for a link that was checked',
     hint('not_allowed') === 'apps may not read it' && hint('no_price', 'new') === 'no new offer' && hint('no_price') === 'no price on the page'
     && hint('blocked') === "couldn't check 10.11.2026" && hint('error') === "couldn't check 10.11.2026")
@@ -488,6 +499,11 @@ async function handlerChecks() {
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, plain, { status: 'blocked', low: null })), pages: tv, fetched, writes })
   r = await call({ action: 'check', ids: ['i1'] })
   check('…the same when that check was blocked: Check now tries again only after the hour', fetched.length === 0 && r.results?.[0]?.status === 'blocked' && r.results?.[0]?.reused === true)
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(10, plain, { status: 'error', error: "The site didn't answer in time", low: 9490 })), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('…but a check that failed 10 minutes ago read nothing: Check now reads again at once (never "already checked")', fetched.length === 1
+    && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused && r.results?.[0]?.low === 9990, JSON.stringify(r))
   fetched = []; writes = []
   call = shopPrice({ db: dbWith(FINN, undefined, watchOf(10, FINN, { status: 'not_allowed', low: null, error: "finn.no doesn't let apps read its pages" })), pages: {}, fetched, writes })
   r = await call({ action: 'check', ids: ['i1'] })

@@ -1,12 +1,13 @@
 import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
-import { formatTime } from '../../../shared/utils/dateFormat'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
 import { fetchPricePoints, fetchPriceWatches } from '../api/shopApi'
 import { checkItemPrices, type PriceCheckOutcome } from '../api/shopPriceApi'
 import { fetchGroceryPrices, searchGroceries } from '../api/groceryApi'
+import { checkToast } from '../watchWords'
 import type { GroceryHit } from '../groceryModel'
 import type { ShopPriceWatch } from '../types'
 
@@ -33,22 +34,28 @@ export function useShopPricePoints(itemId: string | null) {
 }
 
 /**
- * "Check now": re-reads the links. One link that read nothing is an error
- * with the reason (the watch still records the check); several report a count.
+ * "Check now": re-reads the links (or answers with the check from the last
+ * hour, said so). A price is the result; a site's answer without one — a bot
+ * check, no price — is a warning in its words (`checkToast`); a failed check
+ * is an error with the reason (the watch still records it, and shop-price
+ * never answers a failure from the last hour, so a second tap tries again).
+ * Several links report a count.
  */
 export function useCheckPrices() {
   return useMutationWithFeedback({
     action:         'check_shop_prices',
     loadingMessage: 'Checking the price…',
     successMessage: (r: PriceCheckOutcome[]) => {
-      const one = r.length === 1 ? r[0] : null
-      // Read under an hour ago: that read is the answer, and the toast says when the next can be.
-      if (one?.reused && one.checkedAt) return `Checked at ${formatTime(one.checkedAt)} — the next read can be after ${formatTime(Date.parse(one.checkedAt) + 3600_000)}`
-      return r.length === 1 ? 'Price checked' : `Checked ${r.length} links · ${r.filter(x => x.status === 'ok').length} with a price`
+      const t = checkToast(r)
+      return t.tone === 'success' ? t.text : undefined
+    },
+    onSuccess:      (r: PriceCheckOutcome[]) => {
+      const t = checkToast(r)
+      if (t.tone === 'warning') toast.warning(t.text)
     },
     mutationFn:     async (ids: string[]) => {
       const r = await checkItemPrices(ids)
-      if (r.length === 1 && r[0].status !== 'ok' && !r[0].reused) throw new Error(r[0].error ?? 'No price found on the page')
+      if (r.length === 1 && r[0].status === 'error') throw new Error(r[0].error ?? 'Couldn\'t check the price')
       return r
     },
     invalidates:    (_d, ids) => [qk.shop.watches(), ...ids.map(id => qk.shop.points(id))],

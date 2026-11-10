@@ -53,8 +53,9 @@
 //                                                     `refusal` (terms | robots) and `reason` — never fetched
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
 //   A read the owner starts reuses one from the last hour: `check` answers from a watch of the same link
-//   checked under an hour ago, and `read` and `check` share the last hour's reads in memory (by account and
-//   exact link), so pasting a link and saving it is one read. The answer says so (`reused`, `checkedAt`).
+//   checked under an hour ago (a refusal as itself; a failed check is tried again at once), and `read` and
+//   `check` share the last hour's pages that answered, in memory (by account and exact link), so pasting a
+//   link and saving it is one read. The answer says so (`reused`, `checkedAt`).
 //   The sweep keeps its own rule (a link at most once in 20 h).
 // POST { action: 'rates' }              → { rates }    fill the caller's pending rates
 // POST { action: 'day_rates', pairs: [{ currency, day }] (≤ 60) }
@@ -1382,9 +1383,10 @@ Deno.serve(async (req: Request) => {
     for (const item of (data ?? []) as Item[]) {
       if (!item.url || !/^https?:\/\//i.test(item.url)) { results.push({ id: item.id, status: 'error', low: null, currency: null, error: 'No link to check' }); continue }
       // Checked under an hour ago (the same link): that check is the answer — no new read. A refusal is answered
-      // again as itself (it reads nothing either way), never as "the next read can be after …".
+      // again as itself (it reads nothing either way), never as "already checked"; a failed check (error) read
+      // nothing, so Check now may try again at once.
       const w = watches.get(item.id)
-      if (w && w.url === item.url && w.status !== 'not_allowed' && Date.now() - Date.parse(w.checked_at) < REUSE_MS) {
+      if (w && w.url === item.url && w.status !== 'not_allowed' && w.status !== 'error' && Date.now() - Date.parse(w.checked_at) < REUSE_MS) {
         results.push({ id: item.id, status: w.status as CheckOutcome['status'], low: w.low, currency: w.currency, error: w.error ?? undefined, reused: true, checkedAt: w.checked_at })
         continue
       }

@@ -15,7 +15,8 @@ import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
  * or cheaper than you paid while it can still be returned. A blocked check
  * says so and keeps the last price read; a link on a site that doesn't let
  * apps read it (its terms, or its robots.txt) is never read, and the card
- * says so in a neutral tone — it is the site's answer, not a failure.
+ * says so in a neutral tone — it is the site's answer, not a failure — with
+ * no Check now (it could only say no again).
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
   const check = useCheckPrices()
@@ -34,7 +35,8 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   return (
     <Card>
       <CardHeader title="Price now" variant="label" className="mb-2"
-        action={<Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
+        // A refused link is never read, so Check now could only say no again: it isn't offered.
+        action={refused ? undefined : <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
       {!current ? (
         <p className="text-body text-fg-muted">Not checked yet — {morningReads(item, today) ? 'the morning check reads it, or tap Check now' : 'tap Check now'}. {open}</p>
       ) : (

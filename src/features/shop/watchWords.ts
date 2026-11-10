@@ -6,7 +6,7 @@
 import { formatDate, formatTime } from '../../shared/utils/dateFormat'
 import { osloDay } from './groceryModel'
 import { addDays } from './ownModel'
-import type { PriceReadResult } from './api/shopPriceApi'
+import type { PriceCheckOutcome, PriceReadResult } from './api/shopPriceApi'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from './types'
 
 /**
@@ -28,6 +28,21 @@ export function readNote(r: PriceReadResult): string {
   }
   const why = r.reason ?? (r.status === 'blocked' ? 'That site blocks apps with a browser check' : 'No price on the page')
   return `${why}${readAt} — type the price yourself.`
+}
+
+/**
+ * What Check now says, in one toast that fits a phone's line: a price read is the result; a site's answer without
+ * one (a bot check, no price, a refusal) is a warning in its own words — "Already checked at 06:23 — …" when it is
+ * the check from the last hour. A failed check is not here: its error is the mutation's own.
+ */
+export function checkToast(results: readonly Pick<PriceCheckOutcome, 'status' | 'error' | 'reused' | 'checkedAt'>[]): { tone: 'success' | 'warning'; text: string } {
+  if (results.length !== 1) return { tone: 'success', text: `Checked ${results.length} links · ${results.filter(x => x.status === 'ok').length} with a price` }
+  const [r] = results
+  const before = r.reused && r.checkedAt ? `Already checked at ${formatTime(r.checkedAt)}` : null
+  // "Already checked at 06:23 — try after 07:23": 268 px in the toast's 13 px Inter, one line on a 375 px phone too.
+  if (r.status === 'ok') return { tone: 'success', text: before ? `${before} — try after ${formatTime(Date.parse(r.checkedAt as string) + 3600_000)}` : 'Price checked' }
+  const why = r.error ?? (r.status === 'blocked' ? 'The site blocks apps with a browser check' : r.status === 'not_allowed' ? 'The site doesn\'t let apps read its pages' : 'No price on the page')
+  return { tone: 'warning', text: before ? `${before} — ${asTail(why)}` : why }
 }
 
 /** shop-price's sweep asks a link whose last answer was a bot check again on the 7th Oslo day after it (its BLOCKED_RETRY_DAYS). */
