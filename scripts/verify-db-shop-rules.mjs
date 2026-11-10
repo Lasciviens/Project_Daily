@@ -18,7 +18,8 @@
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -143,6 +144,87 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (problems.length) fail(`migration 190 has ${problems.join('; ')}`)
 }
 
+// Static, 191: four tables, each with row level security right after it and the owner lock at the end; stores, rules
+// and deal-day edits are the owner's own rows (the owner policy with (select auth.uid()), audited, the app writes
+// them), the law is reference data like 188's (the app reads, only the service role writes, no audit or user_id —
+// each with the header's reason); every function pinned to search_path '', running as the caller but for the one
+// trigger that seeds a new account; the seed and the triggers granted to nobody, the resets to signed-in callers only;
+// owner_edited derived in both rules triggers, never taken from the write; the seeds only what has a source.
+{
+  const src = readFileSync(mig('191_shop_stores_rules.sql'), 'utf8')
+  const sql = src.replace(/--.*$/gm, '')
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
+  if (/^(update|delete from) /im.test(sql)) problems.push('a top-level update or delete (191 only adds rows: the seeds)')
+  const tables = [...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi)].map(m => m[1])
+  if (tables.join() !== 'shop_stores,shop_store_rules,shop_law_rules,shop_deal_day_edits') problems.push(`creates ${tables.join(', ') || 'no table'}`)
+  for (const t of tables) {
+    if (!new RegExp(`create table if not exists public\\.${t} \\([\\s\\S]*?\\n\\);\\s*alter table public\\.${t} enable row level security;`, 'i').test(sql)) problems.push(`no row level security right after ${t}`)
+    if (!new RegExp(`select public\\.owner_lock_apply\\('public\\.${t}'\\);`, 'i').test(sql)) problems.push(`no owner_lock_apply for ${t}`)
+    if (new RegExp(`on public\\.${t} to [^;]*anon`, 'i').test(sql)) problems.push(`a grant to anon on ${t}`)
+    if (!new RegExp(`grant select, insert, update, delete on public\\.${t} to service_role;`, 'i').test(sql)) problems.push(`no service-role grant on ${t}`)
+  }
+  for (const t of ['shop_stores', 'shop_store_rules', 'shop_deal_day_edits']) {
+    const body = sql.match(new RegExp(`create table if not exists public\\.${t} \\(([\\s\\S]*?)\\n\\);`, 'i'))?.[1] ?? ''
+    if (!/user_id\s+uuid not null default auth\.uid\(\) references auth\.users\(id\) on delete cascade/i.test(body)) problems.push(`${t}: user_id without auth.uid() by default`)
+    if (!new RegExp(`create policy "Users manage own ${t}" on public\\.${t}\\s+for all using \\(\\(select auth\\.uid\\(\\)\\) = user_id\\) with check \\(\\(select auth\\.uid\\(\\)\\) = user_id\\);`, 'i').test(sql)) problems.push(`${t}: no owner policy with (select auth.uid())`)
+    if (!new RegExp(`revoke all on public\\.${t} from anon;\\s*grant select, insert, update, delete on public\\.${t} to authenticated;`, 'i').test(sql)) problems.push(`${t}: the app does not read and write it, or anon is not revoked`)
+    if (!new RegExp(`create trigger trg_audit after insert or update or delete on public\\.${t}\\s+for each row execute function public\\.log_audit\\(\\);`, 'i').test(sql)) problems.push(`${t}: no audit trigger`)
+  }
+  if (!/revoke all on public\.shop_law_rules from anon, authenticated;\s*grant select on public\.shop_law_rules to authenticated;/i.test(sql)) problems.push('the law: not read-only for the app')
+  if (/grant [^;]*(insert|update|delete)[^;]* on public\.shop_law_rules to [^;]*authenticated/i.test(sql) || /on public\.shop_law_rules for (insert|update|delete|all)\b/i.test(sql)) problems.push('the law: a browser write')
+  if (/trg_audit[^;]*shop_law_rules/i.test(sql) || !/No audit trigger: not user-authored/.test(src) || !/No user_id: the law is the same for every account/.test(src)) problems.push('the law: an audit trigger, or the header does not say why there is no audit or user_id')
+  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
+  const names = fns.map(([, name]) => name).sort().join()
+  if (names !== 'shop_host_ok,shop_host_on,shop_hosts_ok,shop_https_ok,shop_link_host,shop_month_day_ok,shop_search_url_ok,shop_store_facts,shop_store_reset,shop_store_rule_facts,shop_store_rule_reset,shop_store_rules_rules,shop_store_seed,shop_store_seed_new_user,shop_stores_rules') problems.push(`functions ${names}`)
+  for (const [body, name] of fns) {
+    if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
+    if (/security definer/i.test(body) !== (name === 'shop_store_seed_new_user')) problems.push(`${name}: SECURITY DEFINER ${name === 'shop_store_seed_new_user' ? 'missing' : 'not expected'}`)
+    if (!new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon`).test(sql)) problems.push(`no revoke for ${name}`)
+  }
+  for (const name of ['shop_stores_rules', 'shop_store_rules_rules', 'shop_store_seed_new_user', 'shop_store_seed']) {
+    if (!new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon, authenticated, service_role;`).test(sql)
+        || new RegExp(`grant execute on function public\\.${name}\\(`).test(sql)) problems.push(`${name} is callable by a role`)
+  }
+  for (const name of ['shop_store_rule_reset', 'shop_store_reset']) {
+    const body = fns.find(([, n]) => n === name)?.[0] ?? ''
+    if (!new RegExp(`grant execute on function public\\.${name}\\(uuid\\) to authenticated;`).test(sql)) problems.push(`${name} not granted to authenticated`)
+    if (new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to [^;]*(anon|service_role)`).test(sql)) problems.push(`${name} granted wider than the app`)
+    if (!/v_user is null or not public\.is_app_user\(\)/.test(body) || !/user_id = v_user/.test(body)) problems.push(`${name} is not scoped to an app user's own row`)
+  }
+  for (const name of ['shop_stores_rules', 'shop_store_rules_rules']) {
+    const body = fns.find(([, n]) => n === name)?.[0] ?? ''
+    if (!/new\.owner_edited := new\.origin = 'owner'\s+or \(new\.source_facts is not null and public\.shop_store(_rule)?_facts\(new\) is distinct from new\.source_facts\);/.test(body)) problems.push(`${name} does not derive owner_edited from the source`)
+    if (!/v_door\s+text\s*:= case when current_user in \('authenticated', 'anon'\) then 'owner'\s+when current_user = 'service_role' then 'service' else 'trusted' end;/.test(body)) problems.push(`${name} does not tell its doors apart by role`)
+  }
+  const seed = fns.find(([, n]) => n === 'shop_store_seed')?.[0] ?? ''
+  if ((seed.match(/if v_(r)?old\.owner_edited then/g) || []).length !== 2) problems.push('the seed writes facts over an owner\'s edit')
+  const storeSeeds = [...seed.matchAll(/\n {4}\('([a-z_]+)', '\{"kind"/g)].map(m => m[1])
+  if (storeSeeds.join() !== 'prisjakt,finn,tise,elkjop,power,jernia,komplett,proshop,clas_ohlson,xxl,jula,dustin') problems.push(`store seeds ${storeSeeds.join()}`)
+  const ruleSeeds = [...seed.matchAll(/\n {4}\('([a-z_]+)', '([a-z_]+)', '\{([\s\S]*?)\}'::jsonb\)/g)]
+  if (ruleSeeds.map(m => m[1]).join() !== 'elkjop_open_purchase,elkjop_open_purchase_club,power_return') problems.push(`rule seeds ${ruleSeeds.map(m => m[1]).join()}`)
+  for (const [, key, , body] of ruleSeeds) {
+    if (!/"source_url": "https:\/\/www\.(elkjop|power)\.no\//.test(body) || !/"read_on": "2026-11-10"/.test(body)) problems.push(`the rule seed ${key} has no source on its store's own site or no read day`)
+  }
+  if (problems.length) fail(`migration 191 has ${problems.join('; ')}`)
+}
+
+/** A later migration's seed: 191 with Elkjøp's open purchase at 45 days, its search link /sok, and a new store with a rule. */
+function reseedSql() {
+  const swaps = [
+    ['"kind": "open_purchase", "days": 30,', '"kind": "open_purchase", "days": 45,'],
+    ['"search_url": "https://www.elkjop.no/search?q={q}"', '"search_url": "https://www.elkjop.no/sok?q={q}"'],
+    ["    ('dustin', '{", `    ('nordisk', '{"kind": "shop", "name": "Nordisk", "country": "NO", "currency": "NOK", "hosts": ["nordisk.example"], "source_url": "https://nordisk.example/"}'::jsonb),\n    ('dustin', '{`],
+    ["    ('power_return', 'power',", `    ('nordisk_return', 'nordisk', '{"kind": "return", "days": 30, "source_url": "https://nordisk.example/retur", "read_on": "2026-11-10"}'::jsonb),\n    ('power_return', 'power',`],
+  ]
+  let text = readFileSync(mig('191_shop_stores_rules.sql'), 'utf8')
+  for (const [from, to] of swaps) {
+    if (!text.includes(from)) fail(`the later seed can't be written: 191 no longer has ${from}`)
+    text = text.replace(from, to)
+  }
+  return text
+}
+
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
 if (!url) {
   console.log('verify-db-shop-rules: static checks passed; database scenarios skipped (no VERIFY_DB_URL / DEPLOY_TEST_DB_URL)')
@@ -201,12 +283,24 @@ try {
   step('links across accounts from before 190', () => psql(n, ['-f', join(dir, 'cross-account-old.sql')]))
   step('190', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   step('190 again', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
+  step('191', () => psql(n, ['-f', mig('191_shop_stores_rules.sql')]))
+  step('191 again', () => psql(n, ['-f', mig('191_shop_stores_rules.sql')]))
   let passed = 0
-  for (const file of ['scenarios.sql', 'site-policies.sql', 'signals.sql']) {
+  const scenarios = file => {
     const sc = run(n, join(dir, file))
     passed += (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
     if (sc.status !== 0) throw Object.assign(new Error(`${file} failed`), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
   }
+  for (const file of ['scenarios.sql', 'site-policies.sql', 'signals.sql', 'stores.sql']) scenarios(file)
+  // A later migration's seed: 191 again with changed facts (RESEED), then what it changed.
+  step('a later seed', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'reseed-'))
+    try {
+      writeFileSync(join(tmp, 'reseed.sql'), reseedSql())
+      psql(n, ['-f', join(tmp, 'reseed.sql')])
+    } finally { rmSync(tmp, { recursive: true, force: true }) }
+  })
+  scenarios('stores-reseed.sql')
   summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188 and 190 (twice each), and ${passed} scenarios passed`
 } catch (e) {
   code = 1
