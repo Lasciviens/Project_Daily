@@ -21,17 +21,33 @@ export const MAX_LISTING_PRICE = 1_000_000_000
 export const MAX_CHECKLIST_STEPS = 60
 
 /**
- * An ad's link: one https address — a host of letters, digits, dots and hyphens (so no user:password@), an optional
- * port, then a path, query or fragment without spaces or control characters; at most 2 048 characters. 192's CHECK
- * is the same pattern (a phone's Unicode space is refused here too).
+ * An ad's link as stored: one https address — a host of letters, digits, dots and hyphens (so no user:password@), an
+ * optional port, then a path, query or fragment of printable ASCII only (an allow-list: no space, control, invisible
+ * or direction-changing character); at most 2 048 characters. 192's CHECK is the same pattern, and
+ * scripts/fixtures/shop-ad-links.json holds the cases both are checked on. A pasted link goes through
+ * normalizeAdUrl first, which writes it as the browser's URL parser does (those characters encoded).
  */
-// eslint-disable-next-line no-control-regex -- the pattern exists to refuse control characters
-export const AD_URL_RE = /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][^\s\x00-\x1f\x7f]*)?$/
+export const AD_URL_RE = /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][!-~]*)?$/
 export const AD_URL_MAX = 2048
 /** A marketplace's host, as shop_site_policies keeps one (finn.no). */
 export const HOST_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
 
 export const isAdUrl = (s: unknown): s is string => typeof s === 'string' && s.length <= AD_URL_MAX && AD_URL_RE.test(s)
+
+/**
+ * A pasted link as it is stored: written by the URL parser (scheme and host in lower case, a host in another script
+ * as punycode, a space or an invisible character in the path percent-encoded), then the allow-list. Null for anything
+ * that is no ad link (http, javascript:, user:password@, no dot in the host, too long).
+ */
+export function normalizeAdUrl(raw: string): string | null {
+  let href: string
+  try {
+    href = new URL(raw.trim()).href
+  } catch {
+    return null
+  }
+  return isAdUrl(href) ? href : null
+}
 export const isHost = (s: unknown): s is string => typeof s === 'string' && s.length <= 253 && HOST_RE.test(s)
 export const isCondition = (s: unknown): s is ResaleCondition => RESALE_CONDITIONS.includes(s as ResaleCondition)
 export const isCurrency = (s: unknown): s is ShopCurrency => SHOP_CURRENCIES.includes(s as ShopCurrency)
@@ -54,7 +70,8 @@ export function linkOnHost(url: string, host: string): boolean {
  * "m.". Null for no ad link. Never a name in code.
  */
 export function marketplaceOf(url: string, known: readonly string[] = []): string | null {
-  const h = hostOf(url)
+  const link = normalizeAdUrl(url)
+  const h = link === null ? null : hostOf(link)
   if (h === null) return null
   const hit = [...known].filter(isHost).sort((a, b) => b.length - a.length).find(k => h === k || h.endsWith(`.${k}`))
   if (hit) return hit
@@ -62,8 +79,14 @@ export function marketplaceOf(url: string, known: readonly string[] = []): strin
   return isHost(bare) ? bare : null
 }
 
+/** Every amount is below a billion (192: an ad's price, a quote, an estimate, a listing's price). */
+export const MAX_AMOUNT = 1_000_000_000
+
 /** A price from 0 below `max` (no NaN, no infinity). */
-export const isPrice = (n: unknown, max = Infinity): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < max
+export const isPrice = (n: unknown, max = MAX_AMOUNT): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < max
+
+/** At most two decimals (øre, kuruş, cents) — 192 refuses more in a listing's price. */
+export const twoDecimals = (n: number): boolean => Math.round(n * 100) / 100 === n
 
 /**
  * Whether a price story is one 192 takes: 1–100 steps of {on, price}, in order from the listing's day to `lastDay`
@@ -74,7 +97,7 @@ export function pricesProblem(prices: readonly ListingPrice[], listedOn: string,
   if (prices.length > MAX_LISTING_PRICES) return `A listing keeps at most ${MAX_LISTING_PRICES - 1} price changes`
   let prev = listedOn
   for (const p of prices) {
-    if (!p || !isDay(p.on) || !isPrice(p.price, MAX_LISTING_PRICE)) return 'A price change is a day and an amount from 0 up'
+    if (!p || !isDay(p.on) || !isPrice(p.price, MAX_LISTING_PRICE) || !twoDecimals(p.price)) return 'A price change is a day and an amount from 0 below a billion, with at most two decimals'
     if (p.on < prev || p.on > lastDay) return 'Price changes go in order, from the day it was listed up to today'
     prev = p.on
   }

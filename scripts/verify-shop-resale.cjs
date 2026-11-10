@@ -134,16 +134,27 @@ check('the template languages are 192\'s', eq(checkList('language'), [...RR.AD_L
 check('every amount\'s currency is the Shop\'s four (192 on each table)', (sql.match(/currency in \('NOK', 'TRY', 'EUR', 'USD'\)/g) || []).length === 4)
 {
   const pg = [...sql.matchAll(/ad_url ~ '([^']+)'/g)].map(m => m[1])
-  const js = RR.AD_URL_RE.source.replace(/\\\//g, '/').replace('[^\\s\\x00-\\x1f\\x7f]', '[^[:space:][:cntrl:]]')
+  const js = RR.AD_URL_RE.source.replace(/\\\//g, '/')
   check('an ad\'s link pattern is 192\'s, on both tables', pg.length === 2 && pg.every(p => p === js), `${pg[0]} vs ${js}`)
   const hosts = [...sql.matchAll(/marketplace ~ '([^']+)'/g)].map(m => m[1])
   check('a marketplace is a host in shop_site_policies\' form (192\'s pattern, three tables)', hosts.length === 3 && hosts.every(h => h === RR.HOST_RE.source), hosts[0])
 }
-const goodLinks = ['https://www.finn.no/recommerce/forsale/item/100', 'https://finn.no/x', 'https://tise.com/p/1?ref=a#b', 'https://shop.example:8443/a']
-const badLinks = ['http://www.finn.no/x', 'javascript:alert(1)', 'https://user:pw@finn.no/x', 'https://finn.no/a b', 'https://finn.no/a\tb', 'https://finn.no/a\u0001b',
-  'https://localhost/x', 'ftp://finn.no/x', 'https://finn.no' + '/x'.repeat(1030), ' https://finn.no/x', 'HTTPS://finn.no/x', 'https://finn.no/a b', 'https://finn.no\\@evil.example', '']
-check('an ad\'s link: one https address (the same cases 192 takes)', goodLinks.every(RR.isAdUrl), goodLinks.filter(u => !RR.isAdUrl(u)).join(' '))
-check('…and refuses http, javascript:, user:password@, spaces (a phone\'s no-break space too), control characters, a host without a dot, over 2 048', badLinks.every(u => !RR.isAdUrl(u)), badLinks.filter(RR.isAdUrl).join(' '))
+{
+  // The shared cases (verify-db-shop-rules runs the same ones through 192's real CHECK).
+  const LINKS = [...JSON.parse(read('scripts/fixtures/shop-ad-links.json')).cases,
+    { raw: 'https://finn.no' + '/x'.repeat(1030), stored: false, accepted: false, why: 'over 2 048 characters' }]
+  const odd = ['‮', '​', ' ', '\u0085']
+  check('the shared ad-link cases hold U+202E, U+200B, U+00A0 and U+0085 (each in a path), and a direction change in a host',
+    odd.every(ch => LINKS.some(c => c.raw.includes(ch) && c.raw.startsWith('https://finn.no/'))) && LINKS.some(c => c.raw.startsWith('https://fi‮')) && LINKS.length >= 25)
+  const storedWrong = LINKS.filter(c => RR.isAdUrl(c.raw) !== c.stored)
+  check('an ad\'s link as stored: printable ASCII after the host, nothing else — the app\'s pattern gives every shared case its answer', !storedWrong.length, storedWrong.map(c => c.why).join('; '))
+  const sentWrong = LINKS.filter(c => (RR.normalizeAdUrl(c.raw) !== null) !== c.accepted)
+  check('a pasted link is sent as the URL parser writes it (an invisible or direction-changing character encoded), then checked — every shared case', !sentWrong.length, sentWrong.map(c => c.why).join('; '))
+  check('…what is sent is one the stored check takes, the same href the database is asked about', LINKS.every(c => {
+    const n = RR.normalizeAdUrl(c.raw)
+    return n === null || (RR.isAdUrl(n) && n === new URL(c.raw.trim()).href && !/[^!-~]/.test(n))
+  }) && RR.normalizeAdUrl('https://finn.no/a‮b') === 'https://finn.no/a%E2%80%AEb')
+}
 check('a link is on a marketplace by its host or a subdomain — never by a name that only starts or ends the same',
   RR.linkOnHost('https://www.finn.no/x', 'finn.no') && RR.linkOnHost('https://finn.no/x', 'finn.no') && !RR.linkOnHost('https://finn.no.evil.example/x', 'finn.no')
   && !RR.linkOnHost('https://evilfinn.no/x', 'finn.no') && !RR.linkOnHost('https://tise.com/finn.no', 'finn.no') && !RR.linkOnHost('javascript:finn.no', 'finn.no'))
@@ -161,6 +172,11 @@ check('a price story: 1–100 steps in order from the listing\'s day up to tomor
   && RR.pricesProblem([{ on: '2026-11-01', price: 1e9 }], '2026-11-01', '2026-11-11') !== null
   && RR.pricesProblem([{ on: '2026-02-30', price: 1 }], '2026-01-01', '2026-11-11') !== null
   && RR.pricesProblem(Array.from({ length: 101 }, () => ({ on: '2026-11-01', price: 1 })), '2026-11-01', '2026-11-11') !== null)
+check('…with at most two decimals (192 refuses a third); every amount below a billion, here and in 192',
+  RR.pricesProblem([{ on: '2026-11-01', price: 4999.995 }], '2026-11-01', '2026-11-11') !== null && RR.pricesProblem([{ on: '2026-11-01', price: 19.99 }], '2026-11-01', '2026-11-11') === null
+  && !RR.isPrice(1e9) && RR.isPrice(999999999.99) && !RR.isPrice(1e300) && RR.MAX_AMOUNT === 1e9
+  && /price\s+numeric not null check \(price >= 0 and price < 1000000000\)/.test(sql) && /amount < 1000000000/.test(sql) && /value < 1000000000/.test(sql)
+  && /pg_catalog\.scale\(v_price\) > 2/.test(sql))
 {
   const note = { id: uid(1), user_id: USER, item_id: uid(2), ad_url: 'https://finn.no/x', marketplace: 'finn.no', price: '2400', currency: 'NOK', condition: 'good',
     asking: true, noted_on: '2026-11-01', created_at: T, updated_at: T }
@@ -340,6 +356,9 @@ check('…in Norwegian, with its letters (æ ø å) as they are', seeds.every(s 
   check('…an approximate day says "ca.", another currency its code; English says "about", "and", NOK',
     TX.fillAd(seeds[1], { ...facts, approx: true, price: 100, currency: 'EUR' }).body.includes('Kjøpt ca. 10.05.2025.') && TX.fillAd(seeds[1], { ...facts, price: 100, currency: 'EUR' }).body.includes('Pris: 100 EUR.')
     && TX.fillAd({ title: '{name}', body: 'Bought {bought}. With {accessories}. {price}. {condition}.', language: 'en' }, { ...facts, approx: true }).body === 'Bought about 10.05.2025. With etui, ladekabel and eske. 2 400 NOK. good.')
+  check('an accessory\'s name stays on one line (a newline or a tab in it is a space), as the thing\'s name does',
+    TX.fillAd(seeds[0], { ...facts, accessories: ['etui\nmed glidelås', '  lader\t ', ''] }).body.includes('Medfølger: etui med glidelås og lader.')
+    && !TX.fillAd(seeds[0], { ...facts, accessories: ['a\nPris: 1 kr'] }).body.includes('\nPris: 1 kr'))
   check('…a field the app doesn\'t know stays as typed and is named', eq(TX.fillAd({ title: '{name}', body: 'Serial: {serial}', language: 'nb' }, facts), { title: 'Sony WH-1000XM5', body: 'Serial: {serial}', unknown: ['serial'] }))
   check('the ad holds only what the owner chose: the fields are the five, never a serial number or who bought it', eq(Object.keys(TX.fieldValues(facts, 'nb')), [...TX.AD_FIELDS]))
 }
@@ -370,9 +389,9 @@ check('…in Norwegian, with its letters (æ ø å) as they are', seeds.every(s 
 console.log('\n6 · The data layer')
 const ITEM = uid(500)
 {
-  const note = await API.createAdNote({ item_id: ITEM, ad_url: ' https://www.finn.no/recommerce/1 ', price: 2400, marketplace: 'FINN.no ', condition: 'good' })
+  const note = await API.createAdNote({ item_id: ITEM, ad_url: ' HTTPS://www.FINN.no/recommerce/1 a\u202eb', price: 2400, marketplace: 'FINN.no ', condition: 'good' })
   const sent = calls[calls.length - 1].row
-  check('a noted ad is the caller\'s own row, its link and marketplace tidied, and its answer read back', sent.user_id === USER && sent.ad_url === 'https://www.finn.no/recommerce/1'
+  check('a noted ad is the caller\'s own row, its link as the URL parser writes it and its marketplace tidied, and its answer read back', sent.user_id === USER && sent.ad_url === 'https://www.finn.no/recommerce/1%20a%E2%80%AEb'
     && sent.marketplace === 'finn.no' && note.price === 2400 && note.item_id === ITEM, JSON.stringify(sent))
   const before = calls.length
   const refusals = await Promise.all([
@@ -386,6 +405,9 @@ const ITEM = uid(500)
     API.createListing({ item_id: ITEM, price: 1, listed_on: '2026-11-12' }, TODAY),
     API.createChecklist({ category: 'Drones', steps: 'x\n'.repeat(61) }),
     API.createAdTemplate({ title: 'x', body: 'y', language: 'de' }),
+    API.createAdNote({ item_id: ITEM, ad_url: 'https://finn.no/x', price: 1e9 }),
+    API.createTradeInQuote({ item_id: ITEM, dealer: 'A store', amount: 1e300 }),
+    API.createListing({ item_id: ITEM, price: 10.005 }, TODAY),
   ].map(p => p.then(() => 'sent', e => e.message)))
   check('what 192 would refuse is refused here first, in plain words, and nothing is sent', refusals.every(r => r !== 'sent') && calls.length === before, refusals.join(' | '))
   const listing = await API.createListing({ item_id: ITEM, price: 5000, marketplace: 'finn.no', status: 'for_sale' }, TODAY)
@@ -424,11 +446,13 @@ const ITEM = uid(500)
     /valueHistory: \(\) => \['shop', 'items', 'value-history'\]/.test(keys) && /SHOP_ROWS = \[[^\]]*qk\.shop\.resale\(\)/.test(read('src/features/shop/hooks/useShop.ts')))
   const ai = read('supabase/functions/ai-proxy/index.ts')
   const access = t => ai.match(new RegExp(`\\n  ${t}: \\{\\n    access: '(rw|ro)'`))?.[1]
+  check('the database\'s text bounds count every character and need one that is not a space (never char_length(btrim(…)))',
+    !/char_length\(btrim\(/.test(sql.replace(/--.*$/gm, '')) && (sql.match(/ ~ '\\S'/g) || []).length === 6)
   check('the assistant: ad notes, quotes and listings as the owner types them (rw); the value history, templates and checklists read only',
     access('shop_ad_notes') === 'rw' && access('shop_trade_in_quotes') === 'rw' && access('shop_listings') === 'rw'
     && access('shop_value_history') === 'ro' && access('shop_ad_templates') === 'ro' && access('shop_handover_checklists') === 'ro')
   const noWrite = new RegExp(ai.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-  check('…and never an ad\'s link or a listing\'s closed_by_sale (AI_NO_WRITE)', noWrite.test('ad_url') && noWrite.test('closed_by_sale') && !noWrite.test('url'))
+  check('…and never an ad\'s link, an ad\'s text or a listing\'s closed_by_sale (AI_NO_WRITE)', noWrite.test('ad_url') && noWrite.test('ad_text') && noWrite.test('closed_by_sale') && !noWrite.test('url'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
