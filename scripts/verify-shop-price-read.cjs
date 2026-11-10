@@ -153,7 +153,27 @@ console.log('\n6 · Prisjakt\'s own offer list: the price now is its new offers 
   check('no new offer: no price now (never a used or refurbished one), the used and refurbished lows kept', usedOnly.status === 'no_price' && usedOnly.low === null && usedOnly.condition === 'new'
     && usedOnly.usedLow === 5990 && usedOnly.refurbishedLow === 6490 && usedOnly.name === 'Apple iPhone 15 Pro 128GB', JSON.stringify(usedOnly))
   const none = readPrice(withRows([]), link)
-  check('an empty offer list: no price, nothing made up', none.status === 'no_price' && none.condition === 'new' && none.usedLow === null && none.refurbishedLow === null)
+  check('an empty offer list holds none of this product\'s offers: its schema.org figures, marked mixed — nothing made up', none.condition === 'mixed' && none.low === 6590 && none.usedLow === null && none.refurbishedLow === null, JSON.stringify(none))
+
+  // A string of 1 024 characters or more streams as a raw text row (`<id>:T<hex bytes>,<text>`), no JSON escaping:
+  // a user's review could hold a fake list. The reviewer's reproduction (flight_spoof.cjs), then variants of it.
+  const textRow = (id, text) => `${id}:T${Buffer.byteLength(text).toString(16)},${text}`
+  const before = (chunk) => html.replace('<script>self.__next_f.push([1,', `${push(chunk)}<script>self.__next_f.push([1,`)
+  const fake = '"offerRows":[{"productId":12105530,"condition":"New","price":{"amount":99,"currency":"NOK"},"shopId":1}]'
+  const spoofed = readPrice(before(textRow('1a', 'Great phone, five stars. '.repeat(45) + fake)), link)
+  check('a review streamed as a text row, holding a fake list at 99 NOK, is not the page\'s list: the price stays 16 115, new', spoofed.low === 16115 && spoofed.high === 16252 && spoofed.offers === 2 && spoofed.condition === 'new', JSON.stringify(spoofed))
+  const blank = readPrice(before(textRow('1c', 'x'.repeat(1080) + '"offerRows":[]')), link)
+  check('…nor is an empty list in one (it no longer blanks the price)', blank.status === 'ok' && blank.low === 16115, JSON.stringify(blank))
+  const wide = readPrice(before(textRow('1d', 'Blåbær og ærfugl 😀 — '.repeat(60) + fake)), link)
+  check('…a text row of ø, å, æ and emoji is stepped over by its UTF-8 bytes: the real list after it still reads', wide.low === 16115 && wide.condition === 'new', JSON.stringify(wide))
+  const escaped = readPrice(before(`1b:["$","p",null,{"children":${JSON.stringify(fake)}}]\n`), link)
+  check('…and a short review inside a JSON row is escaped, so it was never read as a list', escaped.low === 16115)
+  const twice = html.replace('<script>self.__next_f.push([1,', `${push(`1e:{"offerRows":${JSON.stringify(rows.slice(0, 3))}}\n`)}<script>self.__next_f.push([1,`)
+  const two = readPrice(twice, link)
+  check('two lists that both hold this product\'s offers: which is the page\'s own can\'t be told — its schema.org figures, marked mixed', two.condition === 'mixed' && two.low === 6590, JSON.stringify(two))
+  const otherList = html.replace('<script>self.__next_f.push([1,', `${push(`1f:{"offerRows":${JSON.stringify(rows.slice(0, 3).map(r => ({ ...r, productId: 42 })))}}\n`)}<script>self.__next_f.push([1,`)
+  check('…while a second list of another product\'s offers (a "similar products" box) changes nothing', readPrice(otherList, link).low === 16115 && readPrice(otherList, link).condition === 'new')
+  check('a stream that stops being rows is read up to there: a list after it is not taken', readPrice(before('not a row at all ' + fake), link).condition === 'mixed')
   const other = readPrice(withRows(rows.map(r => ({ ...r, productId: 999 }))), link)
   check('rows of another product are not this one\'s: its schema.org figures, marked mixed', other.condition === 'mixed' && other.low === 6590)
   const odd = readPrice(withRows([{ ...rows[0], condition: 'New', price: { amount: 'NaN', currency: 'NOK' } }, { ...rows[1], condition: 'New', price: { amount: -5, currency: 'NOK' } }, { ...rows[2], condition: 'New', price: { amount: 15990, currency: 'NOK' } }]), link)

@@ -17,7 +17,9 @@
 // streams its own offer list to React (`self.__next_f.push([1, "…"])`):
 // `offerRows`, one row per offer with `productId`, `variantId`, `condition`
 // ("New" | "Refurbished" | "Used"), `price {amount, currency}`, `shopId` and
-// `stockStatus`. The price now is read from its new offers only.
+// `stockStatus`. The price now is read from its new offers only — from the
+// stream's JSON rows, never a raw text row (a long review), and only when one
+// list alone holds the product's offers (guardian review, 10.11.2026).
 // A Cloudflare challenge page ("Just a moment…") is reported as `blocked`,
 // never as a missing price.
 //
@@ -371,9 +373,15 @@ export function robotsAllows(rules: readonly RobotsRule[], pathAndQuery: string)
   return !best || best.allow
 }
 
-/** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
+/**
+ * The rows a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in
+ * order, then read row by row (`<hex id>:<data>` up to its newline). A row React sends by length —
+ * `<id>:T<hex bytes>,<text>`, a string of 1 024 characters or more such as a user's review, sent raw, so its quotes
+ * are real quotes and it could pass for the page's own data — is left out, and so are the binary rows sent the same
+ * way; where the stream stops being rows, the rest is left out too.
+ */
 function nextFlight(html: string): string {
-  const out: string[] = []
+  const chunks: string[] = []
   const marker = 'self.__next_f.push([1,"'
   let at = html.indexOf(marker)
   while (at >= 0) {
@@ -381,15 +389,59 @@ function nextFlight(html: string): string {
     let end = start + 1
     while (end < html.length && html[end] !== '"') end += html[end] === '\\' ? 2 : 1
     if (end >= html.length) break
-    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') out.push(s) } catch { /* not a JSON string: skipped */ }
+    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') chunks.push(s) } catch { /* not a JSON string: skipped */ }
     at = html.indexOf(marker, end)
+  }
+  return flightRows(chunks.join(''))
+}
+
+/** The row tags React's Flight stream sends by length (its client's list): `T` a long text, the others binary arrays. */
+const FLIGHT_BY_LENGTH = 'TAOobUSsLlGgMmV'
+
+const isHexCode = (c: number) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)
+
+/** The rows of a Flight stream that carry JSON, joined; a row sent by length is stepped over by its byte count. */
+function flightRows(stream: string): string {
+  const out: string[] = []
+  let i = 0
+  while (i < stream.length) {
+    let j = i
+    while (j < stream.length && isHexCode(stream.charCodeAt(j))) j++
+    if (stream[j] !== ':') break
+    if (j + 1 < stream.length && FLIGHT_BY_LENGTH.includes(stream[j + 1])) {
+      let k = j + 2, bytes = 0
+      while (k < stream.length && isHexCode(stream.charCodeAt(k)) && k - j < 11) { bytes = bytes * 16 + parseInt(stream[k], 16); k++ }
+      if (stream[k] !== ',') break
+      i = afterUtf8Bytes(stream, k + 1, bytes)
+      continue
+    }
+    const nl = stream.indexOf('\n', j)
+    const end = nl < 0 ? stream.length : nl + 1
+    out.push(stream.slice(i, end))
+    i = end
   }
   return out.join('')
 }
 
-/** The JSON array or object that starts at text[start], parsed — else null. */
-function jsonAt(text: string, start: number): unknown {
-  if (text[start] !== '[' && text[start] !== '{') return null
+/** Where `bytes` UTF-8 bytes from `at` end in a decoded string (React counts a row sent by length in bytes). */
+function afterUtf8Bytes(s: string, at: number, bytes: number): number {
+  let i = at
+  for (let n = 0; n < bytes && i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) { n += 4; i++ }
+    else n += 3
+  }
+  return i
+}
+
+/**
+ * The JSON array or object that starts at text[start]: its value (undefined when there is none there, or it isn't
+ * JSON) and the index after it — -1 when it never closes.
+ */
+function jsonAt(text: string, start: number): { value: unknown; end: number } {
+  if (text[start] !== '[' && text[start] !== '{') return { value: undefined, end: start }
   let depth = 0
   for (let i = start; i < text.length; i++) {
     const ch = text[i]
@@ -398,28 +450,42 @@ function jsonAt(text: string, start: number): unknown {
     } else if (ch === '[' || ch === '{') {
       depth++
     } else if ((ch === ']' || ch === '}') && --depth === 0) {
-      try { return JSON.parse(text.slice(start, i + 1)) } catch { return null }
+      let value: unknown
+      try { value = JSON.parse(text.slice(start, i + 1)) } catch { value = undefined }
+      return { value, end: i + 1 }
     }
   }
-  return null
+  return { value: undefined, end: -1 }
 }
 
 interface OfferRow { condition: string; price: number; currency: string | null; shop: string | null; variant: string | null }
 
 /**
- * Prisjakt's own offer list for product `productId`: the `offerRows` its
- * product page streams (one row per offer). A row of another product, or one
- * without a condition or a price, is left out. null: the page has no such
- * list, or none of its rows is this product's — then only its schema.org
- * figures are known.
+ * Prisjakt's own offer list for product `productId`: the `offerRows` its product page streams (one row per offer).
+ * Every `"offerRows":` in the stream's rows is read, and a list counts only when it is the one list that holds this
+ * product's offers — with none, or two (which is the page's own can't be told), only the page's schema.org figures
+ * are known (null). A row of another product, or one without a condition or a price, is left out.
  */
 function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
   const flight = nextFlight(html)
   const key = '"offerRows":'
-  const at = flight.indexOf(key)
-  if (at < 0) return null
-  const rows = jsonAt(flight, at + key.length)
-  if (!Array.isArray(rows)) return null
+  let found: OfferRow[] | null = null
+  for (let at = flight.indexOf(key); at >= 0;) {
+    const list = jsonAt(flight, at + key.length)
+    const mine = Array.isArray(list.value) ? productRows(list.value, productId) : []
+    if (mine.length) {
+      if (found) return null
+      found = mine
+    }
+    // A list that never closes holds the rest of the stream; otherwise the next one is looked for after it.
+    if (list.end < 0) break
+    at = flight.indexOf(key, Math.max(list.end, at + key.length))
+  }
+  return found
+}
+
+/** The offer rows of product `productId` in one list, as read. */
+function productRows(rows: unknown[], productId: string): OfferRow[] {
   const out: OfferRow[] = []
   for (const r of rows) {
     if (!isObj(r) || String(r.productId) !== productId || typeof r.condition !== 'string' || !isObj(r.price)) continue
@@ -431,7 +497,7 @@ function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
       variant: /^\d+$/.test(String(r.variantId ?? '')) ? String(r.variantId) : null,
     })
   }
-  return rows.length && !out.length ? null : out
+  return out
 }
 
 /**
@@ -452,7 +518,7 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
   const best = cheapest('new')
   return {
     low: best?.price ?? null,
-    high: fresh.length ? Math.max(...fresh.map(r => r.price)) : null,
+    high: fresh.length ? fresh.reduce((m, r) => Math.max(m, r.price), 0) : null,
     offers: fresh.length ? new Set(fresh.map((r, i) => r.shop ?? `row ${i}`)).size : null,
     currency: best?.currency ?? rows[0]?.currency ?? null,
     usedLow: cheapest('used')?.price ?? null,
