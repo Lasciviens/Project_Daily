@@ -107,9 +107,10 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           item.planned_date && !item.wait_for_deal && <span key="b" className={late ? 'text-warn' : undefined}>Buy on {formatDate(item.planned_date)}</span>,
           item.task_id && (taskDone ? 'Task done' : `Task${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
           note && now && read && `read ${formatDate(read.last_ok_at ?? read.checked_at)}`,
-          note && <span key="n" className={cx('break-words', note.warn && 'text-warn')}>{note.text}</span>,
           read && read.status === 'ok' && read.in_stock === false && <span key="s" className="text-warn">out of stock</span>,
         ]} />
+        {/* Why there is no price now: a sentence, so it wraps on its own line (a MetaLine piece never breaks). */}
+        {note && <p className={cx('break-words text-meta', note.warn ? 'text-warn' : 'text-fg-muted')}>{note.text}</p>}
         {item.wait_for_deal && item.deal_note && <Truncate as="p" className="text-meta text-fg-muted">{item.deal_note}</Truncate>}
         {afterSale && complete(afterSale.needed) && (
           <p className="break-words text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>

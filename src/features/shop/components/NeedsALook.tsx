@@ -6,12 +6,15 @@ import {
 } from 'lucide-react'
 import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
-import { lookLine, type Look, type LookKind, type LookThing } from '../shopSuggestions'
+import { formatDate } from '../../../shared/utils/dateFormat'
+import { lookLine, SNOOZE_DAYS, type Look, type LookKind, type LookThing } from '../shopSuggestions'
+import { addDays } from '../ownModel'
 
 // "Needs a look": on a wide page a card in the right rail (owner, 14.10.2026:
 // where Coming up sat), on a phone one line that opens every row in a sheet
 // (owner, 09.11.2026: the phone's first screen is the things themselves).
-// Each row has its one action, and Snooze a week · Got it behind ⋯.
+// Each row has its one action, and Snooze (a week, or until the day before
+// its deadline) · Got it behind ⋯.
 
 const ICON: Record<LookKind, LucideIcon> = {
   return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
@@ -33,7 +36,7 @@ export interface LookActions {
 }
 
 /** Its state: still loading, a read that failed (one line with Try again — never an answer), or the rows and those put away. */
-export interface LookState { looks: readonly Look[]; hidden: readonly Look[]; loading: boolean; failed: boolean; onRetry: () => void }
+export interface LookState { looks: readonly Look[]; hidden: readonly Look[]; loading: boolean; failed: boolean; onRetry: () => void; today: string }
 
 /** A failed read: one compact line, never "nothing needs a look". */
 function LookFailed({ onRetry }: { onRetry: () => void }) {
@@ -65,8 +68,15 @@ function lookFacts(look: Look) {
   return [...look.facts.slice(0, -1), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
 }
 
-/** Snooze a week · Got it. */
-function LookMenu({ look, onSnooze, onGotIt }: { look: Look; onSnooze: () => void; onGotIt: () => void }) {
+/** "Snooze a week", or "Snooze until 14.11.2026" when its deadline comes first — none for a row due tomorrow. */
+function snoozeLabel(look: Look, today: string): string | null {
+  if (!look.snoozeTo) return null
+  return look.snoozeTo === addDays(today, SNOOZE_DAYS) ? 'Snooze a week' : `Snooze until ${formatDate(look.snoozeTo)}`
+}
+
+/** Snooze · Got it. */
+function LookMenu({ look, today, onSnooze, onGotIt }: { look: Look; today: string; onSnooze: () => void; onGotIt: () => void }) {
+  const snooze = snoozeLabel(look, today)
   return (
     <Menu as="div" className="shrink-0">
       <MenuButton className="icon-btn h-8 w-8 text-fg-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label={`Snooze or put away: ${look.title}`} title="Snooze or put away">
@@ -74,7 +84,7 @@ function LookMenu({ look, onSnooze, onGotIt }: { look: Look; onSnooze: () => voi
       </MenuButton>
       <MenuItems anchor="bottom end" transition
         className="menu w-52 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={onSnooze} className="menu-item"><AlarmClock aria-hidden className="h-4 w-4" /> Snooze a week</button></MenuItem>
+        {snooze && <MenuItem><button type="button" onClick={onSnooze} className="menu-item"><AlarmClock aria-hidden className="h-4 w-4" /> {snooze}</button></MenuItem>}
         <MenuItem><button type="button" onClick={onGotIt} className="menu-item"><Check aria-hidden className="h-4 w-4" /> Got it</button></MenuItem>
       </MenuItems>
     </Menu>
@@ -82,7 +92,7 @@ function LookMenu({ look, onSnooze, onGotIt }: { look: Look; onSnooze: () => voi
 }
 
 /** One row: what, what is due and the money involved; its one action, and ⋯. */
-function LookRow({ look, actions, onList }: { look: Look; actions: LookActions; onList: (look: Look) => void }) {
+function LookRow({ look, today, actions, onList }: { look: Look; today: string; actions: LookActions; onList: (look: Look) => void }) {
   const open = () => (look.action === 'list' ? onList(look) : actions.onOpen(look))
   const act = () => (look.action === 'bought' ? actions.onBought(look) : open())
   return (
@@ -100,7 +110,7 @@ function LookRow({ look, actions, onList }: { look: Look; actions: LookActions; 
           {look.action === 'bought' && <Check aria-hidden className="h-4 w-4" />}
           {ACTION[look.action]}
         </button>
-        <LookMenu look={look} onSnooze={() => actions.onSnooze(look)} onGotIt={() => actions.onGotIt(look)} />
+        <LookMenu look={look} today={today} onSnooze={() => actions.onSnooze(look)} onGotIt={() => actions.onGotIt(look)} />
       </span>
     </li>
   )
@@ -157,14 +167,14 @@ function HiddenLooks({ hidden, onShowAgain }: { hidden: readonly Look[]; onShowA
 }
 
 /** The rows, every one or the first `limit` and "N more" (in place); a counting row opens its list in a sheet. */
-function LookList({ looks, hidden, limit, actions }: { looks: readonly Look[]; hidden: readonly Look[]; limit?: number; actions: LookActions }) {
+function LookList({ looks, hidden, limit, today, actions }: { looks: readonly Look[]; hidden: readonly Look[]; limit?: number; today: string; actions: LookActions }) {
   const [all, setAll] = useState(false)
   const [listing, setListing] = useState<Look | null>(null)
   const cut = limit != null && looks.length > limit
   const shown = cut && !all ? looks.slice(0, limit) : looks
   return (
     <>
-      {looks.length > 0 && <ul className="-mx-2 flex flex-col">{shown.map(l => <LookRow key={l.key} look={l} actions={actions} onList={setListing} />)}</ul>}
+      {looks.length > 0 && <ul className="-mx-2 flex flex-col">{shown.map(l => <LookRow key={l.key} look={l} today={today} actions={actions} onList={setListing} />)}</ul>}
       {cut && (
         <button type="button" aria-expanded={all} onClick={() => setAll(a => !a)}
           className="mt-1 flex min-h-[36px] items-center gap-1 text-meta font-semibold text-accent-600 hover:underline">
@@ -192,10 +202,10 @@ function LookSkeleton({ rows }: { rows: number }) {
   )
 }
 
-const NOTHING = 'Nothing needs a look. A price at your target or its lowest, a deal day, a return window or complaint right closing and an old estimate show here.'
+const NOTHING = 'Nothing needs a look right now.'
 
 /** The rail's card: three rows, then "N more"; its room is kept while it loads. */
-export function NeedsALookPanel({ looks, hidden, loading, failed, onRetry, actions }: LookState & { actions: LookActions }) {
+export function NeedsALookPanel({ looks, hidden, loading, failed, onRetry, today, actions }: LookState & { actions: LookActions }) {
   return (
     <Card>
       <CardHeader title="Needs a look" variant="label" className="mb-1"
@@ -205,7 +215,7 @@ export function NeedsALookPanel({ looks, hidden, loading, failed, onRetry, actio
           ? <p className="py-1"><LookFailed onRetry={onRetry} /></p>
           : <>
             {!looks.length && <p className="py-1 text-body text-fg-muted">{NOTHING}</p>}
-            <LookList looks={looks} hidden={hidden} limit={SHOWN} actions={actions} />
+            <LookList looks={looks} hidden={hidden} limit={SHOWN} today={today} actions={actions} />
           </>}
       </KeepRoom>
     </Card>
@@ -215,10 +225,13 @@ export function NeedsALookPanel({ looks, hidden, loading, failed, onRetry, actio
 /**
  * The phone's one line — "9 need a look · 500 NOK to claim ›" — in the most
  * urgent row's tone; it opens every row in a sheet. One line in every outcome,
- * loading included, so nothing under it moves.
+ * loading included, so nothing under it moves — but none at all on a page
+ * with nothing on it (`quiet`: an empty wishlist), where "Nothing needs a
+ * look" would only be a filler line.
  */
-export function NeedsALookLine({ looks, hidden, loading, failed, onRetry, actions }: LookState & { actions: LookActions }) {
+export function NeedsALookLine({ looks, hidden, loading, failed, onRetry, today, actions, quiet = false }: LookState & { actions: LookActions; quiet?: boolean }) {
   const [open, setOpen] = useState(false)
+  if (quiet && !failed && (loading || (!looks.length && !hidden.length))) return null
   if (loading) return <Skeleton rounded="rounded-row" className="h-11 w-full" />
   if (failed) return <p className="flex h-11 items-center rounded-row border border-line bg-surface px-3"><LookFailed onRetry={onRetry} /></p>
   const line = lookLine(looks)
@@ -243,15 +256,15 @@ export function NeedsALookLine({ looks, hidden, loading, failed, onRetry, action
         <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
       </button>
       <ModalShell open={open} onClose={() => setOpen(false)} title="Needs a look"
-        subtitle={looks.length ? `${looks.length} thing${looks.length === 1 ? '' : 's'}${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
+        subtitle={looks.length ? `${looks.length} to look at${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
         {!looks.length && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
-        <LookList looks={looks} hidden={hidden} actions={actions} />
+        <LookList looks={looks} hidden={hidden} today={today} actions={actions} />
       </ModalShell>
     </>
   )
 }
 
 /** The line on a phone (one stack), the rail's card on a wide page. */
-export function NeedsALook(props: LookState & { actions: LookActions }) {
-  return useBoardStep() === 1 ? <NeedsALookLine {...props} /> : <NeedsALookPanel {...props} />
+export function NeedsALook({ quiet, ...props }: LookState & { actions: LookActions; quiet?: boolean }) {
+  return useBoardStep() === 1 ? <NeedsALookLine {...props} quiet={quiet} /> : <NeedsALookPanel {...props} />
 }

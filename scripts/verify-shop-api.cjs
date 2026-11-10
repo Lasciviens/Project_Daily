@@ -249,6 +249,17 @@ const ids = rows => rows.map(r => r.id).join()
       rpcCalls.length === 1 && rpcCalls[0].fn === 'shop_signal_snooze' && JSON.stringify(rpcCalls[0].args) === JSON.stringify({ p_item_id: uuid(5), p_signal: 'at_target', p_until: '2026-11-17' })
       && w.before === null && w.after?.snoozed_until === '2026-11-17')
     const no = async f => { rpcCalls.length = 0; const e = await f().then(() => null, x => x); return { e, calls: rpcCalls.length } }
+    rpcCalls.length = 0
+    rpcAnswer = () => ({ data: { before: null, after: row({ item_id: null, signal: 'deal_day', subject: 'black_friday' }) }, error: null })
+    await N.snoozeSignal({ item_id: null, signal: 'deal_day', subject: 'black_friday', until: '2026-11-17' })
+    check('a deal day\'s Snooze names its deal (p_subject: its slug), so it is snoozed on its own',
+      JSON.stringify(rpcCalls[0]?.args) === JSON.stringify({ p_item_id: null, p_signal: 'deal_day', p_subject: 'black_friday', p_until: '2026-11-17' }), JSON.stringify(rpcCalls[0]?.args))
+    const r4 = await no(() => N.snoozeSignal({ item_id: null, signal: 'deal_day', subject: 'Black Friday', until: '2026-11-17' }))
+    check('…a subject that is no slug is refused here, nothing sent', r4.e && r4.calls === 0)
+    rpcAnswer = () => ({ data: { before: { ...row(), snoozed_until: 'soon' }, after: row() }, error: null })
+    const odd = await N.snoozeSignal({ item_id: uuid(5), signal: 'at_target', until: '2026-11-17' })
+    check('a before row the app can\'t read back is "unknown" (no Undo may delete it), never "none"', odd.before === null && odd.beforeUnknown === true)
+    rpcAnswer = () => ({ data: { before: null, after: row() }, error: null })
     let r = await no(() => N.snoozeSignal({ item_id: null, signal: 'tidy_up', until: '17.11.2026' }))
     const r2 = await no(() => N.snoozeSignal({ item_id: null, signal: 'made_up', until: '2026-11-17' }))
     const r3 = await no(() => N.dismissSignal({ item_id: null, signal: 'tidy_up', signature: 'two words' }))

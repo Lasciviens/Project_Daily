@@ -3,7 +3,7 @@
 // scripts/verify-shop-suggestions.cjs.
 import type { Tone } from '../../shared/ui/Tone'
 import { addDays } from './ownModel'
-import { currencyOf, listOf, watchedPrice, type Money } from './shopModel'
+import { currencyOf, listOf, localDay, watchedPrice, type Money } from './shopModel'
 import type { ShopItem, ShopPriceStats, ShopPriceWatch } from './types'
 
 /** One belt per tile, the first that holds in this order. */
@@ -11,7 +11,7 @@ export type BeltKind = 'at_target' | 'lowest' | 'back' | 'deal' | 'need'
 export const BELT_ORDER: readonly BeltKind[] = ['at_target', 'lowest', 'back', 'deal', 'need']
 export const BELT: Record<BeltKind, { label: string; tone: Tone }> = {
   at_target: { label: 'At target', tone: 'success' },
-  lowest:    { label: 'Lowest seen', tone: 'success' },
+  lowest:    { label: '60-day low', tone: 'success' },
   back:      { label: 'Restocked', tone: 'success' },
   deal:      { label: 'Deal on', tone: 'warn' },
   need:      { label: 'Need it', tone: 'highlight' },
@@ -54,7 +54,7 @@ export interface PriceFacts {
   low60: number | null
   high60: number | null
   reads60: number
-  /** The first day of the 60 days with a clean read, to the 5-day step of the sparkline (null: none). */
+  /** The day of the first clean read in the 60 days — where the window's history really starts (null: none). */
   since60: string | null
   backInStock: boolean
   restockedAt: string | null
@@ -62,17 +62,13 @@ export interface PriceFacts {
 
 /** How far back "Lowest in 60 days" and the "before" price check look. */
 export const WINDOW_DAYS = 60
-/** The sparkline's step, in days (shop_price_stats: 12 steps of 5 days, oldest first). */
-const SPARK_STEP_DAYS = 5
-
 /** shop_price_stats' figures for one thing as PriceFacts, seen from `today`. */
-export function factsOf(stats: ShopPriceStats, today: string): PriceFacts {
-  const first = stats.spark.findIndex(v => v != null)
+export function factsOf(stats: ShopPriceStats): PriceFacts {
   return {
     currency: (stats.currency ?? '').toUpperCase(),
     lowAll: stats.low_all, highAll: stats.high_all, readsAll: stats.points,
     low60: stats.low_60d, high60: stats.high_60d, reads60: stats.points_60d,
-    since60: first < 0 ? null : addDays(today, -WINDOW_DAYS + first * SPARK_STEP_DAYS),
+    since60: stats.first_60d ? localDay(stats.first_60d) : null,
     backInStock: stats.back_in_stock, restockedAt: stats.restocked_at,
   }
 }
@@ -109,13 +105,10 @@ export function atTarget(item: ShopItem, watch: ShopPriceWatch | null | undefine
   return !!now && item.target_price != null && now.currency === currencyOf(item) && now.amount <= item.target_price
 }
 
-/** Today's clean read is the lowest the history has seen (and it has been higher). */
-export function atLowest(now: Money | null, facts: PriceFacts | null | undefined): boolean {
-  const span = spanOf(facts)
-  return !!now && !!span && now.currency === span.currency && now.amount <= span.low
-}
-
-/** Today's clean read is the lowest of the last 60 days' (which have seen it higher). */
+/**
+ * Today's clean read is the lowest of the last 60 days' (which have seen it higher): the one "lowest" rule, for
+ * the tile's belt and Needs a look's row alike ("60-day low").
+ */
 export function lowestIn60(now: Money | null, f: PriceFacts | null | undefined): boolean {
   return !!now && !!f && f.low60 != null && f.high60 != null && f.reads60 >= 2 && f.high60 > f.low60
     && now.currency === f.currency && now.amount <= f.low60
@@ -142,12 +135,12 @@ export function dealOn(item: Pick<ShopItem, 'wait_for_deal' | 'planned_date'>, t
   return !!item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
 }
 
-/** The tile's one belt: at target · lowest seen · restocked · deal on · need it, or none. */
+/** The tile's one belt: at target · 60-day low · restocked · deal on · need it, or none. */
 export function beltOf(item: ShopItem, ctx: { watch?: ShopPriceWatch | null; facts?: PriceFacts | null; today: string }): BeltKind | null {
   const one = item.kind !== 'general'
   const holds: Record<BeltKind, () => boolean> = {
     at_target: () => one && atTarget(item, ctx.watch),
-    lowest:    () => one && atLowest(cleanPrice(item, ctx.watch), ctx.facts),
+    lowest:    () => one && lowestIn60(cleanPrice(item, ctx.watch), ctx.facts),
     back:      () => one && backInStock(item, ctx.watch, ctx.facts),
     deal:      () => dealOn(item, ctx.today),
     need:      () => item.reason === 'need',

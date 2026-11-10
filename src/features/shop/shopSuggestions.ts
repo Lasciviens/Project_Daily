@@ -9,14 +9,14 @@ import { formatMoney } from '../settings/subscriptionRules'
 import { addDays, daysBetween, isMine, isPossession, PAID_BACK, valueAgeDays, VALUE_STALE_DAYS } from './ownModel'
 import { currencyOf, listOf, localDay, type Money } from './shopModel'
 import { isSignalHidden, signalSignature, signalStateKey, signalStateMap } from './signalStates'
-import { atTarget, backInStock, cleanPrice, fakeBefore, lowestIn60, readPrice, type PriceFacts } from './wishTile'
+import { atTarget, backInStock, BELT, cleanPrice, fakeBefore, lowestIn60, readPrice, type PriceFacts } from './wishTile'
 import { mixedWords } from './watchWords'
 import type { DealAhead } from './dealDays'
 import type { ShopItem, ShopPriceWatch, ShopSignal, ShopSignalState } from './types'
 
 /** A row's kind is its signal (migration 190's allow-list): what Snooze and Got it are kept under. */
 export type LookKind = ShopSignal
-/** Danger: due today or tomorrow · warn: money to claim, ≤ 3 days, a "before" price never seen · success: good news · info: dates and tidy-up. */
+/** Danger: due today or tomorrow · warn: money to claim, ≤ 3 days, a "before" price never seen · success: good news · info: dates further out and tidy-up. */
 export type LookTone = 'danger' | 'warn' | 'success' | 'info'
 /** The row's one action: open the thing, mark it bought, open it at its "Could sell for", or list the things it counts. */
 export type LookAction = 'open' | 'bought' | 'value' | 'list'
@@ -30,6 +30,8 @@ export interface Look {
   tone: LookTone
   /** The thing it is about; null for a row that counts several (tidy-up, a deal day). */
   itemId: string | null
+  /** What a row about no thing is about: a deal day's slug (each deal day snoozed on its own); null otherwise. */
+  subject: string | null
   title: string
   /** What is due and the money involved, as short facts: "Return by 11.11.2026", "tomorrow", "paid 1 990 NOK". */
   facts: string[]
@@ -46,17 +48,21 @@ export interface Look {
   signature: string
   /** What a 'list' row opens. */
   things: LookThing[]
+  /** The day Snooze hides it until (snoozeUntil): a week, or the day before its deadline when that is sooner; null when it can't (due tomorrow). */
+  snoozeTo: string | null
 }
 
 /** About six months, as Owned's "update it" on an old "Could sell for". */
 export const WISH_OLD_DAYS = VALUE_STALE_DAYS
 export const RETURN_SOON_DAYS = 3
+/** A return window shows from two weeks ahead (info), warns from three days, and is danger today or tomorrow. */
+export const RETURN_AHEAD_DAYS = 14
 export const COMPLAINT_SOON_DAYS = 60
 /** Norges Bank publishes after 16:00 on weekdays, and the page fetches what waits: a rate still missing after three days needs a hand. */
 export const RATE_GRACE_DAYS = 3
 /** A deal day shows from three weeks ahead (dealDays.dealsAhead's `withinDays`). */
 export const DEAL_AHEAD_DAYS = 21
-/** Snooze hides a row for a week. */
+/** Snooze hides a row for a week — or until the day before its deadline, when that comes first. */
 export const SNOOZE_DAYS = 7
 
 const TONE_RANK: Record<LookTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
@@ -75,9 +81,14 @@ export function whenWords(daysLeft: number): string {
   return daysLeft <= 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`
 }
 
-/** The day a snooze from `today` ends: a week on (the row comes back that day). */
-export function snoozeUntil(today: string): string {
-  return addDays(today, SNOOZE_DAYS)
+/**
+ * The day a snooze from `today` ends (the row comes back that day): a week on, or the day before its deadline
+ * (`daysLeft` from today) when that is sooner — a snooze never hides a deadline past its day. Null when that
+ * day is today: a row due tomorrow can't be snoozed.
+ */
+export function snoozeUntil(today: string, daysLeft: number | null = null): string | null {
+  const days = daysLeft == null ? SNOOZE_DAYS : Math.min(SNOOZE_DAYS, daysLeft - 1)
+  return days >= 1 ? addDays(today, days) : null
 }
 
 /** A deadline's tone: today or tomorrow danger, within three days warn, else `later`. */
@@ -99,6 +110,12 @@ const atSite = (item: ShopItem, watch: ShopPriceWatch | null | undefined) => {
 }
 
 const paidWords = (i: ShopItem): string | null => (i.price != null ? `paid ${money(i.price, currencyOf(i))}` : null)
+/** "read 08.11.2026" when the price a row shows wasn't read today — an old price never looks current. */
+function readWords(watch: ShopPriceWatch | null | undefined, today: string): string | null {
+  const at = watch ? watch.last_ok_at ?? watch.checked_at : null
+  const day = at ? localDay(at) : null
+  return day && day !== today ? `read ${formatDate(day)}` : null
+}
 const foreign = (c: string | null | undefined) => !!c && c.toUpperCase() !== 'NOK'
 const facts = (...xs: (string | null | false | undefined)[]): string[] => xs.filter((x): x is string => !!x)
 
@@ -134,17 +151,18 @@ export interface LookInputs {
   deals?: readonly DealAhead[]
 }
 
-type Draft = Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'where' | 'things' | 'signature'>
+type Draft = Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'where' | 'things' | 'signature' | 'subject' | 'snoozeTo'>
   & Partial<Pick<Look, 'claim' | 'daysLeft' | 'order' | 'where' | 'things'>>
   & { sign: (string | number | null | undefined)[] }
 
 /**
- * Everything that needs a look, most urgent first: a return window closing,
- * a price under what you paid while you can still return it, a wish at its
- * target, at its lowest in 60 days or back in stock, a "before" price the
- * link never showed, the next deal day for the wishes with a target, a
- * complaint right ending, an old "Could sell for", a wish waiting half a
- * year, and one row listing what to tidy up.
+ * Everything that needs a look, most urgent first: a return window closing
+ * (two weeks ahead), a price under what you paid while you can still return
+ * it, a wish at its target, at its 60-day low or restocked, a "before" price
+ * the link never showed, each deal day ahead for the wishes with a target
+ * (splitLooks shows the next one not snoozed), a complaint right ending, an
+ * old "Could sell for", a wish waiting half a year, and one row listing what
+ * to tidy up.
  */
 export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today: string): Look[] {
   const out: Look[] = []
@@ -152,8 +170,8 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
   const tally = { noDay: 0, rate: 0, noAmount: 0 }
   const watching: LookThing[] = []
   const push = ({ sign, ...l }: Draft, i: ShopItem) => out.push({
-    key: `${l.kind}:${i.id}`, title: i.title, claim: null, daysLeft: null, order: 0, where: null, things: [],
-    signature: signalSignature(l.kind, ...sign), ...l,
+    key: `${l.kind}:${i.id}`, title: i.title, claim: null, daysLeft: null, order: 0, where: null, things: [], subject: null,
+    signature: signalSignature(l.kind, ...sign), snoozeTo: snoozeUntil(today, l.daysLeft ?? null), ...l,
   })
 
   for (const i of items) {
@@ -165,20 +183,21 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
         const f = inputs.facts?.get(i.id) ?? null
         const now = cleanPrice(i, watch)
         const where = atSite(i, watch)
-        // One buy signal a wish: the first that holds.
+        const read = readWords(watch, today)
+        // One buy signal a wish: the first that holds — in the tile's belt's words (wishTile.BELT).
         if (now && atTarget(i, watch)) {
           push({ kind: 'at_target', tone: 'success', itemId: i.id, action: 'bought', where, sign: [now.currency, now.amount],
-            facts: facts('At your target', money(now.amount, now.currency)) }, i)
+            facts: facts('At your target', read, money(now.amount, now.currency)) }, i)
         } else if (now && f && lowestIn60(now, f)) {
           push({ kind: 'lowest_seen', tone: 'success', itemId: i.id, action: 'bought', where, sign: [f.currency, f.low60],
-            facts: facts('Lowest in 60 days', money(now.amount, now.currency)) }, i)
+            facts: facts(BELT.lowest.label, read, money(now.amount, now.currency)) }, i)
         } else if (now && f && backInStock(i, watch, f)) {
           push({ kind: 'back_in_stock', tone: 'success', itemId: i.id, action: 'bought', where, sign: [f.restockedAt],
-            facts: facts('Back in stock', money(now.amount, now.currency)) }, i)
+            facts: facts(BELT.back.label, read, money(now.amount, now.currency)) }, i)
         }
-        if (now && watch?.was != null && fakeBefore(i, watch, f, today)) {
+        if (now && watch?.was != null && f?.since60 && fakeBefore(i, watch, f, today)) {
           push({ kind: 'fake_before', tone: 'warn', itemId: i.id, action: 'open', where, sign: [now.currency, watch.was],
-            facts: facts(`"Before" ${money(watch.was, now.currency)} not seen in 60 days`, `now ${money(now.amount, now.currency)}`) }, i)
+            facts: facts(`"Before" ${money(watch.was, now.currency)}`, `not seen since ${formatDate(f.since60)}`, read, `now ${money(now.amount, now.currency)}`) }, i)
         }
         if (i.target_price != null || i.wait_for_deal) {
           const price = wishPrice(i, watch)
@@ -192,8 +211,8 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
       const created = localDay(i.created_at)
       const age = daysBetween(created, today)
       if (age > WISH_OLD_DAYS) {
-        const now = readPrice(i, watch)
-        push({ kind: 'old_wish', tone: 'info', itemId: i.id, action: 'open', order: -age, sign: [created, now?.currency ?? currencyOf(i), now?.amount ?? i.price],
+        // Signed by its first day only: a price that moves doesn't bring a wish put away back.
+        push({ kind: 'old_wish', tone: 'info', itemId: i.id, action: 'open', order: -age, sign: [created],
           facts: facts(`On the wishlist since ${formatDate(created)}`, wishPrice(i, watch)) }, i)
       }
       continue
@@ -210,16 +229,18 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
     let claimed = false
     if (i.return_by && i.return_by >= today) {
       const left = daysBetween(today, i.return_by)
-      const now = readPrice(i, watch)
+      // Money to claim only from a price read just now and clean — a new offer's or the shop's own, never a
+      // figure that may be a used one (mixed, or read before 188) nor a price kept from an older read.
+      const now = watch?.status === 'ok' ? cleanPrice(i, watch) : null
       if (now && i.price != null && now.currency === currencyOf(i) && now.amount < i.price) {
         claimed = true
         const claim = { currency: now.currency, amount: i.price - now.amount }
         push({ kind: 'cheaper_returnable', tone: deadlineTone(left, 'warn'), itemId: i.id, action: 'open', claim, daysLeft: left,
           sign: [claim.currency, claim.amount, i.return_by],
-          facts: facts(`${money(claim.amount, claim.currency)} cheaper than you paid`, `return by ${formatDate(i.return_by)}`, whenWords(left)) }, i)
+          facts: facts(`${money(claim.amount, claim.currency)} cheaper than you paid`, readWords(watch, today), `return by ${formatDate(i.return_by)}`, whenWords(left)) }, i)
       }
-      if (!claimed && left <= RETURN_SOON_DAYS) {
-        push({ kind: 'return_closing', tone: deadlineTone(left, 'warn'), itemId: i.id, action: 'open', daysLeft: left, sign: [i.return_by],
+      if (!claimed && left <= RETURN_AHEAD_DAYS) {
+        push({ kind: 'return_closing', tone: deadlineTone(left, 'info'), itemId: i.id, action: 'open', daysLeft: left, sign: [i.return_by],
           facts: facts(`Return by ${formatDate(i.return_by)}`, whenWords(left), paidWords(i)) }, i)
       }
     }
@@ -237,12 +258,14 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
     }
   }
 
-  // The next deal day ahead, once, for the wishes with a target or waiting for a deal.
-  const deal = (inputs.deals ?? []).find(d => d.daysUntil <= DEAL_AHEAD_DAYS)
-  if (deal && watching.length) {
+  // Each deal day ahead, for the wishes with a target or waiting for a deal — keyed by its slug, so snoozing one
+  // never hides another; splitLooks shows the next one that isn't snoozed or put away.
+  for (const deal of (inputs.deals ?? []).filter(d => d.daysUntil <= DEAL_AHEAD_DAYS)) {
+    if (!watching.length) break
     out.push({
-      key: `deal_day:${deal.deal.slug}`, kind: 'deal_day', tone: 'info', itemId: null, title: deal.deal.name, action: 'list', claim: null,
+      key: `deal_day:${deal.deal.slug}`, kind: 'deal_day', tone: 'info', itemId: null, subject: deal.deal.slug, title: deal.deal.name, action: 'list', claim: null,
       daysLeft: deal.daysUntil, order: 0, where: null, signature: signalSignature('deal_day', deal.deal.slug, deal.start), things: watching,
+      snoozeTo: snoozeUntil(today, deal.running ? null : deal.daysUntil),
       facts: facts(
         deal.running ? 'On now' : formatDate(deal.start),
         deal.running ? (deal.end > deal.start ? `until ${formatDate(deal.end)}` : null) : whenWords(deal.daysUntil),
@@ -252,7 +275,8 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
   }
   if (tidy.length) {
     out.push({
-      key: 'tidy_up', kind: 'tidy_up', tone: 'info', itemId: null, action: 'list', claim: null, daysLeft: null, order: 0, where: null,
+      key: 'tidy_up', kind: 'tidy_up', tone: 'info', itemId: null, subject: null, action: 'list', claim: null, daysLeft: null, order: 0, where: null,
+      snoozeTo: snoozeUntil(today),
       title: `${plural(tidy.length, 'thing')} to tidy up`, things: tidy,
       signature: signalSignature('tidy_up', ...tidy.map(t => `${t.id}:${t.facts.join('+')}`).sort()),
       facts: facts(
@@ -272,12 +296,17 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
 /**
  * The rows that show, and those snoozed or put away (Show again brings them
  * back): a row stays away while snoozed until a later day, or while Got it
- * was said to what it says now (signalStates.isSignalHidden).
+ * was said to what it says now (signalStates.isSignalHidden). Of the deal
+ * days ahead only the next one that isn't hidden shows.
  */
 export function splitLooks(looks: readonly Look[], states: readonly ShopSignalState[], today: string): { shown: Look[]; hidden: Look[] } {
   const byKey = signalStateMap(states)
   const shown: Look[] = [], hidden: Look[] = []
-  for (const l of looks) (isSignalHidden(byKey.get(signalStateKey(l.itemId, l.kind)), l.signature, today) ? hidden : shown).push(l)
+  let deal = false
+  for (const l of looks) {
+    if (isSignalHidden(byKey.get(signalStateKey(l.itemId, l.kind, l.subject)), l.signature, today)) hidden.push(l)
+    else if (l.kind !== 'deal_day' || !deal) { shown.push(l); deal ||= l.kind === 'deal_day' }
+  }
   return { shown, hidden }
 }
 

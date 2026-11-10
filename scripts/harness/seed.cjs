@@ -753,7 +753,7 @@ function buildTables(now = new Date()) {
   tables.shop_signal_states = []
   tables.shop_deal_days = [
     ['black_friday', 'Black Friday', 'nth_weekday', 11, null, 4, 4, 1, 1], ['cyber_monday', 'Cyber Monday', 'nth_weekday', 11, null, 4, 4, 4, 1],
-    ['singles_day', "Singles' Day", 'fixed', 11, 11, null, null, 0, 1], ['mellomdagssalg', 'Mellomdagssalg', 'fixed', 12, 27, null, null, 0, 5],
+    ['singles_day', "Singles' Day", 'fixed', 11, 11, null, null, 0, 1], ['mellomdagssalg', 'Christmas sales (mellomdagssalg)', 'fixed', 12, 27, null, null, 0, 5],
   ].map(([slug, name, rule_kind, month, d, weekday, nth, offset_days, length_days], i) => ({
     id: `5c070000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, slug, name, rule_kind, month, day: d, weekday, nth, offset_days, length_days,
     source_url: null, checked_on: '2026-11-10', ...stamp(-1),

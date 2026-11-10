@@ -36,7 +36,7 @@ export function parsePriceStats(row: unknown): ShopPriceStats | null {
     item_id: r.item_id.toLowerCase(),
     currency: typeof r.currency === 'string' && /^[A-Z]{3}$/.test(r.currency) ? r.currency : null,
     points, low_all: low, high_all: high,
-    points_60d: count(r.points_60d) ?? 0, low_60d: finite(r.low_60d), high_60d: finite(r.high_60d),
+    points_60d: count(r.points_60d) ?? 0, first_60d: at(r.first_60d), low_60d: finite(r.low_60d), high_60d: finite(r.high_60d),
     last_price: last, last_in_stock: typeof r.last_in_stock === 'boolean' ? r.last_in_stock : null, last_at: lastAt,
     back_in_stock: r.back_in_stock === true, restocked_at: r.back_in_stock === true ? at(r.restocked_at) : null,
     spark,

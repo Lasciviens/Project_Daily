@@ -272,6 +272,8 @@ export interface ShopPriceStats {
   high_all:      number
   /** The last 60 days (null when nothing was read in them); `high_60d` is what a "before" price is checked against. */
   points_60d:    number
+  /** The first clean read in the 60 days: where the window's history really starts (null when none). */
+  first_60d:     string | null
   low_60d:       number | null
   high_60d:      number | null
   /** The last clean read. */

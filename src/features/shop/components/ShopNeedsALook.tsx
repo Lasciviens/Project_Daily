@@ -3,7 +3,7 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBuyNow } from '../hooks/useShop'
 import { useNeedsALook } from '../hooks/useNeedsALook'
 import { useClearSignalState, useDismissSignal, useSnoozeSignal } from '../hooks/useShopSignals'
-import { snoozeUntil, type Look } from '../shopSuggestions'
+import type { Look } from '../shopSuggestions'
 import { NeedsALook, type LookActions } from './NeedsALook'
 import type { ShopItem } from '../types'
 
@@ -11,17 +11,18 @@ import type { ShopItem } from '../types'
  * Needs a look with its actions wired, the same on the Wishlist and on Owned
  * (where it took Coming up's place, so a deadline is never listed twice): a
  * row opens its thing (an old estimate at that fact), Bought buys in one tap,
- * Snooze hides it for a week and Got it until what it says changes — each
- * with its own toast and Undo.
+ * Snooze hides it for a week (or until the day before its deadline) and Got
+ * it until what it says changes — each with its own toast and Undo. `quiet`:
+ * a phone shows no "Nothing needs a look" line (an empty wishlist).
  */
-export function ShopNeedsALook({ items, isLoading }: { items: readonly ShopItem[]; isLoading: boolean }) {
+export function ShopNeedsALook({ items, isLoading, quiet = false }: { items: readonly ShopItem[]; isLoading: boolean; quiet?: boolean }) {
   const modal = useEntityModal()
   const data = useNeedsALook(items, isLoading)
   const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
   const snooze = useSnoozeSignal()
   const dismiss = useDismissSignal()
   const clear = useClearSignalState()
-  const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind })
+  const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind, subject: look.subject })
 
   const actions: LookActions = {
     onOpen: look => {
@@ -31,10 +32,10 @@ export function ShopNeedsALook({ items, isLoading }: { items: readonly ShopItem[
       const item = items.find(i => i.id === look.itemId)
       if (item) buy(item)
     },
-    onSnooze: look => snooze.mutate({ ...at(look), until: snoozeUntil(todayStr()) }),
+    onSnooze: look => { if (look.snoozeTo) snooze.mutate({ ...at(look), until: look.snoozeTo }) },
     onGotIt: look => dismiss.mutate({ ...at(look), signature: look.signature }),
     onShowAgain: look => clear.mutate(at(look)),
     onOpenThing: id => modal.open({ kind: 'shop-item', id }),
   }
-  return <NeedsALook {...data} actions={actions} />
+  return <NeedsALook {...data} today={todayStr()} actions={actions} quiet={quiet} />
 }
