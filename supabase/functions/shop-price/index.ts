@@ -1021,7 +1021,9 @@ function noPriceReason(read: PriceRead & { finalUrl: string }): string {
 /**
  * One check. The watch keeps the last price really read: a blocked or failed
  * check updates only its time, status and error — and so does a link on a
- * listed site, which is never fetched (not_allowed). `prev_low` is the last
+ * listed site, which is never fetched (not_allowed). One exception: when
+ * Prisjakt's offer list has no new offer, a kept price of another kind (read
+ * before 188, or mixed) goes — it may be a used one. `prev_low` is the last
  * DIFFERENT price before the current one (the card's "↓ 500 since …") of the
  * same kind: a price that covers something else than the last one (new offers
  * only now, all offers before 188) starts its own trend. A point is added for
@@ -1084,10 +1086,16 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
   } else {
     const status = refused ? 'not_allowed' : read ? read.status : 'error'
     const error = refused ?? (read ? noPriceReason(read) : failure)
+    // Prisjakt's offer list was read and has no new offer. A kept price of another kind — read before 188, or
+    // Prisjakt's mixed figures — may be a used or refurbished one: it goes, with its trend and its day, so the card
+    // never shows it as the price now. A kept new price stays as the last new price read.
+    const listRead = read?.condition === 'new'
+    const otherKind = listRead && keptCovers !== 'new'
     // A page that answered without a price still tells its name and picture (and Prisjakt its used and refurbished offers).
     row = {
       ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error,
-      ...(read?.condition === 'new' ? { used_low: read.usedLow, refurbished_low: read.refurbishedLow } : {}),
+      ...(listRead && read ? { condition: 'new', used_low: read.usedLow, refurbished_low: read.refurbishedLow } : {}),
+      ...(otherKind ? { low: null, high: null, offers: null, was: null, prev_low: null, prev_at: null, last_ok_at: null } : {}),
     }
     outcome = { id: item.id, status, low: null, currency: null, error: error ?? undefined, ...(reused ? { reused, checkedAt: at } : {}) }
   }

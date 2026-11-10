@@ -70,10 +70,16 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
               {current.error ?? `${site} doesn't let apps read its pages`}, so its price isn't checked.
               {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
             </p>
+          ) : current.status === 'no_price' ? (
+            // The page answered, without a price: that is the result, not a failed check.
+            <p className="text-meta text-fg-muted">
+              {current.error ?? 'No price on the page'} ({formatDate(current.checked_at)}).
+              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
+            </p>
           ) : failed && (
             <p className="text-meta text-warn">
               Couldn't check {formatDate(current.checked_at)}: {current.error ?? 'no price on the page'}.
-              {low != null && current.last_ok_at && <> The price above is from {formatDate(current.last_ok_at)}.</>}
+              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
             </p>
           )}
           <Sparkline points={points} currency={cur} />

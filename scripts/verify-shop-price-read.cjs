@@ -164,6 +164,16 @@ console.log('\n6 · Prisjakt\'s own offer list: the price now is its new offers 
   check('a Prisjakt page without the list (the 08.10.2026 fixtures): mixed, as before', readPrice(page(ORG, PIXEL), 'https://www.prisjakt.no/product.php?p=16929131').condition === 'mixed')
 }
 
+/** The trimmed iPhone 15 Pro page with its offer list changed by `edit` (the handler scenarios read it as a live page). */
+function iphonePage(edit) {
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8')
+  const flight = [...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)].map(m => JSON.parse(m[1])).join('')
+  const at = flight.indexOf('"offerRows":') + '"offerRows":'.length
+  const end = flight.indexOf(',"trackingScope"', at)
+  const list = edit(JSON.parse(flight.slice(at, end)))
+  return html.replace(/<body>[\s\S]*<\/body>/, `<body><script>self.__next_f.push([1,${JSON.stringify(flight.slice(0, at) + JSON.stringify(list) + flight.slice(end))}])</script></body>`)
+}
+
 console.log('\n7 · Sites whose terms forbid automated reading (shop_site_policies)')
 {
   const hosts = ['finn.no', 'tise.com', 'ads.finn.no']
@@ -472,6 +482,35 @@ async function handlerChecks() {
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "The site didn't answer", low: null })), pages: tv, fetched, writes })
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('a link whose last check failed (an error — robots.txt unreachable, say) is tried again the next morning', r.checked === 1 && fetched.length === 1, JSON.stringify(r))
+
+  console.log('\n14 · No new offer on Prisjakt: a used price never stays as the price (the real handler, scripted)')
+  const usedOnly = { [product]: { body: iphonePage(rows => rows.filter(r => r.condition !== 'New')) } }
+  const old = (extra = {}) => watchOf(26 * 60, product, { source: 'prisjakt', name: 'Apple iPhone 15 Pro 128GB', image: 'https://cdn.example/old.jpg', low: 4990, high: 7504,
+    offers: 13, currency: 'NOK', in_stock: null, prev_low: 5200, prev_at: new Date(Date.now() - 9 * 86400_000).toISOString(), condition: null, ...extra })
+  for (const [what, kept] of [['read before 188 (no condition)', old()], ['Prisjakt\'s mixed figures', old({ condition: 'mixed' })]]) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(product, undefined, kept), pages: usedOnly, fetched, writes })
+    r = await call({ action: 'check', ids: ['i1'] })
+    const w = writes.find(x => x.table === 'shop_price_watch')?.row
+    check(`a kept price ${what} goes when the offer list has no new offer: no low, high, shops, "was", trend or price day`, r.results?.[0]?.status === 'no_price'
+      && w?.low === null && w?.high === null && w?.offers === null && w?.was === null && w?.prev_low === null && w?.prev_at === null && w?.last_ok_at === null, JSON.stringify(w))
+    check('…the name, the picture and the used and refurbished lows stay; condition new; said plainly; no price point',
+      w?.name === 'Apple iPhone 15 Pro 128GB' && /12105530\.jpg$/.test(w?.image ?? '') && w?.used_low === 5990 && w?.refurbished_low === 6490 && w?.condition === 'new'
+      && w?.error === 'No new offer on Prisjakt, only used or refurbished ones' && !writes.some(x => x.table === 'shop_price_points'), JSON.stringify(w))
+  }
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(product, undefined, old({ condition: 'new', low: 16115, high: 16252, offers: 2, prev_low: null, prev_at: null })), pages: usedOnly, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  let w = writes.find(x => x.table === 'shop_price_watch')?.row
+  check('a kept NEW price stays as the last new price read (with its day), the status says there is no new offer now', r.results?.[0]?.status === 'no_price'
+    && w?.low === 16115 && w?.high === 16252 && w?.offers === 2 && w?.last_ok_at != null && w?.condition === 'new' && w?.used_low === 5990, JSON.stringify(w))
+  fetched = []; writes = []
+  const botCheck = { [product]: { status: 503, body: '<html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt={}</script></body></html>' } }
+  call = shopPrice({ db: dbWith(product, undefined, old()), pages: botCheck, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  w = writes.find(x => x.table === 'shop_price_watch')?.row
+  check('a bot check reads no offer list: the kept price stays as the last one read (the screens say what it covers)', r.results?.[0]?.status === 'blocked'
+    && w?.low === 4990 && w?.condition === null && w?.last_ok_at != null, JSON.stringify(w))
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {

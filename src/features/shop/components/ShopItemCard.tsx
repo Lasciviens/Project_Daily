@@ -36,12 +36,15 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
   const approx = item.price != null ? approxOther(item.price, currencyOf(item), rates) : null
   const late = item.planned_date != null && item.planned_date < today && !item.wait_for_deal
   const taskDone = task?.status === 'done'
-  const now = watch && watch.url === item.url && watch.low != null ? watch : null
+  const current = watch && watch.url === item.url ? watch : null
+  const now = current && current.low != null ? current : null
+  // Prisjakt's offer list had no new offer, and the watch holds no price: that is the answer, said as it is.
+  const noNew = !now && current?.status === 'no_price' && current.condition === 'new'
   const nowCur = (now?.currency ?? currencyOf(item)).toUpperCase()
   const atTarget = now && item.target_price != null && nowCur === currencyOf(item) && (now.low as number) <= item.target_price
   const dealOpen = item.wait_for_deal && (!item.planned_date || item.planned_date <= today)
   // The product's page: in the "Now …" line when there is one, else as its own link.
-  const link = !now ? webUrl(item.url) : null
+  const link = !now && !noNew ? webUrl(item.url) : null
 
   return (
     <div className="card flex flex-col gap-2 p-3">
@@ -76,7 +79,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
         </Menu>
       </div>
 
-      {(now || item.wait_for_deal || afterSale || item.reason) && (
+      {(now || noNew || item.wait_for_deal || afterSale || item.reason) && (
         <div className="flex flex-col gap-0.5 text-meta tabular-nums">
           {now && (
             <span className={cx(atTarget ? 'text-success' : 'text-fg-muted')}>
@@ -86,6 +89,7 @@ export function ShopItemCard({ item, task, rates, today, watch, afterSale, onEdi
               {now.status !== 'ok' && <span className="text-warn"> · couldn't check {formatDate(now.checked_at)}</span>}
             </span>
           )}
+          {noNew && <span className="text-fg-muted">No new offer on <SiteLink url={item.url}>Prisjakt</SiteLink></span>}
           {item.wait_for_deal && (
             <span className={cx(dealOpen ? 'text-warn' : 'text-fg-muted')}>
               {dealOpen ? 'Deal on now' : `Deal from ${formatDate(item.planned_date)}`}{item.platform ? ` at ${item.platform}` : ''}
