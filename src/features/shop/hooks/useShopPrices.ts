@@ -51,7 +51,8 @@ export function useCheckPrices() {
       if (r.length === 1 && r[0].status !== 'ok' && !r[0].reused) throw new Error(r[0].error ?? 'No price found on the page')
       return r
     },
-    invalidates:    (_d, ids) => [qk.shop.watches(), ...ids.map(id => qk.shop.points(id))],
+    // A check adds a point: the record's history and every list of price figures (usePriceStats) read it.
+    invalidates:    (_d, ids) => [qk.shop.watches(), qk.shop.priceStatsAll, ...ids.map(id => qk.shop.points(id))],
   })
 }
 
@@ -61,7 +62,7 @@ export function useQuietCheck() {
   return (ids: string[]) => {
     if (!ids.length) return
     checkItemPrices(ids)
-      .then(() => qc.invalidateQueries({ queryKey: qk.shop.watches() }))
+      .then(() => Promise.all([qc.invalidateQueries({ queryKey: qk.shop.watches() }), qc.invalidateQueries({ queryKey: qk.shop.priceStatsAll })]))
       .catch((e: Error) => logError(`shop_quiet_check: ${e.message}`, { action: 'shop_quiet_check' }))
   }
 }

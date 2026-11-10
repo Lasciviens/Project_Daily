@@ -11,7 +11,10 @@
  *   3. A row's price history is its newest reads, oldest first: the line reaches the last check.
  *   4. updateShopItem is scoped to the user and reads its row back; a row that isn't there (or is
  *      someone else's) is an error, never a silent no-op.
- *   5. The Undo of a category added from a picker's suggestions (shopCategoryApi.removeNewCategory)
+ *   5. Needs a look's data (shopSignalsApi.ts, migration 190): the price figures of many things go out as one
+ *      call per 500 ids, each id once; before 190 the reads answer nothing and a write says so by name; a
+ *      signature or a day the database would refuse is refused here first; an Undo sends the row's own fields.
+ *   6. The Undo of a category added from a picker's suggestions (shopCategoryApi.removeNewCategory)
  *      moves what was put in it — or in a subcategory under it — to its parent, then removes it;
  *      every read and write is the owner's own rows only.
  * Run: node scripts/verify-shop-api.cjs */
@@ -66,6 +69,7 @@ function from(table) {
   }
   function run() {
     calls.push(st)
+    if (failing[table]) return { data: null, error: failing[table] }
     const rows = (tables[table] ??= [])
     const hit = rows.filter(r => st.preds.every(p => p(r)))
     if (st.op === 'update') {
@@ -95,10 +99,17 @@ Module._resolveFilename = function (request, parent, ...rest) {
   if (/shared\/utils\/requireUser$/.test(request)) return 'stub:requireUser'
   return origResolve.call(this, request, parent, ...rest)
 }
-require.cache['stub:supabase'] = { id: 'stub:supabase', filename: 'stub:supabase', loaded: true, exports: { supabase: { from } } }
+// A table the stand-in answers with this error (PostgREST's "not found" before a migration, say).
+const failing = {}
+// Function calls: each recorded; `rpcAnswer` scripts the answer.
+const rpcCalls = []
+let rpcAnswer = () => ({ data: null, error: null })
+const rpc = async (fn, args) => { rpcCalls.push({ fn, args: JSON.parse(JSON.stringify(args)) }); return rpcAnswer(fn, args) }
+require.cache['stub:supabase'] = { id: 'stub:supabase', filename: 'stub:supabase', loaded: true, exports: { supabase: { from, rpc } } }
 require.cache['stub:requireUser'] = { id: 'stub:requireUser', filename: 'stub:requireUser', loaded: true, exports: { requireUser: async () => ({ id: 'u' }) } }
 const A = require('../src/features/shop/api/shopApi.ts')
 const C = require('../src/features/shop/api/shopCategoryApi.ts')
+const N = require('../src/features/shop/api/shopSignalsApi.ts')
 Module._resolveFilename = origResolve
 const M = require('../src/features/shop/shopModel')
 
@@ -206,7 +217,70 @@ const ids = rows => rows.map(r => r.id).join()
     check('a row that is gone: an error, never a silent no-op', gone && /^Not saved/.test(gone.message), gone?.message)
   }
 
-  console.log('\n5 · Undo of an added category')
+  console.log('\n5 · Needs a look\'s data (migration 190)')
+  {
+    const uuid = k => `00000000-0000-4000-8000-${String(k).padStart(12, '0')}`
+    const stat = id => ({ item_id: id, currency: 'NOK', points: 3, low_all: 900, high_all: 1200, points_60d: 2, low_60d: 900, high_60d: 1000,
+      last_price: 950, last_in_stock: true, last_at: '2026-11-09T05:23:00+00:00', back_in_stock: false, restocked_at: null, spark: Array(12).fill(null) })
+    const wanted = Array.from({ length: 1100 }, (_, k) => uuid(k))
+    rpcCalls.length = 0
+    rpcAnswer = (fn, args) => ({ data: args.p_item_ids.map((id, k) => (k === 0 ? { ...stat(id), low_all: 'NaN' } : stat(id))), error: null })
+    const stats = await N.fetchPriceStats([...wanted, ...wanted.slice(0, 300), 'not-an-id'])
+    check('the figures of 1 100 things: three calls of shop_price_stats (500, 500, 100), every id once, never one call per thing',
+      rpcCalls.length === 3 && rpcCalls.every(c => c.fn === 'shop_price_stats') && rpcCalls.map(c => c.args.p_item_ids.length).join() === '500,500,100'
+      && new Set(rpcCalls.flatMap(c => c.args.p_item_ids)).size === 1100, rpcCalls.map(c => `${c.fn} ${c.args.p_item_ids?.length}`).join('; '))
+    check('…an answer whose price is NaN is left out, the rest are numbers', stats.length === 1097 && stats.every(s => Number.isFinite(s.low_all)))
+    rpcCalls.length = 0
+    check('no ids: no call', (await N.fetchPriceStats([])).length === 0 && rpcCalls.length === 0)
+    rpcAnswer = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.shop_price_stats' } })
+    check('before 190 the figures are simply none (the tiles show no bar)', (await N.fetchPriceStats([uuid(1)])).length === 0)
+    rpcAnswer = () => ({ data: null, error: { code: '22023', message: 'At most 500 things at a time' } })
+    const refused = await N.fetchPriceStats([uuid(1)]).then(() => null, e => e)
+    check('…but any other refusal is an error, never "no figures"', refused && /At most 500/.test(refused.message))
+
+    const row = p => ({ id: uuid(9001), user_id: uuid(1), item_id: uuid(5), signal: 'at_target', signature: null, snoozed_until: '2026-11-17', dismissed_at: null,
+      created_at: '2026-11-10T09:00:00+00:00', updated_at: '2026-11-10T09:00:00+00:00', ...p })
+    rpcCalls.length = 0
+    rpcAnswer = () => ({ data: { before: null, after: row() }, error: null })
+    const w = await N.snoozeSignal({ item_id: uuid(5), signal: 'at_target', until: '2026-11-17' })
+    check('Snooze: one call of shop_signal_snooze with the thing, the signal and the day; the answer\'s before and after',
+      rpcCalls.length === 1 && rpcCalls[0].fn === 'shop_signal_snooze' && JSON.stringify(rpcCalls[0].args) === JSON.stringify({ p_item_id: uuid(5), p_signal: 'at_target', p_until: '2026-11-17' })
+      && w.before === null && w.after?.snoozed_until === '2026-11-17')
+    const no = async f => { rpcCalls.length = 0; const e = await f().then(() => null, x => x); return { e, calls: rpcCalls.length } }
+    let r = await no(() => N.snoozeSignal({ item_id: null, signal: 'tidy_up', until: '17.11.2026' }))
+    const r2 = await no(() => N.snoozeSignal({ item_id: null, signal: 'made_up', until: '2026-11-17' }))
+    const r3 = await no(() => N.dismissSignal({ item_id: null, signal: 'tidy_up', signature: 'two words' }))
+    check('a day that is no yyyy-mm-dd, a signal not on the list, a signature the database would refuse: refused here, nothing sent',
+      r.e && r.calls === 0 && r2.e && r2.calls === 0 && r3.e && r3.calls === 0, [r.e?.message, r2.e?.message, r3.e?.message].join(' / '))
+    rpcAnswer = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.shop_signal_snooze' } })
+    r = await no(() => N.snoozeSignal({ item_id: null, signal: 'tidy_up', until: '2026-11-17' }))
+    check('before 190 a write says so by name', r.e?.message === N.NEEDS_190, r.e?.message)
+    rpcAnswer = () => ({ data: { before: row(), after: null }, error: null })
+    rpcCalls.length = 0
+    const cleared = await N.clearSignalState({ item_id: uuid(5), signal: 'at_target' })
+    check('Show again: shop_signal_put with no state; its answer\'s before is what an Undo writes back',
+      rpcCalls[0]?.fn === 'shop_signal_put' && rpcCalls[0].args.p_state === null && cleared.before?.id === uuid(9001) && cleared.after === null)
+    rpcCalls.length = 0
+    await N.putSignalState({ item_id: uuid(5), signal: 'at_target', state: { ...row(), extra: 'x' } })
+    check('an Undo sends the row\'s own fields only (its id, first time, snooze, Got it) — never user_id or updated_at',
+      Object.keys(rpcCalls[0]?.args.p_state ?? {}).sort().join() === 'created_at,dismissed_at,id,signature,snoozed_until')
+
+    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'price_match' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
+    const states = await N.fetchSignalStates()
+    check('the states read back: a signal this app doesn\'t know (a newer database) is left out', states.map(s => s.id).join() === `${uuid(9001)},${uuid(9003)}`)
+    failing.shop_signal_states = { code: 'PGRST205', message: 'Could not find the table public.shop_signal_states' }
+    failing.shop_deal_days = { code: '42P01', message: 'relation "public.shop_deal_days" does not exist' }
+    check('before 190 the states and the deal days read as none', (await N.fetchSignalStates()).length === 0 && (await N.fetchDealDays()).length === 0)
+    delete failing.shop_signal_states
+    delete failing.shop_deal_days
+    tables.shop_deal_days = [
+      { id: uuid(1), slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday', month: 11, day: null, weekday: 4, nth: 4, offset_days: 1, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+      { id: uuid(2), slug: 'broken', name: 'Broken', rule_kind: 'fixed', month: 2, day: 30, weekday: null, nth: null, offset_days: 0, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+    ]
+    check('the deal days read back are whole rules only', (await N.fetchDealDays()).map(d => d.slug).join() === 'black_friday')
+  }
+
+  console.log('\n6 · Undo of an added category')
   {
     tables.shop_categories = [
       { id: 'top', user_id: 'u', name: 'Electronics', parent_id: null }, { id: 'new', user_id: 'u', name: 'Headphones', parent_id: 'top' },

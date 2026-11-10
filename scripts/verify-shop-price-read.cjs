@@ -435,6 +435,31 @@ async function handlerChecks() {
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "plain.example's robots rules couldn't be read — not read now", low: null })), pages: tv, fetched, writes })
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('a link whose last check failed (an error — robots.txt unreachable, say) is tried again the next morning', r.checked === 1 && fetched.length === 1, JSON.stringify(r))
+
+  console.log('\n13 · Each price point keeps the read\'s stock (migration 190; the real handler, scripted)')
+  const soldOut = JSON.parse(JSON.stringify(TCL))
+  soldOut.offers[0].availability = 'https://schema.org/OutOfStock'
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  let pt = writes.find(w => w.table === 'shop_price_points')?.row
+  const seen = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('a shop page that says in stock: its point says so (in_stock true)', r.results?.[0]?.status === 'ok' && pt?.in_stock === true && seen?.in_stock === true, JSON.stringify(pt))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(soldOut) } }, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  pt = writes.find(w => w.table === 'shop_price_points')?.row
+  check('…out of stock: its price is still read, and its point says out of stock (in_stock false)', r.results?.[0]?.status === 'ok' && pt?.in_stock === false && pt?.low === 9990, JSON.stringify(pt))
+  // A read repeated within the hour adds no point only when nothing changed — the stock is part of that now. (Made
+  // here with a watch whose last price is 20 minutes old while its last check is over an hour old.)
+  const lastOk = watchOf(70, plain, { low: seen.low, high: seen.high, offers: seen.offers, condition: seen.condition, last_ok_at: new Date(Date.now() - 20 * 60_000).toISOString() })
+  for (const [was, adds] of [[true, false], [false, true]]) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, { ...lastOk, in_stock: was }), pages: tv, fetched, writes })
+    r = await call({ action: 'check', ids: ['i1'] })
+    check(adds ? '…and a repeat within the hour that is back in stock adds a point' : 'a repeat within the hour with the same price and stock adds no point',
+      fetched.length === 1 && r.results?.[0]?.status === 'ok' && writes.some(w => w.table === 'shop_price_points') === adds, JSON.stringify(writes.map(w => w.table)))
+  }
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {

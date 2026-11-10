@@ -5,11 +5,14 @@
 //   · without 187: scripts/db-tests/shop-rules/bugs.sql — every bug the 09.11.2026 review found must
 //     still show (a check that passes here no longer proves anything);
 //   · with 187, applied twice (a re-run must be a no-op): bugs.sql — every check must pass — then 188
-//     twice, then scenarios.sql (rates, wishes and models, link loops, selling and its Undo, Delete's Undo
-//     with the price watch and later tables, the chain builder's save, web links, Activity Undo, deleting an
-//     account) and site-policies.sql (188: the sites shop-price never reads, who reads and writes that list,
-//     the condition of a price, and Delete's Undo carrying it).
-// Static checks of 187 and 188 first.
+//     twice and 190 twice, then scenarios.sql (rates, wishes and models, link loops, selling and its Undo,
+//     Delete's Undo with the price watch and later tables, the chain builder's save, web links, Activity
+//     Undo, deleting an account), site-policies.sql (188: the sites shop-price never reads, who reads and
+//     writes that list, the condition of a price, and Delete's Undo carrying it) and signals.sql (190: what
+//     Needs a look remembers — Snooze, Got it and their exact Undo, the signal list and the bounds, each
+//     account its own rows — deal days, stock in the price history, the price figures of many things in one
+//     call, and NaN and infinity kept out).
+// Static checks of 187, 188 and 190 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
@@ -78,6 +81,57 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (problems.length) fail(`migration 188 has ${problems.join('; ')}`)
 }
 
+// Static, 190: two tables, each with row level security right after it and the owner lock at the end; signal states
+// are the owner's own rows (the owner policy, audited, the app writes them), deal days are reference data like 188's
+// (the app reads, only the service role writes, no audit or user_id — each with the header's reason); every function
+// is pinned, runs as the caller but for 188's helper, is granted to signed-in callers only; the helper still binds
+// itself to the rows Undo put back and now carries in_stock; the price figures are bounded and read clean prices only.
+{
+  const src = readFileSync(mig('190_shop_needs_a_look.sql'), 'utf8')
+  const sql = src.replace(/--.*$/gm, '')
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
+  if (/^(update|insert into public\.shop_(items|signal_states|price_points|price_watch)|delete from) /im.test(sql)) problems.push('a top-level write to user rows (190 changes no row)')
+  const tables = [...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi)].map(m => m[1])
+  if (tables.join() !== 'shop_signal_states,shop_deal_days') problems.push(`creates ${tables.join(', ') || 'no table'} (expected shop_signal_states and shop_deal_days)`)
+  for (const t of ['shop_signal_states', 'shop_deal_days']) {
+    if (!new RegExp(`create table if not exists public\\.${t} \\([\\s\\S]*?\\n\\);\\s*alter table public\\.${t} enable row level security;`, 'i').test(sql)) problems.push(`no row level security right after ${t}`)
+    if (!new RegExp(`select public\\.owner_lock_apply\\('public\\.${t}'\\);`, 'i').test(sql)) problems.push(`no owner_lock_apply for ${t}`)
+    if (new RegExp(`on public\\.${t} to [^;]*anon`, 'i').test(sql)) problems.push(`a grant to anon on ${t}`)
+    if (!new RegExp(`grant select, insert, update, delete on public\\.${t} to service_role;`, 'i').test(sql)) problems.push(`no service-role grant on ${t}`)
+  }
+  if (!/user_id\s+uuid not null default auth\.uid\(\) references auth\.users\(id\) on delete cascade/i.test(sql)) problems.push('signal states: user_id without auth.uid() by default')
+  if (!/create policy "Users manage own shop_signal_states" on public\.shop_signal_states\s+for all using \(\(select auth\.uid\(\)\) = user_id\) with check \(\(select auth\.uid\(\)\) = user_id\);/i.test(sql)) problems.push('signal states: no owner policy with (select auth.uid())')
+  if (!/revoke all on public\.shop_signal_states from anon;\s*grant select, insert, update, delete on public\.shop_signal_states to authenticated;/i.test(sql)) problems.push('signal states: the app does not read and write them, or anon is not revoked')
+  if (!/create trigger trg_audit after insert or update or delete on public\.shop_signal_states\s+for each row execute function public\.log_audit\(\);/i.test(sql)) problems.push('signal states: no audit trigger')
+  if (!/item_id\s+uuid references public\.shop_items\(id\) on delete cascade/i.test(sql)) problems.push('signal states: item_id is not a cascading link to shop_items')
+  if (!/revoke all on public\.shop_deal_days from anon, authenticated;\s*grant select on public\.shop_deal_days to authenticated;/i.test(sql)) problems.push('deal days: not read-only for the app')
+  if (/grant [^;]*(insert|update|delete)[^;]* on public\.shop_deal_days to [^;]*authenticated/i.test(sql)) problems.push('deal days: a write grant for the app')
+  if (/on public\.shop_deal_days for (insert|update|delete|all)\b/i.test(sql)) problems.push('deal days: a browser write policy')
+  if (/trg_audit[^;]*shop_deal_days/i.test(sql) || !/No audit trigger: not user-authored/.test(src) || !/No user_id: the same days for every account/.test(src)) problems.push('deal days: an audit trigger, or the header does not say why there is no audit or user_id')
+  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
+  const names = fns.map(([, name]) => name).sort().join()
+  if (names !== 'shop_price_stats,shop_restore_price_history,shop_signal_dismiss,shop_signal_put,shop_signal_snooze,shop_signal_states_rules') problems.push(`functions ${names}`)
+  for (const [body, name] of fns) {
+    if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
+    if (/security definer/i.test(body) !== (name === 'shop_restore_price_history')) problems.push(`${name}: SECURITY DEFINER ${name === 'shop_restore_price_history' ? 'missing' : 'not expected'}`)
+    if (!new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon`).test(sql)) problems.push(`no revoke for ${name}`)
+    if (/^shop_(signal_(snooze|dismiss|put)|price_stats)$/.test(name)) {
+      if (!new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to authenticated;`).test(sql)) problems.push(`${name} not granted to authenticated`)
+      if (!/v_user is null or not public\.is_app_user\(\)/.test(body)) problems.push(`${name} does not refuse a caller who is not an app user`)
+    }
+  }
+  if (new RegExp('grant execute on function public\\.shop_restore_price_history\\([^)]*\\) to [^;]*(anon|service_role)').test(sql)) problems.push('the helper is granted wider than authenticated')
+  const helper = fns.find(([, name]) => name === 'shop_restore_price_history')?.[0] ?? ''
+  if (!/pg_catalog\.split_part\(v_set, '\|', 1\) = v_stamp/.test(helper) || (helper.match(/item_id = any \(v_back\)/g) || []).length !== 2) problems.push('the helper no longer binds itself to the rows Undo put back (app.shop_restored and its stamp)')
+  if (!/condition, used_low, refurbished_low, in_stock\)/.test(helper) || !/\n\s*p\.in_stock\n/.test(helper)) problems.push('the helper does not carry in_stock into the points')
+  const stats = fns.find(([, name]) => name === 'shop_price_stats')?.[0] ?? ''
+  if (!/cardinality\(p_item_ids\), 0\) > 500/.test(stats)) problems.push('the price figures take any number of ids')
+  if (!/p\.condition in \('new', 'unknown'\)/.test(stats) || !/p\.low >= 0 and p\.low < 'Infinity'/.test(stats)) problems.push('the price figures read more than clean, finite prices')
+  if (!/i\.user_id = v_user/.test(stats) || !/p\.user_id = v_user/.test(stats)) problems.push('the price figures are not scoped to the caller\'s own rows')
+  if (problems.length) fail(`migration 190 has ${problems.join('; ')}`)
+}
+
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
 if (!url) {
   console.log('verify-db-shop-rules: static checks passed; database scenarios skipped (no VERIFY_DB_URL / DEPLOY_TEST_DB_URL)')
@@ -133,13 +187,15 @@ try {
   if (still.length) throw new Error(`with 187 these bugs still show:\n${still.map(id => `  ${id}: ${after.get(id)?.what ?? 'no answer'}`).join('\n')}`)
   step('188', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
   step('188 again', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
+  step('190', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
+  step('190 again', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   let passed = 0
-  for (const file of ['scenarios.sql', 'site-policies.sql']) {
+  for (const file of ['scenarios.sql', 'site-policies.sql', 'signals.sql']) {
     const sc = run(n, join(dir, file))
     passed += (sc.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
     if (sc.status !== 0) throw Object.assign(new Error(`${file} failed`), { stderr: sc.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
   }
-  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188 (twice), and ${passed} scenarios passed`
+  summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188 and 190 (twice each), and ${passed} scenarios passed`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)
