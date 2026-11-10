@@ -1,16 +1,18 @@
 import { RefreshCw } from 'lucide-react'
-import { Button, Card, CardHeader, TonePill, cx, useChartColors } from '../../../../shared/ui'
+import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
-import { money } from '../shopFormat'
+import { hostOf, money } from '../shopFormat'
+import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
 
 /**
  * What the row's link costs now: Prisjakt's lowest (and how many shops) or the
- * shop's own price, with its source and date, the trend, the history, and
- * what it means here — at your target, or cheaper than you paid while it can
- * still be returned. A blocked check says so and keeps the last price read.
+ * shop's own price, with where it was read — a link to the product's page —
+ * and when, the trend, the history, and what it means here — at your target,
+ * or cheaper than you paid while it can still be returned. A blocked check
+ * says so and keeps the last price read.
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
   const check = useCheckPrices()
@@ -20,29 +22,30 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const cur = (current?.currency ?? currencyOf(item)).toUpperCase()
   const failed = current && current.status !== 'ok'
   const low = current?.low ?? null
-  const source = current?.source === 'prisjakt' ? 'Prisjakt' : hostOf(item.url)
+  const site = hostOf(item.url) ?? 'the shop'
   const target = item.target_price
   const sameCurrency = cur === currencyOf(item)
   const cheaper = owned && low != null && sameCurrency && item.price != null && low < item.price && item.return_by && item.return_by >= today
+  const open = <SiteLink url={item.url}>Open at {site}</SiteLink>
 
   return (
     <Card>
       <CardHeader title="Price now" variant="label" className="mb-2"
         action={<Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
       {!current ? (
-        <p className="text-body text-fg-muted">Not checked yet — the morning check reads it, or tap Check now.</p>
+        <p className="text-body text-fg-muted">Not checked yet — the morning check reads it, or tap Check now. {open}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {low != null && (
+          {low != null ? (
             <p className="flex flex-wrap items-baseline gap-x-2">
               <span className="text-lead font-semibold tabular-nums text-fg">{money(low, cur)}</span>
               <span className="text-meta text-fg-muted">
                 {current.source === 'prisjakt'
-                  ? <>lowest at {source}{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
-                  : <>at {source}{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
+                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
+                  : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
               </span>
             </p>
-          )}
+          ) : <p className="text-meta">{open}</p>}
           {current.prev_low != null && low != null && current.prev_low !== low && (
             <TonePill tone={low < current.prev_low ? 'success' : 'warn'} className="w-fit tabular-nums">
               {low < current.prev_low ? '↓' : '↑'} {money(Math.abs(low - current.prev_low), cur)} since {formatDate(current.prev_at)}
@@ -66,18 +69,14 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
             </p>
           )}
           <Sparkline points={points} currency={cur} />
-          <p className="text-micro text-fg-faint">
+          <p className="text-micro text-fg-muted">
             {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
-            {' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : 'from the shop\'s page'}
+            {' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}
           </p>
         </div>
       )}
     </Card>
   )
-}
-
-function hostOf(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'the shop' }
 }
 
 /** The lowest price over the checks, with its lowest and highest marked. */
@@ -97,7 +96,7 @@ function Sparkline({ points, currency }: { points: ShopPricePoint[]; currency: s
         <polyline points={xy.map(([x, y]) => `${x},${y}`).join(' ')} fill="none" stroke={colors.series[0]} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
         <circle cx={xy[xy.length - 1][0]} cy={xy[xy.length - 1][1]} r={3} fill={colors.series[0]} />
       </svg>
-      <p className={cx('flex justify-between text-micro tabular-nums text-fg-faint')}>
+      <p className="flex flex-wrap justify-between gap-x-2 text-micro tabular-nums text-fg-muted">
         <span>{formatDate(rows[0].checked_at)}</span>
         <span>lowest {money(min, currency)} · highest {money(max, currency)}</span>
       </p>

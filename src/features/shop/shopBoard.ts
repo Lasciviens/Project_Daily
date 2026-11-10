@@ -37,21 +37,23 @@ export const QUICK_BOARD: BoardLayouts<QuickSection> = {
 
 //   Owned → Things (migration 137)
 //   The filter bar runs across the top at every width (owner, 08.10.2026: it
-//   drives everything below, so it reads first).
-//   1  phone, tablet — the filters, what you own, coming up, then the things.
-//   2+ the category groups first, taking every track but the last; the
-//      summary and deadlines in a sticky rail on the RIGHT (owner, 14.10.2026:
-//      "Move 'What I own' to the right side").
+//   drives everything below, so it reads first). The summary is one line
+//   right above the things it sums up (owner, 09.11.2026: the "What I own"
+//   card took the phone's first screen).
+//   1  phone, tablet — the filters, coming up, the summary line, the things.
+//   2+ the summary line and the category groups first, taking every track
+//      but the last; the deadlines in a sticky rail on the RIGHT (owner,
+//      14.10.2026). With nothing coming up, that track is the one left empty.
 export const OWNED_SECTIONS = ['filters', 'summary', 'coming', 'groups'] as const
 export type OwnedSection = typeof OWNED_SECTIONS[number]
 
-const OWNED_RAIL = { stack: ['summary', 'coming'], sticky: true } as const
+const OWNED_RAIL = { stack: ['coming'], sticky: true } as const
 
 export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
-  1: ['filters', 'summary', 'coming', 'groups'],
-  2: { top: ['filters'], columns: [['groups'], OWNED_RAIL] },
-  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, OWNED_RAIL] },
-  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, OWNED_RAIL] },
+  1: ['filters', 'coming', 'summary', 'groups'],
+  2: { top: ['filters'], columns: [['summary', 'groups'], OWNED_RAIL] },
+  3: { top: ['filters'], columns: [{ stack: ['summary', 'groups'], span: 2 }, OWNED_RAIL] },
+  4: { top: ['filters'], columns: [{ stack: ['summary', 'groups'], span: 3 }, OWNED_RAIL] },
 }
 
 //   Owned → Stats

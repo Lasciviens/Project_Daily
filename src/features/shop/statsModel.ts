@@ -6,14 +6,168 @@
 import type { ShopCategory, ShopItem } from './types'
 import { categoryPath, fold } from './shopModel'
 import {
-  add, boughtOn, costOf, daysBetween, gotOf, isMine, isPossession, minus, nokAt, paidOf, perMonth, valueNowOf, ZERO,
-  accessoriesByItem, type Amount, type MoneyCtx, type OwnedShow, type PerMonth,
+  add, addDays, boughtOn, costOf, daysBetween, gotOf, isGone, isMine, isPossession, minus, monthsBetween, NO_CATEGORY, nokAt, paidOf, perMonth,
+  valueNowOf, ZERO, accessoriesByItem, type Amount, type MoneyCtx, type OwnedShow, type PerMonth,
 } from './ownModel'
 import type { Chain } from './chainModel'
 
 /** Rows that count as spending: things bought on the wishlist side (kept or not). Quick-list errands are left out. */
 export function spendRows(items: readonly ShopItem[]): ShopItem[] {
   return items.filter(i => (i.list ?? 'wishlist') === 'wishlist' && i.kind !== 'general' && i.status === 'bought')
+}
+
+// ── The period: a year, or all time ──────────────────────────────────────────
+//
+// Every part of Stats follows the picked period (owner, 09.11.2026: "Follow
+// the year"). A year is seen from its end — 31 December, or today for this
+// year — and all time from today: what you had is counted on that day; money,
+// sales and a chain's steps inside the period. "Could sell for" keeps no
+// history, so for a past year it is known only for the things still yours
+// today, at today's estimate — never made up for the rest.
+
+export interface Period {
+  /** The picked year, or null for all time. */
+  year: string | null
+  /** Its first day (1 January), or null for all time. */
+  from: string | null
+  /** The day it is seen from: 31 December of a past year, else today. */
+  to: string
+  today: string
+  /** A year before this one: what its things could sell for then is not known. */
+  past: boolean
+}
+
+export function periodOf(year: string | null, today: string): Period {
+  if (!year) return { year: null, from: null, to: today, today, past: false }
+  const end = `${year}-12-31`
+  return { year, from: `${year}-01-01`, to: end < today ? end : today, today, past: end < today }
+}
+
+/** Had at the end of `day`: bought by then and not gone yet (it left after that day). A returned thing never was yours. */
+export function hadOn(i: ShopItem, day: string): boolean {
+  if (!isPossession(i) || i.disposal === 'returned') return false
+  const from = boughtOn(i)
+  if (!from || from > day) return false
+  return !i.disposal || (!!i.disposed_on && i.disposed_on > day)
+}
+
+/** Had at some point in the period: bought by its end and not gone before it began. */
+export function hadIn(i: ShopItem, p: Period): boolean {
+  if (!isPossession(i) || i.disposal === 'returned') return false
+  const from = boughtOn(i)
+  if (!from || from > p.to) return false
+  return !p.from || !i.disposal || (!!i.disposed_on && i.disposed_on > p.from)
+}
+
+/** Sold, given away, broke… (not returned) on a day inside the period. */
+export function wentIn(i: ShopItem, p: Period): boolean {
+  return isGone(i) && !!i.disposed_on && (!p.from || i.disposed_on >= p.from) && i.disposed_on <= p.to
+}
+
+/** What a thing had cost by `day`: what was paid, and its extra costs dated up to that day. */
+export function costBy(i: ShopItem, ctx: MoneyCtx, day: string): Amount {
+  return add(paidOf(i), ...(ctx.costs.get(i.id) ?? []).filter(c => c.spent_on <= day).map(c => nokAt(c.amount, c.currency, c.fx_nok)))
+}
+
+/** What a thing you had cost at the period's end: by 31 December for a past year; for now everything, as Owned counts it. */
+export const costAt = (i: ShopItem, ctx: MoneyCtx, p: Period): Amount => (p.past ? costBy(i, ctx, p.to) : costOf(i, ctx))
+
+export interface OwnedAt {
+  /** The day: 31 December of a past year, else today. */
+  day: string
+  past: boolean
+  things: number
+  accessories: number
+  /** What they had cost by that day. */
+  paid: Amount
+  /** How many of the things (not accessories) are still yours today. */
+  stillYours: number
+  /** "Could sell for" of the ones still yours that have one, at today's rate — known only for them. */
+  worth: Amount
+  valued: number
+  ids: string[]
+}
+
+/** Stats' "You own": what you had at the period's end (now: what Owned's Mine shows with no filter). */
+export function ownedAt(items: readonly ShopItem[], ctx: MoneyCtx, p: Period): OwnedAt {
+  let things = 0, accessories = 0, stillYours = 0, valued = 0
+  const paid: Amount[] = []
+  const worth: Amount[] = []
+  const ids: string[] = []
+  for (const i of items) {
+    if (!hadOn(i, p.to)) continue
+    if (i.accessory_of) accessories++
+    else things++
+    ids.push(i.id)
+    paid.push(costAt(i, ctx, p))
+    if (!isMine(i)) continue
+    if (!i.accessory_of) stillYours++
+    const v = valueNowOf(i, ctx)
+    if (v) { worth.push(v); valued++ }
+  }
+  return { day: p.to, past: p.past, things, accessories, paid: add(...paid), stillYours, worth: add(...worth), valued, ids }
+}
+
+export interface UseRow {
+  item: ShopItem
+  /** Its cost of use per month over all the time you had it (ownModel.perMonth). */
+  per: PerMonth
+  /** The months of the period you had it (its days in it ÷ 30.4375). */
+  months: number
+  /** Its cost of use in the period (≈). */
+  nok: number
+}
+
+export interface UseIn {
+  /** ≈ NOK of use in the period, over the counted things. */
+  nok: number
+  /** The months the period covers — a past year 12, this year to today, all time from the first thing's day — for "a month". */
+  months: number
+  /** The things with an honest number, the dearest in the period first. */
+  rows: UseRow[]
+  /** Every thing you had in the period (accessories ride with their item). */
+  things: ShopItem[]
+}
+
+/**
+ * Cost of use in the period: each thing's cost of use per month — its final
+ * result for a thing that went (what it cost, less what came back), today's
+ * estimate for one still yours (less "Could sell for") — times the months of
+ * the period you had it. Both are counted in days (a month is 30.4375), so a
+ * thing's share is its cost of use × its days in the period ÷ all its days,
+ * and the years add up exactly to all time. Only an honest number counts
+ * (ownModel.perMonth: a "Could sell for", a month or more, every amount known).
+ */
+export function costOfUseIn(items: readonly ShopItem[], ctx: MoneyCtx, p: Period): UseIn {
+  const acc = accessoriesByItem(items)
+  const stop = addDays(p.to, 1)
+  const things: ShopItem[] = []
+  const rows: UseRow[] = []
+  let first: string | null = null
+  for (const i of items) {
+    if (i.accessory_of || !hadIn(i, p)) continue
+    things.push(i)
+    const from = boughtOn(i) as string
+    if (!first || from < first) first = from
+    const per = perMonth(i, ctx, p.today, acc.get(i.id) ?? [])
+    if (!per) continue
+    const end = (i.disposal ? i.disposed_on : null) ?? p.today
+    const all = daysBetween(from, end)
+    const inside = Math.max(0, daysBetween(p.from && p.from > from ? p.from : from, end < stop ? end : stop))
+    if (all <= 0 || inside <= 0) continue
+    rows.push({ item: i, per, months: inside / 30.4375, nok: (per.used.nok * inside) / all })
+  }
+  rows.sort((a, b) => b.nok - a.nok || a.item.title.localeCompare(b.item.title))
+  const months = p.from ? monthsBetween(p.from, p.past ? stop : p.today) : first ? monthsBetween(first, p.today) : 0
+  return { nok: rows.reduce((s, r) => s + r.nok, 0), months, rows, things }
+}
+
+/** Chains with a step in the period — a thing in them bought or gone then. All time: every chain. */
+export function chainsIn(chains: readonly Chain[], p: Period): Chain[] {
+  const start = p.from
+  if (!start) return [...chains]
+  const inside = (day: string | null) => !!day && day >= start && day <= p.to
+  return chains.filter(c => c.nodes.some(nd => inside(nd.bought) || inside(nd.left)))
 }
 
 const monthOf = (day: string | null | undefined) => (day ? day.slice(0, 7) : null)
@@ -73,10 +227,14 @@ export function yearTotals(items: readonly ShopItem[], ctx: MoneyCtx, year: stri
   return { year, spent, got, net: minus(spent, got), boughtIds, soldIds }
 }
 
-export interface CategoryRow { key: string; title: string; count: number; paid: Amount; worth: Amount; valued: number; ids: string[] }
+export interface CategoryRow {
+  key: string; title: string; count: number; paid: Amount; worth: Amount; valued: number; ids: string[]
+  /** How many of its things (not accessories) are still yours today — only what is still yours has a "Could sell for". */
+  stillYours: number
+}
 
-/** The key of rows without a category (a scope pick, a category row). */
-export const NO_CATEGORY = '__none__'
+/** The key of rows without a category (a scope pick, a category row) — one key with Owned's filter. */
+export { NO_CATEGORY }
 
 /** By top category, or by subcategory (a top category's own things — no subcategory — get a row of their own). */
 export type CategoryLevel = 'top' | 'sub'
@@ -95,15 +253,21 @@ export function categoryBucket(categoryId: string | null | undefined, categories
   return { key: `${p.topId}/own`, title: hasSubs ? `${p.topName} (no subcategory)` : p.topName }
 }
 
-/** What you own now by top category (or subcategory): how many, what they cost, what the valued ones could sell for. */
-export function ownedByCategory(items: readonly ShopItem[], categories: readonly ShopCategory[], ctx: MoneyCtx, level: CategoryLevel = 'top'): CategoryRow[] {
+/**
+ * What you own by top category (or subcategory): how many, what they cost,
+ * what the valued ones could sell for — now, or at the period's end (`p`): the
+ * things you had that day, what they had cost by then, and "Could sell for"
+ * only for those still yours today.
+ */
+export function ownedByCategory(items: readonly ShopItem[], categories: readonly ShopCategory[], ctx: MoneyCtx, level: CategoryLevel = 'top', p?: Period): CategoryRow[] {
   const out = new Map<string, CategoryRow>()
   for (const i of items) {
-    if (!isPossession(i) || i.disposal) continue
+    if (p ? !hadOn(i, p.to) : !isMine(i)) continue
     const { key, title } = categoryBucket(i.category_id, categories, level)
-    const row = out.get(key) ?? { key, title, count: 0, paid: ZERO, worth: ZERO, valued: 0, ids: [] }
+    const row = out.get(key) ?? { key, title, count: 0, paid: ZERO, worth: ZERO, valued: 0, ids: [], stillYours: 0 }
     if (!i.accessory_of) row.count++
-    row.paid = add(row.paid, costOf(i, ctx))
+    row.paid = add(row.paid, p ? costAt(i, ctx, p) : costOf(i, ctx))
+    if (isMine(i) && !i.accessory_of) row.stillYours++
     const v = valueNowOf(i, ctx)
     if (v) { row.worth = add(row.worth, v); row.valued++ }
     row.ids.push(i.id)
@@ -146,19 +310,30 @@ export function orderStores(rows: readonly StoreRow[], by: StoreOrder): StoreRow
   return [...rows].sort((a, b) => b.count - a.count || b.spent.nok - a.spent.nok || a.title.localeCompare(b.title))
 }
 
-export interface TimelineRow { item: ShopItem; from: string; to: string | null; group: string; approx: boolean }
+export interface TimelineRow {
+  item: ShopItem; from: string; to: string | null; group: string; approx: boolean
+  /** It went inside the period (its bar ends there); otherwise it was still yours at the period's end. */
+  gone: boolean
+}
 
 /** Still yours (mine), sold or gone (gone), or either (all). */
 export const showsIn = (i: Pick<ShopItem, 'disposal'>, show: OwnedShow): boolean => show === 'all' || (show === 'mine' ? !i.disposal : !!i.disposal)
 
-/** One bar per thing (accessories ride with theirs), from bought to gone or today, grouped by top category. */
-export function timelineRows(items: readonly ShopItem[], categories: readonly ShopCategory[], show: OwnedShow = 'all'): { rows: TimelineRow[]; start: string | null } {
+/**
+ * One bar per thing (accessories ride with theirs), from bought to gone or
+ * today, grouped by top category. With a period (`p`): the things you had in
+ * it, "gone" when they went inside it — one that went later was still yours
+ * at its end, so its bar runs on.
+ */
+export function timelineRows(items: readonly ShopItem[], categories: readonly ShopCategory[], show: OwnedShow = 'all', p?: Period): { rows: TimelineRow[]; start: string | null } {
   const rows: TimelineRow[] = []
   for (const i of items) {
-    if (!isPossession(i) || i.accessory_of || i.disposal === 'returned' || !showsIn(i, show)) continue
+    if (i.accessory_of || (p ? !hadIn(i, p) : !isPossession(i) || i.disposal === 'returned')) continue
     const from = boughtOn(i)
     if (!from) continue
-    rows.push({ item: i, from, to: i.disposal ? (i.disposed_on ?? null) : null, group: categoryPath(i.category_id, categories).topName, approx: !!i.approx_dates })
+    const gone = p ? wentIn(i, p) : !!i.disposal
+    if (show !== 'all' && (show === 'gone') !== gone) continue
+    rows.push({ item: i, from, to: gone ? (i.disposed_on ?? null) : null, group: categoryPath(i.category_id, categories).topName, approx: !!i.approx_dates, gone })
   }
   rows.sort((a, b) => a.group.localeCompare(b.group) || a.from.localeCompare(b.from))
   const start = rows.reduce<string | null>((s, r) => (!s || r.from < s ? r.from : s), null)
@@ -167,12 +342,12 @@ export function timelineRows(items: readonly ShopItem[], categories: readonly Sh
 
 export interface ValueRow { item: ShopItem; per: PerMonth }
 
-/** Things by cost of use per month (only those with an honest number), dearest first. */
-export function valueRanking(items: readonly ShopItem[], ctx: MoneyCtx, today: string): ValueRow[] {
+/** Things by cost of use per month (only those with an honest number), dearest first — with a period, the things you had in it. */
+export function valueRanking(items: readonly ShopItem[], ctx: MoneyCtx, today: string, p?: Period): ValueRow[] {
   const acc = accessoriesByItem(items)
   const out: ValueRow[] = []
   for (const i of items) {
-    if (!isPossession(i) || i.accessory_of || i.disposal === 'returned') continue
+    if (i.accessory_of || (p ? !hadIn(i, p) : !isPossession(i) || i.disposal === 'returned')) continue
     const per = perMonth(i, ctx, today, acc.get(i.id) ?? [])
     if (per) out.push({ item: i, per })
   }
@@ -189,11 +364,15 @@ export interface ResaleSummary {
   ids: string[]
 }
 
-/** Things bought to sell later, or null when there are none (the section hides). */
-export function resaleSummary(items: readonly ShopItem[], ctx: MoneyCtx): ResaleSummary | null {
-  const rows = items.filter(i => isPossession(i) && i.for_resale && i.disposal !== 'returned')
+/**
+ * Things bought to sell later, or null when there are none (the section
+ * hides). With a period (`p`): the ones sold in it and the ones still held at
+ * its end; the result and the days to sell over the sales made in it.
+ */
+export function resaleSummary(items: readonly ShopItem[], ctx: MoneyCtx, p?: Period): ResaleSummary | null {
+  const rows = items.filter(i => isPossession(i) && i.for_resale && i.disposal !== 'returned' && (!p || wentIn(i, p) || hadOn(i, p.to)))
   if (!rows.length) return null
-  const sold = rows.filter(i => i.disposal)
+  const sold = rows.filter(i => (p ? wentIn(i, p) : !!i.disposal))
   const days = sold.map(i => (boughtOn(i) && i.disposed_on ? daysBetween(boughtOn(i) as string, i.disposed_on) : null)).filter((d): d is number => d != null)
   const result = add(...sold.map(i => minus(gotOf(i) ?? ZERO, costOf(i, ctx))))
   return {
@@ -304,39 +483,24 @@ export function monthsLabel(months: number): string {
   return [y ? `${y} year${y === 1 ? '' : 's'}` : '', m ? `${m} month${m === 1 ? '' : 's'}` : ''].filter(Boolean).join(' ')
 }
 
-/** Why a thing still yours has no cost of use per month yet. */
+/** Why a thing has no cost of use per month: no "Could sell for" (still yours), a price or sale amount missing, a rate pending, under a month. */
 export type UseGap = 'no_value' | 'missing' | 'pending' | 'new'
 
-/** The reason, or null when it has an honest number. */
-export function costOfUseGap(i: ShopItem, ctx: MoneyCtx, today: string): UseGap | null {
-  if (perMonth(i, ctx, today)) return null
-  const v = valueNowOf(i, ctx)
-  if (!v) return 'no_value'
-  const used = minus(costOf(i, ctx), v)
+/** The reason, or null when it has an honest number (`accessories`: its own, for the ones that left in the same sale). */
+export function costOfUseGap(i: ShopItem, ctx: MoneyCtx, today: string, accessories: readonly ShopItem[] = []): UseGap | null {
+  if (perMonth(i, ctx, today, accessories)) return null
+  let used: Amount
+  if (isGone(i)) {
+    const together = i.sale_group ? accessories.filter(a => a.sale_group === i.sale_group) : []
+    used = minus(add(costOf(i, ctx), ...together.map(a => costOf(a, ctx))), add(gotOf(i), ...together.map(a => gotOf(a))))
+  } else {
+    const v = valueNowOf(i, ctx)
+    if (!v) return 'no_value'
+    used = minus(costOf(i, ctx), v)
+  }
   if (used.missing) return 'missing'
   if (used.pending) return 'pending'
   return 'new'
-}
-
-export interface UseNow {
-  /** NOK per month, over `rows` only. */
-  nok: number
-  /** The things with an honest number, dearest first. */
-  rows: ValueRow[]
-  /** Every thing still yours (accessories ride with their item). */
-  things: ShopItem[]
-}
-
-/** Cost of use per month of the things still yours: the sum of the honest numbers, the things behind it, and of how many. */
-export function costOfUseNow(items: readonly ShopItem[], ctx: MoneyCtx, today: string): UseNow {
-  const things = items.filter(i => isMine(i) && !i.accessory_of)
-  const rows: ValueRow[] = []
-  for (const i of things) {
-    const per = perMonth(i, ctx, today)
-    if (per) rows.push({ item: i, per })
-  }
-  rows.sort((a, b) => b.per.nok - a.per.nok)
-  return { nok: rows.reduce((s, r) => s + r.per.nok, 0), rows, things }
 }
 
 /** The dearest `n` and, after them, the cheapest `n` (cheapest first) — never one thing twice. Takes a list sorted dearest first. */
@@ -346,10 +510,10 @@ export function valueEnds<T>(rows: readonly T[], n = 5): { dearest: T[]; cheapes
 
 export interface KeptRow { item: ShopItem; from: string; to: string; months: number }
 
-/** Things that went (not returned), with how long each was kept — what averageKeptMonths averages. Longest first. */
-export function keptRows(items: readonly ShopItem[]): KeptRow[] {
+/** Things that went (not returned) — with a period, the ones that went in it — with how long each was kept. Longest first. */
+export function keptRows(items: readonly ShopItem[], p?: Period): KeptRow[] {
   return items
-    .filter(i => isPossession(i) && !i.accessory_of && i.disposal && i.disposal !== 'returned' && i.disposed_on && boughtOn(i))
+    .filter(i => isPossession(i) && !i.accessory_of && i.disposal && i.disposal !== 'returned' && i.disposed_on && boughtOn(i) && (!p || wentIn(i, p)))
     .map(i => {
       const from = boughtOn(i) as string
       const to = i.disposed_on as string
@@ -372,20 +536,16 @@ export function filterChains(chains: readonly Chain[], show: ChainShow): Chain[]
   return show === 'all' ? [...chains] : chains.filter(c => chainEnded(c) === (show === 'ended'))
 }
 
-/** Every thing in the chain you have or had was bought to sell later — only then is its result a profit or a loss. */
-export function boughtToSell(chain: Chain): boolean {
-  const things = chain.nodes.filter(n => n.state !== 'wish')
-  return things.length > 0 && things.every(n => !!n.item.for_resale)
-}
-
 export interface TimelineAxis {
   /** 1 January of the first year. */
   from: string
-  /** Today. */
+  /** Today (a past year's axis: 31 December). */
   to: string
   days: number
   /** Where each year starts, as a fraction of the axis (the first at 0). */
   years: { year: number; at: number }[]
+  /** One year's axis: where each quarter starts (1 January, 1 April, 1 July, 1 October), up to its end. */
+  quarters?: { day: string; at: number }[]
 }
 
 /** The ownership timeline's axis: 1 January of the first purchase's year to today. */
@@ -396,6 +556,16 @@ export function timelineAxis(start: string, today: string): TimelineAxis {
   const years: { year: number; at: number }[] = []
   for (let y = Number(from.slice(0, 4)); y <= Number(to.slice(0, 4)); y++) years.push({ year: y, at: daysBetween(from, `${y}-01-01`) / days })
   return { from, to, days, years }
+}
+
+/** A year's axis (`p` with a year): 1 January to 31 December, or to today for this year, a mark at each quarter. */
+export function yearAxis(p: Period & { from: string }): TimelineAxis {
+  const days = Math.max(1, daysBetween(p.from, p.to))
+  const quarters = ['01', '04', '07', '10']
+    .map(m => `${p.from.slice(0, 4)}-${m}-01`)
+    .filter(day => day <= p.to)
+    .map(day => ({ day, at: daysBetween(p.from, day) / days }))
+  return { from: p.from, to: p.to, days, years: [{ year: Number(p.from.slice(0, 4)), at: 0 }], quarters }
 }
 
 /** Where a bar sits on the axis, as fractions of its width (0–1); no end day = today. */

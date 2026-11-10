@@ -1,15 +1,11 @@
 // Words and numbers for the Stats screen: counts, whole-unit amounts and the
 // reason a sum is not a number yet. Pure.
 import { complete, type Amount } from '../../ownModel'
-import { money } from '../shopFormat'
+import { amountWords, num } from '../shopFormat'
 
-export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
+export { num }
 
-/** "4 490" — whole units, thousands with a space, no currency (the unit sits beside it). */
-export function num(n: number): string {
-  const r = Math.round(n)
-  return `${r < 0 ? '-' : ''}${String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}`
-}
+export const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 1 ? one : many}`
 
 /** "Price missing", "Rate pending" — why an amount is not a number (short, for a row). */
 export function shortReason(a: Amount): string {
@@ -17,9 +13,9 @@ export function shortReason(a: Amount): string {
   return a.missing ? 'Price missing' : 'Rate pending'
 }
 
-/** "4 490 NOK", or "unknown" for a sum that is not complete. */
+/** "4 490 NOK", "20 100 NOK + 4 500 TRY pending" while only a rate waits, or "unknown" for a sum with a price missing. */
 export function moneyWord(a: Amount): string {
-  return complete(a) ? money(a.nok) : 'unknown'
+  return amountWords(a) ?? 'unknown'
 }
 
 /** "2 amounts not counted: 1 price missing · 1 exchange rate pending (…)", or null when every amount counted. */
@@ -36,7 +32,13 @@ export function countReason(a: Amount): string {
   return [a.missing && `${plural(a.missing, 'price')} missing`, a.pending && `${plural(a.pending, 'rate')} pending`].filter(Boolean).join(' · ')
 }
 
-/** "+1 101" / "-300" / "0" — a result with its sign. */
+/** A sum for a tile's one-line hint: "83 216", "83 216 + pending" while only a rate waits (never at today's rate), else "unknown". */
+export function shortSum(a: Amount): string {
+  if (complete(a)) return num(a.nok)
+  return a.missing ? 'unknown' : `${num(a.nok)} + pending`
+}
+
+/** "+1 101" / "−300" / "0" — a result with its sign. */
 export const signedNum = (n: number) => `${Math.round(n) > 0 ? '+' : ''}${num(n)}`
 
 // Month names as chart labels only — the owner's exception to the date rule

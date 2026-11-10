@@ -86,10 +86,13 @@ check('with rates every price converts into NOK, in whole kroner (3000 + 300 + 5
 check('rows without a price are counted, never as 0 silently', t.count === 4 && t.unpriced === 1)
 const t2 = M.totalsIn(open, 'NOK', null)
 check('without rates only NOK prices add up; the rest stay per currency', t2.amount === 3000 && eq(t2.unconverted.map(u => u.currency).sort(), ['EUR', 'TRY']))
-check('totalsLabel joins what could not convert', M.totalsLabel(t2) === '3 000 NOK + 1 200 TRY + 50 EUR', M.totalsLabel(t2))
-check('no "0 NOK +" in front of sums that could not convert', M.totalsLabel(M.totalsIn([w4], 'NOK', null)) === '50 EUR' && M.totalsLabel(M.totalsIn([], 'NOK', null)) === '0 NOK')
-check('≈ the other currency', M.approxOther(1000, 'NOK', rates) === '≈ 4 000 TRY' && M.approxOther(1000, 'NOK', null) === null && M.approxOther(0, 'NOK', rates) === null)
-check('price label (+ est.)', M.priceLabel(w1) === '3 000 NOK' && M.priceLabel({ ...w1, price_source: 'ai_estimate' }) === '3 000 NOK (est.)' && M.priceLabel(w3) === null)
+// Amounts are one unbreakable piece: no-break spaces inside the number and before the unit.
+const plain = s => (s == null ? s : s.replace(/\u00a0/g, ' '))
+check('a sum never breaks inside a number or before its unit', M.totalsLabel(t2).startsWith('3\u00a0000\u00a0NOK + ') && M.priceLabel(w1) === '3\u00a0000\u00a0NOK')
+check('totalsLabel joins what could not convert', plain(M.totalsLabel(t2)) === '3 000 NOK + 1 200 TRY + 50 EUR', M.totalsLabel(t2))
+check('no "0 NOK +" in front of sums that could not convert', plain(M.totalsLabel(M.totalsIn([w4], 'NOK', null))) === '50 EUR' && plain(M.totalsLabel(M.totalsIn([], 'NOK', null))) === '0 NOK')
+check('≈ the other currency', plain(M.approxOther(1000, 'NOK', rates)) === '≈ 4 000 TRY' && M.approxOther(1000, 'NOK', null) === null && M.approxOther(0, 'NOK', rates) === null)
+check('price label (+ est.)', plain(M.priceLabel(w1)) === '3 000 NOK' && plain(M.priceLabel({ ...w1, price_source: 'ai_estimate' })) === '3 000 NOK (est.)' && M.priceLabel(w3) === null)
 
 console.log('groups')
 const topOwn = item({ title: 'Home sign', category_id: 'home' })
@@ -165,7 +168,7 @@ console.log('general wishes, models and the price watch (137)')
   check('a model in another currency converts at today\'s rate, or is left out without rates', eq(M.wishRange(tab, [fe, lira], rates), { min: 5000, max: 5490 }) && eq(M.wishRange(tab, [fe, lira], null), { min: 5490, max: 5490 }))
   const models = M.modelsByWish([air, fe, notChosen, tab])
   const t = M.totalsIn([tab, item({ price: 1000, currency: 'NOK' })], 'NOK', null, models, watches)
-  check('a general wish counts once, as its range', t.amount === 6490 && t.max === 7990 && t.unpriced === 0 && M.totalsLabel(t) === '6 490–7 990 NOK', M.totalsLabel(t))
+  check('a general wish counts once, as its range', t.amount === 6490 && t.max === 7990 && t.unpriced === 0 && plain(M.totalsLabel(t)) === '6 490–7 990 NOK', M.totalsLabel(t))
   check('models never show as wishes of their own', M.filterWishlist([tab, air, fe], [], M.NO_FILTERS).map(i => i.id).join() === 'tab')
   check('a Not chosen model is not in "Not any more" (it stays under its wish)', M.droppedItems([notChosen, item({ id: 'gone', status: 'dropped' })]).map(i => i.id).join() === 'gone')
 }
@@ -224,6 +227,15 @@ console.log('the quick list page: groups, adds and Buy again')
   check('Buy again carries the product (EAN, picture), store and category of the row it re-adds',
     eq(M.buyAgainInput(again[0]), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick', ean: '7038010000737', image_url: 'https://img/m.png' }))
   check('…and leaves them out when that row had none', eq(M.buyAgainInput(M.buyAgain([{ ...bought, ean: null, image_url: null }])[0]), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick' }))
+}
+
+console.log('\nThe product link (the price watch, the wishlist card, the record — owner, 09.11.2026)')
+{
+  const SF = require('../src/features/shop/components/shopFormat')
+  check('a web link opens; its site is named without "www."', SF.webUrl('https://www.power.no/tv/p-1/') === 'https://www.power.no/tv/p-1/' && SF.hostOf('https://www.power.no/tv/p-1/') === 'power.no' && SF.hostOf('http://prisjakt.no/product.php?p=1') === 'prisjakt.no')
+  check('anything but http(s) is never a link (javascript:, data:, a bare word)', [
+    'javascript:alert(1)', ' JavaScript:alert(1)', 'data:text/html,<b>x</b>', 'ftp://example.com/x', 'power.no', '', null,
+  ].every(u => SF.webUrl(u) === null && SF.hostOf(u) === null))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

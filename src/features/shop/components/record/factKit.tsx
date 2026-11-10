@@ -8,6 +8,9 @@ import type { ShopCurrency } from '../../types'
 // A record's facts read as text; tapping one turns it into its editor (one at
 // a time), and a filled fact is never more than a tap from changing.
 
+/** An opened fact scrolls into view — the record can open with one ("update it" on an old "Could sell for"). */
+const intoView = (el: HTMLDivElement | null) => el?.scrollIntoView({ block: 'nearest' })
+
 export function Fact({ id, label, value, editing, onEdit, onDone, children, hint }: {
   id: string
   label: string
@@ -24,7 +27,7 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
   return (
     // Open, the tint reaches past the row (-mx-2 px-2) so the label and the
     // Done tick stay where the label and the pen were.
-    <div className={cx('rounded-row', open && '-mx-2 bg-surface-2 px-2 py-2')}>
+    <div ref={open ? intoView : undefined} className={cx('rounded-row', open && '-mx-2 bg-surface-2 px-2 py-2')}>
       <div className="flex items-start gap-2">
         <span className="w-[8.5rem] shrink-0 pt-[11px] text-meta text-fg-muted max-[380px]:w-[6.5rem]">{label}</span>
         {open ? (
@@ -42,7 +45,7 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
           </button>
         )}
       </div>
-      {hint && !open && <p className="ml-[8.5rem] pl-1 text-meta text-fg-faint max-[380px]:ml-[6.5rem]">{hint}</p>}
+      {hint && !open && <p className="ml-[8.5rem] pl-1 text-meta text-fg-muted max-[380px]:ml-[6.5rem]">{hint}</p>}
     </div>
   )
 }

@@ -67,7 +67,7 @@ export function ModelSheet({ wish, onClose }: { wish: ShopItem; onClose: () => v
       }>
       <div className="flex flex-col gap-3">
         <div>
-          <label htmlFor="model-url" className="field-label">Link <span className="font-normal text-fg-faint">(Prisjakt or a shop)</span></label>
+          <label htmlFor="model-url" className="field-label">Link <span className="font-normal text-fg-muted">(Prisjakt or a shop)</span></label>
           <div className="flex gap-2">
             <input id="model-url" type="url" inputMode="url" value={url} onChange={e => setUrl(e.target.value)} onBlur={() => { if (url.trim() && !title.trim()) void read() }}
               placeholder="https://www.prisjakt.no/product.php?p=…" className="input min-w-0 flex-1" autoFocus />

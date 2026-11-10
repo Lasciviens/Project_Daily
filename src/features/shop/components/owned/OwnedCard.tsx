@@ -24,6 +24,8 @@ interface Props {
   onUndoSale: () => void
   onChain: () => void
   onDelete: () => void
+  /** Open the record at its "Could sell for" (an estimate over six months old). */
+  onUpdateValue: () => void
 }
 
 /** One "label  value" line of a card's money list. */
@@ -38,7 +40,7 @@ function Pair({ label, children, className }: { label: string; children: ReactNo
  * 14.10.2026). A loss on a thing you use is its cost of use — neutral. Selling
  * and adding an accessory live in the record.
  */
-export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen, onUndoSale, onChain, onDelete }: Props) {
+export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen, onUndoSale, onChain, onDelete, onUpdateValue }: Props) {
   const [showAcc, setShowAcc] = useState(false)
   const gone = !!item.disposal
   const from = boughtOn(item)
@@ -94,7 +96,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
               <Pair label="Got back"><AmountText amount={got} />{together.length > 0 && ` with ${together.length} accessor${together.length === 1 ? 'y' : 'ies'}`}</Pair>
             )}
             {held && result && (complete(result) && result.nok < 0
-              ? <Pair label="Made"><span className={item.for_resale ? 'text-success' : undefined}>{money(-result.nok)}</span></Pair>
+              ? <Pair label="Made"><span className="text-success">{money(-result.nok)}</span></Pair>
               : <Pair label="Cost you"><AmountText amount={result} />{per && complete(result) && result.nok > 0 && <span className="text-fg-muted"> · ≈ {money(per.nok)}/month</span>}</Pair>)}
           </>
         ) : (
@@ -104,7 +106,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
             {value && (
               <Pair label="Could sell for" className={stale ? 'text-warn' : undefined}>
                 {item.value_on ? <Peek detail={`Your estimate from ${formatDate(item.value_on)}`}><AmountText amount={value} /></Peek> : <AmountText amount={value} />}
-                {stale && ' · update it'}
+                {stale && <> · <button type="button" onClick={onUpdateValue} className="font-semibold text-accent-600 hover:underline">update it</button></>}
               </Pair>
             )}
           </>
@@ -142,7 +144,7 @@ export function OwnedCard({ item, accessories, chain, watch, ctx, today, onOpen,
             <li key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 text-meta">
               <Truncate as="span" className="min-w-0 flex-1 text-fg-2">{a.title}</Truncate>
               <span className="shrink-0 tabular-nums text-fg-muted"><PaidText item={a} /></span>
-              {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-faint">{DISPOSAL_LABEL[a.disposal]}</span>}
+              {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-muted">{DISPOSAL_LABEL[a.disposal]}</span>}
             </li>
           ))}
         </ul>
