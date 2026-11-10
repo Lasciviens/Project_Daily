@@ -108,6 +108,11 @@ select t_ok(t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price) v
         and t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price, noted_on) values ('d2000000-0000-0000-0000-000000000001', 'https://finn.no/x', 1, public.t_today() + 1)$q$) = 'done'
         and t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price, noted_on) values ('d2000000-0000-0000-0000-000000000001', 'https://finn.no/x', 1, '1999-12-31')$q$) like '23514 %',
   'R1 a price from 0 below infinity (no NaN), NOK, TRY, EUR or USD, a known condition, a day from 2000 to tomorrow in Oslo (a phone east of Oslo is already there)');
+-- Security review, 10.11.2026: every amount below a billion.
+select t_ok(t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price) values ('d2000000-0000-0000-0000-000000000001', 'https://finn.no/x', 1000000000)$q$) like '23514 %'
+        and t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price) values ('d2000000-0000-0000-0000-000000000001', 'https://finn.no/x', 1e300)$q$) like '23514 %'
+        and t_err($q$insert into public.shop_ad_notes (item_id, ad_url, price) values ('d2000000-0000-0000-0000-000000000001', 'https://finn.no/x', 999999999.99)$q$) = 'done',
+  'R1 an ad''s price is below a billion (a 1e300 one is refused, 999 999 999.99 is not)');
 reset role;
 set test.uid = '00000000-0000-0000-0000-000000000006';
 set role authenticated;
@@ -137,6 +142,11 @@ select t_ok((select currency = 'NOK' and note is null and user_id = '00000000-00
         and t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount, note) values ('d2000000-0000-0000-0000-000000000002', 'A store', 1, repeat('x', 501))$q$) like '23514 %'
         and t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount) values ('d2000000-0000-0000-0000-0000000000f6', 'A store', 1)$q$) like '23503 %own things',
   'R2 a quote: a dealer, an amount from 0 below infinity, a day up to tomorrow, a short note — and only for one of your own things');
+select t_ok(t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount) values ('d2000000-0000-0000-0000-000000000002', repeat(' ', 200) || 'x', 1)$q$) like '23514 %'
+        and t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount) values ('d2000000-0000-0000-0000-000000000002', repeat(' ', 1000000) || 'x', 1)$q$) like '23514 %'
+        and t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount) values ('d2000000-0000-0000-0000-000000000002', E'\t\n ', 1)$q$) like '23514 %'
+        and t_err($q$insert into public.shop_trade_in_quotes (item_id, dealer, amount) values ('d2000000-0000-0000-0000-000000000002', 'A store', 1000000000)$q$) like '23514 %',
+  'R2 a dealer''s name counts every character (a megabyte of spaces and one letter is refused, so is only white space); an amount below a billion');
 reset role;
 
 -- ═══ R3. Value history ═══════════════════════════════════════════════════════
@@ -182,6 +192,32 @@ select t_ok(t_err($q$insert into public.shop_value_history (item_id, valued_on, 
         and t_err($q$insert into public.shop_value_history (item_id, valued_on, value) values ('d2000000-0000-0000-0000-000000000006', '2026-11-01', 'Infinity')$q$) like '23514 %'
         and t_err($q$insert into public.shop_value_history (item_id, valued_on, value) values ('d2000000-0000-0000-0000-000000000006', '2100-01-01', 1)$q$) like '23514 %',
   'R3 a history row is for one of your own things, a finite value, a day before 2100');
+select t_ok(t_err($q$insert into public.shop_value_history (item_id, valued_on, value) values ('d2000000-0000-0000-0000-000000000006', '2026-11-01', 1000000000)$q$) like '23514 %'
+        and t_err($q$update public.shop_items set value_now = 1000000000, value_on = '2026-11-04' where id = 'd2000000-0000-0000-0000-000000000006'$q$) = 'done'
+        and not exists (select 1 from public.shop_value_history where item_id = 'd2000000-0000-0000-0000-000000000006'),
+  'R3 an estimate of a billion or more is left out of the history (the thing''s own write still goes through)');
+-- Security review, 10.11.2026: a change takes back only what the previous estimate held — one steered write (the
+-- assistant may write value_on) can't wipe the history.
+do $$
+declare
+  h text;
+  w constant uuid := 'd2000000-0000-0000-0000-000000000006';
+begin
+  update public.shop_items set value_now = 400, value_currency = 'NOK', value_on = '2026-05-01' where id = w;
+  update public.shop_items set value_now = 350, value_on = '2026-08-01' where id = w;
+  update public.shop_items set value_now = 300, value_on = '2026-11-01' where id = w;
+  update public.shop_items set value_on = '2000-01-01' where id = w;
+  select string_agg(valued_on || '=' || value, ',' order by valued_on) into h from public.shop_value_history where item_id = w;
+  perform t_ok(h = '2000-01-01=300,2026-05-01=400,2026-08-01=350',
+    'R3 an estimate moved back to 2000 takes back only its own day''s row — every earlier estimate stays');
+  update public.shop_items set value_now = null, value_on = null where id = w;
+  select string_agg(valued_on || '=' || value, ',' order by valued_on) into h from public.shop_value_history where item_id = w;
+  perform t_ok(h = '2026-05-01=400,2026-08-01=350', 'R3 …and cleared after that: only the estimate it held goes');
+  update public.shop_items set value_now = 380, value_on = '2026-06-01' where id = w;
+  update public.shop_items set value_now = 370 where id = w;
+  select string_agg(valued_on || '=' || value, ',' order by valued_on) into h from public.shop_value_history where item_id = w;
+  perform t_ok(h = '2026-05-01=400,2026-06-01=370,2026-08-01=350', 'R3 …and a new value on the same day replaces that day''s row and leaves a later one');
+end $$;
 reset role;
 set test.uid = '00000000-0000-0000-0000-000000000006';
 set role authenticated;
@@ -214,11 +250,11 @@ select t_ok(t_err($q$insert into public.shop_listings (item_id, listed_on, price
         and t_err($q$update public.shop_listings set ad_url = 'http://www.finn.no/x', marketplace = null where id = 'd2400000-0000-0000-0000-000000000001'$q$) like '23514 %check constraint%',
   'R4 one open listing per thing; only a thing you have; only your own; Sold only through the sale; the ad''s link https and on its marketplace');
 select t_ok(bool_and(t_err(format($q$update public.shop_listings set prices = %L where id = 'd2400000-0000-0000-0000-000000000001'$q$, p)) like '23514 %'),
-  'R4 the price story: an array of 1–100 {on, price}, in order from the listing''s day to tomorrow, each price from 0 below a billion')
+  'R4 the price story: an array of 1–100 {on, price}, in order from the listing''s day to tomorrow, each price from 0 below a billion with at most two decimals')
   from unnest(array['[]', '{}', '"x"', '[1]', '[{"on": "2026-10-20"}]', '[{"on": "2026-10-20", "price": "5000"}]',
                     '[{"on": "2026-10-20", "price": 5000, "x": 1}]', '[{"on": "20.10.2026", "price": 5000}]', '[{"on": "2026-02-30", "price": 5000}]',
                     '[{"on": "2026-10-19", "price": 5000}]', '[{"on": "2026-11-02", "price": 5000}, {"on": "2026-11-01", "price": 4000}]',
-                    '[{"on": "2026-10-20", "price": -1}]', '[{"on": "2026-10-20", "price": 1e9}]',
+                    '[{"on": "2026-10-20", "price": -1}]', '[{"on": "2026-10-20", "price": 1e9}]', '[{"on": "2026-10-20", "price": 4999.995}]',
                     (select jsonb_agg(jsonb_build_object('on', '2026-10-20', 'price', 1)) from generate_series(1, 101))::text,
                     jsonb_build_array(jsonb_build_object('on', (public.t_today() + 2)::text, 'price', 1))::text]) p;
 do $$
@@ -452,6 +488,14 @@ select t_ok(t_err($q$insert into public.shop_handover_checklists (category, step
         and t_err($q$insert into public.shop_ad_templates (marketplace, title, body) values ('dba.dk', ' ', 'y')$q$) like '23514 %'
         and t_err($q$insert into public.shop_handover_checklists (category, steps) values ('Drones', repeat(E'x\n', 60) || 'x')$q$) like '23514 %',
   'R8 one template per marketplace and category, one checklist per category (names without case or spaces around); a known language; no blank title; at most 60 steps');
+select t_ok(t_err($q$insert into public.shop_ad_templates (marketplace, title, body) values ('a.example', repeat(' ', 300) || 'x', 'y')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_ad_templates (marketplace, title, body) values ('a.example', 'x', repeat(' ', 1000000) || 'y')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_ad_templates (marketplace, title, body) values ('a.example', 'x', E' \n\t ')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_ad_templates (marketplace, category, title, body) values ('a.example', repeat(' ', 100) || 'x', 'x', 'y')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_handover_checklists (category, steps) values (repeat(' ', 100) || 'Drones', 'x')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_handover_checklists (category, steps) values ('Drones', repeat(' ', 5000) || 'x')$q$) like '23514 %'
+        and t_err($q$insert into public.shop_handover_checklists (category, steps) values ('Drones', 'Charge it')$q$) = 'done',
+  'R8 a title, text, category or checklist counts every character — a run of spaces around one letter is no way past the bound — and needs one that is not a space');
 reset role;
 set test.uid = '00000000-0000-0000-0000-000000000003';
 set role authenticated;

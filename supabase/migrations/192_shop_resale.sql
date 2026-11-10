@@ -7,7 +7,9 @@
 --    · The link is https only and is NEVER fetched: no function reads this table (shop-price reads shop_items.url
 --      only, and FINN's and Tise's terms forbid automated reading — 188). It is a link the owner opens, shown with
 --      its address. One web address: https://, a host of letters, digits, dots and hyphens (so no user:password@),
---      no spaces or control characters, at most 2 048 characters; when the marketplace is named, the link's host is
+--      then only printable ASCII (an allow-list: no space, control, invisible or direction-changing character —
+--      the app sends a link as the browser's URL parser writes it, which encodes those), at most 2 048 characters;
+--      when the marketplace is named, the link's host is
 --      that host or a subdomain of it (www.finn.no is on finn.no). The column is `ad_url`, never `url`: the
 --      assistant may not write it (AI_NO_WRITE), while it may still write shop_items.url.
 -- 2. shop_trade_in_quotes — a trade-in quote the owner typed (a dealer's offer: the floor of what a thing fetches).
@@ -16,9 +18,11 @@
 --    trigger on shop_items, one row per thing and day (the latest estimate of that day). A thing added with an
 --    estimate gets its row when the transaction ends (a deferred trigger, on conflict nothing): a restore — Delete's
 --    Undo, Activity's Undo — puts the thing back first and its own history rows after it, and those win. The
---    history holds the estimates the record held: an estimate moved to an earlier day — an Undo or a correction —
---    takes back the rows after that day, and a cleared estimate takes back the rows from its own day on (an Undo of a
---    first estimate leaves nothing behind); earlier ones stay. Estimates from before 192 are not in it (the app adds the thing's
+--    history holds the estimates the record held, and a change takes back only what the previous estimate held: an
+--    estimate moved to an earlier day — an Undo or a correction — takes back its own day's row, a cleared estimate
+--    likewise (an Undo of a first estimate leaves nothing behind); every other row stays, so no single write — one
+--    the assistant was steered into, say — can wipe the history (security review, 10.11.2026). An estimate of a
+--    billion or more (or no number) is left out. Estimates from before 192 are not in it (the app adds the thing's
 --    current one when the history has none).
 -- 4. shop_listings — selling a thing: Listed (the ad is written, not up yet) → For sale (the ad is up; the days on
 --    sale count from for_sale_on) → Sold, or Withdrawn (taken down unsold). The price story is `prices`, dated price
@@ -36,7 +40,8 @@
 --    · `prices` lives on the row (jsonb), not in a table of its own: Shop's Delete with Undo brings back the rows of
 --      tables that point at shop_items (point 16 of docs/backend/database.md), never rows of a table that points at
 --      a listing, so a price story in its own table would be lost by an Undo.
---    · ad_url: the ad's link once it is up — the same rules as an ad note's (never fetched, AI_NO_WRITE).
+--    · ad_url: the ad's link once it is up — the same rules as an ad note's (never fetched, AI_NO_WRITE). ad_text,
+--      the ad as written, is the owner's alone too (AI_NO_WRITE): the owner copies it into FINN as it stands.
 -- 5. shop_ad_templates — the ad's text per marketplace (and optionally per category), the owner's own rows to edit:
 --    a title and a body with {name}, {condition}, {bought}, {price} and {accessories} (filled by
 --    src/features/shop/resaleTexts.ts; a line whose field is empty is left out). A language per template ('nb' or
@@ -55,6 +60,10 @@
 -- marketplace a row; 192 must not depend on it, and its seeds need a key that exists now. `marketplace` is the
 -- marketplace's host in shop_site_policies' form (188: finn.no, tise.com), or none. A later migration, once 191 has
 -- landed, adds store_id with its foreign key to shop_stores and fills it from the host.
+--
+-- Bounds (security review, 10.11.2026): a text's length counts every character and it needs one that is not a space
+-- (so a megabyte of spaces is no title); an amount is from 0 below a billion; a listing's price has at most two
+-- decimals.
 --
 -- Every table: the account's own rows (user_id with auth.uid() by default, the owner policy, the owner lock),
 -- audited (trg_audit — Developer → Activity can undo them; one id primary key), grants for the app and the service
@@ -101,11 +110,11 @@ create table if not exists public.shop_ad_notes (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null default auth.uid() references auth.users(id) on delete cascade,
   item_id      uuid not null references public.shop_items(id) on delete cascade,
-  ad_url       text not null check (ad_url ~ '^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]]*)?$'
+  ad_url       text not null check (ad_url ~ '^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][!-~]*)?$'
                                     and char_length(ad_url) <= 2048),
   marketplace  text check (marketplace is null or (marketplace ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
                                                    and char_length(marketplace) <= 253)),
-  price        numeric not null check (price >= 0 and price < 'Infinity'),
+  price        numeric not null check (price >= 0 and price < 1000000000),
   currency     text not null default 'NOK' check (currency in ('NOK', 'TRY', 'EUR', 'USD')),
   condition    text check (condition is null or condition in ('new', 'like_new', 'good', 'fair', 'for_parts')),
   asking       boolean not null default true,
@@ -139,8 +148,8 @@ create table if not exists public.shop_trade_in_quotes (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
   item_id     uuid not null references public.shop_items(id) on delete cascade,
-  dealer      text not null check (char_length(btrim(dealer)) between 1 and 120),
-  amount      numeric not null check (amount >= 0 and amount < 'Infinity'),
+  dealer      text not null check (char_length(dealer) <= 120 and dealer ~ '\S'),
+  amount      numeric not null check (amount >= 0 and amount < 1000000000),
   currency    text not null default 'NOK' check (currency in ('NOK', 'TRY', 'EUR', 'USD')),
   condition   text check (condition is null or condition in ('new', 'like_new', 'good', 'fair', 'for_parts')),
   quoted_on   date not null default ((now() at time zone 'Europe/Oslo')::date) check (quoted_on >= date '2000-01-01'),
@@ -173,7 +182,7 @@ create table if not exists public.shop_value_history (
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
   item_id     uuid not null references public.shop_items(id) on delete cascade,
   valued_on   date not null check (valued_on >= date '2000-01-01' and valued_on < date '2100-01-01'),
-  value       numeric not null check (value >= 0 and value < 'Infinity'),
+  value       numeric not null check (value >= 0 and value < 1000000000),
   currency    text not null default 'NOK' check (currency in ('NOK', 'TRY', 'EUR', 'USD')),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
@@ -206,7 +215,7 @@ create table if not exists public.shop_listings (
   item_id         uuid not null references public.shop_items(id) on delete cascade,
   marketplace     text check (marketplace is null or (marketplace ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
                                                       and char_length(marketplace) <= 253)),
-  ad_url          text check (ad_url is null or (ad_url ~ '^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]]*)?$'
+  ad_url          text check (ad_url is null or (ad_url ~ '^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]{1,5})?([/?#][!-~]*)?$'
                                                   and char_length(ad_url) <= 2048)),
   status          text not null default 'listed' check (status in ('listed', 'for_sale', 'sold', 'withdrawn')),
   listed_on       date not null default ((now() at time zone 'Europe/Oslo')::date) check (listed_on >= date '2000-01-01'),
@@ -256,10 +265,10 @@ create table if not exists public.shop_ad_templates (
   user_id      uuid not null default auth.uid() references auth.users(id) on delete cascade,
   marketplace  text check (marketplace is null or (marketplace ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
                                                    and char_length(marketplace) <= 253)),
-  category     text check (category is null or char_length(btrim(category)) between 1 and 80),
+  category     text check (category is null or (char_length(category) <= 80 and category ~ '\S')),
   language     text not null default 'nb' check (language in ('nb', 'en')),
-  title        text not null check (char_length(btrim(title)) between 1 and 200),
-  body         text not null check (char_length(btrim(body)) between 1 and 5000),
+  title        text not null check (char_length(title) <= 200 and title ~ '\S'),
+  body         text not null check (char_length(body) <= 5000 and body ~ '\S'),
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
@@ -286,8 +295,8 @@ comment on table public.shop_ad_templates is
 create table if not exists public.shop_handover_checklists (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  category    text not null check (char_length(btrim(category)) between 1 and 80),
-  steps       text not null check (char_length(btrim(steps)) between 1 and 4000
+  category    text not null check (char_length(category) <= 80 and category ~ '\S'),
+  steps       text not null check (char_length(steps) <= 4000 and steps ~ '\S'
                                    and coalesce(array_length(string_to_array(steps, E'\n'), 1), 0) <= 60),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
@@ -406,8 +415,8 @@ begin
     if v_on < v_prev or v_on > v_today + 1 then
       raise exception 'Price changes go in order, from the day it was listed up to today' using errcode = '23514';
     end if;
-    if v_price < 0 or v_price >= 1000000000 then
-      raise exception 'A price is from 0 up' using errcode = '23514';
+    if v_price < 0 or v_price >= 1000000000 or pg_catalog.scale(v_price) > 2 then
+      raise exception 'A price is from 0 below a billion, with at most two decimals' using errcode = '23514';
     end if;
     v_prev := v_on;
   end loop;
@@ -462,7 +471,7 @@ begin
     return null;
   end if;
   v_day := coalesce(v_item.value_on, public.oslo_day(pg_catalog.now()));
-  if v_item.value_now >= 0 and v_item.value_now < 'Infinity' and v_day >= date '2000-01-01' and v_day < date '2100-01-01' then
+  if v_item.value_now >= 0 and v_item.value_now < 1000000000 and v_day >= date '2000-01-01' and v_day < date '2100-01-01' then
     insert into public.shop_value_history (user_id, item_id, valued_on, value, currency)
     values (v_item.user_id, new.id, v_day, v_item.value_now, coalesce(v_item.value_currency, 'NOK'))
     on conflict (item_id, valued_on) do nothing;
@@ -489,17 +498,21 @@ begin
     v_today := public.oslo_day(pg_catalog.now());
     if new.value_now is not null then
       v_day := coalesce(new.value_on, v_today);
-      if new.value_now >= 0 and new.value_now < 'Infinity' and v_day >= date '2000-01-01' and v_day < date '2100-01-01' then
-        -- An estimate moved to an earlier day (an Undo, a correction) takes back the ones after it.
-        delete from public.shop_value_history h where h.item_id = new.id and h.valued_on > v_day;
+      if new.value_now >= 0 and new.value_now < 1000000000 and v_day >= date '2000-01-01' and v_day < date '2100-01-01' then
+        -- An estimate moved to an earlier day (an Undo, a correction) takes back its own day's row — only what the
+        -- previous estimate held, never the rows of other days.
+        if old.value_now is not null then
+          delete from public.shop_value_history h where h.item_id = new.id and h.valued_on > v_day
+            and h.valued_on = coalesce(old.value_on, v_today);
+        end if;
         insert into public.shop_value_history as h (user_id, item_id, valued_on, value, currency)
         values (new.user_id, new.id, v_day, new.value_now, coalesce(new.value_currency, 'NOK'))
         on conflict (item_id, valued_on) do update set value = excluded.value, currency = excluded.currency
           where h.value is distinct from excluded.value or h.currency is distinct from excluded.currency;
       end if;
     elsif old.value_now is not null then
-      -- Cleared: the estimate it held is taken back (and any after its day); earlier ones stay.
-      delete from public.shop_value_history h where h.item_id = new.id and h.valued_on >= coalesce(old.value_on, v_today);
+      -- Cleared: the estimate it held is taken back (its own day's row); every other row stays.
+      delete from public.shop_value_history h where h.item_id = new.id and h.valued_on = coalesce(old.value_on, v_today);
     end if;
   end if;
 

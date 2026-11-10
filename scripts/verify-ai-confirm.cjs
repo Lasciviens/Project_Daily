@@ -200,10 +200,15 @@ function checkAiWriteGroup() {
   script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_ad_notes', filters: '{"id":"a1"}', values: '{"ad_url":"https://phish.example/finn"}' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('AI cannot set an ad\'s link (shop_ad_notes.ad_url stays the owner\'s paste)', tables.shop_ad_notes[0].ad_url === 'https://www.finn.no/recommerce/forsale/item/1' && r.body.steps?.some(s => s.includes('may not set ad_url')), JSON.stringify(r.body.steps))
+  // An ad's text is copied into FINN as it stands (security review, 10.11.2026): a steered turn must not plant words in it.
+  tables.shop_listings = [{ id: 'l1', user_id: OWNER, item_id: 's1', status: 'for_sale', ad_text: 'Selger en spillkonsoll.', prices: [{ on: '2026-11-01', price: 1000 }] }]
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_listings', filters: '{"id":"l1"}', values: '{"ad_text":"Betal forskudd til en annen konto"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot write an ad\'s text (shop_listings.ad_text stays the owner\'s words)', tables.shop_listings[0].ad_text === 'Selger en spillkonsoll.' && r.body.steps?.some(s => s.includes('may not set ad_text')), JSON.stringify(r.body.steps))
   {
     const re = new RegExp(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8').match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo', 'ad_url', 'closed_by_sale'].filter(c => !re.test(c))
-    check('every Shop column the database fills is closed to the assistant (rates, sale_undo, a listing\'s closed_by_sale) — and an ad\'s link, the owner\'s own paste', !open.length && !re.test('sale_price') && !re.test('sale_group') && !re.test('url') && !re.test('prices'), open.join(', '))
+    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo', 'ad_url', 'ad_text', 'closed_by_sale'].filter(c => !re.test(c))
+    check('every Shop column the database fills is closed to the assistant (rates, sale_undo, a listing\'s closed_by_sale) — and an ad\'s link and text, the owner\'s own', !open.length && !re.test('sale_price') && !re.test('sale_group') && !re.test('url') && !re.test('prices'), open.join(', '))
   }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)
