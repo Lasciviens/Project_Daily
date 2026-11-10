@@ -119,6 +119,21 @@ console.log('\n5 · Numbers and links')
 for (const [raw, want] of [['9990', 9990], ['9 990,00', 9990], ['9.990', 9990], ['1.299,50', 1299.5], ['1,299.50', 1299.5], ['9,990', 9990], ['kr 1.299,-', 1299], ['1,5', 1.5], ['1.234.567', 1234567], [2490, 2490], ['abc', null], ['', null], [null, null], [-5, null]]) {
   check(`parsePrice(${JSON.stringify(raw)}) = ${want}`, parsePrice(raw) === want, String(parsePrice(raw)))
 }
+{
+  const store = readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848?utm_source=prisjakt.no&ref=www.prisjakt.no')
+  check('a shop\'s link that only names prisjakt.no (utm_source) is the shop\'s, not Prisjakt\'s: its own price, condition unknown', store.source === 'store' && store.condition === 'unknown' && store.low === 9990)
+  check('…while Prisjakt on any of its own hosts is Prisjakt', readPrice(page(ORG, KARCHER), 'https://m.prisjakt.no/product.php?p=11802129').source === 'prisjakt'
+    && readPrice(page(ORG, KARCHER), 'https://PRISJAKT.NO./product.php?p=11802129').source === 'prisjakt' && readPrice(page(KARCHER), 'https://prisjakt.no.example.com/p').source === 'store')
+  const odd = (extra) => readPrice(page({ '@type': 'Product', name: 'Lamp', offers: { '@type': 'Offer', price: 499, priceCurrency: 'NOK' }, ...extra }), 'https://shop.example/lamp')
+  check('page text is kept as Delete\'s Undo keeps it: a name of up to 300 characters', odd({ name: 'L'.repeat(400) }).name.length === 300 && odd({}).name === 'Lamp')
+  check('…a picture only as a web link of up to 2 048 characters ("//cdn…" made https) — never a path, data: or javascript:',
+    odd({ image: '//cdn.example/l.jpg' }).image === 'https://cdn.example/l.jpg' && odd({ image: 'https://cdn.example/l.jpg' }).image === 'https://cdn.example/l.jpg'
+    && odd({ image: '/img/l.jpg' }).image === null && odd({ image: 'javascript:alert(1)' }).image === null && odd({ image: 'data:image/png;base64,AAAA' }).image === null
+    && odd({ image: 'https://cdn.example/' + 'x'.repeat(2100) }).image === null && odd({ image: 'https://cdn.example/a b.jpg' }).image === null)
+  check('…a currency only as three capitals ("nok" is NOK; "kr", "NOK!" or a long one none)', odd({ offers: { '@type': 'Offer', price: 5, priceCurrency: 'nok' } }).currency === 'NOK'
+    && odd({ offers: { '@type': 'Offer', price: 5, priceCurrency: 'kr' } }).currency === null && odd({ offers: { '@type': 'Offer', price: 5, priceCurrency: 'X'.repeat(5000) } }).currency === null
+    && odd({ offers: { '@type': 'Offer', price: 5, priceCurrency: 'NOK!' } }).currency === null)
+}
 check('a Prisjakt product link is recognised', isPrisjaktUrl('https://www.prisjakt.no/product.php?p=16929131&a-116257=Frost') && isPrisjaktUrl('https://prisjakt.no/produkt.php?p=1'))
 check('a Prisjakt search or a shop is not a product link', !isPrisjaktUrl('https://www.prisjakt.no/search?search=x') && !isPrisjaktUrl('https://www.elkjop.no/product/x/1') && !isPrisjaktUrl('not a url'))
 
@@ -480,6 +495,22 @@ async function handlerChecks() {
   const gw = writes.find(w => w.table === 'shop_price_watch')?.row
   check('a bot check is blocked, said with the site\'s name ("gate.example blocks apps with a browser check") in the preview and on the watch', r.result?.status === 'blocked'
     && r.result?.reason === 'gate.example blocks apps with a browser check' && gc.results?.[0]?.status === 'blocked' && gw?.error === 'gate.example blocks apps with a browser check', JSON.stringify([r, gc, gw]))
+
+  fetched = []; writes = []
+  // More listed sites than one page of PostgREST's answer (1 000): the list is read to its end, so finn.no on page 2 still counts.
+  const longList = (table, ops) => {
+    if (table !== 'shop_site_policies') return dbWith(FINN)(table, ops)
+    const from = ops.find(([op]) => op === 'range')?.[1] ?? 0
+    return { data: from === 0 ? Array.from({ length: 1000 }, (_, i) => ({ host: `site${i}.example` })) : from === 1000 ? [{ host: 'finn.no' }] : [], error: null }
+  }
+  call = shopPrice({ db: longList, pages: {}, fetched, writes })
+  r = await call({ action: 'read', url: FINN })
+  check('a list of more than 1 000 sites is read to its end (page by page): finn.no on the second page is still refused, nothing fetched', r.result?.status === 'not_allowed'
+    && r.result?.site === 'finn.no' && fetched.length === 0, JSON.stringify(r))
+  const endless = (table, ops) => table === 'shop_site_policies' ? { data: Array.from({ length: 1000 }, (_, i) => ({ host: `site${i}.example` })), error: null } : dbWith(FINN)(table, ops)
+  call = shopPrice({ db: endless, pages: {}, fetched, writes })
+  r = await call({ action: 'read', url: 'https://shop.example/p' })
+  check('…and one that never ends is no list: nothing is fetched (fail closed)', /nothing was read/.test(r.error ?? '') && fetched.length === 0, JSON.stringify(r))
 
   fetched = []; writes = []
   const shop = 'https://shop.example/p'

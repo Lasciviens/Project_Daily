@@ -420,7 +420,7 @@ export interface PriceRead {
   usedLow: number | null
   /** The cheapest refurbished offer in Prisjakt's offer list, else null. */
   refurbishedLow: number | null
-  /** 'prisjakt' when the page is Prisjakt's, else 'store'. */
+  /** 'prisjakt' when the page is Prisjakt's (its host is prisjakt.no or a subdomain), else 'store'. */
   source: 'prisjakt' | 'store'
 }
 
@@ -909,13 +909,13 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
 
 /** The price a product page shows, or why there is none. */
 export function readPrice(html: string, pageUrl: string): PriceRead {
-  const source: PriceRead['source'] = /prisjakt\.no/i.test(pageUrl) ? 'prisjakt' : 'store'
+  const source: PriceRead['source'] = isPrisjaktHost(pageUrl) ? 'prisjakt' : 'store'
   const empty: PriceRead = {
     status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
     was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
   }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
-  const fromSchema = schemaPrice(html, pageUrl, empty)
+  const fromSchema = keptText(schemaPrice(html, pageUrl, empty))
   const product = isPrisjaktUrl(pageUrl) ? new URL(pageUrl).searchParams.get('p') : null
   const rows = product ? prisjaktOfferRows(html, product) : null
   const scope = rows ? offersFor(rows, pageUrl) : null
@@ -923,10 +923,40 @@ export function readPrice(html: string, pageUrl: string): PriceRead {
   const c = byCondition(scope)
   return {
     ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
-    currency: c.currency ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
+    currency: currencyCode(c.currency) ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
     condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
   }
 }
+
+/** Whether a page is Prisjakt's own: its host is prisjakt.no or a subdomain of it — never a shop's link that only names it (`utm_source=prisjakt.no`). */
+function isPrisjaktHost(url: string): boolean {
+  try { return /(^|\.)prisjakt\.no$/.test(new URL(url).hostname.toLowerCase().replace(/\.+$/, '')) } catch { return false }
+}
+
+/** The longest name kept, and the longest picture link (as Delete's Undo keeps them: 187's left(name, 300) and shop_web_link). */
+const NAME_MAX = 300
+const IMAGE_MAX = 2048
+
+/** A page's text as a watch may keep it: a name or brand of up to 300 characters, a picture only as a web link of up to 2 048, a currency only as three capitals — else none. */
+function keptText(r: PriceRead): PriceRead {
+  return { ...r, name: clipped(r.name), brand: clipped(r.brand), image: webImage(r.image), currency: currencyCode(r.currency) }
+}
+
+function clipped(s: string | null): string | null {
+  if (s == null || s.length <= NAME_MAX) return s
+  const cut = s.slice(0, NAME_MAX)
+  return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
+}
+
+/** A picture's link when it is a web address ("//cdn…" made https), else null — never a path, a data: or javascript: link. */
+function webImage(s: string | null): string | null {
+  const v = (s ?? '').trim()
+  if (!v || v.length > IMAGE_MAX || /\s/.test(v) || [...v].some(ch => ch < ' ' || ch === '\u007f')) return null
+  if (/^https?:\/\/[^/?#]+/i.test(v)) return v
+  return /^\/\/[^/?#]+/.test(v) ? `https:${v}` : null
+}
+
+const currencyCode = (s: string | null): string | null => (s != null && /^[A-Z]{3}$/.test(s) ? s : null)
 
 /** What the page's schema.org data says: a product's (or the linked variant's) offers. */
 function schemaPrice(html: string, pageUrl: string, empty: PriceRead): PriceRead {
@@ -1118,9 +1148,18 @@ async function politeRead(url: string, listed: readonly string[]): Promise<Price
  * so the caller fetches nothing (fail closed).
  */
 async function listedSites(supabase: SupabaseClient): Promise<string[]> {
-  const { data, error } = await supabase.from('shop_site_policies').select('host').eq('no_automated_reading', true).limit(1000)
-  if (error) throw new FetchError('site_rules', missingTable(error) ? 'Apply migration 188 first' : 'Couldn\'t check which sites let apps read them — nothing was read')
-  return ((data ?? []) as { host: string }[]).map(r => r.host).filter(h => typeof h === 'string' && h.length > 0)
+  // Every row, page by page (PostgREST answers at most 1 000 a time): a list cut short would read a listed site.
+  const hosts: string[] = []
+  for (let from = 0; ; from += PAGE) {
+    // A list that never ends (50 000 sites) is not one: nothing is fetched.
+    if (from >= 50 * PAGE) throw new FetchError('site_rules', 'Couldn\'t check which sites let apps read them — nothing was read')
+    const { data, error } = await supabase.from('shop_site_policies').select('host').eq('no_automated_reading', true)
+      .order('host', { ascending: true }).range(from, from + PAGE - 1)
+    if (error) throw new FetchError('site_rules', missingTable(error) ? 'Apply migration 188 first' : 'Couldn\'t check which sites let apps read them — nothing was read')
+    const rows = (data ?? []) as { host: string }[]
+    hosts.push(...rows.map(r => r.host).filter(h => typeof h === 'string' && h.length > 0))
+    if (rows.length < PAGE) return hosts
+  }
 }
 
 /** What a read says about a link on a listed site: nothing was fetched. */

@@ -3312,7 +3312,9 @@ function applyFilters(query: AnyRecord, filters: AnyRecord): AnyRecord {
 // db_query runs on the service role, so only its top-level .eq('user_id')
 // scopes it. An embed inside a shared catalogue table (no user_id) could reach
 // other accounts' rows — movies(user_movie_entries(*)) lists everyone's — so
-// nothing may be embedded inside one (security audit 10.10.2026).
+// nothing may be embedded inside one (security audit 10.10.2026). A shared
+// read-only table asked for itself has no user_id to filter on: dbQuery reads
+// it whole, and refuses any embed in it (10.11.2026).
 const SHARED_TABLES = new Set(['movies', 'tv_series', 'steam_apps', 'fx_rates_nok', 'shop_site_policies', 'screenscraper_systems', 'link_rules'])
 function selectProblem(select: unknown): string | null {
   if (select == null || select === '') return null
@@ -3338,12 +3340,20 @@ function selectProblem(select: unknown): string | null {
 
 async function dbQuery(supabase: AnyRecord, userId: string, args: AnyRecord): Promise<AnyRecord> {
   try {
-    assertAccess(args.table, false)
+    const entry = assertAccess(args.table, false)
     const problem = selectProblem(args.select)
     if (problem) return { success: false, error: problem }
+    // A shared read-only table (fx_rates_nok, shop_site_policies) has no user_id: the user filter would only make
+    // the read fail. Its rows are the same for every account — and with no filter above it, nothing may be embedded
+    // in it either. Every other table keeps the filter.
+    const shared = SHARED_TABLES.has(args.table) && entry.access === 'ro'
+    if (shared && typeof args.select === 'string' && args.select.includes('(')) {
+      return { success: false, error: `Not allowed: nothing may be embedded inside ${args.table} (a shared table) — read your own rows from their own table instead.` }
+    }
     const filters = parseJsonArg(args.filters, 'filters')
     const limit = Math.min(args.limit ?? 50, 200)
-    let query = supabase.from(args.table).select(args.select || '*').eq('user_id', userId)
+    let query = supabase.from(args.table).select(args.select || '*')
+    if (!shared) query = query.eq('user_id', userId)
     query = applyFilters(query, filters)
     if (args.order_by) query = query.order(args.order_by, { ascending: args.ascending ?? false })
     query = query.limit(limit)
