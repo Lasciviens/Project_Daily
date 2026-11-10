@@ -83,27 +83,27 @@ export function heldWords(from: string, to: string): string {
 /**
  * A row's facts (its category is the label above it, so never repeated):
  * still yours — the store, how long it has been yours, "sells ≈ 7 500" (your
- * own estimate, never invented), bought to sell, its money chain; gone — how
- * long it was yours and to whom it went, what came back with the accessories
- * sold with it, and what it made (green) or cost you (how it left is its tag).
+ * own estimate, never invented), bought to sell, its money chain; gone — what
+ * it made (green) or cost you first, then what came back with the accessories
+ * sold with it, to whom and after how long (how it left is its tag).
  */
 export function rowFacts(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx, today: string, chain: string | null): RowFact[] {
   const out: RowFact[] = []
   const from = boughtOn(i)
   const push = (text: string | null | false | undefined, tone?: 'success') => { if (text) out.push(tone ? { text, tone } : { text }) }
   if (i.disposal) {
-    // How it left is the row's tag; the day is in its record's Story.
-    push(from && i.disposed_on && `after ${heldWords(from, i.disposed_on)}`)
-    push(i.sold_to && `to ${i.sold_to}`)
+    // The result first (a phone cuts the end of the line); how it left is the row's tag, the day in its Story.
     const together = i.sale_group ? accessories.filter(a => a.sale_group === i.sale_group) : []
     const got = add(gotOf(i), ...together.map(a => gotOf(a)))
-    if (i.sale_price != null && complete(got)) push(`got ${num(got.nok)}`)
     const result = minus(add(costOf(i, ctx), ...together.map(a => costOf(a, ctx))), got)
     if (complete(result) && i.disposed_on) {
       const n = Math.round(result.nok)
       if (n < 0) push(`made ${num(-n)}`, 'success')
       else push(`cost you ${num(n)}`)
     }
+    if (i.sale_price != null && complete(got)) push(`got ${num(got.nok)}`)
+    push(i.sold_to && `to ${i.sold_to}`)
+    push(from && i.disposed_on && `after ${heldWords(from, i.disposed_on)}`)
   } else {
     push(i.platform)
     push(from && heldWords(from, today))
