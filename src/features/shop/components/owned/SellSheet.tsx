@@ -5,6 +5,11 @@ import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { useRecordSale } from '../../hooks/useShopMoney'
+import { useHandoverChecklists, useListings } from '../../hooks/useShopResale'
+import { categoryNamesOf, checklistFor } from '../../resaleTexts'
+import { HANDED_OVER, openListingOf } from '../../sellingModel'
+import { priceNow } from '../../listingNudge'
+import { HandoverChecklist } from '../record/HandoverChecklist'
 import { boughtOn, complete, costOf, DISPOSAL_LABEL, isMine, PAID_BACK, splitSale, type MoneyCtx } from '../../ownModel'
 import { categoryPath, defaultCurrencyFor, listOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
@@ -19,6 +24,9 @@ const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'returned', 'broken',
  * Sell or give away one of your things — with the accessories you tick (the
  * money is split by what each cost), the rest staying yours or moving to
  * another thing — and where the money goes. One transaction, with Undo.
+ * Its open listing (if any) offers its asking price and is closed by the
+ * sale (the database); a thing handed over then shows its category's
+ * hand-over checklist to tick through (step C).
  */
 export function SellSheet({ item, items, categories, ctx, onClose }: { item: ShopItem; items: ShopItem[]; categories: ShopCategory[]; ctx: MoneyCtx; onClose: () => void }) {
   const sale = useRecordSale()
@@ -32,6 +40,11 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
   const [currency, setCurrency] = useState<ShopCurrency>(item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
   // Your own "Could sell for", one tap away (it fills nothing by itself: never a made-up sale price).
   const estimate = item.value_now != null ? { amount: item.value_now, currency: (item.value_currency ?? 'NOK') as ShopCurrency } : null
+  const { data: listings = [] } = useListings()
+  const { data: checklists = [] } = useHandoverChecklists()
+  const listing = openListingOf(listings, item.id)
+  const asking = listing ? { amount: priceNow(listing), currency: listing.currency } : null
+  const [handover, setHandover] = useState(false)
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(accessories.map(a => a.id)))
   const [moveTo, setMoveTo] = useState<Record<string, string>>({})
   const [target, setTarget] = useState('')
@@ -60,7 +73,19 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
         to: money && target ? target : null,
         toAmount: money && target ? targetAmount : null,
       },
-    }, { onSuccess: onClose })
+    }, {
+      // Handed over with a checklist for its category: tick through it here before closing.
+      onSuccess: () => (HANDED_OVER.includes(how) && checklistFor(checklists, categoryNamesOf(item.category_id, categories)) ? setHandover(true) : onClose()),
+    })
+  }
+
+  if (handover) {
+    return (
+      <ModalShell onClose={onClose} title={`${DISPOSAL_LABEL[how]} · ${item.title}`} size="md"
+        footer={<div className="flex"><Button variant="primary" className="ml-auto" onClick={onClose}>Done</Button></div>}>
+        <HandoverChecklist item={item} categories={categories} />
+      </ModalShell>
+    )
   }
 
   return (
@@ -97,6 +122,12 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
           <div>
             <span className="field-label">{how === 'returned' ? 'Refunded' : 'Got'}</span>
             <MoneyEditor label="Got" amount={got} currency={currency} onAmount={setGot} onCurrency={setCurrency} />
+            {asking && how === 'sold' && (got !== asking.amount || currency !== asking.currency) && (
+              <button type="button" onClick={() => { setGot(asking.amount); setCurrency(asking.currency) }}
+                className="chip mt-2 mr-1.5 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">
+                Use the asking price {moneyText(asking.amount, asking.currency)}
+              </button>
+            )}
             {estimate && how !== 'returned' && (got !== estimate.amount || currency !== estimate.currency) && (
               <button type="button" onClick={() => { setGot(estimate.amount); setCurrency(estimate.currency) }}
                 className="chip mt-2 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">

@@ -52,15 +52,19 @@ function addToCache<T extends { id: string }>(qc: QueryClient, key: QueryKey, ro
 
 // ── Ad notes ─────────────────────────────────────────────────────────────────
 
-/** "+ Note an ad": "Ad noted · finn.no". */
+/** "+ Note an ad": "Ad noted · finn.no · Undo" — Undo takes the note out again (the one delete flow, without asking). */
 export function useCreateAdNote() {
   const qc = useQueryClient()
+  const del = useRowsDelete({ table: 'shop_ad_notes', action: 'undo_create_shop_ad_note', invalidates: [qk.shop.adNotes()], cache: qk.shop.adNotes() })
   return useMutationWithFeedback({
-    action:         'create_shop_ad_note',
-    successMessage: (n: ShopAdNote) => `Ad noted${n.marketplace ? ` · ${n.marketplace}` : ''}`,
-    mutationFn:     (input: CreateAdNoteInput) => createAdNote(input),
-    onSuccess:      (n: ShopAdNote) => addToCache(qc, qk.shop.adNotes(), n),
-    invalidates:    [qk.shop.adNotes()],
+    action:      'create_shop_ad_note',
+    silent:      'its own toast reports it with Undo ("Ad noted · finn.no · Undo")',
+    mutationFn:  (input: CreateAdNoteInput) => createAdNote(input),
+    onSuccess:   (n: ShopAdNote) => {
+      addToCache(qc, qk.shop.adNotes(), n)
+      toast.undo(`Ad noted${n.marketplace ? ` · ${n.marketplace}` : ''}`, () => { void del.run([n.id], { title: 'Take out this noted ad?', ask: false, done: 'Noted ad taken out' }) })
+    },
+    invalidates: [qk.shop.adNotes()],
   })
 }
 

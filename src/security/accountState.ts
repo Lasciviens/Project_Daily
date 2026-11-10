@@ -15,6 +15,7 @@ import { forgetLayouts } from '../shared/hooks/useLayoutMemory'
 // checks the stores still use these names.
 const IGDB_BATCH_KEY = 'lasci.igdbBatch'
 const AUTO_SYNC_PREFIX = 'lasci.games.autoSync.'
+const SHOP_HANDOVER_TICKS_KEY = 'lasci.shop.handover'
 
 const PUSH_LOOKUP_MS = 3000
 
@@ -68,6 +69,8 @@ export async function clearAccountState(): Promise<void> {
   try { forgetCalendarPrefs() } catch { /* */ }
   // What the pages looked like when their data last landed (row counts, heights): this account's.
   try { forgetLayouts() } catch { /* */ }
+  // Shop: the hand-over steps ticked for this account's things (useShopSelling's HANDOVER_TICKS_KEY).
+  try { localStorage.removeItem(SHOP_HANDOVER_TICKS_KEY) } catch { /* */ }
   // Games: the IGDB review list (this account's games) and the daily auto-sync marks.
   try { localStorage.removeItem(IGDB_BATCH_KEY) } catch { /* */ }
   try {

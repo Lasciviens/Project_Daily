@@ -9,6 +9,8 @@ import { lazyPart } from '../../../../shared/utils/lazyPage'
 import { useShopItems } from '../../hooks/useShop'
 import { useShopLinks, useShopMoney } from '../../hooks/useShopMoney'
 import { useWatchMap } from '../../hooks/useShopPrices'
+import { useListings } from '../../hooks/useShopResale'
+import { openListingsByItem } from '../../sellingModel'
 import { useFoldedFilters } from '../../hooks/useFoldedFilters'
 import { useCategoryPictures } from '../../hooks/useCategoryPictures'
 import { groupByCategory } from '../../shopModel'
@@ -59,6 +61,8 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
   const watches = useWatchMap()
+  const { data: listingRows } = useListings()
+  const listings = useMemo(() => openListingsByItem(listingRows ?? []), [listingRows])
   const pictures = useCategoryPictures()
   const [filters, setFilters] = useState<OwnedFilters>(NO_OWNED_FILTERS)
   const [sort, setSort] = useState<OwnedSort>('recent')
@@ -118,7 +122,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const onDirty = useCallback((d: boolean) => { dirty.current = d }, [])
 
   const rows: RowContext = {
-    acc, ctx, today, categories, watches, picked: picked?.id ?? null,
+    acc, ctx, today, categories, watches, listings, picked: picked?.id ?? null,
     chainOf: id => {
       const c = chains.get(id)
       const linked = c ? c.nodes.filter(n => n.state !== 'wish').length : 0

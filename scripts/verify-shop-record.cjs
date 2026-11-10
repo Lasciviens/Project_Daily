@@ -68,6 +68,19 @@ console.log('a row\'s one tag')
   check('a complaint right further out wears no tag (the record says it)', tag(mine({ warranty_until: day(61) })) === null)
   check('a return window comes before the complaint right', tag(mine({ return_by: day(4), warranty_until: day(2) })).text === 'Return in 4 days')
   check('an estimate over six months old: "Old estimate", info', eq(tag(mine({ value_now: 500, value_on: day(-200) })), { text: 'Old estimate', tone: 'info' }))
+  // Step C: the open listing's tag, from the listing's facts only.
+  const lst = (i, p) => ({ id: `l${++n}`, user_id: 'u', item_id: i.id, marketplace: 'finn.no', ad_url: null, status: 'for_sale', listed_on: day(-13),
+    for_sale_on: day(-12), ended_on: null, currency: 'NOK', prices: [{ on: day(-13), price: 2400 }], ad_text: null, closed_by_sale: false,
+    created_at: at(-13), updated_at: at(-13), ...p })
+  const forSale = mine({ value_now: 500, value_on: day(-200) })
+  check('for sale 12 days: "For sale · 12 days", info — before an old estimate', eq(R.rowTag(forSale, null, TODAY, lst(forSale)), { text: 'For sale · 12 days', tone: 'info' }))
+  check('… "For sale · today" on the day it went up', R.rowTag(forSale, null, TODAY, lst(forSale, { for_sale_on: TODAY, listed_on: TODAY })).text === 'For sale · today')
+  check('the ad written, not up: "Listed", neutral', eq(R.rowTag(forSale, null, TODAY, lst(forSale, { status: 'listed', for_sale_on: null })), { text: 'Listed', tone: 'neutral' }))
+  check('a listing taken down wears no listing tag', R.rowTag(forSale, null, TODAY, lst(forSale, { status: 'withdrawn', ended_on: day(-1) })).text === 'Old estimate')
+  check('another thing\'s listing is never this row\'s tag', R.rowTag(forSale, null, TODAY, lst(mine({}))).text === 'Old estimate')
+  check('a return window still comes first', R.rowTag(mine({ return_by: day(3) }), null, TODAY, lst(forSale)).text !== 'For sale · 12 days')
+  const ret = mine({ return_by: day(3) })
+  check('… (its own listing too)', R.rowTag(ret, null, TODAY, lst(ret)).text === 'Return in 3 days')
   check('a fresh estimate wears none', tag(mine({ value_now: 500, value_on: day(-20) })) === null)
   check('nothing due: no tag', tag(mine({})) === null)
 }

@@ -17,7 +17,9 @@ import { MoneyChainButton, RecordMoney } from './RecordMoney'
 import { RecordCosts } from './RecordCosts'
 import { AddModelButton, RecordModels } from './RecordModels'
 import { RecordNudge } from './RecordNudge'
-import { RecordResaleOffers } from './RecordResale'
+import { RecordResale } from './RecordResale'
+import { useListings } from '../../hooks/useShopResale'
+import { openListingOf } from '../../sellingModel'
 import { RecordSection } from './RecordSection'
 import { hasMoneyLinks, priceSummary, resaleSummary, useOpenSections, type SectionId } from './recordSections'
 import { RecordStory } from './RecordStory'
@@ -42,6 +44,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const itemCosts = useMemo(() => r.ctx.costs.get(item.id) ?? r.costs.filter(c => c.item_id === item.id), [r.ctx.costs, r.costs, item.id])
   const story = useMemo(() => storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }), [item, r.items, r.links, itemCosts, today])
   const resale = state === 'mine' || state === 'gone'
+  const { data: listings = [] } = useListings()
+  const listing = resale ? openListingOf(listings, item.id) : null
   const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact === 'value' ? (resale ? 'resale' : 'facts') : null)
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
@@ -95,9 +99,9 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
       {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />,
         <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />)}
-      {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today), null, <>
+      {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} section="resale" />
-        <RecordResaleOffers item={item} watch={watch} />
+        <RecordResale r={r} watch={watch} />
       </>)}
       {box('facts', 'Facts', factsSummary, null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} parents={r.parents} />

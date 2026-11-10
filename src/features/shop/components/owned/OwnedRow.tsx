@@ -6,6 +6,7 @@ import { rowFacts, rowPrice, rowTag } from '../../ownedRow'
 import { initialsOf, tintOf } from '../../wishTile'
 import { imageOf } from '../shopFormat'
 import { RowPicture } from '../tileKit'
+import type { ShopListing } from '../../resaleTypes'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   /** Its money chain's name, when it is in one with another thing. */
   chain: string | null
   watch: ShopPriceWatch | null
+  /** Its open listing, if it is listed or for sale. */
+  listing: ShopListing | null
   ctx: MoneyCtx
   today: string
   /** Its top category (the tint of a picture it doesn't have). */
@@ -30,14 +33,14 @@ interface Props {
  * One thing as a compact row (step A, 10.11.2026): its picture (its own, its
  * watch's, its category's default, else its initials), its name and what it
  * cost; under them its facts — "Elkjøp · 18 months · sells ≈ 2 400" — and at
- * most one tone tag ("Return tomorrow", "Complaint until 05.05.2030"). Every
+ * most one tone tag ("Return tomorrow", "For sale · 12 days"). Every
  * row is the same two lines, so a column of them reads like a list; the
  * accessories bought for it follow as one line each. A tap opens its record.
  */
-export function OwnedRow({ item, accessories, chain, watch, ctx, today, topId, icon, picked, onOpen }: Props) {
+export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today, topId, icon, picked, onOpen }: Props) {
   const selected = picked === item.id
   const facts = rowFacts(item, accessories, ctx, today, chain)
-  const tag = rowTag(item, watch, today)
+  const tag = rowTag(item, watch, today, listing)
   const price = rowPrice(item, ctx)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   return (
