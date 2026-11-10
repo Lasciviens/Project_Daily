@@ -112,6 +112,9 @@ const sqlSignals = [...listSql.matchAll(/'(\w+)'/g)].map(m => m[1])
 check('SHOP_SIGNALS is 190\'s list, in its order (eleven signals)', sqlSignals.length === 11 && eq(S.SHOP_SIGNALS, sqlSignals), `${S.SHOP_SIGNALS} / ${sqlSignals}`)
 const sigSql = sql.match(/or \(signature ~ '([^']+)' and octet_length\(signature\) = char_length\(signature\)\)/)?.[1]
 check('SIGNATURE_RE is 190\'s signature check, the same text', sigSql === S.SIGNATURE_RE.source, `${sigSql} / ${S.SIGNATURE_RE.source}`)
+const subjectSql = sql.match(/subject\s+text check \(subject is null or subject ~ '([^']+)'\)/)?.[1]
+const slugSql = sql.match(/slug\s+text not null unique check \(slug ~ '([^']+)'\)/)?.[1]
+check('SUBJECT_RE is 190\'s subject check, and a deal day\'s slug fits it (the same text)', subjectSql === S.SUBJECT_RE.source && slugSql === subjectSql, `${subjectSql} / ${slugSql} / ${S.SUBJECT_RE.source}`)
 check('a signal is one of them: no capital, no empty, no other', S.isShopSignal('at_target') && !S.isShopSignal('At_target') && !S.isShopSignal('') && !S.isShopSignal('toString') && !S.isShopSignal(null))
 check('a signature from facts: "at_target|NOK|6990"; nothing is "-", a number to two decimals, yes/no as 1/0',
   S.signalSignature('at_target', 'NOK', 6990) === 'at_target|NOK|6990' && S.signalSignature('deal_day', null, 12.3456, true) === 'deal_day|-|12.35|1')
@@ -152,7 +155,15 @@ check('a row read back is checked: an unknown signal (a newer database), a bad d
   && S.parseSignalState(state({ signature: 'a b', dismissed_at: '2026-11-10T10:00:00Z' })) === null && S.parseSignalState(state({ id: 'x', snoozed_until: '2026-11-17' })) === null
   && S.parseSignalState(state({ item_id: 7, snoozed_until: '2026-11-17' })) === null && S.parseSignalState('row') === null)
 check('a write\'s answer: before and after, null where there is none', eq(S.parseSignalWrite({ before: null, after: state({ snoozed_until: '2026-11-17' }) }).before, null)
-  && S.parseSignalWrite({ before: null, after: state({ snoozed_until: '2026-11-17' }) }).after?.snoozed_until === '2026-11-17' && eq(S.parseSignalWrite(null), { before: null, after: null }))
+  && S.parseSignalWrite({ before: null, after: state({ snoozed_until: '2026-11-17' }) }).after?.snoozed_until === '2026-11-17' && eq(S.parseSignalWrite(null), { before: null, after: null, beforeUnknown: false }))
+check('…a before row this app can\'t read back (a malformed day) is "unknown", never "there was none" — so no Undo deletes it',
+  S.parseSignalWrite({ before: state({ snoozed_until: 'soon' }), after: state({ snoozed_until: '2026-11-17' }) }).beforeUnknown === true
+  && S.parseSignalWrite({ before: state({ snoozed_until: 'soon' }) }).before === null
+  && S.parseSignalWrite({ before: null, after: null }).beforeUnknown === false && S.parseSignalWrite({ before: state({ snoozed_until: '2026-11-10' }) }).beforeUnknown === false)
+check('a deal day\'s row has its subject (a slug); one in another form is not a row this app uses; the key names it',
+  S.parseSignalState(state({ snoozed_until: '2026-11-17', subject: 'black_friday' }))?.subject === 'black_friday'
+  && S.parseSignalState(state({ snoozed_until: '2026-11-17', subject: 'Black Friday' })) === null
+  && S.signalStateKey(null, 'deal_day', 'black_friday') !== S.signalStateKey(null, 'deal_day', 'cyber_monday') && S.signalStateKey(null, 'tidy_up') === 'tidy_up:page')
 check('an Undo writes back the row\'s own fields: its id, first time, snooze and Got it', eq(Object.keys(S.stateFields(state({ snoozed_until: '2026-11-17' }))).sort(),
   ['created_at', 'dismissed_at', 'id', 'signature', 'snoozed_until']))
 

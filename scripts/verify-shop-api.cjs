@@ -56,6 +56,7 @@ function from(table) {
     order(c, o = {}) { st.orders.push([c, o.ascending !== false]); return b },
     range(f, t) { st.range = [f, t]; return b },
     limit(n) { st.limit = n; return b },
+    maybeSingle() { st.single = true; return b },
     overrideTypes() { return b },
     then(res, rej) { return Promise.resolve().then(run).then(res, rej) },
   }
@@ -88,6 +89,7 @@ function from(table) {
       const keep = st.cols.split(',').map(s => s.trim())
       out = out.map(r => Object.fromEntries(keep.map(k => [k, r[k]])))
     } else out = out.map(r => ({ ...r }))
+    if (st.single) return { data: out[0] ?? null, error: null }
     return { data: out, error: null }
   }
   return b
@@ -282,27 +284,43 @@ const ids = rows => rows.map(r => r.id).join()
 
   console.log('\n6 · Undo of an added category')
   {
+    const T0 = '2026-11-10T10:00:00.000Z', T1 = '2026-11-10T10:00:05.000Z', OLD = '2025-01-01T00:00:00.000Z'
     tables.shop_categories = [
-      { id: 'top', user_id: 'u', name: 'Electronics', parent_id: null }, { id: 'new', user_id: 'u', name: 'Headphones', parent_id: 'top' },
-      { id: 'newTop', user_id: 'u', name: 'Garden & DIY', parent_id: null }, { id: 'under', user_id: 'u', name: 'Tools', parent_id: 'newTop' },
-      { id: 'theirs', user_id: 'someone', name: 'Headphones', parent_id: 'x' },
+      { id: 'top', user_id: 'u', name: 'Electronics', parent_id: null, created_at: OLD }, { id: 'new', user_id: 'u', name: 'Headphones', parent_id: 'top', created_at: T0 },
+      { id: 'newTop', user_id: 'u', name: 'Garden & DIY', parent_id: null, created_at: T0 }, { id: 'under', user_id: 'u', name: 'Tools', parent_id: 'newTop', created_at: T1 },
+      { id: 'theirs', user_id: 'someone', name: 'Headphones', parent_id: 'x', created_at: T0 },
+      { id: 'kept', user_id: 'u', name: 'Grills', parent_id: 'top', created_at: OLD },
     ]
     tables.shop_items = [
       { id: 'a', user_id: 'u', category_id: 'new' }, { id: 'b', user_id: 'u', category_id: 'top' },
       { id: 'c', user_id: 'u', category_id: 'under' }, { id: 'd', user_id: 'someone', category_id: 'new' },
     ]
     calls.length = 0
-    await C.removeNewCategory('new', 'top')
+    const moved = await C.removeNewCategory('new', 'top', T0)
     const cat = id => tables.shop_categories.find(c => c.id === id)
     const at = id => tables.shop_items.find(i => i.id === id).category_id
-    check('a subcategory: what was put in it moves to its top category, and it goes', !cat('new') && at('a') === 'top' && at('b') === 'top')
+    check('a subcategory: what was put in it moves to its top category, and it goes — the answer counts what moved', !cat('new') && at('a') === 'top' && at('b') === 'top'
+      && moved.gone && moved.moved === 1, JSON.stringify(moved))
     check('every read and write is scoped to the owner (another account\'s rows stay as they were)',
       calls.every(c => c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && at('d') === 'new' && !!cat('theirs'))
-    await C.removeNewCategory('newTop', null)
-    check('a top category: what was in it or under it has no category, and it goes', !cat('newTop') && at('c') === null)
     let threw = null
-    try { await C.removeNewCategory('newTop', null) } catch (e) { threw = e }
-    check('Undo twice: a category already gone is no error', threw === null, threw?.message)
+    calls.length = 0
+    try { await C.removeNewCategory('top', null, T0) } catch (e) { threw = e }
+    check('a category older than the one made ("Electronics" from 2025, asked with the new one\'s time): refused before any write', threw?.message === 'Electronics was there before — nothing was undone'
+      && !!cat('top') && !!cat('kept') && calls.every(c => c.op === 'select'), threw?.message)
+    tables.shop_categories.push({ id: 'top2', user_id: 'u', name: 'Audio', parent_id: null, created_at: T1 }, { id: 'older', user_id: 'u', name: 'Speakers', parent_id: 'top2', created_at: OLD })
+    tables.shop_items.push({ id: 'e', user_id: 'u', category_id: 'older' })
+    threw = null
+    calls.length = 0
+    try { await C.removeNewCategory('top2', null, T1) } catch (e) { threw = e }
+    check('…and one holding a subcategory older than itself ("Speakers"): refused before any write — the cascade would take it', threw?.message === 'Speakers was there before — nothing was undone'
+      && !!cat('older') && at('e') === 'older' && calls.every(c => c.op === 'select'), threw?.message)
+    const top = await C.removeNewCategory('newTop', null, T0)
+    check('a top category: what was in it or under it has no category, and it goes', !cat('newTop') && at('c') === null && top.moved === 1)
+    threw = null
+    let again = null
+    try { again = await C.removeNewCategory('newTop', null, T0) } catch (e) { threw = e }
+    check('Undo twice: a category already gone is no error (and says so)', threw === null && again?.gone === false, threw?.message)
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

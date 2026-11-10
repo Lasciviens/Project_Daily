@@ -13,13 +13,13 @@ const DAY_MS = 864e5
  * 190: one Needs-a-look row's state written as the real functions do — the row before and after, so the app's
  * Undo can write `before` back. `change` maps the row (a new one when there is none) to what it becomes, or null.
  */
-function signalWrite(store, itemId, signal, change) {
+function signalWrite(store, itemId, signal, change, subject = null) {
   const rows = (store.tables.shop_signal_states ??= [])
-  const key = r => r.signal === signal && (r.item_id ?? null) === (itemId ?? null)
+  const key = r => r.signal === signal && (r.item_id ?? null) === (itemId ?? null) && (r.subject ?? null) === (subject ?? null)
   const at = rows.findIndex(key)
   const before = at >= 0 ? rows[at] : null
   const now = new Date().toISOString()
-  const fresh = { id: randomUUID(), user_id: store.ownerId, item_id: itemId ?? null, signal, signature: null, snoozed_until: null, dismissed_at: null, created_at: now, updated_at: now }
+  const fresh = { id: randomUUID(), user_id: store.ownerId, item_id: itemId ?? null, signal, subject: subject ?? null, signature: null, snoozed_until: null, dismissed_at: null, created_at: now, updated_at: now }
   const next = change(before ?? fresh)
   if (!next) {
     if (at >= 0) rows.splice(at, 1)
@@ -67,9 +67,9 @@ const RPCS = {
     return out
   },
   // 190: Snooze (a Got it stays), Got it (it ends a snooze) and Undo / Show again (the state written back exactly, or none).
-  shop_signal_snooze: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, snoozed_until: a.p_until })),
-  shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null })),
-  shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null)),
+  shop_signal_snooze: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, snoozed_until: a.p_until }), a.p_subject),
+  shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null }), a.p_subject),
+  shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null), a.p_subject),
 
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),

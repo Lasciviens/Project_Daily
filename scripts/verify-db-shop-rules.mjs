@@ -11,7 +11,8 @@
 //     writes that list, the condition of a price, and Delete's Undo carrying it — never a watch without its
 //     time) and signals.sql (190: what Needs a look remembers — Snooze, Got it and their exact Undo, the
 //     signal list and the bounds, each account its own rows — deal days, stock in the price history, the
-//     price figures of many things in one call, and NaN and infinity kept out).
+//     price figures of many things in one call, and NaN and infinity kept out, and categories inside one account —
+//     cross-account-old.sql plants old links across accounts before 190, which 190 must cut).
 // Static checks of 187, 188 and 190 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
@@ -94,7 +95,7 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   const sql = src.replace(/--.*$/gm, '')
   const problems = []
   if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
-  if (/^(update|insert into public\.shop_(items|signal_states|price_points|price_watch)|delete from) /im.test(sql)) problems.push('a top-level write to user rows (190 changes no row)')
+  if (/^(update|insert into public\.shop_(items|signal_states|price_points|price_watch)|delete from) /im.test(sql)) problems.push('a top-level write to user rows (190 changes no row but a link across accounts, inside its block)')
   const tables = [...sql.matchAll(/create table (?:if not exists )?public\.(\w+)/gi)].map(m => m[1])
   if (tables.join() !== 'shop_signal_states,shop_deal_days') problems.push(`creates ${tables.join(', ') || 'no table'} (expected shop_signal_states and shop_deal_days)`)
   for (const t of ['shop_signal_states', 'shop_deal_days']) {
@@ -114,7 +115,14 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (/trg_audit[^;]*shop_deal_days/i.test(sql) || !/No audit trigger: not user-authored/.test(src) || !/No user_id: the same days for every account/.test(src)) problems.push('deal days: an audit trigger, or the header does not say why there is no audit or user_id')
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
   const names = fns.map(([, name]) => name).sort().join()
-  if (names !== 'shop_price_stats,shop_restore_price_history,shop_signal_dismiss,shop_signal_put,shop_signal_snooze,shop_signal_states_rules') problems.push(`functions ${names}`)
+  if (names !== 'shop_categories_rules,shop_items_rules,shop_price_stats,shop_restore_price_history,shop_signal_dismiss,shop_signal_put,shop_signal_snooze,shop_signal_states_rules') problems.push(`functions ${names}`)
+  // 187's shop_items_rules, re-created word for word but for step g (the thing's category is the owner's own).
+  const rulesOf = text => (text.match(/create or replace function public\.shop_items_rules\(\)[\s\S]*?\n\$\$;/) || [''])[0]
+  const stepG = /\n\n  -- g\. Its category is one of the owner's own[\s\S]*?\n  end if;\n(?=  return new;\nend;\n\$\$;$)/
+  const rules190 = rulesOf(src)
+  if (!stepG.test(rules190) || rules190.replace(stepG, '\n') !== rulesOf(readFileSync(mig('187_shop_integrity.sql'), 'utf8'))) problems.push('shop_items_rules is not 187\'s with step g')
+  if (!/create trigger trg_shop_categories_rules before insert or update on public\.shop_categories/i.test(sql)) problems.push('no parent check on shop_categories')
+  if (!/unique nulls not distinct \(user_id, item_id, signal, subject\)/i.test(sql) || /0{8}-0{4}-0{4}-0{4}-0{12}/.test(sql)) problems.push('signal states are not one per key with NULLS NOT DISTINCT (or a nil-uuid stand-in is back)')
   for (const [body, name] of fns) {
     if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
     if (/security definer/i.test(body) !== (name === 'shop_restore_price_history')) problems.push(`${name}: SECURITY DEFINER ${name === 'shop_restore_price_history' ? 'missing' : 'not expected'}`)
@@ -190,6 +198,7 @@ try {
   if (still.length) throw new Error(`with 187 these bugs still show:\n${still.map(id => `  ${id}: ${after.get(id)?.what ?? 'no answer'}`).join('\n')}`)
   step('188', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
   step('188 again', () => psql(n, ['-f', mig('188_shop_site_policies.sql')]))
+  step('links across accounts from before 190', () => psql(n, ['-f', join(dir, 'cross-account-old.sql')]))
   step('190', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   step('190 again', () => psql(n, ['-f', mig('190_shop_needs_a_look.sql')]))
   let passed = 0

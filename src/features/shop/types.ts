@@ -204,13 +204,15 @@ export type ShopSignal =
 /**
  * What the owner did with one Needs-a-look row (shop_signal_states, migration 190): snoozed until a day
  * (it comes back on that day), or Got it for one signature (it comes back when the row's facts change).
- * One row per thing (null = the whole page, the tidy-up) and signal.
+ * One row per thing (null = the whole page, the tidy-up), signal and subject (a deal day's slug).
  */
 export interface ShopSignalState {
   id:            string
   user_id:       string
   item_id:       string | null
   signal:        ShopSignal
+  /** What a row about no thing is about: a deal day's slug (each deal day its own row); null otherwise. */
+  subject:       string | null
   /** Got it's signature (signalStates.signalSignature); null = no Got it. */
   signature:     string | null
   /** yyyy-mm-dd: not shown before this day; null = not snoozed. */
@@ -228,6 +230,8 @@ export type ShopSignalStateFields = Pick<ShopSignalState, 'signature' | 'snoozed
 export interface ShopSignalWrite {
   before: ShopSignalState | null
   after:  ShopSignalState | null
+  /** There was a row before, but not one this app can read back (a newer database, a malformed field): no exact Undo. */
+  beforeUnknown: boolean
 }
 
 /**

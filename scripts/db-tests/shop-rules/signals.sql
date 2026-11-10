@@ -54,8 +54,8 @@ select t_ok(bool_and(has_function_privilege('authenticated', f, 'execute') and n
             and not has_function_privilege('service_role', 'public.shop_restore_price_history(jsonb, jsonb)', 'execute')
             and not has_function_privilege('anon', 'public.shop_restore_price_history(jsonb, jsonb)', 'execute'),
   'Q0 the functions are for signed-in callers (never anon); the definer helper not even for the service role')
-  from unnest(array['public.shop_signal_snooze(uuid, text, date)', 'public.shop_signal_dismiss(uuid, text, text)',
-                    'public.shop_signal_put(uuid, text, jsonb)', 'public.shop_price_stats(uuid[])', 'public.shop_restore_price_history(jsonb, jsonb)']) f;
+  from unnest(array['public.shop_signal_snooze(uuid, text, date, text)', 'public.shop_signal_dismiss(uuid, text, text, text)',
+                    'public.shop_signal_put(uuid, text, jsonb, text)', 'public.shop_price_stats(uuid[])', 'public.shop_restore_price_history(jsonb, jsonb)']) f;
 select t_ok((select data_type = 'boolean' from information_schema.columns where table_name = 'shop_price_points' and column_name = 'in_stock')
         and (select count(*) = 2 and bool_and(convalidated) from pg_constraint
               where conrelid = 'public.shop_price_points'::regclass and conname in ('shop_price_points_low_finite_check', 'shop_price_points_high_finite_check')),
@@ -63,6 +63,7 @@ select t_ok((select data_type = 'boolean' from information_schema.columns where 
 select t_ok((select string_agg(slug || ':' || rule_kind || ':' || month || ':' || coalesce(day::text, '-') || ':' || coalesce(weekday::text, '-') || ':'
                                || coalesce(nth::text, '-') || ':' || offset_days || ':' || length_days, ',' order by slug) from public.shop_deal_days)
           = 'black_friday:nth_weekday:11:-:4:4:1:1,cyber_monday:nth_weekday:11:-:4:4:4:1,mellomdagssalg:fixed:12:27:-:-:0:5,singles_day:fixed:11:11:-:-:0:1'
+        and (select name = 'Christmas sales (mellomdagssalg)' from public.shop_deal_days where slug = 'mellomdagssalg')
         and (select bool_and(checked_on = '2026-11-10' and source_url is null and name <> '') from public.shop_deal_days),
   'Q0 four deal days as rules (the 4th Thursday of November + 1 and + 4, 11.11, 27.12 for 5 days), checked 10.11.2026');
 
@@ -435,3 +436,82 @@ reset role;
 select t_ok(not exists (select 1 from public.shop_signal_states where user_id = '00000000-0000-0000-0000-000000000004')
         and not exists (select 1 from public.shop_items where user_id = '00000000-0000-0000-0000-000000000004'),
   'Q8 an account with Needs-a-look rows deletes cleanly (as Supabase Auth would)');
+
+-- ═══ Q9. The security review's fixes (190 hadn't run anywhere: each check fails on 190 as it was) ════════════════
+-- (5) One row per key without a stand-in id: a thing whose id is the nil uuid and "no thing" are two keys.
+insert into public.shop_items (id, user_id, title, status) values
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001', 'Nil thing', 'wishlist');
+set role authenticated;
+do $$
+declare
+  nil constant uuid := '00000000-0000-0000-0000-000000000000';
+  r jsonb;
+begin
+  delete from public.shop_signal_states where signal = 'old_wish' and (item_id is null or item_id = nil);
+  perform public.shop_signal_snooze(nil, 'old_wish', '2026-11-20');
+  r := public.shop_signal_snooze(null, 'old_wish', '2026-11-21');
+  perform t_ok(r -> 'before' = 'null'::jsonb
+               and (select count(*) = 2 from public.shop_signal_states where signal = 'old_wish' and (item_id is null or item_id = nil))
+               and (select snoozed_until = '2026-11-20' from public.shop_signal_states where signal = 'old_wish' and item_id = nil),
+    'Q9 a thing whose id is the nil uuid and a row about no thing are two rows (a coalesce stand-in made them one)');
+  r := public.shop_signal_put(null, 'old_wish', null);
+  perform t_ok((r -> 'before' ->> 'snoozed_until') = '2026-11-21'
+               and exists (select 1 from public.shop_signal_states where signal = 'old_wish' and item_id = nil),
+    'Q9 …and Show again on the page''s row leaves the nil-uuid thing''s row alone');
+  -- Deal days: each its own row (subject = its slug), so snoozing one never hides the others.
+  delete from public.shop_signal_states where signal = 'deal_day' and item_id is null;
+  perform public.shop_signal_snooze(null, 'deal_day', '2026-11-20', 'singles_day');
+  r := public.shop_signal_dismiss(null, 'deal_day', 'deal_day|black_friday|2026-11-27', 'black_friday');
+  perform t_ok(r -> 'before' = 'null'::jsonb and r -> 'after' ->> 'subject' = 'black_friday'
+               and (select count(*) = 2 from public.shop_signal_states where signal = 'deal_day' and item_id is null),
+    'Q9 a deal day is snoozed or put away on its own: Singles'' Day and Black Friday are two rows');
+  r := public.shop_signal_put(null, 'deal_day', null, 'singles_day');
+  perform t_ok((r -> 'before' ->> 'snoozed_until') = '2026-11-20'
+               and (select count(*) = 1 from public.shop_signal_states where signal = 'deal_day' and item_id is null and subject = 'black_friday'),
+    'Q9 …Show again on one leaves the other');
+  perform t_ok(t_err($q$select public.shop_signal_snooze(null, 'deal_day', '2026-11-20', 'Black Friday')$q$) like '23514 %'
+           and t_err($q$select public.shop_signal_snooze(null, 'deal_day', '2026-11-20', 'x;drop')$q$) like '23514 %',
+    'Q9 …a subject is a slug (lower case, no spaces or signs)');
+  -- (6) Times: a row's first time is between 2000 and now, its last change now, whatever is sent.
+  delete from public.shop_signal_states where signal = 'old_wish'
+     and item_id in ('cc000000-0000-0000-0000-000000000006', 'cc000000-0000-0000-0000-000000000007', 'cc000000-0000-0000-0000-000000000008');
+  insert into public.shop_signal_states (item_id, signal, snoozed_until, created_at, updated_at)
+  values ('cc000000-0000-0000-0000-000000000006', 'old_wish', '2026-12-01', '1990-01-01', '2099-01-01');
+  insert into public.shop_signal_states (item_id, signal, snoozed_until, created_at)
+  values ('cc000000-0000-0000-0000-000000000007', 'old_wish', '2026-12-01', '2099-01-01');
+  perform t_ok((select created_at = timestamptz '2000-01-01 00:00:00+00' and updated_at = now() from public.shop_signal_states
+                 where item_id = 'cc000000-0000-0000-0000-000000000006' and signal = 'old_wish')
+           and (select created_at = now() from public.shop_signal_states where item_id = 'cc000000-0000-0000-0000-000000000007' and signal = 'old_wish'),
+    'Q9 a first time from 1990 is 2000, one from 2099 is now, and updated_at is the database''s now');
+  r := public.shop_signal_put('cc000000-0000-0000-0000-000000000008', 'old_wish', '{"snoozed_until": "2026-12-01", "created_at": "1970-01-01T00:00:00Z"}');
+  perform t_ok((r -> 'after' ->> 'created_at')::timestamptz = timestamptz '2000-01-01 00:00:00+00',
+    'Q9 …an Undo that sends a first time from 1970 makes it 2000');
+end $$;
+reset role;
+
+-- (2) Categories inside one account: old links across accounts were cut by 190 itself…
+select t_ok((select parent_id is null from public.shop_categories where id = 'ca900000-0000-0000-0000-000000000005')
+        and (select category_id is null from public.shop_items where id = 'ca900000-0000-0000-0000-0000000000a5')
+        and (select category_id = 'ca900000-0000-0000-0000-000000000006' from public.shop_items where id = 'ca900000-0000-0000-0000-0000000000a6')
+        and (select category_id = 'ca900000-0000-0000-0000-000000000002' from public.shop_items where id = 'ca900000-0000-0000-0000-0000000000a1')
+        and (select parent_id = 'ca900000-0000-0000-0000-000000000001' from public.shop_categories where id = 'ca900000-0000-0000-0000-000000000002'),
+  'Q9 190 cut the old links across accounts (a subcategory under the owner''s, a thing in the owner''s) and kept every own link');
+-- …and new ones are refused, directly and by an update.
+set test.uid = '00000000-0000-0000-0000-000000000005';
+set role authenticated;
+select t_ok(t_err($q$insert into public.shop_categories (name, parent_id) values ('Planted again', 'ca900000-0000-0000-0000-000000000001')$q$) like '23514 %'
+        and t_err($q$update public.shop_categories set parent_id = 'ca900000-0000-0000-0000-000000000001' where id = 'ca900000-0000-0000-0000-000000000005'$q$) like '23514 %'
+        and t_err($q$insert into public.shop_items (title, status, category_id) values ('Planted again', 'wishlist', 'ca900000-0000-0000-0000-000000000002')$q$) like '23514 %'
+        and t_err($q$update public.shop_items set category_id = 'ca900000-0000-0000-0000-000000000001' where id = 'ca900000-0000-0000-0000-0000000000a6'$q$) like '23514 %',
+  'Q9 another account can''t put a subcategory under the owner''s category nor a thing in it (insert or update)');
+select t_ok(t_err($q$insert into public.shop_categories (name, parent_id) values ('Their sub', 'ca900000-0000-0000-0000-000000000006')$q$) = 'done'
+        and t_err($q$update public.shop_items set title = 'Their own thing, renamed' where id = 'ca900000-0000-0000-0000-0000000000a6'$q$) = 'done',
+  'Q9 …while its own subcategory and its own thing in its own category save as before');
+reset role;
+reset test.uid;
+set role authenticated;
+select t_ok(t_err($q$insert into public.shop_categories (name, parent_id) values ('Owner sub 2', 'ca900000-0000-0000-0000-000000000001')$q$) = 'done'
+        and t_err($q$insert into public.shop_items (title, status, category_id) values ('Owner thing 2', 'wishlist', 'ca900000-0000-0000-0000-000000000002')$q$) = 'done'
+        and t_err($q$insert into public.shop_items (title, status, category_id) values ('Owner thing 3', 'wishlist', 'ca900000-0000-0000-0000-000000000006')$q$) like '23514 %',
+  'Q9 the owner files under their own categories as before, and never under another account''s');
+reset role;

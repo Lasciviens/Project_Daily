@@ -23,7 +23,7 @@ export function useSignalStates() {
 function patchSignals(qc: QueryClient, key: SignalKey, after: ShopSignalState | null): void {
   qc.setQueryData<ShopSignalState[]>(qk.shop.signals(), rows => {
     if (!rows) return rows
-    const rest = rows.filter(r => !(r.signal === key.signal && r.item_id === key.item_id))
+    const rest = rows.filter(r => !(r.signal === key.signal && r.item_id === key.item_id && (r.subject ?? null) === (key.subject ?? null)))
     return after ? [...rest, after] : rest
   })
 }
@@ -36,7 +36,7 @@ function usePutSignalState() {
   return useMutationWithFeedback({
     action:         'put_shop_signal_state',
     successMessage: (_: ShopSignalWrite, v: PutVars) => v.done,
-    mutationFn:     ({ item_id, signal, state }: PutVars) => putSignalState({ item_id, signal, state }),
+    mutationFn:     ({ item_id, signal, subject, state }: PutVars) => putSignalState({ item_id, signal, subject, state }),
     onSuccess:      (r: ShopSignalWrite, v: PutVars) => patchSignals(qc, v, r.after),
     invalidates:    [qk.shop.signals()],
   })
@@ -44,6 +44,19 @@ function usePutSignalState() {
 
 /** An Undo that writes `before` back: its fields, or no row when there was none. */
 const undoState = (before: ShopSignalState | null): ShopSignalStateFields | null => (before ? stateFields(before) : null)
+
+/**
+ * The toast of a write, with an Undo that puts `before` back — none when there was a row before that this app
+ * can't read back (an Undo would delete it instead): the list is read again, and the toast says only what was done.
+ */
+function reportWrite(qc: QueryClient, r: ShopSignalWrite, words: string, undo: () => void): void {
+  if (r.beforeUnknown) {
+    toast.success(words)
+    void qc.invalidateQueries({ queryKey: qk.shop.signals() })
+    return
+  }
+  toast.undo(words, undo)
+}
 
 /** Snooze a row until a day: "Snoozed until 17.11.2026 · Undo" (Undo puts back exactly what was there). */
 export function useSnoozeSignal() {
@@ -55,24 +68,25 @@ export function useSnoozeSignal() {
     mutationFn:  (v: SnoozeSignalInput) => snoozeSignal(v),
     onSuccess:   (r: ShopSignalWrite, v: SnoozeSignalInput) => {
       patchSignals(qc, v, r.after)
-      toast.undo(`Snoozed until ${formatDate(v.until)}`,
-        () => put.mutate({ item_id: v.item_id, signal: v.signal, state: undoState(r.before), done: 'Snooze undone' }))
+      reportWrite(qc, r, `Snoozed until ${formatDate(v.until)}`,
+        () => put.mutate({ item_id: v.item_id, signal: v.signal, subject: v.subject, state: undoState(r.before), done: 'Snooze undone' }))
     },
     invalidates: [qk.shop.signals()],
   })
 }
 
-/** Got it: the row comes back only when what it says changes (a new signature). "Got it · Undo". */
+/** Got it: the row comes back only when what it says changes (a new signature). "Put away until it changes · Undo". */
 export function useDismissSignal() {
   const qc = useQueryClient()
   const put = usePutSignalState()
   return useMutationWithFeedback({
     action:      'dismiss_shop_signal',
-    silent:      'its own toast reports it with Undo ("Got it · Undo")',
+    silent:      'its own toast reports it with Undo ("Put away until it changes · Undo")',
     mutationFn:  (v: DismissSignalInput) => dismissSignal(v),
     onSuccess:   (r: ShopSignalWrite, v: DismissSignalInput) => {
       patchSignals(qc, v, r.after)
-      toast.undo('Got it', () => put.mutate({ item_id: v.item_id, signal: v.signal, state: undoState(r.before), done: '“Got it” undone' }))
+      reportWrite(qc, r, 'Put away until it changes',
+        () => put.mutate({ item_id: v.item_id, signal: v.signal, subject: v.subject, state: undoState(r.before), done: 'Back in Needs a look' }))
     },
     invalidates: [qk.shop.signals()],
   })
@@ -89,7 +103,7 @@ export function useClearSignalState() {
     onSuccess:   (r: ShopSignalWrite, v: SignalKey) => {
       patchSignals(qc, v, null)
       const before = r.before
-      if (before) toast.undo('Back in Needs a look', () => put.mutate({ item_id: v.item_id, signal: v.signal, state: stateFields(before), done: 'Undone' }))
+      if (before) toast.undo('Back in Needs a look', () => put.mutate({ item_id: v.item_id, signal: v.signal, subject: v.subject, state: stateFields(before), done: 'Show again undone' }))
       else toast.success('Back in Needs a look')
     },
     invalidates: [qk.shop.signals()],

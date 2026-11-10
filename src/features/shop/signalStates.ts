@@ -52,15 +52,18 @@ export function signalSignature(...parts: (string | number | boolean | null | un
   return text.length <= SIGNATURE_MAX && SIGNATURE_RE.test(text) ? text : `h:${hashHex(text)}`
 }
 
-/** A row's place in the states list: one per thing (or the page) and signal. */
-export function signalStateKey(itemId: string | null, signal: ShopSignal): string {
-  return `${signal}:${itemId ?? 'page'}`
+/** A row's place in the states list: one per thing (or the page), signal and subject (a deal day's slug, or none). */
+export function signalStateKey(itemId: string | null, signal: ShopSignal, subject: string | null = null): string {
+  return `${signal}:${itemId ?? 'page'}${subject ? `:${subject}` : ''}`
 }
 
 /** The states by signalStateKey. */
 export function signalStateMap(states: readonly ShopSignalState[]): Map<string, ShopSignalState> {
-  return new Map(states.map(s => [signalStateKey(s.item_id, s.signal), s]))
+  return new Map(states.map(s => [signalStateKey(s.item_id, s.signal, s.subject), s]))
 }
+
+/** What a subject may be: a deal day's slug (190's CHECK, the same text). */
+export const SUBJECT_RE = /^[a-z][a-z0-9_]{0,39}$/
 
 /**
  * Whether a row stays away on `today` (yyyy-mm-dd, the app's day): snoozed until a later day — it comes back on
@@ -97,6 +100,8 @@ export function parseSignalState(row: unknown): ShopSignalState | null {
   const r = row as Record<string, unknown>
   if (!isUuid(r.id) || !isUuid(r.user_id) || !isShopSignal(r.signal)) return null
   if (r.item_id != null && !isUuid(r.item_id)) return null
+  const subject = r.subject == null ? null : str(r.subject)
+  if (subject !== null && !SUBJECT_RE.test(subject)) return null
   const snoozed = r.snoozed_until == null ? null : str(r.snoozed_until)
   if (snoozed !== null && !DAY_RE.test(snoozed)) return null
   const signature = r.signature == null ? null : str(r.signature)
@@ -105,13 +110,17 @@ export function parseSignalState(row: unknown): ShopSignalState | null {
   const created = time(r.created_at), updated = time(r.updated_at)
   if (!created || !updated) return null
   return {
-    id: r.id, user_id: r.user_id, item_id: (r.item_id as string | null) ?? null, signal: r.signal,
+    id: r.id, user_id: r.user_id, item_id: (r.item_id as string | null) ?? null, signal: r.signal, subject,
     signature, snoozed_until: snoozed, dismissed_at: dismissed, created_at: created, updated_at: updated,
   }
 }
 
-/** A write's answer ({"before", "after"}); a side that isn't a usable row is null. */
+/**
+ * A write's answer ({"before", "after"}); a side that isn't a usable row is null — and `beforeUnknown` says
+ * there was a row before that this app can't read back, so an Undo can't put it back (it must not delete it).
+ */
 export function parseSignalWrite(data: unknown): ShopSignalWrite {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
-  return { before: parseSignalState(d.before), after: parseSignalState(d.after) }
+  const before = parseSignalState(d.before)
+  return { before, after: parseSignalState(d.after), beforeUnknown: before === null && d.before != null }
 }

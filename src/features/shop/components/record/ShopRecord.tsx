@@ -10,6 +10,7 @@ import { toast } from '../../../../app/store'
 import { useBuyNow, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../../hooks/useShop'
 import { useFillRatesNow, useShopLinks, useShopMoney, useUndoSale } from '../../hooks/useShopMoney'
 import { useWatchMap } from '../../hooks/useShopPrices'
+import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { categoryPath, planDefaults, storeNames } from '../../shopModel'
 import { boughtOn, DISPOSAL_LABEL, durationLabel, isPossession } from '../../ownModel'
 import { chainFor } from '../../chainModel'
@@ -49,6 +50,7 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
   const { data: links = [] } = useShopLinks()
   const watches = useWatchMap()
   const update = useUpdateShopItem()
+  const suggested = useResolveCategory()
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
@@ -73,6 +75,8 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
     if (!d.dirty) return true
     const patch = patchOf(item, d.draft)
     try {
+      // A suggested category picked in the record is made now, with the save.
+      if (patch.category_id !== undefined) patch.category_id = await suggested.resolve(patch.category_id, categories)
       await update.mutateAsync({ id: item.id, patch, quiet: true })
     } catch { return false }
     toast.success('Saved')

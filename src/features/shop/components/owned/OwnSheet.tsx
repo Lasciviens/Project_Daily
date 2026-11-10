@@ -6,6 +6,7 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { middayIso } from '../../../media/watchedWhen'
 import { useCreateShopItem } from '../../hooks/useShop'
 import { useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
+import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { listOf } from '../../shopModel'
 import { MoneyEditor, Toggle } from '../record/factKit'
@@ -24,6 +25,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const create = useCreateShopItem()
   const link = useCreateShopLink({ report: false })
   const fill = useFillRatesNow()
+  const suggested = useResolveCategory()
   const today = todayStr()
   const [had, setHad] = useState(hadInitially)
   const [title, setTitle] = useState('')
@@ -52,8 +54,10 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
     if (!valid) return
     let row: ShopItem
     try {
+      // A suggested category picked here is made now, with the save.
+      const categoryId = await suggested.resolve({ topId, subId }, categories)
       row = await create.mutateAsync({ input: {
-        title: title.trim(), list: 'wishlist', status: 'bought', category_id: subId || topId || null,
+        title: title.trim(), list: 'wishlist', status: 'bought', category_id: categoryId,
         price: gift && price == null ? 0 : price, currency, platform: store.trim() || null,
         bought_at: middayIso(day), approx_dates: approx, got_as_gift: gift, used,
         ...(had ? {
@@ -75,7 +79,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
       footer={
         <div className="flex items-center gap-2">
           <Button onClick={onClose} className="ml-auto" disabled={create.isPending}>Cancel</Button>
-          <Button variant="primary" onClick={() => { void save() }} disabled={!valid} loading={create.isPending || link.isPending}>Add</Button>
+          <Button variant="primary" onClick={() => { void save() }} disabled={!valid} loading={suggested.busy || create.isPending || link.isPending}>Add</Button>
         </div>
       }>
       <div className="flex flex-col gap-3">

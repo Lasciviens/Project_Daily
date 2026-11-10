@@ -205,14 +205,17 @@ export function suggestedTops(categories: readonly Cat[]): string[] {
 }
 
 /**
- * The subcategories to suggest under the owner's top category `topId`: those
+ * The subcategories to suggest under the owner's top category `topId` (or a
+ * suggested top picked but not made yet): those
  * of the taxonomy's top it is (by name or another name), less every one the
  * owner already has anywhere under any of its names. An owner's own top that
  * is no taxonomy top gets none.
  */
 export function suggestedSubs(categories: readonly Cat[], topId: string | null | undefined): string[] {
   const own = topId ? categories.find(c => c.id === topId && !c.parent_id) : undefined
-  const top = own ? taxonomyTopOf(own.name) : null
+  // A suggested top not made yet ("suggest:Electronics", picked in the same sheet) offers its own subcategories.
+  const name = own?.name ?? (topId?.startsWith('suggest:') ? topId.slice('suggest:'.length) : null)
+  const top = name ? taxonomyTopOf(name) : null
   if (!top) return []
   const had = ownerKeys(categories)
   return top.subs.filter(s => !keysOf(s).some(k => had.has(k))).map(s => s.name)

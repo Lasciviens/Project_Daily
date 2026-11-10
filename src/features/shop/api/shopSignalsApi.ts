@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { isDay, parseDealDay } from '../dealDays'
 import { parsePriceStats, priceStatsBatches } from '../priceStats'
-import { isShopSignal, parseSignalState, parseSignalWrite, SIGNATURE_RE } from '../signalStates'
+import { isShopSignal, parseSignalState, parseSignalWrite, SIGNATURE_RE, SUBJECT_RE } from '../signalStates'
 import { allPages } from './shopApi'
 import type { ShopDealDay, ShopPriceStats, ShopSignal, ShopSignalState, ShopSignalStateFields, ShopSignalWrite } from '../types'
 
@@ -23,15 +23,19 @@ export const NEEDS_190 = 'Needs a look can\'t remember this yet — migration 19
 
 const nonNull = <T>(x: T | null): x is T => x !== null
 
-/** A Needs-a-look row: one thing (null = the whole page, the tidy-up) and its signal. */
-export interface SignalKey { item_id: string | null; signal: ShopSignal }
+/** A Needs-a-look row: one thing (null = the whole page, the tidy-up), its signal and its subject (a deal day's slug). */
+export interface SignalKey { item_id: string | null; signal: ShopSignal; subject?: string | null }
 export interface SnoozeSignalInput extends SignalKey { /** yyyy-mm-dd: the row comes back on this day. */ until: string }
 export interface DismissSignalInput extends SignalKey { /** signalStates.signalSignature of what the row says now. */ signature: string }
 export interface PutSignalInput extends SignalKey { /** The state to write back exactly; null = none (the row goes). */ state: ShopSignalStateFields | null }
 
 function checkKey(k: SignalKey): void {
   if (!isShopSignal(k.signal)) throw new Error('Not a Needs-a-look signal')
+  if (k.subject != null && !SUBJECT_RE.test(k.subject)) throw new Error('Not a Needs-a-look subject')
 }
+
+/** The key's own arguments: the subject only when there is one (each function's p_subject defaults to none). */
+const keyArgs = (k: SignalKey) => ({ p_item_id: k.item_id, p_signal: k.signal, ...(k.subject ? { p_subject: k.subject } : {}) })
 
 async function write(fn: 'shop_signal_snooze' | 'shop_signal_dismiss' | 'shop_signal_put', args: Record<string, unknown>): Promise<ShopSignalWrite> {
   await requireUser()
@@ -59,14 +63,14 @@ export async function fetchSignalStates(): Promise<ShopSignalState[]> {
 export async function snoozeSignal(input: SnoozeSignalInput): Promise<ShopSignalWrite> {
   checkKey(input)
   if (!isDay(input.until)) throw new Error('Snoozing needs a day')
-  return write('shop_signal_snooze', { p_item_id: input.item_id, p_signal: input.signal, p_until: input.until })
+  return write('shop_signal_snooze', { ...keyArgs(input), p_until: input.until })
 }
 
 /** Got it: the row stays away while its signature is this one (a snooze ends). */
 export async function dismissSignal(input: DismissSignalInput): Promise<ShopSignalWrite> {
   checkKey(input)
   if (typeof input.signature !== 'string' || !SIGNATURE_RE.test(input.signature)) throw new Error('This row can\'t be remembered — its signature is not one the database takes')
-  return write('shop_signal_dismiss', { p_item_id: input.item_id, p_signal: input.signal, p_signature: input.signature })
+  return write('shop_signal_dismiss', { ...keyArgs(input), p_signature: input.signature })
 }
 
 /** Writes a state back exactly (an Undo), or none (`state` null: the row goes). */
@@ -74,7 +78,7 @@ export async function putSignalState(input: PutSignalInput): Promise<ShopSignalW
   checkKey(input)
   const s = input.state
   const state = s && { id: s.id, created_at: s.created_at, signature: s.signature, snoozed_until: s.snoozed_until, dismissed_at: s.dismissed_at }
-  return write('shop_signal_put', { p_item_id: input.item_id, p_signal: input.signal, p_state: state })
+  return write('shop_signal_put', { ...keyArgs(input), p_state: state })
 }
 
 /** Show again: the row's state goes (its answer's `before` is what an Undo puts back). */

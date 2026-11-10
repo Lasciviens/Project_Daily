@@ -68,8 +68,21 @@ export function matchesSearch(item: ShopItem, query: string, categoryText = ''):
 
 export interface CategoryPath { topId: string | null; topName: string; subName: string | null }
 
-/** Where a row sits in the two-level tree. A row on a top category itself has no sub. */
+/** A picker's value for a suggested category that isn't made yet ("suggest:Headphones"): Save makes it (useResolveCategory). */
+export const SUGGESTED = 'suggest:'
+export const isSuggested = (v: string | null | undefined): boolean => !!v && v.startsWith(SUGGESTED)
+/** A single category id that holds a pick with a suggestion in it, until Save makes it: "pending:" + top + "\n" + sub. */
+const PENDING = 'pending:'
+export const isPendingCategory = (id: string | null | undefined): boolean => !!id && id.startsWith(PENDING)
+
+/** Where a row sits in the two-level tree. A row on a top category itself has no sub; a pending pick names its suggestions. */
 export function categoryPath(categoryId: string | null | undefined, categories: readonly ShopCategory[]): CategoryPath {
+  if (isPendingCategory(categoryId)) {
+    const p = pickOf(categoryId, categories)
+    const top = isSuggested(p.topId) ? null : categories.find(c => c.id === p.topId)
+    const topName = top?.name ?? (isSuggested(p.topId) ? p.topId.slice(SUGGESTED.length) : 'No category')
+    return { topId: top?.id ?? null, topName, subName: isSuggested(p.subId) ? p.subId.slice(SUGGESTED.length) : categories.find(c => c.id === p.subId)?.name ?? null }
+  }
   const cat = categoryId ? categories.find(c => c.id === categoryId) : undefined
   if (!cat) return { topId: null, topName: 'No category', subName: null }
   if (!cat.parent_id) return { topId: cat.id, topName: cat.name, subName: null }
@@ -77,18 +90,23 @@ export function categoryPath(categoryId: string | null | undefined, categories: 
   return top ? { topId: top.id, topName: top.name, subName: cat.name } : { topId: cat.id, topName: cat.name, subName: null }
 }
 
-/** A category picker's pair: the top category and the subcategory, '' for none. */
+/** A category picker's pair: the top category and the subcategory, '' for none; either may be a suggestion (SUGGESTED). */
 export interface CategoryPick { topId: string; subId: string }
 
-/** A single category id (a subcategory, or a top category itself) as a picker's pair. */
+/** A single category id (a subcategory, or a top category itself, or a pending pick) as a picker's pair. */
 export function pickOf(categoryId: string | null | undefined, categories: readonly ShopCategory[]): CategoryPick {
+  if (isPendingCategory(categoryId)) {
+    const [topId = '', subId = ''] = (categoryId as string).slice(PENDING.length).split('\n')
+    return { topId, subId }
+  }
   const cat = categoryId ? categories.find(c => c.id === categoryId) : undefined
   if (!cat) return { topId: '', subId: '' }
   return cat.parent_id ? { topId: cat.parent_id, subId: cat.id } : { topId: cat.id, subId: '' }
 }
 
-/** …and back: the subcategory, else the top category, else none. */
-export const categoryIdOf = (p: CategoryPick): string | null => p.subId || p.topId || null
+/** …and back: the subcategory, else the top category, else none — a pick with a suggestion in it as a pending id. */
+export const categoryIdOf = (p: CategoryPick): string | null =>
+  isSuggested(p.topId) || isSuggested(p.subId) ? `${PENDING}${p.topId}\n${p.subId}` : p.subId || p.topId || null
 
 // ── Wishlist: filters, sort, groups ──────────────────────────────────────────
 
