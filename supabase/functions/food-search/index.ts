@@ -27,8 +27,10 @@
 //     a pick can be priced at every chain.
 //   { mode: 'grocery_prices', eans: [≤100] } → { prices: [{ ean, name, stores:
 //     [{ code, name, price, checked }] }] } — POST /products/prices-bulk
-//     (`stores[].current_price` / `last_checked`, docs example). Kassalapp has
-//     no REMA 1000 prices (REMA publishes none online).
+//     (`stores[].current_price` / `last_checked`, docs example). REMA 1000,
+//     Kiwi and Coop have no current prices, but their old ones still come
+//     back, often from 2024 (Kassalapp's FAQ, 10.11.2026): passed on as they
+//     are, and the app leaves out a price not checked in 14 days.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 

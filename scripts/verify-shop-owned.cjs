@@ -534,21 +534,63 @@ console.log('\n13 · Grocery prices by chain')
     ['111', { ean: '111', name: 'Lettmelk', stores: [{ code: 'KIWI', name: 'KIWI', price: 20, checked: '2026-10-07T02:00:00Z' }, { code: 'MENY_NO', name: 'Meny', price: 22, checked: '2026-10-08T02:00:00Z' }, { code: 'SPAR_NO', name: 'SPAR', price: 21, checked: '2026-10-08T02:00:00Z' }] }],
     ['222', { ean: '222', name: 'Brød', stores: [{ code: 'KIWI', name: 'KIWI', price: 30, checked: '2026-10-08T02:00:00Z' }, { code: 'MENY_NO', name: 'Meny', price: 28, checked: '2026-10-08T02:00:00Z' }, { code: 'MENY_NO', name: 'Meny', price: 26, checked: '2026-10-08T02:00:00Z' }] }],
   ])
-  const b = G.basketByChain([{ title: 'Milk', ean: '111' }, { title: 'Bread', ean: '222' }, { title: 'Tape', ean: null }], prices)
+  const b = G.basketByChain([{ title: 'Milk', ean: '111' }, { title: 'Bread', ean: '222' }, { title: 'Tape', ean: null }], prices, TODAY)
   check('chain names tidied ("KIWI" → "Kiwi", "SPAR" → "Spar")', G.chainName({ code: 'KIWI', name: 'KIWI' }) === 'Kiwi' && G.chainName({ code: 'SPAR_NO', name: 'SPAR' }) === 'Spar' && G.chainName({ code: 'MENY_NO', name: 'Meny' }) === 'Meny')
   check('full baskets first, then the cheapest (a chain\'s lowest of two listings)', b.rows.map(r => `${r.chain}:${r.total}:${r.covered}`).join() === 'Meny:48:2,Kiwi:50:2,Spar:21:1', JSON.stringify(b.rows))
   check('a chain missing a row names it', b.rows.find(r => r.chain === 'Spar').missing.join() === 'Bread')
   check('rows without a product are counted apart', b.priced === 2 && b.unmatched === 1)
   check('the oldest price date is reported', b.oldest === '2026-10-07')
-  check('the cheapest chain for one product', G.cheapestStore(prices.get('111')).name === 'KIWI' && G.cheapestStore(undefined) === null)
+  check('the cheapest chain for one product', G.cheapestStore(prices.get('111'), TODAY).name === 'KIWI' && G.cheapestStore(undefined, TODAY) === null)
   // The quick list's own reading of the basket (QuickListView).
   const lines = G.basketLines(b)
   check('the basket card: full baskets compare, the first is the cheapest, the next says how much more',
     lines.map(l => `${l.chain}:${l.full}:${l.cheapest}:${l.more}`).join() === 'Meny:true:true:null,Kiwi:true:false:2,Spar:false:false:null', JSON.stringify(lines))
-  const lone = G.basketLines(G.basketByChain([{ title: 'Milk', ean: '111' }, { title: 'Bread', ean: '222' }], new Map([['111', prices.get('111')], ['222', { ean: '222', name: 'Brød', stores: [{ code: 'KIWI', name: 'KIWI', price: 30, checked: null }] }]])))
+  const lone = G.basketLines(G.basketByChain([{ title: 'Milk', ean: '111' }, { title: 'Bread', ean: '222' }], new Map([['111', prices.get('111')], ['222', { ean: '222', name: 'Brød', stores: [{ code: 'KIWI', name: 'KIWI', price: 30, checked: '2026-10-08T02:00:00Z' }] }]]), TODAY))
   check('…with only one full basket there is no "cheapest" (nothing to compare it with)', lone.every(l => !l.cheapest && l.more === null) && lone[0].chain === 'Kiwi' && lone[0].full)
-  check('…nothing priced: no line is full', G.basketLines(G.basketByChain([{ title: 'Tape', ean: null }], prices)).length === 0)
-  check('every chain for one product, cheapest first (a chain\'s lowest listing)', G.chainPrices(prices.get('222')).map(c => `${c.chain}:${c.price}`).join() === 'Meny:26,Kiwi:30' && G.chainPrices(undefined).length === 0)
+  check('…nothing priced: no line is full', G.basketLines(G.basketByChain([{ title: 'Tape', ean: null }], prices, TODAY)).length === 0)
+  check('every chain for one product, cheapest first (a chain\'s lowest listing)', G.chainPrices(prices.get('222'), TODAY).map(c => `${c.chain}:${c.price}`).join() === 'Meny:26,Kiwi:30' && G.chainPrices(undefined, TODAY).length === 0)
+
+  // Old prices (Kassalapp's FAQ, 10.11.2026): REMA 1000, Kiwi and Coop come back with the last price it
+  // recorded, often from 2024. A price counts only when it was checked today or on one of the 14 Oslo days
+  // before; no check date is no trust.
+  const [ty, tm, td] = TODAY.split('-').map(Number)
+  const checkedAgo = n => `${new Date(Date.UTC(ty, tm - 1, td - n)).toISOString().slice(0, 10)}T08:00:00Z`
+  const melk = { ean: '333', name: 'Melk', stores: [
+    { code: 'KIWI', name: 'KIWI', price: 15, checked: checkedAgo(30) },
+    { code: 'MENY_NO', name: 'Meny', price: 22, checked: checkedAgo(0) },
+    { code: 'REMA_1000', name: 'REMA 1000', price: 12, checked: null },
+  ] }
+  check('a 30-day-old cheap price is not the cheapest: the current one is', G.cheapestStore(melk, TODAY).name === 'Meny')
+  check('…and the chip\'s hover lists only current prices', G.chainPrices(melk, TODAY).map(c => `${c.chain}:${c.price}`).join() === 'Meny:22')
+  const unchecked = { ean: '444', name: 'Egg', stores: [{ code: 'REMA_1000', name: 'REMA 1000', price: 30, checked: null }, { code: 'ODA', name: 'Oda', price: 40, checked: 'not a date' }] }
+  check('a price with no check date (or an unreadable one) is left out', G.cheapestStore(unchecked, TODAY) === null && G.chainPrices(unchecked, TODAY).length === 0
+    && !G.isCurrent({ checked: null }, TODAY) && !G.isCurrent({ checked: '' }, TODAY))
+  check('the boundary: 14 days old still counts, 15 does not', G.isCurrent({ checked: checkedAgo(0) }, TODAY) && G.isCurrent({ checked: checkedAgo(14) }, TODAY) && !G.isCurrent({ checked: checkedAgo(15) }, TODAY))
+  check('…counted in Oslo days: 23.09 22:30 UTC is 24.09 in Oslo (14 days), 21:30 UTC is still 23.09 (15)',
+    G.isCurrent({ checked: '2026-09-23T22:30:00Z' }, TODAY) && !G.isCurrent({ checked: '2026-09-23T21:30:00Z' }, TODAY))
+  check('…a check dated after today is not trusted', !G.isCurrent({ checked: checkedAgo(-1) }, TODAY))
+  check('Oslo\'s day in summer and winter time (UTC+2, UTC+1), whatever the phone\'s zone',
+    G.priceToday(new Date('2026-10-07T22:30:00Z')) === '2026-10-08' && G.osloDay('2026-10-07T21:59:59Z') === '2026-10-07'
+    && G.osloDay('2026-11-09T23:30:00Z') === '2026-11-10' && G.osloDay('2026-11-09T22:30:00Z') === '2026-11-09' && G.osloDay(null) === null)
+
+  const coffee = { ean: '555', name: 'Kaffe', stores: [{ code: 'REMA_1000', name: 'REMA 1000', price: 50, checked: checkedAgo(400) }, { code: 'COOP_EXTRA', name: 'Coop Extra', price: 55, checked: checkedAgo(200) }] }
+  const aged = new Map([['111', prices.get('111')], ['333', melk], ['555', coffee]])
+  const ob = G.basketByChain([{ title: 'Milk', ean: '111' }, { title: 'Melk', ean: '333' }, { title: 'Coffee', ean: '555' }], aged, TODAY)
+  check('a basket ignores old prices: Meny has both rows (44), Kiwi only its current one, Rema 1000 and Coop Extra none',
+    ob.rows.map(r => `${r.chain}:${r.total}:${r.covered}`).join() === 'Meny:44:2,Kiwi:20:1,Spar:21:1', JSON.stringify(ob.rows))
+  check('…a row with only old prices is not priced, and no chain misses it', ob.priced === 2 && !ob.rows.some(r => r.missing.includes('Coffee')))
+  check('…"Prices from" is the oldest price it used, never a left-out one', ob.oldest === '2026-10-07')
+  check('the left-out note says how many and why, in one line; the chains it names (on a tap) are the right ones: one per product and chain, A–Z',
+    ob.leftOut.prices === 4 && G.leftOutNote(ob) === '4 old prices left out — not checked in 14 days' && ob.leftOut.chains.join(', ') === 'Coop Extra, Kiwi, Rema 1000', JSON.stringify(ob.leftOut))
+  check('…one old price reads in the singular; nothing left out, no note',
+    G.leftOutNote(G.basketByChain([{ title: 'Melk', ean: '333' }], new Map([['333', { ...melk, stores: melk.stores.slice(0, 2) }]]), TODAY)) === '1 old price left out — not checked in 14 days'
+    && G.leftOutNote(b) === null && b.leftOut.chains.length === 0)
+  check('…a product picked twice leaves its old prices out once',
+    G.basketByChain([{ title: 'Melk', ean: '333' }, { title: 'Melk again', ean: '333' }], aged, TODAY).leftOut.prices === 2)
+  const relisted = { ean: '666', name: 'Smør', stores: [{ code: 'MENY_NO', name: 'Meny', price: 30, checked: checkedAgo(1) }, { code: 'MENY_NO', name: 'Meny', price: 25, checked: checkedAgo(90) }] }
+  const rb = G.basketByChain([{ title: 'Butter', ean: '666' }], new Map([['666', relisted]]), TODAY)
+  check('a chain\'s old second listing never undercuts its current price, and that chain is not named as left out',
+    G.cheapestStore(relisted, TODAY).price === 30 && rb.rows[0].total === 30 && G.leftOutNote(rb) === null)
   const hits = [{ ean: '7038010009457', name: 'Lettmelk laktosefri', brand: null, image: null, price: 27.5, store: 'Meny' }, { ean: '0012345678905', name: 'Scanned', brand: null, image: null, price: null, store: null }]
   check('a scan is the hit with that EAN — leading zeros aside (UPC-A ↔ EAN-13)', G.scanMatch(hits, '012345678905').name === 'Scanned' && G.scanMatch(hits, '7038010009457').name === 'Lettmelk laktosefri')
   check('…never a hit that only mentions the digits, and nothing without hits', G.scanMatch(hits, '7038010000737') === null && G.scanMatch(undefined, '123') === null && G.scanMatch(hits, '') === null)

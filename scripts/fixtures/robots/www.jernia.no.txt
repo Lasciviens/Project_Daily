@@ -1,0 +1,4 @@
+# https://www.jernia.no/robots.txt as saved on 10.11.2026, whole (this line added) — scripts/verify-shop-price-read.cjs
+User-agent: *
+Allow: /
+Sitemap: https://www.jernia.no/sitemap.xml

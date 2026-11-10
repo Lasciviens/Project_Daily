@@ -114,15 +114,20 @@ function guardOf(fn, deno) {
   return new Function('Deno', code + '; return { isPrivateHost, resolvesToPrivate, isPrivateIPv6 }')(deno)
 }
 
-// The REAL handler, every outside call scripted: the caller is the owner, fetch answers from `pages`.
+// The REAL handler, every outside call scripted: the caller is the owner, fetch answers from `pages`. shop-price
+// asks each page's robots.txt first (1c): an unscripted one answers 404 (no rules) and is counted apart, in `robotsAsked`.
 const OWNER_ENV = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a', HEVY_USER_ID: 'owner', GEMINI_API_KEY: 'g' }
-function realHandler(fn, pages, fetched) {
+function realHandler(fn, pages, fetched, robotsAsked = []) {
   const src = fnSource(fn).replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
   const code = transform(src, { transforms: ['typescript'] }).code
-  const q = { select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, maybeSingle: () => q, single: () => q,
+  const q = { select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, range: () => q, maybeSingle: () => q, single: () => q,
     insert: () => q, upsert: () => q, update: () => q, delete: () => q, then: (res) => res({ data: null, error: null }) }
   const db = { from: () => q, rpc: async () => ({ data: null, error: null }), auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) } }
   const fetchStub = async (url) => {
+    if (fn === 'shop-price' && new URL(String(url)).pathname === '/robots.txt' && !pages[String(url)]) {
+      robotsAsked.push(String(url))
+      return new Response('Not found', { status: 404 })
+    }
     fetched.push(String(url))
     const page = pages[String(url)]
     if (!page) throw new TypeError(`unexpected fetch ${url}`)
@@ -175,9 +180,10 @@ async function dnsChecks() {
 
   console.log('\nThe real fetchers refuse such names on every hop')
   for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+    const robotsAsked = []
     const ask = async (url, pages) => {
       const fetched = []
-      const handler = realHandler(fn, pages, fetched)
+      const handler = realHandler(fn, pages, fetched, robotsAsked)
       const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify(askFor[fn](url)) }))
       return { res, fetched }
     }
@@ -193,6 +199,10 @@ async function dnsChecks() {
     const ok = fn === 'shop-price' ? 'https://shop2.example/p' : 'https://other-public.example/a'
     r = await ask(ok, { [ok]: { status: 200 } })
     check(`${fn}: a page on a public name is still read`, r.res.status === 200 && !(await refusedAnswer(r.res)) && r.fetched.length === 1, `${r.res.status}, fetched ${r.fetched.join(' ')}`)
+    if (fn === 'shop-price') {
+      check('shop-price: it asks a robots.txt only of the public names it reads, never of a private one',
+        robotsAsked.length === 2 && robotsAsked.every(u => /^https:\/\/shop2?\.example\/robots\.txt$/.test(u)), robotsAsked.join(' '))
+    }
   }
 }
 

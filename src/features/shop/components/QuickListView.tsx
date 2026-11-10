@@ -5,6 +5,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBuyNow } from '../hooks/useShop'
 import { useGroceryPrices } from '../hooks/useShopPrices'
+import { priceToday } from '../groceryModel'
 import { buyAgain, listOf, pickedUpOn, quickGroups, quickOpen, storeNames } from '../shopModel'
 import { QUICK_BOARD } from '../shopBoard'
 import { QuickAdd } from './quick/QuickAdd'
@@ -37,11 +38,13 @@ export function QuickListView({ items, isLoading }: { items: ShopItem[]; isLoadi
   const eans = useMemo(() => [...open, ...picked].map(i => i.ean).filter((e): e is string => !!e), [open, picked])
   const pricesQuery = useGroceryPrices(eans)
   const prices = useMemo(() => new Map((pricesQuery.data ?? []).map(p => [p.ean, p])), [pricesQuery.data])
+  // Old prices stop counting by Oslo's calendar, not the phone's.
+  const priceDay = priceToday()
   const rowPrice = (item: ShopItem): RowPrice | null =>
     !item.ean ? null
       : pricesQuery.isError ? { state: 'error' }
       : pricesQuery.isPending ? { state: 'loading' }
-      : { state: 'ok', price: prices.get(item.ean) }
+      : { state: 'ok', price: prices.get(item.ean), today: priceDay }
 
   const shown = groups.reduce((n, g) => n + g.items.length, 0)
   const findPrice = (id: string) => setFind({ id, open: true })
@@ -89,7 +92,7 @@ export function QuickListView({ items, isLoading }: { items: ShopItem[]; isLoadi
           add: <QuickAdd stores={storeList} />,
           // Nothing to compare until something is on the list.
           basket: !isLoading && open.length > 0 && (
-            <QuickBasketCard rows={open} prices={prices} loading={pricesQuery.isPending} error={pricesQuery.error}
+            <QuickBasketCard rows={open} prices={prices} today={priceDay} loading={pricesQuery.isPending} error={pricesQuery.error}
               onRetry={() => void pricesQuery.refetch()} />
           ),
           again: again.length > 0 && <BuyAgainCard rows={again} />,

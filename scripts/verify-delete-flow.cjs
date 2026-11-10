@@ -224,7 +224,6 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/training/api/athleteProfileApi.ts': [1, 'saving the current program replaces its rows'],
     'src/features/todo/api/googleTasksOutbox.ts': [1, 'a delivered outbox row'],
     'src/features/todo/api/googleTaskListsApi.ts': [1, 'the list deleted on Google (no Undo: confirmDelete says so)'],
-    'src/features/shop/api/shopApi.ts': [1, 'shop_delete_items fallback before migration 137'],
     'src/features/recipes/api/recipesApi.ts': [1, 'saving a recipe replaces its ingredient lines (fallback before 123)'],
     'src/features/recipes/api/mealPlanApi.ts': [1, 'the legacy plan table before migration 061'],
     'src/features/recipes/api/foodLogApi.ts': [1, 'a star toggled off (favourite)'],

@@ -188,6 +188,17 @@ function checkAiWriteGroup() {
   script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'user_movie_entries', filters: '{"id":"m1"}', values: '{"repeat_count":10000}' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('AI play count capped', r.body.steps?.some(s => s.includes('repeat_count must be')), JSON.stringify(r.body.steps))
+  // Shop's frozen NOK rates and a sale's Undo record are the database's own (187): a rate sent is kept as typed
+  // by hand, and a forged sale_undo would steer the user's next Undo.
+  tables.shop_item_costs = [{ id: 'c1', user_id: OWNER, item_id: 's1', label: 'Repair', amount: 100, currency: 'EUR', fx_nok: null }]
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_item_costs', filters: '{"id":"c1"}', values: '{"fx_nok":11.5,"fx_source":"norges_bank"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot set a Shop rate (shop_item_costs.fx_nok stays as the database froze it)', tables.shop_item_costs[0].fx_nok === null && r.body.steps?.some(s => s.includes('may not set fx_nok')), JSON.stringify(r.body.steps))
+  {
+    const re = new RegExp(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8').match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
+    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo'].filter(c => !re.test(c))
+    check('every Shop column the database fills is closed to the assistant (rates, sale_undo)', !open.length && !re.test('sale_price') && !re.test('sale_group'), open.join(', '))
+  }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)
   script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'tasks', values: '{"title":"Call mum","section":"tomorrow","due_date":"2026-10-15"}' } } }]), gemini([{ text: 'x' }])]
@@ -209,6 +220,31 @@ function checkAiWriteGroup() {
   script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'user_movie_entries', select: 'id, status, movie:movies(title, release_date)' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('a plain catalogue embed still works', r.body.steps?.some(s => s.startsWith('✓ db_query')), JSON.stringify(r.body.steps))
+  // 9b. a shared read-only table (no user_id) is read without the user filter — it only made the read fail —
+  //     while every user table keeps it, and nothing may be embedded in a shared one read whole (guardian, 10.11.2026).
+  tables.shop_site_policies = [{ id: 'sp1', host: 'finn.no', no_automated_reading: true }]
+  tables.fx_rates_nok = [{ day: '2026-11-09', currency: 'EUR', nok_per_unit: 11.7 }]
+  tables.shop_items = [{ id: 's1', user_id: OWNER, title: 'Phone' }, { id: 's2', user_id: STRANGER, title: 'Not mine' }]
+  const selects = table => log.filter(l => l.table === table && l.kind === 'select')
+  const userFilter = l => l.filters.some(([op, c, v]) => op === 'eq' && c === 'user_id' && v === OWNER)
+  for (const table of ['shop_site_policies', 'fx_rates_nok']) {
+    const seen = selects(table).length
+    script = [gemini([{ functionCall: { name: 'db_query', args: { table } } }]), gemini([{ text: 'x' }])]
+    r = await call({ messages: msg }, web)
+    const q = selects(table).slice(seen)
+    check(`db_query on ${table} (shared, read-only) reads its rows without a user filter`, q.length === 1 && !userFilter(q[0]) && q[0].affected === 1
+      && r.body.steps?.some(s => s.startsWith('✓ db_query')), JSON.stringify([q, r.body.steps]))
+  }
+  {
+    const seen = selects('shop_items').length
+    script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_items' } } }]), gemini([{ text: 'x' }])]
+    r = await call({ messages: msg }, web)
+    const q = selects('shop_items').slice(seen)
+    check('…while a user table still gets the user filter: only the owner\'s rows', q.length === 1 && userFilter(q[0]) && q[0].affected === 1, JSON.stringify(q))
+  }
+  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_site_policies', select: '*, shop_items(*)' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('…and nothing may be embedded in a shared table read whole', r.body.steps?.some(s => s.includes('nothing may be embedded inside shop_site_policies')), JSON.stringify(r.body.steps))
   // 10. after a turn AIPanel refreshes the 'aiWrite' group: it must reach a screen's key
   // for every table the assistant may write. A new rw table fails here until mapped.
   checkAiWriteGroup()

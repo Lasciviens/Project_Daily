@@ -8,7 +8,15 @@ import { rateKey, type RatePair } from '../chainDraft'
 // before it is saved; `check` re-reads saved rows into the price watch; a
 // daily cron does both for everything due.
 
-export type PriceReadResult = PriceRead & { at: string; finalUrl: string }
+/**
+ * Without a price, `reason` says why in the app's words ("elkjop.no blocks apps with a browser check"). With status
+ * not_allowed (nothing was fetched) also `site`, the host that refuses it, and `refusal`: `terms` (its terms forbid
+ * apps — "finn.no doesn't let apps read its pages") or `robots` (its robots.txt — "prisjakt.no asks apps not to read
+ * this page").
+ */
+export type PriceReadResult = PriceRead & {
+  at: string; finalUrl: string; site?: string; reason?: string; refusal?: 'terms' | 'robots'; reused?: boolean
+}
 
 function notDeployed(error: unknown): boolean {
   const msg = (error as { message?: string; context?: { status?: number } })?.message ?? ''
@@ -18,7 +26,7 @@ function notDeployed(error: unknown): boolean {
 
 const NOT_DEPLOYED = 'Price checks need the shop-price function — deploy it first (see the PR\'s steps).'
 
-/** The price on a link right now; nothing is stored. Throws a plain sentence on failure. */
+/** The price on a link right now (or as read within the last hour: `reused`); nothing is stored. Throws a plain sentence on failure. */
 export async function readPriceLink(url: string): Promise<PriceReadResult> {
   const { data, error } = await supabase.functions.invoke('shop-price', { body: { action: 'read', url } })
   if (error) throw new Error(notDeployed(error) ? NOT_DEPLOYED : 'Could not check the price — try again in a moment.')
@@ -26,7 +34,11 @@ export async function readPriceLink(url: string): Promise<PriceReadResult> {
   return data.result as PriceReadResult
 }
 
-export interface PriceCheckOutcome { id: string; status: 'ok' | 'no_price' | 'blocked' | 'error'; low: number | null; currency: string | null; error?: string }
+/** `reused`: no new read was made — the answer is the check of `checkedAt`, under an hour ago (the next read can be an hour after it). */
+export interface PriceCheckOutcome {
+  id: string; status: 'ok' | 'no_price' | 'blocked' | 'error' | 'not_allowed'; low: number | null; currency: string | null; error?: string
+  reused?: boolean; checkedAt?: string
+}
 
 /** Re-reads saved rows' links (≤ 10) into the price watch. */
 export async function checkItemPrices(ids: readonly string[]): Promise<PriceCheckOutcome[]> {

@@ -1,0 +1,29 @@
+# https://www.power.no/robots.txt as saved on 10.11.2026, whole (this line added) — scripts/verify-shop-price-read.cjs
+
+
+User-agent: *
+
+Disallow: /search/
+Disallow: /checkout/
+Disallow: /category/
+
+Disallow: /energylabel/
+
+Disallow: /*/*bvstate*
+
+# Order pages
+Disallow: /orderpage/
+Disallow: /order/
+
+# External product feeds
+Disallow: /feeds/
+
+# MyPower
+Disallow: /mypower/
+Disallow: /my-power/
+Disallow: /my-page/
+Disallow: /mit-punkt1/
+
+
+
+Sitemap: https://www.power.no/services/sitemap.xml

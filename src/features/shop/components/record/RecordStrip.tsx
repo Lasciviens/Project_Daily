@@ -8,6 +8,7 @@ import { finalCostOf, ifSoldNow, type Chain, type IfSold } from '../../chainMode
 import { AmountText } from '../shopKit'
 import { hostOf, money, moneyRange } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
+import { mixedWords, noPriceHint } from '../../watchWords'
 import type { RecordState } from './recordState'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
@@ -32,6 +33,24 @@ function IfSoldCell({ sold, chained }: { sold: IfSold | null; chained: boolean }
       {complete(main)
         ? <span className={cx(made && 'text-success')}>{main.nok >= 0 ? 'Made ' : 'Cost you '}{money(Math.abs(main.nok))}</span>
         : <AmountText amount={main} />}
+    </Cell>
+  )
+}
+
+/**
+ * "Price now" in the strip: the price read and where from — and its day, or ", new and used" when it may be a used
+ * one — or why there is none: a refusal, a check that failed on its day, no new offer, never "not checked yet" for a
+ * link that was checked.
+ */
+function PriceNowCell({ item, watch }: { item: ShopItem; watch: ShopPriceWatch | null }) {
+  const w = watch && watch.url === item.url ? watch : null
+  if (!w || (w.low == null && w.status === 'ok')) return <Cell label="Price now" hint={item.url ? 'not checked yet' : 'add a link to watch it'}>—</Cell>
+  if (w.low == null) return <Cell label="Price now" hint={noPriceHint(w)}>—</Cell>
+  const src = w.source === 'prisjakt' ? 'Prisjakt' : hostOf(item.url) ?? 'the shop'
+  const mixed = mixedWords(w)
+  return (
+    <Cell label="Price now" hint={mixed ? `${src}${mixed}` : `${src} · ${formatDate(w.last_ok_at ?? w.checked_at)}`}>
+      {money(w.low, (w.currency ?? currencyOf(item)).toUpperCase())}
     </Cell>
   )
 }
@@ -62,12 +81,9 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
       <Cell key="b" label="Best match" hint={best ? undefined : 'none yet'}>{best ? <Truncate as="span">{best.title}</Truncate> : '—'}</Cell>,
     )
   } else if (state === 'buy') {
-    const now = watch && watch.url === item.url && watch.low != null ? watch : null
     cells.push(
       <Cell key="p" label="Price" strong>{item.price != null ? money(item.price, cur) : '—'}</Cell>,
-      <Cell key="n" label="Price now" hint={now ? `${now.source === 'prisjakt' ? 'Prisjakt' : hostOf(item.url) ?? 'the shop'} · ${formatDate(now.last_ok_at ?? now.checked_at)}` : item.url ? 'not checked yet' : 'add a link to watch it'}>
-        {now ? money(now.low as number, (now.currency ?? cur).toUpperCase()) : '—'}
-      </Cell>,
+      <PriceNowCell key="n" item={item} watch={watch} />,
       <Cell key="t" label="Target">{item.target_price != null ? money(item.target_price, cur) : '—'}</Cell>,
       <Cell key="w" label={item.wait_for_deal ? 'Deal from' : 'Buy on'}>{item.planned_date ? formatDate(item.planned_date) : item.wait_for_deal ? 'Any day' : '—'}</Cell>,
     )

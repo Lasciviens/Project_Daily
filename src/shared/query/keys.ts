@@ -99,6 +99,8 @@ export const qk = {
     all: ['shop'] as const,
     categories: () => ['shop', 'categories'] as const,
     items: () => ['shop', 'items'] as const,
+    /** Daily's Shopping card: the open quick-list, errand and deal rows (named columns) — under items, so every item write refreshes it. */
+    quick: () => ['shop', 'items', 'quick'] as const,
     /** Money links, extra costs and the price watch (migration 137). */
     links: () => ['shop', 'links'] as const,
     costs: () => ['shop', 'costs'] as const,

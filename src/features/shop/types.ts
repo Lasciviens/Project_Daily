@@ -147,13 +147,14 @@ export interface ShopPriceWatch {
   /** The link that was read — a watch for an older link is ignored. */
   url:         string | null
   checked_at:  string
-  status:      'ok' | 'no_price' | 'blocked' | 'error'
+  /** not_allowed: the link's site may not be read (shop_site_policies, migration 188) — it was never fetched. */
+  status:      'ok' | 'no_price' | 'blocked' | 'error' | 'not_allowed'
   /** Why the last check read nothing (the price shown is then the last one read). */
   error:       string | null
   source:      'prisjakt' | 'store' | null
   name:        string | null
   image:       string | null
-  /** The lowest price last read (Prisjakt: the cheapest shop). */
+  /** The lowest price last read (Prisjakt: the cheapest new offer, since 188). */
   low:         number | null
   high:        number | null
   offers:      number | null
@@ -164,9 +165,14 @@ export interface ShopPriceWatch {
   return_days: number | null
   /** When a price was last read. */
   last_ok_at:  string | null
-  /** The last different price before `low`, and when it was seen. */
+  /** The last different price before `low` of the same kind, and when it was seen. */
   prev_low:    number | null
   prev_at:     string | null
+  /** What low/high/offers cover (migration 188): Prisjakt's new offers, its mixed figures, a shop's own page; null = read before 188. */
+  condition:       'new' | 'mixed' | 'unknown' | null
+  /** The cheapest used / refurbished offer in Prisjakt's offer list. */
+  used_low:        number | null
+  refurbished_low: number | null
 }
 
 /** One read of a row's link — the price history (migration 137). */
@@ -179,6 +185,10 @@ export interface ShopPricePoint {
   offers:     number | null
   currency:   string | null
   source:     string | null
+  /** What `low` covers (as ShopPriceWatch.condition); null = read before 188, when a Prisjakt low could be a used or refurbished price. */
+  condition:       'new' | 'mixed' | 'unknown' | null
+  used_low:        number | null
+  refurbished_low: number | null
 }
 
 export interface CreateShopCategoryInput {

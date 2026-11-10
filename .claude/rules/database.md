@@ -21,6 +21,8 @@ Full background and history: `docs/backend/database.md`.
 - `GRANT EXECUTE` on every new function. Token tables: `REVOKE ALL … FROM anon, authenticated`, no browser policy, never in `ai-proxy`'s `DB_CATALOG`.
 - A trigger that inserts a row tied to a user (audit, outbox, queue) skips a user that no longer exists, or deleting the account aborts.
 - Dropping a table or column: grep the hard-coded name lists first (037's audit array, 046's policy list, `DB_CATALOG`).
+- A SECURITY DEFINER helper meant for one RPC (the browser can still call it): act only on what that RPC hands it in a transaction-local setting stamped with the transaction's own `txid_current()` + `now()`, and add the setting to the read query's `watched` list (187's `app.shop_restored`, 189; `docs/backend/database.md` point 15).
+- A new table pointing at `shop_items` is put back by Shop's Undo as the caller: give the browser the write it needs (INSERT for CASCADE, UPDATE of the column for SET NULL), or Delete names it in `hidden` and its rows don't come back — or give it its own restore (point 16).
 - A new foreign key decides what a delete takes with it and what Undo brings back (`app_delete_rows`, 144, follows single-column FKs: CASCADE rows are deleted and restored, SET NULL links are restored). A rule that deletes or changes rows without a foreign key must be added to `app_delete_rows` too, or Undo misses it.
 - Ask the owner before `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, removing a policy or a grant. Never `DELETE FROM` without `WHERE`. Prefer additive changes.
 

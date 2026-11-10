@@ -94,6 +94,9 @@ select t_refused($q$select public.t_exec('select set_' || 'config(''request.jwt.
 select t_refused($q$select public.t_exec('select set_' || 'config(''app.icloud_readback'', ''on'', false)') as r$q$,
   'changed a setting', 'R4b a trigger flag switched on for the whole connection gives nothing back…');
 select t_ok(coalesce(current_setting('app.icloud_readback', true), '') <> 'on', 'R4b …and the refusal undoes the flag');
+select t_refused($q$select public.t_exec('select set_' || 'config(''app.shop_restored'', ''1/1|00000000-0000-0000-0000-00000000000a'', false)') as r$q$,
+  'changed a setting', 'R4b 187''s app.shop_restored (the ids a Shop Undo hands its price-history helper) set for the whole connection gives nothing back (189)…');
+select t_ok(coalesce(current_setting('app.shop_restored', true), '') = '', 'R4b …and the refusal undoes it');
 
 -- ── 5. What held before still holds ─────────────────────────────────────────
 select t_refused('select * from public.trakt_tokens', 'permission denied', 'R5 the token table stays out of reach for the owner''s session too');
