@@ -55,6 +55,7 @@ All tokens are RGB triplets (`--ink-900: 15 23 42`) so Tailwind's `/alpha` modif
 | `bg-surface-2` | `bg-cream-100` | `#F3F5F9` | `#141B27` | Recessed fills: inputs, selects, secondary buttons, badges, thumbnails |
 | `bg-surface-hover` | `bg-cream-200` | `#EEF2F8` | `#171F2D` | Hover / press tint of rows and buttons |
 | `bg-scrim` | `bg-ink-950` | `#020617` | same | Always-dark: modal backdrop, text shade over photos |
+| `bg-well` | — | `#F0F2F6` | `#B0B8C5` | The picture well behind a product photo (Shop's tiles). The photo is multiplied onto it (`mix-blend-multiply`), so a store photo's white ground takes the well's colour: a dimmed light grey in dark, where white photos would glare and a dark product must still show |
 
 ### 2.2 Lines and text
 
@@ -165,6 +166,11 @@ const c = useChartColors()
   line, deduped tooltip, `rangeKey`, `yDomain`), `chartKit.ts` (`TOOLTIP_BOX` for custom tooltip
   content, `useTooltipStyle()` for recharts' built-in one), and
   `compactAxisTick` (`axisFormat.ts`). Reuse them before styling a chart by hand.
+- **Category tints** — the same series as CSS, for a thing's identity outside a chart (Shop's picture
+  tile with no picture): `data-tint="1…6"` + `.tint-fill` (the series at 16 %), `.tint-well` (the series from
+  26 % at the top left to 10 %: a default picture's ground) and `.tint-ink` (the series mixed 70 % towards the
+  strongest ink, so initials and icons read on the fill in both themes). One tint per top category, stable by
+  its id (`wishTile.tintOf`); no category is the slate. Never a status, never the accent.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
@@ -205,6 +211,8 @@ A chart's month bars may name the month ("January", no year when the year is alr
 date never does.
 
 **Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
+
+**Product pictures** (Shop's Wishlist tiles, `components/tileKit.tsx`): the same belt on the picture well — **one** per tile, the first that holds of At target · Lowest seen · Restocked · Deal on · Need it (`wishTile.beltOf`), a tone, never the accent; a belt's word fits the corner (about 11 letters at 10rem). A non-default priority is a tone pill with its word in the well's top-right corner (colour is never the only signal). A thing with no picture of its own shows its category's **default picture** — a lucide icon, `strokeWidth` 1.5, 44 % of the well's height, 75 % opacity, `.tint-ink` on `.tint-well` (§2.5), centred like Apple's placeholders; never a stock photo or an emoji — and with none, its initials on the tint, drawn as SVG text so they scale with the tile.
 
 | Class | Size / line | Weight | Role |
 |---|---|---|---|
@@ -467,6 +475,17 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   (`grid-cols-1`). Items that vary in height (phases, library groups) never use a row grid: deal them
   into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap
   content-sized blocks. Alphabetical multi-column lists use `columns-*` with `break-inside-avoid` rows.
+- **Picture tiles** (Shop's Wishlist; smaller than cards, so they have their own rule): `TILE_GRID` =
+  `repeat(auto-fill,minmax(10rem,1fr))` with one 0.625rem gap at every width — two a row on a 375–402px phone
+  (10rem is the most two columns fit in 343px), more columns as the track widens, never wider tiles. A tile is
+  the 4:3 picture well (`bg-well`, §2.1; with no picture, the category's default picture or the initials, §3)
+  with one belt (§3), a title kept at two lines so a row's prices line up, the price lines, and one action row
+  (the one-tap action + ⋯). The tiles wait for their own reads and the default pictures' chunk, so nothing
+  appears under a drawn tile (§5). Inside a section, sub-groups pack into
+  shared rows when they fit (`wishTile.packGroups`: a group is never split to fill a gap; each is named once,
+  above its own tiles; one grid, so a row's tiles still line up), the column count being auto-fill's own
+  (`tileColumns`, measured before the first paint). A wide list deals its sections into column stacks by its
+  own width (`categoryColumns`: 33rem a stack — one on a phone and at 1469, two at 1920, three at 2450).
 - **Widgets** adapt to their own box with container queries (`@container`, `@sm:` … `@4xl:`), not the
   viewport.
 - **Glance tiles on phones**: 2 columns (`grid-cols-2 gap-3`), each tile opens its detail in a popup.
@@ -522,7 +541,7 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
 
 - Page wrapper: `PageContainer` (`px-4 sm:px-6 lg:px-8`, left-aligned, `@container/page`). Default cap `max-w-[135rem]` = the widest board; beyond it the page stays left-aligned. `narrow` for forms, `full` only for a page with its own full-width layout. Page background `bg-canvas`, cards `bg-surface`.
 - **W1 · Container-relative, not viewport.** Anything placed by PageBoard sizes its inner grids and rings on its own width (`@container` + `@[..rem]:`) or the page's (`@[61rem]/page:`), never viewport `sm:/lg:` — a 24rem side track at 2450 is narrower than a phone-landscape viewport.
-- **W2 · Column flow.** Collections flow into content-width columns: `grid-cols-[repeat(auto-fill,minmax(MIN,MAX))]` + `justify-start`; caps: dense rows `15–18rem`, cards `19–22rem`, large cards `24–28rem`; a single content row never exceeds **40rem**. In a wide track use `minmax(MIN,1fr)` (a fixed maximum makes auto-fill count columns by the maximum and leaves a column's worth empty). A grid that gains columns by steps declares its base track (`grid-cols-1`) — an implicit `auto` track grows to a long title's min-content and a card's `overflow-hidden` hides it from the audit. Items of varying height (phases, library groups) never use a row grid: deal them into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap content-sized blocks. Alphabetical multi-column lists use CSS `columns-*` with `break-inside-avoid` rows so the order reads down each column. (Exception: `TodaySummary` uses explicit column steps — positional stability outranks column flow there.)
+- **W2 · Column flow.** Collections flow into content-width columns: `grid-cols-[repeat(auto-fill,minmax(MIN,MAX))]` + `justify-start`; caps: picture tiles `10rem` and up (`1fr`, §6.3 — under 2 × 10rem a tile, never a card's width), dense rows `15–18rem`, cards `19–22rem`, large cards `24–28rem`; a single content row never exceeds **40rem**. In a wide track use `minmax(MIN,1fr)` (a fixed maximum makes auto-fill count columns by the maximum and leaves a column's worth empty). A grid that gains columns by steps declares its base track (`grid-cols-1`) — an implicit `auto` track grows to a long title's min-content and a card's `overflow-hidden` hides it from the audit. Items of varying height (phases, library groups) never use a row grid: deal them into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap content-sized blocks. Alphabetical multi-column lists use CSS `columns-*` with `break-inside-avoid` rows so the order reads down each column. (Exception: `TodaySummary` uses explicit column steps — positional stability outranks column flow there.)
 - **W3 · Controls are content-sized.** Text/search inputs `≤ max-w-md`; info banners `w-fit`; a one-line control is never full-width.
 - **W4 · Charts: aspect-locked + capped** by role (small trend `max-w-2xl`, primary `max-w-4xl` = 896px).
 - **W5 · Detail on demand.** Secondary info lives in a hover/tap peek (desktop hover + mobile tap): `HoverPeek` (§5).

@@ -189,6 +189,102 @@ export interface ShopPricePoint {
   condition:       'new' | 'mixed' | 'unknown' | null
   used_low:        number | null
   refurbished_low: number | null
+  /** Migration 190: whether this read said in stock (a shop's own page); null for Prisjakt's new-offer reads, before 190 and when the page didn't say. Absent before 190. */
+  in_stock?:       boolean | null
+}
+
+/**
+ * What a Needs-a-look row's signal is (migration 190's allow-list — signalStates.SHOP_SIGNALS and the
+ * database's CHECK change together; verify-shop-signals compares them).
+ */
+export type ShopSignal =
+  | 'at_target' | 'lowest_seen' | 'back_in_stock' | 'fake_before' | 'deal_day' | 'cheaper_returnable'
+  | 'return_closing' | 'complaint_ending' | 'old_value' | 'old_wish' | 'tidy_up'
+
+/**
+ * What the owner did with one Needs-a-look row (shop_signal_states, migration 190): snoozed until a day
+ * (it comes back on that day), or Got it for one signature (it comes back when the row's facts change).
+ * One row per thing (null = the whole page, the tidy-up), signal and subject (a deal day's slug).
+ */
+export interface ShopSignalState {
+  id:            string
+  user_id:       string
+  item_id:       string | null
+  signal:        ShopSignal
+  /** What a row about no thing is about: a deal day's slug (each deal day its own row); null otherwise. */
+  subject:       string | null
+  /** Got it's signature (signalStates.signalSignature); null = no Got it. */
+  signature:     string | null
+  /** yyyy-mm-dd: not shown before this day; null = not snoozed. */
+  snoozed_until: string | null
+  /** When Got it was said (the database's clock); set exactly when `signature` is. */
+  dismissed_at:  string | null
+  created_at:    string
+  updated_at:    string
+}
+
+/** A state as it is written back (Undo): the row's own fields; null = no row. */
+export type ShopSignalStateFields = Pick<ShopSignalState, 'signature' | 'snoozed_until' | 'dismissed_at'> & Partial<Pick<ShopSignalState, 'id' | 'created_at'>>
+
+/** One write's answer: the row as it was (null = none) and as it is now (null = gone). Undo writes `before` back. */
+export interface ShopSignalWrite {
+  before: ShopSignalState | null
+  after:  ShopSignalState | null
+  /** There was a row before, but not one this app can read back (a newer database, a malformed field): no exact Undo. */
+  beforeUnknown: boolean
+}
+
+/**
+ * A deal day as a repeating rule (shop_deal_days, migration 190): a fixed day and month, or the n-th
+ * weekday of a month (ISO 1 = Monday … 7 = Sunday; nth 1–4 or -1 = the last), plus an offset, lasting
+ * `length_days`. The day each year: dealDays.ts.
+ */
+export interface ShopDealDay {
+  id:          string
+  /** Stable: a signature names the deal by it ("black_friday"). */
+  slug:        string
+  name:        string
+  rule_kind:   'fixed' | 'nth_weekday'
+  month:       number
+  day:         number | null
+  weekday:     number | null
+  nth:         number | null
+  offset_days: number
+  length_days: number
+  source_url:  string | null
+  /** yyyy-mm-dd */
+  checked_on:  string
+  created_at:  string
+  updated_at:  string
+}
+
+/**
+ * One thing's price figures from its clean history (shop_price_stats, migration 190): condition `new` or
+ * `unknown` only — `mixed` and reads from before 188 are left out — in the last clean read's currency.
+ */
+export interface ShopPriceStats {
+  item_id:       string
+  /** The currency of every figure here (the last clean read's); null when that read named none. */
+  currency:      string | null
+  /** How many clean reads the figures come from (all of the two years kept). */
+  points:        number
+  low_all:       number
+  high_all:      number
+  /** The last 60 days (null when nothing was read in them); `high_60d` is what a "before" price is checked against. */
+  points_60d:    number
+  /** The first clean read in the 60 days: where the window's history really starts (null when none). */
+  first_60d:     string | null
+  low_60d:       number | null
+  high_60d:      number | null
+  /** The last clean read. */
+  last_price:    number
+  last_in_stock: boolean | null
+  last_at:       string
+  /** In stock at the last read after an out-of-stock read in the last 30 days, and since when. */
+  back_in_stock: boolean
+  restocked_at:  string | null
+  /** The last 60 days in 12 steps of 5 days, oldest first: each step's lowest, null = no read then. */
+  spark:         (number | null)[]
 }
 
 export interface CreateShopCategoryInput {

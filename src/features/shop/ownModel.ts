@@ -356,29 +356,6 @@ export function saleTotal(rows: readonly ShopItem[]): number | null {
 
 // ── Deadlines ────────────────────────────────────────────────────────────────
 
-export type DeadlineKind = 'return' | 'complain'
-export interface Deadline { item: ShopItem; kind: DeadlineKind; day: string; daysLeft: number }
-
-/**
- * Return windows ending in the next 14 days and complaint rights ending in the
- * next 60, soonest first — for things you still have.
- */
-export function comingUp(items: readonly ShopItem[], today: string): Deadline[] {
-  const out: Deadline[] = []
-  for (const i of items) {
-    if (!isMine(i)) continue
-    if (i.return_by) {
-      const left = daysBetween(today, i.return_by)
-      if (left >= 0 && left <= 14) out.push({ item: i, kind: 'return', day: i.return_by, daysLeft: left })
-    }
-    if (i.warranty_until) {
-      const left = daysBetween(today, i.warranty_until)
-      if (left >= 0 && left <= 60) out.push({ item: i, kind: 'complain', day: i.warranty_until, daysLeft: left })
-    }
-  }
-  return out.sort((a, b) => a.daysLeft - b.daysLeft || a.item.title.localeCompare(b.item.title))
-}
-
 /**
  * Norway's complaint right (reklamasjon): 2 years, 5 for things meant to last
  * considerably longer — phones, computers, TVs, consoles. The suggestion only;

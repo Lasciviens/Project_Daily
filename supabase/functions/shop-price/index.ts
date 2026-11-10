@@ -19,7 +19,10 @@
 //    price to a new one).
 //    Each check upserts shop_price_watch (the last result; a failed check
 //    keeps the last price read and says why) and, when a price was read, adds
-//    one shop_price_points row. It never writes shop_items.
+//    one shop_price_points row — with the read's stock since migration 190
+//    (in_stock: a shop's own page says it; null for Prisjakt's new offers),
+//    so "back in stock" can be read from the history. It never writes
+//    shop_items.
 // 1b. Sites that may not be read. A link on a site in shop_site_policies
 //    (migration 188: its terms forbid automated reading — finn.no, tise.com)
 //    is never fetched — not by read, check or the sweep, not as a redirect
@@ -1243,10 +1246,12 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     outcome = { id: item.id, status: 'ok', low: read.low, currency: read.currency, ...(reused ? { reused, checkedAt: at } : {}) }
     const repeat = same && same.status === 'ok' && same.last_ok_at && Date.parse(at) - Date.parse(same.last_ok_at) < 3600_000
       && same.low === read.low && same.high === read.high && same.offers === read.offers && same.condition === read.condition
+      && same.in_stock === read.inStock
     if (!repeat) {
+      // Each point keeps the read's stock (migration 190), so "back in stock" can be read from the history.
       const { error } = await supabase.from('shop_price_points').insert({
         user_id: userId, item_id: item.id, checked_at: at, low: read.low, high: read.high, offers: read.offers, currency: read.currency, source: read.source,
-        condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow,
+        condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow, in_stock: read.inStock,
       })
       if (error) return { ...outcome, status: 'error', error: missingTable(error) ? NOT_MIGRATED : error.message }
     }

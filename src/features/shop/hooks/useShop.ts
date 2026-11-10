@@ -13,8 +13,11 @@ import {
 } from '../api/shopApi'
 import type { CreateShopCategoryInput, CreateShopItemInput, ShopItem, UpdateShopItemInput } from '../types'
 
-/** Shop's own rows (not the grocery prices: refetching those is a Kassalapp call). */
-export const SHOP_ROWS = [qk.shop.items(), qk.shop.links(), qk.shop.costs(), qk.shop.watches()] as const
+/**
+ * Shop's own rows (not the grocery prices: refetching those is a Kassalapp call). The Needs-a-look states go
+ * with them: a deleted thing takes its own, and Delete's Undo puts them back.
+ */
+export const SHOP_ROWS = [qk.shop.items(), qk.shop.links(), qk.shop.costs(), qk.shop.watches(), qk.shop.signals()] as const
 
 export function useShopCategories() {
   return useQuery({

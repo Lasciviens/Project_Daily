@@ -125,6 +125,24 @@ export function stateWords(item: Pick<ShopItem, 'list' | 'kind' | 'status' | 'ur
   return { text: watch.status === 'blocked' ? 'blocks apps' : `couldn't check ${formatDate(watch.checked_at)}`, warn: true, retry }
 }
 
+/** A refusal's words from shop-price ("finn.no doesn't let apps read its pages"), checked where they reach the screen. */
+const REFUSAL_RE = /^[\w.-]{1,100} (doesn't let apps read its pages|asks apps not to read this page)$/
+
+/**
+ * A tile's note when the last check read no price now (the Wishlist's tiles): a refusal in the site's own words
+ * ("finn.no doesn't let apps read its pages"), neutral — the tile shows no price from the link then; else
+ * stateWords' few words, with when the morning check tries again ("blocks apps — the morning check tries again on
+ * 17.11.2026", the warning tone). Null for a price now.
+ */
+export function watchNote(item: Pick<ShopItem, 'list' | 'kind' | 'status' | 'url' | 'disposal' | 'return_by'>, watch: Pick<ShopPriceWatch, 'status' | 'checked_at' | 'condition' | 'error'>, today: string): { text: string; warn: boolean } | null {
+  if (watch.status === 'not_allowed') {
+    const said = (watch.error ?? '').trim()
+    return { text: REFUSAL_RE.test(said) ? said : 'The site doesn\'t let apps read its pages', warn: false }
+  }
+  const s = stateWords(item, watch, today)
+  return s && { text: s.retry ? `${s.text} — ${s.retry}` : s.text, warn: s.warn }
+}
+
 /**
  * The strip's hint under "Price now" when there is no price: the refusal named, "no new offer", or "couldn't
  * check 10.11.2026" — never "not checked yet" for a link that was checked.

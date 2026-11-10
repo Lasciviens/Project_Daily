@@ -6,7 +6,8 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { middayIso } from '../../media/watchedWhen'
 import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../hooks/useShop'
 import { useQuietCheck } from '../hooks/useShopPrices'
-import { currencyOf, listOf, localDay, storeNames } from '../shopModel'
+import { useResolveCategory } from '../hooks/useCategorySuggestions'
+import { currencyOf, isSuggested, listOf, localDay, storeNames } from '../shopModel'
 import { NEW_CATEGORY, ShopItemForm, type ShopDraft } from './ShopItemForm'
 import type { ShopCategory, ShopItem, ShopList } from '../types'
 
@@ -68,6 +69,7 @@ export function ShopItemSheet(props: Props) {
 function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { categories: ShopCategory[] }) {
   const { data: items = [] } = useShopItems()
   const createCategory = useCreateShopCategory()
+  const suggested = useResolveCategory()
   const createItem = useCreateShopItem()
   const updateItem = useUpdateShopItem()
   const removeItems = useDeleteShopItems()
@@ -79,6 +81,8 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const editing = !!item
 
   async function resolveCategory(): Promise<string | null> {
+    // A suggestion picked in the form is made now, with the save (never on the pick).
+    if (isSuggested(draft.topId) || isSuggested(draft.subId)) return suggested.resolve({ topId: draft.topId, subId: draft.subId }, categories)
     let topId = draft.topId
     if (topId === NEW_CATEGORY) {
       const name = draft.newTop.trim()
