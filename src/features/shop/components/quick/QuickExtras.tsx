@@ -12,15 +12,16 @@ import type { ShopItem } from '../../types'
  * new row keeps the product it was matched to, so its price comes back too.
  */
 export function BoughtBeforeCard({ rows }: { rows: readonly BuyAgain[] }) {
-  const { add } = useAddAgain()
+  // A second tap while one is on its way is ignored (useAddAgain), and the chips say so.
+  const { add, busy } = useAddAgain()
   return (
     <Card>
       <CardHeader title="Bought before" />
       <div className="flex flex-wrap gap-1.5">
         {rows.map(r => (
-          <button key={r.row.id} type="button" onClick={() => add(buyAgainInput(r))}
+          <button key={r.row.id} type="button" onClick={() => add(buyAgainInput(r))} disabled={busy}
             title={`Put ${r.title} back on the quick list`}
-            className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover">
+            className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover disabled:opacity-60">
             <RotateCcw aria-hidden className="h-3 w-3 shrink-0 text-fg-faint" />
             <Truncate as="span" className="min-w-0">{r.title}</Truncate>
             {r.count > 1 && <span className="shrink-0 text-fg-muted tabular-nums">×{r.count}</span>}

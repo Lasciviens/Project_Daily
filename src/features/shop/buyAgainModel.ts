@@ -1,9 +1,9 @@
 // Buy again (Shop renovation step C): what the quick list's own past ticks
 // say is due — a thing bought on three days or more, at a steady rhythm
-// ("Milk — usually every 6 days, last 5 days ago") — and the rest of what was
+// ("Coffee · Every week · last bought 8 days ago") — and the rest of what was
 // bought from it before. Only the owner's own ticks count (a quick-list row
 // with status 'bought', on its local day); nothing is guessed from outside.
-// Pure — scripts/verify-shop-buy-again.cjs runs it against fixtures.
+// Pure — scripts/verify-shop-quick.cjs runs it against fixtures.
 import { daysBetween } from './ownModel'
 import { boughtDay, buyAgain, fold, listOf, quickOpen, type BuyAgain } from './shopModel'
 import type { ShopItem } from './types'
@@ -12,10 +12,14 @@ import type { ShopItem } from './types'
 export const MIN_DAYS = 3
 /** Only the latest gaps count, so the rhythm follows today's habit, not last year's. */
 export const RECENT_GAPS = 8
+/** Two gaps are a rhythm only when the longer is at most this many times the shorter (stamps 40 / 110 are not). */
+export const TWO_GAPS_RATIO = 1.5
+/** A rhythm longer than about 8 weeks is a thing bought now and then: Bought before has it, Buy again doesn't nag. */
+export const MAX_EVERY = 56
 /** Due from 80 % of the usual gap ("every 6 days" is due on day 5). */
 export const DUE_AT = 0.8
-/** Past three usual gaps the habit has stopped: no longer suggested (Bought before still has it). */
-export const LAPSED_AFTER = 3
+/** How long past its usual gap a thing is still suggested: one more gap, two weeks at most — then the habit has stopped. */
+export const LAPSE_DAYS = 14
 
 /** A thing bought at a steady rhythm and due again. `row` is its latest purchase (what a re-add copies). */
 export interface DueAgain extends BuyAgain {
@@ -36,22 +40,29 @@ function median(sorted: readonly number[]): number {
 /**
  * A thing's rhythm from its purchase days (yyyy-mm-dd, sorted, one per day):
  * the median of the recent gaps, or null when there are too few days or the
- * gaps don't agree — more than half of them must lie within half the usual
- * gap of it (7, 7, 30 is "every 7 days"; 2 and 40 is no rhythm at all).
+ * gaps don't agree. Two gaps must be close — the longer at most 1.5 × the
+ * shorter (5 and 7 is a rhythm; 40 and 110 is not). Three or more need a
+ * majority within half the median of it (7, 7, 30 is "every 7 days"; 2, 3,
+ * 40, 41 is no rhythm at all).
  */
 export function rhythmOf(days: readonly string[]): number | null {
   if (days.length < MIN_DAYS) return null
   const gaps: number[] = []
   for (let i = Math.max(1, days.length - RECENT_GAPS); i < days.length; i++) gaps.push(daysBetween(days[i - 1], days[i]))
   if (gaps.some(g => !(g > 0))) return null
-  const m = median([...gaps].sort((a, b) => a - b))
+  const sorted = [...gaps].sort((a, b) => a - b)
+  if (gaps.length === 2 && sorted[1] > sorted[0] * TWO_GAPS_RATIO) return null
+  const m = median(sorted)
   const close = gaps.filter(g => Math.abs(g - m) <= m / 2).length
   return close * 2 > gaps.length ? Math.max(1, Math.round(m)) : null
 }
 
-/** Whether a rhythm says buy again now: from 80 % of the gap, until three gaps have passed. */
+/** The last day a rhythm still suggests a thing: one usual gap past due, two weeks at most. */
+export const lapsesAfter = (every: number): number => every + Math.min(every, LAPSE_DAYS)
+
+/** Whether a rhythm says buy again now: from 80 % of the gap until it lapses (`lapsesAfter`); never past 8 weeks' rhythm. */
 export function isDue(every: number, since: number): boolean {
-  return since >= Math.max(1, Math.round(every * DUE_AT)) && since <= every * LAPSED_AFTER
+  return every <= MAX_EVERY && since >= Math.max(1, Math.round(every * DUE_AT)) && since <= lapsesAfter(every)
 }
 
 /** The open quick-list rows' titles (folded) and products (EAN): a thing on the list is never suggested. */
@@ -97,18 +108,30 @@ export function dueAgain(items: readonly ShopItem[], today: string): DueAgain[] 
   return out.sort((a, b) => b.since / b.every - a.since / a.every || b.count - a.count || a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }))
 }
 
-/** Bought from the quick list before and not due by a rhythm (`buyAgain`, minus what `due` already suggests). */
+/**
+ * Bought from the quick list before and not due by a rhythm (`buyAgain`,
+ * minus what `due` already suggests and what is on the list by product —
+ * `buyAgain` already leaves out what is on it by name).
+ */
 export function boughtBefore(items: readonly ShopItem[], due: readonly DueAgain[], limit = 12): BuyAgain[] {
   const shown = new Set(due.map(d => fold(d.title)))
-  return buyAgain(items, limit + shown.size).filter(b => !shown.has(fold(b.title))).slice(0, limit)
+  const { eans } = onTheList(items)
+  return buyAgain(items, Number.MAX_SAFE_INTEGER)
+    .filter(b => !shown.has(fold(b.title)) && !(b.row.ean && eans.has(b.row.ean)))
+    .slice(0, limit)
 }
 
-/** "every day", "every 6 days", "every week", "every 3 weeks". */
+/** The folded group's one line on a narrow track: the first two names and how many more ("Coffee, Dish soap" + 1). */
+export function dueSummary(rows: readonly Pick<DueAgain, 'title'>[]): { names: string; more: number } {
+  return { names: rows.slice(0, 2).map(r => r.title).join(', '), more: Math.max(0, rows.length - 2) }
+}
+
+/** "Every day", "Every 6 days", "Every week", "Every 3 weeks". */
 function everyWords(days: number): string {
-  if (days <= 1) return 'every day'
-  if (days === 7) return 'every week'
-  if (days < 14) return `every ${days} days`
-  return `every ${Math.round(days / 7)} weeks`
+  if (days <= 1) return 'Every day'
+  if (days === 7) return 'Every week'
+  if (days < 14) return `Every ${days} days`
+  return `Every ${Math.round(days / 7)} weeks`
 }
 
 /** "yesterday", "17 days ago", "5 weeks ago" — days for the first four weeks, where a day matters. */
@@ -119,7 +142,7 @@ function sinceWords(days: number): string {
   return `${Math.round(days / 7)} weeks ago`
 }
 
-/** A suggestion's line: "Usually every 6 days, last 5 days ago". */
+/** A suggestion's line: "Every week · last bought 8 days ago". */
 export function rhythmWords(d: Pick<DueAgain, 'every' | 'since'>): string {
-  return `Usually ${everyWords(d.every)}, last ${d.since === 1 ? 'bought ' : ''}${sinceWords(d.since)}`
+  return `${everyWords(d.every)} · last bought ${sinceWords(d.since)}`
 }

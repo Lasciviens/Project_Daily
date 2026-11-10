@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -91,14 +91,17 @@ export function useCreateShopItem() {
 }
 
 /**
- * Buy again in one tap: a fresh quick-list row from an earlier purchase
- * (`buyAgainInput`), "On the quick list · Milk · Undo". The stored row goes
- * into the cached list as soon as the database answers, so the suggestion
- * leaves at once; Undo takes that fresh row off again (the shop delete — a
- * row made a moment ago has nothing hanging on it) and says so.
+ * One tap puts a thing on the quick list with its name and Undo: Buy again
+ * and Bought before (`buyAgainInput`), and a scanned product. "On the quick
+ * list · Milk · Undo". The stored row goes into the cached list as soon as
+ * the database answers, so a suggestion leaves at once; Undo takes that fresh
+ * row off again (the shop delete — a row made a moment ago has nothing
+ * hanging on it) and says so. A second tap while one is on its way is
+ * ignored, so a double tap never adds a thing twice.
  */
 export function useAddAgain() {
   const qc = useQueryClient()
+  const inFlight = useRef(false)
   const undo = useMutationWithFeedback({
     action:         'undo_shop_buy_again',
     successMessage: (_d: unknown, row: ShopItem) => `Taken off the quick list · ${row.title}`,
@@ -116,7 +119,14 @@ export function useAddAgain() {
     },
     invalidates: [qk.shop.items()],
   })
-  return { add: (input: CreateShopItemInput) => add.mutate(input), busy: add.isPending }
+  // Stable, so a caller can hand it to the barcode scanner without restarting its camera.
+  const { mutate } = add
+  const run = useCallback((input: CreateShopItemInput, onAdded?: () => void) => {
+    if (inFlight.current) return
+    inFlight.current = true
+    mutate(input, { onSuccess: () => onAdded?.(), onSettled: () => { inFlight.current = false } })
+  }, [mutate])
+  return { add: run, busy: add.isPending }
 }
 
 /** `row`: the row as it was before an earlier write, for an Undo that brings it back onto Daily's list. */

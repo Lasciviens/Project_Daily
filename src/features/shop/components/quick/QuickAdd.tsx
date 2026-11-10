@@ -3,7 +3,7 @@ import { Plus, ScanBarcode } from 'lucide-react'
 import { Button, Card, IconButton } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
 import { BarcodeScanner } from '../../../recipes/components/BarcodeScanner'
-import { useCreateShopItem } from '../../hooks/useShop'
+import { useAddAgain, useCreateShopItem } from '../../hooks/useShop'
 import { scanEan, scanMatch } from '../../groceryModel'
 import { quickAddInput } from '../../shopModel'
 import { useScanLookup } from '../../hooks/useGrocery'
@@ -11,12 +11,14 @@ import { useScanLookup } from '../../hooks/useGrocery'
 /**
  * Always visible; only the item clears after Add, so a run of things for one
  * store goes in quickly ("Tape" is three taps). A scanned barcode adds its
- * product with its EAN, so it is priced at once. "No rush" is a quiet extra
+ * product with its EAN, so it is priced at once, and says its name with Undo
+ * (`useAddAgain`). "No rush" is a quiet extra
  * that resets after each add — it is the exception, not the store's mode.
  */
 export function QuickAdd({ stores }: { stores: readonly string[] }) {
   const id = useId()
   const { mutate: addRow, isPending } = useCreateShopItem()
+  const { add: addAgain } = useAddAgain()
   const lookUp = useScanLookup()
   const [title, setTitle] = useState('')
   const [store, setStore] = useState('')
@@ -44,11 +46,12 @@ export function QuickAdd({ stores }: { stores: readonly string[] }) {
         // The answer must carry the scanned EAN (leading zeros aside), never just any product.
         const hit = scanMatch(found ? [found] : [], code)
         if (!hit) { toast.warning(`No product found for barcode ${code}`); return }
-        addRow({ input: quickAddInput({ title: hit.name, store, noRush, ean: hit.ean, image: hit.image }) }, { onSuccess: () => setNoRush(false) })
+        // Named, with Undo: "On the quick list · Grandiosa Pizza Pepperoni 500g · Undo".
+        addAgain(quickAddInput({ title: hit.name, store, noRush, ean: hit.ean, image: hit.image }), () => setNoRush(false))
       })
       .catch((e: Error) => toast.error(e.message || `Couldn't look up barcode ${code}`))
       .finally(() => setLooking(false))
-  }, [lookUp, addRow, store, noRush])
+  }, [lookUp, addAgain, store, noRush])
 
   return (
     <Card>

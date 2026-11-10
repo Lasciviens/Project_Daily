@@ -61,14 +61,18 @@ console.log('\n1 · Buy again: a rhythm from your own ticks')
   check('three purchase days give a rhythm: the median gap', B.rhythmOf([dayAgo(17), dayAgo(11), dayAgo(5)]) === 6)
   check('…two days are one gap — a coincidence, no rhythm', B.rhythmOf([dayAgo(11), dayAgo(5)]) === null && B.rhythmOf([]) === null)
   check('an odd gap (a holiday) doesn\'t break it: 7, 7, 30 is every 7 days', B.rhythmOf([dayAgo(60), dayAgo(53), dayAgo(46), dayAgo(16)]) === 7)
-  check('gaps that disagree are no rhythm: 2 and 40', B.rhythmOf([dayAgo(42), dayAgo(40), dayAgo(0)]) === null)
-  check('…5 and 8 agree: every 7 days (6.5 rounded)', B.rhythmOf([dayAgo(13), dayAgo(8), dayAgo(0)]) === 7)
+  check('gaps that disagree are no rhythm: 2 and 40; 2, 3, 40, 41', B.rhythmOf([dayAgo(42), dayAgo(40), dayAgo(0)]) === null && B.rhythmOf([dayAgo(86), dayAgo(84), dayAgo(81), dayAgo(41), dayAgo(0)]) === null)
+  check('two gaps agree only within 1.5 ×: 5 and 7 is every 6 days; 5 and 8 is not', B.rhythmOf([dayAgo(12), dayAgo(7), dayAgo(0)]) === 6 && B.rhythmOf([dayAgo(13), dayAgo(8), dayAgo(0)]) === null)
+  check('…the critic\'s cases are no rhythm: stamps 40 / 110, a birthday card 30 / 80, bulbs 60 / 170',
+    B.rhythmOf([dayAgo(220), dayAgo(180), dayAgo(70)]) === null && B.rhythmOf([dayAgo(160), dayAgo(130), dayAgo(50)]) === null && B.rhythmOf([dayAgo(330), dayAgo(270), dayAgo(100)]) === null)
   const old = Array.from({ length: 12 }, (_, i) => dayAgo(200 - i * 14))            // every 14 days, long ago …
   const recent = Array.from({ length: 9 }, (_, i) => dayAgo(40 - i * 5))             // … then every 5 days
   check('only the latest 8 gaps count: the habit of now, not last year\'s', B.rhythmOf([...old, ...recent]) === 5)
   check('due from 80 % of the gap: every 6 days is due on day 5, not day 4', B.isDue(6, 5) && !B.isDue(6, 4))
   check('…every day is due the next day; every 30 days from day 24', B.isDue(1, 1) && !B.isDue(1, 0) && B.isDue(30, 24) && !B.isDue(30, 23))
-  check('…past three gaps the habit has stopped: no longer suggested', B.isDue(6, 18) && !B.isDue(6, 19))
+  check('…it lapses one usual gap past due, two weeks at most: every 6 days until day 12, every 30 until day 44, every day until day 2',
+    B.isDue(6, 12) && !B.isDue(6, 13) && B.isDue(30, 44) && !B.isDue(30, 45) && B.isDue(1, 2) && !B.isDue(1, 3) && B.lapsesAfter(56) === 70)
+  check('…a rhythm over 8 weeks never nags (Bought before has it)', B.isDue(56, 50) && !B.isDue(57, 50) && !B.isDue(90, 80))
 
   const items = [
     ...ticks('Milk', [17, 11, 5], { platform: 'Kiwi', category_id: 'groc', ean: '7038010000737', image_url: 'https://img.example.com/melk.jpg' }),
@@ -82,6 +86,11 @@ console.log('\n1 · Buy again: a rhythm from your own ticks')
     ...ticks('Eggs', [12, 12, 6, 6, 0]),                                   // two ticks a day count once: 12, 6, 0 → every 6, bought today
     ...ticks('Tape', [40]),                                                // once: Bought before only
     ...ticks('Candles', [100, 93, 86]),                                    // every week, 86 days ago: lapsed
+    ...ticks('Kitchen roll', [42, 35, 28, 21]),                            // every week, 21 days ago: lapsed after 14
+    ...ticks('Stamps', [220, 180, 70]),                                    // 40 / 110: the old rule said "every 75 days" and nagged
+    ...ticks('Birthday card', [160, 130, 50]),                             // 30 / 80
+    ...ticks('Light bulbs', [330, 270, 100]),                              // 60 / 170
+    ...ticks('Winter tyres', [180, 120, 60]),                              // a steady every 60 days: over 8 weeks, never nags
     row({ title: 'Plaster', status: 'bought', bought_at: tick(-3), list: 'quick' }), // a day after today is not a purchase yet
     row({ title: 'Plaster', status: 'bought', bought_at: tick(9) }), row({ title: 'Plaster', status: 'bought', bought_at: tick(6) }),
     ...ticks('Headphones', [40, 30, 20], { list: 'wishlist' }),            // wishlist purchases are things you own, never Buy again
@@ -92,18 +101,23 @@ console.log('\n1 · Buy again: a rhythm from your own ticks')
   const milk = due.find(d => d.title === 'Milk')
   check('Milk: four purchase days (two spellings folded), every 6 days, last 5 days ago',
     milk.count === 4 && milk.every === 6 && milk.since === 5 && milk.last === dayAgo(5), JSON.stringify(milk && { ...milk, row: undefined }))
-  check('…its words, the owner\'s: "Usually every 6 days, last 5 days ago"', B.rhythmWords(milk) === 'Usually every 6 days, last 5 days ago')
+  check('…its words: "Every 6 days · last bought 5 days ago"', B.rhythmWords(milk) === 'Every 6 days · last bought 5 days ago')
   check('…a tap re-adds the latest purchase: its store, category, product and picture',
     eq(M.buyAgainInput(milk), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick', ean: '7038010000737', image_url: 'https://img.example.com/melk.jpg' }))
-  check('never suggested: on the list by name (oats) or by product (Lettmelk), not due yet (bread), bought today (eggs), lapsed (candles), wishlist purchases',
-    !due.some(d => ['Oats', 'Lettmelk', 'Bread', 'Eggs', 'Candles', 'Headphones'].includes(d.title)))
+  check('never suggested: on the list by name (oats) or by product (Lettmelk), not due yet (bread), bought today (eggs), lapsed (candles, kitchen roll), wishlist purchases',
+    !due.some(d => ['Oats', 'Lettmelk', 'Bread', 'Eggs', 'Candles', 'Kitchen roll', 'Headphones'].includes(d.title)))
+  check('…and things bought now and then never nag: stamps, a birthday card, bulbs, winter tyres',
+    !due.some(d => ['Stamps', 'Birthday card', 'Light bulbs', 'Winter tyres'].includes(d.title)))
   check('a tick dated after today is not a purchase yet (Plaster: two days only)', !due.some(d => d.title === 'Plaster'))
   const before = B.boughtBefore(items, due)
-  check('Bought before keeps the rest, without what Buy again shows', !before.some(b => b.title === 'Coffee' || b.title === 'Milk') && before.some(b => b.title === 'Tape') && before.some(b => b.title === 'Bread'))
+  check('Bought before keeps the rest, without what Buy again shows', !before.some(b => b.title === 'Coffee' || b.title === 'Milk') && ['Tape', 'Bread', 'Stamps', 'Winter tyres'].every(t => before.some(b => b.title === t)))
+  check('…nor what is on the list by product (Lettmelk is "Melk 1 l" there) or by name (oats)', !before.some(b => b.title === 'Lettmelk' || b.title === 'Oats'))
   check('nothing bought yet: nothing suggested', B.dueAgain([row({ title: 'Milk' })], TODAY).length === 0 && B.dueAgain([], TODAY).length === 0)
   check('words: every day, every week, every 3 weeks; yesterday, 17 days ago, 4 weeks ago',
-    B.rhythmWords({ every: 1, since: 1 }) === 'Usually every day, last bought yesterday' && B.rhythmWords({ every: 7, since: 6 }) === 'Usually every week, last 6 days ago'
-    && B.rhythmWords({ every: 21, since: 17 }) === 'Usually every 3 weeks, last 17 days ago' && B.rhythmWords({ every: 30, since: 28 }) === 'Usually every 4 weeks, last 4 weeks ago')
+    B.rhythmWords({ every: 1, since: 1 }) === 'Every day · last bought yesterday' && B.rhythmWords({ every: 7, since: 8 }) === 'Every week · last bought 8 days ago'
+    && B.rhythmWords({ every: 21, since: 17 }) === 'Every 3 weeks · last bought 17 days ago' && B.rhythmWords({ every: 30, since: 28 }) === 'Every 4 weeks · last bought 4 weeks ago')
+  check('the phone\'s one line: two names and how many more', eq(B.dueSummary([{ title: 'Coffee' }, { title: 'Dish soap' }, { title: 'Bananas' }]), { names: 'Coffee, Dish soap', more: 1 })
+    && eq(B.dueSummary([{ title: 'Coffee' }]), { names: 'Coffee', more: 0 }))
 }
 
 console.log('\n2 · Where the whole list is cheapest (current prices only)')
@@ -117,36 +131,43 @@ console.log('\n2 · Where the whole list is cheapest (current prices only)')
     ['3', { ean: '3', name: 'Kaffe', stores: [s('Oda', 75.9), s('Meny', 79.9), s('Spar', 79.9), s('Kiwi', 50, stale)] }],
   ])
   const rows = [{ title: 'Milk', ean: '1' }, { title: 'Bread', ean: '2' }, { title: 'Coffee', ean: '3' }]
-  const money = v => `${v.toFixed(2)} NOK`
-  const w = G.wholeList(G.basketByChain(rows, prices, TODAY), rows.length)
+  const b = G.basketByChain(rows, prices, TODAY)
+  const w = G.wholeList(b, rows.length)
   check('the cheapest chain with every row: Oda, 137.70 — Kiwi\'s 40-day-old prices never count',
     w.kind === 'cheapest' && eq(w.chains, ['Oda']) && w.total === 137.7 && w.covered === 3 && w.whole, JSON.stringify(w))
-  check('…one line: "Cheapest for the whole list: Oda · 137.70 NOK"', eq(G.wholeListWords(w, money), { lead: 'Cheapest for the whole list:', chain: 'Oda', value: '137.70 NOK' }))
+  check('…the card\'s subtitle says it: "Oda cheapest · all 3 priced" (the rows under it carry the amounts)', G.wholeListWords(w, b.priced, rows.length) === 'Oda cheapest · all 3 priced')
   const tied = new Map([...prices].map(([k, p]) => [k, { ...p, stores: p.stores.filter(x => x.name !== 'Oda') }]))
   const t = G.wholeList(G.basketByChain(rows, tied, TODAY), rows.length)
-  check('a tie names both, A–Z: "Meny or Spar"', t.kind === 'cheapest' && eq(t.chains, ['Meny', 'Spar']) && G.wholeListWords(t, money).chain === 'Meny or Spar' && t.total === 146.3, JSON.stringify(t))
+  check('a tie names both, A–Z: "Meny or Spar cheapest"', t.kind === 'cheapest' && eq(t.chains, ['Meny', 'Spar']) && G.wholeListWords(t, 3, 3) === 'Meny or Spar cheapest · all 3 priced' && t.total === 146.3, JSON.stringify(t))
   const onlyOda = new Map([['1', prices.get('1')], ['2', prices.get('2')], ['3', { ...prices.get('3'), stores: [s('Oda', 75.9)] }]])
   const o = G.wholeList(G.basketByChain(rows, onlyOda, TODAY), rows.length)
-  check('one chain has everything: "Only one chain has all 3:" Oda', o.kind === 'only' && G.wholeListWords(o, money).lead === 'Only one chain has all 3:' && G.wholeListWords(o, money).chain === 'Oda')
+  check('one chain has everything: "Only Oda has all 3"', o.kind === 'only' && G.wholeListWords(o, 3, 3) === 'Only Oda has all 3')
   const split = new Map([['1', { ...prices.get('1'), stores: [s('Meny', 23.9)] }], ['2', { ...prices.get('2'), stores: [s('Oda', 39.9)] }], ['3', { ...prices.get('3'), stores: [s('Meny', 79.9)] }]])
   const none = G.wholeList(G.basketByChain(rows, split, TODAY), rows.length)
-  check('no chain has it all: the one with the most, never a total that isn\'t comparable',
-    none.kind === 'none' && eq(G.wholeListWords(none, money), { lead: 'No chain has all 3 — most at', chain: 'Meny', value: '2 of 3' }), JSON.stringify(none))
+  check('no chain has it all: says so, never a total that isn\'t comparable', none.kind === 'none' && eq(none.chains, ['Meny']) && G.wholeListWords(none, 3, 3) === 'No chain has all 3', JSON.stringify(none))
   const part = G.wholeList(G.basketByChain([...rows, { title: 'Tape', ean: null }], prices, TODAY), rows.length + 1)
-  check('with a row not priced yet it says what it covers: "Cheapest for 3 priced items:"', !part.whole && G.wholeListWords(part, money).lead === 'Cheapest for 3 priced items:')
+  check('with a row not priced yet it says what it covers: "Oda cheapest · 3 of 4 priced"', !part.whole && G.wholeListWords(part, 3, 4) === 'Oda cheapest · 3 of 4 priced')
+  check('…and so do the others: "Only Oda has both · 2 of 4 priced", "No chain has both · 2 of 4 priced"',
+    G.wholeListWords({ ...o, priced: 2, whole: false }, 2, 4) === 'Only Oda has both · 2 of 4 priced' && G.wholeListWords({ ...none, priced: 2, whole: false }, 2, 4) === 'No chain has both · 2 of 4 priced')
   const onlyStale = new Map([['1', { ...prices.get('1'), stores: [s('Kiwi', 15, stale)] }]])
-  check('only old prices: no answer at all (nothing to say is cheapest)', G.wholeList(G.basketByChain([rows[0]], onlyStale, TODAY), 1) === null)
-  check('two rows: "has both"; one row: "has it"', G.wholeListWords({ ...o, priced: 2 }, money).lead === 'Only one chain has both:' && G.wholeListWords({ ...none, priced: 1, covered: 1 }, money).lead === 'No chain has it — most at')
+  check('only old prices: no answer at all, only what is priced', G.wholeList(G.basketByChain([rows[0]], onlyStale, TODAY), 1) === null && G.wholeListWords(null, 0, 1) === '0 of 1 priced')
+  check('one row: "has it"; one row priced of one: "1 item priced"', G.wholeListWords({ ...o, priced: 1, whole: false }, 1, 2) === 'Only Oda has it · 1 of 2 priced' && G.wholeListWords(null, 1, 1) === '1 item priced')
 }
 
-console.log('\n3 · Product pictures: a web link, only when the row has none')
+console.log('\n3 · Product pictures: a public web link made https, only when the row has none')
 {
-  check('a web link is kept; "//cdn…" is made https', G.webPicture('https://res.cloudinary.com/x/7039010019828.jpg') === 'https://res.cloudinary.com/x/7039010019828.jpg'
-    && G.webPicture('http://bilder.ngdata.no/7039010576963/meny/large.jpg') === 'http://bilder.ngdata.no/7039010576963/meny/large.jpg' && G.webPicture('//cdn.example.com/a.png') === 'https://cdn.example.com/a.png')
+  check('a web link is kept; http: and "//cdn…" are made https', G.webPicture('https://res.cloudinary.com/x/7039010019828.jpg') === 'https://res.cloudinary.com/x/7039010019828.jpg'
+    && G.webPicture('http://bilder.ngdata.no/7039010576963/meny/large.jpg') === 'https://bilder.ngdata.no/7039010576963/meny/large.jpg' && G.webPicture('//cdn.example.com/a.png') === 'https://cdn.example.com/a.png')
   check('never a data:, javascript:, blob: or relative link, nor one with a space, a control character or over 2 048 characters',
     [
-      'data:image/png;base64,AAAA', 'javascript:alert(1)', 'blob:https://x/1', '/img/a.png', 'img.png', 'https://a b/c.png', 'https://x/\u0000.png',
-      `https://x.example/${'a'.repeat(2048)}`, 12, null, undefined, { url: 'https://x/a.png' },
+      'data:image/png;base64,AAAA', 'javascript:alert(1)', 'blob:https://x/1', '/img/a.png', 'img.png', 'https://a b/c.png', 'https://x.example/\u0000.png',
+      `https://x.example/${'a'.repeat(2048)}`, 12, null, undefined, { url: 'https://x.example/a.png' }, 'ftp://files.example.com/a.png',
+    ].every(v => G.webPicture(v) === null))
+  check('never a private or odd host: an IP (v4, v6, in any spelling), localhost, .local, .localhost, one label, or a user and password',
+    [
+      'http://192.168.1.1/a.png', 'https://[::1]/a.png', 'http://localhost:8080/a', 'https://user:pw@evil.example/a.gif', 'https://user@evil.example/a.gif',
+      'http://2130706433/a.png', 'http://0x7f.0.0.1/a.png', 'https://10.0.0.1/x.jpg', 'https://printer.local/a.png', 'https://app.localhost/a.png', 'https://intranet/a.png',
+      'https://[2001:db8::1]/a.png', 'https://LOCALHOST./a.png',
     ].every(v => G.webPicture(v) === null))
   const was = { image: 'https://img.example.com/old.jpg' }
   const hit = { ean: '7039010019828', image: 'https://img.example.com/new.jpg' }
@@ -154,7 +175,8 @@ console.log('\n3 · Product pictures: a web link, only when the row has none')
   check('a picture of the row\'s own stays, whatever the product', eq(G.matchPatch({ image_url: 'https://example.com/mine.jpg' }, hit, was), { ean: hit.ean }))
   check('Change product: the old product\'s picture gives way to the new one\'s (or to none)',
     eq(G.matchPatch({ image_url: was.image }, hit, was), { ean: hit.ean, image_url: hit.image }) && eq(G.matchPatch({ image_url: was.image }, { ean: '1', image: null }, was), { ean: '1', image_url: null }))
-  check('…a picture that isn\'t a web link is never taken', eq(G.matchPatch({}, { ean: '1', image: 'javascript:alert(1)' }), { ean: '1' }))
+  check('…an older row\'s http: spelling of the old product\'s picture is the same picture', eq(G.matchPatch({ image_url: 'http://img.example.com/old.jpg' }, hit, was), { ean: hit.ean, image_url: hit.image }))
+  check('…a picture that isn\'t a public web link is never taken', eq(G.matchPatch({}, { ean: '1', image: 'javascript:alert(1)' }), { ean: '1' }) && eq(G.matchPatch({}, { ean: '1', image: 'http://192.168.1.1/a.png' }), { ean: '1' }))
   check('Remove match: the old product\'s picture goes with it; the row\'s own stays',
     eq(G.unmatchPatch({ image_url: was.image }, was), { ean: null, image_url: null }) && eq(G.unmatchPatch({ image_url: 'https://example.com/mine.jpg' }, was), { ean: null }) && eq(G.unmatchPatch({ image_url: was.image }), { ean: null }))
 }
@@ -171,6 +193,8 @@ console.log('\n4 · The scan by EAN')
   check('…the other fields are checked one by one: a brand and store only as text, a picture only as a web link, a price only ≥ 0',
     odd && odd.brand === null && odd.image === null && odd.price === null && odd.store === null)
   check('…long text is cut (300 characters, a store 100)', G.groceryHitOf({ ...good, name: 'x'.repeat(400), store: 'y'.repeat(200) }).name.length === 300 && G.groceryHitOf({ ...good, store: 'y'.repeat(200) }).store.length === 100)
+  check('…a price from 10 000 000 up is no price', G.groceryHitOf({ ...good, price: 1e7 }).price === null && G.groceryHitOf({ ...good, price: 9999999 }).price === 9999999 && G.groceryHitOf({ ...good, price: Infinity }).price === null)
+  check('…an http: picture enters as https; a private host\'s not at all', G.groceryHitOf({ ...good, image: 'http://bilder.ngdata.no/1/a.jpg' }).image === 'https://bilder.ngdata.no/1/a.jpg' && G.groceryHitOf({ ...good, image: 'http://192.168.1.1/a.png' }).image === null)
 }
 
 // The function's own mapping, run as it is in the function (TypeScript stripped).
@@ -205,7 +229,13 @@ if (F) {
   const h2 = F.eanHit({ ean: '7039010019828', products: [{ name: 'A', brand: { x: 1 }, image: 'javascript:alert(1)', store: { name: 42 }, current_price: { price: '1e309' } }] }, '7039010019828')
   check('…an object for a brand, a number for a store, "1e309" for a price and a javascript: picture all become none',
     h2 && h2.brand === null && h2.store === null && h2.price === null && h2.image === null, JSON.stringify(h2))
-  check('its picture and EAN rules are the app\'s', ['https://x.example/a.jpg', '//cdn.example.com/a.png', 'javascript:alert(1)', 'data:,x', `https://x.example/${'a'.repeat(2048)}`].every(v => F.webPicture(v) === G.webPicture(v))
+  const h3 = F.eanHit({ ean: '7039010019828', products: [{ name: 'A', image: 'http://192.168.1.1/a.png', current_price: { price: 1e7 } }, { name: 'B', image: 'http://cdn.example.com/b.jpg' }] }, '7039010019828')
+  check('…a price from 10 000 000 up is none; a private host\'s picture gives way to another chain\'s, made https',
+    h3 && h3.name === 'A' && h3.price === null && h3.image === 'https://cdn.example.com/b.jpg', JSON.stringify(h3))
+  check('its picture and EAN rules are the app\'s', [
+    'https://x.example/a.jpg', 'http://bilder.ngdata.no/1/a.jpg', '//cdn.example.com/a.png', 'javascript:alert(1)', 'data:,x', `https://x.example/${'a'.repeat(2048)}`,
+    'http://192.168.1.1/a.png', 'https://[::1]/a.png', 'http://localhost:8080/a', 'https://user:pw@evil.example/a.gif', 'http://2130706433/a.png', 'https://printer.local/a.png', 'https://intranet/a.png',
+  ].every(v => F.webPicture(v) === G.webPicture(v))
     && ['7039010019828', '1234567', '123456789012345', '7039010019828/x'].every(c => F.EAN_RE.test(c) === (G.scanEan(c) != null)))
 }
 

@@ -5,10 +5,10 @@ import { Button, MetaLine, Skeleton, Truncate } from '../../../../shared/ui'
 import { useDebouncedValue } from '../../../../shared/hooks/useDebouncedValue'
 import { formatMoney } from '../../../settings/subscriptionRules'
 import { useUpdateShopItem } from '../../hooks/useShop'
-import { SEARCH_MIN_CHARS, useGrocerySearch } from '../../hooks/useGrocery'
+import { SEARCH_MIN_CHARS, useGrocerySearch, useScanLookup } from '../../hooks/useGrocery'
 import { chainName, matchPatch, unmatchPatch, type GroceryHit, type GroceryPrice } from '../../groceryModel'
 import { ItemThumb } from '../shopKit'
-import type { ShopItem } from '../../types'
+import type { ShopItem, UpdateShopItemInput } from '../../types'
 
 interface Props {
   item: ShopItem | null
@@ -21,8 +21,10 @@ interface Props {
 /**
  * "Find a price": pick the product a quick-list row is (Kassalapp's search),
  * so it is priced at every chain. Saves the EAN — and the picture when the
- * row has none, or had only the old product's (`matchPatch`) — quietly; the
- * row's picture and price chip are the confirmation.
+ * row has none, or had only the old product's (`matchPatch`; the old product
+ * is looked up when the search doesn't show it) — quietly; the row's picture
+ * and price chip are the confirmation. Remove match takes the old product's
+ * picture with it (`unmatchPatch`).
  */
 export function FindPriceSheet({ item, open, current, onClose }: Props) {
   return (
@@ -39,18 +41,32 @@ function FindPriceBody({ item, current, onDone }: { item: ShopItem; current?: Gr
   const [query, setQuery] = useState(item.title)
   const q = useDebouncedValue(query.trim(), 350)
   const search = useGrocerySearch(q)
+  const lookUp = useScanLookup()
+  const [saving, setSaving] = useState(false)
   const hits = search.data ?? []
-  // The row's product until now, when the search shows it: a picture that is exactly its picture came with that match.
-  const was = item.ean ? hits.find(h => h.ean === item.ean) ?? null : null
 
-  function pick(hit: GroceryHit) {
-    update.mutate({ id: item.id, patch: matchPatch(item, hit, was), quiet: true })
+  /**
+   * The row's product until now, for its picture: a picture that is exactly
+   * that product's came with the old match, so it goes with it. From the
+   * search when it shows it, else Kassalapp's EAN lookup (cached an hour) —
+   * asked only when the row has a product and a picture to compare; a failed
+   * lookup keeps the picture (it can't tell).
+   */
+  async function previous(): Promise<GroceryHit | null> {
+    if (!item.ean || !item.image_url) return null
+    const shown = hits.find(h => h.ean === item.ean)
+    if (shown) return shown
+    try { return await lookUp(item.ean) } catch { return null }
+  }
+  async function save(patchFor: (was: GroceryHit | null) => UpdateShopItemInput) {
+    if (saving) return
+    setSaving(true)
+    const was = await previous()
+    update.mutate({ id: item.id, patch: patchFor(was), quiet: true })
     onDone()
   }
-  function unmatch() {
-    update.mutate({ id: item.id, patch: unmatchPatch(item, was), quiet: true })
-    onDone()
-  }
+  const pick = (hit: GroceryHit) => void save(was => matchPatch(item, hit, was))
+  const unmatch = () => void save(was => unmatchPatch(item, was))
 
   const results = q.length < SEARCH_MIN_CHARS ? <p className="text-body text-fg-muted">Type at least three letters.</p>
     : search.isError ? (
@@ -69,8 +85,8 @@ function FindPriceBody({ item, current, onDone }: { item: ShopItem; current?: Gr
           const now = hit.ean === item.ean
           return (
             <li key={hit.ean}>
-              <button type="button" onClick={() => pick(hit)} aria-current={now || undefined}
-                className="row row-interactive w-full gap-3 px-2 py-1.5 text-left aria-[current]:bg-accent-50">
+              <button type="button" onClick={() => pick(hit)} aria-current={now || undefined} disabled={saving}
+                className="row row-interactive w-full gap-3 px-2 py-1.5 text-left aria-[current]:bg-accent-50 disabled:opacity-60">
                 <ItemThumb src={hit.image} size="sm" />
                 <span className="min-w-0 flex-1">
                   <Truncate as="span" lines={2} className="block text-body font-medium leading-snug text-fg">{hit.name}</Truncate>
@@ -100,7 +116,7 @@ function FindPriceBody({ item, current, onDone }: { item: ShopItem; current?: Gr
       {item.ean && (
         <div className="flex items-center gap-2 rounded-row border border-line bg-surface-2 py-1 pl-3 pr-1">
           <Truncate as="span" className="min-w-0 flex-1 text-meta text-fg-2">{`Now: ${current?.name && current.name !== item.ean ? current.name : `EAN ${item.ean}`}`}</Truncate>
-          <Button variant="ghost" size="sm" onClick={unmatch}>Remove match</Button>
+          <Button variant="ghost" size="sm" onClick={unmatch} loading={saving}>Remove match</Button>
         </div>
       )}
       {results}
