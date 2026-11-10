@@ -52,11 +52,11 @@ select t_ok((select bool_and(p.proconfig = array['search_path=""'] and p.prosecd
              from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in (
                'shop_host_ok', 'shop_hosts_ok', 'shop_https_ok', 'shop_link_host', 'shop_host_on', 'shop_search_url_ok', 'shop_month_day_ok',
                'shop_store_facts', 'shop_store_rule_facts', 'shop_stores_rules', 'shop_store_rules_rules', 'shop_store_rule_reset',
-               'shop_store_reset', 'shop_store_seed', 'shop_store_seed_new_user'))
-        and (select count(*) = 15 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in (
+               'shop_store_reset', 'shop_store_seed', 'shop_store_seed_new_user', 'shop_one_line', 'shop_plain_text_ok', 'shop_new_offers_ok'))
+        and (select count(*) = 18 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in (
                'shop_host_ok', 'shop_hosts_ok', 'shop_https_ok', 'shop_link_host', 'shop_host_on', 'shop_search_url_ok', 'shop_month_day_ok',
                'shop_store_facts', 'shop_store_rule_facts', 'shop_stores_rules', 'shop_store_rules_rules', 'shop_store_rule_reset',
-               'shop_store_reset', 'shop_store_seed', 'shop_store_seed_new_user')),
+               'shop_store_reset', 'shop_store_seed', 'shop_store_seed_new_user', 'shop_one_line', 'shop_plain_text_ok', 'shop_new_offers_ok')),
   'R0 every function 191 writes has search_path ''''; only the new account''s seed trigger is SECURITY DEFINER');
 select t_ok(has_function_privilege('authenticated', 'public.shop_store_rule_reset(uuid)', 'execute')
         and has_function_privilege('authenticated', 'public.shop_store_reset(uuid)', 'execute')
@@ -103,8 +103,8 @@ select t_ok((select string_agg(r.seed_key || ':' || s.seed_key || ':' || r.kind 
         and (select words like '30-dagers åpent kjøp med uåpnet emballasje.%' from public.shop_store_rules where id = t_rule('elkjop_open_purchase'))
         and (select count(*) = 3 from public.shop_store_rules where user_id = '00000000-0000-0000-0000-000000000006'),
   'R0 three rules seeded, each from the store''s own product page (10.11.2026): Elkjøp 30 days, 50 for Kundeklubb members, Power 90 — in the store''s own words');
-select t_ok(not exists (select 1 from public.audit_logs where table_name in ('shop_stores', 'shop_store_rules') and user_id <> '00000000-0000-0000-0000-000000000006'),
-  'R0 the first seed and the second run are not in Activity (only account 6''s seed, written when it was allowed in)');
+select t_ok(not exists (select 1 from public.audit_logs where table_name in ('shop_stores', 'shop_store_rules')),
+  'R0 no seed is in Activity — the first, the second run, nor account 6''s (written when it was allowed in, after the audit trigger): an Undo of one would fail');
 select t_ok((select string_agg(slug || ':' || kind || ':' || channel || ':' || seller || ':' || gives_right || ':' || coalesce(days::text, '-') || ':'
                                || coalesce(years::text, '-') || ':' || coalesce(long_lasting::text, '-') || ':' || to_workday, ',' order by slug) from public.shop_law_rules)
           = 'cancel_distance_business:cancel:distance:business:true:14:-:-:true,cancel_in_store_business:cancel:in_store:business:false:-:-:-:false,'
@@ -419,8 +419,15 @@ reset role;
 set test.uid = 'none';
 set role service_role;
 select t_ok(t_err($q$update public.shop_store_rules set return_until = '03-31' where id = 'dd000000-0000-0000-0000-000000000020'$q$) like '42501 %'
-        and t_err($q$delete from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000020'$q$) = 'done',
-  'R5 once the owner edited it the assistant can''t change it; deleting its own rule goes (ai-proxy asks the owner first: a Confirm card)');
+        and t_err($q$delete from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000020'$q$) like '42501 %',
+  'R5 once the owner edited it the assistant can''t change it nor delete it');
+do $$
+begin
+  insert into public.shop_store_rules (id, user_id, store_id, kind, days)
+  values ('dd000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', public.t_store('jula'), 'return', 30);
+  perform t_ok(t_err($q$delete from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000021'$q$) = 'done',
+    'R5 …deleting a rule of its own nobody edited goes (ai-proxy asks the owner first: a Confirm card)');
+end $$;
 reset role;
 reset test.uid;
 
@@ -468,6 +475,183 @@ begin
   p := public.app_undo_transaction(public.t_tx('r6_edit'), true, p ->> 'confirm');
   perform t_ok(not exists (select 1 from public.shop_deal_day_edits where slug = 'black_friday'),
     'R6 Developer → Activity undoes the edit (audited, one id key): Black Friday is 190''s again');
+end $$;
+reset role;
+
+-- ═══ R8. Free text can't pass for something else; ids and first times hold ══
+set test.uid = 'none';
+set role service_role;
+select t_ok(bool_and(t_err(format($q$insert into public.shop_store_rules (user_id, store_id, kind, days, label) values ('00000000-0000-0000-0000-000000000001', %L, 'return', 30, %L)$q$,
+                                  t_store('jula'), l)) like '23514 %'),
+  'R8 the assistant can''t write a label with a direction mark (U+202E, U+2066), a zero-width character or a control character')
+  from unnest(array[E'Returns ‮09.11.2026 daer', E'⁦read 10.11.2026⁩', E'Christmas​returns', E'Christmas\u0007returns', E'﻿Returns']) l;
+do $$
+declare r public.shop_store_rules;
+begin
+  insert into public.shop_store_rules (id, user_id, store_id, kind, days, label, words, member_tier, created_at)
+  values ('dd000000-0000-0000-0000-000000000030', '00000000-0000-0000-0000-000000000001', public.t_store('jula'), 'return', 30,
+          E'  Christmas\n\nreturns  ', E'Line one\nline\ttwo', E'  Gold tier ', '-infinity');
+  select * into r from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000030';
+  perform t_ok(r.label = 'Christmas returns' and r.words = 'Line one line two' and r.member_tier = 'Gold tier' and r.created_at > now() - interval '1 minute',
+    'R8 …line breaks, tabs and no-break-space padding are squeezed to one line (whoever writes it), and its first time is the database''s now (never ''-infinity'')');
+  update public.shop_store_rules set id = 'dd000000-0000-0000-0000-000000000031' where id = 'dd000000-0000-0000-0000-000000000030';
+  perform t_ok(exists (select 1 from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000030')
+               and not exists (select 1 from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000031'),
+    'R8 …and its rule keeps its id when a write sends another');
+  delete from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000030';
+end $$;
+reset role;
+reset test.uid;
+set role authenticated;
+do $$
+declare st public.shop_stores; r public.shop_store_rules;
+begin
+  perform t_ok(t_err(format($q$update public.shop_stores set name = %L where id = %L$q$, E'Elkj‮øp', public.t_store('xxl'))) like '23514 %'
+               and t_err(format($q$update public.shop_stores set member_tier = %L where id = %L$q$, E'Gold​', public.t_store('xxl'))) like '23514 %'
+               and t_err(format($q$update public.shop_store_rules set words = %L where id = %L$q$, E'30 days⁧ read 10.11.2026', public.t_rule('power_return'))) like '23514 %'
+               and t_err($q$insert into public.shop_deal_day_edits (slug, name, rule_kind, month, day) values ('marked', E'Sale‮', 'fixed', 1, 1)$q$) like '23514 %'
+               and t_err(format($q$update public.shop_stores set ad_template = %L, ad_language = 'nb' where id = %L$q$, E'Selger‮ {title}', public.t_store('finn'))) like '23514 %',
+    'R8 the owner''s text too: a store''s name and tier, a rule''s words, a deal day''s name, an ad template');
+  perform t_ok(t_err(format($q$update public.shop_stores set ad_template = %L, ad_language = 'nb' where id = %L$q$, E'Selger {title}\nPris: {price}', public.t_store('finn'))) = 'done',
+    'R8 …while an ad template keeps its line breaks');
+  insert into public.shop_stores (id, kind, name, country, currency, hosts, created_at)
+  values ('dd000000-0000-0000-0000-000000000032', 'shop', E' Corner  shop ', 'NO', 'NOK', '{corner.example}', '-infinity');
+  select * into st from public.shop_stores where id = 'dd000000-0000-0000-0000-000000000032';
+  perform t_ok(st.name = 'Corner shop' and st.created_at = '2000-01-01 00:00:00+00',
+    'R8 a store the owner adds: its name squeezed, a first time before 2000 kept at 2000 (an Undo''s own time between them is kept)');
+  update public.shop_stores set id = 'dd000000-0000-0000-0000-000000000033' where id = 'dd000000-0000-0000-0000-000000000032';
+  perform t_ok(exists (select 1 from public.shop_stores where id = 'dd000000-0000-0000-0000-000000000032')
+               and not exists (select 1 from public.shop_stores where id = 'dd000000-0000-0000-0000-000000000033'),
+    'R8 …and it keeps its id when a write sends another');
+  delete from public.shop_stores where id = 'dd000000-0000-0000-0000-000000000032';
+  update public.shop_store_rules set edited_at = '-infinity', days = 59 where id = 'dd000000-0000-0000-0000-000000000001';
+  select * into r from public.shop_store_rules where id = 'dd000000-0000-0000-0000-000000000001';
+  perform t_ok(r.edited_at >= '2000-01-01' and r.edited_at <= now(), 'R8 an edit time sent as ''-infinity'' is kept between 2000 and now');
+  update public.shop_store_rules set days = 60 where id = 'dd000000-0000-0000-0000-000000000001';
+end $$;
+reset role;
+
+-- ═══ R9. A purchase's own facts on shop_items ════════════════════════════════
+select t_ok((select count(*) = 5 from information_schema.columns where table_name = 'shop_items'
+              and column_name in ('bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'))
+        and (select count(*) = 5 from pg_constraint where conrelid = 'public.shop_items'::regclass and conname in (
+              'shop_items_bought_channel_check', 'shop_items_arrived_on_check', 'shop_items_extra_warranty_until_check',
+              'shop_items_receipt_note_check', 'shop_items_search_opened_on_check')),
+  'R9 shop_items has bought_channel, arrived_on, extra_warranty_until, receipt_note and search_opened_on, each with its check');
+set role authenticated;
+do $$
+declare i public.shop_items;
+begin
+  insert into public.shop_items (id, title, status, price, currency, bought_at, bought_channel, arrived_on, extra_warranty_until, receipt_note)
+  values ('dd000000-0000-0000-0000-000000000040', 'TV', 'bought', 9990, 'NOK', '2026-11-04 23:30+00', 'online', '2026-11-05', '2029-11-05', E'  In the mail,\nfolder 3  ');
+  select * into i from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040';
+  perform t_ok(i.bought_channel = 'online' and i.arrived_on = '2026-11-05' and i.extra_warranty_until = '2029-11-05' and i.receipt_note = E'In the mail,\nfolder 3',
+    'R9 a purchase online, arrived on its Oslo purchase day (bought 23:30 UTC = 00:30 in Oslo), an extra warranty, a receipt note (trimmed, its line break kept)');
+  perform t_ok(t_err($q$update public.shop_items set arrived_on = '2026-11-04' where id = 'dd000000-0000-0000-0000-000000000040'$q$) like '23514 %'
+               and t_err($q$update public.shop_items set arrived_on = current_date + 3 where id = 'dd000000-0000-0000-0000-000000000040'$q$) like '23514 %'
+               and t_err($q$update public.shop_items set bought_at = '2026-11-06 12:00+01' where id = 'dd000000-0000-0000-0000-000000000040'$q$) like '23514 %'
+               and t_err($q$update public.shop_items set extra_warranty_until = '2026-11-04' where id = 'dd000000-0000-0000-0000-000000000040'$q$) like '23514 %',
+    'R9 it can''t arrive before its Oslo purchase day (04.11 is the UTC day), after today, nor be bought after it arrived; an extra warranty can''t end before it was bought');
+  perform t_ok(bool_and(t_err(format($q$update public.shop_items set %s where id = 'dd000000-0000-0000-0000-000000000040'$q$, x)) ~ '^(23514|22007|22008) '),
+    'R9 bounds: a channel from the list, days from 2000 to 2099 (infinity and NaN refused), a note of at most 2 000 characters without direction marks, no search opened after today')
+    from unnest(array[$x$bought_channel = 'phone'$x$, $x$arrived_on = 'infinity'$x$, $x$extra_warranty_until = '1999-12-31'$x$, $x$extra_warranty_until = 'infinity'$x$,
+                      $x$receipt_note = repeat('x', 2001)$x$, $x$receipt_note = E'Receipt‮'$x$, $x$search_opened_on = current_date + 3$x$,
+                      $x$search_opened_on = 'NaN'$x$, $x$arrived_on = 'NaN'$x$]) x;
+end $$;
+-- Delete's Undo carries them.
+do $$
+declare s jsonb;
+begin
+  update public.shop_items set search_opened_on = '2026-11-01' where id = 'dd000000-0000-0000-0000-000000000040';
+  s := public.shop_delete_items(array['dd000000-0000-0000-0000-000000000040']::uuid[]);
+  perform public.shop_restore_items(s);
+  perform t_ok((select bought_channel = 'online' and arrived_on = '2026-11-05' and extra_warranty_until = '2029-11-05' and receipt_note = E'In the mail,\nfolder 3'
+                       and search_opened_on = '2026-11-01' from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'),
+    'R9 Delete''s Undo puts the purchase''s facts back');
+end $$;
+-- Not bought any more: the purchase's facts go with it; a note and an opened search stay.
+update public.shop_items set status = 'wishlist' where id = 'dd000000-0000-0000-0000-000000000040';
+select t_ok((select bought_channel is null and arrived_on is null and extra_warranty_until is null and receipt_note is not null and search_opened_on = '2026-11-01'
+             from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'),
+  'R9 a thing that is not bought any more has no channel, arrival or extra warranty (as its market price); its note and its opened search stay');
+reset role;
+
+-- ═══ R10. Prisjakt's new offers on the price watch ═══════════════════════════
+insert into public.shop_items (id, user_id, title, status, url) values
+  ('dd000000-0000-0000-0000-000000000050', '00000000-0000-0000-0000-000000000001', 'Phone', 'wishlist', 'https://www.prisjakt.no/product.php?p=12105530');
+set test.uid = 'none';
+set role service_role;
+do $$
+declare v_offers constant jsonb := '[{"shop_id": 9738, "shop_name": "CDON", "price": 16115, "currency": "NOK", "in_stock": true},
+                                   {"shop_id": 35222, "shop_name": "CS MEGASTORE", "price": 16252.5, "currency": "NOK", "in_stock": null}]';
+begin
+  insert into public.shop_price_watch (item_id, user_id, url, status, low, currency, source, condition, last_ok_at, new_offers)
+  values ('dd000000-0000-0000-0000-000000000050', '00000000-0000-0000-0000-000000000001', 'https://www.prisjakt.no/product.php?p=12105530', 'ok',
+          16115, 'NOK', 'prisjakt', 'new', now(), v_offers);
+  perform t_ok((select new_offers = v_offers from public.shop_price_watch where item_id = 'dd000000-0000-0000-0000-000000000050'),
+    'R10 shop-price writes Prisjakt''s new offers on the watch: shop number, its name, price, currency, in stock');
+end $$;
+select t_ok(bool_and(t_err(format($q$update public.shop_price_watch set new_offers = %L where item_id = 'dd000000-0000-0000-0000-000000000050'$q$, o)) like '23514 %'),
+  'R10 an offer list that isn''t one is refused: not a list, 51 offers, a key missing or added, a shop number that isn''t whole and positive, a price that isn''t a number from 0 below a billion (NaN arrives as text), a currency that isn''t three capitals, in stock that isn''t true, false or null, a name empty, over 120 characters, with a control or direction character or not on one squeezed line')
+  from unnest(array[
+    '{"shop_id": 1}',
+    (select jsonb_agg(jsonb_build_object('shop_id', g, 'shop_name', 'S', 'price', 1, 'currency', 'NOK', 'in_stock', true))::text from generate_series(1, 51) g),
+    '[{"shop_id": 1, "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": true, "url": "https://attacker.example/"}]',
+    '[{"shop_id": 0, "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1.5, "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": "324", "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": -324, "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": -1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": "NaN", "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": 1e9, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": 1, "currency": "nok", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "S", "price": 1, "currency": "NOK", "in_stock": "yes"}]',
+    '[{"shop_id": 1, "shop_name": "", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "' || repeat('x', 121) || '", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "Shop\u0007", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "Shop\u202e", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '[{"shop_id": 1, "shop_name": "  Two  spaces ", "price": 1, "currency": "NOK", "in_stock": true}]',
+    '["not an offer"]']) o;
+select t_ok(t_err($q$update public.shop_price_watch set new_offers = '[{"shop_id": 1, "shop_name": null, "price": 0, "currency": "NOK", "in_stock": false}]' where item_id = 'dd000000-0000-0000-0000-000000000050'$q$) = 'done'
+        and t_err($q$update public.shop_price_watch set new_offers = '[]' where item_id = 'dd000000-0000-0000-0000-000000000050'$q$) = 'done',
+  'R10 …a shop without a name and an empty list (no new offer) are fine');
+update public.shop_price_watch set new_offers = '[{"shop_id": 9738, "shop_name": "CDON", "price": 16115, "currency": "NOK", "in_stock": true}]'
+ where item_id = 'dd000000-0000-0000-0000-000000000050';
+reset role;
+reset test.uid;
+set role authenticated;
+do $$
+declare v text;
+begin
+  v := t_err($q$update public.shop_price_watch set new_offers = '[]' where item_id = 'dd000000-0000-0000-0000-000000000050'$q$);
+  perform t_ok((v like '42501 %' or v = 'done') and (select new_offers -> 0 ->> 'shop_name' = 'CDON' from public.shop_price_watch where item_id = 'dd000000-0000-0000-0000-000000000050'),
+    'R10 the app never writes the watch (shop-price does): its new offers stay');
+end $$;
+do $$
+declare s jsonb;
+begin
+  s := public.shop_delete_items(array['dd000000-0000-0000-0000-000000000050']::uuid[]);
+  perform public.shop_restore_items(s);
+  perform t_ok((select new_offers -> 0 ->> 'shop_name' = 'CDON' from public.shop_price_watch where item_id = 'dd000000-0000-0000-0000-000000000050'),
+    'R10 Delete''s Undo puts the new offers back');
+  s := public.shop_delete_items(array['dd000000-0000-0000-0000-000000000050']::uuid[]);
+  s := jsonb_set(s, '{watches,0,new_offers}', '[{"shop_id": 1, "shop_name": "Forged", "price": -1, "currency": "NOK", "in_stock": true}]');
+  perform public.shop_restore_items(s);
+  perform t_ok((select new_offers is null and low = 16115 from public.shop_price_watch where item_id = 'dd000000-0000-0000-0000-000000000050'),
+    'R10 …a forged list in the snapshot is not kept; the rest of the watch is');
+end $$;
+reset role;
+
+-- ═══ R11. A Needs-a-look row for a price match ═══════════════════════════════
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.shop_signal_snooze('dd000000-0000-0000-0000-000000000050', 'price_match', current_date + 7);
+  perform t_ok(r -> 'after' ->> 'signal' = 'price_match', 'R11 a price match can be snoozed (190''s signal list gained price_match)');
+  perform t_ok(t_err($q$select public.shop_signal_snooze('dd000000-0000-0000-0000-000000000050', 'price_protection', current_date + 7)$q$) like '23514 %',
+    'R11 …and the list is still a list (price protection reuses cheaper_returnable)');
 end $$;
 reset role;
 

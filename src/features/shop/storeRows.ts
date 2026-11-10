@@ -207,7 +207,7 @@ export function parseLawRule(row: unknown): ShopLawRule | null {
   return {
     id: r.id, slug: r.slug, country: 'NO', kind: r.kind, channel: r.channel as ShopLawRule['channel'], seller: r.seller,
     gives_right: r.gives_right, days, years, long_lasting: typeof r.long_lasting === 'boolean' ? r.long_lasting : null,
-    counts_from: r.counts_from === 'receipt' ? 'receipt' : null, to_workday: r.to_workday === true,
+    counts_from: r.counts_from === 'receipt' || r.counts_from === 'delivery' ? r.counts_from : null, to_workday: r.to_workday === true,
     name, summary, law, law_url: r.law_url, checked_on: r.checked_on,
   }
 }

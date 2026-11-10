@@ -107,7 +107,21 @@ export interface ShopItem {
   sale_group?:      string | null
   /** Migration 138: the name of the money chain this thing carries (see chainModel.chainNameHolder). */
   chain_name?:      string | null
+  // Migration 191 — absent before it is applied. Kept only while bought (the database clears the first three otherwise).
+  /** How it was bought: online (at a distance — the right to cancel applies from a business) or in a shop. */
+  bought_channel?:       ShopBoughtChannel | null
+  /** The day Arrived was tapped (yyyy-mm-dd): on or after the purchase's Oslo day, not after today. */
+  arrived_on?:           string | null
+  /** The last day of an extra warranty (yyyy-mm-dd). */
+  extra_warranty_until?: string | null
+  /** Where the receipt is, as text (≤ 2 000 characters). */
+  receipt_note?:         string | null
+  /** The day a marketplace search was last opened for this wish ("Search opened 10.11.2026"). Set by the app. */
+  search_opened_on?:     string | null
 }
+
+/** How a thing was bought (migration 191). */
+export type ShopBoughtChannel = 'online' | 'in_store'
 
 /**
  * "Paid with money from": `to_id` was (or will be) bought with what selling
@@ -173,6 +187,20 @@ export interface ShopPriceWatch {
   /** The cheapest used / refurbished offer in Prisjakt's offer list. */
   used_low:        number | null
   refurbished_low: number | null
+  /** Migration 191: Prisjakt's new offers at the last read of its offer list, one per shop, cheapest first (≤ 50); null = none read. */
+  new_offers?:     ShopNewOffer[] | null
+}
+
+/** One shop's cheapest new offer on Prisjakt (shop_price_watch.new_offers, migration 191). */
+export interface ShopNewOffer {
+  /** Prisjakt's number for the shop. */
+  shop_id:   number
+  /** The shop's name as Prisjakt's offer row gives it; null when it gave none. */
+  shop_name: string | null
+  price:     number
+  currency:  string
+  /** Whether that shop has it in stock; null = Prisjakt didn't say. */
+  in_stock:  boolean | null
 }
 
 /** One read of a row's link — the price history (migration 137). */
@@ -199,7 +227,7 @@ export interface ShopPricePoint {
  */
 export type ShopSignal =
   | 'at_target' | 'lowest_seen' | 'back_in_stock' | 'fake_before' | 'deal_day' | 'cheaper_returnable'
-  | 'return_closing' | 'complaint_ending' | 'old_value' | 'old_wish' | 'tidy_up'
+  | 'return_closing' | 'complaint_ending' | 'old_value' | 'old_wish' | 'tidy_up' | 'price_match'
 
 /**
  * What the owner did with one Needs-a-look row (shop_signal_states, migration 190): snoozed until a day
@@ -388,7 +416,8 @@ export interface ShopLawRule {
   years:        number | null
   /** complaint: true = the rule for things meant to last considerably longer; null = one rule for all. */
   long_lasting: boolean | null
-  counts_from:  'receipt' | null
+  /** receipt: the day the goods came into the consumer's hands (angrerett); delivery: when it was taken over (reklamasjon). */
+  counts_from:  'receipt' | 'delivery' | null
   /** The last day moves past a weekend or a public holiday. */
   to_workday:   boolean
   name:         string
@@ -489,6 +518,12 @@ export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
   value_currency?:  ShopCurrency | null
   value_on?:        string | null
   chain_name?:      string | null
+  /** Migration 191: a purchase's own facts (a write of one before 191 says so by name). */
+  bought_channel?:       ShopBoughtChannel | null
+  arrived_on?:           string | null
+  extra_warranty_until?: string | null
+  receipt_note?:         string | null
+  search_opened_on?:     string | null
 }
 
 export interface CreateShopCostInput {

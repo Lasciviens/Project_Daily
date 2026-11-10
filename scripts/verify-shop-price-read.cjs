@@ -195,6 +195,34 @@ console.log('\n6 · Prisjakt\'s own offer list: the price now is its new offers 
   check('a row without a real price is left out', odd.low === 15990 && odd.offers === 1, JSON.stringify(odd))
   const broken = readPrice(html.replace(/<body>[\s\S]*<\/body>/, `<body>${push(flight.slice(0, at + 5000))}</body>`), link)
   check('a list cut short (not JSON) is not read: its schema.org figures, marked mixed', broken.condition === 'mixed' && broken.low === 6590)
+  // Prisjakt's new offers, one per shop, for price match (migration 191's shop_price_watch.new_offers): the shop's
+  // number and name come from the row itself (shop.name, seen on four saved product pages, 10.11.2026).
+  const eqj = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  check('the new offers: CDON 16 115 and CS MEGASTORE 16 252, both in stock — each with Prisjakt\'s shop number and the row\'s own shop name',
+    eqj(g.newOffers, [{ shop_id: 9738, shop_name: 'CDON', price: 16115, currency: 'NOK', in_stock: true }, { shop_id: 35222, shop_name: 'CS MEGASTORE', price: 16252, currency: 'NOK', in_stock: true }]), JSON.stringify(g.newOffers))
+  check('…none without the list (null: not read), none but used and refurbished ones ([]: read, no new offer), none from a shop\'s own page',
+    schemaOnly.newOffers === null && eqj(usedOnly.newOffers, []) && readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848').newOffers === null)
+  const row = (shopId, price, extra = {}) => ({ productId: 12105530, condition: 'New', price: { amount: price, currency: 'NOK' }, shopId, stockStatus: 'InStock', shop: { name: `Shop ${shopId}` }, ...extra })
+  const dup = readPrice(withRows([row(1, 3000), row(1, 2900), row(2, 2950), row(1, 3100)]), link).newOffers
+  check('one per shop — its cheapest — cheapest first', eqj(dup.map(o => [o.shop_id, o.price]), [[1, 2900], [2, 2950]]), JSON.stringify(dup))
+  const many = readPrice(withRows(Array.from({ length: 70 }, (_, k) => row(1000 + k, 5000 - k))), link).newOffers
+  check('at most 50 (the cheapest 50), as 191 bounds them', many.length === 50 && many[0].price === 4931 && many[49].price === 4980)
+  const stock = readPrice(withRows([row(1, 10, { stockStatus: 'OutOfStock' }), row(2, 11, { stockStatus: 'Backorder' }), row(3, 12, { stockStatus: 'PreOrder' }),
+    row(4, 13, { stockStatus: 'Unknown' }), row(5, 14, { stockStatus: undefined }), row(6, 15)]), link).newOffers
+  check('in stock: InStock true; OutOfStock, Backorder, PreOrder false; anything else not said (null)', eqj(stock.map(o => o.in_stock), [false, false, false, null, null, true]), JSON.stringify(stock))
+  const names = readPrice(withRows([row(1, 10, { shop: { name: 'x'.repeat(121) } }), row(2, 11, { shop: { name: 'Evil‮9 0 9 1' } }), row(3, 12, { shop: { name: '  Power  \n Norge ' } }),
+    row(4, 13, { shop: { name: 42 } }), row(5, 14, { shop: 'Power' }), row(6, 15, { shop: { name: 'Zero​width' } }), row(7, 16, { shop: { name: 'Bell\u0007' } })]), link).newOffers
+  check('a shop\'s name: over 120 characters, with a direction, zero-width or control character, or not text is none; whitespace is squeezed to one line',
+    eqj(names.map(o => o.shop_name), [null, null, 'Power Norge', null, null, null, null]) && names.length === 7, JSON.stringify(names))
+  const ids = readPrice(withRows([row('324', 10), row(0, 11), row(-5, 12), row(1.5, 13), row(1e12, 14), row(null, 15), row(9, 1e9), row(10, 999999999)]), link).newOffers
+  check('an offer without a whole shop number above 0, or with a price of a billion or more, is left out', eqj(ids.map(o => o.shop_id), [10]), JSON.stringify(ids))
+  check('…every offer has exactly the five keys 191 checks', g.newOffers.concat(dup, many, stock, names).every(o => Object.keys(o).sort().join() === 'currency,in_stock,price,shop_id,shop_name'))
+  {
+    const t0 = Date.now()
+    const big = readPrice(withRows(Array.from({ length: 20000 }, (_, k) => row(k + 1, 1000 + (k % 97), { shop: { name: 'Butikk '.repeat(68) } }))), link)
+    const ms = Date.now() - t0
+    check(`a hostile page with 20 000 offers and 480-character names costs a moment (${ms} ms), and keeps 50 without a name`, ms < 2000 && big.newOffers.length === 50 && big.newOffers.every(o => o.shop_name === null), `${ms} ms`)
+  }
   check('a shop\'s own page says nothing about its condition: unknown', readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848').condition === 'unknown')
   check('a Prisjakt page without the list (the 08.10.2026 fixtures): mixed, as before', readPrice(page(ORG, PIXEL), 'https://www.prisjakt.no/product.php?p=16929131').condition === 'mixed')
 }
