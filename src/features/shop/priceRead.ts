@@ -25,7 +25,7 @@
 // supabase/functions/shop-price/index.ts (Deno cannot import from src/).
 
 // <price-read>
-/** 'not_allowed': the link is on a site whose terms forbid automated reading (shop_site_policies, migration 188) — never fetched. */
+/** 'not_allowed': the link's site doesn't let apps read it — its terms (shop_site_policies, migration 188) or its robots.txt — never fetched. */
 export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
 
 /**

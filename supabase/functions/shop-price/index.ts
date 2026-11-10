@@ -23,18 +23,19 @@
 // 1b. Sites that may not be read. A link on a site in shop_site_policies
 //    (migration 188: its terms forbid automated reading — finn.no, tise.com)
 //    is never fetched — not by read, check or the sweep, not as a redirect
-//    hop — and says so (status not_allowed). The list is data, read on every
-//    request; when it can't be read, nothing is fetched (fail closed).
+//    hop — and says so (status not_allowed: "finn.no doesn't let apps read
+//    its pages"). The list is data, read on every request; when it can't be
+//    read, nothing is fetched (fail closed).
 // 1c. robots.txt, for every site. Before every page request — read, check,
 //    the sweep and each redirect hop — the page's own robots.txt is read
 //    (RFC 9309: the group for our product token LascisBoard, else `*`; the
 //    longest matching pattern decides, Allow on a tie; path and query),
 //    through the same guards as a page, 4 s, 512 KiB, kept in memory per
-//    origin for 24 h. A path it disallows is not_allowed ("…'s robots rules
-//    don't allow reading this page"); a 4xx is no rules; a 5xx, a network
-//    error or no answer in time is not read now (status error, kept 10 min),
-//    so the sweep tries again the next morning. The parser is in the
-//    <price-read> block.
+//    origin for 24 h. A path it disallows is not_allowed ("prisjakt.no asks
+//    apps not to read this page"); a 4xx is no rules; a 5xx, a network
+//    error or no answer in time is not read now (status error, "The site
+//    didn't answer", kept 10 min), so the sweep tries again the next morning.
+//    The parser is in the <price-read> block.
 // 2. Rates. Norges Bank's daily rates to NOK (data.norges-bank.no, no key) for
 //    the purchases, sales and extra costs still waiting for theirs: fetched,
 //    cached in fx_rates_nok, then those rows are touched so the database's own
@@ -47,8 +48,9 @@
 //   · the daily cron's `x-cron-secret: <SHOP_PRICE_CRON_SECRET>` (acts as
 //     HEVY_USER_ID; only the `sweep` action).
 //
-// POST { action: 'read', url }          → { result }   a preview, nothing stored (a listed site:
-//                                                     status not_allowed + its `site`, never fetched)
+// POST { action: 'read', url }          → { result }   a preview, nothing stored. No price: `reason`, in the
+//                                                     app's words; a refused link: status not_allowed, `site`,
+//                                                     `refusal` (terms | robots) and `reason` — never fetched
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
 //   A read the owner starts reuses one from the last hour: `check` answers from a watch of the same link
 //   checked under an hour ago, and `read` and `check` share the last hour's reads in memory (by account and
@@ -225,11 +227,19 @@ async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promis
 }
 
 class FetchError extends Error { constructor(public code: string, message: string) { super(message) } }
+// What a site says no to, in the words the app shows (owner, 10.11.2026: plain words, "apps", never "robots rules").
+/** A site as the owner knows it: its host without "www.". */
+const siteName = (host: string) => host.toLowerCase().replace(/^www\./, '')
 /** A link (or a redirect hop) on a site whose terms forbid automated reading: never fetched. */
-class SiteRefused extends FetchError { constructor(public site: string) { super('not_allowed_site', notAllowedText(site)) } }
-const notAllowedText = (site: string) => `${site}'s terms don't allow automated reading`
+class SiteRefused extends FetchError {
+  readonly refusal = 'terms'
+  constructor(public site: string) { super('not_allowed_site', `${site} doesn't let apps read its pages`) }
+}
 /** A page the site's own robots.txt doesn't let us read: never fetched. */
-class RobotsRefused extends FetchError { constructor(public site: string) { super('not_allowed_robots', `${site}'s robots rules don't allow reading this page`) } }
+class RobotsRefused extends FetchError {
+  readonly refusal = 'robots'
+  constructor(public site: string) { super('not_allowed_robots', `${siteName(site)} asks apps not to read this page`) }
+}
 
 async function readCapped(res: Response, max = MAX_BYTES): Promise<Uint8Array> {
   const reader = res.body?.getReader()
@@ -268,7 +278,8 @@ const robotsCache = new Map<string, { rules: RobotsRule[]; error: string | null;
  * The robots.txt rules of a page's origin (its scheme, host and port), as our product token reads them,
  * from memory for up to 24 h. Fetched like a page — http/https only, no private host or name that resolves
  * to one, listed sites refused, on every redirect hop (≤ 5; more is "unavailable") — 4 s, 512 KiB. A 4xx is
- * no rules; a 5xx, a network error or no answer in time throws: the page is not read now (kept 10 min).
+ * no rules; a 5xx, a network error or no answer in time throws: the page is not read now (kept 10 min), said as a
+ * page that didn't answer is ("The site didn't answer") — what the owner needs is that nothing was read now.
  */
 async function robotsRulesFor(page: URL, listed: readonly string[]): Promise<RobotsRule[]> {
   const key = `${page.protocol}//${page.host}`
@@ -284,7 +295,6 @@ async function robotsRulesFor(page: URL, listed: readonly string[]): Promise<Rob
     if (error) throw new FetchError('robots_unavailable', error)
     return rules
   }
-  const unread = (why: string) => `${page.hostname}'s robots rules couldn't be read${why} — not read now`
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), ROBOTS_TIMEOUT_MS)
   try {
@@ -305,13 +315,13 @@ async function robotsRulesFor(page: URL, listed: readonly string[]): Promise<Rob
         current = new URL(location, url).toString()
         continue
       }
-      if (res.status >= 500) { await res.body?.cancel(); return keep([], unread(` (it answered ${res.status})`)) }
+      if (res.status >= 500) { await res.body?.cancel(); return keep([], `The site answered with an error (${res.status})`) }
       if (res.status >= 300) { await res.body?.cancel(); return keep([], null) }
       return keep(robotsRules(new TextDecoder('utf-8').decode(await readCapped(res, ROBOTS_MAX_BYTES))), null)
     }
   } catch (e) {
     if (e instanceof FetchError) throw e
-    return keep([], unread((e as Error).name === 'AbortError' ? ' (no answer in time)' : ''))
+    return keep([], (e as Error).name === 'AbortError' ? 'The site didn\'t answer in time' : 'The site didn\'t answer')
   } finally {
     clearTimeout(timer)
   }
@@ -345,27 +355,27 @@ async function fetchPage(rawUrl: string, listed: readonly string[]): Promise<{ h
       const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
       if (location) {
         await res.body?.cancel()
-        if (hop >= 5) throw new FetchError('upstream', 'Too many redirects')
+        if (hop >= 5) throw new FetchError('upstream', 'The link redirects too many times')
         current = new URL(location, url).toString()
         continue
       }
       const type = res.headers.get('content-type')
       const html = type && !/text\/html|application\/xhtml/i.test(type) ? null : decode(await readCapped(res), type)
       if (html == null) { await res.body?.cancel(); throw new FetchError('not_html', 'The link is not a web page') }
-      if (!res.ok && !isChallengePage(html)) throw new FetchError('upstream', `The site answered ${res.status}`)
+      if (!res.ok && !isChallengePage(html)) throw new FetchError('upstream', `The site answered with an error (${res.status})`)
       return { html, finalUrl: url.toString() }
     }
   } catch (e) {
     if (e instanceof FetchError) throw e
-    if ((e as Error).name === 'AbortError') throw new FetchError('timeout', 'The site took too long to answer')
-    throw new FetchError('upstream', 'Could not reach the site')
+    if ((e as Error).name === 'AbortError') throw new FetchError('timeout', 'The site didn\'t answer in time')
+    throw new FetchError('upstream', 'The site didn\'t answer')
   } finally {
     clearTimeout(timer)
   }
 }
 
 // <price-read>
-/** 'not_allowed': the link is on a site whose terms forbid automated reading (shop_site_policies, migration 188) — never fetched. */
+/** 'not_allowed': the link's site doesn't let apps read it — its terms (shop_site_policies, migration 188) or its robots.txt — never fetched. */
 export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
 
 /**
@@ -981,7 +991,7 @@ async function politeRead(url: string, listed: readonly string[]): Promise<Price
  */
 async function listedSites(supabase: SupabaseClient): Promise<string[]> {
   const { data, error } = await supabase.from('shop_site_policies').select('host').eq('no_automated_reading', true).limit(1000)
-  if (error) throw new FetchError('site_rules', missingTable(error) ? 'Apply migration 188 first' : 'Could not read which sites may be read — nothing was fetched')
+  if (error) throw new FetchError('site_rules', missingTable(error) ? 'Apply migration 188 first' : 'Couldn\'t check which sites let apps read them — nothing was read')
   return ((data ?? []) as { host: string }[]).map(r => r.host).filter(h => typeof h === 'string' && h.length > 0)
 }
 
@@ -992,6 +1002,20 @@ function notAllowedRead(url: string): PriceRead {
     inStock: null, was: null, returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null,
     source: isPrisjaktUrl(url) ? 'prisjakt' : 'store',
   }
+}
+
+/**
+ * Why a page that answered gave no price, in the words the app shows (the watch's error, the paste preview's
+ * note): a bot check, Prisjakt's offer list without a new offer, or a page without a price.
+ */
+function noPriceReason(read: PriceRead & { finalUrl: string }): string {
+  if (read.status === 'blocked') {
+    let host = ''
+    try { host = new URL(read.finalUrl).hostname } catch { /* a read always has its link */ }
+    return `${host ? siteName(host) : 'The site'} blocks apps with a browser check`
+  }
+  if (read.condition === 'new') return read.usedLow != null || read.refurbishedLow != null ? 'No new offer on Prisjakt, only used or refurbished ones' : 'No new offer on Prisjakt'
+  return 'No price on the page'
 }
 
 /**
@@ -1019,7 +1043,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     at = new Date(got.at).toISOString()
   } catch (e) {
     if (e instanceof SiteRefused || e instanceof RobotsRefused) refused = e.message
-    failure = e instanceof FetchError ? e.message : 'Could not read the page'
+    failure = e instanceof FetchError ? e.message : 'Couldn\'t read the page'
   }
 
   // The link may have changed while the page was read (that deletes the watch); never save a price for the old one.
@@ -1059,13 +1083,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     }
   } else {
     const status = refused ? 'not_allowed' : read ? read.status : 'error'
-    const onlyResale = read?.condition === 'new' && (read.usedLow != null || read.refurbishedLow != null)
-    const error = refused
-      ? refused
-      : read
-        ? (read.status === 'blocked' ? 'The site asked for a browser check — it blocks automatic reads'
-          : onlyResale ? 'No new offer on Prisjakt — only used or refurbished ones' : 'No price found on the page')
-        : failure
+    const error = refused ?? (read ? noPriceReason(read) : failure)
     // A page that answered without a price still tells its name and picture (and Prisjakt its used and refurbished offers).
     row = {
       ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error,
@@ -1322,12 +1340,15 @@ Deno.serve(async (req: Request) => {
     if (!url) return json({ error: 'url required' }, 400)
     try {
       const got = await readOnce(userId, url, await listedSites(supabase))
-      return json({ result: { ...got.read, at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}) } })
+      return json({ result: {
+        ...got.read, at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}),
+        ...(got.read.status !== 'ok' ? { reason: noPriceReason(got.read) } : {}),
+      } })
     } catch (e) {
       if (e instanceof SiteRefused || e instanceof RobotsRefused) {
-        return json({ result: { ...notAllowedRead(url), site: e.site, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
+        return json({ result: { ...notAllowedRead(url), site: e.site, refusal: e.refusal, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
       }
-      return json({ error: e instanceof FetchError ? e.message : 'Could not read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)
+      return json({ error: e instanceof FetchError ? e.message : 'Couldn\'t read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)
     }
   }
 

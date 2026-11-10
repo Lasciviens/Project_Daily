@@ -9,10 +9,14 @@ import { rateKey, type RatePair } from '../chainDraft'
 // daily cron does both for everything due.
 
 /**
- * With status not_allowed (nothing was fetched): `site`, the host whose terms or robots rules refuse it, and
- * `reason`, that in one plain sentence ("finn.no's terms don't allow automated reading").
+ * Without a price, `reason` says why in the app's words ("elkjop.no blocks apps with a browser check"). With status
+ * not_allowed (nothing was fetched) also `site`, the host that refuses it, and `refusal`: `terms` (its terms forbid
+ * apps — "finn.no doesn't let apps read its pages") or `robots` (its robots.txt — "prisjakt.no asks apps not to read
+ * this page").
  */
-export type PriceReadResult = PriceRead & { at: string; finalUrl: string; site?: string; reason?: string; reused?: boolean }
+export type PriceReadResult = PriceRead & {
+  at: string; finalUrl: string; site?: string; reason?: string; refusal?: 'terms' | 'robots'; reused?: boolean
+}
 
 function notDeployed(error: unknown): boolean {
   const msg = (error as { message?: string; context?: { status?: number } })?.message ?? ''

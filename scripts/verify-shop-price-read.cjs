@@ -13,6 +13,8 @@ require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
 const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows } = require('../src/features/shop/priceRead')
+const W = require('../src/features/shop/watchWords')
+const { formatTime } = require('../src/shared/utils/dateFormat')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -212,6 +214,30 @@ console.log('\n9 · robots.txt (RFC 9309), on the files the sites served on 10.1
   check('a hostile file (3 000 rules of nested wildcards on a 2 000-letter path) is answered in time, without backtracking blow-up', slow === true && Date.now() - t0 < 3000, `${Date.now() - t0} ms`)
 }
 
+console.log('\n13 · What the app says under a pasted link (watchWords.readNote, the add sheet and Add a model alike)')
+{
+  const at = '2026-11-10T05:23:00.000Z'
+  const hhmm = formatTime(at)
+  const base = { name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null, was: null,
+    returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null, source: 'store', at, finalUrl: 'https://shop.example/p' }
+  const note = extra => W.readNote({ ...base, ...extra })
+  check('a Prisjakt price: its lowest new price, from how many shops, read just now', note({ status: 'ok', source: 'prisjakt', condition: 'new', low: 16115, offers: 2 })
+    === "Prisjakt's lowest new price, from 2 shops — read just now.", note({ status: 'ok', source: 'prisjakt', condition: 'new', low: 16115, offers: 2 }))
+  check('…one shop in the singular; Prisjakt\'s mixed figures say so', note({ status: 'ok', source: 'prisjakt', condition: 'new', low: 1, offers: 1 }) === "Prisjakt's lowest new price, from 1 shop — read just now."
+    && note({ status: 'ok', source: 'prisjakt', condition: 'mixed', low: 6590 }) === "Prisjakt's lowest, new and used offers alike — read just now.")
+  check('a shop\'s price read within the hour says when ("read at HH:MM")', note({ status: 'ok', low: 9990, reused: true }) === `The shop's price — read at ${hhmm}.`)
+  check('a site\'s terms: what it says and what to do — never "open it yourself"', note({ status: 'not_allowed', refusal: 'terms', reason: "finn.no doesn't let apps read its pages" })
+    === "finn.no doesn't let apps read its pages — type the name and price yourself.")
+  check('a robots refusal: paste the product\'s own page', note({ status: 'not_allowed', refusal: 'robots', reason: 'prisjakt.no asks apps not to read this page' })
+    === "prisjakt.no asks apps not to read this page — paste the product's own page.")
+  check('a bot check, and one read within the hour (its time)', note({ status: 'blocked', reason: 'elkjop.no blocks apps with a browser check' }) === 'elkjop.no blocks apps with a browser check — type the price yourself.'
+    && note({ status: 'blocked', reason: 'elkjop.no blocks apps with a browser check', reused: true }) === `elkjop.no blocks apps with a browser check (read at ${hhmm}) — type the price yourself.`)
+  check('no price, and Prisjakt without a new offer (read within the hour too)', note({ status: 'no_price', reason: 'No price on the page' }) === 'No price on the page — type the price yourself.'
+    && note({ status: 'no_price', reason: 'No new offer on Prisjakt, only used or refurbished ones', reused: true }) === `No new offer on Prisjakt, only used or refurbished ones (read at ${hhmm}) — type the price yourself.`)
+  check('an answer without its reason (an older function) still says something true', note({ status: 'blocked' }) === 'That site blocks apps with a browser check — type the price yourself.'
+    && note({ status: 'not_allowed' }) === "That site doesn't let apps read its pages — type the name and price yourself.")
+}
+
 // ── 8 · The real shop-price handler never fetches a listed site ──────────────
 // Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`;
 // a robots.txt from `robots` (an unscripted one answers 404: no rules), counted apart in `robotsAsked`.
@@ -274,6 +300,7 @@ async function handlerChecks() {
   let call = shopPrice({ db: dbWith(FINN), pages: {}, fetched, writes })
   let r = await call({ action: 'read', url: FINN })
   check('read: a FINN ad is not_allowed, names finn.no, and nothing is fetched', r.result?.status === 'not_allowed' && r.result?.site === 'finn.no' && fetched.length === 0, JSON.stringify(r) + ' ' + fetched.join(' '))
+  check('…said in plain words: its terms (refusal terms), "finn.no doesn\'t let apps read its pages"', r.result?.refusal === 'terms' && r.result?.reason === "finn.no doesn't let apps read its pages", JSON.stringify(r.result))
   r = await call({ action: 'read', url: 'https://M.TISE.COM/p/1' })
   check('read: a subdomain of a listed site in capitals too', r.result?.status === 'not_allowed' && r.result?.site === 'tise.com' && fetched.length === 0)
 
@@ -289,7 +316,7 @@ async function handlerChecks() {
   r = await call({ action: 'check', ids: ['i1'] })
   const watch = writes.find(w => w.table === 'shop_price_watch' && w.op === 'upsert')?.row
   check('check: no fetch; the watch says not_allowed in plain words, and no price point is added', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
-    && watch?.status === 'not_allowed' && watch?.error === "finn.no's terms don't allow automated reading" && !writes.some(w => w.table === 'shop_price_points'),
+    && watch?.status === 'not_allowed' && watch?.error === "finn.no doesn't let apps read its pages" && !writes.some(w => w.table === 'shop_price_points'),
     JSON.stringify(r) + ' ' + JSON.stringify(watch))
 
   fetched = []; writes = []
@@ -299,13 +326,23 @@ async function handlerChecks() {
     && writes.some(w => w.table === 'shop_price_watch' && w.row?.status === 'not_allowed'), JSON.stringify(r) + ' fetched ' + fetched.join(' '))
 
   fetched = []; writes = []
+  const gate = 'https://www.gate.example/p'
+  const challenge = '<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt = {}</script></body></html>'
+  call = shopPrice({ db: dbWith(gate), pages: { [gate]: { status: 403, body: challenge } }, fetched, writes })
+  r = await call({ action: 'read', url: gate })
+  const gc = await call({ action: 'check', ids: ['i1'] })
+  const gw = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('a bot check is blocked, said with the site\'s name ("gate.example blocks apps with a browser check") in the preview and on the watch', r.result?.status === 'blocked'
+    && r.result?.reason === 'gate.example blocks apps with a browser check' && gc.results?.[0]?.status === 'blocked' && gw?.error === 'gate.example blocks apps with a browser check', JSON.stringify([r, gc, gw]))
+
+  fetched = []; writes = []
   const shop = 'https://shop.example/p'
   call = shopPrice({ db: dbWith(shop, { data: null, error: { code: 'XX000', message: 'boom' } }), pages: { [shop]: { status: 200, body: page(TCL) } }, fetched, writes })
   r = await call({ action: 'read', url: shop })
   const c = await call({ action: 'check', ids: ['i1'] })
   const sw = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
-  check('the list can\'t be read: read, check and the sweep fetch nothing (fail closed) and say why', fetched.length === 0 && /nothing was fetched/.test(r.error ?? '')
-    && /nothing was fetched/.test(c.error ?? '') && /nothing was fetched/.test(sw.error ?? ''), JSON.stringify([r, c, sw]))
+  check('the list can\'t be read: read, check and the sweep fetch nothing (fail closed) and say why', fetched.length === 0 && /nothing was read/.test(r.error ?? '')
+    && /nothing was read/.test(c.error ?? '') && /nothing was read/.test(sw.error ?? ''), JSON.stringify([r, c, sw]))
 
   fetched = []; writes = []
   call = shopPrice({ db: dbWith(shop), pages: { [shop]: { status: 200, body: page(TCL) } }, fetched, writes })
@@ -322,8 +359,8 @@ async function handlerChecks() {
   fetched = []; writes = []
   call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS, robotsAsked })
   r = await call({ action: 'read', url: search })
-  check('read: a Prisjakt search is not_allowed by its robots rules — said so, the page never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'www.prisjakt.no'
-    && r.result?.reason === "www.prisjakt.no's robots rules don't allow reading this page" && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify(r))
+  check('read: a Prisjakt search is not_allowed by its robots rules — said so in plain words (refusal robots), the page never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'www.prisjakt.no'
+    && r.result?.refusal === 'robots' && r.result?.reason === 'prisjakt.no asks apps not to read this page' && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify(r))
   const product = 'https://www.prisjakt.no/product.php?p=12105530'
   const iphone = { body: fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8') }
   call = shopPrice({ db: dbWith(product), pages: { [product]: iphone, [`${product}&a-116257=Frost`]: iphone }, fetched, writes, robots: PJ_ROBOTS, robotsAsked: (robotsAsked = []) })
@@ -336,15 +373,15 @@ async function handlerChecks() {
   r = await call({ action: 'check', ids: ['i1'] })
   const robotsWatch = writes.find(w => w.table === 'shop_price_watch')?.row
   check('check: the same — no fetch; the watch says not_allowed with the robots wording', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
-    && robotsWatch?.status === 'not_allowed' && robotsWatch?.error === "www.prisjakt.no's robots rules don't allow reading this page", JSON.stringify(robotsWatch))
+    && robotsWatch?.status === 'not_allowed' && robotsWatch?.error === 'prisjakt.no asks apps not to read this page', JSON.stringify(robotsWatch))
   fetched = []; writes = []
   call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS })
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('sweep: the same — no fetch, not_allowed', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0, JSON.stringify(r))
 
   const plain = 'https://plain.example/p'
-  for (const [what, answer, expect] of [['answers 503', { status: 503 }, /plain\.example's robots rules couldn't be read \(it answered 503\) — not read now/],
-    ['gives no answer (a network error)', new TypeError('network'), /plain\.example's robots rules couldn't be read — not read now/]]) {
+  for (const [what, answer, expect] of [['answers 503', { status: 503 }, /^The site answered with an error \(503\)$/],
+    ['gives no answer (a network error)', new TypeError('network'), /^The site didn't answer$/]]) {
     fetched = []; writes = []; robotsAsked = []
     call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robots: { 'https://plain.example/robots.txt': answer }, robotsAsked })
     const c1 = await call({ action: 'check', ids: ['i1'] })
@@ -388,10 +425,10 @@ async function handlerChecks() {
   r = await call({ action: 'check', ids: ['i1'] })
   check('…the same when that check was blocked: Check now tries again only after the hour', fetched.length === 0 && r.results?.[0]?.status === 'blocked' && r.results?.[0]?.reused === true)
   fetched = []; writes = []
-  call = shopPrice({ db: dbWith(FINN, undefined, watchOf(10, FINN, { status: 'not_allowed', low: null, error: "finn.no's terms don't allow automated reading" })), pages: {}, fetched, writes })
+  call = shopPrice({ db: dbWith(FINN, undefined, watchOf(10, FINN, { status: 'not_allowed', low: null, error: "finn.no doesn't let apps read its pages" })), pages: {}, fetched, writes })
   r = await call({ action: 'check', ids: ['i1'] })
   check('…but a refusal is answered as itself, never "the next read can be after …" (and still nothing is fetched)', fetched.length === 0
-    && r.results?.[0]?.status === 'not_allowed' && !r.results?.[0]?.reused && r.results?.[0]?.error === "finn.no's terms don't allow automated reading", JSON.stringify(r))
+    && r.results?.[0]?.status === 'not_allowed' && !r.results?.[0]?.reused && r.results?.[0]?.error === "finn.no doesn't let apps read its pages", JSON.stringify(r))
   fetched = []; writes = []
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(70)), pages: tv, fetched, writes })
   r = await call({ action: 'check', ids: ['i1'] })
@@ -432,7 +469,7 @@ async function handlerChecks() {
     check(`…and Check now still tries (its ${status} answer is over an hour old)`, fetched.length === 1 && r.results?.[0]?.status === 'ok', JSON.stringify(r))
   }
   fetched = []; writes = []
-  call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "plain.example's robots rules couldn't be read — not read now", low: null })), pages: tv, fetched, writes })
+  call = shopPrice({ db: dbWith(plain, undefined, watchOf(2 * 24 * 60, plain, { status: 'error', error: "The site didn't answer", low: null })), pages: tv, fetched, writes })
   r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
   check('a link whose last check failed (an error — robots.txt unreachable, say) is tried again the next morning', r.checked === 1 && fetched.length === 1, JSON.stringify(r))
 }

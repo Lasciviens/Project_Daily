@@ -12,8 +12,9 @@ import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
  * shop's own price, with where it was read — a link to the product's page —
  * and when, the trend, the history, and what it means here — at your target,
  * or cheaper than you paid while it can still be returned. A blocked check
- * says so and keeps the last price read; a link on a site whose terms forbid
- * automated reading is never read, and the card says so with the link to open.
+ * says so and keeps the last price read; a link on a site that doesn't let
+ * apps read it (its terms, or its robots.txt) is never read, and the card
+ * says so in a neutral tone — it is the site's answer, not a failure.
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
   const check = useCheckPrices()
@@ -66,8 +67,8 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
           {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
           {refused ? (
             <p className="text-meta text-fg-muted">
-              {current.error ?? `${site} doesn't allow automated reading`} — <SiteLink url={item.url}>open it yourself</SiteLink>
-              {low != null && current.last_ok_at && <> The price above is from {formatDate(current.last_ok_at)}.</>}
+              {current.error ?? `${site} doesn't let apps read its pages`}, so its price isn't checked.
+              {low != null && current.last_ok_at && <> The price above was read {formatDate(current.last_ok_at)}.</>}
             </p>
           ) : failed && (
             <p className="text-meta text-warn">
