@@ -112,6 +112,12 @@ check('Shop Owned: the summary line right above the things, first; Coming up in 
   return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['summary', 'groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['coming']) && last.sticky
 }))
 check('Shop Owned on a phone: the filters, coming up, then the summary line right above the things', eq(Sh.OWNED_BOARD[1], ['filters', 'coming', 'summary', 'groups']))
+check('Shop Wishlist (prototype): Owned\'s shape — the filters across the top, the tiles in every track but the last, Needs a look in a sticky rail on the right (owner, 14.10.2026)', [2, 3, 4].every(s => {
+  const l = B.resolveBoardLayout(Sh.WISHLIST_BOARD, s)
+  const last = l.columns[l.columns.length - 1]
+  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['look']) && last.sticky
+}))
+check('Shop Wishlist on a phone: Needs a look (one line) first — the filters go away for an empty wishlist — then the filters and the tiles', eq(Sh.WISHLIST_BOARD[1], ['look', 'filters', 'groups']))
 check('Health Overview: the six tiles lead in main at every wide step', [2, 3, 4].every(s => B.resolveBoardLayout(H.OVERVIEW_BOARD, s).columns[0].stack[0] === 'hero'))
 check('Health Overview at 2450: the tiles get main + one side (three across)', B.columnWidthPx(W.monitor, B.resolveBoardLayout(H.OVERVIEW_BOARD, 4), 0, 2) >= 64 * rem)
 check('Health Overview at 1469: tiles two across (main < 64rem)', B.columnWidthPx(W.laptop, B.resolveBoardLayout(H.OVERVIEW_BOARD, 2), 0, 1) < 64 * rem)

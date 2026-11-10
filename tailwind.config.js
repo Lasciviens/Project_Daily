@@ -41,6 +41,7 @@ export default {
         upcoming: tone('upcoming'),
         star:    tone('star'),
         scrim:   rgb('scrim'),
+        well:    rgb('well'),     // the picture well behind a product photo
 
         // ── Legacy names (kept: ~5,000 existing uses restyle for free) ─────
         canvas: rgb('canvas'),

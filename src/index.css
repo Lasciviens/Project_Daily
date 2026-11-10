@@ -83,6 +83,10 @@
     /* Always-dark surface: modal scrims and text/shade over photos. */
     --scrim: 2 6 23;
 
+    /* The picture well behind a product photo (THEME.md §2.1). The photo is
+       multiplied onto it, so a store photo's white ground takes this colour. */
+    --well: 240 242 246;
+
     /* Semantic tones, each with a soft background tint. */
     --success: 22 163 74;    --success-soft: 222 242 230;
     --warn:    217 119 6;    --warn-soft:    250 236 220;
@@ -139,6 +143,10 @@
     --cream-100: 20 27 39;
     --cream-200: 23 31 45;
     --cream-300: 6 9 15;
+
+    /* A dimmed light grey: white product photos don't glare on the dark cards,
+       and dark products still stand out on it. */
+    --well: 176 184 197;
 
     --ink-900: 238 242 247;
     --ink-800: 218 224 233;
@@ -707,6 +715,17 @@ select:focus-visible,
 .tone-soft { background: rgb(var(--tone-soft, var(--neutral-soft))); }
 /* A solid tone band (progress fills). */
 .tone-solid { background: rgb(var(--tone, var(--neutral))); color: #fff; }
+/* A category's tint (THEME.md §2.5): the chart series by data attribute, for a
+   picture tile with no picture — a soft fill, and initials mixed towards the
+   strongest ink (darker in light, lighter in dark) so they read on it. */
+[data-tint='1'] { --tint: var(--chart-1); }
+[data-tint='2'] { --tint: var(--chart-2); }
+[data-tint='3'] { --tint: var(--chart-3); }
+[data-tint='4'] { --tint: var(--chart-4); }
+[data-tint='5'] { --tint: var(--chart-5); }
+[data-tint='6'] { --tint: var(--chart-6); }
+.tint-fill { background: rgb(var(--tint, var(--chart-6)) / 0.16); }
+.tint-ink { color: color-mix(in srgb, rgb(var(--tint, var(--chart-6))) 70%, rgb(var(--ink-900))); }
 /* The poster status belt sits on artwork in both themes, so its colours are
    fixed and dark enough for white 11px text (≥ 4.5:1), not the theme tones. */
 .poster-belt { color: #fff; background: #475569; }
