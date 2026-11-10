@@ -10,7 +10,10 @@
 //      INVOKER, and scripts/db-tests/read-query/fallback.sql shows the name checks and the last line still hold.
 // is_app_user() is 139's own text, run as it is. Static checks first: 185 re-creates only ai_run_read_query, creates
 // it SECURITY INVOKER and makes it a definer only after handing it to authenticated (inside its own exception block),
-// checks the owner lock first, grants it to authenticated only, and no later migration replaces it.
+// checks the owner lock first, and grants it to authenticated only. A later migration may re-create it only to watch
+// more settings (189: 187's app.shop_restored): 185's text word for word but for added names in `watched`, replaced
+// inside a block that keeps 185's function where the migration may not replace it, the same grants, and 185's wall
+// again. Each such migration runs (twice) after 185 in both databases, so the scenarios meet the newest function.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-read-query.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
@@ -24,6 +27,9 @@ const migDir = join(root, 'supabase/migrations')
 const testDir = join(root, 'scripts/db-tests/read-query')
 const mig185 = join(migDir, '185_read_query_lockdown.sql')
 const fail = msg => { console.error(`verify-db-read-query: ${msg}`); process.exit(1) }
+// Later migrations that re-create the read query, in the order the deploy runs them.
+const laterRecreations = readdirSync(migDir).filter(f => /^\d{3}_.*\.sql$/.test(f) && Number(f.slice(0, 3)) > 185)
+  .sort().filter(f => /function public\.ai_run_read_query/i.test(readFileSync(join(migDir, f), 'utf8')))
 
 const fnText = (file, name) => {
   const m = readFileSync(join(migDir, file), 'utf8').match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`, 'i'))
@@ -59,9 +65,39 @@ const fnText = (file, name) => {
     || /grant\s+execute on function public\.ai_run_read_query\(text\) to (?!authenticated;)/i.test(sql)) {
     fail('185 must grant the read query to authenticated only (not anon, not public)')
   }
-  const later = readdirSync(migDir).filter(f => /^\d+_/.test(f) && Number(f.slice(0, 3)) > 185)
-  for (const f of later) if (/function public\.ai_run_read_query/i.test(readFileSync(join(migDir, f), 'utf8'))) {
-    fail(`${f} re-creates ai_run_read_query: keep 185's checks and add its case to scripts/db-tests/read-query`)
+  // A later re-creation: 185's function but for more watched names, its grants, and the wall rebuilt.
+  const watchedOf = text => {
+    const m = text.match(/watched constant text\[\] := array\[([\s\S]*?)\];/)
+    if (!m) return null
+    return { names: [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]), text: text.replace(m[0], 'watched constant text[] := array[…];') }
+  }
+  const base = watchedOf(body)
+  if (!base) fail('185\'s function has no `watched` list')
+  for (const f of laterRecreations) {
+    const raw = readFileSync(join(migDir, f), 'utf8')
+    const lsql = raw.replace(/--.*$/gm, '')
+    const fn = fnText(f, 'ai_run_read_query')
+    const w = watchedOf(fn)
+    if (!w || w.text !== base.text) fail(`${f} re-creates ai_run_read_query with more than a longer \`watched\` list: keep 185's text word for word`)
+    const lost = base.names.filter(n => !w.names.includes(n))
+    if (lost.length) fail(`${f} stops watching ${lost.join(', ')}`)
+    if (w.names.length === base.names.length) fail(`${f} re-creates ai_run_read_query without adding a watched name`)
+    const blockRaw = raw.match(/do \$replace\$[\s\S]*?\n\$replace\$;/i)?.[0] ?? ''
+    const block = blockRaw.replace(/--.*$/gm, '')
+    if (!blockRaw.includes(fn) || !/exception when insufficient_privilege then/i.test(block) || /exception when others/i.test(block)) {
+      fail(`${f} must replace the function inside its own block that keeps 185's where it may not (insufficient_privilege only)`)
+    }
+    if (!/revoke all\s+on function public\.ai_run_read_query\(text\) from public, anon;/i.test(block)
+      || !/grant\s+execute on function public\.ai_run_read_query\(text\) to authenticated;/i.test(block)
+      || /grant\s+execute on function public\.ai_run_read_query\(text\) to (?!authenticated;)/i.test(lsql)) {
+      fail(`${f} must grant the read query to authenticated only, in the same block`)
+    }
+    const lwall = lsql.slice(lsql.search(/do \$wall\$/i))
+    const lown = lwall.search(/alter function public\.ai_run_read_query\(text\) owner to authenticated;/i)
+    const ldef = lwall.search(/alter function public\.ai_run_read_query\(text\) security definer;/i)
+    if (lsql.search(/do \$wall\$/i) < lsql.search(/do \$replace\$/i) || lown < 0 || ldef < lown || !/exception when others then/i.test(lwall)) {
+      fail(`${f} must rebuild 185's wall after the replace: hand the function to authenticated, then SECURITY DEFINER, in its own exception block`)
+    }
   }
 }
 
@@ -97,6 +133,7 @@ try {
   if (before.error) failed = `before 185 (140's read query):\n${before.error}`
   if (!failed) {
     for (let n = 0; n < 2; n++) psql(target, ['-f', mig185])
+    for (const f of laterRecreations) for (let n = 0; n < 2; n++) psql(target, ['-f', join(migDir, f)])
     const after = runFile(target, join(testDir, 'scenarios.sql'))
     passed += after.ok
     if (after.error) failed = after.error
@@ -113,10 +150,14 @@ try {
       ${fnText('140_security_fixes.sql', 'ai_run_read_query')}
       revoke all on function public.ai_run_read_query(text) from public, anon;
       grant execute on function public.ai_run_read_query(text) to authenticated;`])
-    const run185 = spawnSync('psql', [fb, '-v', 'ON_ERROR_STOP=1', '-q', '-c', 'set role t185_mig', '-f', mig185], { encoding: 'utf8' })
-    if (run185.status !== 0) failed = `185 failed where its wall can't be built (it must not):\n${run185.stderr}`
-    else if (!/185: the read query could not be put behind/.test(run185.stderr)) failed = '185 did not say in the log that its wall could not be built'
-    else {
+    for (const f of ['185_read_query_lockdown.sql', ...laterRecreations]) {
+      if (failed) break
+      const n = f.slice(0, 3)
+      const run = spawnSync('psql', [fb, '-v', 'ON_ERROR_STOP=1', '-q', '-c', 'set role t185_mig', '-f', join(migDir, f)], { encoding: 'utf8' })
+      if (run.status !== 0) failed = `${n} failed where the wall can't be built (it must not):\n${run.stderr}`
+      else if (!new RegExp(`${n}: the read query could not be put behind`).test(run.stderr)) failed = `${n} did not say in the log that its wall could not be built`
+    }
+    if (!failed) {
       const fallback = runFile(fb, join(testDir, 'fallback.sql'))
       passed += fallback.ok
       if (fallback.error) failed = `where the wall can't be built:\n${fallback.error}`
@@ -129,4 +170,4 @@ try {
   try { psql(url, ['-c', 'drop role if exists t185_mig']) } catch { /* another run may still use it */ }
 }
 if (failed) process.exit(1)
-console.log(`verify-db-read-query: 140's hole reproduced, then 185 (applied twice, behind its wall and without it) and ${passed} scenarios passed`)
+console.log(`verify-db-read-query: 140's hole reproduced, then ${['185', ...laterRecreations.map(f => f.slice(0, 3))].join(' + ')} (each applied twice, behind the wall and without it) and ${passed} scenarios passed`)
