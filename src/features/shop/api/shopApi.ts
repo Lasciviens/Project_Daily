@@ -59,7 +59,26 @@ export async function fetchShopItems(): Promise<ShopItem[]> {
     .range(from, to))
 }
 
+/**
+ * A write that named the add sheet's planned `facts` column on a database without it (PGRST204 / 42703): the row
+ * is saved again without its facts' sources (its EAN, price and the rest are columns of their own). Goes once the
+ * column's migration has shipped.
+ */
+const missingFacts = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST204' || e.code === '42703') && /\bfacts\b/.test(e.message ?? '')
+
 export async function createShopItem(input: CreateShopItemInput): Promise<ShopItem> {
+  try {
+    return await insertShopItem(input)
+  } catch (e) {
+    if (input.facts === undefined || !missingFacts(e as { code?: string; message?: string })) throw e
+    const rest = { ...input }
+    delete rest.facts
+    return insertShopItem(rest)
+  }
+}
+
+async function insertShopItem(input: CreateShopItemInput): Promise<ShopItem> {
   const user = await requireUser()
   const { title, price, region, ...rest } = input
   const { data, error } = await supabase

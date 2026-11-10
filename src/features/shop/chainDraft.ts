@@ -222,7 +222,8 @@ export interface DraftRowsOptions {
 }
 
 /** Every column of a row, so a row written in one go never leaves a NOT NULL column empty (shop_restore_items reads them all). */
-export type FullShopItem = Required<ShopItem>
+// Without the add sheet's planned `facts` column: a chain's rows are written as they are, and no database has it yet.
+export type FullShopItem = Required<Omit<ShopItem, 'facts'>>
 
 /** A day's local noon — the same instant the other Shop forms store for a day. */
 export function middayOf(day: string): string {

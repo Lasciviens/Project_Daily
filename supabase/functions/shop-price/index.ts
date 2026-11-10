@@ -8,8 +8,9 @@
 //    working if they change their pages or block servers, and a Cloudflare
 //    check ("Just a moment…") is reported as `blocked`, never as a price. The
 //    block between the <price-read> markers is a HAND MIRROR of
-//    src/features/shop/priceRead.ts (scripts/verify-shop-price-read.cjs fails
-//    while the two differ).
+//    src/features/shop/priceRead.ts, and the <product-facts> block one of
+//    src/features/shop/productFacts.ts (scripts/verify-shop-price-read.cjs
+//    fails while either pair differs).
 //    A Prisjakt page's schema.org figures mix new, refurbished and used
 //    offers; its own offer list marks each one, so the price now is its new
 //    offers only, and the cheapest used and refurbished ones are kept beside
@@ -53,7 +54,11 @@
 //
 // POST { action: 'read', url }          → { result }   a preview, nothing stored. No price: `reason`, in the
 //                                                     app's words; a refused link: status not_allowed, `site`,
-//                                                     `refusal` (terms | robots) and `reason` — never fetched
+//                                                     `refusal` (terms | robots) and `reason` — never fetched.
+//   The add sheet's facts come from the same read (the schema.org block, nothing more fetched): brand, the
+//   model code (`mpn`/`model`, else a code in the name: modelFrom 'name'), the EAN (13 digits, check digit
+//   verified), the offer's condition, return days, Prisjakt's product number and its spec rows. `check` and
+//   the sweep store none of them.
 // POST { action: 'check', ids: [≤ 10] } → { results }  the caller's own rows with a link
 //   A read the owner starts reuses one from the last hour: `check` answers from a watch of the same link
 //   checked under an hour ago (a refusal as itself; a failed check is tried again at once), and `read` and
@@ -386,6 +391,61 @@ async function fetchPage(rawUrl: string, listed: readonly string[]): Promise<{ h
   }
 }
 
+// <product-facts>
+/** The longest name kept (as Delete's Undo keeps it: 187's left(name, 300)); a longer one is looked at no further. */
+export const NAME_MAX = 300
+
+/**
+ * An EAN (GTIN) as 13 digits: 8 to 14 digits as text or a number — a shorter one padded with zeros in front, as
+ * Power's `gtin13` drops them ("195949822629", "45496321444"); a 14-digit one only with a leading 0 — and only when
+ * its check digit holds and it isn't all zeros. Else null. A text longer than 20 characters is none.
+ */
+export function ean13(v: unknown): string | null {
+  const s = typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? String(v) : typeof v === 'string' && v.length <= 20 ? v.trim() : ''
+  if (!/^\d{8,14}$/.test(s)) return null
+  const d = s.length === 14 ? (s[0] === '0' ? s.slice(1) : '') : s.padStart(13, '0')
+  if (!d || /^0+$/.test(d)) return null
+  let sum = 0
+  for (let i = 0; i < 12; i++) sum += Number(d[i]) * (i % 2 === 0 ? 1 : 3)
+  return (10 - (sum % 10)) % 10 === Number(d[12]) ? d : null
+}
+
+/** A size or an amount, never a model code: "128GB", "9.5L", "2x5Ah", "825GB". */
+const AMOUNT_WORD = /^\d+([.,]\d+)?(x\d+([.,]\d+)?)?[a-z]{0,4}$/i
+
+/**
+ * A model code inside a product's name — the last word of 5 to 24 letters, digits, "-" and "." with a letter and at
+ * least two digits that isn't a size or an amount: "Makita DDF485RTJ (2x5Ah)" → DDF485RTJ, "LG C5 55" … (2025) -
+ * OLED55C51LA" → OLED55C51LA, "Apple iPhone 16 128GB" → null. A guess, so the app says "check". A name longer than a
+ * kept one (300) is none.
+ */
+export function modelInName(name: string | null): string | null {
+  if (!name || name.length > NAME_MAX) return null
+  let found: string | null = null
+  for (const raw of name.split(/[\s,;:()[\]{}/\\"'”“«»+&|*!?]+/)) {
+    const w = raw.replace(/^[.-]+|[.-]+$/g, '')
+    if (w.length < 5 || w.length > 24 || !/^[A-Za-z0-9.-]+$/.test(w) || !/[A-Za-z]/.test(w) || (w.match(/\d/g) ?? []).length < 2) continue
+    if (!AMOUNT_WORD.test(w)) found = w
+  }
+  return found
+}
+
+/** Whether a link is a Prisjakt product page: prisjakt.no or a subdomain, `/product.php` (or `/produkt.php`) with a number as `p`. */
+export function isPrisjaktUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return /(^|\.)prisjakt\.no$/i.test(u.hostname) && /^\/(product|produkt)\.php$/i.test(u.pathname) && /^\d+$/.test(u.searchParams.get('p') ?? '')
+  } catch { return false }
+}
+
+/** Prisjakt's product number on one of its product links (`p=13854649`), else null. */
+export function prisjaktProduct(url: string): string | null {
+  if (!isPrisjaktUrl(url)) return null
+  const p = new URL(url).searchParams.get('p') ?? ''
+  return /^\d{1,12}$/.test(p) ? p : null
+}
+// </product-facts>
+
 // <price-read>
 /** 'not_allowed': the link's site doesn't let apps read it — its terms (shop_site_policies, migration 188) or its robots.txt — never fetched. */
 export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
@@ -398,13 +458,30 @@ export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
  */
 export type PriceCondition = 'new' | 'mixed' | 'unknown'
 
+/** What an offer says the thing is (schema.org `itemCondition`). */
+export type ItemCondition = 'new' | 'used' | 'refurbished' | 'damaged'
+
+/** One specification row of the data block (`additionalProperty`): "Type" → "Over-ear hodetelefoner". */
+export interface SpecRow { name: string; value: string }
+
 export interface PriceRead {
   status: PriceReadStatus
   /** The product's name as the page gives it. */
   name: string | null
   image: string | null
+  /** The data block's own brand (`brand.name`) — never guessed from the name or the link. */
   brand: string | null
-  gtin: string | null
+  /** The EAN as 13 digits (gtin13, gtin …; a shorter one padded with zeros), only when its check digit holds. */
+  ean: string | null
+  /** The model code: the data block's `mpn` or `model` (`modelFrom: 'data'`), else a code inside the name (`'name'`: check it). */
+  model: string | null
+  modelFrom: 'data' | 'name' | null
+  /** The offer's condition (`itemCondition`); Prisjakt: 'new' when the price is its new offers'. */
+  itemCondition: ItemCondition | null
+  /** Prisjakt's product number — the link's `p=` — on a Prisjakt product page, else null. */
+  prisjaktId: string | null
+  /** The data block's specification rows (`additionalProperty`, as Prisjakt publishes them), bounded (`specRows`). */
+  specs: SpecRow[]
   /** The lowest price on the page (Prisjakt: the cheapest new offer). */
   low: number | null
   /** The highest offer (Prisjakt: the dearest new one) — equal to `low` for a single shop. */
@@ -508,7 +585,66 @@ function firstString(v: unknown): string | null {
 
 interface OfferSummary {
   low: number | null; high: number | null; count: number | null; currency: string | null; inStock: boolean | null
-  was: number | null; returnDays: number | null
+  was: number | null; returnDays: number | null; itemCondition: ItemCondition | null
+}
+
+/** The longest model code kept ("OLED55C54LA.AEU", "MYE73QN/A" are far shorter). */
+const MODEL_MAX = 64
+
+/** A model code as the data block gives it (`mpn`, `model` — text, or an object with a name): letters, digits, spaces and . / _ + - only, up to 64. */
+function modelCode(v: unknown): string | null {
+  const s = typeof v === 'string' ? v : isObj(v) && typeof v.name === 'string' ? v.name : typeof v === 'number' && Number.isSafeInteger(v) ? String(v) : ''
+  if (!s || s.length > MODEL_MAX * 2) return null
+  const t = s.trim()
+  return t.length >= 2 && t.length <= MODEL_MAX && /^[\p{L}\p{N}][\p{L}\p{N} ./_+-]*$/u.test(t) ? t : null
+}
+
+/** What an offer's `itemCondition` names ("https://schema.org/NewCondition" → new), else null. */
+function conditionOf(v: unknown): ItemCondition | null {
+  const s = typeof v === 'string' ? v : isObj(v) ? firstString(v['@id'] ?? v.name) : null
+  if (!s || s.length > 100) return null
+  const m = /(New|Used|Refurbished|Damaged)Condition$/i.exec(s.trim())
+  return m ? (m[1].toLowerCase() as ItemCondition) : null
+}
+
+/** The most specification rows kept, the properties looked at, and a row's longest name and value. */
+const SPEC_ROWS_MAX = 30
+const SPEC_SCAN_MAX = 200
+const SPEC_NAME_MAX = 80
+const SPEC_VALUE_MAX = 300
+
+/** A specification's name or value as plain text (a number as written), control characters as spaces, cut to `max` — else ''. */
+function specText(v: unknown, max: number): string {
+  const s = typeof v === 'number' && Number.isFinite(v) ? String(v) : typeof v === 'string' ? v.slice(0, max * 2) : ''
+  const t = s.replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim()
+  return clippedTo(t, max)
+}
+
+/**
+ * The data block's specification rows (schema.org `additionalProperty`, as Prisjakt publishes them). Prisjakt flattens
+ * a list: a property with an empty value is the previous one's next value — `Funksjoner: Avtagbar kabel`, then
+ * `Sammenleggbar` with "" reads "Funksjoner: Avtagbar kabel, Sammenleggbar". Bounded: the first 200 properties, 30
+ * rows, a name of 80 characters and a value of 300 (a longer list stops growing), text and numbers only.
+ */
+export function specRows(v: unknown): SpecRow[] {
+  const out: SpecRow[] = []
+  if (!Array.isArray(v)) return out
+  for (let i = 0; i < v.length && i < SPEC_SCAN_MAX; i++) {
+    const p: unknown = v[i]
+    if (!isObj(p)) continue
+    const name = specText(p.name, SPEC_NAME_MAX)
+    if (!name || (typeof p.value !== 'string' && typeof p.value !== 'number')) continue
+    const value = specText(p.value, SPEC_VALUE_MAX)
+    const last = out[out.length - 1]
+    if (!value && last) {
+      const joined = last.value ? `${last.value}, ${name}` : name
+      if (joined.length <= SPEC_VALUE_MAX) last.value = joined
+      continue
+    }
+    if (out.length >= SPEC_ROWS_MAX) break
+    out.push({ name, value })
+  }
+  return out
 }
 
 const asList = (v: unknown): Json[] => (Array.isArray(v) ? v : v == null ? [] : [v]).filter(isObj)
@@ -550,7 +686,7 @@ function offerSummary(offers: unknown): OfferSummary | null {
     const low = parsePrice(agg.lowPrice ?? agg.price)
     const high = parsePrice(agg.highPrice) ?? low
     const count = typeof agg.offerCount === 'number' ? agg.offerCount : parsePrice(agg.offerCount)
-    return { low, high, count: count == null ? null : Math.round(count), currency: firstString(agg.priceCurrency), inStock: null, was: null, returnDays: null }
+    return { low, high, count: count == null ? null : Math.round(count), currency: firstString(agg.priceCurrency), inStock: null, was: null, returnDays: null, itemCondition: null }
   }
   const pub = list.filter(isPublic)
   const pool = pub.length ? pub : list
@@ -572,6 +708,7 @@ function offerSummary(offers: unknown): OfferSummary | null {
     low: best.price, high, count: null, currency: best.currency, inStock: best.inStock,
     was: was != null && was > best.price ? was : null,
     returnDays: returnDays(best.offer),
+    itemCondition: conditionOf(best.offer.itemCondition),
   }
 }
 
@@ -619,13 +756,6 @@ function variantFor(variants: Json[], pageUrl: string): Json | null {
  */
 export function isChallengePage(html: string): boolean {
   return /<title>\s*(Just a moment|Attention Required!|Client Challenge)/i.test(html) || /window\._cf_chl_opt|cf-browser-verification/i.test(html)
-}
-
-export function isPrisjaktUrl(url: string): boolean {
-  try {
-    const u = new URL(url)
-    return /(^|\.)prisjakt\.no$/i.test(u.hostname) && /^\/(product|produkt)\.php$/i.test(u.pathname) && /^\d+$/.test(u.searchParams.get('p') ?? '')
-  } catch { return false }
 }
 
 /**
@@ -914,12 +1044,13 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
 export function readPrice(html: string, pageUrl: string): PriceRead {
   const source: PriceRead['source'] = isPrisjaktHost(pageUrl) ? 'prisjakt' : 'store'
   const empty: PriceRead = {
-    status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
+    status: 'no_price', name: null, image: null, brand: null, ean: null, model: null, modelFrom: null, itemCondition: null,
+    prisjaktId: prisjaktProduct(pageUrl), specs: [], low: null, high: null, offers: null, currency: null, inStock: null,
     was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
   }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
-  const fromSchema = keptText(schemaPrice(html, pageUrl, empty))
-  const product = isPrisjaktUrl(pageUrl) ? new URL(pageUrl).searchParams.get('p') : null
+  const fromSchema = withModel(keptText(schemaPrice(html, pageUrl, empty)))
+  const product = empty.prisjaktId
   const rows = product ? prisjaktOfferRows(html, product) : null
   const scope = rows ? offersFor(rows, pageUrl) : null
   if (!scope) return fromSchema
@@ -928,7 +1059,16 @@ export function readPrice(html: string, pageUrl: string): PriceRead {
     ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
     currency: currencyCode(c.currency) ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
     condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
+    // The price is the cheapest new offer's, so the thing priced is a new one; without a new offer, none is.
+    itemCondition: c.low != null ? 'new' : null,
   }
+}
+
+/** A page whose data block names no model: a code inside its name, if there is one (to check). */
+function withModel(r: PriceRead): PriceRead {
+  if (r.model) return r
+  const inName = modelInName(r.name)
+  return inName ? { ...r, model: inName, modelFrom: 'name' } : r
 }
 
 /** Whether a page is Prisjakt's own: its host is prisjakt.no or a subdomain of it — never a shop's link that only names it (`utm_source=prisjakt.no`). */
@@ -936,8 +1076,7 @@ function isPrisjaktHost(url: string): boolean {
   try { return /(^|\.)prisjakt\.no$/.test(new URL(url).hostname.toLowerCase().replace(/\.+$/, '')) } catch { return false }
 }
 
-/** The longest name kept, and the longest picture link (as Delete's Undo keeps them: 187's left(name, 300) and shop_web_link). */
-const NAME_MAX = 300
+/** The longest picture link kept (as Delete's Undo keeps it: shop_web_link); a name's is NAME_MAX (300, productFacts). */
 const IMAGE_MAX = 2048
 
 /** A page's text as a watch may keep it: a name or brand of up to 300 characters, a picture only as a web link of up to 2 048, a currency only as three capitals — else none. */
@@ -946,8 +1085,13 @@ function keptText(r: PriceRead): PriceRead {
 }
 
 function clipped(s: string | null): string | null {
-  if (s == null || s.length <= NAME_MAX) return s
-  const cut = s.slice(0, NAME_MAX)
+  return s == null ? s : clippedTo(s, NAME_MAX)
+}
+
+/** `s` cut to `max` characters, never inside a pair of surrogates (an emoji). */
+function clippedTo(s: string, max: number): string {
+  if (s.length <= max) return s
+  const cut = s.slice(0, max)
   return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
 }
 
@@ -974,18 +1118,25 @@ function schemaPrice(html: string, pageUrl: string, empty: PriceRead): PriceRead
     if (!summary) summary = offerSummary(p.offers)
     if (!summary && variants.length) summary = groupSummary(variants)
     const brand = isObj(p.brand) ? firstString(p.brand.name) : firstString(p.brand)
-    const gtin = firstString(p.gtin13 ?? p.gtin ?? p.gtin12 ?? p.gtin14 ?? p.gtin8 ?? from.gtin13)
+    // The first code that is an EAN (a page may give gtin13 and gtin both); a code whose check digit fails is none.
+    const ean = [from.gtin13, from.gtin, p.gtin13, p.gtin, p.gtin12, p.gtin14, p.gtin8].map(ean13).find(e => e != null) ?? null
+    const model = modelCode(from.mpn) ?? modelCode(p.mpn) ?? modelCode(from.model) ?? modelCode(p.model)
     const result: PriceRead = {
       ...empty,
       name: firstString(from.name) ?? firstString(p.name),
       image: firstString(from.image) ?? firstString(p.image),
       brand,
-      gtin,
+      ean,
+      model,
+      modelFrom: model ? 'data' : null,
+      itemCondition: conditionOf(from.itemCondition) ?? conditionOf(p.itemCondition),
+      specs: specRows(Array.isArray(from.additionalProperty) ? from.additionalProperty : p.additionalProperty),
     }
     if (summary?.low != null) {
       return {
         ...result, status: 'ok', low: summary.low, high: summary.high, offers: summary.count,
         currency: summary.currency?.toUpperCase() ?? null, inStock: summary.inStock, was: summary.was, returnDays: summary.returnDays,
+        itemCondition: summary.itemCondition ?? result.itemCondition,
       }
     }
     if (result.name) return result
@@ -1168,7 +1319,8 @@ async function listedSites(supabase: SupabaseClient): Promise<string[]> {
 /** What a read says about a link on a listed site: nothing was fetched. */
 function notAllowedRead(url: string): PriceRead {
   return {
-    status: 'not_allowed', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null,
+    status: 'not_allowed', name: null, image: null, brand: null, ean: null, model: null, modelFrom: null, itemCondition: null,
+    prisjaktId: null, specs: [], low: null, high: null, offers: null, currency: null,
     inStock: null, was: null, returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null,
     source: isPrisjaktUrl(url) ? 'prisjakt' : 'store',
   }
