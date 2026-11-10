@@ -11,9 +11,13 @@
 --     chain builder saves through the same function.
 --  2. Delete takes a row's price watch and its history (ON DELETE CASCADE): shop_delete_items now keeps
 --     them in its snapshot, and shop_restore_items puts them back through shop_restore_price_history
---     (SECURITY DEFINER — the browser has no write on those tables; it takes the caller's own items
---     only, checks every field, never overwrites a watch written since). Rows of a table added later that
---     point at shop_items are kept too (`more`) and come back with them, one level deep.
+--     (SECURITY DEFINER — the browser has no write on those tables). It writes only for the rows that same
+--     Undo just put back — shop_restore_items lists their ids in the transaction-local setting
+--     app.shop_restored, which the browser can't set, behind the transaction's own stamp (a value left on
+--     a pooled connection never counts) — so a direct call writes nothing; and it checks every field
+--     (prices from 0 below infinity, no NaN; counts 0–100 000; no time in the future or made up). Rows of
+--     a table added later that point at shop_items are kept too (`more`) and come back with them, one
+--     level deep — only as shop_delete_items keeps them, and only where the caller may write them back.
 --  3. A rate is "Norges Bank" only when it is Norges Bank's rate of that day as the database has it: a
 --     rate a write sends is typed by hand (manual) unless it is exactly that rate — 137 kept a forged rate
 --     sent with fx_source 'norges_bank'. Purchase, sale and extra cost alike. A rate a write clears is
@@ -27,7 +31,8 @@
 --  6. shop_undo_sale is the whole inverse of shop_record_sale: the sale writes on the thing sold
 --     (sale_undo) which accessories it moved and what it did to the money link, and its Undo moves them
 --     back and puts the link back (a link the sale made goes; an amount it changed returns) — each only
---     while it still is as the sale left it. Kept accessories must be accessories of the thing sold.
+--     while it still is as the sale left it, and every record in the group on its own row. Kept
+--     accessories must be accessories of the thing sold.
 --  7. Money links are checked again whenever one of their things changes (it became an accessory, an
 --     errand, not kept, a wish again …), at the end of the transaction; and a link to a fulfilled general
 --     wish counts as one to its bought model in the loop check (137 accepted thing → wish + model → thing).
@@ -316,7 +321,7 @@ as $$
     select w.id, m.id
       from public.shop_items w
       join public.shop_items m on m.option_for = w.id
-     where w.user_id = p_user and w.kind = 'general' and w.status = 'fulfilled'
+     where w.user_id = p_user and m.user_id = p_user and w.kind = 'general' and w.status = 'fulfilled'
        and m.status = 'bought' and coalesce(m.disposal, '') <> 'returned'
   ), ahead(id) as (
     select p_start
@@ -490,8 +495,10 @@ $$;
 
 -- Undo a sale: the thing and everything sold with it are yours again; the accessories it moved go back
 -- on the thing and the money link is as it was before — each only while still as the sale left it (a
--- later change is kept). sale_undo is written by the sale, but like any column it is input here: it can
--- only move a row back onto the thing sold and restore that thing's own link.
+-- later change is kept). sale_undo is written by the sale, but like any column it is input here: a record
+-- can only move a row back onto the row that carries it and restore that row's own link. A group can hold
+-- more than one record (sold things put in one group by a later write): each is replayed on its own row,
+-- the asked-for row's first.
 create or replace function public.shop_undo_sale(p_id uuid)
 returns integer
 language plpgsql
@@ -501,6 +508,8 @@ as $$
 declare
   g      uuid;
   n      int;
+  v_recs jsonb;
+  v_rec  jsonb;
   v_main uuid;
   v_undo jsonb;
   k      jsonb;
@@ -511,43 +520,46 @@ begin
   if not found then
     raise exception 'Not sold or gone';
   end if;
-  select i.id, i.sale_undo into v_main, v_undo
+  -- Read before the sale is taken back: that clears every record.
+  select coalesce(jsonb_agg(jsonb_build_object('id', i.id, 'undo', i.sale_undo) order by (i.id = p_id) desc, i.id), '[]'::jsonb)
+    into v_recs
     from public.shop_items i
-   where (i.id = p_id or (g is not null and i.sale_group = g)) and i.sale_undo is not null
-   order by (i.id = p_id) desc
-   limit 1;
+   where (i.id = p_id or (g is not null and i.sale_group = g)) and i.sale_undo is not null;
   update public.shop_items set disposal = null where id = p_id or (g is not null and sale_group = g);
   get diagnostics n = row_count;
-  if jsonb_typeof(v_undo) is distinct from 'object' then
-    return n;
-  end if;
 
-  for k in select * from jsonb_array_elements(case when jsonb_typeof(v_undo -> 'kept') = 'array' then v_undo -> 'kept' else '[]'::jsonb end) loop
-    begin
-      update public.shop_items s set accessory_of = v_main
-       where s.id = (k ->> 'id')::uuid
-         and s.accessory_of is not distinct from nullif(k ->> 'to', '')::uuid
-         and not exists (select 1 from public.shop_item_links l where l.from_id = s.id or l.to_id = s.id);
-    exception when check_violation or invalid_text_representation then
-      null;  -- it can't be an accessory of the thing again (it has its own now): it stays where it is
-    end;
+  for v_rec in select value from jsonb_array_elements(v_recs) loop
+    v_main := (v_rec ->> 'id')::uuid;
+    v_undo := v_rec -> 'undo';
+    continue when jsonb_typeof(v_undo) is distinct from 'object';
+
+    for k in select * from jsonb_array_elements(case when jsonb_typeof(v_undo -> 'kept') = 'array' then v_undo -> 'kept' else '[]'::jsonb end) loop
+      begin
+        update public.shop_items s set accessory_of = v_main
+         where s.id = (k ->> 'id')::uuid
+           and s.accessory_of is not distinct from nullif(k ->> 'to', '')::uuid
+           and not exists (select 1 from public.shop_item_links l where l.from_id = s.id or l.to_id = s.id);
+      exception when check_violation or invalid_text_representation then
+        null;  -- it can't be an accessory of the thing again (it has its own now): it stays where it is
+      end;
+    end loop;
+
+    v_link := v_undo -> 'link';
+    if jsonb_typeof(v_link) = 'object' then
+      begin
+        v_to := (v_link ->> 'to')::uuid;
+        if (v_link ->> 'made')::boolean then
+          delete from public.shop_item_links l
+           where l.from_id = v_main and l.to_id = v_to and l.amount is not distinct from nullif(v_link ->> 'amount', '')::numeric;
+        else
+          update public.shop_item_links l set amount = nullif(v_link ->> 'amount_was', '')::numeric
+           where l.from_id = v_main and l.to_id = v_to and l.amount is not distinct from nullif(v_link ->> 'amount', '')::numeric;
+        end if;
+      exception when check_violation or invalid_text_representation then
+        null;  -- not a link this sale could have written: left as it is
+      end;
+    end if;
   end loop;
-
-  v_link := v_undo -> 'link';
-  if jsonb_typeof(v_link) = 'object' then
-    begin
-      v_to := (v_link ->> 'to')::uuid;
-      if (v_link ->> 'made')::boolean then
-        delete from public.shop_item_links l
-         where l.from_id = v_main and l.to_id = v_to and l.amount is not distinct from nullif(v_link ->> 'amount', '')::numeric;
-      else
-        update public.shop_item_links l set amount = nullif(v_link ->> 'amount_was', '')::numeric
-         where l.from_id = v_main and l.to_id = v_to and l.amount is not distinct from nullif(v_link ->> 'amount', '')::numeric;
-      end if;
-    exception when check_violation or invalid_text_representation then
-      null;  -- not a link this sale could have written: left as it is
-    end;
-  end if;
   return n;
 end;
 $$;
@@ -627,10 +639,15 @@ begin
 end;
 $$;
 
--- The price watch and its history of the caller's own items, back after Delete's Undo. Those tables are
--- written by shop-price only (the browser has no write on them), so this checks what it is given: the
--- caller's own items that exist, the caller's own account on every row, web links only, no time in the
--- future, a watch written since kept as it is, at most the newest 20 000 points.
+-- The price watch and its history of the rows Delete's Undo just put back. Those tables are written by
+-- shop-price only (the browser has no write on them), so this writes only for the rows this same
+-- shop_restore_items call re-inserted — it lists their ids in the transaction-local setting
+-- app.shop_restored, which the browser can't set (PostgREST exposes no set_config; 185 refuses it in the
+-- read query and 189 watches it there), so a direct call writes nothing. The list counts only with this
+-- transaction's own stamp (its id and start time) in front: a value left on a pooled connection by an
+-- earlier request never matches. Then it checks what it is given: the caller's own account on every row,
+-- web links only, a price from 0 below infinity (NaN sorts above infinity, so it goes too), a count from
+-- 0 to 100 000, no time in the future and none made up, at most the newest 20 000 points.
 create or replace function public.shop_restore_price_history(p_watches jsonb, p_points jsonb)
 returns integer
 language plpgsql
@@ -638,9 +655,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_user uuid := (select auth.uid());
-  n      integer := 0;
-  k      integer;
+  v_user  uuid := (select auth.uid());
+  v_stamp text := pg_catalog.txid_current()::text || '/' || extract(epoch from pg_catalog.now())::text;
+  v_set   text := coalesce(pg_catalog.current_setting('app.shop_restored', true), '');
+  v_back  uuid[];
+  n       integer := 0;
+  k       integer;
 begin
   if v_user is null or not public.is_app_user() then
     raise exception 'Not allowed' using errcode = '42501';
@@ -648,25 +668,38 @@ begin
   if jsonb_typeof(coalesce(p_watches, '[]'::jsonb)) <> 'array' or jsonb_typeof(coalesce(p_points, '[]'::jsonb)) <> 'array' then
     raise exception 'Not a price history' using errcode = '22023';
   end if;
+  if pg_catalog.split_part(v_set, '|', 1) = v_stamp then
+    v_back := pg_catalog.string_to_array(nullif(pg_catalog.split_part(v_set, '|', 2), ''), ',')::uuid[];
+  end if;
   insert into public.shop_price_watch (item_id, user_id, url, checked_at, status, error, source, name, image, low, high,
                                        offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at)
   select w.item_id, v_user, public.shop_web_link(w.url), least(w.checked_at, now()), w.status, left(w.error, 500),
          case when w.source in ('prisjakt', 'store') then w.source end, left(w.name, 300), public.shop_web_link(w.image),
-         w.low, w.high, w.offers, case when w.currency ~ '^[A-Z]{3}$' then w.currency end, w.in_stock, w.was,
-         w.return_days, least(w.last_ok_at, now()), w.prev_low, least(w.prev_at, now())
+         case when w.low >= 0 and w.low < 'Infinity' then w.low end,
+         case when w.high >= 0 and w.high < 'Infinity' then w.high end,
+         case when w.offers between 0 and 100000 then w.offers end,
+         case when w.currency ~ '^[A-Z]{3}$' then w.currency end, w.in_stock,
+         case when w.was >= 0 and w.was < 'Infinity' then w.was end,
+         case when w.return_days between 0 and 100000 then w.return_days end,
+         case when w.last_ok_at is null then null else least(w.last_ok_at, now()) end,
+         case when w.prev_low >= 0 and w.prev_low < 'Infinity' then w.prev_low end,
+         case when w.prev_at is null then null else least(w.prev_at, now()) end
     from jsonb_populate_recordset(null::public.shop_price_watch, coalesce(p_watches, '[]'::jsonb)) w
-   where exists (select 1 from public.shop_items i where i.id = w.item_id and i.user_id = v_user)
+   where w.item_id = any (v_back)
+     and exists (select 1 from public.shop_items i where i.id = w.item_id and i.user_id = v_user)
   on conflict (item_id) do nothing;
   get diagnostics k = row_count;
   n := n + k;
   insert into public.shop_price_points (id, user_id, item_id, checked_at, low, high, offers, currency, source)
-  select coalesce(p.id, gen_random_uuid()), v_user, p.item_id, least(p.checked_at, now()), p.low, p.high, p.offers,
+  select coalesce(p.id, gen_random_uuid()), v_user, p.item_id, least(p.checked_at, now()), p.low,
+         case when p.high >= 0 and p.high < 'Infinity' then p.high end,
+         case when p.offers between 0 and 100000 then p.offers end,
          case when p.currency ~ '^[A-Z]{3}$' then p.currency end, case when p.source in ('prisjakt', 'store') then p.source end
     from (select x.* from jsonb_populate_recordset(null::public.shop_price_points, coalesce(p_points, '[]'::jsonb)) x
-           where x.checked_at is not null and x.low is not null
+           where x.item_id = any (v_back) and x.checked_at is not null and x.low >= 0 and x.low < 'Infinity'
+             and exists (select 1 from public.shop_items i where i.id = x.item_id and i.user_id = v_user)
            order by x.checked_at desc
            limit 20000) p
-   where exists (select 1 from public.shop_items i where i.id = p.item_id and i.user_id = v_user)
   on conflict (id) do nothing;
   get diagnostics k = row_count;
   return n + k;
@@ -766,22 +799,31 @@ begin
     end;
   end loop;
 
-  -- 5. The price watch and its history.
+  -- 5. The price watch and its history — of the rows step 1 put back only: the helper writes for the ids
+  --    in this transaction-local setting, which lives just for the call (the browser can't set it), behind
+  --    this transaction's stamp (the helper checks it is its own transaction's).
   if jsonb_array_length(coalesce(p_snapshot -> 'watches', '[]'::jsonb)) > 0
      or jsonb_array_length(coalesce(p_snapshot -> 'points', '[]'::jsonb)) > 0 then
+    perform pg_catalog.set_config('app.shop_restored',
+      pg_catalog.txid_current()::text || '/' || extract(epoch from pg_catalog.now())::text || '|' || pg_catalog.array_to_string(v_ids, ','), true);
     perform public.shop_restore_price_history(p_snapshot -> 'watches', p_snapshot -> 'points');
+    perform pg_catalog.set_config('app.shop_restored', '', true);
   end if;
 
   -- 6. Rows of later tables that point at shop_items: deleted ones back, emptied pointers back (while
-  --    still empty). Only a table that really points at shop_items.
+  --    still empty). Only what shop_delete_items keeps: a table that really points at shop_items with a
+  --    foreign key that deletes (deleted) or empties (emptied), never one of Shop's own five.
   for m in select value from jsonb_array_elements(coalesce(p_snapshot -> 'more', '[]'::jsonb)) loop
     v_tbl := to_regclass(format('public.%I', m ->> 'table'));
     v_col := m ->> 'col';
     continue when v_tbl is null or not exists (
       select 1 from pg_catalog.pg_constraint k
+        join pg_catalog.pg_class cc on cc.oid = k.conrelid
         join pg_catalog.pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
        where k.contype = 'f' and k.conrelid = v_tbl and k.confrelid = 'public.shop_items'::regclass
-         and array_length(k.conkey, 1) = 1 and a.attname::text = v_col);
+         and array_length(k.conkey, 1) = 1 and a.attname::text = v_col
+         and k.confdeltype = case m ->> 'action' when 'deleted' then 'c' when 'emptied' then 'n' end
+         and cc.relname not in ('shop_items', 'shop_item_links', 'shop_item_costs', 'shop_price_watch', 'shop_price_points'));
     for r in select value from jsonb_array_elements(coalesce(m -> 'rows', '[]'::jsonb)) loop
       if m ->> 'action' = 'deleted' then
         v_cols := public.shop_named_columns(v_tbl, r);
@@ -826,4 +868,4 @@ grant execute on function public.shop_restore_items(jsonb) to authenticated;
 comment on function public.shop_restore_items(jsonb) is
   'Puts back a shop_delete_items snapshot (rows, then parents, costs, links, unlinked children, price history, later tables) or saves a chain built in the app — one transaction, as the caller.';
 comment on function public.shop_restore_price_history(jsonb, jsonb) is
-  'Delete''s Undo of the price watch and its history: the caller''s own items only, every field checked, a watch written since kept.';
+  'Delete''s Undo of the price watch and its history: only for the rows that same shop_restore_items call put back (app.shop_restored; a direct call writes nothing), every field checked.';

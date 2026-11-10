@@ -317,14 +317,44 @@ begin
   perform t_ok((select count(*) = 2 from public.shop_items where sale_group is not null and disposal = 'sold' and id in ('c5000000-0000-0000-0000-00000000000a', 'c5000000-0000-0000-0000-00000000000b')),
     'S5 …and back with its sale group whole');
 end $$;
+-- Two things sold apart, then put in one sale group by a later write: each carries its own Undo record,
+-- and Undo replays both, each on its own row (one picked and the other cleared unreplayed was the bug).
+do $$
+begin
+  insert into public.shop_items (id, title, price, status, bought_at) values
+    ('c5100000-0000-0000-0000-00000000000a', 'Laptop', 9000, 'bought', '2026-01-01 12:00+01'),
+    ('c5100000-0000-0000-0000-00000000000b', 'Laptop bag', 400, 'bought', '2026-01-01 12:00+01'),
+    ('c5100000-0000-0000-0000-00000000000c', 'Monitor', 3000, 'bought', '2026-01-01 12:00+01'),
+    ('c5100000-0000-0000-0000-00000000000d', 'Monitor arm', 600, 'bought', '2026-01-01 12:00+01');
+  insert into public.shop_items (id, title, status) values ('c5100000-0000-0000-0000-00000000000e', 'New laptop', 'wishlist');
+  update public.shop_items set accessory_of = 'c5100000-0000-0000-0000-00000000000a' where id = 'c5100000-0000-0000-0000-00000000000b';
+  update public.shop_items set accessory_of = 'c5100000-0000-0000-0000-00000000000c' where id = 'c5100000-0000-0000-0000-00000000000d';
+  perform public.shop_record_sale('[{"id": "c5100000-0000-0000-0000-00000000000a", "sale_price": "5000"}]', 'sold', '2026-10-01', 'NOK', null,
+    '[{"id": "c5100000-0000-0000-0000-00000000000b", "move_to": null}]', 'c5100000-0000-0000-0000-00000000000e', null);
+  perform public.shop_record_sale('[{"id": "c5100000-0000-0000-0000-00000000000c", "sale_price": "2000"}]', 'sold', '2026-10-01', 'NOK', null,
+    '[{"id": "c5100000-0000-0000-0000-00000000000d", "move_to": null}]');
+  update public.shop_items set sale_group = 'c5100000-0000-0000-0000-0000000000f1'
+   where id in ('c5100000-0000-0000-0000-00000000000a', 'c5100000-0000-0000-0000-00000000000c');
+  perform t_ok((select count(*) = 2 from public.shop_items where sale_group = 'c5100000-0000-0000-0000-0000000000f1' and sale_undo is not null),
+    'S5 two sales put in one sale group by a later write: both rows carry their own Undo record');
+  perform t_ok(public.shop_undo_sale('c5100000-0000-0000-0000-00000000000c') = 2, 'S5 …Undo from the monitor takes both back (2 rows)');
+  perform t_ok((select accessory_of = 'c5100000-0000-0000-0000-00000000000a' from public.shop_items where id = 'c5100000-0000-0000-0000-00000000000b')
+               and (select accessory_of = 'c5100000-0000-0000-0000-00000000000c' from public.shop_items where id = 'c5100000-0000-0000-0000-00000000000d')
+               and not exists (select 1 from public.shop_item_links where from_id = 'c5100000-0000-0000-0000-00000000000a')
+               and not exists (select 1 from public.shop_items where id in ('c5100000-0000-0000-0000-00000000000a', 'c5100000-0000-0000-0000-00000000000c')
+                                                           and (disposal is not null or sale_undo is not null)),
+    'S5 …and replays each record on its own row: the bag back on the laptop, the arm on the monitor, the laptop''s money link gone');
+end $$;
 
 -- ═══ S6. Delete with Undo ════════════════════════════════════════════════════
 reset role;
 insert into public.shop_items (id, user_id, title, price, status, bought_at, url) values
   ('c6000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', 'Camera', 8000, 'bought', '2026-02-01 12:00+01', 'https://www.prisjakt.no/product.php?p=9'),
   ('c6000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001', 'Lens', 3000, 'bought', '2026-02-01 12:00+01', null);
-insert into public.shop_price_watch (item_id, user_id, url, status, low, source, image)
-  values ('c6000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', 'https://www.prisjakt.no/product.php?p=9', 'ok', 7490, 'prisjakt', 'https://img.example.com/c.jpg');
+-- one price read so far: a last read, no read before it
+insert into public.shop_price_watch (item_id, user_id, url, status, low, source, image, last_ok_at)
+  values ('c6000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001', 'https://www.prisjakt.no/product.php?p=9', 'ok', 7490, 'prisjakt',
+          'https://img.example.com/c.jpg', '2026-11-01 08:00+01');
 insert into public.shop_price_points (user_id, item_id, checked_at, low)
   select '00000000-0000-0000-0000-000000000001', 'c6000000-0000-0000-0000-00000000000a', now() - g * interval '1 day', 7000 + g from generate_series(1, 30) g;
 -- the stranger's (account 2) item, for the helper's checks
@@ -347,9 +377,10 @@ begin
                and (select accessory_of = 'c6000000-0000-0000-0000-00000000000a' from public.shop_items where id = 'c6000000-0000-0000-0000-00000000000b')
                and (select amount = 500 from public.shop_item_links where from_id = 'c6000000-0000-0000-0000-00000000000a')
                and (select count(*) = 1 from public.shop_item_costs where item_id = 'c6000000-0000-0000-0000-00000000000a')
-               and (select low = 7490 and image = 'https://img.example.com/c.jpg' from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a')
+               and (select low = 7490 and image = 'https://img.example.com/c.jpg' and last_ok_at = '2026-11-01 08:00+01' and prev_at is null
+                    from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a')
                and (select count(*) = 30 from public.shop_price_points where item_id = 'c6000000-0000-0000-0000-00000000000a' and user_id = auth.uid()),
-    'S6 Undo: the camera, its lens on it, the link, the cost, the watch and its history');
+    'S6 Undo: the camera, its lens on it, the link, the cost, the watch (its one read as it was, no read before it made up) and its history');
   -- a snapshot from before 187 (no watches, points or more) still goes back
   s := public.shop_delete_items(array['c6000000-0000-0000-0000-00000000000b']::uuid[]);
   perform public.shop_restore_items(s - 'watches' - 'points' - 'more' - 'hidden' - 'v');
@@ -360,29 +391,68 @@ begin
   insert into public.t_keep values ('lens', s);
 end $$;
 do $$
-declare n int; e text;
+declare n int; e text; s jsonb;
 begin
-  -- the helper: own items only, the caller's account on each row, web links only, no future, a newer watch kept
-  n := public.shop_restore_price_history(jsonb_build_array(
-         jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'status', 'ok', 'low', 1),
-         jsonb_build_object('item_id', 'c6000000-0000-0000-0000-0000000000f2', 'status', 'ok', 'low', 1)),
-       jsonb_build_array(
-         jsonb_build_object('item_id', 'c6000000-0000-0000-0000-0000000000f2', 'checked_at', now(), 'low', 1),
-         jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'checked_at', now() + interval '3 days', 'low', 2,
-                            'user_id', '00000000-0000-0000-0000-000000000002', 'source', 'evil', 'currency', 'nok<script>')));
-  perform t_ok(n = 1 and (select low = 7490 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a'),
-    'S6 helper: the camera''s watch written since is kept; the stranger''s item gets nothing (1 point added)');
-  perform t_ok((select user_id = auth.uid() and checked_at <= now() and source is null and currency is null
-                from public.shop_price_points where item_id = 'c6000000-0000-0000-0000-00000000000a' and low = 2),
-    'S6 helper: the point is the caller''s own, never in the future, with no unknown source or odd currency');
+  -- The helper writes only for the rows the same Undo put back: a direct call writes nothing — not for a
+  -- live row of the caller's (the camera, its watch gone), not for a stranger's.
   delete from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a';
-  perform public.shop_restore_price_history(jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'status', 'ok',
-    'low', 1, 'image', 'javascript:alert(1)', 'url', 'data:text/html,x', 'name', repeat('n', 400))), '[]');
-  perform t_ok((select image is null and url is null and char_length(name) = 300 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a'),
-    'S6 helper: a picture or link that is no web address is not kept; a long name is cut');
+  n := public.shop_restore_price_history(
+         jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'status', 'ok', 'low', 1),
+                           jsonb_build_object('item_id', 'c6000000-0000-0000-0000-0000000000f2', 'status', 'ok', 'low', 1)),
+         jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'checked_at', now(), 'low', 2),
+                           jsonb_build_object('item_id', 'c6000000-0000-0000-0000-0000000000f2', 'checked_at', now(), 'low', 2)));
+  perform t_ok(n = 0 and not exists (select 1 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a')
+               and not exists (select 1 from public.shop_price_points where item_id in ('c6000000-0000-0000-0000-00000000000a', 'c6000000-0000-0000-0000-0000000000f2') and low = 2),
+    'S6 helper: a direct call writes nothing — not for a live row of the caller''s, not for a stranger''s');
+  -- Through Delete's Undo, a row put back with a forged history: every field is checked, and only that row gets one.
+  s := jsonb_build_object(
+    'items', jsonb_build_array(jsonb_build_object('id', 'c6000000-0000-0000-0000-00000000000d', 'title', 'Flash', 'status', 'wishlist')),
+    'watches', jsonb_build_array(
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'status', 'ok', 'low', -5, 'high', 'NaN', 'was', 'Infinity',
+                         'prev_low', 'NaN', 'offers', -3, 'return_days', 2000000000, 'checked_at', now() + interval '3 days',
+                         'last_ok_at', null, 'prev_at', null, 'image', 'javascript:alert(1)', 'url', 'data:text/html,x', 'name', repeat('n', 400)),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'status', 'ok', 'low', 3)),
+    'points', jsonb_build_array(
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'checked_at', now() - interval '1 day', 'low', 'NaN'),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'checked_at', now() - interval '2 days', 'low', 'Infinity'),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'checked_at', now() - interval '3 days', 'low', -5),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'checked_at', now() + interval '3 days', 'low', 4, 'high', 'NaN', 'offers', -1,
+                         'user_id', '00000000-0000-0000-0000-000000000002', 'source', 'evil', 'currency', 'nok<script>'),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000a', 'checked_at', now(), 'low', 3),
+      jsonb_build_object('item_id', 'c6000000-0000-0000-0000-0000000000f2', 'checked_at', now(), 'low', 3)));
+  perform public.shop_restore_items(s);
+  perform t_ok((select low is null and high is null and was is null and prev_low is null and offers is null and return_days is null
+                       and checked_at <= now() and last_ok_at is null and prev_at is null and user_id = auth.uid()
+                       and image is null and url is null and char_length(name) = 300
+                from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000d'),
+    'S6 helper: no NaN, infinite or negative price or count is kept, no time in the future or made up (never read stays never read), no picture or link that is no web address; a long name is cut');
+  perform t_ok((select count(*) = 1 from public.shop_price_points where item_id = 'c6000000-0000-0000-0000-00000000000d')
+               and (select low = 4 and high is null and offers is null and user_id = auth.uid() and checked_at <= now() and source is null and currency is null
+                    from public.shop_price_points where item_id = 'c6000000-0000-0000-0000-00000000000d'),
+    'S6 helper: a point priced NaN, infinite or below 0 is not kept; the one kept is the caller''s own, never in the future, with no unknown source or odd currency');
+  perform t_ok(not exists (select 1 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000a')
+               and not exists (select 1 from public.shop_price_points where item_id in ('c6000000-0000-0000-0000-00000000000a', 'c6000000-0000-0000-0000-0000000000f2') and low = 3),
+    'S6 helper: that Undo writes nothing for a live row it didn''t put back, nor for a stranger''s');
+  -- The ids live only for the helper's call: a direct call later in the same transaction writes nothing.
+  delete from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000d';
+  n := public.shop_restore_price_history(jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'status', 'ok', 'low', 5)), '[]');
+  perform t_ok(n = 0 and not exists (select 1 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000d'),
+    'S6 helper: …nor does a direct call after it in the same transaction');
   e := t_err($q$select public.shop_restore_price_history('{}', '[]')$q$);
   perform t_ok(e like '22023 %', 'S6 helper: not a list, refused (' || e || ')');
 end $$;
+-- A list left on the connection by an earlier request (as a read query could leave one, had it got past
+-- 185's guard): set for the whole session, with that request's own stamp or with none. A later direct call
+-- writes nothing.
+select set_config('app.shop_restored', txid_current()::text || '/' || extract(epoch from now())::text || '|c6000000-0000-0000-0000-00000000000d', false);
+select t_ok(public.shop_restore_price_history(jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'status', 'ok', 'low', 6)), '[]') = 0
+        and not exists (select 1 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000d'),
+  'S6 helper: a list an earlier request left on the connection (its own stamp) writes nothing in a later one');
+select set_config('app.shop_restored', 'c6000000-0000-0000-0000-00000000000d', false);
+select t_ok(public.shop_restore_price_history(jsonb_build_array(jsonb_build_object('item_id', 'c6000000-0000-0000-0000-00000000000d', 'status', 'ok', 'low', 6)), '[]') = 0
+        and not exists (select 1 from public.shop_price_watch where item_id = 'c6000000-0000-0000-0000-00000000000d'),
+  'S6 helper: …nor a bare list without a stamp');
+select set_config('app.shop_restored', '', false);
 reset role;
 set test.uid = '00000000-0000-0000-0000-000000000003';
 set role authenticated;
@@ -440,6 +510,13 @@ begin
   perform public.shop_restore_items(jsonb_build_object('items', '[]'::jsonb, 'more', jsonb_build_array(jsonb_build_object('table', 'tasks', 'col', 'id',
     'action', 'deleted', 'rows', jsonb_build_array(jsonb_build_object('title', 'Smuggled'))))));
   perform t_ok(not exists (select 1 from public.tasks where title = 'Smuggled'), 'S6 a snapshot naming a table that doesn''t point at shop_items writes nothing there');
+  perform public.shop_restore_items(jsonb_build_object('items', '[]'::jsonb, 'more', jsonb_build_array(
+    jsonb_build_object('table', 'shop_item_costs', 'col', 'item_id', 'action', 'deleted', 'rows', jsonb_build_array(jsonb_build_object(
+      'item_id', 'c6100000-0000-0000-0000-00000000000a', 'label', 'Smuggled', 'amount', 5, 'currency', 'NOK', 'spent_on', '2026-10-02'))),
+    jsonb_build_object('table', 't_shop_notes', 'col', 'item_id', 'action', 'deleted', 'rows', jsonb_build_array(jsonb_build_object(
+      'item_id', 'c6100000-0000-0000-0000-00000000000a', 'note', 'Smuggled'))))));
+  perform t_ok(not exists (select 1 from public.shop_item_costs where label = 'Smuggled') and not exists (select 1 from public.t_shop_notes where note = 'Smuggled'),
+    'S6 …nor one naming a Shop table of its own, or rows "deleted" where the foreign key only empties (only what shop_delete_items keeps)');
 end $$;
 reset role;
 drop table public.t_shop_receipts, public.t_shop_notes, public.t_shop_secret;

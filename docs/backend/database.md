@@ -145,6 +145,7 @@ that number would collide with a deleted one in history.
     WHERE id = …) THEN RETURN …`): deleting an account cascades into every
     table, and an insert for the vanishing user aborts the whole deletion
     (135, 140).
+15. **A SECURITY DEFINER helper meant for one RPC only** still needs `GRANT EXECUTE` to `authenticated` when that RPC runs as the caller, so the browser can call it directly: make it act only on what the RPC hands it in a transaction-local setting the browser can't set (`set_config(…, true)` just around the call; PostgREST exposes no `set_config`, and 185 refuses it in the read query) — 187's `shop_restore_items` lists the ids it just put back in `app.shop_restored`, and `shop_restore_price_history` writes only for those, so a direct call writes nothing. Put the transaction's own stamp in front of the value (`txid_current()` and `now()`) and have the helper check it: a value set for the whole session in an earlier request stays on a pooled connection, and must never count in a later one. A new setting like this also joins the read query's `watched` list (185; 189 added `app.shop_restored`), so a read query that changes it returns nothing and the change is undone.
 
 ---
 
