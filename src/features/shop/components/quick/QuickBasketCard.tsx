@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Store } from 'lucide-react'
 import { Button, Card, CardHeader, Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
+import { Peek } from '../shopKit'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { formatMoney } from '../../../settings/subscriptionRules'
 import { basketByChain, basketLines, leftOutNote, type BasketLine, type GroceryPrice } from '../../groceryModel'
@@ -31,13 +32,16 @@ function coverage(l: BasketLine, priced: number): string {
  * What the matched quick-list rows cost at each chain with a current
  * Kassalapp price — full baskets first (only they compare), the rest with
  * what they lack. Old prices (REMA 1000, Kiwi and Coop still come back with
- * theirs, often from 2024) are left out after 14 days, and the footer says so.
+ * theirs, often from 2024) are left out after 14 days, and the footer says so
+ * and why, with the chains on a tap — a footer only when it has a line.
  */
 export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }: Props) {
   const [all, setAll] = useState(false)
   const basket = useMemo(() => basketByChain(rows, prices, today), [rows, prices, today])
   const lines = useMemo(() => basketLines(basket), [basket])
-  const leftOut = leftOutNote(basket)
+  // The footer's lines: how fresh the prices are, and how many old ones were left out (which chains: on a tap).
+  const from = basket.oldest && !loading && !error ? basket.oldest : null
+  const leftOut = !loading && !error ? leftOutNote(basket) : null
   const matched = rows.filter(r => r.ean).length
   const total = rows.length
   const subtitle = matched === 0 || loading || error ? undefined
@@ -87,10 +91,12 @@ export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }
     <Card>
       <CardHeader icon={<Store />} title="Prices by chain" subtitle={subtitle} />
       {body}
-      <div className="mt-3 border-t border-line pt-3 text-meta text-fg-muted">
-        {basket.oldest && !loading && !error && <p className="tabular-nums">Prices from {formatDate(basket.oldest)} · Kassalapp</p>}
-        {leftOut && !loading && !error && <Truncate as="p" className="tabular-nums">{leftOut}</Truncate>}
-      </div>
+      {(from || leftOut) && (
+        <div className="mt-3 border-t border-line pt-3 text-meta text-fg-muted">
+          {from && <p className="tabular-nums">Prices from {formatDate(from)} · Kassalapp</p>}
+          {leftOut && <p className="tabular-nums"><Peek detail={basket.leftOut.chains.join(', ')}>{leftOut}</Peek></p>}
+        </div>
+      )}
     </Card>
   )
 }

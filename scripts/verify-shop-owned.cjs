@@ -580,10 +580,10 @@ console.log('\n13 · Grocery prices by chain')
     ob.rows.map(r => `${r.chain}:${r.total}:${r.covered}`).join() === 'Meny:44:2,Kiwi:20:1,Spar:21:1', JSON.stringify(ob.rows))
   check('…a row with only old prices is not priced, and no chain misses it', ob.priced === 2 && !ob.rows.some(r => r.missing.includes('Coffee')))
   check('…"Prices from" is the oldest price it used, never a left-out one', ob.oldest === '2026-10-07')
-  check('the left-out note lists the right chains: one per product and chain, A–Z',
-    ob.leftOut.prices === 4 && G.leftOutNote(ob) === '4 old prices left out (Coop Extra, Kiwi, Rema 1000)', JSON.stringify(ob.leftOut))
+  check('the left-out note says how many and why, in one line; the chains it names (on a tap) are the right ones: one per product and chain, A–Z',
+    ob.leftOut.prices === 4 && G.leftOutNote(ob) === '4 old prices left out — not checked in 14 days' && ob.leftOut.chains.join(', ') === 'Coop Extra, Kiwi, Rema 1000', JSON.stringify(ob.leftOut))
   check('…one old price reads in the singular; nothing left out, no note',
-    G.leftOutNote(G.basketByChain([{ title: 'Melk', ean: '333' }], new Map([['333', { ...melk, stores: melk.stores.slice(0, 2) }]]), TODAY)) === '1 old price left out (Kiwi)'
+    G.leftOutNote(G.basketByChain([{ title: 'Melk', ean: '333' }], new Map([['333', { ...melk, stores: melk.stores.slice(0, 2) }]]), TODAY)) === '1 old price left out — not checked in 14 days'
     && G.leftOutNote(b) === null && b.leftOut.chains.length === 0)
   check('…a product picked twice leaves its old prices out once',
     G.basketByChain([{ title: 'Melk', ean: '333' }, { title: 'Melk again', ean: '333' }], aged, TODAY).leftOut.prices === 2)
