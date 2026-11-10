@@ -2,7 +2,7 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { addDays, isDay } from '../dealDays'
 import {
-  AD_LANGUAGES, isAdUrl, isCondition, isCurrency, isHost, isPrice, linkOnHost, MAX_CHECKLIST_STEPS, MAX_LISTING_PRICE,
+  AD_LANGUAGES, isAdUrl, isCondition, isCurrency, isHost, isPrice, linkOnHost, MAX_CHECKLIST_STEPS, MAX_LISTING_PRICE, normalizeAdUrl,
   parseAdNote, parseAdTemplate, parseChecklist, parseListing, parseTradeInQuote, parseValuePoint, pricesProblem,
 } from '../resaleRows'
 import { allPages } from './shopApi'
@@ -73,6 +73,16 @@ const trimmed = (s: string | null | undefined) => (s == null ? s : s.trim())
 
 // ── Checks of what the owner typed (the same as 192's) ───────────────────────
 
+/** A pasted ad link as it is stored (normalizeAdUrl: as the URL parser writes it), or a plain refusal. */
+function adLink(raw: string): string {
+  const link = normalizeAdUrl(raw)
+  if (link === null) throw new Error('An ad\'s link is one https:// address (paste it from the address bar)')
+  return link
+}
+
+/** An optional link: none for null or blank, else as stored. */
+const optionalAdLink = (raw: string | null | undefined): string | null => (raw?.trim() ? adLink(raw) : null)
+
 function checkLink(adUrl: string | null | undefined, marketplace: string | null | undefined): void {
   if (adUrl != null && !isAdUrl(adUrl)) throw new Error('An ad\'s link is one https:// address (paste it from the address bar)')
   if (marketplace != null && !isHost(marketplace)) throw new Error('A marketplace is its web address, like finn.no')
@@ -80,7 +90,7 @@ function checkLink(adUrl: string | null | undefined, marketplace: string | null 
 }
 
 function checkMoney(amount: number | undefined, currency: string | undefined, what: string): void {
-  if (amount !== undefined && !isPrice(amount)) throw new Error(`${what} is an amount from 0 up`)
+  if (amount !== undefined && !isPrice(amount)) throw new Error(`${what} is an amount from 0 below a billion`)
   if (currency !== undefined && !isCurrency(currency)) throw new Error('The currency is NOK, TRY, EUR or USD')
 }
 
@@ -101,7 +111,7 @@ export function fetchAdNotes(): Promise<ShopAdNote[]> {
 
 /** "+ Note an ad": a link (https, never fetched) and its price. */
 export async function createAdNote(input: CreateAdNoteInput): Promise<ShopAdNote> {
-  const adUrl = input.ad_url.trim(), marketplace = trimmed(input.marketplace)?.toLowerCase() || null
+  const adUrl = adLink(input.ad_url), marketplace = trimmed(input.marketplace)?.toLowerCase() || null
   checkLink(adUrl, marketplace)
   checkMoney(input.price, input.currency, 'The price')
   checkCondition(input.condition)
@@ -113,7 +123,7 @@ export async function createAdNote(input: CreateAdNoteInput): Promise<ShopAdNote
 }
 
 export async function updateAdNote(id: string, patch: UpdateAdNoteInput, current: Pick<ShopAdNote, 'ad_url' | 'marketplace'>): Promise<ShopAdNote> {
-  const adUrl = patch.ad_url === undefined ? undefined : patch.ad_url.trim()
+  const adUrl = patch.ad_url === undefined ? undefined : adLink(patch.ad_url)
   const marketplace = patch.marketplace === undefined ? undefined : trimmed(patch.marketplace)?.toLowerCase() || null
   checkLink(adUrl ?? current.ad_url, marketplace === undefined ? current.marketplace : marketplace)
   checkMoney(patch.price, patch.currency, 'The price')
@@ -179,7 +189,7 @@ function checkPrices(prices: readonly ListingPrice[], listedOn: string, today: s
 export async function createListing(input: CreateListingInput, today: string): Promise<ShopListing> {
   const listedOn = input.listed_on ?? today
   const marketplace = trimmed(input.marketplace)?.toLowerCase() || null
-  const adUrl = trimmed(input.ad_url) || null
+  const adUrl = optionalAdLink(input.ad_url)
   checkDay(listedOn, 'The day it was listed')
   checkLink(adUrl, marketplace)
   checkMoney(input.price, input.currency, 'The asking price')
@@ -204,7 +214,7 @@ export async function updateListing(current: Pick<ShopListing, 'id' | 'listed_on
     throw new Error('Sold comes from recording the sale (Sell or give away)')
   }
   const marketplace = patch.marketplace === undefined ? undefined : trimmed(patch.marketplace)?.toLowerCase() || null
-  const adUrl = patch.ad_url === undefined ? undefined : trimmed(patch.ad_url) || null
+  const adUrl = patch.ad_url === undefined ? undefined : optionalAdLink(patch.ad_url)
   checkLink(adUrl === undefined ? current.ad_url : adUrl, marketplace === undefined ? current.marketplace : marketplace)
   checkDay(patch.listed_on, 'The day it was listed')
   checkDay(patch.for_sale_on, 'The day it went up')

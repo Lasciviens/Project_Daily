@@ -48,7 +48,8 @@ function amount(n: number): string {
 
 /** "A, B og C" / "A, B and C". */
 function listWords(xs: readonly string[], lang: AdLanguage): string {
-  const ys = xs.map(x => x.trim()).filter(Boolean)
+  // Each name on one line, as `name` (a newline in one would start a line of its own in the ad).
+  const ys = xs.map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean)
   if (ys.length <= 1) return ys[0] ?? ''
   return `${ys.slice(0, -1).join(', ')} ${lang === 'nb' ? 'og' : 'and'} ${ys[ys.length - 1]}`
 }

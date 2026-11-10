@@ -19,13 +19,16 @@
 //     bringing every row back, deleting an account), and undo-retry.sql — Activity's Undo of a Shop delete of a thing
 //     with an extra cost and a snoozed Needs-a-look row, which must fail on a copy taken before 192 (187's and 190's
 //     rules refused those rows with 23514 before their thing was back) and pass after it, and Delete's Undo of the
-//     same, which passes on both.
+//     same, which passes on both; and the shared ad-link cases (scripts/fixtures/shop-ad-links.json — U+202E,
+//     U+200B, U+00A0, U+0085 …) through 192's real CHECK, as typed and as the URL parser writes them (what the app
+//     sends): verify-shop-resale checks the app's pattern on the same cases, so the two allow-lists match.
 // Static checks of 187, 188, 190 and 192 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
 // Postgres) it runs the static checks and passes.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -236,6 +239,44 @@ const RETRY = ['activity_both', 'activity_cost', 'activity_signal', 'delete_undo
 /** The cases only 192 fixes (Delete's Undo passes before it too: it puts the thing back before its rows). */
 const RETRY_FIXED_BY_192 = ['activity_both', 'activity_cost', 'activity_signal']
 
+/** A string as a Unicode-escaped SQL literal: anything outside printable ASCII as \XXXX, so nothing is lost on the way. */
+const sqlText = s => `U&'${[...s].map(ch => {
+  const c = ch.codePointAt(0)
+  if (ch === "'") return "''"
+  if (ch === '\\') return '\\\\'
+  if (c >= 0x20 && c < 0x7f) return ch
+  return c > 0xffff ? `\\+${c.toString(16).padStart(6, '0')}` : `\\${c.toString(16).padStart(4, '0')}`
+}).join('')}'`
+/** The shared ad-link cases, with one over 2 048 characters. */
+const LINK_CASES = [...JSON.parse(readFileSync(join(root, 'scripts/fixtures/shop-ad-links.json'), 'utf8')).cases,
+  { raw: 'https://finn.no' + '/x'.repeat(1030), stored: false, accepted: false, why: 'over 2 048 characters' }]
+const hrefOf = raw => { try { return new URL(raw.trim()).href } catch { return null } }
+/** 192's CHECK on each case (as typed, and as the URL parser writes it): [i, raw taken, href taken | null]. */
+const linkAnswers = (target) => {
+  const file = join(tmpdir(), `shop-ad-links-${process.pid}.sql`)
+  writeFileSync(file, [
+    "insert into public.shop_items (id, user_id, title, status) values ('d2f00000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'Link cases', 'bought') on conflict do nothing;",
+    `create or replace function public.t_link(p_i integer, p_raw text, p_href text) returns void language plpgsql as $$
+     declare q constant text := 'insert into public.shop_ad_notes (item_id, ad_url, price) values (%L, %L, 1)';
+     begin
+       raise notice 'link %  raw:%  href:%', p_i,
+         case when public.t_err(format(q, 'd2f00000-0000-0000-0000-000000000001', p_raw)) = 'done' then 'yes' else 'no' end,
+         case when p_href is null then 'none' when public.t_err(format(q, 'd2f00000-0000-0000-0000-000000000001', p_href)) = 'done' then 'yes' else 'no' end;
+     end $$;`,
+    'grant execute on function public.t_link(integer, text, text) to authenticated;',
+    'begin;', 'set local role authenticated;',
+    ...LINK_CASES.map((c, i) => { const h = hrefOf(c.raw); return `select public.t_link(${i}, ${sqlText(c.raw)}, ${h === null ? 'null' : sqlText(h)});` }),
+    'rollback;',
+  ].join('\n'))
+  try {
+    const r = run(target, file)
+    if (r.status !== 0) throw Object.assign(new Error('the ad-link cases stopped'), { stderr: r.stderr })
+    return [...r.stderr.matchAll(/NOTICE: {2}link (\d+) {2}raw:(yes|no) {2}href:(yes|no|none)/g)].map(m => [Number(m[1]), m[2] === 'yes', m[3] === 'none' ? null : m[3] === 'yes'])
+  } finally {
+    unlinkSync(file)
+  }
+}
+
 /** bugs.sql's answers: id → 'ok' | 'WRONG'. */
 const bugAnswers = (target) => {
   const r = run(target, join(dir, 'bugs.sql'))
@@ -306,8 +347,14 @@ try {
   const with192 = retryAnswers(n)
   const stillFailing = RETRY.filter(id => with192.get(id)?.answer !== 'ok')
   if (stillFailing.length) throw new Error(`with 192 these Undo cases still fail:\n${stillFailing.map(id => `  ${id}: ${with192.get(id)?.what ?? 'no answer'}`).join('\n')}`)
+  const links = linkAnswers(n)
+  const wrongLinks = LINK_CASES.map((c, i) => [c, links.find(l => l[0] === i)]).filter(([c, a]) => !a || a[1] !== c.stored || (a[2] ?? false) !== c.accepted)
+  if (links.length !== LINK_CASES.length || wrongLinks.length) {
+    throw new Error(`192's ad-link CHECK disagrees with the shared cases on ${wrongLinks.map(([c, a]) => `${JSON.stringify(c.raw).slice(0, 40)} (${c.why}: as typed ${a?.[1]}, sent ${a?.[2]})`).join('; ') || `${links.length} answers`}`)
+  }
   summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188, 190 and 192 (twice each; 192 once more after signals.sql re-runs 190), ${passed} scenarios passed, `
-    + `and ${RETRY_FIXED_BY_192.length} Undo cases failing before 192 pass with it (${RETRY.length - RETRY_FIXED_BY_192.length} passing on both)`
+    + `${RETRY_FIXED_BY_192.length} Undo cases failing before 192 pass with it (${RETRY.length - RETRY_FIXED_BY_192.length} passing on both), `
+    + `and 192's ad-link check agrees with the ${LINK_CASES.length} shared cases`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)
