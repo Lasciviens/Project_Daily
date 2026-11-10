@@ -393,7 +393,10 @@ jobs:
       # purchase day, sale groups and the sale's Undo, money links re-checked,
       # a wish's kind, restores over defaults), then rates, links, selling,
       # the chain builder's save, web links, Activity Undo and deleting an
-      # account.
+      # account; 188's sites that may not be read; and 190's Needs a look —
+      # Snooze, Got it and their exact Undo, the signal list and bounds, each
+      # account its own rows, deal days, stock in the price history, the price
+      # figures of many things in one call, NaN and infinity kept out.
       - name: Shop rules database scenarios
         run: node scripts/verify-db-shop-rules.mjs
         env:
