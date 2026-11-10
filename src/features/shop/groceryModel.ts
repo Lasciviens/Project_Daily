@@ -153,10 +153,10 @@ export function basketByChain(rows: readonly { title: string; ean?: string | nul
   return { rows: list, priced, unmatched, oldest, leftOut }
 }
 
-/** The basket card's line on what it left out — "2 old prices left out (Kiwi, Rema 1000)" — or null for nothing. */
+/** The basket card's line on what it left out and why — "2 old prices left out — not checked in 14 days" (the chains: `leftOut.chains`, on a tap) — or null for nothing. */
 export function leftOutNote(b: Pick<Basket, 'leftOut'>): string | null {
   const n = b.leftOut.prices
-  return n ? `${n} old ${n === 1 ? 'price' : 'prices'} left out (${b.leftOut.chains.join(', ')})` : null
+  return n ? `${n} old ${n === 1 ? 'price' : 'prices'} left out — not checked in ${CURRENT_DAYS} days` : null
 }
 
 /** Each chain's lowest current price for one product, cheapest first (ties A–Z) — every chain at a glance. */

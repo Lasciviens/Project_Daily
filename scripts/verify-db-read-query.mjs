@@ -7,7 +7,10 @@
 //      by authenticated), every known way around the old guard is refused — an extension that runs SQL text included —
 //      and the owner's ordinary reads still work;
 //   3. in a second database, 185 run as a role that may not build the wall: it says so, the function stays SECURITY
-//      INVOKER, and scripts/db-tests/read-query/fallback.sql shows the name checks and the last line still hold.
+//      INVOKER, and scripts/db-tests/read-query/fallback.sql shows the name checks and the last line still hold;
+//   4. in a third, 185 behind its wall, then each later re-creation run by a role that is not a member of
+//      authenticated (it may neither replace nor re-wall the function): 185's function stays exactly as it was, and
+//      the log says so and names the mode it really keeps — SECURITY DEFINER (the guardian review, 10.11.2026).
 // is_app_user() is 139's own text, run as it is. Static checks first: 185 re-creates only ai_run_read_query, creates
 // it SECURITY INVOKER and makes it a definer only after handing it to authenticated (inside its own exception block),
 // checks the owner lock first, and grants it to authenticated only. A later migration may re-create it only to watch
@@ -108,6 +111,7 @@ if (!url) {
 }
 const db = `t185_${process.pid}`
 const dbFallback = `t185f_${process.pid}`
+const dbWalled = `t185w_${process.pid}`
 const withDb = (u, name) => { const x = new URL(u); x.pathname = `/${name}`; return x.toString() }
 const psql = (u, args) => execFileSync('psql', [u, '-v', 'ON_ERROR_STOP=1', '-q', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 const runFile = (target, file) => {
@@ -163,11 +167,43 @@ try {
       if (fallback.error) failed = `where the wall can't be built:\n${fallback.error}`
     }
   }
+  if (!failed) {
+    // 185 behind its wall, then each later re-creation run by a role outside authenticated: it can't replace 185's
+    // function (owned by authenticated) nor hand it over again, so the function must stay exactly 185's — and the
+    // deploy log must name the mode it really keeps.
+    psql(url, ['-c', `create database ${dbWalled}`])
+    const wd = withDb(url, dbWalled)
+    psql(wd, ['-f', join(testDir, 'base.sql')])
+    psql(wd, ['-c', fnText('139_owner_lock.sql', 'is_app_user')])
+    psql(wd, ['-c', `${fnText('140_security_fixes.sql', 'ai_run_read_query')}
+      revoke all on function public.ai_run_read_query(text) from public, anon;
+      grant execute on function public.ai_run_read_query(text) to authenticated;`])
+    psql(wd, ['-f', mig185])
+    const state = () => psql(wd, ['-At', '-c', `select prosecdef, proowner::regrole, proacl, md5(pg_get_functiondef(oid))
+      from pg_proc where oid = 'public.ai_run_read_query(text)'::regprocedure`]).trim()
+    const walled = state()
+    if (!walled.startsWith('t|authenticated|')) failed = `185 did not build its wall in the third database: ${walled}`
+    psql(wd, ['-c', `do $$ begin create role t185_out nologin; exception when duplicate_object then null; end $$;
+      grant usage, create on schema public to t185_out;`])
+    for (const f of laterRecreations) {
+      if (failed) break
+      const n = f.slice(0, 3)
+      const run = spawnSync('psql', [wd, '-v', 'ON_ERROR_STOP=1', '-q', '-c', 'set role t185_out', '-f', join(migDir, f)], { encoding: 'utf8' })
+      if (run.status !== 0) failed = `${n} failed run by a role outside authenticated (it must not):\n${run.stderr}`
+      else if (!new RegExp(`${n}: the read query could not be replaced`).test(run.stderr)) failed = `${n} did not say it could not replace the function:\n${run.stderr}`
+      else if (!new RegExp(`${n}: the read query could not be put behind[^\\n]*keeps the mode it has: SECURITY DEFINER`).test(run.stderr)) {
+        failed = `${n}'s warning does not name the mode 185's function keeps (SECURITY DEFINER):\n${run.stderr}`
+      } else if (state() !== walled) failed = `${n} changed 185's function though it could not replace it: ${state()} (was ${walled})`
+      else passed++
+    }
+  }
   if (failed) console.error(failed)
 } finally {
   try { psql(url, ['-c', `drop database if exists ${db}`]) } catch { /* best effort */ }
   try { psql(url, ['-c', `drop database if exists ${dbFallback}`]) } catch { /* best effort */ }
+  try { psql(url, ['-c', `drop database if exists ${dbWalled}`]) } catch { /* best effort */ }
   try { psql(url, ['-c', 'drop role if exists t185_mig']) } catch { /* another run may still use it */ }
+  try { psql(url, ['-c', 'drop role if exists t185_out']) } catch { /* another run may still use it */ }
 }
 if (failed) process.exit(1)
-console.log(`verify-db-read-query: 140's hole reproduced, then ${['185', ...laterRecreations.map(f => f.slice(0, 3))].join(' + ')} (each applied twice, behind the wall and without it) and ${passed} scenarios passed`)
+console.log(`verify-db-read-query: 140's hole reproduced, then ${['185', ...laterRecreations.map(f => f.slice(0, 3))].join(' + ')} (each applied twice, behind the wall and without it; ${laterRecreations.map(f => f.slice(0, 3)).join(' + ') || 'none'} also run by a role outside authenticated over 185's wall, which stays as it was) and ${passed} scenarios passed`)

@@ -39,7 +39,7 @@ Base `https://kassal.app/api/v1`.
 | `stores[].current_price` | a number or `null` (spec); text in the docs example (`"89.90"`) | `.price` (`num` reads both); a store without a code or a price is dropped |
 | `stores[].last_checked` | ISO time (`"2026-10-23T07:00:40.000000Z"`) or `null` | `.checked` → whether the price counts at all (`isCurrent`: checked today or on one of the 14 Oslo days before; none or unreadable = left out) and the basket's "Prices from DD.MM.YYYY · Kassalapp" (the oldest Oslo day used) |
 
-What the quick list makes of them (`groceryModel.ts`): the cheapest chain per row ("Cheapest now", every chain in its hover), and a basket per chain — full baskets first, then the total, with what each other chain is missing. Only current prices count (above); one line under "Prices from" names the old ones left out ("2 old prices left out (Kiwi, Rema 1000)": one per product and chain that had nothing newer).
+What the quick list makes of them (`groceryModel.ts`): the cheapest chain per row ("Cheapest now", every chain in its hover), and a basket per chain — full baskets first, then the total, with what each other chain is missing. Only current prices count (above); one line under "Prices from" says how many old ones were left out and why ("2 old prices left out — not checked in 14 days": one per product and chain that had nothing newer), and a tap on it names the chains (Kiwi, Rema 1000) — a list of Coop chains was cut on a phone.
 
 Nothing is written to Kassalapp. Our only stored copy is the picked EAN (and maybe the picture's URL) on the row.
 
@@ -68,7 +68,7 @@ Nothing is written to Kassalapp. Our only stored copy is the picked EAN (and may
 
 ### 10.11.2026 — old prices left out, search from three letters
 
-The fix for the first two traps above, from the FAQ and the spec (no live sample, no key): a price counts only when Kassalapp checked it today or on one of the 14 Oslo days before (`groceryModel.isCurrent`, every price through `byChain`; no date = left out), so REMA 1000, Kiwi and Coop's old prices no longer make "Cheapest now", a row's chip or a basket, and the basket says what it left out ("2 old prices left out (Kiwi, Rema 1000)"); "Prices from" reads the Oslo day. Find a price searches from three characters ("Type at least three letters."). Wrong claims corrected: `groceryModel.ts`'s header, the basket card's and `groceryApi`'s comments, the API registry (purpose and caveat), `food-search`'s header comment (its behaviour is unchanged) and `docs/features/shop.md`. The scan lookup by EAN stays open (phase 5).
+The fix for the first two traps above, from the FAQ and the spec (no live sample, no key): a price counts only when Kassalapp checked it today or on one of the 14 Oslo days before (`groceryModel.isCurrent`, every price through `byChain`; no date = left out), so REMA 1000, Kiwi and Coop's old prices no longer make "Cheapest now", a row's chip or a basket, and the basket says what it left out ("2 old prices left out (Kiwi, Rema 1000)"; since the review the same day: "2 old prices left out — not checked in 14 days", the chains on a tap); "Prices from" reads the Oslo day. Find a price searches from three characters ("Type at least three letters."). Wrong claims corrected: `groceryModel.ts`'s header, the basket card's and `groceryApi`'s comments, the API registry (purpose and caveat), `food-search`'s header comment (its behaviour is unchanged) and `docs/features/shop.md`. The scan lookup by EAN stays open (phase 5).
 
 ### 10.11.2026 — this page
 

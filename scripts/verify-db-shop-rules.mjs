@@ -8,10 +8,10 @@
 //     twice and 190 twice, then scenarios.sql (rates, wishes and models, link loops, selling and its Undo,
 //     Delete's Undo with the price watch and later tables, the chain builder's save, web links, Activity
 //     Undo, deleting an account), site-policies.sql (188: the sites shop-price never reads, who reads and
-//     writes that list, the condition of a price, and Delete's Undo carrying it) and signals.sql (190: what
-//     Needs a look remembers — Snooze, Got it and their exact Undo, the signal list and the bounds, each
-//     account its own rows — deal days, stock in the price history, the price figures of many things in one
-//     call, and NaN and infinity kept out).
+//     writes that list, the condition of a price, and Delete's Undo carrying it — never a watch without its
+//     time) and signals.sql (190: what Needs a look remembers — Snooze, Got it and their exact Undo, the
+//     signal list and the bounds, each account its own rows — deal days, stock in the price history, the
+//     price figures of many things in one call, and NaN and infinity kept out).
 // Static checks of 187, 188 and 190 first.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-shop-rules.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL (a laptop without
@@ -51,6 +51,8 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   for (const name of definer) {
     if (new RegExp(`grant execute on function public\\.${name}\\([^)]*\\) to [^;]*(anon|service_role)`).test(sql)) problems.push(`${name} granted wider than needed`)
   }
+  const helper187 = sql.match(/create or replace function public\.shop_restore_price_history\([\s\S]*?\n\$\$;/i)?.[0] ?? ''
+  if (!/where w\.item_id = any \(v_back\) and w\.checked_at is not null/.test(helper187)) problems.push('shop_restore_price_history puts back a watch without checked_at (least(NULL, now()) is now())')
   if (problems.length) fail(`migration 187 has ${problems.join('; ')}`)
 }
 
@@ -77,6 +79,7 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   const helper = sql.match(/create or replace function public\.shop_restore_price_history\([\s\S]*?\n\$\$;/i)?.[0] ?? ''
   if (!/security definer/i.test(helper) || !/set search_path = ''/.test(helper)) problems.push('the helper is not a definer pinned to search_path \'\'')
   for (const col of ['condition', 'used_low', 'refurbished_low']) if ((helper.match(new RegExp(`\\b${col}\\b`, 'g')) || []).length < 4) problems.push(`the helper does not carry ${col} through both inserts`)
+  if (!/where w\.item_id = any \(v_back\) and w\.checked_at is not null/.test(helper)) problems.push('the helper puts back a watch without checked_at (least(NULL, now()) is now())')
   if (!/revoke all on function public\.shop_restore_price_history\(jsonb, jsonb\) from public, anon, authenticated, service_role;\s*grant execute on function public\.shop_restore_price_history\(jsonb, jsonb\) to authenticated;/i.test(sql)) problems.push('the helper is not granted to authenticated only')
   if (problems.length) fail(`migration 188 has ${problems.join('; ')}`)
 }

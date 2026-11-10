@@ -74,7 +74,7 @@ export function commonFacts(c: FactCtx, state: 'buy' | 'general' | 'owned'): Fac
     { id: 'link', label: 'Link', filled: !!v.url, chip: 'Link', value: v.url && webUrl(v.url)
         ? <a href={webUrl(v.url) as string} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{host(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
         : v.url,
-      hint: !v.url ? undefined : 'A Prisjakt or shop link: its price is checked every morning, if the site allows automatic reading.',
+      hint: !v.url ? undefined : 'A Prisjakt or shop link: its price is checked every morning, if the site lets apps read it.',
       editor: <input type="url" inputMode="url" value={v.url ?? ''} onChange={e => set({ url: e.target.value.trim() || null })} placeholder="https://www.prisjakt.no/…" aria-label="Link" className="input" autoFocus /> },
     { id: 'notes', label: 'Notes', filled: !!v.notes, chip: 'Notes', value: <span className="whitespace-pre-line">{v.notes}</span>,
       editor: <textarea value={v.notes ?? ''} onChange={e => set({ notes: e.target.value || null })} rows={3} aria-label="Notes" className="input resize-y" autoFocus /> },

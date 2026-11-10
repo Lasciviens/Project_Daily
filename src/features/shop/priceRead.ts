@@ -17,7 +17,9 @@
 // streams its own offer list to React (`self.__next_f.push([1, "…"])`):
 // `offerRows`, one row per offer with `productId`, `variantId`, `condition`
 // ("New" | "Refurbished" | "Used"), `price {amount, currency}`, `shopId` and
-// `stockStatus`. The price now is read from its new offers only.
+// `stockStatus`. The price now is read from its new offers only — from the
+// stream's JSON rows, never a raw text row (a long review), and only when one
+// list alone holds the product's offers (guardian review, 10.11.2026).
 // A Cloudflare challenge page ("Just a moment…") is reported as `blocked`,
 // never as a missing price.
 //
@@ -25,7 +27,7 @@
 // supabase/functions/shop-price/index.ts (Deno cannot import from src/).
 
 // <price-read>
-/** 'not_allowed': the link is on a site whose terms forbid automated reading (shop_site_policies, migration 188) — never fetched. */
+/** 'not_allowed': the link's site doesn't let apps read it — its terms (shop_site_policies, migration 188) or its robots.txt — never fetched. */
 export type PriceReadStatus = 'ok' | 'no_price' | 'blocked' | 'not_allowed'
 
 /**
@@ -61,7 +63,7 @@ export interface PriceRead {
   usedLow: number | null
   /** The cheapest refurbished offer in Prisjakt's offer list, else null. */
   refurbishedLow: number | null
-  /** 'prisjakt' when the page is Prisjakt's, else 'store'. */
+  /** 'prisjakt' when the page is Prisjakt's (its host is prisjakt.no or a subdomain), else 'store'. */
   source: 'prisjakt' | 'store'
 }
 
@@ -74,10 +76,16 @@ function types(node: Json): string[] {
   return (Array.isArray(t) ? t : [t]).filter((x): x is string => typeof x === 'string').map(x => x.replace(/^https?:\/\/schema\.org\//, ''))
 }
 
-/** Parses "9 990,00", "9990.00", "kr 1.299,-", 2490 → a number, else null. */
+/** The longest text read as a price: "kr 1 234 567,00" and the like are far shorter (a page's longer text is no price). */
+const PRICE_TEXT_MAX = 64
+
+/**
+ * Parses "9 990,00", "9990.00", "kr 1.299,-", 2490 → a number, else null. A text longer than PRICE_TEXT_MAX is
+ * none, before any pattern runs on it (80 000 dashes took 4.9 s through the trailing-dash pattern).
+ */
 export function parsePrice(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : null
-  if (typeof v !== 'string') return null
+  if (typeof v !== 'string' || v.length > PRICE_TEXT_MAX) return null
   let s = v.replace(/[^\d.,-]/g, '').replace(/,-$/, '').replace(/-+$/, '')
   if (!/\d/.test(s)) return null
   const lastComma = s.lastIndexOf(','), lastDot = s.lastIndexOf('.')
@@ -97,13 +105,26 @@ export function parsePrice(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-/** Every JSON-LD node on the page, flattening arrays and `@graph`. */
+/**
+ * Every JSON-LD node on the page, flattening arrays and `@graph`. One pass over the page: each `<script` tag, its
+ * `>` and its `</script>` are found in turn, and the scan stops at the first tag that never ends or never closes —
+ * one pattern over the whole page took 6.4 s on 256 KiB of unclosed "<script " (it rescanned the rest for each).
+ */
 export function jsonLdNodes(html: string): Json[] {
   const out: Json[] = []
-  const re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html))) {
-    const raw = m[1].trim().replace(/^<!--/, '').replace(/-->$/, '').replace(/^\/\/<!\[CDATA\[/, '').replace(/\/\/\]\]>$/, '').trim()
+  const open = /<script/gi, close = /<\/script>/gi
+  for (let at = 0; ;) {
+    open.lastIndex = at
+    const tag = open.exec(html)
+    if (!tag) break
+    const tagEnd = html.indexOf('>', tag.index)
+    if (tagEnd < 0) break
+    close.lastIndex = tagEnd + 1
+    const end = close.exec(html)
+    if (!end) break
+    at = end.index + end[0].length
+    if (!/type\s*=\s*["']application\/ld\+json["']/i.test(html.slice(tag.index, tagEnd))) continue
+    const raw = html.slice(tagEnd + 1, end.index).trim().replace(/^<!--/, '').replace(/-->$/, '').replace(/^\/\/<!\[CDATA\[/, '').replace(/\/\/\]\]>$/, '').trim()
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { continue }
     const stack: unknown[] = [parsed]
@@ -269,27 +290,50 @@ export interface RobotsRule { allow: boolean; pattern: string }
 /** The product token our User-Agent names (`LascisBoard/1.0`): robots.txt's group for it applies, else its `*` group. */
 export const ROBOTS_TOKEN = 'LascisBoard'
 
-/** At most this many rules are read from one robots.txt (a hostile file can't make every check slow). */
-const ROBOTS_RULE_CAP = 5000
+/** The most rules read for our token from one robots.txt: more is a file that can't be read (not read now), never "allowed". */
+export const ROBOTS_RULE_CAP = 5000
 
-/** A robots.txt path, or a URL's path + query, with its octets percent-encoded one way (RFC 9309 §2.2.2): non-ASCII, spaces and controls encoded, hex in capitals. */
+/** Characters a URL may carry plain or percent-encoded alike (RFC 3986's unreserved ones): "%73" is "s". */
+const ROBOTS_UNRESERVED = /^[A-Za-z0-9._~-]$/
+
+/** Printable characters the URL parser percent-encodes in a path or a query: encoded on both sides, so a rule's `"` meets a link's `%22`. */
+const ROBOTS_ENCODED = '"\'<>`{}'
+
+/**
+ * A robots.txt path, or a URL's path + query, in one form for comparing (RFC 9309 §2.2.2): an encoded unreserved
+ * character decoded ("/%73earch" is "/search"), every other `%XX` kept, its hex in capitals ("%2F" stays "%2F"), and
+ * spaces, controls, non-ASCII and the characters the URL parser encodes (`"` `'` `<` `>` `` ` `` `{` `}`)
+ * percent-encoded as UTF-8 — the same on both sides, whichever way either was written.
+ */
 function robotsPath(s: string): string {
   let out = ''
-  for (const ch of s) {
-    const code = ch.codePointAt(0) as number
-    if (code > 0x20 && code < 0x7f) out += ch
+  for (let i = 0; i < s.length;) {
+    const hex = s[i] === '%' ? s.slice(i + 1, i + 3) : ''
+    if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+      const c = String.fromCharCode(parseInt(hex, 16))
+      out += ROBOTS_UNRESERVED.test(c) ? c : `%${hex.toUpperCase()}`
+      i += 3
+      continue
+    }
+    const code = s.codePointAt(i) as number
+    const ch = String.fromCodePoint(code)
+    i += ch.length
+    if (code > 0x20 && code < 0x7f && !ROBOTS_ENCODED.includes(ch)) out += ch
+    else if (code < 0x80) out += `%${code.toString(16).toUpperCase().padStart(2, '0')}`
     else { try { out += encodeURIComponent(ch) } catch { out += '%EF%BF%BD' } }
   }
-  return out.replace(/%[0-9a-f]{2}/gi, m => m.toUpperCase())
+  return out
 }
 
 /**
  * The rules a robots.txt gives `token` (RFC 9309): the groups that name it (any case, a version after "/"
  * left out), else those for `*`, their rules combined; [] when there are none — nothing is disallowed. An
  * empty `Disallow:` disallows nothing. Rules before any user-agent line, and records robots.txt doesn't
- * define (Sitemap, Crawl-delay …), are left out and end no group.
+ * define (Sitemap, Crawl-delay …), are left out and end no group. null when the groups for it hold more than
+ * ROBOTS_RULE_CAP rules: such a file is not read (the page isn't read now) — dropping rules past a cap could
+ * drop the one that refuses a page.
  */
-export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] {
+export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] | null {
   type Group = { agents: string[]; rules: RobotsRule[]; ruled: boolean }
   const groups: Group[] = []
   let current: Group | null = null
@@ -309,24 +353,34 @@ export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsR
   }
   const named = groups.filter(g => g.agents.includes(token.toLowerCase()))
   const chosen = named.length ? named : groups.filter(g => g.agents.includes('*'))
-  return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
+  const rules = chosen.flatMap(g => g.rules)
+  return rules.length > ROBOTS_RULE_CAP ? null : rules
 }
 
-/** Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? A two-pointer match: no backtracking blow-up, whatever the pattern. */
+/**
+ * Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? Leftmost-greedy over
+ * the pieces between the `*`s: the first piece must start the path, each next one is found once, after where the
+ * last one ended (for `*` alone the leftmost find is always a match if any is), and the last one must end the path
+ * when the pattern ends in `$`. One search per piece — a two-pointer match that retried took a minute on 5 000
+ * hostile rules and a 16 000-character path.
+ */
 function robotsMatch(pattern: string, path: string): boolean {
   const anchored = pattern.endsWith('$')
-  const p = anchored ? pattern.slice(0, -1) : pattern
-  let i = 0, j = 0, star = -1, mark = 0
-  while (j < path.length) {
-    if (i < p.length && p[i] !== '*' && p[i] === path[j]) { i++; j++ }
-    else if (i < p.length && p[i] === '*') { star = i++; mark = j }
-    else if (i === p.length && !anchored) return true
-    else if (star >= 0) { i = star + 1; j = ++mark }
-    else return false
+  const pieces = (anchored ? pattern.slice(0, -1) : pattern).split('*')
+  if (!path.startsWith(pieces[0])) return false
+  let pos = pieces[0].length
+  if (pieces.length === 1) return !anchored || pos === path.length
+  for (let k = 1; k < pieces.length - 1; k++) {
+    const at = path.indexOf(pieces[k], pos)
+    if (at < 0) return false
+    pos = at + pieces[k].length
   }
-  while (i < p.length && p[i] === '*') i++
-  return i === p.length
+  const last = pieces[pieces.length - 1]
+  return anchored ? path.length - last.length >= pos && path.endsWith(last) : path.indexOf(last, pos) >= 0
 }
+
+/** The longest path + query matched against robots rules and read (as a link is kept, 2 048 characters): a longer one is not read now. */
+export const MAX_PATH_CHARS = 2048
 
 /**
  * Whether robots rules let us read `pathAndQuery` (RFC 9309 §2.2.2): the longest matching pattern decides,
@@ -343,9 +397,15 @@ export function robotsAllows(rules: readonly RobotsRule[], pathAndQuery: string)
   return !best || best.allow
 }
 
-/** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
+/**
+ * The rows a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in
+ * order, then read row by row (`<hex id>:<data>` up to its newline). A row React sends by length —
+ * `<id>:T<hex bytes>,<text>`, a string of 1 024 characters or more such as a user's review, sent raw, so its quotes
+ * are real quotes and it could pass for the page's own data — is left out, and so are the binary rows sent the same
+ * way; where the stream stops being rows, the rest is left out too.
+ */
 function nextFlight(html: string): string {
-  const out: string[] = []
+  const chunks: string[] = []
   const marker = 'self.__next_f.push([1,"'
   let at = html.indexOf(marker)
   while (at >= 0) {
@@ -353,15 +413,59 @@ function nextFlight(html: string): string {
     let end = start + 1
     while (end < html.length && html[end] !== '"') end += html[end] === '\\' ? 2 : 1
     if (end >= html.length) break
-    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') out.push(s) } catch { /* not a JSON string: skipped */ }
+    try { const s: unknown = JSON.parse(html.slice(start, end + 1)); if (typeof s === 'string') chunks.push(s) } catch { /* not a JSON string: skipped */ }
     at = html.indexOf(marker, end)
+  }
+  return flightRows(chunks.join(''))
+}
+
+/** The row tags React's Flight stream sends by length (its client's list): `T` a long text, the others binary arrays. */
+const FLIGHT_BY_LENGTH = 'TAOobUSsLlGgMmV'
+
+const isHexCode = (c: number) => (c >= 48 && c <= 57) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102)
+
+/** The rows of a Flight stream that carry JSON, joined; a row sent by length is stepped over by its byte count. */
+function flightRows(stream: string): string {
+  const out: string[] = []
+  let i = 0
+  while (i < stream.length) {
+    let j = i
+    while (j < stream.length && isHexCode(stream.charCodeAt(j))) j++
+    if (stream[j] !== ':') break
+    if (j + 1 < stream.length && FLIGHT_BY_LENGTH.includes(stream[j + 1])) {
+      let k = j + 2, bytes = 0
+      while (k < stream.length && isHexCode(stream.charCodeAt(k)) && k - j < 11) { bytes = bytes * 16 + parseInt(stream[k], 16); k++ }
+      if (stream[k] !== ',') break
+      i = afterUtf8Bytes(stream, k + 1, bytes)
+      continue
+    }
+    const nl = stream.indexOf('\n', j)
+    const end = nl < 0 ? stream.length : nl + 1
+    out.push(stream.slice(i, end))
+    i = end
   }
   return out.join('')
 }
 
-/** The JSON array or object that starts at text[start], parsed — else null. */
-function jsonAt(text: string, start: number): unknown {
-  if (text[start] !== '[' && text[start] !== '{') return null
+/** Where `bytes` UTF-8 bytes from `at` end in a decoded string (React counts a row sent by length in bytes). */
+function afterUtf8Bytes(s: string, at: number, bytes: number): number {
+  let i = at
+  for (let n = 0; n < bytes && i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < s.length) { n += 4; i++ }
+    else n += 3
+  }
+  return i
+}
+
+/**
+ * The JSON array or object that starts at text[start]: its value (undefined when there is none there, or it isn't
+ * JSON) and the index after it — -1 when it never closes.
+ */
+function jsonAt(text: string, start: number): { value: unknown; end: number } {
+  if (text[start] !== '[' && text[start] !== '{') return { value: undefined, end: start }
   let depth = 0
   for (let i = start; i < text.length; i++) {
     const ch = text[i]
@@ -370,28 +474,42 @@ function jsonAt(text: string, start: number): unknown {
     } else if (ch === '[' || ch === '{') {
       depth++
     } else if ((ch === ']' || ch === '}') && --depth === 0) {
-      try { return JSON.parse(text.slice(start, i + 1)) } catch { return null }
+      let value: unknown
+      try { value = JSON.parse(text.slice(start, i + 1)) } catch { value = undefined }
+      return { value, end: i + 1 }
     }
   }
-  return null
+  return { value: undefined, end: -1 }
 }
 
 interface OfferRow { condition: string; price: number; currency: string | null; shop: string | null; variant: string | null }
 
 /**
- * Prisjakt's own offer list for product `productId`: the `offerRows` its
- * product page streams (one row per offer). A row of another product, or one
- * without a condition or a price, is left out. null: the page has no such
- * list, or none of its rows is this product's — then only its schema.org
- * figures are known.
+ * Prisjakt's own offer list for product `productId`: the `offerRows` its product page streams (one row per offer).
+ * Every `"offerRows":` in the stream's rows is read, and a list counts only when it is the one list that holds this
+ * product's offers — with none, or two (which is the page's own can't be told), only the page's schema.org figures
+ * are known (null). A row of another product, or one without a condition or a price, is left out.
  */
 function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
   const flight = nextFlight(html)
   const key = '"offerRows":'
-  const at = flight.indexOf(key)
-  if (at < 0) return null
-  const rows = jsonAt(flight, at + key.length)
-  if (!Array.isArray(rows)) return null
+  let found: OfferRow[] | null = null
+  for (let at = flight.indexOf(key); at >= 0;) {
+    const list = jsonAt(flight, at + key.length)
+    const mine = Array.isArray(list.value) ? productRows(list.value, productId) : []
+    if (mine.length) {
+      if (found) return null
+      found = mine
+    }
+    // A list that never closes holds the rest of the stream; otherwise the next one is looked for after it.
+    if (list.end < 0) break
+    at = flight.indexOf(key, Math.max(list.end, at + key.length))
+  }
+  return found
+}
+
+/** The offer rows of product `productId` in one list, as read. */
+function productRows(rows: unknown[], productId: string): OfferRow[] {
   const out: OfferRow[] = []
   for (const r of rows) {
     if (!isObj(r) || String(r.productId) !== productId || typeof r.condition !== 'string' || !isObj(r.price)) continue
@@ -403,7 +521,7 @@ function prisjaktOfferRows(html: string, productId: string): OfferRow[] | null {
       variant: /^\d+$/.test(String(r.variantId ?? '')) ? String(r.variantId) : null,
     })
   }
-  return rows.length && !out.length ? null : out
+  return out
 }
 
 /**
@@ -424,7 +542,7 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
   const best = cheapest('new')
   return {
     low: best?.price ?? null,
-    high: fresh.length ? Math.max(...fresh.map(r => r.price)) : null,
+    high: fresh.length ? fresh.reduce((m, r) => Math.max(m, r.price), 0) : null,
     offers: fresh.length ? new Set(fresh.map((r, i) => r.shop ?? `row ${i}`)).size : null,
     currency: best?.currency ?? rows[0]?.currency ?? null,
     usedLow: cheapest('used')?.price ?? null,
@@ -434,13 +552,13 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
 
 /** The price a product page shows, or why there is none. */
 export function readPrice(html: string, pageUrl: string): PriceRead {
-  const source: PriceRead['source'] = /prisjakt\.no/i.test(pageUrl) ? 'prisjakt' : 'store'
+  const source: PriceRead['source'] = isPrisjaktHost(pageUrl) ? 'prisjakt' : 'store'
   const empty: PriceRead = {
     status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
     was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
   }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
-  const fromSchema = schemaPrice(html, pageUrl, empty)
+  const fromSchema = keptText(schemaPrice(html, pageUrl, empty))
   const product = isPrisjaktUrl(pageUrl) ? new URL(pageUrl).searchParams.get('p') : null
   const rows = product ? prisjaktOfferRows(html, product) : null
   const scope = rows ? offersFor(rows, pageUrl) : null
@@ -448,10 +566,40 @@ export function readPrice(html: string, pageUrl: string): PriceRead {
   const c = byCondition(scope)
   return {
     ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
-    currency: c.currency ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
+    currency: currencyCode(c.currency) ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
     condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
   }
 }
+
+/** Whether a page is Prisjakt's own: its host is prisjakt.no or a subdomain of it — never a shop's link that only names it (`utm_source=prisjakt.no`). */
+function isPrisjaktHost(url: string): boolean {
+  try { return /(^|\.)prisjakt\.no$/.test(new URL(url).hostname.toLowerCase().replace(/\.+$/, '')) } catch { return false }
+}
+
+/** The longest name kept, and the longest picture link (as Delete's Undo keeps them: 187's left(name, 300) and shop_web_link). */
+const NAME_MAX = 300
+const IMAGE_MAX = 2048
+
+/** A page's text as a watch may keep it: a name or brand of up to 300 characters, a picture only as a web link of up to 2 048, a currency only as three capitals — else none. */
+function keptText(r: PriceRead): PriceRead {
+  return { ...r, name: clipped(r.name), brand: clipped(r.brand), image: webImage(r.image), currency: currencyCode(r.currency) }
+}
+
+function clipped(s: string | null): string | null {
+  if (s == null || s.length <= NAME_MAX) return s
+  const cut = s.slice(0, NAME_MAX)
+  return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
+}
+
+/** A picture's link when it is a web address ("//cdn…" made https), else null — never a path, a data: or javascript: link. */
+function webImage(s: string | null): string | null {
+  const v = (s ?? '').trim()
+  if (!v || v.length > IMAGE_MAX || /\s/.test(v) || [...v].some(ch => ch < ' ' || ch === '\u007f')) return null
+  if (/^https?:\/\/[^/?#]+/i.test(v)) return v
+  return /^\/\/[^/?#]+/.test(v) ? `https:${v}` : null
+}
+
+const currencyCode = (s: string | null): string | null => (s != null && /^[A-Z]{3}$/.test(s) ? s : null)
 
 /** What the page's schema.org data says: a product's (or the linked variant's) offers. */
 function schemaPrice(html: string, pageUrl: string, empty: PriceRead): PriceRead {

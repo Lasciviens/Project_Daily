@@ -658,7 +658,9 @@ $$;
 -- transaction's own stamp (its id and start time) in front: a value left on a pooled connection by an
 -- earlier request never matches. Then it checks what it is given: the caller's own account on every row,
 -- web links only, a price from 0 below infinity (NaN sorts above infinity, so it goes too), a count from
--- 0 to 100 000, no time in the future and none made up, at most the newest 20 000 points.
+-- 0 to 100 000, no time in the future and none made up — a watch or a point without its time is left out
+-- (least(NULL, now()) would make it "checked just now", and the sweep would skip a forged "blocked" one) —
+-- at most the newest 20 000 points.
 create or replace function public.shop_restore_price_history(p_watches jsonb, p_points jsonb)
 returns integer
 language plpgsql
@@ -696,7 +698,7 @@ begin
          case when w.prev_low >= 0 and w.prev_low < 'Infinity' then w.prev_low end,
          case when w.prev_at is null then null else least(w.prev_at, now()) end
     from jsonb_populate_recordset(null::public.shop_price_watch, coalesce(p_watches, '[]'::jsonb)) w
-   where w.item_id = any (v_back)
+   where w.item_id = any (v_back) and w.checked_at is not null
      and exists (select 1 from public.shop_items i where i.id = w.item_id and i.user_id = v_user)
   on conflict (item_id) do nothing;
   get diagnostics k = row_count;

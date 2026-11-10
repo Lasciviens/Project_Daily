@@ -120,7 +120,7 @@ const OWNER_ENV = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_
 function realHandler(fn, pages, fetched, robotsAsked = []) {
   const src = fnSource(fn).replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
   const code = transform(src, { transforms: ['typescript'] }).code
-  const q = { select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, maybeSingle: () => q, single: () => q,
+  const q = { select: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q, order: () => q, limit: () => q, range: () => q, maybeSingle: () => q, single: () => q,
     insert: () => q, upsert: () => q, update: () => q, delete: () => q, then: (res) => res({ data: null, error: null }) }
   const db = { from: () => q, rpc: async () => ({ data: null, error: null }), auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) } }
   const fetchStub = async (url) => {
