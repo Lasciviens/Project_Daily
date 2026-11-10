@@ -12,7 +12,7 @@
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
-const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite } = require('../src/features/shop/priceRead')
+const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows } = require('../src/features/shop/priceRead')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -174,10 +174,49 @@ console.log('\n7 · Sites whose terms forbid automated reading (shop_site_polici
   check('not a link that is no URL; an empty list lists nothing', listedSite('finn.no', hosts) === null && listedSite('https://finn.no/', []) === null)
 }
 
+console.log('\n9 · robots.txt (RFC 9309), on the files the sites served on 10.11.2026')
+{
+  const file = name => fs.readFileSync(path.join(__dirname, 'fixtures/robots', name), 'utf8')
+  const may = (text, p) => robotsAllows(robotsRules(text), p)
+  const prisjakt = file('www.prisjakt.no.txt'), elkjop = file('www.elkjop.no.txt'), power = file('www.power.no.txt'), jernia = file('www.jernia.no.txt'), finn = file('www.finn.no.txt')
+  check('Prisjakt: a product page may be read', may(prisjakt, '/product.php?p=12105530'))
+  check('Prisjakt: …a link to one colour too (&a-116257=Frost)', may(prisjakt, '/product.php?p=16929131&a-116257=Frost'))
+  check('Prisjakt: a search may not (Disallow: /search?*)', !may(prisjakt, '/search?search=iphone+15') && !may(prisjakt, '/search?q=x'))
+  check('Prisjakt: a product\'s offer pages may not (/product.php?o=*&offset=*)', !may(prisjakt, '/product.php?o=1&offset=20'))
+  check('Prisjakt: the bots it names are not us (their Disallow: / is not ours)', may(prisjakt, '/c/mobiltelefoner'))
+  check('Elkjøp: a product page may be read', may(elkjop, '/product/tv-lyd-og-smarte-hjem/tv/899848/tcl-65-mqled75k'))
+  check('Elkjøp: its search may not — /search, /search/…, /search?…', !may(elkjop, '/search') && !may(elkjop, '/search?q=tv') && !may(elkjop, '/search/tv'))
+  check('Elkjøp: …while /searchlight is another path ($ ends the match)', may(elkjop, '/searchlight'))
+  check('Elkjøp: the * group, not AdsBot-Google\'s (which allows ?utm_ links)', !may(elkjop, '/cart?utm_source=x'))
+  check('Power: its search may not, a product page may', !may(power, '/search/?q=tv') && may(power, '/tv-og-lyd/tv/tcl-65-mqled75k/p-3701020/'))
+  check('Jernia: Allow: / lets every page be read', may(jernia, '/search?q=x') && may(jernia, '/'))
+  check('FINN, as its file says: an ad page itself is not disallowed there (its terms forbid it — shop_site_policies)', may(finn, '/recommerce/forsale/item/123456789'))
+  check('FINN: Disallow: /privacy$ refuses /privacy, not /privacy-policy', !may(finn, '/privacy') && may(finn, '/privacy-policy'))
+  check('FINN: an Allow beside a Disallow — homes ad pages allowed, new-building ones refused', may(finn, '/realestate/homes/ad.html?finnkode=1') && !may(finn, '/realestate/newbuildings/ad.html?finnkode=1'))
+  check('FINN: wildcards (/*?sort=, */gallery.html, /profile*)', !may(finn, '/bap/forsale/search.html?sort=1') && !may(finn, '/x/gallery.html') && !may(finn, '/profile/ads'))
+  check('an empty file allows everything', may('', '/anything?x=1'))
+  check('our own group wins over *, any case, its version left out', !may('User-agent: *\nAllow: /\n\nUser-agent: lascisboard/2.0\nDisallow: /p', '/p?x') && may('User-agent: *\nDisallow: /\n\nUser-Agent: LascisBoard\nAllow: /', '/x'))
+  check('two groups for one agent are combined; user-agent lines in a row share their rules',
+    !may('User-agent: *\nDisallow: /a\n\nUser-agent: *\nDisallow: /b', '/b') && !may('User-agent: x\nUser-agent: *\nDisallow: /c', '/c'))
+  check('an empty Disallow disallows nothing — and still ends its group', may('User-agent: *\nDisallow:', '/x') && may('User-agent: *\nDisallow:\nUser-agent: other\nDisallow: /', '/x'))
+  check('the longest match decides; on a tie Allow wins', may('User-agent: *\nDisallow: /shop\nAllow: /shop/item', '/shop/item/1') && !may('User-agent: *\nAllow: /shop\nDisallow: /shop/cart', '/shop/cart')
+    && may('User-agent: *\nDisallow: /x\nAllow: /x', '/x'))
+  check('Sitemap and Crawl-delay lines end no group; rules before any user-agent are ignored; comments, CRLF and a BOM are fine',
+    !may('User-agent: *\nSitemap: https://x.example/s.xml\nDisallow: /a', '/a') && may('Disallow: /a\nUser-agent: *\nAllow: /', '/a')
+    && !may('\uFEFFUser-agent: * # all\r\nDisallow: /a # not a\r\n', '/a'))
+  check('octets compared one way: an encoded path matches its pattern, whatever the case of its hex', !may('User-agent: *\nDisallow: /blåbær', '/bl%C3%A5b%C3%A6r') && !may('User-agent: *\nDisallow: /a%2fb', '/a%2Fb'))
+  check('/robots.txt itself is always allowed', may('User-agent: *\nDisallow: /', '/robots.txt'))
+  const hostile = 'User-agent: *\n' + Array.from({ length: 3000 }, () => 'Disallow: /*a*a*a*a*a*a*a*a*a*a*b').join('\n')
+  const t0 = Date.now()
+  const slow = may(hostile, '/' + 'a'.repeat(2000))
+  check('a hostile file (3 000 rules of nested wildcards on a 2 000-letter path) is answered in time, without backtracking blow-up', slow === true && Date.now() - t0 < 3000, `${Date.now() - t0} ms`)
+}
+
 // ── 8 · The real shop-price handler never fetches a listed site ──────────────
-// Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`.
+// Every outside call is scripted (as verify-ssrf-guard does): the database answers from `db`, fetch from `pages`;
+// a robots.txt from `robots` (an unscripted one answers 404: no rules), counted apart in `robotsAsked`.
 const { transform } = require('sucrase')
-function shopPrice({ db, pages, fetched, writes }) {
+function shopPrice({ db, pages, fetched, writes, robots = {}, robotsAsked = [] }) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'supabase/functions/shop-price/index.ts'), 'utf8')
     .replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
   const code = transform(src, { transforms: ['typescript'] }).code
@@ -193,6 +232,13 @@ function shopPrice({ db, pages, fetched, writes }) {
   }
   const client = { from: builder, auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) } }
   const fetchStub = async (url) => {
+    if (new URL(String(url)).pathname === '/robots.txt') {
+      robotsAsked.push(String(url))
+      const r = robots[String(url)]
+      if (r instanceof Error) throw r
+      if (!r) return new Response('Not found', { status: 404 })
+      return new Response(r.status >= 300 && r.status < 400 ? null : (r.body ?? ''), { status: r.status ?? 200, headers: r.headers ?? { 'content-type': 'text/plain' } })
+    }
     fetched.push(String(url))
     const page = pages[String(url)]
     if (!page) throw new TypeError(`unexpected fetch ${url}`)
@@ -266,6 +312,63 @@ async function handlerChecks() {
   const w2 = writes.find(w => w.table === 'shop_price_watch')?.row
   check('a shop that is not listed is still read: its price, condition unknown, on the watch and its point', r.results?.[0]?.status === 'ok' && fetched.length === 1
     && w2?.low === 9990 && w2?.condition === 'unknown' && point?.condition === 'unknown' && point?.low === 9990, JSON.stringify(r) + JSON.stringify(w2))
+
+  console.log('\n10 · …and reads a page only where the site\'s robots.txt allows it (the real handler, scripted)')
+  const PJ_ROBOTS = { 'https://www.prisjakt.no/robots.txt': { body: fs.readFileSync(path.join(__dirname, 'fixtures/robots/www.prisjakt.no.txt'), 'utf8') } }
+  const search = 'https://www.prisjakt.no/search?search=iphone'
+  let robotsAsked = []
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS, robotsAsked })
+  r = await call({ action: 'read', url: search })
+  check('read: a Prisjakt search is not_allowed by its robots rules — said so, the page never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'www.prisjakt.no'
+    && r.result?.reason === "www.prisjakt.no's robots rules don't allow reading this page" && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify(r))
+  const product = 'https://www.prisjakt.no/product.php?p=12105530'
+  const iphone = { body: fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8') }
+  call = shopPrice({ db: dbWith(product), pages: { [product]: iphone, [`${product}&a-116257=Frost`]: iphone }, fetched, writes, robots: PJ_ROBOTS, robotsAsked: (robotsAsked = []) })
+  r = await call({ action: 'read', url: product })
+  const again = await call({ action: 'read', url: `${product}&a-116257=Frost` })
+  check('read: a product page it allows is read (its new offers), and the rules come from memory the next time', r.result?.status === 'ok' && r.result?.low === 16115
+    && again.result?.status === 'ok' && robotsAsked.length === 1 && fetched.length === 2, JSON.stringify([r.result?.status, again.result?.status, robotsAsked]))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS })
+  r = await call({ action: 'check', ids: ['i1'] })
+  const robotsWatch = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('check: the same — no fetch; the watch says not_allowed with the robots wording', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0
+    && robotsWatch?.status === 'not_allowed' && robotsWatch?.error === "www.prisjakt.no's robots rules don't allow reading this page", JSON.stringify(robotsWatch))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(search), pages: {}, fetched, writes, robots: PJ_ROBOTS })
+  r = await call({ action: 'sweep' }, { 'x-cron-secret': 'cron-secret' })
+  check('sweep: the same — no fetch, not_allowed', r.results?.[0]?.status === 'not_allowed' && fetched.length === 0, JSON.stringify(r))
+
+  const plain = 'https://plain.example/p'
+  for (const [what, answer, expect] of [['answers 503', { status: 503 }, /plain\.example's robots rules couldn't be read \(it answered 503\) — not read now/],
+    ['gives no answer (a network error)', new TypeError('network'), /plain\.example's robots rules couldn't be read — not read now/]]) {
+    fetched = []; writes = []; robotsAsked = []
+    call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robots: { 'https://plain.example/robots.txt': answer }, robotsAsked })
+    const c1 = await call({ action: 'check', ids: ['i1'] })
+    const c2 = await call({ action: 'read', url: plain })
+    const w = writes.find(x => x.table === 'shop_price_watch')?.row
+    check(`a robots.txt that ${what}: the page is not read now (status error, in plain words), and the answer is kept for a while`, c1.results?.[0]?.status === 'error'
+      && expect.test(w?.error ?? '') && expect.test(c2.error ?? '') && fetched.length === 0 && robotsAsked.length === 1, JSON.stringify([c1, c2, robotsAsked]))
+  }
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked })
+  r = await call({ action: 'read', url: plain })
+  check('a robots.txt that answers 404 sets no rules: the page is read', r.result?.status === 'ok' && r.result?.low === 9990 && robotsAsked.length === 1 && fetched.length === 1)
+
+  const hop = 'https://other.example/item'
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { status: 302, headers: { location: hop } }, [hop]: { body: page(TCL) } }, fetched, writes, robotsAsked,
+    robots: { 'https://other.example/robots.txt': { body: 'User-agent: *\nDisallow: /item' } } })
+  r = await call({ action: 'read', url: plain })
+  check('a redirect to another host asks that host\'s robots.txt and keeps to it: its page is never fetched', r.result?.status === 'not_allowed' && r.result?.site === 'other.example'
+    && fetched.length === 1 && fetched[0] === plain && robotsAsked.includes('https://other.example/robots.txt'), JSON.stringify(r) + ' ' + fetched.join(' '))
+  fetched = []; writes = []; robotsAsked = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(TCL) } }, fetched, writes, robotsAsked,
+    robots: { 'https://plain.example/robots.txt': { status: 301, headers: { location: 'http://127.0.0.1/robots.txt' } } } })
+  r = await call({ action: 'read', url: plain })
+  check('a robots.txt that redirects to a private address is refused like a page would be — nothing fetched there', /not allowed/i.test(r.error ?? '')
+    && fetched.length === 0 && !robotsAsked.some(u => u.includes('127.0.0.1')), JSON.stringify(r) + ' ' + robotsAsked.join(' '))
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {

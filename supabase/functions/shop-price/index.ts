@@ -25,6 +25,16 @@
 //    is never fetched — not by read, check or the sweep, not as a redirect
 //    hop — and says so (status not_allowed). The list is data, read on every
 //    request; when it can't be read, nothing is fetched (fail closed).
+// 1c. robots.txt, for every site. Before every page request — read, check,
+//    the sweep and each redirect hop — the page's own robots.txt is read
+//    (RFC 9309: the group for our product token LascisBoard, else `*`; the
+//    longest matching pattern decides, Allow on a tie; path and query),
+//    through the same guards as a page, 4 s, 512 KiB, kept in memory per
+//    origin for 24 h. A path it disallows is not_allowed ("…'s robots rules
+//    don't allow reading this page"); a 4xx is no rules; a 5xx, a network
+//    error or no answer in time is not read now (status error, kept 10 min),
+//    so the sweep tries again the next morning. The parser is in the
+//    <price-read> block.
 // 2. Rates. Norges Bank's daily rates to NOK (data.norges-bank.no, no key) for
 //    the purchases, sales and extra costs still waiting for theirs: fetched,
 //    cached in fx_rates_nok, then those rows are touched so the database's own
@@ -212,8 +222,10 @@ class FetchError extends Error { constructor(public code: string, message: strin
 /** A link (or a redirect hop) on a site whose terms forbid automated reading: never fetched. */
 class SiteRefused extends FetchError { constructor(public site: string) { super('not_allowed_site', notAllowedText(site)) } }
 const notAllowedText = (site: string) => `${site}'s terms don't allow automated reading`
+/** A page the site's own robots.txt doesn't let us read: never fetched. */
+class RobotsRefused extends FetchError { constructor(public site: string) { super('not_allowed_robots', `${site}'s robots rules don't allow reading this page`) } }
 
-async function readCapped(res: Response): Promise<Uint8Array> {
+async function readCapped(res: Response, max = MAX_BYTES): Promise<Uint8Array> {
   const reader = res.body?.getReader()
   if (!reader) return new Uint8Array()
   const chunks: Uint8Array[] = []
@@ -222,10 +234,10 @@ async function readCapped(res: Response): Promise<Uint8Array> {
     const { done, value } = await reader.read()
     if (done) break
     total += value.length
-    if (total > MAX_BYTES) { await reader.cancel(); break }
+    if (total > max) { await reader.cancel(); break }
     chunks.push(value)
   }
-  const out = new Uint8Array(Math.min(total, MAX_BYTES))
+  const out = new Uint8Array(Math.min(total, max))
   let off = 0
   for (const c of chunks) { out.set(c.subarray(0, out.length - off), off); off += c.length; if (off >= out.length) break }
   return out
@@ -240,9 +252,69 @@ function decode(bytes: Uint8Array, contentType: string | null): string {
   try { return new TextDecoder((charset ?? 'utf-8').toLowerCase()).decode(bytes) } catch { return new TextDecoder('utf-8').decode(bytes) }
 }
 
+const ROBOTS_MAX_BYTES = 512 * 1024
+const ROBOTS_TIMEOUT_MS = 4000
+const ROBOTS_KEEP_MS = 24 * 3600_000
+const ROBOTS_RETRY_MS = 10 * 60_000
+const robotsCache = new Map<string, { rules: RobotsRule[]; error: string | null; until: number }>()
+
+/**
+ * The robots.txt rules of a page's origin (its scheme, host and port), as our product token reads them,
+ * from memory for up to 24 h. Fetched like a page — http/https only, no private host or name that resolves
+ * to one, listed sites refused, on every redirect hop (≤ 5; more is "unavailable") — 4 s, 512 KiB. A 4xx is
+ * no rules; a 5xx, a network error or no answer in time throws: the page is not read now (kept 10 min).
+ */
+async function robotsRulesFor(page: URL, listed: readonly string[]): Promise<RobotsRule[]> {
+  const key = `${page.protocol}//${page.host}`
+  const hit = robotsCache.get(key)
+  if (hit && hit.until > Date.now()) {
+    if (hit.error) throw new FetchError('robots_unavailable', hit.error)
+    return hit.rules
+  }
+  const keep = (rules: RobotsRule[], error: string | null) => {
+    robotsCache.delete(key)
+    robotsCache.set(key, { rules, error, until: Date.now() + (error ? ROBOTS_RETRY_MS : ROBOTS_KEEP_MS) })
+    if (robotsCache.size > 500) robotsCache.delete(robotsCache.keys().next().value as string)
+    if (error) throw new FetchError('robots_unavailable', error)
+    return rules
+  }
+  const unread = (why: string) => `${page.hostname}'s robots rules couldn't be read${why} — not read now`
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), ROBOTS_TIMEOUT_MS)
+  try {
+    let current = `${key}/robots.txt`
+    for (let hop = 0; ; hop++) {
+      const url = new URL(current)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return keep([], null)
+      const site = listedSite(url.toString(), listed)
+      if (site) throw new SiteRefused(site)
+      if (url.username || url.password || isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, ctl.signal)) {
+        throw new FetchError('not_allowed', 'This address is not allowed')
+      }
+      const res = await fetch(url.toString(), { signal: ctl.signal, redirect: 'manual', headers: { 'User-Agent': UA, Accept: 'text/plain,*/*;q=0.5' } })
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
+      if (location) {
+        await res.body?.cancel()
+        if (hop >= 5) return keep([], null)
+        current = new URL(location, url).toString()
+        continue
+      }
+      if (res.status >= 500) { await res.body?.cancel(); return keep([], unread(` (it answered ${res.status})`)) }
+      if (res.status >= 300) { await res.body?.cancel(); return keep([], null) }
+      return keep(robotsRules(new TextDecoder('utf-8').decode(await readCapped(res, ROBOTS_MAX_BYTES))), null)
+    }
+  } catch (e) {
+    if (e instanceof FetchError) throw e
+    return keep([], unread((e as Error).name === 'AbortError' ? ' (no answer in time)' : ''))
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * The page's HTML; a 403/503 with a Cloudflare check comes back as HTML too, so the reader can say "blocked".
- * `listed`: the sites never to read (shop_site_policies) — checked on every hop before anything is asked of it.
+ * `listed`: the sites never to read (shop_site_policies) — checked on every hop before anything is asked of it;
+ * then the hop's own robots.txt must allow its path.
  */
 async function fetchPage(rawUrl: string, listed: readonly string[]): Promise<{ html: string; finalUrl: string }> {
   const ctl = new AbortController()
@@ -258,6 +330,7 @@ async function fetchPage(rawUrl: string, listed: readonly string[]): Promise<{ h
       if (url.username || url.password || isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, ctl.signal)) {
         throw new FetchError('not_allowed', 'This address is not allowed')
       }
+      if (!robotsAllows(await robotsRulesFor(url, listed), url.pathname + url.search)) throw new RobotsRefused(url.hostname)
       const res = await fetch(url.toString(), {
         signal: ctl.signal,
         redirect: 'manual',
@@ -522,6 +595,86 @@ export function listedSite(url: string, hosts: readonly string[]): string | null
     if (h && (host === h || host.endsWith(`.${h}`)) && (!best || h.length > best.length)) best = h
   }
   return best
+}
+
+/** One rule of a robots.txt group: allow or disallow the paths a pattern matches (`*` any characters, a final `$` the end). */
+export interface RobotsRule { allow: boolean; pattern: string }
+
+/** The product token our User-Agent names (`LascisBoard/1.0`): robots.txt's group for it applies, else its `*` group. */
+export const ROBOTS_TOKEN = 'LascisBoard'
+
+/** At most this many rules are read from one robots.txt (a hostile file can't make every check slow). */
+const ROBOTS_RULE_CAP = 5000
+
+/** A robots.txt path, or a URL's path + query, with its octets percent-encoded one way (RFC 9309 §2.2.2): non-ASCII, spaces and controls encoded, hex in capitals. */
+function robotsPath(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const code = ch.codePointAt(0) as number
+    if (code > 0x20 && code < 0x7f) out += ch
+    else { try { out += encodeURIComponent(ch) } catch { out += '%EF%BF%BD' } }
+  }
+  return out.replace(/%[0-9a-f]{2}/gi, m => m.toUpperCase())
+}
+
+/**
+ * The rules a robots.txt gives `token` (RFC 9309): the groups that name it (any case, a version after "/"
+ * left out), else those for `*`, their rules combined; [] when there are none — nothing is disallowed. An
+ * empty `Disallow:` disallows nothing. Rules before any user-agent line, and records robots.txt doesn't
+ * define (Sitemap, Crawl-delay …), are left out and end no group.
+ */
+export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] {
+  type Group = { agents: string[]; rules: RobotsRule[]; ruled: boolean }
+  const groups: Group[] = []
+  let current: Group | null = null
+  for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)) {
+    const line = raw.replace(/#.*$/, '').trim()
+    const colon = line.indexOf(':')
+    if (colon < 1) continue
+    const key = line.slice(0, colon).trim().toLowerCase()
+    const value = line.slice(colon + 1).trim()
+    if (key === 'user-agent') {
+      if (!current || current.ruled) { current = { agents: [], rules: [], ruled: false }; groups.push(current) }
+      current.agents.push(value.split('/')[0].trim().toLowerCase())
+    } else if ((key === 'allow' || key === 'disallow') && current) {
+      current.ruled = true
+      if (value) current.rules.push({ allow: key === 'allow', pattern: robotsPath(value) })
+    }
+  }
+  const named = groups.filter(g => g.agents.includes(token.toLowerCase()))
+  const chosen = named.length ? named : groups.filter(g => g.agents.includes('*'))
+  return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
+}
+
+/** Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? A two-pointer match: no backtracking blow-up, whatever the pattern. */
+function robotsMatch(pattern: string, path: string): boolean {
+  const anchored = pattern.endsWith('$')
+  const p = anchored ? pattern.slice(0, -1) : pattern
+  let i = 0, j = 0, star = -1, mark = 0
+  while (j < path.length) {
+    if (i < p.length && p[i] !== '*' && p[i] === path[j]) { i++; j++ }
+    else if (i < p.length && p[i] === '*') { star = i++; mark = j }
+    else if (i === p.length && !anchored) return true
+    else if (star >= 0) { i = star + 1; j = ++mark }
+    else return false
+  }
+  while (i < p.length && p[i] === '*') i++
+  return i === p.length
+}
+
+/**
+ * Whether robots rules let us read `pathAndQuery` (RFC 9309 §2.2.2): the longest matching pattern decides,
+ * Allow wins a tie, no match is allowed, and /robots.txt itself always is.
+ */
+export function robotsAllows(rules: readonly RobotsRule[], pathAndQuery: string): boolean {
+  const path = robotsPath(pathAndQuery || '/')
+  if (path === '/robots.txt') return true
+  let best: RobotsRule | null = null
+  for (const r of rules) {
+    if (!robotsMatch(r.pattern, path)) continue
+    if (!best || r.pattern.length > best.pattern.length || (r.pattern.length === best.pattern.length && r.allow)) best = r
+  }
+  return !best || best.allow
 }
 
 /** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
@@ -827,7 +980,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
   let failure: string | null = null
   let refused: string | null = null
   try { read = await politeRead(url, listed) } catch (e) {
-    if (e instanceof SiteRefused) refused = e.site
+    if (e instanceof SiteRefused || e instanceof RobotsRefused) refused = e.message
     failure = e instanceof FetchError ? e.message : 'Could not read the page'
   }
 
@@ -870,7 +1023,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     const status = refused ? 'not_allowed' : read ? read.status : 'error'
     const onlyResale = read?.condition === 'new' && (read.usedLow != null || read.refurbishedLow != null)
     const error = refused
-      ? notAllowedText(refused)
+      ? refused
       : read
         ? (read.status === 'blocked' ? 'The site asked for a browser check — it blocks automatic reads'
           : onlyResale ? 'No new offer on Prisjakt — only used or refurbished ones' : 'No price found on the page')
@@ -1133,7 +1286,9 @@ Deno.serve(async (req: Request) => {
       const r = await politeRead(url, await listedSites(supabase))
       return json({ result: { ...r, at: new Date().toISOString() } })
     } catch (e) {
-      if (e instanceof SiteRefused) return json({ result: { ...notAllowedRead(url), site: e.site, at: new Date().toISOString(), finalUrl: url } })
+      if (e instanceof SiteRefused || e instanceof RobotsRefused) {
+        return json({ result: { ...notAllowedRead(url), site: e.site, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
+      }
       return json({ error: e instanceof FetchError ? e.message : 'Could not read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)
     }
   }

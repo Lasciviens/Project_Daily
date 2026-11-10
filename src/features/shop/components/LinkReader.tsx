@@ -10,9 +10,10 @@ import { SiteLink } from './shopKit'
 
 /**
  * Paste a Prisjakt or shop link: its name, price and picture fill the form
- * (a page that blocks automatic reads says so — then type them; a site whose
- * terms forbid automated reading is never read and says so, with the link to
- * open it). The link is kept, and its price is checked every morning.
+ * (a page that blocks automatic reads says so — then type them; a page whose
+ * site's terms or robots rules forbid reading it is never read and says so,
+ * with the link to open it). The link is kept, and its price is checked every
+ * morning.
  */
 export function LinkReader({ url, onUrl, onRead }: {
   url: string
@@ -29,7 +30,7 @@ export function LinkReader({ url, onUrl, onRead }: {
     try {
       const r = await readPriceLink(u)
       if (r.status === 'not_allowed') {
-        setNote(<>{r.site ?? hostOf(u) ?? 'That site'}'s terms don't allow automated reading — <SiteLink url={u}>open it yourself</SiteLink></>)
+        setNote(<>{r.reason ?? `${r.site ?? hostOf(u) ?? 'That site'}'s terms don't allow automated reading`} — <SiteLink url={u}>open it yourself</SiteLink></>)
         return
       }
       const c = (r.currency ?? '').toUpperCase()

@@ -263,6 +263,86 @@ export function listedSite(url: string, hosts: readonly string[]): string | null
   return best
 }
 
+/** One rule of a robots.txt group: allow or disallow the paths a pattern matches (`*` any characters, a final `$` the end). */
+export interface RobotsRule { allow: boolean; pattern: string }
+
+/** The product token our User-Agent names (`LascisBoard/1.0`): robots.txt's group for it applies, else its `*` group. */
+export const ROBOTS_TOKEN = 'LascisBoard'
+
+/** At most this many rules are read from one robots.txt (a hostile file can't make every check slow). */
+const ROBOTS_RULE_CAP = 5000
+
+/** A robots.txt path, or a URL's path + query, with its octets percent-encoded one way (RFC 9309 §2.2.2): non-ASCII, spaces and controls encoded, hex in capitals. */
+function robotsPath(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const code = ch.codePointAt(0) as number
+    if (code > 0x20 && code < 0x7f) out += ch
+    else { try { out += encodeURIComponent(ch) } catch { out += '%EF%BF%BD' } }
+  }
+  return out.replace(/%[0-9a-f]{2}/gi, m => m.toUpperCase())
+}
+
+/**
+ * The rules a robots.txt gives `token` (RFC 9309): the groups that name it (any case, a version after "/"
+ * left out), else those for `*`, their rules combined; [] when there are none — nothing is disallowed. An
+ * empty `Disallow:` disallows nothing. Rules before any user-agent line, and records robots.txt doesn't
+ * define (Sitemap, Crawl-delay …), are left out and end no group.
+ */
+export function robotsRules(text: string, token: string = ROBOTS_TOKEN): RobotsRule[] {
+  type Group = { agents: string[]; rules: RobotsRule[]; ruled: boolean }
+  const groups: Group[] = []
+  let current: Group | null = null
+  for (const raw of text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)) {
+    const line = raw.replace(/#.*$/, '').trim()
+    const colon = line.indexOf(':')
+    if (colon < 1) continue
+    const key = line.slice(0, colon).trim().toLowerCase()
+    const value = line.slice(colon + 1).trim()
+    if (key === 'user-agent') {
+      if (!current || current.ruled) { current = { agents: [], rules: [], ruled: false }; groups.push(current) }
+      current.agents.push(value.split('/')[0].trim().toLowerCase())
+    } else if ((key === 'allow' || key === 'disallow') && current) {
+      current.ruled = true
+      if (value) current.rules.push({ allow: key === 'allow', pattern: robotsPath(value) })
+    }
+  }
+  const named = groups.filter(g => g.agents.includes(token.toLowerCase()))
+  const chosen = named.length ? named : groups.filter(g => g.agents.includes('*'))
+  return chosen.flatMap(g => g.rules).slice(0, ROBOTS_RULE_CAP)
+}
+
+/** Does robots `pattern` match `path` from its start (`*` any characters; a final `$` the end)? A two-pointer match: no backtracking blow-up, whatever the pattern. */
+function robotsMatch(pattern: string, path: string): boolean {
+  const anchored = pattern.endsWith('$')
+  const p = anchored ? pattern.slice(0, -1) : pattern
+  let i = 0, j = 0, star = -1, mark = 0
+  while (j < path.length) {
+    if (i < p.length && p[i] !== '*' && p[i] === path[j]) { i++; j++ }
+    else if (i < p.length && p[i] === '*') { star = i++; mark = j }
+    else if (i === p.length && !anchored) return true
+    else if (star >= 0) { i = star + 1; j = ++mark }
+    else return false
+  }
+  while (i < p.length && p[i] === '*') i++
+  return i === p.length
+}
+
+/**
+ * Whether robots rules let us read `pathAndQuery` (RFC 9309 §2.2.2): the longest matching pattern decides,
+ * Allow wins a tie, no match is allowed, and /robots.txt itself always is.
+ */
+export function robotsAllows(rules: readonly RobotsRule[], pathAndQuery: string): boolean {
+  const path = robotsPath(pathAndQuery || '/')
+  if (path === '/robots.txt') return true
+  let best: RobotsRule | null = null
+  for (const r of rules) {
+    if (!robotsMatch(r.pattern, path)) continue
+    if (!best || r.pattern.length > best.pattern.length || (r.pattern.length === best.pattern.length && r.allow)) best = r
+  }
+  return !best || best.allow
+}
+
 /** The text a Next.js page streams to React: every `self.__next_f.push([1, "…"])` chunk, decoded and joined in order. */
 function nextFlight(html: string): string {
   const out: string[] = []

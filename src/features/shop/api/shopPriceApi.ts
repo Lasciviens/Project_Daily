@@ -8,8 +8,11 @@ import { rateKey, type RatePair } from '../chainDraft'
 // before it is saved; `check` re-reads saved rows into the price watch; a
 // daily cron does both for everything due.
 
-/** `site`: with status not_allowed, the listed site the link is on (it was never fetched). */
-export type PriceReadResult = PriceRead & { at: string; finalUrl: string; site?: string }
+/**
+ * With status not_allowed (nothing was fetched): `site`, the host whose terms or robots rules refuse it, and
+ * `reason`, that in one plain sentence ("finn.no's terms don't allow automated reading").
+ */
+export type PriceReadResult = PriceRead & { at: string; finalUrl: string; site?: string; reason?: string }
 
 function notDeployed(error: unknown): boolean {
   const msg = (error as { message?: string; context?: { status?: number } })?.message ?? ''
