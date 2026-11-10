@@ -256,6 +256,147 @@ export interface ShopDealDay {
   checked_on:  string
   created_at:  string
   updated_at:  string
+  /** Migration 191: this account's own version replaces the shared row (shop_deal_day_edits). */
+  edited?:     boolean
+}
+
+/**
+ * The owner's own version of a deal day (shop_deal_day_edits, migration 191), by slug: one of shop_deal_days'
+ * slugs replaces it for this account (`off` = turned off), any other is a deal day of the owner's own.
+ */
+export interface ShopDealDayEdit {
+  id:          string
+  user_id:     string
+  slug:        string
+  name:        string
+  rule_kind:   'fixed' | 'nth_weekday'
+  month:       number
+  day:         number | null
+  weekday:     number | null
+  nth:         number | null
+  offset_days: number
+  length_days: number
+  off:         boolean
+  source_url:  string | null
+  created_at:  string
+  updated_at:  string
+}
+
+/** A deal day as the owner sees it: the shared row (`source`, null for one of their own), their edit, and what counts. */
+export interface ShopDealDayRow {
+  slug:      string
+  source:    ShopDealDay | null
+  own:       ShopDealDayEdit | null
+  /** What Needs a look counts: the edit when there is one (null when it is turned off), else the shared row. */
+  effective: ShopDealDay | null
+}
+
+// ── Stores, marketplaces and their rules (migration 191) ─────────────────────
+
+export type ShopStoreKind = 'shop' | 'marketplace' | 'price_site' | 'refurbisher'
+/** Where a row's facts come from: a seed (a page read that came with the app), a page read, the owner, Ask AI. */
+export type ShopRuleOrigin = 'seed' | 'page' | 'owner' | 'ask_ai'
+export type ShopStoreRuleKind = 'open_purchase' | 'return' | 'seasonal_return' | 'price_match' | 'price_protection'
+export type ShopRuleExclusion = 'campaign' | 'black_friday' | 'outlet' | 'marketplace_seller' | 'used'
+export type ShopRulePayout = 'money' | 'gift_card'
+/** price_match: `listed` stores or `any`; price_protection: the store's `own` price or `any`. */
+export type ShopRuleAgainst = 'listed' | 'any' | 'own'
+
+/** A store's facts as its source gave them (what Reset to the source goes back to). */
+export interface ShopStoreFacts {
+  kind:        ShopStoreKind
+  name:        string
+  country:     string
+  currency:    string
+  hosts:       string[]
+  search_url:  string | null
+  ad_template: string | null
+  ad_language: string | null
+  source_url:  string | null
+  /** yyyy-mm-dd */
+  read_on:     string | null
+}
+
+export interface ShopStore extends ShopStoreFacts {
+  id:           string
+  user_id:      string
+  seed_key:     string | null
+  /** The owner's member tier at this store (a rule with the same tier applies to them). */
+  member_tier:  string | null
+  hidden:       boolean
+  origin:       Exclude<ShopRuleOrigin, 'ask_ai'>
+  /** What the source said; null for a store the owner made. */
+  source:       ShopStoreFacts | null
+  /** The owner made it, or its facts differ from `source` — never overwritten by a seed or a page read. */
+  owner_edited: boolean
+  edited_at:    string | null
+  created_at:   string
+  updated_at:   string
+}
+
+/** A rule's facts as its source gave them. */
+export interface ShopStoreRuleFacts {
+  kind:           ShopStoreRuleKind
+  /** A short name ("Christmas returns"); null = named by its kind. */
+  label:          string | null
+  days:           number | null
+  /** Only for members of this tier (the store's `member_tier`); null = everyone. */
+  member_tier:    string | null
+  /** seasonal_return: bought from–to (MM-DD; to before from = across the year end) … */
+  window_from:    string | null
+  window_to:      string | null
+  /** … returned by this day (MM-DD), the first after `window_to`. */
+  return_until:   string | null
+  exclusions:     ShopRuleExclusion[]
+  payout:         ShopRulePayout | null
+  against:        ShopRuleAgainst | null
+  /** price_match against `listed` stores: their ids. */
+  against_stores: string[] | null
+  /** The store's own words. */
+  words:          string | null
+  source_url:     string | null
+  /** yyyy-mm-dd */
+  read_on:        string | null
+  off:            boolean
+}
+
+export interface ShopStoreRule extends ShopStoreRuleFacts {
+  id:           string
+  user_id:      string
+  store_id:     string
+  seed_key:     string | null
+  origin:       ShopRuleOrigin
+  source:       ShopStoreRuleFacts | null
+  owner_edited: boolean
+  edited_at:    string | null
+  created_at:   string
+  updated_at:   string
+}
+
+/** One rule of Norway's consumer law (shop_law_rules, migration 191), citing its law. */
+export interface ShopLawRule {
+  id:           string
+  slug:         string
+  country:      'NO'
+  /** cancel = angrerett, complaint = reklamasjon. */
+  kind:         'cancel' | 'complaint'
+  /** distance = online, by phone or away from the shop. */
+  channel:      'distance' | 'in_store' | 'any'
+  seller:       'business' | 'private'
+  gives_right:  boolean
+  days:         number | null
+  years:        number | null
+  /** complaint: true = the rule for things meant to last considerably longer; null = one rule for all. */
+  long_lasting: boolean | null
+  counts_from:  'receipt' | null
+  /** The last day moves past a weekend or a public holiday. */
+  to_workday:   boolean
+  name:         string
+  summary:      string
+  law:          string
+  law_url:      string
+  /** yyyy-mm-dd */
+  checked_on:   string
 }
 
 /**
