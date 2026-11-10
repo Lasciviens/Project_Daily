@@ -4,7 +4,7 @@
 import type { Tone } from '../../shared/ui/Tone'
 import { addDays } from './ownModel'
 import { currencyOf, listOf, watchedPrice, type Money } from './shopModel'
-import type { ShopItem, ShopPricePoint, ShopPriceWatch } from './types'
+import type { ShopItem, ShopPriceStats, ShopPriceWatch } from './types'
 
 /** One belt per tile, the first that holds in this order. */
 export type BeltKind = 'at_target' | 'lowest' | 'back' | 'deal' | 'need'
@@ -32,10 +32,10 @@ export function cleanPrice(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | 
 }
 
 /**
- * What a wish's clean price history says (usePriceStats): its lowest and
- * highest clean price ever and over the last 60 days with how many reads, the
- * day the 60 days' first one was, and whether its last read is in stock right
- * after one that was not.
+ * What a wish's clean price history says (usePriceStats, migration 190): its
+ * lowest and highest clean price ever and over the last 60 days with how many
+ * reads, how far back the 60 days' reads reach, and whether its last read is
+ * in stock again after one that was not (and since when).
  */
 export interface PriceFacts {
   currency: string
@@ -45,38 +45,26 @@ export interface PriceFacts {
   low60: number | null
   high60: number | null
   reads60: number
+  /** The first day of the 60 days with a clean read, to the 5-day step of the sparkline (null: none). */
   since60: string | null
   backInStock: boolean
+  restockedAt: string | null
 }
 
 /** How far back "Lowest in 60 days" and the "before" price check look. */
 export const WINDOW_DAYS = 60
+/** The sparkline's step, in days (shop_price_stats: 12 steps of 5 days, oldest first). */
+const SPARK_STEP_DAYS = 5
 
-/**
- * A row's price history as PriceFacts, from its points in any order: clean
- * reads in `currency` only (a point's day is its UTC date — the sweep reads
- * at 05:00 Oslo time). In stock only where a point says so.
- */
-export function factsFromPoints(points: readonly (ShopPricePoint & { in_stock?: boolean | null })[], currency: string, today: string): PriceFacts {
-  const cur = currency.toUpperCase()
-  const clean = points
-    .filter(p => isClean(p) && (p.currency ?? cur).toUpperCase() === cur && Number.isFinite(p.low))
-    .sort((a, b) => a.checked_at.localeCompare(b.checked_at))
-  const from = addDays(today, -WINDOW_DAYS)
-  const recent = clean.filter(p => p.checked_at.slice(0, 10) >= from)
-  const lows = clean.map(p => p.low)
-  const lows60 = recent.map(p => p.low)
-  const [last, before] = [...points].sort((a, b) => b.checked_at.localeCompare(a.checked_at))
+/** shop_price_stats' figures for one thing as PriceFacts, seen from `today`. */
+export function factsOf(stats: ShopPriceStats, today: string): PriceFacts {
+  const first = stats.spark.findIndex(v => v != null)
   return {
-    currency: cur,
-    lowAll: lows.length ? Math.min(...lows) : null,
-    highAll: lows.length ? Math.max(...lows) : null,
-    readsAll: lows.length,
-    low60: lows60.length ? Math.min(...lows60) : null,
-    high60: lows60.length ? Math.max(...lows60) : null,
-    reads60: lows60.length,
-    since60: recent.length ? recent[0].checked_at.slice(0, 10) : null,
-    backInStock: !!last && !!before && last.in_stock === true && before.in_stock === false,
+    currency: (stats.currency ?? '').toUpperCase(),
+    lowAll: stats.low_all, highAll: stats.high_all, readsAll: stats.points,
+    low60: stats.low_60d, high60: stats.high_60d, reads60: stats.points_60d,
+    since60: first < 0 ? null : addDays(today, -WINDOW_DAYS + first * SPARK_STEP_DAYS),
+    backInStock: stats.back_in_stock, restockedAt: stats.restocked_at,
   }
 }
 

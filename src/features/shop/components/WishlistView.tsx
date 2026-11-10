@@ -12,14 +12,14 @@ import { useBuyNow, useDeleteShopItems, useShopItems, useUpdateShopItem } from '
 import { useShopRates } from '../hooks/useShopRates'
 import { useShopLinks, useShopMoney } from '../hooks/useShopMoney'
 import { useShopWatches } from '../hooks/useShopPrices'
-import { usePriceStats } from '../hooks/signalStandIns'
+import { usePriceStats } from '../hooks/useShopSignals'
 import { useCategoryPictures } from '../hooks/useCategoryPictures'
 import {
   NO_FILTERS, categoryPath, droppedItems, filterWishlist, filtersActive, groupByCategory, listOf, modelsByWish, planDefaults, sortItems, totalsIn, totalsLabel,
   type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
-import { categoryColumns, watchedWishIds } from '../wishTile'
+import { categoryColumns, factsOf, watchedWishIds } from '../wishTile'
 import type { Amount } from '../ownModel'
 import { CategorySection, FoldAll } from './CategorySection'
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
@@ -55,6 +55,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const watches = useMemo(() => new Map((watchQ.data ?? []).map(w => [w.item_id, w])), [watchQ.data])
   // The linked wishes' clean price histories, in one call shared with Needs a look: each tile's belt and bar.
   const stats = usePriceStats(useMemo(() => watchedWishIds(items), [items]))
+  const factOf = (id: string) => { const s = stats.byId.get(id); return s ? factsOf(s, today) : null }
   const pictures = useCategoryPictures()
   const itemsQ = useShopItems()
   const { ref: listRef, width: listRem } = useElementWidthRem()
@@ -124,7 +125,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       task={item.task_id ? taskById.get(item.task_id) ?? null : null}
       today={today}
       watch={watches.get(item.id) ?? null}
-      facts={stats.data.get(item.id) ?? null}
+      facts={factOf(item.id)}
       afterSale={afterSale.get(item.id) ?? null}
       onOpen={() => modal.open({ kind: 'shop-item', id: item.id })}
       onBought={() => buy(item)}
@@ -148,7 +149,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   }
 
   // The loading copy and the list are keyed apart (THEME §5), each measured for the stacks before it paints.
-  const tilesLoading = isLoading || watchQ.isLoading || stats.isLoading || !pictures.ready
+  const tilesLoading = isLoading || watchQ.isLoading || stats.loading || !pictures.ready
   // The filter bar stays while the list loads only where it showed last time (an empty
   // wishlist has none: arriving or leaving, the bar moved the list and the rail).
   const showFilters = useRememberedFlag('shop:wishFilters', all.length > 0, !isLoading && !itemsQ.isError, true)

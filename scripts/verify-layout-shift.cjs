@@ -238,7 +238,7 @@ check('Shop and Wishes: the filters show while loading — Shop\'s only where th
     && /filters: showFilters && \(/.test(wishlist)
     && /filters: \(wishes\.length > 0 \|\| isLoading\)/.test(code('src/features/wishes/pages/WishesPage.tsx')))
 check('Shop: the tiles wait for their own reads and the default pictures, so nothing appears under a drawn tile',
-  /const tilesLoading = isLoading \|\| watchQ\.isLoading \|\| stats\.isLoading \|\| !pictures\.ready/.test(wishlist))
+  /const tilesLoading = isLoading \|\| watchQ\.isLoading \|\| stats\.loading \|\| !pictures\.ready/.test(wishlist))
 const library = code('src/features/books/components/LibraryTab.tsx')
 check('Books: Reading now keeps room while the library loads only for as many books as it showed last time (none the first time)',
   /reading: isLoading \? readingRoom > 0 && <ReadingNowSkeleton books=\{readingRoom\} \/>/.test(library) && !/isLoading \? <ReadingNowSkeleton \/>/.test(library))

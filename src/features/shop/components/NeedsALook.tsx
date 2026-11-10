@@ -14,8 +14,8 @@ import { lookLine, type Look, type LookKind, type LookThing } from '../shopSugge
 // Each row has its one action, and Snooze a week · Got it behind ⋯.
 
 const ICON: Record<LookKind, LucideIcon> = {
-  return: RotateCcw, cheaper: TrendingDown, at_target: Target, lowest: TrendingDown, back: PackageCheck, fake_before: BadgeAlert,
-  deal_day: CalendarClock, complaint: ShieldAlert, value: Tag, wish: Hourglass, tidy: ListChecks,
+  return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
+  fake_before: BadgeAlert, deal_day: CalendarClock, complaint_ending: ShieldAlert, old_value: Tag, old_wish: Hourglass, tidy_up: ListChecks,
 }
 const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show' }
 /** The rail shows this many rows, then "N more". */
