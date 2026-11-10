@@ -60,13 +60,16 @@ export function useQuietCheck() {
   }
 }
 
-/** Products for a quick-list row (Kassalapp), while typing. */
+/** Kassalapp's search takes at least 3 characters (its spec's `minLength: 3`; shorter is a 422). */
+export const SEARCH_MIN_CHARS = 3
+
+/** Products for a quick-list row (Kassalapp), while typing — from `SEARCH_MIN_CHARS`. */
 export function useGrocerySearch(query: string) {
   const q = query.trim()
   return useQuery({
     queryKey: qk.shop.grocerySearch(q.toLowerCase()),
     queryFn: () => searchGroceries(q),
-    enabled: q.length >= 2,
+    enabled: q.length >= SEARCH_MIN_CHARS,
     staleTime: STALE.hour,
     retry: false,
   })

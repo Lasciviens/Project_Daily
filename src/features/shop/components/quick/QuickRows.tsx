@@ -9,8 +9,12 @@ import { chainName, chainPrices, cheapestStore, type GroceryPrice } from '../../
 import { currencyOf, isNoRush, priceLabel } from '../../shopModel'
 import type { ShopItem } from '../../types'
 
-/** A matched row's price: still loading, unavailable (the basket says why), or read (none = no chain sells it now). */
-export type RowPrice = { state: 'loading' } | { state: 'error' } | { state: 'ok'; price: GroceryPrice | undefined }
+/**
+ * A matched row's price: still loading, unavailable (the basket says why), or
+ * read (none = no chain sells it now) — judged on Oslo's `today`
+ * (`priceToday`), as a price not checked in 14 days no longer counts.
+ */
+export type RowPrice = { state: 'loading' } | { state: 'error' } | { state: 'ok'; price: GroceryPrice | undefined; today: string }
 
 const TITLE = 'block text-body font-medium leading-5'
 // pt-3 centres the first line on the 44px tick and ⋯ beside it.
@@ -32,9 +36,9 @@ function Tick({ label, hint, onClick }: { label: string; hint: string; onClick: 
 function PriceFact({ price }: { price: RowPrice }) {
   if (price.state === 'loading') return <Skeleton rounded="rounded-full" className="h-[18px] w-28" />
   if (price.state === 'error') return null
-  const best = cheapestStore(price.price)
+  const best = cheapestStore(price.price, price.today)
   if (!best) return <span className="text-meta text-fg-muted" title="No chain Kassalapp follows has a price for this product now">No chain price</span>
-  const all = chainPrices(price.price).map(c => `${c.chain} ${formatMoney(c.price, 'NOK')}`).join(' · ')
+  const all = chainPrices(price.price, price.today).map(c => `${c.chain} ${formatMoney(c.price, 'NOK')}`).join(' · ')
   return <span className="chip tabular-nums" title={`Cheapest now — ${all}`}>{formatMoney(best.price, 'NOK')} · {chainName(best)}</span>
 }
 
