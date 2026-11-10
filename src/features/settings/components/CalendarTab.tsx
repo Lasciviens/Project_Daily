@@ -1,14 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays } from 'lucide-react'
-import { Button, Card, CardHeader, PageBoard, TonePill } from '../../../shared/ui'
+import { CalendarDays, ChevronRight, LayoutList } from 'lucide-react'
+import { Button, Card, CardHeader, PageBoard, Switch, TonePill, Truncate, cx } from '../../../shared/ui'
 import {
   ALERT_CHOICES, ALERT_MAX, AREA_KEYS, AREA_LABEL, NOTES_MODES, alertLabel, areaProblem, areaSwitches, readCalendarPrefs,
   type AllDayAlert, type AreaKey, type AreaSwitch, type CalendarArea, type CalendarPrefs, type NotesMode,
 } from '../../calendar/areas/calendarAreas'
 import { Time24Field } from '../../../shared/components/plan-modal/fields'
 import { AreaSwitchDialog } from './AreaSwitchDialog'
-import { useCalendarPrefs, useSaveCalendarPrefs } from '../../calendar/areas/useCalendarPrefs'
+import { useCalendarPrefs, useSaveCalendarPrefs, useSaveShowMarks } from '../../calendar/areas/useCalendarPrefs'
 import { useICloudStatus, useSetupICloudCalendars } from '../../calendar/icloud/useICloud'
 import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settingsBoards'
 
@@ -17,13 +17,20 @@ import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settin
 // you"). The app's calendars in Apple Calendar, one per area: name, emoji,
 // colour, default alert, on/off, and where the area's events show — Google
 // Calendar or Apple Calendar (2b-2: switching moves them, AreaSwitchDialog).
-// docs/features/calendar-plan.md.
+// docs/features/calendar-plan.md. A short view first (owner, 10.11.2026: "a
+// short view first, with the details when a part is opened"): one line per
+// area — its colour, emoji, name, where its events show and its state — that
+// opens its settings; the same for every Apple Calendar event. Then the item
+// screen's own choice: whether every row shows where its field goes.
 
 const sameDoc = (a: CalendarPrefs, b: CalendarPrefs) => JSON.stringify(a) === JSON.stringify(b)
 
-function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChange }: {
+function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, open, onOpen, onChange }: {
   areaKey: AreaKey
   area: CalendarArea
+  /** Its settings show (one area at a time). */
+  open: boolean
+  onOpen: () => void
   /** The saved settings aren't loaded yet: an edit now would be made on the defaults. */
   locked: boolean
   ready: boolean | undefined
@@ -39,14 +46,22 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChan
   const [customPicked, setCustom] = useState(false)
   const custom = customPicked || !ALERT_CHOICES.includes(area.alertMinutes)
   return (
-    <li className="flex flex-col gap-1.5 border-t border-line py-3 first:border-t-0 first:pt-0">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-meta font-semibold text-fg-2">{label}</span>
+    <li className="flex flex-col gap-1.5 border-t border-line py-1.5 first:border-t-0 first:pt-0">
+      <button type="button" onClick={onOpen} aria-expanded={open}
+        className="-mx-1.5 flex min-h-10 items-center gap-2 rounded-control px-1.5 text-left hover:bg-surface-hover">
+        <span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background: area.color }} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-meta font-semibold text-fg-2">{label}</span>
+          <Truncate className="text-meta text-fg-muted">{`${area.emoji ? `${area.emoji} ` : ''}${area.name} · ${area.enabled ? (area.app === 'apple' ? 'Apple Calendar' : 'Google Calendar') : 'not in use'}`}</Truncate>
+        </span>
         {!area.enabled ? <TonePill tone="neutral">Off</TonePill>
           : failure ? <TonePill tone="danger">Not made</TonePill>
           : ready ? <TonePill tone="success">Calendar ready</TonePill>
           : ready === false ? <TonePill tone="neutral">No calendar yet</TonePill> : null}
-      </div>
+        <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
+      </button>
+      {(problem || failure) && !open && <p role="alert" className="text-meta text-danger">{problem ?? failure}</p>}
+      {open && <>
       <div className="flex items-center gap-2">
         <input type="color" value={area.color} aria-label={`${label} colour`} disabled={off}
           onChange={e => onChange({ ...area, color: e.target.value.toUpperCase() })}
@@ -93,6 +108,7 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, onChan
       </div>
       {problem && <p role="alert" className="text-meta text-danger">{problem}</p>}
       {failure && <p role="alert" className="text-meta text-danger">{failure}</p>}
+      </>}
     </li>
   )
 }
@@ -102,16 +118,27 @@ const NOTES_LABEL: Record<NotesMode, string> = {
 }
 
 /** For every event in Apple Calendar (2b-3): what its notes carry, and an all-day event's alert. Google's events keep theirs. */
-function EveryEventRow({ notes, allDayAlert, locked, onChange }: {
+function EveryEventRow({ notes, allDayAlert, locked, open, onOpen, onChange }: {
   notes: NotesMode
   allDayAlert: AllDayAlert | null
   locked: boolean
+  open: boolean
+  onOpen: () => void
   onChange: (next: Partial<Pick<CalendarPrefs, 'notes' | 'allDayAlert'>>) => void
 }) {
   const when = allDayAlert ? (allDayAlert.dayBefore ? 'before' : 'day') : 'none'
+  const alertText = !allDayAlert ? 'no all-day alert' : `all-day alert ${allDayAlert.dayBefore ? 'the day before' : 'on the day'} at ${allDayAlert.time}`
   return (
-    <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
-      <span className="text-meta font-semibold text-fg-2">Every Apple Calendar event</span>
+    <div className="mt-1.5 flex flex-col gap-1.5 border-t border-line pt-1.5">
+      <button type="button" onClick={onOpen} aria-expanded={open}
+        className="-mx-1.5 flex min-h-10 items-center gap-2 rounded-control px-1.5 text-left hover:bg-surface-hover">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-meta font-semibold text-fg-2">Every Apple Calendar event</span>
+          <Truncate className="text-meta text-fg-muted">{`${NOTES_LABEL[notes]} · ${alertText}`}</Truncate>
+        </span>
+        <ChevronRight aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
+      </button>
+      {open && <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
           Notes
@@ -139,6 +166,7 @@ function EveryEventRow({ notes, allDayAlert, locked, onChange }: {
         )}
       </div>
       <p className="text-micro text-fg-muted">Every event still links to its day in the app. Alert "None" asks the iPhone not to add its default alert.</p>
+      </>}
     </div>
   )
 }
@@ -157,7 +185,7 @@ function AreasCard() {
     notes: look.notes ?? prefs.notes,
     allDayAlert: 'allDayAlert' in look ? look.allDayAlert ?? null : prefs.allDayAlert,
   }
-  const dirty = !sameDoc(readCalendarPrefs(form), prefs)
+  const dirty = !sameDoc(readCalendarPrefs(form), readCalendarPrefs(prefs))
   const invalid = AREA_KEYS.some(k => areaProblem(form.areas[k]))
   const connected = status.data?.connected === true
   const ready = (k: AreaKey) => !!status.data?.areas?.[k]?.ready
@@ -167,6 +195,9 @@ function AreasCard() {
   // An area whose events change app (2b-2): its move is asked about first.
   const switches = loaded ? areaSwitches(prefs, readCalendarPrefs(form)) : []
   const [switching, setSwitching] = useState<AreaSwitch[] | null>(null)
+  // The short view: one part's settings open at a time.
+  const [opened, setOpened] = useState<AreaKey | 'every' | null>(null)
+  const openPart = (k: AreaKey | 'every') => setOpened(o => (o === k ? null : k))
 
   // One action: save what changed, then bring Apple Calendar up to date with it.
   function apply() {
@@ -200,10 +231,12 @@ function AreasCard() {
           <ul className="flex flex-col">
             {AREA_KEYS.map(k => (
               <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined}
-                failure={failures.get(k)} appleAvailable={connected} onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
+                failure={failures.get(k)} appleAvailable={connected} open={opened === k} onOpen={() => openPart(k)}
+                onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
           </ul>
-          <EveryEventRow notes={form.notes} allDayAlert={form.allDayAlert} locked={!loaded} onChange={next => setLook(l => ({ ...l, ...next }))} />
+          <EveryEventRow notes={form.notes} allDayAlert={form.allDayAlert} locked={!loaded} open={opened === 'every'} onOpen={() => openPart('every')}
+            onChange={next => setLook(l => ({ ...l, ...next }))} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" disabled={!loaded || invalid || (!dirty && !connected) || status.isLoading} loading={busy} onClick={apply}>
               {label}
@@ -231,7 +264,27 @@ function AreasCard() {
   )
 }
 
+/** The item screen (New Item / Edit Item): whether every row carries a mark for where its field goes. Saved at once. */
+function ItemScreenCard() {
+  const { prefs, loaded } = useCalendarPrefs()
+  const save = useSaveShowMarks()
+  const on = save.isPending && save.variables ? save.variables.showMarks : prefs.showMarks
+  return (
+    <Card>
+      <CardHeader icon={<LayoutList />} title="The item screen" subtitle="New Item and Edit Item, wherever they open." />
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-body font-medium text-fg-2">Show where each field goes</p>
+          <p className="text-meta text-fg-muted">Apple's, Google's or the app's mark on each row. The Calendar row always shows its own.</p>
+        </div>
+        <Switch on={on} label="Show where each field goes" disabled={!loaded || save.isPending}
+          onChange={showMarks => save.mutate({ base: prefs, showMarks })} />
+      </div>
+    </Card>
+  )
+}
+
 export function CalendarTab() {
-  const sections: Record<CalendarSettingsSection, ReactNode> = { areas: <AreasCard /> }
+  const sections: Record<CalendarSettingsSection, ReactNode> = { areas: <AreasCard />, itemScreen: <ItemScreenCard /> }
   return <PageBoard sections={sections} layout={CALENDAR_SETTINGS_BOARD} stackClassName="max-w-2xl" />
 }

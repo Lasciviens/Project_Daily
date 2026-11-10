@@ -1,5 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════════
-//  UnifiedPlanModal — the Add sheet: the one place an item is added and edited.
+//  UnifiedPlanModal — the item screen ("New Item" / "Edit Item"): the one place
+//  an item is added and edited.
 //
 //  ┌─ RULES (read before editing) ─────────────────────────────────────────────┐
 //  │ 1. ONE CHROME. Rendered inside ModalShell (THEME.md §8) — stacking, Back,   │
@@ -8,10 +9,11 @@
 //  │    `defaults`, `source`, `onSaved`. A per-caller variation is a hide key or │
 //  │    a default, never a fork of this folder.                                   │
 //  │ 3. SINGLE SOURCE OF TRUTH. All mutable state lives in `form` (planForm.ts).  │
-//  │ 4. ONE FORM, ONE SAVE. ItemForm.tsx is the only form (title, date, time,    │
-//  │    length, repeat, Google, + rows); every save is ONE useSaveItem call      │
+//  │ 4. ONE FORM, ONE SAVE. ItemForm.tsx is the only form (title, the Time     │
+//  │    group, Calendar, notes, planning); every save is ONE useSaveItem call   │
 //  │    (the items contract, migration 155) and every delete one useSheetDelete │
-//  │    run. No table-by-table writes here.                                       │
+//  │    run. No table-by-table writes here. An edit saves by itself            │
+//  │    (useItemAutosave): one save at a time, never a second slot.            │
 //  │ 5. NO TABS, NO MODES TO PICK. A task, its slot and its repeat are parts of  │
 //  │    one item. `mode` only says what a NEW item starts with; an edit reads    │
 //  │    its rows (sheetRules.itemFromRows).                                       │
@@ -19,6 +21,35 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-10 · v22 · The item screen, step 1 (docs/features/item-screen-plan.md;
+//                    owner, 10.11.2026: the plan and its five answers). Drawn as
+//                    iOS Calendar's event screen: grouped rows under Location,
+//                    Time, Invitees, Options, Details and Planning; labels left,
+//                    values right, fixed widths. The data and its rules are as
+//                    before (sheetRules, planForm, quick add, the Google target,
+//                    the Apple send, zones, places, the section, today's date):
+//                    (a) Starts / Ends each have a day and a time (pills of one
+//                    width; a wheel or a month opens in the list). The item is
+//                    still a day, a start and a length: Ends is start + length,
+//                    an end picked there becomes the length — the next day too,
+//                    at most 24 hours (080); before the start or longer it is
+//                    held struck through and nothing saves. The start's day or
+//                    time keeps the length, so the end moves with it.
+//                    (b) The day's timeline: the day's other things (Daily's own
+//                    reads, buildDaySchedule) and this item — drag it, drag its
+//                    ends; the day strip under it scrolls it.
+//                    (c) All-day = no time (planForm.withAllDaySwitch: an item on
+//                    a calendar stays there all day, as withAllDay did).
+//                    (d) The Calendar row replaces the Google chip: the same
+//                    choices and words, Apple's or Google's mark, a red dot when
+//                    Apple hasn't taken it two minutes after its last change.
+//                    (e) The heading is "New Item" / "Edit Item" wherever it opens
+//                    (config.heading is ignored). A new item has Add; an edit
+//                    saves by itself ("Saving…", "Saved" under the heading) and
+//                    sends what is left when it closes. Each save after the first
+//                    names the slot the first one made, so no second slot.
+//                    (f) A mark on every row for where its field goes, behind
+//                    Settings → Calendar → "Show where each field goes".
 //  2026-11-03 · v21.10 · The save's result line names the calendar the chip
 //                    names: "· sending to Apple Calendar" for an item whose
 //                    area shows in Apple Calendar (it said "on Google
@@ -531,12 +562,14 @@
 //                    now, never source_type='task'.]
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Trash2 } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useItemCalendarApp } from '../../../features/calendar/areas/useItemCalendarApp'
+import { useCalendarPrefs } from '../../../features/calendar/areas/useCalendarPrefs'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
+import { useScheduleBlock, useTimeBlock } from '../../../features/daily/hooks/useSchedule'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
 import { movesPastWeek, pastWeekMoveLine, type PastWeekOutcome } from '../../../features/training/plan/sessionState'
 import { carryPastWeekMoveToCalendar, fetchPastWeekOutcome } from '../../../features/training/api/trainingPlanApi'
@@ -547,7 +580,7 @@ import { ensureValidCalendarToken } from '../../../features/calendar/api/calenda
 import { useSaveItem } from '../../../features/items/useItems'
 import { useSheetDelete } from '../../../features/items/useSheetDelete'
 import { parseQuickAdd, type QuickAddResult } from '../../../features/items/quickAdd'
-import { effectiveGoogleTarget, hasGoogleTasks, itemFromRows, storedGoogleTarget } from '../../../features/items/sheetRules'
+import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks, itemFromRows, storedGoogleTarget } from '../../../features/items/sheetRules'
 import type { ItemInput, SavedItem } from '../../../features/items/itemTypes'
 import { ModalShell } from '../../modals/ModalShell'
 import { entityModal } from '../../modals/useEntityModal'
@@ -555,14 +588,19 @@ import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
+import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
+import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
 import {
-  applyQuickAdd, buildInitialForm, inputFromForm, keepQuickText, repeatOfForm, shapeOf, switchScope,
+  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatOfForm, shapeOf, switchScope,
   type PlanForm, type QuickBase, type SheetItemInput,
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
 import type { PlanResult, UnifiedPlanModalProps } from './planModal.types'
 
 const SCOPES: { value: 'day' | 'all'; label: string }[] = [{ value: 'day', label: 'This day' }, { value: 'all', label: 'All days' }]
+
+/** Why Apple Calendar shows the red dot: the browser can't read the queue's own error (service role only). */
+const APPLE_REFUSED = "Apple Calendar didn't take it yet; the app tries again every 5 minutes (Settings → Subscriptions → Apple Calendar says why)"
 
 /** What a caller's onSaved hears: which parts the item has, and what was made. */
 function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | null): PlanResult {
@@ -574,6 +612,21 @@ function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | nul
   }
 }
 
+/** The heading's second line on an edit: the save's state, in one line (fixed height, so nothing moves). */
+function SaveLine({ line, onRetry }: { line: AutosaveLine; onRetry: () => void }) {
+  if (line.kind === 'saving') return <span aria-live="polite">Saving…</span>
+  if (line.kind === 'saved') return <span aria-live="polite">Saved</span>
+  if (line.kind === 'blocked') return <span data-tone="warn" className="tone-text" aria-live="polite">Not saved: {line.reason}</span>
+  if (line.kind === 'failed') {
+    return (
+      <span data-tone="danger" className="tone-text" aria-live="polite">
+        Not saved · <button type="button" onClick={onRetry} className="font-semibold underline">Try again</button>
+      </span>
+    )
+  }
+  return <span>Changes save by themselves</span>
+}
+
 export function UnifiedPlanModal({
   open, onClose, mode = 'task', config, defaults, source, task, timeBlock, scheduleBlock, occurrenceDate, startScope,
   onSaved, loading = false, loadError, onDeleteOverride,
@@ -582,11 +635,14 @@ export function UnifiedPlanModal({
   const today = todayStr()
   const qc = useQueryClient()
   const googleConnected = !!useCalendarStore(s => s.accessToken)
+  const { prefs } = useCalendarPrefs()
   // A training session put 7 or more days after its first day (167): the
   // database skips it in its week and moves that week's session to the day.
   const session = config?.session
   const shownDay = timeBlock?.date ?? task?.due_date ?? occurrenceDate ?? null
-  const outOfWeek = (input: ItemInput) => (session && input.scope !== 'all' && input.date && input.date !== shownDay
+  // The day as last saved here (an edit saves by itself): a later save that leaves the day alone moves nothing.
+  const savedDay = useRef<string | null>(null)
+  const outOfWeek = (input: ItemInput) => (session && input.scope !== 'all' && input.date && input.date !== (savedDay.current ?? shownDay)
     && movesPastWeek(session.firstDay, input.date) ? input.date : null)
   const del = useSheetDelete()
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
@@ -596,6 +652,10 @@ export function UnifiedPlanModal({
     () => (task || timeBlock || scheduleBlock ? itemFromRows(task, timeBlock, scheduleBlock) : null),
     [task, timeBlock, scheduleBlock],
   )
+  // What each save after the first names: the slot (and task) an earlier save of this edit made or kept.
+  const liveIds = useRef<Pick<ItemInput, 'taskId' | 'blockId'> | null>(null)
+  // …and the slot itself for what the screen draws (the timeline leaves it out of the day's other things).
+  const [madeBlockId, setMadeBlockId] = useState<string | null>(null)
   const seedForm = () => {
     const seeded = buildInitialForm({
       mode, defaults, source, item,
@@ -619,7 +679,8 @@ export function UnifiedPlanModal({
   })
   const appleArea = calendarApp === 'apple'
   const choiceShown = googleConnected || appleArea
-  // Its result line names the calendar the chip names ("· sending to Apple Calendar" for an Apple area).
+  // Its result line names the calendar the chip names ("· sending to Apple Calendar" for an Apple area). An edit says
+  // "Saved" under its heading instead ('' — the line says it), unless the database moved a training week (167).
   const save = useSaveItem({
     after: async (input, saved) => {
       const to = outOfWeek(input)
@@ -629,7 +690,7 @@ export function UnifiedPlanModal({
     },
     describe: (input, outcome) => {
       const to = outOfWeek(input)
-      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : undefined
+      return to && session ? pastWeekMoveLine(input.title.trim() || session.title, to, outcome as PastWeekOutcome | null) : editMode ? '' : undefined
     },
     calendarApp,
   })
@@ -641,14 +702,28 @@ export function UnifiedPlanModal({
   const [saving, setSaving] = useState(false)
   const [askScope, setAskScope] = useState(false)
 
+  const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
+  const target = effectiveGoogleTarget(shapeOf(form), form.googlePick)
+  // An incomplete repeat (a weekly one with no day, an N out of range, no
+  // picked date) can't be saved; nor an end before the start.
+  const repeatIssue = repeatOfForm(form) ? recurrenceProblem(form) : null
+  const problem = !form.title.trim() ? 'a title is needed'
+    : repeatIssue ? repeatIssue
+    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem] : null
+  // A row still loading by id (or failed to) is an edit, not a create.
+  const blocked = loading || !!loadError
+  const autosave = useItemAutosave({ enabled: open && editMode && !blocked, form, problem, persist })
+
   // Re-seed whenever the sheet (re)opens or its rows change — adjusted during
-  // render (not in an effect) so a stale form never paints.
+  // render (not in an effect) so a stale form never paints. The seeded form is
+  // what an edit starts from: nothing saves until it changes.
   const [seed, setSeed] = useState(() => ({ open, task, timeBlock, scheduleBlock }))
   if (seed.open !== open || seed.task !== task || seed.timeBlock !== timeBlock || seed.scheduleBlock !== scheduleBlock) {
     setSeed({ open, task, timeBlock, scheduleBlock })
     if (open) {
       const f = seedForm()
       setForm(f)
+      autosave.reset(formContentKey(f))
       setTyped(f.title)
       setParse(null)
       setQuickBase({})
@@ -658,18 +733,23 @@ export function UnifiedPlanModal({
 
   // The list name is seeded from the domain (a guess) — correct it to the
   // task's REAL list once the lists load, once per open (a later refetch
-  // never overwrites what was typed).
+  // never overwrites what was typed). Untouched, that is no change to save.
   const [listSeed, setListSeed] = useState<object | null>(null)
   if (open && task?.google_tasklist_id && listSeed !== seed) {
     const list = googleTaskLists.find(l => l.id === task.google_tasklist_id)
     if (list) {
       setListSeed(seed)
-      setForm(f => ({ ...f, googleListTitle: list.title }))
+      const next = { ...form, googleListTitle: list.title }
+      if (formContentKey(form) === autosave.savedKey) autosave.reset(formContentKey(next))
+      setForm(next)
     }
   }
 
-  const patch = (p: Partial<PlanForm>) => setForm(f => ({ ...f, ...p }))
-  const target = effectiveGoogleTarget(shapeOf(form), form.googlePick)
+  // The Calendar row's red dot: the item belongs in Apple Calendar and its slot or plan still has no Apple copy.
+  const liveBlock = useTimeBlock(editMode && appleArea ? item?.blockId : null)
+  const livePlan = useScheduleBlock(editMode && appleArea && !item?.blockId ? item?.scheduleBlockId : null)
+  const wantsApple = appleArea && hasGoogleCalendar(target) && (!!form.date || !!repeatOfForm(form))
+  const refused = editMode && appleRefused(item?.blockId ? liveBlock.data : livePlan.data, wantsApple, new Date().getTime()) ? APPLE_REFUSED : null
 
   // Quick add reads a NEW item's title as it is typed; "Keep text" stops it
   // until the field is cleared.
@@ -693,32 +773,34 @@ export function UnifiedPlanModal({
 
   // A token that is still valid (refreshed when it has expired), never the
   // stored one as is — typing a new list name after an hour used to fail with 401.
-  async function resolveGoogleList(): Promise<string | null | undefined> {
-    if (!googleConnected || !form.googleListTitle.trim()) return undefined
+  // An edit saves often: a name already found is not looked up on Google again.
+  const listIds = useRef(new Map<string, string | null>())
+  async function resolveGoogleList(title: string): Promise<string | null | undefined> {
+    const name = title.trim()
+    if (!googleConnected || !name) return undefined
+    if (listIds.current.has(name.toLowerCase())) return listIds.current.get(name.toLowerCase())
     try {
       const token = await ensureValidCalendarToken()
       if (!token) throw new Error('the Google connection needs signing in again (Settings → Subscriptions)')
-      return await resolveOrCreateGoogleTaskListId(token, form.googleListTitle)
+      const id = await resolveOrCreateGoogleTaskListId(token, name)
+      listIds.current.set(name.toLowerCase(), id)
+      return id
     } catch (err) {
-      toast.error(`Couldn't set up "${form.googleListTitle.trim()}" on Google: ${(err as Error).message}`)
+      toast.error(`Couldn't set up "${name}" on Google: ${(err as Error).message}`)
       return undefined
     }
   }
-
-  // An incomplete repeat (a weekly one with no day, an N out of range, no
-  // picked date) can't be saved.
-  const repeatIssue = repeatOfForm(form) ? recurrenceProblem(form) : null
 
   // A training session planned on a day that already has it (the repeating
   // template, or the same routine planned once already) asks first — the
   // second copy used to save silently and every page then showed the session
   // twice (planTwins.ts). Moving a plan within its own day never asks.
-  async function confirmNoTwin(): Promise<boolean> {
-    const oneOff = form.category === 'training' && !!form.date && !!form.time && !repeatOfForm(form)
-    if (!oneOff || !form.date) return true
+  async function confirmNoTwin(f: PlanForm, savedOn: string | null): Promise<boolean> {
+    const oneOff = f.category === 'training' && !!f.date && !!f.time && !repeatOfForm(f)
+    if (!oneOff || !f.date) return true
     const existing = timeBlock ?? null
-    if (existing && existing.date === form.date) return true
-    const date = form.date
+    if (existing && (savedOn ?? existing.date) === f.date) return true
+    const date = f.date
     try {
       const [blocks, templates] = await Promise.all([
         qc.fetchQuery({ queryKey: qk.schedule.day(date), queryFn: () => fetchTimeBlocks(date), staleTime: 30_000 }),
@@ -727,7 +809,7 @@ export function UnifiedPlanModal({
       const routineId = source?.sourceType === 'training_session' ? source.sourceId ?? null
         : existing?.source_type === 'training_session' ? existing.source_id ?? null : null
       const twin = findPlanTwin({
-        date, title: form.title.trim(), routineId, excludeBlockId: existing?.id ?? null,
+        date, title: f.title.trim(), routineId, excludeBlockId: existing?.id ?? null,
         blocks, templates: templates.filter(t => t.category === 'training'),
       })
       if (!twin) return true
@@ -743,19 +825,43 @@ export function UnifiedPlanModal({
     }
   }
 
-  // useSaveItem toasts and logs its own failure and says the result
-  // ("Added · 15.10.2026 17:30–18:30 · on Google Calendar"); a throw here
-  // only stops the flow.
+  function inputOf(f: PlanForm, base: ItemInput | null, googleTaskListId: string | null | undefined): SheetItemInput {
+    return inputFromForm(f, { item: base, occurrenceDate, googleConnected: choiceShown, googleTaskListId, source, color: defaults?.color, today })
+  }
+
+  // An edit's one save of the form as it is now (useItemAutosave runs one at a time). useSaveItem toasts and logs
+  // its own failure; a throw here only says "Not saved".
+  async function persist(f: PlanForm): Promise<PersistResult> {
+    const lastDay = savedDay.current ?? shownDay
+    if (!(await confirmNoTwin(f, lastDay))) {
+      // "Keep one": the session stays on its day.
+      setForm(cur => ({ ...cur, date: lastDay ?? cur.date }))
+      return 'kept'
+    }
+    const base = item ? { ...item, ...liveIds.current } : null
+    const fTarget = effectiveGoogleTarget(shapeOf(f), f.googlePick)
+    const input = inputOf(f, base, hasGoogleTasks(fTarget) ? await resolveGoogleList(f.googleListTitle) : undefined)
+    const saved = await save.mutateAsync(input as ItemInput)
+    // A one-off's slot made (or dropped) by this save is the one the next save edits.
+    if (input.scope === 'item') {
+      liveIds.current = { taskId: saved.taskId ?? base?.taskId ?? null, blockId: saved.blockId ?? null }
+      setMadeBlockId(saved.blockId ?? null)
+    }
+    savedDay.current = input.date
+    onSaved?.(resultOf(input, saved, base))
+    return 'saved'
+  }
+
+  // A new item: Add. useSaveItem says the result ("Added · 15.10.2026
+  // 17:30–18:30 · on Google Calendar"); a throw here only stops the flow.
   async function handleSave() {
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (repeatIssue) { toast.error(repeatIssue); return }
-    if (!(await confirmNoTwin())) return
+    if (form.badEnd) { toast.error(END_PROBLEM_TEXT[form.badEnd.problem]); return }
+    if (!(await confirmNoTwin(form, null))) return
     setSaving(true)
     try {
-      const googleTaskListId = hasGoogleTasks(target) ? await resolveGoogleList() : undefined
-      const input = inputFromForm(form, {
-        item, occurrenceDate, googleConnected: choiceShown, googleTaskListId, source, color: defaults?.color, today,
-      })
+      const input = inputOf(form, item, hasGoogleTasks(target) ? await resolveGoogleList(form.googleListTitle) : undefined)
       // The extras (category, colour, window, the slot's own source) ride along
       // until the contract names them (contract changes, BRIEF).
       const saved = await save.mutateAsync(input as ItemInput)
@@ -768,62 +874,76 @@ export function UnifiedPlanModal({
     }
   }
 
-  const ref = { taskId: task?.id, blockId: timeBlock?.id, scheduleBlockId: scheduleBlock?.id }
+  // Closing an edit sends what waits first; a failed save keeps the screen open (its line says so).
+  const closing = useRef(false)
+  async function requestClose() {
+    if (!editMode || blocked) { onClose(); return }
+    if (closing.current) return
+    closing.current = true
+    const done = await autosave.flush()
+    closing.current = false
+    if (done.kind === 'failed') return
+    if (done.kind === 'problem') toast.warning(`Your last change wasn't saved: ${done.reason}`)
+    onClose()
+  }
+
   const shownTitle = form.title.trim() || task?.title || timeBlock?.title || scheduleBlock?.title || ''
 
+  // The item's rows as they are now (a slot an earlier save of this edit made included).
+  const refNow = () => ({
+    taskId: liveIds.current?.taskId ?? task?.id, blockId: liveIds.current ? liveIds.current.blockId : timeBlock?.id, scheduleBlockId: scheduleBlock?.id,
+  })
+
   async function handleDelete() {
+    // What waits is saved first: a save landing after the delete would bring the item back.
+    if ((await autosave.flush()).kind === 'failed') return
     if (onDeleteOverride) {
       if (await onDeleteOverride()) onClose()
       return
     }
     if (scheduleBlock && occurrenceDate) { setAskScope(true); return }
-    const result = await del.run(ref, scheduleBlock ? 'all' : 'item', { title: `Delete “${shownTitle}”?` })
+    const result = await del.run(refNow(), scheduleBlock ? 'all' : 'item', { title: `Delete “${shownTitle}”?` })
     if (result === 'deleted' || result === 'gone') onClose()
   }
 
   async function deleteRepeat(scope: 'day' | 'all') {
     setAskScope(false)
-    const result = await del.run(ref, scope, { title: `Delete “${shownTitle}”?`, ask: false, occurrenceDate })
+    const result = await del.run(refNow(), scope, { title: `Delete “${shownTitle}”?`, ask: false, occurrenceDate })
     if (result === 'deleted' || result === 'gone') onClose()
   }
 
   const working = saving || del.busy
-  // A row still loading by id (or failed to) is an edit, not a create.
-  const blocked = loading || !!loadError
-  const heading = config?.heading ?? (editMode || blocked ? 'Edit' : 'Add')
+  // One heading wherever the screen opens (owner's point 11); a caller's own heading is no longer used.
+  const heading = editMode || blocked ? 'Edit Item' : 'New Item'
 
-  const footer = (
-    // One row on every width: Delete (an icon on a phone) on the left, a quiet
-    // Cancel and the one primary on the right — content-sized, never full width.
-    <div className="flex items-center gap-1.5">
-      {editMode && !blocked && (
-        <Button
-          variant="ghost" size="sm" icon={<Trash2 />} onClick={() => { void handleDelete() }} disabled={working}
-          aria-label="Delete" className="-ml-2 shrink-0 text-danger hover:text-danger max-sm:px-2.5"
-        >
-          <span className="max-sm:sr-only">Delete</span>
+  // A repeating item opened on one of its days: which one the edit is for. Switching it changes nothing by itself:
+  // with nothing waiting, the switched form is what is saved (only a change after it saves, to that scope).
+  function switchTo(scope: 'day' | 'all') {
+    const next = switchScope(form, scope)
+    if (formContentKey(form) === autosave.savedKey) autosave.reset(formContentKey(next))
+    setForm(next)
+  }
+
+  const scopeSwitch = scheduleBlock && occurrenceDate && !blocked
+    ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={switchTo} />
+    : undefined
+  const headerActions = (
+    <>
+      {scopeSwitch}
+      {!editMode && !blocked && (
+        <Button variant="primary" size="sm" onClick={() => { void handleSave() }} loading={saving}
+          disabled={!!problem} className="min-w-[4.5rem]">
+          {saving ? 'Adding…' : 'Add'}
         </Button>
       )}
-      <Button variant="ghost" size="sm" onClick={onClose} disabled={working} className="ml-auto">Cancel</Button>
-      {!loadError && (
-        <Button
-          variant="primary" size="sm" onClick={() => { void handleSave() }} loading={saving}
-          disabled={blocked || !form.title.trim() || !!repeatIssue}
-          className="min-w-[5.5rem]"
-        >{blocked ? 'Loading…' : saving ? 'Saving…' : editMode ? 'Save' : 'Add'}</Button>
-      )}
-    </div>
+    </>
   )
-
-  // A repeating item opened on one of its days: which one the edit is for.
-  const scopeSwitch = scheduleBlock && occurrenceDate && !blocked
-    ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={s => setForm(f => switchScope(f, s))} />
-    : undefined
 
   return (
     <ModalShell
-      open={open} onClose={onClose} title={heading} headerActions={scopeSwitch} footer={footer}
-      size="md" compact dismissible={!working}
+      open={open} onClose={() => { void requestClose() }} title={heading} headerActions={headerActions}
+      subtitle={editMode && !blocked ? <SaveLine line={autosave.line} onRetry={autosave.retry} /> : undefined}
+      size="md" compact grouped dismissible={!working} bodyClassName="px-3 pb-4 pt-1.5 sm:px-4"
     >
       {loadError ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
@@ -832,25 +952,31 @@ export function UnifiedPlanModal({
           {loadError.onRetry && <Button size="sm" onClick={loadError.onRetry}>Try again</Button>}
         </div>
       ) : loading ? (
-        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading">
-          <Skeleton className="h-7 w-3/4" rounded="rounded-control" />
-          <div className="flex gap-1.5">
-            <Skeleton className="h-8 w-32" rounded="rounded-full" />
-            <Skeleton className="h-8 w-24" rounded="rounded-full" />
-            <Skeleton className="h-8 w-40" rounded="rounded-full" />
+        <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading">
+          <Skeleton className="h-12 w-full" rounded="rounded-row" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-12" rounded="rounded-full" />
+            <Skeleton className="h-[264px] w-full" rounded="rounded-row" />
           </div>
-          <Skeleton className="h-8 w-56" rounded="rounded-full" />
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-16" rounded="rounded-full" />
+            <Skeleton className="h-11 w-full" rounded="rounded-row" />
+          </div>
         </div>
       ) : (
         <ItemForm
           form={form} patch={patch} config={config}
           typed={typed} onTitle={onTitle} parse={parse} onKeepText={onKeepText}
           creating={!editMode} today={today} nextTime={nextPlanTime()} googleConnected={choiceShown} calendarApp={calendarApp}
+          keptTarget={item?.google}
           occurrenceDate={scheduleBlock ? occurrenceDate : null}
           savedKind={editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined}
           savedZone={editMode && item && (item.blockId || item.scheduleBlockId) ? item.timeZone ?? null : defaults?.timeZone}
           savedRepeat={scheduleBlock ? { start: scheduleBlock.effective_from ?? today, anchor: repeatAnchorOfRow(scheduleBlock) } : undefined}
           exceptDates={scheduleBlock?.except_dates}
+          showMarks={prefs.showMarks} appleNotes={prefs.notes === 'notes+link' || prefs.notes === 'notes'} refused={refused}
+          own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
+          onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
         />
       )}
       {scheduleBlock && occurrenceDate && (
