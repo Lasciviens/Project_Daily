@@ -27,9 +27,10 @@ console.log('the taxonomy')
   const bad = tops.filter(t => t.subs.length < 6 || t.subs.length > 12)
   check('6–12 subcategories each', bad.length === 0, bad.map(t => `${t.name}: ${t.subs.length}`).join(', '))
   const names = tops.flatMap(t => [t.name, ...t.subs.map(s => s.name)])
-  // Sentence case (THEME.md §11): after the first word only acronyms (TV, EV, RC, DIY) start with a capital.
-  const notSentence = names.filter(n => !/^[A-Z]/.test(n) || n.split(/\s+/).slice(1).some(w => /^[A-Z]/.test(w) && !/^[A-Z]{2,}$/.test(w)))
-  check('English names in sentence case', notSentence.length === 0, notSentence.join(', '))
+  // Title Case, as migration 030's seed has them (they sit in one list with the owner's own): every word but "&"
+  // starts with a capital, each part of a hyphenated one too ("E-Books").
+  const notTitle = names.filter(n => n.split(/\s+/).some(w => w !== '&' && w.split('-').some(p => !/^[A-Z]/.test(p))))
+  check('English names in Title Case, as the seed\'s', notTitle.length === 0, notTitle.join(', '))
   check('names are plain English (letters, spaces, "&", "-")', names.every(n => /^[A-Za-z][A-Za-z &-]*$/.test(n)), names.filter(n => !/^[A-Za-z][A-Za-z &-]*$/.test(n)).join(', '))
   const topKeys = tops.flatMap(t => [t.name, ...(t.aka || [])].map(K))
   check('a top category\'s names (and other names) belong to one top only', new Set(topKeys).size === topKeys.length)
@@ -75,20 +76,20 @@ console.log('migration 030\'s seed is in it')
   const elec = cats.find(c => c.name === 'Electronics')
   const subs = T.suggestedSubs(cats, elec.id)
   check('under the seed\'s Electronics: Headphones, Tablets, Monitors … (not Phones, TV & Audio)',
-    ['Headphones', 'Tablets', 'Monitors', 'Cameras', 'Smartwatches', 'Smart home'].every(x => subs.includes(x)) && !subs.includes('Phones') && !subs.includes('TV & audio'), subs.join(', '))
+    ['Headphones', 'Tablets', 'Monitors', 'Cameras', 'Smartwatches', 'Smart Home'].every(x => subs.includes(x)) && !subs.includes('Phones') && !subs.includes('TV & Audio'), subs.join(', '))
 }
 
 console.log('matching names')
 {
   check('case, spaces and "&"/"and" don\'t matter', K('TV & Audio') === K('tv and audio') && K('TV&audio') === K('TV & audio') && K(' Smart  home ') === K('Smarthome'))
   check('"og" is "and" too, "+" is "&"', K('Lyd og bilde') === K('lyd & bilde') && K('Cables + chargers') === K('Cables & chargers'))
-  check('a name is not another just because it contains it', K('Home') !== K('Home & living'))
-  check('the seed\'s Title Case matches', T.taxonomyTopOf('Home & Living')?.name === 'Home & living' && T.taxonomySubOf('Computers & Laptops')?.name === 'Computers & laptops')
-  check('other names: "Home" is Home & living, "Sports" Sports & outdoor, "Clothes" Clothing',
-    T.taxonomyTopOf('Home')?.name === 'Home & living' && T.taxonomyTopOf('sports')?.name === 'Sports & outdoor' && T.taxonomyTopOf('Clothes')?.name === 'Clothing')
+  check('a name is not another just because it contains it', K('Home') !== K('Home & Living'))
+  check('the seed\'s Title Case matches', T.taxonomyTopOf('Home & Living')?.name === 'Home & Living' && T.taxonomySubOf('Computers & Laptops')?.name === 'Computers & Laptops')
+  check('other names: "Home" is Home & Living, "Sports" Sports & Outdoor, "Clothes" Clothing',
+    T.taxonomyTopOf('Home')?.name === 'Home & Living' && T.taxonomyTopOf('sports')?.name === 'Sports & Outdoor' && T.taxonomyTopOf('Clothes')?.name === 'Clothing')
   check('"Klær" (with æ) is Clothing', T.taxonomyTopOf('Klær')?.name === 'Clothing')
   check('a name nothing is: null', T.taxonomyTopOf('Stuff') === null && T.taxonomySubOf('Things') === null)
-  check('a subcategory is looked for under its top first, then anywhere', T.taxonomySubOf('Consoles', T.taxonomyTopOf('Hobby & games'))?.name === 'Game consoles')
+  check('a subcategory is looked for under its top first, then anywhere', T.taxonomySubOf('Consoles', T.taxonomyTopOf('Hobby & Games'))?.name === 'Game Consoles')
 }
 
 console.log('what a picker suggests')
@@ -98,12 +99,15 @@ console.log('what a picker suggests')
     { id: 'hp', name: 'Earbuds', parent_id: 'e' }, { id: 'g', name: 'Gaming', parent_id: null }, { id: 'c', name: 'Consoles', parent_id: 'g' },
   ]
   const tops = T.suggestedTops(cats)
-  check('the owner\'s own names win: with "Home", Home & living is not suggested', !tops.includes('Home & living') && tops.includes('Clothing'))
-  check('an owner top that is no taxonomy top ("Gaming") hides nothing and gets no suggestions', tops.includes('Hobby & games') && eq(T.suggestedSubs(cats, 'g'), []))
+  check('the owner\'s own names win: with "Home", Home & living is not suggested', !tops.includes('Home & Living') && tops.includes('Clothing'))
+  check('"Gaming" is Hobby & Games by another name: that top isn\'t suggested, its subcategories are, under the owner\'s "Gaming"', !tops.includes('Hobby & Games')
+    && T.suggestedSubs(cats, 'g').includes('Video Games') && T.suggestedSubs(cats, 'g').includes('Board Games'), T.suggestedSubs(cats, 'g').join(', '))
+  check('an owner top that is no taxonomy top ("Retro stuff") gets no suggestions', eq(T.suggestedSubs([...cats, { id: 'r', name: 'Retro stuff', parent_id: null }], 'r'), []))
+  check('a suggested top picked but not made yet offers its own subcategories ("suggest:Garden & DIY")', T.suggestedSubs(cats, 'suggest:Garden & DIY').includes('Tools'))
   const home = T.suggestedSubs(cats, 'h')
   check('under the owner\'s "Home": Home & living\'s subcategories, less "kitchen" (any case)', home.includes('Furniture') && home.includes('Lighting') && !home.includes('Kitchen'), home.join(', '))
   const elec = T.suggestedSubs(cats, 'e')
-  check('"Earbuds" is Headphones (another name): not suggested; "Consoles" anywhere hides Game consoles', !elec.includes('Headphones') && !elec.includes('Game consoles') && elec.includes('Tablets'), elec.join(', '))
+  check('"Earbuds" is Headphones (another name): not suggested; "Consoles" anywhere hides Game consoles', !elec.includes('Headphones') && !elec.includes('Game Consoles') && elec.includes('Tablets'), elec.join(', '))
   check('a subcategory id, or none, suggests nothing', eq(T.suggestedSubs(cats, 'k'), []) && eq(T.suggestedSubs(cats, null), []))
   check('a new account: every top, in the taxonomy\'s order', eq(T.suggestedTops([]), T.TAXONOMY.map(t => t.name)))
   const subNamed = T.suggestedTops([{ id: 'x', name: 'Pets', parent_id: null }, { id: 'y', name: 'Groceries', parent_id: 'x' }])
@@ -124,7 +128,7 @@ console.log('default pictures')
   check('Norwegian words: kjøkken, sko, sykkel, hytte, bøker', T.guessPicture('Kjøkkenutstyr') === 'cooking-pot' && T.guessPicture('Sko') === 'sport-shoe'
     && T.guessPicture('Sykkel') === 'bike' && T.guessPicture('Hytta') === null && T.guessPicture('Hytte') === 'trees' && T.guessPicture('Bøker') === 'book')
   check('the telling word wins over a general one: "Pet food", "Car care", "Audiobooks", "Vegetables"',
-    T.guessPicture('Pet food') === 'paw-print' && T.guessPicture('Car care') === 'droplets' && T.guessPicture('Audiobooks') === 'book-headphones' && T.guessPicture('Vegetables') === 'apple')
+    T.guessPicture('Pet food') === 'paw-print' && T.guessPicture('Car Care') === 'droplets' && T.guessPicture('Audiobooks') === 'book-headphones' && T.guessPicture('Vegetables') === 'apple')
   check('an owner subcategory nothing guesses: its top\'s picture', P('Electronics', 'Odds and ends') === 'monitor-smartphone')
   check('an owner top nothing guesses, alone: null (the initials show)', P('Stuff', null) === null && P('Stuff', 'Odds and ends') === null && P(null, null) === null)
   check('an owner top guessed from its name: "Gaming" → a controller', P('Gaming', null) === 'gamepad-2' && P('Gaming', 'Handhelds') === 'gamepad-2')

@@ -55,7 +55,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const watches = useMemo(() => new Map((watchQ.data ?? []).map(w => [w.item_id, w])), [watchQ.data])
   // The linked wishes' clean price histories, in one call shared with Needs a look: each tile's belt and bar.
   const stats = usePriceStats(useMemo(() => watchedWishIds(items), [items]))
-  const factOf = (id: string) => { const s = stats.byId.get(id); return s ? factsOf(s, today) : null }
+  const factOf = (id: string) => { const s = stats.byId.get(id); return s ? factsOf(s) : null }
   const pictures = useCategoryPictures()
   const itemsQ = useShopItems()
   const { ref: listRef, width: listRem } = useElementWidthRem()
@@ -218,7 +218,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
             fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} pending={tilesLoading} />} />
         ),
         // In every outcome (loading, nothing, something): one line on a phone, the rail's card on a wide page.
-        look: <ShopNeedsALook items={items} isLoading={isLoading} />,
+        look: <ShopNeedsALook items={items} isLoading={isLoading} quiet={!showFilters} />,
         groups: groupsSection,
       }}
     />

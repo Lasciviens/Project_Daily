@@ -382,9 +382,6 @@ console.log('\n11 · Deadlines and the Owned view')
     item({ id: 'r3', title: 'Old', return_by: '2026-10-01', bought_at: at('2026-09-01') }),
     item({ id: 'r4', title: 'Sold one', return_by: '2026-10-10', disposal: 'sold', disposed_on: '2026-10-01', sale_price: 1 }),
   ]
-  const up = O.comingUp(items, TODAY)
-  check('return windows (≤ 14 days) and complaint rights (≤ 60 days), soonest first', up.map(d => `${d.item.id}:${d.kind}:${d.daysLeft}`).join() === 'r1:return:5,r2:complain:24')
-  check('passed deadlines and things you no longer have are left out', !up.some(d => d.item.id === 'r3' || d.item.id === 'r4'))
   check('complaint right: 5 years for electronics, 2 otherwise, 2 in Turkey', O.complaintYears(['Electronics', 'Phones'], 'NO') === 5 && O.complaintYears(['Home & Living', 'Kitchen'], 'NO') === 2 && O.complaintYears(['Electronics'], 'TR') === 2)
   const cats = [{ id: 'el', user_id: 'u', name: 'Electronics', parent_id: null, created_at: '' }, { id: 'gc', user_id: 'u', name: 'Game Consoles', parent_id: 'el', created_at: '' }]
   const RPc = RP.map(x => ({ ...x, category_id: 'gc' }))

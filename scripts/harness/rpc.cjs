@@ -59,6 +59,7 @@ const RPCS = {
       })
       out.push({
         item_id: id, currency, points: same.length, low_all: Math.min(...lows), high_all: Math.max(...lows), points_60d: in60.length,
+        first_60d: in60.length ? in60[0].checked_at : null,
         low_60d: lows60.length ? Math.min(...lows60) : null, high_60d: lows60.length ? Math.max(...lows60) : null,
         last_price: Number(last.low), last_in_stock: lastStock ? lastStock.in_stock : null, last_at: last.checked_at,
         back_in_stock: back, restocked_at: back ? stock[lastOut + 1]?.checked_at ?? null : null, spark,

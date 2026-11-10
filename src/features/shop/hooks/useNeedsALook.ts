@@ -27,9 +27,9 @@ export function useNeedsALook(items: readonly ShopItem[], itemsLoading: boolean)
   const watches = useMemo(() => new Map((watchQ.data ?? []).map(w => [w.item_id, w])), [watchQ.data])
   const facts = useMemo(() => {
     const out = new Map<string, PriceFacts>()
-    for (const [id, s] of stats.byId) out.set(id, factsOf(s, today))
+    for (const [id, s] of stats.byId) out.set(id, factsOf(s))
     return out
-  }, [stats.byId, today])
+  }, [stats.byId])
   const deals = useMemo(() => dealsAhead(dealsQ.data ?? [], today, DEAL_AHEAD_DAYS), [dealsQ.data, today])
   const all = useMemo(() => needsALook(items, { watches, facts, deals }, today), [items, watches, facts, deals, today])
   const { shown, hidden } = useMemo(() => splitLooks(all, statesQ.data ?? [], today), [all, statesQ.data, today])

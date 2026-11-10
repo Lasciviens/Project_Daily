@@ -33,6 +33,8 @@ const seeds = seedBlock ? [...seedBlock[1].matchAll(/\('(\w+)', '((?:[^']|'')+)'
 }) : []
 check('190 seeds four deal days, read here as the database has them', seeds.length === 4 && eq(seeds.map(s => s.slug), ['black_friday', 'cyber_monday', 'singles_day', 'mellomdagssalg']), JSON.stringify(seeds.map(s => s.slug)))
 const bySlug = Object.fromEntries(seeds.map(s => [s.slug, s]))
+check('every deal day\'s name is English on screen — a Norwegian word only after it ("Christmas sales (mellomdagssalg)")',
+  bySlug.mellomdagssalg?.name === 'Christmas sales (mellomdagssalg)' && seeds.every(d => /^[A-Z]/.test(d.name)), JSON.stringify(seeds.map(d => d.name)))
 const runsOf = slug => [2026, 2027, 2028, 2029, 2030].map(y => D.dealDayIn(D.dealRuleOf(bySlug[slug]), y))
 check('Black Friday — the Friday after the fourth Thursday of November: 27.11.2026, 26.11.2027, 24.11.2028, 23.11.2029, 29.11.2030',
   eq(runsOf('black_friday'), ['2026-11-27', '2027-11-26', '2028-11-24', '2029-11-23', '2030-11-29']), JSON.stringify(runsOf('black_friday')))

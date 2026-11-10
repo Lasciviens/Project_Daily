@@ -35,37 +35,38 @@ export interface TaxonomyTop { name: string; aka?: readonly string[]; picture: P
 
 /**
  * Ten top categories for a Norwegian shopper, 6–12 subcategories each, in
- * English and sentence case (THEME.md §11) — rain gear and wool layers,
- * skiing and snow clearing, the cabin, pålegg, EV charging and roof boxes.
- * Migration 030's seed is in it (Title Case there: matched without case).
+ * English — rain gear and wool layers, skiing and snow clearing, the cabin,
+ * pålegg, EV charging and roof boxes. Names are data in the owner's list, so
+ * they follow migration 030's seed, which is in it: Title Case ("Computers &
+ * Laptops"), so a picked suggestion never stands out in a mixed list.
  */
 export const TAXONOMY: readonly TaxonomyTop[] = [
   { name: 'Electronics', aka: ['Electronic', 'Tech', 'Elektronikk'], picture: 'monitor-smartphone', subs: [
     { name: 'Phones', aka: ['Mobile phones', 'Smartphones', 'Mobiles'], picture: 'smartphone' },
     { name: 'Tablets', aka: ['iPads', 'E-readers'], picture: 'tablet' },
-    { name: 'Computers & laptops', aka: ['Computers', 'Laptops', 'PCs'], picture: 'laptop' },
+    { name: 'Computers & Laptops', aka: ['Computers', 'Laptops', 'PCs'], picture: 'laptop' },
     { name: 'Monitors', aka: ['Screens'], picture: 'monitor' },
     { name: 'Headphones', aka: ['Earbuds', 'Headsets'], picture: 'headphones' },
-    { name: 'TV & audio', aka: ['TV', 'TVs', 'Audio', 'TV & sound', 'Sound'], picture: 'tv' },
+    { name: 'TV & Audio', aka: ['TV', 'TVs', 'Audio', 'TV & sound', 'Sound'], picture: 'tv' },
     { name: 'Cameras', aka: ['Camera', 'Photo'], picture: 'camera' },
     { name: 'Smartwatches', aka: ['Wearables'], picture: 'watch' },
-    { name: 'Smart home', aka: ['Home automation'], picture: 'house-wifi' },
-    { name: 'Game consoles', aka: ['Consoles', 'Gaming consoles'], picture: 'gamepad-2' },
+    { name: 'Smart Home', aka: ['Home automation'], picture: 'house-wifi' },
+    { name: 'Game Consoles', aka: ['Consoles', 'Gaming consoles'], picture: 'gamepad-2' },
     { name: 'Accessories', aka: ['Cables & chargers', 'Chargers'], picture: 'cable' },
   ] },
   { name: 'Clothing', aka: ['Clothes', 'Fashion', 'Apparel', 'Klær'], picture: 'shirt', subs: [
     { name: 'Tops', aka: ['Shirts', 'T-shirts', 'Sweaters'] },
     { name: 'Bottoms', aka: ['Trousers', 'Pants', 'Jeans'] },
     { name: 'Outerwear', aka: ['Jackets', 'Jackets & coats', 'Coats'] },
-    { name: 'Rain gear', aka: ['Rainwear', 'Rain clothes'], picture: 'umbrella' },
-    { name: 'Wool & base layers', aka: ['Wool', 'Base layers', 'Thermals'], picture: 'snowflake' },
+    { name: 'Rain Gear', aka: ['Rainwear', 'Rain clothes'], picture: 'umbrella' },
+    { name: 'Wool & Base Layers', aka: ['Wool', 'Base layers', 'Thermals'], picture: 'snowflake' },
     { name: 'Underwear', aka: ['Socks & underwear'] },
     { name: 'Shoes', aka: ['Footwear', 'Shoes & boots'], picture: 'sport-shoe' },
-    { name: 'Hats & gloves', aka: ['Hats', 'Gloves', 'Hats, scarves & gloves'] },
+    { name: 'Hats & Gloves', aka: ['Hats', 'Gloves', 'Hats, scarves & gloves'] },
     { name: 'Bags', aka: ['Bags & backpacks', 'Backpacks'], picture: 'handbag' },
     { name: 'Sportswear', aka: ['Activewear', 'Training clothes'] },
   ] },
-  { name: 'Home & living', aka: ['Home', 'Living', 'Hjem'], picture: 'sofa', subs: [
+  { name: 'Home & Living', aka: ['Home', 'Living', 'Hjem'], picture: 'sofa', subs: [
     { name: 'Furniture', picture: 'armchair' },
     { name: 'Kitchen', aka: ['Kitchenware', 'Cookware'], picture: 'cooking-pot' },
     { name: 'Appliances', aka: ['White goods', 'Home appliances'], picture: 'washing-machine' },
@@ -78,77 +79,77 @@ export const TAXONOMY: readonly TaxonomyTop[] = [
   ] },
   { name: 'Garden & DIY', aka: ['Garden', 'DIY', 'Garden & tools', 'Hage'], picture: 'hammer', subs: [
     { name: 'Tools', aka: ['Power tools', 'Hand tools'], picture: 'wrench' },
-    { name: 'Paint & building', aka: ['Paint', 'Building materials'], picture: 'paint-roller' },
-    { name: 'Plants & gardening', aka: ['Gardening', 'Plants'], picture: 'sprout' },
+    { name: 'Paint & Building', aka: ['Paint', 'Building materials'], picture: 'paint-roller' },
+    { name: 'Plants & Gardening', aka: ['Gardening', 'Plants'], picture: 'sprout' },
     { name: 'Grills', aka: ['Barbecue', 'BBQ'], picture: 'flame' },
-    { name: 'Outdoor furniture', aka: ['Garden furniture', 'Patio'], picture: 'armchair' },
-    { name: 'Snow clearing', aka: ['Snow', 'Snow shovels'], picture: 'snowflake' },
+    { name: 'Outdoor Furniture', aka: ['Garden furniture', 'Patio'], picture: 'armchair' },
+    { name: 'Snow Clearing', aka: ['Snow', 'Snow shovels'], picture: 'snowflake' },
     { name: 'Cabin', aka: ['Cabin gear', 'Hytte'], picture: 'trees' },
   ] },
-  { name: 'Sports & outdoor', aka: ['Sports', 'Sport', 'Outdoor', 'Outdoors', 'Sports & outdoors'], picture: 'mountain', subs: [
+  { name: 'Sports & Outdoor', aka: ['Sports', 'Sport', 'Outdoor', 'Outdoors', 'Sports & outdoors'], picture: 'mountain', subs: [
     { name: 'Skiing', aka: ['Skis', 'Ski'], picture: 'mountain-snow' },
     { name: 'Hiking', aka: ['Trekking'], picture: 'footprints' },
     { name: 'Camping', picture: 'tent' },
     { name: 'Cycling', aka: ['Bikes', 'Bicycles'], picture: 'bike' },
     { name: 'Running', aka: ['Jogging'], picture: 'sport-shoe' },
-    { name: 'Fitness equipment', aka: ['Fitness', 'Gym', 'Gym equipment'], picture: 'dumbbell' },
+    { name: 'Fitness Equipment', aka: ['Fitness', 'Gym', 'Gym equipment'], picture: 'dumbbell' },
     { name: 'Fishing', aka: ['Angling'], picture: 'fishing-rod' },
-    { name: 'Water sports', aka: ['Swimming', 'Paddling', 'Kayaking'], picture: 'waves' },
-    { name: 'Ball sports', aka: ['Football', 'Ball games'], picture: 'volleyball' },
+    { name: 'Water Sports', aka: ['Swimming', 'Paddling', 'Kayaking'], picture: 'waves' },
+    { name: 'Ball Sports', aka: ['Football', 'Ball games'], picture: 'volleyball' },
   ] },
-  { name: 'Personal care & health', aka: ['Personal care', 'Health', 'Health & beauty', 'Beauty', 'Care'], picture: 'heart-pulse', subs: [
+  { name: 'Personal Care & Health', aka: ['Personal care', 'Health', 'Health & beauty', 'Beauty', 'Care'], picture: 'heart-pulse', subs: [
     { name: 'Skincare', picture: 'droplet' },
-    { name: 'Hair care', aka: ['Hair'], picture: 'scissors' },
+    { name: 'Hair Care', aka: ['Hair'], picture: 'scissors' },
     { name: 'Makeup', aka: ['Cosmetics'], picture: 'sparkles' },
     { name: 'Fragrance', aka: ['Perfume', 'Fragrances'], picture: 'perfume-bottle' },
     { name: 'Shaving', aka: ['Shaving & grooming', 'Grooming'], picture: 'scissors' },
-    { name: 'Oral care', aka: ['Dental care', 'Teeth'], picture: 'toothbrush' },
+    { name: 'Oral Care', aka: ['Dental care', 'Teeth'], picture: 'toothbrush' },
     { name: 'Hygiene', picture: 'soap-dispenser-droplet' },
-    { name: 'Vitamins & supplements', aka: ['Vitamins', 'Supplements'], picture: 'pill-bottle' },
+    { name: 'Vitamins & Supplements', aka: ['Vitamins', 'Supplements'], picture: 'pill-bottle' },
     { name: 'Pharmacy', aka: ['Medicine', 'Medication'], picture: 'pill' },
-    { name: 'Glasses & lenses', aka: ['Glasses', 'Contact lenses', 'Eyewear'], picture: 'glasses' },
+    { name: 'Glasses & Lenses', aka: ['Glasses', 'Contact lenses', 'Eyewear'], picture: 'glasses' },
   ] },
-  { name: 'Hobby & games', aka: ['Hobby', 'Hobbies', 'Hobbies & games', 'Games & hobbies'], picture: 'puzzle', subs: [
-    { name: 'Video games', aka: ['Console games', 'PC games'], picture: 'gamepad' },
-    { name: 'Board games', aka: ['Board & card games', 'Card games'], picture: 'dices' },
+  { name: 'Hobby & Games', aka: ['Hobby', 'Hobbies', 'Hobbies & games', 'Games & hobbies', 'Gaming'], picture: 'puzzle', subs: [
+    { name: 'Video Games', aka: ['Console games', 'PC games'], picture: 'gamepad' },
+    { name: 'Board Games', aka: ['Board & card games', 'Card games'], picture: 'dices' },
     { name: 'Puzzles', aka: ['Jigsaw puzzles'], picture: 'puzzle' },
-    { name: 'Building sets', aka: ['Lego', 'Building blocks'], picture: 'toy-brick' },
+    { name: 'Building Sets', aka: ['Lego', 'Building blocks'], picture: 'toy-brick' },
     { name: 'Collectibles', aka: ['Trading cards', 'Figures'], picture: 'gem' },
-    { name: 'Knitting & crafts', aka: ['Knitting', 'Yarn', 'Crafts', 'Sewing'], picture: 'palette' },
-    { name: 'Music instruments', aka: ['Instruments', 'Musical instruments'], picture: 'guitar' },
+    { name: 'Knitting & Crafts', aka: ['Knitting', 'Yarn', 'Crafts', 'Sewing'], picture: 'palette' },
+    { name: 'Music Instruments', aka: ['Instruments', 'Musical instruments'], picture: 'guitar' },
     { name: 'Drones & RC', aka: ['Drones', 'RC'], picture: 'drone' },
   ] },
   { name: 'Groceries', aka: ['Grocery', 'Food', 'Food & drink', 'Dagligvarer'], picture: 'shopping-basket', subs: [
-    { name: 'Fruit & vegetables', aka: ['Fruit', 'Vegetables', 'Produce', 'Fruit & veg'], picture: 'apple' },
-    { name: 'Bread & bakery', aka: ['Bread', 'Bakery'], picture: 'croissant' },
-    { name: 'Dairy & eggs', aka: ['Dairy', 'Milk'], picture: 'milk' },
-    { name: 'Meat & fish', aka: ['Meat', 'Fish', 'Seafood'], picture: 'beef' },
-    { name: 'Cheese & spreads', aka: ['Cheese', 'Spreads', 'Pålegg'], picture: 'sandwich' },
+    { name: 'Fruit & Vegetables', aka: ['Fruit', 'Vegetables', 'Produce', 'Fruit & veg'], picture: 'apple' },
+    { name: 'Bread & Bakery', aka: ['Bread', 'Bakery'], picture: 'croissant' },
+    { name: 'Dairy & Eggs', aka: ['Dairy', 'Milk'], picture: 'milk' },
+    { name: 'Meat & Fish', aka: ['Meat', 'Fish', 'Seafood'], picture: 'beef' },
+    { name: 'Cheese & Spreads', aka: ['Cheese', 'Spreads', 'Pålegg'], picture: 'sandwich' },
     { name: 'Frozen', aka: ['Frozen food'], picture: 'snowflake' },
-    { name: 'Pantry staples', aka: ['Pantry', 'Dry goods'], picture: 'wheat' },
+    { name: 'Pantry Staples', aka: ['Pantry', 'Dry goods'], picture: 'wheat' },
     { name: 'Snacks', aka: ['Sweets', 'Candy', 'Snacks & sweets'], picture: 'cookie' },
     { name: 'Drinks', aka: ['Beverages', 'Soft drinks'], picture: 'cup-soda' },
-    { name: 'Coffee & tea', aka: ['Coffee', 'Tea'], picture: 'coffee' },
-    { name: 'Household supplies', aka: ['Household', 'Paper goods'], picture: 'package' },
+    { name: 'Coffee & Tea', aka: ['Coffee', 'Tea'], picture: 'coffee' },
+    { name: 'Household Supplies', aka: ['Household', 'Paper goods'], picture: 'package' },
   ] },
-  { name: 'Books & stationery', aka: ['Books', 'Books & magazines', 'Bøker'], picture: 'book-open', subs: [
+  { name: 'Books & Stationery', aka: ['Books', 'Books & magazines', 'Bøker'], picture: 'book-open', subs: [
     { name: 'Books', aka: ['Paper books'], picture: 'book' },
-    { name: 'E-books', picture: 'book-open-text' },
+    { name: 'E-Books', picture: 'book-open-text' },
     { name: 'Audiobooks', picture: 'book-headphones' },
     { name: 'Comics', aka: ['Comic books', 'Manga', 'Graphic novels'], picture: 'book-image' },
     { name: 'Magazines', aka: ['Newspapers', 'Magazines & newspapers'], picture: 'newspaper' },
     { name: 'Stationery', aka: ['Office supplies'], picture: 'pen' },
-    { name: 'Notebooks & planners', aka: ['Notebooks', 'Planners', 'Calendars'], picture: 'notebook-pen' },
-    { name: 'Art supplies', aka: ['Drawing', 'Painting'], picture: 'palette' },
+    { name: 'Notebooks & Planners', aka: ['Notebooks', 'Planners', 'Calendars'], picture: 'notebook-pen' },
+    { name: 'Art Supplies', aka: ['Drawing', 'Painting'], picture: 'palette' },
   ] },
   { name: 'Car', aka: ['Cars', 'Vehicle', 'Car & transport', 'Bil'], picture: 'car-front', subs: [
-    { name: 'Tyres & wheels', aka: ['Tyres', 'Tires', 'Wheels'] },
-    { name: 'Car care', aka: ['Car wash', 'Car cleaning'], picture: 'droplets' },
-    { name: 'Car accessories', aka: ['Car gear'] },
-    { name: 'EV charging', aka: ['Charging', 'Charging cables'], picture: 'plug-zap' },
-    { name: 'Roof boxes & racks', aka: ['Roof boxes', 'Roof racks', 'Bike racks'], picture: 'luggage' },
-    { name: 'Winter gear', aka: ['Snow chains', 'Ice scrapers'], picture: 'snowflake' },
-    { name: 'Child seats', aka: ['Car seats'], picture: 'baby' },
+    { name: 'Tyres & Wheels', aka: ['Tyres', 'Tires', 'Wheels'] },
+    { name: 'Car Care', aka: ['Car wash', 'Car cleaning'], picture: 'droplets' },
+    { name: 'Car Accessories', aka: ['Car gear'] },
+    { name: 'EV Charging', aka: ['Charging', 'Charging cables'], picture: 'plug-zap' },
+    { name: 'Roof Boxes & Racks', aka: ['Roof boxes', 'Roof racks', 'Bike racks'], picture: 'luggage' },
+    { name: 'Winter Gear', aka: ['Snow chains', 'Ice scrapers'], picture: 'snowflake' },
+    { name: 'Child Seats', aka: ['Car seats'], picture: 'baby' },
   ] },
 ]
 
@@ -349,7 +350,9 @@ export function guessPicture(name: string): PictureKey | null {
  */
 export function pictureKeyOf(topName: string | null | undefined, subName: string | null | undefined): PictureKey | null {
   const top = topName ? taxonomyTopOf(topName) : null
-  const topPicture = top ? top.picture : topName ? guessPicture(topName) : null
+  // A top known by another name ("Gaming" is Hobby & Games) keeps the picture its own words say, when they say one.
+  const own = top && topName && categoryKey(top.name) !== categoryKey(topName) ? guessPicture(topName) : null
+  const topPicture = own ?? (top ? top.picture : topName ? guessPicture(topName) : null)
   if (!subName) return topPicture
   const sub = taxonomySubOf(subName, top)
   return sub?.picture ?? guessPicture(subName) ?? topPicture

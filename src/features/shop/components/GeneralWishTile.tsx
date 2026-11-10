@@ -1,9 +1,9 @@
 import { Plus, type LucideIcon } from 'lucide-react'
 import { IconButton, MetaLine, TonePill, Truncate } from '../../../shared/ui'
-import { currencyOf, priceNow, wishRange, type Money } from '../shopModel'
+import { currencyOf, wishRange, type Money } from '../shopModel'
 import { SHOP_PRIORITY_TONE } from '../shopMeta'
 import { openModels } from '../wishModel'
-import { beltOf, initialsOf, tintOf } from '../wishTile'
+import { beltOf, initialsOf, readPrice, tintOf } from '../wishTile'
 import { imageOf, money, moneyRange, num } from './shopFormat'
 import { PictureWell } from './tileKit'
 import type { UsdRates } from '../../settings/subscriptionRules'
@@ -12,8 +12,10 @@ import type { ShopItem, ShopPriceWatch } from '../types'
 /**
  * A general wish as a picture tile: up to three of its models' pictures
  * (else its category's default picture, else its initials), "from 2 299 NOK"
- * (its cheapest model now) and "Any model · 1 500–3 500".
- * Compare (with the models' count) opens the record on its models; + adds one.
+ * (its cheapest open model: the price read from its link — never one whose
+ * site refuses apps — else its own) and "Any model · 1 500–3 500".
+ * Compare (with the models' count) opens the wish's record, where its models
+ * are; + opens Add a model.
  */
 export function GeneralWishTile({ wish, models, watches, rates, topId, icon, today, onOpen, onAddModel }: {
   wish: ShopItem
@@ -30,7 +32,7 @@ export function GeneralWishTile({ wish, models, watches, rates, topId, icon, tod
   const cur = currencyOf(wish)
   const open = openModels(models)
   const range = wishRange(wish, models, rates, watches)
-  const prices = open.map(m => priceNow(m, watches.get(m.id))).filter((p): p is Money => !!p)
+  const prices = open.map(m => readPrice(m, watches.get(m.id)) ?? (m.price == null ? null : { amount: m.price, currency: currencyOf(m) })).filter((p): p is Money => !!p)
   // The cheapest in the wish's own currency; another currency only when no model has it.
   const same = prices.filter(p => p.currency === cur)
   const pool = same.length ? same : prices.filter(p => p.currency === prices[0]?.currency)
