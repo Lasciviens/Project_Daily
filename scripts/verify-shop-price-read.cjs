@@ -388,6 +388,11 @@ async function handlerChecks() {
   r = await call({ action: 'check', ids: ['i1'] })
   check('…the same when that check was blocked: Check now tries again only after the hour', fetched.length === 0 && r.results?.[0]?.status === 'blocked' && r.results?.[0]?.reused === true)
   fetched = []; writes = []
+  call = shopPrice({ db: dbWith(FINN, undefined, watchOf(10, FINN, { status: 'not_allowed', low: null, error: "finn.no's terms don't allow automated reading" })), pages: {}, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  check('…but a refusal is answered as itself, never "the next read can be after …" (and still nothing is fetched)', fetched.length === 0
+    && r.results?.[0]?.status === 'not_allowed' && !r.results?.[0]?.reused && r.results?.[0]?.error === "finn.no's terms don't allow automated reading", JSON.stringify(r))
+  fetched = []; writes = []
   call = shopPrice({ db: dbWith(plain, undefined, watchOf(70)), pages: tv, fetched, writes })
   r = await call({ action: 'check', ids: ['i1'] })
   check('check: a watch from over an hour ago is read again', fetched.length === 1 && r.results?.[0]?.status === 'ok' && !r.results?.[0]?.reused && r.results?.[0]?.low === 9990)

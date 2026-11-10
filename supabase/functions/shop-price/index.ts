@@ -1349,9 +1349,10 @@ Deno.serve(async (req: Request) => {
     const results: CheckOutcome[] = []
     for (const item of (data ?? []) as Item[]) {
       if (!item.url || !/^https?:\/\//i.test(item.url)) { results.push({ id: item.id, status: 'error', low: null, currency: null, error: 'No link to check' }); continue }
-      // Checked under an hour ago (the same link): that check is the answer — no new read.
+      // Checked under an hour ago (the same link): that check is the answer — no new read. A refusal is answered
+      // again as itself (it reads nothing either way), never as "the next read can be after …".
       const w = watches.get(item.id)
-      if (w && w.url === item.url && Date.now() - Date.parse(w.checked_at) < REUSE_MS) {
+      if (w && w.url === item.url && w.status !== 'not_allowed' && Date.now() - Date.parse(w.checked_at) < REUSE_MS) {
         results.push({ id: item.id, status: w.status as CheckOutcome['status'], low: w.low, currency: w.currency, error: w.error ?? undefined, reused: true, checkedAt: w.checked_at })
         continue
       }
