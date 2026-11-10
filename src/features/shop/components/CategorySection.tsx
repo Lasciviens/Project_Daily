@@ -15,13 +15,15 @@ export const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem
  * subcategory order: each subcategory's label once, across the grid, above
  * its cards.
  */
-export function CategorySection({ group, collapsed, onToggle, aside, card }: {
+export function CategorySection({ group, collapsed, onToggle, aside, card, grid = CARD_GRID }: {
   group: CategoryGroup
   collapsed: boolean
   onToggle: () => void
   /** Right of the title — a total. */
   aside?: ReactNode
   card: (item: ShopItem) => ReactNode
+  /** The cards' grid: Owned's cards, or the Wishlist's picture tiles (TILE_GRID). */
+  grid?: string
 }) {
   const id = `shop-cat-${group.key}`
   // With subcategories, each group of cards gets its label once — a row of its own in the one grid, so the cards' rows stay aligned.
@@ -36,7 +38,7 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
         {aside != null && <span className="ml-auto text-meta tabular-nums text-fg-muted">{aside}</span>}
       </button>
       {!collapsed && (
-        <div id={id} className={CARD_GRID}>
+        <div id={id} className={grid}>
           {group.subs.flatMap(sub => [
             labelled && <Truncate key={`label:${sub.key}`} as="p" className="section-label col-span-full -mb-1 pt-1 first:pt-0">{sub.title ?? 'Other'}</Truncate>,
             ...sub.items.map(item => <div key={item.id} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>),

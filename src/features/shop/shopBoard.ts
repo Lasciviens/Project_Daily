@@ -2,20 +2,24 @@
 // scripts/verify-life-boards.cjs can check every step.
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
-//   1  phone, tablet — one stack: the totals, the filters, then the groups.
-//   2+ totals + filters in a sticky rail on the left (they sum up and drive
-//      the list); the category groups take every other track, so their cards
-//      (17–21rem) gain columns as the page widens.
-export const WISHLIST_SECTIONS = ['totals', 'filters', 'groups'] as const
+//   Wishlist (phase 2 prototype) — Owned's shape: the filter bar across the
+//   top, the summary line inside `groups` right above the picture tiles, and
+//   "Needs a look" in a sticky rail on the RIGHT, where Owned has Coming up
+//   (owner, 14.10.2026).
+//   1  phone, tablet — the filters, Needs a look as ONE line (it opens a
+//      sheet; owner, 09.11.2026: the first screen is the things), the groups.
+//   2+ the groups take every track but the last, so the tiles (10rem and up)
+//      gain columns as the page widens; Needs a look is the last track.
+export const WISHLIST_SECTIONS = ['filters', 'look', 'groups'] as const
 export type WishlistSection = typeof WISHLIST_SECTIONS[number]
 
-const WISH_RAIL = { stack: ['totals', 'filters'], sticky: true } as const
+const LOOK_RAIL = { stack: ['look'], sticky: true } as const
 
 export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
-  1: ['totals', 'filters', 'groups'],
-  2: { lead: 1, columns: [WISH_RAIL, ['groups']] },
-  3: { lead: 1, columns: [WISH_RAIL, { stack: ['groups'], span: 2 }] },
-  4: { lead: 1, columns: [WISH_RAIL, { stack: ['groups'], span: 3 }] },
+  1: ['filters', 'look', 'groups'],
+  2: { top: ['filters'], columns: [['groups'], LOOK_RAIL] },
+  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, LOOK_RAIL] },
+  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, LOOK_RAIL] },
 }
 
 //   1  the add box first (capture is the point), the list, the grocery
