@@ -94,7 +94,7 @@ export interface PriceSpan { low: number; high: number; reads: number; currency:
 
 /** The history's span — null unless there is one: two clean reads or more that differ. */
 export function spanOf(f: PriceFacts | null | undefined): PriceSpan | null {
-  if (!f || f.lowAll == null || f.highAll == null || f.readsAll < 2 || !(f.highAll > f.lowAll)) return null
+  if (!f || !f.currency || f.lowAll == null || f.highAll == null || f.readsAll < 2 || !(f.highAll > f.lowAll)) return null
   return { low: f.lowAll, high: f.highAll, reads: f.readsAll, currency: f.currency }
 }
 

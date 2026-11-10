@@ -218,6 +218,7 @@ console.log('the clean price figures (shop_price_stats)')
   check('back in stock and since when', T.factsOf(stats({ back_in_stock: true, restocked_at: at(-2) }), TODAY).restockedAt === at(-2))
   check('no history: one clean read, or one price all along', T.spanOf(T.factsOf(stats({ points: 1 }), TODAY)) === null && T.spanOf(T.factsOf(stats({ low_all: 100, high_all: 100 }), TODAY)) === null)
   check('a history: lowest, highest, reads', eq(T.spanOf(f), { low: 15990, high: 17990, reads: 4, currency: 'NOK' }))
+  check('…never without its currency (a read that named none places nothing)', T.spanOf(T.factsOf(stats({ currency: null }), TODAY)) === null)
   const span = T.spanOf(facts({ lowAll: 100, highAll: 140, readsAll: 2 }))
   check('today\'s place, clamped to the ends', T.spanPosition(120, span) === 0.5 && T.spanPosition(90, span) === 0 && T.spanPosition(150, span) === 1)
   const ids = T.watchedWishIds([item({ id: 'b', url: 'https://x.example.com/1' }), item({ id: 'a', url: 'https://x.example.com/2' }), item({ id: 'c', url: 'javascript:x' }),

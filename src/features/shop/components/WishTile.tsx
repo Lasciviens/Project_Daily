@@ -104,7 +104,7 @@ export function WishTile({ item, topId, icon, task, today, watch, facts, afterSa
         {afterSale && complete(afterSale.needed) && (
           <p className="break-words text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>
         )}
-        {span && now && !mixed && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
+        {span && now && now.currency === span.currency && !mixed && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
       </div>
 
       <div className="mt-auto flex items-center gap-1 border-t border-line pt-1">
