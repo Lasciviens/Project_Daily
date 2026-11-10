@@ -400,7 +400,9 @@ jobs:
       # 192's resale — ad notes (https only, never fetched), trade-in quotes,
       # the value history, listings and how a sale closes them, templates and
       # checklists with their defaults, Activity's Undo of an estimate, a sale
-      # and a delete, Delete's Undo bringing every row back.
+      # and a delete, Delete's Undo bringing every row back; and Activity's
+      # Undo of a delete with an extra cost and a snoozed Needs-a-look row,
+      # failing before 192 and passing with it.
       - name: Shop rules database scenarios
         run: node scripts/verify-db-shop-rules.mjs
         env:
