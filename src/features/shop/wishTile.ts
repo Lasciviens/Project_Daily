@@ -70,6 +70,68 @@ export function initialsOf(title: string): string {
 }
 
 /**
+ * How many column stacks the category sections are dealt into, by the list's
+ * own width in rem (W2: sections of different heights stack, never a row
+ * grid). A stack keeps room for three 10rem tiles (31.5rem with their gaps)
+ * and 1.5rem between stacks: one on a phone and a 1469 laptop, two at 1920,
+ * three at 2450. Unmeasured: one.
+ */
+export function categoryColumns(widthRem: number | null): number {
+  if (widthRem == null || !Number.isFinite(widthRem)) return 1
+  return Math.max(1, Math.floor((widthRem + 1.5) / 33))
+}
+
+/** The tile grid's column width and gap, in rem (tileKit.TILE_GRID). */
+export const TILE_MIN_REM = 10
+export const TILE_GAP_REM = 0.625
+
+/** How many tiles a row of `widthRem` takes — auto-fill's own count for minmax(10rem, 1fr). */
+export function tileColumns(widthRem: number): number {
+  return Math.max(1, Math.floor((widthRem + TILE_GAP_REM) / (TILE_MIN_REM + TILE_GAP_REM)))
+}
+
+/** One placed piece of a packed category: a subcategory's label over its first tiles, or a tile. */
+export interface Placed { group: number; line: number; col: number; span: number; label: boolean; index: number }
+
+/**
+ * The subcategories of one category packed into rows of `cols` tiles, so a
+ * small one doesn't leave the rest of its row empty: a group shares the row
+ * of the one before when it fits in the cells left, else it starts a row (a
+ * group is never split to fill a gap); a group longer than a row fills whole
+ * rows. Each group's label gets a line above its first tiles, spanning them.
+ * Lines are 1-based grid rows; every tile of a row is on the same line, so
+ * the row's tiles line up.
+ */
+export function packGroups(counts: readonly number[], cols: number): Placed[] {
+  const out: Placed[] = []
+  const rows: { labels: Placed[]; tiles: Placed[] }[] = []
+  let row = { labels: [] as Placed[], tiles: [] as Placed[] }
+  let col = 0
+  const close = () => { if (row.tiles.length) rows.push(row); row = { labels: [], tiles: [] }; col = 0 }
+  counts.forEach((n, group) => {
+    if (n <= 0) return
+    if (col > 0 && n > cols - col) close()
+    let index = 0
+    while (index < n) {
+      const take = Math.min(n - index, cols - col)
+      if (index === 0) row.labels.push({ group, line: 0, col, span: take, label: true, index: 0 })
+      for (let k = 0; k < take; k++) row.tiles.push({ group, line: 0, col: col + k, span: 1, label: false, index: index + k })
+      index += take
+      col += take
+      if (col >= cols) close()
+    }
+  })
+  close()
+  let line = 1
+  for (const r of rows) {
+    if (r.labels.length) { for (const l of r.labels) out.push({ ...l, line }); line++ }
+    for (const t of r.tiles) out.push({ ...t, line })
+    line++
+  }
+  return out
+}
+
+/**
  * A category's tint, 1–6 (the chart series): one per top category, so a
  * subcategory shares its parent's; no category is the slate (6).
  */

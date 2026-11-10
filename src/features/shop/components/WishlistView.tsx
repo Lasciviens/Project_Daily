@@ -3,6 +3,8 @@ import { ChevronDown, Plus, ShoppingBag, Undo2 } from 'lucide-react'
 import { Button, EmptyState, PageBoard, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
+import { dealByIndex } from '../../projects/projectBoard'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
 import { useFoldedFilters } from '../hooks/useFoldedFilters'
 import { useBuyNow, useDeleteShopItems, useUpdateShopItem } from '../hooks/useShop'
@@ -12,11 +14,11 @@ import { useShopWatches } from '../hooks/useShopPrices'
 import { usePriceHistories } from '../hooks/usePriceHistories'
 import {
   NO_FILTERS, categoryPath, currencyOf, droppedItems, filterWishlist, filtersActive, groupByCategory, listOf, modelsByWish, planDefaults, sortItems, totalsIn, totalsLabel,
-  type ShopSort, type WishlistFilters,
+  type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
 import { needsALook, type Look } from '../shopSuggestions'
-import { priceSpan, type PriceSpan } from '../wishTile'
+import { categoryColumns, priceSpan, type PriceSpan } from '../wishTile'
 import type { Amount } from '../ownModel'
 import { CategorySection, FoldAll } from './CategorySection'
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
@@ -24,7 +26,7 @@ import { WISHLIST_BOARD } from '../shopBoard'
 import { ShopFilters } from './ShopFilters'
 import { GeneralWishTile } from './GeneralWishTile'
 import { WishTile } from './WishTile'
-import { TILE_GRID, TileSkeleton } from './tileKit'
+import { PackedTiles, TILE_GRID, TileSkeleton } from './tileKit'
 import { NeedsALook } from './NeedsALook'
 import { WishlistSummaryLine } from './WishlistSummaryLine'
 import { webUrl } from './shopFormat'
@@ -63,6 +65,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     return out
   }, [all, watches, history.byId])
   const looks = useMemo(() => needsALook(items, watches, today), [items, watches, today])
+  const { ref: listRef, width: listRem } = useElementWidthRem()
   const models = useMemo(() => modelsByWish(items), [items])
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
@@ -141,6 +144,17 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     if (item) buy(item)
   }
 
+  // Wide lists deal the category sections into column stacks by their own width (W2).
+  const stacks = dealByIndex(groups, categoryColumns(listRem))
+  const section = (group: CategoryGroup) => {
+    const t = totalsIn(group.items, 'NOK', rates, models, watches)
+    return (
+      <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
+        aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={tile}
+        body={id => <PackedTiles id={id} subs={group.subs} card={tile} />} />
+    )
+  }
+
   const tilesLoading = isLoading || watchQ.isLoading || history.loading
   const groupsSection = tilesLoading ? (
     <div aria-busy="true" className="flex flex-col gap-4">
@@ -166,13 +180,11 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      {groups.map(group => {
-        const t = totalsIn(group.items, 'NOK', rates, models, watches)
-        return (
-          <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
-            aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={tile} grid={TILE_GRID} />
-        )
-      })}
+      {stacks.length === 1 ? stacks[0].map(section) : (
+        <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 1fr))` }}>
+          {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-4">{stack.map(section)}</div>)}
+        </div>
+      )}
       {dropped.length > 0 && (
         <section>
           <button type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}
@@ -210,7 +222,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
         ),
         // In every outcome (loading, nothing, something): one line on a phone, the rail's card on a wide page.
         look: <NeedsALook looks={looks} loading={isLoading || watchQ.isLoading} onOpen={openLook} onBought={buyLook} />,
-        groups: groupsSection,
+        // Measured in every state (loading, empty, the list), so the stacks never change when the list lands.
+        groups: <div ref={listRef}>{groupsSection}</div>,
       }}
     />
   )

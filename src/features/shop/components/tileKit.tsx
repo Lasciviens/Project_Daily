@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { Skeleton, cx } from '../../../shared/ui'
-import { BELT, spanPosition, type BeltKind, type PriceSpan } from '../wishTile'
+import { Skeleton, Truncate, cx } from '../../../shared/ui'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
+import { BELT, packGroups, spanPosition, tileColumns, type BeltKind, type PriceSpan } from '../wishTile'
 import { money, num } from './shopFormat'
+import type { ShopItem } from '../types'
 
 // The Wishlist's picture tiles (THEME.md §6.3 "Picture tiles"): the grid, the
 // picture well, the history bar and the loading copy.
@@ -9,9 +11,48 @@ import { money, num } from './shopFormat'
 /**
  * Tiles flow into content-width columns (W2): two a row on a 375–402px phone,
  * more as the track widens — never wider tiles. 10rem is the most two columns
- * fit on the smallest phone (343px of content).
+ * fit on the smallest phone (343px of content). One gap at every width, so
+ * `tileColumns` counts the same columns as the grid.
  */
-export const TILE_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] items-stretch gap-2 sm:gap-3'
+export const TILE_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] items-stretch gap-2.5'
+
+/**
+ * One category's tiles with its subcategories packed into shared rows
+ * (`packGroups`), each named once above its own tiles. The column count is
+ * auto-fill's, from the grid's own width (measured before the first paint);
+ * until then, and without subcategories, the plain auto-fill grid.
+ */
+export function PackedTiles({ id, subs, card }: {
+  id: string
+  subs: readonly { key: string; title: string | null; items: readonly ShopItem[] }[]
+  card: (item: ShopItem) => ReactNode
+}) {
+  const { ref, width } = useElementWidthRem()
+  const labelled = subs.some(s => s.title)
+  const cols = width == null ? null : tileColumns(width)
+  if (!labelled || cols == null) {
+    return (
+      <div ref={ref} id={id} className={TILE_GRID}>
+        {subs.flatMap(sub => sub.items.map(item => <div key={item.id} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>))}
+      </div>
+    )
+  }
+  return (
+    <div ref={ref} id={id} className="grid items-stretch gap-2.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      {packGroups(subs.map(s => s.items.length), cols).map(p => {
+        const sub = subs[p.group]
+        const at = { gridRow: p.line, gridColumn: `${p.col + 1} / span ${p.span}` }
+        return p.label
+          ? (
+            <div key={`label:${sub.key}`} style={at} className={cx('-mb-1.5 min-w-0', p.line > 1 && 'pt-1')}>
+              <Truncate as="p" className="section-label">{sub.title ?? 'Other'}</Truncate>
+            </div>
+          )
+          : <div key={sub.items[p.index].id} style={at} className="flex min-w-0 flex-col [&>*]:flex-1">{card(sub.items[p.index])}</div>
+      })}
+    </div>
+  )
+}
 
 /**
  * The 4:3 picture well. Up to three photos on the soft well colour, each

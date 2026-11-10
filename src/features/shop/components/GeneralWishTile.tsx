@@ -1,18 +1,18 @@
-import { Plus, Scale } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { IconButton, MetaLine, TonePill, Truncate } from '../../../shared/ui'
 import { currencyOf, priceNow, wishRange, type Money } from '../shopModel'
 import { SHOP_PRIORITY_TONE } from '../shopMeta'
 import { openModels } from '../wishModel'
 import { beltOf, initialsOf, tintOf } from '../wishTile'
-import { imageOf, money, moneyRange } from './shopFormat'
+import { imageOf, money, moneyRange, num } from './shopFormat'
 import { PictureWell } from './tileKit'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import type { ShopItem, ShopPriceWatch } from '../types'
 
 /**
  * A general wish as a picture tile: up to three of its models' pictures,
- * "from 2 299 NOK" (its cheapest model now) and "Any model · 1 500–3 500 NOK
- * · 3 models". Compare opens the record on its models; + adds one.
+ * "from 2 299 NOK" (its cheapest model now) and "Any model · 1 500–3 500".
+ * Compare (with the models' count) opens the record on its models; + adds one.
  */
 export function GeneralWishTile({ wish, models, watches, rates, topId, today, onOpen, onAddModel }: {
   wish: ShopItem
@@ -52,15 +52,12 @@ export function GeneralWishTile({ wish, models, watches, rates, topId, today, on
               ? <span className="whitespace-nowrap text-ui font-semibold tabular-nums text-fg">{moneyRange(range.min, range.max, cur)}</span>
               : <span className="text-ui">No price yet</span>}
         </p>
-        <MetaLine className="text-meta tabular-nums text-fg-muted" items={[
-          'Any model',
-          range && moneyRange(range.min, range.max, cur),
-          `${open.length} model${open.length === 1 ? '' : 's'}`,
-        ]} />
+        <MetaLine className="text-meta tabular-nums text-fg-muted" items={['Any model', range && `${num(range.min)}–${num(range.max)}`]} />
       </div>
       <div className="mt-auto flex items-center gap-1 border-t border-line pt-1">
-        <button type="button" onClick={onOpen} className="btn-ghost btn-sm min-w-0 flex-1 justify-center">
-          <Scale aria-hidden className="h-4 w-4" /> Compare
+        <button type="button" onClick={onOpen} className="btn-ghost btn-sm min-w-0 flex-1 justify-center gap-1.5">
+          Compare
+          {open.length > 0 && <span className="count-badge">{open.length}<span className="sr-only"> model{open.length === 1 ? '' : 's'}</span></span>}
         </button>
         <IconButton label={`Add a model to ${wish.title}`} onClick={onAddModel}
           className="h-9 w-9 text-accent-600 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">

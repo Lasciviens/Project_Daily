@@ -31,9 +31,10 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
 
   const select = cx('select', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')
 
+  // Folded on a wide bar (a phone sideways), the search shares the row with Sort and Filters.
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <label className={cx('relative block', collapsible ? 'w-full' : 'min-w-[14rem] max-w-md flex-1')}>
+    <div className="@container flex flex-wrap items-center gap-2">
+      <label className={cx('relative block', collapsible ? 'w-full @[36rem]:w-auto @[36rem]:min-w-0 @[36rem]:max-w-md @[36rem]:flex-[2]' : 'min-w-[14rem] max-w-md flex-1')}>
         <span className="sr-only">Search the wishlist</span>
         <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
         <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search the wishlist" className="input pl-9" />
