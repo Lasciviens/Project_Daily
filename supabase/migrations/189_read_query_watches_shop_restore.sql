@@ -13,8 +13,9 @@
 -- owner, which 185's wall made `authenticated` (on Supabase `postgres` is a member). Where the migration's role
 -- lacks that right, a WARNING says so and 185's function stays exactly as it is. Then 185's wall again
 -- (CREATE OR REPLACE makes it SECURITY INVOKER): SECURITY DEFINER owned by authenticated where the platform
--- allows, else SECURITY INVOKER with a WARNING. Re-runnable. No BEGIN/COMMIT: the deploy runs it as one
--- transaction.
+-- allows; else a WARNING names the mode the function keeps, read from the catalog — SECURITY INVOKER where this
+-- migration replaced it, 185's SECURITY DEFINER where it could not. Re-runnable. No BEGIN/COMMIT: the deploy
+-- runs it as one transaction.
 
 do $replace$
 begin
@@ -84,7 +85,8 @@ end
 $replace$;
 
 -- 185's wall, again. The owner change needs `authenticated` to hold CREATE on public for that moment only; it is given
--- back at once. Any failure undoes this block alone (the function stays SECURITY INVOKER) and says so in the deploy log.
+-- back at once. Any failure undoes this block alone and says so in the deploy log, with the mode the function keeps
+-- (read after the undo: SECURITY INVOKER if the block above replaced it, else 185's SECURITY DEFINER).
 do $wall$
 declare
   v_had boolean := has_schema_privilege('authenticated', 'public', 'CREATE');
@@ -95,7 +97,9 @@ begin
     if not v_had then revoke create on schema public from authenticated; end if;
     alter function public.ai_run_read_query(text) security definer;
   exception when others then
-    raise warning '189: the read query could not be put behind Postgres''s role wall (%), so it stays SECURITY INVOKER; its name checks and last-line check still guard it', sqlerrm;
+    raise warning '189: the read query could not be put behind Postgres''s role wall (%), so it keeps the mode it has: %; its name checks and last-line check still guard it',
+      sqlerrm, (select case when p.prosecdef then 'SECURITY DEFINER' else 'SECURITY INVOKER' end
+                  from pg_catalog.pg_proc p where p.oid = 'public.ai_run_read_query(text)'::regprocedure);
   end;
 end
 $wall$;
