@@ -3,10 +3,10 @@ import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { MetaLine, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { currencyOf, priceLabel, watchedPrice } from '../shopModel'
+import { currencyOf, priceLabel } from '../shopModel'
 import { SHOP_PRIORITY_TONE } from '../shopMeta'
 import { complete, type Amount } from '../ownModel'
-import { beltOf, dealOn, initialsOf, isClean, spanOf, tintOf, type PriceFacts } from '../wishTile'
+import { beltOf, dealOn, initialsOf, isClean, readPrice, spanOf, tintOf, type PriceFacts } from '../wishTile'
 import { SiteLink } from './shopKit'
 import { imageOf, money, num, webUrl } from './shopFormat'
 import { HistoryBar, PictureWell } from './tileKit'
@@ -46,7 +46,8 @@ interface Props {
  */
 export function WishTile({ item, topId, icon, task, today, watch, facts, afterSale, onOpen, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
   const read = watch && watch.url === item.url ? watch : null
-  const now = watchedPrice(item, read)
+  // A refused link (its site's terms or robots rules) was never read: no price now, the row's own instead.
+  const now = readPrice(item, read)
   const cur = currencyOf(item)
   const belt = beltOf(item, { watch: read, facts, today })
   const span = spanOf(facts)

@@ -7,9 +7,9 @@
 import { formatDate } from '../../shared/utils/dateFormat'
 import { formatMoney } from '../settings/subscriptionRules'
 import { addDays, daysBetween, isMine, isPossession, PAID_BACK, valueAgeDays, VALUE_STALE_DAYS } from './ownModel'
-import { currencyOf, listOf, localDay, watchedPrice, type Money } from './shopModel'
+import { currencyOf, listOf, localDay, type Money } from './shopModel'
 import { isSignalHidden, signalSignature, signalStateKey, signalStateMap } from './signalStates'
-import { atTarget, backInStock, cleanPrice, fakeBefore, lowestIn60, type PriceFacts } from './wishTile'
+import { atTarget, backInStock, cleanPrice, fakeBefore, lowestIn60, readPrice, type PriceFacts } from './wishTile'
 import type { DealAhead } from './dealDays'
 import type { ShopItem, ShopPriceWatch, ShopSignal, ShopSignalState } from './types'
 
@@ -103,7 +103,7 @@ const facts = (...xs: (string | null | false | undefined)[]): string[] => xs.fil
 
 /** A wish's price for its row: its own (a general wish's range), never a guess. */
 function wishPrice(i: ShopItem, watch: ShopPriceWatch | null | undefined): string | null {
-  const now = watchedPrice(i, watch)
+  const now = readPrice(i, watch)
   if (now) return money(now.amount, now.currency)
   if (i.kind === 'general' && (i.price_min != null || i.price_max != null)) {
     const lo = i.price_min ?? i.price_max as number, hi = i.price_max ?? i.price_min as number
@@ -190,7 +190,7 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
       const created = localDay(i.created_at)
       const age = daysBetween(created, today)
       if (age > WISH_OLD_DAYS) {
-        const now = watchedPrice(i, watch)
+        const now = readPrice(i, watch)
         push({ kind: 'old_wish', tone: 'info', itemId: i.id, action: 'open', order: -age, sign: [created, now?.currency ?? currencyOf(i), now?.amount ?? i.price],
           facts: facts(`On the wishlist since ${formatDate(created)}`, wishPrice(i, watch)) }, i)
       }
@@ -208,7 +208,7 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
     let claimed = false
     if (i.return_by && i.return_by >= today) {
       const left = daysBetween(today, i.return_by)
-      const now = watchedPrice(i, watch)
+      const now = readPrice(i, watch)
       if (now && i.price != null && now.currency === currencyOf(i) && now.amount < i.price) {
         claimed = true
         const claim = { currency: now.currency, amount: i.price - now.amount }

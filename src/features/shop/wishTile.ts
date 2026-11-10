@@ -26,9 +26,18 @@ export function isClean(read: { condition?: ShopPriceWatch['condition'] | null }
   return read.condition === 'new' || read.condition === 'unknown'
 }
 
+/**
+ * The price read from the row's link — none for a link whose site refuses
+ * automated reading (`not_allowed`: never read, so whatever it holds is from
+ * before and no price now).
+ */
+export function readPrice(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined): Money | null {
+  return watch && watch.status !== 'not_allowed' ? watchedPrice(item, watch) : null
+}
+
 /** The price read from the row's link when it is clean, else null. */
 export function cleanPrice(item: Pick<ShopItem, 'url'>, watch: ShopPriceWatch | null | undefined): Money | null {
-  return watch && isClean(watch) ? watchedPrice(item, watch) : null
+  return watch && isClean(watch) ? readPrice(item, watch) : null
 }
 
 /**

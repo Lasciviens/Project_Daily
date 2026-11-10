@@ -167,9 +167,10 @@ const c = useChartColors()
   content, `useTooltipStyle()` for recharts' built-in one), and
   `compactAxisTick` (`axisFormat.ts`). Reuse them before styling a chart by hand.
 - **Category tints** — the same series as CSS, for a thing's identity outside a chart (Shop's picture
-  tile with no picture): `data-tint="1…6"` + `.tint-fill` (the series at 16 %) and `.tint-ink` (the series
-  mixed 70 % towards the strongest ink, so initials read on the fill in both themes). One tint per top
-  category, stable by its id (`wishTile.tintOf`); no category is the slate. Never a status, never the accent.
+  tile with no picture): `data-tint="1…6"` + `.tint-fill` (the series at 16 %), `.tint-well` (the series from
+  26 % at the top left to 10 %: a default picture's ground) and `.tint-ink` (the series mixed 70 % towards the
+  strongest ink, so initials and icons read on the fill in both themes). One tint per top category, stable by
+  its id (`wishTile.tintOf`); no category is the slate. Never a status, never the accent.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
@@ -211,7 +212,7 @@ date never does.
 
 **Poster covers** (Media): one `PosterTile`. Status is a belt across the top-left corner using `.poster-belt` + `data-tone` — fixed dark colours, not theme tones, because it sits on artwork in both themes and must keep white text ≥ 4.5:1; its size is in `cqw` of the cover. A score banner runs along the bottom. The user's own rating is never drawn on a cover.
 
-**Product pictures** (Shop's Wishlist tiles, `components/tileKit.tsx`): the same belt on the picture well — **one** per tile, the first that holds of At target · Lowest seen · Deal on · Need it (`wishTile.beltOf`), a tone, never the accent. A non-default priority is a tone pill with its word in the well's top-right corner (colour is never the only signal). A thing with no picture shows its initials on its category's tint (§2.5), drawn as SVG text so they scale with the tile.
+**Product pictures** (Shop's Wishlist tiles, `components/tileKit.tsx`): the same belt on the picture well — **one** per tile, the first that holds of At target · Lowest seen · Restocked · Deal on · Need it (`wishTile.beltOf`), a tone, never the accent; a belt's word fits the corner (about 11 letters at 10rem). A non-default priority is a tone pill with its word in the well's top-right corner (colour is never the only signal). A thing with no picture of its own shows its category's **default picture** — a lucide icon, `strokeWidth` 1.5, 44 % of the well's height, 75 % opacity, `.tint-ink` on `.tint-well` (§2.5), centred like Apple's placeholders; never a stock photo or an emoji — and with none, its initials on the tint, drawn as SVG text so they scale with the tile.
 
 | Class | Size / line | Weight | Role |
 |---|---|---|---|
@@ -477,8 +478,10 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
 - **Picture tiles** (Shop's Wishlist; smaller than cards, so they have their own rule): `TILE_GRID` =
   `repeat(auto-fill,minmax(10rem,1fr))` with one 0.625rem gap at every width — two a row on a 375–402px phone
   (10rem is the most two columns fit in 343px), more columns as the track widens, never wider tiles. A tile is
-  the 4:3 picture well (`bg-well`, §2.1) with one belt (§3), a title kept at two lines so a row's prices line
-  up, the price lines, and one action row (the one-tap action + ⋯). Inside a section, sub-groups pack into
+  the 4:3 picture well (`bg-well`, §2.1; with no picture, the category's default picture or the initials, §3)
+  with one belt (§3), a title kept at two lines so a row's prices line up, the price lines, and one action row
+  (the one-tap action + ⋯). The tiles wait for their own reads and the default pictures' chunk, so nothing
+  appears under a drawn tile (§5). Inside a section, sub-groups pack into
   shared rows when they fit (`wishTile.packGroups`: a group is never split to fill a gap; each is named once,
   above its own tiles; one grid, so a row's tiles still line up), the column count being auto-fill's own
   (`tileColumns`, measured before the first paint). A wide list deals its sections into column stacks by its
