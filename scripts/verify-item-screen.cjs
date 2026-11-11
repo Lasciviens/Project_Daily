@@ -356,7 +356,7 @@ console.log('\n== 10. Step 3: one screen for everything ==')
   check('a planned session\'s Edit tab opens its task, its block, or the weekly plan on that day (This day | All days)',
     same(SR.sessionItemRequest({ kind: 'task', taskId: 't1', blockId: 'b1' }), { kind: 'task', id: 't1' })
     && same(SR.sessionItemRequest({ kind: 'block', blockId: 'b1' }), { kind: 'time-block', id: 'b1' })
-    && same(SR.sessionItemRequest({ kind: 'weekly', templateId: 'p1', date: '2026-11-12' }), { kind: 'schedule-block', id: 'p1', occurrenceDate: '2026-11-12', defaults: { date: '2026-11-12' } }))
+    && same(SR.sessionItemRequest({ kind: 'weekly', templateId: 'p1', date: '2026-11-12' }), { kind: 'schedule-block', id: 'p1', occurrenceDate: '2026-11-12', startScope: 'day', defaults: { date: '2026-11-12' } }))
   const view = src('src/features/training/components/session/TrainingSessionView.tsx')
   check('…inside the session popup, through the same adapters; closing or leaving the tab saves what waits first',
     /<ItemScreenEmbedContext\.Provider value=\{editHandle\}>/.test(view) && /<ItemScreenFor request=\{editRequest\} onClose=\{onClose\} \/>/.test(view)

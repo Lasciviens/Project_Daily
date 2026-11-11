@@ -181,14 +181,14 @@ export function PlanBlockEntityModal({ request, onClose }: EntityModalProps<'pla
 }
 
 export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<'schedule-block'>) {
-  const { id, defaults, config, source, onSaved, occurrenceDate } = request
+  const { id, defaults, config, source, onSaved, occurrenceDate, startScope } = request
   const query = useScheduleBlock(id)
   const scheduleBlock = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating item') : {}
   const trainingDelete = useTrainingDelete(undefined, scheduleBlock)
   return (
     <UnifiedPlanModal
-      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock} occurrenceDate={occurrenceDate}
+      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock} occurrenceDate={occurrenceDate} startScope={startScope}
       config={config} defaults={defaults} source={source} onSaved={onSaved}
       onDeleteOverride={trainingDelete}
       {...load}
