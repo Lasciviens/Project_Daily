@@ -78,9 +78,9 @@ function TimesField({ count, onChange }: { count: number; onChange: (n: number) 
     <div className="flex items-center gap-2 pb-1 text-body text-fg-2">
       <span>After</span>
       <IconButton bordered label="One time fewer" disabled={count <= 1} onClick={() => set(Math.max(1, count - 1))}><Minus aria-hidden /></IconButton>
-      <input type="number" inputMode="numeric" min={1} max={MAX_REPEAT_COUNT} value={text} aria-label="Times"
-        onChange={e => { setText(e.target.value); const n = Number(e.target.value); onChange(Number.isInteger(n) ? n : 0) }}
-        className="input input-sm w-16 text-center tabular-nums" />
+      <input type="text" inputMode="numeric" pattern="[0-9]*" maxLength={3} value={text} aria-label="Times"
+        onChange={e => { setText(e.target.value); onChange(/^\d{1,3}$/.test(e.target.value) ? Number(e.target.value) : 0) }}
+        className="input input-sm w-14 text-center tabular-nums" />
       <IconButton bordered label="One time more" disabled={count >= MAX_REPEAT_COUNT} onClick={() => set(Math.min(MAX_REPEAT_COUNT, count + 1))}><Plus aria-hidden /></IconButton>
       <span>{count === 1 ? 'time' : 'times'}</span>
     </div>

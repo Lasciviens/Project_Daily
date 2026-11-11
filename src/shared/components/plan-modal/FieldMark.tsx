@@ -75,7 +75,10 @@ export function FieldMark({ goes, refused, always = false, className }: {
 /** The picture alone (a list of where things go, the Calendar row's choices). Apple's logo takes the text colour. */
 export function MarkIcon({ goes }: { goes: FieldGoes }) {
   if (goes === 'apple') {
-    return <span aria-hidden className="h-full w-full bg-fg" style={{ maskImage: `url(${appleMark})`, WebkitMaskImage: `url(${appleMark})`, maskSize: 'contain', WebkitMaskSize: 'contain', maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat' }} />
+    // Quoted: a build inlines the small SVG as a data URI with ' in it, which an unquoted url() can't hold (the mask
+    // was dropped and the mark drew as a square).
+    const mask = `url("${appleMark}")`
+    return <span aria-hidden className="h-full w-full bg-fg" style={{ maskImage: mask, WebkitMaskImage: mask, maskSize: 'contain', WebkitMaskSize: 'contain', maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat' }} />
   }
   return <img src={goes === 'app' ? appMark : googleMark} alt="" aria-hidden className="h-full w-full" draggable={false} />
 }
