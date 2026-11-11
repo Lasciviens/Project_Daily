@@ -9,7 +9,7 @@ import {
   useAdNotes, useAdTemplates, useCreateAdNote, useCreateTradeInQuote, useDeleteAdNote, useDeleteTradeInQuote, useListings,
   useTradeInQuotes, useValueHistory,
 } from '../../hooks/useShopResale'
-import { CONDITION_LABEL, resaleEvidence, type ResaleEvidenceRow, type ResaleRange } from '../../resaleEvidence'
+import { CONDITION_LABEL, conditionChoice, resaleEvidence, type ResaleEvidenceRow, type ResaleRange } from '../../resaleEvidence'
 import { isPrice, marketplaceOf, normalizeAdUrl, RESALE_CONDITIONS } from '../../resaleRows'
 import { endedListingsOf, estimateHistory, HANDED_OVER, hasOldEstimate, listingWords, marketplacesOf, oldEstimates } from '../../sellingModel'
 import { money, moneyRange, num } from '../shopFormat'
@@ -176,7 +176,7 @@ function ConditionSelect({ value, onChange }: { value: ResaleCondition | null; o
   return (
     <select value={value ?? ''} onChange={e => onChange((e.target.value || null) as ResaleCondition | null)} aria-label="Condition" className="select w-auto min-w-0">
       <option value="">Condition…</option>
-      {RESALE_CONDITIONS.map(c => <option key={c} value={c}>{CONDITION_LABEL[c]}</option>)}
+      {RESALE_CONDITIONS.map(c => <option key={c} value={c}>{conditionChoice(c)}</option>)}
     </select>
   )
 }

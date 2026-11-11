@@ -288,6 +288,10 @@ check('…the category\'s own from three sold, else all of yours from three, els
   check('the price now is the story\'s last step; a change on the last step\'s day replaces it, an earlier one is refused',
     LN.priceNow(cut) === 900 && LN.firstPrice(cut) === 1000 && eq(LN.withPriceChange(cut.prices, 800, '2026-11-06'), [{ on: '2026-10-28', price: 1000 }, { on: '2026-11-06', price: 800 }])
     && LN.withPriceChange(cut.prices, 800, '2026-11-01') === null && LN.withPriceChange(cut.prices, 800, TODAY).length === 3)
+  check('a price lowered on the day it was listed keeps the asking price before it; a second change that day replaces the first change',
+    eq(LN.withPriceChange([{ on: '2026-10-28', price: 1000 }], 900, '2026-10-28'), [{ on: '2026-10-28', price: 1000 }, { on: '2026-10-28', price: 900 }])
+    && eq(LN.withPriceChange([{ on: '2026-10-28', price: 1000 }, { on: '2026-10-28', price: 900 }], 850, '2026-10-28'), [{ on: '2026-10-28', price: 1000 }, { on: '2026-10-28', price: 850 }])
+    && LN.firstPrice({ prices: LN.withPriceChange([{ on: '2026-10-28', price: 1000 }], 900, '2026-10-28') }) === 1000)
 }
 
 // ── 4. New vs used vs refurbished ────────────────────────────────────────────

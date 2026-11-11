@@ -19,6 +19,7 @@ import { AddModelButton, RecordModels } from './RecordModels'
 import { RecordNudge } from './RecordNudge'
 import { RecordResale } from './RecordResale'
 import { RecordOwnership } from './RecordOwnership'
+import { ownershipSummary, useOwnership } from './useOwnership'
 import { useListings } from '../../hooks/useShopResale'
 import { openListingOf } from '../../sellingModel'
 import { RecordSection } from './RecordSection'
@@ -56,6 +57,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const from = boughtOn(item)
   // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).
   const searches = useMarketSearches(item)
+  // New vs used vs refurbished while it is to buy, whenever its numbers say something — with a link or without.
+  const ownership = useOwnership(item, { items: r.items, categories: r.categories, watch, ctx: r.ctx, on: state === 'buy' })
 
   /** Open a fact's editor in its section (a nudge's action). */
   const edit = (fact: string, section: SectionId) => { sections.show(section); d.setEditing(fact) }
@@ -106,10 +109,11 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
       {state === 'mine' && box('purchase', 'Purchase', purchaseSummary(item, today), <PurchaseDetailsButton item={item} />,
         <RecordPurchase item={item} today={today} />)}
-      {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />, <>
-        <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />
-        {state === 'buy' && <RecordOwnership item={item} items={r.items} categories={r.categories} watch={watch} ctx={r.ctx} />}
-      </>)}
+      {(item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
+        <PriceCheckButton item={item} watch={watch} />, <>
+          {item.url && <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />}
+          {ownership && <RecordOwnership item={item} categories={r.categories} ownership={ownership} />}
+        </>)}
       {state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
         <LookElsewhere item={item} today={today} searches={searches} />)}
       {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
