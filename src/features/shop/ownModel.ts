@@ -436,7 +436,8 @@ export function sortOwned(list: readonly ShopItem[], sort: OwnedSort, ctx: Money
   switch (sort) {
     case 'recent': return out.sort((a, b) => day(b).localeCompare(day(a)) || a.title.localeCompare(b.title))
     case 'title': return out.sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }))
-    case 'price': return out.sort((a, b) => costOf(b, ctx).nok - costOf(a, ctx).nok || day(b).localeCompare(day(a)))
+    // What was paid for the thing itself (the record's Paid); its extra costs stay in its Money section.
+    case 'price': return out.sort((a, b) => paidOf(b).nok - paidOf(a).nok || day(b).localeCompare(day(a)))
     case 'kept': {
       const kept = (i: ShopItem) => (day(i) ? daysBetween(day(i), i.disposed_on ?? today) : -1)
       return out.sort((a, b) => kept(b) - kept(a))

@@ -435,6 +435,10 @@ console.log('\n11 · Deadlines and the Owned view')
   check('accessories by item (possessions only)', acc.get('rp5').map(x => x.id).join() === 'case,grip' && acc.get('rp6').map(x => x.id).join() === 'sd')
   const sorted = O.sortOwned([RP[0], RP[1], RP[4]], 'kept', CTX, TODAY, acc)
   check('sort by time kept', sorted.map(x => x.id).join() === 'rp5,rp4,rp6')
+  const cheapFixed = item({ id: 'cf', price: 1000, bought_at: at('2026-05-01') })
+  const dearPlain = item({ id: 'dp', price: 2000, bought_at: at('2026-04-01') })
+  const byPaid = O.sortOwned([cheapFixed, dearPlain], 'price', ctx([cost('cf', 5000, 'NOK', '2026-06-01', 1)]), TODAY, new Map())
+  check('"Paid, most first" sorts by what was paid, never its extra costs', byPaid.map(x => x.id).join() === 'dp,cf')
   check('the age of "Could sell for"', O.valueAgeDays({ value_on: '2026-09-01' }, TODAY) === 37 && O.valueAgeDays({ value_on: null }, TODAY) === null)
 }
 
