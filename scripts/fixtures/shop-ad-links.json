@@ -1,0 +1,32 @@
+{
+  "about": "An ad's link (migration 192, shop_ad_notes.ad_url / shop_listings.ad_url): the cases both the database's CHECK and the app's resaleRows.AD_URL_RE are checked on. `stored`: the allow-list takes the string as it is (verify-db-shop-rules asks the database, verify-shop-resale the app). `accepted`: the app takes the pasted link after normalizeAdUrl (the URL parser's href), and the database takes that href. Made-up links only.",
+  "cases": [
+    { "raw": "https://www.finn.no/recommerce/forsale/item/100", "stored": true, "accepted": true, "why": "a FINN ad" },
+    { "raw": "https://finn.no/x", "stored": true, "accepted": true, "why": "the bare host" },
+    { "raw": "https://tise.com/p/1?ref=a#b", "stored": true, "accepted": true, "why": "a query and a fragment" },
+    { "raw": "https://shop.example:8443/a", "stored": true, "accepted": true, "why": "a port" },
+    { "raw": "https://finn.no", "stored": true, "accepted": true, "why": "no path (the parser adds /)" },
+    { "raw": "https://finn.no/%E2%80%AE", "stored": true, "accepted": true, "why": "an encoded character stays encoded" },
+    { "raw": "https://finn.no/<b>\"x\"", "stored": true, "accepted": true, "why": "printable ASCII (the parser encodes < > \")" },
+    { "raw": "http://www.finn.no/x", "stored": false, "accepted": false, "why": "http" },
+    { "raw": "javascript:alert(1)", "stored": false, "accepted": false, "why": "javascript:" },
+    { "raw": "ftp://finn.no/x", "stored": false, "accepted": false, "why": "ftp" },
+    { "raw": "https://user:pw@finn.no/x", "stored": false, "accepted": false, "why": "user:password@" },
+    { "raw": "https://localhost/x", "stored": false, "accepted": false, "why": "a host without a dot" },
+    { "raw": "https://fi‮nn.no/x", "stored": false, "accepted": false, "why": "a right-to-left override in the host" },
+    { "raw": "", "stored": false, "accepted": false, "why": "nothing" },
+    { "raw": "https://finn.no/a b", "stored": false, "accepted": true, "why": "a space (encoded as %20)" },
+    { "raw": "https://finn.no/a‮b", "stored": false, "accepted": true, "why": "U+202E right-to-left override (encoded)" },
+    { "raw": "https://finn.no/a​b", "stored": false, "accepted": true, "why": "U+200B zero-width space (encoded)" },
+    { "raw": "https://finn.no/a b", "stored": false, "accepted": true, "why": "U+00A0 no-break space (encoded)" },
+    { "raw": "https://finn.no/a\u0085b", "stored": false, "accepted": true, "why": "U+0085 next line (encoded)" },
+    { "raw": "https://finn.no/a\u0001b", "stored": false, "accepted": true, "why": "a control character (encoded)" },
+    { "raw": "https://finn.no/a\u007fb", "stored": false, "accepted": true, "why": "DEL (encoded)" },
+    { "raw": "https://finn.no/a\tb", "stored": false, "accepted": true, "why": "a tab (the parser drops it)" },
+    { "raw": " https://finn.no/x", "stored": false, "accepted": true, "why": "a space in front (trimmed)" },
+    { "raw": "https://finn.no/x\n", "stored": false, "accepted": true, "why": "a newline at the end (trimmed)" },
+    { "raw": "HTTPS://FINN.no/x", "stored": false, "accepted": true, "why": "capitals in the scheme and host (lower case)" },
+    { "raw": "https://finn.no\\@evil.example", "stored": false, "accepted": true, "why": "a backslash is a slash: the host is finn.no" },
+    { "raw": "https://blåbær.no/x", "stored": false, "accepted": true, "why": "a host in another script (punycode)" }
+  ]
+}

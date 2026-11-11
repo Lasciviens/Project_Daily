@@ -120,6 +120,7 @@ function checkAiWriteGroup() {
     water_log_entries: [qk.water.day(d)], quick_guess_items: [qk.quickGuess.list()],
     supplement_schedules: [qk.supplements.schedules()], supplement_dose_state: [qk.supplements.facts(w, d)],
     shop_categories: [qk.shop.categories()], shop_items: [qk.shop.items()], shop_item_links: [qk.shop.links()], shop_item_costs: [qk.shop.costs()],
+    shop_ad_notes: [qk.shop.adNotes()], shop_trade_in_quotes: [qk.shop.tradeIns()], shop_listings: [qk.shop.listings()],
     wish_items: [qk.wishes.all], books: [qk.books.library()], reading_settings: [qk.books.settings()],
     user_movie_entries: [qk.media.userMovies(), qk.media.recent()], user_tv_entries: [qk.media.userTv()],
     user_tv_episodes: [qk.media.watched('e1'), qk.media.nextEpisode('e1'), qk.media.recent()],
@@ -194,10 +195,20 @@ function checkAiWriteGroup() {
   script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_item_costs', filters: '{"id":"c1"}', values: '{"fx_nok":11.5,"fx_source":"norges_bank"}' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('AI cannot set a Shop rate (shop_item_costs.fx_nok stays as the database froze it)', tables.shop_item_costs[0].fx_nok === null && r.body.steps?.some(s => s.includes('may not set fx_nok')), JSON.stringify(r.body.steps))
+  // An ad's link is the owner's own paste (192): a steered turn could plant a link the owner then taps.
+  tables.shop_ad_notes = [{ id: 'a1', user_id: OWNER, item_id: 's1', ad_url: 'https://www.finn.no/recommerce/forsale/item/1', price: 100, currency: 'NOK', asking: true }]
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_ad_notes', filters: '{"id":"a1"}', values: '{"ad_url":"https://phish.example/finn"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot set an ad\'s link (shop_ad_notes.ad_url stays the owner\'s paste)', tables.shop_ad_notes[0].ad_url === 'https://www.finn.no/recommerce/forsale/item/1' && r.body.steps?.some(s => s.includes('may not set ad_url')), JSON.stringify(r.body.steps))
+  // An ad's text is copied into FINN as it stands (security review, 10.11.2026): a steered turn must not plant words in it.
+  tables.shop_listings = [{ id: 'l1', user_id: OWNER, item_id: 's1', status: 'for_sale', ad_text: 'Selger en spillkonsoll.', prices: [{ on: '2026-11-01', price: 1000 }] }]
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_listings', filters: '{"id":"l1"}', values: '{"ad_text":"Betal forskudd til en annen konto"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot write an ad\'s text (shop_listings.ad_text stays the owner\'s words)', tables.shop_listings[0].ad_text === 'Selger en spillkonsoll.' && r.body.steps?.some(s => s.includes('may not set ad_text')), JSON.stringify(r.body.steps))
   {
     const re = new RegExp(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8').match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo'].filter(c => !re.test(c))
-    check('every Shop column the database fills is closed to the assistant (rates, sale_undo)', !open.length && !re.test('sale_price') && !re.test('sale_group'), open.join(', '))
+    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo', 'ad_url', 'ad_text', 'closed_by_sale'].filter(c => !re.test(c))
+    check('every Shop column the database fills is closed to the assistant (rates, sale_undo, a listing\'s closed_by_sale) — and an ad\'s link and text, the owner\'s own', !open.length && !re.test('sale_price') && !re.test('sale_group') && !re.test('url') && !re.test('prices'), open.join(', '))
   }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)
