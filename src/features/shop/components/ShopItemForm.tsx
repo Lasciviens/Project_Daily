@@ -1,12 +1,36 @@
-import { useId, useState } from 'react'
+import { Suspense, useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { SegmentedControl, cx } from '../../../shared/ui'
+import { SegmentedControl, Skeleton, cx } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
+import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 import { DecimalInput } from '../../recipes/components/foodLogKit'
 import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
+import type { Fact } from '../autofillModel'
 import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
-import { LinkReader } from './LinkReader'
+import type { DraftUpdate } from './autofill/AutofillPanel'
 import { CategoryPicker } from './CategoryPicker'
+
+// The add sheet's autofill loads in its own chunk (the reader's rules, the facts, the scanner): only a new
+// one-product wish shows it, and the Shop page stays within its budget.
+const AutofillPanel = lazyWithReload('shop-autofill', () => import('./autofill/AutofillPanel').then(m => m.default), AutofillUnavailable)
+
+function AutofillUnavailable() {
+  return <p className="text-meta text-fg-muted">Couldn't load the link reader — reload the page to paste a link.</p>
+}
+
+/** The link row's room while the autofill loads: the same label, field and buttons, so nothing moves when it lands. */
+function AutofillLoading() {
+  return (
+    <div aria-hidden>
+      <span className="field-label">Link</span>
+      <div className="flex max-w-xl gap-2">
+        <div className="input min-w-0 flex-1" />
+        <Skeleton className="h-10 w-[4.75rem] shrink-0 rounded-control [@media(pointer:coarse)]:h-11" />
+        <Skeleton className="h-10 w-10 shrink-0 rounded-control [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" />
+      </div>
+    </div>
+  )
+}
 
 export const NEW_CATEGORY = '__new__'
 
@@ -35,6 +59,8 @@ export interface ShopDraft {
   requirements: string
   reason: ShopReason | ''
   image: string | null
+  /** What the add sheet's autofill filled in, each with its source (autofillModel) — new one-product wishes only. */
+  facts: Fact[]
 }
 
 const PRIORITIES: { value: ShopPriority; label: string }[] = [
@@ -46,9 +72,11 @@ const PRIORITIES: { value: ShopPriority; label: string }[] = [
  * (what, where, a note); everything else folds under More details there,
  * while the wishlist shows its planning fields up front.
  */
-export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
+export function ShopItemForm({ draft, onChange, update, categories, stores, editing }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
+  /** A change worked out from the draft as it is then (the autofill's answers land later). */
+  update: DraftUpdate
   categories: readonly ShopCategory[]
   stores: readonly string[]
   editing: boolean
@@ -187,12 +215,11 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
           options={[{ value: 'one', label: 'One product' }, { value: 'any', label: 'Any model that fits' }]} />
       )}
 
-      {!quick && !editing && !draft.general && <LinkReader url={draft.url} onUrl={url => onChange({ url })} onRead={r => onChange({
-        ...(r.title && !draft.title.trim() ? { title: r.title } : {}),
-        ...(r.price != null ? { price: r.price } : {}),
-        ...(r.currency ? { currency: r.currency } : {}),
-        ...(r.image ? { image: r.image } : {}),
-      })} />}
+      {!quick && !editing && !draft.general && (
+        <Suspense fallback={<AutofillLoading />}>
+          <AutofillPanel draft={draft} onChange={onChange} update={update} categories={categories} />
+        </Suspense>
+      )}
 
       {quick ? <>{store}{notes}</> : draft.general ? <>
         {category}

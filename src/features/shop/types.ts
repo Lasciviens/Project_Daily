@@ -515,6 +515,8 @@ export interface CreateShopItemInput {
   wait_for_deal?: boolean
   target_price?:  number | null
   deal_note?:     string | null
+  /** Autofill's facts with their sources (migration 191; factsKept.factsToSave). */
+  facts?:         ShopItemFacts | null
 }
 
 export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {

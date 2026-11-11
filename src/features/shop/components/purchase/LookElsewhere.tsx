@@ -1,10 +1,8 @@
-import { useMemo } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { ArrowUpRight, Search } from 'lucide-react'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useShopStores } from '../../hooks/useShopStores'
 import { useSavePurchase } from '../../hooks/usePurchase'
-import { marketSearches, shownAddress, type MarketSearch } from '../../purchaseModel'
+import { shownAddress, type MarketSearch } from '../../purchaseModel'
 import type { ShopItem } from '../../types'
 
 /** One marketplace's search: a tap shows the address first; Open goes there (the app never fetches it) and notes the day. */
@@ -29,17 +27,6 @@ function SearchButton({ search, onOpened }: { search: MarketSearch & { url: stri
       </PopoverPanel>
     </Popover>
   )
-}
-
-/** The marketplaces a wish can be looked for on (each with its search link, or none yet); empty: no Used market section. */
-export function useMarketSearches(item: ShopItem): MarketSearch[] {
-  const { data: stores = [] } = useShopStores()
-  return useMemo(() => marketSearches(item, stores), [item, stores])
-}
-
-/** The Used market section folded: the day a search was last opened, else where it can look. */
-export function marketSummary(item: ShopItem, searches: readonly MarketSearch[]): string {
-  return item.search_opened_on ? `Search opened ${formatDate(item.search_opened_on)}` : searches.map(s => s.store.name).join(' · ')
 }
 
 /**

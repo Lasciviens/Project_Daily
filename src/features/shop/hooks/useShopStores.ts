@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -9,7 +10,8 @@ import {
   type DealDayInput, type RowChange, type StorePatch,
 } from '../api/shopStoresApi'
 import type { StoreRulePatch } from '../storeRows'
-import type { ShopDealDayEdit, ShopStore, ShopStoreRule, ShopStoreRuleFacts } from '../types'
+import { marketSearches, type MarketSearch } from '../purchaseModel'
+import type { ShopDealDayEdit, ShopItem, ShopStore, ShopStoreRule, ShopStoreRuleFacts } from '../types'
 
 // Stores, marketplaces and their rules, Norway's law and the owner's deal days (migration 191). Each write answers
 // the row before and after: the cached list takes the after at once, and the toast's Undo writes `before` back
@@ -18,6 +20,12 @@ import type { ShopDealDayEdit, ShopStore, ShopStoreRule, ShopStoreRuleFacts } fr
 /** The account's stores and marketplaces. storeRules.storeOfLink says which one a link is on. */
 export function useShopStores() {
   return useQuery({ queryKey: qk.shop.stores(), queryFn: fetchShopStores, staleTime: STALE.default })
+}
+
+/** The marketplaces a wish can be looked for on ("Look on FINN"), each with its search link or none yet. */
+export function useMarketSearches(item: Pick<ShopItem, 'title'>): MarketSearch[] {
+  const { data: stores } = useShopStores()
+  return useMemo(() => marketSearches(item, stores ?? []), [item, stores])
 }
 
 /** The account's store rules (each store's: storeRules.rulesInForce). */

@@ -4,6 +4,7 @@ import { complete, DISPOSAL_LABEL, isPossession, valueAgeDays, valueNowOf, VALUE
 import { currencyOf } from '../../shopModel'
 import { mixedWords } from '../../watchWords'
 import { money } from '../shopFormat'
+import type { MarketSearch } from '../../purchaseModel'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
 // The record's sections that open in place (RecordSection): which ones are
@@ -79,4 +80,9 @@ export function purchaseSummary(item: ShopItem, today: string): string | undefin
   if (item.return_by && item.return_by >= today) return `return by ${formatDate(item.return_by)}`
   if (item.warranty_until && item.warranty_until >= today) return `complain by ${formatDate(item.warranty_until)}`
   return undefined
+}
+
+/** The Used market section folded: the day a search was last opened, else where it can look. */
+export function marketSummary(item: ShopItem, searches: readonly MarketSearch[]): string {
+  return item.search_opened_on ? `Search opened ${formatDate(item.search_opened_on)}` : searches.map(s => s.store.name).join(' · ')
 }

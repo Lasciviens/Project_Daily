@@ -4,8 +4,9 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchGroceryPrices, lookUpGroceryEan, searchGroceries } from '../api/groceryApi'
 import { scanEan, type GroceryHit } from '../groceryModel'
 
-// Grocery prices for the quick list (Kassalapp through `food-search`). Only
-// the quick list uses these, so they load with its own chunk.
+// Grocery prices for the quick list (Kassalapp through `food-search`), and a
+// barcode's grocery for the add sheet's autofill. Only those two lazy parts use
+// these, so they never join the Shop page's first download.
 
 /** Kassalapp's search takes at least 3 characters (its spec's `minLength: 3`; shorter is a 422). */
 export const SEARCH_MIN_CHARS = 3
@@ -53,4 +54,19 @@ export function useScanLookup(): (code: string) => Promise<GroceryHit | null> {
       retry: false,
     })
   }, [qc])
+}
+
+/**
+ * The grocery a scanned barcode is, for the add sheet's autofill: the same `grocery_ean` lookup and cache entry as
+ * the quick list's scan (`useScanLookup`), null when Kassalapp doesn't know it; off while `ean` is null or no EAN.
+ */
+export function useGroceryByEan(code: string | null) {
+  const ean = code ? scanEan(code) : null
+  return useQuery({
+    queryKey: qk.shop.groceryEan(ean ?? ''),
+    queryFn: () => lookUpGroceryEan(ean as string),
+    enabled: !!ean,
+    staleTime: STALE.hour,
+    retry: false,
+  })
 }
