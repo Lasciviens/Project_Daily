@@ -1,13 +1,12 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, Link2, MoreHorizontal, Plus, Tag } from 'lucide-react'
+import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Tag } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
-import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
@@ -77,50 +76,47 @@ export function ShopPage() {
     <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
       options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
   )
-  // Owned's other ways in (buttons too where the row has room for them) and the insurance list. The menu is drawn
-  // outside the page (a portal), where the page's width can't reach it: it leaves out the ways in while their
-  // buttons show — their group has a width only then.
+  // Owned's other ways in show as buttons where the row has room for them. The ⋯ menu is drawn outside the page
+  // (a portal), where the page's width can't reach it: it leaves out the ways in while their buttons show — their
+  // group has a width only then.
   const { ref: waysRef, width: waysWidth } = useElementWidthRem<HTMLDivElement>()
   const waysShown = view === 'owned' && !isPhone && (waysWidth ?? 0) > 0
-  const moreWaysMenu = (
-    <Menu as="div">
-      <MenuButton className="icon-btn-bordered" aria-label="More" title="More">
-        <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
-      </MenuButton>
-      <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        {!waysShown && <>
-          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
-          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
-        </>}
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
-      </MenuItems>
-    </Menu>
-  )
   // "Add the suggested categories (34)" while the pickers have any: one tap, then "34 categories added · Undo".
-  // Its room in the bar is kept while the categories and the taxonomy load, so the view switch never moves.
   const suggested = useAddSuggestedCategories(categories)
   const suggestKnown = !catsLoading && !catsError && suggested.count != null
-  const suggestMenu = useRememberedFlag('shop:suggestMenu', (suggested.count ?? 0) > 0, !catsLoading && !catsError && suggested.count != null, true) && (
+  // The header's one ⋯ on every view (the bar keeps its shape): Stores and rules, the suggested categories while
+  // there are any, and on Owned its other ways in where the row has no room for their buttons, and the insurance list.
+  const moreMenu = (
     <Menu as="div">
       <MenuButton className="icon-btn-bordered" aria-label="More in Shop" title="More in Shop">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem disabled={!suggestKnown || suggested.busy || !suggested.count}>
-          <button type="button" onClick={() => { void suggested.add() }} className="menu-item data-[disabled]:opacity-50">
-            <Tag aria-hidden className="h-4 w-4" /> Add the suggested categories{suggestKnown && suggested.count ? ` (${suggested.count})` : ''}
-          </button>
-        </MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores and rules</button></MenuItem>
+        {suggestKnown && (suggested.count ?? 0) > 0 && (
+          <MenuItem disabled={suggested.busy}>
+            <button type="button" onClick={() => { void suggested.add() }} className="menu-item data-[disabled]:opacity-50">
+              <Tag aria-hidden className="h-4 w-4" /> Add the suggested categories ({suggested.count})
+            </button>
+          </MenuItem>
+        )}
+        {view === 'owned' && !waysShown && <>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        </>}
+        {view === 'owned' && (
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
+        )}
       </MenuItems>
     </Menu>
   )
 
   // The bar keeps one row and the view switch one width on every view (owner,
   // 03.11.2026: a tab switch never reshapes the bar). On a phone Owned's own
-  // controls — Things | Stats and the menu of other ways in — sit in the row
+  // controls — Things | Stats — sit in the row
   // right under it instead of growing it by a row and narrowing the switch;
   // from a tablet they share the bar's row, where they fit without moving it.
-  // The ⋯ of suggested categories is on every view alike, so a switch never moves it.
+  // The ⋯ is on every view alike, so a switch never moves it.
   return (
     <PageContainer>
       <PageHeader title="Shop" art={<ShopHeroArt />}>
@@ -140,14 +136,13 @@ export function ShopPage() {
           {view === 'owned' && !isPhone && ownedTabs(false)}
           <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
             {view === 'owned' && !isPhone && <>
-              {/* Owned's other ways in: buttons where the row has room, the menu's first lines where it has not. */}
+              {/* Owned's other ways in: buttons where the row has room, lines in the ⋯ menu where it has not. */}
               <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
                 <Button variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
                 <Button variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
               </div>
-              {moreWaysMenu}
             </>}
-            {suggestMenu}
+            {moreMenu}
             <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
             </Button>
@@ -157,7 +152,6 @@ export function ShopPage() {
       {view === 'owned' && isPhone && (
         <div className="mb-3 flex items-center gap-2 sm:mb-4">
           <div className="min-w-0 flex-1">{ownedTabs(true)}</div>
-          {moreWaysMenu}
         </div>
       )}
 

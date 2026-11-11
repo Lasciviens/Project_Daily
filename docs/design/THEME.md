@@ -284,6 +284,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Empty state | `<EmptyState icon title description action bordered />` |
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first remember>` around a part whose data comes in on its own (it keeps the room the part took last time, §5; `as="span"` inside a button); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
+| On / off | `<Switch on onChange label size>` (`shared/ui`): the accent track when on; `md` keeps a 44px row of its own, `sm` sits in a row that is already the target (the item screen's All-day) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days) |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
 | Filter tabs with counts | `.pill-tab` + `.count-badge`, horizontally scrollable row (`.scroll-x`) |
@@ -623,7 +624,9 @@ looping animation. View-transition and runtime-only selectors live **outside** `
   the header is a drag handle too); or a `hero` (image/art) with the close button floating over it;
   no title → pass `ariaLabel`. Body padding defaults to `p-4 sm:p-5` (`bodyClassName` overrides).
   Sticky footer for actions: primary on the right, full-width buttons on phones.
-- `compact` — a lighter chrome for a form sheet (the Add sheet): a `text-lead` title with no hairline
+- `grouped` — the sheet is the canvas (`bg-canvas`) and its body holds surface groups: the item screen's
+  grouped rows (below).
+- `compact` — a lighter chrome for a form sheet (the item screen): a `text-lead` title with no hairline
   under it, a 36px close button, tighter body and footer padding (the footer keeps its hairline). Its
   actions are `size="sm"` and content-sized on every width: the one primary on the right, Cancel as a
   ghost beside it, Delete (an icon on a phone) on the left.
@@ -667,38 +670,61 @@ as "+" chips (`FactChips`) instead of empty inputs; edits gather in a draft and 
 Discard / Save only when something changed (closing with changes asks first). Creating stays a small `md`
 sheet — a record is for a row that already exists.
 
-**The Add sheet** (one item, `shared/components/plan-modal/`) is the pattern for a create/edit form whose
-facts are mostly optional. It is calm, light and compact (owner, 15.10.2026: "more polite, not big and
-clunky") and renders `ModalShell compact`. Top down:
+**The item screen** (one item, `shared/components/plan-modal/`; owner, 10.11.2026 — step 1 of
+`docs/features/item-screen-plan.md`) is the pattern for a create/edit screen of something that also lives
+in a calendar. It is drawn as iOS Calendar draws its event screen and renders `ModalShell compact grouped`
+(the sheet is the canvas, its groups are surface cards). Top down:
 
-- **The title is the content**: borderless (`.input-bare`, `text-title` semibold, a normal-weight
-  placeholder), growing with a long title. Text that fills the chips as it is typed says so on a **Read
-  as** line with an undo ("Keep text", `features/items/components/ReadAsLine`).
-- **One quiet row of chips** — date · time · length · repeat · Google — that wraps only when it must
-  (a 402px phone fits three). Every chip, choice and text button of the sheet and its pickers comes from
-  `fieldStyles.ts`: one height (32px on every pointer), `rounded-full`, 14px icons, so the rows line up.
-  `chipClass('set')` holds a value ("Thu 15.10.2026", "17:30–18:30" — a soft fill) and opens its editor
-  in a Headless UI `Popover` on tap (`CHIP_PANEL_CLASS`: above the sheet on `z-toast`, scrolls when the
-  anchor leaves too little room); `chipClass('add')` offers one ("Time", "Repeat" — a hairline outline).
-  A choice with consequences (where the item goes on Google) is one chip with a `Menu` whose items say
-  what each does, disabled ones with the reason. A choice that must stay a native select (Repeat,
-  `.claude/rules/planning.md`) is drawn as a chip (`ChipSelect`): the select lies invisible over it, so a
-  phone opens its own picker and the chip keeps the chip's text size (a visible select is 16px on touch).
-  `ChipSelect` is exported from `plan-modal/fields.tsx` for any compact sheet row (Food's amount unit,
-  Edit entry's Meal and dish): a chip is as wide as its choice, a visible select as wide as its longest option.
-- **The facts line**, small text: what every item has reads as an inline value that opens a `Menu`
-  (`chipClass('value')`: "● Medium priority", "Personal", a Google Task's list "☰ Personal"); a task's own
-  labels are value chips with × ("# Errands"), "+ Label" opens a Headless UI `Combobox` beside them
-  (`LabelsFact`); rarely-used facts wait as text buttons (`chipClass('quiet')`: "+ Notes", "+ Deadline") —
-  never a row of empty pills, never a dashed box, never an uppercase label.
-- **Opened rows** (`FactRow`): a short label beside a small field (`.input-sm`); a row with a value opens
-  by itself.
-- Pickers use the same pieces: `choiceClass(active, …, 'sm')` for Today / Tomorrow, the lengths and the
-  seasons, `Time24Field size="sm"` (hour and minute as chip selects, then −30m / +30m), `DateCalendar
-  compact` (36px days), and `chipClass('remove')` to take a value off ("No time", "Doesn't block").
-- A mode of the whole form (This day | All days) is a `SegmentedControl size="xs"` in the header; its own
-  question (delete one day or the whole repeat) is a compact confirm with its three actions in one footer
-  row (`sm`: they don't fit the 24rem `xs`).
+- **The heading** says what it is — "New Item" / "Edit Item" — with **Add** (the one primary) beside it for
+  a new one. An edit has no Save: it saves by itself, and the heading's second line (one line, always
+  there, so nothing moves) says "Changes save by themselves", "Saving…", "Saved" or why not ("Not saved: …",
+  warn; a failure danger with "Try again"). A mode of the whole form (This day | All days) is a
+  `SegmentedControl size="xs"` beside the heading; its own question (delete one day or the whole repeat) is
+  a compact confirm with its three actions in one footer row (`sm`: they don't fit the 24rem `xs`).
+- **Grouped rows** (`ItemRows.tsx`): a `section-label` header over a `rounded-row` surface group; rows of
+  one height (44px, `text-lead`), the label left and the value right, inset hairlines between rows (the
+  first row has none). `Row` holds a control (pills, a switch, a segmented choice — `wide` lets the value
+  take the room, the labels); `TapRow` is a whole-row button with the value muted and a chevron that turns
+  down while its editor is open; `ToggleRow` a label and a `Switch size="sm"`; `NoteRow` a line of
+  explanation or a warn / danger line. Editors open **inside the group** under their row (`Panel`, which
+  scrolls itself into view), one at a time: a month (`DateCalendar compact`), a time wheel, a list of
+  choices (`ChoiceRow`: label, a hint line, a check; a blocked one dimmed with its reason). Never a popover
+  over the list.
+- **Fields have no box**: the title (`.input-bare`, `text-title` semibold, a normal-weight placeholder,
+  growing with a long title), the notes, the location's search and the labels' field are the row itself.
+  Text that fills other rows as it is typed says so on a **Read as** line with an undo ("Keep text").
+- **Pills** (`Pill`): a date (8.5rem) or a time (4.25rem) of one width, so nothing jumps as the value
+  changes; `bg-surface-2`, open = `bg-accent-50 text-accent-600`, a value that can't be stored struck
+  through on `bg-danger-soft`. **The time wheel** (`TimeWheel.tsx`): two scroll-snap columns (hours,
+  five-minute steps) under a `surface-2` band, faded at the ends, `role="spinbutton"` per column; a
+  finger flicks it, a mouse wheel turns it, a mouse drags it, ↑ / ↓ step it.
+- **The timeline** (`DayTimeline.tsx`): the whole day, one pixel a minute, in a horizontal scroller with no
+  scrollbar; hour lines `bg-line`, hour labels `text-micro text-fg-faint`; the day's other things as
+  `bg-surface-2` blocks with a `line-strong` left edge (a `warn` ring where this item overlaps them); this
+  item as an accent bar (`bg-accent-500 text-on-accent shadow-float`, `touch-none`) with grips at its ends
+  (outside the bar when it is narrow); the now-line `bg-danger`; under it a **day strip** (`surface-2`
+  track, the day's things as ticks, the visible part as an accent-outlined thumb) that works as its
+  scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding.
+- **Marks** (`FieldMark.tsx`): a 14px mark after a row's label says where that field goes — Apple's logo
+  (a CSS mask in `bg-fg`, so it follows the theme), Google's (its own colours: an identity colour), the
+  app's logo — with the words on tap or hover; a red dot (`bg-danger`, a `surface` ring) when the outside
+  calendar refused it. They show while a setting says so (Settings → Calendar); a row whose whole job is
+  where the item goes (Calendar) always shows its own.
+- **The last group** of an edit is **Delete Item** (`text-danger`, centred): it asks, deletes and offers
+  Undo like every delete.
+
+**Compact sheet pieces** (`plan-modal/fieldStyles.ts`, `fields.tsx`, `ItemFacts.tsx`), for a short form
+that isn't the item screen (the supplements' schedule sheet, Food's amount and meal rows): every chip,
+choice and text button from `fieldStyles.ts` has one height (32px on every pointer), `rounded-full` and
+14px icons. `chipClass('set')` holds a value (a soft fill) and opens its editor in a Headless UI `Popover`
+(`CHIP_PANEL_CLASS`: above the sheet on `z-toast`); `chipClass('add')` offers one (a hairline outline);
+`chipClass('value' | 'quiet' | 'remove')` are text buttons (a value with a `Menu`, "+ Notes", "No time").
+A choice that must stay a native select (Repeat, `.claude/rules/planning.md`) is drawn as a chip
+(`ChipSelect`): the select lies invisible over it, so a phone opens its own picker and the chip keeps the
+chip's text size (a visible select is 16px on touch); a chip is as wide as its choice. Opened optional rows
+are `FactRow`s (a short label beside a small `.input-sm` field), offered by `AddFact` ("+ Notes") — never a
+row of empty pills, never a dashed box. Pickers: `choiceClass(active, …, 'sm')`, `Time24Field size="sm"`,
+`DateCalendar compact`.
 
 **Headless UI pieces** (`@headlessui/react` v2) — never hand-made open/close state for these. They
 handle click-outside, Escape, focus trap, portal rendering and ARIA; anything portalled uses token
@@ -882,6 +908,7 @@ chrome. English in the product (`AGENTS.md`).
 - Colour is never the only signal: a status also has a label or icon.
 - Contrast: body text ≥ 4.5:1 on its surface in both themes (`fg-faint` is decoration only).
 - Tab rows and segmented controls use proper roles (`tablist`/`tab`, `aria-selected` / `aria-pressed`).
+- An outgoing link shows where it goes before it opens (owner, 10.11.2026): its address on screen, or a popover with the whole address and **Open** when the link is built by the app (Shop's "Look on FINN", `LookElsewhere`); a short host with ↗ carries the whole link in its `title` (a rule's source, `SourceLink`). A link the app builds from data is checked again where it is built (https, on its own host — `searchLinkFor`), opened by the owner in a new tab with `rel="noopener noreferrer"`, and never fetched by the app.
 
 ---
 

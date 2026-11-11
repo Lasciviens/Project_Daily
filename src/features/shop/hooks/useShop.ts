@@ -171,15 +171,17 @@ export function useUpdateShopItem() {
 /**
  * Bought in one tap: today, the row's own price, store and currency (the rate
  * is the database's). The toast offers Undo, and Add details when there is a
- * record to open (inside the record itself there is nothing more to open).
+ * record to open (inside the record itself there is nothing more to open) —
+ * or, with `thenDetails` (a wish: Just bought), opens them right away.
  */
-export function useBuyNow(onDetails?: (id: string) => void) {
+export function useBuyNow(onDetails?: (id: string) => void, { thenDetails = false }: { thenDetails?: boolean } = {}) {
   const update = useUpdateShopItem()
   return (item: ShopQuickRow) => {
     update.mutate({ id: item.id, patch: { status: 'bought' }, quiet: true }, {
       onSuccess: () => {
         const undo = () => update.mutate({ id: item.id, patch: { status: 'wishlist' }, quiet: true, row: item })
-        if (onDetails) toast.doneWith(`Bought · ${item.title}`, { label: 'Add details', onClick: () => onDetails(item.id) }, undo)
+        if (onDetails && thenDetails) { toast.undo(`Bought · ${item.title}`, undo); onDetails(item.id) }
+        else if (onDetails) toast.doneWith(`Bought · ${item.title}`, { label: 'Add details', onClick: () => onDetails(item.id) }, undo)
         else toast.undo(`Bought · ${item.title}`, undo)
       },
     })

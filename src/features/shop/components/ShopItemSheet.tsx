@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton } from '../../../shared/ui'
@@ -8,6 +8,7 @@ import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCa
 import { useQuietCheck } from '../hooks/useShopPrices'
 import { useResolveCategory } from '../hooks/useCategorySuggestions'
 import { currencyOf, isSuggested, listOf, localDay, storeNames } from '../shopModel'
+import { factsToSave } from '../factsKept'
 import { NEW_CATEGORY, ShopItemForm, type ShopDraft } from './ShopItemForm'
 import type { ShopCategory, ShopItem, ShopList } from '../types'
 
@@ -37,6 +38,7 @@ function draftOf(item: ShopItem | undefined, defaults: ShopItemDefaults, categor
     requirements: item?.requirements ?? '',
     reason:      item?.reason ?? '',
     image:       item?.image_url ?? null,
+    facts:       [],
   }
 }
 
@@ -79,6 +81,11 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const [saving, setSaving] = useState(false)
   const stores = useMemo(() => storeNames(items), [items])
   const editing = !!item
+  // The autofill's answers land later: worked out from the draft as it is then; nothing changed is no new draft.
+  const update = useCallback((change: (d: ShopDraft) => Partial<ShopDraft>) => setDraft(d => {
+    const patch = change(d)
+    return Object.keys(patch).length ? { ...d, ...patch } : d
+  }), [])
 
   async function resolveCategory(): Promise<string | null> {
     // A suggestion picked in the form is made now, with the save (never on the pick).
@@ -143,9 +150,13 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
           price_min: draft.priceMin, price_max: draft.priceMax, requirements: draft.requirements.trim() || null, reason: draft.reason || null,
         } })
       } else {
+        // The facts the owner kept, with their sources; the EAN in its own column.
+        const kept = draft.list === 'wishlist' ? factsToSave(draft.facts, draft) : { ean: null, facts: null }
         const row = await createItem.mutateAsync({ input: {
           ...fields, currency: draft.price != null ? draft.currency : null,
           ...(draft.list === 'wishlist' ? { reason: draft.reason || null, image_url: draft.image } : {}),
+          ...(kept.ean ? { ean: kept.ean } : {}),
+          ...(kept.facts ? { facts: kept.facts } : {}),
         } })
         if (row.url && row.list !== 'quick') check([row.id])
       }
@@ -187,6 +198,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
       <ShopItemForm
         draft={draft}
         onChange={patch => setDraft(d => ({ ...d, ...patch }))}
+        update={update}
         categories={categories}
         stores={stores}
         editing={editing}

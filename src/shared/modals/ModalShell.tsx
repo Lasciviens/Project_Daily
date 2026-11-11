@@ -43,6 +43,8 @@ export interface ModalShellProps {
   /** A lighter chrome for a form sheet (the Add sheet, THEME §8): a smaller
    *  title with no hairline under it, a smaller close button, tighter padding. */
   compact?: boolean
+  /** A grouped list (the item screen, THEME §8): the sheet is the canvas and its groups are surface cards. */
+  grouped?: boolean
   panelClassName?: string
   /** Accessible name when there is no `title` (e.g. the command palette). */
   ariaLabel?: string
@@ -57,7 +59,7 @@ export interface ModalShellProps {
 export function ModalShell({
   open = true, onClose, title, subtitle, headerActions, hero, footer,
   size = 'md', mobile = 'sheet', dismissible = true, layer = 'modal',
-  bodyClassName, panelClassName, ariaLabel, compact = false, children,
+  bodyClassName, panelClassName, ariaLabel, compact = false, grouped = false, children,
 }: ModalShellProps) {
   const depth = useModalDepth()
   const close = () => { if (dismissible) onClose() }
@@ -87,7 +89,7 @@ export function ModalShell({
           ref={setPanel}
           transition
           className={cx(
-            'relative flex w-full flex-col overflow-hidden border border-line bg-surface shadow-menu',
+            'relative flex w-full flex-col overflow-hidden border border-line shadow-menu', grouped ? 'bg-canvas' : 'bg-surface',
             'transition duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] data-[closed]:translate-y-full',
             'sm:rounded-card sm:duration-200 sm:data-[closed]:translate-y-2 sm:data-[closed]:scale-[0.98] sm:data-[closed]:opacity-0',
             full ? 'h-full max-h-none sm:h-auto sm:max-h-[88dvh]' : 'max-h-[92dvh] rounded-t-sheet sm:max-h-[88dvh]',
@@ -128,7 +130,7 @@ export function ModalShell({
 
           {footer != null && (
             <footer className={cx(
-              'shrink-0 border-t border-line bg-surface px-4 sm:px-5',
+              'shrink-0 border-t border-line px-4 sm:px-5', grouped ? 'bg-canvas' : 'bg-surface',
               compact ? 'pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] sm:pb-2.5' : 'pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3',
             )}>
               {footer}

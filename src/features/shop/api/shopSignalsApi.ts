@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { isDay, parseDealDay } from '../dealDays'
+import { isDay } from '../dealDays'
 import { parsePriceStats, priceStatsBatches } from '../priceStats'
 import { isShopSignal, parseSignalState, parseSignalWrite, SIGNATURE_RE, SUBJECT_RE } from '../signalStates'
 import { allPages } from './shopApi'
@@ -8,7 +8,7 @@ import type { ShopDealDay, ShopPriceStats, ShopSignal, ShopSignalState, ShopSign
 
 // Needs a look's data (migration 190): what the owner did with its rows (shop_signal_states, written through
 // three functions that answer the row before and after, so an Undo puts back exactly what was there), the deal
-// days (shop_deal_days, read only), and the price figures of many things in one call (shop_price_stats). Every
+// days (shop_deal_days, with the owner's own versions over them — 191), and the price figures of many things in one call (shop_price_stats). Every
 // answer is checked where it enters (signalStates, dealDays, priceStats).
 //
 // Before 190 is applied (a failed migration, a revert) the reads answer nothing and a write says so by name.
@@ -86,19 +86,15 @@ export function clearSignalState(key: SignalKey): Promise<ShopSignalWrite> {
   return putSignalState({ ...key, state: null })
 }
 
-/** The deal days, each a whole rule (dealDays.dealsAhead gives their next runs). */
+/**
+ * The deal days the app counts, each a whole rule (dealDays.dealsAhead gives their next runs): 190's rows with the
+ * owner's own versions laid over them by slug (migration 191; one turned off is left out). Before 191 the shared
+ * rows alone.
+ */
 export async function fetchDealDays(): Promise<ShopDealDay[]> {
-  try {
-    const rows = await allPages<unknown>((from, to) => supabase
-      .from('shop_deal_days')
-      .select('*')
-      .order('slug', { ascending: true })
-      .range(from, to))
-    return rows.map(parseDealDay).filter(nonNull)
-  } catch (e) {
-    if (missingTable(e as PgError)) return []
-    throw e
-  }
+  // Loaded on demand: the stores' module (its writes, its checks) stays out of the Shop page's first download.
+  const { fetchCountedDealDays } = await import('./shopStoresApi')
+  return fetchCountedDealDays()
 }
 
 /**

@@ -18,8 +18,8 @@ import type { ShopItem, ShopPriceWatch, ShopSignal, ShopSignalState } from './ty
 export type LookKind = ShopSignal
 /** Danger: due today or tomorrow · warn: money to claim, ≤ 3 days, a "before" price never seen · success: good news · info: dates further out and tidy-up. */
 export type LookTone = 'danger' | 'warn' | 'success' | 'info'
-/** The row's one action: open the thing, mark it bought, open it at its "Could sell for", or list the things it counts. */
-export type LookAction = 'open' | 'bought' | 'value' | 'list'
+/** The row's one action: open the thing, mark it bought, open it at its "Could sell for", list the things it counts, or claim money back. */
+export type LookAction = 'open' | 'bought' | 'value' | 'list' | 'claim'
 
 /** One of the things a counting row (tidy-up, a deal day) is about. */
 export interface LookThing { id: string; title: string; facts: string[] }
@@ -50,6 +50,25 @@ export interface Look {
   things: LookThing[]
   /** The day Snooze hides it until (snoozeUntil): a week, or the day before its deadline when that is sooner; null when it can't (due tomorrow). */
   snoozeTo: string | null
+  /** The page its words were read from (Prisjakt's offers, "↗"): a https link the owner opens; the app never fetches it. */
+  link?: string | null
+}
+
+/** A price protection that still holds for a thing (purchaseModel.protectionOf), with the price it compares now. */
+export interface LookProtection { until: string; name: string; price: Money | null; where: string | null }
+
+/** A price protection nobody checked (Ask AI's, a price site's): a note to check — never a claim, an amount, a tone or a day. */
+export interface LookProtectionNote { words: string; price: Money | null; where: string | null }
+
+/** What the stores' rules add (storeLooks.ts, its own chunk): price protection, money already got back, price matches. */
+export interface StoreLookInputs {
+  protections: ReadonlyMap<string, LookProtection>
+  /** Protections nobody checked, for a thing with no checked one: a note row when the price now is under what was paid. */
+  protectionNotes?: ReadonlyMap<string, LookProtectionNote>
+  /** Money got back on a thing in its own currency: a claim counts past it. */
+  gotBack: ReadonlyMap<string, number>
+  /** Rows of their own (a store that matches a cheaper offer on a wish's Prisjakt list). */
+  extra: readonly Look[]
 }
 
 /** About six months, as Owned's "update it" on an old "Could sell for". */
@@ -67,8 +86,8 @@ export const SNOOZE_DAYS = 7
 
 const TONE_RANK: Record<LookTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
 const KIND_RANK: Record<LookKind, number> = {
-  return_closing: 0, cheaper_returnable: 1, at_target: 2, lowest_seen: 3, back_in_stock: 4, fake_before: 5, deal_day: 6,
-  complaint_ending: 7, old_value: 8, old_wish: 9, tidy_up: 10,
+  return_closing: 0, cheaper_returnable: 1, price_match: 2, at_target: 3, lowest_seen: 4, back_in_stock: 5, fake_before: 6, deal_day: 7,
+  complaint_ending: 8, old_value: 9, old_wish: 10, tidy_up: 11,
 }
 
 const money = (n: number, currency: string) => formatMoney(Math.round(n), currency)
@@ -149,6 +168,8 @@ export interface LookInputs {
   watches: ReadonlyMap<string, ShopPriceWatch>
   facts?: ReadonlyMap<string, PriceFacts>
   deals?: readonly DealAhead[]
+  /** The stores' rules' part (191): absent before they are read. */
+  store?: StoreLookInputs
 }
 
 type Draft = Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'where' | 'things' | 'signature' | 'subject' | 'snoozeTo'>
@@ -158,7 +179,9 @@ type Draft = Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'wher
 /**
  * Everything that needs a look, most urgent first: a return window closing
  * (two weeks ahead), a price under what you paid while you can still return
- * it, a wish at its target, at its 60-day low or restocked, a "before" price
+ * it or a store's price protection holds (counted past money already got
+ * back; `inputs.store`, 191), a store that matches a cheaper offer for a wish,
+ * a wish at its target, at its 60-day low or restocked, a "before" price
  * the link never showed, each deal day ahead for the wishes with a target
  * (splitLooks shows the next one not snoozed), a complaint right ending, an
  * old "Could sell for", a wish waiting half a year, and one row listing what
@@ -227,22 +250,41 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
     if (!isMine(i)) continue
 
     let claimed = false
-    if (i.return_by && i.return_by >= today) {
-      const left = daysBetween(today, i.return_by)
+    // A store's price protection rides on the same row as a return (one thing, the same money): 191's rules.
+    const prot = inputs.store?.protections.get(i.id) ?? null
+    const returnable = !!i.return_by && i.return_by >= today
+    if (returnable || prot) {
+      const left = returnable ? daysBetween(today, i.return_by as string) : Infinity
+      const due = Math.min(left, prot ? daysBetween(today, prot.until) : Infinity)
       // Money to claim only from a price read just now and clean — a new offer's or the shop's own, never a
-      // figure that may be a used one (mixed, or read before 188) nor a price kept from an older read.
-      const now = watch?.status === 'ok' ? cleanPrice(i, watch) : null
-      if (now && i.price != null && now.currency === currencyOf(i) && now.amount < i.price) {
+      // figure that may be a used one (mixed, or read before 188) nor a price kept from an older read — and
+      // past what was already got back.
+      const now = prot?.price ?? (watch?.status === 'ok' ? cleanPrice(i, watch) : null)
+      const paid = i.price != null ? i.price - (inputs.store?.gotBack.get(i.id) ?? 0) : null
+      if (now && paid != null && now.currency === currencyOf(i) && now.amount < paid) {
         claimed = true
-        const claim = { currency: now.currency, amount: i.price - now.amount }
-        push({ kind: 'cheaper_returnable', tone: deadlineTone(left, 'warn'), itemId: i.id, action: 'open', claim, daysLeft: left,
-          sign: [claim.currency, claim.amount, i.return_by],
-          facts: facts(`${money(claim.amount, claim.currency)} cheaper than you paid`, readWords(watch, today), `return by ${formatDate(i.return_by)}`, whenWords(left)) }, i)
+        const claim = { currency: now.currency, amount: paid - now.amount }
+        const returnWords = returnable && `return by ${formatDate(i.return_by)}`
+        push({ kind: 'cheaper_returnable', tone: deadlineTone(due, 'warn'), itemId: i.id, action: prot ? 'claim' : 'open', claim, daysLeft: due,
+          sign: [claim.currency, claim.amount, i.return_by, prot?.until],
+          where: prot?.where ? `at${NBSP}${prot.where}` : null,
+          facts: prot
+            ? facts(`Claim ${money(claim.amount, claim.currency)}`, `price protection to ${formatDate(prot.until)}`, returnWords, whenWords(due), prot.price ? `now ${money(prot.price.amount, prot.price.currency)}` : readWords(watch, today))
+            : facts(`${money(claim.amount, claim.currency)} cheaper than you paid`, readWords(watch, today), returnWords, whenWords(due)) }, i)
       }
-      if (!claimed && left <= RETURN_AHEAD_DAYS) {
+      if (!claimed && returnable && left <= RETURN_AHEAD_DAYS) {
         push({ kind: 'return_closing', tone: deadlineTone(left, 'info'), itemId: i.id, action: 'open', daysLeft: left, sign: [i.return_by],
           facts: facts(`Return by ${formatDate(i.return_by)}`, whenWords(left), paidWords(i)) }, i)
       }
+    }
+    // A price protection nobody checked: one info note to check, when the price now is under what was paid — no
+    // claim, no amount, no day and no deadline tone (security review, 11.11.2026). A checked one decided above.
+    const note = !claimed ? inputs.store?.protectionNotes?.get(i.id) ?? null : null
+    if (note && note.price && i.price != null && note.price.currency === currencyOf(i)
+      && note.price.amount < i.price - (inputs.store?.gotBack.get(i.id) ?? 0)) {
+      push({ kind: 'cheaper_returnable', tone: 'info', itemId: i.id, action: 'open', sign: ['check', note.words, note.price.currency, note.price.amount],
+        where: note.where ? `at${NBSP}${note.where}` : null,
+        facts: facts('Cheaper now — maybe money back', note.words, `now ${money(note.price.amount, note.price.currency)}`) }, i)
     }
     if (i.warranty_until && i.warranty_until >= today) {
       const left = daysBetween(today, i.warranty_until)
@@ -257,6 +299,8 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
         facts: facts(`Could sell for ${money(i.value_now, i.value_currency ?? 'NOK')}`, `estimated ${formatDate(i.value_on)}`) }, i)
     }
   }
+
+  out.push(...(inputs.store?.extra ?? []))
 
   // Each deal day ahead, for the wishes with a target or waiting for a deal — keyed by its slug, so snoozing one
   // never hides another; splitLooks shows the next one that isn't snoozed or put away.

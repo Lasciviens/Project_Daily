@@ -111,7 +111,12 @@ check('…within 18 days: two; on 28.12.2026 mellomdagssalg is running (0 days);
 console.log('\n2 · Signal states')
 const listSql = sql.match(/signal\s+text not null check \(signal in \(([\s\S]*?)\)\)/)?.[1] ?? ''
 const sqlSignals = [...listSql.matchAll(/'(\w+)'/g)].map(m => m[1])
-check('SHOP_SIGNALS is 190\'s list, in its order (eleven signals)', sqlSignals.length === 11 && eq(S.SHOP_SIGNALS, sqlSignals), `${S.SHOP_SIGNALS} / ${sqlSignals}`)
+// 191 widens 190's list (an ALTER of the same CHECK): the app's list is the latest one.
+const sql191 = fs.readFileSync(path.join(__dirname, '..', 'supabase/migrations/191_shop_stores_rules.sql'), 'utf8')
+const list191 = sql191.match(/add constraint shop_signal_states_signal_check check \(signal in \(([\s\S]*?)\)\);/)?.[1] ?? ''
+const signals191 = [...list191.matchAll(/'(\w+)'/g)].map(m => m[1])
+check('190 has eleven signals; 191 keeps them in their order and adds price_match', sqlSignals.length === 11 && eq(signals191, [...sqlSignals, 'price_match']), `${sqlSignals} / ${signals191}`)
+check('SHOP_SIGNALS is the latest list (191\'s), in its order', eq(S.SHOP_SIGNALS, signals191), `${S.SHOP_SIGNALS} / ${signals191}`)
 const sigSql = sql.match(/or \(signature ~ '([^']+)' and octet_length\(signature\) = char_length\(signature\)\)/)?.[1]
 check('SIGNATURE_RE is 190\'s signature check, the same text', sigSql === S.SIGNATURE_RE.source, `${sigSql} / ${S.SIGNATURE_RE.source}`)
 const subjectSql = sql.match(/subject\s+text check \(subject is null or subject ~ '([^']+)'\)/)?.[1]
@@ -152,7 +157,7 @@ check('Got it: away while the row says the same, back when it says something new
 check('a row\'s key is its signal and thing, "page" for the page', S.signalStateKey('i1', 'at_target') === 'at_target:i1' && S.signalStateKey(null, 'tidy_up') === 'tidy_up:page'
   && S.signalStateMap([state(), state({ item_id: null, signal: 'tidy_up', snoozed_until: '2026-11-12' })]).get('tidy_up:page')?.snoozed_until === '2026-11-12')
 check('a row read back is checked: an unknown signal (a newer database), a bad day, a signature without its time or outside the check, a bad id — left out',
-  S.parseSignalState(state({ snoozed_until: '2026-11-17' })) !== null && S.parseSignalState(state({ signal: 'price_match', snoozed_until: '2026-11-17' })) === null
+  S.parseSignalState(state({ snoozed_until: '2026-11-17' })) !== null && S.parseSignalState(state({ signal: 'made_up_signal', snoozed_until: '2026-11-17' })) === null
   && S.parseSignalState(state({ snoozed_until: '17.11.2026' })) === null && S.parseSignalState(state({ signature: 'x' })) === null
   && S.parseSignalState(state({ signature: 'a b', dismissed_at: '2026-11-10T10:00:00Z' })) === null && S.parseSignalState(state({ id: 'x', snoozed_until: '2026-11-17' })) === null
   && S.parseSignalState(state({ item_id: 7, snoozed_until: '2026-11-17' })) === null && S.parseSignalState('row') === null)

@@ -27,7 +27,7 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
   const modal = useEntityModal()
   const wide = useBoardStep() >= 2
   const data = useNeedsALook(items, isLoading)
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
+  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   const snooze = useSnoozeSignal()
   const dismiss = useDismissSignal()
   const clear = useClearSignalState()
@@ -44,6 +44,7 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
       const item = items.find(i => i.id === look.itemId)
       if (item) buy(item)
     },
+    onClaim: look => { if (look.itemId) modal.open({ kind: 'shop-claim', id: look.itemId }) },
     onSnooze: look => { if (look.snoozeTo) snooze.mutate({ ...at(look), until: look.snoozeTo }) },
     onGotIt: look => dismiss.mutate({ ...at(look), signature: look.signature }),
     onShowAgain: look => clear.mutate(at(look)),

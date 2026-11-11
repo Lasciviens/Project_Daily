@@ -109,6 +109,13 @@ export const qk = {
     /** Needs a look (migration 190): what the owner snoozed or said Got it to, and the deal days. */
     signals: () => ['shop', 'signals'] as const,
     dealDays: () => ['shop', 'deal-days'] as const,
+    /** Each deal day with the owner's own version (migration 191) — under dealDays, so one refresh reaches both. */
+    dealDayRows: () => ['shop', 'deal-days', 'rows'] as const,
+    /** Stores, marketplaces and their rules (migration 191), Norway's law, the sites apps may not read (188). */
+    stores: () => ['shop', 'stores'] as const,
+    storeRules: () => ['shop', 'store-rules'] as const,
+    lawRules: () => ['shop', 'law-rules'] as const,
+    sitePolicies: () => ['shop', 'site-policies'] as const,
     /** The price figures of many things in one call (ids joined, sorted); the root refreshes every list of them. */
     priceStatsAll: ['shop', 'price-stats'] as const,
     priceStats: (ids: string) => ['shop', 'price-stats', ids] as const,

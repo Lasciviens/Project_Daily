@@ -120,6 +120,7 @@ function checkAiWriteGroup() {
     water_log_entries: [qk.water.day(d)], quick_guess_items: [qk.quickGuess.list()],
     supplement_schedules: [qk.supplements.schedules()], supplement_dose_state: [qk.supplements.facts(w, d)],
     shop_categories: [qk.shop.categories()], shop_items: [qk.shop.items()], shop_item_links: [qk.shop.links()], shop_item_costs: [qk.shop.costs()],
+    shop_store_rules: [qk.shop.storeRules()],
     shop_ad_notes: [qk.shop.adNotes()], shop_trade_in_quotes: [qk.shop.tradeIns()], shop_listings: [qk.shop.listings()],
     wish_items: [qk.wishes.all], books: [qk.books.library()], reading_settings: [qk.books.settings()],
     user_movie_entries: [qk.media.userMovies(), qk.media.recent()], user_tv_entries: [qk.media.userTv()],
@@ -214,6 +215,9 @@ function checkAiWriteGroup() {
     const re = new RegExp(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8').match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
     const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo', 'ad_url', 'ad_text', 'closed_by_sale', 'marketplace'].filter(c => !re.test(c))
     check('every Shop column the database fills is closed to the assistant (rates, sale_undo, a listing\'s closed_by_sale) — and an ad\'s link and text, the owner\'s own', !open.length && !re.test('sale_price') && !re.test('sale_group') && !re.test('url') && !re.test('prices'), open.join(', '))
+    // A store rule's seed link, its source and its edited flag (191): the database's own.
+    const rulesOpen = ['seed_key', 'source_facts', 'owner_edited', 'search_opened_on', 'facts'].filter(c => !re.test(c))
+    check('a store rule\'s seed key, source and owner_edited, a wish\'s search day and autofill\'s facts are closed to the assistant (a rule\'s own fields are not)', !rulesOpen.length && !re.test('days') && !re.test('words') && !re.test('origin'), rulesOpen.join(', '))
   }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)
@@ -241,10 +245,11 @@ function checkAiWriteGroup() {
   tables.shop_site_policies = [{ id: 'sp1', host: 'finn.no', no_automated_reading: true }]
   tables.fx_rates_nok = [{ day: '2026-11-09', currency: 'EUR', nok_per_unit: 11.7 }]
   tables.shop_deal_days = [{ id: 'dd1', slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday' }]
+  tables.shop_law_rules = [{ id: 'lr1', slug: 'cancel_distance_business', kind: 'cancel', days: 14 }]
   tables.shop_items = [{ id: 's1', user_id: OWNER, title: 'Phone' }, { id: 's2', user_id: STRANGER, title: 'Not mine' }]
   const selects = table => log.filter(l => l.table === table && l.kind === 'select')
   const userFilter = l => l.filters.some(([op, c, v]) => op === 'eq' && c === 'user_id' && v === OWNER)
-  for (const table of ['shop_site_policies', 'fx_rates_nok', 'shop_deal_days']) {
+  for (const table of ['shop_site_policies', 'fx_rates_nok', 'shop_deal_days', 'shop_law_rules']) {
     const seen = selects(table).length
     script = [gemini([{ functionCall: { name: 'db_query', args: { table } } }]), gemini([{ text: 'x' }])]
     r = await call({ messages: msg }, web)

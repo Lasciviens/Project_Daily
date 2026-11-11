@@ -83,6 +83,12 @@ export type EntityModalRequest =
   | { kind: 'shop-complaint'; id: string }
   /** Everything you own and its value, as a CSV file or a print. */
   | { kind: 'shop-insurance' }
+  /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
+  | { kind: 'shop-just-bought'; id: string }
+  /** Money to claim on a thing (price protection, cheaper while returnable): how, and "Got 500 back". */
+  | { kind: 'shop-claim'; id: string }
+  /** Shop's stores and marketplaces with their rules, and the deal days (a drawer; from the Shop header's ⋯). */
+  | { kind: 'shop-stores' }
   /** A project's details by `id`, or a new project from a template (no id). */
   | { kind: 'project'; id?: string }
   /** Add a phase to a project, or edit one by `id`. */

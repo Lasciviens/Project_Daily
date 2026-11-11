@@ -107,7 +107,28 @@ export interface ShopItem {
   sale_group?:      string | null
   /** Migration 138: the name of the money chain this thing carries (see chainModel.chainNameHolder). */
   chain_name?:      string | null
+  // Migration 191 — absent before it is applied. Kept only while bought (the database clears the first three otherwise).
+  /** How it was bought: online (at a distance — the right to cancel applies from a business) or in a shop. */
+  bought_channel?:       ShopBoughtChannel | null
+  /** The day Arrived was tapped (yyyy-mm-dd): on or after the purchase's Oslo day, not after today. */
+  arrived_on?:           string | null
+  /** The last day of an extra warranty (yyyy-mm-dd). */
+  extra_warranty_until?: string | null
+  /** Where the receipt is, as text (≤ 2 000 characters). */
+  receipt_note?:         string | null
+  /** The day a marketplace search was last opened for this wish ("Search opened 10.11.2026"). Set by the app. */
+  search_opened_on?:     string | null
+  /** What autofill learned, each fact with its source and how sure it is (migration 191). */
+  facts?:                ShopItemFacts | null
 }
+
+/** The facts autofill may save (191's allow-list), each with its source. */
+export type ShopFactKey = 'brand' | 'model' | 'ean' | 'condition' | 'return_days' | 'prisjakt_id' | 'specs'
+export interface ShopFact { value: unknown; source: string; confidence: 'exact' | 'likely' | 'check' }
+export type ShopItemFacts = Partial<Record<ShopFactKey, ShopFact>>
+
+/** How a thing was bought (migration 191). */
+export type ShopBoughtChannel = 'online' | 'in_store'
 
 /**
  * "Paid with money from": `to_id` was (or will be) bought with what selling
@@ -173,6 +194,20 @@ export interface ShopPriceWatch {
   /** The cheapest used / refurbished offer in Prisjakt's offer list. */
   used_low:        number | null
   refurbished_low: number | null
+  /** Migration 191: Prisjakt's new offers at the last read of its offer list, one per shop, cheapest first (≤ 50); null = none read. */
+  new_offers?:     ShopNewOffer[] | null
+}
+
+/** One shop's cheapest new offer on Prisjakt (shop_price_watch.new_offers, migration 191). */
+export interface ShopNewOffer {
+  /** Prisjakt's number for the shop. */
+  shop_id:   number
+  /** The shop's name as Prisjakt's offer row gives it; null when it gave none. */
+  shop_name: string | null
+  price:     number
+  currency:  string
+  /** Whether that shop has it in stock; null = Prisjakt didn't say. */
+  in_stock:  boolean | null
 }
 
 /** One read of a row's link — the price history (migration 137). */
@@ -199,7 +234,7 @@ export interface ShopPricePoint {
  */
 export type ShopSignal =
   | 'at_target' | 'lowest_seen' | 'back_in_stock' | 'fake_before' | 'deal_day' | 'cheaper_returnable'
-  | 'return_closing' | 'complaint_ending' | 'old_value' | 'old_wish' | 'tidy_up'
+  | 'return_closing' | 'complaint_ending' | 'old_value' | 'old_wish' | 'tidy_up' | 'price_match'
 
 /**
  * What the owner did with one Needs-a-look row (shop_signal_states, migration 190): snoozed until a day
@@ -256,6 +291,151 @@ export interface ShopDealDay {
   checked_on:  string
   created_at:  string
   updated_at:  string
+  /** Migration 191: this account's own version replaces the shared row (shop_deal_day_edits). */
+  edited?:     boolean
+}
+
+/**
+ * The owner's own version of a deal day (shop_deal_day_edits, migration 191), by slug: one of shop_deal_days'
+ * slugs replaces it for this account (`off` = turned off), any other is a deal day of the owner's own.
+ */
+export interface ShopDealDayEdit {
+  id:          string
+  user_id:     string
+  slug:        string
+  name:        string
+  rule_kind:   'fixed' | 'nth_weekday'
+  month:       number
+  day:         number | null
+  weekday:     number | null
+  nth:         number | null
+  offset_days: number
+  length_days: number
+  off:         boolean
+  source_url:  string | null
+  created_at:  string
+  updated_at:  string
+}
+
+/** A deal day as the owner sees it: the shared row (`source`, null for one of their own), their edit, and what counts. */
+export interface ShopDealDayRow {
+  slug:      string
+  source:    ShopDealDay | null
+  own:       ShopDealDayEdit | null
+  /** What Needs a look counts: the edit when there is one (null when it is turned off), else the shared row. */
+  effective: ShopDealDay | null
+}
+
+// ── Stores, marketplaces and their rules (migration 191) ─────────────────────
+
+export type ShopStoreKind = 'shop' | 'marketplace' | 'price_site' | 'refurbisher'
+/**
+ * Where a row's facts come from: a seed (the store's own page, read when the app was made), a page read, a price
+ * site's words about the store (`price_site`: "from Prisjakt — check it" — rules only), the owner, Ask AI (rules only).
+ */
+export type ShopRuleOrigin = 'seed' | 'page' | 'price_site' | 'owner' | 'ask_ai'
+export type ShopStoreRuleKind = 'open_purchase' | 'return' | 'seasonal_return' | 'price_match' | 'price_protection'
+export type ShopRuleExclusion = 'campaign' | 'black_friday' | 'outlet' | 'marketplace_seller' | 'used'
+export type ShopRulePayout = 'money' | 'gift_card'
+/** price_match: `listed` stores or `any`; price_protection: the store's `own` price or `any`. */
+export type ShopRuleAgainst = 'listed' | 'any' | 'own'
+
+/** A store's facts as its source gave them (what Reset to the source goes back to). */
+export interface ShopStoreFacts {
+  kind:        ShopStoreKind
+  name:        string
+  country:     string
+  currency:    string
+  hosts:       string[]
+  search_url:  string | null
+  ad_template: string | null
+  ad_language: string | null
+  source_url:  string | null
+  /** yyyy-mm-dd */
+  read_on:     string | null
+}
+
+export interface ShopStore extends ShopStoreFacts {
+  id:           string
+  user_id:      string
+  seed_key:     string | null
+  /** The owner's member tier at this store (a rule with the same tier applies to them). */
+  member_tier:  string | null
+  hidden:       boolean
+  origin:       Exclude<ShopRuleOrigin, 'ask_ai' | 'price_site'>
+  /** What the source said; null for a store the owner made. */
+  source:       ShopStoreFacts | null
+  /** The owner made it, or its facts differ from `source` — never overwritten by a seed or a page read. */
+  owner_edited: boolean
+  edited_at:    string | null
+  created_at:   string
+  updated_at:   string
+}
+
+/** A rule's facts as its source gave them. */
+export interface ShopStoreRuleFacts {
+  kind:           ShopStoreRuleKind
+  /** A short name ("Christmas returns"); null = named by its kind. */
+  label:          string | null
+  days:           number | null
+  /** Only for members of this tier (the store's `member_tier`); null = everyone. */
+  member_tier:    string | null
+  /** seasonal_return: bought from–to (MM-DD; to before from = across the year end) … */
+  window_from:    string | null
+  window_to:      string | null
+  /** … returned by this day (MM-DD), the first after `window_to`. */
+  return_until:   string | null
+  exclusions:     ShopRuleExclusion[]
+  payout:         ShopRulePayout | null
+  against:        ShopRuleAgainst | null
+  /** price_match against `listed` stores: their ids. */
+  against_stores: string[] | null
+  /** The store's own words. */
+  words:          string | null
+  source_url:     string | null
+  /** yyyy-mm-dd */
+  read_on:        string | null
+  off:            boolean
+}
+
+export interface ShopStoreRule extends ShopStoreRuleFacts {
+  id:           string
+  user_id:      string
+  store_id:     string
+  seed_key:     string | null
+  origin:       ShopRuleOrigin
+  source:       ShopStoreRuleFacts | null
+  owner_edited: boolean
+  edited_at:    string | null
+  created_at:   string
+  updated_at:   string
+}
+
+/** One rule of Norway's consumer law (shop_law_rules, migration 191), citing its law. */
+export interface ShopLawRule {
+  id:           string
+  slug:         string
+  country:      'NO'
+  /** cancel = angrerett, complaint = reklamasjon. */
+  kind:         'cancel' | 'complaint'
+  /** distance = online, by phone or away from the shop. */
+  channel:      'distance' | 'in_store' | 'any'
+  seller:       'business' | 'private'
+  gives_right:  boolean
+  days:         number | null
+  years:        number | null
+  /** complaint: true = the rule for things meant to last considerably longer; null = one rule for all. */
+  long_lasting: boolean | null
+  /** receipt: the day the goods came into the consumer's hands (angrerett); delivery: when it was taken over (reklamasjon). */
+  counts_from:  'receipt' | 'delivery' | null
+  /** The last day moves past a weekend or a public holiday. */
+  to_workday:   boolean
+  name:         string
+  summary:      string
+  law:          string
+  law_url:      string
+  /** yyyy-mm-dd */
+  checked_on:   string
 }
 
 /**
@@ -338,6 +518,8 @@ export interface CreateShopItemInput {
   wait_for_deal?: boolean
   target_price?:  number | null
   deal_note?:     string | null
+  /** Autofill's facts with their sources (migration 191; factsKept.factsToSave). */
+  facts?:         ShopItemFacts | null
 }
 
 export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
@@ -348,6 +530,13 @@ export interface UpdateShopItemInput extends Partial<CreateShopItemInput> {
   value_currency?:  ShopCurrency | null
   value_on?:        string | null
   chain_name?:      string | null
+  /** Migration 191: a purchase's own facts (a write of one before 191 says so by name). */
+  bought_channel?:       ShopBoughtChannel | null
+  arrived_on?:           string | null
+  extra_warranty_until?: string | null
+  receipt_note?:         string | null
+  search_opened_on?:     string | null
+  facts?:                ShopItemFacts | null
 }
 
 export interface CreateShopCostInput {
