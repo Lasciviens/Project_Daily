@@ -97,9 +97,9 @@ function storageAnswer(method, path, body) {
   return json(200, { Key: p.replace(/^\/object\//, ''), Id: '00000000-0000-4000-8000-00000000f11e' }) // an upload
 }
 
-function functionAnswer(req, store, log) {
+function functionAnswer(req, store, log, own) {
   const name = req.url.pathname.replace(/^\/functions\/v1\//, '').split('/')[0]
-  const fn = FUNCTIONS[name]
+  const fn = (own && Object.prototype.hasOwnProperty.call(own, name) ? own[name] : null) || FUNCTIONS[name]
   if (!fn) {
     log(`function ${name}: no answer defined, answered {}`)
     return json(200, {})
@@ -116,7 +116,7 @@ function parseBody(req) {
   try { return JSON.parse(raw) } catch { return raw }
 }
 
-function supabaseAnswer(request, url, store, log) {
+function supabaseAnswer(request, url, store, log, own) {
   const headers = request.headers()
   const method = request.method()
   const cors = {
@@ -141,7 +141,7 @@ function supabaseAnswer(request, url, store, log) {
   let res
   if (url.pathname.startsWith('/rest/v1/')) res = handleRest(store, req, RPCS)
   else if (url.pathname.startsWith('/auth/v1/')) res = authAnswer(method, url.pathname)
-  else if (url.pathname.startsWith('/functions/v1/')) res = functionAnswer(req, store, log)
+  else if (url.pathname.startsWith('/functions/v1/')) res = functionAnswer(req, store, log, own)
   else if (url.pathname.startsWith('/storage/v1/')) res = storageAnswer(method, url.pathname, req.body)
   else {
     log(`${method} ${url.pathname}: not a Supabase path the harness knows`)
@@ -157,6 +157,8 @@ function supabaseAnswer(request, url, store, log) {
  * @param opts.log     (message) => void — what the mock could not answer (default: stderr when HARNESS_LOG=1)
  * @param opts.outside (url, request) => { status, headers, body } | null — a test's own answer for an outside
  *                     host (a fixture); null keeps it blocked
+ * @param opts.functions { name: ({ method, url, headers, body, store, log }) => answer } — a test's own answer for an
+ *                     edge function (a fixture: ai-proxy's itemFill), over functions.cjs
  * @returns the Store, so a test can read what the page wrote or change rows before a reload
  */
 async function installMocks(context, opts = {}) {
@@ -178,7 +180,7 @@ async function installMocks(context, opts = {}) {
     let url
     try { url = new URL(request.url()) } catch { return route.abort('blockedbyclient') }
     if (url.protocol === 'data:' || url.protocol === 'blob:' || APP_HOSTS.has(url.hostname)) return route.fallback()
-    if (url.hostname === SUPABASE_HOST) return route.fulfill(supabaseAnswer(request, url, store, log))
+    if (url.hostname === SUPABASE_HOST) return route.fulfill(supabaseAnswer(request, url, store, log, opts.functions))
     // Anything else is the outside world: never reached.
     const fixture = opts.outside ? opts.outside(url, request) : null
     if (fixture) return route.fulfill(fixture)

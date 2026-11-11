@@ -11,6 +11,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Check, ChevronRight } from 'lucide-react'
 import { cx, Switch, Truncate } from '../../ui'
 import { useMotion } from '../../hooks/useMotion'
+import { FilledMark } from './FillMark'
 
 /** A row's top hairline, inset like Apple's; the first row of a group has none. */
 export const LINE = 'relative before:absolute before:left-3.5 before:right-0 before:top-0 before:h-px before:bg-line first:before:content-none'
@@ -25,9 +26,9 @@ export function Section({ title, children }: { title?: string; children: ReactNo
   )
 }
 
-/** The label and its mark, left. */
+/** The label and its mark, left — and ✨'s mark while a fill of that row waits to be kept (FillMark). */
 function Label({ children, mark, grow = true }: { children: ReactNode; mark?: ReactNode; grow?: boolean }) {
-  return <span className={cx('flex min-w-0 items-center gap-1.5 text-fg', grow ? 'flex-1' : 'shrink-0')}>{children}{mark}</span>
+  return <span className={cx('flex min-w-0 items-center gap-1.5 text-fg', grow ? 'flex-1' : 'shrink-0')}>{children}<FilledMark row={children} />{mark}</span>
 }
 
 /** A row whose value is a control of its own (pills, a switch, a segmented choice). `wide`: the value takes the room

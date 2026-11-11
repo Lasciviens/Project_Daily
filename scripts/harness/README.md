@@ -98,6 +98,9 @@ await page.goto('http://127.0.0.1:5371/#/daily')
 - `log: (message) => …` collects what the mock could not answer.
 - `outside: (url, request) => ({ status, headers, body }) | null` answers an outside host
   with a fixture of the test's own; everything else stays blocked.
+- `functions: { 'ai-proxy': ({ body }) => answer }` answers an edge function with a fixture of
+  the test's own, over `functions.cjs` (whose `ai-proxy` says "AI not configured", as the real
+  one does without `GEMINI_API_KEY`). The item screen's ✨ test answers `body.itemFill` this way.
 
 Writes (insert, upsert, update, delete) change the context's own copy, so a flow can
 add a task and see it listed. A new row gets an id, `user_id`, timestamps, `false` for

@@ -38,6 +38,10 @@ const FUNCTIONS = {
 
   // The lookup (Nasjonalbiblioteket, Open Library) is outside: nothing found.
   'book-meta': () => ({ updated: [], source: null }),
+
+  // No GEMINI_API_KEY in the harness: every AI call answers as the real function does without it. A test that
+  // needs an answer (the item screen's ✨, body.itemFill) gives its own through installMocks' `functions` option.
+  'ai-proxy': () => reply(503, { error: 'AI not configured — add GEMINI_API_KEY to Supabase Vault' }),
 }
 
 module.exports = { FUNCTIONS, reply }

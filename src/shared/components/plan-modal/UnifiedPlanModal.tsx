@@ -21,6 +21,16 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-11 · v25 · The item screen, step 4: ✨ beside the title fills the
+//                    fields from one sentence (useItemFill, ItemFill.tsx,
+//                    itemFillForm.ts). ai-proxy's itemFill action answers with
+//                    checked values only (items/itemFill.cleanItemFill, run
+//                    again here); they go only into rows the screen shows for
+//                    this item, through the same helpers a tap uses. Nothing
+//                    saves by itself: the filled rows carry ✨ until Add (new)
+//                    or "Use these" (an edit — its autosave waits, and what
+//                    waited before ✨ is saved first); Cancel or the toast's
+//                    Undo puts the screen back exactly as it was.
 //  2026-11-11 · v24 · Step 3, one screen for everything: the screen can sit
 //                    inside another popup (itemScreenEmbed: no chrome, its
 //                    save line heads the body, the host closes it through the
@@ -651,9 +661,11 @@ import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
+import { FillButton, FillPanel, FillWaitLine } from './ItemFill'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleDot, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
+import { useItemFill } from './useItemFill'
 import { ItemScreenEmbedContext } from './itemScreenEmbed'
 import {
   applyQuickAdd, buildInitialForm, formContentKey, formValuesKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, revertedForm,
@@ -802,7 +814,18 @@ export function UnifiedPlanModal({
   const problem = problemOf(form)
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
-  const autosave = useItemAutosave({ enabled: open && editMode && !blocked, form, problem, persist })
+  // ✨ (useItemFill): a fill shows for review; until it is kept ("Use these") an edit's autosave works on the screen as
+  // it was before ✨ — what waited then is saved or held as usual, and closing keeps that, never the fill.
+  const fill = useItemFill({
+    open, item, form,
+    screen: { today, nextTime: nextPlanTime(), config, savedKind: editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined, occurrenceDate: scheduleBlock ? occurrenceDate : null, choiceShown },
+    take: () => ({ form, typed, parse, quickBase, keepText, problem }),
+    put: s => { setForm(s.form); setTyped(s.typed); setParse(s.parse); setQuickBase(s.quickBase); setKeepText(s.keepText) },
+    fillInto: f => { setForm(f); setTyped(f.title); setParse(null); setQuickBase({}); setKeepText(true) },
+  })
+  const autosave = useItemAutosave({
+    enabled: open && editMode && !blocked, form: fill.before?.form ?? form, problem: fill.before ? fill.before.problem : problem, persist,
+  })
 
   // Re-seed whenever the sheet (re)opens or its rows change — adjusted during
   // render (not in an effect) so a stale form never paints. The seeded form is
@@ -1069,7 +1092,9 @@ export function UnifiedPlanModal({
     </>
   )
 
-  const saveLine = editMode && !blocked ? <SaveLine line={autosave.line} onRetry={autosave.retry} onUndo={canUndo ? undoChanges : undefined} /> : undefined
+  const saveLine = editMode && !blocked
+    ? (fill.reviewing ? <FillWaitLine /> : <SaveLine line={autosave.line} onRetry={autosave.retry} onUndo={canUndo ? undoChanges : undefined} />)
+    : undefined
   const body = (
     <>
       {loadError ? (
@@ -1107,6 +1132,7 @@ export function UnifiedPlanModal({
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
           urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section} taskId={scheduleBlock ? null : task?.id}
+          fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} />, rows: fill.rows }}
         />
         </div>
       )}

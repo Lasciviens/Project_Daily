@@ -682,3 +682,14 @@ export async function reindexAiSearch(): Promise<ReindexResult> {
   if (data?.error) throw new Error(friendlyError(data, data.error))
   return data as ReindexResult
 }
+
+// ─── ✨ on the item screen ─────────────────────────────────────────────────
+//  One sentence in, the server's checked field values out (ai-proxy's itemFill
+//  action: no tools, no data, nothing written). The answer is input all the same:
+//  the caller runs itemFill.cleanItemFill on it again before a field changes.
+export async function fillItemFields(text: string): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { itemFill: { text } } })
+  if (error) await throwFunctionError(error)
+  if (data?.error) throw new Error(friendlyError(data, data.error))
+  return data?.fill
+}
