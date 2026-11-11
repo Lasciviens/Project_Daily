@@ -655,7 +655,11 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   choices (`ChoiceRow`: label, a hint line, a check; a blocked one dimmed with its reason). Never a popover
   over the list.
 - **Fields have no box**: the title (`.input-bare`, `text-title` semibold, a normal-weight placeholder,
-  growing with a long title), the notes, the location's search and the labels' field are the row itself.
+  growing with a long title), the URL, the notes, the location's search and the labels' field are the row
+  itself. A field's problem is a danger `NoteRow` under it once the field is left (not while typing).
+- **A link in a row** (the URL): a small ↗ button after the field opens a `Panel` with the address first —
+  "Opens **host**" and the whole link (`Truncate lines={3}`, its "More" shows a long one) — then **Open**
+  (`btn-secondary btn-sm`, a new tab). Never a bare link that opens on the first tap.
   Text that fills other rows as it is typed says so on a **Read as** line with an undo ("Keep text").
 - **Pills** (`Pill`): a date (8.5rem) or a time (4.25rem) of one width, so nothing jumps as the value
   changes; `bg-surface-2`, open = `bg-accent-50 text-accent-600`, a value that can't be stored struck
