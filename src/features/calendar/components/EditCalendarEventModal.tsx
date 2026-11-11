@@ -29,12 +29,14 @@ function needsWriteScope(err: unknown): boolean {
 }
 
 /** The event's own page on Google (its `htmlLink`, from Google's answer): only an https link to Google Calendar's
- *  own host, as the URL parser reads it — anything else isn't offered. */
+ *  own host and its event page (`/calendar/event?eid=…`, Google's documented shape), as the URL parser reads it —
+ *  anything else isn't offered, so Google's redirect page (`/url?q=…`) can't become a way out. */
 function googleCalendarLink(raw: string | null | undefined): string | null {
   if (!raw) return null
   try {
     const u = new URL(raw)
-    return u.protocol === 'https:' && (u.hostname === 'www.google.com' || u.hostname === 'calendar.google.com') ? u.href : null
+    const host = u.hostname === 'www.google.com' || u.hostname === 'calendar.google.com'
+    return u.protocol === 'https:' && host && u.pathname === '/calendar/event' ? u.href : null
   } catch { return null }
 }
 

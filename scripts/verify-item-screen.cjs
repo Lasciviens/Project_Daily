@@ -405,8 +405,9 @@ console.log('\n== 10. Step 3: one screen for everything ==')
   check('the Google event editor is drawn as the item screen (its rows, wheel and month) and saves as before (one PATCH)',
     /<Section title="Time">/.test(ev) && /<TimeWheel/.test(ev) && /<DateCalendar/.test(ev) && /title=\{canEdit \? 'Edit Item'/.test(ev)
     && /update\.mutateAsync\(\{ calendarId, eventId: event\.id, patch \}\)/.test(ev) && /eventEditTimes\(draft, zone\)/.test(ev) && /eventEditAccess\(event,/.test(ev))
-  check('…its delete says it can\'t be undone (Google\'s), and its Google link opens only an https Google Calendar page',
-    /This can\\'t be undone\./.test(ev) && /u\.protocol === 'https:' && \(u\.hostname === 'www\.google\.com' \|\| u\.hostname === 'calendar\.google\.com'\)/.test(ev)
+  check('…its delete says it can\'t be undone (Google\'s), and its Google link opens only an https Google Calendar event page (not Google\'s redirect page)',
+    /This can\\'t be undone\./.test(ev) && /const host = u\.hostname === 'www\.google\.com' \|\| u\.hostname === 'calendar\.google\.com'/.test(ev)
+    && /u\.protocol === 'https:' && host && u\.pathname === '\/calendar\/event'/.test(ev)
     && /rel="noopener noreferrer" referrerPolicy="no-referrer"/.test(ev))
 }
 
