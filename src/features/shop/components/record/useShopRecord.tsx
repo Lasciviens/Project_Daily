@@ -44,7 +44,8 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
-  const buy = useBuyNow()
+  // Bought on a wish opens Just bought over the record (online or in a shop, the store, the return date and its reason).
+  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   const d = useRecordDraft(item, openFact ?? null)
   const state = recordState(item)
   const owned = state === 'mine' || state === 'gone'

@@ -277,6 +277,7 @@ export function draftRows(draft: ChainDraft, base: Copied | null, o: DraftRowsOp
         sale_price: money ? shares?.get(id) ?? null : null, sale_currency: money ? gotCurrency : null,
         sale_fx_nok: money ? saleRate.fx : null, sale_fx_source: money ? saleRate.source : null,
         sold_to: s.left ? s.soldTo.trim() || null : null, sale_group: group, chain_name: null,
+        bought_channel: null, arrived_on: null, extra_warranty_until: null, receipt_note: null, search_opened_on: null, facts: null,
         ...extra,
       }
     }

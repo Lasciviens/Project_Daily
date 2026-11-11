@@ -4,18 +4,19 @@ import { complete, DISPOSAL_LABEL, isPossession, valueAgeDays, valueNowOf, VALUE
 import { currencyOf } from '../../shopModel'
 import { mixedWords } from '../../watchWords'
 import { money } from '../shopFormat'
+import type { MarketSearch } from '../../purchaseModel'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
 // The record's sections that open in place (RecordSection): which ones are
 // open, which ones a row has, and what each says while it is folded.
 
 /** The sections, in their order. */
-export type SectionId = 'models' | 'price' | 'resale' | 'facts' | 'money'
+export type SectionId = 'models' | 'purchase' | 'price' | 'market' | 'resale' | 'facts' | 'money'
 
 // Which sections the owner keeps open, remembered on this device (a UI
 // choice like the folded categories; a private window simply starts folded).
 const KEY = 'lasci.shop.recordOpen'
-const IDS: readonly SectionId[] = ['models', 'price', 'resale', 'facts', 'money']
+const IDS: readonly SectionId[] = ['models', 'purchase', 'price', 'market', 'resale', 'facts', 'money']
 
 function read(): Set<SectionId> | null {
   try {
@@ -71,4 +72,17 @@ export function resaleSummary(item: ShopItem, ctx: MoneyCtx, today: string): str
   if (!value || !complete(value)) return item.value_now != null ? 'rate pending' : 'no estimate yet'
   const age = valueAgeDays(item, today)
   return `≈ ${money(value.nok)}${age != null && age > VALUE_STALE_DAYS ? ' · old' : ''}`
+}
+
+/** The Purchase section folded: not arrived yet, else the next of return by and complain by still ahead. */
+export function purchaseSummary(item: ShopItem, today: string): string | undefined {
+  if (item.bought_channel === 'online' && !item.arrived_on) return 'not arrived yet'
+  if (item.return_by && item.return_by >= today) return `return by ${formatDate(item.return_by)}`
+  if (item.warranty_until && item.warranty_until >= today) return `complain by ${formatDate(item.warranty_until)}`
+  return undefined
+}
+
+/** The Used market section folded: the day a search was last opened, else where it can look. */
+export function marketSummary(item: ShopItem, searches: readonly MarketSearch[]): string {
+  return item.search_opened_on ? `Search opened ${formatDate(item.search_opened_on)}` : searches.map(s => s.store.name).join(' · ')
 }

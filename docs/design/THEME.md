@@ -912,6 +912,7 @@ chrome. English in the product (`AGENTS.md`).
 - Colour is never the only signal: a status also has a label or icon.
 - Contrast: body text ≥ 4.5:1 on its surface in both themes (`fg-faint` is decoration only).
 - Tab rows and segmented controls use proper roles (`tablist`/`tab`, `aria-selected` / `aria-pressed`).
+- An outgoing link shows where it goes before it opens (owner, 10.11.2026): its address on screen, or a popover with the whole address and **Open** when the link is built by the app (Shop's "Look on FINN", `LookElsewhere`); a short host with ↗ carries the whole link in its `title` (a rule's source, `SourceLink`). A link the app builds from data is checked again where it is built (https, on its own host — `searchLinkFor`), opened by the owner in a new tab with `rel="noopener noreferrer"`, and never fetched by the app.
 
 ---
 

@@ -1,5 +1,5 @@
 import {
-  BadgeAlert, CalendarClock, Hourglass, ListChecks, PackageCheck, RotateCcw, ShieldAlert, Tag, Target, TrendingDown, type LucideIcon,
+  ArrowLeftRight, BadgeAlert, CalendarClock, Hourglass, ListChecks, PackageCheck, RotateCcw, ShieldAlert, Tag, Target, TrendingDown, type LucideIcon,
 } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import type { Look, LookKind } from '../shopSuggestions'
@@ -7,6 +7,7 @@ import type { Look, LookKind } from '../shopSuggestions'
 const ICON: Record<LookKind, LucideIcon> = {
   return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
   fake_before: BadgeAlert, deal_day: CalendarClock, complaint_ending: ShieldAlert, old_value: Tag, old_wish: Hourglass, tidy_up: ListChecks,
+  price_match: ArrowLeftRight,
 }
 
 /** A Needs-a-look kind's icon on its tone (its rows, the record's nudge): the icon and the words say it, never the colour alone. */

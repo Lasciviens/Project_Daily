@@ -6,13 +6,18 @@
  * trimmed (Prisjakt product group + product, an Elkjøp product page, a
  * Cloudflare check page), and a Prisjakt product page fetched once on
  * 10.11.2026 (scripts/fixtures/prisjakt/: its schema.org block and its own
- * offer list, where each offer says New, Refurbished or Used).
+ * offer list, where each offer says New, Refurbished or Used), and seven
+ * store and Prisjakt pages saved by the autofill hit-rate test on 10.11.2026
+ * (scripts/fixtures/product-pages/: the schema.org block only) for the add
+ * sheet's facts — brand, model code, EAN, condition, return days, Prisjakt's
+ * product number and its spec rows.
  * Run: node scripts/verify-shop-price-read.cjs
  */
 require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
-const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows, MAX_PATH_CHARS, ROBOTS_RULE_CAP } = require('../src/features/shop/priceRead')
+const { readPrice, parsePrice, isChallengePage, isPrisjaktUrl, jsonLdNodes, listedSite, robotsRules, robotsAllows, MAX_PATH_CHARS, ROBOTS_RULE_CAP,
+  ean13, modelInName, specRows, prisjaktProduct } = require('../src/features/shop/priceRead')
 const W = require('../src/features/shop/watchWords')
 const { formatTime } = require('../src/shared/utils/dateFormat')
 
@@ -34,6 +39,15 @@ console.log('\n1 · The edge function carries the same reader')
   const fn = block('supabase/functions/shop-price/index.ts')
   check('both files have the <price-read> block', !!src && !!fn)
   check('shop-price mirror is identical to src/features/shop/priceRead.ts', src === fn, 'copy the block from the src file into the function')
+  const facts = (file) => {
+    const s = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
+    const a = s.indexOf('// <product-facts>')
+    const b = s.indexOf('// </product-facts>')
+    return a >= 0 && b > a ? s.slice(a, b) : null
+  }
+  const factsSrc = facts('src/features/shop/productFacts.ts')
+  check('…and its <product-facts> block is identical to src/features/shop/productFacts.ts (the EAN, a model in a name, Prisjakt\'s number)',
+    !!factsSrc && factsSrc === facts('supabase/functions/shop-price/index.ts'), 'copy the block from the src file into the function')
 }
 
 const ORG = { '@context': 'https://schema.org', '@type': 'Organization', legalName: 'Prisjakt Norge AS', url: 'https://www.prisjakt.no' }
@@ -95,13 +109,85 @@ console.log('\n3 · A shop page (Elkjøp)')
   check('source store, NOK, in stock', t.source === 'store' && t.currency === 'NOK' && t.inStock === true)
   check('the struck-through price is the "was"', t.was === 14999)
   check('the return window open to everyone, not the members-only one', t.returnDays === 30)
-  check('gtin and brand', t.gtin === '5901292527556' && t.brand === 'TCL')
+  check('EAN (gtin13) and brand', t.ean === '5901292527556' && t.brand === 'TCL')
+  // Security review (11.11.2026): a page's text loses zero-width and direction marks, so it can't turn words around on screen.
+  const marks = readPrice(page({ '@type': 'Product', name: 'Lamp\u202e pmal', brand: { '@type': 'Brand', name: '\u200bSo\u2066ny\ufeff' },
+    additionalProperty: [{ '@type': 'PropertyValue', name: 'Ty\u202epe', value: 'Over\u200d-ear' }], offers: { '@type': 'Offer', price: '499', priceCurrency: 'NOK' } }), 'https://shop.example/lamp')
+  check('zero-width and direction marks (U+200B–200F, 202A–202E, 2066–2069, FEFF) leave a name, a brand and spec rows',
+    marks.name === 'Lamp pmal' && marks.brand === 'Sony' && marks.specs[0]?.name === 'Type' && marks.specs[0]?.value === 'Over-ear', JSON.stringify([marks.name, marks.brand, marks.specs]))
   const graph = readPrice(`<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage"},{"@type":["Product"],"name":"Lamp","offers":{"@type":"Offer","price":"499.00","priceCurrency":"nok"}}]}</script>`, 'https://shop.example/lamp')
   check('@graph and @type arrays are understood; currency upper-cased', graph.status === 'ok' && graph.low === 499 && graph.currency === 'NOK')
   const only = readPrice(page({ '@type': 'Product', name: 'Members only', offers: [{ '@type': 'Offer', price: 100, priceCurrency: 'NOK', eligibleCustomerType: 'https://schema.org/Business' }] }), 'https://x.example/a')
   check('only a restricted offer: it is still read (better than nothing)', only.low === 100)
   const was = readPrice(page({ '@type': 'Product', name: 'Odd', offers: { '@type': 'Offer', price: 900, priceCurrency: 'NOK', priceSpecification: { '@type': 'UnitPriceSpecification', priceType: 'https://schema.org/StrikethroughPrice', price: 800 } } }), 'https://x.example/b')
   check('a "was" price lower than the price is ignored', was.was === null)
+}
+
+console.log('\n3b · The add sheet\'s facts, from pages the autofill test saved (10.11.2026, the schema.org block only)')
+{
+  const saved = (file, url) => readPrice(fs.readFileSync(path.join(__dirname, 'fixtures/product-pages', file), 'utf8'), url)
+  const elkjop = saved('elkjop-iphone-16.html', 'https://www.elkjop.no/product/mobil-nettbrett-og-smartklokker/mobiltelefon/iphone-16-5g-smarttelefon-128gb-sort/825094')
+  check('Elkjøp: brand from the data block (its title drops it: "iPhone 16 – 5G …")', elkjop.brand === 'Apple' && !/Apple/.test(elkjop.name), JSON.stringify([elkjop.brand, elkjop.name]))
+  check('…the model code is the data block\'s mpn, said so (modelFrom data)', elkjop.model === 'MYE73QN/A' && elkjop.modelFrom === 'data')
+  check('…the EAN from `gtin`, 13 digits with its leading zero', elkjop.ean === '0195949821905')
+  check('…the offer\'s condition (NewCondition → new), 30 return days for everyone (50 for members left out)', elkjop.itemCondition === 'new' && elkjop.returnDays === 30)
+  check('…no Prisjakt number and no spec rows (Elkjøp\'s specs are an HTML table, never read)', elkjop.prisjaktId === null && elkjop.specs.length === 0)
+  const power = saved('power-iphone-16.html', 'https://www.power.no/mobil-og-foto/mobiltelefon/apple-iphone-16-128-gb-blaagroenn/p-3614197/')
+  check('Power: `gtin13` without its leading zero (12 digits) is padded back to 13 — the check digit holds', power.ean === '0195949822629', power.ean)
+  check('…mpn and 90 return days (one policy object)', power.model === 'MYED3QN/A' && power.returnDays === 90 && power.itemCondition === 'new')
+  const sw = saved('power-switch-2.html', 'https://www.power.no/gaming/nintendo/nintendo-konsoll/nintendo-switch-2-spillkonsoll/p-4089807/')
+  check('Power\'s Switch 2: 11 digits padded to 0045496321444', sw.ean === '0045496321444', sw.ean)
+  const jernia = saved('jernia-moccamaster.html', 'https://www.jernia.no/produkter/12305912/kaffetrakter-automatic-black')
+  check('Jernia: brand from the data block (its title is "Kaffetrakter Automatic Black"), the EAN from gtin13', jernia.brand === 'Moccamaster' && jernia.ean === '8712072537408')
+  check('…its sku is Jernia\'s own number, never a model; nothing in the name looks like one', jernia.model === null && jernia.modelFrom === null)
+  check('…return days only as a link: none', jernia.returnDays === null)
+  const sony = saved('prisjakt-sony-wh-1000xm5.html', 'https://www.prisjakt.no/product.php?p=6219512')
+  check('Prisjakt: its product number from the link (p=6219512)', sony.prisjaktId === '6219512' && sony.source === 'prisjakt')
+  check('…no mpn and no EAN in its data: the model only from the name, said so (modelFrom name: check it)', sony.model === 'WH-1000XM5' && sony.modelFrom === 'name' && sony.ean === null, JSON.stringify([sony.model, sony.modelFrom]))
+  check('…brand from the group', sony.brand === 'Sony')
+  const rows = Object.fromEntries(sony.specs.map(r => [r.name, r.value]))
+  check('…its spec rows, a flattened list joined back: "Funksjoner: Avtagbar kabel, Sammenleggbar, Multipoint, …"', sony.specs.length === 5
+    && rows.Type === 'Over-ear hodetelefoner' && rows.Funksjoner.startsWith('Avtagbar kabel, Sammenleggbar, Multipoint, Lading via USB') && rows['Trådløs'] === 'Ja'
+    && rows.Farge === 'Sort, Hvit, Sølv, Grå, Blå, Beige, Rosa' && rows['Aktiv støyreduksjon (ANC)'] === 'Ja', JSON.stringify(sony.specs))
+  check('…no offer list in the trimmed page: the schema.org figures (mixed), so no condition is claimed', sony.condition === 'mixed' && sony.itemCondition === null)
+  const lg = saved('prisjakt-lg-c5.html', 'https://www.prisjakt.no/product.php?p=14893891')
+  check('Prisjakt LG C5: the code after " - " in the name (OLED55C51LA — another regional model than the stores\' OLED55C54LA, so "check")', lg.model === 'OLED55C51LA' && lg.modelFrom === 'name')
+  const iphone = saved('prisjakt-iphone-16.html', 'https://www.prisjakt.no/product.php?p=13854649')
+  check('Prisjakt iPhone 16: no code in "Apple iPhone 16 128GB" — no model, never "128GB"', iphone.model === null && iphone.modelFrom === null, iphone.model)
+  const live = readPrice(fs.readFileSync(path.join(__dirname, 'fixtures/prisjakt/iphone-15-pro-128gb.html'), 'utf8'), 'https://www.prisjakt.no/product.php?p=12105530')
+  check('Prisjakt with its offer list: the price is the cheapest new offer\'s, so the condition is new', live.condition === 'new' && live.itemCondition === 'new' && live.prisjaktId === '12105530')
+  check('a shop\'s link that only names Prisjakt has no Prisjakt number', readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848?ref=prisjakt.no&p=123').prisjaktId === null
+    && prisjaktProduct('https://www.prisjakt.no/search?query=x&p=1') === null && prisjaktProduct('https://www.prisjakt.no/product.php?p=' + '9'.repeat(13)) === null)
+}
+{
+  // EAN rules: 8–14 digits, zeros in front, the check digit verified, never all zeros.
+  for (const [raw, want] of [['0195949821905', '0195949821905'], ['195949822629', '0195949822629'], ['45496321444', '0045496321444'], [195949822629, '0195949822629'],
+    ['00195949821905', '0195949821905'], ['10195949821902', null], ['0195949821906', null], ['0000000000000', null], ['1234567', null], ['', null], [' 0195949821905 ', '0195949821905'],
+    ['0195949821905x', null], [null, null], [12.5, null], ['9'.repeat(30), null]]) {
+    check(`ean13(${JSON.stringify(raw)}) = ${want}`, ean13(raw) === want, String(ean13(raw)))
+  }
+  const odd = (extra) => readPrice(page({ '@type': 'Product', name: 'Lamp', offers: { '@type': 'Offer', price: 499, priceCurrency: 'NOK', ...(extra.offer ?? {}) }, ...extra }), 'https://shop.example/lamp')
+  check('a gtin whose check digit fails is no EAN; the next code that is one is taken (gtin13, then gtin …)', odd({ gtin13: '0195949821906' }).ean === null
+    && odd({ gtin13: '0195949821906', gtin: '0195949821905' }).ean === '0195949821905')
+  check('the model: mpn, else `model` as text or an object\'s name; code characters only, up to 64', odd({ mpn: 'AF400EU' }).model === 'AF400EU' && odd({ model: { '@type': 'ProductModel', name: 'X-100' } }).model === 'X-100'
+    && odd({ mpn: '<b>x</b>' }).model === null && odd({ mpn: 'A'.repeat(65) }).model === null && odd({ mpn: 'Q' }).model === null)
+  check('the condition from the offer, else the product (used, refurbished, damaged), else none', odd({ offer: { itemCondition: 'https://schema.org/UsedCondition' } }).itemCondition === 'used'
+    && odd({ itemCondition: 'RefurbishedCondition' }).itemCondition === 'refurbished' && odd({ itemCondition: 'https://schema.org/DamagedCondition' }).itemCondition === 'damaged'
+    && odd({ itemCondition: 'LikeNew' }).itemCondition === null && odd({}).itemCondition === null)
+  for (const [name, want] of [['Makita DDF485RTJ (2x5Ah)', 'DDF485RTJ'], ['Moccamaster Select KGB741', 'KGB741'], ['Ninja Foodi Max Dual Zone AF400 9.5L', 'AF400'],
+    ['Samsung Q7FA 55" 4K Ultra HD QLED Smart TV (2025) - TQ55Q7FA', 'TQ55Q7FA'], ['Sony WH-1000XM5 trådløs over-ear hodetelefoner', 'WH-1000XM5'],
+    ['Apple Macbook Air 13" (2025) (Nor) - M4 10C CPU 8C GPU 16GB 256GB SSD', null], ['Samsung Galaxy S25 5G 12GB RAM 128GB', null], ['Garmin Forerunner 265', null],
+    ['Kärcher K5 Power Control Flex', null], ['Sony PlayStation 5 Slim (PS5) Digital Edition 825GB', null], ['Bergans Stranda V2 Down Jacket (Herre)', null], [null, null], ['A1B2C '.repeat(60), null]]) {
+    check(`modelInName(${JSON.stringify(name)?.slice(0, 60)}) = ${want}`, modelInName(name) === want, String(modelInName(name)))
+  }
+  const prop = (name, value) => ({ '@type': 'PropertyValue', name, value })
+  check('spec rows: an empty first value is a row of its own; numbers as written; a nameless or non-text one skipped', JSON.stringify(specRows([prop('Sammenleggbar', ''), prop('Vekt', 250), prop('', 'x'), prop('Farge', { a: 1 }), 'oops']))
+    === JSON.stringify([{ name: 'Sammenleggbar', value: '' }, { name: 'Vekt', value: '250' }]), JSON.stringify(specRows([prop('Sammenleggbar', ''), prop('Vekt', 250), prop('', 'x'), prop('Farge', { a: 1 })])))
+  check('…control characters are spaces; a name is cut at 80 characters, a value at 300; at most 30 rows', specRows([prop('A\u0000B', 'c\nd')])[0].name === 'A B' && specRows([prop('A\u0000B', 'c\nd')])[0].value === 'c d'
+    && specRows([prop('N'.repeat(200), 'v')])[0].name.length === 80 && specRows([prop('N', 'v'.repeat(2000))])[0].value.length === 300
+    && specRows(Array.from({ length: 100 }, (_, i) => prop(`P${i}`, 'x'))).length === 30)
+  check('…a joined list stops growing at 300 characters; not a list: none', specRows([prop('F', 'a'), ...Array.from({ length: 150 }, (_, i) => prop(`option ${i}`, ''))])[0].value.length <= 300
+    && specRows('Type: x').length === 0 && specRows(null).length === 0)
 }
 
 console.log('\n4 · Pages without a price')
@@ -195,6 +281,34 @@ console.log('\n6 · Prisjakt\'s own offer list: the price now is its new offers 
   check('a row without a real price is left out', odd.low === 15990 && odd.offers === 1, JSON.stringify(odd))
   const broken = readPrice(html.replace(/<body>[\s\S]*<\/body>/, `<body>${push(flight.slice(0, at + 5000))}</body>`), link)
   check('a list cut short (not JSON) is not read: its schema.org figures, marked mixed', broken.condition === 'mixed' && broken.low === 6590)
+  // Prisjakt's new offers, one per shop, for price match (migration 191's shop_price_watch.new_offers): the shop's
+  // number and name come from the row itself (shop.name, seen on four saved product pages, 10.11.2026).
+  const eqj = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  check('the new offers: CDON 16 115 and CS MEGASTORE 16 252, both in stock — each with Prisjakt\'s shop number and the row\'s own shop name',
+    eqj(g.newOffers, [{ shop_id: 9738, shop_name: 'CDON', price: 16115, currency: 'NOK', in_stock: true }, { shop_id: 35222, shop_name: 'CS MEGASTORE', price: 16252, currency: 'NOK', in_stock: true }]), JSON.stringify(g.newOffers))
+  check('…none without the list (null: not read), none but used and refurbished ones ([]: read, no new offer), none from a shop\'s own page',
+    schemaOnly.newOffers === null && eqj(usedOnly.newOffers, []) && readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848').newOffers === null)
+  const row = (shopId, price, extra = {}) => ({ productId: 12105530, condition: 'New', price: { amount: price, currency: 'NOK' }, shopId, stockStatus: 'InStock', shop: { name: `Shop ${shopId}` }, ...extra })
+  const dup = readPrice(withRows([row(1, 3000), row(1, 2900), row(2, 2950), row(1, 3100)]), link).newOffers
+  check('one per shop — its cheapest — cheapest first', eqj(dup.map(o => [o.shop_id, o.price]), [[1, 2900], [2, 2950]]), JSON.stringify(dup))
+  const many = readPrice(withRows(Array.from({ length: 70 }, (_, k) => row(1000 + k, 5000 - k))), link).newOffers
+  check('at most 50 (the cheapest 50), as 191 bounds them', many.length === 50 && many[0].price === 4931 && many[49].price === 4980)
+  const stock = readPrice(withRows([row(1, 10, { stockStatus: 'OutOfStock' }), row(2, 11, { stockStatus: 'Backorder' }), row(3, 12, { stockStatus: 'PreOrder' }),
+    row(4, 13, { stockStatus: 'Unknown' }), row(5, 14, { stockStatus: undefined }), row(6, 15)]), link).newOffers
+  check('in stock: InStock true; OutOfStock, Backorder, PreOrder false; anything else not said (null)', eqj(stock.map(o => o.in_stock), [false, false, false, null, null, true]), JSON.stringify(stock))
+  const names = readPrice(withRows([row(1, 10, { shop: { name: 'x'.repeat(121) } }), row(2, 11, { shop: { name: 'Evil‮9 0 9 1' } }), row(3, 12, { shop: { name: '  Power  \n Norge ' } }),
+    row(4, 13, { shop: { name: 42 } }), row(5, 14, { shop: 'Power' }), row(6, 15, { shop: { name: 'Zero​width' } }), row(7, 16, { shop: { name: 'Bell\u0007' } })]), link).newOffers
+  check('a shop\'s name: over 120 characters, with a direction, zero-width or control character, or not text is none; whitespace is squeezed to one line',
+    eqj(names.map(o => o.shop_name), [null, null, 'Power Norge', null, null, null, null]) && names.length === 7, JSON.stringify(names))
+  const ids = readPrice(withRows([row('324', 10), row(0, 11), row(-5, 12), row(1.5, 13), row(1e12, 14), row(null, 15), row(9, 1e9), row(10, 999999999)]), link).newOffers
+  check('an offer without a whole shop number above 0, or with a price of a billion or more, is left out', eqj(ids.map(o => o.shop_id), [10]), JSON.stringify(ids))
+  check('…every offer has exactly the five keys 191 checks', g.newOffers.concat(dup, many, stock, names).every(o => Object.keys(o).sort().join() === 'currency,in_stock,price,shop_id,shop_name'))
+  {
+    const t0 = Date.now()
+    const big = readPrice(withRows(Array.from({ length: 10000 }, (_, k) => row(k + 1, 1000 + (k % 97), { shop: { name: 'Butikk '.repeat(68) } }))), link)
+    const ms = Date.now() - t0
+    check(`a hostile page with 10 000 offers and 476-character names costs a moment (${ms} ms), and keeps 50 without a name`, ms < 4000 && big.newOffers.length === 50 && big.newOffers.every(o => o.shop_name === null), `${ms} ms`)
+  }
   check('a shop\'s own page says nothing about its condition: unknown', readPrice(page(TCL), 'https://www.elkjop.no/product/tv/899848').condition === 'unknown')
   check('a Prisjakt page without the list (the 08.10.2026 fixtures): mixed, as before', readPrice(page(ORG, PIXEL), 'https://www.prisjakt.no/product.php?p=16929131').condition === 'mixed')
 }
@@ -308,13 +422,25 @@ console.log('\n17 · A hostile page or robots.txt costs no more than a moment (t
   const block = b => `<script type="application/ld+json">${JSON.stringify(b)}</script>`
   check('the one-pass reader still takes every block, in any case and with other scripts between', jsonLdNodes(`<SCRIPT TYPE='application/ld+json'>{"@type":"Product","name":"A"}</SCRIPT><script>var x = "<b>"</script>${block({ '@type': 'Product', name: 'B' })}`).map(n => n.name).join() === 'A,B')
   check('…and stops at the first script that never closes (what follows it is not read)', jsonLdNodes(`${block({ '@type': 'Product', name: 'A' })}<script>never closed${block({ '@type': 'Product', name: 'B' })}`).map(n => n.name).join() === 'A')
+  // (e) the add sheet's facts (10.11.2026): every text bounded before a pattern runs on it, the spec list scanned only so far.
+  // A page is at most 3 MB (the fetch's cap): this one is about 2.8 MB.
+  const huge = '1a-'.repeat(150000)
+  const props = Array.from({ length: 20000 }, (_, i) => ({ '@type': 'PropertyValue', name: i % 2 ? '' : `P${i}`, value: i % 3 ? '' : 'x'.repeat(20) }))
+  const { r: facts, ms: factsMs } = timed(() => readPrice(block({ '@type': 'Product', name: '<b>-1a2b3c4d '.repeat(5000), mpn: huge, gtin13: '1'.repeat(450000), itemCondition: 'NewCondition'.repeat(40000),
+    additionalProperty: props, offers: { '@type': 'Offer', price: 5, priceCurrency: 'NOK', itemCondition: huge } }), 'https://shop.example/p'))
+  check(`a page of hostile facts (a 450 KB mpn, gtin and condition, 20 000 spec properties, a 60 000-character name): read in ${Math.round(factsMs)} ms (bound 400 ms), none of them taken`,
+    factsMs < 400 && facts.model === null && facts.ean === null && facts.itemCondition === null && facts.specs.length <= 30 && facts.name.length === 300, `${factsMs} ms ${JSON.stringify([facts.model, facts.ean, facts.itemCondition, facts.specs.length])}`)
+  const { r: longValue, ms: valueMs } = timed(() => specRows([{ name: 'A', value: ' '.repeat(2e6) + 'b' }, { name: 'B'.repeat(2e6), value: 'c' }]))
+  check(`a 2 MB spec value or name is cut before it is read: ${Math.round(valueMs)} ms (bound 100 ms)`, valueMs < 100 && longValue.length <= 2, `${valueMs} ms`)
+  const { r: inName, ms: nameMs } = timed(() => modelInName('A1-'.repeat(100)))
+  check(`a model code looked for in a name of 300 characters at most: ${nameMs.toFixed(1)} ms (bound 20 ms)`, nameMs < 20 && (inName === null || inName.length <= 24), `${nameMs} ms`)
 }
 
 console.log('\n13 · What the app says under a pasted link (watchWords.readNote, the add sheet and Add a model alike)')
 {
   const at = '2026-11-10T05:23:00.000Z'
   const hhmm = formatTime(at)
-  const base = { name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null, was: null,
+  const base = { name: null, image: null, brand: null, ean: null, model: null, modelFrom: null, itemCondition: null, prisjaktId: null, specs: [], low: null, high: null, offers: null, currency: null, inStock: null, was: null,
     returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null, source: 'store', at, finalUrl: 'https://shop.example/p' }
   const note = extra => W.readNote({ ...base, ...extra })
   check('a Prisjakt price: its lowest new price, from how many shops, read just now', note({ status: 'ok', source: 'prisjakt', condition: 'new', low: 16115, offers: 2 })
@@ -740,6 +866,28 @@ async function handlerChecks() {
     check(adds ? '…and a repeat within the hour that is back in stock adds a point' : 'a repeat within the hour with the same price and stock adds no point',
       fetched.length === 1 && r.results?.[0]?.status === 'ok' && writes.some(w => w.table === 'shop_price_points') === adds, JSON.stringify(writes.map(w => w.table)))
   }
+
+  console.log('\n19 · The add sheet\'s facts ride on the same read: nothing more fetched, nothing more stored (the real handler, scripted)')
+  const store = 'https://www.power.no/gaming/nintendo/nintendo-konsoll/nintendo-switch-2-spillkonsoll/p-4089807/'
+  const switchPage = { body: fs.readFileSync(path.join(__dirname, 'fixtures/product-pages/power-switch-2.html'), 'utf8') }
+  fetched = []; writes = []
+  const powerAsked = []
+  call = shopPrice({ db: dbWith(store), pages: { [store]: switchPage }, fetched, writes, robotsAsked: powerAsked,
+    robots: { 'https://www.power.no/robots.txt': { body: fs.readFileSync(path.join(__dirname, 'fixtures/robots/www.power.no.txt'), 'utf8') } } })
+  r = await call({ action: 'read', url: store })
+  check('read: the facts come back with the price — brand, model, EAN padded to 13 digits, condition, return days — one page request, its robots.txt kept to',
+    r.result?.status === 'ok' && r.result?.brand === 'Nintendo' && r.result?.model === '220001' && r.result?.modelFrom === 'data' && r.result?.ean === '0045496321444'
+    && r.result?.itemCondition === 'new' && r.result?.returnDays === 90 && Array.isArray(r.result?.specs) && fetched.length === 1 && powerAsked.length === 1, JSON.stringify(r.result))
+  check('…and nothing is written by a read (a preview)', writes.length === 0, JSON.stringify(writes))
+  r = await call({ action: 'check', ids: ['i1'] })
+  const factsWatch = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('check: reuses the read from the last hour (no second fetch), and the watch keeps none of the facts (no new columns written)', fetched.length === 1
+    && !!factsWatch && !['ean', 'model', 'model_from', 'item_condition', 'prisjakt_id', 'specs', 'brand'].some(k => k in factsWatch), JSON.stringify(factsWatch))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(FINN), pages: {}, fetched, writes })
+  r = await call({ action: 'read', url: FINN })
+  check('a refused link answers no facts at all (never fetched)', r.result?.status === 'not_allowed' && r.result?.ean === null && r.result?.model === null && r.result?.specs?.length === 0
+    && r.result?.prisjaktId === null && fetched.length === 0, JSON.stringify(r.result))
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {

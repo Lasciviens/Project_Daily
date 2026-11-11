@@ -21,6 +21,11 @@
  *      plan from a fresh read of the owner's own rows — nothing duplicated, the owner's names win, a second tap
  *      writes nothing, a refused second write takes the tops back — and its Undo (removeAddedCategories)
  *      removes only the rows it made, of those only the ones still empty and as made, and names the rest.
+ *   8. Stores, their rules, the law and deal days (shopStoresApi.ts, migration 191): every page read, a row the
+ *      database wouldn't hold left out; an edit reads its row first, is checked before any write and sends its
+ *      facts only (never origin, the source, owner_edited or the seed key), scoped to the owner; its Undo writes
+ *      the facts back exactly; a reset is one call; the owner's deal days lie over 190's (one turned off left out),
+ *      and their reset and Undo put back exactly what was there; before 191 the reads are empty and a write says so.
  * Run: node scripts/verify-shop-api.cjs */
 require('sucrase/register')
 const fs = require('fs')
@@ -81,13 +86,18 @@ function from(table) {
     const rows = (tables[table] ??= [])
     if (st.op === 'insert') {
       // A new row gets its id and the database's time, as the table's defaults do.
-      const made = st.rows.map(r => ({ id: `n${++newId}`, created_at: new Date(Date.UTC(2026, 10, 10, 12) + newId).toISOString(), ...r }))
+      // Each row its own id and time, never one used before.
+      const made = st.rows.map(r => {
+        const at = new Date(Date.UTC(2026, 10, 10, 12) + ++newId).toISOString()
+        return { id: `n${newId}`, created_at: at, updated_at: at, ...r }
+      })
       rows.push(...made)
-      return { data: st.returning ? made.map(r => ({ ...r })) : null, error: null }
+      return { data: st.returning ? (st.single ? { ...made[0] } : made.map(r => ({ ...r }))) : null, error: null }
     }
     const hit = rows.filter(r => st.preds.every(p => p(r)))
     if (st.op === 'update') {
       for (const r of hit) Object.assign(r, st.patch)
+      if (st.returning && st.single) return { data: hit[0] ? { ...hit[0] } : null, error: null }
       return { data: st.returning ? hit.map(r => ({ ...r })) : null, error: null }
     }
     if (st.op === 'delete') {
@@ -128,6 +138,7 @@ require.cache['stub:requireUser'] = { id: 'stub:requireUser', filename: 'stub:re
 const A = require('../src/features/shop/api/shopApi.ts')
 const C = require('../src/features/shop/api/shopCategoryApi.ts')
 const N = require('../src/features/shop/api/shopSignalsApi.ts')
+const S = require('../src/features/shop/api/shopStoresApi.ts')
 Module._resolveFilename = origResolve
 const M = require('../src/features/shop/shopModel')
 
@@ -294,7 +305,7 @@ const ids = rows => rows.map(r => r.id).join()
     check('an Undo sends the row\'s own fields only (its id, first time, snooze, Got it) — never user_id or updated_at',
       Object.keys(rpcCalls[0]?.args.p_state ?? {}).sort().join() === 'created_at,dismissed_at,id,signature,snoozed_until')
 
-    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'price_match' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
+    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'made_up_signal' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
     const states = await N.fetchSignalStates()
     check('the states read back: a signal this app doesn\'t know (a newer database) is left out', states.map(s => s.id).join() === `${uuid(9001)},${uuid(9003)}`)
     failing.shop_signal_states = { code: 'PGRST205', message: 'Could not find the table public.shop_signal_states' }
@@ -425,6 +436,113 @@ const ids = rows => rows.map(r => r.id).join()
     check('…"34 categories removed"; all gone already; one kept', C.undoneWords({ removed: Array(34).fill('x'), gone: 0, kept: [] }) === '34 categories removed'
       && C.undoneWords({ removed: [], gone: 3, kept: [] }) === 'The categories were already gone'
       && C.undoneWords({ removed: ['x'], gone: 0, kept: [{ name: 'Phones', why: 'in_use' }] }) === '1 category removed · 1 kept, in use now: Phones')
+  }
+
+  console.log('\n8 · Stores, their rules, the law and deal days (migration 191)')
+  {
+    const uuid = k => `00000000-0000-4000-8000-${String(k).padStart(12, '0')}`
+    const T = '2026-11-10T09:00:00+00:00'
+    const storeRow = (k, p = {}) => ({ id: uuid(k), user_id: 'u', seed_key: null, kind: 'shop', name: `Store ${String(k).padStart(4, '0')}`, country: 'NO', currency: 'NOK',
+      hosts: [`s${k}.example`], search_url: null, ad_template: null, ad_language: null, member_tier: null, hidden: false, origin: 'owner', source_url: null,
+      read_on: null, source_facts: null, owner_edited: true, edited_at: T, created_at: T, updated_at: T, ...p })
+    const facts = { kind: 'return', label: null, days: 90, member_tier: null, window_from: null, window_to: null, return_until: null, exclusions: [], payout: null,
+      against: null, against_stores: null, words: null, source_url: 'https://www.power.no/x/p-1/', read_on: '2026-11-10', off: false }
+    const ruleRow = (k, p = {}) => ({ id: uuid(k), user_id: 'u', store_id: uuid(1), seed_key: 'power_return', origin: 'seed', ...facts, source_facts: facts,
+      owner_edited: false, edited_at: null, created_at: T, updated_at: T, ...p })
+    tables.shop_stores = [...Array.from({ length: 1203 }, (_, k) => storeRow(k + 1)), storeRow(9000, { hosts: ['https://bad.example'] }), storeRow(9001, { source_url: 'http://x.example/' })]
+    calls.length = 0
+    const stores = await S.fetchShopStores()
+    check('the stores: every page (1 203 rows, 2 pages), one total order (id last); a row with a bad host or an http source is left out',
+      stores.length === 1203 && calls.filter(c => c.table === 'shop_stores').length === 2 && calls.every(c => c.orders[c.orders.length - 1][0] === 'id'), `${stores.length}`)
+    tables.shop_store_rules = [ruleRow(1), ruleRow(2, { days: 'NaN' }), ruleRow(3, { kind: 'price_match' }), ruleRow(4, { source_url: 'javascript:alert(1)' })]
+    const rules = await S.fetchStoreRules()
+    check('the rules read back: NaN days, a kind\'s wrong fields, a link that isn\'t https are left out', rules.map(r => r.id).join() === uuid(1) && rules[0].source?.days === 90)
+    tables.shop_site_policies = [{ id: 'p1', host: 'finn.no', no_automated_reading: true }, { id: 'p2', host: 'tise.com', no_automated_reading: true },
+      { id: 'p3', host: 'old.example', no_automated_reading: false }, { id: 'p4', host: 'not a host', no_automated_reading: true }]
+    check('the sites apps may not read: 188\'s hosts that say so (finn.no, tise.com)', (await S.fetchSitePolicyHosts()).join() === 'finn.no,tise.com')
+
+    // An edit: read the row first (scoped), check the patch, send only its facts, answer before and after.
+    tables.shop_store_rules = [ruleRow(1), ruleRow(5, { user_id: 'someone' })]
+    calls.length = 0
+    const ch = await S.updateStoreRule(uuid(1), { days: 60, words: 'Typed from the help centre.', origin: 'seed', source_facts: { days: 365 }, owner_edited: false, seed_key: 'x' })
+    const write = calls.find(c => c.op === 'update')
+    check('an edit reads the rule first and writes its facts only — never origin, the source, owner_edited or the seed key — scoped by id and user',
+      ch.before.days === 90 && ch.after.days === 60 && write && Object.keys(write.patch).sort().join() === 'days,words'
+      && calls.every(c => c.eqs.some(([k, v]) => k === 'id' && v === uuid(1)) && c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')), JSON.stringify(write?.patch))
+    const refuse = async f => { calls.length = 0; const e = await f().then(() => null, x => x); return { e, writes: calls.filter(c => c.op !== 'select').length } }
+    let r = await refuse(() => S.updateStoreRule(uuid(1), { days: 0 }))
+    let r2 = await refuse(() => S.updateStoreRule(uuid(1), { source_url: 'http://www.power.no/' }))
+    const r3 = await refuse(() => S.updateStoreRule(uuid(1), { days: NaN }))
+    check('…days out of bounds, NaN, an http link: refused here before any write', r.e && r.writes === 0 && r2.e?.message === 'The source must be a https link' && r2.writes === 0 && r3.e && r3.writes === 0)
+    r = await refuse(() => S.updateStoreRule(uuid(5), { days: 60 }))
+    check('…another account\'s rule (or one that is gone): an error, nothing written', r.e?.message === 'That rule is not there any more' && r.writes === 0)
+    calls.length = 0
+    await S.putStoreRule(ch.before)
+    const undo = calls.find(c => c.op === 'update')
+    check('Undo writes the rule\'s facts back exactly, with its edit time — never origin, the source, owner_edited, the seed key or the account',
+      undo && Object.keys(undo.patch).sort().join() === 'against,against_stores,days,edited_at,exclusions,kind,label,member_tier,off,payout,read_on,return_until,source_url,window_from,window_to,words'
+      && undo.patch.days === 90 && undo.patch.words === null && tables.shop_store_rules[0].days === 90, Object.keys(undo?.patch ?? {}).join())
+    rpcCalls.length = 0
+    rpcAnswer = () => ({ data: { before: ruleRow(1, { days: 60, owner_edited: true, edited_at: T }), after: ruleRow(1) }, error: null })
+    const reset = await S.resetStoreRule(uuid(1))
+    check('Reset to the source: one call of shop_store_rule_reset with the id; its answer\'s before and after', rpcCalls.length === 1 && rpcCalls[0].fn === 'shop_store_rule_reset'
+      && JSON.stringify(rpcCalls[0].args) === JSON.stringify({ p_id: uuid(1) }) && reset.before.days === 60 && reset.after.days === 90 && !reset.after.owner_edited)
+    rpcAnswer = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.shop_store_rule_reset' } })
+    r = await refuse(() => S.resetStoreRule(uuid(1)))
+    check('before 191 a reset says so by name', r.e?.message === S.NEEDS_191, r.e?.message)
+
+    // A store: the member tier, hosts and links checked before they are sent.
+    tables.shop_stores = [storeRow(1, { seed_key: 'elkjop', origin: 'seed', owner_edited: false, edited_at: null, hosts: ['elkjop.no'], search_url: 'https://www.elkjop.no/search?q={q}' })]
+    const sc = await S.updateShopStore(uuid(1), { member_tier: 'Kundeklubb', origin: 'owner' })
+    check('a store\'s member tier saves; origin is never sent', sc.after.member_tier === 'Kundeklubb' && Object.keys(calls.find(c => c.op === 'update')?.patch ?? {}).join() === 'member_tier')
+    r = await refuse(() => S.updateShopStore(uuid(1), { search_url: 'https://attacker.example/?q={q}' }))
+    r2 = await refuse(() => S.updateShopStore(uuid(1), { hosts: ['https://elkjop.no'] }))
+    check('…a search link on another host, a web address with https://: refused here before any write', r.e && r.writes === 0 && r2.e && r2.writes === 0, `${r.e?.message} / ${r2.e?.message}`)
+
+    // Before 191: the reads are empty, a write names the migration.
+    failing.shop_stores = { code: 'PGRST205', message: 'Could not find the table public.shop_stores' }
+    failing.shop_store_rules = { code: '42P01', message: 'relation "public.shop_store_rules" does not exist' }
+    failing.shop_law_rules = { code: 'PGRST205', message: 'Could not find the table public.shop_law_rules' }
+    failing.shop_deal_day_edits = { code: 'PGRST205', message: 'Could not find the table public.shop_deal_day_edits' }
+    check('before 191 the stores, rules and law read as none', (await S.fetchShopStores()).length === 0 && (await S.fetchStoreRules()).length === 0 && (await S.fetchLawRules()).length === 0)
+    r = await refuse(() => S.updateStoreRule(uuid(1), { days: 60 }))
+    check('…an edit says so by name', r.e?.message === S.NEEDS_191, r.e?.message)
+    tables.shop_deal_days = [
+      { id: uuid(1), slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday', month: 11, day: null, weekday: 4, nth: 4, offset_days: 1, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+      { id: uuid(2), slug: 'singles_day', name: 'Singles\' Day', rule_kind: 'fixed', month: 11, day: 11, weekday: null, nth: null, offset_days: 0, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+    ]
+    check('…and the deal days are 190\'s alone', (await N.fetchDealDays()).map(d => d.slug).join() === 'black_friday,singles_day')
+    for (const t of ['shop_stores', 'shop_store_rules', 'shop_law_rules', 'shop_deal_day_edits']) delete failing[t]
+
+    // Deal days: the owner's own versions over 190's.
+    tables.shop_deal_day_edits = [{ id: uuid(11), user_id: 'u', slug: 'singles_day', name: 'Singles\' Day', rule_kind: 'fixed', month: 11, day: 11, weekday: null, nth: null,
+      offset_days: 0, length_days: 1, off: true, source_url: null, created_at: T, updated_at: T }]
+    calls.length = 0
+    const saved = await S.saveDealDayEdit({ slug: 'black_friday', name: ' Black Week ', rule_kind: 'nth_weekday', month: 11, day: 27, weekday: 4, nth: 4, offset_days: -3, length_days: 8 })
+    const ins = calls.find(c => c.op === 'insert')
+    check('editing Black Friday adds the owner\'s own version (none before): its name trimmed, its slug and account, no day on an n-th weekday rule',
+      saved.before === null && saved.after.name === 'Black Week' && ins && ins.rows[0].slug === 'black_friday' && ins.rows[0].user_id === 'u' && ins.rows[0].day === null, JSON.stringify(ins?.rows))
+    const counted = await N.fetchDealDays()
+    check('Needs a look counts Black Week in Black Friday\'s place; Singles\' Day, turned off, not at all', counted.map(d => `${d.slug}:${d.name}:${!!d.edited}`).join() === 'black_friday:Black Week:true')
+    calls.length = 0
+    const again = await S.saveDealDayEdit({ slug: 'black_friday', name: 'Black Week', rule_kind: 'nth_weekday', month: 11, day: null, weekday: 4, nth: 4, offset_days: -3, length_days: 9 })
+    check('…a second edit updates that version (scoped by its id and the account) and answers the one before', again.before?.length_days === 8 && again.after.length_days === 9
+      && calls.some(c => c.op === 'update' && c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && !calls.some(c => c.op === 'insert'))
+    r = await refuse(() => S.saveDealDayEdit({ slug: 'leap', name: 'Leap', rule_kind: 'fixed', month: 2, day: 29, weekday: null, nth: null, offset_days: 0, length_days: 1 }))
+    r2 = await refuse(() => S.saveDealDayEdit({ slug: 'Bad Slug', name: 'x', rule_kind: 'fixed', month: 1, day: 1, weekday: null, nth: null, offset_days: 0, length_days: 1 }))
+    const r4 = await refuse(() => S.saveDealDayEdit({ slug: 'fifth', name: 'x', rule_kind: 'nth_weekday', month: 11, day: null, weekday: 4, nth: 5, offset_days: 0, length_days: 1 }))
+    check('…29.02, a slug that is none, a 5th weekday: refused here, nothing written', r.e && !r.writes && r2.e && !r2.writes && r4.e && !r4.writes, [r.e?.message, r2.e?.message, r4.e?.message].join(' / '))
+    const resetDeal = await S.resetDealDay('black_friday')
+    check('Reset: the owner\'s version goes and is the answer (for the Undo); 190\'s Black Friday counts again', resetDeal.before?.name === 'Black Week'
+      && (await N.fetchDealDays()).map(d => d.name).join() === 'Black Friday')
+    await S.putDealDayEdit('black_friday', resetDeal.before)
+    check('…its Undo puts that version back with its own id', tables.shop_deal_day_edits.some(e => e.id === resetDeal.before.id && e.name === 'Black Week'))
+    await S.putDealDayEdit('black_friday', null)
+    check('…and an Undo of the first edit (nothing before) takes it away', !tables.shop_deal_day_edits.some(e => e.slug === 'black_friday'))
+    tables.shop_deal_day_edits.push({ id: uuid(12), user_id: 'u', slug: 'payday_sale', name: 'Payday sale', rule_kind: 'fixed', month: 1, day: 25, weekday: null, nth: null,
+      offset_days: 0, length_days: 1, off: false, source_url: null, created_at: T, updated_at: T })
+    r = await refuse(() => S.resetDealDay('payday_sale'))
+    check('a deal day of the owner\'s own has no app rule to reset to: refused, kept', r.e && !r.writes && tables.shop_deal_day_edits.some(e => e.slug === 'payday_sale'), r.e?.message)
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)
