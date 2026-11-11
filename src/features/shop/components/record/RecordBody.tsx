@@ -45,7 +45,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const watch = r.watches.get(item.id) ?? null
   const { looks, loading: looksLoading } = useNeedsALook(r.items, false)
   // Only once its reads have answered: a nudge from part of the data would come and go as the rest lands.
-  const nudge = useMemo(() => (looksLoading ? null : nudgeFor(item, looks)), [looksLoading, item, looks])
+  const nudge = useMemo(() => (looksLoading ? null : nudgeFor(item, looks, today)), [looksLoading, item, looks, today])
   const itemCosts = useMemo(() => r.ctx.costs.get(item.id) ?? r.costs.filter(c => c.item_id === item.id), [r.ctx.costs, r.costs, item.id])
   const story = useMemo(() => storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }), [item, r.items, r.links, itemCosts, today])
   const resale = state === 'mine' || state === 'gone'
@@ -91,8 +91,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     </div>
   )
 
-  const box = (id: SectionId, title: string, summary: string | undefined, action: ReactNode, body: ReactNode) => (
-    <RecordSection id={id} title={title} summary={summary} open={sections.open.has(id)} onToggle={() => sections.toggle(id)} action={action}>{body}</RecordSection>
+  const box = (id: SectionId, title: string, summary: string | undefined, action: ReactNode, body: ReactNode, keepAction = false) => (
+    <RecordSection id={id} title={title} summary={summary} open={sections.open.has(id)} onToggle={() => sections.toggle(id)} action={action} keepAction={keepAction}>{body}</RecordSection>
   )
   const factsSummary = [item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
     .filter(Boolean).join(' · ') || undefined
@@ -123,7 +123,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
       {money && box('money', 'Money', moneySummary, <MoneyChainButton item={item} chain={r.chain} />, <>
         {hasMoneyLinks(item) && <RecordMoney item={item} items={r.items} links={r.links} ctx={r.ctx} chain={r.chain} />}
         {(owned || item.status === 'bought') && <RecordCosts itemId={item.id} costs={itemCosts} />}
-      </>)}
+      </>, true)}
     </div>
   )
 
@@ -133,12 +133,12 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
         {/* Only a real picture: an empty box took 80px beside the actions. */}
         {picture && <ItemThumb src={picture} className="@[30rem]:h-20 @[30rem]:w-20" />}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {/* The pill (on a phone) shares its line with how long it has been yours. */}
+          {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's). */}
           {(pill === 'phone' || (state === 'mine' && from)) && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
               {pill === 'phone' && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
               {state === 'mine' && from && (
-                <p className="text-meta tabular-nums text-fg-muted">Yours for {durationLabel(from, today)} · since {item.approx_dates ? '≈ ' : ''}{formatDate(from)}</p>
+                <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>
               )}
             </div>
           )}
@@ -156,22 +156,22 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
         <RecordStory steps={story} today={today} />
         {parts}
       </div>
+      {/* Delete (asks, then Undo) ends the record: the footer shows only with changes to save, so the Story keeps its room. */}
+      <Button variant="ghost" size="sm" icon={<Trash2 />} className="-ml-2 w-fit text-danger" onClick={() => { void r.del() }}>Delete</Button>
     </div>
   )
 }
 
-/** The record's footer: Save only when something changed; else Delete (asks, then Undo) and Close. */
+/**
+ * The record's footer, only while something changed (review, 10.11.2026: at 1469×680 a footer of Delete and Close
+ * pushed the Story below the fold; × closes): Discard and Save.
+ */
 export function RecordFooter({ r }: { r: ShopRecordModel }) {
-  return r.d.dirty ? (
+  return (
     <div className="flex items-center gap-2">
       <span className="text-meta text-fg-muted">Unsaved changes</span>
       <Button onClick={r.d.discard} className="ml-auto">Discard</Button>
       <Button variant="primary" onClick={() => { void r.save() }} loading={r.saving}>Save</Button>
-    </div>
-  ) : (
-    <div className="flex items-center gap-2">
-      <Button variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void r.del() }}>Delete</Button>
-      <Button onClick={() => { void r.close() }} className="ml-auto">Close</Button>
     </div>
   )
 }

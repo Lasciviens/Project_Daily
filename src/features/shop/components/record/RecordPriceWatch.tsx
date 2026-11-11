@@ -66,7 +66,7 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
       )}
       {cheaper && (
         <p className="text-meta text-success">
-          Now {money((item.price as number) - (low as number), cur)} less than you paid — return or ask for the difference until {formatDate(item.return_by)}.
+          {money((item.price as number) - (low as number), cur)} cheaper than you paid. Return it or ask for the difference by {formatDate(item.return_by)}.
         </p>
       )}
       {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}

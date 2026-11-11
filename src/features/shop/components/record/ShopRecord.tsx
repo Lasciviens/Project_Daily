@@ -21,7 +21,7 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
       size="xl"
       mobile="fullscreen"
       dismissible={!r.saving}
-      footer={<RecordFooter r={r} />}
+      footer={r.d.dirty ? <RecordFooter r={r} /> : undefined}
     >
       <RecordBody r={r} openFact={openFact} pill="phone" />
     </ModalShell>

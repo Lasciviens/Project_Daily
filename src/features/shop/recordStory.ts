@@ -5,7 +5,7 @@
 // own date is never shown, and nothing is guessed (an arrival day comes with
 // step B's "Arrived"). Pure — scripts/verify-shop-record.cjs.
 import { formatMoney } from '../settings/subscriptionRules'
-import { DISPOSAL_LABEL, isMine } from './ownModel'
+import { DISPOSAL_LABEL, durationLabel, isMine } from './ownModel'
 import { currencyOf, localDay } from './shopModel'
 import type { Look, LookKind, LookTone } from './shopSuggestions'
 import type { ShopItem, ShopItemCost, ShopItemLink } from './types'
@@ -133,13 +133,16 @@ export interface Nudge {
  * Needs a look's rows (already in urgency order, and without what was
  * snoozed or put away) that is about this thing; else the tidy-up row's
  * words for it; else, for a thing still yours with no "Could sell for", the
- * one fact that gives its cost per month. None for anything else.
+ * one fact that gives its cost per month. None for anything else. An old
+ * estimate says only how old it is: the money strip right above shows the
+ * amount and its day (review, 10.11.2026: the same facts three times).
  */
-export function nudgeFor(item: ShopItem, looks: readonly Look[]): Nudge | null {
+export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string): Nudge | null {
   const own = looks.find(l => l.itemId === item.id)
   if (own) {
     const action: NudgeAction = own.action === 'bought' ? 'bought' : own.action === 'value' ? 'value' : null
-    return { key: own.key, kind: own.kind, tone: own.tone, facts: own.facts, where: own.where, action }
+    const facts = own.kind === 'old_value' && item.value_on ? [`Your "Could sell for" is ${durationLabel(item.value_on, today)} old`] : own.facts
+    return { key: own.key, kind: own.kind, tone: own.tone, facts, where: own.kind === 'old_value' ? null : own.where, action }
   }
   const tidy = looks.find(l => l.kind === 'tidy_up')?.things.find(t => t.id === item.id)
   if (tidy) {
