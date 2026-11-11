@@ -4,8 +4,8 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk, STALE } from '../../../shared/query'
 import { connectICloud, disconnectICloud, fetchICloudChanges, fetchICloudStatus, readICloudCalendars, removeICloudTest, renewICloudPassword, runICloudCheck, setupICloudCalendars, signedInFreshly, type ICloudStatus } from './icloudApi'
 
-export function useICloudStatus() {
-  return useQuery({ queryKey: qk.icloud.status(), queryFn: fetchICloudStatus, staleTime: STALE.default })
+export function useICloudStatus(opts: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: qk.icloud.status(), queryFn: fetchICloudStatus, staleTime: STALE.default, enabled: opts.enabled ?? true })
 }
 
 /** Whether this session may connect iCloud now (a password sign-in in the last 10 minutes); read fresh each time. */

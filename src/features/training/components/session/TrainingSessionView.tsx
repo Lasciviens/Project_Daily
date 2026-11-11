@@ -193,7 +193,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       const suffix = plans.length > 1 ? ` · ${p.title}` : ''
       if (p.kind === 'recurring' && p.scheduleBlock) {
         const id = p.scheduleBlock.id
-        items.push({ key: `weekly-${p.id}`, label: `Change repeating plan…${suffix}`, icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id, config: { heading: 'Change repeating plan' } }) })
+        items.push({ key: `weekly-${p.id}`, label: `Change repeating plan…${suffix}`, icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id }) })
         continue
       }
       const b = p.timeBlock
@@ -201,7 +201,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
       const target: PlanTarget = b.task_id ? { kind: 'task', taskId: b.task_id, blockId: b.id } : { kind: 'block', blockId: b.id }
       const ref: TrainingPlanRef = { target, info: { title: p.title, date: b.date, startHHMM: planStartHHMM(p), minutes: planMinutes(p), routineId: planRoutineId(p) } }
       items.push({ key: `edit-${p.id}`, label: `${b.task_id ? 'Edit session…' : 'Edit plan…'}${suffix}`, icon: <Pencil />,
-        onSelect: () => (b.task_id ? modal.open({ kind: 'task', id: b.task_id }) : modal.open({ kind: 'time-block', id: b.id, config: { heading: 'Change plan' } })) })
+        onSelect: () => (b.task_id ? modal.open({ kind: 'task', id: b.task_id }) : modal.open({ kind: 'time-block', id: b.id })) })
       items.push({ key: `delete-${p.id}`, label: `Delete plan${suffix}`, icon: <Trash2 />, danger: true, onSelect: () => { void planActions.deleteSession(ref) } })
     }
     actions = <SessionMenu items={items} />

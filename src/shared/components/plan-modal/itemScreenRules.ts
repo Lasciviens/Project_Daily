@@ -15,6 +15,7 @@ import {
 } from '../../../features/daily/recurrence'
 import { eventUrl } from '../../../features/calendar/calendarEventRules'
 import { cleanItemUrl } from '../../../features/items/itemCalendarFields'
+import { notInAppleText, type AppleSend } from '../../../features/calendar/areas/appleSendRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
 
 export const DAY_MINUTES = 1440
@@ -45,6 +46,14 @@ export type EndProblem = 'before' | 'too-long'
 export const END_PROBLEM_TEXT: Record<EndProblem, string> = {
   before: 'It ends before it starts',
   'too-long': 'It can end at most 24 hours after it starts',
+}
+
+/**
+ * The end a time wheel picks when the Ends row shows no day (a saved weekly repeat: its rows show times only): an end
+ * at or before the start is the next day — the only way it can be one (a length of at most 24 hours).
+ */
+export function endOnWheel(date: string, start: string, endTime: string, dayShown: boolean): { date: string; time: string } {
+  return { date: !dayShown && minutesOf(endTime) <= minutesOf(start) ? addDaysIso(date, 1) : date, time: endTime }
 }
 
 /** An end picked on the Ends row, read back as the item's length — or why it can't be one. */
@@ -120,8 +129,10 @@ export function timelineCentre(start: number | null, length: number | null): num
 // ── Where each field goes (the marks, Settings → Calendar) ────────────────────
 
 export type FieldGoes = 'apple' | 'google-calendar' | 'google-tasks' | 'app'
-/** A row's field. Step 2's (193): `alerts` (Alert, Second Alert), `showAs`, `url`, `travel`, `repeatEnd`. */
-export type ScreenField = 'title' | 'notes' | 'time' | 'place' | 'repeat' | 'calendar' | 'deadline' | 'list' | 'own'
+/** A row's field. Step 2's (193): `alerts` (Alert, Second Alert), `showAs`, `url`, `travel`, `repeatEnd`. `time` is the
+ *  day (the Date row, a day without a time); `clock` the time of day, its length and zone (All-day, Starts and Ends with
+ *  a time, Time Zone). */
+export type ScreenField = 'title' | 'notes' | 'time' | 'clock' | 'place' | 'repeat' | 'calendar' | 'deadline' | 'list' | 'own'
   | 'alerts' | 'showAs' | 'url' | 'travel' | 'repeatEnd'
 
 export const FIELD_GOES_TEXT: Record<FieldGoes, string> = {
@@ -147,7 +158,8 @@ export interface GoesContext {
  * Google Task carries (its title, notes, day, deadline, list, one task per day of a repeat), else only the app. The
  * app's own fields (priority, labels, area, category, the window) always stay in the app. Step 2's fields (193): the
  * alerts and Show As go to either calendar (a Google Task has neither); the link and the travel time only to Apple's
- * (Google Calendar has no field for them); End Repeat goes where the repeat goes.
+ * (Google Calendar has no field for them); End Repeat goes where the repeat goes. A Google Task has a day but no time:
+ * the time of day, its length and zone go only to a calendar (`clock`).
  */
 export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
   const calendar: FieldGoes | null = ctx.dated && (ctx.target === 'calendar' || ctx.target === 'both')
@@ -160,7 +172,8 @@ export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
     case 'deadline': return viaTasks
     case 'place': return calendar ?? 'app'
     case 'alerts':
-    case 'showAs': return calendar ?? 'app'
+    case 'showAs':
+    case 'clock': return calendar ?? 'app'
     case 'url':
     case 'travel': return calendar === 'apple' ? 'apple' : 'app'
     case 'notes':
@@ -250,12 +263,36 @@ export function heldChange(
 export const APPLE_SEND_GRACE_MS = 2 * 60_000
 
 /**
- * Apple refused the item: it belongs in Apple Calendar (its area is there and it wants a calendar), yet its slot or
- * plan still has no Apple copy two minutes after its last change. The browser can't read the queue's error (service
- * role only), so this is read from the row itself; the save's own warning says why.
+ * The row's own guess, for when the queue gave no answer for it (another send was running, an older server): it
+ * belongs in Apple Calendar (its area is there and it wants a calendar), yet its slot or plan still has no Apple copy
+ * two minutes after its last change.
  */
 export function appleRefused(row: { icloud_area?: string | null; updated_at?: string | null } | null | undefined, wantsApple: boolean, now: number): boolean {
   if (!row || !wantsApple || row.icloud_area) return false
   const changed = row.updated_at ? Date.parse(row.updated_at) : NaN
   return Number.isFinite(changed) && now - changed > APPLE_SEND_GRACE_MS
+}
+
+/**
+ * The Calendar row's red dot: why an item that belongs in Apple Calendar isn't there, or null. Read from the queue's
+ * own answer for the item's row (`send`: the screen sends that row when it opens — appleAreas.drainICloudNow with the
+ * row named — and the server says what it did with it): sent or kept = no dot; failed, waiting, not queued, or a
+ * calendar that doesn't go there = the dot with the reason (appleSendRules.notInAppleText, the save's own words). With
+ * no answer for the row (another send was running, an older server, not asked yet) the row's guess stands
+ * (appleRefused), with the account's newest reason when Settings' status had one (`notSent`).
+ */
+export function appleDot(i: {
+  wanted: boolean
+  row: { icloud_area?: string | null; updated_at?: string | null } | null | undefined
+  send: AppleSend | null
+  notSent?: { count: number; reason: string | null } | null
+  now: Date
+}): string | null {
+  if (!i.wanted || !i.row || i.row.icloud_area) return null
+  const s = i.send
+  const said = (send: AppleSend) => notInAppleText({ ...send, keepsGoogleTask: false, now: i.now })
+  if (s && !s.busy && s.item) return s.item.status === 'sent' || s.item.status === 'kept' ? null : said(s)
+  if (s && !s.busy && s.problem) return said(s)
+  if (!appleRefused(i.row, true, i.now.getTime())) return null
+  return said({ item: null, problem: i.notSent?.count ? i.notSent.reason : null, busy: false })
 }

@@ -26,7 +26,9 @@ import {
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
 import { cleanPlace, type ItemPlace } from '../../../features/items/itemPlace'
 import { lengthToEnd, type EndProblem } from './itemScreenRules'
-import { cleanItemUrl, repeatEndProblem, type CalendarField } from '../../../features/items/itemCalendarFields'
+import {
+  alertsForKind, alertsOnAllDaySwitch, cleanItemUrl, repeatEndProblem, type CalendarField,
+} from '../../../features/items/itemCalendarFields'
 
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
@@ -200,7 +202,7 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     timeZone: item.timeZone ?? null,
     place: item.place ?? null,
     placeTouched: false,
-    alerts: item.alerts ?? null,
+    alerts: alertsForKind(item.alerts ?? null, !item.time),
     showAs: item.showAs ?? null,
     url: item.url ?? '',
     travelMinutes: item.travelMinutes ?? null,
@@ -461,11 +463,38 @@ export function withEnd(f: Pick<PlanForm, 'date' | 'time'>, end: { date: string;
 /**
  * The item screen's All-day switch. On: no time and no length — an item on a calendar stays there as an all-day
  * event (withAllDay), one on Google Tasks or nowhere just loses its time. Off: a time (the next half hour) and an
- * hour, as Apple starts a timed event.
+ * hour, as Apple starts a timed event. Either way an alert within the day is dropped (alertsOnAllDaySwitch: "30
+ * minutes before" means nothing all day, "On the day (09:00)" nothing with a time).
  */
-export function withAllDaySwitch(f: Pick<PlanForm, 'googlePick'>, on: boolean, target: GoogleTarget, nextTime: string): Partial<PlanForm> {
-  if (on) return { ...(target === 'calendar' || target === 'both' ? withAllDay(f) : withTime(null)), badEnd: null }
-  return { time: nextTime, duration: 60, badEnd: null }
+export function withAllDaySwitch(
+  f: Pick<PlanForm, 'googlePick'> & Partial<Pick<PlanForm, 'alerts' | 'calendarTouched'>>, on: boolean, target: GoogleTarget, nextTime: string,
+): Partial<PlanForm> {
+  const alerts = f.alerts === undefined ? undefined : alertsOnAllDaySwitch(f.alerts)
+  const kept = alerts === undefined || same(alerts, f.alerts) ? {} : withCalendarField({ calendarTouched: f.calendarTouched ?? [] }, 'alerts', alerts)
+  if (on) return { ...(target === 'calendar' || target === 'both' ? withAllDay(f) : withTime(null)), badEnd: null, ...kept }
+  return { time: nextTime, duration: 60, badEnd: null, ...kept }
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * "Undo changes" on an edit: the form as the screen opened, to be sent as one save. A field the owner changed is
+ * marked touched, so the save sends it back (labels, the place, the calendar fields); one never touched still goes
+ * only when the sheet knew it.
+ */
+export function revertedForm(opened: PlanForm, now: PlanForm): PlanForm {
+  return {
+    ...opened,
+    labelsTouched: opened.labelsTouched || now.labelsTouched,
+    placeTouched: opened.placeTouched || now.placeTouched,
+    calendarTouched: [...new Set([...opened.calendarTouched, ...now.calendarTouched])],
+    shown: now.shown.filter(r => r !== 'list'),
+  }
+}
+
+/** The form's values alone — without which rows are open and what was touched (they only steer the save). */
+export function formValuesKey(f: PlanForm): string {
+  return JSON.stringify({ ...f, shown: undefined, labelsTouched: undefined, placeTouched: undefined, calendarTouched: undefined })
 }
 
 /** What the item screen saves when this form changes — everything but which optional rows are open. */

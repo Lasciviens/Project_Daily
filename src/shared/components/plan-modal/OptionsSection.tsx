@@ -35,7 +35,7 @@ export function CalendarRow({ shape, target, app, dated, refused, open, toggle, 
     <>
       <TapRow label="Calendar" open={open === 'calendar'} onClick={() => toggle('calendar')} tone={refused ? 'danger' : undefined}
         value={<><Truncate className="min-w-0">{googleTargetLabel(shape, target, app)}</Truncate><FieldMark always goes={goesOf(target, app, dated)} refused={refused} /></>} />
-      {refused && <NoteRow tone="danger">Not in Apple Calendar yet: {refused}</NoteRow>}
+      {refused && <NoteRow tone="danger">{refused}</NoteRow>}
       {warning?.level === 'warning' && <NoteRow tone="warn">{warning.message}</NoteRow>}
       {open === 'calendar' && (
         <Panel label="Where it goes">
