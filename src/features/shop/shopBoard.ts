@@ -52,11 +52,14 @@ export const QUICK_BOARD: BoardLayouts<QuickSection> = {
 //      them), the filters, the summary line, the things.
 //   2+ the summary line and the category groups first, taking every track
 //      but the last; Needs a look in a sticky rail on the RIGHT (owner,
-//      14.10.2026).
-export const OWNED_SECTIONS = ['filters', 'summary', 'look', 'groups'] as const
+//      14.10.2026). A tapped row's record takes the rail's place (`pane`,
+//      step A, 10.11.2026: the side pane from 60rem) — the list keeps its
+//      tracks and its scroll, Back brings Needs a look back. A phone has no
+//      pane: its record opens full screen (absent from step 1).
+export const OWNED_SECTIONS = ['filters', 'summary', 'look', 'pane', 'groups'] as const
 export type OwnedSection = typeof OWNED_SECTIONS[number]
 
-const OWNED_RAIL = { stack: ['look'], sticky: true } as const
+const OWNED_RAIL = { stack: ['look', 'pane'], sticky: true } as const
 
 export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
   1: ['look', 'filters', 'summary', 'groups'],

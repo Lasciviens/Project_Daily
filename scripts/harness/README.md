@@ -116,7 +116,7 @@ valid UUIDs, the same on every run.
 | Food | 18 foods, 6 recipes with ingredients, 4 weeks of diary, today's meals (a dish, a planned dinner, a supplement dose), next week's plan, water, goals, quick guesses, 2 supplement schedules |
 | Health | 60 days of Apple Health metrics (steps, energy, heart rate, HRV, sleep, weight, body fat …), scale reports, Hevy body measurements, workouts |
 | Media | 10 films and 6 series (watching, completed, wishlist, paused, dropped, coming soon), watched episodes and every watch, a cinema visit |
-| Shop | wishlist (a general wish with two models, a price watch and its clean reads), quick list, owned things (an accessory, a sold one, a cost); 190's deal days, and its functions answered from these rows (`shop_price_stats`, the three Needs-a-look writes) |
+| Shop | wishlist (a general wish with two models, a price watch and its clean reads), quick list, owned things (an accessory, a sold one, a cost); 190's deal days, and its functions answered from these rows (`shop_price_stats`, the three Needs-a-look writes) and the sale and delete calls with their Undo (`shop_record_sale` / `shop_undo_sale`, `shop_delete_items` / `shop_restore_items`) |
 | Work, Projects | work tasks, notes, weekly goals, pinned links; 4 projects with phases, tasks, parts table, log, links and decisions |
 | Wishes, Developer, Games, Books, Football, Settings | wishes with seasons; activity, errors, memory, dev requests; 8 games; 6 books with reading sessions; followed teams; subscriptions and a home stop |
 

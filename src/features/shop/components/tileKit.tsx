@@ -7,7 +7,8 @@ import { money, num } from './shopFormat'
 import type { ShopItem } from '../types'
 
 // The Wishlist's picture tiles (THEME.md §6.3 "Picture tiles"): the grid, the
-// picture well, the history bar and the loading copy.
+// picture well (and its row-sized square for Owned's compact rows), the history
+// bar and the loading copy.
 
 /**
  * Tiles flow into content-width columns (W2): two a row on a 375–402px phone,
@@ -106,6 +107,33 @@ export function PictureWell({ srcs, icon: Icon, initials, tint, belt, corner }: 
         </span>
       )}
       {corner && <span className="absolute right-1.5 top-1.5 flex">{corner}</span>}
+    </span>
+  )
+}
+
+/**
+ * The picture well at a row's size (Owned's compact rows): a square with the
+ * same order as a tile — the photo on the well colour, else the category's
+ * default picture on its tint, else the initials; a photo that fails to load
+ * falls back the same way.
+ */
+export function RowPicture({ src, icon: Icon, initials, tint, className }: {
+  src: string | null
+  icon?: LucideIcon | null
+  initials: string
+  tint: number
+  className?: string
+}) {
+  const [failed, setFailed] = useState<string | null>(null)
+  const photo = src && src !== failed ? src : null
+  return (
+    <span aria-hidden data-tint={photo ? undefined : tint}
+      className={cx('relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-row', photo ? 'bg-well' : Icon ? 'tint-well' : 'tint-fill', className)}>
+      {photo
+        ? <img src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(photo)} className="h-full w-full object-contain p-[8%] mix-blend-multiply" />
+        : Icon
+          ? <Icon strokeWidth={1.75} className="tint-ink h-5 w-5 opacity-80" />
+          : <span className="tint-ink text-micro font-bold tracking-[0.04em]">{initials}</span>}
     </span>
   )
 }

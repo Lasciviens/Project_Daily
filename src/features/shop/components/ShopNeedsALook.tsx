@@ -1,4 +1,5 @@
 import { useEntityModal } from '../../../shared/modals'
+import { useBoardStep } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBuyNow } from '../hooks/useShop'
 import { useNeedsALook } from '../hooks/useNeedsALook'
@@ -14,9 +15,17 @@ import type { ShopItem } from '../types'
  * Snooze hides it for a week (or until the day before its deadline) and Got
  * it until what it says changes — each with its own toast and Undo. `quiet`:
  * a phone shows no "Nothing needs a look" line (an empty wishlist).
+ * `paneOpen`: on a wide board a row opens its record there (Owned's side
+ * pane) instead of in a popup.
  */
-export function ShopNeedsALook({ items, isLoading, quiet = false }: { items: readonly ShopItem[]; isLoading: boolean; quiet?: boolean }) {
+export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
+  items: readonly ShopItem[]
+  isLoading: boolean
+  quiet?: boolean
+  paneOpen?: (id: string, fact?: 'value') => void
+}) {
   const modal = useEntityModal()
+  const wide = useBoardStep() >= 2
   const data = useNeedsALook(items, isLoading)
   const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
   const snooze = useSnoozeSignal()
@@ -26,7 +35,10 @@ export function ShopNeedsALook({ items, isLoading, quiet = false }: { items: rea
 
   const actions: LookActions = {
     onOpen: look => {
-      if (look.itemId) modal.open(look.action === 'value' ? { kind: 'shop-item', id: look.itemId, fact: 'value' } : { kind: 'shop-item', id: look.itemId })
+      if (!look.itemId) return
+      const fact = look.action === 'value' ? 'value' as const : undefined
+      if (paneOpen && wide) paneOpen(look.itemId, fact)
+      else modal.open(fact ? { kind: 'shop-item', id: look.itemId, fact } : { kind: 'shop-item', id: look.itemId })
     },
     onBought: look => {
       const item = items.find(i => i.id === look.itemId)

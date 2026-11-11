@@ -1,11 +1,12 @@
 import { Plus } from 'lucide-react'
-import { Button, Card, CardHeader, Truncate } from '../../../../shared/ui'
+import { Button, CardHeader, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { add, boughtOn, costOf, DISPOSAL_LABEL, type MoneyCtx } from '../../ownModel'
 import { AmountText } from '../shopKit'
 import { PaidText } from '../owned/PaidText'
 import type { ShopItem } from '../../types'
+import { useOpenRecord } from './recordOpen'
 
 /**
  * The accessories on a thing (or planned for a wish): what each cost and when,
@@ -13,10 +14,11 @@ import type { ShopItem } from '../../types'
  */
 export function RecordAccessories({ item, accessories, ctx, canAdd }: { item: ShopItem; accessories: ShopItem[]; ctx: MoneyCtx; canAdd: boolean }) {
   const modal = useEntityModal()
+  const openRecord = useOpenRecord()
   if (!accessories.length && !canAdd) return null
   const total = add(...accessories.filter(a => a.status === 'bought').map(a => costOf(a, ctx)))
   return (
-    <Card>
+    <div>
       <CardHeader title="Accessories" variant="label" className="mb-1"
         subtitle={accessories.some(a => a.status === 'bought') ? <>with them <AmountText amount={add(costOf(item, ctx), total)} /> in all</> : undefined}
         action={canAdd && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-accessory', itemId: item.id })}>Accessory</Button>} />
@@ -28,7 +30,7 @@ export function RecordAccessories({ item, accessories, ctx, canAdd }: { item: Sh
             const day = boughtOn(a)
             return (
               <li key={a.id}>
-                <button type="button" onClick={() => modal.open({ kind: 'shop-item', id: a.id })} className="flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left hover:bg-surface-hover">
+                <button type="button" onClick={() => openRecord(a.id)} className="flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left hover:bg-surface-hover">
                   <span className="min-w-0 flex-1">
                     <Truncate as="span" className="block text-body text-fg-2">{a.title}</Truncate>
                     <span className="block text-meta text-fg-muted">
@@ -42,6 +44,6 @@ export function RecordAccessories({ item, accessories, ctx, canAdd }: { item: Sh
           })}
         </ul>
       )}
-    </Card>
+    </div>
   )
 }

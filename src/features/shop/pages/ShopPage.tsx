@@ -2,7 +2,7 @@ import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { History, Link2, MoreHorizontal, Plus, Tag } from 'lucide-react'
-import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
@@ -14,14 +14,15 @@ import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
 import { QuickListView } from '../components/QuickListView'
-import { OwnedView } from '../components/owned/OwnedView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
 import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
 
-// Stats (the only charts on the page) loads when opened, and in idle time once the page shows.
+// Owned's Things (its rows and the side pane's opener) and Stats (the only charts on the page) load when opened,
+// and in idle time once the page shows (the Wishlist, the default view, carries only its own code).
+const OwnedView = lazyPart('shop-owned', () => import('../components/owned/OwnedView').then(m => m.OwnedView))
 const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
-const OTHER_VIEWS = [ShopStatsView]
+const OTHER_VIEWS = [OwnedView, ShopStatsView]
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -158,7 +159,11 @@ export function ShopPage() {
                   scope={statsScope} onScope={setStatsScope} year={statsYear} onYear={setStatsYear} />
               </Suspense>
             )
-            : <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+            : (
+              <Suspense fallback={<SkeletonTab />}>
+                <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+              </Suspense>
+            )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}
     </PageContainer>
   )
