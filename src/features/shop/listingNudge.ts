@@ -100,12 +100,14 @@ export function listingNudge(listing: ShopListing, history: readonly ShopListing
 }
 
 /**
- * The price story with a new price from `on`: added at the end, or — on the day of the last step — in its place
- * (one price a day), so the story stays in order. A step before the last one's day is refused (null).
+ * The price story with a new price from `on`: added at the end, or — on the day of the last change — in its place
+ * (one change a day), so the story stays in order. The asking price (the first step) is never replaced: a price
+ * lowered on the day it was listed is a change of its own (cleanup, 11.11.2026 — it took the asking price's place;
+ * the database keeps two steps on one day). A step before the last one's day is refused (null).
  */
 export function withPriceChange(prices: readonly ListingPrice[], price: number, on: string): ListingPrice[] | null {
   const last = prices[prices.length - 1]
   if (!last) return [{ on, price }]
   if (on < last.on) return null
-  return on === last.on ? [...prices.slice(0, -1), { on, price }] : [...prices, { on, price }]
+  return on === last.on && prices.length > 1 ? [...prices.slice(0, -1), { on, price }] : [...prices, { on, price }]
 }

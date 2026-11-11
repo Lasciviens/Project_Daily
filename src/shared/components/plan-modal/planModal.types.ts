@@ -37,9 +37,6 @@ export type CustomRepeatKind = 'every' | 'dates'
 //  the session's, 142).
 
 export interface PlanModalConfig {
-  /** @deprecated Never shown: the item screen is headed "New Item" / "Edit Item" wherever it opens (10.11.2026).
-   *  Only Shop's two callers still pass it (another change owns `src/features/shop/` now); remove it with them. */
-  heading?: string
   hideScheduleFields?: ScheduleField[]
   /** Opens the screen at this row (a single task's "Set parent…", "Move to list…", its Waiting chip — step 3). */
   openRow?: 'waiting' | 'parent' | 'list'

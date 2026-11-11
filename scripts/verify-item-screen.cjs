@@ -280,9 +280,9 @@ console.log('\n== 9. The cleanup after steps 1 and 2 (11.11.2026) ==')
 
   const types = src('src/shared/components/plan-modal/planModal.types.ts')
   const callers = require('child_process').execSync("grep -rln \"heading: '\" src --include=*.ts --include=*.tsx || true", { cwd: path.join(__dirname, '..') }).toString()
-  check('config.heading is gone from every caller but Shop\'s two (marked deprecated until they go)', /@deprecated/.test(types)
+  check('config.heading is gone: no field, no reader, no caller', !/\bheading\?:/.test(types)
     && !/config\?\.heading/.test(src('src/shared/components/plan-modal/PlanEntityModals.tsx'))
-    && !/(training|media|games|work|wishes|todo|daily)\/.*\.tsx?/.test(callers.split('\n').filter(f => !/statsDrill|YearDrill/.test(f)).join('\n')))
+    && !/(training|media|games|work|wishes|todo|daily|shop)\/.*\.tsx?/.test(callers.split('\n').filter(f => !/statsDrill|YearDrill/.test(f)).join('\n')))
 
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')
   check('a new item\'s title takes the focus on a touch screen too (the dialog leaves it there)', /if \(!autoFocus\) return\s*\n\s*const id = window\.setTimeout\(\(\) => \{ if \(document\.activeElement !== ref\.current\) ref\.current\?\.focus/.test(form))

@@ -302,26 +302,25 @@ export function wholeList(b: Basket, rows: number): WholeList | null {
   return { kind: full.length === 1 ? 'only' : 'cheapest', chains: tied, total: best.total, covered: best.covered, priced: b.priced, whole }
 }
 
-/** "Oda", "Joker or Spar", "Joker, Meny or Spar". */
+/** "Oda", "Meny and Spar", "Joker, Meny and Spar". */
 function chainList(names: readonly string[]): string {
-  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 /**
- * The basket's first line in three parts — what it answers, the chain, and
- * the amount (or the share it has) — so a narrow card cuts the chain, never
- * the amount, and the lead stays short enough for a phone: "Cheapest for the
- * whole list:" · "Oda" · "137.70 NOK". With rows not priced yet it names the
- * priced ones ("Cheapest for 3 priced items:"); "Only one chain has all 3:";
- * "No chain has all 3 — most at" · "Meny" · "2 of 3".
+ * The basket's answer, said after how many items are priced in the card's
+ * subtitle (cleanup, 11.11.2026: a line of its own repeated the chain's row
+ * under it and cut the chain's name at 402) — "Oda is cheapest", "Meny and
+ * Spar are cheapest" (a tie), "only Oda has all 3", "no chain has all 3"; with
+ * rows not priced yet a cheapest chain is "cheapest for these". The amounts
+ * stay on the chains' rows.
  */
-export function wholeListWords(w: WholeList, money: (n: number) => string): { lead: string; chain: string; value: string } {
-  const chain = chainList(w.chains)
+export function wholeListWords(w: WholeList): string {
   const all = w.priced === 1 ? 'it' : w.priced === 2 ? 'both' : `all ${w.priced}`
-  if (w.kind === 'none') return { lead: `No chain has ${all} — most at`, chain, value: `${w.covered} of ${w.priced}` }
-  if (w.kind === 'only') return { lead: `Only one chain has ${all}:`, chain, value: money(w.total) }
-  const scope = w.whole ? 'the whole list' : w.priced === 1 ? 'the priced item' : `${w.priced} priced items`
-  return { lead: `Cheapest for ${scope}:`, chain, value: money(w.total) }
+  if (w.kind === 'none') return `no chain has ${all}`
+  if (w.kind === 'only') return `only ${chainList(w.chains)} has ${all}`
+  const these = w.whole ? '' : ' for these'
+  return `${chainList(w.chains)} ${w.chains.length > 1 ? 'are' : 'is'} cheapest${these}`
 }
 
 export interface BasketLine extends BasketRow {

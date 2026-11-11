@@ -92,7 +92,7 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
 
   function plan() {
     modal.open({
-      kind: 'task', config: { heading: 'Plan this purchase' },
+      kind: 'task',
       defaults: { ...planDefaults(item), domain: 'personal' },
       onSaved: r => { if (r.taskId) update.mutate({ id: item.id, patch: { task_id: r.taskId }, quiet: true }) },
     })

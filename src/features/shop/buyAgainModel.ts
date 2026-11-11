@@ -1,6 +1,6 @@
 // Buy again (Shop renovation step C): what the quick list's own past ticks
 // say is due — a thing bought on three days or more, at a steady rhythm
-// ("Milk — usually every 6 days, last 5 days ago") — and the rest of what was
+// ("Milk · Every 6 days · last bought 5 days ago") — and the rest of what was
 // bought from it before. Only the owner's own ticks count (a quick-list row
 // with status 'bought', on its local day); nothing is guessed from outside.
 // Pure — scripts/verify-shop-quick.cjs runs it against fixtures.
@@ -114,12 +114,12 @@ export function boughtBefore(items: readonly ShopItem[], due: readonly DueAgain[
   return buyAgain(items, limit + shown.size).filter(b => !shown.has(fold(b.title))).slice(0, limit)
 }
 
-/** "every day", "every 6 days", "every week", "every 3 weeks". */
+/** "Every day", "Every 6 days", "Every week", "Every 3 weeks". */
 function everyWords(days: number): string {
-  if (days <= 1) return 'every day'
-  if (days === 7) return 'every week'
-  if (days < 14) return `every ${days} days`
-  return `every ${Math.round(days / 7)} weeks`
+  if (days <= 1) return 'Every day'
+  if (days === 7) return 'Every week'
+  if (days < 14) return `Every ${days} days`
+  return `Every ${Math.round(days / 7)} weeks`
 }
 
 /** "yesterday", "17 days ago", "5 weeks ago" — days for the first four weeks, where a day matters. */
@@ -130,7 +130,7 @@ function sinceWords(days: number): string {
   return `${Math.round(days / 7)} weeks ago`
 }
 
-/** A suggestion's line: "Usually every 6 days, last 5 days ago". */
+/** A suggestion's line, in plain words (cleanup, 11.11.2026): "Every week · last bought 8 days ago". */
 export function rhythmWords(d: Pick<DueAgain, 'every' | 'since'>): string {
-  return `Usually ${everyWords(d.every)}, last ${d.since === 1 ? 'bought ' : ''}${sinceWords(d.since)}`
+  return `${everyWords(d.every)} · last bought ${sinceWords(d.since)}`
 }

@@ -12,13 +12,13 @@ import type { ShopItem } from '../../types'
  * new row keeps the product it was matched to, so its price comes back too.
  */
 export function BoughtBeforeCard({ rows }: { rows: readonly BuyAgain[] }) {
-  const { add } = useAddAgain()
+  const { add, isSaving } = useAddAgain()
   return (
     <Card>
       <CardHeader title="Bought before" />
       <div className="flex flex-wrap gap-1.5">
         {rows.map(r => (
-          <button key={r.row.id} type="button" onClick={() => add(buyAgainInput(r))}
+          <button key={r.row.id} type="button" onClick={() => add(r.row.id, buyAgainInput(r))} aria-busy={isSaving(r.row.id) || undefined}
             title={`Put ${r.title} back on the quick list`}
             className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover">
             <RotateCcw aria-hidden className="h-3 w-3 shrink-0 text-fg-faint" />

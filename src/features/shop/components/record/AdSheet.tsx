@@ -5,7 +5,7 @@ import { Button, cx } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useAddResaleDefaults, useAdTemplates, useChangeListing, useCreateListing, useUpdateAdTemplate } from '../../hooks/useShopResale'
-import { CONDITION_LABEL } from '../../resaleEvidence'
+import { conditionChoice } from '../../resaleEvidence'
 import { isPrice, RESALE_CONDITIONS, twoDecimals } from '../../resaleRows'
 import { categoryNamesOf, fillAd, templateFor, unknownFields, AD_FIELDS } from '../../resaleTexts'
 import { adClipboardText, adFactsOf, adPriceOf, marketplaceLink, marketplacesOf } from '../../sellingModel'
@@ -101,7 +101,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
             <span className="field-label">Condition</span>
             <select value={condition ?? ''} onChange={e => { setCondition((e.target.value || null) as ResaleCondition | null); setEdited(null) }} className="select max-w-xs">
               <option value="">Not said</option>
-              {RESALE_CONDITIONS.map(c => <option key={c} value={c}>{CONDITION_LABEL[c]}</option>)}
+              {RESALE_CONDITIONS.map(c => <option key={c} value={c}>{conditionChoice(c)}</option>)}
             </select>
           </label>
           <div className="flex flex-col gap-1">

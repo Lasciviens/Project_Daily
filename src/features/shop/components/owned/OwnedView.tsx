@@ -37,6 +37,22 @@ const PANE_PARTS = [RecordPane]
 /** What the side pane shows: a thing, opened at a fact (an old estimate), `seq` for each opening. */
 interface Picked { id: string; fact?: 'value'; seq: number }
 
+/**
+ * Focus the element that opened the pane — or, when it is gone (a Needs-a-look row: the list leaves the rail while
+ * the pane has it, and its rows come back as new elements, maybe after their reads), the one with its key, for
+ * up to a second.
+ */
+function returnFocus(back: { el: HTMLElement; key: string | null }, frames = 60) {
+  requestAnimationFrame(() => {
+    // The owner moved the focus on meanwhile: leave it there.
+    if (document.activeElement && document.activeElement !== document.body) return
+    const el = back.el.isConnected ? back.el
+      : back.key ? document.querySelector<HTMLElement>(`[data-return-focus="${CSS.escape(back.key)}"]`) : null
+    if (el) el.focus({ preventScroll: true })
+    else if (back.key && frames > 0) returnFocus(back, frames - 1)
+  })
+}
+
 /** Needs a look in the rail — out of the way while the record has the rail (from 60rem); a phone always keeps its line. */
 function RailLook({ paneOpen, children }: { paneOpen: boolean; children: ReactNode }) {
   return useBoardStep() >= 2 && paneOpen ? null : <>{children}</>
@@ -69,7 +85,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const [picked, setPicked] = useState<Picked | null>(null)
   const dirty = useRef(false)
   // The row (or Needs-a-look row) that opened the pane: the focus goes back to it when the pane closes.
-  const opener = useRef<HTMLElement | null>(null)
+  const opener = useRef<{ el: HTMLElement; key: string | null } | null>(null)
   const seq = useRef(0)
   useIdlePreload(PANE_PARTS)
 
@@ -108,7 +124,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
     if (dirty.current && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return
     dirty.current = false
     const from = document.activeElement
-    if (from instanceof HTMLElement && !from.closest('[data-record-pane]')) opener.current = from
+    if (from instanceof HTMLElement && !from.closest('[data-record-pane]')) opener.current = { el: from, key: from.dataset.returnFocus ?? null }
     setPicked(p => (p && p.id === id && !fact ? p : { id, fact, seq: ++seq.current }))
   }, [modal])
   const openThing = (id: string, pane: boolean) => (pane ? void pick(id) : modal.open({ kind: 'shop-item', id }))
@@ -117,7 +133,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
     setPicked(null)
     const back = opener.current
     opener.current = null
-    if (back) requestAnimationFrame(() => { if (back.isConnected) back.focus({ preventScroll: true }) })
+    if (back) returnFocus(back)
   }, [])
   const onDirty = useCallback((d: boolean) => { dirty.current = d }, [])
 

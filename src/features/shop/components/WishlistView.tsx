@@ -91,7 +91,6 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   function plan(item: ShopItem) {
     modal.open({
       kind: 'task',
-      config: { heading: 'Plan this purchase' },
       defaults: { ...planDefaults(item), domain: 'personal' },
       onSaved: r => { if (r.taskId) update.mutate({ id: item.id, patch: { task_id: r.taskId }, quiet: true }) },
     })
