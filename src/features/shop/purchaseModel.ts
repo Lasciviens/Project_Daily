@@ -18,9 +18,13 @@ export interface StoreCtx { stores: readonly ShopStore[]; rules: readonly ShopSt
 type PurchaseFields = Pick<ShopItem, 'url' | 'platform' | 'bought_at' | 'used' | 'warranty_until'>
   & Partial<Pick<ShopItem, 'bought_channel' | 'arrived_on'>>
 
-/** The store it was bought at: its link's host (storeRules.storeOfLink), else its store's name; null = no row. */
+/**
+ * The store it was bought at: its link's host (storeRules.storeOfLink), else its store's name; null = no row. A price
+ * site is never where a thing was bought (a wish's Prisjakt link): its store's name decides, else none.
+ */
 export function storeOfItem(item: Pick<ShopItem, 'url' | 'platform'>, stores: readonly ShopStore[]): ShopStore | null {
-  return (item.url ? storeOfLink(item.url, stores) : null) ?? (item.platform ? storeOfShopName(item.platform, stores) : null)
+  const seller = (s: ShopStore | null) => (s && s.kind !== 'price_site' ? s : null)
+  return seller(item.url ? storeOfLink(item.url, stores) : null) ?? seller(item.platform ? storeOfShopName(item.platform, stores) : null)
 }
 
 /** yyyy-mm-dd of the purchase (Oslo), or null. */

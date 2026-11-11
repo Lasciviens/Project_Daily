@@ -40,6 +40,8 @@ const item = (o = {}) => ({ id: 'x', title: 'Sony WH-1000XM5 (black)', url: null
 check('a link\'s host names the store', P.storeOfItem(item({ url: 'https://m.elkjop.no/p/1' }), stores)?.id === elkjop.id)
 check('else the store\'s name (Elkjop = Elkjøp)', P.storeOfItem(item({ platform: 'Elkjop' }), stores)?.id === elkjop.id)
 check('no row: null', P.storeOfItem(item({ platform: 'A corner shop' }), stores) === null)
+check('a price site is never where it was bought: a Prisjakt link leaves the store to its name, else none', P.storeOfItem(item({ url: 'https://www.prisjakt.no/product.php?p=1' }), stores) === null
+  && P.storeOfItem(item({ url: 'https://www.prisjakt.no/product.php?p=1', platform: 'Power' }), stores)?.id === power.id && P.storeOfItem(item({ platform: 'Prisjakt' }), stores) === null)
 check('counts start on the purchase day until Arrived', P.startDayOf(item()) === '2026-11-10')
 check('… then on arrival', P.startDayOf(item({ arrived_on: '2026-11-13' })) === '2026-11-13')
 check('an arrival before the purchase is not one', P.startDayOf(item({ arrived_on: '2026-11-01' })) === '2026-11-10')
@@ -102,9 +104,9 @@ console.log('1b. storeLooks: what the stores add to Needs a look')
     { shop_id: 101, shop_name: 'Power', price: 2990, currency: 'NOK', in_stock: true }, { shop_id: 102, shop_name: 'Elkjøp', price: 3490, currency: 'NOK', in_stock: true }] })
   const r = L.storeLooks({ items: [wish], watches: new Map([['w', pjWatch]]), costs: [], ctx, now: NOW_, today: TODAY })
   const look = r.extra[0]
-  check('a wish whose Prisjakt list has Power cheaper: "Elkjøp matches Power: 2 990 there, read 05:23", saves 500, a price_match row with its link',
+  check('a wish whose Prisjakt list has Power cheaper: "Elkjøp matches Power · 2 990 NOK there · read 05:23 · saves 500 NOK" (short pieces that wrap), a price_match row with its link',
     r.extra.length === 1 && look.kind === 'price_match' && look.tone === 'success' && look.itemId === 'w'
-    && look.facts[0].replace(/\s/g, ' ') === 'Elkjøp matches Power: 2 990 there, read 05:23 — its price match, read 11.11.2026' && look.facts[1].replace(/\s/g, ' ') === 'saves 500 NOK'
+    && look.facts.map(f => f.replace(/\s/g, ' ')).join(' · ') === 'Elkjøp matches Power · 2 990 NOK there · read 05:23 · saves 500 NOK'
     && look.link === wish.url, JSON.stringify(look))
   const all = N.needsALook([wish], { watches: new Map([['w', pjWatch]]), store: r }, TODAY)
   check('…and Needs a look lists it (Snooze and Got it by its signal)', all.some(l => l.key === 'price_match:w'))

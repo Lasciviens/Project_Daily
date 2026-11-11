@@ -8,6 +8,7 @@ import { isMine } from './ownModel'
 import { currencyOf, listOf, SHOP_CURRENCIES } from './shopModel'
 import { bestMatchOf, gotBackOf, protectedPrice, protectionOf, storeOfItem, watchOffers, type StoreCtx } from './purchaseModel'
 import { isShownLink } from './storeRows'
+import { claimedBy } from './storeRules'
 import { signalSignature } from './signalStates'
 import { snoozeUntil, type Look, type LookProtection, type StoreLookInputs } from './shopSuggestions'
 import type { ShopCurrency, ShopItem, ShopItemCost, ShopPriceWatch } from './types'
@@ -56,7 +57,11 @@ export function storeLooks(d: StoreLookData): StoreLookInputs {
     if (!m) continue
     extra.push({
       key: `price_match:${i.id}`, kind: 'price_match', tone: m.unsure ? 'info' : 'success', itemId: i.id, subject: null, title: i.title,
-      facts: [m.words, ...(m.saves != null && m.saves > 0 ? [`saves ${formatMoney(Math.round(m.saves), m.currency)}`] : []), ...m.caveats.slice(0, 1)],
+      // Short pieces, so the row wraps between them on a phone (a MetaLine piece never breaks); the whole sentence
+      // and every caveat are the rule's words (m.words, m.caveats) — a match nobody checked says so here.
+      facts: [`${m.store.name} matches ${m.matches}`, `${formatMoney(m.price, m.currency)} there`, `read ${m.read}`,
+        ...(m.saves != null && m.saves > 0 ? [`saves ${formatMoney(Math.round(m.saves), m.currency)}`] : []),
+        ...(m.unsure ? [`from ${claimedBy(m.rule)} — check it`] : [])],
       where: null, action: 'open', claim: null, daysLeft: null, order: 0, things: [],
       signature: signalSignature('price_match', m.store.id, m.currency, m.price), snoozeTo: snoozeUntil(d.today),
       link: watch?.url && isShownLink(watch.url) ? watch.url : null,

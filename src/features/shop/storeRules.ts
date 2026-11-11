@@ -414,6 +414,8 @@ export interface PriceMatch {
   saves:    number | null
   /** "Elkjøp matches Power: 2 990 there, read 05:23 — its price match, typed 10.11.2026". */
   words:    string
+  /** When the offer list was read: "05:23" today (Oslo), else its day ("09.11.2026"). */
+  read:     string
   /** The store's price-match rule is one Ask AI wrote and nobody checked. */
   unsure:   boolean
   /** What the store's terms leave out that the list can't tell ("Elkjøp doesn't match campaign prices — check Power's isn't one"). */
@@ -466,7 +468,7 @@ export function priceMatches(stores: readonly ShopStore[], rules: readonly ShopS
     ]
     out.push({
       store, rule: best.rule, offer: best.offer, matches: best.name, price: best.offer.price, currency: best.offer.currency,
-      ownPrice: own, saves: own !== null ? own - best.offer.price : null,
+      ownPrice: own, saves: own !== null ? own - best.offer.price : null, read: readWords(readAt, now),
       words: `${store.name} matches ${best.name}: ${num(best.offer.price)} there, read ${readWords(readAt, now)} — its price match, ${sourceWords(best.rule)}`,
       caveats, unsure: unchecked(best.rule),
     })
