@@ -224,10 +224,11 @@ function checkAiWriteGroup() {
   //     while every user table keeps it, and nothing may be embedded in a shared one read whole (guardian, 10.11.2026).
   tables.shop_site_policies = [{ id: 'sp1', host: 'finn.no', no_automated_reading: true }]
   tables.fx_rates_nok = [{ day: '2026-11-09', currency: 'EUR', nok_per_unit: 11.7 }]
+  tables.shop_deal_days = [{ id: 'dd1', slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday' }]
   tables.shop_items = [{ id: 's1', user_id: OWNER, title: 'Phone' }, { id: 's2', user_id: STRANGER, title: 'Not mine' }]
   const selects = table => log.filter(l => l.table === table && l.kind === 'select')
   const userFilter = l => l.filters.some(([op, c, v]) => op === 'eq' && c === 'user_id' && v === OWNER)
-  for (const table of ['shop_site_policies', 'fx_rates_nok']) {
+  for (const table of ['shop_site_policies', 'fx_rates_nok', 'shop_deal_days']) {
     const seen = selects(table).length
     script = [gemini([{ functionCall: { name: 'db_query', args: { table } } }]), gemini([{ text: 'x' }])]
     r = await call({ messages: msg }, web)
@@ -245,6 +246,9 @@ function checkAiWriteGroup() {
   script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_site_policies', select: '*, shop_items(*)' } } }]), gemini([{ text: 'x' }])]
   r = await call({ messages: msg }, web)
   check('…and nothing may be embedded in a shared table read whole', r.body.steps?.some(s => s.includes('nothing may be embedded inside shop_site_policies')), JSON.stringify(r.body.steps))
+  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_deal_days', select: '*, shop_signal_states(*)' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('…shop_deal_days included (it could reach other accounts\' Needs-a-look rows)', r.body.steps?.some(s => s.includes('nothing may be embedded inside shop_deal_days')), JSON.stringify(r.body.steps))
   // 10. after a turn AIPanel refreshes the 'aiWrite' group: it must reach a screen's key
   // for every table the assistant may write. A new rw table fails here until mapped.
   checkAiWriteGroup()

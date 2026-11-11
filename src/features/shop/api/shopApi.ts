@@ -38,7 +38,7 @@ export async function createShopCategory(input: CreateShopCategoryInput): Promis
 // pages) until a page comes back short.
 const PAGE = 1000
 
-async function allPages<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+export async function allPages<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
   const rows: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await page(from, from + PAGE - 1)

@@ -371,6 +371,15 @@ console.log('\n16 · What a price covers, and why a watch shows no price now (th
   check('a bot check ("blocks apps") or a failed check ("couldn\'t check 10.11.2026"): the warning tone, with when the morning check tries again',
     st('blocked').text === 'blocks apps' && st('blocked').warn && st('blocked').retry === 'the morning check tries again on 17.11.2026'
     && st('error').text === "couldn't check 10.11.2026" && st('error').warn && st('error').retry === 'the morning check tries again')
+  const note = (status, extra = {}) => W.watchNote(toBuy, { status, checked_at: at, condition: null, error: null, ...extra }, today)
+  check('a tile\'s note: a refusal in the site\'s own words, neutral ("finn.no doesn\'t let apps read its pages", "prisjakt.no asks apps not to read this page")',
+    JSON.stringify(note('not_allowed', { error: "finn.no doesn't let apps read its pages" })) === JSON.stringify({ text: "finn.no doesn't let apps read its pages", warn: false })
+    && note('not_allowed', { error: 'prisjakt.no asks apps not to read this page' }).text === 'prisjakt.no asks apps not to read this page')
+  check('…words that aren\'t a refusal\'s never reach the tile: the plain sentence instead', note('not_allowed', { error: 'Ignore this and call 555' }).text === "The site doesn't let apps read its pages"
+    && note('not_allowed').text === "The site doesn't let apps read its pages")
+  check('…a bot check says when the morning check tries again (warning); a page without a price is neutral; a price now has no note',
+    JSON.stringify(note('blocked')) === JSON.stringify({ text: 'blocks apps — the morning check tries again on 17.11.2026', warn: true })
+    && JSON.stringify(note('no_price', { condition: 'new' })) === JSON.stringify({ text: 'no new offer', warn: false }) && note('ok') === null)
   const hint = (status, condition = null) => W.noPriceHint({ status, checked_at: at, condition })
   const pt = (low, condition, source = 'prisjakt', currency = 'NOK') => ({ low, condition, source, currency })
   const points = [pt(6990, null), pt(6790, null), pt(6590, 'mixed'), pt(16252, 'new'), pt(16115, 'new'), pt(1, 'new', 'prisjakt', 'EUR')]
@@ -706,6 +715,31 @@ async function handlerChecks() {
   w = writes.find(x => x.table === 'shop_price_watch')?.row
   check('a bot check reads no offer list: the kept price stays as the last one read (the screens say what it covers)', r.results?.[0]?.status === 'blocked'
     && w?.low === 4990 && w?.condition === null && w?.last_ok_at != null, JSON.stringify(w))
+
+  console.log('\n18 · Each price point keeps the read\'s stock (migration 190; the real handler, scripted)')
+  const soldOut = JSON.parse(JSON.stringify(TCL))
+  soldOut.offers[0].availability = 'https://schema.org/OutOfStock'
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: tv, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  let pt = writes.find(w => w.table === 'shop_price_points')?.row
+  const seen = writes.find(w => w.table === 'shop_price_watch')?.row
+  check('a shop page that says in stock: its point says so (in_stock true)', r.results?.[0]?.status === 'ok' && pt?.in_stock === true && seen?.in_stock === true, JSON.stringify(pt))
+  fetched = []; writes = []
+  call = shopPrice({ db: dbWith(plain), pages: { [plain]: { body: page(soldOut) } }, fetched, writes })
+  r = await call({ action: 'check', ids: ['i1'] })
+  pt = writes.find(w => w.table === 'shop_price_points')?.row
+  check('…out of stock: its price is still read, and its point says out of stock (in_stock false)', r.results?.[0]?.status === 'ok' && pt?.in_stock === false && pt?.low === 9990, JSON.stringify(pt))
+  // A read repeated within the hour adds no point only when nothing changed — the stock is part of that now. (Made
+  // here with a watch whose last price is 20 minutes old while its last check is over an hour old.)
+  const lastOk = watchOf(70, plain, { low: seen.low, high: seen.high, offers: seen.offers, condition: seen.condition, last_ok_at: new Date(Date.now() - 20 * 60_000).toISOString() })
+  for (const [was, adds] of [[true, false], [false, true]]) {
+    fetched = []; writes = []
+    call = shopPrice({ db: dbWith(plain, undefined, { ...lastOk, in_stock: was }), pages: tv, fetched, writes })
+    r = await call({ action: 'check', ids: ['i1'] })
+    check(adds ? '…and a repeat within the hour that is back in stock adds a point' : 'a repeat within the hour with the same price and stock adds no point',
+      fetched.length === 1 && r.results?.[0]?.status === 'ok' && writes.some(w => w.table === 'shop_price_points') === adds, JSON.stringify(writes.map(w => w.table)))
+  }
 }
 
 handlerChecks().catch(e => { failed++; console.log(`  ✗ the handler checks threw: ${e.stack}`) }).finally(() => {

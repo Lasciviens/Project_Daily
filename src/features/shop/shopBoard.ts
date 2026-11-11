@@ -2,20 +2,26 @@
 // scripts/verify-life-boards.cjs can check every step.
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
-//   1  phone, tablet — one stack: the totals, the filters, then the groups.
-//   2+ totals + filters in a sticky rail on the left (they sum up and drive
-//      the list); the category groups take every other track, so their cards
-//      (17–21rem) gain columns as the page widens.
-export const WISHLIST_SECTIONS = ['totals', 'filters', 'groups'] as const
+//   Wishlist (phase 2, approved 10.11.2026) — Owned's shape: the filter bar
+//   across the top, the summary line inside `groups` right above the picture
+//   tiles, and "Needs a look" in a sticky rail on the RIGHT (owner,
+//   14.10.2026: where Owned had Coming up).
+//   1  phone, tablet — Needs a look as ONE line (it opens a sheet; owner,
+//      09.11.2026: the first screen is the things), the filters, the groups.
+//      The line leads: the filters go away for an empty wishlist, and nothing
+//      that stays may sit under them (a layout shift).
+//   2+ the groups take every track but the last, so the tiles (10rem and up)
+//      gain columns as the page widens; Needs a look is the last track.
+export const WISHLIST_SECTIONS = ['look', 'filters', 'groups'] as const
 export type WishlistSection = typeof WISHLIST_SECTIONS[number]
 
-const WISH_RAIL = { stack: ['totals', 'filters'], sticky: true } as const
+const LOOK_RAIL = { stack: ['look'], sticky: true } as const
 
 export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
-  1: ['totals', 'filters', 'groups'],
-  2: { lead: 1, columns: [WISH_RAIL, ['groups']] },
-  3: { lead: 1, columns: [WISH_RAIL, { stack: ['groups'], span: 2 }] },
-  4: { lead: 1, columns: [WISH_RAIL, { stack: ['groups'], span: 3 }] },
+  1: ['look', 'filters', 'groups'],
+  2: { top: ['filters'], columns: [['groups'], LOOK_RAIL] },
+  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, LOOK_RAIL] },
+  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, LOOK_RAIL] },
 }
 
 //   1  the add box first (capture is the point), the list, the grocery
@@ -39,18 +45,24 @@ export const QUICK_BOARD: BoardLayouts<QuickSection> = {
 //   The filter bar runs across the top at every width (owner, 08.10.2026: it
 //   drives everything below, so it reads first). The summary is one line
 //   right above the things it sums up (owner, 09.11.2026: the "What I own"
-//   card took the phone's first screen).
-//   1  phone, tablet — the filters, coming up, the summary line, the things.
+//   card took the phone's first screen). Needs a look took Coming up's place
+//   (10.11.2026), so a return window or complaint right is never listed twice.
+//   1  phone, tablet — Needs a look as one line first (as on the Wishlist:
+//      the filters come with the things, and nothing that stays may sit under
+//      them), the filters, the summary line, the things.
 //   2+ the summary line and the category groups first, taking every track
-//      but the last; the deadlines in a sticky rail on the RIGHT (owner,
-//      14.10.2026). With nothing coming up, that track is the one left empty.
-export const OWNED_SECTIONS = ['filters', 'summary', 'coming', 'groups'] as const
+//      but the last; Needs a look in a sticky rail on the RIGHT (owner,
+//      14.10.2026). A tapped row's record takes the rail's place (`pane`,
+//      step A, 10.11.2026: the side pane from 60rem) — the list keeps its
+//      tracks and its scroll, Back brings Needs a look back. A phone has no
+//      pane: its record opens full screen (absent from step 1).
+export const OWNED_SECTIONS = ['filters', 'summary', 'look', 'pane', 'groups'] as const
 export type OwnedSection = typeof OWNED_SECTIONS[number]
 
-const OWNED_RAIL = { stack: ['coming'], sticky: true } as const
+const OWNED_RAIL = { stack: ['look', 'pane'], sticky: true } as const
 
 export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
-  1: ['filters', 'coming', 'summary', 'groups'],
+  1: ['look', 'filters', 'summary', 'groups'],
   2: { top: ['filters'], columns: [['summary', 'groups'], OWNED_RAIL] },
   3: { top: ['filters'], columns: [{ stack: ['summary', 'groups'], span: 2 }, OWNED_RAIL] },
   4: { top: ['filters'], columns: [{ stack: ['summary', 'groups'], span: 3 }, OWNED_RAIL] },

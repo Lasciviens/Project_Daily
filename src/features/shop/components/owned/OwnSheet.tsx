@@ -6,9 +6,11 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { middayIso } from '../../../media/watchedWhen'
 import { useCreateShopItem } from '../../hooks/useShop'
 import { useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
+import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { listOf } from '../../shopModel'
 import { MoneyEditor, Toggle } from '../record/factKit'
+import { CategoryPicker } from '../CategoryPicker'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
 
 const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'broken', 'lost', 'other']
@@ -23,6 +25,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const create = useCreateShopItem()
   const link = useCreateShopLink({ report: false })
   const fill = useFillRatesNow()
+  const suggested = useResolveCategory()
   const today = todayStr()
   const [had, setHad] = useState(hadInitially)
   const [title, setTitle] = useState('')
@@ -42,8 +45,6 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const [soldTo, setSoldTo] = useState('')
   const [paidFrom, setPaidFrom] = useState('')
   const [moneyTo, setMoneyTo] = useState('')
-  const tops = categories.filter(c => !c.parent_id)
-  const subs = topId ? categories.filter(c => c.parent_id === topId) : []
   const money = how === 'sold' || how === 'traded_in' || how === 'other'
   const sources = items.filter(i => isPossession(i) && !i.accessory_of && i.disposal)
   const targets = items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i)))
@@ -53,8 +54,10 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
     if (!valid) return
     let row: ShopItem
     try {
+      // A suggested category picked here is made now, with the save.
+      const categoryId = await suggested.resolve({ topId, subId }, categories)
       row = await create.mutateAsync({ input: {
-        title: title.trim(), list: 'wishlist', status: 'bought', category_id: subId || topId || null,
+        title: title.trim(), list: 'wishlist', status: 'bought', category_id: categoryId,
         price: gift && price == null ? 0 : price, currency, platform: store.trim() || null,
         bought_at: middayIso(day), approx_dates: approx, got_as_gift: gift, used,
         ...(had ? {
@@ -76,7 +79,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
       footer={
         <div className="flex items-center gap-2">
           <Button onClick={onClose} className="ml-auto" disabled={create.isPending}>Cancel</Button>
-          <Button variant="primary" onClick={() => { void save() }} disabled={!valid} loading={create.isPending || link.isPending}>Add</Button>
+          <Button variant="primary" onClick={() => { void save() }} disabled={!valid} loading={suggested.busy || create.isPending || link.isPending}>Add</Button>
         </div>
       }>
       <div className="flex flex-col gap-3">
@@ -87,14 +90,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <input id="own-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <select value={topId} onChange={e => { setTopId(e.target.value); setSubId('') }} aria-label="Category" className="select">
-            <option value="">No category</option>
-            {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <select value={subId} onChange={e => setSubId(e.target.value)} disabled={!topId} aria-label="Subcategory" className="select disabled:opacity-50">
-            <option value="">{topId ? 'No subcategory' : 'Subcategory'}</option>
-            {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <CategoryPicker categories={categories} value={{ topId, subId }} onChange={p => { setTopId(p.topId); setSubId(p.subId) }} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

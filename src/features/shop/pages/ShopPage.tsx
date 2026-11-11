@@ -1,11 +1,12 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { History, Link2, MoreHorizontal, Plus } from 'lucide-react'
-import { Button, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
+import { History, Link2, MoreHorizontal, Plus, Tag } from 'lucide-react'
+import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useShopCategories, useShopItems } from '../hooks/useShop'
 import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
@@ -13,13 +14,15 @@ import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
 import { QuickListView } from '../components/QuickListView'
-import { OwnedView } from '../components/owned/OwnedView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
+import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
 
-// Stats (the only charts on the page) loads when opened, and in idle time once the page shows.
+// Owned's Things (its rows and the side pane's opener) and Stats (the only charts on the page) load when opened,
+// and in idle time once the page shows (the Wishlist, the default view, carries only its own code).
+const OwnedView = lazyPart('shop-owned', () => import('../components/owned/OwnedView').then(m => m.OwnedView))
 const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
-const OTHER_VIEWS = [ShopStatsView]
+const OTHER_VIEWS = [OwnedView, ShopStatsView]
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -52,7 +55,7 @@ export function ShopPage() {
   useIdlePreload(OTHER_VIEWS)
   const modal = useEntityModal()
   const { data: items = [], isLoading: itemsLoading } = useShopItems()
-  const { data: categories = [], isLoading: catsLoading } = useShopCategories()
+  const { data: categories = [], isLoading: catsLoading, isError: catsError } = useShopCategories()
   const { data: costs = [] } = useShopCosts()
   useAutoFillRates(items, costs)
   const isLoading = itemsLoading || catsLoading
@@ -83,12 +86,31 @@ export function ShopPage() {
       </MenuItems>
     </Menu>
   )
+  // "Add the suggested categories (34)" while the pickers have any: one tap, then "34 categories added · Undo".
+  // Its room in the bar is kept while the categories and the taxonomy load, so the view switch never moves.
+  const suggested = useAddSuggestedCategories(categories)
+  const suggestKnown = !catsLoading && !catsError && suggested.count != null
+  const suggestMenu = useRememberedFlag('shop:suggestMenu', (suggested.count ?? 0) > 0, !catsLoading && !catsError && suggested.count != null, true) && (
+    <Menu as="div">
+      <MenuButton className="icon-btn-bordered" aria-label="More in Shop" title="More in Shop">
+        <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
+      </MenuButton>
+      <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
+        <MenuItem disabled={!suggestKnown || suggested.busy || !suggested.count}>
+          <button type="button" onClick={() => { void suggested.add() }} className="menu-item data-[disabled]:opacity-50">
+            <Tag aria-hidden className="h-4 w-4" /> Add the suggested categories{suggestKnown && suggested.count ? ` (${suggested.count})` : ''}
+          </button>
+        </MenuItem>
+      </MenuItems>
+    </Menu>
+  )
 
   // The bar keeps one row and the view switch one width on every view (owner,
   // 03.11.2026: a tab switch never reshapes the bar). On a phone Owned's own
   // controls — Things | Stats and the menu of other ways in — sit in the row
   // right under it instead of growing it by a row and narrowing the switch;
   // from a tablet they share the bar's row, where they fit without moving it.
+  // The ⋯ of suggested categories is on every view alike, so a switch never moves it.
   return (
     <PageContainer>
       <PageHeader title="Shop" art={<ShopHeroArt />}>
@@ -113,6 +135,7 @@ export function ShopPage() {
               <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
               {moreWaysMenu}
             </>}
+            {suggestMenu}
             <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
             </Button>
@@ -136,7 +159,11 @@ export function ShopPage() {
                   scope={statsScope} onScope={setStatsScope} year={statsYear} onYear={setStatsYear} />
               </Suspense>
             )
-            : <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+            : (
+              <Suspense fallback={<SkeletonTab />}>
+                <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+              </Suspense>
+            )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}
     </PageContainer>
   )
