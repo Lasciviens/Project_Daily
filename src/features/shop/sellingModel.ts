@@ -140,9 +140,24 @@ export function marketplacesOf(templates: readonly ShopAdTemplate[]): string[] {
   return out
 }
 
-/** The marketplace's own front page, built from its host only (a link out; never fetched): https://finn.no. */
-export function marketplaceLink(host: string | null | undefined): string | null {
-  return host && isHost(host) ? `https://${host}` : null
+/**
+ * The marketplace's own front page, built from its host only (a link out; never fetched): https://finn.no — and only
+ * for a host the owner's templates name (`known`, from `marketplacesOf`). A listing's or an ad note's marketplace is
+ * input the assistant could have written ("flnn.no"): it is shown as text, never made a link (security review, 11.11.2026).
+ */
+export function marketplaceLink(host: string | null | undefined, known: readonly string[]): string | null {
+  return host && isHost(host) && known.includes(host) ? `https://${host}` : null
+}
+
+/**
+ * A link's address as shown beside it: the host in full (the URL parser's form, its port too) and the rest, which
+ * alone may be cut — "www.finn.no" + "/recommerce/forsale/item/1". Null for a link that doesn't parse.
+ */
+export function linkAddress(url: string): { host: string; path: string } | null {
+  let u: URL
+  try { u = new URL(url) } catch { return null }
+  const rest = `${u.pathname === '/' ? '' : u.pathname}${u.search}${u.hash}`
+  return { host: u.host, path: rest.replace(/\/$/, '') }
 }
 
 /**

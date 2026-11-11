@@ -13,6 +13,7 @@
 import { formatDate } from '../../shared/utils/dateFormat'
 import { categoryPath } from './shopModel'
 import { categoryKey, taxonomySubOf, taxonomyTopOf } from './shopTaxonomy'
+import { oneLine } from './oneLine'
 import type { AdLanguage, ResaleCondition, ShopAdTemplate, ShopHandoverChecklist } from './resaleTypes'
 import type { ShopCategory } from './types'
 
@@ -49,7 +50,7 @@ function amount(n: number): string {
 /** "A, B og C" / "A, B and C". */
 function listWords(xs: readonly string[], lang: AdLanguage): string {
   // Each name on one line, as `name` (a newline in one would start a line of its own in the ad).
-  const ys = xs.map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  const ys = xs.map(oneLine).filter(Boolean)
   if (ys.length <= 1) return ys[0] ?? ''
   return `${ys.slice(0, -1).join(', ')} ${lang === 'nb' ? 'og' : 'and'} ${ys[ys.length - 1]}`
 }
@@ -58,7 +59,7 @@ function listWords(xs: readonly string[], lang: AdLanguage): string {
 export function fieldValues(facts: AdFacts, lang: AdLanguage): Record<AdField, string> {
   const cur = (facts.currency ?? 'NOK').toUpperCase()
   return {
-    name:        facts.name.replace(/\s+/g, ' ').trim(),
+    name:        oneLine(facts.name),
     condition:   facts.condition ? CONDITION_WORDS[lang][facts.condition] : '',
     bought:      facts.bought ? `${facts.approx ? (lang === 'nb' ? 'ca. ' : 'about ') : ''}${formatDate(facts.bought)}` : '',
     price:       facts.price != null && Number.isFinite(facts.price) && facts.price >= 0

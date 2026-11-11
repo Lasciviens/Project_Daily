@@ -6,6 +6,7 @@
  * value kept by category, the store scorecard) — each following the picked period.
  * Run: node scripts/verify-shop-owning.cjs */
 require('sucrase/register')
+const fs = require('fs')
 const K = require('../src/features/shop/complaintModel')
 const I = require('../src/features/shop/insuranceList')
 const O = require('../src/features/shop/ownModel')
@@ -65,6 +66,17 @@ console.log('\n2 · The letter (Norwegian, æ ø å kept)')
   check('a day from memory reads "rundt"', approx.includes('hos dere rundt 01.06.2025.'))
   const evil = K.complaintLetter({ title: 'A\nB\u0007C', store: 'S\r\nT', bought: null, approx: false, serial: null, problem: 'x' })
   check('a title or store with line breaks or control characters stays on its line', evil.includes('Reklamasjon – A B C') && evil.includes('Hei S T,'))
+  // Security review, 11.11.2026: the store's page is offered only when it is https and not a price site's.
+  check('the store\'s page: the record\'s https link; never plain http, a price site\'s page (by its host or the watch) or no link',
+    K.storePageOf('https://www.power.no/tv/p-1/', 'store') === 'https://www.power.no/tv/p-1/' && K.storePageOf('http://www.power.no/tv/p-1/', null) === null
+    && K.storePageOf('https://www.prisjakt.no/c/tv', null) === null && K.storePageOf('https://www.prisjakt.no/product.php?p=1', null) === null
+    && K.storePageOf('https://shop.example/x', 'prisjakt') === null && K.storePageOf('javascript:alert(1)', null) === null && K.storePageOf(null, null) === null)
+  check('…the sheet uses it (no webUrl of its own, which lets plain http through)', /storePageOf\(item\.url, watch\?\.source\)/.test(fs.readFileSync(`${__dirname}/../src/features/shop/components/owned/ComplaintSheet.tsx`, 'utf8'))
+    && !/webUrl/.test(fs.readFileSync(`${__dirname}/../src/features/shop/components/owned/ComplaintSheet.tsx`, 'utf8')))
+  // Security review, 11.11.2026: a bidi control would make the pasted letter read otherwise than what was shown.
+  const bidi = K.complaintLetter({ title: 'Lamp\u202Egnp.exe\u202C', store: 'S\u2066\u200Ftore\u2069\u0085x', bought: null, approx: false, serial: 'A\u200EB', problem: 'x' })
+  check('…and without bidi controls (U+202A–U+202E, U+2066–U+2069, U+200E/U+200F) — the shared oneLine, as in the ad',
+    bidi.includes('Reklamasjon – Lampgnp.exe') && bidi.includes('Hei Store x,') && bidi.includes('AB') && !/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u0085]/.test(bidi), JSON.stringify(bidi.slice(0, 120)))
 }
 
 console.log('\n3 · What money back is for')
@@ -93,11 +105,30 @@ console.log('\n4 · The insurance list')
   const csv = I.insuranceCsv(rows)
   const lines = csv.slice(1).trim().split('\r\n')
   check('a byte-order mark, semicolons, one header and a line per thing', csv.charCodeAt(0) === 0xfeff && lines.length === 5 && lines[0].split(';').length === I.INSURANCE_COLUMNS.length)
-  check('dates DD.MM.YYYY, whole amounts', lines[1] === 'Phone;Electronics › Phones;;Power;01.03.2025;X1;9000;NOK;9000;13000;09.11.2026', lines[1])
-  check('a gift reads 0 paid', lines[4].startsWith('Gift lamp;;;;24.12.2025;;0;NOK;0;;'), lines[4])
-  check('a cell is never a formula (=, +, -, @ get an apostrophe)', I.csvCell('=HYPERLINK("x")') === '"\'=HYPERLINK(""x"")"' && I.csvCell('+1') === "'+1" && I.csvCell('@cmd') === "'@cmd" && I.csvCell('-5') === "'-5")
-  check('a separator, a quote or a line break is quoted', I.csvCell('a;b') === '"a;b"' && I.csvCell('say "hi"') === '"say ""hi"""' && I.csvCell('a\nb') === '"a\nb"')
-  check('numbers are whole, negative numbers stay numbers', I.csvCell(1234.6) === '1235' && I.csvCell(-20) === '-20')
+  check('dates DD.MM.YYYY, whole amounts; text quoted, numbers bare', lines[1] === '"Phone";"Electronics › Phones";;"Power";"01.03.2025";"X1";9000;"NOK";9000;13000;"09.11.2026"', lines[1])
+  check('a gift reads 0 paid', lines[4].startsWith('"Gift lamp";;;;"24.12.2025";;0;"NOK";0;;'), lines[4])
+  check('a cell is never a formula (=, +, -, @ get an apostrophe)', I.csvCell('=HYPERLINK("x")') === '"\'=HYPERLINK(""x"")"' && I.csvCell('+1') === '"\'+1"' && I.csvCell('@cmd') === '"\'@cmd"' && I.csvCell('-5') === '"\'-5"')
+  check('…nor after spaces, in full-width form, or after a leading tab, return or line break (tested before the breaks are tidied)',
+    I.csvCell('  =1+1') === '"\'  =1+1"' && I.csvCell('\uFF1D1+1') === '"\'\uFF1D1+1"' && I.csvCell('\t=1+1') === '"\'\t=1+1"' && I.csvCell('\r=1+1') === '"\'\n=1+1"' && I.csvCell('\r\n=1+1') === '"\'\n=1+1"')
+  check('every text cell is quoted, so a comma or a tab never starts a cell (security review, 11.11.2026: "Lamp,=1+1", "Lamp<tab>=1+1")',
+    I.csvCell('Lamp,=1+1') === '"Lamp,=1+1"' && I.csvCell('Lamp\t=1+1') === '"Lamp\t=1+1"' && I.csvCell('Lamp') === '"Lamp"')
+  check('a separator, a quote or a line break stays inside its quotes', I.csvCell('a;b') === '"a;b"' && I.csvCell('say "hi"') === '"say ""hi"""' && I.csvCell('a\r\nb') === '"a\nb"')
+  {
+    // The file read back as a comma-, a tab- and a semicolon-separated sheet would read it (quotes honoured): no cell is a formula.
+    const evil = I.insuranceCsv([{ ...rows[0], title: 'Lamp,=1+1', store: 'Shop\t@SUM(A1)', serial: '\r-2+3', category: ' +1' }])
+    const cellsBy = sep => {
+      const out = []
+      let cur = '', quoted = false
+      for (const ch of evil.slice(1)) {
+        if (ch === '"') quoted = !quoted
+        else if (!quoted && (ch === sep || ch === '\n' || ch === '\r')) { out.push(cur); cur = '' } else cur += ch
+      }
+      return out.concat(cur)
+    }
+    const formulas = [',', '\t', ';'].flatMap(sep => cellsBy(sep).filter(c => /^[\s]*[=+\-@]/.test(c)))
+    check('…read back with a comma, a tab or a semicolon as the separator, no cell is a formula', formulas.length === 0, JSON.stringify(formulas))
+  }
+  check('numbers are whole, negative numbers stay numbers; no NaN', I.csvCell(1234.6) === '1235' && I.csvCell(-20) === '-20' && I.csvCell(NaN) === '')
   check('the file is named with the day', I.insuranceFileName(TODAY) === 'Insurance list 10.11.2026.csv')
 }
 

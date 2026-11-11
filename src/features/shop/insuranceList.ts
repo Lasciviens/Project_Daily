@@ -74,19 +74,22 @@ export function insuranceTotals(rows: readonly InsuranceRow[]): InsuranceTotals 
 // ── The CSV file ─────────────────────────────────────────────────────────────
 //
 // Semicolons between cells (a Norwegian spreadsheet reads a comma as the decimal sign) and a byte-order mark,
-// so Excel reads æ, ø and å. A cell is data, never a formula: a title read from a web page that starts with
-// = + - @ (or a tab or a return) gets a leading apostrophe — a spreadsheet would run it otherwise.
+// so Excel reads æ, ø and å. A cell is data, never a formula (OWASP's advice on CSV injection): every text cell is
+// quoted, so a spreadsheet that splits on a comma or a tab still reads "Lamp,=1+1" as one cell (security review,
+// 11.11.2026); and a text that starts with = + - @ (also after spaces, or in their full-width forms) or with a tab,
+// a return or a line break gets a leading apostrophe — tested on the text as it came, before its breaks are tidied.
 
 /** The byte-order mark that tells a spreadsheet the file is UTF-8. */
 const BOM = String.fromCharCode(0xfeff)
-const FORMULA_START = /^[=+\-@\t\r]/
+// \uFF1D \uFF0B \uFF0D \uFF20: the full-width = + - @; \u3000: the ideographic space.
+const FORMULA_START = /^[\s\u3000]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r\n]/
 
-/** One CSV cell: never a formula, quoted when it holds a separator, a quote or a line break. */
+/** One CSV cell: a number as a whole number; a text quoted, never a formula. */
 export function csvCell(value: string | number | null | undefined): string {
-  if (value == null) return ''
-  let s = typeof value === 'number' ? String(Math.round(value)) : value.replace(/\r\n?/g, '\n')
-  if (typeof value === 'string' && FORMULA_START.test(s)) s = `'${s}`
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  if (value == null || value === '') return ''
+  if (typeof value === 'number') return Number.isFinite(value) ? String(Math.round(value)) : ''
+  const text = FORMULA_START.test(value) ? `'${value}` : value
+  return `"${text.replace(/\r\n?/g, '\n').replace(/"/g, '""')}"`
 }
 
 export const INSURANCE_COLUMNS = [

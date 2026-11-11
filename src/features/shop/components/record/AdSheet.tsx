@@ -47,14 +47,16 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
   const title = edited?.title ?? filled?.title ?? item.title
   const body = edited?.body ?? filled?.body ?? ''
   const [editingTemplate, setEditingTemplate] = useState(false)
-  const link = marketplaceLink(where)
+  // A link out only to a host the owner's templates name: a listing's marketplace could be the assistant's look-alike.
+  const link = marketplaceLink(where, markets)
+  const named = where && markets.includes(where) ? where : 'the marketplace'
   // A listing's price is below a billion with at most two decimals (192).
   const listable = price != null && isPrice(price) && twoDecimals(price)
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(adClipboardText(title, body))
-      toast.success(`Ad copied — paste it on ${where ?? 'the marketplace'}`)
+      toast.success(`Ad copied — paste it on ${named}`)
     } catch {
       toast.error('Couldn\'t copy — select the text and copy it by hand')
     }

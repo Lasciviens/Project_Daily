@@ -13,6 +13,7 @@
 
 import { formatDate } from '../../shared/utils/dateFormat'
 import { addMonths, boughtOn, daysBetween, durationLabel } from './ownModel'
+import { oneLine } from './oneLine'
 import type { ShopItem } from './types'
 
 /** The law the letter cites, and its two limits in years. */
@@ -84,8 +85,18 @@ export interface LetterInput {
 /** What the letter says where the owner has not written what is wrong yet. */
 export const PROBLEM_PLACEHOLDER = '[Beskriv feilen her]'
 
-/** One line of text: no line breaks or control characters, spaces squeezed (a title is pasted from a page). */
-const oneLine = (s: string | null | undefined): string => (s ?? '').replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim()
+
+/**
+ * The store's own page for the thing, for Something's wrong: the record's link only when it is an https page and not
+ * a price site's — Prisjakt is told by its host (any page on prisjakt.no or under it) or by the watch's source —
+ * so the sheet never offers a plain-http or a price-site page as the store's (security review, 11.11.2026).
+ */
+export function storePageOf(url: string | null | undefined, watchSource: string | null | undefined): string | null {
+  if (!url || watchSource === 'prisjakt') return null
+  let u: URL
+  try { u = new URL(url) } catch { return null }
+  return u.protocol === 'https:' && !/(^|\.)prisjakt\.no$/i.test(u.hostname) ? u.href : null
+}
 
 export function letterFacts(item: ShopItem): Omit<LetterInput, 'problem'> {
   return { title: item.title, store: item.platform ?? null, bought: boughtOn(item), approx: !!item.approx_dates, serial: item.serial ?? null }

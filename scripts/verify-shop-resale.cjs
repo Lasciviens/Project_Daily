@@ -143,9 +143,9 @@ check('every amount\'s currency is the Shop\'s four (192 on each table)', (sql.m
   // The shared cases (verify-db-shop-rules runs the same ones through 192's real CHECK).
   const LINKS = [...JSON.parse(read('scripts/fixtures/shop-ad-links.json')).cases,
     { raw: 'https://finn.no' + '/x'.repeat(1030), stored: false, accepted: false, why: 'over 2 048 characters' }]
-  const odd = ['‮', '​', ' ', '\u0085']
+  const odd = ['\u202E', '\u200B', '\u00A0', '\u0085']
   check('the shared ad-link cases hold U+202E, U+200B, U+00A0 and U+0085 (each in a path), and a direction change in a host',
-    odd.every(ch => LINKS.some(c => c.raw.includes(ch) && c.raw.startsWith('https://finn.no/'))) && LINKS.some(c => c.raw.startsWith('https://fi‮')) && LINKS.length >= 25)
+    odd.every(ch => LINKS.some(c => c.raw.includes(ch) && c.raw.startsWith('https://finn.no/'))) && LINKS.some(c => c.raw.startsWith('https://fi\u202E')) && LINKS.length >= 25)
   const storedWrong = LINKS.filter(c => RR.isAdUrl(c.raw) !== c.stored)
   check('an ad\'s link as stored: printable ASCII after the host, nothing else — the app\'s pattern gives every shared case its answer', !storedWrong.length, storedWrong.map(c => c.why).join('; '))
   const sentWrong = LINKS.filter(c => (RR.normalizeAdUrl(c.raw) !== null) !== c.accepted)
@@ -153,7 +153,7 @@ check('every amount\'s currency is the Shop\'s four (192 on each table)', (sql.m
   check('…what is sent is one the stored check takes, the same href the database is asked about', LINKS.every(c => {
     const n = RR.normalizeAdUrl(c.raw)
     return n === null || (RR.isAdUrl(n) && n === new URL(c.raw.trim()).href && !/[^!-~]/.test(n))
-  }) && RR.normalizeAdUrl('https://finn.no/a‮b') === 'https://finn.no/a%E2%80%AEb')
+  }) && RR.normalizeAdUrl('https://finn.no/a\u202Eb') === 'https://finn.no/a%E2%80%AEb')
 }
 check('a link is on a marketplace by its host or a subdomain — never by a name that only starts or ends the same',
   RR.linkOnHost('https://www.finn.no/x', 'finn.no') && RR.linkOnHost('https://finn.no/x', 'finn.no') && !RR.linkOnHost('https://finn.no.evil.example/x', 'finn.no')
@@ -386,6 +386,15 @@ check('…in Norwegian, with its letters (æ ø å) as they are', seeds.every(s 
   check('an accessory\'s name stays on one line (a newline or a tab in it is a space), as the thing\'s name does',
     TX.fillAd(seeds[0], { ...facts, accessories: ['etui\nmed glidelås', '  lader\t ', ''] }).body.includes('Medfølger: etui med glidelås og lader.')
     && !TX.fillAd(seeds[0], { ...facts, accessories: ['a\nPris: 1 kr'] }).body.includes('\nPris: 1 kr'))
+  {
+    // Security review, 11.11.2026: a title from a page or the assistant may hold bidi controls or control characters.
+    const ad = TX.fillAd(seeds[0], { ...facts, name: 'Kamera\u202E 0001 kr\u202C', accessories: ['etui\u2066x\u2069', 'lader\u0085Pris: 1 kr', 'kabel\u200F'] })
+    const text = ad.title + ad.body
+    check('the ad\'s name and accessories drop bidi controls and control characters (the shared oneLine, as the letter does)',
+      !/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u0085]/.test(text) && ad.title.startsWith('Kamera 0001 kr') && ad.body.includes('Medfølger: etuix, lader Pris: 1 kr og kabel.'), JSON.stringify(ad))
+    const ON = require('../src/features/shop/oneLine')
+    check('…the zero-width joiner stays (emoji are built with it)', ON.oneLine('👩\u200D💻 laptop\n') === '👩\u200D💻 laptop')
+  }
   check('…a field the app doesn\'t know stays as typed and is named', eq(TX.fillAd({ title: '{name}', body: 'Serial: {serial}', language: 'nb' }, facts), { title: 'Sony WH-1000XM5', body: 'Serial: {serial}', unknown: ['serial'] }))
   check('the ad holds only what the owner chose: the fields are the five, never a serial number or who bought it', eq(Object.keys(TX.fieldValues(facts, 'nb')), [...TX.AD_FIELDS]))
 }
@@ -479,7 +488,8 @@ const ITEM = uid(500)
     access('shop_ad_notes') === 'rw' && access('shop_trade_in_quotes') === 'rw' && access('shop_listings') === 'rw'
     && access('shop_value_history') === 'ro' && access('shop_ad_templates') === 'ro' && access('shop_handover_checklists') === 'ro')
   const noWrite = new RegExp(ai.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-  check('…and never an ad\'s link, an ad\'s text or a listing\'s closed_by_sale (AI_NO_WRITE)', noWrite.test('ad_url') && noWrite.test('ad_text') && noWrite.test('closed_by_sale') && !noWrite.test('url'))
+  check('…and never an ad\'s link, an ad\'s text, a marketplace or a listing\'s closed_by_sale (AI_NO_WRITE)', noWrite.test('ad_url') && noWrite.test('ad_text') && noWrite.test('marketplace')
+    && noWrite.test('closed_by_sale') && !noWrite.test('url'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

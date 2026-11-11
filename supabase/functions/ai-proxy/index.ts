@@ -2941,7 +2941,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   shop_ad_notes: {
     access: 'rw',
     purpose: 'Ads for the same thing the user noted by hand ("+ Note an ad"): evidence for what one of their things could sell for. The link is never fetched.',
-    columns: 'id, item_id(uuid FK shop_items), ad_url(https — the user pastes it in the app; never set it), marketplace(the marketplace\'s host: finn.no, tise.com — or null), price(numeric), currency(NOK|TRY|EUR|USD), condition(new|like_new|good|fair|for_parts, nullable), asking(true = what the seller asks — asking, not sold; false = what it sold for), noted_on(date), created_at, updated_at',
+    columns: 'id, item_id(uuid FK shop_items), ad_url(https — the user pastes it in the app; never set it), marketplace(the marketplace\'s host: finn.no, tise.com — or null; never set it), price(numeric), currency(NOK|TRY|EUR|USD), condition(new|like_new|good|fair|for_parts, nullable), asking(true = what the seller asks — asking, not sold; false = what it sold for), noted_on(date), created_at, updated_at',
     rules: 'A note needs the ad\'s link, which only the user pastes in the app — so never add one; you may correct a note\'s price, condition, day or asking when the user says so. Never fetch or open the link, and never invent a price.',
   },
   shop_trade_in_quotes: {
@@ -2959,7 +2959,7 @@ const DB_CATALOG: Record<string, CatalogEntry> = {
   shop_listings: {
     access: 'rw',
     purpose: 'Selling one of the user\'s things: listed (the ad written) → for_sale (the ad is up) → sold (only from recording the sale on shop_items) or withdrawn (taken down unsold), with its dated price changes.',
-    columns: 'id, item_id(uuid FK shop_items), marketplace(host, e.g. finn.no, or null), ad_url(the ad\'s link — never set it), status(listed|for_sale|sold|withdrawn), listed_on(date), for_sale_on(date — set by the database when it goes up), ended_on(date), currency(NOK|TRY|EUR|USD), prices(jsonb array, oldest first: [{"on": "yyyy-mm-dd", "price": number}] — the first the asking price, the last the price now), ad_text(the ad as the user wrote it — never set it; you may draft one in your answer), closed_by_sale(boolean — the database\'s), created_at, updated_at',
+    columns: 'id, item_id(uuid FK shop_items), marketplace(host, e.g. finn.no, or null — never set it), ad_url(the ad\'s link — never set it), status(listed|for_sale|sold|withdrawn), listed_on(date), for_sale_on(date — set by the database when it goes up), ended_on(date), currency(NOK|TRY|EUR|USD), prices(jsonb array, oldest first: [{"on": "yyyy-mm-dd", "price": number}] — the first the asking price, the last the price now), ad_text(the ad as the user wrote it — never set it; you may draft one in your answer), closed_by_sale(boolean — the database\'s), created_at, updated_at',
     rules: [
       'Only when the user says they listed, put up, lowered or took down an ad for one of their things (one open listing per thing; only a thing they have).',
       'Never set status=sold: selling is recording the sale on shop_items (disposal, disposed_on, sale_price), and the database then closes the listing itself; undoing the sale opens it again.',
@@ -3682,9 +3682,12 @@ async function getAthleteProfile(supabase: AnyRecord, userId: string): Promise<A
 // link the owner then taps; an ad's text (shop_listings.ad_text) the owner
 // copies into FINN as it stands, so a steered turn could plant words or a
 // number in a public ad; and a listing's closed_by_sale is the database's
-// (the sale's Undo opens a listing marked so). Play counts are capped at the app's own 1–99
+// (the sale's Undo opens a listing marked so). A marketplace (on ad notes and
+// listings) is the host the ad sheet would link out to: a steered turn could
+// plant a look-alike ("flnn.no") — the app links only to its templates' hosts,
+// and the assistant never sets one (security review, 11.11.2026). Play counts are capped at the app's own 1–99
 // plays, because each extra play becomes a Trakt history write.
-const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key)|(sale_)?fx_(nok|source)|sale_undo|ad_url|ad_text|closed_by_sale)$/
+const AI_NO_WRITE = /^(google_(calendar_event_id|task_id|tasklist_id|etag|position|web_view_link|links|updated_at)|trakt_(id|note_id|note_text|list_id|history_id)|hevy_(routine|workout)_id|session_id|external_ref|external_source|ss_jeu_id|igdb_id|esde_(system|path|source|source_hash|assets)|schedule_block_id|occurrence_date|closed_reason|first_plan_date|icloud_(href|area|from|horizon|etag|key)|(sale_)?fx_(nok|source)|sale_undo|ad_url|ad_text|closed_by_sale|marketplace)$/
 
 function aiWriteProblem(table: string, row: AnyRecord): string | null {
   for (const k of Object.keys(row)) {

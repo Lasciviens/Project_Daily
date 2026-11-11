@@ -98,7 +98,20 @@ console.log('5. the ad')
   check('marketplaces are the templates\' hosts, in the order made, once each',
     eq(M.marketplacesOf([t('tise.com', '2026-11-02'), t('finn.no', '2026-11-01'), t(null, '2026-11-03'), t('finn.no', '2026-11-04')]), ['finn.no', 'tise.com']))
   check('a host that is no host is left out', eq(M.marketplacesOf([t('javascript:alert(1)', '2026-11-01')]), []))
-  check('the link out is built from the host only', M.marketplaceLink('finn.no') === 'https://finn.no' && M.marketplaceLink('evil.no/x?y') === null && M.marketplaceLink(null) === null)
+  const known = ['finn.no', 'tise.com']
+  check('the link out is built from the host only', M.marketplaceLink('finn.no', known) === 'https://finn.no' && M.marketplaceLink('evil.no/x?y', [...known, 'evil.no/x?y']) === null && M.marketplaceLink(null, known) === null)
+  check('a link\'s address: the host in full, the rest apart (only the rest may be cut)',
+    eq(M.linkAddress('https://www.finn.no/recommerce/forsale/item/1?a=1#x'), { host: 'www.finn.no', path: '/recommerce/forsale/item/1?a=1#x' })
+    && eq(M.linkAddress('https://finn.no'), { host: 'finn.no', path: '' }) && eq(M.linkAddress('https://finn.no:8443/a/'), { host: 'finn.no:8443', path: '/a' })
+    && M.linkAddress('not a link') === null)
+  {
+    // Security review, 11.11.2026: AddressLink links only what 192 would keep, and never cuts its host.
+    const src = fs.readFileSync(path.join(__dirname, '../src/features/shop/components/record/AddressLink.tsx'), 'utf8')
+    check('…AddressLink links only an ad link 192 would keep (isAdUrl, never webUrl\'s http) and shows its host whole, uncut',
+      /isAdUrl\(url\) \? url : null/.test(src) && !/webUrl/.test(src) && /shrink-0 break-all">\{parts\.host\}/.test(src) && /<Truncate[^>]*>\{parts\.path\}/.test(src))
+  }
+  check('…and only to a host the owner\'s templates name: a look-alike a listing holds ("flnn.no") is never a link', M.marketplaceLink('flnn.no', known) === null
+    && M.marketplaceLink('finn.no.example.com', known) === null && M.marketplaceLink('FINN.NO', known) === null && M.marketplaceLink('finn.no', []) === null)
   const thing = item({ title: 'Game console', approx_dates: true, bought_at: '2025-03-01T12:00:00Z' })
   const facts = M.adFactsOf(thing, { condition: 'good', price: 3400, currency: 'NOK', accessories: ['Two controllers'], bought: true })
   check('the ad\'s facts: name, condition, the day bought (ca.), price, accessories', facts.name === 'Game console' && facts.approx === true && facts.bought === '2025-03-01' && facts.price === 3400)
@@ -145,7 +158,7 @@ console.log('7. the screens')
   check('the Update values sheet loads in its own chunk', /lazyPart\('shop-update-values', \(\) => import\('\.\/UpdateValuesSheet'\)/.test(resale))
   check('the ad is never posted: no fetch, no supabase in the ad sheet', !/fetch\(|supabase/.test(ad))
   check('… it goes to the clipboard', ad.includes('navigator.clipboard.writeText'))
-  check('a link out opens in a new tab with no referrer and no opener', link.includes('rel="noopener noreferrer nofollow"') && link.includes('referrerPolicy="no-referrer"') && link.includes('webUrl('))
+  check('a link out opens in a new tab with no referrer and no opener', link.includes('rel="noopener noreferrer nofollow"') && link.includes('referrerPolicy="no-referrer"') && link.includes('isAdUrl(url) ? url : null'))
   check('Use fills the draft, never the row', resale.includes('d.set({ value_now: n, value_currency: \'NOK\' })') && !/useUpdateShopItem/.test(resale))
   check('sign-out clears the hand-over ticks', read('src/security/accountState.ts').includes("'lasci.shop.handover'")
     && read('src/features/shop/hooks/useShopSelling.ts').includes("HANDOVER_TICKS_KEY = 'lasci.shop.handover'"))

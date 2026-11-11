@@ -7,12 +7,11 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import { toast } from '../../../../app/store'
 import { useWatchMap } from '../../hooks/useShopPrices'
 import { useMoneyBack } from '../../hooks/useMoneyBack'
-import { complaintLetter, complaintRight, letterFacts, returnWindow, COMPLAINT_LAW } from '../../complaintModel'
+import { complaintLetter, complaintRight, letterFacts, returnWindow, storePageOf, COMPLAINT_LAW } from '../../complaintModel'
 import { currencyOf } from '../../shopModel'
-import { isPrisjaktUrl } from '../../priceRead'
 import { MoneyEditor } from '../record/factKit'
 import { SiteLink } from '../shopKit'
-import { money, webUrl } from '../shopFormat'
+import { money } from '../shopFormat'
 import type { ShopCurrency, ShopItem } from '../../types'
 
 /** One numbered step: what to do, then its detail. */
@@ -47,9 +46,8 @@ export function ComplaintSheet({ item, onClose }: { item: ShopItem; onClose: () 
   const ret = returnWindow(item, today)
   const filled = useMemo(() => complaintLetter({ ...letterFacts(item), problem }), [item, problem])
   const letter = edited ?? filled
-  // The record's link is the store's own page only when it is not a price site's (Prisjakt is told by its host).
-  const link = webUrl(item.url)
-  const storePage = link && !isPrisjaktUrl(link) && watch?.source !== 'prisjakt' ? link : null
+  // The record's link is the store's own page only when it is https and not a price site's (Prisjakt is told by its host).
+  const storePage = storePageOf(item.url, watch?.source)
 
   async function copy() {
     try {
