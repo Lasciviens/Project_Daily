@@ -195,3 +195,16 @@ export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<
     />
   )
 }
+
+/** An item request the item screen can show inside another popup (itemScreenEmbed: a training session's Edit tab). */
+export type ItemScreenRequest =
+  | EntityModalProps<'task'>['request']
+  | EntityModalProps<'time-block'>['request']
+  | EntityModalProps<'schedule-block'>['request']
+
+/** The item screen for a request, loaded by id as the popup kinds load it — the same adapters, the same routing. */
+export function ItemScreenFor({ request, onClose }: { request: ItemScreenRequest; onClose: () => void }) {
+  if (request.kind === 'task') return <TaskEntityModal request={request} onClose={onClose} />
+  if (request.kind === 'time-block') return <TimeBlockEntityModal request={request} onClose={onClose} />
+  return <ScheduleBlockEntityModal request={request} onClose={onClose} />
+}

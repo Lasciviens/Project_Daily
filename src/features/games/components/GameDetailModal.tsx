@@ -4,10 +4,9 @@ import {
   useGameDetail, useUpdateGame, useDeleteGame, useAddToQueue, useRemoveFromQueue,
   useAddPlatform, useUpdatePlatform, useDeletePlatform, useSetPrimaryVariant, useSetPlayStatus,
 } from '../hooks/useGames'
-import { UnifiedPlanModal } from '../../../shared/components/plan-modal'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { ModalShell } from '../../../shared/modals'
+import { ModalShell, entityModal } from '../../../shared/modals'
 import { Button } from '../../../shared/ui'
 import { useTestGameStore } from '../test-game/testGameStore'
 import { TgLightbox } from '../test-game/components/TgLightbox'
@@ -417,7 +416,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
   const addToQueue = useAddToQueue()
   const removeFromQueue = useRemoveFromQueue()
   const [editing, setEditing]   = useState(initialEditing)
-  const [planOpen, setPlanOpen] = useState(false)
   const [addingPlatform, setAddingPlatform] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -526,7 +524,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                   className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-danger-soft text-danger hover:brightness-95' : 'bg-accent-50 text-accent-700 hover:bg-accent-100'}`}>
                   {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
                 </button>
-                <button onClick={() => setPlanOpen(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
+                <button onClick={() => entityModal.open({ kind: 'time-block', defaults: { title: game.title, category: 'games', color: 'blue' } })} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
                 <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
                 <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-danger-soft text-ink-500 hover:text-danger transition-colors">🗑 Delete</button>
               </div>
@@ -605,9 +603,6 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
       <TgLightbox images={screenshots} index={lightboxIdx} onClose={() => setLightboxIdx(null)} onIndex={setLightboxIdx} />
     </ModalShell>
 
-    {game && (
-      <UnifiedPlanModal open={planOpen} onClose={() => setPlanOpen(false)} mode="schedule" defaults={{ title: game.title, category: 'games', color: 'blue' }} />
-    )}
     <ConfirmDialog open={confirmDelete} title={`Delete "${game?.title}"?`} message="The game and all its platform entries are removed. Undo brings them back, but not its ScreenScraper history."
       onConfirm={handleDelete} onClose={() => setConfirmDelete(false)} />
     </>

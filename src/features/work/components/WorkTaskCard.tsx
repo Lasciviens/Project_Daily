@@ -1,4 +1,3 @@
-import { useState, useRef, useEffect } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
@@ -16,7 +15,8 @@ interface Props {
   accentTone?: Tone
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
-  onEdit: (task: Task) => void
+  /** The item screen; `row` opens it at that row (the Waiting chip → Waiting for). */
+  onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
@@ -30,19 +30,6 @@ export default function WorkTaskCard({
   isFocused, isDragging,
 }: Props) {
   const isDone = task.status === 'done'
-
-  const [editingWaiting, setEditingWaiting] = useState(false)
-  const [waitingText,    setWaitingText]    = useState(task.waiting_for ?? '')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (editingWaiting) inputRef.current?.focus()
-  }, [editingWaiting])
-
-  function commitWaiting() {
-    setEditingWaiting(false)
-    onStatusChange(task.id, 'waiting', waitingText.trim() || undefined)
-  }
 
   // dnd-kit (not native HTML5 draggable) — see WorkBoard.tsx for why. The
   // whole card is the drag source; a plain tap still opens the editor since
@@ -84,10 +71,11 @@ export default function WorkTaskCard({
         <DueChip task={task} />
         <TaskLabelPills task={task} />
         {task.description && <AlignLeft aria-label="Has notes" className="h-3 w-3 text-fg-faint" />}
-        {task.status === 'waiting' && !editingWaiting && (
+        {/* Who or what it waits for is the item screen's Waiting for row (step 3 of the item screen plan). */}
+        {task.status === 'waiting' && (
           <button
             type="button"
-            onClick={e => { e.stopPropagation(); setEditingWaiting(true) }}
+            onClick={e => { e.stopPropagation(); onEdit(task, 'waiting') }}
             title="Who or what are you waiting for?"
             data-tone="warn"
             className="tone-pill max-w-[10rem] [@media(hover:hover)]:hover:brightness-95"
@@ -95,22 +83,6 @@ export default function WorkTaskCard({
             <Hourglass aria-hidden className="h-3 w-3 shrink-0" />
             {task.waiting_for ? <Truncate>{task.waiting_for}</Truncate> : <span className="italic opacity-70">add…</span>}
           </button>
-        )}
-        {editingWaiting && (
-          <input
-            ref={inputRef}
-            value={waitingText}
-            onChange={e => setWaitingText(e.target.value)}
-            onBlur={commitWaiting}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitWaiting()
-              if (e.key === 'Escape') { setWaitingText(task.waiting_for ?? ''); setEditingWaiting(false) }
-            }}
-            placeholder="Waiting for…"
-            aria-label="Waiting for"
-            className="input w-40 rounded-full text-meta"
-            onClick={e => e.stopPropagation()}
-          />
         )}
       </div>
 

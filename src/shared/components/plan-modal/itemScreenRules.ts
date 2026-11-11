@@ -296,3 +296,15 @@ export function appleDot(i: {
   if (!appleRefused(i.row, true, i.now.getTime())) return null
   return said({ item: null, problem: i.notSent?.count ? i.notSent.reason : null, busy: false })
 }
+
+// ── Opening the screen at a row ──────────────────────────────────────────────
+
+/**
+ * "Move to list…" on a task opens the item screen at its List row when the screen shows that row: the task goes to
+ * Google Tasks (its saved choice, or — an older row — while it syncs there) and this device can show the Google
+ * choice. Otherwise the list sheet stays (a task not on Google Tasks still picks the list its first copy will use).
+ */
+export function opensListRow(task: { google_target?: GoogleTarget | null; google_sync_enabled?: boolean | null }, googleConnected: boolean): boolean {
+  const target = task.google_target ?? (task.google_sync_enabled ? 'tasks' : 'none')
+  return googleConnected && (target === 'tasks' || target === 'both')
+}

@@ -41,6 +41,8 @@ export interface PlanModalConfig {
    *  Only Shop's two callers still pass it (another change owns `src/features/shop/` now); remove it with them. */
   heading?: string
   hideScheduleFields?: ScheduleField[]
+  /** Opens the screen at this row (a single task's "Set parent…", "Move to list…", its Waiting chip — step 3). */
+  openRow?: 'waiting' | 'parent' | 'list'
   hideTaskFields?: TaskField[]
   /** A training session's task (167): a save that puts it 7 or more days
    *  after its first day is a skip there, and that week's session moves to

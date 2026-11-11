@@ -612,7 +612,7 @@
 //                    now, never source_type='task'.]
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
@@ -643,6 +643,7 @@ import { ItemForm } from './ItemForm'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleDot, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
+import { ItemScreenEmbedContext } from './itemScreenEmbed'
 import {
   applyQuickAdd, buildInitialForm, formContentKey, formValuesKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, revertedForm,
   shapeOf, switchScope, urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
@@ -689,6 +690,8 @@ export function UnifiedPlanModal({
   onSaved, loading = false, loadError, onDeleteOverride,
 }: UnifiedPlanModalProps) {
   const editMode = !!task || !!timeBlock || !!scheduleBlock
+  // Inside another popup (itemScreenEmbed): no chrome of its own; the host closes it through the handle.
+  const embedRef = useContext(ItemScreenEmbedContext)
   const today = todayStr()
   const qc = useQueryClient()
   const googleConnected = !!useCalendarStore(s => s.accessToken)
@@ -1013,6 +1016,11 @@ export function UnifiedPlanModal({
   }
 
   const working = saving || del.busy
+  useEffect(() => {
+    if (!embedRef) return
+    embedRef.current = { requestClose, flush: autosave.flush }
+    return () => { embedRef.current = null }
+  })
   // One heading wherever the screen opens (owner's point 11); a caller's own heading is no longer used.
   const heading = editMode || blocked ? 'Edit Item' : 'New Item'
 
@@ -1039,12 +1047,9 @@ export function UnifiedPlanModal({
     </>
   )
 
-  return (
-    <ModalShell
-      open={open} onClose={requestClose} title={heading} headerActions={headerActions}
-      subtitle={editMode && !blocked ? <SaveLine line={autosave.line} onRetry={autosave.retry} onUndo={canUndo ? undoChanges : undefined} /> : undefined}
-      size="md" compact grouped dismissible={!working} bodyClassName="px-3 pb-4 pt-1.5 sm:px-4"
-    >
+  const saveLine = editMode && !blocked ? <SaveLine line={autosave.line} onRetry={autosave.retry} onUndo={canUndo ? undoChanges : undefined} /> : undefined
+  const body = (
+    <>
       {loadError ? (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <AlertCircle className="h-6 w-6 text-danger" aria-hidden />
@@ -1079,7 +1084,7 @@ export function UnifiedPlanModal({
           showMarks={prefs.showMarks} appleNotes={prefs.notes === 'notes+link' || prefs.notes === 'notes'} refused={refused}
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
-          urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section}
+          urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section} taskId={scheduleBlock ? null : task?.id}
         />
         </div>
       )}
@@ -1089,6 +1094,27 @@ export function UnifiedPlanModal({
           onPick={scope => { void deleteRepeat(scope) }} onClose={() => setAskScope(false)}
         />
       )}
+    </>
+  )
+
+  // Inside another popup (a training session's Edit tab): the save line and the header's controls head the body.
+  if (embedRef) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex min-h-9 items-center justify-between gap-2 px-1">
+          <p className="min-w-0 text-meta text-fg-muted">{saveLine ?? heading}</p>
+          {headerActions}
+        </div>
+        {body}
+      </div>
+    )
+  }
+  return (
+    <ModalShell
+      open={open} onClose={requestClose} title={heading} headerActions={headerActions} subtitle={saveLine}
+      size="md" compact grouped dismissible={!working} bodyClassName="px-3 pb-4 pt-1.5 sm:px-4"
+    >
+      {body}
     </ModalShell>
   )
 }

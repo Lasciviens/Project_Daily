@@ -11,8 +11,9 @@ import { TaskLabelPills } from './TaskLabelPills'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
 import { useSwipeToReveal } from '../../../shared/hooks/useSwipeToReveal'
-import { SetParentTaskSheet } from './SetParentTaskSheet'
 import { MoveToListSheet } from './MoveToListSheet'
+import { opensListRow } from '../../../shared/components/plan-modal/itemScreenRules'
+import { useCalendarStore } from '../../../app/store'
 import { ToDoItemHoverActions, ToDoItemMenu } from './ToDoItemActions'
 import { weekIsOver } from '../../training/plan/sessionState'
 
@@ -36,7 +37,6 @@ interface Props {
 
 export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, isNew }: Props) {
   const [hovered, setHovered] = useState(false)
-  const [pickingParent, setPickingParent] = useState(false)
   const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
   // Set by the user's own tick (never on load), so only a completion they just
@@ -46,6 +46,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
   // session popup: a planned training session's tick, Move, Skip and Delete
   // are the session's own (Skip asks why, Delete asks and offers Undo).
   const act = useTaskActions()
+  const googleConnected = !!useCalendarStore(s => s.accessToken)
   const isDone      = task.status === 'done'
   const isCancelled = task.status === 'cancelled'
   // Mobile-only affordance (lg:hidden on the reveal panel below) — desktop
@@ -68,8 +69,9 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
 
   const actions = {
     onEdit: () => act.edit(task),
-    onSetParent: () => setPickingParent(true),
-    onMoveToList: () => setPickingList(true),
+    // The item screen at its row (step 3); a task not on Google Tasks keeps the list sheet (opensListRow).
+    onSetParent: () => act.edit(task, 'parent'),
+    onMoveToList: () => (opensListRow(task, googleConnected) ? act.edit(task, 'list') : setPickingList(true)),
     onCancel: () => { void act.cancel(task) },
     onReopen: () => { void act.reopen(task) },
     onDelete: () => { void act.remove(task) },
@@ -219,13 +221,6 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
           {subtasks.map(st => <ToDoItem key={st.id} task={st} />)}
         </div>
       )}
-
-      <SetParentTaskSheet
-        open={pickingParent}
-        onClose={() => setPickingParent(false)}
-        task={task}
-        hasSubtasks={subtasks.length > 0}
-      />
 
       <MoveToListSheet
         open={pickingList}
