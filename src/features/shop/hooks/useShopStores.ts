@@ -2,14 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { putRowsInCache } from '../../../shared/query/cachePatch'
+import { putRowsInCache, removeRowsFromCache } from '../../../shared/query/cachePatch'
 import {
-  fetchDealDayRows, fetchLawRules, fetchShopStores, fetchSitePolicyHosts, fetchStoreRules, putDealDayEdit, putShopStore, putStoreRule,
-  resetDealDay, resetShopStore, resetStoreRule, saveDealDayEdit, updateShopStore, updateStoreRule,
+  addStoreRule, fetchDealDayRows, fetchLawRules, fetchShopStores, fetchSitePolicyHosts, fetchStoreRules, putDealDayEdit, putShopStore, putStoreRule,
+  removeOwnStoreRule, resetDealDay, resetShopStore, resetStoreRule, saveDealDayEdit, updateShopStore, updateStoreRule,
   type DealDayInput, type RowChange, type StorePatch,
 } from '../api/shopStoresApi'
 import type { StoreRulePatch } from '../storeRows'
-import type { ShopDealDayEdit, ShopStore, ShopStoreRule } from '../types'
+import type { ShopDealDayEdit, ShopStore, ShopStoreRule, ShopStoreRuleFacts } from '../types'
 
 // Stores, marketplaces and their rules, Norway's law and the owner's deal days (migration 191). Each write answers
 // the row before and after: the cached list takes the after at once, and the toast's Undo writes `before` back
@@ -56,17 +56,17 @@ function usePutStoreRule() {
   })
 }
 
-/** Edit a rule: "Rule saved — yours now, never overwritten · Undo". */
+/** Edit a rule: "Rule saved — yours now, never overwritten · Undo" (or the caller's words: "… turned off"). */
 export function useEditStoreRule() {
   const qc = useQueryClient()
   const put = usePutStoreRule()
   return useMutationWithFeedback({
     action:      'edit_shop_store_rule',
     silent:      'its own toast reports it with Undo ("Rule saved — yours now, never overwritten · Undo")',
-    mutationFn:  (v: { id: string; patch: StoreRulePatch }) => updateStoreRule(v.id, v.patch),
-    onSuccess:   (r: RowChange<ShopStoreRule>) => {
+    mutationFn:  (v: { id: string; patch: StoreRulePatch; done?: string }) => updateStoreRule(v.id, v.patch),
+    onSuccess:   (r: RowChange<ShopStoreRule>, v: { id: string; patch: StoreRulePatch; done?: string }) => {
       putRowsInCache(qc, qk.shop.storeRules(), [r.after])
-      const words = r.after.owner_edited ? 'Rule saved — yours now, never overwritten' : 'Rule saved — the same as its source again'
+      const words = v.done ?? (r.after.owner_edited ? 'Rule saved — yours now, never overwritten' : 'Rule saved — the same as its source again')
       toast.undo(words, () => put.mutate({ rule: r.before, done: 'Edit undone' }))
     },
     invalidates: [qk.shop.storeRules()],
@@ -89,6 +89,28 @@ export function useResetStoreRule() {
   })
 }
 
+/** Add a rule of the owner's own: "Rule added · Undo" (the Undo takes it away again). */
+export function useAddStoreRule() {
+  const qc = useQueryClient()
+  const remove = useMutationWithFeedback({
+    action:         'remove_shop_store_rule',
+    successMessage: 'Rule taken away again',
+    mutationFn:     (id: string) => removeOwnStoreRule(id),
+    onSuccess:      (_: void, id: string) => removeRowsFromCache(qc, qk.shop.storeRules(), new Set([id])),
+    invalidates:    [qk.shop.storeRules()],
+  })
+  return useMutationWithFeedback({
+    action:      'add_shop_store_rule',
+    silent:      'its own toast reports it with Undo ("Rule added · Undo")',
+    mutationFn:  (v: { storeId: string; facts: ShopStoreRuleFacts }) => addStoreRule(v.storeId, v.facts),
+    onSuccess:   (rule: ShopStoreRule) => {
+      qc.setQueryData<ShopStoreRule[]>(qk.shop.storeRules(), rows => (rows ? [...rows, rule] : rows))
+      toast.undo('Rule added — yours, never overwritten', () => remove.mutate(rule.id))
+    },
+    invalidates: [qk.shop.storeRules()],
+  })
+}
+
 // ── A store ──────────────────────────────────────────────────────────────────
 
 type PutStoreVars = { store: ShopStore; done: string }
@@ -104,17 +126,17 @@ function usePutShopStore() {
   })
 }
 
-/** Edit a store — its member tier too: "Elkjøp saved · Undo". */
+/** Edit a store — its member tier too: "Elkjøp saved · Undo" (or the caller's words: "Elkjøp hidden"). */
 export function useEditShopStore() {
   const qc = useQueryClient()
   const put = usePutShopStore()
   return useMutationWithFeedback({
     action:      'edit_shop_store',
     silent:      'its own toast reports it with Undo ("Elkjøp saved · Undo")',
-    mutationFn:  (v: { id: string; patch: StorePatch }) => updateShopStore(v.id, v.patch),
-    onSuccess:   (r: RowChange<ShopStore>) => {
+    mutationFn:  (v: { id: string; patch: StorePatch; done?: string }) => updateShopStore(v.id, v.patch),
+    onSuccess:   (r: RowChange<ShopStore>, v: { id: string; patch: StorePatch; done?: string }) => {
       putRowsInCache(qc, qk.shop.stores(), [r.after])
-      toast.undo(`${r.after.name} saved`, () => put.mutate({ store: r.before, done: 'Edit undone' }))
+      toast.undo(v.done ?? `${r.after.name} saved`, () => put.mutate({ store: r.before, done: 'Edit undone' }))
     },
     invalidates: [qk.shop.stores()],
   })
@@ -155,9 +177,9 @@ export function useEditDealDay() {
   return useMutationWithFeedback({
     action:      'edit_shop_deal_day',
     silent:      'its own toast reports it with Undo ("Black Friday saved — yours now · Undo")',
-    mutationFn:  (v: DealDayInput) => saveDealDayEdit(v),
-    onSuccess:   (r: { before: ShopDealDayEdit | null; after: ShopDealDayEdit }, v: DealDayInput) => {
-      toast.undo(`${r.after.name} saved — yours now`, () => put.mutate({ slug: v.slug, edit: r.before, done: 'Edit undone' }))
+    mutationFn:  (v: DealDayInput & { done?: string }) => saveDealDayEdit(v),
+    onSuccess:   (r: { before: ShopDealDayEdit | null; after: ShopDealDayEdit }, v: DealDayInput & { done?: string }) => {
+      toast.undo(v.done ?? `${r.after.name} saved — yours now`, () => put.mutate({ slug: v.slug, edit: r.before, done: 'Edit undone' }))
     },
     invalidates: [qk.shop.dealDays()],
   })

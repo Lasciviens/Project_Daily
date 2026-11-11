@@ -2,11 +2,11 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { dealRuleOf, parseDealDay } from '../dealDays'
 import {
-  dealDayRows, isHost, isSearchPattern, isShownLink, parseDealDayEdit, parseLawRule, parseStore, parseStoreRule,
+  dealDayRows, effectiveDealDays, isHost, isSearchPattern, isShownLink, parseDealDayEdit, parseLawRule, parseStore, parseStoreRule,
   rulePatchProblem, type StoreRulePatch,
 } from '../storeRows'
 import { allPages } from './shopApi'
-import type { ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopStore, ShopStoreRule } from '../types'
+import type { ShopDealDay, ShopDealDayEdit, ShopDealDayRow, ShopLawRule, ShopStore, ShopStoreRule, ShopStoreRuleFacts } from '../types'
 
 // Stores, marketplaces and their rules, Norway's law and the owner's deal-day edits (migration 191), and which
 // sites forbid apps to read them (188). Every row is checked where it enters (storeRows). An edit answers the row
@@ -121,6 +121,33 @@ export async function resetStoreRule(id: string): Promise<RowChange<ShopStoreRul
   return { before, after }
 }
 
+/** A new rule's facts before the owner fills them: none (a kind's own fields come from the form). */
+export const BLANK_RULE: Omit<ShopStoreRuleFacts, 'kind'> = {
+  label: null, days: null, member_tier: null, window_from: null, window_to: null, return_until: null, exclusions: [], payout: null,
+  against: null, against_stores: null, words: null, source_url: null, read_on: null, off: false,
+}
+
+/** Add a rule of the owner's own to a store (the database makes it origin 'owner': "typed by you"). */
+export async function addStoreRule(storeId: string, facts: ShopStoreRuleFacts): Promise<ShopStoreRule> {
+  const user = await requireUser()
+  const problem = rulePatchProblem(facts, {})
+  if (problem) throw new Error(problem)
+  const payload: Record<string, unknown> = { store_id: storeId, user_id: user.id }
+  for (const k of RULE_FACTS) payload[k] = facts[k]
+  const { data, error } = await supabase.from('shop_store_rules').insert(payload).select('*').maybeSingle()
+  if (error) throw fail(error)
+  const rule = parseStoreRule(data)
+  if (!rule) throw new Error('The rule was saved, but its answer could not be read — reload to see it')
+  return rule
+}
+
+/** Take a rule the owner added away again (its Undo; the database refuses a seeded or page-read one — those are turned off). */
+export async function removeOwnStoreRule(id: string): Promise<void> {
+  const user = await requireUser()
+  const { error } = await supabase.from('shop_store_rules').delete().eq('id', id).eq('user_id', user.id).eq('origin', 'owner')
+  if (error) throw fail(error)
+}
+
 // ── A store: edit (the member tier too), reset, Undo ─────────────────────────
 
 /** What an edit of a store may send: its facts, and the owner's own member tier and `hidden`. */
@@ -200,6 +227,11 @@ export function fetchDealDayEdits(): Promise<ShopDealDayEdit[]> {
 export async function fetchDealDayRows(): Promise<ShopDealDayRow[]> {
   const [shared, edits] = await Promise.all([sharedDealDays(), fetchDealDayEdits()])
   return dealDayRows(shared, edits)
+}
+
+/** The deal days the app counts (Needs a look): each slug once, the owner's version first, the ones turned off left out. */
+export async function fetchCountedDealDays(): Promise<ShopDealDay[]> {
+  return effectiveDealDays(await fetchDealDayRows())
 }
 
 /** A deal day as the owner types it (190's rule shape), by slug. */

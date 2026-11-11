@@ -337,6 +337,21 @@ function sortRows(items, orderRaw, valueOf) {
 /** The forms a table's name may take in a foreign key: movies → movie, categories → category, boxes → box. */
 const singulars = (t) => [...new Set([t.replace(/s$/, ''), t.replace(/ies$/, 'y'), t.replace(/es$/, ''), t])]
 
+// 191's rules triggers, in short (the one database rule the Shop's screens read back): a store's or a rule's
+// `owner_edited` is derived on every write — the owner made it, or its facts differ from what its source said —
+// and an edit of its facts stamps `edited_at` (an Undo sends its own). Other triggers are not simulated.
+const RULE_FACTS = ['kind', 'label', 'days', 'member_tier', 'window_from', 'window_to', 'return_until', 'exclusions', 'payout', 'against',
+  'against_stores', 'words', 'source_url', 'read_on', 'off']
+const STORE_FACTS = ['kind', 'name', 'country', 'currency', 'hosts', 'search_url', 'ad_template', 'ad_language', 'source_url', 'read_on']
+const sameFact = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+const ownerEdited = facts => (row, written) => {
+  if (!row.origin) row.origin = 'owner'
+  const src = row.source_facts
+  row.owner_edited = row.origin === 'owner' || (!!src && facts.some(k => !sameFact(row[k], src[k])))
+  if (facts.some(k => k in written) && !('edited_at' in written)) row.edited_at = new Date().toISOString()
+}
+const DERIVED = { shop_store_rules: ownerEdited(RULE_FACTS), shop_stores: ownerEdited(STORE_FACTS) }
+
 class Store {
   /**
    * @param tables   { name: rows[] } — rows are used as they are (copy first if they are shared)
@@ -514,6 +529,7 @@ class Store {
         }
       }
       const row = this.complete(table, raw)
+      DERIVED[table]?.(row, raw)
       list.push(row)
       written.push(row)
     }
@@ -522,7 +538,10 @@ class Store {
 
   update(table, url, patch) {
     const rows = this.matching(table, url)
-    for (const r of rows) Object.assign(r, patch)
+    for (const r of rows) {
+      Object.assign(r, patch)
+      DERIVED[table]?.(r, patch)
+    }
     return rows
   }
 

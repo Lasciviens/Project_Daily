@@ -117,7 +117,8 @@ export interface ShopItem {
   /** Where the receipt is, as text (≤ 2 000 characters). */
   receipt_note?:         string | null
   /** The day a marketplace search was last opened for this wish ("Search opened 10.11.2026"). Set by the app. */
-  search_opened_on?:     string | null  /** What autofill learned, each fact with its source and how sure it is (migration 191). */
+  search_opened_on?:     string | null
+  /** What autofill learned, each fact with its source and how sure it is (migration 191). */
   facts?:                ShopItemFacts | null
 }
 

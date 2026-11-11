@@ -19,8 +19,10 @@ import { AddModelButton, RecordModels } from './RecordModels'
 import { RecordNudge } from './RecordNudge'
 import { RecordResaleOffers } from './RecordResale'
 import { RecordSection } from './RecordSection'
-import { hasMoneyLinks, priceSummary, resaleSummary, useOpenSections, type SectionId } from './recordSections'
+import { hasMoneyLinks, priceSummary, purchaseSummary, resaleSummary, useOpenSections, type SectionId } from './recordSections'
 import { RecordStory } from './RecordStory'
+import { PurchaseDetailsButton, RecordPurchase } from '../purchase/RecordPurchase'
+import { LookElsewhere, marketSummary, useMarketSearches } from '../purchase/LookElsewhere'
 import { useOpenRecord } from './recordOpen'
 import type { ShopRecordModel } from './useShopRecord'
 
@@ -46,6 +48,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact === 'value' ? (resale ? 'resale' : 'facts') : null)
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
+  // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).
+  const searches = useMarketSearches(item)
 
   /** Open a fact's editor in its section (a nudge's action). */
   const edit = (fact: string, section: SectionId) => { sections.show(section); d.setEditing(fact) }
@@ -94,8 +98,12 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     <div className="flex min-w-0 flex-col gap-2">
       {state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
+      {state === 'mine' && box('purchase', 'Purchase', purchaseSummary(item, today), <PurchaseDetailsButton item={item} />,
+        <RecordPurchase item={item} today={today} />)}
       {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />,
         <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />)}
+      {state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
+        <LookElsewhere item={item} today={today} searches={searches} />)}
       {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today), null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} section="resale" />
         <RecordResaleOffers item={item} watch={watch} />

@@ -52,3 +52,8 @@ export function ShopOwnModal({ request, onClose }: EntityModalProps<'shop-own'>)
   const { data: categories = [] } = useShopCategories()
   return <OwnSheet had={!!request.had} items={items} categories={categories} onClose={onClose} />
 }
+
+// Just bought, Money to claim and the Stores drawer (migration 191) ride in this chunk: one chunk for the Shop's
+// popups keeps the page's shared code in few pieces (each new chunk split the page's first download further).
+export { ShopJustBoughtModal, ShopClaimModal } from './ShopPurchaseModals'
+export { ShopStoresModal } from './ShopStoresModal'

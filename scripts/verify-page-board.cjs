@@ -327,8 +327,10 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   check('Food: every tab\'s controls in one SteadySlot (Today, Library, the rest), so a phone keeps its second row on every tab',
     /<SteadySlot[\s\S]*today:[\s\S]*library:[\s\S]*other:/.test(headerOf(food)) && !/max-sm:hidden'\)/.test(food) && !/phoneRowless/.test(food))
   const shop = code('src/features/shop/pages/ShopPage.tsx')
-  check('Shop: on a phone Owned\'s Things | Stats and its menu sit under the bar, never in it',
-    !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)[\s\S]*\{moreWaysMenu\}/.test(shop))
+  // Step B (10.11.2026): the bar's one ⋯ (Stores and rules; Owned's other ways in) is on every view, so it never reshapes it.
+  check('Shop: on a phone Owned\'s Things | Stats sit under the bar, never in it; the bar\'s one ⋯ is on every view',
+    !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)/.test(shop)
+      && /<\/>\}\s*\{moreMenu\}/.test(headerOf(shop)))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
   // While loading, the count is the one remembered from the last load (useRememberedCount, THEME.md §5).
   check('Projects: the header stops over the most cards any status shows, and the open status keeps its count',
