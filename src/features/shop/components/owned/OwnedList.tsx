@@ -9,6 +9,7 @@ import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
 import { OwnedRow } from './OwnedRow'
+import type { ShopListing } from '../../resaleTypes'
 import type { ShopCategory, ShopItem, ShopPriceWatch } from '../../types'
 
 export interface RowContext {
@@ -23,6 +24,8 @@ export interface RowContext {
   pictureFor: ((top: string, sub: string | null) => LucideIcon | null) | null
   /** The thing open in the side pane. */
   picked: string | null
+  /** Each thing's open listing (its "For sale · 12 days" tag). */
+  listings: ReadonlyMap<string, ShopListing>
 }
 
 /** One stack's widest (THEME W2: a content row is never wider than 40rem). */
@@ -71,6 +74,7 @@ function OwnedThing({ item, rows, onOpen }: { item: ShopItem; rows: RowContext; 
   const path = categoryPath(item.category_id, rows.categories)
   return (
     <OwnedRow item={item} accessories={rows.acc.get(item.id) ?? []} chain={rows.chainOf(item.id)} watch={rows.watches.get(item.id) ?? null}
+      listing={rows.listings.get(item.id) ?? null}
       ctx={rows.ctx} today={rows.today} topId={path.topId} icon={path.topId && rows.pictureFor ? rows.pictureFor(path.topName, path.subName) : null}
       picked={rows.picked} onOpen={onOpen} />
   )

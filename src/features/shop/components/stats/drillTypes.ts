@@ -16,6 +16,8 @@ export type Drill =
   | { kind: 'resale' }
   | { kind: 'category'; key: string; level?: CategoryLevel }
   | { kind: 'store'; key: string; year: string | null }
+  /** A card's own group of things (need or fun, a category's value kept): each with what it cost. */
+  | { kind: 'things'; ids: string[]; title: string }
 
 export interface DrillRow {
   key: string

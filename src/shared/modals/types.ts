@@ -79,6 +79,10 @@ export type EntityModalRequest =
   | { kind: 'shop-own'; had?: boolean }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
+  /** Something's wrong with one of your things: the complaint right, the letter, repair or replace, money back. */
+  | { kind: 'shop-complaint'; id: string }
+  /** Everything you own and its value, as a CSV file or a print. */
+  | { kind: 'shop-insurance' }
   /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
   | { kind: 'shop-just-bought'; id: string }
   /** Money to claim on a thing (price protection, cheaper while returnable): how, and "Got 500 back". */

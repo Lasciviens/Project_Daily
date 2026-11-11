@@ -107,6 +107,12 @@ const RPCS = {
       first?.sale_undo.keep.push({ id: acc.id, accessory_of: acc.accessory_of ?? null })
       acc.accessory_of = k.move_to ?? null
     }
+    // 192: the sale closes the thing's open listing — Sold, or Withdrawn when it went another way.
+    for (const l of store.tables.shop_listings ?? []) {
+      if (l.item_id === first?.id && (l.status === 'listed' || l.status === 'for_sale')) {
+        Object.assign(l, { status: a.p_disposal === 'sold' ? 'sold' : 'withdrawn', ended_on: a.p_on, closed_by_sale: true, updated_at: new Date().toISOString() })
+      }
+    }
     if (a.p_to && first) {
       const link = { id: randomUUID(), user_id: store.ownerId, from_id: first.id, to_id: a.p_to, amount: a.p_to_amount ?? null, created_at: new Date().toISOString() }
       ;(store.tables.shop_item_links ??= []).push(link)
@@ -123,8 +129,14 @@ const RPCS = {
     for (const r of together) { if (r.sale_undo) Object.assign(r, r.sale_undo.row, { sale_undo: null }) }
     for (const k of undo.keep) { const acc = items.find(i => i.id === k.id); if (acc) acc.accessory_of = k.accessory_of }
     if (undo.link) store.tables.shop_item_links = (store.tables.shop_item_links ?? []).filter(l => l.id !== undo.link)
+    // 192: the listing the sale closed opens again as it was.
+    for (const l of store.tables.shop_listings ?? []) {
+      if (l.item_id === it.id && l.closed_by_sale) Object.assign(l, { status: l.for_sale_on ? 'for_sale' : 'listed', ended_on: null, closed_by_sale: false })
+    }
     return null
   },
+  // 192: the default templates and checklists an account lacks (the harness has them all: none added).
+  shop_add_resale_defaults: () => 0,
   // 187: Delete answers the snapshot its Undo puts back (the owner's rows by id, their links and costs); restore
   // writes it back. Children are the accessories the app sends along (deleteScope).
   shop_delete_items: (a, store) => {
@@ -153,6 +165,16 @@ const RPCS = {
   // 191: a rule or a store back to its source — the row before and after (the facts from source_facts, not edited).
   shop_store_rule_reset: (a, store) => resetToSource(store, 'shop_store_rules', a.p_id),
   shop_store_reset: (a, store) => resetToSource(store, 'shop_stores', a.p_id),
+
+  // 144: the one delete with Undo — only the rows themselves (nothing deleted with them is simulated); NULL when none was there.
+  app_delete_rows: (a, store) => {
+    const ids = new Set(a.p_ids ?? [])
+    const all = store.tables[a.p_table] ?? []
+    const rows = all.filter(r => ids.has(r.id))
+    if (!rows.length) return null
+    store.tables[a.p_table] = all.filter(r => !ids.has(r.id))
+    return { v: 1, root: a.p_table, deleted: rows.length, groups: [{ table: a.p_table, pk: 'id', rows }], links: [], touched: [], hidden: [] }
+  },
 
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),

@@ -13,6 +13,8 @@ import {
 } from './ownModel'
 import { currencyOf } from './shopModel'
 import { cleanPrice } from './wishTile'
+import { listingTag } from './sellingModel'
+import type { ShopListing } from './resaleTypes'
 import type { ShopItem, ShopPriceWatch } from './types'
 
 /** A return window is counted down in days from two weeks ahead (as Needs a look lists it). */
@@ -47,11 +49,12 @@ export function returnWords(daysLeft: number, day: string): string {
  * The one tag a row wears, the first that holds: how it left (a thing gone,
  * neutral); cheaper now than you paid while it can still go back (money to
  * claim — only from a clean price read at the last check, as Needs a look);
- * the return window (counted down from two weeks); the complaint right ending
- * (within 60 days); an estimate over six months old. Facts only: a snoozed
- * Needs-a-look row still has its deadline, so the tag stays.
+ * the return window (counted down from two weeks); its open listing ("For
+ * sale · 12 days", "Listed" — step C); the complaint right ending (within 60
+ * days); an estimate over six months old. Facts only: a snoozed Needs-a-look
+ * row still has its deadline, so the tag stays.
  */
-export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string): RowTag | null {
+export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string, listing?: ShopListing | null): RowTag | null {
   if (i.disposal) return { text: DISPOSAL_LABEL[i.disposal], tone: 'neutral' }
   if (i.return_by && i.return_by >= today) {
     const left = daysBetween(today, i.return_by)
@@ -61,6 +64,8 @@ export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, to
     }
     return { text: returnWords(left, i.return_by), tone: deadlineTone(left, left <= RETURN_COUNT_DAYS ? 'info' : 'neutral') }
   }
+  const selling = listing && listing.item_id === i.id ? listingTag(listing, today) : null
+  if (selling) return selling
   if (i.warranty_until && i.warranty_until >= today) {
     const left = daysBetween(today, i.warranty_until)
     if (left <= COMPLAINT_TAG_DAYS) return { text: `Complaint until ${formatDate(i.warranty_until)}`, tone: deadlineTone(left, 'info') }

@@ -80,12 +80,17 @@ export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
 //   4  the same, with the lists in two tracks. Resale (only when things were
 //      bought to sell) sits last in the last track, so an empty one is only
 //      ever at the far right.
-export const STATS_SECTIONS = ['tiles', 'money', 'timeline', 'chains', 'categories', 'stores', 'value', 'resale'] as const
+//   Step C (10.11.2026) adds this year vs last (`compare`), need or just for
+//   fun (`why`), saved by watching (`saved`), wish to purchase with the
+//   impulse buys (`wait`) and value kept by category (`kept`); `stores` is the
+//   store scorecard. From step 3 main no longer spans: the side tracks carry
+//   the list cards, so no track runs far longer than the others.
+export const STATS_SECTIONS = ['tiles', 'compare', 'money', 'timeline', 'chains', 'categories', 'stores', 'value', 'why', 'saved', 'wait', 'kept', 'resale'] as const
 export type StatsSection = typeof STATS_SECTIONS[number]
 
 export const STATS_BOARD: BoardLayouts<StatsSection> = {
-  1: ['tiles', 'money', 'timeline', 'categories', 'value', 'chains', 'stores', 'resale'],
-  2: { top: ['tiles'], columns: [['money', 'timeline', 'chains'], ['categories', 'stores', 'value', 'resale']] },
-  3: { top: ['tiles'], columns: [{ stack: ['money', 'timeline', 'chains'], span: 2 }, ['categories', 'stores', 'value', 'resale']] },
-  4: { top: ['tiles'], columns: [{ stack: ['money', 'timeline'], span: 2 }, ['categories', 'stores'], ['chains', 'value', 'resale']] },
+  1: ['tiles', 'compare', 'money', 'saved', 'why', 'wait', 'timeline', 'categories', 'kept', 'value', 'chains', 'stores', 'resale'],
+  2: { top: ['tiles'], columns: [['compare', 'money', 'timeline', 'chains', 'wait'], ['saved', 'why', 'categories', 'kept', 'stores', 'value', 'resale']] },
+  3: { top: ['tiles'], columns: [['compare', 'money', 'timeline', 'chains'], ['saved', 'why', 'wait', 'kept'], ['categories', 'stores', 'value', 'resale']] },
+  4: { top: ['tiles'], columns: [['compare', 'money', 'timeline', 'chains'], ['saved', 'why', 'wait'], ['categories', 'kept'], ['stores', 'value', 'resale']] },
 }

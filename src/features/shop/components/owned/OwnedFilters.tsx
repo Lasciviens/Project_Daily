@@ -47,7 +47,7 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
       )}
       {collapsible && fold}
       {showMore && <>
-        <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={cx('select', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')}>
+        <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={cx('select', collapsible ? 'w-full' : 'w-[13rem] max-w-full')}>
           <option value="all">All categories</option>
           {tops.map(t => [
             <option key={t.id} value={t.id}>{t.name}</option>,
@@ -57,7 +57,7 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
           <option value="none">No category</option>
         </select>
         {chains.length > 0 && (
-          <select value={filters.chain} onChange={e => set({ chain: e.target.value })} aria-label="Money chain" className={cx('select', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')}>
+          <select value={filters.chain} onChange={e => set({ chain: e.target.value })} aria-label="Money chain" className={cx('select', collapsible ? 'w-full' : 'w-[13rem] max-w-full')}>
             <option value="all">All money chains</option>
             {chains.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>

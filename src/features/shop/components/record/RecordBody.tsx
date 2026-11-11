@@ -17,7 +17,10 @@ import { MoneyChainButton, RecordMoney } from './RecordMoney'
 import { RecordCosts } from './RecordCosts'
 import { AddModelButton, RecordModels } from './RecordModels'
 import { RecordNudge } from './RecordNudge'
-import { RecordResaleOffers } from './RecordResale'
+import { RecordResale } from './RecordResale'
+import { RecordOwnership } from './RecordOwnership'
+import { useListings } from '../../hooks/useShopResale'
+import { openListingOf } from '../../sellingModel'
 import { RecordSection } from './RecordSection'
 import { hasMoneyLinks, marketSummary, priceSummary, purchaseSummary, resaleSummary, useOpenSections, type SectionId } from './recordSections'
 import { RecordStory } from './RecordStory'
@@ -46,6 +49,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const itemCosts = useMemo(() => r.ctx.costs.get(item.id) ?? r.costs.filter(c => c.item_id === item.id), [r.ctx.costs, r.costs, item.id])
   const story = useMemo(() => storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }), [item, r.items, r.links, itemCosts, today])
   const resale = state === 'mine' || state === 'gone'
+  const { data: listings = [] } = useListings()
+  const listing = resale ? openListingOf(listings, item.id) : null
   const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact === 'value' ? (resale ? 'resale' : 'facts') : null)
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
@@ -101,13 +106,15 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
       {state === 'mine' && box('purchase', 'Purchase', purchaseSummary(item, today), <PurchaseDetailsButton item={item} />,
         <RecordPurchase item={item} today={today} />)}
-      {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />,
-        <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />)}
+      {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />, <>
+        <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />
+        {state === 'buy' && <RecordOwnership item={item} items={r.items} categories={r.categories} watch={watch} ctx={r.ctx} />}
+      </>)}
       {state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
         <LookElsewhere item={item} today={today} searches={searches} />)}
-      {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today), null, <>
+      {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} section="resale" />
-        <RecordResaleOffers item={item} watch={watch} />
+        <RecordResale r={r} watch={watch} />
       </>)}
       {box('facts', 'Facts', factsSummary, null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} parents={r.parents} />

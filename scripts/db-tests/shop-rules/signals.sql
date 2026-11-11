@@ -177,10 +177,10 @@ begin
   get diagnostics n_del = row_count;
   perform t_ok(n_up = 0 and n_del = 0, 'Q3 …and changes or deletes none of them');
   perform t_ok(t_err($q$insert into public.shop_signal_states (user_id, signal, snoozed_until) values ('00000000-0000-0000-0000-000000000001', 'tidy_up', '2026-12-01')$q$) like '42501 %'
-           and t_err($q$insert into public.shop_signal_states (item_id, signal, snoozed_until) values ('cc000000-0000-0000-0000-000000000001', 'old_wish', '2026-12-01')$q$) like '23514 %'
-           and t_err($q$select public.shop_signal_snooze('cc000000-0000-0000-0000-000000000001', 'old_wish', '2026-12-01')$q$) like '23514 %'
-           and t_err($q$select public.shop_signal_dismiss('cc000000-0000-0000-0000-000000000006', 'old_wish', 'x')$q$) like '23514 %',
-    'Q3 …can''t write a row as the owner, nor one about the owner''s thing (directly or through the functions)');
+           and t_err($q$insert into public.shop_signal_states (item_id, signal, snoozed_until) values ('cc000000-0000-0000-0000-000000000001', 'old_wish', '2026-12-01')$q$) like '23503 %own things'
+           and t_err($q$select public.shop_signal_snooze('cc000000-0000-0000-0000-000000000001', 'old_wish', '2026-12-01')$q$) like '23503 %own things'
+           and t_err($q$select public.shop_signal_dismiss('cc000000-0000-0000-0000-000000000006', 'old_wish', 'x')$q$) like '23503 %own things',
+    'Q3 …can''t write a row as the owner, nor one about the owner''s thing (directly or through the functions; since 192 with a foreign key''s code, 23503, so a restore retries it)');
   r := public.shop_signal_put('cc000000-0000-0000-0000-000000000001', 'at_target', null);
   perform t_ok(r -> 'before' = 'null'::jsonb and public.shop_signal_put(null, 'tidy_up', null) -> 'before' = 'null'::jsonb,
     'Q3 …and their Show again finds only their own rows (none)');

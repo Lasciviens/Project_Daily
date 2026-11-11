@@ -408,7 +408,13 @@ jobs:
       # account; 188's sites that may not be read; and 190's Needs a look —
       # Snooze, Got it and their exact Undo, the signal list and bounds, each
       # account its own rows, deal days, stock in the price history, the price
-      # figures of many things in one call, NaN and infinity kept out.
+      # figures of many things in one call, NaN and infinity kept out; and
+      # 192's resale — ad notes (https only, never fetched), trade-in quotes,
+      # the value history, listings and how a sale closes them, templates and
+      # checklists with their defaults, Activity's Undo of an estimate, a sale
+      # and a delete, Delete's Undo bringing every row back; and Activity's
+      # Undo of a delete with an extra cost and a snoozed Needs-a-look row,
+      # failing before 192 and passing with it.
       - name: Shop rules database scenarios
         run: node scripts/verify-db-shop-rules.mjs
         env:
