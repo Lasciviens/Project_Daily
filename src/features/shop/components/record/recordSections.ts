@@ -4,6 +4,8 @@ import { complete, DISPOSAL_LABEL, isPossession, valueAgeDays, valueNowOf, VALUE
 import { currencyOf } from '../../shopModel'
 import { mixedWords } from '../../watchWords'
 import { money } from '../shopFormat'
+import { listingTag } from '../../sellingModel'
+import type { ShopListing } from '../../resaleTypes'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
 // The record's sections that open in place (RecordSection): which ones are
@@ -64,9 +66,11 @@ export function priceSummary(item: ShopItem, watch: ShopPriceWatch | null): stri
   return `${money(w.low, (w.currency ?? currencyOf(item)).toUpperCase())}${mixedWords(w)} · ${formatDate(w.last_ok_at ?? w.checked_at)}`
 }
 
-/** The Resale section folded: the estimate and whether it is old, or how it left. */
-export function resaleSummary(item: ShopItem, ctx: MoneyCtx, today: string): string {
+/** The Resale section folded: its open listing ("For sale · 12 days"), else the estimate and whether it is old, or how it left. */
+export function resaleSummary(item: ShopItem, ctx: MoneyCtx, today: string, listing?: ShopListing | null): string {
   if (item.disposal) return `${DISPOSAL_LABEL[item.disposal]}${item.disposed_on ? ` ${formatDate(item.disposed_on)}` : ''}`
+  const selling = listingTag(listing, today)
+  if (selling && listing) return `${selling.text} · ${money(listing.prices[listing.prices.length - 1].price, listing.currency)}`
   const value = valueNowOf(item, ctx)
   if (!value || !complete(value)) return item.value_now != null ? 'rate pending' : 'no estimate yet'
   const age = valueAgeDays(item, today)

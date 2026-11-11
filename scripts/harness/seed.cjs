@@ -713,7 +713,9 @@ function buildTables(now = new Date()) {
   const cats = Object.fromEntries(['Electronics', 'Home', 'Sports', 'Clothing', 'Groceries'].map((name, i) => [name, {
     id: shopCatId(), user_id: owner, name, parent_id: null, created_at: at(-120 + i, '12:00'),
   }]))
-  tables.shop_categories = Object.values(cats)
+  // 192's checklists are per subcategory: a game console has its own.
+  const consoles = { id: shopCatId(), user_id: owner, name: 'Game Consoles', parent_id: cats.Electronics.id, created_at: at(-100, '12:00') }
+  tables.shop_categories = [...Object.values(cats), consoles]
   const shopBase = {
     user_id: owner, notes: null, price: null, price_source: 'manual', platform: null, url: null, priority: 'medium', region: 'NO',
     planned_date: null, status: 'wishlist', source_type: 'manual', list: 'wishlist', currency: 'NOK', bought_at: null, task_id: null,
@@ -729,7 +731,9 @@ function buildTables(now = new Date()) {
   })
   const headphones = shopItem('Noise-cancelling headphones', 'Electronics', { price: 3490, priority: 'high', reason: 'fun', url: 'https://example.com/headphones', wait_for_deal: true, target_price: 2990 })
   const jacket = shopItem('Winter jacket', 'Clothing', { kind: 'general', price_min: 1500, price_max: 3500, requirements: 'Warm to −15 °C, hood, long enough to sit on' })
-  const laptop = shopItem('Laptop', 'Electronics', { status: 'bought', bought_at: day(-200), price: 14990, serial: 'MOCK-SN-0001', warranty_until: day(530) })
+  const laptop = shopItem('Laptop', 'Electronics', { status: 'bought', bought_at: day(-200), price: 14990, serial: 'MOCK-SN-0001', warranty_until: day(530), value_now: 9000, value_currency: 'NOK', value_on: day(-190) })
+  // Step C: a console for sale with evidence (two asks, a trade-in quote, two estimates) and a listing up 16 days.
+  const gameConsole = { ...shopItem('Game console', null, { status: 'bought', bought_at: day(-300), price: 4990, value_now: 3500, value_currency: 'NOK', value_on: day(-20) }), category_id: consoles.id }
   tables.shop_items = [
     headphones, jacket, laptop,
     shopItem('Parka with a removable hood and plenty of pockets for the long winter walks', 'Clothing', { option_for: jacket.id, price: 2799, url: 'https://example.com/parka' }),
@@ -738,7 +742,8 @@ function buildTables(now = new Date()) {
     shopItem('Trail running shoes', 'Sports', { price: 1599, planned_date: day(10) }),
     shopItem('Foam roller', 'Sports', { price: 299, priority: 'low' }),
     shopItem('Laptop sleeve', 'Electronics', { accessory_of: laptop.id, status: 'bought', bought_at: day(-190), price: 349 }),
-    shopItem('Robot vacuum', 'Home', { status: 'bought', bought_at: day(-400), price: 3990, warranty_until: day(-35) }),
+    shopItem('Robot vacuum', 'Home', { status: 'bought', bought_at: day(-400), price: 3990, warranty_until: day(-35), value_now: 1500, value_currency: 'NOK', value_on: day(-220) }),
+    gameConsole,
     shopItem('Old tablet', 'Electronics', { status: 'bought', bought_at: day(-900), price: 4490, kept: false, disposed_on: day(-30), disposal: 'sold', sale_price: 1200, sale_currency: 'NOK', sale_fx_nok: 1, sale_fx_source: 'fixed', sold_to: 'Neighbour' }),
     shopItem('Milk', 'Groceries', { list: 'quick', errand: true, price: 22 }),
     shopItem('Oats', 'Groceries', { list: 'quick', errand: true, price: 35 }),
@@ -779,6 +784,32 @@ function buildTables(now = new Date()) {
     low: [3490, 3390, 3290, 3190][i], high: 3690, offers: 4, currency: 'NOK', source: 'store',
     condition: 'unknown', used_low: null, refurbished_low: null,
   }))
+
+  // 192: resale and selling — the console's evidence, its listing, the value history, the default texts.
+  const resaleId = (n, i) => `5c08000${n}-0000-4000-8000-${String(i).padStart(12, '0')}`
+  tables.shop_ad_notes = [
+    { ad_url: 'https://www.finn.no/recommerce/forsale/item/100000001', price: 3600, condition: 'like_new', noted_on: day(-5) },
+    { ad_url: 'https://www.finn.no/recommerce/forsale/item/100000002', price: 3200, condition: 'good', noted_on: day(-3) },
+  ].map((n, i) => ({ id: resaleId(1, i + 1), user_id: owner, item_id: gameConsole.id, marketplace: 'finn.no', currency: 'NOK', asking: true, ...n, ...stamp(-5 + i * 2) }))
+  tables.shop_trade_in_quotes = [{
+    id: resaleId(2, 1), user_id: owner, item_id: gameConsole.id, dealer: 'Game shop', amount: 3000, currency: 'NOK', condition: 'good', quoted_on: day(-10), note: null, ...stamp(-10),
+  }]
+  tables.shop_value_history = [[gameConsole.id, -100, 3900], [gameConsole.id, -20, 3500], [laptop.id, -190, 9000]].map(([item_id, n, value], i) => ({
+    id: resaleId(3, i + 1), user_id: owner, item_id, valued_on: day(n), value, currency: 'NOK', ...stamp(n),
+  }))
+  tables.shop_listings = [{
+    id: resaleId(4, 1), user_id: owner, item_id: gameConsole.id, marketplace: 'finn.no', ad_url: null, status: 'for_sale', listed_on: day(-17),
+    for_sale_on: day(-16), ended_on: null, currency: 'NOK', prices: [{ on: day(-17), price: 3600 }], ad_text: null, closed_by_sale: false, ...stamp(-17),
+  }]
+  tables.shop_ad_templates = [
+    ['finn.no', '{name} – {condition}', 'Selger {name}.\nTilstand: {condition}.\nKjøpt {bought}.\nMedfølger: {accessories}.\n\nPris: {price}.\nKan hentes eller sendes. Send gjerne en melding hvis du lurer på noe.'],
+    ['tise.com', '{name}', '{name} – {condition}.\nKjøpt {bought}.\nMedfølger: {accessories}.\nPris: {price}. Sendes eller hentes.'],
+    [null, '{name} – {condition}', 'Selger {name}.\nTilstand: {condition}.\nKjøpt {bought}.\nMedfølger: {accessories}.\n\nPris: {price}.\nSend gjerne en melding hvis du lurer på noe.'],
+  ].map(([marketplace, title, body], i) => ({ id: resaleId(5, i + 1), user_id: owner, marketplace, category: null, language: 'nb', title, body, ...stamp(-60 + i) }))
+  tables.shop_handover_checklists = [
+    ['Phones', 'Back up what you want to keep\nSign out of iCloud and turn off Find My (iPhone) — or remove your Google account (Android)\nFactory reset\nTake out the SIM card and the memory card\nPack the charger, the cable and the box'],
+    ['Game Consoles', 'Turn off console sharing (PlayStation), remove it as your home Xbox, or deregister it as your primary console (Nintendo)\nSign out of PlayStation Network, Xbox or your Nintendo Account\nFactory reset the console\nTake out any memory card or extra drive\nPack the controllers, the cables, the charger and the box'],
+  ].map(([category, steps], i) => ({ id: resaleId(6, i + 1), user_id: owner, category, steps, ...stamp(-60 + i) }))
 
   // ── Work ───────────────────────────────────────────────────────────────────
   const weekStart = day(mondayOffset)

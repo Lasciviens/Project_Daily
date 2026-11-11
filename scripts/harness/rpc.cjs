@@ -98,6 +98,12 @@ const RPCS = {
       first?.sale_undo.keep.push({ id: acc.id, accessory_of: acc.accessory_of ?? null })
       acc.accessory_of = k.move_to ?? null
     }
+    // 192: the sale closes the thing's open listing — Sold, or Withdrawn when it went another way.
+    for (const l of store.tables.shop_listings ?? []) {
+      if (l.item_id === first?.id && (l.status === 'listed' || l.status === 'for_sale')) {
+        Object.assign(l, { status: a.p_disposal === 'sold' ? 'sold' : 'withdrawn', ended_on: a.p_on, closed_by_sale: true, updated_at: new Date().toISOString() })
+      }
+    }
     if (a.p_to && first) {
       const link = { id: randomUUID(), user_id: store.ownerId, from_id: first.id, to_id: a.p_to, amount: a.p_to_amount ?? null, created_at: new Date().toISOString() }
       ;(store.tables.shop_item_links ??= []).push(link)
@@ -114,8 +120,14 @@ const RPCS = {
     for (const r of together) { if (r.sale_undo) Object.assign(r, r.sale_undo.row, { sale_undo: null }) }
     for (const k of undo.keep) { const acc = items.find(i => i.id === k.id); if (acc) acc.accessory_of = k.accessory_of }
     if (undo.link) store.tables.shop_item_links = (store.tables.shop_item_links ?? []).filter(l => l.id !== undo.link)
+    // 192: the listing the sale closed opens again as it was.
+    for (const l of store.tables.shop_listings ?? []) {
+      if (l.item_id === it.id && l.closed_by_sale) Object.assign(l, { status: l.for_sale_on ? 'for_sale' : 'listed', ended_on: null, closed_by_sale: false })
+    }
     return null
   },
+  // 192: the default templates and checklists an account lacks (the harness has them all: none added).
+  shop_add_resale_defaults: () => 0,
   // 187: Delete answers the snapshot its Undo puts back (the owner's rows by id, their links and costs); restore
   // writes it back. Children are the accessories the app sends along (deleteScope).
   shop_delete_items: (a, store) => {
