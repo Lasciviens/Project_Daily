@@ -12,6 +12,7 @@
 
 import type { GoogleTarget, ItemInput, RepeatInput } from './itemTypes'
 import type { QuickAddResult, QuickRepeat } from './quickAdd'
+import type { TaskDomain } from '../todo/types'
 import { repeatSummary, weekdayOfIso } from '../daily/recurrence'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
@@ -150,7 +151,9 @@ export function readAsParts(parse: QuickAddResult, start: string): string[] {
  * used to be saved with no calendar, so its event never went); anything else
  * stays on no calendar, as before. Null when there is no title.
  */
-export function itemFromQuickAdd(text: string, parse: QuickAddResult | null, today: string, googleConnected: boolean, appleArea = false): ItemInput | null {
+export function itemFromQuickAdd(
+  text: string, parse: QuickAddResult | null, today: string, googleConnected: boolean, appleArea = false, domain: TaskDomain = 'personal',
+): ItemInput | null {
   const title = (parse ? parse.title : text).trim()
   if (!title) return null
   const date = parse?.date ?? today
@@ -158,7 +161,7 @@ export function itemFromQuickAdd(text: string, parse: QuickAddResult | null, tod
   const repeat = parse?.repeat ? repeatInputFromColumns(repeatFromQuick(parse.repeat, date), date) : null
   return {
     title,
-    domain: 'personal',
+    domain,
     priority: 'medium',
     date,
     time,

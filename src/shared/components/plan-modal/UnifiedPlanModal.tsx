@@ -726,8 +726,19 @@ export function UnifiedPlanModal({
     })
     return startScope === 'day' ? switchScope(seeded, 'day') : seeded
   }
+  // A new item opened from a quick add (`defaults.typed`, step 3): the title field starts with the text and reads it
+  // as it reads what is typed — the rows it names filled, the Read as line under it.
+  const seedAll = () => {
+    const f = seedForm()
+    const text = !item && defaults?.typed?.trim() ? defaults.typed.trim() : null
+    if (!text) return { form: f, typed: f.title, parse: null, base: {} as QuickBase }
+    const read = parseQuickAdd(text, today)
+    const applied = applyQuickAdd(f, {}, null, read, today)
+    return { form: { ...applied.form, title: read ? read.title : text }, typed: text, parse: read, base: applied.base }
+  }
 
-  const [form, setForm] = useState<PlanForm>(seedForm)
+  const [first] = useState(seedAll)
+  const [form, setForm] = useState<PlanForm>(first.form)
   // The form as the edit opened ("Undo changes" puts it back as one save).
   const [openedForm, setOpenedForm] = useState<PlanForm>(form)
   // Where it shows: Google needs its connection; an item whose area is on Apple Calendar (2b-2) doesn't — its choice
@@ -757,9 +768,9 @@ export function UnifiedPlanModal({
     calendarApp,
   })
   // The title field's text; with quick add it can say more than form.title.
-  const [typed, setTyped] = useState(form.title)
-  const [parse, setParse] = useState<QuickAddResult | null>(null)
-  const [quickBase, setQuickBase] = useState<QuickBase>({})
+  const [typed, setTyped] = useState(first.typed)
+  const [parse, setParse] = useState<QuickAddResult | null>(first.parse)
+  const [quickBase, setQuickBase] = useState<QuickBase>(first.base)
   const [keepText, setKeepText] = useState(false)
   const [saving, setSaving] = useState(false)
   const [askScope, setAskScope] = useState(false)
@@ -789,13 +800,13 @@ export function UnifiedPlanModal({
   if (seed.open !== open || seed.task !== task || seed.timeBlock !== timeBlock || seed.scheduleBlock !== scheduleBlock) {
     setSeed({ open, task, timeBlock, scheduleBlock })
     if (open) {
-      const f = seedForm()
-      setForm(f)
-      setOpenedForm(f)
-      autosave.reset(formContentKey(f))
-      setTyped(f.title)
-      setParse(null)
-      setQuickBase({})
+      const s = seedAll()
+      setForm(s.form)
+      setOpenedForm(s.form)
+      autosave.reset(formContentKey(s.form))
+      setTyped(s.typed)
+      setParse(s.parse)
+      setQuickBase(s.base)
       setKeepText(false)
     }
   }

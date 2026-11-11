@@ -1,8 +1,12 @@
 import { useState } from 'react'
-import { LayoutGrid, List, Search, SlidersHorizontal } from 'lucide-react'
+import { LayoutGrid, List, Search, SlidersHorizontal, SquarePen } from 'lucide-react'
 import type { TaskPriority } from '../../todo/types'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
+import { todayStr } from '../../../shared/utils/dateUtils'
+import { parseQuickAdd } from '../../items/quickAdd'
+import { useQuickAdd } from '../../items/useQuickAdd'
+import { ReadAsLine } from '../../items/components/ReadAsLine'
 
 export type ViewMode = 'board' | 'list'
 export type PrioFilter = 'all' | TaskPriority
@@ -14,8 +18,6 @@ interface Props {
   onSearchChange: (v: string) => void
   prio: PrioFilter
   onPrioChange: (v: PrioFilter) => void
-  onQuickAdd: (title: string) => void
-  quickAddBusy: boolean
 }
 
 const PRIO_OPTIONS: { value: PrioFilter; label: string }[] = [
@@ -29,16 +31,27 @@ const PRIO_OPTIONS: { value: PrioFilter; label: string }[] = [
 // (1469) everything fits on one line, and at 1280 the two filters move to
 // the next line together instead of leaving priority alone on it.
 export default function WorkToolbar({
-  view, onViewChange, search, onSearchChange, prio, onPrioChange, onQuickAdd, quickAddBusy,
+  view, onViewChange, search, onSearchChange, prio, onPrioChange,
 }: Props) {
+  // Quick add (step 3 of the item screen plan): read as Home's and the item screen's title read it, Enter adds a Work
+  // item at once through the one item save; ✎ takes the text to the item screen instead.
+  const quick = useQuickAdd('work')
+  const today = todayStr()
   const [quickTitle, setQuickTitle] = useState('')
+  const [keepText, setKeepText] = useState(false)
+  const parse = keepText ? null : parseQuickAdd(quickTitle, today)
   const [filterOpen, setFilterOpen] = useState(false)
   const filtersActive = search.trim() !== '' || prio !== 'all'
 
+  const clear = () => { setQuickTitle(''); setKeepText(false) }
   function submitQuickAdd(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter' || !quickTitle.trim()) return
-    onQuickAdd(quickTitle.trim())
-    setQuickTitle('')
+    void quick.add(quickTitle, parse, today)
+    clear()
+  }
+  function openScreen() {
+    quick.open(quickTitle, keepText, today)
+    clear()
   }
 
   return (
@@ -52,15 +65,21 @@ export default function WorkToolbar({
         ]}
       />
 
-      <input
-        value={quickTitle}
-        onChange={e => setQuickTitle(e.target.value)}
-        onKeyDown={submitQuickAdd}
-        placeholder="Quick add a task… (Enter)"
-        aria-label="Quick add a work task"
-        disabled={quickAddBusy}
-        className="input order-last w-full disabled:opacity-50 sm:order-none sm:w-auto sm:min-w-[12rem] sm:max-w-md sm:flex-1"
-      />
+      <div className="order-last flex w-full items-center gap-1.5 sm:order-none sm:w-auto sm:min-w-[12rem] sm:max-w-md sm:flex-1">
+        <input
+          value={quickTitle}
+          onChange={e => { setQuickTitle(e.target.value); if (!e.target.value.trim()) setKeepText(false) }}
+          onKeyDown={submitQuickAdd}
+          placeholder="Quick add — e.g. Review 14:00 (Enter)"
+          aria-label="Quick add a work task"
+          disabled={quick.busy}
+          className="input min-w-0 flex-1 disabled:opacity-50"
+        />
+        <IconButton label={quickTitle.trim() ? 'Open it in the item screen' : 'New item'} bordered onClick={openScreen}><SquarePen /></IconButton>
+      </div>
+      {parse && (
+        <div className="order-last w-full"><ReadAsLine parse={parse} start={today} onKeepText={() => setKeepText(true)} /></div>
+      )}
 
       <div className="hidden items-center gap-2 sm:flex">
         <label className="relative w-56">
