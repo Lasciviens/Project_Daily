@@ -9,8 +9,9 @@ import type { LiveTaskSection, TaskSourceType } from '../../../features/todo/typ
 import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { sectionForDay } from '../../../features/todo/taskRules'
 import {
-  MAX_REPEAT_DATES, MAX_REPEAT_INTERVAL, nextOccurrences, repeatSummary, type RepeatUnit,
+  MAX_REPEAT_DATES, MAX_REPEAT_INTERVAL, nextOccurrences, repeatLastDay, repeatSummary, type RepeatUnit,
 } from '../../../features/daily/recurrence'
+import type { RepeatEnd } from '../../../features/items/itemTypes'
 import { todayStr, tomorrowStr } from '../../utils/dateUtils'
 import { formatWeekdayDate } from '../../utils/dateFormat'
 import type {
@@ -332,12 +333,19 @@ export function editedRepeatStart(f: RepeatFormFields & { date: string }, row: R
 }
 
 /** The one-line summary and the next three days of the current choice, as the
- *  saved plan will have them (recurrence.ts); null while it can't be saved. */
-export function repeatPreview(f: RepeatFormFields, start: string, today: string, exceptDates: readonly string[] = []): { summary: string; next: string[] } | null {
+ *  saved plan will have them (recurrence.ts); null while it can't be saved.
+ *  With an End Repeat (193) no day after its end is listed, and `last` is its
+ *  last day (an "after N times" counted as the database counts it). */
+export function repeatPreview(
+  f: RepeatFormFields, start: string, today: string, exceptDates: readonly string[] = [], end: RepeatEnd | null = null,
+): { summary: string; next: string[]; last: string | null } | null {
   if (f.recurrence === 'none' || recurrenceProblem(f)) return null
   const row = repeatRowFromForm(f)
-  const rule = { ...row, effective_from: repeatStart(row, start), except_dates: exceptDates }
-  return { summary: repeatSummary(rule), next: nextOccurrences(rule, today, 3) }
+  const rule = {
+    ...row, effective_from: repeatStart(row, start), except_dates: exceptDates,
+    repeat_until: end && 'until' in end ? end.until : null, repeat_count: end && 'count' in end ? end.count : null,
+  }
+  return { summary: repeatSummary(rule), next: nextOccurrences(rule, today, 3), last: end ? repeatLastDay(rule) : null }
 }
 
 /** Minutes between two HH:MM times, wrapping past midnight (23:30-00:30 =

@@ -143,9 +143,10 @@ check('a series update goes through fullEventPatch', (read('src/features/calenda
 
 console.log('\n4. The functions read the place')
 const icloud = read('supabase/functions/icloud-calendar/index.ts')
-check('icloud-calendar\'s drain reads a slot\'s and a plan\'s place', (icloud.match(/icloud_etag, time_zone, place'\)/g) || []).length === 1
-  && (icloud.match(/icloud_horizon, time_zone, place'\)/g) || []).length === 1)
-check('google-tasks-sync\'s push reads a slot\'s place', read('supabase/functions/google-tasks-sync/index.ts').includes(".select('id, date, start_time, duration_minutes, title, busy, time_zone, place, task:tasks(status)')"))
+// (193 reads its calendar fields after the place.)
+check('icloud-calendar\'s drain reads a slot\'s and a plan\'s place', (icloud.match(/icloud_etag, time_zone, place(, alerts, show_as, url, travel_minutes)?'\)/g) || []).length === 1
+  && (icloud.match(/icloud_horizon, time_zone, place(, alerts, show_as, url, travel_minutes, repeat_until, repeat_count)?'\)/g) || []).length === 1)
+check('google-tasks-sync\'s push reads a slot\'s place', read('supabase/functions/google-tasks-sync/index.ts').includes(".select('id, date, start_time, duration_minutes, title, busy, time_zone, place, show_as, alerts, task:tasks(status)')"))
 
 console.log(`\nverify-item-places: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

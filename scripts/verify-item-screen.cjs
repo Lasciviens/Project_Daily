@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 /*
- * The item screen, step 1 (docs/features/item-screen-plan.md) — its pure rules, against the real modules through
- * sucrase:
+ * The item screen, steps 1 and 2 (docs/features/item-screen-plan.md) — its pure rules, against the real modules
+ * through sucrase:
  *   src/shared/components/plan-modal/itemScreenRules.ts  Starts / Ends ↔ a day, a start and a length; the timeline's
- *                                                       drags and lanes; where each field goes (the marks); the red dot
- *   src/shared/components/plan-modal/planForm.ts         withEnd, withAllDaySwitch, the autosave's content key
+ *                                                       drags and lanes; where each field goes (the marks); the red dot;
+ *                                                       which rows show (screenParts); the URL row's link
+ *   src/shared/components/plan-modal/planForm.ts         withEnd, withAllDaySwitch, the autosave's content key; the
+ *                                                       URL and End Repeat problems (step 2)
+ *   src/shared/components/plan-modal/planModal.config.ts the repeat's next dates with an End Repeat
  *   src/features/calendar/areas/calendarAreas.ts         Settings → Calendar's "Show where each field goes"
- * and a few source checks that keep the screen's data paths where they were (the heading, the autosave, the marks).
+ * and a few source checks that keep the screen's data paths where they were (the heading, the autosave, the marks,
+ * step 2's rows and the link).
  *
  *   Run:  node scripts/verify-item-screen.cjs
  */
@@ -16,6 +20,8 @@ const path = require('path')
 const R = require('../src/shared/components/plan-modal/itemScreenRules')
 const F = require('../src/shared/components/plan-modal/planForm')
 const A = require('../src/features/calendar/areas/calendarAreas')
+const C = require('../src/shared/components/plan-modal/planModal.config')
+const REC = require('../src/features/daily/recurrence')
 
 let passed = 0
 let failed = 0
@@ -164,6 +170,85 @@ console.log('\n== 7. The screen keeps its data paths ==')
   const time = src('src/shared/components/plan-modal/TimeSection.tsx')
   check('Repeat shows its next dates for every choice', /alwaysPreview/.test(time))
   check('the timeline reads the day as Daily does (buildDaySchedule), without this item', /buildDaySchedule\(/.test(src('src/shared/components/plan-modal/DayTimeline.tsx')))
+}
+
+console.log('\n== 8. Step 2: the calendar fields\' rows (193) ==')
+{
+  const g = (field, target, app = 'google', dated = true) => R.fieldGoes(field, { target, calendarApp: app, dated })
+  check('the alerts and Show As go to the item\'s calendar, Apple\'s or Google\'s', ['alerts', 'showAs'].every(f => g(f, 'calendar') === 'google-calendar' && g(f, 'calendar', 'apple') === 'apple' && g(f, 'both', 'apple') === 'apple'))
+  check('…a Google Task has neither, nor an item on no calendar', ['alerts', 'showAs'].every(f => g(f, 'tasks') === 'app' && g(f, 'none') === 'app' && g(f, 'calendar', 'google', false) === 'app'))
+  check('the link and the travel time go only to Apple Calendar (Google has no field for them)',
+    ['url', 'travel'].every(f => g(f, 'calendar', 'apple') === 'apple' && g(f, 'calendar') === 'app' && g(f, 'both') === 'app' && g(f, 'tasks') === 'app'))
+  check('End Repeat goes where the repeat goes (Google Tasks: one task per day, so it stops them there)',
+    g('repeatEnd', 'calendar') === 'google-calendar' && g('repeatEnd', 'calendar', 'apple') === 'apple' && g('repeatEnd', 'tasks') === 'google-tasks' && g('repeatEnd', 'none') === 'app')
+
+  const parts = (f, ctx) => R.screenParts({ recurrence: 'none', scope: 'all', time: null, ...f }, { choiceShown: true, calendarHidden: false, target: 'none', ...ctx })
+  check('a time: the rows a slot keeps show', parts({ time: '17:00' }).slotFields === true)
+  check('a repeat: they show (its rule keeps them)', parts({ recurrence: 'weekly' }, { target: 'tasks' }).slotFields === true && parts({ recurrence: 'weekly' }).repeating === true)
+  check('a whole day on a calendar: they show; on Google Tasks or nowhere: a task alone has nowhere to keep them',
+    parts({}, { target: 'calendar' }).slotFields === true && parts({}, { target: 'both' }).slotFields === true
+    && parts({}, { target: 'tasks' }).slotFields === false && parts({}, { target: 'none' }).slotFields === false)
+  check('…the whole-day case only while the Calendar row shows (as the Location row before)', parts({}, { target: 'calendar', choiceShown: false }).slotFields === false)
+  const day = parts({ recurrence: 'weekly', scope: 'day', time: '07:00' }, { occurrenceDate: '2026-11-12', target: 'calendar' })
+  check('"This day" of a repeat: a slot (its fields show), no repeat (no End Repeat), no Calendar row', day.day && !day.repeating && day.slotFields && !day.showGoogle)
+  check('a caller that hides the Calendar row hides it here too', parts({ time: '17:00' }, { calendarHidden: true }).showGoogle === false)
+
+  check('the URL row offers to open only an https link the writers would use', R.openableUrl('https://example.com/a') === 'https://example.com/a'
+    && R.openableUrl('example.com/a b') === 'https://example.com/a%20b' && R.openableUrl('http://example.com') === null
+    && R.openableUrl('javascript:alert(1)') === null && R.openableUrl('https://user:pw@example.com') === null && R.openableUrl('') === null
+    && R.openableUrl('https://example.com/\r\nX:1') === null && R.openableUrl(`https://example.com/${'a'.repeat(2050)}`) === null)
+  check('…and names the host it opens as the browser reads it (punycode: a look-alike shows)', R.hostOf('https://xn--e1afmkfd.example/x') === 'xn--e1afmkfd.example'
+    && R.hostOf(R.openableUrl('https://københavn.example/')) === 'xn--kbenhavn-54a.example' && R.hostOf('https://example.com:8443/') === 'example.com:8443')
+
+  const seed = { mode: 'schedule', today: '2026-11-10', nextTime: '10:00', defaults: { date: '2026-11-10', startTime: '17:00' } }
+  const f0 = F.buildInitialForm(seed)
+  check('a link\'s problem is the URL row\'s', F.urlProblem({ url: 'http://example.com' }) === 'Only https:// links' && F.urlProblem({ url: '' }) === null && F.urlProblem({ url: 'example.com' }) === null)
+  const rep = { ...f0, recurrence: 'weekly', weeklyDays: [2], date: '2026-11-10' }
+  check('End Repeat\'s problem is the End Repeat row\'s: before the start, 0 times', F.repeatEndIssue({ ...rep, repeatEnd: { until: '2026-11-09' } }, { today: '2026-11-10' }) === 'The repeat ends before it starts'
+    && F.repeatEndIssue({ ...rep, repeatEnd: { count: 0 } }, { today: '2026-11-10' }) === 'After 1 to 999 times' && F.repeatEndIssue({ ...rep, repeatEnd: { count: 5 } }, { today: '2026-11-10' }) === null)
+  check('…never for a one-off or "This day" (they have no End Repeat)', F.repeatEndIssue({ ...f0, repeatEnd: { count: 0 } }, { today: '2026-11-10' }) === null
+    && F.repeatEndIssue({ ...rep, scope: 'day', repeatEnd: { count: 0 } }, { today: '2026-11-10' }) === null)
+  check('calendarFieldsProblem is the two together (the save refuses the same)', F.calendarFieldsProblem({ ...rep, url: 'http://x.example', repeatEnd: { count: 0 } }, { today: '2026-11-10' }) === 'Only https:// links')
+
+  const weekly = { recurrence: 'weekly', weeklyDays: [2], monthWeekday: null, customKind: 'every', repeatEvery: '2', repeatUnit: 'week', repeatDates: [] }
+  const p5 = C.repeatPreview(weekly, '2026-11-03', '2026-11-03', [], { count: 5 })
+  check('after 5 times: the next dates as they will be, and the last (the 5th, as the database counts it)', same(p5.next, ['2026-11-03', '2026-11-10', '2026-11-17']) && p5.last === '2026-12-01'
+    && p5.last === REC.countEndDay({ days_of_week: [2], repeat_kind: 'weekly', effective_from: '2026-11-03', repeat_count: 5 }))
+  const pLate = C.repeatPreview(weekly, '2026-11-03', '2026-11-24', [], { count: 5 })
+  check('…no date after the last', same(pLate.next, ['2026-11-24', '2026-12-01']))
+  const pDay = C.repeatPreview(weekly, '2026-11-03', '2026-11-03', [], { until: '2026-11-12' })
+  check('on a day: none after it, that day is the last', same(pDay.next, ['2026-11-03', '2026-11-10']) && pDay.last === '2026-11-12')
+  const pNever = C.repeatPreview(weekly, '2026-11-03', '2026-11-03')
+  check('never: three dates, no last', pNever.next.length === 3 && pNever.last === null)
+  const fresh = R.endRepeatDefaults({ days_of_week: [2], repeat_kind: 'weekly', effective_from: '2026-11-03' }, '2026-11-03')
+  check('a new repeat\'s first End Repeat: the 10th time, as a day and as 10 times', fresh.count === 10 && fresh.until === '2027-01-05')
+  const oldRule = { days_of_week: [1, 2, 3, 4, 5], repeat_kind: 'weekly', effective_from: '2026-09-07', except_dates: ['2026-11-12'] }
+  const old = R.endRepeatDefaults(oldRule, '2026-11-11')
+  check('a repeat that began long ago: the first value is 10 times from today, never in the past (an edit saves it at once)',
+    old.until > '2026-11-11' && REC.nextOccurrences(oldRule, '2026-11-11', 10).pop() === old.until && old.count > 10)
+  check('…and the count names that same day as the database counts it (days taken out included)',
+    REC.countEndDay({ ...oldRule, repeat_count: old.count }) === old.until)
+
+  const rows = src('src/shared/components/plan-modal/CalendarFieldRows.tsx')
+  check('the "Opens <host>" line always shows the whole host (break-all), so a long look-alike can\'t hide the real domain',
+    /<p className="[^"]*break-all[^"]*">Opens <bdi/.test(rows))
+  check('a host longer than DNS allows is never offered to open, and a huge paste is refused before it is parsed',
+    R.openableUrl('https://' + 'a'.repeat(63) + '.' + 'b'.repeat(63) + '.' + 'c'.repeat(63) + '.' + 'd'.repeat(63) + '.example/') === null
+    && 'problem' in require('../src/features/items/itemCalendarFields').cleanItemUrl('https://example.com/' + 'x'.repeat(10000)))
+  const form = src('src/shared/components/plan-modal/ItemForm.tsx')
+  const time = src('src/shared/components/plan-modal/TimeSection.tsx')
+  const end = src('src/shared/components/plan-modal/EndRepeatRows.tsx')
+  const sheet = src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
+  check('every row changes its field through withCalendarField (an edit sends what the owner changed)',
+    ['alerts', 'showAs', 'url', 'travelMinutes'].every(k => form.includes(`withCalendarField(form, '${k}'`)) && time.includes("withCalendarField(form, 'repeatEnd'"))
+  check('Travel Time, Alert, Second Alert, Show As and URL show only where a slot or a repeat keeps them; End Repeat only under a repeat',
+    (form.match(/\{slotFields && \(/g) || []).length === 3 && /\{repeating && \(\s*<EndRepeatRows/.test(time))
+  check('the choices and words are itemCalendarFields\' (Apple\'s lists)', /alertChoices\(allDay\)/.test(rows) && /TRAVEL_CHOICES\.map/.test(rows) && /alertsOf\(next\)/.test(rows) && /repeatEndLabel\(end\)/.test(end))
+  check('the link opened is only openableUrl\'s, in a new tab without the opener or referrer, after its address shows',
+    /const href = openableUrl\(url\)/.test(rows) && /<a href=\{href\} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"/.test(rows)
+    && rows.indexOf('hostOf(href)') < rows.indexOf('<a href={href}') && (rows.match(/<a /g) || []).length === 1)
+  check('a link or an End Repeat that can\'t be saved stops the save (Add and the autosave) and says why', /: urlIssue \?\? endIssue/.test(sheet) && /if \(problem\) \{ toast\.error\(problem\); return \}/.test(sheet))
+  check('Apple\'s mark is a quoted url() (a build inlines it as a data URI with \' in it)', /const mask = `url\("\$\{appleMark\}"\)`/.test(src('src/shared/components/plan-modal/FieldMark.tsx')))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

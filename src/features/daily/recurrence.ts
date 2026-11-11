@@ -23,6 +23,13 @@
 //  The start (anchor) is effective_from (081): nothing occurs before it, and
 //  except_dates (142) are left out of every kind.
 //
+//  End Repeat (193): `repeat_until` is the last day it may occur (included);
+//  "after N times" is `repeat_count`, and the database keeps `repeat_until`
+//  at its Nth day — counted on the kind's own pattern from effective_from,
+//  days taken out included (RFC 5545 counts before EXDATE). A rule with a
+//  count and no end day yet (the sheet before a save) gets the same day from
+//  countEndDay — the SQL copy, repeat_count_end, searches the same 20 years.
+//
 //  "Nearest" never ties: the seven days from 3 before to 3 after a date hold
 //  each weekday exactly once, so the nearest one is at most 3 days away and
 //  unique. It may fall in the neighbouring month (the Saturday nearest the
@@ -57,7 +64,16 @@ export interface RepeatRule {
   effective_from?:  string | null
   /** Days it was taken out of (each became a one-off plan, 142). */
   except_dates?:    readonly string[] | null
+  /** End Repeat (193): the last day it may occur, included; null = never. With a count, its Nth day. */
+  repeat_until?:    string | null
+  /** End Repeat "after N times" (193): 1–999; null = no count. */
+  repeat_count?:    number | null
 }
+
+/** "After N times" is 1 to this (193's CHECK allows the same). */
+export const MAX_REPEAT_COUNT = 999
+/** How far the Nth day is looked for (193: repeat_count_end searches the same): 20 years. */
+export const REPEAT_COUNT_SEARCH_DAYS = 7305
 
 const DAY_MS = 86_400_000
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -151,12 +167,50 @@ function patternHits(rule: RepeatRule, day: string): boolean {
   }
 }
 
+/** A whole number of times in 1–999, else null. */
+export function repeatCountOf(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_REPEAT_COUNT ? v : null
+}
+
+const countEnds = new Map<string, string | null>()
+/** The day of the Nth time ("after N times", 193): the kind's pattern from effective_from, taken-out days counted.
+ *  null when there is no start, no valid count, or no Nth day within 20 years. */
+export function countEndDay(rule: RepeatRule): string | null {
+  const count = repeatCountOf(rule.repeat_count)
+  const from = rule.effective_from
+  if (count === null || !isIsoDay(from)) return null
+  const key = [repeatKindOf(rule), validDays(rule.days_of_week).join(','), rule.repeat_interval ?? '', rule.repeat_unit ?? '',
+    [...(rule.repeat_dates ?? [])].sort().join(','), from, count].join('|')
+  if (countEnds.has(key)) return countEnds.get(key) ?? null
+  let seen = 0
+  let found: string | null = null
+  for (let n = dayNumber(from), end = n + REPEAT_COUNT_SEARCH_DAYS; n <= end; n++) {
+    const iso = isoOfDayNumber(n)
+    if (patternHits(rule, iso) && ++seen === count) { found = iso; break }
+  }
+  // Bounded: a long session meets few rules, but never grows without end.
+  if (countEnds.size >= 500) countEnds.clear()
+  countEnds.set(key, found)
+  return found
+}
+
+/** The last day the rule may occur on (193), or null for never: its end day — with a count the database stores the
+ *  Nth day there; a count with no stored day yet (the sheet's form) is counted here. */
+export function repeatLastDay(rule: RepeatRule): string | null {
+  if (isIsoDay(rule.repeat_until)) return rule.repeat_until
+  return repeatCountOf(rule.repeat_count) !== null ? countEndDay(rule) : null
+}
+
 /** Does the template have an occurrence that STARTS on `day` ('yyyy-MM-dd')?
- *  Never before effective_from, never on an except_dates day. */
+ *  Never before effective_from, never after its end (193), never on an except_dates day. */
 export function occursOn(rule: RepeatRule, day: string): boolean {
   if (!isIsoDay(day)) return false
   if (rule.effective_from && day < rule.effective_from) return false
   if ((rule.except_dates ?? []).includes(day)) return false
+  if (rule.repeat_until != null || rule.repeat_count != null) {
+    const last = repeatLastDay(rule)
+    if (last && day > last) return false
+  }
   return patternHits(rule, day)
 }
 

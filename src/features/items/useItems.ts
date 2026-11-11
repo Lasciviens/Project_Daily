@@ -19,6 +19,7 @@ import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSc
 import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
 import { syncGoogleTasksSoon, useDeleteTask } from '../todo/hooks/useTodos'
+import { CALENDAR_FIELDS_NOT_MIGRATED, sendsCalendarFields } from './itemCalendarFields'
 import {
   convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
   undoConversion,
@@ -71,6 +72,9 @@ export async function saveItemVia<A extends SaveItemAnswer>(
   if (answer?.taskId && input.labels?.length && answer.labels === null) {
     toast.warning('Saved without its labels — they need the latest database update (migration 180)')
   }
+  // The calendar fields need migration 193: a database before it drops them without a word — said here instead.
+  // (Remove with saveAnswerOf's calendarFields once 193 has been live a while.)
+  if (answer && sendsCalendarFields(input) && !answer.calendarFields) toast.warning(CALENDAR_FIELDS_NOT_MIGRATED)
   // The slot the screen opened with: a one-off turned into a repeat names its old event first (appleRowsOf).
   if (answer) void settleItemGoogle(answer, input.google, input.blockId ?? null).then(() => invalidate(qc, 'taskGraph'))
   return answer

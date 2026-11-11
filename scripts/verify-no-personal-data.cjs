@@ -37,7 +37,8 @@ const check = (name, cond, detail) => {
 const SKIP = [/^package-lock\.json$/, /^deno\.lock$/, /^\.claude\/skills\//, /^\.claude\/worktrees\//]
 const URL_RE = /[a-z][a-z0-9+.-]*:\/\/\S+/gi
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g
-const PLACEHOLDER_EMAIL = /@(?:example\.(?:com|org|net)|(?:[A-Za-z0-9-]+\.)*(?:example|test|invalid|localhost)|users\.noreply\.github\.com|noreply\.github\.com)$|^noreply@anthropic\.com$/i
+// …and the app's own iCalendar uids (icloudEvents: lasci-slot-<uuid>@lasciviens.github.io — an event's name, not a mailbox).
+const PLACEHOLDER_EMAIL = /@(?:example\.(?:com|org|net)|(?:[A-Za-z0-9-]+\.)*(?:example|test|invalid|localhost)|users\.noreply\.github\.com|noreply\.github\.com)$|^noreply@anthropic\.com$|^lasci-(?:slot|plan|workout)-[0-9a-f-]{36}@lasciviens\.github\.io$/i
 // Grouped after +CC or 00CC, or a bare + and 8–14 digits; a bare 00… with no groups is a barcode.
 const PHONE_RE = /(?<![\w.+-])(?:(?:\+|00(?=[1-9]))\d{1,3}[ -]\d{2,4}(?:[ -]\d{2,4}){2,4}|\+\d{8,14})(?![\w.-])/g
 const STREET_RE = /\b[A-ZÆØÅ][a-zæøå]+(?:veien|vegen|vei|veg|gata|gaten|gate|allé|alle|plass|bakken|stien|ringen|svingen)\s+\d{1,4}[A-Za-z]?\b|\b[A-Z][a-z]+ (?:Street|Road|Avenue|Lane|Sokak|Sokağı|Caddesi) \d{1,4}\b|\b\d{1,5} [A-Z][a-z]+ (?:Street|St\.|Road|Rd\.|Avenue|Ave\.)|\b0\d{3} Oslo\b/g

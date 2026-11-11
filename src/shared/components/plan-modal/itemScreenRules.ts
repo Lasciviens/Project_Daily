@@ -10,7 +10,11 @@
 //  keeps the length, so the end moves with it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { addDaysIso, dayNumber } from '../../../features/daily/recurrence'
+import {
+  addDaysIso, dayNumber, MAX_REPEAT_COUNT, nextOccurrences, occurrencesBetween, type RepeatRule,
+} from '../../../features/daily/recurrence'
+import { eventUrl } from '../../../features/calendar/calendarEventRules'
+import { cleanItemUrl } from '../../../features/items/itemCalendarFields'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
 
 export const DAY_MINUTES = 1440
@@ -116,7 +120,9 @@ export function timelineCentre(start: number | null, length: number | null): num
 // ── Where each field goes (the marks, Settings → Calendar) ────────────────────
 
 export type FieldGoes = 'apple' | 'google-calendar' | 'google-tasks' | 'app'
+/** A row's field. Step 2's (193): `alerts` (Alert, Second Alert), `showAs`, `url`, `travel`, `repeatEnd`. */
 export type ScreenField = 'title' | 'notes' | 'time' | 'place' | 'repeat' | 'calendar' | 'deadline' | 'list' | 'own'
+  | 'alerts' | 'showAs' | 'url' | 'travel' | 'repeatEnd'
 
 export const FIELD_GOES_TEXT: Record<FieldGoes, string> = {
   apple: 'Goes to Apple Calendar',
@@ -139,7 +145,9 @@ export interface GoesContext {
 /**
  * Where one field of the item goes: the item's calendar (Apple or Google) when it is on one, Google Tasks for what a
  * Google Task carries (its title, notes, day, deadline, list, one task per day of a repeat), else only the app. The
- * app's own fields (priority, labels, area, category, the window) always stay in the app.
+ * app's own fields (priority, labels, area, category, the window) always stay in the app. Step 2's fields (193): the
+ * alerts and Show As go to either calendar (a Google Task has neither); the link and the travel time only to Apple's
+ * (Google Calendar has no field for them); End Repeat goes where the repeat goes.
  */
 export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
   const calendar: FieldGoes | null = ctx.dated && (ctx.target === 'calendar' || ctx.target === 'both')
@@ -151,11 +159,72 @@ export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
     case 'list': return tasks ? 'google-tasks' : 'app'
     case 'deadline': return viaTasks
     case 'place': return calendar ?? 'app'
+    case 'alerts':
+    case 'showAs': return calendar ?? 'app'
+    case 'url':
+    case 'travel': return calendar === 'apple' ? 'apple' : 'app'
     case 'notes':
       if (calendar === 'apple' && ctx.appleNotes === false) return viaTasks
       return calendar ?? viaTasks
     default: return calendar ?? viaTasks
   }
+}
+
+// ── Which parts the screen shows ─────────────────────────────────────────────
+
+/**
+ * The item's shape as the screen draws it: one day of a repeat ("This day"), a repeat, the Calendar row, an all-day
+ * item on a calendar, and the rows a slot or a repeat keeps — Location, Travel Time, Alert, Second Alert, Show As and
+ * URL (186, 193: a task alone has nowhere to keep them). A slot is made for a time, a repeat or a whole day on a
+ * calendar. The screen and the save's checks read the same answer, so a field the screen hides never blocks a save.
+ */
+export function screenParts(
+  f: { recurrence: string; scope: 'day' | 'all'; time: string | null },
+  ctx: { occurrenceDate?: string | null; choiceShown: boolean; calendarHidden: boolean; target: GoogleTarget },
+): { day: boolean; repeating: boolean; showGoogle: boolean; allDay: boolean; slotFields: boolean } {
+  const day = !!ctx.occurrenceDate && f.scope === 'day'
+  const repeating = f.recurrence !== 'none' && !day
+  const showGoogle = ctx.choiceShown && !day && !ctx.calendarHidden
+  const allDay = showGoogle && !f.time && (ctx.target === 'calendar' || ctx.target === 'both')
+  return { day, repeating, showGoogle, allDay, slotFields: !!f.time || repeating || allDay }
+}
+
+// ── End Repeat's first values ────────────────────────────────────────────────
+
+/** How many times ahead End Repeat's first value reaches. */
+export const END_REPEAT_AHEAD = 10
+
+/**
+ * End Repeat's first values when "On a day" or "After N times" is picked (an edit saves it at once): the tenth time
+ * from today — or from the start, when that is later — as the day, and as the count from the start (the database
+ * counts from effective_from, days taken out included, so countEndDay of that count is that day). A saved repeat that
+ * began long ago is never ended in the past by a default. With no tenth time ahead (picked dates), the last one.
+ */
+export function endRepeatDefaults(rule: RepeatRule, today: string): { until: string; count: number } {
+  const from = rule.effective_from && rule.effective_from > today ? rule.effective_from : today
+  const open = { ...rule, repeat_until: null, repeat_count: null }
+  const ahead = nextOccurrences(open, from, END_REPEAT_AHEAD)
+  const until = ahead[ahead.length - 1] ?? addDaysIso(from, 30)
+  const hits = rule.effective_from ? occurrencesBetween({ ...open, except_dates: [] }, rule.effective_from, until).length : 0
+  return { until, count: Math.min(MAX_REPEAT_COUNT, Math.max(1, hits || END_REPEAT_AHEAD)) }
+}
+
+// ── The URL row's link ───────────────────────────────────────────────────────
+
+/**
+ * The address the URL row may open: the typed link as it would be stored (cleanItemUrl), and only when the writers
+ * would use it too (eventUrl: https, a host name, URL characters only) — else null, and nothing is offered to open.
+ * A link can come from the iPhone (the read-back), so it is checked here, not trusted.
+ */
+export function openableUrl(typed: string): string | null {
+  const clean = cleanItemUrl(typed)
+  const href = 'url' in clean ? eventUrl(clean.url) : null
+  return href && hostOf(href).length <= 253 ? href : null // DNS's own limit: a longer host is never real
+}
+
+/** The host a link opens, as the browser reads it — punycode for a non-Latin name, so a look-alike host shows. */
+export function hostOf(href: string): string {
+  try { return new URL(href).host } catch { return href }
 }
 
 // ── What an edit holds back until the screen closes ───────────────────────────

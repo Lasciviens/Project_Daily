@@ -387,6 +387,18 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 193: Apple's extra fields on an item (End Repeat, Alert +
+      # Second Alert, Show As, URL, Travel Time) on the live item chain — the
+      # CHECKs for every writer with hostile values (CRLF and 10 000-character
+      # links, a negative alert, an end before the start), row level security
+      # and the owner lock, the one item save, a repeat's end and its days, a
+      # day split off a plan, both calendar queues, both read-backs, and Undo.
+      # Its re-created functions keep 186's, 155's and 178's bodies.
+      - name: Item calendar fields database scenarios
+        run: node scripts/verify-db-item-calendar-fields.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 187: Shop's rules on the real Shop chain (029–138, 144, 150,
       # 151) — every bug of the 09.11.2026 review shown without 187 and fixed
       # with it (Delete's Undo order and price history, forged rates, the

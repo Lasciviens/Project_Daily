@@ -364,6 +364,7 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
 
   const relevant = patch.date !== undefined || patch.start_time !== undefined
     || patch.title !== undefined || patch.duration_minutes !== undefined || patch.busy !== undefined
+    || patch.show_as !== undefined || patch.alerts !== undefined
   if (!relevant) return { calendarStatus: 'linked' } // nothing pushed this call; no new reason to doubt it
 
   // Since 155 a slot with no time is an all-day event (it used to be left
@@ -374,6 +375,11 @@ export async function updateTimeBlock(id: string, patch: UpdateTimeBlockInput): 
     duration_minutes: patch.duration_minutes ?? before!.duration_minutes,
     title:            patch.title ?? before!.title,
     busy:             patch.busy ?? before!.busy,
+    // The whole event is sent (eventPatchFor 'all'): its place (186), Show As and alerts (193) go with it, or Google
+    // would take a missing place, or alerts, as taken off.
+    place:            before!.place,
+    show_as:          patch.show_as !== undefined ? patch.show_as : before!.show_as,
+    alerts:           patch.alerts !== undefined ? patch.alerts : before!.alerts,
   }, { done: before?.task?.status === 'done', timeZone: itemTimeZone(before!.time_zone) })
   if (!body) return { calendarStatus: 'linked' } // no usable day -> nothing coherent to push; existing id stands
 
