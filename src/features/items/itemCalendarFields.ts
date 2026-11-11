@@ -112,6 +112,7 @@ const URL_CHAR = /^[A-Za-z0-9._~!$&'()*+,;=:@/?#%-]$/
 export function cleanItemUrl(text: string | null | undefined): UrlResult {
   const t = (text ?? '').trim()
   if (!t) return { url: null }
+  if (t.length > ITEM_URL_MAX * 3) return { problem: `A link is at most ${ITEM_URL_MAX} characters` } // a huge paste costs nothing
   if (/[\x00-\x1F\x7F\u2028\u2029]/.test(t)) return { problem: 'A link is one line' } // eslint-disable-line no-control-regex
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(t) ? t : `https://${t}`
   let u: URL

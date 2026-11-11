@@ -230,6 +230,11 @@ console.log('\n== 8. Step 2: the calendar fields\' rows (193) ==')
     REC.countEndDay({ ...oldRule, repeat_count: old.count }) === old.until)
 
   const rows = src('src/shared/components/plan-modal/CalendarFieldRows.tsx')
+  check('the "Opens <host>" line always shows the whole host (break-all), so a long look-alike can\'t hide the real domain',
+    /<p className="[^"]*break-all[^"]*">Opens <bdi/.test(rows))
+  check('a host longer than DNS allows is never offered to open, and a huge paste is refused before it is parsed',
+    R.openableUrl('https://' + 'a'.repeat(63) + '.' + 'b'.repeat(63) + '.' + 'c'.repeat(63) + '.' + 'd'.repeat(63) + '.example/') === null
+    && 'problem' in require('../src/features/items/itemCalendarFields').cleanItemUrl('https://example.com/' + 'x'.repeat(10000)))
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')
   const time = src('src/shared/components/plan-modal/TimeSection.tsx')
   const end = src('src/shared/components/plan-modal/EndRepeatRows.tsx')

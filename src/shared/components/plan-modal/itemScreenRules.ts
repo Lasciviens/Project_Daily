@@ -218,7 +218,8 @@ export function endRepeatDefaults(rule: RepeatRule, today: string): { until: str
  */
 export function openableUrl(typed: string): string | null {
   const clean = cleanItemUrl(typed)
-  return 'url' in clean ? eventUrl(clean.url) : null
+  const href = 'url' in clean ? eventUrl(clean.url) : null
+  return href && hostOf(href).length <= 253 ? href : null // DNS's own limit: a longer host is never real
 }
 
 /** The host a link opens, as the browser reads it — punycode for a non-Latin name, so a look-alike host shows. */

@@ -177,7 +177,7 @@ function LinkPanel({ href, onOpened }: { href: string; onOpened: () => void }) {
   return (
     <Panel label="Open the link">
       <div className="flex flex-col gap-1.5">
-        <p className="text-meta text-fg-muted">Opens <bdi className="font-semibold text-fg">{hostOf(href)}</bdi></p>
+        <p className="text-meta text-fg-muted break-all">Opens <bdi className="font-semibold text-fg">{hostOf(href)}</bdi></p>
         <bdi className="block min-w-0 break-all text-meta text-fg-2"><Truncate lines={3}>{href}</Truncate></bdi>
         <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={onOpened}
           className="btn-secondary btn-sm self-start">
