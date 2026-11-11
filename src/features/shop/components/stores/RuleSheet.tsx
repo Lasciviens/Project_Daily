@@ -7,6 +7,7 @@ import { useAddStoreRule, useEditStoreRule } from '../../hooks/useShopStores'
 import { BLANK_RULE } from '../../api/shopStoresApi'
 import { RULE_EXCLUSIONS, RULE_KINDS, rulePatchProblem, type StoreRulePatch } from '../../storeRows'
 import { EXCLUSION_LABEL, RULE_KIND_LABEL, monthDayOf, monthDayWords } from '../../storeWords'
+import { claimedBy, unchecked } from '../../storeRules'
 import type { ShopRuleAgainst, ShopRuleExclusion, ShopRulePayout, ShopStore, ShopStoreRule, ShopStoreRuleFacts, ShopStoreRuleKind } from '../../types'
 
 const FACT_KEYS: (keyof ShopStoreRuleFacts)[] = ['kind', 'label', 'days', 'member_tier', 'window_from', 'window_to', 'return_until', 'exclusions', 'payout',
@@ -100,6 +101,10 @@ export function RuleSheet({ store, stores, rule, onClose }: { store: ShopStore; 
         </div>
       }>
       <div className="flex flex-col gap-2.5">
+        {/* A rule nobody checked decides nothing until it is the owner's (storeRules.unchecked). */}
+        {rule && unchecked(rule) && (
+          <p className="text-meta text-fg-muted">From {claimedBy(rule)} — saving an edit makes it yours: from then on its days decide your dates.</p>
+        )}
         {!rule && (
           <Row label="Kind" htmlFor="rule-kind">
             <select id="rule-kind" value={kind} onChange={e => setKind(e.target.value as ShopStoreRuleKind)} className="select input-sm w-auto">

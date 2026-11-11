@@ -57,9 +57,14 @@ export interface Look {
 /** A price protection that still holds for a thing (purchaseModel.protectionOf), with the price it compares now. */
 export interface LookProtection { until: string; name: string; price: Money | null; where: string | null }
 
+/** A price protection nobody checked (Ask AI's, a price site's): a note to check — never a claim, an amount, a tone or a day. */
+export interface LookProtectionNote { words: string; price: Money | null; where: string | null }
+
 /** What the stores' rules add (storeLooks.ts, its own chunk): price protection, money already got back, price matches. */
 export interface StoreLookInputs {
   protections: ReadonlyMap<string, LookProtection>
+  /** Protections nobody checked, for a thing with no checked one: a note row when the price now is under what was paid. */
+  protectionNotes?: ReadonlyMap<string, LookProtectionNote>
   /** Money got back on a thing in its own currency: a claim counts past it. */
   gotBack: ReadonlyMap<string, number>
   /** Rows of their own (a store that matches a cheaper offer on a wish's Prisjakt list). */
@@ -271,6 +276,15 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
         push({ kind: 'return_closing', tone: deadlineTone(left, 'info'), itemId: i.id, action: 'open', daysLeft: left, sign: [i.return_by],
           facts: facts(`Return by ${formatDate(i.return_by)}`, whenWords(left), paidWords(i)) }, i)
       }
+    }
+    // A price protection nobody checked: one info note to check, when the price now is under what was paid — no
+    // claim, no amount, no day and no deadline tone (security review, 11.11.2026). A checked one decided above.
+    const note = !claimed ? inputs.store?.protectionNotes?.get(i.id) ?? null : null
+    if (note && note.price && i.price != null && note.price.currency === currencyOf(i)
+      && note.price.amount < i.price - (inputs.store?.gotBack.get(i.id) ?? 0)) {
+      push({ kind: 'cheaper_returnable', tone: 'info', itemId: i.id, action: 'open', sign: ['check', note.words, note.price.currency, note.price.amount],
+        where: note.where ? `at${NBSP}${note.where}` : null,
+        facts: facts('Cheaper now — maybe money back', note.words, `now ${money(note.price.amount, note.price.currency)}`) }, i)
     }
     if (i.warranty_until && i.warranty_until >= today) {
       const left = daysBetween(today, i.warranty_until)

@@ -11,7 +11,7 @@ import { useShopStores, useStoreRules } from '../../hooks/useShopStores'
 import { useWatchMap } from '../../hooks/useShopPrices'
 import { useGotMoneyBack } from '../../hooks/usePurchase'
 import { currencyOf, watchedPrice } from '../../shopModel'
-import { gotBackOf, watchOffers, protectedPrice, protectionOf, rebateLabel, storeOfItem } from '../../purchaseModel'
+import { gotBackOf, watchOffers, protectedPrice, protectionNoteOf, protectionOf, rebateLabel, storeOfItem } from '../../purchaseModel'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { DateFact, SourceLink } from './purchaseKit'
 import type { ShopItem } from '../../types'
@@ -33,6 +33,8 @@ export function ClaimSheet({ item, onClose }: { item: ShopItem; onClose: () => v
   const currency = currencyOf(item)
   const store = storeOfItem(item, stores)
   const protection = store ? protectionOf(item, store, rules, today) : null
+  // One nobody checked is named to check, never the claim's price or its day.
+  const note = store ? protectionNoteOf(item, store, rules, today) : null
   const protectedNow = store && protection ? protectedPrice(protection, store, watch, watchOffers(watch, stores), stores) : null
   // A clean price read just now (a new offer's or the shop's own page) — never a figure that may be a used one.
   const clean = watch?.status === 'ok' && (watch.condition === 'new' || watch.condition === 'unknown')
@@ -72,6 +74,7 @@ export function ClaimSheet({ item, onClose }: { item: ShopItem; onClose: () => v
             <p className="text-meta text-fg-muted">{protection.words} <SourceLink url={protection.rule.source_url} /></p>
           </DateFact>
         )}
+        {note && <p className="text-meta text-fg-muted">{note.words} — it decides nothing until you edit it in Stores and rules.</p>}
         {returnable && (
           <DateFact label="Or return by" day={item.return_by ?? null} today={today}>
             <p className="text-meta text-fg-muted">Return it and buy it again at the lower price, if the store won't pay the difference.</p>

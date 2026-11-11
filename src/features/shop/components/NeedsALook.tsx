@@ -6,6 +6,7 @@ import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { lookLine, SNOOZE_DAYS, type Look, type LookThing } from '../shopSuggestions'
 import { LookIcon } from './lookIcon'
+import { isShownLink } from '../storeRows'
 import { addDays } from '../ownModel'
 
 // "Needs a look": on a wide page a card in the right rail (owner, 14.10.2026:
@@ -91,7 +92,7 @@ function LookRow({ look, today, actions, onList }: { look: Look; today: string; 
         </span>
       </button>
       {/* The page a price match was read from (Prisjakt's offers): its whole address in the title, opened by the owner. */}
-      {look.link && (
+      {look.kind === 'price_match' && look.link && isShownLink(look.link) && (
         <a href={look.link} target="_blank" rel="noopener noreferrer" title={look.link} aria-label={`Open the offers: ${look.title}`}
           className="icon-btn mt-1 h-8 w-8 shrink-0 text-fg-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
           <ArrowUpRight aria-hidden className="h-4 w-4" />

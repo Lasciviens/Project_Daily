@@ -348,6 +348,10 @@ select t_ok(bool_and(t_err(format($q$update public.shop_store_rules set source_u
   from unnest(array['http://www.power.no/', 'javascript:alert(1)', 'https://www.power.no@attacker.example/', 'https://www.power.no:8443/',
                     'https://www.power.no/a b', 'https://www.power.no/"x', 'https://www.power.no/<x>', 'https://www.power.no/' || repeat('a', 2030),
                     '//www.power.no/', 'https://power/']) u;
+select t_ok(bool_and(t_err(format($q$update public.shop_store_rules set source_url = %L where id = %L$q$, u, t_rule('power_return'))) like '23514 %'),
+  'R4 …nor a zero-width or direction mark anywhere in it (U+200B–200F, 202A–202E, 2066–2069, FEFF: they turn a shown address around)')
+  from unnest(array[E'https://www.power.no/\u202eexe.txt', E'https://www.power.no/a\u200bb', E'https://www.power.no/?q=\u2066x', E'https://www.power.no/\ufeff',
+                    E'https://www.power.no/#\u200f']) u;
 select t_ok(t_err(format($q$update public.shop_store_rules set source_url = 'https://www.power.no/kundeservice/retur?x=1#y' where id = %L$q$, t_rule('power_return'))) = 'done',
   'R4 …a plain https link saves (the owner may cite any site)');
 select t_ok(bool_and(t_err(format($q$update public.shop_stores set search_url = %L where id = %L$q$, u, t_store('power'))) like '23514 %'),
@@ -621,7 +625,11 @@ do $$
 declare s jsonb;
   v_facts constant jsonb := '{"brand": {"value": "Sony", "source": "prisjakt.no product page", "confidence": "exact"},
                               "ean": {"value": "4548736132610", "source": "barcode scan", "confidence": "exact"},
-                              "specs": {"value": {"colour": "Black"}, "source": "title", "confidence": "check"}}';
+                              "model": {"value": "WH-1000XM5", "source": "prisjakt.no product page", "confidence": "check"},
+                              "condition": {"value": "new", "source": "elkjop.no", "confidence": "exact"},
+                              "return_days": {"value": 30, "source": "elkjop.no", "confidence": "exact"},
+                              "prisjakt_id": {"value": "6219512", "source": "prisjakt.no", "confidence": "exact"},
+                              "specs": {"value": [{"name": "Colour", "value": "Black"}, {"name": "Foldable", "value": ""}], "source": "prisjakt.no", "confidence": "likely"}}';
 begin
   update public.shop_items set facts = v_facts where id = 'dd000000-0000-0000-0000-000000000040';
   perform t_ok((select facts = v_facts from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'),
@@ -635,6 +643,28 @@ begin
                       '{"brand": {"value": "Sony", "source": 7, "confidence": "exact"}}',
                       '{"brand": {"value": "Sony", "source": "Prisjakt‮", "confidence": "exact"}}',
                       '{"specs": {"value": "' || repeat('x', 8200) || '", "source": "x", "confidence": "check"}}']) f;
+  -- Each value its own shape (security review, 11.11.2026): a wrong type, length, pattern or a direction mark is refused.
+  perform t_ok(bool_and(t_err(format($q$update public.shop_items set facts = %L where id = 'dd000000-0000-0000-0000-000000000040'$q$, f)) like '23514 %'),
+    'R9 …each value its own shape: brand 1–120 and model 1–64 plain characters, ean 13 digits, a known condition, return days a whole 1–400, Prisjakt''s number 1–12 digits, specs 1–30 {name 1–80, value ≤ 300} — no direction marks')
+    from unnest(array[
+      '{"brand": {"value": "", "source": "x", "confidence": "exact"}}', '{"brand": {"value": "' || repeat('b', 121) || '", "source": "x", "confidence": "exact"}}',
+      '{"brand": {"value": 7, "source": "x", "confidence": "exact"}}', '{"brand": {"value": "So\u202eny", "source": "x", "confidence": "exact"}}',
+      '{"brand": {"value": "Sony\nInc", "source": "x", "confidence": "exact"}}', '{"brand": {"value": {"name": "Sony"}, "source": "x", "confidence": "exact"}}',
+      '{"model": {"value": "' || repeat('m', 65) || '", "source": "x", "confidence": "check"}}', '{"model": {"value": "WH\u200b1000", "source": "x", "confidence": "check"}}',
+      '{"ean": {"value": "123", "source": "x", "confidence": "exact"}}', '{"ean": {"value": 4548736132610, "source": "x", "confidence": "exact"}}',
+      '{"ean": {"value": "45487361326100", "source": "x", "confidence": "exact"}}',
+      '{"condition": {"value": "mint", "source": "x", "confidence": "exact"}}',
+      '{"return_days": {"value": 0, "source": "x", "confidence": "exact"}}', '{"return_days": {"value": 401, "source": "x", "confidence": "exact"}}',
+      '{"return_days": {"value": 30.5, "source": "x", "confidence": "exact"}}', '{"return_days": {"value": "30", "source": "x", "confidence": "exact"}}',
+      '{"prisjakt_id": {"value": "p6219512", "source": "x", "confidence": "exact"}}', '{"prisjakt_id": {"value": "1234567890123", "source": "x", "confidence": "exact"}}',
+      '{"specs": {"value": [], "source": "x", "confidence": "likely"}}', '{"specs": {"value": {"colour": "Black"}, "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": [{"name": "", "value": "x"}], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": [{"name": "' || repeat('n', 81) || '", "value": "x"}], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": [{"name": "Type", "value": "' || repeat('v', 301) || '"}], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": [{"name": "Type", "value": "x", "url": "https://attacker.example/"}], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": [{"name": "Ty\u2066pe", "value": "x"}], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": ["Type: x"], "source": "x", "confidence": "likely"}}',
+      '{"specs": {"value": ' || (select jsonb_agg(jsonb_build_object('name', 'n' || i, 'value', 'v'))::text from generate_series(1, 31) i) || ', "source": "x", "confidence": "likely"}}']) f;
   s := public.shop_delete_items(array['dd000000-0000-0000-0000-000000000040']::uuid[]);
   perform public.shop_restore_items(s);
   perform t_ok((select facts = v_facts from public.shop_items where id = 'dd000000-0000-0000-0000-000000000040'), 'R9 Delete''s Undo puts the facts back');

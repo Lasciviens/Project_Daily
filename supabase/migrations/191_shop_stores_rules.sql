@@ -134,6 +134,8 @@ set search_path = ''
 as $$
   select p_url is not null and char_length(p_url) <= 2048
      and p_url ~ '^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+([/?#][^[:space:][:cntrl:]"<>`\\]*)?$'
+     -- No zero-width or direction marks anywhere in it (security review, 11.11.2026: they turn a shown address around).
+     and p_url !~ '[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]'
 $$;
 
 -- The host of such a link, in lower case (null when it is none).
@@ -989,9 +991,11 @@ alter table public.shop_items drop constraint if exists shop_items_search_opened
 alter table public.shop_items add constraint shop_items_search_opened_on_check
   check (search_opened_on is null or (search_opened_on >= date '2000-01-01' and search_opened_on < date '2100-01-01'));
 -- What autofill learned about a thing, each fact with its source (owner-approved: saved facts keep their source):
--- an object of at most 8 KiB whose keys come from a list (brand, model, ean, condition, return_days, prisjakt_id,
--- specs), each {value, source, confidence} — the value not null, the source one plain line of 1–200 characters
--- (shop_plain_text_ok), the confidence exact, likely or check. The assistant reads it, never writes it (AI_NO_WRITE).
+-- an object of at most 8 KiB whose keys come from a list, each {value, source, confidence} — the source one plain
+-- line of 1–200 characters (shop_plain_text_ok), the confidence exact, likely or check — and each value its own
+-- shape (security review, 11.11.2026): brand 1–120 and model 1–64 characters of plain text, ean 13 digits, condition
+-- new / used / refurbished / damaged, return_days a whole number 1–400, prisjakt_id 1–12 digits, specs 1–30 rows
+-- of exactly {name: 1–80, value: 0–300} plain text. The assistant reads it, never writes it (AI_NO_WRITE).
 create or replace function public.shop_item_facts_ok(p jsonb)
 returns boolean
 language sql
@@ -1002,20 +1006,42 @@ as $$
     jsonb_typeof(p) = 'object' and octet_length(p::text) <= 8192
     and not exists (
       select 1 from jsonb_each(p) f
-       where not case
+       where not coalesce(case
                when f.key not in ('brand', 'model', 'ean', 'condition', 'return_days', 'prisjakt_id', 'specs') then false
                when jsonb_typeof(f.value) <> 'object' then false
                when (select count(*) from jsonb_object_keys(f.value)) <> 3 or not (f.value ?& array['value', 'source', 'confidence']) then false
-               when jsonb_typeof(f.value -> 'value') = 'null' then false
                when jsonb_typeof(f.value -> 'confidence') <> 'string' or (f.value ->> 'confidence') not in ('exact', 'likely', 'check') then false
                when jsonb_typeof(f.value -> 'source') <> 'string' then false
-               else char_length(f.value ->> 'source') between 1 and 200 and public.shop_plain_text_ok(f.value ->> 'source')
-             end))
+               when not (char_length(f.value ->> 'source') between 1 and 200 and public.shop_plain_text_ok(f.value ->> 'source')) then false
+               -- The value, by its key (every branch is guarded by its type before it is read).
+               when f.key in ('brand', 'model', 'ean', 'condition', 'prisjakt_id') and jsonb_typeof(f.value -> 'value') <> 'string' then false
+               when f.key = 'brand' then char_length(f.value ->> 'value') between 1 and 120 and public.shop_plain_text_ok(f.value ->> 'value')
+               when f.key = 'model' then char_length(f.value ->> 'value') between 1 and 64 and public.shop_plain_text_ok(f.value ->> 'value')
+               when f.key = 'ean' then (f.value ->> 'value') ~ '^[0-9]{13}$'
+               when f.key = 'condition' then (f.value ->> 'value') in ('new', 'used', 'refurbished', 'damaged')
+               when f.key = 'prisjakt_id' then (f.value ->> 'value') ~ '^[0-9]{1,12}$'
+               when f.key = 'return_days' then case
+                 when jsonb_typeof(f.value -> 'value') <> 'number' or (f.value ->> 'value') !~ '^[0-9]{1,3}$' then false
+                 else (f.value ->> 'value')::int between 1 and 400 end
+               when f.key = 'specs' then case
+                 when jsonb_typeof(f.value -> 'value') <> 'array' then false
+                 when jsonb_array_length(f.value -> 'value') not between 1 and 30 then false
+                 else not exists (
+                   select 1 from jsonb_array_elements(f.value -> 'value') e
+                    where not coalesce(case
+                            when jsonb_typeof(e) <> 'object' then false
+                            when (select count(*) from jsonb_object_keys(e)) <> 2 or not (e ?& array['name', 'value']) then false
+                            when jsonb_typeof(e -> 'name') <> 'string' or jsonb_typeof(e -> 'value') <> 'string' then false
+                            when not (char_length(e ->> 'name') between 1 and 80 and public.shop_plain_text_ok(e ->> 'name')) then false
+                            else char_length(e ->> 'value') <= 300 and (e ->> 'value' = '' or public.shop_plain_text_ok(e ->> 'value'))
+                          end, false)) end
+               else false
+             end, false)))
 $$;
 alter table public.shop_items add column if not exists facts jsonb;
 alter table public.shop_items drop constraint if exists shop_items_facts_check;
 alter table public.shop_items add constraint shop_items_facts_check check (public.shop_item_facts_ok(facts));
-comment on column public.shop_items.facts is 'What autofill learned, each fact with its source: {brand|model|ean|condition|return_days|prisjakt_id|specs: {value, source, confidence: exact|likely|check}}, at most 8 KiB.';
+comment on column public.shop_items.facts is 'What autofill learned, each fact with its source: {brand|model|ean|condition|return_days|prisjakt_id|specs: {value, source, confidence: exact|likely|check}}, each value its own shape (brand ≤ 120, model ≤ 64, ean 13 digits, condition, return_days 1–400, prisjakt_id ≤ 12 digits, specs ≤ 30 {name, value}), at most 8 KiB.';
 comment on column public.shop_items.bought_channel is 'How it was bought: online (at a distance — the right to cancel applies from a business) or in_store. Only while bought.';
 comment on column public.shop_items.arrived_on is 'The day it arrived (Arrived): on or after the purchase''s Oslo day, not after today; deadlines count from it. Only while bought.';
 comment on column public.shop_items.extra_warranty_until is 'The last day of an extra warranty (bought or given), on or after the purchase day. Only while bought.';

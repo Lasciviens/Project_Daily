@@ -33,10 +33,13 @@ const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SEED_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/
 
+/** Zero-width and direction marks (U+200B–200F, U+202A–202E, U+2066–2069, U+FEFF): they turn shown words around. */
+export const INVISIBLE_RE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
+
 export const isHost = (h: unknown): h is string => typeof h === 'string' && h.length <= 253 && HOST_RE.test(h)
-/** A link the app may show and open: 191's https check (control characters refused too). */
+/** A link the app may show and open: 191's https check (control characters, zero-width and direction marks refused too). */
 export const isShownLink = (u: unknown): u is string =>
-  typeof u === 'string' && u.length <= 2048 && ![...u].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) && HTTPS_RE.test(u)
+  typeof u === 'string' && u.length <= 2048 && ![...u].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) && !INVISIBLE_RE.test(u) && HTTPS_RE.test(u)
 export function isMonthDay(x: unknown): x is string {
   return typeof x === 'string' && MONTH_DAY_RE.test(x) && Number(x.slice(3)) <= MONTH_DAYS[Number(x.slice(0, 2)) - 1]
 }

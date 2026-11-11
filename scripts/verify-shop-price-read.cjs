@@ -110,6 +110,11 @@ console.log('\n3 · A shop page (Elkjøp)')
   check('the struck-through price is the "was"', t.was === 14999)
   check('the return window open to everyone, not the members-only one', t.returnDays === 30)
   check('EAN (gtin13) and brand', t.ean === '5901292527556' && t.brand === 'TCL')
+  // Security review (11.11.2026): a page's text loses zero-width and direction marks, so it can't turn words around on screen.
+  const marks = readPrice(page({ '@type': 'Product', name: 'Lamp\u202e pmal', brand: { '@type': 'Brand', name: '\u200bSo\u2066ny\ufeff' },
+    additionalProperty: [{ '@type': 'PropertyValue', name: 'Ty\u202epe', value: 'Over\u200d-ear' }], offers: { '@type': 'Offer', price: '499', priceCurrency: 'NOK' } }), 'https://shop.example/lamp')
+  check('zero-width and direction marks (U+200B–200F, 202A–202E, 2066–2069, FEFF) leave a name, a brand and spec rows',
+    marks.name === 'Lamp pmal' && marks.brand === 'Sony' && marks.specs[0]?.name === 'Type' && marks.specs[0]?.value === 'Over-ear', JSON.stringify([marks.name, marks.brand, marks.specs]))
   const graph = readPrice(`<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage"},{"@type":["Product"],"name":"Lamp","offers":{"@type":"Offer","price":"499.00","priceCurrency":"nok"}}]}</script>`, 'https://shop.example/lamp')
   check('@graph and @type arrays are understood; currency upper-cased', graph.status === 'ok' && graph.low === 499 && graph.currency === 'NOK')
   const only = readPrice(page({ '@type': 'Product', name: 'Members only', offers: [{ '@type': 'Offer', price: 100, priceCurrency: 'NOK', eligibleCustomerType: 'https://schema.org/Business' }] }), 'https://x.example/a')

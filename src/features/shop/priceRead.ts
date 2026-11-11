@@ -226,10 +226,13 @@ const SPEC_SCAN_MAX = 200
 const SPEC_NAME_MAX = 80
 const SPEC_VALUE_MAX = 300
 
-/** A specification's name or value as plain text (a number as written), control characters as spaces, cut to `max` — else ''. */
+/** Zero-width and direction marks (U+200B–200F, U+202A–202E, U+2066–2069, U+FEFF): a page's text loses them, so it can't turn words around on screen. */
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
+
+/** A specification's name or value as plain text (a number as written), control characters as spaces, invisible marks gone, cut to `max` — else ''. */
 function specText(v: unknown, max: number): string {
   const s = typeof v === 'number' && Number.isFinite(v) ? String(v) : typeof v === 'string' ? v.slice(0, max * 2) : ''
-  const t = s.replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim()
+  const t = s.replace(INVISIBLE, '').replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim()
   return clippedTo(t, max)
 }
 
@@ -730,7 +733,7 @@ function keptText(r: PriceRead): PriceRead {
 }
 
 function clipped(s: string | null): string | null {
-  return s == null ? s : clippedTo(s, NAME_MAX)
+  return s == null ? s : clippedTo(s.replace(INVISIBLE, ''), NAME_MAX)
 }
 
 /** `s` cut to `max` characters, never inside a pair of surrogates (an emoji). */

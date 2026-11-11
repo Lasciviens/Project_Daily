@@ -93,6 +93,10 @@ check('a marketplace without a search link: listed, no link', P.marketSearches(i
 check('a pattern off the store\'s host gives no link', P.marketSearches(item(), [{ ...finn, search_url: 'https://evil.example.com/?q={q}' }])[0].url === null)
 check('the address is shown decoded', P.shownAddress(onFinn.url) === 'finn.no/recommerce/forsale/search?q=Sony WH-1000XM5')
 check('a link that isn\'t https shows nothing', P.shownAddress('javascript:alert(1)') === '')
+// Security review (11.11.2026): zero-width and direction marks never reach a shown link — refused in a link, gone from a decoded address.
+check('a link with a zero-width or direction mark is no link (U+200B–200F, 202A–202E, 2066–2069, FEFF)', ['\u202e', '\u200b', '\u2066', '\ufeff', '\u200f']
+  .every(m => !R.isShownLink(`https://www.finn.no/s?q=a${m}b`)) && R.isShownLink('https://www.finn.no/s?q=ab'))
+check('…and decoding an address brings none back (%E2%80%AE, %0A)', P.shownAddress('https://www.finn.no/s?q=%E2%80%AEgnp.exe%0A') === 'finn.no/s?q=gnp.exe')
 
 console.log('1b. storeLooks: what the stores add to Needs a look')
 {
@@ -123,6 +127,30 @@ console.log('1b. storeLooks: what the stores add to Needs a look')
   const claim = rows.find(l => l.kind === 'cheaper_returnable')
   check('…Needs a look: "Claim 500 NOK" (3 990 paid, 500 got back, 2 990 now), price protection to 10.12.2026, the Claim action',
     claim?.action === 'claim' && claim.claim?.amount === 500 && claim.facts[0].replace(/\s/g, ' ') === 'Claim 500 NOK' && claim.facts.includes('price protection to 10.12.2026'), JSON.stringify(claim))
+
+  // Security review (11.11.2026), MEDIUM: a price protection nobody checked (Ask AI's, a price site's) never decides
+  // a claim, an amount, a tone or a day — a checked one does; the unchecked one is one info note "… — check it".
+  const ai400 = { ...prot, id: '5c090000-0000-4000-8000-0000000000ab', days: 400, against: 'any', exclusions: [], origin: 'ask_ai', owner_edited: false, source_url: 'https://www.power.no/x' }
+  const pj400 = { ...ai400, id: '5c090000-0000-4000-8000-0000000000ac', origin: 'price_site', source_url: 'https://www.prisjakt.no/product.php?p=1' }
+  const cheapPage = { ...pageWatch, low: 1990 }
+  for (const [who, rule, words] of [['Ask AI', ai400, 'from Ask AI — check it'], ['Prisjakt', pj400, 'from Prisjakt — check it']]) {
+    const c = { ...ctx, rules: [...rules, rule] }
+    const r3 = L.storeLooks({ items: [mine], watches: new Map([['m', cheapPage]]), costs: [], ctx: c, now: NOW_, today: TODAY })
+    const rows3 = N.needsALook([mine], { watches: new Map([['m', cheapPage]]), store: r3 }, TODAY)
+    const row = rows3.find(l => l.itemId === 'm' && l.kind === 'cheaper_returnable')
+    check(`a price protection from ${who} (400 days, any shop) decides nothing: no protection, no Claim, no amount, no day — one info note "${words}"`,
+      P.protectionOf(mine, power, c.rules, TODAY) === null && !r3.protections.has('m') && r3.protectionNotes.has('m')
+      && !rows3.some(l => l.claim || l.action === 'claim') && row?.tone === 'info' && row.daysLeft === null && row.claim === null
+      && row.facts.some(f => f.startsWith(words)) && !row.facts.some(f => /Claim|price protection to/.test(f)), JSON.stringify(row))
+  }
+  const both = { ...ctx, rules: [...rules, prot, ai400] }
+  check('…beside a checked one the checked one decides (to 10.12.2026), and no note', P.protectionOf(mine, power, both.rules, TODAY)?.until === '2026-12-10'
+    && P.protectionNoteOf(mine, power, both.rules, TODAY) === null)
+  check('…once the owner edited it, it is theirs and counts', P.protectionOf(mine, power, [...rules, { ...ai400, owner_edited: true }], TODAY)?.rule.id === ai400.id)
+
+  // Security review, LOW: the price match row's ↗ opens only a price site's page (the offers the price was read from).
+  const offStore = L.storeLooks({ items: [{ ...wish, url: 'https://www.elkjop.no/p/1' }], watches: new Map([['w', { ...pjWatch, url: 'https://www.elkjop.no/p/1' }]]), costs: [], ctx, now: NOW_, today: TODAY })
+  check('the price match row\'s ↗ only for a link on a price site (a store\'s own page: none)', look.link === wish.url && offStore.extra[0]?.link === null, JSON.stringify(offStore.extra[0]?.link))
 }
 
 console.log('2. storeWords')

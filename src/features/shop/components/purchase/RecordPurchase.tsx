@@ -5,7 +5,7 @@ import { Button, MetaLine, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useLawRules, useShopStores, useStoreRules } from '../../hooks/useShopStores'
 import { useSavePurchase } from '../../hooks/usePurchase'
-import { complaintYearsOf, dateSource, deadlinesOf, protectionOf, type StoreCtx } from '../../purchaseModel'
+import { complaintYearsOf, dateSource, deadlinesOf, protectionNoteOf, protectionOf, type StoreCtx } from '../../purchaseModel'
 import { DateFact, DeadlineWords } from './purchaseKit'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
 import type { Deadline } from '../../storeRules'
@@ -41,6 +41,7 @@ export function RecordPurchase({ item, today }: { item: ShopItem; today: string 
   const ctx: StoreCtx = useMemo(() => ({ stores, rules, law }), [stores, rules, law])
   const { store, deadlines } = useMemo(() => deadlinesOf(item, ctx), [item, ctx])
   const protection = useMemo(() => protectionOf(item, store, rules, today), [item, store, rules, today])
+  const protectionNote = useMemo(() => protectionNoteOf(item, store, rules, today), [item, store, rules, today])
 
   const how = [
     item.bought_channel === 'online' ? 'Online' : item.bought_channel === 'in_store' ? 'In a shop' : null,
@@ -66,6 +67,7 @@ export function RecordPurchase({ item, today }: { item: ShopItem; today: string 
           <button type="button" onClick={() => modal.open({ kind: 'shop-claim', id: item.id })} className="font-semibold text-accent-600 hover:underline">Got money back</button>
         </p>
       )}
+      {protectionNote && <p className="text-meta text-fg-muted">{protectionNote.words} — to {formatDate(protectionNote.until)} if it holds</p>}
       {how.length > 0 && <MetaLine className="text-meta text-fg-muted" items={how} />}
       {item.bought_channel === 'online' && !item.arrived_on && (
         <div className="flex flex-wrap items-center gap-2">

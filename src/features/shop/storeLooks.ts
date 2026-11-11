@@ -6,11 +6,11 @@
 import { formatMoney } from '../settings/subscriptionRules'
 import { isMine } from './ownModel'
 import { currencyOf, listOf, SHOP_CURRENCIES } from './shopModel'
-import { bestMatchOf, gotBackOf, protectedPrice, protectionOf, storeOfItem, watchOffers, type StoreCtx } from './purchaseModel'
+import { bestMatchOf, gotBackOf, protectedPrice, protectionNoteOf, protectionOf, storeOfItem, watchOffers, type StoreCtx } from './purchaseModel'
 import { isShownLink } from './storeRows'
-import { claimedBy } from './storeRules'
+import { claimedBy, storeOfLink } from './storeRules'
 import { signalSignature } from './signalStates'
-import { snoozeUntil, type Look, type LookProtection, type StoreLookInputs } from './shopSuggestions'
+import { snoozeUntil, type Look, type LookProtection, type LookProtectionNote, type StoreLookInputs } from './shopSuggestions'
 import type { ShopCurrency, ShopItem, ShopItemCost, ShopPriceWatch } from './types'
 
 const asCurrency = (c: string): ShopCurrency | null => (SHOP_CURRENCIES.includes(c as ShopCurrency) ? c as ShopCurrency : null)
@@ -28,6 +28,7 @@ export interface StoreLookData {
 /** The stores' part of Needs a look, from the rows already read. */
 export function storeLooks(d: StoreLookData): StoreLookInputs {
   const protections = new Map<string, LookProtection>()
+  const protectionNotes = new Map<string, LookProtectionNote>()
   const gotBack = new Map<string, number>()
   const extra: Look[] = []
   const costsBy = new Map<string, ShopItemCost[]>()
@@ -49,6 +50,13 @@ export function storeLooks(d: StoreLookData): StoreLookInputs {
           where: price?.where ?? null,
         })
       }
+      // A protection nobody checked: a note, never a claim (protectionNoteOf is null while a checked one holds).
+      const n = store ? protectionNoteOf(i, store, d.ctx.rules, d.today) : null
+      if (store && n) {
+        const price = protectedPrice(n, store, watch, watchOffers(watch, d.ctx.stores), d.ctx.stores)
+        const currency = price ? asCurrency(price.currency) : null
+        protectionNotes.set(i.id, { words: n.words, price: price && currency ? { amount: price.amount, currency } : null, where: price?.where ?? null })
+      }
       continue
     }
     // A store that matches a cheaper offer, for a wish still to buy (a general wish's models count through it).
@@ -64,8 +72,9 @@ export function storeLooks(d: StoreLookData): StoreLookInputs {
         ...(m.unsure ? [`from ${claimedBy(m.rule)} — check it`] : [])],
       where: null, action: 'open', claim: null, daysLeft: null, order: 0, things: [],
       signature: signalSignature('price_match', m.store.id, m.currency, m.price), snoozeTo: snoozeUntil(d.today),
-      link: watch?.url && isShownLink(watch.url) ? watch.url : null,
+      // ↗ opens the offers page the price was read from — only a price site's (security review, 11.11.2026).
+      link: watch?.url && isShownLink(watch.url) && storeOfLink(watch.url, d.ctx.stores)?.kind === 'price_site' ? watch.url : null,
     })
   }
-  return { protections, gotBack, extra }
+  return { protections, protectionNotes, gotBack, extra }
 }

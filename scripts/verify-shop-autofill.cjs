@@ -134,6 +134,20 @@ console.log('\n4 · What is saved: the kept facts with their sources, the EAN in
   const cut = A.factsToSave(many, { ...blank, title: '' }).facts
   check('…specs too long for 191\'s 8 KiB are cut from the end until the whole fits', cut && new TextEncoder().encode(JSON.stringify(cut)).length <= 8192
     && cut.specs.value.length > 0 && cut.specs.value.length < 400)
+  // Security review (11.11.2026): each value in 191's shape for its key (shop_item_facts_ok) or left out — never sent to be refused.
+  const f = (key, value, label = 'elkjop.no') => ({ key, value, source: { origin: 'link', label }, confidence: 'exact', on: true, at: AT })
+  const shaped = A.factsToSave([
+    f('brand', 'B'.repeat(121)), f('model', 'WH\u200b-1000\u202eXM5'), f('ean', '019594982190'), f('condition', 'mint'), f('returnDays', 30.5),
+    f('prisjaktId', 'p6219512'),
+    f('specs', [...Array.from({ length: 32 }, (_, i) => ({ name: `Row ${i}`, value: 'x' })), { name: 'Long', value: 'v'.repeat(301) }]),
+  ], { ...blank, title: '' }).facts
+  check('…each value in 191\'s shape or left out: a brand over 120, a 12-digit EAN, an unknown condition, 30.5 days, "p6219512" — out; a model loses its invisible marks; specs at most 30 rows',
+    !('brand' in shaped) && !('ean' in shaped) && !('condition' in shaped) && !('return_days' in shaped) && !('prisjakt_id' in shaped)
+    && shaped.model.value === 'WH-1000XM5' && shaped.specs.value.length === 30 && !shaped.specs.value.some(r => r.name === 'Long'), JSON.stringify(shaped))
+  const good = A.factsToSave([f('brand', 'Sony'), f('ean', '4548736132610'), f('condition', 'new'), f('returnDays', 30), f('prisjaktId', '6219512'),
+    f('specs', [{ name: 'Foldable', value: '' }])], { ...blank, title: '' }).facts
+  check('…and a value in shape is kept as it is (a spec row may have no value)', good.brand.value === 'Sony' && good.ean.value === '4548736132610' && good.condition.value === 'new'
+    && good.return_days.value === 30 && good.prisjakt_id.value === '6219512' && good.specs.value[0].value === '', JSON.stringify(good))
   const odd = A.factsToSave([{ key: 'brand', value: 'Sony', source: { origin: 'title', label: `your \u202e“${'Sony '.repeat(60)}”\n` }, confidence: 'likely', on: true, at: AT }], blank).facts
   check('…a source is one plain line of at most 200 characters (no direction or control characters)', odd.brand.source.length <= 200 && !/[\u202e\n]/.test(odd.brand.source))
   const none = A.factsToSave([], blank)

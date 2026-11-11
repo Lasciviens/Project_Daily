@@ -6,10 +6,10 @@ import { addDays, isDay } from './dealDays'
 import { localDay } from './shopModel'
 import { addMonths } from './ownModel'
 import {
-  offersOfWatch, priceMatches, purchaseDeadlines, ruleName, rulesInForce, searchLinkFor, sourceWords, storeOfLink, storeOfShopName,
+  offersOfWatch, priceMatches, purchaseDeadlines, ruleName, rulesInForce, searchLinkFor, sourceWords, storeOfLink, storeOfShopName, unchecked,
   type PriceMatch, type PriceOffer, type PurchaseDeadlines, type PurchaseFacts,
 } from './storeRules'
-import { isShownLink } from './storeRows'
+import { INVISIBLE_RE, isShownLink } from './storeRows'
 import type { ShopCurrency, ShopItem, ShopItemCost, ShopLawRule, ShopPriceWatch, ShopStore, ShopStoreRule } from './types'
 
 /** The rows a purchase is counted against. */
@@ -93,25 +93,43 @@ export interface Protection {
   against: 'own' | 'any'
 }
 
-/**
- * The price protection that still holds for a purchase at `store` on `today`: the rule in force for the owner's
- * tier with the latest last day, counted from the purchase day (a store's promise runs from the sale, not the
- * delivery). Exclusions it can't check are named in the words, never assumed away.
- */
-export function protectionOf(item: PurchaseFields, store: ShopStore | null, rules: readonly ShopStoreRule[], today: string): Protection | null {
+/** The latest price protection in force for a purchase at `store` on `today`, among the rules `pick` keeps. */
+function latestProtection(item: PurchaseFields, store: ShopStore | null, rules: readonly ShopStoreRule[], today: string,
+  pick: (rule: ShopStoreRule) => boolean): Protection | null {
   const bought = boughtDayOf(item)
   if (!store || !bought) return null
   let best: Protection | null = null
   for (const rule of rulesInForce(store, rules)) {
-    if (rule.kind !== 'price_protection' || rule.days === null || (rule.against !== 'own' && rule.against !== 'any')) continue
+    if (rule.kind !== 'price_protection' || rule.days === null || (rule.against !== 'own' && rule.against !== 'any') || !pick(rule)) continue
     if (rule.exclusions.includes('used') && item.used) continue
     const until = addDays(bought, rule.days)
     if (until < today || (best && best.until >= until)) continue
     const open = rule.exclusions.filter(e => e !== 'used')
     const unless = open.length ? ` — if it wasn't ${open.map(e => EXCLUDED[e]).join(' or ')}` : ''
-    best = { until, rule, name: ruleName(rule, store), words: `${ruleName(rule, store)}, ${sourceWords(rule)}${unless}`, against: rule.against }
+    const name = ruleName(rule, store)
+    best = { until, rule, name, words: unchecked(rule) ? `${sourceWords(rule)}: ${name}${unless}` : `${name}, ${sourceWords(rule)}${unless}`, against: rule.against }
   }
   return best
+}
+
+/**
+ * The price protection that still holds for a purchase at `store` on `today`: the checked rule in force for the
+ * owner's tier with the latest last day, counted from the purchase day (a store's promise runs from the sale, not
+ * the delivery). Exclusions it can't check are named in the words, never assumed away. A rule nobody checked (Ask
+ * AI's, a price site's — storeRules.unchecked) never counts here: it decides no claim, no amount and no day
+ * (security review, 11.11.2026) — `protectionNoteOf` names it.
+ */
+export function protectionOf(item: PurchaseFields, store: ShopStore | null, rules: readonly ShopStoreRule[], today: string): Protection | null {
+  return latestProtection(item, store, rules, today, rule => !unchecked(rule))
+}
+
+/**
+ * A price protection nobody checked that would hold — only for a note ("from Ask AI — check it: Power's 400-day
+ * price protection"), never a claim, an amount, a tone or a day. Null when a checked one holds (it decides).
+ */
+export function protectionNoteOf(item: PurchaseFields, store: ShopStore | null, rules: readonly ShopStoreRule[], today: string): Protection | null {
+  if (protectionOf(item, store, rules, today)) return null
+  return latestProtection(item, store, rules, today, unchecked)
 }
 
 const EXCLUDED: Record<ShopStoreRule['exclusions'][number], string> = {
@@ -194,5 +212,9 @@ export function marketSearches(item: Pick<ShopItem, 'title'>, stores: readonly S
 export function shownAddress(url: string): string {
   if (!isShownLink(url)) return ''
   const rest = url.slice('https://'.length).replace(/^www\./, '')
-  try { return decodeURIComponent(rest) } catch { return rest }
+  let shown = rest
+  try { shown = decodeURIComponent(rest) } catch { /* not encoded as UTF-8: shown as it is */ }
+  // What decoding brings back can't turn the address around or break its line (security review, 11.11.2026).
+  return [...shown.replace(new RegExp(INVISIBLE_RE.source, 'g'), '')]
+    .filter(ch => { const c = ch.codePointAt(0) as number; return c >= 0x20 && !(c >= 0x7f && c <= 0x9f) }).join('')
 }
