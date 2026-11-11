@@ -328,6 +328,33 @@ check('kept %: the share that came back, for things sold or traded in with a pri
   const none = OC.ownershipCost({ items: [], categoryIds: null, prices: { new: 1000, used: null }, currency: 'NOK', rates })
   check('no sale of yours yet: no kept %, no net cost — the note says where it comes from; a missing price is left out',
     none.options.length === 1 && none.options[0].net === null && /kept % comes from those/.test(none.note) && none.cheapest === null)
+  check('…and with one price and no net cost there is nothing to show; two prices or one with its net cost are worth a look',
+    !OC.worthShowing(none) && OC.worthShowing(c) && OC.worthShowing(OC.ownershipCost({ items: own, categoryIds: scope, prices: { new: 8000 }, currency: 'NOK', rates })))
+  check('the kept % in one line: new and used apart when they differ, how many sales and where, how long they were kept',
+    OC.keptWords(c, 'Phones') === `You get back about 60 % new, 65 % used — from 4 of your sales in Phones, kept ≈ ${Math.round(by.used.kept.months)} months`, OC.keptWords(c, 'Phones'))
+  const allScope = OC.ownershipCost({ items: own, categoryIds: new Set([uid(399)]), prices: { new: 8000 }, currency: 'NOK', rates })
+  check('…all your sales when the category has too few; none without a kept %',
+    /^You get back about \d+ % — from 4 of your sales, kept/.test(OC.keptWords(allScope, 'Phones')) && OC.keptWords(none, 'Phones') === null, OC.keptWords(allScope, 'Phones'))
+}
+{
+  const cats = [{ id: CAT, parent_id: null }, { id: SUB, parent_id: CAT }, { id: uid(302), parent_id: null }]
+  check('a kept % scope: the category and its subcategories; a subcategory alone; none without a category',
+    eq([...OC.categoryScope(CAT, cats)], [CAT, SUB]) && eq([...OC.categoryScope(SUB, cats)], [SUB]) && OC.categoryScope(null, cats) === null)
+  const wish = item({ status: 'wishlist', bought_at: null, url: 'https://www.prisjakt.no/product.php?p=1', price: 3490 })
+  const w = { ...watch, item_id: wish.id }
+  const p = OC.ownershipPrices(wish, w)
+  check('a wish\'s prices: new from the clean read of its own link, used and refurbished from Prisjakt\'s offers on it',
+    eq(p.prices, { new: 3290, used: 2600, refurbished: 2900 }) && p.currency === 'NOK' && p.newFrom === 'read', JSON.stringify(p))
+  const mixed = OC.ownershipPrices(wish, { ...w, condition: 'mixed' })
+  check('…a mixed or pre-188 figure (maybe a used one) is never the new price: the wish\'s own price is',
+    mixed.prices.new === 3490 && mixed.newFrom === 'yours' && OC.ownershipPrices(wish, { ...w, condition: null }).prices.new === 3490)
+  check('…a link whose site doesn\'t let apps read it, another link\'s watch or another thing\'s: the wish\'s own price only',
+    [{ ...w, status: 'not_allowed' }, { ...w, url: 'https://www.prisjakt.no/product.php?p=2' }, { ...w, item_id: uid(398) }]
+      .every(x => eq(OC.ownershipPrices(wish, x).prices, { new: 3490 })))
+  check('…used and refurbished only in the new price\'s currency; never a zero, a negative or NaN',
+    eq(OC.ownershipPrices({ ...wish, currency: 'EUR' }, { ...w, condition: 'mixed' }).prices, { new: 3490 })
+      && eq(OC.ownershipPrices(wish, { ...w, used_low: 0, refurbished_low: NaN, low: -1 }).prices, { new: 3490 }))
+  check('…no price anywhere: nothing to compare', eq(OC.ownershipPrices({ ...wish, url: null, price: null }, null).prices, {}))
 }
 
 // ── 5. The ad and the checklist ──────────────────────────────────────────────

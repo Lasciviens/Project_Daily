@@ -18,6 +18,7 @@ import { RecordCosts } from './RecordCosts'
 import { AddModelButton, RecordModels } from './RecordModels'
 import { RecordNudge } from './RecordNudge'
 import { RecordResale } from './RecordResale'
+import { RecordOwnership } from './RecordOwnership'
 import { useListings } from '../../hooks/useShopResale'
 import { openListingOf } from '../../sellingModel'
 import { RecordSection } from './RecordSection'
@@ -98,8 +99,10 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     <div className="flex min-w-0 flex-col gap-2">
       {state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
-      {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />,
-        <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />)}
+      {item.url && box('price', 'Price', priceSummary(item, watch), <PriceCheckButton item={item} watch={watch} />, <>
+        <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />
+        {state === 'buy' && <RecordOwnership item={item} items={r.items} categories={r.categories} watch={watch} ctx={r.ctx} />}
+      </>)}
       {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} section="resale" />
         <RecordResale r={r} watch={watch} />

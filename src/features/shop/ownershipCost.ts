@@ -12,8 +12,9 @@
 // your sold things were usually kept. Nothing is guessed: no kept % → no net cost, and the note says why.
 
 import { complete, gotOf, isPossession, monthsBetween, nokNow, paidOf, boughtOn } from './ownModel'
+import { currencyOf } from './shopModel'
 import type { UsdRates } from './fx'
-import type { ShopItem } from './types'
+import type { ShopCategory, ShopItem, ShopPriceWatch } from './types'
 
 /** How many sales of one category make its own kept %. */
 export const KEPT_MIN_CATEGORY = 3
@@ -137,4 +138,76 @@ export function ownershipCost(input: OwnershipCostInput): OwnershipCost {
     : options.some(o => !o.kept) ? 'None of your things has been sold or traded in with a price yet — your own kept % comes from those'
     : null
   return { options, cheapest, note }
+}
+
+// ── A wish's record: what to compare ─────────────────────────────────────────
+
+/** The thing's category and its subcategories (the scope of its kept %); null without a category. */
+export function categoryScope(categoryId: string | null, categories: readonly Pick<ShopCategory, 'id' | 'parent_id'>[]): Set<string> | null {
+  if (!categoryId) return null
+  return new Set([categoryId, ...categories.filter(c => c.parent_id === categoryId).map(c => c.id)])
+}
+
+export interface OwnershipPrices {
+  prices:   Partial<Record<OwnershipKind, number>>
+  currency: string
+  /** Where the new price is from: the clean read of the wish's own link, or the wish's own price. */
+  newFrom:  'read' | 'yours' | null
+}
+
+const usable = (n: number | null | undefined): n is number => n != null && Number.isFinite(n) && n > 0
+
+/**
+ * A wish's prices to compare. New: the last clean read of its own link (Prisjakt's new offers or a shop's own
+ * page — never a mixed or pre-188 figure, which may be a used one), else the wish's own price. Used and
+ * refurbished: Prisjakt's cheapest such offers on that read (offers to buy — never a "Could sell for"), only in
+ * the new price's currency. A link whose site doesn't let apps read it has no read. Nothing is guessed.
+ */
+export function ownershipPrices(
+  item: Pick<ShopItem, 'id' | 'url' | 'price' | 'currency' | 'region'>,
+  watch: ShopPriceWatch | null | undefined,
+): OwnershipPrices {
+  const own = watch && item.url && watch.item_id === item.id && watch.url === item.url && watch.status !== 'not_allowed' ? watch : null
+  const readCurrency = (own?.currency ?? 'NOK').toUpperCase()
+  const prices: OwnershipPrices['prices'] = {}
+  let currency: string = currencyOf(item)
+  let newFrom: OwnershipPrices['newFrom'] = null
+  if (own && usable(own.low) && (own.condition === 'new' || own.condition === 'unknown')) {
+    prices.new = own.low
+    currency = readCurrency
+    newFrom = 'read'
+  } else if (usable(item.price)) {
+    prices.new = item.price
+    newFrom = 'yours'
+  } else if (own) {
+    currency = readCurrency
+  }
+  if (own && readCurrency === currency) {
+    if (usable(own.used_low)) prices.used = own.used_low
+    if (usable(own.refurbished_low)) prices.refurbished = own.refurbished_low
+  }
+  return { prices, currency, newFrom }
+}
+
+/** Whether the comparison has something to say: two prices or more, or one with its net cost. */
+export function worthShowing(cost: OwnershipCost): boolean {
+  return cost.options.length >= 2 || (cost.options.length === 1 && cost.options[0].net !== null)
+}
+
+/**
+ * Where the kept % is from, in one line — "You get back about 60 % new, 65 % used — from 4 of your sales in
+ * Phones, kept ≈ 12 months" (a refurbished one counts as used). Null when no option has a kept %.
+ */
+export function keptWords(cost: OwnershipCost, categoryName: string | null): string | null {
+  const withKept = cost.options.filter((o): o is OwnershipOption & { kept: KeptShare } => o.kept !== null)
+  if (!withKept.length) return null
+  const newKept = withKept.find(o => o.kind === 'new')?.kept
+  const usedKept = withKept.find(o => o.kind !== 'new')?.kept
+  const pcts = [newKept && ['new', newKept.pct] as const, usedKept && ['used', usedKept.pct] as const].filter(Boolean) as (readonly [string, number])[]
+  const share = pcts.length === 2 && pcts[0][1] !== pcts[1][1] ? pcts.map(([k, p]) => `${p} % ${k}`).join(', ') : `${pcts[0][1]} %`
+  const widest = withKept.map(o => o.kept).reduce((a, b) => (b.count > a.count ? b : a))
+  const from = widest.count === 1 ? 'your one sale' : `${widest.count} of your sales`
+  const where = widest.scope === 'category' && categoryName ? ` in ${categoryName}` : ''
+  const m = widest.months !== null ? Math.round(widest.months) : null
+  return `You get back about ${share} — from ${from}${where}${m !== null ? `, kept ≈ ${m} month${m === 1 ? '' : 's'}` : ''}`
 }
