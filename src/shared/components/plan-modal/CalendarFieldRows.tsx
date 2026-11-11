@@ -152,7 +152,7 @@ export function UrlRow({ url, problem, onChange, mark, open, toggle }: Opened & 
   return (
     <>
       <div className={cx(LINE, 'flex min-h-11 w-full items-center gap-2 px-3.5 text-lead')}>
-        <input value={url} onChange={e => onChange(e.target.value)} placeholder="URL" aria-label="URL" maxLength={2100}
+        <input value={url} onChange={e => onChange(e.target.value)} placeholder="URL" aria-label="URL"
           onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
           type="text" inputMode="url" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="done"
