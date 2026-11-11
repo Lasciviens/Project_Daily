@@ -407,7 +407,7 @@ console.log('\n== A save\'s own item goes first (03.11.2026) ==')
   eq([F.sendFailureText(new Error('Anything else — not written')), F.sendFailureText(new Error('An event line holds a control character — not written (x)'))],
     [F.APP_FAULT, F.APP_FAULT], 'only the guards\' exact texts pass (an allow-list, never a pattern)')
   const eventsSrc = fs.readFileSync(path.join(__dirname, '../src/features/calendar/areas/icloudEvents.ts'), 'utf8')
-  eq(F.GUARD_REFUSALS.length === 3 && F.GUARD_REFUSALS.every(g => eventsSrc.includes(`throw new Error('${g}')`)), true,
+  eq(F.GUARD_REFUSALS.length === 7 && F.GUARD_REFUSALS.every(g => eventsSrc.includes(`throw new Error('${g}')`)), true,
     'each allowed text is one the event rules really throw (a changed guard text fails here)')
   eq(/if \(e instanceof ICloudError && \(e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?if \(mine && q\.attempts >= 1\) await db\.from\('icloud_outbox'\)\.update\(\{ next_try_at: retryAt\(q\.attempts\) \}\)[^]*?throw e\n/.test(drain), true,
     'a password refusal or iCloud\'s limit still records the save\'s own try, so the 10 s gap holds there too')

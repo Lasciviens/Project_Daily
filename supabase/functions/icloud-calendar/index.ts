@@ -84,6 +84,13 @@ const MAX_READ_PER_DAY = 40
 //  The start (anchor) is effective_from (081): nothing occurs before it, and
 //  except_dates (142) are left out of every kind.
 //
+//  End Repeat (193): `repeat_until` is the last day it may occur (included);
+//  "after N times" is `repeat_count`, and the database keeps `repeat_until`
+//  at its Nth day — counted on the kind's own pattern from effective_from,
+//  days taken out included (RFC 5545 counts before EXDATE). A rule with a
+//  count and no end day yet (the sheet before a save) gets the same day from
+//  countEndDay — the SQL copy, repeat_count_end, searches the same 20 years.
+//
 //  "Nearest" never ties: the seven days from 3 before to 3 after a date hold
 //  each weekday exactly once, so the nearest one is at most 3 days away and
 //  unique. It may fall in the neighbouring month (the Saturday nearest the
@@ -118,7 +125,16 @@ interface RepeatRule {
   effective_from?:  string | null
   /** Days it was taken out of (each became a one-off plan, 142). */
   except_dates?:    readonly string[] | null
+  /** End Repeat (193): the last day it may occur, included; null = never. With a count, its Nth day. */
+  repeat_until?:    string | null
+  /** End Repeat "after N times" (193): 1–999; null = no count. */
+  repeat_count?:    number | null
 }
+
+/** "After N times" is 1 to this (193's CHECK allows the same). */
+const MAX_REPEAT_COUNT = 999
+/** How far the Nth day is looked for (193: repeat_count_end searches the same): 20 years. */
+const REPEAT_COUNT_SEARCH_DAYS = 7305
 
 const DAY_MS = 86_400_000
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -212,12 +228,50 @@ function patternHits(rule: RepeatRule, day: string): boolean {
   }
 }
 
+/** A whole number of times in 1–999, else null. */
+function repeatCountOf(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_REPEAT_COUNT ? v : null
+}
+
+const countEnds = new Map<string, string | null>()
+/** The day of the Nth time ("after N times", 193): the kind's pattern from effective_from, taken-out days counted.
+ *  null when there is no start, no valid count, or no Nth day within 20 years. */
+function countEndDay(rule: RepeatRule): string | null {
+  const count = repeatCountOf(rule.repeat_count)
+  const from = rule.effective_from
+  if (count === null || !isIsoDay(from)) return null
+  const key = [repeatKindOf(rule), validDays(rule.days_of_week).join(','), rule.repeat_interval ?? '', rule.repeat_unit ?? '',
+    [...(rule.repeat_dates ?? [])].sort().join(','), from, count].join('|')
+  if (countEnds.has(key)) return countEnds.get(key) ?? null
+  let seen = 0
+  let found: string | null = null
+  for (let n = dayNumber(from), end = n + REPEAT_COUNT_SEARCH_DAYS; n <= end; n++) {
+    const iso = isoOfDayNumber(n)
+    if (patternHits(rule, iso) && ++seen === count) { found = iso; break }
+  }
+  // Bounded: a long session meets few rules, but never grows without end.
+  if (countEnds.size >= 500) countEnds.clear()
+  countEnds.set(key, found)
+  return found
+}
+
+/** The last day the rule may occur on (193), or null for never: its end day — with a count the database stores the
+ *  Nth day there; a count with no stored day yet (the sheet's form) is counted here. */
+function repeatLastDay(rule: RepeatRule): string | null {
+  if (isIsoDay(rule.repeat_until)) return rule.repeat_until
+  return repeatCountOf(rule.repeat_count) !== null ? countEndDay(rule) : null
+}
+
 /** Does the template have an occurrence that STARTS on `day` ('yyyy-MM-dd')?
- *  Never before effective_from, never on an except_dates day. */
+ *  Never before effective_from, never after its end (193), never on an except_dates day. */
 function occursOn(rule: RepeatRule, day: string): boolean {
   if (!isIsoDay(day)) return false
   if (rule.effective_from && day < rule.effective_from) return false
   if ((rule.except_dates ?? []).includes(day)) return false
+  if (rule.repeat_until != null || rule.repeat_count != null) {
+    const last = repeatLastDay(rule)
+    if (last && day > last) return false
+  }
   return patternHits(rule, day)
 }
 
@@ -405,6 +459,86 @@ interface EventBlock {
   busy?: boolean | null
   /** Where it happens (186): the row's jsonb, read through eventPlace. */
   place?: unknown
+  /** Show As (193): 'busy' | 'free', read through eventShowAs; none = by its length, as before. */
+  show_as?: unknown
+  /** Alert and Second Alert (193), read through eventAlerts; none = the area's own alert. */
+  alerts?: unknown
+}
+
+// ── An item's calendar fields (193): Alert + Second Alert, Show As, URL, Travel Time ──
+//  Every value is input (the warning in AGENTS.md): the browser, the assistant and the read-backs write these columns,
+//  and the writers put them into iCalendar lines and Google's bodies. The database CHECKs the same allow-lists
+//  (item_alerts_ok, item_url_ok, the travel and show_as CHECKs); the writers read a row through the event* readers
+//  below again, and Apple's lines have a last guard of their own (icloudEvents).
+
+/** The alerts an item may have (Apple's own list): minutes before a timed item's start — 0 is "at the time"; on an
+ *  all-day item a day offset at 09:00 (allDayAlertDays: 0–120 on the day, 1440 the day before, 2880, 10080 a week). */
+const ALERT_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080]
+/** Alert and Second Alert: at most two, never the same twice. */
+const MAX_ITEM_ALERTS = 2
+/** An all-day item's alert rings at this time of its day (minutes after midnight: 09:00, Apple's own default). */
+const ALL_DAY_ALERT_MINUTE = 540
+/** Travel Time (193): 0 = none, or minutes before; no value = automatic (Time to Leave, from the place's map pin). */
+const TRAVEL_MINUTES: readonly number[] = [0, 5, 15, 30, 60, 90, 120]
+/** A link is at most this long (193's CHECK). */
+const ITEM_URL_MAX = 2048
+/** A link an item may hold (193's CHECK, item_url_ok): https, a host name (no user name, no IP literal in brackets), an
+ *  optional port, then only URL characters with % followed by two hex digits — no space, quote, angle bracket,
+ *  backslash or control character, so nothing in it can end an iCalendar line or a quoted value. */
+const ITEM_URL = /^https:\/\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::[0-9]{1,5})?(?:[/?#](?:%[0-9A-Fa-f]{2}|[A-Za-z0-9._~!$&'()*+,;=:@/?#-])*)?$/
+
+type ShowAs = 'busy' | 'free'
+
+/** A row's alerts as the writers may use them: null = not set (the area's own alert, as before 193); [] = none; else
+ *  one or two allow-listed, distinct minutes, in their order (Alert, then Second Alert). Anything else reads as not set. */
+function eventAlerts(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_ITEM_ALERTS) return null
+  if (!raw.every(m => typeof m === 'number' && ALERT_MINUTES.includes(m))) return null
+  return new Set(raw).size === raw.length ? [...raw] as number[] : null
+}
+
+/** A row's Show As: 'busy' or 'free'; anything else (none, before 193) reads as not set — the length decides. */
+function eventShowAs(raw: unknown): ShowAs | null {
+  return raw === 'busy' || raw === 'free' ? raw : null
+}
+
+/** A row's link: only one ITEM_URL takes, at most ITEM_URL_MAX long; anything else is no link. */
+function eventUrl(raw: unknown): string | null {
+  return typeof raw === 'string' && raw.length <= ITEM_URL_MAX && ITEM_URL.test(raw) ? raw : null
+}
+
+/** A row's travel time: 0 (none) or allow-listed minutes; anything else (none, before 193) reads as automatic (null). */
+function eventTravel(raw: unknown): number | null {
+  return typeof raw === 'number' && TRAVEL_MINUTES.includes(raw) ? raw : null
+}
+
+/** The day offset an all-day item's alert means: on the day (0–120), 1, 2 or 7 days before — each at 09:00. */
+function allDayAlertDays(minutes: number): number {
+  return minutes >= 10080 ? 7 : minutes >= 2880 ? 2 : minutes >= 1440 ? 1 : 0
+}
+
+/** Busy or Free on a calendar: Show As when set, else as before 193 — Busy with a length, Free without one and all day. */
+function eventTransparency(showAs: unknown, timedWithLength: boolean): 'opaque' | 'transparent' {
+  const set = eventShowAs(showAs)
+  return (set ? set === 'busy' : timedWithLength) ? 'opaque' : 'transparent'
+}
+
+/** Google's reminders (193; Events reference: `reminders.useDefault`, `overrides[]` of `{ method, minutes }`, minutes
+ *  "between 0 and 40320", at most 5). */
+interface EventReminders { useDefault: boolean; overrides: { method: 'popup'; minutes: number }[] }
+/** The calendar's own default — what an item with no alerts of its own has (and what an update puts back). */
+const DEFAULT_REMINDERS: EventReminders = { useDefault: true, overrides: [] }
+
+/**
+ * An item's alerts as Google's reminders (193), or null when it has none of its own (the calendar's default, as before
+ * 193). Timed: minutes before the start. All day: Google counts from the day's midnight and takes no minutes after it,
+ * so 09:00 the day before is 900 and "on the day at 09:00" can't be said — it is left out (Apple has it).
+ */
+function googleReminders(raw: unknown, allDay: boolean): EventReminders | null {
+  const alerts = eventAlerts(raw)
+  if (!alerts) return null
+  const minutes = alerts.map(m => (allDay ? allDayAlertDays(m) * 1440 - ALL_DAY_ALERT_MINUTE : m)).filter(m => m >= 0)
+  return { useDefault: false, overrides: [...new Set(minutes)].map(m => ({ method: 'popup' as const, minutes: m })) }
 }
 
 /** An item's place as the calendars get it (186): a name, maybe a town, maybe a map pin. */
@@ -448,13 +582,16 @@ interface BlockEventBody {
   transparency: 'opaque' | 'transparent'
   /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
   location?: string
+  /** The slot's own alerts (193), when it has them. A PATCH of the whole event sends none as the default (fullEventPatch). */
+  reminders?: EventReminders
 }
 
 /**
  * The Google event of a slot: a day with no time is an all-day event (end =
  * the next day — Google's end is exclusive) and Free; a time is a wall-clock
  * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
- * with a nominal end when it doesn't. null when the slot has no usable day.
+ * with a nominal end when it doesn't — unless Show As says (193). Its own
+ * alerts are its reminders (193). null when the slot has no usable day.
  */
 function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
   if (!ISO_DAY.test(b.date ?? '')) return null
@@ -462,8 +599,10 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
   const start = clockMinutes(b.start_time)
   const place = eventPlace(b.place)
   const location = place ? { location: placeText(place) } : {}
+  const reminders = googleReminders(b.alerts, start === null)
+  const own = reminders ? { reminders } : {}
   if (start === null) {
-    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent', ...location }
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: eventTransparency(b.show_as, false), ...location, ...own }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
@@ -472,8 +611,9 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
     summary,
     start: { dateTime: wallClockAt(b.date, start), timeZone },
     end: { dateTime: wallClockAt(b.date, start + length), timeZone },
-    transparency: busy ? 'opaque' : 'transparent',
+    transparency: eventTransparency(b.show_as, busy),
     ...location,
+    ...own,
   }
 }
 
@@ -506,11 +646,13 @@ function withTimePatch<B extends { start: EventTime; end: EventTime }>(body: B):
 /**
  * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
  * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
- * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body.
+ * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body. Its reminders too (193):
+ * an item with no alerts of its own sends the calendar's default with no overrides (a PATCH replaces an array and
+ * merges an object, so alerts taken off in the app leave Google too).
  */
-function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string }>(body: B): Omit<Omit<B, 'location'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null } {
-  const { location, ...rest } = body
-  return { ...withTimePatch(rest), location: location ?? null }
+function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string; reminders?: EventReminders }>(body: B): Omit<Omit<B, 'location' | 'reminders'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null; reminders: EventReminders } {
+  const { location, reminders, ...rest } = body
+  return { ...withTimePatch(rest), location: location ?? null, reminders: reminders ?? { ...DEFAULT_REMINDERS, overrides: [] } }
 }
 
 /**
@@ -554,6 +696,9 @@ interface ReadbackEvent {
   time: string | null
   minutes: number | null
   busy: boolean
+  /** Show As as the event has it (193): its transparency, all-day too — the read-back takes it only for an item whose
+   *  Show As is set (else Free still means "no length", as since 155). */
+  showAs: 'busy' | 'free'
   originalDate: string | null
   updated: string | null
 }
@@ -600,21 +745,22 @@ function readbackEvent(e: GoogleEventLike, calendarZone: string, itemZone?: stri
   const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
   const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
   if (status === 'cancelled') {
-    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false }
+    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false, showAs: 'free' }
   }
   const title = typeof e.summary === 'string' ? stripDoneMark(e.summary) : null
   const busy = e.transparency !== 'transparent'
+  const showAs = busy ? 'busy' as const : 'free' as const
   if (e.start?.date && ISO_DAY.test(e.start.date)) {
     const endDay = e.end?.date && ISO_DAY.test(e.end.date) ? e.end.date : addDaysToIso(e.start.date, 1)
     const days = Math.max(1, Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${e.start.date}T00:00:00Z`)) / 86_400_000))
-    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false }
+    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false, showAs }
   }
   const startAt = e.start?.dateTime ? wallClockIn(e.start.dateTime, zone) : null
-  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy }
+  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy, showAs }
   const startMs = Date.parse(e.start!.dateTime!)
   const endMs = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
   const minutes = Number.isFinite(endMs) && endMs > startMs ? Math.min(1440, Math.round((endMs - startMs) / 60_000)) : null
-  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy }
+  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy, showAs }
 }
 
 /** The first read (and the one after a 410) only fetches a sync token. */
@@ -706,6 +852,15 @@ function isSyncTokenGone(status: number | null | undefined): boolean {
 //  one (busy false) and for all-day. A day held by a moved instance of the
 //  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
 //  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
+//
+//  Since 193: End Repeat ends the RRULE — `COUNT=N` when the series starts on
+//  the plan's own first day (its N times are Google's and Apple's N), else
+//  `UNTIL` its last day (recurrence.repeatLastDay): a date for an all-day
+//  series, the last day's 23:59:59 in the plan's zone as UTC for a timed one
+//  (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE kinds simply list no
+//  day after it (the horizon stops there). Show As sets Busy / Free when the
+//  owner picked it (calendarEventRules.eventTransparency), and the plan's own
+//  alerts are its reminders (googleReminders).
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -736,6 +891,10 @@ interface SeriesTemplate extends RepeatRule {
   time_zone?: string | null
   /** Where the plan happens (186): the row's jsonb, read through calendarEventRules.eventPlace. */
   place?: unknown
+  /** Show As (193): 'busy' | 'free'; none = by its length, as before. */
+  show_as?: unknown
+  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's (Google's default). */
+  alerts?: unknown
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -752,6 +911,8 @@ interface SeriesEventBody {
   transparency: 'opaque' | 'transparent'
   /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
   location?: string
+  /** The plan's own alerts (193), when it has them. An update sends none as the default (fullEventPatch). */
+  reminders?: EventReminders
 }
 
 /** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
@@ -831,6 +992,36 @@ function seriesRrule(rule: RepeatRule): string | null {
 
 /** The rule's own pattern, with no day taken out. */
 const patternOf = (rule: RepeatRule): RepeatRule => ({ ...rule, except_dates: [] })
+
+/** The UTC offset of `zone` at instant `ms`, in minutes (Oslo in summer: 120). */
+function seriesZoneOffset(ms: number, zone: string): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms)).map(x => [x.type, x.value]))
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - ms) / 60_000)
+}
+
+/** The end of `day` (23:59:59) on `zone`'s clock as an RFC 5545 UTC stamp ('20261231T225959Z'). */
+function endOfDayUtcStamp(day: string, zone: string): string {
+  const wall = Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 23, 59, 59)
+  let at = wall - seriesZoneOffset(wall, zone) * 60_000
+  at = wall - seriesZoneOffset(at, zone) * 60_000
+  return new Date(at).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+}
+
+/**
+ * End Repeat's part of the RRULE (193), '' for a repeat that never ends: `;COUNT=N` when the series starts on the
+ * plan's own first day — Google and Apple then count the same N times — else `;UNTIL=` its last day (a date for an
+ * all-day series; the day's end in `tz` as UTC for a timed one).
+ */
+function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: string): string {
+  const count = repeatCountOf(t.repeat_count)
+  if (count !== null && isIsoDay(t.effective_from)
+      && nextOccurrences(patternOf(t), t.effective_from, 1, FIRST_DAY_SEARCH_DAYS)[0] === first) return `;COUNT=${count}`
+  const last = repeatLastDay(t)
+  if (!last) return ''
+  return `;UNTIL=${allDay ? last.replace(/-/g, '') : endOfDayUtcStamp(last, tz)}`
+}
 
 /** The first day the rule's pattern has on or after its start — the later of
  *  effective_from and the day it was added to Google (taken-out days count). */
@@ -928,13 +1119,16 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
 
   const rrule = seriesRrule(t)
   if (rrule) {
-    recurrence.push(rrule)
+    recurrence.push(`${rrule}${rruleEndPart(t, first, allDay, tz)}`)
     // Only days the rule really has, from its first one on.
     exdates = [...except].filter(d => d >= first && occursOn(pattern, d)).sort()
   } else {
-    const last = repeatKindOf(t) === 'dates'
+    const reach = repeatKindOf(t) === 'dates'
       ? [...(t.repeat_dates ?? [])].filter(isIsoDay).sort().pop() ?? first
       : addDaysIso(first > opts.today ? first : opts.today, SERIES_HORIZON_DAYS)
+    // A repeat that ends (193) lists no day after its last; its horizon is that day, so it is never topped up again.
+    const end = repeatLastDay(t)
+    const last = end && end < reach ? end : reach
     if (repeatKindOf(t) !== 'dates') horizon = last
     const days = occurrencesBetween(pattern, first, last)
     const extra = days.filter(d => d !== first && !except.has(d))
@@ -948,6 +1142,8 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
   const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
   const place = eventPlace(t.place)
   const location = place ? { location: placeText(place) } : {}
+  const reminders = googleReminders(t.alerts, !startClock || !endClock)
+  const own = reminders ? { reminders } : {}
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -956,8 +1152,9 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
         start: { date: first },
         end: { date: addDaysIso(first, 1) },
         recurrence,
-        transparency: 'transparent',
+        transparency: eventTransparency(t.show_as, false),
         ...location,
+        ...own,
       },
     }
   }
@@ -971,8 +1168,9 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
       start: { dateTime: `${first}T${startClock}`, timeZone: tz },
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
-      transparency: t.busy === false ? 'transparent' : 'opaque',
+      transparency: eventTransparency(t.show_as, t.busy !== false),
       ...location,
+      ...own,
     },
   }
 }
@@ -982,6 +1180,9 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
 function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
   if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
   const h = t.google_calendar_horizon
+  // A repeat that ends (193): once the list reaches its last day there is nothing more to add.
+  const end = repeatLastDay(t)
+  if (end && isIsoDay(h) && h >= end) return false
   return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
 }
 
@@ -1235,6 +1436,65 @@ function alarmLines(minutes: number | null, timed: boolean, title: string, allDa
   return at(ofDay === 0 ? 'PT0S' : `PT${ofDay}M`)
 }
 
+/** An alert's TRIGGER (193): a timed item's minutes before its start ("-PT30M", at the start "PT0S"); an all-day item's
+ *  day offset at 09:00, counted from the day's midnight ("PT540M" on the day, "-PT900M" the day before). */
+function alertTrigger(minutes: number, timed: boolean): string {
+  if (timed) return minutes === 0 ? 'PT0S' : `-PT${minutes}M`
+  const days = allDayAlertDays(minutes)
+  return days === 0 ? `PT${ALL_DAY_ALERT_MINUTE}M` : `-PT${days * 1440 - ALL_DAY_ALERT_MINUTE}M`
+}
+
+/** Every TRIGGER an item's own alert can be (the last guard compares with these, exactly). */
+const ITEM_TRIGGERS: readonly string[] = [...new Set(ALERT_MINUTES.flatMap(m => [alertTrigger(m, true), alertTrigger(m, false)]))]
+
+/**
+ * The event's alerts (193). An item with alerts of its own (Alert and Second Alert) gets those — none is Apple's
+ * no-alert marker; an item with none of its own gets the area's, as before 193 (alarmLines). The last guard: each
+ * TRIGGER is one ITEM_TRIGGERS names, or nothing is written.
+ */
+function itemAlarmLines(raw: unknown, timed: boolean, title: string, area: Pick<CalendarArea, 'alertMinutes'>, allDay: AllDayAlert | null): string[] {
+  const alerts = eventAlerts(raw)
+  if (alerts === null) return alarmLines(area.alertMinutes, timed, title, allDay)
+  if (!alerts.length) return NO_ALERT
+  const triggers = [...new Set(alerts.map(m => alertTrigger(m, timed)))]
+  if (!triggers.every(t => ITEM_TRIGGERS.includes(t))) throw new Error('An event alert is not one the app offers — not written')
+  return triggers.flatMap(t => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, `TRIGGER:${t}`, 'END:VALARM'])
+}
+
+/** Apple's Time to Leave line (186): written with a map pin, so the iPhone works out the travel time itself. */
+const TRAVEL_ADVISORY = 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC'
+const TRAVEL_LINE = new RegExp(`^X-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT(?:${TRAVEL_MINUTES.filter(m => m > 0).join('|')})M$`)
+
+/**
+ * The place and its travel time (193). Automatic (no value, every item before 193): the place's lines as 186 writes
+ * them — with a map pin, Apple's Time to Leave. None (0): the place without Time to Leave. Minutes: the place without
+ * Time to Leave, plus Apple's own travel time (`X-APPLE-TRAVEL-DURATION`, the property the iPhone writes for a travel
+ * time picked by hand — to confirm live that it honours one a server wrote). The last guard: the travel line has the
+ * exact shape built, or nothing is written.
+ */
+function placeAndTravelLines(place: EventPlace | null | undefined, rawTravel: unknown): string[] {
+  const lines = locationLines(place)
+  const travel = eventTravel(rawTravel)
+  if (travel === null) return lines
+  const kept = lines.filter(l => l !== TRAVEL_ADVISORY)
+  if (travel === 0) return kept
+  const line = `X-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT${travel}M`
+  if (!TRAVEL_LINE.test(line)) throw new Error('An event travel time is not one the app offers — not written')
+  return [...kept, line]
+}
+
+/** The event's URL field (193): the item's own link when it has one (https, checked again — a stored value is input),
+ *  else the link to its day in the app, as before. The last guard: the value is one ITEM_URL takes, or nothing is
+ *  written — a URI value isn't escaped in iCalendar, so only an allow-list keeps a line or a parameter out of it. */
+function urlLine(raw: unknown, link: string): string {
+  const value = eventUrl(raw) ?? link
+  if (value.length > ITEM_URL_MAX || !ITEM_URL.test(value)) throw new Error('An event link is not a web address the app takes — not written')
+  return `URL;VALUE=URI:${value}`
+}
+
+/** A repeat's RRULE exactly as calendarSeries builds it (with 193's COUNT or UNTIL) — the last guard refuses any other. */
+const RRULE_LINE = /^RRULE:FREQ=(?:DAILY|WEEKLY)(?:;INTERVAL=[1-9][0-9]?)?(?:;WKST=MO;BYDAY=(?:SU|MO|TU|WE|TH|FR|SA)(?:,(?:SU|MO|TU|WE|TH|FR|SA)){0,6})?(?:;COUNT=[1-9][0-9]{0,2}|;UNTIL=[0-9]{8}(?:T[0-9]{6}Z)?)?$/
+
 /** What an event's notes carry (the owner's choice, 2b-3): the item's own notes and/or the link back to the app. */
 function eventNotes(mode: NotesMode, notes: string | null | undefined, link: string): string {
   const own = mode === 'notes+link' || mode === 'notes' ? notes?.trim() : ''
@@ -1260,6 +1520,12 @@ interface EventParts {
   now:        Date
   /** Where it happens (186): LOCATION, and with coordinates Apple's map pin. */
   place?:     EventPlace | null
+  /** The item's own alerts (193), as stored — read through eventAlerts; none = the area's. */
+  alerts?:    unknown
+  /** The item's own link (193), as stored — read through eventUrl; none = the link to its day. */
+  url?:       unknown
+  /** The item's travel time (193), as stored — read through eventTravel; none = automatic. */
+  travel?:    unknown
 }
 
 /** A value inside Apple's quoted parameters (X-TITLE="…"): letters, digits, spaces and plain punctuation only — a quote,
@@ -1311,13 +1577,15 @@ function eventObject(p: EventParts): string {
     ...(p.body.recurrence ?? []),
     `SUMMARY:${icsEscape(title)}`,
     ...(notes ? [`DESCRIPTION:${icsEscape(notes)}`] : []),
-    ...locationLines(p.place),
-    `URL;VALUE=URI:${p.link}`,
+    ...placeAndTravelLines(p.place, p.travel),
+    urlLine(p.url, p.link),
     `TRANSP:${p.body.transparency === 'transparent' ? 'TRANSPARENT' : 'OPAQUE'}`,
-    ...alarmLines(p.area.alertMinutes, timed, title, p.look.allDayAlert),
+    ...itemAlarmLines(p.alerts, timed, title, p.area, p.look.allDayAlert),
     'END:VEVENT',
     'END:VCALENDAR',
   ]
+  // A repeat's rule only as the app builds it (193's End Repeat included); a VTIMEZONE's yearly rule is the zone's.
+  if ((p.body.recurrence ?? []).some(l => l.startsWith('RRULE') && !RRULE_LINE.test(l))) throw new Error('A repeat rule is not one the app builds — not written')
   // The last guard: no line may carry a control character (a property smuggled in through any field).
   // eslint-disable-next-line no-control-regex -- matching control characters is the point: such a line is refused
   if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F-\x9F\u2028\u2029]/.test(l))) throw new Error('An event line holds a control character — not written')
@@ -1326,26 +1594,28 @@ function eventObject(p: EventParts): string {
 
 /** A slot's event (time_blocks): its id names it in iCloud, so a move or rename replaces it in place. */
 function slotEvent(
-  block: EventBlock & { id: string; notes?: string | null },
+  block: EventBlock & { id: string; notes?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { done: boolean; taskNotes?: string | null; area: CalendarArea; look: EventLook; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string } | null {
   const body = blockEventBody(block, { done: o.done, timeZone: o.timeZone })
   if (!body) return null
   const uid = `lasci-slot-${block.id}@lasciviens.github.io`
   const notes = [block.notes?.trim(), o.taskNotes?.trim()].filter(Boolean).join('\n\n') || null
-  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now, place: eventPlace(block.place) }) }
+  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now, place: eventPlace(block.place),
+    alerts: block.alerts, url: block.url, travel: block.travel_minutes }) }
 }
 
 /** A repeating plan's ONE series event (schedule_blocks), from the day it reached Apple Calendar (`icloud_from`). */
 function planEvent(
-  plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null },
+  plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { area: CalendarArea; look: EventLook; today: string; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string; plan: SeriesPlan } | null {
   // Google's own start day is not iCloud's: a series starts where it reached this calendar.
   const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
-  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place) }) }
+  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place),
+    alerts: plan.alerts, url: plan.url, travel: plan.travel_minutes }) }
 }
 
 /** A moment as Oslo's wall clock ("2026-10-28T17:30:00"), or null for no real moment. */
@@ -1982,6 +2252,127 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
   return { title, titleBare, lastModified, days }
 }
 
+// ── The read-back of an item's calendar fields (193) ─────────────────────────
+//  Alert + Second Alert, Show As, URL and Travel Time as iCloud has them on the series or slot event (the master, never
+//  a moved day). Each is compared with what the app itself writes for the item now — built by the same event rules
+//  (itemAlarmLines, urlLine, placeAndTravelLines) and read by the same parser — so only a field the iPhone changed is
+//  sent, never the area's default alert, the day link or Time to Leave the app put there. A value the app can't take
+//  (an alert off Apple's list, a third alert, an absolute time, a link that isn't https, a travel time off the list)
+//  is left out: never applied, never guessed. apply_icloud_readback checks every value again (193).
+
+/** One VALARM as a signed minute count from the start ("-60" = an hour before, "540" = 09:00 on an all-day event's
+ *  day), "NONE" for Apple's no-alert marker, or null when the app can't read it. */
+export function alarmToken(block: readonly string[]): string | null {
+  const action = block.find(l => /^ACTION[;:]/i.test(l))?.replace(/^[^:]*:/, '').trim().toUpperCase()
+  const trigger = block.find(l => /^TRIGGER[;:]/i.test(l))
+  if (action === 'NONE') return 'NONE'
+  if (!trigger || trigger.indexOf(':') < 0) return null
+  const params = trigger.slice(0, trigger.indexOf(':'))
+  const value = trigger.slice(trigger.indexOf(':') + 1).trim()
+  if (/VALUE=DATE-TIME/i.test(params)) return value === '19760401T005545Z' ? 'NONE' : null
+  if (/RELATED=END/i.test(params)) return null
+  const m = value.match(/^([+-])?P(?:(\d{1,4})W)?(?:(\d{1,4})D)?(?:T(?:(\d{1,4})H)?(?:(\d{1,5})M)?(?:(\d{1,6})S)?)?$/)
+  if (!m || /^[+-]?PT?$/.test(value) || /T$/.test(value) || (m[6] && Number(m[6]) % 60 !== 0)) return null
+  const minutes = Number(m[2] ?? 0) * 10080 + Number(m[3] ?? 0) * 1440 + Number(m[4] ?? 0) * 60 + Number(m[5] ?? 0) + Number(m[6] ?? 0) / 60
+  return String(m[1] === '-' && minutes ? -minutes : minutes)
+}
+
+/** The VALARM blocks of `uid`'s master VEVENT (lines unfolded, nested blocks skipped); null when there is no such event. */
+export function masterAlarms(ics: string, uid: string): string[][] | null {
+  const lines = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
+  const events: { uid: string; recur: boolean; alarms: string[][] }[] = []
+  let cur: { uid: string; recur: boolean; alarms: string[][] } | null = null
+  let alarm: string[] = []
+  let depth = 0
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') { cur = { uid: '', recur: false, alarms: [] }; depth = 0; continue }
+    if (line === 'END:VEVENT') { if (cur) events.push(cur); cur = null; continue }
+    if (!cur) continue
+    if (/^BEGIN:/.test(line)) { if (depth === 0 && line === 'BEGIN:VALARM') alarm = []; depth++; continue }
+    // A stray END inside an event: the object isn't one the app can read safely (never a guess at its alarms).
+    if (/^END:/.test(line)) { depth--; if (depth < 0) return null; if (depth === 0 && line === 'END:VALARM') cur.alarms.push(alarm); continue }
+    if (depth === 1) { alarm.push(line); continue }
+    if (depth > 1) continue
+    if (/^UID[;:]/.test(line)) cur.uid = textOf(line).trim()
+    if (/^RECURRENCE-ID[;:]/.test(line)) cur.recur = true
+  }
+  return events.find(e => e.uid === uid && !e.recur)?.alarms ?? null
+}
+
+/** Lines the app builds (an event's alarm part) as VALARM blocks, for the same parser. */
+function linesAsAlarms(lines: readonly string[]): string[][] {
+  const out: string[][] = []
+  let cur: string[] | null = null
+  for (const l of lines) {
+    if (l === 'BEGIN:VALARM') cur = []
+    else if (l === 'END:VALARM') { if (cur) out.push(cur); cur = null }
+    else cur?.push(l)
+  }
+  return out
+}
+
+/** Travel as an event says it: Apple's duration in minutes (null when unreadable), 'auto' (Time to Leave), or 'none'. */
+export function travelOf(props: Map<string, string[]>): number | null | 'auto' | 'none' {
+  const duration = props.get('X-APPLE-TRAVEL-DURATION')?.[0]
+  if (duration) return durationMinutes(duration.replace(/^[^:]*:/, '').trim())
+  return /^X-APPLE-TRAVEL-ADVISORY-BEHAVIOR[^:]*:AUTOMATIC\s*$/i.test(props.get('X-APPLE-TRAVEL-ADVISORY-BEHAVIOR')?.[0] ?? '') ? 'auto' : 'none'
+}
+
+/** The item's own fields, as the read-back compares them (193): its row's alerts, link, travel time and place. */
+export interface FieldsRow { alerts?: unknown; url?: unknown; travel_minutes?: unknown; place?: unknown }
+
+/** The app's link to a day, exactly as dayLink builds it — any day (never startsWith). */
+export function isDayLink(url: string, appUrl: string): boolean {
+  const day = url.match(/#\/daily\?date=(\d{4}-\d{2}-\d{2})$/)?.[1]
+  return !!day && dayLink(appUrl, day) === url
+}
+
+/**
+ * What the iPhone changed of an item's calendar fields (193), in apply_icloud_readback's keys: `showAs` always (the
+ * database takes it only for an item whose Show As is set); `alerts`, `url`, `travelMinutes` only when the event's
+ * differs from what the app writes for `row` now — null meaning "none of its own" (the area's alert, the day link,
+ * automatic) — and only a value the app can take. `timed`: the event as read (an all-day event's alerts are day
+ * offsets at 09:00).
+ */
+export function fieldsChangeOf(ics: string, uid: string, row: FieldsRow, area: Pick<CalendarArea, 'alertMinutes'>, look: Pick<EventLook, 'allDayAlert'>,
+  timed: boolean, appUrl: string): Record<string, unknown> {
+  const master = allEventProps(ics).find(e => textOf(e.get('UID')?.[0]).trim() === uid && !e.has('RECURRENCE-ID'))
+  const alarms = masterAlarms(ics, uid)
+  if (!master || !alarms) return {}
+  const out: Record<string, unknown> = { showAs: /^TRANSP[^:]*:TRANSPARENT\s*$/i.test(master.get('TRANSP')?.[0] ?? '') ? 'free' : 'busy' }
+  // Alerts: the same tokens as the app's own (Apple's no-alert marker is no alert), as a set.
+  const tokens = (blocks: string[][]) => blocks.map(alarmToken)
+  const seen = tokens(alarms)
+  const mine = tokens(linesAsAlarms(itemAlarmLines(row.alerts, timed, '', area, look.allDayAlert)))
+  const key = (t: (string | null)[]) => JSON.stringify(t.filter(x => x !== 'NONE').sort())
+  if (key(seen) !== key(mine) && !seen.includes(null)) {
+    const byToken = new Map<string, number>()
+    for (const m of ALERT_MINUTES) { const t = alarmToken([`TRIGGER:${alertTrigger(m, timed)}`]); if (t && !byToken.has(t)) byToken.set(t, m) }
+    const minutes = seen.filter((t): t is string => t !== null && t !== 'NONE').map(t => byToken.get(t))
+    if (minutes.length <= 2 && minutes.every((m): m is number => m !== undefined) && new Set(minutes).size === minutes.length) out.alerts = minutes
+  }
+  // The link: the event's URL field (a URI value is not escaped); none, or the app's own day link, is none of its own.
+  const urlProp = master.get('URL')?.[0]
+  const url = urlProp ? urlProp.slice(urlProp.indexOf(':') + 1).trim() : null
+  if (url !== (eventUrl(row.url) ?? '\u0000')) {
+    if (url === null || isDayLink(url, appUrl)) { if (eventUrl(row.url) !== null) out.url = null }
+    else if (eventUrl(url)) out.url = url
+  }
+  // Travel: what the event says against what the app writes for the row (its place's pin included).
+  const travel = travelOf(master)
+  const minePlace = new Map<string, string[]>()
+  for (const l of placeAndTravelLines(eventPlace(row.place), row.travel_minutes)) {
+    const name = l.match(/^([A-Z0-9-]+)[;:]/)?.[1]
+    if (name) minePlace.set(name, [...(minePlace.get(name) ?? []), l])
+  }
+  if (travel !== travelOf(minePlace)) {
+    if (travel === 'auto') out.travelMinutes = null
+    else if (travel === 'none') out.travelMinutes = 0
+    else if (typeof travel === 'number' && TRAVEL_MINUTES.includes(travel) && travel > 0) out.travelMinutes = travel
+  }
+  return out
+}
+
 /** Where an item is moved from: today on (the default), or every day it has. */
 export const MOVE_FROM = ['today', 'all'] as const
 export type MoveFrom = typeof MOVE_FROM[number]
@@ -2070,6 +2461,10 @@ export const GUARD_REFUSALS: readonly string[] = [
   'Not a zone this runtime knows — not written',
   'An event zone is not a zone name — not written',
   'An event line holds a control character — not written',
+  'An event alert is not one the app offers — not written',
+  'An event travel time is not one the app offers — not written',
+  'An event link is not a web address the app takes — not written',
+  'A repeat rule is not one the app builds — not written',
 ]
 
 /**
@@ -2423,7 +2818,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
 
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
-      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone, place')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone, place, alerts, show_as, url, travel_minutes')
       .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
     if (error) throw new ICloudError('read', 'A slot could not be read')
     if (!b) {
@@ -2485,7 +2880,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   if (q.entity === 'workout') return drainWorkout(db, c, userId, q, prefs, areaCals, removeOld)
 
   const { data: p, error } = await db.from('schedule_blocks')
-    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone, place')
+    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone, place, alerts, show_as, url, travel_minutes, repeat_until, repeat_count')
     .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
   if (error) throw new ICloudError('read', 'A repeating plan could not be read')
   if (!p) {
@@ -2587,7 +2982,7 @@ interface SyncStateRow { area: AreaKey; sync_token: string | null; written_name:
  * handled. Runs inside the drain's lease, so nothing is written to iCloud meanwhile.
  */
 async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, calUrl: string, areaCals: Record<string, { url?: string }>,
-  emoji: string, state: SyncStateRow | undefined, deadline: number): Promise<ReadBackCounts & { problem: string | null }> {
+  emoji: string, state: SyncStateRow | undefined, deadline: number, conf: CalendarArea, look: EventLook): Promise<ReadBackCounts & { problem: string | null }> {
   const counts: ReadBackCounts & { problem: string | null } = { applied: 0, ignored: 0, failed: 0, calendars: 1, problem: null }
   let stopped = false
   const own = (href: string) => {
@@ -2627,15 +3022,19 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
   const known = new Map<string, string | null>()
   // Each item's zone (183): a change from the iPhone is read on the item's own clock, the zone its times are in.
   const zones = new Map<string, string>()
+  // Each item's calendar fields (193), to tell what the iPhone changed from what the app wrote.
+  const fieldRows = new Map<string, FieldsRow>()
   for (const [table, entity] of [['time_blocks', 'slot'], ['schedule_blocks', 'plan']] as const) {
     const ids = mine.filter(x => x.own!.entity === entity).map(x => x.own!.id)
-    const cols = entity === 'plan' ? 'id, icloud_etag, time_zone, google_calendar_time_zone' : 'id, icloud_etag, time_zone'
+    const cols = entity === 'plan' ? 'id, icloud_etag, time_zone, google_calendar_time_zone, alerts, url, travel_minutes, place'
+      : 'id, icloud_etag, time_zone, alerts, url, travel_minutes, place'
     for (let i = 0; i < ids.length; i += 200) {
       const { data, error } = await db.from(table).select(cols).eq('user_id', userId).eq('icloud_area', area).in('id', ids.slice(i, i + 200))
       if (error) throw new ICloudError('read', 'The items could not be read for the read-back')
-      for (const row of (data ?? []) as unknown as { id: string; icloud_etag: string | null; time_zone?: string | null; google_calendar_time_zone?: string | null }[]) {
+      for (const row of (data ?? []) as unknown as ({ id: string; icloud_etag: string | null; time_zone?: string | null; google_calendar_time_zone?: string | null } & FieldsRow)[]) {
         known.set(`${entity}:${row.id}`, row.icloud_etag)
         zones.set(`${entity}:${row.id}`, entity === 'plan' ? planTimeZone(row) : itemTimeZone(row.time_zone))
+        fieldRows.set(`${entity}:${row.id}`, { alerts: row.alerts, url: row.url, travel_minutes: row.travel_minutes, place: row.place })
       }
     }
   }
@@ -2650,7 +3049,7 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
     if (Date.now() > deadline) { stopped = true; return }
     const { data, error } = await db.rpc('apply_icloud_readback', { p_user: userId, p_entity: entity, p_id: id, p_area: area, p_change: change, p_etag: etag })
     if (error) { counts.failed++; counts.problem ??= 'A change from Apple Calendar could not be saved in the app — tried again on the next read'; return }
-    if (['unlinked', 'moved', 'renamed', 'days'].includes(String(data))) counts.applied++
+    if (['unlinked', 'moved', 'renamed', 'days', 'changed'].includes(String(data))) counts.applied++
     // A session's event deleted on the iPhone: its workout gets its own event again (never none, never two).
     if (data === 'unlinked' && area === 'training') await requeueSessionWorkouts(db, userId, entity === 'plan' ? { planId: id } : { taskId: await slotTask(db, userId, id) })
     else if (data === 'ignored' || data === 'not_ours') counts.ignored++
@@ -2662,6 +3061,11 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
       const item = got.get(new URL(x.href, calUrl).pathname)
       const change = item ? readbackChangeOf(item.ics, o.entity, `lasci-${o.entity}-${o.id}@lasciviens.github.io`, emoji, zones.get(keyOf(x)) ?? OSLO) : null
       if (!item || !change) { counts.ignored++; continue }
+      // Its calendar fields the iPhone changed (193): an all-day event's alerts are day offsets, a timed one's minutes.
+      const uid = `lasci-${o.entity}-${o.id}@lasciviens.github.io`
+      const timed = o.entity === 'slot' ? change.allDay !== true
+        : !/VALUE=DATE[;:]/.test(allEventProps(item.ics).find(e => textOf(e.get('UID')?.[0]).trim() === uid && !e.has('RECURRENCE-ID'))?.get('DTSTART')?.[0] ?? '')
+      Object.assign(change, fieldsChangeOf(item.ics, uid, fieldRows.get(keyOf(x)) ?? {}, conf, look, timed, APP_URL))
       // A series' days: only from today on, at most 31 (the database checks the same).
       if (Array.isArray(change.days)) change.days = (change.days as { originalDate?: string }[]).filter(d => (d.originalDate ?? '') >= today).slice(0, 31)
       // The app knew its own version and this isn't it: someone else's change, even with no LAST-MODIFIED stamp.
@@ -2750,7 +3154,7 @@ async function readBackAccount(db: Db, c: Creds, userId: string, prefs: Calendar
   const settled = await Promise.allSettled(areas.map(async k => {
     const url = areaCals[k]!.url!
     try {
-      const counts = await readBackArea(db, c, userId, k, url, areaCals, prefs.areas[k].emoji, byArea.get(k), deadline)
+      const counts = await readBackArea(db, c, userId, k, url, areaCals, prefs.areas[k].emoji, byArea.get(k), deadline, prefs.areas[k], prefs)
       const renamed = look && Date.now() < deadline ? await readBackCalendarLook(db, c, userId, k, url, byArea.get(k)).catch(() => false) : false
       if (counts.problem) await db.from('icloud_sync_state').upsert({ user_id: userId, area: k, last_error: counts.problem }, { onConflict: 'user_id,area' })
       return { ...counts, renamed, problem: counts.problem ? `${prefs.areas[k].name}: ${counts.problem}` : null }

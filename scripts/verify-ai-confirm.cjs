@@ -203,6 +203,22 @@ function checkAiWriteGroup() {
     const rulesOpen = ['seed_key', 'source_facts', 'owner_edited', 'search_opened_on', 'facts'].filter(c => !re.test(c))
     check('a store rule\'s seed key, source and owner_edited, a wish\'s search day and autofill\'s facts are closed to the assistant (a rule\'s own fields are not)', !rulesOpen.length && !re.test('days') && !re.test('words') && !re.test('origin'), rulesOpen.join(', '))
   }
+  // 8. an item's link (193) is the owner's to set: a page steering the assistant can't plant a link in Apple Calendar's
+  //    URL field (security review, 10.11.2026) — on time_blocks only; the shop's and wishes' links stay writable.
+  tables.time_blocks = [{ id: 'tb1', user_id: OWNER, date: '2026-11-12', title: 'Dentist', start_time: '17:00:00', duration_minutes: 60, url: null }]
+  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'time_blocks', filters: '{"id":"tb1"}', values: '{"url":"https://example.com/phish","title":"Dentist"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('AI cannot set an item\'s link (time_blocks.url stays as the owner left it)', tables.time_blocks[0].url === null && tables.time_blocks[0].title === 'Dentist'
+    && r.body.steps?.some(s => s.includes("an item's link is set in the app")), JSON.stringify(r.body.steps))
+  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'time_blocks', values: '{"date":"2026-11-13","title":"New","url":"https://example.com/x"}' } } }]), gemini([{ text: 'x' }])]
+  r = await call({ messages: msg }, web)
+  check('…nor make a new item with one', tables.time_blocks.length === 1 && r.body.steps?.some(s => s.includes("an item's link is set in the app")), JSON.stringify(r.body.steps))
+  {
+    const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
+    const re = new RegExp(src.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
+    check('the link rule is time_blocks\' alone (AI_NO_WRITE never takes url: shop and wish links stay writable)',
+      !re.test('url') && src.includes("if (table === 'time_blocks' && 'url' in row) return 'Not done: an item\\'s link is set in the app.'"))
+  }
   // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
   const tasksBefore = JSON.stringify(tables.tasks)
   script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'tasks', values: '{"title":"Call mum","section":"tomorrow","due_date":"2026-10-15"}' } } }]), gemini([{ text: 'x' }])]

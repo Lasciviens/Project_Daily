@@ -5,13 +5,18 @@
 //  UnifiedPlanModal. Grouped rows under Apple's headers:
 //
 //    [Title                                    ]         (quick add: Read as …)
-//    LOCATION   ⌖ Location                               (a time, a repeat or all day)
+//    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
-//               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat
+//               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
 //    OPTIONS    Calendar  Google Calendar · busy  ·  List (a Google Task's)
-//    DETAILS    Notes
+//               Alert · Second Alert · Show As           (a slot)
+//    DETAILS    URL (a slot) · Notes
 //    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
 //               Delete Item                              (an edit)
+//
+//  Step 2's rows (Travel Time, the alerts, Show As, URL, End Repeat — 193) are
+//  in CalendarFieldRows.tsx and EndRepeatRows.tsx; they show only where a slot
+//  or a repeat keeps them (itemScreenRules.screenParts).
 //
 //  Every row may carry a mark for where its field goes (Settings → Calendar →
 //  "Show where each field goes"); the Calendar row's mark always shows.
@@ -20,17 +25,19 @@
 
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
-import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks } from '../../../features/items/sheetRules'
+import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
+import { AlertRows, ShowAsRow, TravelRow, UrlRow } from './CalendarFieldRows'
 import { FieldMark, MarkHost } from './FieldMark'
-import { Section } from './ItemRows'
+import { cx } from '../../ui'
+import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
 import { TimeSection, type PanelKey } from './TimeSection'
-import { fieldGoes, type ScreenField } from './itemScreenRules'
+import { fieldGoes, screenParts, type ScreenField } from './itemScreenRules'
 import { isScheduleFieldHidden, isTaskFieldHidden, type RepeatAnchor } from './planModal.config'
-import { shapeOf, type PlanForm } from './planForm'
+import { shapeOf, withCalendarField, type PlanForm } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 
@@ -73,34 +80,46 @@ interface Props {
   /** An edit: the last group's "Delete Item". */
   onDelete?: () => void
   deleting?: boolean
+  /** Why the typed link can't be saved (planForm.urlProblem), or null. */
+  urlIssue: string | null
+  /** Why the End Repeat can't be saved (planForm.repeatEndIssue), or null. */
+  endIssue: string | null
+}
+
+/** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
+ *  Google Calendar's own default there; nothing when it stays in the app). */
+const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> = {
+  apple: "Its area's alert (Settings → Calendar)",
+  'google-calendar': "Google Calendar's own default",
 }
 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
+  urlIssue, endIssue,
 }: Props) {
   const titleId = useId()
   const [open, setOpen] = useState<PanelKey | null>(null)
   const toggle = (k: PanelKey | null) => setOpen(o => (k === null || o === k ? null : k))
   const hideTask = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
-  const day = !!occurrenceDate && form.scope === 'day'
-  const repeating = form.recurrence !== 'none' && !day
   const shape = shapeOf(form)
   const target = effectiveGoogleTarget(shape, form.googlePick)
   // Its area on Apple Calendar (Settings → Calendar, 2b-2): the row says where the event really goes.
-  const showGoogle = googleConnected && !day && !isScheduleFieldHidden('gcal', config)
-  const allDay = showGoogle && !form.time && hasGoogleCalendar(target)
+  // A place and the calendar fields belong to a slot or a repeat (186, 193): a time, a repeat, or all day on a calendar.
+  const { day, repeating, showGoogle, slotFields } = screenParts(form, {
+    occurrenceDate, choiceShown: googleConnected, calendarHidden: isScheduleFieldHidden('gcal', config), target,
+  })
   // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
   // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
   const showLabels = !repeating && !day && !hideTask('labels')
-  // A place belongs to a slot or a repeat (186): an item with a time, a repeat, or all day on a calendar.
-  const showPlace = !!form.time || repeating || allDay
   // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
   const showCategory = !!form.time || repeating
   // A repeat's days go to the default list (156 stores no list per repeat).
   const showList = showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   const marksTarget = showGoogle ? target : (keptTarget ?? 'none')
   const goes = (f: ScreenField) => fieldGoes(f, { target: marksTarget, calendarApp, dated: !!form.date || repeating, appleNotes })
+  const showNotes = !hideTask('notes')
+  const hasPin = form.place?.lat !== undefined && form.place?.lon !== undefined
 
   return (
     <MarkHost on={showMarks}>
@@ -115,9 +134,11 @@ export function ItemForm({
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
         </Section>
 
-        {showPlace && (
+        {slotFields && (
           <Section title="Location">
             <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })} mark={<FieldMark goes={goes('place')} />} />
+            <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
+              onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
 
@@ -125,14 +146,16 @@ export function ItemForm({
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}
-            exceptDates={exceptDates} target={target} goes={goes} own={own}
+            exceptDates={exceptDates} target={target} goes={goes} own={own} endIssue={endIssue}
           />
         </Section>
 
-        {showGoogle && (
+        {(showGoogle || slotFields) && (
           <Section title="Options">
-            <CalendarRow shape={shape} target={target} app={calendarApp} dated={!!form.date || repeating} refused={refused}
-              open={open} toggle={toggle} onPick={googlePick => patch({ googlePick })} />
+            {showGoogle && (
+              <CalendarRow shape={shape} target={target} app={calendarApp} dated={!!form.date || repeating} refused={refused}
+                open={open} toggle={toggle} onPick={googlePick => patch({ googlePick })} />
+            )}
             {showList && (
               <GoogleListRow
                 value={form.googleListTitle} typing={form.shown.includes('list')} open={open} toggle={toggle}
@@ -143,12 +166,24 @@ export function ItemForm({
                 onDone={() => patch({ shown: form.shown.filter(r => r !== 'list') })}
               />
             )}
+            {slotFields && (
+              <>
+                <AlertRows alerts={form.alerts} allDay={!form.time} defaultHint={DEFAULT_ALERT_HINT[goes('alerts')]} open={open} toggle={toggle}
+                  mark={<FieldMark goes={goes('alerts')} />} onChange={alerts => patch(withCalendarField(form, 'alerts', alerts))} />
+                <ShowAsRow showAs={form.showAs} timedWithLength={!!form.time && !!form.duration} mark={<FieldMark goes={goes('showAs')} />}
+                  onChange={showAs => patch(withCalendarField(form, 'showAs', showAs))} />
+              </>
+            )}
           </Section>
         )}
 
-        {!hideTask('notes') && (
+        {(showNotes || slotFields) && (
           <Section title="Details">
-            <NotesField value={form.notes} onChange={notes => patch({ notes })} mark={<FieldMark goes={goes('notes')} className="mt-3" />} />
+            {slotFields && (
+              <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle} mark={<FieldMark goes={goes('url')} />}
+                onChange={url => patch(withCalendarField(form, 'url', url))} />
+            )}
+            {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })} mark={<FieldMark goes={goes('notes')} className="mt-3" />} />}
           </Section>
         )}
 
@@ -206,7 +241,7 @@ function TitleField({ id, value, onChange, autoFocus, placeholder }: {
 function NotesField({ value, onChange, mark }: { value: string; onChange: (v: string) => void; mark: ReactNode }) {
   const ref = useGrow(value)
   return (
-    <div className="flex items-start gap-2 px-3.5">
+    <div className={cx(LINE, 'flex items-start gap-2 px-3.5')}>
       <textarea ref={ref} rows={2} value={value} onChange={e => onChange(e.target.value)} placeholder="Notes" aria-label="Notes"
         className="input-bare min-w-0 flex-1 resize-none overflow-hidden border-b-0 py-2.5 text-lead" />
       {mark}

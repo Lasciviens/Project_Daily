@@ -52,12 +52,23 @@
 //  one (busy false) and for all-day. A day held by a moved instance of the
 //  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
 //  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
+//
+//  Since 193: End Repeat ends the RRULE — `COUNT=N` when the series starts on
+//  the plan's own first day (its N times are Google's and Apple's N), else
+//  `UNTIL` its last day (recurrence.repeatLastDay): a date for an all-day
+//  series, the last day's 23:59:59 in the plan's zone as UTC for a timed one
+//  (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE kinds simply list no
+//  day after it (the horizon stops there). Show As sets Busy / Free when the
+//  owner picked it (calendarEventRules.eventTransparency), and the plan's own
+//  alerts are its reminders (googleReminders).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { eventPlace, itemTimeZone, placeText, SERVER_EVENT_TIME_ZONE } from './calendarEventRules'
 import {
-  addDaysIso, dayNumber, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatKindOf, weeklyDaysOf,
-  type RepeatRule,
+  eventPlace, eventTransparency, googleReminders, itemTimeZone, placeText, SERVER_EVENT_TIME_ZONE, type EventReminders,
+} from './calendarEventRules'
+import {
+  addDaysIso, dayNumber, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatCountOf, repeatKindOf, repeatLastDay,
+  weeklyDaysOf, type RepeatRule,
 } from '../daily/recurrence'
 
 /** The RDATE list of a monthly kind covers this many days past today. */
@@ -87,6 +98,10 @@ export interface SeriesTemplate extends RepeatRule {
   time_zone?: string | null
   /** Where the plan happens (186): the row's jsonb, read through calendarEventRules.eventPlace. */
   place?: unknown
+  /** Show As (193): 'busy' | 'free'; none = by its length, as before. */
+  show_as?: unknown
+  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's (Google's default). */
+  alerts?: unknown
   /** The day the plan was added to Google Calendar (148): its series starts
    *  on the first real day on or after this. Missing before 148. */
   google_calendar_from?: string | null
@@ -103,6 +118,8 @@ export interface SeriesEventBody {
   transparency: 'opaque' | 'transparent'
   /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
   location?: string
+  /** The plan's own alerts (193), when it has them. An update sends none as the default (fullEventPatch). */
+  reminders?: EventReminders
 }
 
 /** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
@@ -183,6 +200,36 @@ export function seriesRrule(rule: RepeatRule): string | null {
 
 /** The rule's own pattern, with no day taken out. */
 const patternOf = (rule: RepeatRule): RepeatRule => ({ ...rule, except_dates: [] })
+
+/** The UTC offset of `zone` at instant `ms`, in minutes (Oslo in summer: 120). */
+function seriesZoneOffset(ms: number, zone: string): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms)).map(x => [x.type, x.value]))
+  return Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - ms) / 60_000)
+}
+
+/** The end of `day` (23:59:59) on `zone`'s clock as an RFC 5545 UTC stamp ('20261231T225959Z'). */
+export function endOfDayUtcStamp(day: string, zone: string): string {
+  const wall = Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), 23, 59, 59)
+  let at = wall - seriesZoneOffset(wall, zone) * 60_000
+  at = wall - seriesZoneOffset(at, zone) * 60_000
+  return new Date(at).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+}
+
+/**
+ * End Repeat's part of the RRULE (193), '' for a repeat that never ends: `;COUNT=N` when the series starts on the
+ * plan's own first day — Google and Apple then count the same N times — else `;UNTIL=` its last day (a date for an
+ * all-day series; the day's end in `tz` as UTC for a timed one).
+ */
+export function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: string): string {
+  const count = repeatCountOf(t.repeat_count)
+  if (count !== null && isIsoDay(t.effective_from)
+      && nextOccurrences(patternOf(t), t.effective_from, 1, FIRST_DAY_SEARCH_DAYS)[0] === first) return `;COUNT=${count}`
+  const last = repeatLastDay(t)
+  if (!last) return ''
+  return `;UNTIL=${allDay ? last.replace(/-/g, '') : endOfDayUtcStamp(last, tz)}`
+}
 
 /** The first day the rule's pattern has on or after its start — the later of
  *  effective_from and the day it was added to Google (taken-out days count). */
@@ -280,13 +327,16 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
 
   const rrule = seriesRrule(t)
   if (rrule) {
-    recurrence.push(rrule)
+    recurrence.push(`${rrule}${rruleEndPart(t, first, allDay, tz)}`)
     // Only days the rule really has, from its first one on.
     exdates = [...except].filter(d => d >= first && occursOn(pattern, d)).sort()
   } else {
-    const last = repeatKindOf(t) === 'dates'
+    const reach = repeatKindOf(t) === 'dates'
       ? [...(t.repeat_dates ?? [])].filter(isIsoDay).sort().pop() ?? first
       : addDaysIso(first > opts.today ? first : opts.today, SERIES_HORIZON_DAYS)
+    // A repeat that ends (193) lists no day after its last; its horizon is that day, so it is never topped up again.
+    const end = repeatLastDay(t)
+    const last = end && end < reach ? end : reach
     if (repeatKindOf(t) !== 'dates') horizon = last
     const days = occurrencesBetween(pattern, first, last)
     const extra = days.filter(d => d !== first && !except.has(d))
@@ -300,6 +350,8 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
   const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
   const place = eventPlace(t.place)
   const location = place ? { location: placeText(place) } : {}
+  const reminders = googleReminders(t.alerts, !startClock || !endClock)
+  const own = reminders ? { reminders } : {}
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -308,8 +360,9 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
         start: { date: first },
         end: { date: addDaysIso(first, 1) },
         recurrence,
-        transparency: 'transparent',
+        transparency: eventTransparency(t.show_as, false),
         ...location,
+        ...own,
       },
     }
   }
@@ -323,8 +376,9 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
       start: { dateTime: `${first}T${startClock}`, timeZone: tz },
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
-      transparency: t.busy === false ? 'transparent' : 'opaque',
+      transparency: eventTransparency(t.show_as, t.busy !== false),
       ...location,
+      ...own,
     },
   }
 }
@@ -334,6 +388,9 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
 export function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
   if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
   const h = t.google_calendar_horizon
+  // A repeat that ends (193): once the list reaches its last day there is nothing more to add.
+  const end = repeatLastDay(t)
+  if (end && isIsoDay(h) && h >= end) return false
   return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
 }
 

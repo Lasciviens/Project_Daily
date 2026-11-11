@@ -9,7 +9,7 @@
 
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskPriority, TaskDomain } from '../../../features/todo/types'
-import type { GoogleTarget, ItemInput, RepeatInput } from '../../../features/items/itemTypes'
+import type { GoogleTarget, ItemInput, RepeatEnd, RepeatInput } from '../../../features/items/itemTypes'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { cleanLabels } from '../../../features/todo/taskLabels'
@@ -26,6 +26,7 @@ import {
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
 import { cleanPlace, type ItemPlace } from '../../../features/items/itemPlace'
 import { lengthToEnd, type EndProblem } from './itemScreenRules'
+import { cleanItemUrl, repeatEndProblem, type CalendarField } from '../../../features/items/itemCalendarFields'
 
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
@@ -65,6 +66,21 @@ export interface PlanForm extends RepeatFormFields {
   /** The owner changed the place here. An edit sends it when it was known or changed (never a null over a place the
    *  sheet wasn't told about). */
   placeTouched: boolean
+  /** Alert and Second Alert (193): minutes before, in order; [] = none; null = the area's own alert
+   *  (itemCalendarFields.alertRows / alertsOf turn it into the screen's two rows and back). */
+  alerts: number[] | null
+  /** Show As (193): null = by its length (Busy with one, Free without and all day). */
+  showAs: 'busy' | 'free' | null
+  /** The link as typed ('' = none); cleaned at save (itemCalendarFields.cleanItemUrl — calendarFieldsProblem says why
+   *  one can't be used). */
+  url: string
+  /** Travel Time (193): 0 = none, 5–120 minutes; null = automatic (Time to Leave from the place's pin). */
+  travelMinutes: number | null
+  /** End Repeat (193), for a repeat's rule: null = never. */
+  repeatEnd: RepeatEnd | null
+  /** The fields the owner changed here: an edit sends a field only when the sheet knew it (the rows had its column)
+   *  or the owner changed it — never a value over one the sheet wasn't told about. Set them through withCalendarField. */
+  calendarTouched: CalendarField[]
   /** A repeating item opened on one of its days: that day only, or the rule. */
   scope: 'day' | 'all'
   /** The rule's start while "This day" shows the day (and the day while "All days" shows the start). */
@@ -145,6 +161,12 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     timeZone: d.timeZone ?? phoneTimeZone(),
     place: null,
     placeTouched: false,
+    alerts: null,
+    showAs: null,
+    url: '',
+    travelMinutes: null,
+    repeatEnd: null,
+    calendarTouched: [],
     scope: 'all' as const,
     otherDate: null,
     badEnd: null,
@@ -178,6 +200,12 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     timeZone: item.timeZone ?? null,
     place: item.place ?? null,
     placeTouched: false,
+    alerts: item.alerts ?? null,
+    showAs: item.showAs ?? null,
+    url: item.url ?? '',
+    travelMinutes: item.travelMinutes ?? null,
+    repeatEnd: item.repeatEnd ?? null,
+    calendarTouched: [],
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
     badEnd: null,
@@ -270,6 +298,7 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     timeZone: f.timeZone ?? SERVER_EVENT_TIME_ZONE,
     // Its place (186): a new item's, an edit's when the sheet knew it or the owner changed it.
     ...(f.placeTouched || !ctx.item || ctx.item.place !== undefined ? { place: f.place ? cleanPlace(f.place) : null } : {}),
+    ...calendarFieldsInput(f, ctx, !!repeat),
     source: src
       ? { type: src.taskSourceType ?? taskSourceTypeForBlock(src.sourceType) ?? src.sourceType ?? 'manual', id: src.sourceId ?? null }
       : ctx.item?.source ? { type: ctx.item.source.type, id: ctx.item.source.id || null } : null,
@@ -280,6 +309,50 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
       ? { type: src.sourceType, id: src.sourceId ?? null, seasonNumber: src.episodeInfo?.seasonNumber, episodeNumber: src.episodeInfo?.episodeNumber }
       : null,
   }
+}
+
+/**
+ * The calendar fields (193) a save sends: a new item's; an edit's when the sheet knew it (the rows had the column) or
+ * the owner changed it. The link goes through cleanItemUrl; one it can't use goes as typed, so the database refuses it
+ * with its message — never dropped without a word (the screen shows calendarFieldsProblem first). End Repeat only
+ * with a repeat's rule (never "This day").
+ */
+function calendarFieldsInput(f: PlanForm, ctx: SaveContext, repeat: boolean): Partial<Pick<ItemInput, 'alerts' | 'showAs' | 'url' | 'travelMinutes' | 'repeatEnd'>> {
+  const sends = (field: CalendarField, known: unknown) => !ctx.item || known !== undefined || f.calendarTouched.includes(field)
+  const link = cleanItemUrl(f.url)
+  return {
+    ...(sends('alerts', ctx.item?.alerts) ? { alerts: f.alerts } : {}),
+    ...(sends('showAs', ctx.item?.showAs) ? { showAs: f.showAs } : {}),
+    ...(sends('url', ctx.item?.url) ? { url: 'url' in link ? link.url : f.url.trim() } : {}),
+    ...(sends('travel', ctx.item?.travelMinutes) ? { travelMinutes: f.travelMinutes } : {}),
+    ...(repeat && sends('repeatEnd', ctx.item?.repeatEnd) ? { repeatEnd: f.repeatEnd } : {}),
+  }
+}
+
+/** A field changed by the owner: its value, and marked as touched (so an edit sends it). */
+export function withCalendarField<K extends 'alerts' | 'showAs' | 'url' | 'travelMinutes' | 'repeatEnd'>(
+  f: Pick<PlanForm, 'calendarTouched'>, key: K, value: PlanForm[K],
+): Partial<PlanForm> {
+  const field: CalendarField = key === 'travelMinutes' ? 'travel' : key
+  return { [key]: value, calendarTouched: f.calendarTouched.includes(field) ? f.calendarTouched : [...f.calendarTouched, field] } as Partial<PlanForm>
+}
+
+/** Why the calendar fields can't be saved as they are, or null: a link the app can't use, an End Repeat before the start. */
+export function calendarFieldsProblem(f: PlanForm, ctx: Pick<SaveContext, 'item' | 'today'>): string | null {
+  return urlProblem(f) ?? repeatEndIssue(f, ctx)
+}
+
+/** Why the typed link can't be saved (cleanItemUrl's answer), or null — the URL row says it under itself. */
+export function urlProblem(f: Pick<PlanForm, 'url'>): string | null {
+  const link = cleanItemUrl(f.url)
+  return 'problem' in link ? link.problem : null
+}
+
+/** Why the End Repeat can't be saved, or null: only a repeat's rule has one (never "This day"), checked against the
+ *  start the save will give the repeat — the End Repeat row says it under itself. */
+export function repeatEndIssue(f: PlanForm, ctx: Pick<SaveContext, 'item' | 'today'>): string | null {
+  if (!repeatOfForm(f) || !f.repeatEnd) return null
+  return repeatEndProblem(f.repeatEnd, startOfRepeat(f, { ...ctx, googleConnected: false }))
 }
 
 /** A new repeat starts on the sheet's date (picked dates: the earliest pick if

@@ -7,7 +7,10 @@
 // is where it runs (verify-icloud-events checks the copy is current).
 
 import type { AllDayAlert, AreaKey, CalendarArea, NotesMode } from './calendarAreas'
-import { blockEventBody, eventPlace, IANA_ZONE, itemTimeZone, type BlockEventBody, type EventBlock, type EventPlace, type EventTime } from '../calendarEventRules'
+import {
+  ALERT_MINUTES, ALL_DAY_ALERT_MINUTE, allDayAlertDays, blockEventBody, eventAlerts, eventPlace, eventTravel, eventUrl, IANA_ZONE, ITEM_URL,
+  ITEM_URL_MAX, itemTimeZone, TRAVEL_MINUTES, type BlockEventBody, type EventBlock, type EventPlace, type EventTime,
+} from '../calendarEventRules'
 import { seriesEventFor, type SeriesPlan, type SeriesTemplate } from '../calendarSeries'
 
 /** What an item's area is read from: its slot's or plan's category and source, its task's. */
@@ -207,6 +210,65 @@ export function alarmLines(minutes: number | null, timed: boolean, title: string
   return at(ofDay === 0 ? 'PT0S' : `PT${ofDay}M`)
 }
 
+/** An alert's TRIGGER (193): a timed item's minutes before its start ("-PT30M", at the start "PT0S"); an all-day item's
+ *  day offset at 09:00, counted from the day's midnight ("PT540M" on the day, "-PT900M" the day before). */
+export function alertTrigger(minutes: number, timed: boolean): string {
+  if (timed) return minutes === 0 ? 'PT0S' : `-PT${minutes}M`
+  const days = allDayAlertDays(minutes)
+  return days === 0 ? `PT${ALL_DAY_ALERT_MINUTE}M` : `-PT${days * 1440 - ALL_DAY_ALERT_MINUTE}M`
+}
+
+/** Every TRIGGER an item's own alert can be (the last guard compares with these, exactly). */
+export const ITEM_TRIGGERS: readonly string[] = [...new Set(ALERT_MINUTES.flatMap(m => [alertTrigger(m, true), alertTrigger(m, false)]))]
+
+/**
+ * The event's alerts (193). An item with alerts of its own (Alert and Second Alert) gets those — none is Apple's
+ * no-alert marker; an item with none of its own gets the area's, as before 193 (alarmLines). The last guard: each
+ * TRIGGER is one ITEM_TRIGGERS names, or nothing is written.
+ */
+export function itemAlarmLines(raw: unknown, timed: boolean, title: string, area: Pick<CalendarArea, 'alertMinutes'>, allDay: AllDayAlert | null): string[] {
+  const alerts = eventAlerts(raw)
+  if (alerts === null) return alarmLines(area.alertMinutes, timed, title, allDay)
+  if (!alerts.length) return NO_ALERT
+  const triggers = [...new Set(alerts.map(m => alertTrigger(m, timed)))]
+  if (!triggers.every(t => ITEM_TRIGGERS.includes(t))) throw new Error('An event alert is not one the app offers — not written')
+  return triggers.flatMap(t => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(title)}`, `TRIGGER:${t}`, 'END:VALARM'])
+}
+
+/** Apple's Time to Leave line (186): written with a map pin, so the iPhone works out the travel time itself. */
+export const TRAVEL_ADVISORY = 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC'
+const TRAVEL_LINE = new RegExp(`^X-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT(?:${TRAVEL_MINUTES.filter(m => m > 0).join('|')})M$`)
+
+/**
+ * The place and its travel time (193). Automatic (no value, every item before 193): the place's lines as 186 writes
+ * them — with a map pin, Apple's Time to Leave. None (0): the place without Time to Leave. Minutes: the place without
+ * Time to Leave, plus Apple's own travel time (`X-APPLE-TRAVEL-DURATION`, the property the iPhone writes for a travel
+ * time picked by hand — to confirm live that it honours one a server wrote). The last guard: the travel line has the
+ * exact shape built, or nothing is written.
+ */
+export function placeAndTravelLines(place: EventPlace | null | undefined, rawTravel: unknown): string[] {
+  const lines = locationLines(place)
+  const travel = eventTravel(rawTravel)
+  if (travel === null) return lines
+  const kept = lines.filter(l => l !== TRAVEL_ADVISORY)
+  if (travel === 0) return kept
+  const line = `X-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT${travel}M`
+  if (!TRAVEL_LINE.test(line)) throw new Error('An event travel time is not one the app offers — not written')
+  return [...kept, line]
+}
+
+/** The event's URL field (193): the item's own link when it has one (https, checked again — a stored value is input),
+ *  else the link to its day in the app, as before. The last guard: the value is one ITEM_URL takes, or nothing is
+ *  written — a URI value isn't escaped in iCalendar, so only an allow-list keeps a line or a parameter out of it. */
+export function urlLine(raw: unknown, link: string): string {
+  const value = eventUrl(raw) ?? link
+  if (value.length > ITEM_URL_MAX || !ITEM_URL.test(value)) throw new Error('An event link is not a web address the app takes — not written')
+  return `URL;VALUE=URI:${value}`
+}
+
+/** A repeat's RRULE exactly as calendarSeries builds it (with 193's COUNT or UNTIL) — the last guard refuses any other. */
+const RRULE_LINE = /^RRULE:FREQ=(?:DAILY|WEEKLY)(?:;INTERVAL=[1-9][0-9]?)?(?:;WKST=MO;BYDAY=(?:SU|MO|TU|WE|TH|FR|SA)(?:,(?:SU|MO|TU|WE|TH|FR|SA)){0,6})?(?:;COUNT=[1-9][0-9]{0,2}|;UNTIL=[0-9]{8}(?:T[0-9]{6}Z)?)?$/
+
 /** What an event's notes carry (the owner's choice, 2b-3): the item's own notes and/or the link back to the app. */
 export function eventNotes(mode: NotesMode, notes: string | null | undefined, link: string): string {
   const own = mode === 'notes+link' || mode === 'notes' ? notes?.trim() : ''
@@ -232,6 +294,12 @@ interface EventParts {
   now:        Date
   /** Where it happens (186): LOCATION, and with coordinates Apple's map pin. */
   place?:     EventPlace | null
+  /** The item's own alerts (193), as stored — read through eventAlerts; none = the area's. */
+  alerts?:    unknown
+  /** The item's own link (193), as stored — read through eventUrl; none = the link to its day. */
+  url?:       unknown
+  /** The item's travel time (193), as stored — read through eventTravel; none = automatic. */
+  travel?:    unknown
 }
 
 /** A value inside Apple's quoted parameters (X-TITLE="…"): letters, digits, spaces and plain punctuation only — a quote,
@@ -283,13 +351,15 @@ export function eventObject(p: EventParts): string {
     ...(p.body.recurrence ?? []),
     `SUMMARY:${icsEscape(title)}`,
     ...(notes ? [`DESCRIPTION:${icsEscape(notes)}`] : []),
-    ...locationLines(p.place),
-    `URL;VALUE=URI:${p.link}`,
+    ...placeAndTravelLines(p.place, p.travel),
+    urlLine(p.url, p.link),
     `TRANSP:${p.body.transparency === 'transparent' ? 'TRANSPARENT' : 'OPAQUE'}`,
-    ...alarmLines(p.area.alertMinutes, timed, title, p.look.allDayAlert),
+    ...itemAlarmLines(p.alerts, timed, title, p.area, p.look.allDayAlert),
     'END:VEVENT',
     'END:VCALENDAR',
   ]
+  // A repeat's rule only as the app builds it (193's End Repeat included); a VTIMEZONE's yearly rule is the zone's.
+  if ((p.body.recurrence ?? []).some(l => l.startsWith('RRULE') && !RRULE_LINE.test(l))) throw new Error('A repeat rule is not one the app builds — not written')
   // The last guard: no line may carry a control character (a property smuggled in through any field).
   // eslint-disable-next-line no-control-regex -- matching control characters is the point: such a line is refused
   if (lines.some(l => /[\x00-\x08\x0A-\x1F\x7F-\x9F\u2028\u2029]/.test(l))) throw new Error('An event line holds a control character — not written')
@@ -298,26 +368,28 @@ export function eventObject(p: EventParts): string {
 
 /** A slot's event (time_blocks): its id names it in iCloud, so a move or rename replaces it in place. */
 export function slotEvent(
-  block: EventBlock & { id: string; notes?: string | null },
+  block: EventBlock & { id: string; notes?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { done: boolean; taskNotes?: string | null; area: CalendarArea; look: EventLook; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string } | null {
   const body = blockEventBody(block, { done: o.done, timeZone: o.timeZone })
   if (!body) return null
   const uid = `lasci-slot-${block.id}@lasciviens.github.io`
   const notes = [block.notes?.trim(), o.taskNotes?.trim()].filter(Boolean).join('\n\n') || null
-  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now, place: eventPlace(block.place) }) }
+  return { uid, ics: eventObject({ uid, body, area: o.area, look: o.look, notes, link: dayLink(o.appUrl, block.date), now: o.now, place: eventPlace(block.place),
+    alerts: block.alerts, url: block.url, travel: block.travel_minutes }) }
 }
 
 /** A repeating plan's ONE series event (schedule_blocks), from the day it reached Apple Calendar (`icloud_from`). */
 export function planEvent(
-  plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null },
+  plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { area: CalendarArea; look: EventLook; today: string; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string; plan: SeriesPlan } | null {
   // Google's own start day is not iCloud's: a series starts where it reached this calendar.
   const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
-  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place) }) }
+  return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place),
+    alerts: plan.alerts, url: plan.url, travel: plan.travel_minutes }) }
 }
 
 /** A moment as Oslo's wall clock ("2026-10-28T17:30:00"), or null for no real moment. */

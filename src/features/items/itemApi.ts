@@ -48,6 +48,9 @@ export interface SaveItemAnswer {
   dayTaskId: string | null
   /** The labels the task now has; null when the database didn't say (one before migration 180 keeps none). */
   labels: string[] | null
+  /** The database took the calendar fields (193); false = one without 193, which drops them without a word —
+   *  the save says so (itemCalendarFields.CALENDAR_FIELDS_NOT_MIGRATED). Remove once 193 has been live a while. */
+  calendarFields: boolean
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -61,6 +64,7 @@ export function saveAnswerOf(raw: unknown): SaveItemAnswer {
     replacedEventId: str(r.replacedEventId), googleSyncWas: r.googleSyncWas === true, googleSync: r.googleSync === true,
     dayTaskId: str(r.dayTaskId),
     labels: Array.isArray(r.labels) ? r.labels.filter((l): l is string => typeof l === 'string') : null,
+    calendarFields: r.calendarFields === true,
   }
 }
 

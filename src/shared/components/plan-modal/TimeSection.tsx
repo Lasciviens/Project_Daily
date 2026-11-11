@@ -9,6 +9,7 @@
 //    Time Zone   only when the item's clock isn't the phone's (183)
 //    Repeat      Never / Weekly · Mon, Wed — today's choices with the day
 //                bubbles, and the next dates
+//    End Repeat  Never / On a day / After N times (193, EndRepeatRows)
 //  Stored as before: a day, a start and a length (itemScreenRules).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ import { useState } from 'react'
 import { DateCalendar } from '../DateCalendar'
 import { RecurrenceField } from './fields'
 import { DayTimeline } from './DayTimeline'
+import { EndRepeatRows } from './EndRepeatRows'
 import { TimeWheel } from './TimeWheel'
 import { FieldMark } from './FieldMark'
 import { ChoiceRow, NoteRow, Panel, Pill, Row, TapRow, ToggleRow } from './ItemRows'
@@ -29,13 +31,14 @@ import {
   displayDate, isScheduleFieldHidden, recurrenceProblem, repeatAnchorOf, repeatPreview, withStartForRepeatChange,
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
 } from './planModal.config'
-import { withAllDaySwitch, withDate, withEnd, type PlanForm } from './planForm'
+import { withAllDaySwitch, withCalendarField, withDate, withEnd, type PlanForm } from './planForm'
 import { END_PROBLEM_TEXT, endOf, minutesOf, timeOfMinutes, type FieldGoes, type ScreenField } from './itemScreenRules'
 import type { PlanModalConfig } from './planModal.types'
 
 export type PanelKey =
   | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'zone' | 'repeat'
   | 'calendar' | 'list' | 'category' | 'deadline' | 'dTime' | 'window'
+  | 'repeatEnd' | 'alert' | 'alert2' | 'travel' | 'link'
 
 const SECTION_LABEL = { inbox: 'Inbox', today: 'Today', backlog: 'Backlog' } as const
 
@@ -60,7 +63,7 @@ function zoneChoices(zone: string | null, savedZone: string | null | undefined) 
 
 export function TimeSection({
   form, patch, open, toggle, today, nextTime, config, occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates,
-  target, goes, own,
+  target, goes, own, endIssue,
 }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
@@ -77,6 +80,8 @@ export function TimeSection({
   target: GoogleTarget
   goes: (f: ScreenField) => FieldGoes
   own: { blockId?: string | null; scheduleBlockId?: string | null }
+  /** Why the End Repeat can't be saved (planForm.repeatEndIssue), or null. */
+  endIssue: string | null
 }) {
   const day = !!occurrenceDate && form.scope === 'day'
   const repeating = form.recurrence !== 'none' && !day
@@ -92,7 +97,7 @@ export function TimeSection({
   const length = form.duration
   const end = form.badEnd ?? (form.time && length ? endOf(date, form.time, length) : null)
   const crosses = !!end && end.date !== date
-  const preview = repeating ? repeatPreview(form, date, today, exceptDates) : null
+  const preview = repeating ? repeatPreview(form, date, today, exceptDates, form.repeatEnd) : null
   const timelineDay = repeating ? preview?.next[0] ?? null : form.date
   const zone = form.time ? zoneChoices(form.timeZone, savedZone) : null
 
@@ -223,10 +228,17 @@ export function TimeSection({
               {open === 'repeat' && (
                 <Panel label="Repeat">
                   <RecurrenceField
-                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview
+                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview end={form.repeatEnd}
                     options={savedKind === 'repeat' ? RECURRING_EDIT_OPTIONS : RECURRENCE_OPTIONS}
                   />
                 </Panel>
+              )}
+              {repeating && (
+                <EndRepeatRows
+                  form={form} end={form.repeatEnd} start={date} today={today} exceptDates={exceptDates} problem={endIssue}
+                  onChange={repeatEnd => patch(withCalendarField(form, 'repeatEnd', repeatEnd))}
+                  mark={<FieldMark goes={goes('repeatEnd')} />} open={open} toggle={toggle}
+                />
               )}
             </>
           )}

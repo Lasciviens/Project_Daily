@@ -37,6 +37,9 @@ import type { LiveTaskSection, Task, TaskDomain, TaskSection } from '../todo/typ
 import { liveSection, sectionForDay } from '../todo/taskRules'
 import { labelsOf } from '../todo/taskLabels'
 import { placeOfRow } from './itemPlace'
+import { eventAlerts, eventShowAs, eventTravel, eventUrl } from '../calendar/calendarEventRules'
+import { repeatEndOfRow } from './itemCalendarFields'
+import type { ItemCalendarColumns } from '../daily/types'
 import { repeatSummary, type RepeatKind, type RepeatRule, type RepeatUnit } from '../daily/recurrence'
 import { formatDate } from '../../shared/utils/dateFormat'
 import type {
@@ -168,7 +171,7 @@ type BlockRow = Pick<TimeBlock, 'id' | 'date' | 'title' | 'start_time' | 'durati
     time_zone?: string | null
     /** Where it happens (186): the jsonb as stored. */
     place?: unknown
-  }
+  } & ItemCalendarColumns
 /** A repeat rule; since 155 it may have no time (an all-day repeat). */
 type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' | 'effective_from'
   | 'repeat_kind' | 'repeat_interval' | 'repeat_unit' | 'repeat_dates' | 'google_calendar_event_id'>
@@ -182,7 +185,22 @@ type PlanRow = Pick<ScheduleBlock, 'id' | 'title' | 'category' | 'days_of_week' 
     google_calendar_time_zone?: string | null
     /** Where it happens (186): the jsonb as stored. */
     place?: unknown
+    /** End Repeat (193). */
+    repeat_until?: string | null
+    repeat_count?: number | null
+  } & ItemCalendarColumns
+
+/** The calendar fields a row says (193), each only when the row has its column (a database before 193, or a read that
+ *  left it out, leaves it unknown: the save keeps it). Read through the writers' own readers. */
+function calendarFieldsOfRow(row: ItemCalendarColumns & { repeat_until?: string | null; repeat_count?: number | null }, repeat: boolean): Partial<ItemInput> {
+  return {
+    ...('alerts' in row ? { alerts: eventAlerts(row.alerts) } : {}),
+    ...('show_as' in row ? { showAs: eventShowAs(row.show_as) } : {}),
+    ...('url' in row ? { url: eventUrl(row.url) } : {}),
+    ...('travel_minutes' in row ? { travelMinutes: eventTravel(row.travel_minutes) } : {}),
+    ...(repeat && 'repeat_until' in row ? { repeatEnd: repeatEndOfRow(row) } : {}),
   }
+}
 
 /** The minutes between a rule's start and end (crossing midnight). */
 function minutesBetween(start: string, end: string): number {
@@ -254,6 +272,8 @@ export function itemFromRows(task?: TaskRow | null, block?: BlockRow | null, pla
     // Its place (186), only when the rows read say (a row without the column leaves it unknown: the save keeps it).
     ...(plan ? (plan.place !== undefined ? { place: placeOfRow(plan.place) } : {})
       : block && block.place !== undefined ? { place: placeOfRow(block.place) } : {}),
+    // Its calendar fields (193): the repeat's, or the slot's — only those the rows read say.
+    ...(plan ? calendarFieldsOfRow(plan, true) : block ? calendarFieldsOfRow(block, false) : {}),
     source,
   }
 }

@@ -163,7 +163,8 @@ ok(guarded, 'the last guard: an event whose zone is no zone name is never writte
 // ── The function: the generated copy is current, and it writes and reads in the item's zone ──
 const fn = src('supabase/functions/icloud-calendar/index.ts')
 ok(/timeZone: itemTimeZone\(b\.time_zone\)/.test(fn) && /timeZone: planTimeZone\(p\)/.test(fn), 'the drain writes a slot in its zone and a plan in its own (else its Google series\')')
-ok(/icloud_etag, icloud_from, icloud_horizon, time_zone(, place)?'\)/.test(fn) && /schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone(, place)?'\)/.test(fn), '…reading each one\'s zone')
+ok(/icloud_etag, icloud_from, icloud_horizon, time_zone(, place(, alerts, show_as, url, travel_minutes, repeat_until, repeat_count)?)?'\)/.test(fn)
+  && /schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone(, place(, alerts, show_as, url, travel_minutes)?)?'\)/.test(fn), '…reading each one\'s zone')
 ok(/readbackChangeOf\(item\.ics, o\.entity, `lasci-\$\{o\.entity\}-\$\{o\.id\}@lasciviens\.github\.io`, emoji, zones\.get\(keyOf\(x\)\) \?\? OSLO\)/.test(fn),
   'the read-back reads each iPhone change on its item\'s own clock')
 const block2 = fn.slice(fn.indexOf('// <icloud-pure>'), fn.indexOf('// </icloud-pure>'))

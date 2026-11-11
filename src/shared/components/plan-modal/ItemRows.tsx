@@ -13,7 +13,7 @@ import { cx, Switch, Truncate } from '../../ui'
 import { useMotion } from '../../hooks/useMotion'
 
 /** A row's top hairline, inset like Apple's; the first row of a group has none. */
-const LINE = 'relative before:absolute before:left-3.5 before:right-0 before:top-0 before:h-px before:bg-line first:before:content-none'
+export const LINE = 'relative before:absolute before:left-3.5 before:right-0 before:top-0 before:h-px before:bg-line first:before:content-none'
 const ROW = `${LINE} flex min-h-11 w-full items-center gap-2.5 px-3.5 text-lead`
 
 export function Section({ title, children }: { title?: string; children: ReactNode }) {
