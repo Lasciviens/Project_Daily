@@ -1,5 +1,4 @@
 import { Suspense, useState } from 'react'
-import { UnifiedPlanModal } from '../../../../shared/components/plan-modal'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
 import type { SteamGame } from '../../api/steamApi'
@@ -48,12 +47,9 @@ interface Props {
   fullId: string | null
   provider: TgGame | null
   onClose: (which: 'edit' | 'full' | 'provider') => void
-  /** The game a play session is being planned for (the calendar planner). */
-  planGame: TgGame | null
-  onClosePlan: () => void
 }
 
-export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose, planGame, onClosePlan }: Props) {
+export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId, provider, onClose }: Props) {
   const addOpen = useTgAddGame(s => s.open)
   const setAddOpen = useTgAddGame(s => s.setOpen)
   // Add game stays mounted once opened, so it keeps its closing animation.
@@ -85,16 +81,6 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
           </ErrorBoundary>
         )}
       </Suspense>
-      {/* The app's one planner (a time block in the Games category) keeps the
-          app palette; ModalShell gives it Back handling and stacking. */}
-      {planGame && (
-        <UnifiedPlanModal
-          open
-          onClose={onClosePlan}
-          mode="schedule"
-          defaults={{ title: `🎮 ${planGame.title}`, duration: 60, category: 'games', color: 'purple' }}
-        />
-      )}
     </>
   )
 }

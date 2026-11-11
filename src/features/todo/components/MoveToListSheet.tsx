@@ -12,9 +12,9 @@ interface Props {
   task:    Task
 }
 
-// Per-task list assignment — mirrors SetParentTaskSheet's shape (its own
-// sheet, not a UnifiedPlanModal taskExtra slot; see that file's comment for
-// why). Works the same whether the task is already synced (queues a real
+// Per-task list assignment for a task NOT on Google Tasks (a task that is opens
+// the item screen at its List row instead — itemScreenRules.opensListRow, step
+// 3 of the item screen plan). Works the same whether the task is already synced (queues a real
 // tasks.move via the outbox — migration 071's trigger detects the
 // google_tasklist_id change) or still local-only (just changes which list
 // the eventual first create targets).

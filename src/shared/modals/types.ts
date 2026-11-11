@@ -25,7 +25,7 @@ export type EntityModalRequest =
   | { kind: 'task'; id?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
   | { kind: 'time-block'; id?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
   /** `occurrenceDate`: the day of the repeat it was opened on — the sheet then offers This day | All days. */
-  | { kind: 'schedule-block'; id?: string; occurrenceDate?: string; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
+  | { kind: 'schedule-block'; id?: string; occurrenceDate?: string; startScope?: 'day' | 'all'; defaults?: PlanDefaults; config?: PlanModalConfig; source?: PlanSource; onSaved?: (r: PlanResult) => void }
   /** A one-off block by id, opened as its task's item when it has one. */
   | { kind: 'plan-block'; blockId: string }
   // Food.

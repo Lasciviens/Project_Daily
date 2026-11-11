@@ -3,7 +3,8 @@
 //  headers: Priority, Area, Category (a timed or repeating item's), Labels (a
 //  task's), and the Deadline (owner's point 9): a date, then optionally a time
 //  and "Do it between" (the window that opens on its first day and closes on
-//  the deadline — tasks.start_date, 069; a season sets both ends).
+//  the deadline — tasks.start_date, 069; a season sets both ends). An edit of
+//  a task adds Waiting for and Parent (TaskRows.tsx: each its own action).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { DateCalendar } from '../DateCalendar'
@@ -13,6 +14,7 @@ import { seasonWindows } from '../windowChips'
 import { FieldMark } from './FieldMark'
 import { ChoiceRow, Panel, Pill, Row, TapRow } from './ItemRows'
 import { LabelsRow } from './LabelsRow'
+import { ParentRow, WaitingRow } from './TaskRows'
 import { TimeWheel } from './TimeWheel'
 import { chipClass, choiceClass } from './fieldStyles'
 import { CATEGORY_LABELS, displayDate, isScheduleFieldHidden, isTaskFieldHidden } from './planModal.config'
@@ -28,7 +30,7 @@ import type { PlanModalConfig } from './planModal.types'
 const PRIORITIES = (['low', 'medium', 'high'] as const).map(value => ({ value, label: PRIORITY_LABEL[value] }))
 const DOMAINS = (['personal', 'work', 'media'] as const).map(value => ({ value, label: DOMAIN_LABEL[value] }))
 
-export function PlanningSection({ form, patch, open, toggle, config, today, showCategory, showLabels, goes }: {
+export function PlanningSection({ form, patch, open, toggle, config, today, showCategory, showLabels, goes, taskId }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
   open: PanelKey | null
@@ -38,6 +40,8 @@ export function PlanningSection({ form, patch, open, toggle, config, today, show
   showCategory: boolean
   showLabels: boolean
   goes: (f: ScreenField) => FieldGoes
+  /** An edit of a task (not a repeat's rule): its Waiting for and Parent rows (step 3). */
+  taskId?: string | null
 }) {
   const hide = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const own = <FieldMark goes={goes('own')} />
@@ -67,6 +71,12 @@ export function PlanningSection({ form, patch, open, toggle, config, today, show
       )}
       {showLabels && <LabelsRow value={form.labels} onChange={labels => patch({ labels, labelsTouched: true })} mark={own} />}
       {!hide('dueDate') && <DeadlineRows form={form} patch={patch} open={open} toggle={toggle} config={config} today={today} goes={goes} />}
+      {taskId && (
+        <>
+          <WaitingRow taskId={taskId} open={open} toggle={toggle} mark={own} />
+          <ParentRow taskId={taskId} open={open} toggle={toggle} mark={<FieldMark goes={goes('list')} />} />
+        </>
+      )}
     </>
   )
 }

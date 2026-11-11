@@ -72,10 +72,8 @@ function ListRow({ list }: { list: GoogleTaskListRow }) {
 
 // Multi-list management — Phase 2's remaining slice (Phase 1's data model
 // already carries google_tasklist_id; this is the UI layer). Deliberately
-// kept OUTSIDE UnifiedPlanModal (same reasoning that put "Set parent" in its
-// own SetParentTaskSheet rather than the modal's taskExtra slot — taskExtra
-// is a plain ReactNode with no access to the modal's own form/patch state,
-// per docs/features/tasks.md's start_date precedent).
+// kept OUTSIDE UnifiedPlanModal: it manages the lists themselves, not one
+// item's fields (a task's own list is the item screen's List row).
 export function GoogleTaskListsSheet({ open, onClose }: Props) {
   const { data: lists = [], isLoading } = useGoogleTaskLists()
   const create = useCreateGoogleTaskList()

@@ -17,6 +17,17 @@ import { repeatSummary } from '../daily/recurrence'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
 import type { CalendarPlanItem } from './components/calendar/calendarModel'
 import type { HevyWorkout } from './types.hevy'
+import type { PlanTarget } from './api/trainingPlanApi'
+import type { ItemScreenRequest } from '../../shared/components/plan-modal/PlanEntityModals'
+
+/** The item screen's request for a planned session (owner's answer 2, the popup's Edit tab): its task (a repeat's day
+ *  opens as This day | All days), its block, or the weekly plan on that day, This day picked (this one session; All
+ *  days is the whole schedule) — the same kinds the popups open. */
+export function sessionItemRequest(target: PlanTarget): ItemScreenRequest {
+  if (target.kind === 'task') return { kind: 'task', id: target.taskId }
+  if (target.kind === 'block') return { kind: 'time-block', id: target.blockId }
+  return { kind: 'schedule-block', id: target.templateId, occurrenceDate: target.date, startScope: 'day', defaults: { date: target.date } }
+}
 
 /** A planned session by id. A recurring occurrence has no row of its own, so
  *  the day it falls on is part of its identity. */

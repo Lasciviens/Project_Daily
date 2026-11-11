@@ -27,6 +27,7 @@ import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
+import { entityModal } from '../../../shared/modals'
 import { recalledDepth, rememberDepth } from './components/tgScrollMemory'
 import { TgGamesContext, TgRanksContext } from './components/tgRanks'
 import { TgChunkFailed, TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
@@ -83,7 +84,6 @@ export function TestGamePage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [fullId, setFullId] = useState<string | null>(null)
   const [provider, setProvider] = useState<TgGame | null>(null)
-  const [planGame, setPlanGame] = useState<TgGame | null>(null)
   const pickRef = useRef<TgPickIntent>(null)
   const panelRef = useRef<HTMLElement>(null)
 
@@ -134,7 +134,8 @@ export function TestGamePage() {
     openEdit: (id) => setEditId(id),
     openFull: (id) => setFullId(id),
     openProvider: (g) => setProvider(g),
-    planSession: (g) => setPlanGame(g),
+    // The one item screen, as from every other page (step 3 of the item screen plan).
+    planSession: (g) => entityModal.open({ kind: 'time-block', defaults: { title: `🎮 ${g.title}`, duration: 60, category: 'games', color: 'purple' } }),
   }), [])
   // Phone: a tap opens the full-screen sheet. Wider: an arrow key only walks
   // the selection (an open overlay follows it); a click opens the overlay and
@@ -294,7 +295,6 @@ export function TestGamePage() {
       <TgModals
         bp={bp} actions={actions} sheetGame={collapsed ? null : detailGame} onCloseSheet={closeDetail}
         editId={editId} fullId={fullId} provider={provider} onClose={closeModal}
-        planGame={planGame} onClosePlan={() => setPlanGame(null)}
       />
     </TgGamesContext.Provider>
     </TgRanksContext.Provider>

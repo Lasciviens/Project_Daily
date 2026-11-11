@@ -198,11 +198,13 @@ check('keys only from qk; groups for invalidation', !/queryKey: \[/.test(hooks) 
 check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026), with the calendar the caller names',
   /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved, own\?\.calendarApp\)/.test(hooks))
 const sheetModal = read('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
-check('the Add sheet and Home\'s quick add name the calendar their chip / area names (useItemCalendarApp)',
+check('the Add sheet and every quick add (Home\'s, Work\'s, the search bar\'s) name the calendar their chip / area names (useItemCalendarApp)',
   sheetModal.indexOf('const calendarApp = useItemCalendarApp(') > 0 && sheetModal.indexOf('const calendarApp = useItemCalendarApp(') < sheetModal.indexOf('const save = useSaveItem(')
   && /\n    calendarApp,\n  \}\)/.test(sheetModal.slice(sheetModal.indexOf('const save = useSaveItem(')))
   && /const calendarApp = useItemCalendarApp\(\{ domain: 'personal' \}\)\n\s*const save = useSaveItem\(\{ calendarApp \}\)/.test(read('src/features/home/components/HomeDayCard.tsx'))
-  && /domain: 'personal',/.test(read('src/features/items/sheetRules.ts').slice(read('src/features/items/sheetRules.ts').indexOf('export function itemFromQuickAdd'))))
+  && /domain: TaskDomain = 'personal',\n\): ItemInput \| null \{/.test(read('src/features/items/sheetRules.ts'))
+  && /const calendarApp = useItemCalendarApp\(\{ domain \}\)\n\s*const save = useSaveItem\(\{ calendarApp \}\)/.test(read('src/features/items/useQuickAdd.ts'))
+  && /itemFromQuickAdd\(text, parse, day, googleConnected, calendarApp === 'apple', domain\)/.test(read('src/features/items/useQuickAdd.ts')))
 // 03.11.2026: with no Google connection on the device, Home's quick add sent 'none' — an Apple area's event never went.
 check('Home\'s quick add tells its builder whether the item\'s area is on Apple Calendar (no Google connection needed for that)',
   /itemFromQuickAdd\(title, parse, day, googleConnected, calendarApp === 'apple'\)/.test(read('src/features/home/components/HomeDayCard.tsx')))

@@ -1,9 +1,13 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
-import { Search, Plus, CornerDownLeft, X, type LucideIcon } from 'lucide-react'
+import { Search, Plus, CornerDownLeft, SquarePen, X, type LucideIcon } from 'lucide-react'
 import { NAV } from '../../app/navigation'
-import { useTasksBySection, useCreateTask } from '../../features/todo/hooks/useTodos'
+import { useTasksBySection } from '../../features/todo/hooks/useTodos'
+import { parseQuickAdd } from '../../features/items/quickAdd'
+import { readAsParts } from '../../features/items/sheetRules'
+import { useQuickAdd } from '../../features/items/useQuickAdd'
+import { todayStr } from '../utils/dateUtils'
 import { PRIORITY_TONE, DOMAIN_TONE } from '../../features/todo/taskTones'
 import { isTrainingTask } from '../../features/todo/taskRules'
 import type { Task } from '../../features/todo/types'
@@ -19,7 +23,8 @@ import { ToneDot, TonePill, Truncate } from '../ui'
 type NavItem = { kind: 'nav'; id: string; label: string; icon: LucideIcon; path: string; terms: string }
 type TaskItem = { kind: 'task'; id: string; label: string; domain: Task['domain']; priority: Task['priority']; training: boolean }
 type CreateItem = { kind: 'create'; id: 'create-task'; label: string; query: string }
-type ResultItem = NavItem | TaskItem | CreateItem
+type OpenItem = { kind: 'open'; id: 'open-item'; label: string; query: string }
+type ResultItem = NavItem | TaskItem | CreateItem | OpenItem
 
 // "Go to" targets come from the one navigation registry (src/app/navigation.ts).
 const NAV_ITEMS: NavItem[] = NAV.map(e => ({
@@ -45,7 +50,10 @@ const OPTION = 'flex min-h-[44px] cursor-pointer items-center gap-3 rounded-row 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
   const modal = useEntityModal()
-  const createTask = useCreateTask()
+  // "add …" is a quick add (step 3 of the item screen plan): read as the item screen's title reads it, added at once
+  // through the one item save — or taken to the item screen.
+  const quick = useQuickAdd('personal')
+  const today = todayStr()
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -72,6 +80,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const trimmed = query.trim()
   const isQuickAdd = trimmed.toLowerCase().startsWith('add ')
   const addQuery = isQuickAdd ? trimmed.slice(4).trim() : ''
+  const read = useMemo(() => (addQuery ? parseQuickAdd(addQuery, today) : null), [addQuery, today])
   const isSearching = trimmed.length >= 2 && !isQuickAdd
 
   const navResults = useMemo(() => {
@@ -106,11 +115,14 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       return
     }
 
+    if (item.kind === 'open') {
+      onClose()
+      quick.open(item.query, false, today)
+      return
+    }
     if (!item.query) return
-    // useCreateTask says "Task added" (or the error) itself.
-    const created = await createTask.mutateAsync({ title: item.query, domain: 'personal', section: 'today', priority: 'medium' })
-      .catch(() => undefined)
-    if (created !== undefined) onClose()
+    // The item save says what was added (or the error) itself.
+    if (await quick.add(item.query, parseQuickAdd(item.query, today), today)) onClose()
   }
 
   const showNav = !isQuickAdd && navResults.length > 0
@@ -145,9 +157,19 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600">
               <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden />
             </span>
-            <Truncate className="flex-1" fullText={addQuery ? `Create task: ${addQuery}` : undefined}>
-              {addQuery ? <>Create task: <span className="font-semibold text-fg">{addQuery}</span></> : <span className="text-fg-muted">Type a task title after “add ”</span>}
+            <Truncate className="flex-1" fullText={addQuery ? `Add: ${addQuery}` : undefined}>
+              {addQuery
+                ? <>Add <span className="font-semibold text-fg">{read?.title || addQuery}</span>{read && <span className="text-fg-muted"> · {readAsParts(read, today).join(' · ')}</span>}</>
+                : <span className="text-fg-muted">Type what to add after “add ” — e.g. add Gym 17:30</span>}
             </Truncate>
+          </ComboboxOption>
+        )}
+        {isQuickAdd && addQuery && (
+          <ComboboxOption value={{ kind: 'open', id: 'open-item', label: `Open in New Item: ${addQuery}`, query: addQuery } as OpenItem} className={OPTION}>
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-control bg-surface-2 text-fg-2">
+              <SquarePen className="h-4 w-4" strokeWidth={2} aria-hidden />
+            </span>
+            <span className="flex-1">Open in New Item…</span>
           </ComboboxOption>
         )}
 

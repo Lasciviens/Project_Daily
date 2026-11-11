@@ -1,7 +1,10 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CalendarCog, CalendarPlus, Pencil, Trash2 } from 'lucide-react'
 import { ModalShell, useEntityModal } from '../../../../shared/modals'
-import { Button, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
+import { Button, SegmentedControl, SkeletonText, TonePill, Truncate } from '../../../../shared/ui'
+import { toast } from '../../../../app/store'
+import { lazyPart } from '../../../../shared/utils/lazyPage'
+import { ItemScreenEmbedContext, type ItemScreenHandle } from '../../../../shared/components/plan-modal/itemScreenEmbed'
 import { useHevyWorkoutDetail } from '../../hooks/useHevyWorkouts'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
@@ -15,7 +18,7 @@ import { openPlanRoutine } from '../../planTraining'
 import { rememberShownWorkout } from '../../sessionLinks'
 import { WORKOUT_TONE } from '../calendar/calendarModel'
 import { planRoutineId, planStartHHMM, workoutStartHHMM } from '../calendar/calendarSessions'
-import { coveredPlanNote, planMinutes, sessionWhenLabel } from '../../sessionRef'
+import { coveredPlanNote, planMinutes, sessionItemRequest, sessionWhenLabel } from '../../sessionRef'
 import { repeatSummary } from '../../../daily/recurrence'
 import type { HevyRoutine } from '../../types.hevy'
 import type { PlanTarget, TrainingPlanRef } from '../../api/trainingPlanApi'
@@ -60,6 +63,11 @@ function PlanBody({ status, primary, busy, routine, repeats, offSchedule, routin
   )
 }
 
+// The item screen loads with the Edit tab (its code is the Add sheet's own chunk).
+const ItemScreenFor = lazyPart('item-screen-for', () => import('../../../../shared/components/plan-modal/PlanEntityModals').then(m => m.ItemScreenFor))
+
+const TABS: { value: 'session' | 'edit'; label: string }[] = [{ value: 'session', label: 'Session' }, { value: 'edit', label: 'Edit' }]
+
 interface PlanContext {
   plan: TrainingPlanRef
   status: SessionStatus
@@ -89,6 +97,8 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   const { data: program } = useCurrentProgramRoutines()
   const { data: skips } = useTrainingSkips()
   const date = anchor.date
+  const [tab, setTab] = useState<'session' | 'edit'>('session')
+  const editHandle = useRef<ItemScreenHandle | null>(null)
 
   // So a popup opened from here (the Apple workout) can recognise this one as
   // the same session even when it was opened from a plan (sessionLinks.ts).
@@ -230,9 +240,32 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     actions = <SessionMenu items={planItems.more} busy={planItems.busy} />
   }
 
+  // A planned session has the item screen as its second tab (owner's answer 2): this one session, or — on a weekly
+  // plan's day — This day | All days for the whole schedule. Its save, autosave and delete stay the screen's own;
+  // leaving the tab (or closing) saves what waits first.
+  const editRequest = planCtx ? sessionItemRequest(planCtx.plan.target) : null
+  const editing = tab === 'edit' && !!editRequest
+  async function switchTab(next: 'session' | 'edit') {
+    if (next === 'session' && editHandle.current) {
+      const done = await editHandle.current.flush()
+      if (done.kind === 'failed') return
+      if (done.kind === 'problem') toast.warning(`Your last change wasn't saved: ${done.reason}`)
+    }
+    setTab(next)
+  }
+  const close = () => (editing && editHandle.current ? editHandle.current.requestClose() : onClose())
+  const tabs = editRequest ? <SegmentedControl size="xs" options={TABS} value={editing ? 'edit' : 'session'} onChange={t => { void switchTab(t) }} /> : null
+
   return (
-    <ModalShell onClose={onClose} size="md" title={title} subtitle={subtitle} headerActions={actions}>
-      {body}
+    <ModalShell onClose={close} size="md" title={title} subtitle={subtitle} headerActions={<>{tabs}{actions}</>}
+      grouped={editing} bodyClassName={editing ? 'px-3 pb-4 pt-1.5 sm:px-4' : undefined}>
+      {editing && editRequest ? (
+        <ItemScreenEmbedContext.Provider value={editHandle}>
+          <Suspense fallback={<SkeletonText lines={6} />}>
+            <ItemScreenFor request={editRequest} onClose={onClose} />
+          </Suspense>
+        </ItemScreenEmbedContext.Provider>
+      ) : body}
     </ModalShell>
   )
 }
