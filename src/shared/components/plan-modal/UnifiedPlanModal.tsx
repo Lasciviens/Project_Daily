@@ -21,6 +21,25 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-11 · v23 · The item screen, step 2: the rows of Apple's extra fields
+//                    (migration 193; v21.11 built their data side), only on an
+//                    item with a slot or a repeat (itemScreenRules.screenParts,
+//                    the Location row's rule): Travel Time under Location;
+//                    Alert, Second Alert and Show As in Options; URL in Details
+//                    (CalendarFieldRows.tsx); End Repeat under Repeat (Never, On
+//                    a day, After N times, with the next dates and the last —
+//                    EndRepeatRows.tsx). Each a real choice through
+//                    withCalendarField, saved like the rest (Add, or by itself),
+//                    each with its mark (alerts and Show As: the item's
+//                    calendar; the link and travel time: Apple's only; End
+//                    Repeat: where the repeat goes). A link that isn't https
+//                    (urlProblem) or an End Repeat that can't be
+//                    (repeatEndIssue) stops Add and the autosave and says why
+//                    under its row and in the heading. The URL row opens only
+//                    an eventUrl-checked https link, after showing its address
+//                    (the host first), in a new tab without opener or referrer.
+//                    Apple's mark: its mask url() is quoted (a build's data URI
+//                    has ' in it, and the mark drew as a square).
 //  2026-11-10 · v22 · The item screen, step 1 (docs/features/item-screen-plan.md;
 //                    owner, 10.11.2026: the plan and its five answers). Drawn as
 //                    iOS Calendar's event screen: grouped rows under Location,
