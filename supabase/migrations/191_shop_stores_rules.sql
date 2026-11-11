@@ -68,12 +68,25 @@
 --    or direction characters (shop_plain_text_ok) — whoever writes it.
 --
 -- Seeds: only what has a source; unknown rules are left out, never guessed (owner, 10.11.2026). Stores: Prisjakt,
--- FINN, Tise, Elkjøp, Power, Jernia, Komplett, Proshop, Clas Ohlson, XXL, Jula and Dustin. Rules: Elkjøp's 30-day
--- open purchase and 50 days for club members, and Power's 90-day returns — the stores' own product pages, read on
--- 10.11.2026 (docs/integrations/prisjakt.md). Not seeded: Power's help centre's 60 days (no page of it was kept),
--- Jernia's returns (its page links to them without days), any price match or price protection (no page read says
--- one), and every rule of the stores that answer apps with a bot check (never read). Search links only where a page
--- shows its form: Elkjøp's (`/search?q=`, its product page's search form, 10.11.2026).
+-- FINN, Tise, Elkjøp, Power, Jernia, Komplett, Proshop, Clas Ohlson, XXL, Jula and Dustin. Rules come from each
+-- store's own pages where the site lets apps read them (owner, 11.11.2026): each terms page read once, with a generic
+-- client name, within its robots.txt, never a site of shop_site_policies (FINN, Tise) — in the store's own words, with
+-- the page and the day read (docs/features/shop.md, "Stores and rules"):
+--   · Elkjøp (11.11.2026, /kundeservice/apent-kjop and /kundeservice/prismatch): 30-day open purchase, 50 days for
+--     Kundeklubb members, its Christmas returns for members (bought 09.11–24.12, back by 10.01), and its price match
+--     against Komplett and Power (NetOnNet and Skousen, also named, have no row) — never used, outlet or Marketplace;
+--   · Power: 90-day returns, its product pages' own data block (merchantReturnDays, 10.11.2026). Its help centre
+--     (/kundeservice/retur-og-aapent-kjoep/, 11.11.2026) draws its text by script: an app reads no days there;
+--   · Jernia (11.11.2026): 30-day open purchase. Its Christmas extension on that page is last year's — left out;
+--   · XXL (11.11.2026, /kundeservice/retur-og-bytte): 28-day open purchase and its Christmas returns (bought
+--     09.11–14.12, back by 11.01). Its "Prismatch" says not against whom — left out.
+-- Where a store's own pages can't be read by an app (Komplett: robots.txt not served; Clas Ohlson: a bot check),
+-- Prisjakt's words about the store, seen on its offer lists (10.11.2026), are seeded as origin 'price_site' — "from
+-- Prisjakt — check it" — which never decides a date or a match on its own (as Ask AI's): Komplett's "Prismatch",
+-- Clas Ohlson's "Åpent kjøp i 365 dager", and Power's "60 dager åpent kjøp" (Power's own help centre says 60 too, as
+-- far as a person can see — the conflict with its pages' 90 is shown). Proshop, Jula and Dustin: not read (a bot
+-- check, 403), no rule. Search links: Elkjøp's (its search form, 10.11.2026), FINN's and Tise's standard searches
+-- (links only, never read; the owner opens each once — docs/deploy-checklist.md).
 --
 -- Seeded into every account in app_allowed_users now, and into an account added later (a trigger on
 -- app_allowed_users, the SQL editor's insert). A seed's own writes are not the owner's changes: the first seed runs
@@ -357,7 +370,7 @@ create table if not exists public.shop_store_rules (
   words          text check (words is null or (char_length(words) between 1 and 2000 and public.shop_plain_text_ok(words))),
   source_url     text check (source_url is null or public.shop_https_ok(source_url)),
   read_on        date check (read_on is null or (read_on >= date '2000-01-01' and read_on < date '2100-01-01')),
-  origin         text not null default 'owner' check (origin in ('seed', 'page', 'owner', 'ask_ai')),
+  origin         text not null default 'owner' check (origin in ('seed', 'page', 'price_site', 'owner', 'ask_ai')),
   source_facts   jsonb check (source_facts is null or jsonb_typeof(source_facts) = 'object'),
   owner_edited   boolean not null default false,
   edited_at      timestamptz,
@@ -426,7 +439,7 @@ declare
   v_hosts text[];
 begin
   if tg_op = 'DELETE' then
-    if v_door = 'owner' and old.origin in ('seed', 'page') then
+    if v_door = 'owner' and old.origin in ('seed', 'page', 'price_site') then
       raise exception 'A rule from the store''s own pages is turned off, not deleted (a later update would bring it back)' using errcode = '23514';
     end if;
     if v_door = 'service' and (old.origin <> 'ask_ai' or old.owner_edited) then
@@ -516,7 +529,7 @@ create trigger trg_shop_store_rules_updated_at before update on public.shop_stor
   for each row execute function public.update_updated_at();
 
 comment on table public.shop_store_rules is
-  'A store''s rules, one row each, per account: open_purchase, return, seasonal_return, price_match, price_protection — with days, a member tier, a window (MM-DD), exclusions, the payout, the store''s words, its link and the day read. origin: seed, page, owner, ask_ai ("from Ask AI — check it").';
+  'A store''s rules, one row each, per account: open_purchase, return, seasonal_return, price_match, price_protection — with days, a member tier, a window (MM-DD), exclusions, the payout, the store''s words, its link and the day read. origin: seed (the store''s own page), page, price_site (a price site''s words about the store, "from Prisjakt — check it"), owner, ask_ai ("from Ask AI — check it").';
 comment on column public.shop_store_rules.against_stores is 'price_match against listed stores: the account''s own store ids (checked when added; a deleted store''s id is left and ignored).';
 comment on column public.shop_store_rules.window_from is 'seasonal_return: bought from this day of the year (MM-DD) …';
 comment on column public.shop_store_rules.window_to is '… to this one (MM-DD; before window_from = it crosses the year end).';
@@ -782,8 +795,10 @@ begin
     ('prisjakt', '{"kind": "price_site", "name": "Prisjakt", "country": "NO", "currency": "NOK", "hosts": ["prisjakt.no"],
                    "source_url": "https://www.prisjakt.no/information/brukervilkar", "read_on": "2026-11-10"}'::jsonb),
     ('finn', '{"kind": "marketplace", "name": "FINN", "country": "NO", "currency": "NOK", "hosts": ["finn.no"],
+               "search_url": "https://www.finn.no/recommerce/forsale/search?q={q}",
                "source_url": "https://www.finn.no/vilkar/brukervilkar-finn", "read_on": "2026-11-10"}'::jsonb),
     ('tise', '{"kind": "marketplace", "name": "Tise", "country": "NO", "currency": "NOK", "hosts": ["tise.com"],
+               "search_url": "https://tise.com/search?q={q}",
                "source_url": "https://tise.com/terms", "read_on": "2026-11-10"}'::jsonb),
     ('elkjop', '{"kind": "shop", "name": "Elkjøp", "country": "NO", "currency": "NOK", "hosts": ["elkjop.no"],
                  "search_url": "https://www.elkjop.no/search?q={q}",
@@ -801,7 +816,7 @@ begin
     ('clas_ohlson', '{"kind": "shop", "name": "Clas Ohlson", "country": "NO", "currency": "NOK", "hosts": ["clasohlson.com"],
                       "source_url": "https://www.clasohlson.com/no/"}'::jsonb),
     ('xxl', '{"kind": "shop", "name": "XXL", "country": "NO", "currency": "NOK", "hosts": ["xxl.no"],
-              "source_url": "https://www.xxl.no/"}'::jsonb),
+              "source_url": "https://www.xxl.no/kundeservice/retur-og-bytte", "read_on": "2026-11-11"}'::jsonb),
     ('jula', '{"kind": "shop", "name": "Jula", "country": "NO", "currency": "NOK", "hosts": ["jula.no"],
                "source_url": "https://www.jula.no/"}'::jsonb),
     ('dustin', '{"kind": "shop", "name": "Dustin", "country": "NO", "currency": "NOK", "hosts": ["dustin.no"],
@@ -833,41 +848,73 @@ begin
     end if;
   end loop;
 
-  -- Rules: only what a store's own page said (read 10.11.2026), in its own words.
+  -- Rules: what a store's own page said, in its own words — or, where no page of the store can be read by an app,
+  -- what Prisjakt says about it (origin price_site: "from Prisjakt — check it"). A price match against listed
+  -- stores names them by seed key ("against_keys"); the account's own rows by that key stand in (none: left out).
   for s in select * from (values
-    ('elkjop_open_purchase', 'elkjop', '{"kind": "open_purchase", "days": 30,
-       "words": "30-dagers åpent kjøp med uåpnet emballasje. Åpnet, men ubrukt emballasje kan returneres innen 14 dager hvis produkttypen tillater det.",
-       "source_url": "https://www.elkjop.no/product/tv-lyd-og-smarte-hjem/tv-og-tilbehor/tv/tcl-65-mqled75k-4k-mini-led-tv-2025/899848",
-       "read_on": "2026-11-10"}'::jsonb),
-    ('elkjop_open_purchase_club', 'elkjop', '{"kind": "open_purchase", "days": 50, "member_tier": "Kundeklubb",
-       "words": "50 dagers åpent kjøp med uåpnet emballasje. Åpnet, men ubrukt emballasje kan returneres innen 14 dager hvis produkttypen tillater det.",
-       "source_url": "https://www.elkjop.no/product/tv-lyd-og-smarte-hjem/tv-og-tilbehor/tv/tcl-65-mqled75k-4k-mini-led-tv-2025/899848",
-       "read_on": "2026-11-10"}'::jsonb),
-    ('power_return', 'power', '{"kind": "return", "days": 90,
+    ('elkjop_open_purchase', 'elkjop', 'seed', '{"kind": "open_purchase", "days": 30,
+       "words": "30 dagers åpent kjøp. Er du ikke kundeklubbmedlem eller bedriftskunde gjelder tilsvarende returrett i 30 dager etter overtakelse.",
+       "source_url": "https://www.elkjop.no/kundeservice/apent-kjop", "read_on": "2026-11-11"}'::jsonb),
+    ('elkjop_open_purchase_club', 'elkjop', 'seed', '{"kind": "open_purchase", "days": 50, "member_tier": "Kundeklubb",
+       "words": "Som kundeklubbmedlem eller bedriftskunde kan du returnere uåpnede produkter i originalemballasje i inntil 50 dager etter overtakelse. Forseglede produkter må ha ubrutt forsegling. Returretten gjelder ikke for produkter kjøpt med abonnement, Marketplace-produkter og spesialtilpassede produkter som for eksempel kjøkken og skjermsmart.",
+       "source_url": "https://www.elkjop.no/kundeservice/apent-kjop", "read_on": "2026-11-11"}'::jsonb),
+    ('elkjop_christmas_club', 'elkjop', 'seed', '{"kind": "seasonal_return", "label": "Christmas returns", "member_tier": "Kundeklubb",
+       "window_from": "11-09", "window_to": "12-24", "return_until": "01-10",
+       "words": "Kjøp fra og med 09.11 til og med 24.12 har utvidet åpent kjøp for klubbmedlemmer frem til 10.01.27. Uåpnede produkter i originalemballasje kjøpt i denne perioden kan du returnere helt frem til 10.01.27, eller til den ordinære fristen for åpent kjøp for ditt kjøp – avhengig av hvilken frist som er lengst.",
+       "source_url": "https://www.elkjop.no/kundeservice/apent-kjop", "read_on": "2026-11-11"}'::jsonb),
+    ('elkjop_price_match', 'elkjop', 'seed', '{"kind": "price_match", "against": "listed", "against_keys": ["komplett", "power"],
+       "exclusions": ["used", "outlet", "marketplace_seller"],
+       "words": "Vår prismatch gjelder for konkurrentene Komplett, NetOnNet, Skousen og Power. Prismatch gjelder ikke for brukte varer, såkalte Outlet-varer eller demovarer, kun på nye produkter. Prismatch gjelder ikke for produkter solgt av våre partnere på Elkjøp Marketplace. For å gjøre prismatch gjeldende, sier du selv fra til Elkjøp i kjøpsøyeblikket.",
+       "source_url": "https://www.elkjop.no/kundeservice/prismatch", "read_on": "2026-11-11"}'::jsonb),
+    ('power_return', 'power', 'seed', '{"kind": "return", "days": 90,
        "source_url": "https://www.power.no/hjem-og-hage/rengjoering-og-stoevsuging/dampvasker/karcher-se-3-compact-home-tekstilrenser/p-4229993/",
-       "read_on": "2026-11-10"}'::jsonb)
-  ) v(key, store_key, facts) loop
+       "read_on": "2026-11-10"}'::jsonb),
+    ('power_open_purchase_prisjakt', 'power', 'price_site', '{"kind": "open_purchase", "days": 60, "words": "60 dager åpent kjøp",
+       "source_url": "https://www.prisjakt.no/product.php?p=14585952", "read_on": "2026-11-10"}'::jsonb),
+    ('jernia_open_purchase', 'jernia', 'seed', '{"kind": "open_purchase", "days": 30,
+       "words": "Du har 30 dagers åpent kjøp på nett og i butikk. Det vil si at du kan bytte ubrukte varer innen 30 dager etter at du fysisk mottok produktet.",
+       "source_url": "https://www.jernia.no/kundeservice/frakt-og-retur/hvor-lang-bytterett-har-jeg-pa-varer-jeg-har-kjopt", "read_on": "2026-11-11"}'::jsonb),
+    ('xxl_open_purchase', 'xxl', 'seed', '{"kind": "open_purchase", "days": 28,
+       "words": "Hos XXL har du 28 dagers åpent kjøp fra datoen du handlet varen. Returnerte varer må alltid fremstå som nye og i salgbar tilstand.",
+       "source_url": "https://www.xxl.no/kundeservice/retur-og-bytte", "read_on": "2026-11-11"}'::jsonb),
+    ('xxl_christmas', 'xxl', 'seed', '{"kind": "seasonal_return", "label": "Christmas returns",
+       "window_from": "11-09", "window_to": "12-14", "return_until": "01-11",
+       "words": "Kjøp gjort fra 9. november 2026 til og med 14. desember 2026 omfattes av utvidet bytterett og kan byttes eller returneres frem til 11. januar 2027.",
+       "source_url": "https://www.xxl.no/kundeservice/retur-og-bytte", "read_on": "2026-11-11"}'::jsonb),
+    ('komplett_price_match_prisjakt', 'komplett', 'price_site', '{"kind": "price_match", "against": "any", "words": "Prismatch",
+       "source_url": "https://www.prisjakt.no/product.php?p=13101596", "read_on": "2026-11-10"}'::jsonb),
+    ('clas_ohlson_open_purchase_prisjakt', 'clas_ohlson', 'price_site', '{"kind": "open_purchase", "days": 365, "words": "Åpent kjøp i 365 dager",
+       "source_url": "https://www.prisjakt.no/product.php?p=12105549", "read_on": "2026-11-10"}'::jsonb)
+  ) v(key, store_key, origin, facts) loop
     select t.id into v_sid from public.shop_stores t where t.user_id = p_user and t.seed_key = s.store_key;
     if not found then
       continue;
     end if;
-    v_rnew := jsonb_populate_record(null::public.shop_store_rules, s.facts || '{"exclusions": [], "off": false}'::jsonb);
+    v_rnew := jsonb_populate_record(null::public.shop_store_rules, '{"exclusions": [], "off": false}'::jsonb || (s.facts - 'against_keys'));
+    if s.facts ? 'against_keys' then
+      v_rnew.against_stores := array(select t.id from public.shop_stores t
+                                      where t.user_id = p_user and t.seed_key in (select jsonb_array_elements_text(s.facts -> 'against_keys'))
+                                      order by t.id);
+      if cardinality(v_rnew.against_stores) = 0 then
+        continue;
+      end if;
+    end if;
     v_src := public.shop_store_rule_facts(v_rnew);
     select * into v_rold from public.shop_store_rules r where r.user_id = p_user and r.seed_key = s.key for update;
     if not found then
       insert into public.shop_store_rules (user_id, store_id, seed_key, origin, kind, label, days, member_tier, window_from,
                                            window_to, return_until, exclusions, payout, against, against_stores, words,
                                            source_url, read_on, off, source_facts)
-      values (p_user, v_sid, s.key, 'seed', v_rnew.kind, v_rnew.label, v_rnew.days, v_rnew.member_tier, v_rnew.window_from,
+      values (p_user, v_sid, s.key, s.origin, v_rnew.kind, v_rnew.label, v_rnew.days, v_rnew.member_tier, v_rnew.window_from,
               v_rnew.window_to, v_rnew.return_until, v_rnew.exclusions, v_rnew.payout, v_rnew.against, v_rnew.against_stores,
               v_rnew.words, v_rnew.source_url, v_rnew.read_on, v_rnew.off, v_src);
       n := n + 1;
-    elsif v_rold.source_facts is distinct from v_src then
+    elsif v_rold.source_facts is distinct from v_src or v_rold.origin is distinct from s.origin then
       if v_rold.owner_edited then
         update public.shop_store_rules r set source_facts = v_src where r.id = v_rold.id;
       else
         update public.shop_store_rules r
-           set source_facts = v_src, kind = v_rnew.kind, label = v_rnew.label, days = v_rnew.days, member_tier = v_rnew.member_tier,
+           set source_facts = v_src, origin = s.origin, kind = v_rnew.kind, label = v_rnew.label, days = v_rnew.days, member_tier = v_rnew.member_tier,
                window_from = v_rnew.window_from, window_to = v_rnew.window_to, return_until = v_rnew.return_until,
                exclusions = v_rnew.exclusions, payout = v_rnew.payout, against = v_rnew.against,
                against_stores = v_rnew.against_stores, words = v_rnew.words, source_url = v_rnew.source_url,

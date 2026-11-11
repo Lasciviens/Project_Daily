@@ -103,10 +103,20 @@ export function rulesInForce(store: ShopStore, rules: readonly ShopStoreRule[]):
 }
 
 /**
- * A rule Ask AI wrote that the owner hasn't edited (guardian review, 10.11.2026): its free text is the assistant's,
- * so it is named by its kind, its source comes first, and its date never wins on its own.
+ * A rule nobody checked on the store's own page, which the owner hasn't edited: Ask AI's (guardian review,
+ * 10.11.2026 — its free text is the assistant's) or a price site's words about the store (owner, 11.11.2026: the
+ * store's own page can't be read by an app). It is named by its kind, its source comes first, and its date never
+ * wins on its own.
  */
-export const unchecked = (rule: ShopStoreRule): boolean => rule.origin === 'ask_ai' && !rule.owner_edited
+export const unchecked = (rule: ShopStoreRule): boolean => (rule.origin === 'ask_ai' || rule.origin === 'price_site') && !rule.owner_edited
+
+/** Who said an unchecked rule: "Ask AI", or the price site by its link's host ("Prisjakt" for prisjakt.no). */
+export function claimedBy(rule: Pick<ShopStoreRule, 'origin' | 'source_url'>): string {
+  if (rule.origin === 'ask_ai') return 'Ask AI'
+  const host = rule.source_url ? linkHost(rule.source_url) : null
+  const name = host?.replace(/^www\./, '').split('.')[0] ?? ''
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : 'a price site'
+}
 
 /** A rule's name with its source in front when the assistant wrote it: "from Ask AI — check it: Elkjøp's 365-day returns". */
 function namedWithSource(rule: ShopStoreRule, store: ShopStore): string {
@@ -119,7 +129,7 @@ export function sourceWords(rule: ShopStoreRule): string {
     const day = (rule.edited_at && osloDay(rule.edited_at)) || osloDay(rule.created_at)
     return day ? `typed ${formatDate(day)}` : 'typed by you'
   }
-  if (rule.origin === 'ask_ai') return 'from Ask AI — check it'
+  if (rule.origin === 'ask_ai' || rule.origin === 'price_site') return `from ${claimedBy(rule)} — check it`
   return rule.read_on ? `read ${formatDate(rule.read_on)}` : 'not read'
 }
 
@@ -451,7 +461,7 @@ export function priceMatches(stores: readonly ShopStore[], rules: readonly ShopS
     }
     if (!best || (own !== null && best.offer.price >= own)) continue
     const caveats = [
-      ...(unchecked(best.rule) ? [`${possessive(store.name)} price match is from Ask AI — check it before you ask at the till`] : []),
+      ...(unchecked(best.rule) ? [`${possessive(store.name)} price match is from ${claimedBy(best.rule)} — check it before you ask at the till`] : []),
       ...best.rule.exclusions.filter(e => CAVEAT[e]).map(e => `${store.name} doesn't match ${CAVEAT[e]} — check ${possessive(best!.name)} isn't one`),
     ]
     out.push({

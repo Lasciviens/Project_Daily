@@ -2,6 +2,7 @@
 // scripts/verify-shop-purchase.cjs.
 import { formatDate } from '../../shared/utils/dateFormat'
 import { dealRuleOf, nextDeal } from './dealDays'
+import { claimedBy } from './storeRules'
 import type { ShopDealDay, ShopRuleExclusion, ShopStore, ShopStoreKind, ShopStoreRule, ShopStoreRuleKind } from './types'
 
 export const STORE_KIND_LABEL: Record<ShopStoreKind, string> = {
@@ -49,10 +50,10 @@ export function ruleFacts(rule: ShopStoreRule, stores: readonly ShopStore[]): st
 /** A rule's label in its list: its own name, else its kind ("Open purchase"). */
 export const ruleTitle = (rule: ShopStoreRule): string => rule.label ?? RULE_KIND_LABEL[rule.kind]
 
-/** Where a rule's facts come from, as a tone and words: the owner's, Ask AI's (check it), or its source's. */
+/** Where a rule's facts come from, as a tone and words: the owner's, Ask AI's or a price site's (check it), or its source's. */
 export function ruleOrigin(rule: ShopStoreRule): { tone: 'info' | 'warn' | 'neutral'; words: string } {
   if (rule.owner_edited) return { tone: 'info', words: rule.origin === 'owner' ? 'Yours' : 'You edited it' }
-  if (rule.origin === 'ask_ai') return { tone: 'warn', words: 'From Ask AI — check it' }
+  if (rule.origin === 'ask_ai' || rule.origin === 'price_site') return { tone: 'warn', words: `From ${claimedBy(rule)} — check it` }
   return { tone: 'neutral', words: rule.origin === 'page' ? 'From its page' : 'From the store' }
 }
 

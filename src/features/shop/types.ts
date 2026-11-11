@@ -329,8 +329,11 @@ export interface ShopDealDayRow {
 // ── Stores, marketplaces and their rules (migration 191) ─────────────────────
 
 export type ShopStoreKind = 'shop' | 'marketplace' | 'price_site' | 'refurbisher'
-/** Where a row's facts come from: a seed (a page read that came with the app), a page read, the owner, Ask AI. */
-export type ShopRuleOrigin = 'seed' | 'page' | 'owner' | 'ask_ai'
+/**
+ * Where a row's facts come from: a seed (the store's own page, read when the app was made), a page read, a price
+ * site's words about the store (`price_site`: "from Prisjakt — check it" — rules only), the owner, Ask AI (rules only).
+ */
+export type ShopRuleOrigin = 'seed' | 'page' | 'price_site' | 'owner' | 'ask_ai'
 export type ShopStoreRuleKind = 'open_purchase' | 'return' | 'seasonal_return' | 'price_match' | 'price_protection'
 export type ShopRuleExclusion = 'campaign' | 'black_friday' | 'outlet' | 'marketplace_seller' | 'used'
 export type ShopRulePayout = 'money' | 'gift_card'
@@ -359,7 +362,7 @@ export interface ShopStore extends ShopStoreFacts {
   /** The owner's member tier at this store (a rule with the same tier applies to them). */
   member_tier:  string | null
   hidden:       boolean
-  origin:       Exclude<ShopRuleOrigin, 'ask_ai'>
+  origin:       Exclude<ShopRuleOrigin, 'ask_ai' | 'price_site'>
   /** What the source said; null for a store the owner made. */
   source:       ShopStoreFacts | null
   /** The owner made it, or its facts differ from `source` — never overwritten by a seed or a page read. */

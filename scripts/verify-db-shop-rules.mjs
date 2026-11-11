@@ -237,10 +237,17 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if ((seed.match(/if v_(r)?old\.owner_edited then/g) || []).length !== 2) problems.push('the seed writes facts over an owner\'s edit')
   const storeSeeds = [...seed.matchAll(/\n {4}\('([a-z_]+)', '\{"kind"/g)].map(m => m[1])
   if (storeSeeds.join() !== 'prisjakt,finn,tise,elkjop,power,jernia,komplett,proshop,clas_ohlson,xxl,jula,dustin') problems.push(`store seeds ${storeSeeds.join()}`)
-  const ruleSeeds = [...seed.matchAll(/\n {4}\('([a-z_]+)', '([a-z_]+)', '\{([\s\S]*?)\}'::jsonb\)/g)]
-  if (ruleSeeds.map(m => m[1]).join() !== 'elkjop_open_purchase,elkjop_open_purchase_club,power_return') problems.push(`rule seeds ${ruleSeeds.map(m => m[1]).join()}`)
-  for (const [, key, , body] of ruleSeeds) {
-    if (!/"source_url": "https:\/\/www\.(elkjop|power)\.no\//.test(body) || !/"read_on": "2026-11-10"/.test(body)) problems.push(`the rule seed ${key} has no source on its store's own site or no read day`)
+  // Each rule seed's source: the store's own site (origin seed), or Prisjakt's page about it (origin price_site —
+  // "from Prisjakt — check it", owner 11.11.2026), with the day it was read.
+  const storeHost = new Map([...seed.matchAll(/\n {4}\('([a-z_]+)', '\{"kind"[\s\S]*?"hosts": \["([a-z0-9.-]+)"/g)].map(m => [m[1], m[2]]))
+  const ruleSeeds = [...seed.matchAll(/\n {4}\('([a-z_]+)', '([a-z_]+)', '(seed|price_site)', '\{([\s\S]*?)\}'::jsonb\)/g)]
+  if (ruleSeeds.map(m => `${m[1]}:${m[3]}`).join() !== 'elkjop_open_purchase:seed,elkjop_open_purchase_club:seed,elkjop_christmas_club:seed,elkjop_price_match:seed,'
+    + 'power_return:seed,power_open_purchase_prisjakt:price_site,jernia_open_purchase:seed,xxl_open_purchase:seed,xxl_christmas:seed,'
+    + 'komplett_price_match_prisjakt:price_site,clas_ohlson_open_purchase_prisjakt:price_site') problems.push(`rule seeds ${ruleSeeds.map(m => `${m[1]}:${m[3]}`).join()}`)
+  for (const [, key, store, origin, body] of ruleSeeds) {
+    const host = origin === 'seed' ? storeHost.get(store) : storeHost.get('prisjakt')
+    const src = body.match(/"source_url": "https:\/\/(?:www\.)?([a-z0-9.-]+)\//)?.[1]
+    if (!host || src !== host || !/"read_on": "2026-11-1[01]"/.test(body)) problems.push(`the rule seed ${key} has no source on ${origin === 'seed' ? 'its store\'s own site' : 'Prisjakt'} or no read day`)
   }
   if (problems.length) fail(`migration 191 has ${problems.join('; ')}`)
 }
@@ -251,7 +258,7 @@ function reseedSql() {
     ['"kind": "open_purchase", "days": 30,', '"kind": "open_purchase", "days": 45,'],
     ['"search_url": "https://www.elkjop.no/search?q={q}"', '"search_url": "https://www.elkjop.no/sok?q={q}"'],
     ["    ('dustin', '{", `    ('nordisk', '{"kind": "shop", "name": "Nordisk", "country": "NO", "currency": "NOK", "hosts": ["nordisk.example"], "source_url": "https://nordisk.example/"}'::jsonb),\n    ('dustin', '{`],
-    ["    ('power_return', 'power',", `    ('nordisk_return', 'nordisk', '{"kind": "return", "days": 30, "source_url": "https://nordisk.example/retur", "read_on": "2026-11-10"}'::jsonb),\n    ('power_return', 'power',`],
+    ["    ('power_return', 'power',", `    ('nordisk_return', 'nordisk', 'seed', '{"kind": "return", "days": 30, "source_url": "https://nordisk.example/retur", "read_on": "2026-11-10"}'::jsonb),\n    ('power_return', 'power',`],
   ]
   let text = readFileSync(mig('191_shop_stores_rules.sql'), 'utf8')
   for (const [from, to] of swaps) {

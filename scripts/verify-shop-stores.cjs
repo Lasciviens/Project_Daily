@@ -85,7 +85,8 @@ console.log('2 · Stores, rules and the law as rows')
 const OWNER = '00000000-0000-0000-0000-000000000001'
 const seedFn = sql191.slice(sql191.indexOf('create or replace function public.shop_store_seed(p_user uuid)'))
 const storeSeeds = [...seedFn.matchAll(/\n {4}\('([a-z_]+)', '(\{"kind"[\s\S]*?\})'::jsonb\)/g)].map(m => ({ key: m[1], facts: JSON.parse(m[2].replace(/''/g, "'")) }))
-const ruleSeeds = [...seedFn.matchAll(/\n {4}\('([a-z_]+)', '([a-z_]+)', '(\{[\s\S]*?\})'::jsonb\)/g)].map(m => ({ key: m[1], store: m[2], facts: JSON.parse(m[3].replace(/''/g, "'")) }))
+const ruleSeeds = [...seedFn.matchAll(/\n {4}\('([a-z_]+)', '([a-z_]+)', '(seed|price_site)', '(\{[\s\S]*?\})'::jsonb\)/g)]
+  .map(m => ({ key: m[1], store: m[2], origin: m[3], facts: JSON.parse(m[4].replace(/''/g, "'")) }))
 let n = 0
 const uuid = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`
 const T = '2026-11-10T08:00:00Z'
@@ -95,15 +96,33 @@ const stores = storeSeeds.map(s => R.parseStore({
 }))
 check(`191 seeds twelve stores, each a row the app takes (${storeSeeds.map(s => s.key).join(', ')})`, stores.length === 12 && stores.every(Boolean))
 const store = Object.fromEntries(storeSeeds.map((s, i) => [s.key, stores[i]]))
-const rules = ruleSeeds.map(r => R.parseStoreRule({
-  id: uuid(), user_id: OWNER, store_id: store[r.store].id, seed_key: r.key, origin: 'seed', label: null, member_tier: null, window_from: null,
-  window_to: null, return_until: null, exclusions: [], payout: null, against: null, against_stores: null, words: null, ...r.facts,
-  off: false, source_facts: r.facts, owner_edited: false, edited_at: null, created_at: T, updated_at: T,
-}))
-check('…and three rules (Elkjøp 30, Kundeklubb 50, Power 90), each from the store\'s own page on 10.11.2026', rules.length === 3 && rules.every(Boolean)
-  && eq(rules.map(r => [r.kind, r.days, r.member_tier, r.read_on]), [['open_purchase', 30, null, '2026-11-10'], ['open_purchase', 50, 'Kundeklubb', '2026-11-10'], ['return', 90, null, '2026-11-10']])
-  && rules.every(r => R.linkHost(r.source_url).endsWith(store[ruleSeeds.find(s => s.key === r.seed_key).store].hosts[0])))
+const rules = ruleSeeds.map(r => {
+  // A price match against listed stores names them by seed key; the seed puts the account's own rows' ids there.
+  const { against_keys: keys, ...facts } = r.facts
+  if (keys) facts.against_stores = keys.map(k => store[k].id).sort()
+  return R.parseStoreRule({
+    id: uuid(), user_id: OWNER, store_id: store[r.store].id, seed_key: r.key, origin: r.origin, label: null, member_tier: null, window_from: null,
+    window_to: null, return_until: null, exclusions: [], payout: null, against: null, against_stores: null, words: null, ...facts,
+    off: false, source_facts: facts, owner_edited: false, edited_at: null, created_at: T, updated_at: T,
+  })
+})
+check('…and eleven rules, each a row the app takes: eight from the store\'s own page (10 and 11.11.2026), three Prisjakt says (price_site, unchecked)',
+  rules.length === 11 && rules.every(Boolean)
+  && eq(rules.map(r => [r.seed_key, r.kind, r.days ?? r.return_until, r.member_tier, r.read_on]), [
+    ['elkjop_open_purchase', 'open_purchase', 30, null, '2026-11-11'], ['elkjop_open_purchase_club', 'open_purchase', 50, 'Kundeklubb', '2026-11-11'],
+    ['elkjop_christmas_club', 'seasonal_return', '01-10', 'Kundeklubb', '2026-11-11'], ['elkjop_price_match', 'price_match', null, null, '2026-11-11'],
+    ['power_return', 'return', 90, null, '2026-11-10'], ['power_open_purchase_prisjakt', 'open_purchase', 60, null, '2026-11-10'],
+    ['jernia_open_purchase', 'open_purchase', 30, null, '2026-11-11'], ['xxl_open_purchase', 'open_purchase', 28, null, '2026-11-11'],
+    ['xxl_christmas', 'seasonal_return', '01-11', null, '2026-11-11'], ['komplett_price_match_prisjakt', 'price_match', null, null, '2026-11-10'],
+    ['clas_ohlson_open_purchase_prisjakt', 'open_purchase', 365, null, '2026-11-10']])
+  && rules.every(r => R.linkHost(r.source_url).endsWith((r.origin === 'seed' ? store[ruleSeeds.find(s => s.key === r.seed_key).store] : store.prisjakt).hosts[0]))
+  && rules.filter(r => r.origin === 'price_site').every(S.unchecked) && !rules.some(r => r.origin === 'seed' && S.unchecked(r))
+  && eq(rule_against(rules), [store.komplett.id, store.power.id].sort()),
+  JSON.stringify(rules.map(r => r && [r.seed_key, r.days])))
+function rule_against(rs) { return rs.find(r => r.seed_key === 'elkjop_price_match')?.against_stores ?? [] }
+// The scenarios below count on the three rules 191 seeded first (each case its own rules); the others have their own checks.
 const rule = Object.fromEntries(ruleSeeds.map((r, i) => [r.key, rules[i]]))
+const first3 = ['elkjop_open_purchase', 'elkjop_open_purchase_club', 'power_return'].map(k => rule[k])
 
 // The law, from 191's own insert.
 function valuesOf(text) {
@@ -213,11 +232,11 @@ check('a watch\'s new offers become price-match offers, each shop found by its n
   { shop_id: 324, shop_name: 'Elkjøp', price: 2990, currency: 'NOK', in_stock: true }, { shop_id: 16091, shop_name: 'Proshop.no', price: 3000, currency: 'NOK', in_stock: null },
   { shop_id: 9, shop_name: null, price: 1, currency: 'NOK', in_stock: true }], stores).map(o => [o.storeId, o.shop, o.condition])) === JSON.stringify([[store.elkjop.id, 'Elkjøp', 'new'], [store.proshop.id, 'Proshop.no', 'new'], [null, 'Shop 9', 'new']]))
 
-const dl = (p, st, extra = []) => S.purchaseDeadlines(p, { store: st, rules: [...rules, ...extra], law })
+const dl = (p, st, extra = []) => S.purchaseDeadlines(p, { store: st, rules: [...first3, ...extra], law })
 let d = dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'business' }, store.elkjop)
 check('Elkjøp online, Arrived not tapped: return by 10.12.2026 (30 days from the purchase day), the right to cancel to 24.11.2026 named',
   d.returnBy?.day === '2026-12-10' && d.returnBy.from === 'purchase' && !d.returnBy.unsure
-  && d.returnBy.words === 'Return by 10.12.2026 — Elkjøp\'s 30-day open purchase, read 10.11.2026; the right to cancel (angrerett) runs to 24.11.2026; counted from the purchase day until you tap Arrived',
+  && d.returnBy.words === 'Return by 10.12.2026 — Elkjøp\'s 30-day open purchase, read 11.11.2026; the right to cancel (angrerett) runs to 24.11.2026; counted from the purchase day until you tap Arrived',
   d.returnBy?.words)
 d = dl({ boughtOn: '2026-11-10', arrivedOn: '2026-11-13', channel: 'online', seller: 'business' }, store.elkjop)
 check('…Arrived on 13.11: counted from arrival, 13.12.2026', d.returnBy?.day === '2026-12-13' && d.returnBy.from === 'arrival' && !/until you tap Arrived/.test(d.returnBy.words))
@@ -226,7 +245,7 @@ check('…an arrival before the purchase is no arrival (counted from the purchas
 const member = { ...store.elkjop, member_tier: 'kundeklubb' }
 d = dl({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, member)
 check('a Kundeklubb member (any case): 50 days, to 30.12.2026; in a shop, no right to cancel (a note)', d.returnBy?.day === '2026-12-30'
-  && /Elkjøp's 50-day open purchase for Kundeklubb members, read 10\.11\.2026/.test(d.returnBy.words) && d.notes.some(x => /^No right to cancel in a shop/.test(x)), JSON.stringify(d))
+  && /Elkjøp's 50-day open purchase for Kundeklubb members, read 11\.11\.2026/.test(d.returnBy.words) && d.notes.some(x => /^No right to cancel in a shop/.test(x)), JSON.stringify(d))
 check('…not a member: the club\'s 50 days don\'t count', dl({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.elkjop).returnBy?.day === '2026-12-10')
 
 // Power's pages say 90 days; its help centre says 60, typed by the owner: a conflict — the earlier date, both named.
@@ -293,8 +312,8 @@ check('a rule\'s source in words: read on a day, typed by the owner, from Ask AI
   S.sourceWords(rule.power_return) === 'read 10.11.2026' && S.sourceWords(typed60) === 'typed 12.11.2026'
   && S.sourceWords({ ...rule.power_return, origin: 'ask_ai', owner_edited: false }) === 'from Ask AI — check it'
   && S.sourceWords({ ...rule.power_return, origin: 'ask_ai', owner_edited: true, edited_at: '2026-11-13T23:30:00Z' }) === 'typed 14.11.2026')
-check('an owner\'s edit whose source now says another thing is a conflict to show ("Its source says 45 days (read 10.11.2026)")',
-  S.sourceConflict({ ...rule.elkjop_open_purchase, days: 35, owner_edited: true, source: { ...rule.elkjop_open_purchase.source, days: 45 } }) === 'Its source says 45 days (read 10.11.2026)'
+check('an owner\'s edit whose source now says another thing is a conflict to show ("Its source says 45 days (read 11.11.2026)")',
+  S.sourceConflict({ ...rule.elkjop_open_purchase, days: 35, owner_edited: true, source: { ...rule.elkjop_open_purchase.source, days: 45 } }) === 'Its source says 45 days (read 11.11.2026)'
   && S.sourceConflict(rule.elkjop_open_purchase) === null)
 
 // Price match from an offer list.
@@ -314,30 +333,30 @@ const offers = [
   { storeId: null, shop: 'Broken', price: -5, currency: 'NOK', condition: 'new', inStock: true },
 ]
 const READ = '2026-11-10T04:23:00Z', NOW = '2026-11-10T12:00:00Z'
-let m = S.priceMatches(stores, [...rules, match()], offers, READ, NOW)
+let m = S.priceMatches(stores, [...first3, match()], offers, READ, NOW)
 check('"Elkjøp matches Power: 2 990 there, read 05:23" — saving 500 on its own 3 490', m.length === 1 && m[0].words === 'Elkjøp matches Power: 2 990 there, read 05:23 — its price match, typed 10.11.2026' && !m[0].unsure
   && m[0].saves === 500 && m[0].ownPrice === 3490 && m[0].store === store.elkjop, JSON.stringify(m.map(x => x.words)))
-check('…read on another day: "read 09.11.2026"', S.priceMatches(stores, [...rules, match()], offers, '2026-11-09T20:00:00Z', NOW)[0]?.words.includes('there, read 09.11.2026 —'))
-m = S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null })], offers, READ, NOW)
+check('…read on another day: "read 09.11.2026"', S.priceMatches(stores, [...first3, match()], offers, '2026-11-09T20:00:00Z', NOW)[0]?.words.includes('there, read 09.11.2026 —'))
+m = S.priceMatches(stores, [...first3, match({ against: 'any', against_stores: null })], offers, READ, NOW)
 check('against any: the cheapest new offer in stock (or stock unknown) in NOK from a shop — never used, refurbished, out of stock, a marketplace, another currency or a broken price',
   m.length === 1 && m[0].matches === 'Power' && m[0].price === 2990)
-m = S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null })], offers.filter(o => o.shop !== 'Power'), READ, NOW)
+m = S.priceMatches(stores, [...first3, match({ against: 'any', against_stores: null })], offers.filter(o => o.shop !== 'Power'), READ, NOW)
 check('…without Power: Netshop at 3 100 (a shop with no row counts for "any")', m[0]?.matches === 'Netshop' && m[0].price === 3100)
-check('against listed Komplett only (out of stock): no match', S.priceMatches(stores, [...rules, match({ against_stores: [store.komplett.id] })], offers, READ, NOW).length === 0)
-check('no match when the store\'s own price is as low', S.priceMatches(stores, [...rules, match()], offers.map(o => o.shop === 'Elkjøp' ? { ...o, price: 2990 } : o), READ, NOW).length === 0)
-check('…its own price not on the list: the match still shows (saves unknown)', S.priceMatches(stores, [...rules, match()], offers.filter(o => o.shop !== 'Elkjøp'), READ, NOW)[0]?.saves === null)
-check('a rule turned off, for a tier the owner hasn\'t, or a hidden store: no match', S.priceMatches(stores, [...rules, match({ off: true })], offers, READ, NOW).length === 0
-  && S.priceMatches(stores, [...rules, match({ member_tier: 'Gold' })], offers, READ, NOW).length === 0
-  && S.priceMatches(stores.map(s => s === store.elkjop ? { ...s, hidden: true } : s), [...rules, match()], offers, READ, NOW).length === 0)
+check('against listed Komplett only (out of stock): no match', S.priceMatches(stores, [...first3, match({ against_stores: [store.komplett.id] })], offers, READ, NOW).length === 0)
+check('no match when the store\'s own price is as low', S.priceMatches(stores, [...first3, match()], offers.map(o => o.shop === 'Elkjøp' ? { ...o, price: 2990 } : o), READ, NOW).length === 0)
+check('…its own price not on the list: the match still shows (saves unknown)', S.priceMatches(stores, [...first3, match()], offers.filter(o => o.shop !== 'Elkjøp'), READ, NOW)[0]?.saves === null)
+check('a rule turned off, for a tier the owner hasn\'t, or a hidden store: no match', S.priceMatches(stores, [...first3, match({ off: true })], offers, READ, NOW).length === 0
+  && S.priceMatches(stores, [...first3, match({ member_tier: 'Gold' })], offers, READ, NOW).length === 0
+  && S.priceMatches(stores.map(s => s === store.elkjop ? { ...s, hidden: true } : s), [...first3, match()], offers, READ, NOW).length === 0)
 const seller = [...offers, { storeId: null, shop: 'Marketplace seller', price: 2500, currency: 'NOK', condition: 'new', inStock: true, marketplaceSeller: true }]
-check('a marketplace seller\'s offer counts unless the store excludes them', S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null })], seller, READ, NOW)[0]?.price === 2500
-  && S.priceMatches(stores, [...rules, match({ against: 'any', against_stores: null, exclusions: ['marketplace_seller'] })], seller, READ, NOW)[0]?.price === 2990)
-m = S.priceMatches(stores, [...rules, match({ exclusions: ['campaign'] })], offers, READ, NOW)
+check('a marketplace seller\'s offer counts unless the store excludes them', S.priceMatches(stores, [...first3, match({ against: 'any', against_stores: null })], seller, READ, NOW)[0]?.price === 2500
+  && S.priceMatches(stores, [...first3, match({ against: 'any', against_stores: null, exclusions: ['marketplace_seller'] })], seller, READ, NOW)[0]?.price === 2990)
+m = S.priceMatches(stores, [...first3, match({ exclusions: ['campaign'] })], offers, READ, NOW)
 check('what the list can\'t tell is a caveat: "Elkjøp doesn\'t match campaign prices — check Power\'s isn\'t one"', eq(m[0]?.caveats, ['Elkjøp doesn\'t match campaign prices — check Power\'s isn\'t one']))
 
 // The guardian review (10.11.2026): what Ask AI wrote and nobody checked never reads as fact.
 const fromAi = over => R.parseStoreRule({ ...rule.elkjop_open_purchase, id: uuid(), seed_key: null, origin: 'ask_ai', source_facts: null, owner_edited: false, edited_at: null, ...over })
-m = S.priceMatches(stores, [...rules, match({ origin: 'ask_ai', owner_edited: false, edited_at: null, against: 'any', against_stores: null })], offers, READ, NOW)
+m = S.priceMatches(stores, [...first3, match({ origin: 'ask_ai', owner_edited: false, edited_at: null, against: 'any', against_stores: null })], offers, READ, NOW)
 check('a price match Ask AI wrote says so: its words name the source, a caveat says check it, it is unsure', m[0]?.unsure === true
   && m[0].words.endsWith('— its price match, from Ask AI — check it') && m[0].caveats[0] === 'Elkjøp\'s price match is from Ask AI — check it before you ask at the till', JSON.stringify(m[0]))
 const ai365 = fromAi({ kind: 'return', days: 365, label: 'returns, read 10.11.2026 on elkjop.no', member_tier: null, words: null })
@@ -349,6 +368,38 @@ check('…once the owner edited it, it counts as theirs (typed)', dl({ boughtOn:
   [{ ...ai365, owner_edited: true, edited_at: '2026-11-11T10:00:00Z' }]).returnBy?.day === '2027-11-10')
 check('an Ask AI rule\'s label and member tier never reach its name (its kind does)', S.ruleName({ ...ai365, member_tier: 'Gold' }, store.elkjop) === 'Elkjøp\'s 365-day returns'
   && S.ruleName({ ...ai365, owner_edited: true }, store.elkjop) === 'Elkjøp\'s returns, read 10.11.2026 on elkjop.no')
+
+// What Prisjakt says about a store whose own pages an app can't read (origin price_site, owner 11.11.2026): "from
+// Prisjakt — check it", the same rule as Ask AI's — it never decides a date or a match on its own.
+const pj = fromAi({ origin: 'price_site', kind: 'open_purchase', days: 60, label: null, member_tier: null, words: '60 dager åpent kjøp',
+  source_url: 'https://www.prisjakt.no/product.php?p=14585952', read_on: '2026-11-10', store_id: store.power.id })
+check('Prisjakt\'s words about a store parse, are unchecked and say who said them', !!pj && S.unchecked(pj) && S.claimedBy(pj) === 'Prisjakt'
+  && S.sourceWords(pj) === 'from Prisjakt — check it' && S.claimedBy({ origin: 'ask_ai', source_url: null }) === 'Ask AI')
+d = dl({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.power, [pj])
+check('Power\'s pages\' 90 days count; Prisjakt\'s 60 is a note, never the date (the conflict shown), and the date is unsure',
+  d.returnBy?.day === '2027-02-08' && d.returnBy.unsure && d.notes.includes('from Prisjakt — check it: Power\'s 60-day open purchase — until 09.01.2027, not counted until you check it'), JSON.stringify(d))
+m = S.priceMatches(stores, [...first3, match({ origin: 'price_site', owner_edited: false, edited_at: null, against: 'any', against_stores: null,
+  source_url: 'https://www.prisjakt.no/product.php?p=13101596' })], offers, READ, NOW)
+check('a price match Prisjakt says: its words name Prisjakt, a caveat says check it, it is unsure', m[0]?.unsure === true
+  && m[0].words.endsWith('— its price match, from Prisjakt — check it') && m[0].caveats[0] === 'Elkjøp\'s price match is from Prisjakt — check it before you ask at the till', JSON.stringify(m[0]))
+
+// Every rule 191 seeds, together (owner, 11.11.2026: from the stores' own pages; Prisjakt's words where they can't be read).
+const all = (p, st) => S.purchaseDeadlines(p, { store: st, rules, law })
+d = all({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, { ...store.elkjop, member_tier: 'Kundeklubb' })
+check('seeded: a Kundeklubb member at Elkjøp on 10.11.2026 — its Christmas returns, 10.01.2027 (later than the 50 days), named from its page',
+  d.returnBy?.day === '2027-01-10' && d.returnBy.words.startsWith('Return by 10.01.2027 — Elkjøp\'s Christmas returns for Kundeklubb members, read 11.11.2026') && !d.returnBy.unsure, d.returnBy?.words)
+d = all({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.power)
+check('seeded: Power — its pages\' 90 days (08.02.2027), unsure; Prisjakt\'s 60 a note to check', d.returnBy?.day === '2027-02-08' && d.returnBy.unsure
+  && d.notes.some(x => x.startsWith('from Prisjakt — check it: Power\'s 60-day open purchase')), JSON.stringify(d))
+check('seeded: XXL 28 days; its Christmas returns for a purchase on 01.12.2026 — 11.01.2027', all({ boughtOn: '2026-11-20', channel: 'in_store', seller: 'business' }, store.xxl).returnBy?.day === '2027-01-11'
+  && all({ boughtOn: '2026-12-20', channel: 'in_store', seller: 'business' }, store.xxl).returnBy?.day === '2027-01-17')
+d = all({ boughtOn: '2026-11-10', channel: 'in_store', seller: 'business' }, store.clas_ohlson)
+check('seeded: Clas Ohlson\'s 365 days are Prisjakt\'s words — no date from them, a note to check', d.returnBy === null && d.notes.some(x => x.startsWith('from Prisjakt — check it: Clas Ohlson\'s 365-day open purchase')), JSON.stringify(d))
+m = S.priceMatches(stores, rules, offers, READ, NOW)
+check('seeded: Elkjøp matches Power from its own page (no caveat but outlet); Komplett\'s match is Prisjakt\'s — unsure, "check it"',
+  m.find(x => x.store === store.elkjop)?.words.replace(/\s/g, ' ') === 'Elkjøp matches Power: 2 990 there, read 05:23 — its price match, read 11.11.2026' && !m.find(x => x.store === store.elkjop).unsure
+  && m.find(x => x.store === store.komplett)?.unsure === true && m.find(x => x.store === store.komplett).caveats[0] === 'Komplett\'s price match is from Prisjakt — check it before you ask at the till',
+  JSON.stringify(m.map(x => [x.words, x.caveats])))
 
 // The seller decides the right to cancel, never the marketplace (the law check, 10.11.2026).
 d = dl({ boughtOn: '2026-11-10', channel: 'online', seller: 'business' }, store.finn)

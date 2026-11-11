@@ -3,7 +3,7 @@ import { MoreHorizontal, Pencil, Power, RotateCcw } from 'lucide-react'
 import { MetaLine, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useEditStoreRule, useResetStoreRule } from '../../hooks/useShopStores'
-import { ruleName, sourceConflict, sourceWords } from '../../storeRules'
+import { ruleName, sourceConflict, sourceWords, unchecked } from '../../storeRules'
 import { ruleFacts, ruleOrigin, ruleTitle } from '../../storeWords'
 import { SourceLink } from '../purchase/purchaseKit'
 import type { ShopStore, ShopStoreRule } from '../../types'
@@ -22,8 +22,8 @@ export function RuleRow({ rule, store, stores, onEdit }: { rule: ShopStoreRule; 
   const canReset = rule.owner_edited && rule.source !== null
   const name = ruleName(rule, store)
   const source = [
-    // Ask AI's label is the pill; its line says when it was read, as any other's.
-    rule.origin === 'ask_ai' && !rule.owner_edited ? (rule.read_on ? `read ${formatDate(rule.read_on)}` : 'not read') : sourceWords(rule),
+    // Ask AI's or a price site's label is the pill; its line says when it was read, as any other's.
+    unchecked(rule) ? (rule.read_on ? `read ${formatDate(rule.read_on)}` : 'not read') : sourceWords(rule),
     rule.owner_edited && rule.source?.read_on ? `its source read ${formatDate(rule.source.read_on)}` : null,
   ].filter((x): x is string => !!x)
   const link = rule.source_url ?? rule.source?.source_url ?? null

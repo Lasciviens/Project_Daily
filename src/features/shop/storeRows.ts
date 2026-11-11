@@ -13,7 +13,7 @@ import type {
 const STORE_KIND: Record<ShopStoreKind, true> = { shop: true, marketplace: true, price_site: true, refurbisher: true }
 const RULE_KIND: Record<ShopStoreRuleKind, true> = { open_purchase: true, return: true, seasonal_return: true, price_match: true, price_protection: true }
 const EXCLUSION: Record<ShopRuleExclusion, true> = { campaign: true, black_friday: true, outlet: true, marketplace_seller: true, used: true }
-const ORIGIN: Record<ShopRuleOrigin, true> = { seed: true, page: true, owner: true, ask_ai: true }
+const ORIGIN: Record<ShopRuleOrigin, true> = { seed: true, page: true, price_site: true, owner: true, ask_ai: true }
 const PAYOUT: Record<ShopRulePayout, true> = { money: true, gift_card: true }
 const AGAINST: Record<ShopRuleAgainst, true> = { listed: true, any: true, own: true }
 

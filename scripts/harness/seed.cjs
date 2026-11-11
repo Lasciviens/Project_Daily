@@ -730,8 +730,10 @@ function buildTables(now = new Date()) {
   const headphones = shopItem('Noise-cancelling headphones', 'Electronics', { price: 3490, priority: 'high', reason: 'fun', url: 'https://example.com/headphones', wait_for_deal: true, target_price: 2990 })
   const jacket = shopItem('Winter jacket', 'Clothing', { kind: 'general', price_min: 1500, price_max: 3500, requirements: 'Warm to −15 °C, hood, long enough to sit on' })
   const laptop = shopItem('Laptop', 'Electronics', { status: 'bought', bought_at: day(-200), price: 14990, serial: 'MOCK-SN-0001', warranty_until: day(530) })
+  // 191: a wish whose Prisjakt list has Power cheaper than Elkjøp — Elkjøp price-matches Power (Needs a look).
+  const speaker = shopItem('Bluetooth speaker', 'Electronics', { price: 3490, url: 'https://www.prisjakt.no/product.php?p=900001' })
   tables.shop_items = [
-    headphones, jacket, laptop,
+    headphones, jacket, laptop, speaker,
     shopItem('Parka with a removable hood and plenty of pockets for the long winter walks', 'Clothing', { option_for: jacket.id, price: 2799, url: 'https://example.com/parka' }),
     shopItem('Down jacket', 'Clothing', { option_for: jacket.id, price: 2299, url: 'https://example.com/down-jacket', meets: { warm: true } }),
     shopItem('Coffee grinder', 'Home', { price: 1290, priority: 'low', reason: 'fun' }),
@@ -766,6 +768,14 @@ function buildTables(now = new Date()) {
     name: 'Noise-cancelling headphones', image: null, low: 3190, high: 3690, offers: 4, currency: 'NOK', in_stock: true, was: 3490,
     return_days: 30, last_ok_at: at(-1, '05:00'), prev_low: 3290, prev_at: at(-8, '05:00'),
     condition: 'unknown', used_low: null, refurbished_low: null,
+  }, {
+    item_id: speaker.id, user_id: owner, url: speaker.url, checked_at: at(0, '05:23'), status: 'ok', error: null, source: 'prisjakt',
+    name: 'Bluetooth speaker', image: null, low: 2990, high: 3490, offers: 2, currency: 'NOK', in_stock: null, was: null,
+    return_days: null, last_ok_at: at(0, '05:23'), prev_low: null, prev_at: null, condition: 'new', used_low: null, refurbished_low: null,
+    new_offers: [
+      { shop_id: 101, shop_name: 'Power', price: 2990, currency: 'NOK', in_stock: true },
+      { shop_id: 102, shop_name: 'Elkjøp', price: 3490, currency: 'NOK', in_stock: true },
+    ],
   }]
   // 190: what Needs a look remembers (nothing yet) and the deal days as 190 seeds them.
   tables.shop_signal_states = []
@@ -776,10 +786,11 @@ function buildTables(now = new Date()) {
     id: `5c070000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, slug, name, rule_kind, month, day: d, weekday, nth, offset_days, length_days,
     source_url: null, checked_on: '2026-11-10', ...stamp(-1),
   }))
-  // 191: the stores and marketplaces as 191 seeds them (FINN and Tise with a search link of the harness's own, so
-  // "Look on FINN" has one), their rules — Elkjøp's open purchase edited to 45 days while its source says 30 (a
-  // conflict), its 50 days for Kundeklubb members, Power's 90 days and the owner's own 60 (two sources that
-  // disagree) — Norway's law, the sites apps may not read, and no deal-day edits.
+  // 191: the stores and marketplaces as 191 seeds them (FINN and Tise with their search links), their rules as 191
+  // seeds them — but Elkjøp's open purchase edited to 45 days while its source says 30 (a conflict): Elkjøp's 50
+  // days and Christmas returns for Kundeklubb members and its price match against Komplett and Power, Power's 90
+  // days, and what Prisjakt says where a store's pages can't be read (Power 60, Komplett's price match, Clas Ohlson
+  // 365 — "from Prisjakt — check it") — Norway's law, the sites apps may not read, and no deal-day edits.
   const storeId = n => `5c080000-0000-4000-8000-${String(n).padStart(12, '0')}`
   const storeRow = (n, seed_key, facts, extra = {}) => ({
     id: storeId(n), user_id: owner, seed_key, origin: 'seed', member_tier: null, hidden: false, owner_edited: false, edited_at: null,
@@ -790,12 +801,13 @@ function buildTables(now = new Date()) {
     storeRow(1, 'prisjakt', { kind: 'price_site', name: 'Prisjakt', hosts: ['prisjakt.no'], source_url: 'https://www.prisjakt.no/information/brukervilkar', read_on: '2026-11-10' }),
     storeRow(2, 'finn', { kind: 'marketplace', name: 'FINN', hosts: ['finn.no'], source_url: 'https://www.finn.no/vilkar/brukervilkar-finn', read_on: '2026-11-10' },
       { search_url: 'https://www.finn.no/recommerce/forsale/search?q={q}', owner_edited: true }),
-    storeRow(3, 'tise', { kind: 'marketplace', name: 'Tise', hosts: ['tise.com'], source_url: 'https://tise.com/terms', read_on: '2026-11-10' }),
+    storeRow(3, 'tise', { kind: 'marketplace', name: 'Tise', hosts: ['tise.com'], search_url: 'https://tise.com/search?q={q}', source_url: 'https://tise.com/terms', read_on: '2026-11-10' }),
     storeRow(4, 'elkjop', { kind: 'shop', name: 'Elkjøp', hosts: ['elkjop.no'], search_url: 'https://www.elkjop.no/search?q={q}', source_url: 'https://www.elkjop.no/product/mock/tv/899848', read_on: '2026-11-10' }),
     storeRow(5, 'power', { kind: 'shop', name: 'Power', hosts: ['power.no'], source_url: 'https://www.power.no/mock/p-4229993/', read_on: '2026-11-10' }),
     storeRow(6, 'jernia', { kind: 'shop', name: 'Jernia', hosts: ['jernia.no'], source_url: 'https://www.jernia.no/produkter/12310223', read_on: '2026-11-10' }),
     storeRow(7, 'komplett', { kind: 'shop', name: 'Komplett', hosts: ['komplett.no'], source_url: 'https://www.komplett.no/' }),
     storeRow(8, 'clas_ohlson', { kind: 'shop', name: 'Clas Ohlson', hosts: ['clasohlson.com'], source_url: 'https://www.clasohlson.com/no/' }),
+    storeRow(9, 'xxl', { kind: 'shop', name: 'XXL', hosts: ['xxl.no'], source_url: 'https://www.xxl.no/kundeservice/retur-og-bytte', read_on: '2026-11-11' }),
   ]
   const ruleRow = (n, store, seed_key, facts, extra = {}) => {
     const all = { kind: 'return', label: null, days: null, member_tier: null, window_from: null, window_to: null, return_until: null, exclusions: [],
@@ -803,12 +815,21 @@ function buildTables(now = new Date()) {
     return { id: `5c090000-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, store_id: storeId(store), seed_key, origin: 'seed',
       ...all, source_facts: seed_key ? all : null, owner_edited: false, edited_at: null, ...stamp(-1), ...extra }
   }
-  const elkjopPage = { source_url: 'https://www.elkjop.no/product/mock/tv/899848', read_on: '2026-11-10' }
+  const elkjopPage = { source_url: 'https://www.elkjop.no/kundeservice/apent-kjop', read_on: '2026-11-11' }
+  const prisjakt = p => ({ source_url: `https://www.prisjakt.no/product.php?p=${p}`, read_on: '2026-11-10' })
   tables.shop_store_rules = [
-    { ...ruleRow(1, 4, 'elkjop_open_purchase', { kind: 'open_purchase', days: 30, words: '30-dagers åpent kjøp med uåpnet emballasje.', ...elkjopPage }), days: 45, owner_edited: true, edited_at: at(-1, '20:15') },
-    ruleRow(2, 4, 'elkjop_open_purchase_club', { kind: 'open_purchase', days: 50, member_tier: 'Kundeklubb', words: '50 dagers åpent kjøp med uåpnet emballasje.', ...elkjopPage }),
+    { ...ruleRow(1, 4, 'elkjop_open_purchase', { kind: 'open_purchase', days: 30, words: '30 dagers åpent kjøp. Er du ikke kundeklubbmedlem eller bedriftskunde gjelder tilsvarende returrett i 30 dager etter overtakelse.', ...elkjopPage }), days: 45, owner_edited: true, edited_at: at(-1, '20:15') },
+    ruleRow(2, 4, 'elkjop_open_purchase_club', { kind: 'open_purchase', days: 50, member_tier: 'Kundeklubb', words: 'Som kundeklubbmedlem eller bedriftskunde kan du returnere uåpnede produkter i originalemballasje i inntil 50 dager etter overtakelse.', ...elkjopPage }),
     ruleRow(3, 5, 'power_return', { kind: 'return', days: 90, source_url: 'https://www.power.no/mock/p-4229993/', read_on: '2026-11-10' }),
-    ruleRow(4, 5, null, { kind: 'return', days: 60, words: 'Typed from the help centre.' }, { origin: 'owner', owner_edited: true, edited_at: at(-1, '20:20') }),
+    ruleRow(4, 5, 'power_open_purchase_prisjakt', { kind: 'open_purchase', days: 60, words: '60 dager åpent kjøp', ...prisjakt(14585952) }, { origin: 'price_site' }),
+    ruleRow(5, 4, 'elkjop_christmas_club', { kind: 'seasonal_return', label: 'Christmas returns', member_tier: 'Kundeklubb', window_from: '11-09', window_to: '12-24', return_until: '01-10',
+      words: 'Kjøp fra og med 09.11 til og med 24.12 har utvidet åpent kjøp for klubbmedlemmer frem til 10.01.27.', ...elkjopPage }),
+    ruleRow(6, 4, 'elkjop_price_match', { kind: 'price_match', against: 'listed', against_stores: [storeId(5), storeId(7)], exclusions: ['marketplace_seller', 'outlet', 'used'],
+      words: 'Vår prismatch gjelder for konkurrentene Komplett, NetOnNet, Skousen og Power.', source_url: 'https://www.elkjop.no/kundeservice/prismatch', read_on: '2026-11-11' }),
+    ruleRow(7, 7, 'komplett_price_match_prisjakt', { kind: 'price_match', against: 'any', words: 'Prismatch', ...prisjakt(13101596) }, { origin: 'price_site' }),
+    ruleRow(8, 8, 'clas_ohlson_open_purchase_prisjakt', { kind: 'open_purchase', days: 365, words: 'Åpent kjøp i 365 dager', ...prisjakt(12105549) }, { origin: 'price_site' }),
+    ruleRow(9, 6, 'jernia_open_purchase', { kind: 'open_purchase', days: 30, words: 'Du har 30 dagers åpent kjøp på nett og i butikk.', source_url: 'https://www.jernia.no/kundeservice/frakt-og-retur/hvor-lang-bytterett-har-jeg-pa-varer-jeg-har-kjopt', read_on: '2026-11-11' }),
+    ruleRow(10, 9, 'xxl_open_purchase', { kind: 'open_purchase', days: 28, words: 'Hos XXL har du 28 dagers åpent kjøp fra datoen du handlet varen.', source_url: 'https://www.xxl.no/kundeservice/retur-og-bytte', read_on: '2026-11-11' }),
   ]
   const lovdata = (law, url) => ({ law, law_url: url, checked_on: '2026-11-10' })
   const cancelLaw = lovdata('Angrerettloven (LOV-2014-06-20-27)', 'https://lovdata.no/lov/2014-06-20-27')

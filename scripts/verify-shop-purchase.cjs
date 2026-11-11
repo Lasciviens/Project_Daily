@@ -52,7 +52,8 @@ check('online at Elkjøp: return by its 45 days (the owner\'s edit), named', onl
 check('… counted from the purchase day until Arrived, and the words say so', /until you tap Arrived/.test(online.returnBy.words))
 check('… complain by 2 years, citing the law', online.complaintBy.day === '2028-11-10' && /Forbrukerkjøpsloven/.test(online.complaintBy.words))
 const two = P.deadlinesOf(item({ platform: 'Power', bought_channel: 'in_store' }), ctx, 2).deadlines
-check('Power says 60 and 90: the earlier date, both named', two.returnBy.day === '2027-01-09' && /60 days/.test(two.returnBy.words) && /90 days/.test(two.returnBy.words), two.returnBy.words)
+check('Power\'s pages say 90, Prisjakt says 60: the 90 days count (08.02.2027), unsure; Prisjakt\'s 60 a note to check (owner, 11.11.2026)',
+  two.returnBy.day === '2027-02-08' && two.returnBy.unsure && two.notes.some(n => n.startsWith('from Prisjakt — check it: Power\'s 60-day open purchase')), JSON.stringify(two))
 const fromFinn = P.deadlinesOf(item({ url: 'https://www.finn.no/item/1', bought_channel: 'online' }), ctx, 2).deadlines
 check('from a private seller on FINN: no return day, the law named', fromFinn.returnBy === null && fromFinn.notes.some(n => /private seller/.test(n)), JSON.stringify(fromFinn.notes))
 check('an own date against the rules\' one', P.dateSource('2026-12-01', '2026-12-25') === 'own' && P.dateSource('2026-12-25', '2026-12-25') === 'rules' && P.dateSource(null, 'x') === 'none')
@@ -84,10 +85,43 @@ check('offers: none before 191 (no list)', P.watchOffers(watch({}), stores).leng
 const searches = P.marketSearches(item(), stores)
 const onFinn = searches.find(s => s.store.id === finn.id)
 check('Look on FINN: the name without brackets, URL-encoded, on FINN\'s own host', onFinn?.url === 'https://www.finn.no/recommerce/forsale/search?q=Sony%20WH-1000XM5', onFinn?.url)
-check('Tise without a search link: listed, no link', searches.some(s => s.store.name === 'Tise' && s.url === null))
+const onTise = searches.find(s => s.store.name === 'Tise')
+check('Look on Tise: its standard search, on its own host', onTise?.url === 'https://tise.com/search?q=Sony%20WH-1000XM5', onTise?.url)
+check('a marketplace without a search link: listed, no link', P.marketSearches(item(), [{ ...finn, search_url: null }])[0].url === null)
 check('a pattern off the store\'s host gives no link', P.marketSearches(item(), [{ ...finn, search_url: 'https://evil.example.com/?q={q}' }])[0].url === null)
 check('the address is shown decoded', P.shownAddress(onFinn.url) === 'finn.no/recommerce/forsale/search?q=Sony WH-1000XM5')
 check('a link that isn\'t https shows nothing', P.shownAddress('javascript:alert(1)') === '')
+
+console.log('1b. storeLooks: what the stores add to Needs a look')
+{
+  const L = require('../src/features/shop/storeLooks')
+  const N = require('../src/features/shop/shopSuggestions')
+  const NOW_ = '2026-11-11T12:00:00Z', TODAY = '2026-11-11'
+  const wish = { ...item({ id: 'w', title: 'Bluetooth speaker', bought_at: null, url: 'https://www.prisjakt.no/product.php?p=900001' }), list: 'wishlist', status: 'wishlist', kind: 'item', option_for: null, created_at: '2026-11-01T10:00:00Z' }
+  const pjWatch = watch({ item_id: 'w', url: wish.url, checked_at: '2026-11-11T04:23:00Z', last_ok_at: '2026-11-11T04:23:00Z', new_offers: [
+    { shop_id: 101, shop_name: 'Power', price: 2990, currency: 'NOK', in_stock: true }, { shop_id: 102, shop_name: 'Elkjøp', price: 3490, currency: 'NOK', in_stock: true }] })
+  const r = L.storeLooks({ items: [wish], watches: new Map([['w', pjWatch]]), costs: [], ctx, now: NOW_, today: TODAY })
+  const look = r.extra[0]
+  check('a wish whose Prisjakt list has Power cheaper: "Elkjøp matches Power: 2 990 there, read 05:23", saves 500, a price_match row with its link',
+    r.extra.length === 1 && look.kind === 'price_match' && look.tone === 'success' && look.itemId === 'w'
+    && look.facts[0].replace(/\s/g, ' ') === 'Elkjøp matches Power: 2 990 there, read 05:23 — its price match, read 11.11.2026' && look.facts[1].replace(/\s/g, ' ') === 'saves 500 NOK'
+    && look.link === wish.url, JSON.stringify(look))
+  const all = N.needsALook([wish], { watches: new Map([['w', pjWatch]]), store: r }, TODAY)
+  check('…and Needs a look lists it (Snooze and Got it by its signal)', all.some(l => l.key === 'price_match:w'))
+  check('no match from a read that isn\'t Prisjakt\'s, or a used offer', L.storeLooks({ items: [wish], watches: new Map([['w', { ...pjWatch, source: 'store' }]]), costs: [], ctx, now: NOW_, today: TODAY }).extra.length === 0
+    && L.storeLooks({ items: [wish], watches: new Map([['w', { ...pjWatch, new_offers: [] }]]), costs: [], ctx, now: NOW_, today: TODAY }).extra.length === 0)
+  // Price protection on a thing you have at Power, bought yesterday; Power's page price now 2 990; 500 already got back.
+  const mine = { ...item({ id: 'm', title: 'Kettle', platform: 'Power', url: 'https://www.power.no/x/p-1/', bought_at: '2026-11-10T11:00:00.000Z', price: 3990 }), list: 'wishlist', status: 'bought', kind: 'item', kept: true, disposal: null }
+  const pageWatch = { item_id: 'm', url: mine.url, source: 'store', status: 'ok', low: 2990, currency: 'NOK', checked_at: '2026-11-11T04:00:00Z', last_ok_at: '2026-11-11T04:00:00Z', condition: 'unknown' }
+  const withProt = { ...ctx, rules: [...rules, prot] }
+  const r2 = L.storeLooks({ items: [mine], watches: new Map([['m', pageWatch]]), costs: [{ item_id: 'm', amount: -500, currency: 'NOK' }], ctx: withProt, now: NOW_, today: TODAY })
+  check('price protection that holds: its last day, the price now on the store\'s own page, the money already got back', r2.protections.get('m')?.until === '2026-12-10'
+    && r2.protections.get('m')?.price?.amount === 2990 && r2.gotBack.get('m') === 500, JSON.stringify([...r2.protections]))
+  const rows = N.needsALook([mine], { watches: new Map([['m', pageWatch]]), store: r2 }, TODAY)
+  const claim = rows.find(l => l.kind === 'cheaper_returnable')
+  check('…Needs a look: "Claim 500 NOK" (3 990 paid, 500 got back, 2 990 now), price protection to 10.12.2026, the Claim action',
+    claim?.action === 'claim' && claim.claim?.amount === 500 && claim.facts[0].replace(/\s/g, ' ') === 'Claim 500 NOK' && claim.facts.includes('price protection to 10.12.2026'), JSON.stringify(claim))
+}
 
 console.log('2. storeWords')
 check('MM-DD ↔ DD.MM', W.monthDayWords('01-15') === '15.01' && W.monthDayOf('15.1') === '01-15' && W.monthDayOf('29.02') === null && W.monthDayOf('31.04') === null)

@@ -72,7 +72,7 @@ select t_ok(t_err($q$select public.shop_store_seed('00000000-0000-0000-0000-0000
   'R0 …the app can''t run the seed (it would write as the migration does)');
 reset role;
 
--- The seeds: each account in the allow-list has the same twelve stores and three rules, every one seeded, its
+-- The seeds: each account in the allow-list has the same twelve stores and eleven rules, every one seeded, its
 -- source kept and equal to its facts.
 select t_ok((select string_agg(seed_key || ':' || kind || ':' || name || ':' || array_to_string(hosts, '+') || ':' || country || ':' || currency
                                || ':' || coalesce(read_on::text, '-'), ',' order by seed_key)
@@ -81,8 +81,8 @@ select t_ok((select string_agg(seed_key || ':' || kind || ':' || name || ':' || 
             || 'finn:marketplace:FINN:finn.no:NO:NOK:2026-11-10,jernia:shop:Jernia:jernia.no:NO:NOK:2026-11-10,jula:shop:Jula:jula.no:NO:NOK:-,'
             || 'komplett:shop:Komplett:komplett.no:NO:NOK:-,power:shop:Power:power.no:NO:NOK:2026-11-10,'
             || 'prisjakt:price_site:Prisjakt:prisjakt.no:NO:NOK:2026-11-10,proshop:shop:Proshop:proshop.no:NO:NOK:-,'
-            || 'tise:marketplace:Tise:tise.com:NO:NOK:2026-11-10,xxl:shop:XXL:xxl.no:NO:NOK:-',
-  'R0 twelve stores seeded: Prisjakt, FINN, Tise, Elkjøp, Power, Jernia (read 10.11.2026) and six never read (they answer apps with a bot check)');
+            || 'tise:marketplace:Tise:tise.com:NO:NOK:2026-11-10,xxl:shop:XXL:xxl.no:NO:NOK:2026-11-11',
+  'R0 twelve stores seeded: Prisjakt, FINN, Tise, Elkjøp, Power, Jernia (read 10.11.2026), XXL (11.11.2026) and five never read (they answer apps with a bot check or not at all)');
 select t_ok((select bool_and(origin = 'seed' and not owner_edited and edited_at is null and source_facts = public.shop_store_facts(s)
                              and source_url like 'https://%' and member_tier is null and not hidden)
              from public.shop_stores s)
@@ -92,17 +92,37 @@ select t_ok((select bool_and(origin = 'seed' and not owner_edited and edited_at 
         and not exists (select 1 from public.shop_stores where user_id in ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000004')),
   'R0 every seeded store: origin seed, not edited, its source = its facts, a https source; account 5 got them from 191, account 6 from the trigger when it was allowed in, account 3 (not allowed) none, deleted accounts none');
 select t_ok((select search_url = 'https://www.elkjop.no/search?q={q}' from public.shop_stores where id = t_store('elkjop'))
-        and (select count(*) = 1 from public.shop_stores where user_id = '00000000-0000-0000-0000-000000000001' and search_url is not null),
-  'R0 one search link seeded, Elkjøp''s (its product page''s own search form)');
-select t_ok((select string_agg(r.seed_key || ':' || s.seed_key || ':' || r.kind || ':' || r.days || ':' || coalesce(r.member_tier, '-') || ':' || r.read_on, ',' order by r.seed_key)
+        and (select search_url = 'https://www.finn.no/recommerce/forsale/search?q={q}' from public.shop_stores where id = t_store('finn'))
+        and (select search_url = 'https://tise.com/search?q={q}' from public.shop_stores where id = t_store('tise'))
+        and (select count(*) = 3 from public.shop_stores where user_id = '00000000-0000-0000-0000-000000000001' and search_url is not null),
+  'R0 three search links seeded: Elkjøp''s (its own search form), FINN''s and Tise''s standard searches (links only, never read)');
+select t_ok((select string_agg(r.seed_key || ':' || s.seed_key || ':' || r.origin || ':' || r.kind || ':' || coalesce(r.days::text, '-') || ':'
+                               || coalesce(r.member_tier, '-') || ':' || coalesce(r.window_from || '-' || r.window_to || '>' || r.return_until, '-') || ':'
+                               || coalesce(r.against, '-') || ':' || array_to_string(r.exclusions, '+') || ':' || r.read_on, ',' order by r.seed_key)
                from public.shop_store_rules r join public.shop_stores s on s.id = r.store_id where r.user_id = '00000000-0000-0000-0000-000000000001')
-          = 'elkjop_open_purchase:elkjop:open_purchase:30:-:2026-11-10,elkjop_open_purchase_club:elkjop:open_purchase:50:Kundeklubb:2026-11-10,power_return:power:return:90:-:2026-11-10'
-        and (select bool_and(origin = 'seed' and not owner_edited and source_facts = public.shop_store_rule_facts(r) and not off and exclusions = '{}'
+          = 'clas_ohlson_open_purchase_prisjakt:clas_ohlson:price_site:open_purchase:365:-:-:-::2026-11-10,'
+            || 'elkjop_christmas_club:elkjop:seed:seasonal_return:-:Kundeklubb:11-09-12-24>01-10:-::2026-11-11,'
+            || 'elkjop_open_purchase:elkjop:seed:open_purchase:30:-:-:-::2026-11-11,'
+            || 'elkjop_open_purchase_club:elkjop:seed:open_purchase:50:Kundeklubb:-:-::2026-11-11,'
+            || 'elkjop_price_match:elkjop:seed:price_match:-:-:-:listed:marketplace_seller+outlet+used:2026-11-11,'
+            || 'jernia_open_purchase:jernia:seed:open_purchase:30:-:-:-::2026-11-11,'
+            || 'komplett_price_match_prisjakt:komplett:price_site:price_match:-:-:-:any::2026-11-10,'
+            || 'power_open_purchase_prisjakt:power:price_site:open_purchase:60:-:-:-::2026-11-10,'
+            || 'power_return:power:seed:return:90:-:-:-::2026-11-10,'
+            || 'xxl_christmas:xxl:seed:seasonal_return:-:-:11-09-12-14>01-11:-::2026-11-11,'
+            || 'xxl_open_purchase:xxl:seed:open_purchase:28:-:-:-::2026-11-11'
+        and (select bool_and(not owner_edited and source_facts = public.shop_store_rule_facts(r) and not off
                              and source_url like 'https://www.' || (select hosts[1] from public.shop_stores s where s.id = r.store_id) || '/%')
-             from public.shop_store_rules r)
-        and (select words like '30-dagers åpent kjøp med uåpnet emballasje.%' from public.shop_store_rules where id = t_rule('elkjop_open_purchase'))
-        and (select count(*) = 3 from public.shop_store_rules where user_id = '00000000-0000-0000-0000-000000000006'),
-  'R0 three rules seeded, each from the store''s own product page (10.11.2026): Elkjøp 30 days, 50 for Kundeklubb members, Power 90 — in the store''s own words');
+             from public.shop_store_rules r where origin = 'seed')
+        and (select bool_and(not owner_edited and source_facts = public.shop_store_rule_facts(r) and not off and source_url like 'https://www.prisjakt.no/product.php?p=%')
+             from public.shop_store_rules r where origin = 'price_site')
+        and (select words like '30 dagers åpent kjøp. Er du ikke kundeklubbmedlem%' from public.shop_store_rules where id = t_rule('elkjop_open_purchase'))
+        and (select words = '60 dager åpent kjøp' from public.shop_store_rules where id = t_rule('power_open_purchase_prisjakt'))
+        and (select against_stores = (select array_agg(id order by id) from public.shop_stores
+                                       where user_id = '00000000-0000-0000-0000-000000000001' and seed_key in ('komplett', 'power'))
+             from public.shop_store_rules where id = t_rule('elkjop_price_match'))
+        and (select count(*) = 11 from public.shop_store_rules where user_id = '00000000-0000-0000-0000-000000000006'),
+  'R0 eleven rules seeded: eight from the stores'' own pages in their own words (Elkjøp 30, 50 and Christmas for Kundeklubb members, its price match against Komplett and Power; Power 90; Jernia 30; XXL 28 and Christmas) and three Prisjakt says, origin price_site (Power 60, Komplett''s price match, Clas Ohlson 365)');
 select t_ok(not exists (select 1 from public.audit_logs where table_name in ('shop_stores', 'shop_store_rules')),
   'R0 no seed is in Activity — the first, the second run, nor account 6''s (written when it was allowed in, after the audit trigger): an Undo of one would fail');
 select t_ok((select string_agg(slug || ':' || kind || ':' || channel || ':' || seller || ':' || gives_right || ':' || coalesce(days::text, '-') || ':'
@@ -116,9 +136,9 @@ select t_ok((select string_agg(slug || ':' || kind || ':' || channel || ':' || s
 
 -- ═══ R1. Each account its own (row level security and the owner lock) ═══════
 set role authenticated;
-select t_ok((select count(*) = 12 from public.shop_stores) and (select count(*) = 3 from public.shop_store_rules)
+select t_ok((select count(*) = 12 from public.shop_stores) and (select count(*) = 11 from public.shop_store_rules)
         and (select count(*) = 6 from public.shop_law_rules),
-  'R1 the owner reads their twelve stores, three rules and the law — never another account''s');
+  'R1 the owner reads their twelve stores, eleven rules and the law — never another account''s');
 select t_ok(t_err($q$insert into public.shop_law_rules (slug, country, kind, channel, seller, gives_right, days, counts_from, name, summary, law, law_url, checked_on)
                      values ('x', 'NO', 'cancel', 'distance', 'business', true, 365, 'receipt', 'x', 'x', 'x', 'https://lovdata.no/x', '2026-11-10')$q$) like '42501 %'
         and t_err($q$update public.shop_law_rules set days = 365 where slug = 'cancel_distance_business'$q$) like '42501 %'
@@ -132,7 +152,7 @@ declare n integer;
 begin
   update public.shop_store_rules set days = 365 where id = public.t_rule('elkjop_open_purchase');
   get diagnostics n = row_count;
-  perform t_ok(n = 0 and (select count(*) = 3 from public.shop_store_rules) and not exists (select 1 from public.shop_store_rules where id = public.t_rule('elkjop_open_purchase')),
+  perform t_ok(n = 0 and (select count(*) = 11 from public.shop_store_rules) and not exists (select 1 from public.shop_store_rules where id = public.t_rule('elkjop_open_purchase')),
     'R1 another app account sees only its own rules and can''t change the owner''s (no row)');
   perform t_ok(t_err(format($q$insert into public.shop_store_rules (store_id, kind, days) values (%L, 'return', 365)$q$, public.t_store('power'))) like '23514 %',
     'R1 …nor hang a rule on the owner''s store (a foreign key ignores row level security; the trigger doesn''t)');
@@ -198,6 +218,31 @@ begin
   perform t_ok(t_err(format($q$select public.shop_store_rule_reset(%L)$q$, gen_random_uuid())) like 'P0002 %',
     'R2 a reset of a rule that isn''t there (or another account''s) says so');
 end $$;
+-- What Prisjakt says about a store (origin price_site, owner 11.11.2026): seeded like a page's rule — the app turns it
+-- off, never deletes it, can't make one, and the assistant can't touch it.
+do $$
+declare r public.shop_store_rules; v_id constant uuid := public.t_rule('power_open_purchase_prisjakt');
+begin
+  perform t_ok(t_err(format($q$delete from public.shop_store_rules where id = %L$q$, v_id)) like '23514 %',
+    'R2 a rule Prisjakt says (price_site) is never deleted by the app either …');
+  update public.shop_store_rules set off = true where id = v_id;
+  select * into r from public.shop_store_rules where id = v_id;
+  perform t_ok(r.off and r.owner_edited and r.origin = 'price_site', 'R2 … it is turned off (an edit; its origin stays)');
+  perform public.shop_store_rule_reset(v_id);
+  select * into r from public.shop_store_rules where id = v_id;
+  perform t_ok(not r.off and not r.owner_edited and r.days = 60 and r.origin = 'price_site', 'R2 … and Reset brings Prisjakt''s words back, still "check it"');
+  insert into public.shop_store_rules (id, store_id, kind, days, origin) values ('dd000000-0000-0000-0000-0000000000a1', public.t_store('power'), 'return', 45, 'price_site');
+  select * into r from public.shop_store_rules where id = 'dd000000-0000-0000-0000-0000000000a1';
+  perform t_ok(r.origin = 'owner' and r.owner_edited, 'R2 the app can''t make a rule Prisjakt says: one it adds is the owner''s');
+  delete from public.shop_store_rules where id = 'dd000000-0000-0000-0000-0000000000a1';
+end $$;
+reset role;
+set role service_role;
+select t_ok(t_err(format($q$update public.shop_store_rules set days = 365 where id = %L$q$, t_rule('power_open_purchase_prisjakt'))) like '42501 %'
+        and t_err(format($q$delete from public.shop_store_rules where id = %L$q$, t_rule('komplett_price_match_prisjakt'))) like '42501 %',
+  'R2 the assistant can''t change or delete a rule Prisjakt says (only its own)');
+reset role;
+set role authenticated;
 -- The owner's own rule on a seeded store; Power's help centre's 60 days, typed (a conflict with the page's 90).
 do $$
 declare r public.shop_store_rules;
