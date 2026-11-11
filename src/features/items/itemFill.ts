@@ -10,8 +10,8 @@
 //  warning): a kind, a repeat or an alert only from its allow-list; a real day
 //  in a range, a real time; text capped, on one line (the notes may break
 //  lines), with no control, direction or invisible characters; a link only as
-//  https through the app's own link check (cleanItemUrl) and only when the
-//  sentence itself holds it. A value that fails is DROPPED, never fixed up;
+//  https through the app's own link check (cleanItemUrl), taken from the
+//  sentence itself, never from the model. A value that fails is DROPPED, never fixed up;
 //  any other key is ignored. The model gets no tools and no data — only the
 //  sentence, today's date and the time zone — so the worst it can do is
 //  suggest a wrong value, which the owner sees marked before anything saves.
@@ -36,7 +36,6 @@ export const FILL_DAYS_AHEAD = 1830
 export const FILL_REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'every'] as const
 export const FILL_UNITS = ['day', 'week', 'month'] as const
 export const FILL_PRIORITIES = ['low', 'medium', 'high'] as const
-export const FILL_AREAS = ['personal', 'work', 'media'] as const
 export const FILL_SHOW_AS = ['busy', 'free'] as const
 
 export type FillRepeat = typeof FILL_REPEATS[number]
@@ -73,7 +72,7 @@ export interface ItemFill {
   /** Alert and Second Alert: one or two of ALERT_MINUTES, distinct, in order. */
   alerts?: number[]
   showAs?: typeof FILL_SHOW_AS[number]
-  /** The cleaned https link (cleanItemUrl) — only one the sentence itself holds. */
+  /** The one https:// link written in the sentence (linkOfSentence) — never the model's. */
   url?: string
   notes?: string
   deadlineDate?: string
@@ -81,23 +80,24 @@ export interface ItemFill {
   /** "Do it between": the first day of the window (tasks.start_date) — never after the deadline. */
   doFrom?: string
   priority?: typeof FILL_PRIORITIES[number]
-  area?: typeof FILL_AREAS[number]
 }
 
 /** Each key of ItemFill, in the order a fill is built — the model's schema has exactly these (verify-item-fill). */
 export const FILL_KEYS = [
   'title', 'date', 'startTime', 'endTime', 'durationMinutes', 'allDay', 'repeat', 'repeatDays', 'repeatEvery', 'repeatUnit',
   'repeatUntil', 'repeatCount', 'place', 'travelMinutes', 'alerts', 'showAs', 'url', 'notes', 'deadlineDate', 'deadlineTime',
-  'doFrom', 'priority', 'area',
+  'doFrom', 'priority',
 ] as const
 
-// One line: no C0/C1 control character, no bidi mark, override or isolate, no zero-width or invisible character, no
-// line or paragraph separator. The notes may hold a line break (\n) and nothing else of these. The joiner (U+200D) and
-// the variation selectors stay: an emoji is built from them.
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
-const FILL_NOT_ONE_LINE = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u115F\u1160\u180E\u200B\u200C\u200E\u200F\u2028-\u202E\u2060-\u206F\u3164\uFEFF\uFFF9-\uFFFB]/
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
-const FILL_NOT_TEXT = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u061C\u115F\u1160\u180E\u200B\u200C\u200E\u200F\u2028-\u202E\u2060-\u206F\u3164\uFEFF\uFFF9-\uFFFB]/
+// One line: no C0/C1 control character, no bidi mark, override or isolate, no zero-width, filler or invisible character
+// (the astral ones too: tag characters, the supplementary variation selectors, musical formatting), no line or
+// paragraph separator, no lone surrogate. The notes may hold a line break (\n) and nothing else of these. The joiner
+// (U+200D) and the emoji variation selectors (U+FE0E, U+FE0F) stay: an emoji is built from them (a subdivision flag,
+// built from tag characters, is refused).
+// eslint-disable-next-line no-control-regex, no-misleading-character-class -- control and combining characters, alone, are exactly what is refused
+const FILL_NOT_ONE_LINE = /[\u0000-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B\u200C\u200E\u200F\u2028-\u202E\u2060-\u206F\u3164\uFE00-\uFE0D\uFEFF\uFFA0\uFFF9-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]|\p{Cs}/u
+// eslint-disable-next-line no-control-regex, no-misleading-character-class -- control and combining characters, alone, are exactly what is refused
+const FILL_NOT_TEXT = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B\u200C\u200E\u200F\u2028-\u202E\u2060-\u206F\u3164\uFE00-\uFE0D\uFEFF\uFFA0\uFFF9-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]|\p{Cs}/u
 const FILL_DAY = /^(\d{4})-(\d{2})-(\d{2})$/
 const FILL_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
@@ -166,13 +166,26 @@ function fillAlerts(v: unknown): number[] | undefined {
   return new Set(v).size === v.length ? [...v as number[]] : undefined
 }
 
-/** A link the sentence holds: https through cleanItemUrl, and its address (after https://) written in the sentence. */
-function fillUrl(v: unknown, sentence: string): string | undefined {
-  if (typeof v !== 'string') return undefined
-  const link = cleanItemUrl(v)
-  if (!('url' in link) || !link.url) return undefined
-  const said = link.url.slice('https://'.length).replace(/\/$/, '').toLowerCase()
-  return said && sentence.toLowerCase().includes(said) ? link.url : undefined
+/** A host a link may name: a dot, letters as the last label (no IPv4, no "localhost", no "router"). */
+const FILL_LINK_HOST = /^(?:[a-z0-9-]+\.)+[a-z]{2,63}$/
+
+/**
+ * The link: never the model's — the one https:// address written in the sentence itself. Each word (brackets and
+ * quotes around it and trailing punctuation off) that starts with https:// goes through cleanItemUrl and needs a host with a dot and a top-level name
+ * of letters; exactly one such link (the same one twice is one) fills the URL, none or two fill nothing.
+ */
+export function linkOfSentence(sentence: unknown): string | undefined {
+  if (typeof sentence !== 'string' || sentence.length > FILL_TEXT_MAX * 4) return undefined
+  const links = new Set<string>()
+  for (const word of sentence.split(/\s+/)) {
+    const token = word.replace(/^[([<"']+/, '').replace(/[.,;:!?)\]>"']+$/, '')
+    if (!/^https:\/\//i.test(token)) continue
+    const link = cleanItemUrl(token)
+    if (!('url' in link) || !link.url) continue
+    if (!FILL_LINK_HOST.test(new URL(link.url).hostname)) continue
+    links.add(link.url)
+  }
+  return links.size === 1 ? [...links][0] : undefined
 }
 
 /**
@@ -227,7 +240,8 @@ export function cleanItemFill(raw: unknown, ctx: { today: string; sentence: stri
   if (alerts) out.alerts = alerts
   const showAs = fillOneOf(get('showAs'), FILL_SHOW_AS)
   if (showAs) out.showAs = showAs
-  const url = fillUrl(get('url'), ctx.sentence)
+  // The model's url is never read: the link comes from the sentence (linkOfSentence).
+  const url = linkOfSentence(ctx.sentence)
   if (url) out.url = url
   const notes = fillText(get('notes'), FILL_NOTES_MAX, true)
   if (notes) out.notes = notes
@@ -241,8 +255,6 @@ export function cleanItemFill(raw: unknown, ctx: { today: string; sentence: stri
 
   const priority = fillOneOf(get('priority'), FILL_PRIORITIES)
   if (priority) out.priority = priority
-  const area = fillOneOf(get('area'), FILL_AREAS)
-  if (area) out.area = area
   return out
 }
 
@@ -266,12 +278,10 @@ export const ITEM_FILL_SCHEMA = {
     travelMinutes: { type: 'INTEGER' },
     alerts: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'minutes before the start' },
     showAs: { type: 'STRING', enum: [...FILL_SHOW_AS] },
-    url: { type: 'STRING' },
     notes: { type: 'STRING' },
     deadlineDate: { type: 'STRING', description: 'YYYY-MM-DD' },
     deadlineTime: { type: 'STRING', description: 'HH:MM, 24-hour' },
     doFrom: { type: 'STRING', description: 'YYYY-MM-DD' },
     priority: { type: 'STRING', enum: [...FILL_PRIORITIES] },
-    area: { type: 'STRING', enum: [...FILL_AREAS] },
   },
 } as const

@@ -31,8 +31,19 @@ function eq(got, want, name) {
   if (g === w) { passed++; console.log(`  ✓ ${name}`) } else { failed++; console.log(`  ✗ ${name} — got ${g}, want ${w}`) }
 }
 const TODAY = '2026-11-11' // a Wednesday
-const SENTENCE = 'Dentist on Tuesday at 14:00 for an hour at Jernbanetorget, remind me a day before, see example.com/booking'
-const ctx = { today: TODAY, sentence: SENTENCE }
+const SENTENCE = 'Dentist on Tuesday at 14:00 for an hour at Jernbanetorget, remind me a day before, booking at https://example.com/booking.'
+const PLAIN = 'Dentist on Tuesday at 14:00'
+/** Most cases: a sentence with no link (a link comes only from the sentence). */
+const ctx = { today: TODAY, sentence: PLAIN }
+const withLink = { today: TODAY, sentence: SENTENCE }
+const cp = (...codes) => String.fromCodePoint(...codes)
+/** Invisible characters a one-line check must refuse, the astral ones included (guardian, 11.11.2026). */
+const INVISIBLE = [[0xE0041, 'a tag character'], [0xE007F, 'the cancel tag'], [0xE0100, 'a supplementary variation selector'],
+  [0xE01EF, 'the last supplementary variation selector'], [0xFE00, 'variation selector 1'], [0xFE0D, 'variation selector 14'],
+  [0xFFA0, 'a halfwidth filler'], [0x034F, 'the grapheme joiner'], [0x17B4, 'a Khmer inherent vowel'], [0x17B5, 'a Khmer inherent vowel (aa)'],
+  [0x180B, 'a Mongolian variation selector'], [0x180F, 'the fourth Mongolian variation selector'], [0x1D173, 'a musical formatting mark'],
+  [0x1D17A, 'the last musical formatting mark']]
+const LONE = String.fromCharCode(0xD800)
 
 // The server's copy: the generated region, compiled and run on its own (nothing else of ai-proxy).
 const proxy = fs.readFileSync(path.join(__dirname, '../supabase/functions/ai-proxy/index.ts'), 'utf8')
@@ -53,27 +64,33 @@ console.log('\n== 1. The sentence ==')
   eq(bad.map(t => X.itemFillTextProblem(t) !== null), bad.map(() => true), 'refused: not a string, empty, 501 characters, a line break, a tab, NUL, a bidi override or isolate, a zero-width space, a line separator, a soft hyphen, a BOM')
   eq(bad.map(t => S.itemFillTextProblem(t) !== null), bad.map(() => true), "ai-proxy's copy refuses the same")
   eq(X.itemFillTextProblem('x'.repeat(5000)), 'At most 500 characters', 'a huge paste is said plainly')
+  const hidden = [...INVISIBLE.map(([c]) => `Dentist${cp(c)} Tuesday`), `Dentist${LONE} Tuesday`, `Dentist ${String.fromCharCode(0xDC00)}`]
+  eq(hidden.map(t => X.itemFillTextProblem(t) !== null), hidden.map(() => true),
+    `refused before the model sees it: ${INVISIBLE.map(([, w]) => w).join(', ')}, a lone surrogate (either half)`)
+  eq(hidden.map(t => S.itemFillTextProblem(t) !== null), hidden.map(() => true), "ai-proxy's copy refuses them too")
+  const emoji = `Tea ${cp(0x2615, 0xFE0E)} and ${cp(0x2615, 0xFE0F)} with ${cp(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467)}`
+  eq([X.itemFillTextProblem(emoji), S.itemFillTextProblem(emoji)], [null, null], "an emoji's own selectors (U+FE0E, U+FE0F) and joiner stay")
 }
 
 console.log('\n== 2. A good answer passes as it is ==')
 {
   const good = {
     title: 'Dentist', date: '2026-11-17', startTime: '14:00', endTime: '15:00', place: 'Jernbanetorget', alerts: [1440, 30],
-    url: 'https://example.com/booking', notes: 'Bring the card\nAsk about the bill', travelMinutes: 15, showAs: 'busy',
-    deadlineDate: '2026-11-20', deadlineTime: '12:00', doFrom: '2026-11-16', priority: 'high', area: 'personal',
+    url: 'https://evil.example/login', notes: 'Bring the card\nAsk about the bill', travelMinutes: 15, showAs: 'busy',
+    deadlineDate: '2026-11-20', deadlineTime: '12:00', doFrom: '2026-11-16', priority: 'high', area: 'work',
   }
   both(good, {
     title: 'Dentist', date: '2026-11-17', startTime: '14:00', endTime: '15:00', place: 'Jernbanetorget', travelMinutes: 15, alerts: [1440, 30],
     showAs: 'busy', url: 'https://example.com/booking', notes: 'Bring the card\nAsk about the bill', deadlineDate: '2026-11-20', deadlineTime: '12:00',
-    doFrom: '2026-11-16', priority: 'high', area: 'personal',
-  }, 'every field kept')
+    doFrom: '2026-11-16', priority: 'high',
+  }, "every field kept — the link is the sentence's (the model's is never read), and no area", withLink)
   both({ repeat: 'weekly', repeatDays: [5, 1, 3], repeatCount: 10 }, { repeat: 'weekly', repeatDays: [1, 3, 5], repeatCount: 10 }, 'a weekly repeat: its days sorted, End Repeat after 10 times')
   both({ repeat: 'every', repeatEvery: 2, repeatUnit: 'week', repeatDays: [2], repeatUntil: '2027-06-30', date: '2026-11-17' },
     { date: '2026-11-17', repeat: 'every', repeatDays: [2], repeatEvery: 2, repeatUnit: 'week', repeatUntil: '2027-06-30' }, 'every 2 weeks on Tuesday until a day')
   both({ allDay: true, date: '2026-11-12', alerts: [1440] }, { date: '2026-11-12', allDay: true, alerts: [1440] }, 'all day, a day before')
   both({ startTime: '09:00', durationMinutes: 1440 }, { startTime: '09:00', durationMinutes: 1440 }, 'a whole day as a length (the most)')
-  const once = X.cleanItemFill(good, ctx)
-  eq(X.cleanItemFill(once, ctx), once, 'checking a checked fill again changes nothing (the browser re-checks the server\'s answer)')
+  const once = X.cleanItemFill(good, withLink)
+  eq(X.cleanItemFill(once, withLink), once, 'checking a checked fill again changes nothing (the browser re-checks the server\'s answer)')
 }
 
 console.log('\n== 3. Hostile answers: wrong types ==')
@@ -97,6 +114,10 @@ console.log('\n== 4. Hostile answers: sizes, control and direction characters ==
     ['\u2067', 'a bidi isolate'], ['\u200F', 'a direction mark'], ['\u200B', 'a zero-width space'], ['\u2028', 'a line separator'], ['\uFEFF', 'a BOM']]) {
     both({ title: `Dentist${ch}x`, place: `Oslo${ch}S` }, {}, `${what} in a title or a place → dropped`)
   }
+  for (const [c, what] of INVISIBLE) both({ title: `Dentist${cp(c)}`, place: `Oslo${cp(c)}S`, notes: `note${cp(c)}` }, {}, `${what} in a title, a place or the notes → dropped`)
+  both({ title: `Dentist${LONE}`, place: `Oslo${String.fromCharCode(0xDFFF)}`, notes: `n${LONE}` }, {}, 'a lone surrogate → dropped')
+  const emoji = `Tea ${cp(0x2615, 0xFE0F)} with ${cp(0x1F468, 0x200D, 0x1F469)}`
+  both({ title: emoji }, { title: emoji }, "an emoji's selector and joiner stay in a title")
   both({ notes: 'one\ntwo' }, { notes: 'one\ntwo' }, 'the notes may break lines')
   both({ notes: 'one\r\ntwo' }, {}, 'but no carriage return in the notes')
   both({ notes: 'tab\there' }, {}, 'no tab in the notes')
@@ -105,20 +126,32 @@ console.log('\n== 4. Hostile answers: sizes, control and direction characters ==
   both({ title: 'Tannlege på Grünerløkka 🦷' }, { title: 'Tannlege på Grünerløkka 🦷' }, 'æ, ø, å, ü and an emoji stay as they are')
 }
 
-console.log('\n== 5. Hostile answers: links ==')
+console.log("\n== 5. The link: the sentence's own, never the model's ==")
 {
-  const links = {
-    'javascript:alert(1)': 'a javascript: link', 'JaVaScRiPt:alert(1)': 'javascript: in mixed case', 'data:text/html,<script>x</script>': 'a data: link',
-    'http://example.com/booking': 'plain http', 'https://user:pw@example.com/booking': 'a user name and password', 'https://example.com/booking\nX-Header: 1': 'a line break',
-    'https://evil.example/phish': 'a host the sentence never names', 'https://example.com/phish': 'a path the sentence never names',
-    'vbscript:msgbox': 'vbscript:', 'file:///etc/passwd': 'file:', '//evil.example/booking': 'a scheme-relative link elsewhere', ['https://example.com/' + 'a'.repeat(3000)]: 'over 2048 characters',
-    'https://[::1]/booking': 'an IP literal',
+  /** Both copies take `want` (or no link) from `sentence`, whatever the model answered. */
+  const link = (sentence, model, want, name) => {
+    const raw = model === undefined ? {} : { url: model }
+    eq([X.cleanItemFill(raw, { today: TODAY, sentence }).url ?? null, S.cleanItemFill(raw, { today: TODAY, sentence }).url ?? null], [want, want], name)
   }
-  for (const [url, what] of Object.entries(links)) both({ url }, {}, `${what} → dropped`)
-  both({ url: 'https://example.com/booking' }, { url: 'https://example.com/booking' }, 'the link the sentence holds is kept')
-  both({ url: 'example.com/booking' }, { url: 'https://example.com/booking' }, 'written without https:// in the answer, cleaned by cleanItemUrl')
-  both({ url: 'https://EXAMPLE.com/booking' }, { url: 'https://example.com/booking' }, 'the host in capitals: the same link')
-  eq(X.cleanItemFill({ url: 'https://example.com/booking' }, { today: TODAY, sentence: 'Dentist on Tuesday' }), {}, 'no link in the sentence → no link at all')
+  link('Pay at https://mybank.no/login today', 'https://ybank.no', 'https://mybank.no/login', 'the model\'s https://ybank.no (a piece of the sentence\'s link) is never taken: the sentence\'s own link is')
+  link('Code review at https://github.com/x', 'https://github.co', 'https://github.com/x', 'https://github.co (a cut host) is never taken')
+  link('Dentist on Tuesday', 'https://den', null, 'https://den from "Dentist": no link in the sentence, none filled')
+  link('Reboot https://router tonight', 'https://router', null, 'https://router: a host with no dot is refused')
+  link('Open localhost:8080 for the demo', 'localhost:8080', null, 'localhost:8080: not an https:// link')
+  link('Demo at https://localhost:8080/admin', 'https://localhost:8080/admin', null, 'https://localhost: no dot, refused')
+  link('Router at https://192.168.1.1/admin', 'https://192.168.1.1/admin', null, 'an IPv4 address is refused')
+  link('Odd at https://example.123/x', undefined, null, 'a top-level name of digits is refused')
+  link('See http://example.com/booking', 'http://example.com/booking', null, 'plain http is refused')
+  link('Run javascript:alert(1) now', 'javascript:alert(1)', null, 'javascript: is refused')
+  link('Data data:text/html,<b>x</b>', undefined, null, 'data: is refused')
+  link('Log in at https://user:pw@example.com/x', undefined, null, 'a user name and password are refused')
+  link('Two: https://a.example.com and https://b.example.com', undefined, null, 'two links: none (which one would be a guess)')
+  link('Twice: https://example.com/x and again https://example.com/x.', undefined, 'https://example.com/x', 'the same link twice is one')
+  link('Booked (https://example.com/booking).', undefined, 'https://example.com/booking', 'brackets and trailing punctuation come off')
+  link('See "https://EXAMPLE.com/booking"!', undefined, 'https://example.com/booking', 'quotes come off; the host is lower-cased by cleanItemUrl')
+  link('Notes at example.com/booking', 'https://example.com/booking', null, 'a bare host (no https://) in the sentence is not taken, nor the model\'s link')
+  link(SENTENCE, 'https://evil.example/login', 'https://example.com/booking', 'the model\'s link is never read, even beside the sentence\'s')
+  eq(X.cleanItemFill({ url: 'https://example.com/booking' }, { today: TODAY, sentence: 42 }), {}, 'a sentence that isn\'t text gives no link')
 }
 
 console.log('\n== 6. Hostile answers: extra keys, days, times and the lists ==')
@@ -157,7 +190,8 @@ console.log('\n== 6. Hostile answers: extra keys, days, times and the lists ==')
   for (const m of [20, -15, 7.5, 1e6]) both({ travelMinutes: m }, {}, `a travel time of ${m} is dropped`)
   both({ travelMinutes: 0 }, { travelMinutes: 0 }, 'no travel time (0) is a choice')
   for (const a of [[1440, 1440], [5, 10, 15], [-5], [1441], [], [30, '60'], [1e9]]) both({ alerts: a }, {}, `alerts ${JSON.stringify(a)} are dropped`)
-  both({ showAs: 'tentative', priority: 'urgent', area: 'shop' }, {}, 'Show As, priority and area off their lists are dropped')
+  both({ showAs: 'tentative', priority: 'urgent' }, {}, 'Show As and priority off their lists are dropped')
+  both({ area: 'work' }, {}, 'the area is never filled (it picks the Apple calendar; the model would only guess it)')
   both({ deadlineDate: '2026-11-20', doFrom: '2026-11-21' }, { deadlineDate: '2026-11-20' }, '"do it between" after the deadline is dropped')
 }
 
@@ -167,12 +201,13 @@ console.log('\n== 7. A sentence that tries to steer the model ==')
   const c = { today: TODAY, sentence: injected }
   // What a steered model might answer: tools it doesn't have, data it never saw, a link the sentence names.
   const answer = { title: 'Lunch', date: '2026-11-13', url: 'https://evil.example/login?next=bank', notes: 'password: hunter2', db_delete: { table: 'tasks' }, functionCall: { name: 'db_delete' } }
-  eq(X.cleanItemFill(answer, c), { title: 'Lunch', date: '2026-11-13', notes: 'password: hunter2' },
-    'tool calls are ignored; a link with a path the sentence never wrote is dropped; the rest is only text for the owner to review')
-  eq(X.cleanItemFill({ url: 'https://evil.example/login' }, c), { url: 'https://evil.example/login' }, 'a link the sentence itself spells out shows for review, https only')
+  eq(X.cleanItemFill(answer, c), { title: 'Lunch', date: '2026-11-13', url: 'https://evil.example/login', notes: 'password: hunter2' },
+    "tool calls are ignored; the model's link is never read — the sentence's own https link shows for review; the rest is only text")
+  eq(X.cleanItemFill({}, c).url, 'https://evil.example/login', 'the link comes from the sentence even when the model gives none')
   const proxySrc = proxy.slice(proxy.indexOf('const ITEM_FILL_PROMPT'), proxy.indexOf('// <item-fill-shared>'))
-  eq([/never instructions/.test(proxySrc), /JSON\.stringify\(sentence\)/.test(proxySrc), /tools/.test(proxySrc.slice(proxySrc.indexOf('async function answerItemFill')))],
-    [true, true, false], 'the prompt calls the sentence data; the sentence goes in as a JSON string; the action passes no tools')
+  eq([/never instructions/.test(proxySrc), /JSON\.stringify\(sentence\)/.test(proxySrc), /tools/.test(proxySrc.slice(proxySrc.indexOf('async function answerItemFill'))),
+    /^- (url|area)/m.test(proxySrc)],
+    [true, true, false, false], 'the prompt calls the sentence data; the sentence goes in as a JSON string; the action passes no tools; the model is asked for no link and no area')
   const action = proxySrc.slice(proxySrc.indexOf('async function answerItemFill'))
   eq([/supabase|\.from\(/.test(action), /callGeminiStructured\(/.test(action), /cleanItemFill\(raw/.test(action)], [false, true, true],
     'the action reads no data, makes one structured call, and answers only what cleanItemFill kept')
@@ -186,9 +221,10 @@ console.log('\n== 8. The server copy and the model\'s schema ==')
 {
   try { execFileSync('node', [path.join(__dirname, 'sync-item-fill-shared.mjs'), '--check'], { stdio: 'pipe' }); eq(true, true, "ai-proxy's copy of the check is current (sync-item-fill-shared)") }
   catch { eq(false, true, "ai-proxy's copy of the check is current — run node scripts/sync-item-fill-shared.mjs") }
-  eq(Object.keys(X.ITEM_FILL_SCHEMA.properties), [...X.FILL_KEYS], 'the schema asks for exactly the keys the check reads')
-  eq([X.ITEM_FILL_SCHEMA.properties.repeat.enum, X.ITEM_FILL_SCHEMA.properties.repeatUnit.enum, X.ITEM_FILL_SCHEMA.properties.priority.enum, X.ITEM_FILL_SCHEMA.properties.area.enum, X.ITEM_FILL_SCHEMA.properties.showAs.enum],
-    [[...X.FILL_REPEATS], [...X.FILL_UNITS], [...X.FILL_PRIORITIES], [...X.FILL_AREAS], [...X.FILL_SHOW_AS]], "the schema's enums are the check's lists")
+  eq(Object.keys(X.ITEM_FILL_SCHEMA.properties), X.FILL_KEYS.filter(k => k !== 'url'), 'the schema asks for exactly the keys the check reads from the model (never a link)')
+  eq([X.FILL_KEYS.includes('area'), 'area' in X.ITEM_FILL_SCHEMA.properties], [false, false], 'no area anywhere')
+  eq([X.ITEM_FILL_SCHEMA.properties.repeat.enum, X.ITEM_FILL_SCHEMA.properties.repeatUnit.enum, X.ITEM_FILL_SCHEMA.properties.priority.enum, X.ITEM_FILL_SCHEMA.properties.showAs.enum],
+    [[...X.FILL_REPEATS], [...X.FILL_UNITS], [...X.FILL_PRIORITIES], [...X.FILL_SHOW_AS]], "the schema's enums are the check's lists")
   eq(JSON.stringify(S.ITEM_FILL_SCHEMA), JSON.stringify(X.ITEM_FILL_SCHEMA), 'ai-proxy sends the same schema')
   eq([X.FILL_LENGTH_MAX, R.ALERT_MINUTES.includes(1440), R.TRAVEL_MINUTES.includes(15)], [C.MAX_DURATION_MINUTES, true, true], "the length cap is the screen's (1440)")
 }
@@ -196,10 +232,10 @@ console.log('\n== 8. The server copy and the model\'s schema ==')
 console.log('\n== 9. Into the form ==')
 const seed = (mode = 'task', defaults = {}) => P.buildInitialForm({ mode, defaults, today: TODAY, nextTime: '10:30' })
 const screen = (x = {}) => ({ today: TODAY, nextTime: '10:30', choiceShown: true, ...x })
-const fillOf = (raw, sentence = SENTENCE) => X.cleanItemFill(raw, { today: TODAY, sentence })
+const fillOf = (raw, sentence = PLAIN) => X.cleanItemFill(raw, { today: TODAY, sentence })
 {
   const before = seed()
-  const fill = fillOf({ title: 'Dentist', date: '2026-11-17', startTime: '14:00', endTime: '15:00', place: 'Jernbanetorget', alerts: [1440], url: 'https://example.com/booking', priority: 'high' })
+  const fill = fillOf({ title: 'Dentist', date: '2026-11-17', startTime: '14:00', endTime: '15:00', place: 'Jernbanetorget', alerts: [1440], priority: 'high' }, SENTENCE)
   const out = FF.fillForm(before, fill, screen())
   const f = out.form
   eq([f.title, f.date, f.time, f.duration, f.place, f.alerts, f.url, f.priority], ['Dentist', '2026-11-17', '14:00', 60, { name: 'Jernbanetorget' }, [1440], 'https://example.com/booking', 'high'],
@@ -210,7 +246,7 @@ const fillOf = (raw, sentence = SENTENCE) => X.cleanItemFill(raw, { today: TODAY
   eq(FF.fillWords(out.fields), 'title, day, time, end, location, alert, link and priority', 'said as words')
   eq(before.title, '', 'the form it was given is not changed (Undo puts that one back)')
 
-  const noCal = FF.fillForm(seed(), fillOf({ place: 'Jernbanetorget', alerts: [30], url: 'https://example.com/booking' }), screen({ choiceShown: false }))
+  const noCal = FF.fillForm(seed(), fillOf({ place: 'Jernbanetorget', alerts: [30] }, SENTENCE), screen({ choiceShown: false }))
   eq([noCal.form.place, noCal.form.alerts, noCal.form.url, noCal.fields], [null, null, '', []], 'a task with no time has no Location, Alert or URL rows: nothing goes there')
   const late = FF.fillForm(seed(), fillOf({ startTime: '23:00', endTime: '01:00' }), screen())
   eq([late.form.date, late.form.time, late.form.duration], [TODAY, '23:00', 120], 'an end before the start is the next day (23:00–01:00 = 2 hours); a time with no day is today\'s')
@@ -231,8 +267,8 @@ const fillOf = (raw, sentence = SENTENCE) => X.cleanItemFill(raw, { today: TODAY
   const savedRep = { ...seed('recurring'), date: '2026-11-02' }
   const onRep = FF.fillForm(savedRep, fillOf({ date: '2026-11-20', repeat: 'monthly', startTime: '08:00' }), screen({ savedKind: 'repeat' }))
   eq([onRep.form.date, onRep.form.recurrence, onRep.form.time], ['2026-11-02', 'weekly', '08:00'], "a saved repeat keeps its start and rule; its time moves")
-  const hidden = FF.fillForm(seed(), fillOf({ notes: 'x', priority: 'low', area: 'work', deadlineDate: '2026-11-20', deadlineTime: '12:00', doFrom: '2026-11-16' }),
-    screen({ config: { hideTaskFields: ['notes', 'priority', 'domain', 'dueDate'] } }))
+  const hidden = FF.fillForm(seed(), fillOf({ notes: 'x', priority: 'low', deadlineDate: '2026-11-20', deadlineTime: '12:00', doFrom: '2026-11-16' }),
+    screen({ config: { hideTaskFields: ['notes', 'priority', 'dueDate'] } }))
   eq(hidden.fields, [], 'a field the caller hides is never filled (a training session hides the deadline)')
   const withNotes = FF.fillForm({ ...seed(), notes: 'Bring the card' }, fillOf({ notes: 'Parking at the back' }), screen())
   eq(withNotes.form.notes, 'Bring the card\nParking at the back', 'notes are added under what is there, never over it')

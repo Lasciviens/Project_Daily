@@ -36,7 +36,7 @@ export interface FillScreen {
 
 /** A field ✨ changed, as the review bar and the toast name it. */
 export type FillField = 'title' | 'day' | 'time' | 'end' | 'all day' | 'repeat' | 'end repeat' | 'location' | 'travel time'
-  | 'alerts' | 'show as' | 'link' | 'notes' | 'deadline' | 'deadline time' | 'do it between' | 'priority' | 'area'
+  | 'alerts' | 'show as' | 'link' | 'notes' | 'deadline' | 'deadline time' | 'do it between' | 'priority'
 
 export interface FillResult {
   form: PlanForm
@@ -124,7 +124,6 @@ export function fillForm(form: PlanForm, fill: ItemFill, s: FillScreen): FillRes
   if (fill.deadlineTime && f.deadlineDate && !hidden('dueDate') && !hidden('dueTime')) f.deadlineTime = fill.deadlineTime
   if (fill.doFrom && f.deadlineDate && fill.doFrom <= f.deadlineDate && !hidden('dueDate') && !hidden('startDate')) f.startDate = fill.doFrom
   if (fill.priority && !hidden('priority')) f.priority = fill.priority
-  if (fill.area && !hidden('domain')) f.domain = fill.area
 
   return { form: f, ...changesOf(form, f) }
 }
@@ -153,7 +152,6 @@ function changesOf(a: PlanForm, b: PlanForm): Omit<FillResult, 'form'> {
   if (diff('deadlineTime')) mark('deadline time', 'Deadline time')
   if (diff('startDate')) mark('do it between', 'Do it between')
   if (diff('priority')) mark('priority', 'Priority')
-  if (diff('domain')) mark('area', 'Area')
   return { fields: [...new Set(fields)], rows: [...new Set(rows)] }
 }
 
