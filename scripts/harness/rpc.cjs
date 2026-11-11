@@ -3,9 +3,144 @@
 // Each answer has the real function's shape, worked out from the made-up rows.
 // A function missing here answers [] (postgrest.cjs) and HARNESS_LOG=1 names it.
 // Writes made through an RPC (saving an item, ticking a repeat's day) are not
-// simulated: add an answer here when a test needs one.
+// simulated unless a test needed one (Needs a look's three, Shop's sale and
+// delete with their Undo): add an answer here when a test needs one.
+
+const { randomUUID } = require('node:crypto')
+
+const DAY_MS = 864e5
+
+/**
+ * 190: one Needs-a-look row's state written as the real functions do — the row before and after, so the app's
+ * Undo can write `before` back. `change` maps the row (a new one when there is none) to what it becomes, or null.
+ */
+function signalWrite(store, itemId, signal, change, subject = null) {
+  const rows = (store.tables.shop_signal_states ??= [])
+  const key = r => r.signal === signal && (r.item_id ?? null) === (itemId ?? null) && (r.subject ?? null) === (subject ?? null)
+  const at = rows.findIndex(key)
+  const before = at >= 0 ? rows[at] : null
+  const now = new Date().toISOString()
+  const fresh = { id: randomUUID(), user_id: store.ownerId, item_id: itemId ?? null, signal, subject: subject ?? null, signature: null, snoozed_until: null, dismissed_at: null, created_at: now, updated_at: now }
+  const next = change(before ?? fresh)
+  if (!next) {
+    if (at >= 0) rows.splice(at, 1)
+    return { before, after: null }
+  }
+  const after = { ...next, updated_at: now }
+  if (at >= 0) rows[at] = after
+  else rows.push(after)
+  return { before, after }
+}
 
 const RPCS = {
+  // 190: Needs a look's price figures from the clean reads (condition new or unknown), as shop_price_stats answers.
+  shop_price_stats: (args, store) => {
+    const ids = new Set(args.p_item_ids || [])
+    const now = Date.now()
+    const byItem = new Map()
+    for (const p of store.rows('shop_price_points')) if (ids.has(p.item_id)) byItem.set(p.item_id, [...(byItem.get(p.item_id) || []), p])
+    const out = []
+    for (const [id, all] of byItem) {
+      const points = all.slice().sort((a, b) => a.checked_at.localeCompare(b.checked_at))
+      const clean = points.filter(p => p.condition === 'new' || p.condition === 'unknown')
+      if (!clean.length) continue
+      const last = clean[clean.length - 1]
+      const currency = last.currency || null
+      const same = clean.filter(p => (p.currency || null) === currency)
+      const in60 = same.filter(p => now - Date.parse(p.checked_at) <= 60 * DAY_MS)
+      const lows = same.map(p => Number(p.low)), lows60 = in60.map(p => Number(p.low))
+      const stock = points.filter(p => typeof p.in_stock === 'boolean')
+      const lastStock = stock[stock.length - 1]
+      const back = !!lastStock && lastStock.in_stock && stock.some(p => p.in_stock === false && now - Date.parse(p.checked_at) <= 30 * DAY_MS)
+      const lastOut = stock.map(p => p.in_stock).lastIndexOf(false)
+      const spark = Array.from({ length: 12 }, (_, k) => {
+        const from = now - (60 - 5 * k) * DAY_MS, to = from + 5 * DAY_MS
+        const step = in60.filter(p => { const t = Date.parse(p.checked_at); return t >= from && t < to }).map(p => Number(p.low))
+        return step.length ? Math.min(...step) : null
+      })
+      out.push({
+        item_id: id, currency, points: same.length, low_all: Math.min(...lows), high_all: Math.max(...lows), points_60d: in60.length,
+        first_60d: in60.length ? in60[0].checked_at : null,
+        low_60d: lows60.length ? Math.min(...lows60) : null, high_60d: lows60.length ? Math.max(...lows60) : null,
+        last_price: Number(last.low), last_in_stock: lastStock ? lastStock.in_stock : null, last_at: last.checked_at,
+        back_in_stock: back, restocked_at: back ? stock[lastOut + 1]?.checked_at ?? null : null, spark,
+      })
+    }
+    return out
+  },
+  // 190: Snooze (a Got it stays), Got it (it ends a snooze) and Undo / Show again (the state written back exactly, or none).
+  shop_signal_snooze: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, snoozed_until: a.p_until }), a.p_subject),
+  shop_signal_dismiss: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => ({ ...s, signature: a.p_signature, dismissed_at: new Date().toISOString(), snoozed_until: null }), a.p_subject),
+  shop_signal_put: (a, store) => signalWrite(store, a.p_item_id, a.p_signal, s => (a.p_state ? { ...s, ...a.p_state } : null), a.p_subject),
+
+  // 137/187: a sale as one call — the thing and the accessories sold with it get the disposal facts (each its own
+  // share), kept accessories move or stand alone, the money may go to another thing; what Undo needs is kept on
+  // the row (`sale_undo`, as 187 does). Rates: NOK only (fx 1), else pending.
+  shop_record_sale: (a, store) => {
+    const items = store.tables.shop_items ?? []
+    const rows = a.p_rows ?? []
+    const group = rows.length > 1 ? randomUUID() : null
+    const fields = ['disposal', 'disposed_on', 'sale_price', 'sale_currency', 'sale_fx_nok', 'sale_fx_source', 'sold_to', 'sale_group', 'accessory_of']
+    for (const r of rows) {
+      const it = items.find(i => i.id === r.id)
+      if (!it) continue
+      const before = Object.fromEntries(fields.map(f => [f, it[f] ?? null]))
+      Object.assign(it, {
+        disposal: a.p_disposal, disposed_on: a.p_on, sale_price: r.sale_price, sale_currency: a.p_currency,
+        sale_fx_nok: a.p_currency === 'NOK' ? 1 : null, sale_fx_source: a.p_currency === 'NOK' ? 'fixed' : null,
+        sold_to: a.p_sold_to ?? null, sale_group: group, sale_undo: { row: before, keep: [], link: null }, updated_at: new Date().toISOString(),
+      })
+    }
+    const first = items.find(i => i.id === rows[0]?.id)
+    for (const k of a.p_keep ?? []) {
+      const acc = items.find(i => i.id === k.id)
+      if (!acc) continue
+      first?.sale_undo.keep.push({ id: acc.id, accessory_of: acc.accessory_of ?? null })
+      acc.accessory_of = k.move_to ?? null
+    }
+    if (a.p_to && first) {
+      const link = { id: randomUUID(), user_id: store.ownerId, from_id: first.id, to_id: a.p_to, amount: a.p_to_amount ?? null, created_at: new Date().toISOString() }
+      ;(store.tables.shop_item_links ??= []).push(link)
+      first.sale_undo.link = link.id
+    }
+    return null
+  },
+  shop_undo_sale: (a, store) => {
+    const items = store.tables.shop_items ?? []
+    const it = items.find(i => i.id === a.p_id)
+    if (!it || !it.sale_undo) return null
+    const undo = it.sale_undo
+    const together = it.sale_group ? items.filter(i => i.sale_group === it.sale_group) : [it]
+    for (const r of together) { if (r.sale_undo) Object.assign(r, r.sale_undo.row, { sale_undo: null }) }
+    for (const k of undo.keep) { const acc = items.find(i => i.id === k.id); if (acc) acc.accessory_of = k.accessory_of }
+    if (undo.link) store.tables.shop_item_links = (store.tables.shop_item_links ?? []).filter(l => l.id !== undo.link)
+    return null
+  },
+  // 187: Delete answers the snapshot its Undo puts back (the rows, their links and costs); restore writes it back.
+  shop_delete_items: (a, store) => {
+    const ids = new Set(a.p_ids ?? [])
+    const take = (name, hit) => {
+      const all = store.tables[name] ?? []
+      const out = all.filter(hit)
+      store.tables[name] = all.filter(r => !hit(r))
+      return out
+    }
+    return {
+      items: take('shop_items', r => ids.has(r.id)),
+      links: take('shop_item_links', r => ids.has(r.from_id) || ids.has(r.to_id)),
+      costs: take('shop_item_costs', r => ids.has(r.item_id)),
+      children: [],
+    }
+  },
+  shop_restore_items: (a, store) => {
+    const s = a.p_snapshot ?? {}
+    for (const [name, key] of [['shop_items', 'items'], ['shop_item_links', 'links'], ['shop_item_costs', 'costs']]) {
+      const rows = (store.tables[name] ??= [])
+      for (const r of s[key] ?? []) if (!rows.some(x => x.id === r.id)) rows.push(r)
+    }
+    return null
+  },
+
   // 156: the app's own run of the day's repeats. The made-up data already holds today's tasks.
   app_repeat_days_today: (args) => ({ missed: 0, created: 0, skipped: 0, failed: 0, today: args.p_today ?? null }),
 

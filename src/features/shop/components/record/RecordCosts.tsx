@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { Button, Card, CardHeader, Truncate } from '../../../../shared/ui'
+import { Button, CardHeader, Truncate } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -31,7 +31,7 @@ export function RecordCosts({ itemId, costs }: { itemId: string; costs: readonly
   }
 
   return (
-    <Card>
+    <div>
       <CardHeader title="Extra costs" variant="label" className="mb-1"
         subtitle={costs.length > 0 ? <>in all <AmountText amount={total} /></> : undefined}
         action={!open && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setOpen(true)}>Cost</Button>} />
@@ -72,6 +72,6 @@ export function RecordCosts({ itemId, costs }: { itemId: string; costs: readonly
           </div>
         </div>
       )}
-    </Card>
+    </div>
   )
 }

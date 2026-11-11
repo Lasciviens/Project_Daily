@@ -15,13 +15,15 @@ export const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem
  * subcategory order: each subcategory's label once, across the grid, above
  * its cards.
  */
-export function CategorySection({ group, collapsed, onToggle, aside, card }: {
+export function CategorySection({ group, collapsed, onToggle, aside, card, body }: {
   group: CategoryGroup
   collapsed: boolean
   onToggle: () => void
   /** Right of the title — a total. */
   aside?: ReactNode
   card: (item: ShopItem) => ReactNode
+  /** Replaces the cards' grid (the Wishlist's picture tiles); `id` belongs on its root. */
+  body?: (id: string) => ReactNode
 }) {
   const id = `shop-cat-${group.key}`
   // With subcategories, each group of cards gets its label once — a row of its own in the one grid, so the cards' rows stay aligned.
@@ -35,7 +37,8 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
         <span className="count-badge">{group.items.length}</span>
         {aside != null && <span className="ml-auto text-meta tabular-nums text-fg-muted">{aside}</span>}
       </button>
-      {!collapsed && (
+      {!collapsed && body && body(id)}
+      {!collapsed && !body && (
         <div id={id} className={CARD_GRID}>
           {group.subs.flatMap(sub => [
             labelled && <Truncate key={`label:${sub.key}`} as="p" className="section-label col-span-full -mb-1 pt-1 first:pt-0">{sub.title ?? 'Other'}</Truncate>,
@@ -50,22 +53,25 @@ export function CategorySection({ group, collapsed, onToggle, aside, card }: {
 /**
  * "Fold all" / "Open all" for the sections on screen: a line above them, or
  * (`compact`, on a phone) an icon button in the filter row, so it costs no
- * line of its own.
+ * line of its own. `pending` (the list still loading): shown, disabled, so it
+ * keeps its place in the row and nothing beside it moves when the list lands.
  */
-export function FoldAll({ keys, collapsed, onSet, compact }: { keys: string[]; collapsed: ReadonlySet<string>; onSet: (keys: string[], fold: boolean) => void; compact?: boolean }) {
-  if (keys.length < 2) return null
-  const allFolded = keys.every(k => collapsed.has(k))
+export function FoldAll({ keys, collapsed, onSet, compact, pending = false }: {
+  keys: string[]; collapsed: ReadonlySet<string>; onSet: (keys: string[], fold: boolean) => void; compact?: boolean; pending?: boolean
+}) {
+  if (keys.length < 2 && !pending) return null
+  const allFolded = !pending && keys.every(k => collapsed.has(k))
   const label = allFolded ? 'Open all categories' : 'Fold all categories'
   if (compact) {
     return (
-      <IconButton bordered label={label} onClick={() => onSet(keys, !allFolded)} className="shrink-0">
+      <IconButton bordered label={label} disabled={pending} onClick={() => onSet(keys, !allFolded)} className="shrink-0 disabled:opacity-50">
         {allFolded ? <ChevronsUpDown aria-hidden /> : <ChevronsDownUp aria-hidden />}
       </IconButton>
     )
   }
   return (
-    <button type="button" onClick={() => onSet(keys, !allFolded)}
-      className="flex min-h-[44px] w-fit items-center text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
+    <button type="button" disabled={pending} onClick={() => onSet(keys, !allFolded)}
+      className="flex min-h-[44px] w-fit items-center text-meta font-medium text-fg-muted transition-colors hover:text-fg-2 disabled:opacity-50">
       {label}
     </button>
   )

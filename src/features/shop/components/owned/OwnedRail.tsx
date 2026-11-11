@@ -1,8 +1,7 @@
 import type { KeyboardEvent } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { Card, CardHeader, MetaLine, TonePill, Truncate } from '../../../../shared/ui'
-import { formatDate } from '../../../../shared/utils/dateFormat'
-import { complete, minus, type Deadline, type OwnedShow, type ShownSummary } from '../../ownModel'
+import { MetaLine } from '../../../../shared/ui'
+import { complete, minus, type OwnedShow, type ShownSummary } from '../../ownModel'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
 
@@ -62,31 +61,5 @@ export function OwnedSummaryLine({ summary, show, filtered, onStats, onShowGone 
         <button type="button" onClick={onShowGone} className="whitespace-nowrap font-semibold text-accent-600 hover:underline">{summary.gone} sold or gone</button>
       </>}
     </p>
-  )
-}
-
-/** Return windows (14 days) and complaint rights (60 days) about to end, soonest first. */
-export function ComingUpCard({ deadlines, onOpen }: { deadlines: Deadline[]; onOpen: (id: string) => void }) {
-  return (
-    <Card>
-      <CardHeader title="Coming up" variant="label" />
-      <ul className="-mx-2 flex flex-col">
-        {deadlines.slice(0, 6).map(d => (
-          <li key={`${d.item.id}-${d.kind}`}>
-            <button type="button" onClick={() => onOpen(d.item.id)} className="flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 text-left hover:bg-surface-hover">
-              <span className="min-w-0 flex-1">
-                <Truncate as="span" className="block text-body text-fg-2">{d.item.title}</Truncate>
-                <span className="block text-meta tabular-nums text-fg-muted">
-                  {d.kind === 'return' ? 'Return by' : 'Can complain until'} {formatDate(d.day)}
-                </span>
-              </span>
-              <TonePill tone={d.daysLeft <= 7 ? 'warn' : 'neutral'} className="shrink-0 tabular-nums">
-                {d.daysLeft === 0 ? 'Today' : `${d.daysLeft} day${d.daysLeft === 1 ? '' : 's'}`}
-              </TonePill>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Card>
   )
 }

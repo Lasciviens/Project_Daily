@@ -4,10 +4,11 @@ import { SegmentedControl } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
-import { categoryPath, currencyOf, type CategoryPath } from '../../shopModel'
+import { categoryIdOf, categoryPath, currencyOf, pickOf, type CategoryPath } from '../../shopModel'
 import { addDays, addMonths, complaintYears, daysBetween, DISPOSAL_LABEL, durationLabel, paidOf, complete, savedOf } from '../../ownModel'
 import { money, moneyRange, webUrl } from '../shopFormat'
 import { PaidText } from '../owned/PaidText'
+import { CategoryPicker } from '../CategoryPicker'
 import { MoneyEditor, Toggle } from './factKit'
 import type { RecordDraft } from './useRecordDraft'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem, ShopPriceWatch, ShopPriority, ShopReason, ShopRegion } from '../../types'
@@ -46,24 +47,14 @@ const pathText = (p: CategoryPath) => (p.topId ? [p.topName, p.subName].filter(B
 /** Facts every wishlist-side row has. */
 export function commonFacts(c: FactCtx, state: 'buy' | 'general' | 'owned'): FactDef[] {
   const { v, set } = c
-  const tops = c.categories.filter(x => !x.parent_id)
   const path = categoryPath(v.category_id, c.categories)
-  const subs = path.topId ? c.categories.filter(x => x.parent_id === path.topId) : []
   return [
     { id: 'title', label: 'Item', filled: true, value: v.title,
       editor: <input value={v.title} onChange={e => set({ title: e.target.value })} aria-label="Item" className="input" autoFocus /> },
     { id: 'category', label: 'Category', filled: !!v.category_id, chip: 'Category', value: pathText(path),
       editor: (
         <div className="grid grid-cols-2 gap-2">
-          <select value={path.topId ?? ''} onChange={e => set({ category_id: e.target.value || null })} aria-label="Category" className="select">
-            <option value="">No category</option>
-            {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-          <select value={v.category_id && v.category_id !== path.topId ? v.category_id : ''} onChange={e => set({ category_id: e.target.value || path.topId })}
-            disabled={!path.topId} aria-label="Subcategory" className="select disabled:opacity-50">
-            <option value="">{path.topId ? 'No subcategory' : 'Subcategory'}</option>
-            {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <CategoryPicker categories={c.categories} value={pickOf(v.category_id, c.categories)} onChange={p => set({ category_id: categoryIdOf(p) })} />
         </div>
       ) },
     ...(state !== 'owned' ? [{

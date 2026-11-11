@@ -11,6 +11,16 @@
  *   3. A row's price history is its newest reads, oldest first: the line reaches the last check.
  *   4. updateShopItem is scoped to the user and reads its row back; a row that isn't there (or is
  *      someone else's) is an error, never a silent no-op.
+ *   5. Needs a look's data (shopSignalsApi.ts, migration 190): the price figures of many things go out as one
+ *      call per 500 ids, each id once; before 190 the reads answer nothing and a write says so by name; a
+ *      signature or a day the database would refuse is refused here first; an Undo sends the row's own fields.
+ *   6. The Undo of a category added from a picker's suggestions (shopCategoryApi.removeNewCategory)
+ *      moves what was put in it — or in a subcategory under it — to its parent, then removes it;
+ *      every read and write is the owner's own rows only.
+ *   7. Add the suggested categories (shopCategoryApi.addSuggestedCategories, owner 10.11.2026): exactly the
+ *      plan from a fresh read of the owner's own rows — nothing duplicated, the owner's names win, a second tap
+ *      writes nothing, a refused second write takes the tops back — and its Undo (removeAddedCategories)
+ *      removes only the rows it made, of those only the ones still empty and as made, and names the rest.
  * Run: node scripts/verify-shop-api.cjs */
 require('sucrase/register')
 const fs = require('fs')
@@ -31,7 +41,10 @@ function from(table) {
   const b = {
     select(cols = '*') { if (st.op === 'select') st.cols = cols; else st.returning = true; return b },
     update(patch) { st.op = 'update'; st.patch = patch; return b },
+    insert(rows) { st.op = 'insert'; st.rows = Array.isArray(rows) ? rows : [rows]; return b },
+    delete() { st.op = 'delete'; return b },
     eq(c, v) { st.eqs.push([c, v]); st.preds.push(r => r[c] === v); return b },
+    in(c, vs) { st.eqs.push([c, vs]); st.preds.push(r => vs.includes(r[c])); return b },
     // PostgREST's or=(a.eq.x,b.is.true,…) — the flat forms shopApi sends.
     or(expr) {
       st.ors = expr
@@ -48,6 +61,7 @@ function from(table) {
     order(c, o = {}) { st.orders.push([c, o.ascending !== false]); return b },
     range(f, t) { st.range = [f, t]; return b },
     limit(n) { st.limit = n; return b },
+    maybeSingle() { st.single = true; return b },
     overrideTypes() { return b },
     then(res, rej) { return Promise.resolve().then(run).then(res, rej) },
   }
@@ -61,11 +75,24 @@ function from(table) {
   }
   function run() {
     calls.push(st)
+    if (failing[table]) return { data: null, error: failing[table] }
+    const refused = failWhen(st)
+    if (refused) return { data: null, error: refused }
     const rows = (tables[table] ??= [])
+    if (st.op === 'insert') {
+      // A new row gets its id and the database's time, as the table's defaults do.
+      const made = st.rows.map(r => ({ id: `n${++newId}`, created_at: new Date(Date.UTC(2026, 10, 10, 12) + newId).toISOString(), ...r }))
+      rows.push(...made)
+      return { data: st.returning ? made.map(r => ({ ...r })) : null, error: null }
+    }
     const hit = rows.filter(r => st.preds.every(p => p(r)))
     if (st.op === 'update') {
       for (const r of hit) Object.assign(r, st.patch)
       return { data: st.returning ? hit.map(r => ({ ...r })) : null, error: null }
+    }
+    if (st.op === 'delete') {
+      tables[table] = rows.filter(r => !hit.includes(r))
+      return { data: null, error: null }
     }
     let out = [...hit].sort(cmp)
     if (st.range) out = out.slice(st.range[0], st.range[1] + 1)
@@ -75,6 +102,7 @@ function from(table) {
       const keep = st.cols.split(',').map(s => s.trim())
       out = out.map(r => Object.fromEntries(keep.map(k => [k, r[k]])))
     } else out = out.map(r => ({ ...r }))
+    if (st.single) return { data: out[0] ?? null, error: null }
     return { data: out, error: null }
   }
   return b
@@ -86,9 +114,20 @@ Module._resolveFilename = function (request, parent, ...rest) {
   if (/shared\/utils\/requireUser$/.test(request)) return 'stub:requireUser'
   return origResolve.call(this, request, parent, ...rest)
 }
-require.cache['stub:supabase'] = { id: 'stub:supabase', filename: 'stub:supabase', loaded: true, exports: { supabase: { from } } }
+// A table the stand-in answers with this error (PostgREST's "not found" before a migration, say).
+const failing = {}
+// A request the stand-in refuses (returns its error, or null to answer it).
+let failWhen = () => null
+let newId = 0
+// Function calls: each recorded; `rpcAnswer` scripts the answer.
+const rpcCalls = []
+let rpcAnswer = () => ({ data: null, error: null })
+const rpc = async (fn, args) => { rpcCalls.push({ fn, args: JSON.parse(JSON.stringify(args)) }); return rpcAnswer(fn, args) }
+require.cache['stub:supabase'] = { id: 'stub:supabase', filename: 'stub:supabase', loaded: true, exports: { supabase: { from, rpc } } }
 require.cache['stub:requireUser'] = { id: 'stub:requireUser', filename: 'stub:requireUser', loaded: true, exports: { requireUser: async () => ({ id: 'u' }) } }
 const A = require('../src/features/shop/api/shopApi.ts')
+const C = require('../src/features/shop/api/shopCategoryApi.ts')
+const N = require('../src/features/shop/api/shopSignalsApi.ts')
 Module._resolveFilename = origResolve
 const M = require('../src/features/shop/shopModel')
 
@@ -194,6 +233,198 @@ const ids = rows => rows.map(r => r.id).join()
     check('someone else\'s row: nothing changes, and the edit fails', theirs && /^Not saved/.test(theirs.message) && tables.shop_items[1].title === 'Theirs', theirs?.message)
     const gone = await fails('gone')
     check('a row that is gone: an error, never a silent no-op', gone && /^Not saved/.test(gone.message), gone?.message)
+  }
+
+  console.log('\n5 · Needs a look\'s data (migration 190)')
+  {
+    const uuid = k => `00000000-0000-4000-8000-${String(k).padStart(12, '0')}`
+    const stat = id => ({ item_id: id, currency: 'NOK', points: 3, low_all: 900, high_all: 1200, points_60d: 2, low_60d: 900, high_60d: 1000,
+      last_price: 950, last_in_stock: true, last_at: '2026-11-09T05:23:00+00:00', back_in_stock: false, restocked_at: null, spark: Array(12).fill(null) })
+    const wanted = Array.from({ length: 1100 }, (_, k) => uuid(k))
+    rpcCalls.length = 0
+    rpcAnswer = (fn, args) => ({ data: args.p_item_ids.map((id, k) => (k === 0 ? { ...stat(id), low_all: 'NaN' } : stat(id))), error: null })
+    const stats = await N.fetchPriceStats([...wanted, ...wanted.slice(0, 300), 'not-an-id'])
+    check('the figures of 1 100 things: three calls of shop_price_stats (500, 500, 100), every id once, never one call per thing',
+      rpcCalls.length === 3 && rpcCalls.every(c => c.fn === 'shop_price_stats') && rpcCalls.map(c => c.args.p_item_ids.length).join() === '500,500,100'
+      && new Set(rpcCalls.flatMap(c => c.args.p_item_ids)).size === 1100, rpcCalls.map(c => `${c.fn} ${c.args.p_item_ids?.length}`).join('; '))
+    check('…an answer whose price is NaN is left out, the rest are numbers', stats.length === 1097 && stats.every(s => Number.isFinite(s.low_all)))
+    rpcCalls.length = 0
+    check('no ids: no call', (await N.fetchPriceStats([])).length === 0 && rpcCalls.length === 0)
+    rpcAnswer = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.shop_price_stats' } })
+    check('before 190 the figures are simply none (the tiles show no bar)', (await N.fetchPriceStats([uuid(1)])).length === 0)
+    rpcAnswer = () => ({ data: null, error: { code: '22023', message: 'At most 500 things at a time' } })
+    const refused = await N.fetchPriceStats([uuid(1)]).then(() => null, e => e)
+    check('…but any other refusal is an error, never "no figures"', refused && /At most 500/.test(refused.message))
+
+    const row = p => ({ id: uuid(9001), user_id: uuid(1), item_id: uuid(5), signal: 'at_target', signature: null, snoozed_until: '2026-11-17', dismissed_at: null,
+      created_at: '2026-11-10T09:00:00+00:00', updated_at: '2026-11-10T09:00:00+00:00', ...p })
+    rpcCalls.length = 0
+    rpcAnswer = () => ({ data: { before: null, after: row() }, error: null })
+    const w = await N.snoozeSignal({ item_id: uuid(5), signal: 'at_target', until: '2026-11-17' })
+    check('Snooze: one call of shop_signal_snooze with the thing, the signal and the day; the answer\'s before and after',
+      rpcCalls.length === 1 && rpcCalls[0].fn === 'shop_signal_snooze' && JSON.stringify(rpcCalls[0].args) === JSON.stringify({ p_item_id: uuid(5), p_signal: 'at_target', p_until: '2026-11-17' })
+      && w.before === null && w.after?.snoozed_until === '2026-11-17')
+    const no = async f => { rpcCalls.length = 0; const e = await f().then(() => null, x => x); return { e, calls: rpcCalls.length } }
+    rpcCalls.length = 0
+    rpcAnswer = () => ({ data: { before: null, after: row({ item_id: null, signal: 'deal_day', subject: 'black_friday' }) }, error: null })
+    await N.snoozeSignal({ item_id: null, signal: 'deal_day', subject: 'black_friday', until: '2026-11-17' })
+    check('a deal day\'s Snooze names its deal (p_subject: its slug), so it is snoozed on its own',
+      JSON.stringify(rpcCalls[0]?.args) === JSON.stringify({ p_item_id: null, p_signal: 'deal_day', p_subject: 'black_friday', p_until: '2026-11-17' }), JSON.stringify(rpcCalls[0]?.args))
+    const r4 = await no(() => N.snoozeSignal({ item_id: null, signal: 'deal_day', subject: 'Black Friday', until: '2026-11-17' }))
+    check('…a subject that is no slug is refused here, nothing sent', r4.e && r4.calls === 0)
+    rpcAnswer = () => ({ data: { before: { ...row(), snoozed_until: 'soon' }, after: row() }, error: null })
+    const odd = await N.snoozeSignal({ item_id: uuid(5), signal: 'at_target', until: '2026-11-17' })
+    check('a before row the app can\'t read back is "unknown" (no Undo may delete it), never "none"', odd.before === null && odd.beforeUnknown === true)
+    rpcAnswer = () => ({ data: { before: null, after: row() }, error: null })
+    let r = await no(() => N.snoozeSignal({ item_id: null, signal: 'tidy_up', until: '17.11.2026' }))
+    const r2 = await no(() => N.snoozeSignal({ item_id: null, signal: 'made_up', until: '2026-11-17' }))
+    const r3 = await no(() => N.dismissSignal({ item_id: null, signal: 'tidy_up', signature: 'two words' }))
+    check('a day that is no yyyy-mm-dd, a signal not on the list, a signature the database would refuse: refused here, nothing sent',
+      r.e && r.calls === 0 && r2.e && r2.calls === 0 && r3.e && r3.calls === 0, [r.e?.message, r2.e?.message, r3.e?.message].join(' / '))
+    rpcAnswer = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.shop_signal_snooze' } })
+    r = await no(() => N.snoozeSignal({ item_id: null, signal: 'tidy_up', until: '2026-11-17' }))
+    check('before 190 a write says so by name', r.e?.message === N.NEEDS_190, r.e?.message)
+    rpcAnswer = () => ({ data: { before: row(), after: null }, error: null })
+    rpcCalls.length = 0
+    const cleared = await N.clearSignalState({ item_id: uuid(5), signal: 'at_target' })
+    check('Show again: shop_signal_put with no state; its answer\'s before is what an Undo writes back',
+      rpcCalls[0]?.fn === 'shop_signal_put' && rpcCalls[0].args.p_state === null && cleared.before?.id === uuid(9001) && cleared.after === null)
+    rpcCalls.length = 0
+    await N.putSignalState({ item_id: uuid(5), signal: 'at_target', state: { ...row(), extra: 'x' } })
+    check('an Undo sends the row\'s own fields only (its id, first time, snooze, Got it) — never user_id or updated_at',
+      Object.keys(rpcCalls[0]?.args.p_state ?? {}).sort().join() === 'created_at,dismissed_at,id,signature,snoozed_until')
+
+    tables.shop_signal_states = [row(), row({ id: uuid(9002), signal: 'price_match' }), row({ id: uuid(9003), signal: 'old_wish', item_id: null })]
+    const states = await N.fetchSignalStates()
+    check('the states read back: a signal this app doesn\'t know (a newer database) is left out', states.map(s => s.id).join() === `${uuid(9001)},${uuid(9003)}`)
+    failing.shop_signal_states = { code: 'PGRST205', message: 'Could not find the table public.shop_signal_states' }
+    failing.shop_deal_days = { code: '42P01', message: 'relation "public.shop_deal_days" does not exist' }
+    check('before 190 the states and the deal days read as none', (await N.fetchSignalStates()).length === 0 && (await N.fetchDealDays()).length === 0)
+    delete failing.shop_signal_states
+    delete failing.shop_deal_days
+    tables.shop_deal_days = [
+      { id: uuid(1), slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday', month: 11, day: null, weekday: 4, nth: 4, offset_days: 1, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+      { id: uuid(2), slug: 'broken', name: 'Broken', rule_kind: 'fixed', month: 2, day: 30, weekday: null, nth: null, offset_days: 0, length_days: 1, source_url: null, checked_on: '2026-11-10' },
+    ]
+    check('the deal days read back are whole rules only', (await N.fetchDealDays()).map(d => d.slug).join() === 'black_friday')
+  }
+
+  console.log('\n6 · Undo of an added category')
+  {
+    const T0 = '2026-11-10T10:00:00.000Z', T1 = '2026-11-10T10:00:05.000Z', OLD = '2025-01-01T00:00:00.000Z'
+    tables.shop_categories = [
+      { id: 'top', user_id: 'u', name: 'Electronics', parent_id: null, created_at: OLD }, { id: 'new', user_id: 'u', name: 'Headphones', parent_id: 'top', created_at: T0 },
+      { id: 'newTop', user_id: 'u', name: 'Garden & DIY', parent_id: null, created_at: T0 }, { id: 'under', user_id: 'u', name: 'Tools', parent_id: 'newTop', created_at: T1 },
+      { id: 'theirs', user_id: 'someone', name: 'Headphones', parent_id: 'x', created_at: T0 },
+      { id: 'kept', user_id: 'u', name: 'Grills', parent_id: 'top', created_at: OLD },
+    ]
+    tables.shop_items = [
+      { id: 'a', user_id: 'u', category_id: 'new' }, { id: 'b', user_id: 'u', category_id: 'top' },
+      { id: 'c', user_id: 'u', category_id: 'under' }, { id: 'd', user_id: 'someone', category_id: 'new' },
+    ]
+    calls.length = 0
+    const moved = await C.removeNewCategory('new', 'top', T0)
+    const cat = id => tables.shop_categories.find(c => c.id === id)
+    const at = id => tables.shop_items.find(i => i.id === id).category_id
+    check('a subcategory: what was put in it moves to its top category, and it goes — the answer counts what moved', !cat('new') && at('a') === 'top' && at('b') === 'top'
+      && moved.gone && moved.moved === 1, JSON.stringify(moved))
+    check('every read and write is scoped to the owner (another account\'s rows stay as they were)',
+      calls.every(c => c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && at('d') === 'new' && !!cat('theirs'))
+    let threw = null
+    calls.length = 0
+    try { await C.removeNewCategory('top', null, T0) } catch (e) { threw = e }
+    check('a category older than the one made ("Electronics" from 2025, asked with the new one\'s time): refused before any write', threw?.message === 'Electronics was there before — nothing was undone'
+      && !!cat('top') && !!cat('kept') && calls.every(c => c.op === 'select'), threw?.message)
+    tables.shop_categories.push({ id: 'top2', user_id: 'u', name: 'Audio', parent_id: null, created_at: T1 }, { id: 'older', user_id: 'u', name: 'Speakers', parent_id: 'top2', created_at: OLD })
+    tables.shop_items.push({ id: 'e', user_id: 'u', category_id: 'older' })
+    threw = null
+    calls.length = 0
+    try { await C.removeNewCategory('top2', null, T1) } catch (e) { threw = e }
+    check('…and one holding a subcategory older than itself ("Speakers"): refused before any write — the cascade would take it', threw?.message === 'Speakers was there before — nothing was undone'
+      && !!cat('older') && at('e') === 'older' && calls.every(c => c.op === 'select'), threw?.message)
+    const top = await C.removeNewCategory('newTop', null, T0)
+    check('a top category: what was in it or under it has no category, and it goes', !cat('newTop') && at('c') === null && top.moved === 1)
+    threw = null
+    let again = null
+    try { again = await C.removeNewCategory('newTop', null, T0) } catch (e) { threw = e }
+    check('Undo twice: a category already gone is no error (and says so)', threw === null && again?.gone === false, threw?.message)
+  }
+
+  console.log('\n7 · Add the suggested categories, and its Undo (owner, 10.11.2026)')
+  {
+    const T = require('../src/features/shop/shopTaxonomy')
+    const K = T.categoryKey
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+    const OLD = '2025-01-01T00:00:00.000Z'
+    const own = (id, name, parent_id = null, created_at = OLD) => ({ id, user_id: 'u', name, parent_id, created_at })
+    const start = () => [
+      own('e', 'Electronics'), own('ph', 'Phones', 'e'), own('hp', 'Earbuds', 'e'), own('h', 'Home'), own('k', 'kitchen', 'h'),
+      // Another account's "Car" and "Garden & DIY": they must not stop the owner's from being made, nor be touched.
+      { id: 'o1', user_id: 'someone', name: 'Car', parent_id: null, created_at: OLD }, { id: 'o2', user_id: 'someone', name: 'Garden & DIY', parent_id: null, created_at: OLD },
+    ]
+    tables.shop_categories = start()
+    tables.shop_items = [{ id: 'i1', user_id: 'u', category_id: 'ph' }, { id: 'i2', user_id: 'someone', category_id: 'o1' }]
+    const before = JSON.parse(JSON.stringify(tables.shop_categories))
+    const mine = () => tables.shop_categories.filter(c => c.user_id === 'u')
+    const expected = T.suggestedPlan(mine()).count
+    calls.length = 0
+    const made = await C.addSuggestedCategories()
+    const inserts = calls.filter(c => c.op === 'insert')
+    check('it makes exactly the plan worked out from the owner\'s own rows (another account\'s "Car" doesn\'t count)', made.length === expected && expected > 50
+      && made.some(r => r.name === 'Car' && !r.parent_id) && made.some(r => r.name === 'Garden & DIY' && !r.parent_id), `${made.length}/${expected}`)
+    check('every read is scoped to the owner, every row made carries the owner\'s id', inserts.every(c => c.rows.every(r => r.user_id === 'u'))
+      && calls.filter(c => c.op !== 'insert').every(c => c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && made.every(r => r.user_id === 'u'))
+    check('two writes — the tops, then every subcategory — answered tops first', inserts.length === 2 && inserts[0].rows.every(r => r.parent_id === null)
+      && inserts[1].rows.every(r => r.parent_id) && made.findIndex(r => r.parent_id) === made.filter(r => !r.parent_id).length)
+    const twice = mine().filter((c, i, a) => a.findIndex(d => (d.parent_id ?? null) === (c.parent_id ?? null) && K(d.name) === K(c.name)) !== i)
+    check('nothing is duplicated: no two of the owner\'s categories at one level by the taxonomy\'s name rules', twice.length === 0, twice.map(c => c.name).join())
+    check('the owner\'s names win: no Kitchen beside "kitchen", no Headphones beside "Earbuds", no Home & Living beside "Home"',
+      !made.some(r => ['Kitchen', 'Headphones', 'Home & Living', 'Electronics', 'Phones'].includes(r.name)) && made.some(r => r.name === 'Furniture' && r.parent_id === 'h'))
+    check('every row that was there is as it was (both accounts\')', before.every(b => tables.shop_categories.some(c => JSON.stringify(c) === JSON.stringify(b))))
+    check('nothing is suggested after it', T.suggestedPlan(mine()).count === 0)
+    calls.length = 0
+    const again = await C.addSuggestedCategories()
+    check('a second tap makes nothing — no write at all', again.length === 0 && calls.every(c => c.op === 'select'))
+
+    // Since the add: a thing went into one, one was renamed, an older category was moved under one,
+    // one id holds a row of another time, and another account's thing points at one.
+    const row = name => made.find(r => r.name === name)
+    const at = id => tables.shop_categories.find(c => c.id === id)
+    tables.shop_items.push({ id: 'i3', user_id: 'u', category_id: row('EV Charging').id }, { id: 'i4', user_id: 'someone', category_id: row('Tyres & Wheels').id })
+    at(row('Grills').id).name = 'BBQ & grills'
+    at('hp').parent_id = row('Hobby & Games').id
+    at(row('Tablets').id).created_at = OLD
+    const notMade = tables.shop_categories.filter(c => !made.some(m => m.id === c.id)).map(c => ({ ...c }))
+    const items = JSON.stringify(tables.shop_items)
+    calls.length = 0
+    const r = await C.removeAddedCategories(made)
+    const keptNames = r.kept.map(k => k.name).sort()
+    check('Undo keeps what is in use or changed since, and names why: EV Charging (a thing in it) and Car, BBQ & grills (renamed) and Garden & DIY, Hobby & Games (Earbuds moved under it), Tablets (not the row made)',
+      eq(keptNames, ['BBQ & grills', 'Car', 'EV Charging', 'Garden & DIY', 'Hobby & Games', 'Tablets'])
+      && r.kept.find(k => k.name === 'BBQ & grills').why === 'changed' && r.kept.find(k => k.name === 'Tablets').why === 'before'
+      && ['EV Charging', 'Car', 'Garden & DIY', 'Hobby & Games'].every(n => r.kept.find(k => k.name === n).why === 'in_use'), JSON.stringify(r.kept))
+    check('…and removes every other row it made — Tyres & Wheels too (another account\'s thing is no reason)', r.removed.length === made.length - 6
+      && made.filter(m => r.removed.includes(m.id)).every(m => !at(m.id)) && !at(row('Tyres & Wheels').id))
+    check('Undo touches only the rows the action made: every other row is as it was, the older Earbuds included', notMade.every(b => JSON.stringify(at(b.id)) === JSON.stringify(b))
+      && !!at('hp') && tables.shop_categories.length === notMade.length + 6)
+    check('…never moves a thing, and every read and the delete are the owner\'s rows only', JSON.stringify(tables.shop_items) === items && !calls.some(c => c.op === 'update')
+      && calls.every(c => c.eqs.some(([k, v]) => k === 'user_id' && v === 'u')) && calls.some(c => c.op === 'delete'))
+    check('the toast says what went and what stayed', C.undoneWords(r) === `${made.length - 6} categories removed · 6 kept, in use or changed since: ${r.kept[0].name}, ${r.kept[1].name} + 4 more`, C.undoneWords(r))
+    const twiceR = await C.removeAddedCategories(made)
+    check('Undo twice: no error, nothing more removed', twiceR.removed.length === 0 && twiceR.gone === made.length - 6 && twiceR.kept.length === 6)
+
+    // The subcategories refused after the tops were made: the tops go again — never half a list.
+    tables.shop_categories = start()
+    failWhen = st => (st.op === 'insert' && st.rows.some(x => x.parent_id) ? { message: 'refused' } : null)
+    let threw = null
+    try { await C.addSuggestedCategories() } catch (e) { threw = e }
+    failWhen = () => null
+    check('a refused second write: the error goes up and the tops just made are taken back', threw?.message === 'refused' && eq(tables.shop_categories, start()), threw?.message)
+
+    check('the words: "34 categories added", "1 category added"', C.addedWords(34) === '34 categories added' && C.addedWords(1) === '1 category added')
+    check('…"34 categories removed"; all gone already; one kept', C.undoneWords({ removed: Array(34).fill('x'), gone: 0, kept: [] }) === '34 categories removed'
+      && C.undoneWords({ removed: [], gone: 3, kept: [] }) === 'The categories were already gone'
+      && C.undoneWords({ removed: ['x'], gone: 0, kept: [{ name: 'Phones', why: 'in_use' }] }) === '1 category removed · 1 kept, in use now: Phones')
   }
 
   console.log(`\n${passed} passed, ${failed} failed`)

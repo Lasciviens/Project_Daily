@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { ArrowRightLeft, Plus, X } from 'lucide-react'
-import { Button, Card, CardHeader, Truncate, cx } from '../../../../shared/ui'
+import { Button, Truncate, cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
@@ -13,6 +13,18 @@ import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
 import { finalCostWords } from '../shopFormat'
 import type { ShopItem, ShopItemLink } from '../../types'
+import { useOpenRecord } from './recordOpen'
+
+/** "Open the chain" / "Try other prices", beside the Money section's title, for a thing you have or had. */
+export function MoneyChainButton({ item, chain }: { item: ShopItem; chain: Chain | null }) {
+  const modal = useEntityModal()
+  if (!isPossession(item) || item.accessory_of) return null
+  return (
+    <Button size="sm" variant="ghost" icon={<ArrowRightLeft />} onClick={() => modal.open({ kind: 'shop-chain', id: item.id })}>
+      {chain && chain.nodes.length > 1 ? 'Open the chain' : 'Try other prices'}
+    </Button>
+  )
+}
 
 /**
  * "Paid with money from" and "Money goes to": the links that make a money
@@ -20,7 +32,7 @@ import type { ShopItem, ShopItemLink } from '../../types'
  * wish it shows what the sale would leave to pay.
  */
 export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem; items: ShopItem[]; links: ShopItemLink[]; ctx: MoneyCtx; chain: Chain | null }) {
-  const modal = useEntityModal()
+  const openRecord = useOpenRecord()
   const del = useDeleteShopLink()
   const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
   const incoming = links.filter(l => l.to_id === item.id)
@@ -35,7 +47,7 @@ export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem
 
   const row = (l: ShopItemLink, other: ShopItem | undefined, dir: 'from' | 'to') => (
     <li key={l.id} className="flex items-center gap-1">
-      <button type="button" onClick={() => other && modal.open({ kind: 'shop-item', id: other.id })} className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center rounded-row px-2 text-left hover:bg-surface-hover">
+      <button type="button" onClick={() => other && openRecord(other.id)} className="flex min-h-[44px] min-w-0 flex-1 flex-col justify-center rounded-row px-2 text-left hover:bg-surface-hover">
         <Truncate as="span" className="text-body text-fg-2">{other?.title ?? 'A deleted item'}</Truncate>
         <span className="text-meta text-fg-muted">{other ? stateLine(other, dir) : ''}{l.amount != null ? ` · ${money(l.amount, other?.sale_currency ?? other?.value_currency ?? 'NOK')} of it` : ''}</span>
       </button>
@@ -46,9 +58,7 @@ export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem
   )
 
   return (
-    <Card>
-      <CardHeader title="Money" variant="label" className="mb-1"
-        action={owned && <Button size="sm" variant="ghost" icon={<ArrowRightLeft />} onClick={() => modal.open({ kind: 'shop-chain', id: item.id })}>{chain && chain.nodes.length > 1 ? 'Open the chain' : 'Try other prices'}</Button>} />
+    <div>
       {chain && chain.nodes.length > 1 && <div className="mb-1"><ChainName chain={chain} /></div>}
       {final && (
         <p className="mb-2 text-body text-fg-2">
@@ -80,7 +90,7 @@ export function RecordMoney({ item, items, links, ctx, chain }: { item: ShopItem
           onPick={(id, amount) => ({ from_id: item.id, to_id: id, amount })}
         />
       </>}
-    </Card>
+    </div>
   )
 }
 

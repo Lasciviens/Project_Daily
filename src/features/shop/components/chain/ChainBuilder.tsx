@@ -4,13 +4,14 @@ import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, Truncate, cx } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { storeNames } from '../../shopModel'
+import { isPendingCategory, storeNames } from '../../shopModel'
 import { complete, type MoneyCtx } from '../../ownModel'
 import { chainPath } from '../../chainModel'
 import {
   copiedOf, draftChain, draftOutcome, draftProblems, draftRows, hasContent, ratePairs, resolveSteps, stepView,
 } from '../../chainDraft'
 import { useDayRates, useSaveShopChain } from '../../hooks/useShopChain'
+import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
 import { ChainSummary } from './ChainSummary'
@@ -43,6 +44,7 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
   const base = useMemo(() => (from ? copiedOf(from) : null), [from])
   const d = useChainDraft(from?.id ?? null, base, from?.sale_currency ?? from?.currency ?? 'NOK')
   const save = useSaveShopChain()
+  const suggested = useResolveCategory()
   const [tried, setTried] = useState(false)
 
   const steps = useMemo(() => resolveSteps(d.draft, base), [d.draft, base])
@@ -70,7 +72,14 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
       d.openAll([...new Set(problems.map(p => p.key))])
       return
     }
-    try { await save.mutateAsync({ draft: d.draft, base, today }) } catch { return }
+    let draft = d.draft
+    try {
+      // A suggested category picked for a step is made now, with the save — each pick once (a step copies it live).
+      const made = new Map<string, string | null>()
+      for (const { categoryId: id } of draft.steps) if (id && isPendingCategory(id) && !made.has(id)) made.set(id, await suggested.resolve(id, categories))
+      if (made.size) draft = { ...draft, steps: draft.steps.map(s => (s.categoryId && made.has(s.categoryId) ? { ...s, categoryId: made.get(s.categoryId) ?? null } : s)) }
+      await save.mutateAsync({ draft, base, today })
+    } catch { return }
     d.forget()
     onClose()
     modal.open({ kind: 'shop-chain', id: d.draft.steps[0].key })

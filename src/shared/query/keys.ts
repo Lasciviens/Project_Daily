@@ -106,6 +106,12 @@ export const qk = {
     costs: () => ['shop', 'costs'] as const,
     watches: () => ['shop', 'watches'] as const,
     points: (itemId: string) => ['shop', 'points', itemId] as const,
+    /** Needs a look (migration 190): what the owner snoozed or said Got it to, and the deal days. */
+    signals: () => ['shop', 'signals'] as const,
+    dealDays: () => ['shop', 'deal-days'] as const,
+    /** The price figures of many things in one call (ids joined, sorted); the root refreshes every list of them. */
+    priceStatsAll: ['shop', 'price-stats'] as const,
+    priceStats: (ids: string) => ['shop', 'price-stats', ids] as const,
     /** Norges Bank's rates of given days, for a chain being built (pairs joined, sorted). */
     dayRates: (pairs: string) => ['shop', 'day-rates', pairs] as const,
     /** Kassalapp prices per chain for the quick list's matched products. */

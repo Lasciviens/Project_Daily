@@ -1,5 +1,5 @@
 import { Check, CircleHelp, Plus, X } from 'lucide-react'
-import { Button, Card, CardHeader, TonePill, Truncate, cx } from '../../../../shared/ui'
+import { Button, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useBuyNow, useUpdateShopItem } from '../../hooks/useShop'
@@ -7,6 +7,14 @@ import { priceNow } from '../../shopModel'
 import { bestMatch, cycleMeets, meetsOf, metCount, requirementsOf } from '../../wishModel'
 import { money } from '../shopFormat'
 import type { ShopItem, ShopPriceWatch } from '../../types'
+import { useOpenRecord } from './recordOpen'
+
+/** + Model, beside the Models section's title while the wish is open. */
+export function AddModelButton({ wish }: { wish: ShopItem }) {
+  const modal = useEntityModal()
+  if (wish.status !== 'wishlist') return null
+  return <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })}>Model</Button>
+}
 
 /**
  * A general wish's models side by side: price now (the price watch when it
@@ -14,9 +22,9 @@ import type { ShopItem, ShopPriceWatch } from '../../types'
  * Buy this model / Not chosen. A row per model reads the same on a phone.
  */
 export function RecordModels({ wish, models, watches }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch> }) {
-  const modal = useEntityModal()
+  const openRecord = useOpenRecord()
   const update = useUpdateShopItem()
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-item', id }))
+  const buy = useBuyNow(openRecord)
   const reqs = requirementsOf(wish)
   const price = (m: ShopItem) => priceNow(m, watches.get(m.id))
   const best = bestMatch(wish, models, price)
@@ -24,9 +32,7 @@ export function RecordModels({ wish, models, watches }: { wish: ShopItem; models
   const open = wish.status === 'wishlist'
 
   return (
-    <Card>
-      <CardHeader title={`Models · ${models.filter(m => m.status === 'wishlist').length} in the running`} variant="label" className="mb-2"
-        action={open && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })}>Model</Button>} />
+    <div>
       {models.length === 0 ? (
         <p className="text-meta text-fg-muted">Add the models you are thinking of — with a Prisjakt link each one's price is checked every morning, and the must-haves become a comparison.</p>
       ) : (
@@ -39,7 +45,7 @@ export function RecordModels({ wish, models, watches }: { wish: ShopItem; models
             return (
               <li key={m.id} className={cx('rounded-row border border-line p-2.5', out && m.status !== 'bought' && 'opacity-60', m === best && 'border-accent-300 bg-accent-50/40')}>
                 <div className="flex flex-wrap items-start gap-2">
-                  <button type="button" onClick={() => modal.open({ kind: 'shop-item', id: m.id })} className="min-h-[44px] min-w-0 flex-1 text-left">
+                  <button type="button" onClick={() => openRecord(m.id)} className="min-h-[44px] min-w-0 flex-1 text-left">
                     <Truncate as="span" className="block text-ui font-semibold text-fg">{m.title}</Truncate>
                     <span className="block text-meta tabular-nums text-fg-muted">
                       {p ? money(p.amount, p.currency) : 'No price yet'}
@@ -82,7 +88,7 @@ export function RecordModels({ wish, models, watches }: { wish: ShopItem; models
           })}
         </ul>
       )}
-    </Card>
+    </div>
   )
 }
 
