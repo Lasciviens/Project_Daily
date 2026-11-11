@@ -5,6 +5,7 @@ import { FileText, History, Link2, MoreHorizontal, Plus, Tag } from 'lucide-reac
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { lazyPart } from '../../../shared/utils/lazyPage'
@@ -76,15 +77,21 @@ export function ShopPage() {
     <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
       options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
   )
-  // Owned's other ways in (buttons too where the row has room for them) and the insurance list.
+  // Owned's other ways in (buttons too where the row has room for them) and the insurance list. The menu is drawn
+  // outside the page (a portal), where the page's width can't reach it: it leaves out the ways in while their
+  // buttons show — their group has a width only then.
+  const { ref: waysRef, width: waysWidth } = useElementWidthRem<HTMLDivElement>()
+  const waysShown = view === 'owned' && !isPhone && (waysWidth ?? 0) > 0
   const moreWaysMenu = (
     <Menu as="div">
       <MenuButton className="icon-btn-bordered" aria-label="More" title="More">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        {!waysShown && <>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
+          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
+        </>}
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
       </MenuItems>
     </Menu>
@@ -133,9 +140,11 @@ export function ShopPage() {
           {view === 'owned' && !isPhone && ownedTabs(false)}
           <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
             {view === 'owned' && !isPhone && <>
-              {/* Owned's other ways in: buttons where the row has room, one menu where it has not. */}
-              <Button variant="ghost" icon={<History />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
-              <Button variant="ghost" icon={<Link2 />} className="hidden @[72rem]/page:inline-flex" onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+              {/* Owned's other ways in: buttons where the row has room, the menu's first lines where it has not. */}
+              <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
+                <Button variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
+                <Button variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+              </div>
               {moreWaysMenu}
             </>}
             {suggestMenu}
