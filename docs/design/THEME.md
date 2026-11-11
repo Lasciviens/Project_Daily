@@ -714,6 +714,7 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   app's logo — with the words on tap or hover; a red dot (`bg-danger`, a `surface` ring) when the outside
   calendar refused it. They show while a setting says so (Settings → Calendar); a row whose whole job is
   where the item goes (Calendar) always shows its own.
+- **✨** (step 4, `ItemFill.tsx`): a 28px icon button beside the title (`text-fg-muted`, accent while its field is open or a fill waits — a bigger one pushes the title's hint onto a second line at 402px). Under the title it opens **Describe it…** (a field with no box, growing, with **Fill** `btn-sm` and ×) and, after a fill, one review line: an accent ✨, "Filled N fields" (`Truncate`), **Cancel** (ghost) and **Use these** (`btn-sm`). Each filled row carries a 14px ✨ after its label (`FillMark.tsx`, `data-tone="accent"`: work in flight, not a status) until it is kept or put back; an edit's heading line says "Not saved until you tap Use these". Both lines fade in with `motion-pop-in` only under `useMotion()`.
 - **The last group** of an edit is **Delete Item** (`text-danger`, centred): it asks, deletes and offers
   Undo like every delete.
 

@@ -11,7 +11,6 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../../../app/store'
-import { fillItemFields } from '../../../features/ai/api/aiApi'
 import { cleanItemFill, itemFillTextProblem } from '../../../features/items/itemFill'
 import { useMutationWithFeedback } from '../../hooks/useMutationWithFeedback'
 import { fillForm, fillWords, type FillField, type FillResult, type FillScreen } from './itemFillForm'
@@ -92,6 +91,8 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       const startedIn = session.current
       let raw: unknown
       try {
+        // The assistant's api module loads only when ✨ is used (the item screen opens on every page).
+        const { fillItemFields } = await import('../../../features/ai/api/aiApi')
         raw = await fillItemFields(text.trim())
       } catch (e) {
         const msg = (e as Error).message ?? ''
