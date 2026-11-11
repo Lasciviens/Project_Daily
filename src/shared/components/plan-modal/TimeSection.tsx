@@ -16,7 +16,7 @@
 import { useState } from 'react'
 import { DateCalendar } from '../DateCalendar'
 import { RecurrenceField } from './fields'
-import { DayTimeline } from './DayTimeline'
+import { AllDayBand, DayTimeline } from './DayTimeline'
 import { EndRepeatRows } from './EndRepeatRows'
 import { TimeWheel } from './TimeWheel'
 import { FieldMark } from './FieldMark'
@@ -32,7 +32,8 @@ import {
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
 } from './planModal.config'
 import { withAllDaySwitch, withCalendarField, withDate, withEnd, type PlanForm } from './planForm'
-import { END_PROBLEM_TEXT, endOf, minutesOf, timeOfMinutes, type FieldGoes, type ScreenField } from './itemScreenRules'
+import { END_PROBLEM_TEXT, endOf, endOnWheel, minutesOf, timeOfMinutes, type FieldGoes, type ScreenField } from './itemScreenRules'
+import type { TaskSection } from '../../../features/todo/types'
 import type { PlanModalConfig } from './planModal.types'
 
 export type PanelKey =
@@ -63,7 +64,7 @@ function zoneChoices(zone: string | null, savedZone: string | null | undefined) 
 
 export function TimeSection({
   form, patch, open, toggle, today, nextTime, config, occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates,
-  target, goes, own, endIssue,
+  target, goes, own, endIssue, savedSection,
 }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
@@ -82,6 +83,8 @@ export function TimeSection({
   own: { blockId?: string | null; scheduleBlockId?: string | null }
   /** Why the End Repeat can't be saved (planForm.repeatEndIssue), or null. */
   endIssue: string | null
+  /** An edit's task section: an undated task keeps it (Inbox or Backlog — the save's own rule). */
+  savedSection?: TaskSection | null
 }) {
   const day = !!occurrenceDate && form.scope === 'day'
   const repeating = form.recurrence !== 'none' && !day
@@ -92,7 +95,10 @@ export function TimeSection({
   const allowNoDate = !repeating && !day
   const date = form.date ?? today
   const dated = !!form.date || repeating
+  // The day goes where the item goes (a Google Task too); its time of day only to a calendar.
   const timeMark = <FieldMark goes={goes('time')} />
+  const clockMark = <FieldMark goes={goes('clock')} />
+  const filedUnder = SECTION_LABEL[sectionForItem({ date: form.date }, today, savedSection)]
 
   const length = form.duration
   const end = form.badEnd ?? (form.time && length ? endOf(date, form.time, length) : null)
@@ -103,7 +109,7 @@ export function TimeSection({
 
   // A switch turned back gives back what it took: an edit saves at once, so a stray tap must lose nothing.
   const [heldDay, setHeldDay] = useState<Pick<PlanForm, 'date' | 'time' | 'duration' | 'googlePick'> | null>(null)
-  const [heldTime, setHeldTime] = useState<{ time: string; duration: number | null } | null>(null)
+  const [heldTime, setHeldTime] = useState<Pick<PlanForm, 'duration' | 'alerts' | 'calendarTouched'> & { time: string } | null>(null)
 
   const onRepeat = (p: Partial<PlanForm>) =>
     patch(savedRepeat && savedKind === 'repeat' ? withStartForRepeatChange(form, p, savedRepeat, today) : p)
@@ -111,7 +117,7 @@ export function TimeSection({
   return (
     <>
       {allowNoDate && (
-        <ToggleRow label="Date" mark={timeMark} on={!!form.date} note={SECTION_LABEL[sectionForItem({ date: form.date }, today)]}
+        <ToggleRow label="Date" mark={timeMark} on={!!form.date} note={filedUnder}
           onChange={on => {
             toggle(null)
             if (on) { patch(heldDay ?? { date: today }); return }
@@ -122,14 +128,14 @@ export function TimeSection({
       )}
       {dated && (
         <>
-          <ToggleRow label="All-day" mark={timeMark} on={!form.time}
+          <ToggleRow label="All-day" mark={clockMark} on={!form.time}
             onChange={on => {
               toggle(null)
-              if (on && form.time) setHeldTime({ time: form.time, duration: form.duration })
+              if (on && form.time) setHeldTime({ time: form.time, duration: form.duration, alerts: form.alerts, calendarTouched: form.calendarTouched })
               patch(!on && heldTime ? { ...heldTime, badEnd: null } : withAllDaySwitch(form, on, target, nextTime))
             }} />
 
-          <Row label="Starts" mark={timeMark}>
+          <Row label="Starts" mark={form.time ? clockMark : timeMark}>
             <span className="flex shrink-0 gap-1.5">
               {showDate && (
                 <Pill wide label={`Starts on ${displayDate(date)} — change the day`} open={open === 'sDate'} onClick={() => toggle('sDate')}>
@@ -145,7 +151,7 @@ export function TimeSection({
             <Panel label="The day it starts">
               <div className="flex flex-col items-center gap-1">
                 <DateCalendar compact value={date} onPick={d => { patch({ ...withDate(d), badEnd: null }); toggle(null) }} />
-                {allowNoDate && <p className="text-meta text-fg-muted">Goes to {SECTION_LABEL[sectionForItem({ date: form.date }, today)]}</p>}
+                {allowNoDate && <p className="text-meta text-fg-muted">Goes to {filedUnder}</p>}
               </div>
             </Panel>
           )}
@@ -156,7 +162,7 @@ export function TimeSection({
           )}
 
           {form.time && (
-            <Row label="Ends" mark={timeMark}>
+            <Row label="Ends" mark={clockMark}>
               <span className="flex shrink-0 items-center gap-1.5">
                 {end ? (
                   <>
@@ -187,7 +193,9 @@ export function TimeSection({
           )}
           {open === 'eTime' && end && (
             <Panel label="The time it ends">
-              <TimeWheel label="Ends" value={end.time} onChange={time => patch(withEnd(form, { date: end.date, time }))} />
+              {/* No day shown (a saved weekly repeat): an end at or before the start is the next day. */}
+              <TimeWheel label="Ends" value={end.time}
+                onChange={time => patch(withEnd({ date, time: form.time }, endOnWheel(showDate ? end.date : date, form.time ?? time, time, showDate)))} />
               <div className="flex justify-center">
                 <button type="button" onClick={() => { patch({ duration: null, badEnd: null }); toggle(null) }} className={chipClass('remove')}>
                   No end · doesn&apos;t block time
@@ -198,17 +206,21 @@ export function TimeSection({
 
           {timelineDay && (
             <div className="relative before:absolute before:left-3.5 before:right-0 before:top-0 before:h-px before:bg-line">
-              <DayTimeline
-                day={timelineDay} allDay={!form.time} start={form.time ? minutesOf(form.time) : null} length={length}
-                own={own} locked={!!form.badEnd} dayNote={repeating ? `Next ${displayDate(timelineDay)}` : undefined}
-                onChange={(start, len) => patch({ time: timeOfMinutes(start), duration: len, badEnd: null })}
-              />
+              {form.time ? (
+                <DayTimeline
+                  day={timelineDay} start={minutesOf(form.time)} length={length}
+                  own={own} locked={!!form.badEnd} dayNote={repeating ? `Next ${displayDate(timelineDay)}` : undefined}
+                  onChange={(start, len) => patch({ time: timeOfMinutes(start), duration: len, badEnd: null })}
+                />
+              ) : (
+                <AllDayBand day={timelineDay} own={own} dayNote={repeating ? `Next ${displayDate(timelineDay)}` : undefined} />
+              )}
             </div>
           )}
 
           {zone && (
             <>
-              <TapRow label="Time Zone" mark={timeMark} value={`${zoneCity(zone.current)} time`} open={open === 'zone'} onClick={() => toggle('zone')} />
+              <TapRow label="Time Zone" mark={clockMark} value={`${zoneCity(zone.current)} time`} open={open === 'zone'} onClick={() => toggle('zone')} />
               {open === 'zone' && (
                 <Panel label="Time zone">
                   {zone.choices.map(c => (

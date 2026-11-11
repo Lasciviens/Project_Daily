@@ -42,7 +42,7 @@ export function WorkPage() {
   const today = todayStr()
 
   const modal = useEntityModal()
-  const openNew  = useCallback(() => modal.open({ kind: 'task', config: { heading: 'New task' }, defaults: { domain: 'work', section: 'today' } }), [modal])
+  const openNew  = useCallback(() => modal.open({ kind: 'task', defaults: { domain: 'work', section: 'today' } }), [modal])
   const openEdit = act.edit
 
   const [search, setSearch]         = useState('')

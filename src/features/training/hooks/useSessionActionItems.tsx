@@ -52,7 +52,7 @@ export function useSessionActionItems(input: {
       case 'undoSkip': return { key: k, label: 'Undo skip', icon: <Undo2 />, onSelect: () => { void a.undoSkip({ taskId: hasTask ? target.taskId : null, skipId }).catch(() => {}) } }
       case 'edit':
         if (target.kind === 'task') return { key: k, label: 'Edit session…', icon: <Pencil />, onSelect: () => modal.open({ kind: 'task', id: target.taskId }) }
-        if (target.kind === 'block') return { key: k, label: 'Edit plan…', icon: <Pencil />, onSelect: () => modal.open({ kind: 'time-block', id: target.blockId, config: { heading: 'Change plan' } }) }
+        if (target.kind === 'block') return { key: k, label: 'Edit plan…', icon: <Pencil />, onSelect: () => modal.open({ kind: 'time-block', id: target.blockId }) }
         return null
       case 'delete':   return { key: k, label: 'Delete', icon: <Trash2 />, danger: true, onSelect: () => { void a.deleteSession(plan).then(ok => { if (ok) onGone?.() }) } }
     }
@@ -62,7 +62,7 @@ export function useSessionActionItems(input: {
   const more = items.filter(i => !PRIMARY.has(i.key as SessionAction))
   if (weekly) {
     more.push(
-      { key: 'editWeekly', label: 'Change repeating plan…', icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id: weekly.templateId, config: { heading: 'Change repeating plan' } }) },
+      { key: 'editWeekly', label: 'Change repeating plan…', icon: <CalendarCog />, onSelect: () => modal.open({ kind: 'schedule-block', id: weekly.templateId }) },
       { key: 'deleteWeekly', label: 'Delete repeating plan', icon: <Trash2 />, danger: true, onSelect: () => { void a.deleteWeekly(weekly.templateId, plan.info.title).then(ok => { if (ok) onGone?.() }) } },
     )
   }

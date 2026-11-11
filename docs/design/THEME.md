@@ -708,7 +708,9 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   item as an accent bar (`bg-accent-500 text-on-accent shadow-float`, `touch-none`) with grips at its ends
   (outside the bar when it is narrow); the now-line `bg-danger`; under it a **day strip** (`surface-2`
   track, the day's things as ticks, the visible part as an accent-outlined thumb) that works as its
-  scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding.
+  scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding. An all-day item
+  gets **the day band** (`AllDayBand`) instead: one `accent-50` track with the day's things as ticks and the
+  caption line — no hours to drag, so no room taken for them.
 - **Marks** (`FieldMark.tsx`): a 14px mark after a row's label says where that field goes — Apple's logo
   (a CSS mask in `bg-fg`, so it follows the theme), Google's (its own colours: an identity colour), the
   app's logo — with the words on tap or hover; a red dot (`bg-danger`, a `surface` ring) when the outside

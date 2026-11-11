@@ -62,7 +62,7 @@ export function FieldMark({ goes, refused, always = false, className }: {
 }) {
   const { show, on } = useContext(BubbleContext)
   if (!on && !always && !refused) return null
-  const text = refused ? `${FIELD_GOES_TEXT[goes]}, but it isn't there yet — ${refused}` : FIELD_GOES_TEXT[goes]
+  const text = refused ? `${FIELD_GOES_TEXT[goes]} — ${refused}` : FIELD_GOES_TEXT[goes]
   const tap = (e: MouseEvent<HTMLSpanElement>) => { e.stopPropagation(); e.preventDefault(); show(e.currentTarget, text) }
   return (
     <span role="img" aria-label={text} title={text} onClick={tap} className={cx('relative inline-flex h-3.5 w-3.5 shrink-0 cursor-help', className)}>

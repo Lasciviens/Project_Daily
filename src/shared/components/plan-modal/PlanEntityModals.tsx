@@ -55,7 +55,6 @@ function taskEditorConfig(task: Task | undefined, config: PlanModalConfig | unde
   if (!task || !isTrainingTask(task)) return config
   return {
     ...config,
-    heading: config?.heading ?? 'Edit session',
     hideTaskFields: [...new Set([...(config?.hideTaskFields ?? []), 'startDate', 'dueDate', 'dueTime'] as const)],
     hideScheduleFields: [...new Set([...(config?.hideScheduleFields ?? []), 'category'] as const)],
     session: { taskId: task.id, firstDay: task.first_plan_date ?? null, title: task.title, routineId: task.hevy_routine_id ?? null },

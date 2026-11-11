@@ -37,8 +37,8 @@ export type CustomRepeatKind = 'every' | 'dates'
 //  the session's, 142).
 
 export interface PlanModalConfig {
-  /** No longer shown: the item screen is headed "New Item" / "Edit Item" wherever it opens (owner, 10.11.2026).
-   *  Kept so the callers that still pass one type-check. */
+  /** @deprecated Never shown: the item screen is headed "New Item" / "Edit Item" wherever it opens (10.11.2026).
+   *  Only Shop's two callers still pass it (another change owns `src/features/shop/` now); remove it with them. */
   heading?: string
   hideScheduleFields?: ScheduleField[]
   hideTaskFields?: TaskField[]

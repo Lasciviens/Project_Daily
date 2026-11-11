@@ -68,7 +68,7 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
                 <IconButton label="Move up" disabled={n === 0 || reorder.isPending} onClick={() => move(n, n - 1)}><ArrowUp /></IconButton>
                 <IconButton label="Move down" disabled={n === items.length - 1 || reorder.isPending} onClick={() => move(n, n + 1)}><ArrowDown /></IconButton>
                 <IconButton label={`Plan ${i.title}`} onClick={() => modal.open({
-                  kind: 'time-block', config: { heading: 'Plan to watch' },
+                  kind: 'time-block',
                   defaults: { title: `Watch: ${i.title}`, duration: i.type === 'show' ? 60 : 120, category: 'media', color: 'purple', alsoCreateTask: true },
                 })}><CalendarPlus /></IconButton>
                 <IconButton label={`Remove ${i.title} from the Queue`} onClick={() => remove([i], `Take “${i.title}” out of the Queue?`, `Took “${i.title}” out of the Queue`)}><X /></IconButton>
