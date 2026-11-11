@@ -9,7 +9,22 @@ interface Overlay {
   pushed: boolean
   /** While true a Back leaves it open (see decidePop's `hold`). */
   readonly holds: boolean
-  close: () => void
+  /** Still mounted and open (false once its hook cleaned up). */
+  alive: boolean
+  close: () => void | Promise<unknown>
+}
+
+/** What a Back's close answered: a promise that resolves `false` means the popup stayed open (it asked, and the owner
+ *  chose Stay) — its entry goes back on top, so the next Back closes it again instead of leaving the page. */
+function rearmIfStayed(overlay: Overlay, answer: void | Promise<unknown>) {
+  if (!answer || typeof (answer as Promise<unknown>).then !== 'function') return
+  void (answer as Promise<unknown>).then(stayedOpen => {
+    if (stayedOpen !== false || !overlay.alive || stack.includes(overlay)) return
+    stack.push(overlay)
+    const push = () => { if (overlay.alive && stack.includes(overlay)) pushEntry(overlay) }
+    if (busy()) deferred.push(push)
+    else push()
+  }, () => {})
 }
 
 // Overlays open right now, bottom to top. Only the TOP one reacts to a Back:
@@ -128,7 +143,7 @@ function closeOverlay(id: number) {
   if (at === -1) return
   const [overlay] = stack.splice(at, 1)
   try {
-    overlay.close()
+    rearmIfStayed(overlay, overlay.close())
   } catch (err) {
     // Report it without dropping the rest of this popstate's handling.
     window.setTimeout(() => { throw err })
@@ -235,16 +250,18 @@ export function whenHistorySettled(fn: () => void): () => void {
  * An entry that can't be rolled back — buried under a newer overlay's entry,
  * or under a page a link inside the popup opened — stays behind dead, and
  * Back and Forward pass over it (onPopState). While `dismissible` is false (a
- * popup saving) a Back leaves the overlay open and puts its entry back.
+ * popup saving) a Back leaves the overlay open and puts its entry back. An
+ * `onClose` that returns a promise resolving `false` stayed open (it asked
+ * first): its entry goes back too.
  */
-export function useHistoryDismiss(open: boolean, onClose: () => void, dismissible = true) {
+export function useHistoryDismiss(open: boolean, onClose: () => void | Promise<unknown>, dismissible = true) {
   const close = useRef(onClose)
   const held = useRef(!dismissible)
   useEffect(() => { close.current = onClose; held.current = !dismissible })
 
   useEffect(() => {
     if (!open || typeof window === 'undefined') return
-    const overlay: Overlay = { id: ++nextId, pushed: false, get holds() { return held.current }, close: () => close.current() }
+    const overlay: Overlay = { id: ++nextId, pushed: false, alive: true, get holds() { return held.current }, close: () => close.current() }
     const push = () => pushEntry(overlay)
     stack.push(overlay)
     let fallback = 0
@@ -260,6 +277,7 @@ export function useHistoryDismiss(open: boolean, onClose: () => void, dismissibl
     }
 
     return () => {
+      overlay.alive = false
       window.clearTimeout(fallback)
       const waiting = deferred.indexOf(push)
       if (waiting !== -1) deferred.splice(waiting, 1)

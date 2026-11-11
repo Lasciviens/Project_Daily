@@ -92,7 +92,6 @@ export function TgModals({ bp, actions, sheetGame, onCloseSheet, editId, fullId,
           open
           onClose={onClosePlan}
           mode="schedule"
-          config={{ heading: 'Plan a gaming session' }}
           defaults={{ title: `🎮 ${planGame.title}`, duration: 60, category: 'games', color: 'purple' }}
         />
       )}

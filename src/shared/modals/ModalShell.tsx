@@ -21,7 +21,8 @@ const SIZE: Record<ModalSize, string> = {
 export interface ModalShellProps {
   /** Controlled callers pass it; host-rendered modals omit it (always open). */
   open?: boolean
-  onClose: () => void
+  /** May ask first: a promise resolving `false` means it stayed open (Back's entry then goes back on top). */
+  onClose: () => void | Promise<boolean>
   /** Renders the standard sticky header with a 44px close button. */
   title?: ReactNode
   subtitle?: ReactNode
@@ -62,7 +63,7 @@ export function ModalShell({
   bodyClassName, panelClassName, ariaLabel, compact = false, grouped = false, children,
 }: ModalShellProps) {
   const depth = useModalDepth()
-  const close = () => { if (dismissible) onClose() }
+  const close = () => (dismissible ? onClose() : undefined)
   useHistoryDismiss(open, close, dismissible)
   const { setPanelEl, setBodyEl, backdropRef, handleProps } = useSheetDrag(open && mobile === 'sheet' && dismissible, close)
   const panelEl = useRef<HTMLElement | null>(null)
@@ -72,13 +73,13 @@ export function ModalShell({
   const full = mobile === 'fullscreen'
 
   const closeBtn = (
-    <button type="button" onClick={close} aria-label="Close" className={cx('icon-btn shrink-0', compact ? '-mr-1.5 h-9 w-9 text-fg-muted' : '-mr-2')}>
+    <button type="button" onClick={() => { void close() }} aria-label="Close" className={cx('icon-btn shrink-0', compact ? '-mr-1.5 h-9 w-9 text-fg-muted' : '-mr-2')}>
       <X className={compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} aria-hidden />
     </button>
   )
 
   return (
-    <Dialog open={open} onClose={close} className="relative" style={z} aria-label={title == null ? ariaLabel : undefined}>
+    <Dialog open={open} onClose={() => { void close() }} className="relative" style={z} aria-label={title == null ? ariaLabel : undefined}>
       <DialogBackdrop
         ref={backdropRef}
         transition

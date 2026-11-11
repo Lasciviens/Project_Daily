@@ -241,6 +241,11 @@ begin
                                   ad_url = 'https://www.finn.no/recommerce/forsale/item/200' where id = l.id returning * into l;
   perform t_ok(jsonb_array_length(l.prices) = 2 and l.prices -> -1 ->> 'price' = '4500' and l.for_sale_on = t_today(),
     'R4 a price cut is a dated price change at the end; the ad''s link on its marketplace; the day it went up kept');
+  update public.shop_listings set prices = '[{"on": "2026-10-20", "price": 5000}, {"on": "2026-10-20", "price": 4800}, {"on": "2026-11-01", "price": 4500}]'
+   where id = l.id returning * into l;
+  perform t_ok(jsonb_array_length(l.prices) = 3 and l.prices -> 0 ->> 'price' = '5000' and l.prices -> 1 ->> 'on' = '2026-10-20',
+    'R4 a price lowered on the day it was listed is a step of its own: the asking price stays first (two steps on one day)');
+  update public.shop_listings set prices = '[{"on": "2026-10-20", "price": 5000}, {"on": "2026-11-01", "price": 4500}]' where id = l.id;
 end $$;
 select t_ok(t_err($q$insert into public.shop_listings (item_id, listed_on, prices) values ('d2000000-0000-0000-0000-000000000004', '2026-11-01', '[{"on": "2026-11-01", "price": 1}]')$q$) like '23505 %'
         and t_err($q$insert into public.shop_listings (item_id, listed_on, prices) values ('d2000000-0000-0000-0000-0000000000a1', '2026-11-01', '[{"on": "2026-11-01", "price": 1}]')$q$) like '23514 %Only a thing you have%'

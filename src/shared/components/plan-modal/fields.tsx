@@ -274,8 +274,8 @@ export function RecurrenceField({
    *  RECURRING_EDIT_OPTIONS instead, since an existing recurring template
    *  must never offer converting itself into a one-off block. */
   options?: { value: RecurrenceMode; label: string }[]
-  /** The summary and the next three dates for every choice (the item screen's Repeat, opened in the list: owner's
-   *  point 4), not only for Monthly and Custom. */
+  /** The next three dates for every choice (the item screen's Repeat, opened in the list: owner's point 4), not only
+   *  for Monthly and Custom — without the summary, which the Repeat row above already says. */
   alwaysPreview?: boolean
   /** End Repeat (193): the next dates stop at it. */
   end?: RepeatEnd | null
@@ -339,7 +339,7 @@ export function RecurrenceField({
           <MetaLine
             className="text-meta text-fg-muted"
             items={[
-              <span key="s" className="font-medium text-fg-2">{preview.summary}</span>,
+              ...(alwaysPreview ? [] : [<span key="s" className="font-medium text-fg-2">{preview.summary}</span>]),
               preview.next.length > 0 ? `Next ${preview.next.map(d => formatDate(d)).join(', ')}` : 'No date ahead',
               ...(preview.last ? [`Last ${formatDate(preview.last)}`] : []),
             ]}

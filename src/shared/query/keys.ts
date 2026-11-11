@@ -325,6 +325,8 @@ export const qk = {
     movePreview: (switches: string, from: string) => ['icloud', 'move-preview', switches, from] as const,
     /** Whether this session signed in recently enough to connect (the token's sign-in time). */
     freshSignIn: () => ['icloud', 'fresh-sign-in'] as const,
+    /** The item screen's red dot: what the queue did with one item's row, asked once per version of the row. */
+    itemSend: (entity: string, id: string, version: string) => ['icloud', 'item-send', entity, id, version] as const,
   },
   // Settings → Calendar: the app's calendars per area (calendar_prefs, 172).
   calendarPrefs: ['calendar-prefs'] as const,

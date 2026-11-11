@@ -92,9 +92,11 @@ function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: '
       <div className="scroll-y min-h-0 flex-1 overflow-y-auto px-4 py-3">
         <RecordBody r={r} openFact={fact} pill="none" />
       </div>
-      <footer className="shrink-0 border-t border-line px-4 py-2.5">
-        <RecordFooter r={r} />
-      </footer>
+      {r.d.dirty && (
+        <footer className="shrink-0 border-t border-line px-4 py-2.5">
+          <RecordFooter r={r} />
+        </footer>
+      )}
     </section>
   )
 }

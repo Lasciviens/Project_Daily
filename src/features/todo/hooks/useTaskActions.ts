@@ -119,7 +119,7 @@ export function useTaskActions() {
     await remove.run([task.id], { title: 'Delete this task?', message: task.title, done: 'Task deleted' })
   }
 
-  const edit = (task: Task) => modal.open({ kind: 'task', id: task.id, config: { heading: 'Edit task' } })
+  const edit = (task: Task) => modal.open({ kind: 'task', id: task.id })
   /** A row tap: a training session opens as the session, anything else its editor. */
   const open = (task: Task) => (isTrainingTask(task) ? modal.open({ kind: 'training-session', taskId: task.id }) : edit(task))
 

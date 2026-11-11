@@ -61,7 +61,6 @@ export function WishesPage() {
   function plan(wish: WishItem) {
     modal.open({
       kind: 'task',
-      config: { heading: 'Plan this wish' },
       defaults: { title: wish.title },
       onSaved: result => update.mutate({
         id: wish.id,

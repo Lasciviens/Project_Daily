@@ -11,19 +11,25 @@ The owner's request (09.11.2026): a total renovation of the Shop page in phases 
 - **More subcategories and default pictures** (10.11.2026): a picture per subcategory when a thing has none of its own and the price watch found none.
 - **Fewer phases** (10.11.2026): the remaining work runs in three steps, agent by agent, without a stop between them unless a decision is needed.
 
-## Done or in review
+## Done
 
 1. **Phase 1, the page** — the owner's six points + quick wins: PR #601.
 2. **Phase 1 fixes** — migrations 187–189 (Delete's Undo, sales, purchase days; the assistant's read query), 188 site policies + Prisjakt's `condition` (new offers only), robots.txt for every site, the one-hour reuse, a blocked site retried after 7 days, Kassalapp prices older than 14 days left out, Find a price from 3 letters, the integration docs (`docs/integrations/prisjakt.md`, `kassalapp.md`, `norges-bank.md`). Security and owner reviews done; their findings fixed.
-3. **Phase 2** — Wishlist picture tiles, default pictures (`shopTaxonomy.ts`), suggested subcategories (`CategoryPicker`), Needs a look with Snooze / Got it (migration 190: `shop_signal_states`, `shop_deal_days`, `shop_price_points.in_stock`, one price-stats call). On Owned, Needs a look replaces Coming up.
+3. **Phase 2** — Wishlist picture tiles, default pictures (`shopTaxonomy.ts`), suggested subcategories (`CategoryPicker`), Needs a look with Snooze / Got it (migration 190: `shop_signal_states`, `shop_deal_days`, `shop_price_points.in_stock`, one price-stats call). On Owned, Needs a look replaces Coming up: PR #603.
+4. **Step A — Owned's new look** (was phase 3): compact rows with a tone tag, the record in a side pane from 60rem, the record's Story timeline, its sections; Owned's loading shift at 402 fixed: PR #604 (merged 11.11.2026).
+5. **Step B — Stores, price match, Just bought and Autofill** (was phases 4 + 5): stores and marketplaces as data with their rules, Norwegian law and holidays as data, deal days editable, price match from Prisjakt's offer list, claims become money, Just bought, "Look on FINN / Tise", Autofill with each fact's source, "Find it", the duplicate warning (migration 191): PR #609 (merged 11.11.2026).
+6. **Step C — Selling, owning, Stats, Quick list** (was phases 6 + 7): resale evidence and a suggested range, the ad, listings with price cuts, hand-over checklists, Update values, Something's wrong + the complaint letter, the insurance list, new vs used vs refurbished, the new Stats (migration 192): PR #608; the Quick list's Buy again, product pictures, the cheapest chain for the whole list and the scan by EAN: PR #605 (both merged 11.11.2026).
+7. **Cleanup** — the "To do later" lists of #604, #605, #608 and #609 fixed together (owner, 11.11.2026), in one cleanup PR.
 
-## The three steps left
+All three steps are done. Each one went: build → database tests → guardian + owner-critic reviews → PR → report.
 
-- **A — Owned's new look** (was phase 3): compact rows with a tone tag, the record in a side pane from 60rem, the record's Story timeline, Price · Resale · Facts · Money sections; fixes Owned's loading shift at 402.
-- **B — Stores, price match, Just bought and Autofill** (was phases 4 + 5): stores and marketplaces as data with their rules (return, Christmas return, price match, price protection, member tiers, source and read date, "you edited it — never overwrite"); Norwegian law and holidays as data; deal days editable; price match from Prisjakt's offer list; claims become money; Just bought; "Look on Finn / Tise" and "Note an ad" (moved here from phase 2). Autofill from a link, a barcode or a title, each fact with its source — first a 20-product hit-rate test; "Find it", Share from Safari (Shortcut → phone gateway), duplicate warning, the grocery scan by EAN (`/products/ean`).
-- **C — Selling, owning, Stats, Quick list** (was phases 6 + 7): resale evidence and a suggested range, write the ad (Norwegian, template per marketplace), listings with price cuts, hand-over checklists, Update values, value history; Something's wrong + the complaint letter, the insurance list, new vs used vs refurbished, the new Stats, Quick list suggestions.
+## Left for the owner
 
-Each step: build → database tests → guardian + owner-critic reviews → PR → report. Remind the owner when planning: Supabase key steps 2/3 and 3/3 (`docs/deploy-checklist.md`); the major upgrades (Tailwind 4, TypeScript 7, vite-plugin-pwa 2) wait as their own projects.
+- The Christmas-return rules carry no year: re-read them before next season.
+- XXL's "Prismatch" was left out, because its page doesn't say against whom.
+- Elkjøp's November price guarantee fits no rule shape.
+- Tise's search address is a best guess: check it once (`docs/deploy-checklist.md`).
+- Remind the owner when planning: Supabase key steps 2/3 and 3/3 (`docs/deploy-checklist.md`); the major upgrades (Tailwind 4, TypeScript 7, vite-plugin-pwa 2) wait as their own projects.
 
 ## Next, outside the Shop
 
