@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
 import { Button, TonePill, cx } from '../../../../shared/ui'
+import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
 import { boughtOn, durationLabel } from '../../ownModel'
@@ -42,6 +43,7 @@ import type { ShopRecordModel } from './useShopRecord'
  */
 export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact?: 'value'; pill: 'phone' | 'none' }) {
   const { item, state, d, today, owned } = r
+  const modal = useEntityModal()
   const openRecord = useOpenRecord()
   const watch = r.watches.get(item.id) ?? null
   const { looks, loading: looksLoading } = useNeedsALook(r.items, false)
@@ -66,6 +68,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     if (nudge?.action === 'bought') r.buy()
     else if (nudge?.action === 'value') edit('value', resale ? 'resale' : 'facts')
     else if (nudge?.action === 'day') edit('bought', 'facts')
+    else if (nudge?.action === 'claim') modal.open({ kind: 'shop-claim', id: item.id })
   }
 
   const more = r.actions.filter(a => a.more)

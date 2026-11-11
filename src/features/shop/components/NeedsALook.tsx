@@ -6,6 +6,7 @@ import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { lookLine, SNOOZE_DAYS, type Look, type LookThing } from '../shopSuggestions'
 import { LookIcon } from './lookIcon'
+import { wrapLong } from './lookFacts'
 import { isShownLink } from '../storeRows'
 import { addDays } from '../ownModel'
 
@@ -50,9 +51,9 @@ function LookFailed({ onRetry }: { onRetry: () => void }) {
  * as one piece ("2 990 NOK at elkjop.no") that only an overlong address breaks.
  */
 function lookFacts(look: Look) {
-  if (!look.where || !look.facts.length) return look.facts
+  if (!look.where || !look.facts.length) return wrapLong(look.facts)
   const last = look.facts[look.facts.length - 1]
-  return [...look.facts.slice(0, -1), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
+  return [...wrapLong(look.facts.slice(0, -1)), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
 }
 
 /** "Snooze a week", or "Snooze until 14.11.2026" when its deadline comes first — none for a row due tomorrow. */

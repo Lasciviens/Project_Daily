@@ -71,12 +71,16 @@ export function StoreRow({ store, stores, rules, policyHosts, open, onToggle, on
   const mine = rules.filter(r => r.store_id === store.id)
   const on = mine.filter(r => !r.off).length
   const refused = storeSitePolicy(store, policyHosts)
-  const meta = [
-    STORE_KIND_LABEL[store.kind],
-    store.hosts[0] + (store.hosts.length > 1 ? ` +${store.hosts.length - 1}` : ''),
-    store.member_tier ? `${store.member_tier} member` : null,
-    mine.length ? `${on} rule${on === 1 ? '' : 's'}${mine.length > on ? ` · ${mine.length - on} off` : ''}` : 'no rules yet',
-  ].filter((x): x is string => !!x)
+  // Open, the line under the name says it all once — every host, the country and currency — and leaves the member
+  // tier and the rules to the rows below it (cleanup, 11.11.2026: "Shop · elkjop.no" stood there twice).
+  const meta = (open
+    ? [STORE_KIND_LABEL[store.kind], store.hosts.join(', '), store.country, store.currency]
+    : [
+      STORE_KIND_LABEL[store.kind],
+      store.hosts[0] + (store.hosts.length > 1 ? ` +${store.hosts.length - 1}` : ''),
+      store.member_tier ? `${store.member_tier} member` : null,
+      mine.length ? `${on} rule${on === 1 ? '' : 's'}${mine.length > on ? ` · ${mine.length - on} off` : ''}` : 'no rules yet',
+    ]).filter((x): x is string => !!x)
 
   return (
     <li className="border-b border-line last:border-b-0">
@@ -90,9 +94,6 @@ export function StoreRow({ store, stores, rules, policyHosts, open, onToggle, on
       </button>
       {open && (
         <div className="flex flex-col gap-2.5 px-2 pb-3">
-          <p className="text-meta text-fg-muted">
-            {[STORE_KIND_LABEL[store.kind], store.country, store.currency].join(' · ')} · {store.hosts.join(', ')}
-          </p>
           {refused && <p data-tone="neutral" className="tone-text text-meta">{refused} doesn't let apps read its pages — the app only links to it.</p>}
           <EditableFact label="Your member tier" value={store.member_tier} placeholder="Kundeklubb, Plus…" store={store} field="member_tier" />
           <EditableFact label="Search link" value={store.search_url} placeholder={`https://www.${store.hosts[0]}/search?q={q}`} store={store} field="search_url"

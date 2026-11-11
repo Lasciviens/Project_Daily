@@ -113,8 +113,12 @@ export function storyOf(item: ShopItem, { items, links, costs, today }: StoryInp
   return out.sort((a, b) => a.day.localeCompare(b.day) || ORDER[a.kind] - ORDER[b.kind] || a.key.localeCompare(b.key))
 }
 
-/** The nudge's action: the record can do it at once (Bought, open a fact's editor) or it only says what is due. */
-export type NudgeAction = 'bought' | 'value' | 'day' | null
+/**
+ * The nudge's action: the record can do it at once (Bought, open a fact's editor, Claim) or it only says what is
+ * due. Claim only where Needs a look's own row has it — a price protection a checked rule decides
+ * (`purchaseModel.protectionOf`), never Ask AI's or a price site's — so the record and the list never differ.
+ */
+export type NudgeAction = 'bought' | 'value' | 'day' | 'claim' | null
 
 export interface Nudge {
   key: string
@@ -140,7 +144,8 @@ export interface Nudge {
 export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string): Nudge | null {
   const own = looks.find(l => l.itemId === item.id)
   if (own) {
-    const action: NudgeAction = own.action === 'bought' ? 'bought' : own.action === 'value' ? 'value' : null
+    const action: NudgeAction = own.action === 'bought' ? 'bought' : own.action === 'value' ? 'value'
+      : own.action === 'claim' && own.kind === 'cheaper_returnable' && own.claim ? 'claim' : null
     const facts = own.kind === 'old_value' && item.value_on ? [`Your "Could sell for" is ${durationLabel(item.value_on, today)} old`] : own.facts
     return { key: own.key, kind: own.kind, tone: own.tone, facts, where: own.kind === 'old_value' ? null : own.where, action }
   }
