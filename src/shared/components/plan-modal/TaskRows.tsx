@@ -34,8 +34,8 @@ export function WaitingRow({ taskId, open, toggle, mark }: Opened & { taskId: st
   const waiting = task.status === 'waiting'
   const shown = text ?? task.waiting_for ?? ''
   const commit = (on: boolean) => {
-    const waitingFor = on ? shown.trim() : undefined
-    void act.setStatus(task, on ? 'waiting' : 'open', on ? { waitingFor } : undefined).then(() => { setText(null); toggle(null) })
+    // Not waiting clears who it waited for too, so the next wait starts empty.
+    void act.setStatus(task, on ? 'waiting' : 'open', { waitingFor: on ? shown.trim() : '' }).then(() => { setText(null); toggle(null) })
   }
   return (
     <>

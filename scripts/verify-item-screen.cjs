@@ -387,7 +387,7 @@ console.log('\n== 10. Step 3: one screen for everything ==')
   // Waiting for, Parent and List: rows; a single task's menu opens the screen at the row.
   const rows = src('src/shared/components/plan-modal/TaskRows.tsx')
   check('Waiting for saves through the one status action; Parent through ParentPicker (useSetParentTask, Google\'s one level)',
-    /act\.setStatus\(task, on \? 'waiting' : 'open'/.test(rows) && /<ParentPicker task=\{task\}/.test(rows) && /useSetParentTask\(\)/.test(src('src/features/todo/components/ParentPicker.tsx')))
+    /act\.setStatus\(task, on \? 'waiting' : 'open', \{ waitingFor: on \? shown\.trim\(\) : '' \}\)/.test(rows) && /<ParentPicker task=\{task\}/.test(rows) && /useSetParentTask\(\)/.test(src('src/features/todo/components/ParentPicker.tsx')))
   check('…only on an edit of a task (not a repeat\'s rule or its day)', /taskId=\{repeating \|\| day \? null : taskId\}/.test(src('src/shared/components/plan-modal/ItemForm.tsx'))
     && /taskId=\{scheduleBlock \? null : task\?\.id\}/.test(sheet))
   const item = src('src/features/todo/components/ToDoItem.tsx')
