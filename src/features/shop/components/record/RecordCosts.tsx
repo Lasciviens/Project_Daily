@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { Button, CardHeader, Truncate } from '../../../../shared/ui'
+import { Button, CardHeader, Truncate, cx } from '../../../../shared/ui'
+import { REBATE_LABEL } from '../../complaintModel'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -66,6 +67,16 @@ export function RecordCosts({ itemId, costs }: { itemId: string; costs: readonly
             <DateInput value={day} onChange={d => d && setDay(d)} aria-label="On" className="input w-[10rem] tabular-nums" />
             <Toggle checked={back} onChange={setBack}>Money back (a rebate)</Toggle>
           </div>
+          {back && (
+            <div className="flex flex-wrap items-center gap-1.5 text-meta text-fg-muted">
+              {/* Stats counts a price match or a claim as saved by watching, by these labels. */}
+              For:
+              {(['match', 'claim'] as const).map(k => (
+                <button key={k} type="button" onClick={() => setLabel(REBATE_LABEL[k])} aria-pressed={label === REBATE_LABEL[k]}
+                  className={cx('chip', label === REBATE_LABEL[k] && 'text-accent-600')}>{k === 'match' ? 'A price match' : 'A complaint'}</button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
             <Button size="sm" variant="primary" onClick={save} loading={create.isPending} disabled={!label.trim() || !amount}>Add</Button>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>

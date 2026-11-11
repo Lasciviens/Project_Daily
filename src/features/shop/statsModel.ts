@@ -4,9 +4,10 @@
 // behind it so a tap can list them. Pure — scripts/verify-shop-owned.cjs.
 
 import type { ShopCategory, ShopItem } from './types'
-import { categoryPath, fold } from './shopModel'
+import { categoryPath, fold, localDay } from './shopModel'
+import { rebateKind, type RebateKind } from './complaintModel'
 import {
-  add, addDays, boughtOn, costOf, daysBetween, gotOf, isGone, isMine, isPossession, minus, monthsBetween, NO_CATEGORY, nokAt, paidOf, perMonth,
+  add, addDays, boughtOn, complete, costOf, daysBetween, gotOf, isGone, isMine, isPossession, minus, monthsBetween, NO_CATEGORY, nokAt, paidOf, perMonth,
   valueNowOf, ZERO, accessoriesByItem, type Amount, type MoneyCtx, type OwnedShow, type PerMonth,
 } from './ownModel'
 import type { Chain } from './chainModel'
@@ -657,4 +658,259 @@ export function scopeChains(chains: readonly Chain[], scoped: readonly ShopItem[
 /** Things you bought (kept or not) among the rows — what a scope leaves to count. Accessories ride with their item. */
 export function scopeThingCount(items: readonly ShopItem[]): number {
   return spendRows(items).filter(i => !i.accessory_of).length
+}
+
+// ── Step C: why you buy, what watching saved, waiting, value kept, stores ────
+//
+// Every one follows the picked period: purchases bought in it (a returned one is left out — its money came back),
+// money back dated in it, sales made in it, and what you had at its end.
+
+/** Bought in the period (all time: ever), kept or not, a returned one left out. */
+export function boughtIn(items: readonly ShopItem[], p: Period): ShopItem[] {
+  return spendRows(items).filter(i => {
+    const b = boughtOn(i)
+    return !!b && i.disposal !== 'returned' && (!p.from || b >= p.from) && b <= p.to
+  })
+}
+
+/** A day typed by hand is kept at noon on the dot (DateInput → middayIso); a Bought tap keeps the second it happened. */
+const typedMoment = (iso: string): boolean => /:\d\d:00(?:\.0+)?(?:Z|[+-]\d\d:?\d\d)?$/.test(iso)
+
+/**
+ * When the thing was first wished for — the row made (a model: its general wish, when older) — or null when it
+ * never was a wish: a thing added as owned. Like the record's Story, a wish is a row made on an earlier day than
+ * it was bought; on the same day only when Bought was tapped after it was made (a typed day is noon on the dot).
+ */
+export function wishedSince(i: ShopItem, byId: ReadonlyMap<string, ShopItem>): string | null {
+  if (i.status !== 'bought' || !i.bought_at || !i.created_at) return null
+  const parent = i.option_for ? byId.get(i.option_for) : undefined
+  const made = parent && parent.created_at < i.created_at ? parent.created_at : i.created_at
+  const from = localDay(made), to = localDay(i.bought_at)
+  if (from < to) return made
+  return from === to && !typedMoment(i.bought_at) && new Date(i.bought_at).getTime() > new Date(i.created_at).getTime() ? made : null
+}
+
+export type WhyKey = 'need' | 'fun' | 'unsaid'
+export type PriorityKey = 'high' | 'medium' | 'low'
+export interface WhyRow { key: string; count: number; spent: Amount; ids: string[] }
+export interface WhyIn { by: 'why' | 'priority'; rows: WhyRow[]; count: number; spent: Amount; leftOut: number }
+
+const WHY_ORDER: readonly WhyKey[] = ['need', 'fun', 'unsaid']
+const PRIORITY_ORDER: readonly PriorityKey[] = ['high', 'medium', 'low']
+
+/**
+ * Need it or just for fun: what was bought in the period by the reason it was on the list ("Need it" · "Just for
+ * fun" · not said), or — for the things that were wishes first (a thing added as owned had no priority) — by the
+ * wish's priority. What each cost at its own day's rate; returned ones are left out.
+ */
+export function needOrFun(items: readonly ShopItem[], p: Period, by: 'why' | 'priority' = 'why'): WhyIn {
+  const byId = new Map(items.map(i => [i.id, i]))
+  const rows = new Map<string, WhyRow>()
+  let leftOut = 0
+  for (const i of boughtIn(items, p)) {
+    const key = by === 'why' ? (i.reason === 'need' || i.reason === 'fun' ? i.reason : 'unsaid') : wishedSince(i, byId) ? i.priority : null
+    if (!key) { leftOut++; continue }
+    const r = rows.get(key) ?? { key, count: 0, spent: ZERO, ids: [] }
+    r.count++
+    r.spent = add(r.spent, paidOf(i))
+    r.ids.push(i.id)
+    rows.set(key, r)
+  }
+  const order: readonly string[] = by === 'why' ? WHY_ORDER : PRIORITY_ORDER
+  const list = order.map(k => rows.get(k)).filter((r): r is WhyRow => !!r)
+  return { by, rows: list, count: list.reduce((s, r) => s + r.count, 0), spent: add(...list.map(r => r.spent)), leftOut }
+}
+
+export interface SavedRow { costId: string; id: string; day: string; label: string; kind: RebateKind; amount: Amount }
+export interface SavedIn {
+  /** Claims and price matches — what watching saved. */
+  saved: Amount
+  claims: Amount
+  matches: Amount
+  /** Other money back (cashback, a gift card…) — listed, not counted as saved. */
+  other: Amount
+  rows: SavedRow[]
+}
+
+/**
+ * Saved by watching: the money back recorded in the period — a rebate on a thing (a negative extra cost, at its
+ * own day's rate) — from a claim (a complaint) or a price match. Other money back is listed beside it, not counted.
+ */
+export function savedIn(items: readonly ShopItem[], ctx: MoneyCtx, p: Pick<Period, 'from' | 'to'>): SavedIn {
+  const rows: SavedRow[] = []
+  for (const i of spendRows(items)) {
+    for (const c of ctx.costs.get(i.id) ?? []) {
+      if (!(c.amount < 0) || (p.from && c.spent_on < p.from) || c.spent_on > p.to) continue
+      rows.push({ costId: c.id, id: i.id, day: c.spent_on, label: c.label, kind: rebateKind(c.label), amount: nokAt(-c.amount, c.currency, c.fx_nok) })
+    }
+  }
+  rows.sort((a, b) => b.day.localeCompare(a.day) || a.costId.localeCompare(b.costId))
+  const sum = (k: RebateKind) => add(...rows.filter(r => r.kind === k).map(r => r.amount))
+  const claims = sum('claim'), matches = sum('match')
+  return { saved: add(claims, matches), claims, matches, other: sum('other'), rows }
+}
+
+export interface Between { spent: Amount; got: Amount; net: Amount; purchases: number; saved: Amount }
+
+/** Money between two days (both in): spent (purchases + extra costs − refunds), got back, net, purchases, saved by watching. */
+export function moneyBetween(items: readonly ShopItem[], ctx: MoneyCtx, from: string, to: string): Between {
+  const events = moneyEvents(items, ctx, from.slice(0, 7), to.slice(0, 7)).filter(e => e.day >= from && e.day <= to)
+  const spent = minus(add(...events.filter(e => e.kind === 'bought' || e.kind === 'cost').map(e => e.amount)), add(...events.filter(e => e.kind === 'refund').map(e => e.amount)))
+  const got = add(...events.filter(e => e.kind === 'sold').map(e => e.amount))
+  const purchases = events.filter(e => e.kind === 'bought').length
+  return { spent, got, net: minus(spent, got), purchases, saved: savedIn(items, ctx, { from, to }).saved }
+}
+
+export interface YearVs {
+  year: string
+  last: string
+  /** Both years are counted to this day of the year (MM-DD): today's for this year, 12-31 for a past one. */
+  toDay: string
+  /** This year, so far: last year is counted to the same day. */
+  partial: boolean
+  now: Between
+  before: Between
+}
+
+/** The picked year against the one before (all time: this year against last), this year to the same day of both. */
+export function yearVsLast(items: readonly ShopItem[], ctx: MoneyCtx, p: Period): YearVs {
+  const year = p.year ?? p.today.slice(0, 4)
+  const last = String(Number(year) - 1)
+  const partial = `${year}-12-31` > p.today
+  const toDay = partial ? p.today.slice(5) : '12-31'
+  // 29 February in a year without one counts to the 28th.
+  const end = (y: string) => (toDay === '02-29' && Number(y) % 4 !== 0 ? `${y}-02-28` : `${y}-${toDay}`)
+  return { year, last, toDay, partial, now: moneyBetween(items, ctx, `${year}-01-01`, end(year)), before: moneyBetween(items, ctx, `${last}-01-01`, end(last)) }
+}
+
+export interface WaitRow { item: ShopItem; since: string; days: number }
+export interface WaitIn {
+  /** The things bought in the period that were wishes first, the longest wait first. */
+  rows: WaitRow[]
+  /** The middle wait in days (null without any). */
+  median: number | null
+  /** Bought within a day of being added: on the day or the next. */
+  impulse: WaitRow[]
+  buckets: { key: string; label: string; count: number; ids: string[] }[]
+  /** Bought in the period but never a wish (added as owned). */
+  notWished: number
+}
+
+export const IMPULSE_DAYS = 1
+const WAIT_BUCKETS: readonly { key: string; label: string; max: number }[] = [
+  { key: 'impulse', label: 'Within a day', max: IMPULSE_DAYS },
+  { key: 'week', label: '2–7 days', max: 7 },
+  { key: 'month', label: '8–30 days', max: 30 },
+  { key: 'half', label: '1–6 months', max: 183 },
+  { key: 'long', label: 'Over 6 months', max: Infinity },
+]
+
+/** Days from wish to purchase for what was bought in the period, and the impulse buys among them. */
+export function wishToPurchase(items: readonly ShopItem[], p: Period): WaitIn {
+  const byId = new Map(items.map(i => [i.id, i]))
+  const rows: WaitRow[] = []
+  let notWished = 0
+  for (const i of boughtIn(items, p)) {
+    const since = wishedSince(i, byId)
+    if (!since) { notWished++; continue }
+    rows.push({ item: i, since, days: Math.max(0, daysBetween(localDay(since), boughtOn(i) as string)) })
+  }
+  rows.sort((a, b) => b.days - a.days || a.item.title.localeCompare(b.item.title))
+  const sorted = rows.map(r => r.days).sort((a, b) => a - b)
+  const m = Math.floor(sorted.length / 2)
+  const median = !sorted.length ? null : sorted.length % 2 ? sorted[m] : Math.round((sorted[m - 1] + sorted[m]) / 2)
+  let low = -1
+  const buckets = WAIT_BUCKETS.map(b => {
+    const inside = rows.filter(r => r.days > low && r.days <= b.max)
+    low = b.max
+    return { key: b.key, label: b.label, count: inside.length, ids: inside.map(r => r.item.id) }
+  })
+  return { rows, median, impulse: rows.filter(r => r.days <= IMPULSE_DAYS), buckets, notWished }
+}
+
+export interface ValueKeptRow {
+  key: string
+  title: string
+  /** Sold or traded in during the period: what they cost and what came back (complete amounts only). */
+  sold: { count: number; paid: number; got: number; share: number | null; ids: string[] }
+  /** Had at the period's end and still yours, with a "Could sell for" (today's estimate). */
+  held: { count: number; paid: number; worth: number; share: number | null; ids: string[] }
+}
+
+/**
+ * Value kept by category: of what left with money in the period (a sale or a trade-in), the share of the price
+ * that came back — the kept % the new-vs-used costs use — and of what you had at its end that is still yours, the
+ * share "Could sell for" keeps (today's estimate: it has no history). Gifts and amounts not complete are out.
+ */
+export function valueKeptByCategory(items: readonly ShopItem[], categories: readonly ShopCategory[], ctx: MoneyCtx, p: Period, level: CategoryLevel = 'top'): ValueKeptRow[] {
+  const byId = new Map(items.map(i => [i.id, i]))
+  const out = new Map<string, ValueKeptRow>()
+  const row = (i: ShopItem) => {
+    const owner = i.accessory_of ? byId.get(i.accessory_of) ?? i : i
+    const { key, title } = categoryBucket(owner.category_id, categories, level)
+    const r = out.get(key) ?? { key, title, sold: { count: 0, paid: 0, got: 0, share: null, ids: [] }, held: { count: 0, paid: 0, worth: 0, share: null, ids: [] } }
+    out.set(key, r)
+    return r
+  }
+  for (const i of items) {
+    if (!isPossession(i) || i.got_as_gift) continue
+    const paid = paidOf(i)
+    if (!complete(paid) || !(paid.nok > 0)) continue
+    if ((i.disposal === 'sold' || i.disposal === 'traded_in') && wentIn(i, p)) {
+      const got = gotOf(i)
+      if (!got || !complete(got)) continue
+      const r = row(i)
+      r.sold.count++; r.sold.paid += paid.nok; r.sold.got += got.nok; r.sold.ids.push(i.id)
+    } else if (isMine(i) && hadOn(i, p.to)) {
+      const v = valueNowOf(i, ctx)
+      if (!v || !complete(v)) continue
+      const r = row(i)
+      r.held.count++; r.held.paid += paid.nok; r.held.worth += v.nok; r.held.ids.push(i.id)
+    }
+  }
+  for (const r of out.values()) {
+    r.sold.share = r.sold.paid > 0 ? r.sold.got / r.sold.paid : null
+    r.held.share = r.held.paid > 0 ? r.held.worth / r.held.paid : null
+  }
+  return [...out.values()].sort((a, b) => (b.sold.paid + b.held.paid) - (a.sold.paid + a.held.paid) || a.title.localeCompare(b.title))
+}
+
+export interface StoreScore {
+  key: string
+  /** Purchases there in the period (a returned one included: it is part of the store's record). */
+  bought: number
+  returned: number
+  /** Claims and price matches recorded on those things (any day), and the money they brought back. */
+  claims: number
+  matches: number
+  back: Amount
+  /** Of those things that left with money: how many, and the share of the price that came back. */
+  kept: number
+  keptShare: number | null
+}
+
+/** A store scorecard: what was bought there in the period and what came of it — returns, claims, price matches, value kept. */
+export function storeScores(items: readonly ShopItem[], ctx: MoneyCtx, p: Period): Map<string, StoreScore> {
+  const out = new Map<string, StoreScore & { paid: number; got: number }>()
+  for (const i of spendRows(items)) {
+    const b = boughtOn(i)
+    const name = (i.platform ?? '').trim()
+    if (!b || !name || (p.from && b < p.from) || b > p.to) continue
+    const key = fold(name)
+    const s = out.get(key) ?? { key, bought: 0, returned: 0, claims: 0, matches: 0, back: ZERO, kept: 0, keptShare: null, paid: 0, got: 0 }
+    s.bought++
+    if (i.disposal === 'returned') s.returned++
+    for (const c of ctx.costs.get(i.id) ?? []) {
+      const kind = c.amount < 0 ? rebateKind(c.label) : 'other'
+      if (kind === 'other') continue
+      if (kind === 'claim') s.claims++; else s.matches++
+      s.back = add(s.back, nokAt(-c.amount, c.currency, c.fx_nok))
+    }
+    if ((i.disposal === 'sold' || i.disposal === 'traded_in') && !i.got_as_gift) {
+      const paid = paidOf(i), got = gotOf(i)
+      if (got && complete(paid) && complete(got) && paid.nok > 0) { s.kept++; s.paid += paid.nok; s.got += got.nok }
+    }
+    out.set(key, s)
+  }
+  return new Map([...out].map(([k, { paid, got, ...s }]) => [k, { ...s, keptShare: paid > 0 ? got / paid : null }]))
 }
