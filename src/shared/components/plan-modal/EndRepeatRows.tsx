@@ -11,15 +11,13 @@ import { Minus, Plus } from 'lucide-react'
 import { IconButton, MetaLine } from '../../ui'
 import { DateCalendar } from '../DateCalendar'
 import { formatDate } from '../../utils/dateFormat'
-import { addDaysIso, countEndDay, MAX_REPEAT_COUNT } from '../../../features/daily/recurrence'
+import { MAX_REPEAT_COUNT } from '../../../features/daily/recurrence'
 import { repeatEndLabel } from '../../../features/items/itemCalendarFields'
 import type { RepeatEnd } from '../../../features/items/itemTypes'
 import { ChoiceRow, Panel, TapRow } from './ItemRows'
+import { endRepeatDefaults } from './itemScreenRules'
 import { repeatPreview, repeatRowFromForm, repeatStart, type RepeatFormFields } from './planModal.config'
 import type { PanelKey } from './TimeSection'
-
-/** "After N times" starts at ten; "On a day" at the tenth time's day — the two choices agree when switched. */
-const FIRST_COUNT = 10
 
 export function EndRepeatRows({ form, end, start, today, exceptDates, problem, onChange, mark, open, toggle }: {
   form: RepeatFormFields
@@ -39,7 +37,8 @@ export function EndRepeatRows({ form, end, start, today, exceptDates, problem, o
   const count = end && 'count' in end ? end.count : null
   const row = repeatRowFromForm(form)
   const from = repeatStart(row, start)
-  const firstUntil = () => countEndDay({ ...row, effective_from: from, repeat_count: FIRST_COUNT }) ?? addDaysIso(from, 30)
+  // The tenth time from today (a saved repeat's past is never cut off by a default); the two choices agree.
+  const first = () => endRepeatDefaults({ ...row, effective_from: from, except_dates: exceptDates }, today)
   const preview = repeatPreview(form, start, today, exceptDates, end)
   return (
     <>
@@ -48,13 +47,13 @@ export function EndRepeatRows({ form, end, start, today, exceptDates, problem, o
       {open === 'repeatEnd' && (
         <Panel label="End Repeat">
           <ChoiceRow label="Never" chosen={!end} onClick={() => { onChange(null); toggle(null) }} />
-          <ChoiceRow label="On a day" hint="The last day it happens" chosen={until !== null} onClick={() => onChange({ until: until ?? firstUntil() })} />
+          <ChoiceRow label="On a day" hint="The last day it happens" chosen={until !== null} onClick={() => onChange({ until: until ?? first().until })} />
           {until !== null && (
             <div className="flex justify-center pb-1">
               <DateCalendar compact value={until} selected={[until]} min={from} onPick={d => onChange({ until: d })} />
             </div>
           )}
-          <ChoiceRow label="After a number of times" chosen={count !== null} onClick={() => onChange({ count: count ?? FIRST_COUNT })} />
+          <ChoiceRow label="After a number of times" chosen={count !== null} onClick={() => onChange({ count: count ?? first().count })} />
           {count !== null && <TimesField count={count} onChange={n => onChange({ count: n })} />}
           {problem ? (
             <p className="pt-1.5 text-meta text-danger">{problem}</p>

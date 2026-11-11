@@ -220,6 +220,14 @@ console.log('\n== 8. Step 2: the calendar fields\' rows (193) ==')
   check('on a day: none after it, that day is the last', same(pDay.next, ['2026-11-03', '2026-11-10']) && pDay.last === '2026-11-12')
   const pNever = C.repeatPreview(weekly, '2026-11-03', '2026-11-03')
   check('never: three dates, no last', pNever.next.length === 3 && pNever.last === null)
+  const fresh = R.endRepeatDefaults({ days_of_week: [2], repeat_kind: 'weekly', effective_from: '2026-11-03' }, '2026-11-03')
+  check('a new repeat\'s first End Repeat: the 10th time, as a day and as 10 times', fresh.count === 10 && fresh.until === '2027-01-05')
+  const oldRule = { days_of_week: [1, 2, 3, 4, 5], repeat_kind: 'weekly', effective_from: '2026-09-07', except_dates: ['2026-11-12'] }
+  const old = R.endRepeatDefaults(oldRule, '2026-11-11')
+  check('a repeat that began long ago: the first value is 10 times from today, never in the past (an edit saves it at once)',
+    old.until > '2026-11-11' && REC.nextOccurrences(oldRule, '2026-11-11', 10).pop() === old.until && old.count > 10)
+  check('…and the count names that same day as the database counts it (days taken out included)',
+    REC.countEndDay({ ...oldRule, repeat_count: old.count }) === old.until)
 
   const rows = src('src/shared/components/plan-modal/CalendarFieldRows.tsx')
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')

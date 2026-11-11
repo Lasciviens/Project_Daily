@@ -10,7 +10,9 @@
 //  keeps the length, so the end moves with it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { addDaysIso, dayNumber } from '../../../features/daily/recurrence'
+import {
+  addDaysIso, dayNumber, MAX_REPEAT_COUNT, nextOccurrences, occurrencesBetween, type RepeatRule,
+} from '../../../features/daily/recurrence'
 import { eventUrl } from '../../../features/calendar/calendarEventRules'
 import { cleanItemUrl } from '../../../features/items/itemCalendarFields'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
@@ -185,6 +187,26 @@ export function screenParts(
   const showGoogle = ctx.choiceShown && !day && !ctx.calendarHidden
   const allDay = showGoogle && !f.time && (ctx.target === 'calendar' || ctx.target === 'both')
   return { day, repeating, showGoogle, allDay, slotFields: !!f.time || repeating || allDay }
+}
+
+// ── End Repeat's first values ────────────────────────────────────────────────
+
+/** How many times ahead End Repeat's first value reaches. */
+export const END_REPEAT_AHEAD = 10
+
+/**
+ * End Repeat's first values when "On a day" or "After N times" is picked (an edit saves it at once): the tenth time
+ * from today — or from the start, when that is later — as the day, and as the count from the start (the database
+ * counts from effective_from, days taken out included, so countEndDay of that count is that day). A saved repeat that
+ * began long ago is never ended in the past by a default. With no tenth time ahead (picked dates), the last one.
+ */
+export function endRepeatDefaults(rule: RepeatRule, today: string): { until: string; count: number } {
+  const from = rule.effective_from && rule.effective_from > today ? rule.effective_from : today
+  const open = { ...rule, repeat_until: null, repeat_count: null }
+  const ahead = nextOccurrences(open, from, END_REPEAT_AHEAD)
+  const until = ahead[ahead.length - 1] ?? addDaysIso(from, 30)
+  const hits = rule.effective_from ? occurrencesBetween({ ...open, except_dates: [] }, rule.effective_from, until).length : 0
+  return { until, count: Math.min(MAX_REPEAT_COUNT, Math.max(1, hits || END_REPEAT_AHEAD)) }
 }
 
 // ── The URL row's link ───────────────────────────────────────────────────────
