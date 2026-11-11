@@ -37,7 +37,10 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/health/pages/HealthPage.tsx': 435,         // [413]
   'src/features/developer/pages/DeveloperPage.tsx': 400,   // [377]
   'src/features/media/pages/MediaPage.tsx': 395,           // [376]
-  'src/features/shop/pages/ShopPage.tsx': 391,             // [370] +1 on 10.11.2026: the header's "Add the suggested categories" (its taxonomy and writes load lazily)
+  'src/features/shop/pages/ShopPage.tsx': 400,             // [370] +1 on 10.11.2026 (the header's "Add the suggested categories"), 400 on 11.11.2026 (owner):
+                                                           // step B's stores — Stores and rules in the header, Just bought from every Bought, the
+                                                           // Needs-a-look rows' hooks — are part of the Shop now; their models, writes and the
+                                                           // autofill still load in their own chunks
   'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
   'src/features/work/pages/WorkPage.tsx': 375,             // [355]
   'src/features/books/pages/BooksPage.tsx': 370,           // [350]

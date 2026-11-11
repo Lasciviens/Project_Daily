@@ -113,6 +113,11 @@ FINN's own robots.txt allows an ad page (`/recommerce/forsale/item/…`) for `*`
 
 ## Log
 
+### 11.11.2026 — the stores' rules (Shop step B, migration 191)
+
+- The app reads no store's terms. Migration 191 seeds each store's rules from its own page where the site lets apps read it (owner, 11.11.2026): each page read once by a person's session with a generic client name, within its robots.txt, never finn.no or tise.com — Elkjøp's `/kundeservice/apent-kjop` and `/kundeservice/prismatch`, Jernia's `/kundeservice/frakt-og-retur/hvor-lang-bytterett-har-jeg-pa-varer-jeg-har-kjopt`, XXL's `/kundeservice/retur-og-bytte` (11.11.2026). Power's `/kundeservice/retur-og-aapent-kjoep/` answers 200 but draws its text by script: no days for an app. Komplett's robots.txt wasn't served (an HTTP/2 error), Clas Ohlson's robots.txt came back as a bot check, Proshop answers apps with Cloudflare, Jula and Dustin with 403 — none of their pages was read.
+- Where a store's own page can't be read, Prisjakt's words about it — the offer rows' `shop.uniqueSellingPoints`, seen on the pages saved by the 20-product test (10.11.2026) — are seeded as origin `price_site` ("from Prisjakt — check it", never deciding a date or a match): Power "60 dager åpent kjøp" (`p=14585952`), Komplett "Prismatch" (`p=13101596`), Clas Ohlson "Åpent kjøp i 365 dager" (`p=12105549`). `shop-price` still never reads `uniqueSellingPoints` (below).
+
 ### 10.11.2026 — the add sheet's facts (Shop step B, autofill)
 
 - `read` also answers `brand`, `ean` (13 digits, check digit verified), `model` + `modelFrom`, `itemCondition`, `prisjaktId` and `specs`, from the same schema.org block — nothing more fetched, nothing more stored; every phase 1 rule (site policies, robots.txt, the bounds, the one-hour reuse) unchanged. The EAN, a model inside a name and Prisjakt's number are in `productFacts.ts`, a second hand-mirrored block (`<product-facts>`).

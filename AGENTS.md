@@ -29,6 +29,10 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 - Don't add files the task doesn't need; scratch scripts and outputs stay out of the repo.
 - **A new external API** gets `docs/integrations/<service>.md` before its code ships: how we authenticate, the endpoints called, the fields read and written, the fields deliberately unused and why, traps, and the date it was checked. Confirm a field's real shape (one live sample or the provider's own example) before code reads it — never a guessed field.
 - The backlog is the in-app Dev Requests drawer (`dev_requests`), not a markdown list.
+- Work with a few agents at a time; there is no hard limit (owner, 11.11.2026).
+- A security review (`guardian`) is for changes to the database, Apple or Google, links, or the assistant; a screen-only change gets the automatic checks plus a look at its screenshots (owner, 11.11.2026).
+- Findings that don't block go into the PR's "To do later" list; those lists are fixed together in one cleanup PR (owner, 11.11.2026).
+- Report to the owner only when a PR is ready (owner, 11.11.2026).
 - **Raise at the start of every session until settled:**
   - The RP6 widgets were renovated on the device (13.10.2026) and the repo copies (`scripts/*esde*`, `scripts/setup-esde-widgets.sh`) may be out of date. Ask the owner to bring the current versions into the repo.
   - Settings: split "Subscriptions" into Connections (integrations) and Subscriptions (what the owner pays for)? The owner wants to decide this in a later session — ask, using the open questions in `docs/features/settings.md`.
