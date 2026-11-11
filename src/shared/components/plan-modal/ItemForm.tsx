@@ -29,6 +29,7 @@ import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/s
 import type { GoogleTarget } from '../../../features/items/itemTypes'
 import { AlertRows, ShowAsRow, TravelRow, UrlRow } from './CalendarFieldRows'
 import { FieldMark, MarkHost } from './FieldMark'
+import { FilledMark, FilledRows } from './FillMark'
 import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
@@ -84,6 +85,8 @@ interface Props {
   urlIssue: string | null
   /** Why the End Repeat can't be saved (planForm.repeatEndIssue), or null. */
   endIssue: string | null
+  /** ✨ (ItemFill.tsx): its button beside the title, its field or review line under it, the rows it filled. */
+  fill?: { button: ReactNode; panel: ReactNode; rows: ReadonlySet<string> }
 }
 
 /** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
@@ -96,7 +99,7 @@ const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
-  urlIssue, endIssue,
+  urlIssue, endIssue, fill,
 }: Props) {
   const titleId = useId()
   const [open, setOpen] = useState<PanelKey | null>(null)
@@ -122,21 +125,24 @@ export function ItemForm({
   const hasPin = form.place?.lat !== undefined && form.place?.lon !== undefined
 
   return (
-    <MarkHost on={showMarks}>
+    <FilledRows rows={fill?.rows}><MarkHost on={showMarks}>
       <div className="flex flex-col gap-4 pb-1">
         <Section>
           <div className="flex items-start gap-2 px-3.5 py-2">
             <label htmlFor={titleId} className="sr-only">Title</label>
             <TitleField id={titleId} value={typed} onChange={onTitle} autoFocus={creating}
               placeholder={creating ? 'e.g. Gym 17:30 1h every Mon Wed Fri' : 'Title'} />
+            {fill?.button}
             <FieldMark goes={goes('title')} className="mt-1.5" />
           </div>
+          {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
         </Section>
 
         {slotFields && (
           <Section title="Location">
-            <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })} mark={<FieldMark goes={goes('place')} />} />
+            <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} /></>} />
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
@@ -180,10 +186,12 @@ export function ItemForm({
         {(showNotes || slotFields) && (
           <Section title="Details">
             {slotFields && (
-              <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle} mark={<FieldMark goes={goes('url')} />}
+              <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle}
+                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} /></>}
                 onChange={url => patch(withCalendarField(form, 'url', url))} />
             )}
-            {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })} mark={<FieldMark goes={goes('notes')} className="mt-3" />} />}
+            {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })}
+              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} className="mt-3" /></>} />}
           </Section>
         )}
 
@@ -201,7 +209,7 @@ export function ItemForm({
           </Section>
         )}
       </div>
-    </MarkHost>
+    </MarkHost></FilledRows>
   )
 }
 

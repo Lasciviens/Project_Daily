@@ -21,7 +21,17 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
-//  2026-11-11 · v23 · The item screen, step 2: the rows of Apple's extra fields
+//  2026-11-11 · v24 · The item screen, step 4: ✨ beside the title fills the
+//                    fields from one sentence (useItemFill, ItemFill.tsx,
+//                    itemFillForm.ts). ai-proxy's itemFill action answers with
+//                    checked values only (items/itemFill.cleanItemFill, run
+//                    again here); they go only into rows the screen shows for
+//                    this item, through the same helpers a tap uses. Nothing
+//                    saves by itself: the filled rows carry ✨ until Add (new)
+//                    or "Use these" (an edit — its autosave waits, and what
+//                    waited before ✨ is saved first); Cancel or the toast's
+//                    Undo puts the screen back exactly as it was.
+//  2026-11-11 · v23 ·The item screen, step 2: the rows of Apple's extra fields
 //                    (migration 193; v21.11 built their data side), only on an
 //                    item with a slot or a repeat (itemScreenRules.screenParts,
 //                    the Location row's rule): Travel Time under Location;
@@ -618,9 +628,11 @@ import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
+import { FillButton, FillPanel } from './ItemFill'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
+import { useItemFill } from './useItemFill'
 import {
   applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, shapeOf, switchScope,
   urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
@@ -749,7 +761,16 @@ export function UnifiedPlanModal({
     : urlIssue ?? endIssue
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
-  const autosave = useItemAutosave({ enabled: open && editMode && !blocked, form, problem, persist })
+  // ✨ (useItemFill): a fill shows for review; an edit's autosave waits until it is kept ("Use these").
+  const fill = useItemFill({
+    open, item, form,
+    screen: { today, nextTime: nextPlanTime(), config, savedKind: editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined, occurrenceDate: scheduleBlock ? occurrenceDate : null, choiceShown },
+    take: () => ({ form, typed, parse, quickBase, keepText }),
+    put: s => { setForm(s.form); setTyped(s.typed); setParse(s.parse); setQuickBase(s.quickBase); setKeepText(s.keepText) },
+    fillInto: f => { setForm(f); setTyped(f.title); setParse(null); setQuickBase({}); setKeepText(true) },
+    flush: editMode ? () => autosave.flush() : undefined,
+  })
+  const autosave = useItemAutosave({ enabled: open && editMode && !blocked && !fill.reviewing, form, problem, persist })
 
   // Re-seed whenever the sheet (re)opens or its rows change — adjusted during
   // render (not in an effect) so a stale form never paints. The seeded form is
@@ -1023,6 +1044,7 @@ export function UnifiedPlanModal({
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
           urlIssue={urlIssue} endIssue={endIssue}
+          fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} editing={editMode} />, rows: fill.rows }}
         />
       )}
       {scheduleBlock && occurrenceDate && (
