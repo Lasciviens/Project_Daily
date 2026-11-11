@@ -246,9 +246,11 @@ check('Shop Owned: the filter bar keeps its room while loading where it showed l
     && /<KeepRoom ids="shop:ownedSummary" loading=\{isLoading\} remember=\{!itemsQ\.isError\}/.test(owned)
     && /pending=\{isLoading && foldable\}/.test(owned)
     && /const listLoading = isLoading \|\| !pictures\.ready/.test(owned))
-check('Shop: Owned\'s Things loads on its own in a SkeletonTab (a screen of room), preloaded with Stats in idle time',
-  /<Suspense fallback=\{<SkeletonTab \/>\}>\s*<OwnedView /.test(code('src/features/shop/pages/ShopPage.tsx'))
-    && /const OTHER_VIEWS = \[OwnedView, ShopStatsView\]/.test(code('src/features/shop/pages/ShopPage.tsx')))
+const shopPage = code('src/features/shop/pages/ShopPage.tsx')
+check('Shop: the Quick list and Owned\'s Things each load on their own in a SkeletonTab (a screen of room), preloaded with Stats in idle time',
+  /<Suspense fallback=\{<SkeletonTab \/>\}>\s*<QuickListView /.test(shopPage)
+    && /<Suspense fallback=\{<SkeletonTab \/>\}>\s*<OwnedView /.test(shopPage)
+    && /const OTHER_VIEWS = \[QuickListView, OwnedView, ShopStatsView\]/.test(shopPage))
 const library = code('src/features/books/components/LibraryTab.tsx')
 check('Books: Reading now keeps room while the library loads only for as many books as it showed last time (none the first time)',
   /reading: isLoading \? readingRoom > 0 && <ReadingNowSkeleton books=\{readingRoom\} \/>/.test(library) && !/isLoading \? <ReadingNowSkeleton \/>/.test(library))

@@ -116,13 +116,14 @@ const RPCS = {
     if (undo.link) store.tables.shop_item_links = (store.tables.shop_item_links ?? []).filter(l => l.id !== undo.link)
     return null
   },
-  // 187: Delete answers the snapshot its Undo puts back (the rows, their links and costs); restore writes it back.
+  // 187: Delete answers the snapshot its Undo puts back (the owner's rows by id, their links and costs); restore
+  // writes it back. Children are the accessories the app sends along (deleteScope).
   shop_delete_items: (a, store) => {
     const ids = new Set(a.p_ids ?? [])
     const take = (name, hit) => {
       const all = store.tables[name] ?? []
-      const out = all.filter(hit)
-      store.tables[name] = all.filter(r => !hit(r))
+      const out = all.filter(r => r.user_id === store.ownerId && hit(r))
+      store.tables[name] = all.filter(r => !out.includes(r))
       return out
     }
     return {

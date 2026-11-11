@@ -31,6 +31,10 @@
 //     Kiwi and Coop have no current prices, but their old ones still come
 //     back, often from 2024 (Kassalapp's FAQ, 10.11.2026): passed on as they
 //     are, and the app leaves out a price not checked in 14 days.
+//   { mode: 'grocery_ean', ean } (10.11.2026) → { mode, products: [≤1 hit] } —
+//     GET /products/ean/{ean} for a scanned barcode (the search matches names
+//     only). The EAN must be 8–14 digits as sent, else 400 `bad_ean`; an
+//     unknown one (404) is an empty list. Not tried live (no key).
 
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 
@@ -132,7 +136,7 @@ async function kassal(path: string, key: string, init?: RequestInit): Promise<Re
     ...init,
     headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}) },
   })
-  if (!r.ok) throw new Error(`kassalapp ${r.status}`)
+  if (!r.ok) throw Object.assign(new Error(`kassalapp ${r.status}`), { status: r.status })
   return await r.json()
 }
 
@@ -156,6 +160,103 @@ function groceryHit(item: Record<string, unknown>) {
     store: (store.name as string) ?? null,
   }
 }
+
+// ── grocery_ean (10.11.2026): a scanned barcode's product ──────────────────
+// Shape from Kassalapp's own example of GET /products/ean/{ean} (kassal.app/api)
+// and its OpenAPI spec (kassal.app/docs/api.json, ProductComparisonResource),
+// both read 10.11.2026 — no live sample (no key in development):
+//   { data: { ean: string | null, products: [{ name, brand, image,
+//     store: { name, code, url, logo }, current_price: { price, unit_price,
+//     date }, … }], allergens, nutrition, labels } }
+// One product row per chain. The spec types `store` and `current_price` as a
+// list of those objects (or null) where the example shows one object: both are
+// read. Every field is checked here, where it enters. The block runs in
+// scripts/verify-shop-quick.cjs against that example.
+// <grocery-ean>
+
+/** An EAN as it may go into Kassalapp's address: digits only, 8 to 14 of them (EAN-8, UPC-A, EAN-13, GTIN-14). */
+const EAN_RE = /^\d{8,14}$/
+const PICTURE_MAX = 2048
+
+/** Text from Kassalapp: a string, trimmed and at most `max` characters, else null. */
+function shortText(v: unknown, max = 300): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (!t) return null
+  if (t.length <= max) return t
+  const cut = t.slice(0, max)
+  return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
+}
+
+/**
+ * A picture only as a web address on a public host name, made https (http: and "//cdn…" too), of up to
+ * 2 048 characters — never a path, data: or javascript:, a user or password part, an IP address (v4 or v6),
+ * localhost, a .local / .localhost name or a single-label host. The app's `groceryModel.webPicture`, mirrored.
+ */
+function webPicture(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s || s.length > PICTURE_MAX || /\s/.test(s) || [...s].some(ch => ch < ' ' || ch === '\u007f')) return null
+  let url: URL
+  try { url = new URL(s.startsWith('//') ? `https:${s}` : s) } catch { return null }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) return null
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (!host.includes('.') || host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null
+  if (host === 'localhost' || /\.(local|localhost)$/.test(host)) return null
+  url.protocol = 'https:'
+  return url.href.length <= PICTURE_MAX ? url.href : null
+}
+
+const asObject = (v: unknown): Record<string, unknown> | null =>
+  (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null)
+
+/** An object, or the first object of a list (the spec's shape for `store` and `current_price`), else null. */
+const oneObject = (v: unknown) => asObject(Array.isArray(v) ? v[0] : v)
+
+/** The most a grocery price may be (the app's `PRICE_MAX`): from 10 000 000 up it is a misread or hostile answer. */
+const PRICE_MAX = 1e7
+
+/** An amount: a number from 0 up to below `PRICE_MAX`, or such a number written as text ("72.90", "72,90"), else null. */
+function amount(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\s*\d+([.,]\d+)?\s*$/.test(v) ? Number(v.replace(',', '.')) : NaN
+  return Number.isFinite(n) && n >= 0 && n < PRICE_MAX ? n : null
+}
+
+/** A chain's price row: its amount and its date when that reads as an ISO time. */
+function eanPrice(v: unknown): { price: number | null; date: string | null } {
+  const o = oneObject(v)
+  const date = o && typeof o.date === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(o.date) ? o.date : null
+  return { price: amount(o ? o.price : v), date }
+}
+
+/**
+ * The product a barcode is, as one grocery hit: the EAN asked for (Kassalapp's
+ * own spelling when it gives the same number, leading zeros aside — anything
+ * else is no hit), the name, brand, price and chain of the row with the
+ * newest price date (the first named row without dates), and that row's
+ * picture, else the first web picture another chain gives.
+ */
+function eanHit(data: unknown, asked: string) {
+  const d = asObject(data)
+  if (!d || !EAN_RE.test(asked)) return null
+  const key = (s: string) => s.replace(/^0+/, '')
+  const given = typeof d.ean === 'string' && EAN_RE.test(d.ean) ? d.ean : null
+  if (d.ean != null && (!given || key(given) !== key(asked))) return null
+  const rows = (Array.isArray(d.products) ? d.products : [])
+    .map(asObject)
+    .filter((p): p is Record<string, unknown> => p != null && shortText(p.name) != null)
+  if (!rows.length) return null
+  const priced = rows.map(p => ({ p, ...eanPrice(p.current_price) }))
+  const best = priced.reduce((a, b) => ((b.date ?? '') > (a.date ?? '') ? b : a), priced[0])
+  return {
+    ean: given ?? asked,
+    name: shortText(best.p.name) as string,
+    brand: shortText(best.p.brand),
+    image: webPicture(best.p.image) ?? rows.map(p => webPicture(p.image)).find(Boolean) ?? null,
+    price: best.price,
+    store: shortText(oneObject(best.p.store)?.name, 100),
+  }
+}
+// </grocery-ean>
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -181,6 +282,23 @@ Deno.serve(async (req: Request) => {
       return json({ products: rows.map(groceryHit).filter(p => p.name && p.ean) })
     } catch (e) {
       return json({ products: [], error: String((e as Error).message ?? e) })
+    }
+  }
+
+  // Answers carry the mode, so the app can tell this function from one deployed before it (whose `{ ean }` answer is Food's).
+  if (body.mode === 'grocery_ean') {
+    if (!key) return json({ mode: 'grocery_ean', products: [], error: 'not_configured' })
+    // Checked as sent — never cleaned into shape: only 8–14 digits go into the address.
+    const ean = typeof body.ean === 'string' ? body.ean : ''
+    if (!EAN_RE.test(ean)) return json({ mode: 'grocery_ean', products: [], error: 'bad_ean' }, 400)
+    try {
+      const j = await kassal(`/products/ean/${ean}`, key)
+      const hit = eanHit(j.data, ean)
+      return json({ mode: 'grocery_ean', products: hit ? [hit] : [] })
+    } catch (e) {
+      // An EAN Kassalapp doesn't know is "no product", not a failure.
+      if ((e as { status?: number }).status === 404) return json({ mode: 'grocery_ean', products: [] })
+      return json({ mode: 'grocery_ean', products: [], error: String((e as Error).message ?? e) })
     }
   }
 

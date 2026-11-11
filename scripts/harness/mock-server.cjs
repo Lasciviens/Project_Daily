@@ -14,7 +14,7 @@
 // How to start the app and extend the data: README.md in this folder.
 
 const { Store, handleRest } = require('./postgrest.cjs')
-const { OWNER, buildTables, RELATIONS } = require('./seed.cjs')
+const { OWNER, buildTables, RELATIONS, DEFAULTS } = require('./seed.cjs')
 const { RPCS } = require('./rpc.cjs')
 const { FUNCTIONS } = require('./functions.cjs')
 
@@ -161,7 +161,7 @@ function supabaseAnswer(request, url, store, log) {
  */
 async function installMocks(context, opts = {}) {
   const log = opts.log || (process.env.HARNESS_LOG ? (m) => console.error(`[harness] ${m}`) : () => {})
-  const store = new Store({ tables: buildTables(opts.now || new Date()), relations: RELATIONS, ownerId: OWNER.id, log })
+  const store = new Store({ tables: buildTables(opts.now || new Date()), relations: RELATIONS, ownerId: OWNER.id, log, defaults: DEFAULTS })
   for (const [name, rows] of Object.entries(opts.tables || {})) store.tables[name] = rows
 
   // Vite serves nothing outside the project folder: in a git worktree whose

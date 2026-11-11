@@ -591,8 +591,10 @@ console.log('\n13 · Grocery prices by chain')
   const hits = [{ ean: '7038010009457', name: 'Lettmelk laktosefri', brand: null, image: null, price: 27.5, store: 'Meny' }, { ean: '0012345678905', name: 'Scanned', brand: null, image: null, price: null, store: null }]
   check('a scan is the hit with that EAN — leading zeros aside (UPC-A ↔ EAN-13)', G.scanMatch(hits, '012345678905').name === 'Scanned' && G.scanMatch(hits, '7038010009457').name === 'Lettmelk laktosefri')
   check('…never a hit that only mentions the digits, and nothing without hits', G.scanMatch(hits, '7038010000737') === null && G.scanMatch(undefined, '123') === null && G.scanMatch(hits, '') === null)
-  check('picking a product keeps a row\'s own picture', JSON.stringify(G.matchPatch({ image_url: 'mine' }, { ean: '1', image: 'theirs' })) === '{"ean":"1"}'
-    && JSON.stringify(G.matchPatch({ image_url: null }, { ean: '1', image: 'theirs' })) === '{"ean":"1","image_url":"theirs"}' && JSON.stringify(G.matchPatch({}, { ean: '1', image: null })) === '{"ean":"1"}')
+  const theirs = 'https://img.example.com/theirs.jpg'
+  check('picking a product keeps a row\'s own picture', JSON.stringify(G.matchPatch({ image_url: 'https://example.com/mine.jpg' }, { ean: '1', image: theirs })) === '{"ean":"1"}'
+    && JSON.stringify(G.matchPatch({ image_url: null }, { ean: '1', image: theirs })) === `{"ean":"1","image_url":"${theirs}"}` && JSON.stringify(G.matchPatch({}, { ean: '1', image: null })) === '{"ean":"1"}')
+  check('…and takes Kassalapp\'s picture only as a web link (more in verify-shop-quick)', JSON.stringify(G.matchPatch({}, { ean: '1', image: 'javascript:alert(1)' })) === '{"ean":"1"}')
 }
 
 console.log('\n14 · Stats filters: the scope, card filters, subcategories, accessories in lists')

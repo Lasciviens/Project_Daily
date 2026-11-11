@@ -4,7 +4,7 @@ import { Button, Card, CardHeader, Skeleton, TonePill, Truncate, cx } from '../.
 import { Peek } from '../shopKit'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { formatMoney } from '../../../settings/subscriptionRules'
-import { basketByChain, basketLines, leftOutNote, type BasketLine, type GroceryPrice } from '../../groceryModel'
+import { basketByChain, basketLines, leftOutNote, wholeList, wholeListWords, type BasketLine, type GroceryPrice, type WholeList } from '../../groceryModel'
 import type { ShopItem } from '../../types'
 
 /** Chains shown before "Show all": the full baskets lead, so these are the ones that matter. */
@@ -29,16 +29,36 @@ function coverage(l: BasketLine, priced: number): string {
 }
 
 /**
+ * The basket's answer in one line, first: "Cheapest for the whole list: Oda
+ * · 137.70 NOK" (or the tied chains, the only one that has it all, or the one
+ * with the most). The chain is cut before the amount on a narrow card (a
+ * tap shows it whole).
+ */
+function WholeListLine({ answer }: { answer: WholeList }) {
+  const w = wholeListWords(answer, n => formatMoney(n, 'NOK'))
+  const tone = answer.kind === 'none' ? 'text-fg-2' : 'text-fg'
+  return (
+    <p className="mb-2 flex min-w-0 items-baseline gap-1.5 rounded-row bg-surface-2 px-3 py-2 text-body">
+      <span className="shrink-0 text-fg-2">{w.lead}</span>
+      <Truncate as="span" className={cx('min-w-0 font-semibold', tone)}>{w.chain}</Truncate>
+      <span className={cx('ml-auto shrink-0 pl-1 font-semibold tabular-nums', tone)}>{w.value}</span>
+    </p>
+  )
+}
+
+/**
  * What the matched quick-list rows cost at each chain with a current
- * Kassalapp price — full baskets first (only they compare), the rest with
- * what they lack. Old prices (REMA 1000, Kiwi and Coop still come back with
- * theirs, often from 2024) are left out after 14 days, and the footer says so
- * and why, with the chains on a tap — a footer only when it has a line.
+ * Kassalapp price — where the whole list is cheapest in one line first, then
+ * full baskets (only they compare), the rest with what they lack. Old prices
+ * (REMA 1000, Kiwi and Coop still come back with theirs, often from 2024) are
+ * left out after 14 days, and the footer says so and why, with the chains on
+ * a tap — a footer only when it has a line.
  */
 export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }: Props) {
   const [all, setAll] = useState(false)
   const basket = useMemo(() => basketByChain(rows, prices, today), [rows, prices, today])
   const lines = useMemo(() => basketLines(basket), [basket])
+  const answer = useMemo(() => wholeList(basket, rows.length), [basket, rows.length])
   // The footer's lines: how fresh the prices are, and how many old ones were left out (which chains: on a tap).
   const from = basket.oldest && !loading && !error ? basket.oldest : null
   const leftOut = !loading && !error ? leftOutNote(basket) : null
@@ -63,6 +83,7 @@ export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }
     <p className="text-body text-fg-muted">No chain has a price for {matched === 1 ? 'this product' : 'these products'} right now.</p>
   ) : (
     <>
+      {answer && <WholeListLine answer={answer} />}
       <ul className="flex flex-col divide-y divide-line">
         {(all ? lines : lines.slice(0, SHOWN)).map(l => (
           <li key={l.chain} className="flex items-start gap-3 py-2 first:pt-0">

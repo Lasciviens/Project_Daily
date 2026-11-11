@@ -4,9 +4,9 @@ import { Button, Card, IconButton } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
 import { BarcodeScanner } from '../../../recipes/components/BarcodeScanner'
 import { useCreateShopItem } from '../../hooks/useShop'
-import { scanMatch } from '../../groceryModel'
+import { scanEan, scanMatch } from '../../groceryModel'
 import { quickAddInput } from '../../shopModel'
-import { useScanLookup } from '../../hooks/useShopPrices'
+import { useScanLookup } from '../../hooks/useGrocery'
 
 /**
  * Always visible; only the item clears after Add, so a run of things for one
@@ -36,10 +36,13 @@ export function QuickAdd({ stores }: { stores: readonly string[] }) {
   // Stable while the camera runs: BarcodeScanner restarts it whenever this changes.
   const onDetected = useCallback((code: string) => {
     setScanOpen(false)
+    // Only an EAN (8–14 digits) is looked up; anything else never reaches Kassalapp.
+    if (!scanEan(code)) { toast.warning('That isn’t a product barcode (EAN) — try the barcode on the pack'); return }
     setLooking(true)
     lookUp(code)
-      .then(hits => {
-        const hit = scanMatch(hits, code)
+      .then(found => {
+        // The answer must carry the scanned EAN (leading zeros aside), never just any product.
+        const hit = scanMatch(found ? [found] : [], code)
         if (!hit) { toast.warning(`No product found for barcode ${code}`); return }
         addRow({ input: quickAddInput({ title: hit.name, store, noRush, ean: hit.ean, image: hit.image }) }, { onSuccess: () => setNoRush(false) })
       })

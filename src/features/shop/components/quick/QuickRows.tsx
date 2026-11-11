@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { Hourglass, MoreHorizontal, Pencil, Search, Trash2, Zap } from 'lucide-react'
 import { MetaLine, Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
@@ -5,7 +6,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { formatMoney } from '../../../settings/subscriptionRules'
 import { useDeleteShopItems, useUpdateShopItem } from '../../hooks/useShop'
-import { chainName, chainPrices, cheapestStore, type GroceryPrice } from '../../groceryModel'
+import { chainName, chainPrices, cheapestStore, webPicture, type GroceryPrice } from '../../groceryModel'
 import { currencyOf, isNoRush, priceLabel } from '../../shopModel'
 import type { ShopItem } from '../../types'
 
@@ -29,6 +30,25 @@ function Tick({ label, hint, onClick }: { label: string; hint: string; onClick: 
       className="group grid h-11 w-11 shrink-0 place-items-center rounded-control">
       <span className="h-5 w-5 rounded-[6px] border-2 border-line-strong transition-colors group-hover:border-success" />
     </button>
+  )
+}
+
+/**
+ * A row's product picture, small at the row's end: its own picture link
+ * (Kassalapp's, saved when the product was matched and the row had none),
+ * only a web link (`webPicture`) — and nothing at all without one or when it
+ * fails to load: never a stock photo or a placeholder taking a row's room.
+ * The well's colour shows through a product photo's white ground.
+ */
+export function RowPicture({ src, className }: { src: string | null | undefined; className?: string }) {
+  const link = webPicture(src)
+  const [failed, setFailed] = useState<string | null>(null)
+  if (!link || failed === link) return null
+  return (
+    <span className={cx('grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-row bg-well', className)}>
+      <img src={link} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(link)}
+        className="h-full w-full object-contain p-0.5 mix-blend-multiply" />
+    </span>
   )
 }
 
@@ -68,6 +88,8 @@ export function QuickRow({ item, price, onFindPrice }: { item: ShopItem; price: 
           </span>
         )}
       </button>
+      {/* mt-1 centres the 36px picture on the 44px tick beside it. */}
+      <RowPicture src={item.image_url} className="mt-1" />
       <Menu as="div" className="shrink-0">
         <MenuButton className="icon-btn text-fg-muted" aria-label={`More for ${item.title}`} title="More">
           <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />

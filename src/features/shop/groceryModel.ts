@@ -171,8 +171,18 @@ export function chainPrices(p: GroceryPrice | undefined, today: string): { chain
 const eanKey = (code: string) => code.replace(/\D/g, '').replace(/^0+/, '')
 
 /**
- * The product a scanned barcode is: the search hit carrying that EAN, or
- * null — never a hit that only happens to mention the digits.
+ * The barcode a scan or a typed code may look up: digits only, 8 to 14 of
+ * them (EAN-8, UPC-A, EAN-13, GTIN-14) — the same rule `food-search` checks
+ * before the code goes into Kassalapp's address — else null.
+ */
+export function scanEan(code: string): string | null {
+  const v = code.trim()
+  return /^\d{8,14}$/.test(v) ? v : null
+}
+
+/**
+ * The product a scanned barcode is: the hit carrying that EAN, or null —
+ * never a hit that only happens to mention the digits.
  */
 export function scanMatch(hits: readonly GroceryHit[] | undefined, code: string): GroceryHit | null {
   const key = eanKey(code)
@@ -180,9 +190,138 @@ export function scanMatch(hits: readonly GroceryHit[] | undefined, code: string)
   return hits.find(h => eanKey(h.ean) === key) ?? null
 }
 
-/** Picking a product for a row: its EAN, and its picture only when the row has none yet. */
-export function matchPatch(row: { image_url?: string | null }, hit: Pick<GroceryHit, 'ean' | 'image'>): { ean: string; image_url?: string } {
-  return { ean: hit.ean, ...(!row.image_url && hit.image ? { image_url: hit.image } : {}) }
+/** The longest picture link kept (as the database's shop_web_link and priceRead's keptText keep one). */
+const PICTURE_MAX = 2048
+
+/**
+ * A picture's link as a row may keep it, for pictures that come from
+ * Kassalapp: one web address on a public host name, as https (an http: or
+ * "//cdn…" link is made https), of up to 2 048 characters — never a path, a
+ * data:, blob: or javascript: link, one with a space, a control character, a
+ * user or password part, an IP address (v4 or v6) for a host, localhost,
+ * a .local or .localhost name, or a single-label host. Mirrored in
+ * `food-search` (`verify-shop-quick` compares the two).
+ */
+export function webPicture(s: unknown): string | null {
+  const v = typeof s === 'string' ? s.trim() : ''
+  if (!v || v.length > PICTURE_MAX || /\s/.test(v) || [...v].some(ch => ch < ' ' || ch === '\u007f')) return null
+  let url: URL
+  try { url = new URL(v.startsWith('//') ? `https:${v}` : v) } catch { return null }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) return null
+  const host = url.hostname.toLowerCase().replace(/\.$/, '')
+  if (!host.includes('.') || host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null
+  if (host === 'localhost' || /\.(local|localhost)$/.test(host)) return null
+  url.protocol = 'https:'
+  return url.href.length <= PICTURE_MAX ? url.href : null
+}
+
+/** The most a grocery price may be: anything from 10 000 000 up is no price (a misread or hostile answer). */
+export const PRICE_MAX = 1e7
+
+/** Text from an answer: a string, trimmed and at most `max` characters, else null. */
+function textOf(v: unknown, max = 300): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  if (!t) return null
+  if (t.length <= max) return t
+  const cut = t.slice(0, max)
+  return /[\ud800-\udbff]$/.test(cut) ? cut.slice(0, -1) : cut
+}
+
+/**
+ * One product as `food-search` answers it (`grocery_search`, `grocery_ean`),
+ * checked where it enters the app: an EAN of 8–14 digits and a name, or no
+ * hit at all; a brand and a store as short text; a picture only as a web
+ * link (`webPicture`); a price only as an amount from 0 up to below `PRICE_MAX`.
+ */
+export function groceryHitOf(raw: unknown): GroceryHit | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const ean = typeof r.ean === 'string' && /^\d{8,14}$/.test(r.ean) ? r.ean : null
+  const name = textOf(r.name)
+  if (!ean || !name) return null
+  const price = typeof r.price === 'number' && Number.isFinite(r.price) && r.price >= 0 && r.price < PRICE_MAX ? r.price : null
+  return { ean, name, brand: textOf(r.brand), image: webPicture(r.image), price, store: textOf(r.store, 100) }
+}
+
+/** The same picture link, compared exactly in its kept form (`webPicture`: an older row may hold the http: spelling of it). */
+function samePicture(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = webPicture(a)
+  return x != null && x === webPicture(b)
+}
+
+/**
+ * Picking a product for a row: its EAN, and its picture (a web link only)
+ * when the row has none yet. `was` is the row's product until now, when the
+ * search found it: a picture that is exactly that product's came with the
+ * old match, not from the owner, so the new product's takes its place (or
+ * none, when it has none). Any other picture is the row's own and stays.
+ */
+export function matchPatch(row: { image_url?: string | null }, hit: Pick<GroceryHit, 'ean' | 'image'>, was?: Pick<GroceryHit, 'image'> | null): { ean: string; image_url?: string | null } {
+  const picture = webPicture(hit.image)
+  if (row.image_url && samePicture(row.image_url, was?.image)) return { ean: hit.ean, image_url: picture }
+  return { ean: hit.ean, ...(!row.image_url && picture ? { image_url: picture } : {}) }
+}
+
+/** "Remove match": the EAN goes, and the picture too when it is exactly the old product's (`was`). */
+export function unmatchPatch(row: { image_url?: string | null }, was?: Pick<GroceryHit, 'image'> | null): { ean: null; image_url?: null } {
+  return { ean: null, ...(row.image_url && samePicture(row.image_url, was?.image) ? { image_url: null } : {}) }
+}
+
+/** What the basket's first line answers: where the whole list (or the priced part of it) is cheapest. */
+export interface WholeList {
+  /** cheapest: two chains or more have every priced row · only: one has · none: no chain has them all. */
+  kind: 'cheapest' | 'only' | 'none'
+  /** The chain (or the tied chains, A–Z) the answer names: the cheapest full basket, or the one with the most rows. */
+  chains: string[]
+  /** That basket's total — for `none`, only of the rows that chain has. */
+  total: number
+  covered: number
+  priced: number
+  /** Every open row is priced, so the answer is about the whole list. */
+  whole: boolean
+}
+
+/**
+ * Where the list is cheapest in one go, from the per-chain basket (current
+ * prices only — every price came in through `byChain`): the cheapest chain
+ * that has every priced row, each tied one with it; else the chain that has
+ * the most. `rows` is how many open rows the list has — fewer priced means
+ * the answer is about the priced ones only. Null with nothing priced.
+ */
+export function wholeList(b: Basket, rows: number): WholeList | null {
+  if (!b.priced || !b.rows.length) return null
+  const whole = b.priced === rows
+  const full = b.rows.filter(r => r.covered === b.priced)
+  if (!full.length) {
+    const most = b.rows[0]
+    return { kind: 'none', chains: [most.chain], total: most.total, covered: most.covered, priced: b.priced, whole }
+  }
+  const best = full[0]
+  const tied = full.filter(r => r.total === best.total).map(r => r.chain).sort((x, y) => x.localeCompare(y))
+  return { kind: full.length === 1 ? 'only' : 'cheapest', chains: tied, total: best.total, covered: best.covered, priced: b.priced, whole }
+}
+
+/** "Oda", "Joker or Spar", "Joker, Meny or Spar". */
+function chainList(names: readonly string[]): string {
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
+}
+
+/**
+ * The basket's first line in three parts — what it answers, the chain, and
+ * the amount (or the share it has) — so a narrow card cuts the chain, never
+ * the amount, and the lead stays short enough for a phone: "Cheapest for the
+ * whole list:" · "Oda" · "137.70 NOK". With rows not priced yet it names the
+ * priced ones ("Cheapest for 3 priced items:"); "Only one chain has all 3:";
+ * "No chain has all 3 — most at" · "Meny" · "2 of 3".
+ */
+export function wholeListWords(w: WholeList, money: (n: number) => string): { lead: string; chain: string; value: string } {
+  const chain = chainList(w.chains)
+  const all = w.priced === 1 ? 'it' : w.priced === 2 ? 'both' : `all ${w.priced}`
+  if (w.kind === 'none') return { lead: `No chain has ${all} — most at`, chain, value: `${w.covered} of ${w.priced}` }
+  if (w.kind === 'only') return { lead: `Only one chain has ${all}:`, chain, value: money(w.total) }
+  const scope = w.whole ? 'the whole list' : w.priced === 1 ? 'the priced item' : `${w.priced} priced items`
+  return { lead: `Cheapest for ${scope}:`, chain, value: money(w.total) }
 }
 
 export interface BasketLine extends BasketRow {

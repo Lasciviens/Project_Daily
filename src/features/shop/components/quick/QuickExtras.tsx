@@ -1,23 +1,24 @@
 import { useState } from 'react'
 import { Check, ChevronDown, RotateCcw } from 'lucide-react'
 import { Card, CardHeader, Truncate, cx } from '../../../../shared/ui'
-import { useCreateShopItem, useUpdateShopItem } from '../../hooks/useShop'
+import { useAddAgain, useUpdateShopItem } from '../../hooks/useShop'
 import { buyAgainInput, type BuyAgain } from '../../shopModel'
 import type { ShopItem } from '../../types'
 
 /**
- * Things bought from this list before — one tap adds a fresh row (the old
+ * Things bought from this list before that no rhythm says are due (those are
+ * Buy again, above the list) — one tap adds a fresh row with Undo (the old
  * ones stay as the record of earlier purchases, which is what ×N counts). The
  * new row keeps the product it was matched to, so its price comes back too.
  */
-export function BuyAgainCard({ rows }: { rows: readonly BuyAgain[] }) {
-  const create = useCreateShopItem()
+export function BoughtBeforeCard({ rows }: { rows: readonly BuyAgain[] }) {
+  const { add } = useAddAgain()
   return (
     <Card>
-      <CardHeader title="Buy again" />
+      <CardHeader title="Bought before" />
       <div className="flex flex-wrap gap-1.5">
         {rows.map(r => (
-          <button key={r.row.id} type="button" onClick={() => create.mutate({ input: buyAgainInput(r), quiet: true })}
+          <button key={r.row.id} type="button" onClick={() => add(buyAgainInput(r))}
             title={`Put ${r.title} back on the quick list`}
             className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover">
             <RotateCcw aria-hidden className="h-3 w-3 shrink-0 text-fg-faint" />
