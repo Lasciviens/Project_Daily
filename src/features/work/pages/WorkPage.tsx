@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { AlertTriangle, Check, PanelRightClose, PanelRightOpen, Plus, Zap } from 'lucide-react'
-import { useWorkTasks, useCreateTask } from '../../todo/hooks/useTodos'
+import { useWorkTasks } from '../../todo/hooks/useTodos'
 import { useTaskActions } from '../../todo/hooks/useTaskActions'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, IconButton, PageBoard, PageContainer, PageHeader, Skeleton, TonePill, usePageStep } from '../../../shared/ui'
@@ -36,7 +36,6 @@ function usePersisted<T extends string>(key: string, initial: T): [T, (v: T) => 
 
 export function WorkPage() {
   const { data: tasks = [], isLoading, isError } = useWorkTasks()
-  const createTask = useCreateTask()
   // THE task actions (useTaskActions) — the same as Daily's and Home's rows.
   const act = useTaskActions()
   const today = todayStr()
@@ -87,9 +86,6 @@ export function WorkPage() {
   }, [act, byId])
   const toggleFocus = useCallback((task: Task) => { void act.toggleFocus(task) }, [act])
 
-  const handleQuickAdd = useCallback((title: string) => {
-    createTask.mutate({ title, section: 'today', domain: 'work', priority: 'medium' })
-  }, [createTask])
 
   const railOpen = rail === 'open'
   const cardActions = { onStatusChange: handleStatusChange, onDelete: handleDelete, onEdit: openEdit, onFocus: toggleFocus }
@@ -118,8 +114,6 @@ export function WorkPage() {
           onSearchChange={setSearch}
           prio={prioFilter}
           onPrioChange={setPrioFilter}
-          onQuickAdd={handleQuickAdd}
-          quickAddBusy={createTask.isPending}
         />
         {view === 'board'
           ? <WorkBoard tasks={filtered} focusedTaskIds={focusedIds} onAddTask={openNew} {...cardActions} />

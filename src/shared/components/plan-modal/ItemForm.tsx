@@ -90,6 +90,8 @@ interface Props {
   fill?: { button: ReactNode; panel: ReactNode; rows: ReadonlySet<string> }
   /** An edit's task section (an undated task keeps it). */
   savedSection?: TaskSection | null
+  /** An edit of a task (not a repeat's rule): Planning's Waiting for and Parent rows. */
+  taskId?: string | null
 }
 
 /** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
@@ -102,10 +104,11 @@ const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
-  urlIssue, endIssue, savedSection, fill,
+  urlIssue, endIssue, savedSection, taskId, fill,
 }: Props) {
   const titleId = useId()
-  const [open, setOpen] = useState<PanelKey | null>(null)
+  // A menu's "Set parent…", "Move to list…" or a Waiting chip opens the screen at that row (config.openRow).
+  const [open, setOpen] = useState<PanelKey | null>(config?.openRow ?? null)
   const toggle = (k: PanelKey | null) => setOpen(o => (k === null || o === k ? null : k))
   const hideTask = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const shape = shapeOf(form)
@@ -200,7 +203,7 @@ export function ItemForm({
 
         <Section title="Planning">
           <PlanningSection form={form} patch={patch} open={open} toggle={toggle} config={config} today={today}
-            showCategory={showCategory} showLabels={showLabels} goes={goes} />
+            showCategory={showCategory} showLabels={showLabels} goes={goes} taskId={repeating || day ? null : taskId} />
         </Section>
 
         {onDelete && (

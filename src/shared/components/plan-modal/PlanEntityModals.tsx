@@ -181,17 +181,30 @@ export function PlanBlockEntityModal({ request, onClose }: EntityModalProps<'pla
 }
 
 export function ScheduleBlockEntityModal({ request, onClose }: EntityModalProps<'schedule-block'>) {
-  const { id, defaults, config, source, onSaved, occurrenceDate } = request
+  const { id, defaults, config, source, onSaved, occurrenceDate, startScope } = request
   const query = useScheduleBlock(id)
   const scheduleBlock = useFirstLoaded(query.data, query)
   const load = id ? loadStateOf(query, !!scheduleBlock, 'repeating item') : {}
   const trainingDelete = useTrainingDelete(undefined, scheduleBlock)
   return (
     <UnifiedPlanModal
-      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock} occurrenceDate={occurrenceDate}
+      open onClose={onClose} mode="recurring" scheduleBlock={scheduleBlock} occurrenceDate={occurrenceDate} startScope={startScope}
       config={config} defaults={defaults} source={source} onSaved={onSaved}
       onDeleteOverride={trainingDelete}
       {...load}
     />
   )
+}
+
+/** An item request the item screen can show inside another popup (itemScreenEmbed: a training session's Edit tab). */
+export type ItemScreenRequest =
+  | EntityModalProps<'task'>['request']
+  | EntityModalProps<'time-block'>['request']
+  | EntityModalProps<'schedule-block'>['request']
+
+/** The item screen for a request, loaded by id as the popup kinds load it — the same adapters, the same routing. */
+export function ItemScreenFor({ request, onClose }: { request: ItemScreenRequest; onClose: () => void }) {
+  if (request.kind === 'task') return <TaskEntityModal request={request} onClose={onClose} />
+  if (request.kind === 'time-block') return <TimeBlockEntityModal request={request} onClose={onClose} />
+  return <ScheduleBlockEntityModal request={request} onClose={onClose} />
 }

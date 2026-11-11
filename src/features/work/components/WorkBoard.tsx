@@ -21,7 +21,7 @@ interface BoardColumnProps {
   onToggleCollapse: () => void
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
-  onEdit: (task: Task) => void
+  onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
   onAddTask: () => void
 }
@@ -104,7 +104,7 @@ interface Props {
   focusedTaskIds: string[]
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
-  onEdit: (task: Task) => void
+  onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
   onAddTask: () => void
 }

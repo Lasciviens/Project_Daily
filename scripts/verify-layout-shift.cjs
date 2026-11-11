@@ -298,9 +298,9 @@ for (const f of ['src/features/recipes/pages/RecipesPage.tsx', 'src/features/tra
   check(`${path.basename(f, '.tsx')}: a lazy tab loads in a SkeletonTab (a screen of room), never a 0px div`,
     /<Suspense fallback=\{<SkeletonTab \/>\}>/.test(c) && !/<Suspense fallback=\{<div aria-busy="true" \/>\}>/.test(c))
 }
-check('the task-row sheets open at their size: the parent picker\'s fallback is its body; the list sheet shows rows while loading',
-  /<Suspense fallback=\{<PickerSkeleton/.test(code('src/features/todo/components/SetParentTaskSheet.tsx'))
-    && /isLoading && Array\.from\(\{ length: Math\.max\(1, loadingRows\) \}/.test(code('src/features/todo/components/MoveToListSheet.tsx')))
+check('the list sheet shows rows while loading (the parent picker is the item screen\'s Parent row since step 3, mounted only open)',
+  /isLoading && Array\.from\(\{ length: Math\.max\(1, loadingRows\) \}/.test(code('src/features/todo/components/MoveToListSheet.tsx'))
+    && /\{open === 'parent' && \(/.test(code('src/shared/components/plan-modal/TaskRows.tsx')))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

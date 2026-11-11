@@ -14,14 +14,16 @@ import type { Task } from '../types'
 // 2. `task` ITSELF already has children — parenting it under anyone makes
 //    its own children a grandchild layer. Gated entirely via hasSubtasks:
 //    the picker doesn't render at all in that case (see below).
-// The body of SetParentTaskSheet: mounted only while the sheet is open, so
-// the list of every task is read then, not by each closed sheet on the page.
-export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose }: {
+// The item screen's Parent row (TaskRows.tsx): mounted only while the row is
+// open, so the list of every task is read then, not by every task row.
+export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose, className = 'p-4' }: {
   task: Task
   hasSubtasks: boolean
   query: string
   onQuery: (query: string) => void
   onClose: () => void
+  /** Its padding: the item screen's Parent row puts it in a panel that has its own. */
+  className?: string
 }) {
   const { data: tasks = [], isLoading } = useAllTasks()
   const setParent = useSetParentTask()
@@ -48,7 +50,7 @@ export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose }: {
   }
 
   return (
-    <div className="p-4">
+    <div className={className}>
       {task.parent_task_id && (
         <Button block icon={<X />} onClick={() => choose(null)} disabled={setParent.isPending} className="mb-3">
           Remove from parent (make top-level)

@@ -38,6 +38,8 @@ export type CustomRepeatKind = 'every' | 'dates'
 
 export interface PlanModalConfig {
   hideScheduleFields?: ScheduleField[]
+  /** Opens the screen at this row (a single task's "Set parent…", "Move to list…", its Waiting chip — step 3). */
+  openRow?: 'waiting' | 'parent' | 'list'
   hideTaskFields?: TaskField[]
   /** A training session's task (167): a save that puts it 7 or more days
    *  after its first day is a skip there, and that week's session moves to
@@ -49,6 +51,9 @@ export interface PlanModalConfig {
 
 export interface PlanDefaults {
   title?: string
+  /** Text typed in a quick add (Work's, the search bar's — step 3): a new item's title field starts with it and reads
+   *  it as the title field reads what is typed (quick add: "Gym 17:30 1h every Mon" fills the rows). */
+  typed?: string
 
   // When: the item's day and time (dueDate counts as the day when date is missing)
   date?: string             // yyyy-MM-dd

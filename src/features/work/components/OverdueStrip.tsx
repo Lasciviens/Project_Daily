@@ -9,7 +9,7 @@ interface Props {
   tasks: Task[]
   onStatusChange: (id: string, status: TaskStatus, waitingFor?: string) => void
   onDelete: (id: string) => void
-  onEdit: (task: Task) => void
+  onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
 }
 
