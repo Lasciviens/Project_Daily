@@ -6,6 +6,7 @@ import { DecimalInput } from '../../recipes/components/foodLogKit'
 import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
 import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
 import { LinkReader } from './LinkReader'
+import { CategoryPicker } from './CategoryPicker'
 
 export const NEW_CATEGORY = '__new__'
 
@@ -55,27 +56,17 @@ export function ShopItemForm({ draft, onChange, categories, stores, editing }: {
   const id = useId()
   const quick = draft.list === 'quick'
   const [more, setMore] = useState(false)
-  const tops = categories.filter(c => !c.parent_id)
-  const subs = draft.topId && draft.topId !== NEW_CATEGORY ? categories.filter(c => c.parent_id === draft.topId) : []
 
+  // The owner's own categories, then suggested ones (picking one adds it at once); a typed new one is made on save.
   const category = (
     <div>
       <span className="field-label">Category</span>
       <div className="grid grid-cols-2 gap-2">
-        <select value={draft.topId} onChange={e => onChange({ topId: e.target.value, subId: '' })} aria-label="Category" className="select">
-          <option value="">No category</option>
-          {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          <option value={NEW_CATEGORY}>+ New category…</option>
-        </select>
-        {draft.topId === NEW_CATEGORY ? (
-          <input value={draft.newTop} onChange={e => onChange({ newTop: e.target.value })} placeholder="New category" aria-label="New category name" className="input" />
-        ) : (
-          <select value={draft.subId} onChange={e => onChange({ subId: e.target.value })} disabled={!draft.topId} aria-label="Subcategory" className="select disabled:opacity-50">
-            <option value="">{draft.topId ? 'No subcategory' : 'Subcategory'}</option>
-            {subs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            {draft.topId && <option value={NEW_CATEGORY}>+ New subcategory…</option>}
-          </select>
-        )}
+        <CategoryPicker categories={categories} value={{ topId: draft.topId, subId: draft.subId }} newValue={NEW_CATEGORY}
+          onChange={p => onChange({ topId: p.topId, subId: p.subId })}
+          sub={draft.topId === NEW_CATEGORY
+            ? <input value={draft.newTop} onChange={e => onChange({ newTop: e.target.value })} placeholder="New category" aria-label="New category name" className="input" />
+            : undefined} />
       </div>
       {(draft.subId === NEW_CATEGORY || draft.topId === NEW_CATEGORY) && (
         <input value={draft.newSub} onChange={e => onChange({ newSub: e.target.value })}

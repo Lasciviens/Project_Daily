@@ -12,20 +12,22 @@ import { groupByCategory } from '../../shopModel'
 import { CARD_GRID, CategorySection, FoldAll } from '../CategorySection'
 import { useCollapsedGroups } from '../../hooks/useCollapsedGroups'
 import {
-  accessoriesByItem, comingUp, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned, statsScopeOf,
+  accessoriesByItem, DISPOSAL_LABEL, isGone, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned, statsScopeOf,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
 import { OWNED_BOARD } from '../../shopBoard'
 import { OwnedCard } from './OwnedCard'
-import { OwnedSummaryLine, ComingUpCard } from './OwnedRail'
+import { OwnedSummaryLine } from './OwnedRail'
+import { ShopNeedsALook } from '../ShopNeedsALook'
 import { OwnedFiltersCard } from './OwnedFilters'
 import type { StatsScope } from '../../statsModel'
 import type { ShopCategory, ShopItem } from '../../types'
 
 /**
- * Owned → Things: what you have (by category), what is coming up, and what
- * you had; a summary line above the list opens Stats on the same things.
+ * Owned → Things: what you have (by category) and what you had, with Needs a
+ * look beside them (its return windows and complaint rights took Coming up's
+ * place); a summary line above the list opens Stats on the same things.
  */
 export function OwnedView({ items, categories, isLoading, onStats }: {
   items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean
@@ -63,7 +65,6 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const summary = useMemo(() => shownSummary(shown, acc, ctx, gone.length), [shown, acc, ctx, gone.length])
   const filtered = ownedFilterCount(filters) > 0
   const scope = useMemo(() => statsScopeOf(filters, shown.map(i => i.id)), [filters, shown])
-  const deadlines = useMemo(() => comingUp(items, today), [items, today])
   const fold = useCollapsedGroups('owned')
   const anything = useMemo(() => ownedCards(items, categories, { ...NO_OWNED_FILTERS, show: 'all' }).length > 0, [items, categories])
   const foldAll = (compact: boolean) => <FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={compact} />
@@ -140,8 +141,8 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
           <OwnedSummaryLine summary={summary} show={filters.show} filtered={filtered}
             onStats={scope ? () => onStats(scope) : undefined} onShowGone={() => setFilters(f => ({ ...f, show: 'gone' }))} />
         ),
-        // Return windows and complaint rights are about things still yours: not under Sold or gone.
-        coming: filters.show !== 'gone' && deadlines.length > 0 && <ComingUpCard deadlines={deadlines} onOpen={id => modal.open({ kind: 'shop-item', id })} />,
+        // The Shop's one Needs a look, on every tab (its tidy-up counts things gone too).
+        look: <ShopNeedsALook items={items} isLoading={isLoading} />,
         filters: anything && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
             collapsible={folded} fold={foldAll(folded)} />

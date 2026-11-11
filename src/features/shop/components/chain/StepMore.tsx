@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { ChevronDown, Plus, X } from 'lucide-react'
 import { IconButton, cx } from '../../../../shared/ui'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
-import { categoryPath } from '../../shopModel'
 import { newShopId } from '../../api/shopApi'
 import type { DraftAccessory, DraftStep } from '../../chainDraft'
 import { Toggle } from '../record/factKit'
+import { CategoryPicker } from '../CategoryPicker'
+import { categoryIdOf, pickOf } from '../../shopModel'
 import type { SetStep } from './StepFields'
 import type { ShopCategory, ShopRegion } from '../../types'
 
@@ -27,9 +28,6 @@ export function StepMore({ s, set, categories, stores, listId }: {
   listId: string
 }) {
   const [open, setOpen] = useState(false)
-  const path = categoryPath(s.categoryId, categories)
-  const tops = categories.filter(c => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name))
-  const subs = path.topId ? categories.filter(c => c.parent_id === path.topId).sort((a, b) => a.name.localeCompare(b.name)) : []
   const count = filled(s)
   const setAcc = (key: string, patch: Partial<DraftAccessory>) => set({ accessories: s.accessories.map(a => (a.key === key ? { ...a, ...patch } : a)) })
   return (
@@ -42,15 +40,7 @@ export function StepMore({ s, set, categories, stores, listId }: {
       {open && (
         <div className="mt-1 flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-2 @[30rem]:grid-cols-2">
-            <select value={path.topId ?? ''} onChange={e => set({ categoryId: e.target.value || null })} aria-label="Category" className="select">
-              <option value="">No category</option>
-              {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <select value={s.categoryId && s.categoryId !== path.topId ? s.categoryId : ''} onChange={e => set({ categoryId: e.target.value || path.topId })}
-              disabled={!path.topId} aria-label="Subcategory" className="select disabled:opacity-50">
-              <option value="">{path.topId ? 'No subcategory' : 'Subcategory'}</option>
-              {subs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <CategoryPicker categories={categories} value={pickOf(s.categoryId, categories)} onChange={p => set({ categoryId: categoryIdOf(p) })} />
             <input list={listId} value={s.platform} onChange={e => set({ platform: e.target.value })} placeholder="Bought at (store)" aria-label="Bought at" className="input" />
             <datalist id={listId}>{stores.map(x => <option key={x} value={x} />)}</datalist>
             <select value={s.region ?? ''} onChange={e => set({ region: (e.target.value || null) as ShopRegion | null })} aria-label="Bought in" className="select">
