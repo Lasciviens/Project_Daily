@@ -603,8 +603,8 @@ import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
 import {
-  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatOfForm, shapeOf, switchScope,
-  type PlanForm, type QuickBase, type SheetItemInput,
+  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, shapeOf, switchScope,
+  urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
 import type { PlanResult, UnifiedPlanModalProps } from './planModal.types'
@@ -720,9 +720,14 @@ export function UnifiedPlanModal({
   // An incomplete repeat (a weekly one with no day, an N out of range, no
   // picked date) can't be saved; nor an end before the start.
   const repeatIssue = repeatOfForm(form) ? recurrenceProblem(form) : null
+  // The calendar fields (193): a link the app can't take, an End Repeat before the start. The database refuses the
+  // same, so a link left as typed is said even after its row went with the slot (the close says why it wasn't saved).
+  const urlIssue = urlProblem(form)
+  const endIssue = repeatEndIssue(form, { item, today })
   const problem = !form.title.trim() ? 'a title is needed'
     : repeatIssue ? repeatIssue
-    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem] : null
+    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem]
+    : urlIssue ?? endIssue
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
   const autosave = useItemAutosave({ enabled: open && editMode && !blocked, form, problem, persist })
@@ -871,6 +876,7 @@ export function UnifiedPlanModal({
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (repeatIssue) { toast.error(repeatIssue); return }
     if (form.badEnd) { toast.error(END_PROBLEM_TEXT[form.badEnd.problem]); return }
+    if (problem) { toast.error(problem); return }
     if (!(await confirmNoTwin(form, null))) return
     setSaving(true)
     try {
@@ -997,6 +1003,7 @@ export function UnifiedPlanModal({
           showMarks={prefs.showMarks} appleNotes={prefs.notes === 'notes+link' || prefs.notes === 'notes'} refused={refused}
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
+          urlIssue={urlIssue} endIssue={endIssue}
         />
       )}
       {scheduleBlock && occurrenceDate && (

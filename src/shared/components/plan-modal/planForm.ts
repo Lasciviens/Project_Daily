@@ -339,10 +339,19 @@ export function withCalendarField<K extends 'alerts' | 'showAs' | 'url' | 'trave
 
 /** Why the calendar fields can't be saved as they are, or null: a link the app can't use, an End Repeat before the start. */
 export function calendarFieldsProblem(f: PlanForm, ctx: Pick<SaveContext, 'item' | 'today'>): string | null {
+  return urlProblem(f) ?? repeatEndIssue(f, ctx)
+}
+
+/** Why the typed link can't be saved (cleanItemUrl's answer), or null — the URL row says it under itself. */
+export function urlProblem(f: Pick<PlanForm, 'url'>): string | null {
   const link = cleanItemUrl(f.url)
-  if ('problem' in link) return link.problem
-  const repeat = repeatOfForm(f)
-  if (!repeat || !f.repeatEnd) return null
+  return 'problem' in link ? link.problem : null
+}
+
+/** Why the End Repeat can't be saved, or null: only a repeat's rule has one (never "This day"), checked against the
+ *  start the save will give the repeat — the End Repeat row says it under itself. */
+export function repeatEndIssue(f: PlanForm, ctx: Pick<SaveContext, 'item' | 'today'>): string | null {
+  if (!repeatOfForm(f) || !f.repeatEnd) return null
   return repeatEndProblem(f.repeatEnd, startOfRepeat(f, { ...ctx, googleConnected: false }))
 }
 

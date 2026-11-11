@@ -20,6 +20,7 @@ import { SegmentedControl } from '../SegmentedControl'
 import { DateCalendar } from '../DateCalendar'
 import { choiceClass, chipClass } from './fieldStyles'
 import type { CustomRepeatKind, RecurrenceMode } from './planModal.types'
+import type { RepeatEnd } from '../../../features/items/itemTypes'
 
 const STEP_BTN =
   'inline-grid h-11 w-10 shrink-0 place-items-center rounded-input border border-line bg-surface-2 text-fg-2 ' +
@@ -260,7 +261,7 @@ const CUSTOM_KINDS: { value: CustomRepeatKind; label: string }[] = [
 ]
 
 export function RecurrenceField({
-  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false,
+  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false, end = null,
 }: {
   value: RepeatFormFields
   onChange: (p: Partial<RepeatFormFields>) => void
@@ -276,6 +277,8 @@ export function RecurrenceField({
   /** The summary and the next three dates for every choice (the item screen's Repeat, opened in the list: owner's
    *  point 4), not only for Monthly and Custom. */
   alwaysPreview?: boolean
+  /** End Repeat (193): the next dates stop at it. */
+  end?: RepeatEnd | null
 }) {
   const picker = dayPickerFor(value)
   const circles = picker && (
@@ -286,7 +289,7 @@ export function RecurrenceField({
   const problem = recurrenceProblem(value)
   // Every day / Weekdays / Weekly: the select and the circles already say it
   // all — a summary line would only repeat them (an extra line on a phone).
-  const preview = alwaysPreview || value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates) : null
+  const preview = alwaysPreview || value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates, end) : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -338,6 +341,7 @@ export function RecurrenceField({
             items={[
               <span key="s" className="font-medium text-fg-2">{preview.summary}</span>,
               preview.next.length > 0 ? `Next ${preview.next.map(d => formatDate(d)).join(', ')}` : 'No date ahead',
+              ...(preview.last ? [`Last ${formatDate(preview.last)}`] : []),
             ]}
           />
         )}
