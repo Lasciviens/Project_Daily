@@ -78,9 +78,9 @@ const D = require('../src/features/daily/dayItems.ts')
 eq([D.rowTimeZone({ item: { block } }), D.rowTimeZone({ item: { template: { time_zone: null, google_calendar_time_zone: 'Asia/Tokyo' } } }), D.rowTimeZone({ item: null })],
   ['Europe/Istanbul', 'Asia/Tokyo', null], 'a day row\'s zone: its slot\'s, else its plan\'s (else its Google series\'), else none')
 {
-  const chip = src('src/shared/components/plan-modal/TimeChips.tsx')
+  const chip = src('src/shared/components/plan-modal/TimeSection.tsx')
   ok(/const abroad = !sameClock\(phone, SERVER_EVENT_TIME_ZONE\)/.test(chip) && /for \(const z of \[saved, phone, SERVER_EVENT_TIME_ZONE\]\)/.test(chip),
-    'the sheet\'s zone chip shows while the phone is away from the home clock and offers the item\'s zone, the phone\'s and Oslo\'s (one per clock)')
+    'the item screen\'s Time Zone row shows while the phone is away from the home clock and offers the item\'s zone, the phone\'s and Oslo\'s (one per clock)')
 }
 ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/football/hooks/useFootball.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
   'a football plan (Plan it, a subscription, a moved kick-off) is on Oslo\'s clock and says so — its time is read there (osloParts)')

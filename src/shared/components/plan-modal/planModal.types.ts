@@ -32,12 +32,13 @@ export type RecurrenceMode = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly
 export type CustomRepeatKind = 'every' | 'dates'
 
 // ── Config — shapes the sheet from the caller's file ─────────────────────────
-//  Example: config={{ heading: 'Plan to watch' }}. A hidden field's row and
+//  Example: config={{ hideScheduleFields: ['recurrence'] }}. A hidden field's row and
 //  its "+" chip don't show (a training session hides the deadline: its day is
 //  the session's, 142).
 
 export interface PlanModalConfig {
-  /** Header text. Default: "Add" for a new item, "Edit" for a saved one. */
+  /** No longer shown: the item screen is headed "New Item" / "Edit Item" wherever it opens (owner, 10.11.2026).
+   *  Kept so the callers that still pass one type-check. */
   heading?: string
   hideScheduleFields?: ScheduleField[]
   hideTaskFields?: TaskField[]

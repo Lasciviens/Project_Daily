@@ -260,7 +260,7 @@ const CUSTOM_KINDS: { value: CustomRepeatKind; label: string }[] = [
 ]
 
 export function RecurrenceField({
-  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS,
+  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false,
 }: {
   value: RepeatFormFields
   onChange: (p: Partial<RepeatFormFields>) => void
@@ -273,6 +273,9 @@ export function RecurrenceField({
    *  RECURRING_EDIT_OPTIONS instead, since an existing recurring template
    *  must never offer converting itself into a one-off block. */
   options?: { value: RecurrenceMode; label: string }[]
+  /** The summary and the next three dates for every choice (the item screen's Repeat, opened in the list: owner's
+   *  point 4), not only for Monthly and Custom. */
+  alwaysPreview?: boolean
 }) {
   const picker = dayPickerFor(value)
   const circles = picker && (
@@ -283,7 +286,7 @@ export function RecurrenceField({
   const problem = recurrenceProblem(value)
   // Every day / Weekdays / Weekly: the select and the circles already say it
   // all — a summary line would only repeat them (an extra line on a phone).
-  const preview = value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates) : null
+  const preview = alwaysPreview || value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates) : null
 
   return (
     <div className="flex flex-col gap-2">

@@ -25,6 +25,7 @@ import {
 } from './planModal.config'
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
 import { cleanPlace, type ItemPlace } from '../../../features/items/itemPlace'
+import { lengthToEnd, type EndProblem } from './itemScreenRules'
 
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
@@ -70,6 +71,9 @@ export interface PlanForm extends RepeatFormFields {
   otherDate: string | null
   /** Optional rows open. */
   shown: SheetRow[]
+  /** An end picked on the Ends row that can't be a length (before the start, or more than 24 hours after it): the row
+   *  shows it struck through and nothing saves until it is fixed. Never saved itself. */
+  badEnd: { date: string; time: string; problem: EndProblem } | null
 }
 
 export interface FormSeed {
@@ -143,6 +147,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     placeTouched: false,
     scope: 'all' as const,
     otherDate: null,
+    badEnd: null,
   }
   return { ...base, shown: shownRows(base) }
 }
@@ -175,6 +180,7 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     placeTouched: false,
     scope: 'all' as const,
     otherDate: item.repeat && occurrenceDate ? occurrenceDate : null,
+    badEnd: null,
   }
   return { ...base, shown: shownRows(base) }
 }
@@ -367,4 +373,29 @@ export function withTime(time: string | null): Partial<PlanForm> {
 /** "No date" takes the time and length with it: a slot needs a day. */
 export function withDate(date: string | null): Partial<PlanForm> {
   return date ? { date } : { date: null, time: null, duration: null }
+}
+
+/**
+ * An end picked on the item screen's Ends row (its own day and time), read back as the length the item stores: the
+ * next day is fine, up to 24 hours after the start (080). One that can't be a length is held as `badEnd`.
+ */
+export function withEnd(f: Pick<PlanForm, 'date' | 'time'>, end: { date: string; time: string }): Partial<PlanForm> {
+  if (!f.date || !f.time) return {}
+  const read = lengthToEnd({ date: f.date, time: f.time }, end)
+  return 'duration' in read ? { duration: read.duration, badEnd: null } : { badEnd: { ...end, problem: read.problem } }
+}
+
+/**
+ * The item screen's All-day switch. On: no time and no length — an item on a calendar stays there as an all-day
+ * event (withAllDay), one on Google Tasks or nowhere just loses its time. Off: a time (the next half hour) and an
+ * hour, as Apple starts a timed event.
+ */
+export function withAllDaySwitch(f: Pick<PlanForm, 'googlePick'>, on: boolean, target: GoogleTarget, nextTime: string): Partial<PlanForm> {
+  if (on) return { ...(target === 'calendar' || target === 'both' ? withAllDay(f) : withTime(null)), badEnd: null }
+  return { time: nextTime, duration: 60, badEnd: null }
+}
+
+/** What the item screen saves when this form changes — everything but which optional rows are open. */
+export function formContentKey(f: PlanForm): string {
+  return JSON.stringify({ ...f, shown: undefined })
 }

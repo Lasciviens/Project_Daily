@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { readCalendarPrefs, rewritesEvents, type CalendarPrefs } from './calendarAreas'
+import { readCalendarSettings, rewritesEvents, type CalendarPrefs, type CalendarSettings } from './calendarAreas'
 import { fetchCalendarPrefs, saveCalendarPrefsChanges } from './calendarPrefsApi'
 import { rememberCalendarPrefs, rememberedCalendarPrefsRead } from './calendarPrefsMemory'
 
@@ -18,10 +18,10 @@ export function useCalendarPrefs() {
     queryFn: () => fetchCalendarPrefs().then(p => { rememberCalendarPrefs(p); return p }),
     initialData: () => recentRead()?.prefs,
     initialDataUpdatedAt: () => recentRead()?.at,
-    placeholderData: readCalendarPrefs(null),
+    placeholderData: readCalendarSettings(null),
     staleTime: STALE.default,
   })
-  return { prefs: query.data ?? readCalendarPrefs(null), loaded: query.isSuccess && !query.isPlaceholderData, failed: query.isError, retry: query.refetch }
+  return { prefs: query.data ?? readCalendarSettings(null), loaded: query.isSuccess && !query.isPlaceholderData, failed: query.isError, retry: query.refetch }
 }
 
 /** "Calendar settings saved" — and, when the change rewrites events already in Apple Calendar, that they update. */
@@ -33,6 +33,17 @@ export function useSaveCalendarPrefs() {
     successMessage: (_saved, v) => rewritesEvents(v.base, v.next)
       ? 'Calendar settings saved · events in Apple Calendar update in the background'
       : 'Calendar settings saved',
+    onSuccess: saved => { qc.setQueryData(qk.calendarPrefs, saved); rememberCalendarPrefs(saved) },
+  })
+}
+
+/** Settings → Calendar → Item screen: whether every row shows where its field goes. Saved at once, over the rest. */
+export function useSaveShowMarks() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'save_show_marks',
+    mutationFn: (v: { base: CalendarSettings; showMarks: boolean }) => saveCalendarPrefsChanges(v.base, { ...v.base, showMarks: v.showMarks }),
+    successMessage: (_saved, v) => (v.showMarks ? 'The item screen shows where each field goes' : 'The item screen hides where each field goes'),
     onSuccess: saved => { qc.setQueryData(qk.calendarPrefs, saved); rememberCalendarPrefs(saved) },
   })
 }
