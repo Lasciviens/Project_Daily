@@ -87,6 +87,86 @@ export interface EventBlock {
   busy?: boolean | null
   /** Where it happens (186): the row's jsonb, read through eventPlace. */
   place?: unknown
+  /** Show As (193): 'busy' | 'free', read through eventShowAs; none = by its length, as before. */
+  show_as?: unknown
+  /** Alert and Second Alert (193), read through eventAlerts; none = the area's own alert. */
+  alerts?: unknown
+}
+
+// ── An item's calendar fields (193): Alert + Second Alert, Show As, URL, Travel Time ──
+//  Every value is input (the warning in AGENTS.md): the browser, the assistant and the read-backs write these columns,
+//  and the writers put them into iCalendar lines and Google's bodies. The database CHECKs the same allow-lists
+//  (item_alerts_ok, item_url_ok, the travel and show_as CHECKs); the writers read a row through the event* readers
+//  below again, and Apple's lines have a last guard of their own (icloudEvents).
+
+/** The alerts an item may have (Apple's own list): minutes before a timed item's start — 0 is "at the time"; on an
+ *  all-day item a day offset at 09:00 (allDayAlertDays: 0–120 on the day, 1440 the day before, 2880, 10080 a week). */
+export const ALERT_MINUTES: readonly number[] = [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080]
+/** Alert and Second Alert: at most two, never the same twice. */
+export const MAX_ITEM_ALERTS = 2
+/** An all-day item's alert rings at this time of its day (minutes after midnight: 09:00, Apple's own default). */
+export const ALL_DAY_ALERT_MINUTE = 540
+/** Travel Time (193): 0 = none, or minutes before; no value = automatic (Time to Leave, from the place's map pin). */
+export const TRAVEL_MINUTES: readonly number[] = [0, 5, 15, 30, 60, 90, 120]
+/** A link is at most this long (193's CHECK). */
+export const ITEM_URL_MAX = 2048
+/** A link an item may hold (193's CHECK, item_url_ok): https, a host name (no user name, no IP literal in brackets), an
+ *  optional port, then only URL characters with % followed by two hex digits — no space, quote, angle bracket,
+ *  backslash or control character, so nothing in it can end an iCalendar line or a quoted value. */
+export const ITEM_URL = /^https:\/\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::[0-9]{1,5})?(?:[/?#](?:%[0-9A-Fa-f]{2}|[A-Za-z0-9._~!$&'()*+,;=:@/?#-])*)?$/
+
+export type ShowAs = 'busy' | 'free'
+
+/** A row's alerts as the writers may use them: null = not set (the area's own alert, as before 193); [] = none; else
+ *  one or two allow-listed, distinct minutes, in their order (Alert, then Second Alert). Anything else reads as not set. */
+export function eventAlerts(raw: unknown): number[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_ITEM_ALERTS) return null
+  if (!raw.every(m => typeof m === 'number' && ALERT_MINUTES.includes(m))) return null
+  return new Set(raw).size === raw.length ? [...raw] as number[] : null
+}
+
+/** A row's Show As: 'busy' or 'free'; anything else (none, before 193) reads as not set — the length decides. */
+export function eventShowAs(raw: unknown): ShowAs | null {
+  return raw === 'busy' || raw === 'free' ? raw : null
+}
+
+/** A row's link: only one ITEM_URL takes, at most ITEM_URL_MAX long; anything else is no link. */
+export function eventUrl(raw: unknown): string | null {
+  return typeof raw === 'string' && raw.length <= ITEM_URL_MAX && ITEM_URL.test(raw) ? raw : null
+}
+
+/** A row's travel time: 0 (none) or allow-listed minutes; anything else (none, before 193) reads as automatic (null). */
+export function eventTravel(raw: unknown): number | null {
+  return typeof raw === 'number' && TRAVEL_MINUTES.includes(raw) ? raw : null
+}
+
+/** The day offset an all-day item's alert means: on the day (0–120), 1, 2 or 7 days before — each at 09:00. */
+export function allDayAlertDays(minutes: number): number {
+  return minutes >= 10080 ? 7 : minutes >= 2880 ? 2 : minutes >= 1440 ? 1 : 0
+}
+
+/** Busy or Free on a calendar: Show As when set, else as before 193 — Busy with a length, Free without one and all day. */
+export function eventTransparency(showAs: unknown, timedWithLength: boolean): 'opaque' | 'transparent' {
+  const set = eventShowAs(showAs)
+  return (set ? set === 'busy' : timedWithLength) ? 'opaque' : 'transparent'
+}
+
+/** Google's reminders (193; Events reference: `reminders.useDefault`, `overrides[]` of `{ method, minutes }`, minutes
+ *  "between 0 and 40320", at most 5). */
+export interface EventReminders { useDefault: boolean; overrides: { method: 'popup'; minutes: number }[] }
+/** The calendar's own default — what an item with no alerts of its own has (and what an update puts back). */
+export const DEFAULT_REMINDERS: EventReminders = { useDefault: true, overrides: [] }
+
+/**
+ * An item's alerts as Google's reminders (193), or null when it has none of its own (the calendar's default, as before
+ * 193). Timed: minutes before the start. All day: Google counts from the day's midnight and takes no minutes after it,
+ * so 09:00 the day before is 900 and "on the day at 09:00" can't be said — it is left out (Apple has it).
+ */
+export function googleReminders(raw: unknown, allDay: boolean): EventReminders | null {
+  const alerts = eventAlerts(raw)
+  if (!alerts) return null
+  const minutes = alerts.map(m => (allDay ? allDayAlertDays(m) * 1440 - ALL_DAY_ALERT_MINUTE : m)).filter(m => m >= 0)
+  return { useDefault: false, overrides: [...new Set(minutes)].map(m => ({ method: 'popup' as const, minutes: m })) }
 }
 
 /** An item's place as the calendars get it (186): a name, maybe a town, maybe a map pin. */
@@ -130,13 +210,16 @@ export interface BlockEventBody {
   transparency: 'opaque' | 'transparent'
   /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
   location?: string
+  /** The slot's own alerts (193), when it has them. A PATCH of the whole event sends none as the default (fullEventPatch). */
+  reminders?: EventReminders
 }
 
 /**
  * The Google event of a slot: a day with no time is an all-day event (end =
  * the next day — Google's end is exclusive) and Free; a time is a wall-clock
  * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
- * with a nominal end when it doesn't. null when the slot has no usable day.
+ * with a nominal end when it doesn't — unless Show As says (193). Its own
+ * alerts are its reminders (193). null when the slot has no usable day.
  */
 export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
   if (!ISO_DAY.test(b.date ?? '')) return null
@@ -144,8 +227,10 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   const start = clockMinutes(b.start_time)
   const place = eventPlace(b.place)
   const location = place ? { location: placeText(place) } : {}
+  const reminders = googleReminders(b.alerts, start === null)
+  const own = reminders ? { reminders } : {}
   if (start === null) {
-    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: 'transparent', ...location }
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: eventTransparency(b.show_as, false), ...location, ...own }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
@@ -154,8 +239,9 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
     summary,
     start: { dateTime: wallClockAt(b.date, start), timeZone },
     end: { dateTime: wallClockAt(b.date, start + length), timeZone },
-    transparency: busy ? 'opaque' : 'transparent',
+    transparency: eventTransparency(b.show_as, busy),
     ...location,
+    ...own,
   }
 }
 
@@ -188,11 +274,13 @@ export function withTimePatch<B extends { start: EventTime; end: EventTime }>(bo
 /**
  * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
  * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
- * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body.
+ * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body. Its reminders too (193):
+ * an item with no alerts of its own sends the calendar's default with no overrides (a PATCH replaces an array and
+ * merges an object, so alerts taken off in the app leave Google too).
  */
-export function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string }>(body: B): Omit<Omit<B, 'location'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null } {
-  const { location, ...rest } = body
-  return { ...withTimePatch(rest), location: location ?? null }
+export function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string; reminders?: EventReminders }>(body: B): Omit<Omit<B, 'location' | 'reminders'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null; reminders: EventReminders } {
+  const { location, reminders, ...rest } = body
+  return { ...withTimePatch(rest), location: location ?? null, reminders: reminders ?? { ...DEFAULT_REMINDERS, overrides: [] } }
 }
 
 /**
@@ -236,6 +324,9 @@ export interface ReadbackEvent {
   time: string | null
   minutes: number | null
   busy: boolean
+  /** Show As as the event has it (193): its transparency, all-day too — the read-back takes it only for an item whose
+   *  Show As is set (else Free still means "no length", as since 155). */
+  showAs: 'busy' | 'free'
   originalDate: string | null
   updated: string | null
 }
@@ -282,21 +373,22 @@ export function readbackEvent(e: GoogleEventLike, calendarZone: string, itemZone
   const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
   const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
   if (status === 'cancelled') {
-    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false }
+    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false, showAs: 'free' }
   }
   const title = typeof e.summary === 'string' ? stripDoneMark(e.summary) : null
   const busy = e.transparency !== 'transparent'
+  const showAs = busy ? 'busy' as const : 'free' as const
   if (e.start?.date && ISO_DAY.test(e.start.date)) {
     const endDay = e.end?.date && ISO_DAY.test(e.end.date) ? e.end.date : addDaysToIso(e.start.date, 1)
     const days = Math.max(1, Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${e.start.date}T00:00:00Z`)) / 86_400_000))
-    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false }
+    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false, showAs }
   }
   const startAt = e.start?.dateTime ? wallClockIn(e.start.dateTime, zone) : null
-  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy }
+  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy, showAs }
   const startMs = Date.parse(e.start!.dateTime!)
   const endMs = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
   const minutes = Number.isFinite(endMs) && endMs > startMs ? Math.min(1440, Math.round((endMs - startMs) / 60_000)) : null
-  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy }
+  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy, showAs }
 }
 
 /** The first read (and the one after a 410) only fetches a sync token. */

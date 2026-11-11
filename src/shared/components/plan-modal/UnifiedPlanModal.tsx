@@ -54,6 +54,14 @@
 //                    without saving your last change?".
 //                    (f) A mark on every row for where its field goes, behind
 //                    Settings → Calendar → "Show where each field goes".
+//  2026-11-10 · v21.11 · The data side of Apple's extra fields (migration 193;
+//                    the one item screen, step 2 — no screen yet): the form
+//                    holds alerts, showAs, url, travelMinutes and repeatEnd,
+//                    seeded from the rows (itemFromRows) and sent like the
+//                    place — a new item's, an edit's only when the sheet knew
+//                    it or the owner changed it (calendarTouched,
+//                    withCalendarField); the link through cleanItemUrl, End
+//                    Repeat only with a repeat's rule (calendarFieldsProblem).
 //  2026-11-03 · v21.10 · The save's result line names the calendar the chip
 //                    names: "· sending to Apple Calendar" for an item whose
 //                    area shows in Apple Calendar (it said "on Google
