@@ -31,7 +31,7 @@
 //                    row names the section the save keeps (an undated edit
 //                    keeps its own). An all-day item gets a compact band, not
 //                    the timeline. The Repeat panel no longer repeats its
-//                    summary. config.heading gone (Shop's two callers left).
+//                    summary. config.heading gone.
 //                    A new item's title takes the focus on touch screens too.
 //                    "Undo changes" under the heading after a save puts back
 //                    everything since the edit opened, as one save. Back, a

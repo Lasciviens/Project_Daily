@@ -37,9 +37,6 @@ export type CustomRepeatKind = 'every' | 'dates'
 //  the session's, 142).
 
 export interface PlanModalConfig {
-  /** @deprecated Never shown: the item screen is headed "New Item" / "Edit Item" wherever it opens (10.11.2026).
-   *  Only Shop's two callers still pass it (another change owns `src/features/shop/` now); remove it with them. */
-  heading?: string
   hideScheduleFields?: ScheduleField[]
   hideTaskFields?: TaskField[]
   /** A training session's task (167): a save that puts it 7 or more days
