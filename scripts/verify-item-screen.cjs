@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * The item screen, steps 1 and 2 and their cleanup (docs/features/item-screen-plan.md) — its pure rules, against the real modules
+ * The item screen, steps 1–3 and the cleanup (docs/features/item-screen-plan.md) — its pure rules, against the real modules
  * through sucrase:
  *   src/shared/components/plan-modal/itemScreenRules.ts  Starts / Ends ↔ a day, a start and a length; the timeline's
  *                                                       drags and lanes; where each field goes (the marks); the red dot;
@@ -346,6 +346,68 @@ console.log('\n== 9. The cleanup after steps 1 and 2 (11.11.2026) ==')
     && R.appleDot({ wanted: false, row, send: { item: { status: 'failed', error: 'x', retryAt: null }, problem: null, busy: false }, now: nowD }) === null)
   check('…asked once per version of the row, named so it goes first', /useAppleItemSend\(appleRef, liveRow\?\.updated_at\)/.test(sheet)
     && /drainICloudNow\(\{ items: \[ref as DrainItemRef\] \}\)/.test(src('src/features/calendar/areas/useAppleItemSend.ts')))
+}
+
+console.log('\n== 10. Step 3: one screen for everything ==')
+{
+  const sheet = src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
+  // The training session's Edit tab (owner's answer 2).
+  const SR = require('../src/features/training/sessionRef')
+  check('a planned session\'s Edit tab opens its task, its block, or the weekly plan on that day (This day | All days)',
+    same(SR.sessionItemRequest({ kind: 'task', taskId: 't1', blockId: 'b1' }), { kind: 'task', id: 't1' })
+    && same(SR.sessionItemRequest({ kind: 'block', blockId: 'b1' }), { kind: 'time-block', id: 'b1' })
+    && same(SR.sessionItemRequest({ kind: 'weekly', templateId: 'p1', date: '2026-11-12' }), { kind: 'schedule-block', id: 'p1', occurrenceDate: '2026-11-12', defaults: { date: '2026-11-12' } }))
+  const view = src('src/features/training/components/session/TrainingSessionView.tsx')
+  check('…inside the session popup, through the same adapters; closing or leaving the tab saves what waits first',
+    /<ItemScreenEmbedContext\.Provider value=\{editHandle\}>/.test(view) && /<ItemScreenFor request=\{editRequest\} onClose=\{onClose\} \/>/.test(view)
+    && /editing && editHandle\.current \? editHandle\.current\.requestClose\(\) : onClose\(\)/.test(view) && /const done = await editHandle\.current\.flush\(\)/.test(view))
+  check('the screen embedded draws no chrome of its own and hands the host its close and flush',
+    /if \(embedRef\) \{/.test(sheet) && /embedRef\.current = \{ requestClose, flush: autosave\.flush \}/.test(sheet))
+
+  // Games' two copies, and nobody else, mount the screen directly no more.
+  const mounts = require('child_process').execSync("grep -rln '<UnifiedPlanModal' src --include=*.tsx || true", { cwd: path.join(__dirname, '..') }).toString().trim().split('\n').filter(Boolean)
+  check('only the plan-modal folder mounts UnifiedPlanModal (Games\' two copies open it through useEntityModal)',
+    mounts.every(f => f.startsWith('src/shared/components/plan-modal/')) && /entityModal\.open\(\{ kind: 'time-block'/.test(src('src/features/games/components/GameDetailModal.tsx'))
+    && /planSession: \(g\) => entityModal\.open\(\{ kind: 'time-block'/.test(src('src/features/games/test-game/TestGamePage.tsx')), mounts.join(', '))
+
+  // The quick adds: the one parser, the one item save; Open takes the text to the item screen.
+  const S = require('../src/features/items/sheetRules')
+  const Q = require('../src/features/items/quickAdd')
+  const work = S.itemFromQuickAdd('Review 14:00', Q.parseQuickAdd('Review 14:00', '2026-11-11'), '2026-11-11', false, false, 'work')
+  check('Work\'s quick add makes a Work item, read as typed', work.domain === 'work' && work.time === '14:00' && work.title === 'Review' && work.date === '2026-11-11')
+  check('…the search bar\'s a Personal one, as before', S.itemFromQuickAdd('Call Ola', null, '2026-11-11', false).domain === 'personal')
+  const quick = src('src/features/items/useQuickAdd.ts')
+  check('Work\'s and the search bar\'s quick add go through useQuickAdd (one item save), never a bare task create',
+    /useQuickAdd\('work'\)/.test(src('src/features/work/components/WorkToolbar.tsx')) && /useQuickAdd\('personal'\)/.test(src('src/shared/components/CommandPalette.tsx'))
+    && !/useCreateTask/.test(src('src/shared/components/CommandPalette.tsx')) && !/useCreateTask/.test(src('src/features/work/pages/WorkPage.tsx'))
+    && /save\.mutateAsync\(input\)/.test(quick))
+  check('…Open takes the text to the item screen, whose title reads it (defaults.typed)', /typed: t/.test(quick)
+    && /const read = parseQuickAdd\(text, today\)\n\s*const applied = applyQuickAdd\(f, \{\}, null, read, today\)/.test(sheet))
+
+  // Waiting for, Parent and List: rows; a single task's menu opens the screen at the row.
+  const rows = src('src/shared/components/plan-modal/TaskRows.tsx')
+  check('Waiting for saves through the one status action; Parent through ParentPicker (useSetParentTask, Google\'s one level)',
+    /act\.setStatus\(task, on \? 'waiting' : 'open'/.test(rows) && /<ParentPicker task=\{task\}/.test(rows) && /useSetParentTask\(\)/.test(src('src/features/todo/components/ParentPicker.tsx')))
+  check('…only on an edit of a task (not a repeat\'s rule or its day)', /taskId=\{repeating \|\| day \? null : taskId\}/.test(src('src/shared/components/plan-modal/ItemForm.tsx'))
+    && /taskId=\{scheduleBlock \? null : task\?\.id\}/.test(sheet))
+  const item = src('src/features/todo/components/ToDoItem.tsx')
+  check('"Set parent…" and "Move to list…" open the screen at the row; Work\'s Waiting chip too',
+    /onSetParent: \(\) => act\.edit\(task, 'parent'\)/.test(item) && /opensListRow\(task, googleConnected\) \? act\.edit\(task, 'list'\) : setPickingList\(true\)/.test(item)
+    && /onEdit\(task, 'waiting'\)/.test(src('src/features/work/components/WorkTaskCard.tsx'))
+    && !fs.existsSync(path.join(__dirname, '../src/features/todo/components/SetParentTaskSheet.tsx')))
+  check('the List row opens only where the screen shows it: a task on Google Tasks, Google here',
+    R.opensListRow({ google_target: 'tasks' }, true) && R.opensListRow({ google_target: 'both' }, true) && R.opensListRow({ google_target: null, google_sync_enabled: true }, true)
+    && !R.opensListRow({ google_target: 'tasks' }, false) && !R.opensListRow({ google_target: 'calendar' }, true) && !R.opensListRow({ google_target: 'none' }, true))
+  check('the screen opens at the row it was asked for (config.openRow)', /useState<PanelKey \| null>\(config\?\.openRow \?\? null\)/.test(src('src/shared/components/plan-modal/ItemForm.tsx')))
+
+  // The Google event editor: the item screen's look, its own data path.
+  const ev = src('src/features/calendar/components/EditCalendarEventModal.tsx')
+  check('the Google event editor is drawn as the item screen (its rows, wheel and month) and saves as before (one PATCH)',
+    /<Section title="Time">/.test(ev) && /<TimeWheel/.test(ev) && /<DateCalendar/.test(ev) && /title=\{canEdit \? 'Edit Item'/.test(ev)
+    && /update\.mutateAsync\(\{ calendarId, eventId: event\.id, patch \}\)/.test(ev) && /eventEditTimes\(draft, zone\)/.test(ev) && /eventEditAccess\(event,/.test(ev))
+  check('…its delete says it can\'t be undone (Google\'s), and its Google link opens only an https Google Calendar page',
+    /This can\\'t be undone\./.test(ev) && /u\.protocol === 'https:' && \(u\.hostname === 'www\.google\.com' \|\| u\.hostname === 'calendar\.google\.com'\)/.test(ev)
+    && /rel="noopener noreferrer" referrerPolicy="no-referrer"/.test(ev))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

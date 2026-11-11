@@ -21,6 +21,17 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-11 · v24 · Step 3, one screen for everything: the screen can sit
+//                    inside another popup (itemScreenEmbed: no chrome, its
+//                    save line heads the body, the host closes it through the
+//                    handle) — the training session popup's Edit tab (owner's
+//                    answer 2). `defaults.typed`: a quick add's text, read by
+//                    the title as typed text (Work's ✎, the search bar's
+//                    "Open in New Item…"). `config.openRow` opens it at a row.
+//                    Planning gains Waiting for and Parent on a task's edit,
+//                    each saved by its own one action (TaskRows.tsx), never
+//                    through this screen's save. Games' two copies open it
+//                    through useEntityModal.
 //  2026-11-11 · v23.1 · The cleanup after steps 1 and 2 (the PRs' "To do later"):
 //                    the red dot reads the queue's own answer for the item's
 //                    row (the row is sent when an edit opens, named, and the
