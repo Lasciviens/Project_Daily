@@ -11,27 +11,36 @@ import { Button, IconButton, cx, Truncate } from '../../ui'
 import { useMotion } from '../../hooks/useMotion'
 import { FILL_TEXT_MAX } from '../../../features/items/itemFill'
 import { LINE } from './ItemRows'
-import { fillWords } from './itemFillForm'
 import type { ItemFillState } from './useItemFill'
 
-/** ✨ beside the title: opens the field (or closes it); quiet while a fill waits to be kept. */
+/** ✨ beside the title: opens the field (or closes it); quiet while a fill waits to be kept. Small, like the URL row's
+ *  ↗: a bigger one pushes the title's hint onto a second line at 402 px. */
 export function FillButton({ fill }: { fill: ItemFillState }) {
   const asking = fill.step === 'asking'
+  const label = asking ? 'Close the sentence field' : 'Fill the fields from a sentence'
   return (
-    <IconButton label={asking ? 'Close the sentence field' : 'Fill the fields from a sentence'} aria-expanded={asking}
+    <button type="button" aria-label={label} title={label} aria-expanded={asking}
       disabled={fill.reviewing || fill.busy} onClick={asking ? fill.close : fill.ask}
-      className={cx('-my-1 shrink-0', (asking || fill.reviewing) && 'text-accent-600')}>
-      <Sparkles aria-hidden />
-    </IconButton>
+      className={cx('grid h-7 w-7 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-hover disabled:hover:bg-transparent',
+        asking || fill.reviewing ? 'text-accent-600' : 'text-fg-muted hover:text-fg')}>
+      <Sparkles aria-hidden className="h-[18px] w-[18px]" />
+    </button>
   )
 }
 
+/** The heading's second line on an edit while a fill waits (its autosave keeps the screen as it was before ✨). */
+export function FillWaitLine() {
+  return <span aria-live="polite">Not saved until you tap Use these</span>
+}
+
 /** Under the title: the sentence field while asking, the review line while a fill waits; nothing otherwise. */
-export function FillPanel({ fill, editing }: { fill: ItemFillState; editing: boolean }) {
+export function FillPanel({ fill }: { fill: ItemFillState }) {
   const motion = useMotion()
   if (fill.step === 'asking') return <FillField fill={fill} className={motion ? 'motion-pop-in' : undefined} />
   if (fill.step !== 'review') return null
-  const said = `Filled ${fillWords(fill.fields)}${editing ? ' · not saved yet' : ''}`
+  const n = fill.fields.length
+  // The toast names them; an edit's heading says it isn't saved yet (FillWaitLine).
+  const said = `Filled ${n} field${n === 1 ? '' : 's'}`
   return (
     <div role="status" className={cx(LINE, 'flex items-center gap-2 px-3.5 py-1.5', motion && 'motion-pop-in')}>
       <span data-tone="accent" className="tone-text inline-flex shrink-0"><Sparkles aria-hidden className="h-4 w-4" /></span>

@@ -628,7 +628,7 @@ import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
-import { FillButton, FillPanel } from './ItemFill'
+import { FillButton, FillPanel, FillWaitLine } from './ItemFill'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
@@ -761,16 +761,18 @@ export function UnifiedPlanModal({
     : urlIssue ?? endIssue
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
-  // ✨ (useItemFill): a fill shows for review; an edit's autosave waits until it is kept ("Use these").
+  // ✨ (useItemFill): a fill shows for review; until it is kept ("Use these") an edit's autosave works on the screen as
+  // it was before ✨ — what waited then is saved or held as usual, and closing keeps that, never the fill.
   const fill = useItemFill({
     open, item, form,
     screen: { today, nextTime: nextPlanTime(), config, savedKind: editMode ? (scheduleBlock ? 'repeat' : 'one-off') : undefined, occurrenceDate: scheduleBlock ? occurrenceDate : null, choiceShown },
-    take: () => ({ form, typed, parse, quickBase, keepText }),
+    take: () => ({ form, typed, parse, quickBase, keepText, problem }),
     put: s => { setForm(s.form); setTyped(s.typed); setParse(s.parse); setQuickBase(s.quickBase); setKeepText(s.keepText) },
     fillInto: f => { setForm(f); setTyped(f.title); setParse(null); setQuickBase({}); setKeepText(true) },
-    flush: editMode ? () => autosave.flush() : undefined,
   })
-  const autosave = useItemAutosave({ enabled: open && editMode && !blocked && !fill.reviewing, form, problem, persist })
+  const autosave = useItemAutosave({
+    enabled: open && editMode && !blocked, form: fill.before?.form ?? form, problem: fill.before ? fill.before.problem : problem, persist,
+  })
 
   // Re-seed whenever the sheet (re)opens or its rows change — adjusted during
   // render (not in an effect) so a stale form never paints. The seeded form is
@@ -1008,7 +1010,7 @@ export function UnifiedPlanModal({
   return (
     <ModalShell
       open={open} onClose={() => { void requestClose() }} title={heading} headerActions={headerActions}
-      subtitle={editMode && !blocked ? <SaveLine line={autosave.line} onRetry={autosave.retry} /> : undefined}
+      subtitle={editMode && !blocked ? (fill.reviewing ? <FillWaitLine /> : <SaveLine line={autosave.line} onRetry={autosave.retry} />) : undefined}
       size="md" compact grouped dismissible={!working} bodyClassName="px-3 pb-4 pt-1.5 sm:px-4"
     >
       {loadError ? (
@@ -1044,7 +1046,7 @@ export function UnifiedPlanModal({
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
           urlIssue={urlIssue} endIssue={endIssue}
-          fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} editing={editMode} />, rows: fill.rows }}
+          fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} />, rows: fill.rows }}
         />
       )}
       {scheduleBlock && occurrenceDate && (
