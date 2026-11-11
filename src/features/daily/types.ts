@@ -47,6 +47,8 @@ export interface ScheduleBlock {
    *  NOTE: since 155 start_time and end_time may BOTH be null — a repeat with
    *  no time (an all-day series). Readers must guard (`start_time == null`). */
   busy?:          boolean
+  /** The area whose Apple Calendar holds its series (173); null = none there. Read-only here (AI_NO_WRITE). */
+  icloud_area?:   string | null
   /** 'calendar' | 'none' (155); null = saved before 155 (on Google when google_calendar_event_id is set). */
   google_target?: 'calendar' | 'none' | null
   /** What a ticked-off day of it becomes (155); null on older rows. */
@@ -99,6 +101,8 @@ export interface TimeBlock {
   time_zone?:       string | null
   /** Where the slot happens (186): {name, locality?, lat?, lon?, id?} as stored — read through items/itemPlace.placeOfRow. */
   place?:           unknown
+  /** The area whose Apple Calendar holds its event (173); null = none there. Read-only here (AI_NO_WRITE). */
+  icloud_area?:     string | null
   /** Its linked task's status — only on the training-range read
    *  (fetchTrainingBlocksRange): a trained session (task done) is no longer "next". */
   task_status?:     'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled' | null

@@ -43,9 +43,9 @@ export const FOOD_SETTINGS_BOARD: BoardLayouts<FoodSettingsSection> = {
 // ── Calendar ─────────────────────────────────────────────────────────────
 // One bounded card (the app's calendars per area), so the page stops after
 // it: a 42rem-capped list at every width.
-export type CalendarSettingsSection = 'areas'
+export type CalendarSettingsSection = 'areas' | 'itemScreen'
 export const CALENDAR_SETTINGS_BOARD: BoardLayouts<CalendarSettingsSection> = {
-  1: ['areas'],
+  1: ['areas', 'itemScreen'],
 }
 
 // ── APIs ─────────────────────────────────────────────────────────────────
