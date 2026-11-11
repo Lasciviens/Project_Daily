@@ -423,9 +423,31 @@ export interface PriceRead {
   usedLow: number | null
   /** The cheapest refurbished offer in Prisjakt's offer list, else null. */
   refurbishedLow: number | null
+  /**
+   * Prisjakt's new offers, one per shop (its cheapest), cheapest first, at most NEW_OFFERS_MAX — for price match
+   * (migration 191's shop_price_watch.new_offers); [] when its list has no new offer, null when no list was read.
+   */
+  newOffers: PriceNewOffer[] | null
   /** 'prisjakt' when the page is Prisjakt's (its host is prisjakt.no or a subdomain), else 'store'. */
   source: 'prisjakt' | 'store'
 }
+
+/** One shop's cheapest new offer in Prisjakt's own list (191's shape, checked again by shop_new_offers_ok). */
+export interface PriceNewOffer {
+  /** Prisjakt's number for the shop (the row's shopId). */
+  shop_id: number
+  /** The shop's name as the row gives it (its shop.name, ≤ 120 characters, one line), else null. */
+  shop_name: string | null
+  price: number
+  currency: string
+  /** InStock: true; OutOfStock, Backorder, PreOrder: false; anything else: null (not said). */
+  in_stock: boolean | null
+}
+
+/** The most new offers kept (one per shop): 191's bound. */
+export const NEW_OFFERS_MAX = 50
+/** The longest shop name kept: 191's bound. */
+export const SHOP_NAME_MAX = 120
 
 type Json = Record<string, unknown>
 
@@ -842,7 +864,24 @@ function jsonAt(text: string, start: number): { value: unknown; end: number } {
   return { value: undefined, end: -1 }
 }
 
-interface OfferRow { condition: string; price: number; currency: string | null; shop: string | null; variant: string | null }
+interface OfferRow {
+  condition: string; price: number; currency: string | null; shop: string | null; variant: string | null
+  shopId: number | null; shopName: string | null; inStock: boolean | null
+}
+
+/** A shop's name from an offer row, as a screen may show it: whitespace squeezed to one line, ≤ SHOP_NAME_MAX, no control, zero-width or direction characters left — else null. */
+function shopNameOf(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 4 * SHOP_NAME_MAX) return null
+  const name = v.replace(/[\s\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g, ' ').trim()
+  if ([...name].some(ch => { const c = ch.codePointAt(0) as number; return c < 0x20 || (c >= 0x7f && c <= 0x9f) || (c >= 0x200b && c <= 0x200f) || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) || c === 0xfeff })) return null
+  return name && name.length <= SHOP_NAME_MAX ? name : null
+}
+
+/** Whether an offer row says the shop has it now. */
+function stockOf(v: unknown): boolean | null {
+  if (v === 'InStock') return true
+  return v === 'OutOfStock' || v === 'Backorder' || v === 'PreOrder' ? false : null
+}
 
 /**
  * Prisjakt's own offer list for product `productId`: the `offerRows` its product page streams (one row per offer).
@@ -879,6 +918,9 @@ function productRows(rows: unknown[], productId: string): OfferRow[] {
       condition: r.condition.toLowerCase(), price, currency: firstString(r.price.currency)?.toUpperCase() ?? null,
       shop: r.shopId == null ? null : String(r.shopId),
       variant: /^\d+$/.test(String(r.variantId ?? '')) ? String(r.variantId) : null,
+      shopId: typeof r.shopId === 'number' && Number.isSafeInteger(r.shopId) && r.shopId > 0 && r.shopId < 1e10 ? r.shopId : null,
+      shopName: isObj(r.shop) ? shopNameOf(r.shop.name) : null,
+      inStock: stockOf(r.stockStatus),
     })
   }
   return out
@@ -910,12 +952,24 @@ function byCondition(rows: OfferRow[]): { low: number | null; high: number | nul
   }
 }
 
+/** Each shop's cheapest new offer with a shop number, a price below a billion and a currency, cheapest first (a tie by shop), at most NEW_OFFERS_MAX. */
+function newOffersOf(rows: OfferRow[]): PriceNewOffer[] {
+  const best = new Map<number, OfferRow & { shopId: number; currency: string }>()
+  for (const r of rows) {
+    if (r.condition !== 'new' || r.shopId === null || currencyCode(r.currency) === null || !(r.price >= 0 && r.price < 1e9)) continue
+    const had = best.get(r.shopId)
+    if (!had || r.price < had.price) best.set(r.shopId, r as OfferRow & { shopId: number; currency: string })
+  }
+  return [...best.values()].sort((a, b) => a.price - b.price || a.shopId - b.shopId).slice(0, NEW_OFFERS_MAX)
+    .map(r => ({ shop_id: r.shopId, shop_name: r.shopName, price: r.price, currency: r.currency, in_stock: r.inStock }))
+}
+
 /** The price a product page shows, or why there is none. */
 export function readPrice(html: string, pageUrl: string): PriceRead {
   const source: PriceRead['source'] = isPrisjaktHost(pageUrl) ? 'prisjakt' : 'store'
   const empty: PriceRead = {
     status: 'no_price', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null, inStock: null,
-    was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, source,
+    was: null, returnDays: null, condition: source === 'prisjakt' ? 'mixed' : 'unknown', usedLow: null, refurbishedLow: null, newOffers: null, source,
   }
   if (isChallengePage(html)) return { ...empty, status: 'blocked' }
   const fromSchema = keptText(schemaPrice(html, pageUrl, empty))
@@ -927,7 +981,7 @@ export function readPrice(html: string, pageUrl: string): PriceRead {
   return {
     ...fromSchema, status: c.low != null ? 'ok' : 'no_price', low: c.low, high: c.high, offers: c.offers,
     currency: currencyCode(c.currency) ?? fromSchema.currency, inStock: null, was: null, returnDays: null,
-    condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow,
+    condition: 'new', usedLow: c.usedLow, refurbishedLow: c.refurbishedLow, newOffers: newOffersOf(scope),
   }
 }
 
@@ -1086,6 +1140,7 @@ type Watch = {
   currency: string | null; in_stock: boolean | null; was: number | null; return_days: number | null
   last_ok_at: string | null; prev_low: number | null; prev_at: string | null
   condition: PriceCondition | null; used_low: number | null; refurbished_low: number | null
+  new_offers: PriceNewOffer[] | null
 }
 
 interface CheckOutcome {
@@ -1099,7 +1154,7 @@ interface CheckOutcome {
   checkedAt?: string
 }
 
-const WATCH_COLUMNS = 'item_id, url, checked_at, status, error, source, name, image, low, high, offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at, condition, used_low, refurbished_low'
+const WATCH_COLUMNS = 'item_id, url, checked_at, status, error, source, name, image, low, high, offers, currency, in_stock, was, return_days, last_ok_at, prev_low, prev_at, condition, used_low, refurbished_low, new_offers'
 const POINTS_KEEP_DAYS = 730
 const SWEEP_BUDGET_MS = 100_000
 const NOT_MIGRATED = 'Apply migration 137 first'
@@ -1169,7 +1224,7 @@ async function listedSites(supabase: SupabaseClient): Promise<string[]> {
 function notAllowedRead(url: string): PriceRead {
   return {
     status: 'not_allowed', name: null, image: null, brand: null, gtin: null, low: null, high: null, offers: null, currency: null,
-    inStock: null, was: null, returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null,
+    inStock: null, was: null, returnDays: null, condition: 'unknown', usedLow: null, refurbishedLow: null, newOffers: null,
     source: isPrisjaktUrl(url) ? 'prisjakt' : 'store',
   }
 }
@@ -1228,6 +1283,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     offers: same?.offers ?? null, currency: same?.currency ?? null, in_stock: same?.in_stock ?? null, was: same?.was ?? null,
     return_days: same?.return_days ?? null, last_ok_at: same?.last_ok_at ?? null, prev_low: same?.prev_low ?? null, prev_at: same?.prev_at ?? null,
     condition: same?.condition ?? null, used_low: same?.used_low ?? null, refurbished_low: same?.refurbished_low ?? null,
+    new_offers: same?.new_offers ?? null,
   }
   // What the kept price covers: a price read before 188 says nothing — Prisjakt's then mixed every offer.
   const keptCovers: PriceCondition = kept.condition ?? (kept.source === 'prisjakt' ? 'mixed' : 'unknown')
@@ -1241,6 +1297,8 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
       currency: read.currency, in_stock: read.inStock, was: read.was, return_days: read.returnDays, last_ok_at: at,
       prev_low: changed ? kept.low : comparable ? kept.prev_low : null, prev_at: changed ? kept.last_ok_at : comparable ? kept.prev_at : null,
       condition: read.condition, used_low: read.usedLow, refurbished_low: read.refurbishedLow,
+      // Prisjakt's new offers, one per shop (price match, migration 191); a shop's own page has none.
+      new_offers: read.newOffers,
       status: 'ok', error: null,
     }
     outcome = { id: item.id, status: 'ok', low: read.low, currency: read.currency, ...(reused ? { reused, checkedAt: at } : {}) }
@@ -1266,7 +1324,7 @@ async function checkRow(supabase: SupabaseClient, userId: string, item: Item, pr
     // A page that answered without a price still tells its name and picture (and Prisjakt its used and refurbished offers).
     row = {
       ...kept, name: read?.name ?? kept.name, image: read?.image ?? kept.image, status, error,
-      ...(listRead && read ? { condition: 'new', used_low: read.usedLow, refurbished_low: read.refurbishedLow } : {}),
+      ...(listRead && read ? { condition: 'new', used_low: read.usedLow, refurbished_low: read.refurbishedLow, new_offers: read.newOffers } : {}),
       ...(otherKind ? { low: null, high: null, offers: null, was: null, prev_low: null, prev_at: null, last_ok_at: null } : {}),
     }
     outcome = { id: item.id, status, low: null, currency: null, error: error ?? undefined, ...(reused ? { reused, checkedAt: at } : {}) }

@@ -238,6 +238,7 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/features/books/api/koboControlApi.ts': [2, 'a Kobo sleep image (its file is deleted: no Undo) and its storage cleanup'],
     'src/features/books/api/booksApi.ts': [3, 'Kobo inbox housekeeping (files leave storage: no Undo)'],
     'src/features/shop/api/shopCategoryApi.ts': [2, 'Undo of a suggested category just added from a picker (the undo itself: its things move to its parent first), and Undo of Add the suggested categories (the rows it made, only those still empty and as made)'],
+    'src/features/shop/api/shopStoresApi.ts': [2, 'a deal day\'s Reset to the app\'s rule (its own version goes; the toast\'s Undo puts it back — 191) and the Undo of a first edit (the undo itself)'],
   }
   const walk = dir => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap(e =>
     e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.join(dir, e.name)] : [])
