@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * The item screen, steps 1 and 2 (docs/features/item-screen-plan.md) — its pure rules, against the real modules
+ * The item screen, steps 1 and 2 and their cleanup (docs/features/item-screen-plan.md) — its pure rules, against the real modules
  * through sucrase:
  *   src/shared/components/plan-modal/itemScreenRules.ts  Starts / Ends ↔ a day, a start and a length; the timeline's
  *                                                       drags and lanes; where each field goes (the marks); the red dot;
@@ -247,8 +247,105 @@ console.log('\n== 8. Step 2: the calendar fields\' rows (193) ==')
   check('the link opened is only openableUrl\'s, in a new tab without the opener or referrer, after its address shows',
     /const href = openableUrl\(url\)/.test(rows) && /<a href=\{href\} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"/.test(rows)
     && rows.indexOf('hostOf(href)') < rows.indexOf('<a href={href}') && (rows.match(/<a /g) || []).length === 1)
-  check('a link or an End Repeat that can\'t be saved stops the save (Add and the autosave) and says why', /: urlIssue \?\? endIssue/.test(sheet) && /if \(problem\) \{ toast\.error\(problem\); return \}/.test(sheet))
+  check('a link or an End Repeat that can\'t be saved stops the save (Add and the autosave) and says why', /\?\? urlProblem\(f\) \?\? repeatEndIssue\(f, \{ item, today \}\)/.test(sheet) && /if \(problem\) \{ toast\.error\(problem\); return \}/.test(sheet))
   check('Apple\'s mark is a quoted url() (a build inlines it as a data URI with \' in it)', /const mask = `url\("\$\{appleMark\}"\)`/.test(src('src/shared/components/plan-modal/FieldMark.tsx')))
+}
+
+console.log('\n== 9. The cleanup after steps 1 and 2 (11.11.2026) ==')
+{
+  // A saved weekly repeat's Ends row shows times only: an end at or before the start is the next day.
+  check('no day shown: an end before the start is the next day', same(R.endOnWheel('2026-11-12', '22:00', '00:30', false), { date: '2026-11-13', time: '00:30' }))
+  check('…the start itself is a whole day later', same(R.endOnWheel('2026-11-12', '22:00', '22:00', false), { date: '2026-11-13', time: '22:00' }))
+  check('…a later end stays on the day', same(R.endOnWheel('2026-11-12', '22:00', '23:15', false), { date: '2026-11-12', time: '23:15' }))
+  check('the day shown: the wheel keeps the day picked', same(R.endOnWheel('2026-11-12', '22:00', '00:30', true), { date: '2026-11-12', time: '00:30' }))
+  check('a weekly repeat 22:00 → 00:30 is stored as 150 minutes', same(F.withEnd({ date: '2026-11-12', time: '22:00' }, R.endOnWheel('2026-11-12', '22:00', '00:30', false)), { duration: 150, badEnd: null }))
+
+  const g = (field, target, app = 'google') => R.fieldGoes(field, { target, calendarApp: app, dated: true })
+  check('a timed Google Task: its day goes to Google Tasks, its time of day stays in the app', g('time', 'tasks') === 'google-tasks' && g('clock', 'tasks') === 'app' && g('clock', 'none') === 'app')
+  check('…on a calendar the time goes there', g('clock', 'calendar') === 'google-calendar' && g('clock', 'calendar', 'apple') === 'apple' && g('clock', 'both') === 'google-calendar')
+  const time = src('src/shared/components/plan-modal/TimeSection.tsx')
+  check('the time rows (All-day, Starts with a time, Ends, Time Zone) carry the clock\'s mark; the Date row the day\'s',
+    /label="All-day" mark=\{clockMark\}/.test(time) && /label="Starts" mark=\{form\.time \? clockMark : timeMark\}/.test(time) && /label="Ends" mark=\{clockMark\}/.test(time)
+    && /label="Time Zone" mark=\{clockMark\}/.test(time) && /label="Date" mark=\{timeMark\}/.test(time))
+
+  const IR = require('../src/features/items/itemRules')
+  check('the Date row names the section the save files it in: an undated edit keeps its own',
+    IR.sectionForItem({ date: null }, '2026-11-11', 'backlog') === 'backlog' && IR.sectionForItem({ date: null }, '2026-11-11', 'this_week') === 'backlog'
+    && IR.sectionForItem({ date: null }, '2026-11-11', null) === 'inbox' && IR.sectionForItem({ date: '2026-11-11' }, '2026-11-11', 'backlog') === 'today')
+  check('…and the screen asks it with the task\'s section', /sectionForItem\(\{ date: form\.date \}, today, savedSection\)/.test(time) && /savedSection=\{task\?\.section\}/.test(src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')))
+
+  const tl = src('src/shared/components/plan-modal/DayTimeline.tsx')
+  check('an all-day item gets the compact band, not the hour-by-hour timeline', /export function AllDayBand/.test(tl) && /<AllDayBand day=\{timelineDay\}/.test(time) && /\{form\.time \? \(\s*<DayTimeline/.test(time) && !/allDay/.test(tl.slice(tl.indexOf('export function DayTimeline'), tl.indexOf('export function AllDayBand'))))
+  check('the Repeat panel doesn\'t say the summary its row already says', /\.\.\.\(alwaysPreview \? \[\] : \[<span key="s"/.test(src('src/shared/components/plan-modal/fields.tsx')))
+
+  const types = src('src/shared/components/plan-modal/planModal.types.ts')
+  const callers = require('child_process').execSync("grep -rln \"heading: '\" src --include=*.ts --include=*.tsx || true", { cwd: path.join(__dirname, '..') }).toString()
+  check('config.heading is gone: no field, no reader, no caller', !/\bheading\?:/.test(types)
+    && !/config\?\.heading/.test(src('src/shared/components/plan-modal/PlanEntityModals.tsx'))
+    && !/(training|media|games|work|wishes|todo|daily|shop)\/.*\.tsx?/.test(callers.split('\n').filter(f => !/statsDrill|YearDrill/.test(f)).join('\n')))
+
+  const form = src('src/shared/components/plan-modal/ItemForm.tsx')
+  check('a new item\'s title takes the focus on a touch screen too (the dialog leaves it there)', /if \(!autoFocus\) return\s*\n\s*const id = window\.setTimeout\(\(\) => \{ if \(document\.activeElement !== ref\.current\) ref\.current\?\.focus/.test(form))
+
+  // Undo changes: the form as it opened, every changed field marked so the save sends it back.
+  const opened = F.buildInitialForm({ mode: 'task', today: '2026-11-11', nextTime: '18:00' })
+  const now = { ...opened, title: 'Changed', place: { name: 'Jernbanetorget' }, placeTouched: true, url: 'https://example.com', calendarTouched: ['url'], shown: ['notes', 'list'] }
+  const back = F.revertedForm(opened, now)
+  check('Undo changes puts every value back', F.formValuesKey(back) === F.formValuesKey(opened) && back.title === opened.title && back.place === opened.place)
+  check('…and keeps what was touched, so the save sends those fields back', back.placeTouched && back.calendarTouched.includes('url') && !back.shown.includes('list'))
+  check('touching alone is no change of values', F.formValuesKey({ ...opened, labelsTouched: true, calendarTouched: ['alerts'] }) === F.formValuesKey(opened))
+  const sheet = src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')
+  check('…offered after a save, never after a This day / All days switch, and sent at once (held or not)',
+    /autosave\.savedOnce && form\.scope === openedForm\.scope/.test(sheet) && /void autosave\.saveNow\(back, problemOf\(back\)\)/.test(sheet))
+
+  // Back, a failed save, Stay: the entry goes back, so the next Back closes the screen again.
+  const hist = src('src/shared/hooks/useHistoryDismiss.ts')
+  check('a close that stayed open (false) puts its history entry back', /rearmIfStayed\(overlay, overlay\.close\(\)\)/.test(hist)
+    && /if \(stayedOpen !== false \|\| !overlay\.alive \|\| stack\.includes\(overlay\)\) return/.test(hist) && /overlay\.alive = false/.test(hist))
+  check('…the item screen answers false on Stay, and ModalShell hands the answer on', /if \(!leave\) return false/.test(sheet) && /onClose=\{requestClose\}/.test(sheet)
+    && /const close = \(\) => \(dismissible \? onClose\(\) : undefined\)/.test(src('src/shared/modals/ModalShell.tsx')))
+
+  // A problem is said once the typing pauses or the field is left — a link being typed never flashes "Not saved".
+  const auto = src('src/shared/components/plan-modal/useItemAutosave.ts')
+  check('the autosave says a problem only for a form left unchanged for the wait, or when a field is left',
+    /dirty && problem \? \(key === judgedKey \? \{ kind: 'blocked', reason: problem \} : \{ kind: 'idle' \}\)/.test(auto)
+    && /setJudgedKey\(key\), AUTOSAVE_DELAY_MS/.test(auto) && /onBlur=\{autosave\.settle\}/.test(sheet))
+
+  // An all-day item's alerts (193).
+  const CF = require('../src/features/items/itemCalendarFields')
+  check('all day, a timed alert reads as the day it falls on (what the calendars write)', same(CF.alertsForKind([30], true), [0]) && same(CF.alertsForKind([30, 1440], true), [0, 1440])
+    && same(CF.alertsForKind([5, 10], true), [0]) && same(CF.alertsForKind([1440], true), [1440]) && CF.alertsForKind(null, true) === null && same(CF.alertsForKind([30], false), [30]))
+  check('a saved all-day item with a timed alert opens on the choice it is', same(F.buildInitialForm({ mode: 'task', today: '2026-11-11', nextTime: '18:00',
+    item: { taskId: 't', blockId: 'b', scheduleBlockId: null, title: 'Day', date: '2026-11-12', time: null, durationMinutes: null, google: 'calendar', alerts: [30] } }).alerts, [0]))
+  check('the All-day switch drops an alert within the day (none left: Default), keeps a day or more before', same(CF.alertsOnAllDaySwitch([30]), null)
+    && same(CF.alertsOnAllDaySwitch([0, 1440]), [1440]) && same(CF.alertsOnAllDaySwitch([]), []) && CF.alertsOnAllDaySwitch(null) === null)
+  const on = F.withAllDaySwitch({ googlePick: null, alerts: [30], calendarTouched: [] }, true, 'calendar', '18:00')
+  check('…and marks it touched so an edit sends it', on.alerts === null && same(on.calendarTouched, ['alerts']))
+  check('…nothing to change: nothing touched', !('alerts' in F.withAllDaySwitch({ googlePick: null, alerts: [1440], calendarTouched: [] }, true, 'calendar', '18:00')))
+
+  // The agenda's and Training's week: a repeat's end.
+  const rule = { days_of_week: [1, 3], effective_from: '2026-11-02', repeat_until: '2026-12-31' }
+  check('a repeat with an end says "until" it, and "last time" on its last day', CF.repeatEndNote(rule, '2026-11-11') === 'until 31.12.2026' && CF.repeatEndNote(rule, '2026-12-31') === 'last time'
+    && CF.repeatEndNote({ days_of_week: [1] }, '2026-11-11') === null && CF.repeatEndNote(null) === null)
+  check('…on the agenda\'s repeat rows and Training\'s weekly schedule', /function RepeatMark/.test(src('src/features/daily/components/DayAgendaRows.tsx'))
+    && /repeatEndNote\(t\)/.test(src('src/features/training/components/program/WeeklyScheduleCard.tsx')))
+
+  // The red dot reads the queue's own answer for the item's row.
+  const nowD = new Date('2026-11-11T12:00:00Z')
+  const row = { icloud_area: null, updated_at: '2026-11-11T11:00:00Z' }
+  const dot = (send, extra = {}) => R.appleDot({ wanted: true, row, send, now: nowD, ...extra })
+  check('sent or kept now: no dot', dot({ item: { status: 'sent', error: null, retryAt: null }, problem: null, busy: false }) === null
+    && dot({ item: { status: 'kept', error: null, retryAt: null }, problem: null, busy: false }) === null)
+  check('failed: the dot says the queue\'s own reason', /Apple refused the password · Settings → Subscriptions/.test(dot({ item: { status: 'failed', error: 'Apple did not accept the Apple ID or app-specific password', retryAt: null }, problem: null, busy: false })))
+  check('not queued, or its calendar doesn\'t go there: the dot says so', /nothing is queued/.test(dot({ item: { status: 'not-queued', error: null, retryAt: null }, problem: null, busy: false }))
+    && /doesn't go there/.test(dot({ item: { status: 'none', error: null, retryAt: null }, problem: null, busy: false })))
+  check('the send itself failed: why', /no connection to the server/.test(dot({ item: null, problem: 'Failed to fetch', busy: false })))
+  check('another send was running: the row\'s guess, with the account\'s newest reason', /iCloud error 500/.test(dot({ item: null, problem: null, busy: true }, { notSent: { count: 2, reason: 'iCloud answered 500 when an event was written' } }))
+    && dot({ item: null, problem: null, busy: true }, { row: { icloud_area: null, updated_at: '2026-11-11T11:59:30Z' } }) === null)
+  check('Apple has it, or it isn\'t meant for Apple: no dot', R.appleDot({ wanted: true, row: { icloud_area: 'personal' }, send: null, now: nowD }) === null
+    && R.appleDot({ wanted: false, row, send: { item: { status: 'failed', error: 'x', retryAt: null }, problem: null, busy: false }, now: nowD }) === null)
+  check('…asked once per version of the row, named so it goes first', /useAppleItemSend\(appleRef, liveRow\?\.updated_at\)/.test(sheet)
+    && /drainICloudNow\(\{ items: \[ref as DrainItemRef\] \}\)/.test(src('src/features/calendar/areas/useAppleItemSend.ts')))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -6,6 +6,7 @@ import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { lookLine, SNOOZE_DAYS, type Look, type LookThing } from '../shopSuggestions'
 import { LookIcon } from './lookIcon'
+import { wrapLong } from './lookFacts'
 import { isShownLink } from '../storeRows'
 import { addDays } from '../ownModel'
 
@@ -50,9 +51,9 @@ function LookFailed({ onRetry }: { onRetry: () => void }) {
  * as one piece ("2 990 NOK at elkjop.no") that only an overlong address breaks.
  */
 function lookFacts(look: Look) {
-  if (!look.where || !look.facts.length) return look.facts
+  if (!look.where || !look.facts.length) return wrapLong(look.facts)
   const last = look.facts[look.facts.length - 1]
-  return [...look.facts.slice(0, -1), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
+  return [...wrapLong(look.facts.slice(0, -1)), <span key="w">{last} <span className="whitespace-normal break-words">{look.where}</span></span>]
 }
 
 /** "Snooze a week", or "Snooze until 14.11.2026" when its deadline comes first — none for a row due tomorrow. */
@@ -84,7 +85,8 @@ function LookRow({ look, today, actions, onList }: { look: Look; today: string; 
   const act = () => (look.action === 'bought' ? actions.onBought(look) : look.action === 'claim' ? actions.onClaim(look) : open())
   return (
     <li className="flex items-start gap-0.5">
-      <button type="button" onClick={open} className="flex min-w-0 flex-1 items-start gap-2.5 rounded-row px-2 py-2 text-left transition-colors hover:bg-surface-hover">
+      {/* data-return-focus: Owned's pane hides this list while it is open, so the focus finds this row again by its key. */}
+      <button type="button" onClick={open} data-return-focus={`look:${look.key}`} className="flex min-w-0 flex-1 items-start gap-2.5 rounded-row px-2 py-2 text-left transition-colors hover:bg-surface-hover">
         <LookIcon look={look} />
         <span className="min-w-0 flex-1">
           <Truncate as="span" className="block text-body font-medium text-fg">{look.title}</Truncate>
@@ -99,7 +101,7 @@ function LookRow({ look, today, actions, onList }: { look: Look; today: string; 
         </a>
       )}
       <span className="flex shrink-0 items-center pt-1">
-        <button type="button" onClick={act} aria-label={`${ACTION[look.action]}: ${look.title}`}
+        <button type="button" onClick={act} data-return-focus={`look-act:${look.key}`} aria-label={`${ACTION[look.action]}: ${look.title}`}
           className={cx('btn-ghost btn-sm gap-1 px-2', look.action === 'bought' ? 'text-fg-2' : 'text-accent-600')}>
           {look.action === 'bought' && <Check aria-hidden className="h-4 w-4" />}
           {ACTION[look.action]}

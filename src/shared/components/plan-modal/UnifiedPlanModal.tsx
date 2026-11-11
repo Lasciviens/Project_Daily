@@ -21,7 +21,7 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
-//  2026-11-11 · v24 · The item screen, step 4: ✨ beside the title fills the
+//  2026-11-11 · v25 · The item screen, step 4: ✨ beside the title fills the
 //                    fields from one sentence (useItemFill, ItemFill.tsx,
 //                    itemFillForm.ts). ai-proxy's itemFill action answers with
 //                    checked values only (items/itemFill.cleanItemFill, run
@@ -31,7 +31,26 @@
 //                    or "Use these" (an edit — its autosave waits, and what
 //                    waited before ✨ is saved first); Cancel or the toast's
 //                    Undo puts the screen back exactly as it was.
-//  2026-11-11 · v23 ·The item screen, step 2: the rows of Apple's extra fields
+//  2026-11-11 · v23.1 · The cleanup after steps 1 and 2 (the PRs' "To do later"):
+//                    the red dot reads the queue's own answer for the item's
+//                    row (the row is sent when an edit opens, named, and the
+//                    server says what it did — appleDot; the row's 2-minute
+//                    guess only when another send was running). A saved weekly
+//                    repeat can end after midnight (endOnWheel). The time rows
+//                    of a Google Task carry the app's mark (`clock`). The Date
+//                    row names the section the save keeps (an undated edit
+//                    keeps its own). An all-day item gets a compact band, not
+//                    the timeline. The Repeat panel no longer repeats its
+//                    summary. config.heading gone.
+//                    A new item's title takes the focus on touch screens too.
+//                    "Undo changes" under the heading after a save puts back
+//                    everything since the edit opened, as one save. Back, a
+//                    failed save, Stay: the history entry goes back, so a
+//                    second Back closes the screen. A problem (a link being
+//                    typed) is said once the typing pauses or the field is
+//                    left. The All-day switch drops an alert within the day;
+//                    an all-day item opens its alerts as the choice they are.
+//  2026-11-11 · v23 · The item screen, step 2: the rows of Apple's extra fields
 //                    (migration 193; v21.11 built their data side), only on an
 //                    item with a slot or a repeat (itemScreenRules.screenParts,
 //                    the Location row's rule): Travel Time under Location;
@@ -609,6 +628,9 @@ import { AlertCircle } from 'lucide-react'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useItemCalendarApp } from '../../../features/calendar/areas/useItemCalendarApp'
 import { useCalendarPrefs } from '../../../features/calendar/areas/useCalendarPrefs'
+import { useAppleItemSend } from '../../../features/calendar/areas/useAppleItemSend'
+import type { DrainItemRef } from '../../../features/calendar/areas/appleSendRules'
+import { useICloudStatus } from '../../../features/calendar/icloud/useICloud'
 import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/api/scheduleApi'
 import { useScheduleBlock, useTimeBlock } from '../../../features/daily/hooks/useSchedule'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
@@ -630,20 +652,17 @@ import { todayStr } from '../../utils/dateUtils'
 import { ItemForm } from './ItemForm'
 import { FillButton, FillPanel, FillWaitLine } from './ItemFill'
 import { RepeatDeleteChoice } from './RepeatDeleteChoice'
-import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
+import { appleDot, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
 import { useItemFill } from './useItemFill'
 import {
-  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, shapeOf, switchScope,
-  urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
+  applyQuickAdd, buildInitialForm, formContentKey, formValuesKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, revertedForm,
+  shapeOf, switchScope, urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
 import type { PlanResult, UnifiedPlanModalProps } from './planModal.types'
 
 const SCOPES: { value: 'day' | 'all'; label: string }[] = [{ value: 'day', label: 'This day' }, { value: 'all', label: 'All days' }]
-
-/** Why Apple Calendar shows the red dot: the browser can't read the queue's own error (service role only). */
-const APPLE_REFUSED = "Apple Calendar didn't take it yet; the app tries again every 5 minutes (Settings → Subscriptions → Apple Calendar says why)"
 
 /** What a caller's onSaved hears: which parts the item has, and what was made. */
 function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | null): PlanResult {
@@ -656,9 +675,15 @@ function resultOf(input: SheetItemInput, saved: SavedItem, item: ItemInput | nul
 }
 
 /** The heading's second line on an edit: the save's state, in one line (fixed height, so nothing moves). */
-function SaveLine({ line, onRetry }: { line: AutosaveLine; onRetry: () => void }) {
+function SaveLine({ line, onRetry, onUndo }: { line: AutosaveLine; onRetry: () => void; onUndo?: () => void }) {
   if (line.kind === 'saving') return <span aria-live="polite">Saving…</span>
-  if (line.kind === 'saved') return <span aria-live="polite">Saved</span>
+  if (line.kind === 'saved') {
+    return (
+      <span aria-live="polite">
+        Saved{onUndo && <> · <button type="button" onClick={onUndo} className="font-semibold text-accent-600 underline">Undo changes</button></>}
+      </span>
+    )
+  }
   if (line.kind === 'held') return <span aria-live="polite">{line.reason}</span>
   if (line.kind === 'blocked') return <span data-tone="warn" className="tone-text" aria-live="polite">Not saved: {line.reason}</span>
   if (line.kind === 'failed') {
@@ -712,6 +737,8 @@ export function UnifiedPlanModal({
   }
 
   const [form, setForm] = useState<PlanForm>(seedForm)
+  // The form as the edit opened ("Undo changes" puts it back as one save).
+  const [openedForm, setOpenedForm] = useState<PlanForm>(form)
   // Where it shows: Google needs its connection; an item whose area is on Apple Calendar (2b-2) doesn't — its choice
   // is shown and kept either way (Google Tasks still follows the real connection, in the database).
   // The server's own rule and inputs (icloudEvents.itemArea): the chip names the calendar the item really goes to.
@@ -755,10 +782,11 @@ export function UnifiedPlanModal({
   // same, so a link left as typed is said even after its row went with the slot (the close says why it wasn't saved).
   const urlIssue = urlProblem(form)
   const endIssue = repeatEndIssue(form, { item, today })
-  const problem = !form.title.trim() ? 'a title is needed'
-    : repeatIssue ? repeatIssue
-    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem]
-    : urlIssue ?? endIssue
+  const problemOf = (f: PlanForm) => (!f.title.trim() ? 'a title is needed'
+    : (repeatOfForm(f) ? recurrenceProblem(f) : null)
+      ?? (f.badEnd ? END_PROBLEM_TEXT[f.badEnd.problem] : null)
+      ?? urlProblem(f) ?? repeatEndIssue(f, { item, today }))
+  const problem = problemOf(form)
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
   // ✨ (useItemFill): a fill shows for review; until it is kept ("Use these") an edit's autosave works on the screen as
@@ -783,6 +811,7 @@ export function UnifiedPlanModal({
     if (open) {
       const f = seedForm()
       setForm(f)
+      setOpenedForm(f)
       autosave.reset(formContentKey(f))
       setTyped(f.title)
       setParse(null)
@@ -802,6 +831,7 @@ export function UnifiedPlanModal({
       const next = { ...form, googleListTitle: list.title }
       if (formContentKey(form) === autosave.savedKey) autosave.reset(formContentKey(next))
       setForm(next)
+      if (openedForm.googleListTitle !== list.title) setOpenedForm({ ...openedForm, googleListTitle: list.title })
     }
   }
 
@@ -809,7 +839,18 @@ export function UnifiedPlanModal({
   const liveBlock = useTimeBlock(editMode && appleArea ? item?.blockId : null)
   const livePlan = useScheduleBlock(editMode && appleArea && !item?.blockId ? item?.scheduleBlockId : null)
   const wantsApple = appleArea && hasGoogleCalendar(target) && (!!form.date || !!repeatOfForm(form))
-  const refused = editMode && appleRefused(item?.blockId ? liveBlock.data : livePlan.data, wantsApple, new Date().getTime()) ? APPLE_REFUSED : null
+  // …why, from the queue's own answer: the row is sent when the screen opens (and after each save that left it
+  // without an Apple copy), and the server says what it did with it (itemScreenRules.appleDot).
+  const liveRow = item?.blockId ? liveBlock.data : livePlan.data
+  const appleRef: DrainItemRef | null = !editMode || !wantsApple || !liveRow || liveRow.icloud_area ? null
+    : item?.blockId ? { entity: 'slot', id: item.blockId }
+    : item?.scheduleBlockId ? { entity: 'plan', id: item.scheduleBlockId } : null
+  const appleSend = useAppleItemSend(appleRef, liveRow?.updated_at)
+  // Another send was running: the account's newest reason (Settings' Apple Calendar card) stands in.
+  const icloud = useICloudStatus({ enabled: !!appleRef && !!appleSend.data?.busy })
+  const refused = editMode
+    ? appleDot({ wanted: wantsApple, row: liveRow, send: appleSend.data ?? null, notSent: icloud.data?.notSent, now: new Date() })
+    : null
 
   // Quick add reads a NEW item's title as it is typed; "Keep text" stops it
   // until the field is cleared.
@@ -935,12 +976,26 @@ export function UnifiedPlanModal({
     }
   }
 
-  // Closing an edit sends what waits first; a failed save keeps the screen open (its line says so).
-  const closing = useRef(false)
-  async function requestClose() {
-    if (!editMode || blocked) { onClose(); return }
-    if (closing.current) return
-    closing.current = true
+  // "Undo changes" (an edit, after a save): everything since it opened, put back as one save — sent at once, even a
+  // slot taken away (asked for, not a stray tap). Not after a This day / All days switch: its saves went to two scopes.
+  const canUndo = editMode && !blocked && autosave.savedOnce && form.scope === openedForm.scope
+    && formValuesKey(form) !== formValuesKey(openedForm)
+  function undoChanges() {
+    const back = revertedForm(openedForm, form)
+    setForm(back)
+    setTyped(back.title)
+    void autosave.saveNow(back, problemOf(back))
+  }
+
+  // Closing an edit sends what waits first; a failed save keeps the screen open (its line says so). Resolves false
+  // when it stayed open ("Stay"): a Back's history entry then goes back, so the next Back closes it again.
+  const closing = useRef<Promise<boolean> | null>(null)
+  function requestClose(): Promise<boolean> {
+    if (!editMode || blocked) { onClose(); return Promise.resolve(true) }
+    closing.current ??= closeEdit().finally(() => { closing.current = null })
+    return closing.current
+  }
+  async function closeEdit(): Promise<boolean> {
     const done = await autosave.flush()
     // A failed save never traps the screen: the owner decides (the save's own toast said why). Back comes here too.
     const leave = done.kind !== 'failed' || await entityModal.confirm({
@@ -949,10 +1004,10 @@ export function UnifiedPlanModal({
       confirmLabel: 'Close without saving',
       cancelLabel: 'Stay',
     })
-    closing.current = false
-    if (!leave) return
+    if (!leave) return false
     if (done.kind === 'problem') toast.warning(`Your last change wasn't saved: ${done.reason}`)
     onClose()
+    return true
   }
 
   const shownTitle = form.title.trim() || task?.title || timeBlock?.title || scheduleBlock?.title || ''
@@ -1009,8 +1064,8 @@ export function UnifiedPlanModal({
 
   return (
     <ModalShell
-      open={open} onClose={() => { void requestClose() }} title={heading} headerActions={headerActions}
-      subtitle={editMode && !blocked ? (fill.reviewing ? <FillWaitLine /> : <SaveLine line={autosave.line} onRetry={autosave.retry} />) : undefined}
+      open={open} onClose={requestClose} title={heading} headerActions={headerActions}
+      subtitle={editMode && !blocked ? (fill.reviewing ? <FillWaitLine /> : <SaveLine line={autosave.line} onRetry={autosave.retry} onUndo={canUndo ? undoChanges : undefined} />) : undefined}
       size="md" compact grouped dismissible={!working} bodyClassName="px-3 pb-4 pt-1.5 sm:px-4"
     >
       {loadError ? (
@@ -1032,6 +1087,8 @@ export function UnifiedPlanModal({
           </div>
         </div>
       ) : (
+        // A field left: a problem with what was typed (a link) may be said now, not only after the pause.
+        <div className="contents" onBlur={autosave.settle}>
         <ItemForm
           form={form} patch={patch} config={config}
           typed={typed} onTitle={onTitle} parse={parse} onKeepText={onKeepText}
@@ -1045,9 +1102,10 @@ export function UnifiedPlanModal({
           showMarks={prefs.showMarks} appleNotes={prefs.notes === 'notes+link' || prefs.notes === 'notes'} refused={refused}
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
-          urlIssue={urlIssue} endIssue={endIssue}
+          urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section}
           fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} />, rows: fill.rows }}
         />
+        </div>
       )}
       {scheduleBlock && occurrenceDate && (
         <RepeatDeleteChoice

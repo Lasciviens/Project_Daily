@@ -101,7 +101,7 @@ console.log('\n1 · Buy again: a rhythm from your own ticks')
   const milk = due.find(d => d.title === 'Milk')
   check('Milk: four purchase days (two spellings folded), every 6 days, last 5 days ago',
     milk.count === 4 && milk.every === 6 && milk.since === 5 && milk.last === dayAgo(5), JSON.stringify(milk && { ...milk, row: undefined }))
-  check('…its words, the owner\'s: "Usually every 6 days, last 5 days ago"', B.rhythmWords(milk) === 'Usually every 6 days, last 5 days ago')
+  check('…its words, plain: "Every 6 days · last bought 5 days ago"', B.rhythmWords(milk) === 'Every 6 days · last bought 5 days ago')
   check('…a tap re-adds the latest purchase: its store, category, product and picture',
     eq(M.buyAgainInput(milk), { title: 'Milk', platform: 'Kiwi', category_id: 'groc', list: 'quick', ean: '7038010000737', image_url: 'https://img.example.com/melk.jpg' }))
   check('never suggested: on the list by name (oats) or by product (Lettmelk), not due yet (bread), bought today (eggs), lapsed (candles, kitchen roll), wishlist purchases',
@@ -113,8 +113,8 @@ console.log('\n1 · Buy again: a rhythm from your own ticks')
   check('Bought before keeps the rest, without what Buy again shows', !before.some(b => b.title === 'Coffee' || b.title === 'Milk') && ['Tape', 'Bread', 'Stamps', 'Winter tyres'].every(t => before.some(b => b.title === t)))
   check('nothing bought yet: nothing suggested', B.dueAgain([row({ title: 'Milk' })], TODAY).length === 0 && B.dueAgain([], TODAY).length === 0)
   check('words: every day, every week, every 3 weeks; yesterday, 17 days ago, 4 weeks ago',
-    B.rhythmWords({ every: 1, since: 1 }) === 'Usually every day, last bought yesterday' && B.rhythmWords({ every: 7, since: 6 }) === 'Usually every week, last 6 days ago'
-    && B.rhythmWords({ every: 21, since: 17 }) === 'Usually every 3 weeks, last 17 days ago' && B.rhythmWords({ every: 30, since: 28 }) === 'Usually every 4 weeks, last 4 weeks ago')
+    B.rhythmWords({ every: 1, since: 1 }) === 'Every day · last bought yesterday' && B.rhythmWords({ every: 7, since: 8 }) === 'Every week · last bought 8 days ago'
+    && B.rhythmWords({ every: 21, since: 17 }) === 'Every 3 weeks · last bought 17 days ago' && B.rhythmWords({ every: 30, since: 28 }) === 'Every 4 weeks · last bought 4 weeks ago')
 }
 
 console.log('\n2 · Where the whole list is cheapest (current prices only)')
@@ -132,22 +132,22 @@ console.log('\n2 · Where the whole list is cheapest (current prices only)')
   const w = G.wholeList(G.basketByChain(rows, prices, TODAY), rows.length)
   check('the cheapest chain with every row: Oda, 137.70 — Kiwi\'s 40-day-old prices never count',
     w.kind === 'cheapest' && eq(w.chains, ['Oda']) && w.total === 137.7 && w.covered === 3 && w.whole, JSON.stringify(w))
-  check('…one line: "Cheapest for the whole list: Oda · 137.70 NOK"', eq(G.wholeListWords(w, money), { lead: 'Cheapest for the whole list:', chain: 'Oda', value: '137.70 NOK' }))
+  check('…in the subtitle, no amount (the row has it): "Oda is cheapest"', G.wholeListWords(w) === 'Oda is cheapest')
   const tied = new Map([...prices].map(([k, p]) => [k, { ...p, stores: p.stores.filter(x => x.name !== 'Oda') }]))
   const t = G.wholeList(G.basketByChain(rows, tied, TODAY), rows.length)
-  check('a tie names both, A–Z: "Meny or Spar"', t.kind === 'cheapest' && eq(t.chains, ['Meny', 'Spar']) && G.wholeListWords(t, money).chain === 'Meny or Spar' && t.total === 146.3, JSON.stringify(t))
+  check('a tie names both, A–Z: "Meny and Spar are cheapest"', t.kind === 'cheapest' && eq(t.chains, ['Meny', 'Spar']) && G.wholeListWords(t) === 'Meny and Spar are cheapest' && t.total === 146.3, JSON.stringify(t))
   const onlyOda = new Map([['1', prices.get('1')], ['2', prices.get('2')], ['3', { ...prices.get('3'), stores: [s('Oda', 75.9)] }]])
   const o = G.wholeList(G.basketByChain(rows, onlyOda, TODAY), rows.length)
-  check('one chain has everything: "Only one chain has all 3:" Oda', o.kind === 'only' && G.wholeListWords(o, money).lead === 'Only one chain has all 3:' && G.wholeListWords(o, money).chain === 'Oda')
+  check('one chain has everything: "only Oda has all 3"', o.kind === 'only' && G.wholeListWords(o) === 'only Oda has all 3')
   const split = new Map([['1', { ...prices.get('1'), stores: [s('Meny', 23.9)] }], ['2', { ...prices.get('2'), stores: [s('Oda', 39.9)] }], ['3', { ...prices.get('3'), stores: [s('Meny', 79.9)] }]])
   const none = G.wholeList(G.basketByChain(rows, split, TODAY), rows.length)
   check('no chain has it all: the one with the most, never a total that isn\'t comparable',
-    none.kind === 'none' && eq(G.wholeListWords(none, money), { lead: 'No chain has all 3 — most at', chain: 'Meny', value: '2 of 3' }), JSON.stringify(none))
+    none.kind === 'none' && eq(none.chains, ['Meny']) && G.wholeListWords(none) === 'no chain has all 3', JSON.stringify(none))
   const part = G.wholeList(G.basketByChain([...rows, { title: 'Tape', ean: null }], prices, TODAY), rows.length + 1)
-  check('with a row not priced yet it says what it covers: "Cheapest for 3 priced items:"', !part.whole && G.wholeListWords(part, money).lead === 'Cheapest for 3 priced items:')
+  check('with a row not priced yet it says what it covers: "Oda is cheapest for these"', !part.whole && G.wholeListWords(part) === 'Oda is cheapest for these')
   const onlyStale = new Map([['1', { ...prices.get('1'), stores: [s('Kiwi', 15, stale)] }]])
   check('only old prices: no answer at all (nothing to say is cheapest)', G.wholeList(G.basketByChain([rows[0]], onlyStale, TODAY), 1) === null)
-  check('two rows: "has both"; one row: "has it"', G.wholeListWords({ ...o, priced: 2 }, money).lead === 'Only one chain has both:' && G.wholeListWords({ ...none, priced: 1, covered: 1 }, money).lead === 'No chain has it — most at')
+  check('two rows: "has both"; one row: "has it"', G.wholeListWords({ ...o, priced: 2 }) === 'only Oda has both' && G.wholeListWords({ ...none, priced: 1, covered: 1 }) === 'no chain has it')
 }
 
 console.log('\n3 · Product pictures: a public web link made https, only when the row has none')

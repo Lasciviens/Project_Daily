@@ -104,7 +104,7 @@ export function RecordStrip({ item, state, ctx, chain, watch, models, watches, a
     const extras = ctx.costs.get(item.id) ?? []
     cells.push(
       <Cell key="p" label="Paid" strong hint={from ? `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}` : undefined}><PaidText item={item} /></Cell>,
-      <Cell key="c" label="Costs" hint={extras.length ? `${extras.length} extra cost${extras.length === 1 ? '' : 's'}` : 'repairs, fees, cover'}>
+      <Cell key="c" label="Extra costs" hint={extras.length === 1 ? extras[0].label : extras.length ? `${extras.length} costs` : 'like a repair or insurance'}>
         {extras.length ? <AmountText amount={extrasOf(item, ctx)} /> : 'None'}
       </Cell>,
     )

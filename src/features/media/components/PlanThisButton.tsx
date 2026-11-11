@@ -22,7 +22,6 @@ export function PlanThisButton({ entryId, title, runtimeMinutes }: Props) {
       icon={<CalendarPlus />}
       onClick={() => modal.open({
         kind: 'time-block',
-        config: { heading: 'Plan to watch' },
         defaults: {
           title:          `Watch: ${title}`,
           duration:       ceilToQuarter(runtimeMinutes || 120),

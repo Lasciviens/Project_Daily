@@ -241,7 +241,10 @@ export function evidenceLine(r: ResaleEvidenceRow, money: (n: number, currency: 
   return [money(r.amount, r.currency), r.source, condition, formatDate(r.on), r.why ? `not counted: ${r.why}` : null].filter(Boolean).join(' · ')
 }
 
-/** A condition in the app's words. */
+/** A condition in the app's words, inside a line ("2 400 NOK · FINN · like new · 03.11.2026"). */
 export const CONDITION_LABEL: Readonly<Record<ResaleCondition | 'used' | 'refurbished', string>> = {
   new: 'new, unused', like_new: 'like new', good: 'good', fair: 'fair', for_parts: 'for parts', used: 'used', refurbished: 'refurbished',
 }
+
+/** A condition as a choice of its own (a select's option): "Like new" (cleanup, 11.11.2026: the options were lowercase). */
+export const conditionChoice = (c: ResaleCondition): string => CONDITION_LABEL[c].charAt(0).toUpperCase() + CONDITION_LABEL[c].slice(1)

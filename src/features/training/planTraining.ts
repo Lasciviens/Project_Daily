@@ -43,7 +43,6 @@ export async function openPlanRoutine(routine: Pick<HevyRoutine, 'id' | 'title'>
   }
   entityModal.open({
     kind: 'time-block',
-    config: { heading: 'Plan routine' },
     defaults: { title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true, ...(opts.date ? { date: opts.date } : {}) },
     source: { sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' },
     onSaved: opts.onSaved ? () => opts.onSaved?.() : undefined,
@@ -55,7 +54,6 @@ export async function openPlanRoutine(routine: Pick<HevyRoutine, 'id' | 'title'>
 export function openPlanSession(date: string) {
   entityModal.open({
     kind: 'time-block',
-    config: { heading: 'Plan training' },
     defaults: { title: 'Training', date, category: 'training', color: 'accent', alsoCreateTask: true },
     source: { sourceType: 'training_session', taskSourceType: 'training_session' },
   })

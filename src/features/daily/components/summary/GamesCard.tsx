@@ -18,7 +18,6 @@ export function GamesCard({ date }: { date: string }) {
 
   const plan = (g: QueueGame) => modal.open({
     kind: 'time-block',
-    config: { heading: 'Plan a gaming session' },
     defaults: { title: g.title, date, duration: 60, category: 'games', color: 'purple' },
   })
 

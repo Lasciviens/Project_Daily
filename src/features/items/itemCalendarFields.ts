@@ -13,9 +13,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  ALERT_MINUTES, ITEM_URL, ITEM_URL_MAX, MAX_ITEM_ALERTS, TRAVEL_MINUTES, eventAlerts, eventShowAs, eventTravel, eventUrl, type ShowAs,
+  ALERT_MINUTES, ITEM_URL, ITEM_URL_MAX, MAX_ITEM_ALERTS, TRAVEL_MINUTES, allDayAlertDays, eventAlerts, eventShowAs, eventTravel, eventUrl, type ShowAs,
 } from '../calendar/calendarEventRules'
-import { MAX_REPEAT_COUNT, countEndDay, isIsoDay, repeatCountOf, type RepeatRule } from '../daily/recurrence'
+import { MAX_REPEAT_COUNT, countEndDay, isIsoDay, repeatCountOf, repeatLastDay, type RepeatRule } from '../daily/recurrence'
 import { formatDate } from '../../shared/utils/dateFormat'
 import type { RepeatEnd } from './itemTypes'
 
@@ -66,6 +66,28 @@ export function alertsOf(rows: AlertRows): number[] | null {
   const out = [rows.alert]
   if (rows.second !== null && rows.second !== rows.alert) out.push(rows.second)
   return eventAlerts(out) ?? []
+}
+
+/**
+ * An item's own alerts read for its kind. All day: each alert is the day it falls on, at 09:00 — what both calendars
+ * write for it (allDayAlertDays) — so one saved while the item had a time ("30 minutes before") shows as the choice it
+ * is ("On the day (09:00)"). With a time: as saved.
+ */
+export function alertsForKind(alerts: number[] | null, allDay: boolean): number[] | null {
+  if (!allDay || !alerts) return alerts
+  const days = [...new Set(alerts.map(m => allDayAlertDays(m) * 1440))]
+  return days.length === alerts.length && days.every((d, i) => d === alerts[i]) ? alerts : days
+}
+
+/**
+ * The alerts an item keeps when the All-day switch changes it (as the iPhone's Calendar does): only an alert a whole
+ * day or more before means the same with a time and all day; one within the day ("30 minutes before", "On the day
+ * (09:00)") is dropped, and none left is Default (the area's own). None stays None.
+ */
+export function alertsOnAllDaySwitch(alerts: number[] | null): number[] | null {
+  if (!alerts || !alerts.length) return alerts
+  const kept = alerts.filter(m => m >= 1440)
+  return kept.length ? kept : null
 }
 
 /** What the database takes (item_alerts_ok): null, [], or one or two of the list, distinct. */
@@ -158,6 +180,14 @@ export function repeatEndLabel(end: RepeatEnd | null | undefined, rule?: RepeatR
   if ('until' in end) return isIsoDay(end.until) ? `On ${formatDate(end.until)}` : 'On a day'
   const last = rule ? countEndDay({ ...rule, repeat_count: end.count }) : null
   return `After ${end.count} time${end.count === 1 ? '' : 's'}${last ? ` · last ${formatDate(last)}` : ''}`
+}
+
+/** A repeat's end where its days are listed (the day's agenda, Training's week): "last time" on its last day, "until
+ *  31.12.2026" before it, null when it never ends (193: the last day it may occur — with a count, the Nth). */
+export function repeatEndNote(rule: RepeatRule | null | undefined, day?: string): string | null {
+  const last = rule ? repeatLastDay(rule) : null
+  if (!last) return null
+  return day === last ? 'last time' : `until ${formatDate(last)}`
 }
 
 // ── A database without 193 ──────────────────────────────────────────────────

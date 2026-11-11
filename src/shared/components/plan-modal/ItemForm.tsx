@@ -23,7 +23,7 @@
 //  Editors open inside the list under their row, one at a time.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
@@ -41,6 +41,7 @@ import { isScheduleFieldHidden, isTaskFieldHidden, type RepeatAnchor } from './p
 import { shapeOf, withCalendarField, type PlanForm } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
+import type { TaskSection } from '../../../features/todo/types'
 
 interface Props {
   form: PlanForm
@@ -87,6 +88,8 @@ interface Props {
   endIssue: string | null
   /** ✨ (ItemFill.tsx): its button beside the title, its field or review line under it, the rows it filled. */
   fill?: { button: ReactNode; panel: ReactNode; rows: ReadonlySet<string> }
+  /** An edit's task section (an undated task keeps it). */
+  savedSection?: TaskSection | null
 }
 
 /** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
@@ -99,7 +102,7 @@ const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
-  urlIssue, endIssue, fill,
+  urlIssue, endIssue, savedSection, fill,
 }: Props) {
   const titleId = useId()
   const [open, setOpen] = useState<PanelKey | null>(null)
@@ -152,7 +155,7 @@ export function ItemForm({
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}
-            exceptDates={exceptDates} target={target} goes={goes} own={own} endIssue={endIssue}
+            exceptDates={exceptDates} target={target} goes={goes} own={own} endIssue={endIssue} savedSection={savedSection}
           />
         </Section>
 
@@ -234,6 +237,13 @@ function TitleField({ id, value, onChange, autoFocus, placeholder }: {
   placeholder: string
 }) {
   const ref = useGrow(value)
+  // On a touch screen the dialog doesn't focus a field by itself (Headless UI keeps the keyboard down there): a new
+  // item's title takes the focus once the dialog has placed it.
+  useEffect(() => {
+    if (!autoFocus) return
+    const id = window.setTimeout(() => { if (document.activeElement !== ref.current) ref.current?.focus({ preventScroll: true }) }, 0)
+    return () => window.clearTimeout(id)
+  }, [autoFocus, ref])
   return (
     <textarea
       ref={ref} id={id} rows={1} value={value} autoFocus={autoFocus} data-autofocus={autoFocus || undefined} placeholder={placeholder}

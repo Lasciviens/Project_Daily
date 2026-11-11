@@ -4,6 +4,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import type { ScheduleBlock } from '../../../daily/types'
 import { repeatKindOf, repeatSummary, weeklyDaysOf } from '../../../daily/recurrence'
+import { repeatEndNote } from '../../../items/itemCalendarFields'
 import { SourceNote } from './SourceNote'
 
 // Mon-first week; days_of_week uses 0 = Sunday.
@@ -26,7 +27,7 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
   const weekly = templates.filter(t => repeatKindOf(t) === 'weekly')
   const other = templates.filter(t => repeatKindOf(t) !== 'weekly')
   const weekdays = new Set(weekly.flatMap(weeklyDaysOf))
-  const edit = (t: ScheduleBlock) => modal.open({ kind: 'schedule-block', id: t.id, config: { heading: 'Edit recurring session' } })
+  const edit = (t: ScheduleBlock) => modal.open({ kind: 'schedule-block', id: t.id })
   return (
     <Card className="max-w-2xl">
       <CardHeader
@@ -34,7 +35,7 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
         title="Weekly schedule"
         subtitle={targetDays ? `Target ${targetDays} training ${targetDays === 1 ? 'day' : 'days'} a week` : 'No weekly target set (Coach → Profile)'}
         action={
-          <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'schedule-block', config: { heading: 'Weekly training session' }, defaults: { title: 'Training', category: 'training', recurrence: 'weekly' } })}>
+          <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'schedule-block', defaults: { title: 'Training', category: 'training', recurrence: 'weekly' } })}>
             Add
           </Button>
         }
@@ -75,7 +76,7 @@ export function WeeklyScheduleCard({ templates, targetDays, routineCount, passes
             <li key={t.id}>
               <button type="button" onClick={() => edit(t)} className="flex w-full min-w-0 flex-wrap items-baseline gap-x-2 rounded-control py-1 text-left text-meta hover:underline">
                 <span className="min-w-0 break-words font-medium text-fg">{t.title}</span>
-                <span className="tabular-nums text-fg-muted">{t.start_time?.slice(0, 5) ?? 'Anytime'} · {repeatSummary(t)}</span>
+                <span className="tabular-nums text-fg-muted">{t.start_time?.slice(0, 5) ?? 'Anytime'} · {[repeatSummary(t), repeatEndNote(t)].filter(Boolean).join(' · ')}</span>
               </button>
             </li>
           ))}

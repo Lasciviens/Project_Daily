@@ -283,7 +283,6 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
   function openPlan() {
     modal.open({
       kind: 'time-block',
-      config: { heading: 'Plan episodes' },
       defaults: { title: planTitle, date: TODAY, duration: planDuration, category: 'media', color: 'blue' },
       source: {
         sourceType: 'tv_episode',

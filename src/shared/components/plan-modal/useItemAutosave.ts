@@ -4,7 +4,9 @@
 //  line says "Saving…", then "Saved". One save at a time — a change made while
 //  one runs goes right after it, with what it answered (a slot it made). A
 //  form that can't be saved (no title, an incomplete repeat, an end before
-//  the start) says why and waits. A change held back (itemScreenRules.
+//  the start, a link that isn't https) says why and waits — once the typing
+//  pauses or the field is left (`settle`), so a link being typed never flashes
+//  "Not saved". A change held back (itemScreenRules.
 //  heldChange: a new list's name being typed, a slot about to go) waits for
 //  the screen to close. Closing the screen sends what is left first.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ export function useItemAutosave({ enabled, form, problem, persist }: {
   const [failedKey, setFailedKey] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedOnce, setSavedOnce] = useState(false)
+  // The form a problem may be said for: the one that stayed unchanged for the wait, or was there when a field was left.
+  const [judgedKey, setJudgedKey] = useState<string | null>(null)
   const latest = useRef({ enabled, form, problem, persist, savedKey })
   useLayoutEffect(() => { latest.current = { enabled, form, problem, persist, savedKey } })
   const inFlight = useRef<Promise<boolean> | null>(null)
@@ -91,6 +95,19 @@ export function useItemAutosave({ enabled, form, problem, persist }: {
     return () => window.clearTimeout(id)
   }, [dirty, key, problem, hold, failedKey, run])
 
+  useEffect(() => {
+    if (!problem || key === judgedKey) return
+    const id = window.setTimeout(() => setJudgedKey(key), AUTOSAVE_DELAY_MS)
+    return () => window.clearTimeout(id)
+  }, [key, problem, judgedKey])
+  /** Sends this form now, held or not — asked for (Undo changes), not a stray tap. */
+  const saveNow = useCallback((f: PlanForm, why: string | null) => {
+    latest.current = { ...latest.current, form: f, problem: why }
+    return run()
+  }, [run])
+  /** A field was left: the form as it is now may be judged at once. */
+  const settle = useCallback(() => setJudgedKey(formContentKey(latest.current.form)), [])
+
   /** Before the screen closes: what waits is sent now. */
   const flush = useCallback(async (): Promise<FlushResult> => {
     if (inFlight.current && !(await inFlight.current)) return { kind: 'failed' }
@@ -101,12 +118,12 @@ export function useItemAutosave({ enabled, form, problem, persist }: {
   }, [run])
 
   const line: AutosaveLine = !enabled ? { kind: 'idle' }
-    : dirty && problem ? { kind: 'blocked', reason: problem }
+    : dirty && problem ? (key === judgedKey ? { kind: 'blocked', reason: problem } : { kind: 'idle' })
     : dirty && key === failedKey && !saving ? { kind: 'failed' }
     : dirty && hold && !saving ? { kind: 'held', reason: hold }
     : saving || dirty ? { kind: 'saving' }
     : savedOnce ? { kind: 'saved' }
     : { kind: 'idle' }
 
-  return { line, flush, retry: () => { setFailedKey(null); void run() }, savedKey, reset: setSavedKey }
+  return { line, flush, retry: () => { setFailedKey(null); void run() }, savedKey, reset: setSavedKey, settle, savedOnce, saveNow }
 }

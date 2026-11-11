@@ -176,15 +176,19 @@ console.log('the nudge line')
   const sofa = mine({ id: 'sofa', title: 'Sofa', bought_at: null })
   const vac = mine({ id: 'vac', title: 'Vacuum', value_now: null })
   const looks = S.needsALook([phone, sofa, vac], { watches: new Map() }, TODAY)
-  check('its own Needs-a-look row, the most urgent first', St.nudgeFor(phone, looks).kind === 'return_closing' && St.nudgeFor(phone, looks).tone === 'warn')
-  check('… snoozed or put away: none (only the rows still shown are passed)', St.nudgeFor(phone, looks.filter(l => l.itemId !== 'ph')) === null)
-  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks); return x.kind === 'tidy_up' && x.action === 'day' && x.facts.includes('no purchase day') })())
-  check('still yours with no "Could sell for": the fact that gives its cost per month', St.nudgeFor(vac, looks).action === 'value')
-  check('an accessory, a thing gone or a wish with nothing due: no nudge', St.nudgeFor(mine({ accessory_of: 'ph' }), []) === null
-    && St.nudgeFor(mine({ disposal: 'sold', disposed_on: day(-2) }), []) === null && St.nudgeFor(item({}), []) === null)
+  check('its own Needs-a-look row, the most urgent first', St.nudgeFor(phone, looks, TODAY).kind === 'return_closing' && St.nudgeFor(phone, looks, TODAY).tone === 'warn')
+  check('… snoozed or put away: none (only the rows still shown are passed)', St.nudgeFor(phone, looks.filter(l => l.itemId !== 'ph'), TODAY) === null)
+  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks, TODAY); return x.kind === 'tidy_up' && x.action === 'day' && x.facts.includes('no purchase day') })())
+  check('still yours with no "Could sell for": the fact that gives its cost per month', St.nudgeFor(vac, looks, TODAY).action === 'value')
+  check('an accessory, a thing gone or a wish with nothing due: no nudge', St.nudgeFor(mine({ accessory_of: 'ph' }), [], TODAY) === null
+    && St.nudgeFor(mine({ disposal: 'sold', disposed_on: day(-2) }), [], TODAY) === null && St.nudgeFor(item({}), [], TODAY) === null)
+  const old = mine({ id: 'old', title: 'Tablet', value_now: 2000, value_on: day(-200) })
+  const oldNudge = St.nudgeFor(old, S.needsALook([old], { watches: new Map() }, TODAY), TODAY)
+  check('an old estimate says only how old it is: the strip above shows its amount and day', oldNudge.kind === 'old_value' && oldNudge.action === 'value'
+    && oldNudge.facts.length === 1 && /is 6 months old$/.test(oldNudge.facts[0]) && !/2 000|\d{2}\.\d{2}\.\d{4}/.test(oldNudge.facts.join(' ')), JSON.stringify(oldNudge.facts))
   const hp = item({ id: 'hp', title: 'Headphones', url: 'https://www.elkjop.no/p/1', target_price: 2990 })
   const wl = S.needsALook([hp], { watches: new Map([['hp', watch(hp, 2990)]]) }, TODAY)
-  check('a wish at its target: Bought, with where it was read', St.nudgeFor(hp, wl).action === 'bought' && /elkjop\.no/.test(St.nudgeFor(hp, wl).where))
+  check('a wish at its target: Bought, with where it was read', St.nudgeFor(hp, wl, TODAY).action === 'bought' && /elkjop\.no/.test(St.nudgeFor(hp, wl, TODAY).where))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

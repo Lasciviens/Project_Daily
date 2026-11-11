@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
@@ -92,23 +92,26 @@ export function useCreateShopItem() {
 }
 
 /**
- * Buy again in one tap: a fresh quick-list row from an earlier purchase
- * (`buyAgainInput`), "On the quick list · Milk · Undo". The stored row goes
- * into the cached list as soon as the database answers, so the suggestion
- * leaves at once; Undo takes that fresh row off again (the shop delete — a
- * row made a moment ago has nothing hanging on it) and says so.
+ * A quick-list row added in one tap, named, with Undo: "On the quick list ·
+ * Milk · Undo". The stored row goes into the cached list as soon as the
+ * database answers, so a suggestion leaves at once; Undo takes that fresh row
+ * off again (the shop delete — a row made a moment ago has nothing hanging on
+ * it) and says so. A double tap adds it once: taps with the same `key` (the
+ * suggestion's row, a scanned EAN) while its row is saving are ignored — a
+ * ref, since both taps can land before React draws the first one's state.
+ * `add` answers whether it added the row.
  */
-export function useAddAgain() {
+function useQuickAddWithUndo(action: string) {
   const qc = useQueryClient()
   const undo = useMutationWithFeedback({
-    action:         'undo_shop_buy_again',
+    action:         `undo_${action}`,
     successMessage: (_d: unknown, row: ShopItem) => `Taken off the quick list · ${row.title}`,
     mutationFn:     async (row: ShopItem) => { await deleteShopItems([row.id]) },
     onSuccess:      (_d, row) => removeRowsFromCache(qc, qk.shop.items(), new Set([row.id])),
     invalidates:    SHOP_ROWS,
   })
   const add = useMutationWithFeedback({
-    action:      'shop_buy_again',
+    action,
     silent:      'its toast with Undo reports it',
     mutationFn:  (input: CreateShopItemInput) => createShopItem(input),
     onSuccess:   (row: ShopItem) => {
@@ -117,8 +120,26 @@ export function useAddAgain() {
     },
     invalidates: [qk.shop.items()],
   })
-  return { add: (input: CreateShopItemInput) => add.mutate(input), busy: add.isPending }
+  const saving = useRef(new Set<string>())
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set())
+  const settle = () => setBusy(new Set(saving.current))
+  return {
+    add: async (key: string, input: CreateShopItemInput): Promise<boolean> => {
+      if (saving.current.has(key)) return false
+      saving.current.add(key)
+      settle()
+      // A failure has its own toast (useMutationWithFeedback); the tap is taken again either way.
+      try { await add.mutateAsync(input); return true } catch { return false } finally { saving.current.delete(key); settle() }
+    },
+    isSaving: (key: string) => busy.has(key),
+  }
 }
+
+/** Buy again and Bought before: a fresh row from an earlier purchase (`buyAgainInput`), keyed by that purchase. */
+export const useAddAgain = () => useQuickAddWithUndo('shop_buy_again')
+
+/** A scanned product, keyed by its EAN: named in its toast, with Undo (cleanup, 11.11.2026). */
+export const useScanAdd = () => useQuickAddWithUndo('shop_scan_add')
 
 /** `row`: the row as it was before an earlier write, for an Undo that brings it back onto Daily's list. */
 type UpdateVars = { id: string; patch: UpdateShopItemInput; quiet?: boolean; row?: ShopQuickRow }

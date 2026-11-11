@@ -12,6 +12,7 @@
  * Run: node scripts/verify-shop-purchase.cjs */
 require('sucrase/register')
 const P = require('../src/features/shop/purchaseModel')
+const St = require('../src/features/shop/recordStory')
 const W = require('../src/features/shop/storeWords')
 const R = require('../src/features/shop/storeRows')
 const { buildTables } = require('./harness/seed.cjs')
@@ -127,6 +128,8 @@ console.log('1b. storeLooks: what the stores add to Needs a look')
   const claim = rows.find(l => l.kind === 'cheaper_returnable')
   check('…Needs a look: "Claim 500 NOK" (3 990 paid, 500 got back, 2 990 now), price protection to 10.12.2026, the Claim action',
     claim?.action === 'claim' && claim.claim?.amount === 500 && claim.facts[0].replace(/\s/g, ' ') === 'Claim 500 NOK' && claim.facts.includes('price protection to 10.12.2026'), JSON.stringify(claim))
+  check('…and the record\'s nudge has the same Claim, in the same words', St.nudgeFor(mine, rows, TODAY)?.action === 'claim'
+    && St.nudgeFor(mine, rows, TODAY).facts[0].replace(/\s/g, ' ') === 'Claim 500 NOK')
 
   // Security review (11.11.2026), MEDIUM: a price protection nobody checked (Ask AI's, a price site's) never decides
   // a claim, an amount, a tone or a day — a checked one does; the unchecked one is one info note "… — check it".
@@ -142,6 +145,8 @@ console.log('1b. storeLooks: what the stores add to Needs a look')
       P.protectionOf(mine, power, c.rules, TODAY) === null && !r3.protections.has('m') && r3.protectionNotes.has('m')
       && !rows3.some(l => l.claim || l.action === 'claim') && row?.tone === 'info' && row.daysLeft === null && row.claim === null
       && row.facts.some(f => f.startsWith(words)) && !row.facts.some(f => /Claim|price protection to/.test(f)), JSON.stringify(row))
+    check(`…nor a Claim in the record's nudge (${who})`, St.nudgeFor(mine, rows3, TODAY)?.action !== 'claim'
+      && St.nudgeFor(mine, [{ ...row, action: 'claim' }], TODAY)?.action !== 'claim')
   }
   const both = { ...ctx, rules: [...rules, prot, ai400] }
   check('…beside a checked one the checked one decides (to 10.12.2026), and no note', P.protectionOf(mine, power, both.rules, TODAY)?.until === '2026-12-10'

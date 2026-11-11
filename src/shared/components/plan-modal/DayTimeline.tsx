@@ -5,7 +5,8 @@
 //  ends to change its times — touch and mouse, five-minute steps, the arrow
 //  keys too (Shift + arrows change the end). Move along the day by swiping or
 //  dragging empty space, with a mouse wheel, or with the day strip under it,
-//  a scrollbar that shows the day. The pills above follow every move.
+//  a scrollbar that shows the day. The pills above follow every move. An
+//  all-day item gets AllDayBand instead: one compact band of the day.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type PointerEvent } from 'react'
@@ -58,13 +59,12 @@ function useDaySpans(day: string, own: { blockId?: string | null; scheduleBlockI
   return { spans, answered }
 }
 
-export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote, locked = false }: {
+export function DayTimeline({ day, start, length, onChange, own, dayNote, locked = false }: {
   /** The day shown (a repeat's next day). */
   day: string
-  /** Minutes from midnight; null with no time (all day). */
-  start: number | null
+  /** Minutes from midnight. */
+  start: number
   length: number | null
-  allDay: boolean
   onChange: (start: number, length: number | null) => void
   /** The item's own rows, left out of "the day's other things". */
   own: { blockId?: string | null; scheduleBlockId?: string | null }
@@ -81,10 +81,9 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
   const centred = useRef<string | null>(null)
   const { spans, answered } = useDaySpans(day, own)
   const { lanes, two } = useMemo(() => spanLanes(spans), [spans])
-  const timed = !allDay && start !== null
-  const hits = timed ? overlapsOf(spans, start, length) : []
-  const end = timed ? start + (length ?? 0) : 0
-  const crosses = timed && end > DAY_MINUTES
+  const hits = overlapsOf(spans, start, length)
+  const end = start + (length ?? 0)
+  const crosses = end > DAY_MINUTES
   const today = todayStr()
   const nowMin = (() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() })()
 
@@ -96,15 +95,15 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
     if (!el) return
     if (centred.current !== day) {
       centred.current = day
-      el.scrollLeft = Math.max(0, timelineCentre(timed ? start : null, length) * PPM - el.clientWidth / 2)
-    } else if (timed && !drag.current) {
+      el.scrollLeft = Math.max(0, timelineCentre(start, length) * PPM - el.clientWidth / 2)
+    } else if (!drag.current) {
       const l = start * PPM, r = Math.min(end, DAY_MINUTES) * PPM
       if (l < el.scrollLeft + 8 || r > el.scrollLeft + el.clientWidth - 8) {
         el.scrollTo({ left: Math.max(0, (l + r) / 2 - el.clientWidth / 2), behavior: motion ? 'smooth' : 'auto' })
       }
     }
     placeThumb(el, strip.current, thumb.current)
-  }, [day, timed, start, length, end, motion])
+  }, [day, start, length, end, motion])
 
   // A mouse wheel moves along the day; at either end it lets the screen scroll on. The thumb follows a resize.
   useEffect(() => {
@@ -124,7 +123,7 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
   }, [])
 
   function startDrag(e: PointerEvent<HTMLElement>, mode: DragMode) {
-    if ((e.pointerType === 'mouse' && e.button !== 0) || !timed || locked) return
+    if ((e.pointerType === 'mouse' && e.button !== 0) || locked) return
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -142,7 +141,7 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
   const endDrag = () => { drag.current = null }
 
   function onBarKey(e: KeyboardEvent<HTMLDivElement>) {
-    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !timed || locked) return
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || locked) return
     e.preventDefault()
     const next = nudgeTimes(start, length, e.key === 'ArrowLeft' ? -1 : 1, e.shiftKey)
     onChange(next.start, next.length)
@@ -185,17 +184,14 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
     el.scrollBy({ left: (e.key === 'ArrowLeft' ? -60 : 60) * PPM, behavior: motion ? 'smooth' : 'auto' })
   }
 
-  const width = timed ? Math.max(Math.min(end, DAY_MINUTES) - start, 0) * PPM : 0
+  const width = Math.max(Math.min(end, DAY_MINUTES) - start, 0) * PPM
   const narrow = width < 46
-  const endText = timed && length ? (crosses ? `${displayDate(endOf(day, timeOfMinutes(start), length).date)} ${timeOfMinutes(end)}` : timeOfMinutes(end)) : ''
-  const left = allDay ? 'All day'
-    : !timed ? ''
-    : !length ? `At ${timeOfMinutes(start)} · doesn't block time`
+  const endText = length ? (crosses ? `${displayDate(endOf(day, timeOfMinutes(start), length).date)} ${timeOfMinutes(end)}` : timeOfMinutes(end)) : ''
+  const left = !length ? `At ${timeOfMinutes(start)} · doesn't block time`
     : crosses ? `${timeOfMinutes(start)} → ${endText}`
     : `${timeOfMinutes(start)}–${timeOfMinutes(end)} · ${formatDurationMinutes(length)}`
   const others = spans.length
   const right = !answered ? ''
-    : allDay ? (others ? `${others} other ${others === 1 ? 'thing' : 'things'} that day` : 'Nothing else that day')
     : hits.length ? `Overlaps ${hits[0].title}${hits.length > 1 ? ` +${hits.length - 1}` : ''}`
     : others ? 'Nothing else then' : 'Nothing else that day'
   const gripCls = 'absolute inset-y-0 w-3.5 cursor-ew-resize touch-none after:absolute after:inset-y-1.5 after:left-1.5 after:w-0.5 after:rounded-full'
@@ -223,10 +219,7 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
               </div>
             )
           })}
-          {allDay && (
-            <div aria-hidden className="absolute inset-x-0 top-[55px] h-[25px] rounded-md bg-accent-50" />
-          )}
-          {timed && (
+          {(
             <div role="slider" tabIndex={0} aria-label="This item on the day: drag it, or use the arrows; Shift and the arrows change its end"
               aria-valuemin={0} aria-valuemax={DAY_MINUTES - 5} aria-valuenow={start}
               aria-valuetext={length ? `${timeOfMinutes(start)} to ${endText}` : `At ${timeOfMinutes(start)}`}
@@ -255,7 +248,7 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
           <i key={s.id} aria-hidden className="absolute top-1 h-1 rounded-full bg-line-strong"
             style={{ left: `${(s.start / DAY_MINUTES) * 100}%`, width: `${Math.max(((s.end - s.start) / DAY_MINUTES) * 100, 0.6)}%` }} />
         ))}
-        {timed && (
+        {(
           <i aria-hidden className="absolute top-0.5 h-2 rounded-full bg-accent-500"
             style={{ left: `${(start / DAY_MINUTES) * 100}%`, width: `${Math.max(((Math.min(end, DAY_MINUTES) - start) / DAY_MINUTES) * 100, 0.6)}%` }} />
         )}
@@ -263,9 +256,37 @@ export function DayTimeline({ day, start, length, allDay, onChange, own, dayNote
       </div>
       <div className="mx-3.5 mt-1.5 flex h-4 justify-between gap-2.5 text-meta tabular-nums text-fg-muted">
         <span className="shrink-0 whitespace-nowrap">{left}</span>
-        <span data-tone={hits.length && !allDay ? 'warn' : undefined} className={cx('min-w-0 text-right', hits.length > 0 && !allDay && 'tone-text')}>
+        <span data-tone={hits.length ? 'warn' : undefined} className={cx('min-w-0 text-right', hits.length > 0 && 'tone-text')}>
           <Truncate>{[dayNote, right].filter(Boolean).join(' · ')}</Truncate>
         </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * An all-day item's day (no time to drag): one compact band — the day's other things as ticks along it — and the line
+ * under it, instead of the hour-by-hour timeline (the cleanup list, 11.11.2026: it was too big for an all-day item).
+ */
+export function AllDayBand({ day, own, dayNote }: {
+  day: string
+  own: { blockId?: string | null; scheduleBlockId?: string | null }
+  dayNote?: string
+}) {
+  const { spans, answered } = useDaySpans(day, own)
+  const others = spans.length
+  const right = !answered ? '' : others ? `${others} other ${others === 1 ? 'thing' : 'things'} that day` : 'Nothing else that day'
+  return (
+    <div className="py-2">
+      <div aria-hidden className="relative mx-3.5 h-3 rounded-full bg-accent-50">
+        {spans.map(s => (
+          <i key={s.id} className="absolute top-1 h-1 rounded-full bg-line-strong"
+            style={{ left: `${(s.start / DAY_MINUTES) * 100}%`, width: `${Math.max(((s.end - s.start) / DAY_MINUTES) * 100, 0.6)}%` }} />
+        ))}
+      </div>
+      <div className="mx-3.5 mt-1.5 flex h-4 justify-between gap-2.5 text-meta tabular-nums text-fg-muted">
+        <span className="shrink-0 whitespace-nowrap">All day</span>
+        <span className="min-w-0 text-right"><Truncate>{[dayNote, right].filter(Boolean).join(' · ')}</Truncate></span>
       </div>
     </div>
   )

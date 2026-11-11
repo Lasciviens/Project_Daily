@@ -7,7 +7,8 @@ import {
 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { TonePill, Truncate, cx } from '../../../shared/ui'
-import { addDaysIso } from '../recurrence'
+import { addDaysIso, type RepeatRule } from '../recurrence'
+import { repeatEndNote } from '../../items/itemCalendarFields'
 import { useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useRepeatDay } from '../../items/useItems'
 import type { RepeatDayAction } from '../../items/itemTypes'
@@ -117,6 +118,17 @@ function Mark({ children, label }: { children: ReactNode; label: string }) {
   return <span className={cx(LEAD, 'text-fg-faint [&_svg]:h-4 [&_svg]:w-4')} aria-label={label} role="img">{children}</span>
 }
 
+/** A repeat's mark on its row, with its end when it has one (193: "until 31.12.2026", "last time" on its last day). */
+function RepeatMark({ rule, day }: { rule: RepeatRule | null | undefined; day: string }) {
+  const end = repeatEndNote(rule, day)
+  return (
+    <>
+      <Repeat className="text-fg-muted" aria-label={end ? `Repeats ${end}` : 'Repeats'} />
+      {end && <span aria-hidden className="whitespace-nowrap text-micro tabular-nums text-fg-muted">{end}</span>}
+    </>
+  )
+}
+
 function RowShell({ lead, title, icons, pills, menu, onOpen, dim, struck }: {
   lead: ReactNode; title: string; icons?: ReactNode; pills?: ReactNode; menu?: ReactNode; onOpen: () => void; dim?: boolean
   /** Done: the title is struck through, as a done task's is. */
@@ -203,7 +215,7 @@ export function RepeatRow({ row, active }: { row: DayRow; active: boolean }) {
     <RowShell
       lead={<Tick checked={done} onToggle={() => act(done ? 'undo' : 'done')} disabled={repeatDay.isPending} label={done ? 'Mark as not done' : 'Mark this day done'} />}
       title={row.title}
-      icons={<><Repeat className="text-fg-muted" aria-label="Repeats" />{active && <NowWord />}</>}
+      icons={<><RepeatMark rule={row.item?.template} day={r.date} />{active && <NowWord />}</>}
       pills={skipped ? <TonePill tone="neutral">Skipped</TonePill>
         : row.state === 'missed' && !done ? <TonePill tone="danger">Missed</TonePill>
         : undefined}
@@ -274,7 +286,7 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
       lead={<Tick checked={isDone} onToggle={toggle} disabled={!canToggle || actions.busy}
         label={isDone ? (canToggle ? 'Reopen the session' : 'Done by a workout') : canToggle ? 'Mark the session done' : SESSION_LABEL[status.state]} />}
       title={row.title}
-      icons={<>{(i.kind === 'recurring' || row.repeat) && <Repeat className="text-fg-muted" aria-label="Repeats" />}{active && <NowWord />}</>}
+      icons={<>{(i.kind === 'recurring' || row.repeat) && <RepeatMark rule={i.template} day={i.planDate} />}{active && <NowWord />}</>}
       pills={mark ? <TonePill tone={SESSION_TONE[mark]}>{SESSION_LABEL[mark]}</TonePill> : undefined}
       menu={<div className="-my-2 flex shrink-0 items-center" onClick={e => e.stopPropagation()}><TrainingPlanMenu plan={plan} status={status} weekly={weekly} skipId={facts.skipId} /></div>}
       onOpen={open}
