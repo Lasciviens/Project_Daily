@@ -21,6 +21,25 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-11 · v23 · The item screen, step 2: the rows of Apple's extra fields
+//                    (migration 193; v21.11 built their data side), only on an
+//                    item with a slot or a repeat (itemScreenRules.screenParts,
+//                    the Location row's rule): Travel Time under Location;
+//                    Alert, Second Alert and Show As in Options; URL in Details
+//                    (CalendarFieldRows.tsx); End Repeat under Repeat (Never, On
+//                    a day, After N times, with the next dates and the last —
+//                    EndRepeatRows.tsx). Each a real choice through
+//                    withCalendarField, saved like the rest (Add, or by itself),
+//                    each with its mark (alerts and Show As: the item's
+//                    calendar; the link and travel time: Apple's only; End
+//                    Repeat: where the repeat goes). A link that isn't https
+//                    (urlProblem) or an End Repeat that can't be
+//                    (repeatEndIssue) stops Add and the autosave and says why
+//                    under its row and in the heading. The URL row opens only
+//                    an eventUrl-checked https link, after showing its address
+//                    (the host first), in a new tab without opener or referrer.
+//                    Apple's mark: its mask url() is quoted (a build's data URI
+//                    has ' in it, and the mark drew as a square).
 //  2026-11-10 · v22 · The item screen, step 1 (docs/features/item-screen-plan.md;
 //                    owner, 10.11.2026: the plan and its five answers). Drawn as
 //                    iOS Calendar's event screen: grouped rows under Location,
@@ -54,6 +73,14 @@
 //                    without saving your last change?".
 //                    (f) A mark on every row for where its field goes, behind
 //                    Settings → Calendar → "Show where each field goes".
+//  2026-11-10 · v21.11 · The data side of Apple's extra fields (migration 193;
+//                    the one item screen, step 2 — no screen yet): the form
+//                    holds alerts, showAs, url, travelMinutes and repeatEnd,
+//                    seeded from the rows (itemFromRows) and sent like the
+//                    place — a new item's, an edit's only when the sheet knew
+//                    it or the owner changed it (calendarTouched,
+//                    withCalendarField); the link through cleanItemUrl, End
+//                    Repeat only with a repeat's rule (calendarFieldsProblem).
 //  2026-11-03 · v21.10 · The save's result line names the calendar the chip
 //                    names: "· sending to Apple Calendar" for an item whose
 //                    area shows in Apple Calendar (it said "on Google
@@ -595,8 +622,8 @@ import { RepeatDeleteChoice } from './RepeatDeleteChoice'
 import { appleRefused, END_PROBLEM_TEXT } from './itemScreenRules'
 import { useItemAutosave, type AutosaveLine, type PersistResult } from './useItemAutosave'
 import {
-  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatOfForm, shapeOf, switchScope,
-  type PlanForm, type QuickBase, type SheetItemInput,
+  applyQuickAdd, buildInitialForm, formContentKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, shapeOf, switchScope,
+  urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
 import type { PlanResult, UnifiedPlanModalProps } from './planModal.types'
@@ -712,9 +739,14 @@ export function UnifiedPlanModal({
   // An incomplete repeat (a weekly one with no day, an N out of range, no
   // picked date) can't be saved; nor an end before the start.
   const repeatIssue = repeatOfForm(form) ? recurrenceProblem(form) : null
+  // The calendar fields (193): a link the app can't take, an End Repeat before the start. The database refuses the
+  // same, so a link left as typed is said even after its row went with the slot (the close says why it wasn't saved).
+  const urlIssue = urlProblem(form)
+  const endIssue = repeatEndIssue(form, { item, today })
   const problem = !form.title.trim() ? 'a title is needed'
     : repeatIssue ? repeatIssue
-    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem] : null
+    : form.badEnd ? END_PROBLEM_TEXT[form.badEnd.problem]
+    : urlIssue ?? endIssue
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
   const autosave = useItemAutosave({ enabled: open && editMode && !blocked, form, problem, persist })
@@ -863,6 +895,7 @@ export function UnifiedPlanModal({
     if (!form.title.trim()) { toast.error('Title is required'); return }
     if (repeatIssue) { toast.error(repeatIssue); return }
     if (form.badEnd) { toast.error(END_PROBLEM_TEXT[form.badEnd.problem]); return }
+    if (problem) { toast.error(problem); return }
     if (!(await confirmNoTwin(form, null))) return
     setSaving(true)
     try {
@@ -989,6 +1022,7 @@ export function UnifiedPlanModal({
           showMarks={prefs.showMarks} appleNotes={prefs.notes === 'notes+link' || prefs.notes === 'notes'} refused={refused}
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
+          urlIssue={urlIssue} endIssue={endIssue}
         />
       )}
       {scheduleBlock && occurrenceDate && (

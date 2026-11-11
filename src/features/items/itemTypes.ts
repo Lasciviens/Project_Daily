@@ -18,6 +18,9 @@ export interface RepeatInput {
   startsOn: string
 }
 
+/** End Repeat (193): on a day (the last day it may occur, included) or after N times (1–999). Never = null. */
+export type RepeatEnd = { until: string } | { count: number }
+
 export interface ItemInput {
   /** Editing an item that has a task. */
   taskId?: string | null
@@ -51,6 +54,17 @@ export interface ItemInput {
   timeZone?: string | null
   /** Where it happens (186): a slot's or repeat's place. Absent = not known here, so the save keeps the item's; null = none. */
   place?: ItemPlace | null
+  /** Alert and Second Alert (193), on its slot or repeat: minutes before, in order (Apple's list; all day: day offsets
+   *  at 09:00); [] = none; null = the area's own alert. Absent = keep the item's. */
+  alerts?: number[] | null
+  /** Show As (193): null = by its length (Busy with one, Free without and all day). Absent = keep. */
+  showAs?: 'busy' | 'free' | null
+  /** Its own https link (193) — Apple's URL field; null = none (the link to its day). Absent = keep. */
+  url?: string | null
+  /** Travel Time (193): 0 = none, 5–120 minutes; null = automatic (Time to Leave from the place's pin). Absent = keep. */
+  travelMinutes?: number | null
+  /** End Repeat of a repeat's rule (193): null = never. Absent = keep; ignored for one day of a repeat. */
+  repeatEnd?: RepeatEnd | null
   /** The task's origin (tasks.source_type vocabulary: tv_series, not
    *  tv_episode); `id` may be null (a training session with no routine). */
   source?: { type: string; id: string | null } | null

@@ -77,7 +77,8 @@ check('eventPatchFor(body, \'title\') carries the summary and nothing else', eq(
   && R.eventPatchFor(busy, 'title').summary === '✓ Gym')
 check('…no start, end or transparency in it', !('start' in R.eventPatchFor(busy, 'title')) && !('end' in R.eventPatchFor(busy, 'title')) && !('transparency' in R.eventPatchFor(busy, 'title')))
 // A whole-event PATCH also carries the place (186): none is null, so a place taken off in the app leaves Google.
-const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null }, location: null }
+// …and its reminders (193): an item with no alerts of its own puts the calendar's default back.
+const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null }, location: null, reminders: { useDefault: true, overrides: [] } }
 check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busyPatch) && eq(R.eventPatchFor(busy, undefined), busyPatch) && eq(R.eventPatchFor(busy, 'x'), busyPatch))
 
 console.log('\n3c · A PATCH clears the date form it does not use (Google merges objects; start and end must both be timed or both all-day)')
@@ -97,6 +98,39 @@ console.log('\n3c · A PATCH clears the date form it does not use (Google merges
     && /eventPatchFor\(body, fields\)/.test(read('src/features/calendar/api/itemCalendar.ts'))
     && !/updateCalendarEvent\([^)]*\{ \.\.\.plan\.body \}/.test(series))
 }
+console.log('\n3d · Show As, Alert and Second Alert on Google (193)')
+{
+  const at = (x) => R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym', busy: true, ...x }, { done: false, timeZone: 'Europe/Oslo' })
+  const day = (x) => R.blockEventBody({ date: '2026-11-12', start_time: null, duration_minutes: 60, title: 'Trip', ...x }, { done: false, timeZone: 'Europe/Oslo' })
+  check('Show As Free on an item with a length: transparent (the length stays)', at({ show_as: 'free' }).transparency === 'transparent' && at({ show_as: 'free' }).end.dateTime === '2026-11-12T18:00:00')
+  check('Show As Busy on an all-day item or one with no length: opaque', day({ show_as: 'busy' }).transparency === 'opaque' && at({ busy: false, show_as: 'busy' }).transparency === 'opaque')
+  check('no Show As (every item before 193): Busy with a length, Free without and all day — as before', at({}).transparency === 'opaque'
+    && at({ busy: false }).transparency === 'transparent' && day({}).transparency === 'transparent')
+  check('a Show As that is no choice reads as not set', at({ show_as: 'BUSY' }).transparency === 'opaque' && at({ busy: false, show_as: 'tentative' }).transparency === 'transparent')
+  check('alerts → popup reminders, minutes before the start, in order', eq(at({ alerts: [60, 10] }).reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }, { method: 'popup', minutes: 10 }] }))
+  check('none of its own → no reminders field on an insert (Google\'s default, as before)', !('reminders' in at({})) && !('reminders' in at({ alerts: null })))
+  check('"None" → no reminders at all (useDefault false, no overrides)', eq(at({ alerts: [] }).reminders, { useDefault: false, overrides: [] }))
+  check('all day: 1 day / 2 days / a week before at 09:00 = 900 / 2340 / 9540 minutes before midnight; "on the day" can\'t be said and is left out',
+    eq(day({ alerts: [1440, 0] }).reminders.overrides, [{ method: 'popup', minutes: 900 }]) && eq(day({ alerts: [2880, 10080] }).reminders.overrides.map(o => o.minutes), [2340, 9540]))
+  check('hostile alerts read as none of its own: a negative one, three, a repeat, text, one off the list', [[-5], [5, 10, 15], [10, 10], ['10'], [7], 'x', { 0: 5 }]
+    .every(a => !('reminders' in at({ alerts: a }))))
+  check('a whole-event PATCH carries its own reminders; none of its own → the default with no overrides (alerts taken off leave Google)',
+    eq(R.fullEventPatch(at({ alerts: [30] })).reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] })
+    && eq(R.fullEventPatch(at({})).reminders, { useDefault: true, overrides: [] }) && !('reminders' in R.eventPatchFor(at({ alerts: [30] }), 'title')))
+  check('the default is a fresh object each time (a caller can\'t change the shared one)', R.fullEventPatch(at({})).reminders !== R.fullEventPatch(at({})).reminders && R.DEFAULT_REMINDERS.overrides.length === 0)
+  check('allow-lists: Apple\'s alerts, travel times, a link of at most 2 048 characters', eq(R.ALERT_MINUTES, [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080])
+    && eq(R.TRAVEL_MINUTES, [0, 5, 15, 30, 60, 90, 120]) && R.ITEM_URL_MAX === 2048 && R.MAX_ITEM_ALERTS === 2)
+  check('eventUrl takes https links only, never a line break, a quote, a space, a user name or an over-long one',
+    R.eventUrl('https://example.com/a?b=c#d') === 'https://example.com/a?b=c#d' && R.eventUrl('https://example.com:8443/x%20y') === 'https://example.com:8443/x%20y'
+    && [ 'http://example.com', 'https://example.com/\r\nATTENDEE:mailto:x@example.com', 'https://example.com/a b', 'https://example.com/"x"', 'https://user@example.com/',
+      'https://example.com@evil.example/', 'javascript:alert(1)', 'https://[::1]/', 'https://example.com/%zz', `https://example.com/${'a'.repeat(2048)}`, 'https://example.com/\\x',
+      ' https://example.com', 'https://example.com/<b>', 'HTTPS://example.com', 5, null ].every(u => R.eventUrl(u) === null))
+  check('eventTravel: 0 or an allow-listed time, else automatic (null)', R.eventTravel(0) === 0 && R.eventTravel(90) === 90 && [-1, 45, '30', null, undefined, 1e9].every(t => R.eventTravel(t) === null))
+  const back = R.readbackEvent({ id: 'e1', start: { date: '2026-11-12' }, end: { date: '2026-11-13' }, transparency: 'opaque' }, 'Europe/Oslo')
+  check('the read-back keeps an event\'s Show As, all day too (busy still false there, as since 155)', back.showAs === 'busy' && back.busy === false
+    && R.readbackEvent({ id: 'e2', start: { dateTime: '2026-11-12T17:00:00+01:00' }, end: { dateTime: '2026-11-12T18:00:00+01:00' }, transparency: 'transparent' }, 'Europe/Oslo').showAs === 'free')
+}
+
 check('doneMarkPatch: only the summary, with or without "✓ "', eq(R.doneMarkPatch('Gym', true), { summary: '✓ Gym' }) && eq(R.doneMarkPatch('✓ Gym', false), { summary: 'Gym' }))
 const itemCal = read('src/features/calendar/api/itemCalendar.ts')
 check('the browser\'s done / reopen push sends the title only (refreshTaskEventSoon, a repeat\'s day done / undone)',
