@@ -13,17 +13,18 @@ import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
 import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
-import { OwnedView } from '../components/owned/OwnedView'
 import { ShopHeroArt } from '../components/ShopHeroArt'
 import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
 
-// Stats (the only charts on the page) and the Quick list (its grocery prices,
-// Buy again and the scanner) load when opened, and in idle time once the page
-// shows: the Wishlist, the default view, keeps the page's first download.
-const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
+// The Quick list (its grocery prices, Buy again and the scanner), Owned's Things
+// (its rows and the side pane's opener) and Stats (the only charts on the page)
+// load when opened, and in idle time once the page shows: the Wishlist, the
+// default view, keeps the page's first download and carries only its own code.
 const QuickListView = lazyPart('shop-quick', () => import('../components/QuickListView').then(m => m.QuickListView))
-const OTHER_VIEWS = [QuickListView, ShopStatsView]
+const OwnedView = lazyPart('shop-owned', () => import('../components/owned/OwnedView').then(m => m.OwnedView))
+const ShopStatsView = lazyPart('shop-stats', () => import('../components/stats/ShopStatsView').then(m => m.ShopStatsView))
+const OTHER_VIEWS = [QuickListView, OwnedView, ShopStatsView]
 
 type View = 'wishlist' | 'quick' | 'owned'
 type OwnedTab = 'things' | 'stats'
@@ -164,7 +165,11 @@ export function ShopPage() {
                   scope={statsScope} onScope={setStatsScope} year={statsYear} onYear={setStatsYear} />
               </Suspense>
             )
-            : <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+            : (
+              <Suspense fallback={<SkeletonTab />}>
+                <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+              </Suspense>
+            )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}
     </PageContainer>
   )

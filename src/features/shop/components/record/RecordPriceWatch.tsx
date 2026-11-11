@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react'
-import { Button, Card, CardHeader, TonePill, useChartColors } from '../../../../shared/ui'
+import { Button, TonePill, useChartColors } from '../../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useCheckPrices, useShopPricePoints } from '../../hooks/useShopPrices'
 import { currencyOf } from '../../shopModel'
@@ -8,18 +8,25 @@ import { hostOf, money } from '../shopFormat'
 import { SiteLink } from '../shopKit'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from '../../types'
 
+/** Check now, beside the Price section's title — never for a link whose site doesn't let apps read it (it could only say no again). */
+export function PriceCheckButton({ item, watch }: { item: ShopItem; watch: ShopPriceWatch | null }) {
+  const check = useCheckPrices()
+  const current = watch && watch.url === item.url ? watch : null
+  if (!item.url || current?.status === 'not_allowed') return null
+  return <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>
+}
+
 /**
  * What the row's link costs now: Prisjakt's lowest (and how many shops) or the
  * shop's own price, with where it was read — a link to the product's page —
  * and when, the trend, the history, and what it means here — at your target,
  * or cheaper than you paid while it can still be returned. A blocked check
  * says so and keeps the last price read; a link on a site that doesn't let
- * apps read it (its terms, or its robots.txt) is never read, and the card
+ * apps read it (its terms, or its robots.txt) is never read, and the section
  * says so in a neutral tone — it is the site's answer, not a failure — with
  * no Check now (it could only say no again).
  */
 export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem; watch: ShopPriceWatch | null; owned: boolean; today: string }) {
-  const check = useCheckPrices()
   const current = watch && watch.url === item.url ? watch : null
   const { data: points = [] } = useShopPricePoints(item.url ? item.id : null)
   if (!item.url) return null
@@ -32,50 +39,44 @@ export function RecordPriceWatch({ item, watch, owned, today }: { item: ShopItem
   const cheaper = owned && low != null && sameCurrency && item.price != null && low < item.price && item.return_by && item.return_by >= today
   const open = <SiteLink url={item.url}>Open at {site}</SiteLink>
 
+  if (!current) {
+    return <p className="text-body text-fg-muted">Not checked yet — {morningReads(item, today) ? 'the morning check reads it, or tap Check now' : 'tap Check now'}. {open}</p>
+  }
   return (
-    <Card>
-      <CardHeader title="Price now" variant="label" className="mb-2"
-        // A refused link is never read, so Check now could only say no again: it isn't offered.
-        action={refused ? undefined : <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>} />
-      {!current ? (
-        <p className="text-body text-fg-muted">Not checked yet — {morningReads(item, today) ? 'the morning check reads it, or tap Check now' : 'tap Check now'}. {open}</p>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {low != null ? (
-            <p className="flex flex-wrap items-baseline gap-x-2">
-              <span className="text-lead font-semibold tabular-nums text-fg">{money(low, cur)}</span>
-              <span className="text-meta text-fg-muted">
-                {current.source === 'prisjakt'
-                  ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{mixedWords(current)}{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
-                  : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
-              </span>
-            </p>
-          ) : !refused && <p className="text-meta">{open}</p>}
-          {current.prev_low != null && low != null && current.prev_low !== low && (
-            <TonePill tone={low < current.prev_low ? 'success' : 'warn'} className="w-fit tabular-nums">
-              {low < current.prev_low ? '↓' : '↑'} {money(Math.abs(low - current.prev_low), cur)} since {formatDate(current.prev_at)}
-            </TonePill>
-          )}
-          {!owned && target != null && low != null && sameCurrency && (
-            <TonePill tone={low <= target ? 'success' : 'neutral'} className="w-fit tabular-nums">
-              {low <= target ? 'At or below your target' : `${money(low - target, cur)} above your target`}
-            </TonePill>
-          )}
-          {cheaper && (
-            <p className="text-meta text-success">
-              Now {money((item.price as number) - (low as number), cur)} less than you paid — return or ask for the difference until {formatDate(item.return_by)}.
-            </p>
-          )}
-          {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
-          <WatchAnswer item={item} watch={current} today={today} />
-          <Sparkline points={points} covers={coversOf(current)} currency={cur} />
-          <p className="text-micro text-fg-muted">
-            {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
-            {refused && !current.last_ok_at ? null : <>{' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}</>}
-          </p>
-        </div>
+    <div className="flex flex-col gap-1.5">
+      {low != null ? (
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-lead font-semibold tabular-nums text-fg">{money(low, cur)}</span>
+          <span className="text-meta text-fg-muted">
+            {current.source === 'prisjakt'
+              ? <>lowest at <SiteLink url={item.url}>Prisjakt</SiteLink>{mixedWords(current)}{current.offers ? ` · ${current.offers} shops` : ''}{current.high && current.high > low ? ` · up to ${money(current.high, cur)}` : ''}</>
+              : <>at <SiteLink url={item.url} />{current.was && current.was > low ? <> · <s>{money(current.was, cur)}</s> before</> : null}</>}
+          </span>
+        </p>
+      ) : !refused && <p className="text-meta">{open}</p>}
+      {current.prev_low != null && low != null && current.prev_low !== low && (
+        <TonePill tone={low < current.prev_low ? 'success' : 'warn'} className="w-fit tabular-nums">
+          {low < current.prev_low ? '↓' : '↑'} {money(Math.abs(low - current.prev_low), cur)} since {formatDate(current.prev_at)}
+        </TonePill>
       )}
-    </Card>
+      {!owned && target != null && low != null && sameCurrency && (
+        <TonePill tone={low <= target ? 'success' : 'neutral'} className="w-fit tabular-nums">
+          {low <= target ? 'At or below your target' : `${money(low - target, cur)} above your target`}
+        </TonePill>
+      )}
+      {cheaper && (
+        <p className="text-meta text-success">
+          Now {money((item.price as number) - (low as number), cur)} less than you paid — return or ask for the difference until {formatDate(item.return_by)}.
+        </p>
+      )}
+      {current.in_stock === false && <p className="text-meta text-warn">Out of stock there.</p>}
+      <WatchAnswer item={item} watch={current} today={today} />
+      <Sparkline points={points} covers={coversOf(current)} currency={cur} />
+      <p className="text-micro text-fg-muted">
+        {current.last_ok_at ? `Read ${formatDateTime(current.last_ok_at)}` : `Checked ${formatDateTime(current.checked_at)}`}
+        {refused && !current.last_ok_at ? null : <>{' · '}{current.source === 'prisjakt' ? 'from Prisjakt\'s public page, best effort' : `from ${site}'s own page`}</>}
+      </p>
+    </div>
   )
 }
 

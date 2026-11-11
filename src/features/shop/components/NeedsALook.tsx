@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import {
-  AlarmClock, BadgeAlert, CalendarClock, Check, ChevronDown, ChevronRight, Hourglass, ListChecks, MoreHorizontal, PackageCheck,
-  RotateCcw, ShieldAlert, Tag, Target, TrendingDown, Undo2, type LucideIcon,
-} from 'lucide-react'
+import { AlarmClock, Check, ChevronDown, ChevronRight, MoreHorizontal, Undo2 } from 'lucide-react'
 import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { lookLine, SNOOZE_DAYS, type Look, type LookKind, type LookThing } from '../shopSuggestions'
+import { lookLine, SNOOZE_DAYS, type Look, type LookThing } from '../shopSuggestions'
+import { LookIcon } from './lookIcon'
 import { addDays } from '../ownModel'
 
 // "Needs a look": on a wide page a card in the right rail (owner, 14.10.2026:
@@ -16,10 +14,6 @@ import { addDays } from '../ownModel'
 // Each row has its one action, and Snooze (a week, or until the day before
 // its deadline) · Got it behind ⋯.
 
-const ICON: Record<LookKind, LucideIcon> = {
-  return_closing: RotateCcw, cheaper_returnable: TrendingDown, at_target: Target, lowest_seen: TrendingDown, back_in_stock: PackageCheck,
-  fake_before: BadgeAlert, deal_day: CalendarClock, complaint_ending: ShieldAlert, old_value: Tag, old_wish: Hourglass, tidy_up: ListChecks,
-}
 const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show' }
 /** The rail shows this many rows, then "N more". */
 const SHOWN = 3
@@ -44,16 +38,6 @@ function LookFailed({ onRetry }: { onRetry: () => void }) {
     <span className="text-body text-fg-muted">
       Couldn't load what needs a look.{' '}
       <button type="button" onClick={onRetry} className="font-semibold text-accent-600 hover:underline">Try again</button>
-    </span>
-  )
-}
-
-/** The kind's icon on its tone: the icon and the words say it, never the colour alone. */
-function LookIcon({ look, small = false }: { look: Look; small?: boolean }) {
-  const Icon = ICON[look.kind]
-  return (
-    <span data-tone={look.tone} className={cx('tone-soft grid shrink-0 place-items-center rounded-full', small ? 'h-6 w-6' : 'mt-0.5 h-7 w-7')}>
-      <Icon aria-hidden className={cx('tone-text', small ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
     </span>
   )
 }
