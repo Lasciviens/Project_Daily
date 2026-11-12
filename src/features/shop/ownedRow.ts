@@ -137,8 +137,6 @@ export function rowPrice(i: ShopItem): { text: string; pending: boolean } {
 /** The narrowest a column of rows gets (a name and a price on one line at 16px) and the gap between columns. */
 export const ROW_MIN_REM = 21
 export const ROW_GAP_REM = 1.5
-/** A content row is never wider than this (THEME W2). */
-export const ROW_MAX_REM = 40
 
 /**
  * How many column stacks of rows a list `widthRem` wide holds: as many

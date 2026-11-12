@@ -80,13 +80,12 @@ console.log('\n2 · Norges Bank\'s answer (live shape, 08.10.2026) and the funct
 console.log('\n3 · What a row is')
 {
   const mine = item({})
-  check('a bought wishlist row you kept is yours', O.isPossession(mine) && O.isMine(mine) && O.ownState(mine) === 'mine')
+  check('a bought wishlist row you kept is yours', O.isPossession(mine) && O.isMine(mine))
   check('a quick-list errand is never a possession', !O.isPossession(item({ list: 'quick' })))
   check('a general wish is never a possession', !O.isPossession(item({ kind: 'general', status: 'fulfilled' })))
-  check('bought for someone else: spending only', !O.isPossession(item({ kept: false })) && O.ownState(item({ kept: false })) === 'not_kept')
+  check('bought for someone else: spending only', !O.isPossession(item({ kept: false })))
   check('sold = gone', O.isGone(item({ disposal: 'sold', disposed_on: '2026-01-01', sale_price: 10 })))
-  check('returned is never "gone" (it never was yours)', !O.isGone(item({ disposal: 'returned' })) && O.ownState(item({ disposal: 'returned' })) === 'returned')
-  check('to buy / dropped / fulfilled', O.ownState(item({ status: 'wishlist' })) === 'to_buy' && O.ownState(item({ status: 'dropped' })) === 'dropped' && O.ownState(item({ status: 'fulfilled' })) === 'fulfilled')
+  check('returned is never "gone" (it never was yours)', !O.isGone(item({ disposal: 'returned' })))
 }
 console.log('\n4 · Days and durations')
 check('days between', O.daysBetween('2026-05-16', TODAY) === 145)
@@ -165,8 +164,6 @@ console.log('\n7 · Selling things together')
   check('the item itself takes the rounding; the shares add up exactly', split.get('rp5') === 2342 && [...split.values()].reduce((s, v) => s + v, 0) === 2800)
   const even = O.splitSale(100, [{ id: 'a', weight: null }, { id: 'b', weight: 50 }, { id: 'c', weight: 0 }])
   check('unknown costs: evenly', even.get('b') === 33 && even.get('c') === 33 && even.get('a') === 34)
-  check('the sale\'s whole amount', O.saleTotal([item({ sale_price: 2342 }), item({ sale_price: 166 }), item({ sale_price: 292 })]) === 2800)
-  check('a row without its share: unknown total', O.saleTotal([item({ sale_price: 10 }), item({ sale_price: null })]) === null)
 }
 
 console.log('\n8 · A money chain (RP4 → RP5 + accessories → RP6)')

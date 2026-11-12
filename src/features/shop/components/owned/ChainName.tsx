@@ -38,7 +38,7 @@ export function ChainName({ chain }: { chain: Chain }) {
   if (editing) return <ChainNameForm chain={chain} onDone={() => setEditing(false)} />
   if (!chain.name) {
     return (
-      <button type="button" onClick={() => setEditing(true)} className="chip min-h-[44px] w-fit gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
+      <button type="button" onClick={() => setEditing(true)} className="chip w-fit gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
         <Plus aria-hidden className="h-3 w-3" /> Name this chain
       </button>
     )
