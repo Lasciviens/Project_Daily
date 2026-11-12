@@ -1,72 +1,17 @@
-// "Something's wrong" (Shop step C, owner's plan 10.11.2026): the complaint right first — how long is left to
-// complain and to return it — then the complaint letter, filled in, and what a claim brought back as money.
-// Pure — scripts/verify-shop-owning.cjs.
-//
-// Norwegian law only (owner, 10.11.2026): forbrukerkjøpsloven § 27 — a fault can be claimed up to two years after
-// the buyer got the thing, five years for a thing meant to last considerably longer. The days come from the
-// thing's own facts: "Can complain until" (`warranty_until`) when the owner noted it, else the law's two years
-// from the purchase day (when unsure, the earlier day — the five years are named in the explanation). Step B's
-// store rules will add the store's own days; until "Arrived" exists, the purchase day is the day it was got.
+// "Something's wrong" (Shop step C, owner's plan 10.11.2026): the complaint letter, filled in, the store's own
+// page, and what a claim brought back as money. Pure — scripts/verify-shop-owning.cjs. The days to complain and
+// to return it are the Purchase section's (`purchaseModel.deadlinesOf`: the store's rules and Norway's law rows).
 //
 // A claim that brings money back is a rebate on the thing — a negative extra cost (`shop_item_costs`, 137), the
 // same money path as every other rebate — labelled so Stats can count it as saved by watching.
 
 import { formatDate } from '../../shared/utils/dateFormat'
-import { addMonths, boughtOn, daysBetween, durationLabel } from './ownModel'
+import { boughtOn } from './ownModel'
 import { oneLine } from './oneLine'
 import type { ShopItem } from './types'
 
-/** The law the letter cites, and its two limits in years. */
-export const COMPLAINT_LAW = { act: 'forbrukerkjøpsloven', section: '§ 27', years: 2, longYears: 5 } as const
-
-/** How close a deadline is, as a tone: ended (danger), soon (warn), ahead (success). */
-export type DeadlineTone = 'danger' | 'warn' | 'success'
-
-export interface Deadline {
-  /** yyyy-mm-dd */
-  until: string
-  /** Days from today (below 0: it ended). */
-  daysLeft: number
-  tone: DeadlineTone
-  /** "until 24.04.2028 · 1 year 5 months left", "ended 05.10.2026". */
-  words: string
-}
-
-/** A complaint right ends warn-soon inside 60 days (as Needs a look's row); a return window inside 3. */
-export const COMPLAINT_SOON_DAYS = 60
-export const RETURN_SOON_DAYS = 3
-
-function deadline(until: string, today: string, soon: number): Deadline {
-  const daysLeft = daysBetween(today, until)
-  const left = daysLeft === 0 ? 'last day today' : daysLeft === 1 ? '1 day left' : `${durationLabel(today, until)} left`
-  return {
-    until, daysLeft,
-    tone: daysLeft < 0 ? 'danger' : daysLeft <= soon ? 'warn' : 'success',
-    words: daysLeft < 0 ? `ended ${formatDate(until)}` : `until ${formatDate(until)} · ${left}`,
-  }
-}
-
-export interface ComplaintRight extends Deadline {
-  /** `noted`: the owner's own "Can complain until"; `law`: two years from the purchase day. */
-  source: 'noted' | 'law'
-  /** The law's two and five years from the purchase day (null without one). */
-  law: { from: string; two: string; five: string } | null
-}
-
-/** How long it can still be claimed, or null when neither a noted day nor a purchase day is known. */
-export function complaintRight(item: ShopItem, today: string): ComplaintRight | null {
-  const from = boughtOn(item)
-  const law = from ? { from, two: addMonths(from, 12 * COMPLAINT_LAW.years), five: addMonths(from, 12 * COMPLAINT_LAW.longYears) } : null
-  if (item.warranty_until) return { ...deadline(item.warranty_until, today, COMPLAINT_SOON_DAYS), source: 'noted', law }
-  if (!law) return null
-  return { ...deadline(law.two, today, COMPLAINT_SOON_DAYS), source: 'law', law }
-}
-
-/** The return window while it is still open (return_by today or later), else null. */
-export function returnWindow(item: Pick<ShopItem, 'return_by'>, today: string): Deadline | null {
-  if (!item.return_by || item.return_by < today) return null
-  return deadline(item.return_by, today, RETURN_SOON_DAYS)
-}
+/** The law the letter cites (forbrukerkjøpsloven § 27: two years, five for things meant to last much longer). */
+const COMPLAINT_LAW = { act: 'forbrukerkjøpsloven', section: '§ 27' } as const
 
 // ── The letter (Norwegian: it goes to a Norwegian store) ─────────────────────
 

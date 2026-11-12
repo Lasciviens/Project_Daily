@@ -28,17 +28,6 @@ export const isMine = (i: ShopItem): boolean => isPossession(i) && !i.disposal
 /** Sold, given away, broke, lost… — a returned thing never was yours, so it is not "gone". */
 export const isGone = (i: ShopItem): boolean => isPossession(i) && !!i.disposal && i.disposal !== 'returned'
 
-export type OwnState = 'to_buy' | 'mine' | 'gone' | 'returned' | 'not_kept' | 'dropped' | 'fulfilled'
-
-export function ownState(i: ShopItem): OwnState {
-  if (i.status === 'fulfilled') return 'fulfilled'
-  if (i.status === 'dropped') return 'dropped'
-  if (i.status !== 'bought') return 'to_buy'
-  if (i.kept === false) return 'not_kept'
-  if (i.disposal === 'returned') return 'returned'
-  return i.disposal ? 'gone' : 'mine'
-}
-
 export const DISPOSAL_LABEL: Record<ShopDisposal, string> = {
   sold: 'Sold', traded_in: 'Traded in', returned: 'Returned', given: 'Given away', broken: 'Broke', lost: 'Lost', other: 'Gone',
 }
@@ -342,16 +331,6 @@ export function splitSale(total: number, rows: readonly { id: string; weight: nu
   })
   out.set(rows[0].id, Math.round((total - given) * 100) / 100)
   return out
-}
-
-/** The sale's whole amount from rows sold together (each holds its share). */
-export function saleTotal(rows: readonly ShopItem[]): number | null {
-  let sum = 0
-  for (const r of rows) {
-    if (r.sale_price == null) return null
-    sum += r.sale_price
-  }
-  return sum
 }
 
 // ── Deadlines ────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { useFillRatesNow } from '../../hooks/useShopMoney'
 import { boughtOn } from '../../ownModel'
 import { currencyOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
+import { StoreNameField } from '../shopPickers'
 import type { ShopCurrency, ShopItem } from '../../types'
 
 /**
@@ -74,8 +75,8 @@ export function AccessorySheet({ parent, onClose }: { parent: ShopItem; onClose:
             </div>
           )}
           <div>
-            <label htmlFor="acc-store" className="field-label">Store</label>
-            <input id="acc-store" value={store} onChange={e => setStore(e.target.value)} className="input" />
+            <span className="field-label">Store</span>
+            <StoreNameField label="Store" value={store} onChange={setStore} />
           </div>
         </div>
         {added.length > 0 && (
