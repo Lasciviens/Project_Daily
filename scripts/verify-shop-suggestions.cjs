@@ -143,7 +143,7 @@ console.log('owned things: money to claim, returns, complaint rights, old estima
   check('Snooze lasts a week, or until the day before the deadline: due in 5 days → 14.11.2026; due tomorrow → no snooze; no deadline → a week',
     ret(5)[0].snoozeTo === day(4) && ret(1)[0].snoozeTo === null && ret(10)[0].snoozeTo === day(7) && S.snoozeUntil(TODAY, 2) === day(1) && S.snoozeUntil(TODAY) === day(7))
   const comp = d => looks([mine({ title: 'Toothbrush', price: 899, warranty_until: day(d) })])
-  check('a complaint right ending within 60 days: info with its day', comp(38)[0].kind === 'complaint_ending' && comp(38)[0].tone === 'info' && sp(comp(38)[0].facts.join(' · ')) === 'Can complain until 18.12.2026 · in 38 days · paid 899 NOK')
+  check('a complaint right ending within 60 days: info with its day', comp(38)[0].kind === 'complaint_ending' && comp(38)[0].tone === 'info' && sp(comp(38)[0].facts.join(' · ')) === 'Complain by 18.12.2026 · in 38 days · paid 899 NOK')
   check('…in 61 days nothing; in two days warn; tomorrow danger', comp(61).length === 0 && comp(2)[0].tone === 'warn' && comp(1)[0].tone === 'danger')
   const val = age => looks([mine({ title: 'Vacuum', value_now: 1500, value_currency: 'NOK', value_on: day(-age) })])
   check('"Could sell for" older than six months: info, opens at that fact', val(200)[0].kind === 'old_value' && val(200)[0].action === 'value' && sp(val(200)[0].facts[0]) === 'Could sell for 1 500 NOK')
