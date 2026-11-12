@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
-import { Button, cx } from '../../../../shared/ui'
+import { Button } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -13,6 +13,7 @@ import { categoryPath } from '../../shopModel'
 import { boughtDayOf, complaintYearsOf, dateSource, factsOf, storeOfItem } from '../../purchaseModel'
 import { purchaseDeadlines } from '../../storeRules'
 import { DateFact, DeadlineWords } from './purchaseKit'
+import { ChoiceChip } from '../shopPickers'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
 import type { ShopItem, ShopStore } from '../../types'
 
@@ -20,15 +21,6 @@ type Channel = 'online' | 'in_store'
 const OTHER = 'other'
 const NOTE_MAX = 2000
 
-/** A small choice chip (online / in a shop, 2 / 5 years), picked or not. */
-function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" role="radio" aria-checked={on} onClick={onClick}
-      className={cx('chip px-3', on ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
-      {children}
-    </button>
-  )
-}
 
 /**
  * Just bought: where and how it was bought, Arrived, the return and complaint days with their reasons (the
@@ -110,8 +102,8 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1.5" role="radiogroup" aria-label="How it was bought">
-              <Choice on={channel === 'online'} onClick={() => setChannel('online')}>Online</Choice>
-              <Choice on={channel === 'in_store'} onClick={() => setChannel('in_store')}>In a shop</Choice>
+              <ChoiceChip on={channel === 'online'} onClick={() => setChannel('online')}>Online</ChoiceChip>
+              <ChoiceChip on={channel === 'in_store'} onClick={() => setChannel('in_store')}>In a shop</ChoiceChip>
             </div>
             <select value={storeId} onChange={e => setStorePick(e.target.value)} aria-label="Store" disabled={storesLoading}
               className="select input-sm w-auto min-w-0 max-w-[14rem] flex-1">
@@ -155,11 +147,11 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
             <DateFact label="Complain by" day={complainBy} today={today}>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Complaint years">
                 {([2, 5] as const).map(y => (
-                  <Choice key={y} on={!keepComplain && years === y} onClick={() => { setYears(y); setKeepComplain(false) }}>
+                  <ChoiceChip key={y} on={!keepComplain && years === y} onClick={() => { setYears(y); setKeepComplain(false) }}>
                     {y} years{y === 5 ? ' — meant to last' : ''}{y === suggestedYears ? ' (suggested)' : ''}
-                  </Choice>
+                  </ChoiceChip>
                 ))}
-                {complainOwn && <Choice on={keepComplain} onClick={() => setKeepComplain(true)}>Keep {formatDate(complainOwn)}</Choice>}
+                {complainOwn && <ChoiceChip on={keepComplain} onClick={() => setKeepComplain(true)}>Keep {formatDate(complainOwn)}</ChoiceChip>}
               </div>
               {!keepComplain && <DeadlineWords deadline={dl?.complaintBy ?? null} />}
             </DateFact>
