@@ -1,6 +1,8 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { cx } from '../../../shared/ui'
 import { useShopStores } from '../hooks/useShopStores'
+import { useShopItems } from '../hooks/useShop'
+import { storeNames } from '../shopModel'
 import type { ShopStoreKind } from '../types'
 
 /** A choice chip (a radio), picked or not: the one look for every Shop choice row (how it left, 2 / 5 years, online / in a shop). */
@@ -51,6 +53,12 @@ export function StoreNameField({ value, onChange, kinds = SHOPS, label, placehol
     () => stores.filter(s => !s.hidden && kinds.includes(s.kind)).sort((a, b) => a.name.localeCompare(b.name, 'en')),
     [stores, kinds],
   )
+  // The typed field suggests the names used before that aren't in Stores (groceries like "Rema" often aren't).
+  const { data: items = [] } = useShopItems()
+  const used = useMemo(() => {
+    const listed = new Set(pickable.map(s => s.name.toLowerCase()))
+    return storeNames(items).filter(n => !listed.has(n.toLowerCase()))
+  }, [items, pickable])
   const typed = value.trim().toLowerCase()
   const match = typed ? pickable.find(s => s.name.toLowerCase() === typed) : undefined
   const [otherMode, setOtherMode] = useState(typing)
@@ -70,7 +78,10 @@ export function StoreNameField({ value, onChange, kinds = SHOPS, label, placehol
         <option value={OTHER}>Somewhere else…</option>
       </select>
       {other && (
-        <input value={value} onChange={e => onChange(e.target.value)} placeholder="Its name" aria-label={`${label} name`} className="input min-w-0" />
+        <>
+          <input value={value} onChange={e => onChange(e.target.value)} list={`${id}-used`} placeholder="Its name" aria-label={`${label} name`} className="input min-w-0" />
+          <datalist id={`${id}-used`}>{used.map(n => <option key={n} value={n} />)}</datalist>
+        </>
       )}
     </div>
   )
