@@ -32,6 +32,15 @@ function AutofillLoading() {
   )
 }
 
+/** The link reader, barcode scan, facts and duplicate warning — the one autofill every Shop add screen shows. */
+export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[] }) {
+  return (
+    <Suspense fallback={<AutofillLoading />}>
+      <AutofillPanel {...props} />
+    </Suspense>
+  )
+}
+
 export const NEW_CATEGORY = '__new__'
 
 /** What the form edits; category ids are '' for none and NEW_CATEGORY for "make one". */
@@ -216,9 +225,7 @@ export function ShopItemForm({ draft, onChange, update, categories, stores, edit
       )}
 
       {!quick && !editing && !draft.general && (
-        <Suspense fallback={<AutofillLoading />}>
-          <AutofillPanel draft={draft} onChange={onChange} update={update} categories={categories} />
-        </Suspense>
+        <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
       )}
 
       {quick ? <>{store}{notes}</> : draft.general ? <>

@@ -1,17 +1,27 @@
-import { useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, SegmentedControl, cx } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { middayIso } from '../../../media/watchedWhen'
 import { useCreateShopItem } from '../../hooks/useShop'
+import { useQuietCheck } from '../../hooks/useShopPrices'
 import { useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
 import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
-import { listOf } from '../../shopModel'
+import { listOf, storeNames } from '../../shopModel'
+import { factsToSave } from '../../factsKept'
+import { ShopAutofill, type ShopDraft } from '../ShopItemForm'
 import { MoneyEditor, Toggle } from '../record/factKit'
 import { CategoryPicker } from '../CategoryPicker'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
+
+/** The fields this sheet shares with the Wishlist's add (title, category, price, store, link, picture, facts): one draft, so the same autofill fills them. */
+const EMPTY: ShopDraft = {
+  title: '', list: 'wishlist', topId: '', newTop: '', subId: '', newSub: '', notes: '', price: null, currency: 'NOK',
+  platform: '', url: '', priority: 'medium', region: '', plannedDate: '', status: 'bought', boughtDay: '', general: false,
+  priceMin: null, priceMax: null, requirements: '', reason: '', image: null, facts: [],
+}
 
 const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'broken', 'lost', 'other']
 
@@ -19,23 +29,30 @@ const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'broken', 'lost', 'ot
  * Add something you own — or had — from before the app: what it cost, when
  * (roughly is fine: "≈"), where, and for something you had, how it left and
  * where its money went. Chains start from here: "paid with money from" links
- * the older thing it replaced.
+ * the older thing it replaced. It has the Wishlist add's tools too: the link
+ * reader, barcode scan, facts with sources, picture and duplicate warning
+ * (`ShopAutofill`), and the store suggestions.
  */
 export function OwnSheet({ had: hadInitially, items, categories, onClose }: { had: boolean; items: ShopItem[]; categories: ShopCategory[]; onClose: () => void }) {
+  const id = useId()
   const create = useCreateShopItem()
+  const check = useQuietCheck()
   const link = useCreateShopLink({ report: false })
   const fill = useFillRatesNow()
   const suggested = useResolveCategory()
   const today = todayStr()
   const [had, setHad] = useState(hadInitially)
-  const [title, setTitle] = useState('')
-  const [topId, setTopId] = useState('')
-  const [subId, setSubId] = useState('')
-  const [price, setPrice] = useState<number | null>(null)
-  const [currency, setCurrency] = useState<ShopCurrency>('NOK')
+  const [draft, setDraft] = useState<ShopDraft>(EMPTY)
+  const onChange = useCallback((patch: Partial<ShopDraft>) => setDraft(d => ({ ...d, ...patch })), [])
+  // The autofill's answers land later: worked out from the draft as it is then.
+  const update = useCallback((change: (d: ShopDraft) => Partial<ShopDraft>) => setDraft(d => {
+    const patch = change(d)
+    return Object.keys(patch).length ? { ...d, ...patch } : d
+  }), [])
+  const { title, topId, subId, price, currency } = draft
+  const stores = useMemo(() => storeNames(items), [items])
   const [day, setDay] = useState('')
   const [approx, setApprox] = useState(true)
-  const [store, setStore] = useState('')
   const [gift, setGift] = useState(false)
   const [used, setUsed] = useState(false)
   const [how, setHow] = useState<ShopDisposal>('sold')
@@ -56,9 +73,13 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
     try {
       // A suggested category picked here is made now, with the save.
       const categoryId = await suggested.resolve({ topId, subId }, categories)
+      const kept = factsToSave(draft.facts, draft)
       row = await create.mutateAsync({ input: {
         title: title.trim(), list: 'wishlist', status: 'bought', category_id: categoryId,
-        price: gift && price == null ? 0 : price, currency, platform: store.trim() || null,
+        price: gift && price == null ? 0 : price, currency, platform: draft.platform.trim() || null,
+        url: draft.url.trim() || null, image_url: draft.image, notes: draft.notes.trim() || null,
+        ...(kept.ean ? { ean: kept.ean } : {}),
+        ...(kept.facts ? { facts: kept.facts } : {}),
         bought_at: middayIso(day), approx_dates: approx, got_as_gift: gift, used,
         ...(had ? {
           disposal: how, disposed_on: left, sold_to: soldTo.trim() || null,
@@ -70,6 +91,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
       if (paidFrom) await link.mutateAsync({ from_id: paidFrom, to_id: row.id })
       if (had && moneyTo) await link.mutateAsync({ from_id: row.id, to_id: moneyTo })
     } catch { /* the link's own hook toasted it; the thing itself is saved */ }
+    if (row.url) check([row.id])
     if (currency !== 'NOK' || (had && gotCurrency !== 'NOK')) fill()
     onClose()
   }
@@ -87,15 +109,19 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           options={[{ value: 'own', label: 'I still have it' }, { value: 'had', label: 'I had it' }]} />
         <div>
           <label htmlFor="own-title" className="field-label">What</label>
-          <input id="own-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
+          <input id="own-title" value={title} onChange={e => onChange({ title: e.target.value })} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <CategoryPicker categories={categories} value={{ topId, subId }} onChange={p => { setTopId(p.topId); setSubId(p.subId) }} />
+        <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
+        <div>
+          <span className="field-label">Category</span>
+          <div className="grid grid-cols-2 gap-2">
+            <CategoryPicker categories={categories} value={{ topId, subId }} onChange={p => onChange({ topId: p.topId, subId: p.subId })} />
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <span className="field-label">Paid</span>
-            <MoneyEditor label="Paid" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} />
+            <MoneyEditor label="Paid" amount={price} currency={currency} onAmount={v => onChange({ price: v })} onCurrency={c => onChange({ currency: c })} />
           </div>
           <div>
             <span className="field-label">Bought on</span>
@@ -108,8 +134,13 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <Toggle checked={used} onChange={setUsed}>Bought used</Toggle>
         </div>
         <div>
-          <label htmlFor="own-store" className="field-label">Bought at <span className="font-normal text-fg-muted">(optional)</span></label>
-          <input id="own-store" value={store} onChange={e => setStore(e.target.value)} className="input max-w-sm" />
+          <label htmlFor={`${id}-store`} className="field-label">Bought at <span className="font-normal text-fg-muted">(optional)</span></label>
+          <input id={`${id}-store`} list={`${id}-stores`} value={draft.platform} onChange={e => onChange({ platform: e.target.value })} placeholder="Elkjøp, Power, Finn…" className="input max-w-sm" />
+          <datalist id={`${id}-stores`}>{stores.map(st => <option key={st} value={st} />)}</datalist>
+        </div>
+        <div>
+          <label htmlFor={`${id}-notes`} className="field-label">Notes <span className="font-normal text-fg-muted">(optional)</span></label>
+          <textarea id={`${id}-notes`} value={draft.notes} onChange={e => onChange({ notes: e.target.value })} rows={2} className="input resize-none" />
         </div>
         {sources.length > 0 && (
           <div>
@@ -127,7 +158,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How it left">
                 {HOW.map(h => (
                   <button key={h} type="button" role="radio" aria-checked={how === h} onClick={() => setHow(h)}
-                    className={cx('chip min-h-[44px] px-3', how === h ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface')}>
+                    className={cx('chip px-3', how === h ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface')}>
                     {DISPOSAL_LABEL[h]}
                   </button>
                 ))}
