@@ -191,5 +191,21 @@ console.log('the nudge line')
   check('a wish at its target: Bought, with where it was read', St.nudgeFor(hp, wl, TODAY).action === 'bought' && /elkjop\.no/.test(St.nudgeFor(hp, wl, TODAY).where))
 }
 
+console.log('the record\'s draft: "+ New category…" (made on Save, as the add sheet does)')
+{
+  const D = require('../src/features/shop/components/record/useRecordDraft')
+  const NEW = D.NEW_CATEGORY
+  const top = D.newCategoryId({ topId: NEW, subId: '' })
+  const sub = D.newCategoryId({ topId: 'c1', subId: NEW })
+  check('a pick without "+ New" is no new category', D.newCategoryId({ topId: 'c1', subId: 'c2' }) === null && !D.isNewCategory('c1') && !D.isNewCategory(null))
+  check('a new top and a new subcategory under one of yours go there and back', D.isNewCategory(top) && eq(D.newPickOf(top), { topId: NEW, subId: '' }) && eq(D.newPickOf(sub), { topId: 'c1', subId: NEW }))
+  check('Save waits for a new category\'s name', D.newCategoryMissing({ category_id: top }) === 'top' && D.newCategoryMissing({ category_id: top, new_top: '  ' }) === 'top'
+    && D.newCategoryMissing({ category_id: sub }) === 'sub' && D.newCategoryMissing({ category_id: top, new_top: 'Garden' }) === null
+    && D.newCategoryMissing({ category_id: 'c1' }) === null)
+  const row = item({ category_id: 'c1' })
+  const p = D.patchOf(row, { category_id: top, new_top: 'Garden', new_sub: 'Tools', bought_day: undefined })
+  check('the typed names are never sent as columns', eq(Object.keys(p), ['category_id']) && p.category_id === top, JSON.stringify(p))
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

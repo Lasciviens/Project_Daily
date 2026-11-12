@@ -4,15 +4,15 @@ import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { toast } from '../../../../app/store'
-import { useBuyNow, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../../hooks/useShop'
+import { useBuyNow, useCreateShopCategory, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../../hooks/useShop'
 import { useFillRatesNow, useShopLinks, useShopMoney, useUndoSale } from '../../hooks/useShopMoney'
-import { useWatchMap } from '../../hooks/useShopPrices'
+import { useQuietCheck, useWatchMap } from '../../hooks/useShopPrices'
 import { useResolveCategory } from '../../hooks/useCategorySuggestions'
-import { categoryPath, planDefaults, storeNames } from '../../shopModel'
+import { categoryPath, listOf, planDefaults } from '../../shopModel'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { chainFor } from '../../chainModel'
 import { recordState } from './recordState'
-import { patchOf, useRecordDraft } from './useRecordDraft'
+import { isNewCategory, NEW_CATEGORY, newCategoryMissing, newPickOf, patchOf, useRecordDraft } from './useRecordDraft'
 import type { ShopItem } from '../../types'
 
 /** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone, the side pane). */
@@ -41,6 +41,8 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
   const watches = useWatchMap()
   const update = useUpdateShopItem()
   const suggested = useResolveCategory()
+  const createCategory = useCreateShopCategory()
+  const check = useQuietCheck()
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
@@ -49,7 +51,6 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
   const d = useRecordDraft(item, openFact ?? null)
   const state = recordState(item)
   const owned = state === 'mine' || state === 'gone'
-  const stores = useMemo(() => storeNames(items), [items])
   const chain = useMemo(() => (owned || (state === 'other' && item.status === 'bought') ? chainFor(item.id, items, links, ctx) : null), [owned, state, item, items, links, ctx])
   const accessories = useMemo(() => items.filter(i => i.accessory_of === item.id), [items, item.id])
   const models = useMemo(() => (state === 'general' ? items.filter(i => i.option_for === item.id) : []), [state, items, item.id])
@@ -63,14 +64,29 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
   const path = categoryPath(item.category_id, categories)
   const subtitle = [path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null, item.disposal ? DISPOSAL_LABEL[item.disposal] : null].filter(Boolean).join(' · ') || undefined
 
+  /** "+ New category…" in the record: the names typed are made now, with the save, as the add sheet makes them. */
+  async function makeNewCategory(id: string): Promise<string | null> {
+    const p = newPickOf(id)
+    let topId = p.topId
+    if (topId === NEW_CATEGORY) topId = (await createCategory.mutateAsync({ name: (d.draft.new_top ?? '').trim() })).id
+    const sub = d.draft.new_sub?.trim()
+    if (sub && (p.subId === NEW_CATEGORY || p.topId === NEW_CATEGORY)) return (await createCategory.mutateAsync({ name: sub, parent_id: topId })).id
+    return topId || null
+  }
+
   async function save(): Promise<boolean> {
     if (!d.dirty) return true
+    // A new category waits for its name, as the add sheet's Save does.
+    if (newCategoryMissing(d.draft)) { d.setEditing('category'); return false }
     const patch = patchOf(item, d.draft)
     try {
-      // A suggested category picked in the record is made now, with the save.
-      if (patch.category_id !== undefined) patch.category_id = await suggested.resolve(patch.category_id, categories)
+      // A suggested or new category picked in the record is made now, with the save.
+      if (isNewCategory(patch.category_id)) patch.category_id = await makeNewCategory(patch.category_id)
+      else if (patch.category_id !== undefined) patch.category_id = await suggested.resolve(patch.category_id, categories)
       await update.mutateAsync({ id: item.id, patch, quiet: true })
     } catch { return false }
+    // A changed link is checked once, like a new wish's (the check reuses the last hour's read).
+    if (patch.url && listOf(item) !== 'quick') check([item.id])
     toast.success('Saved')
     d.discard()
     if ('currency' in patch || 'bought_at' in patch || 'fx_nok' in patch || 'sale_currency' in patch || 'disposed_on' in patch || 'price' in patch) fillNow()
@@ -124,7 +140,7 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
   if (item.status === 'dropped') actions.push({ key: 'back', label: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 
   return {
-    item, today, items, categories, ctx, costs, links, watches, stores, d, state, owned, chain, accessories, models, parents, parent,
+    item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,
     pill, subtitle, actions, save, close, del, saving: update.isPending, buy: () => buy(item),
   }
 }

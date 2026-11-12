@@ -13,7 +13,9 @@ import { CONDITION_LABEL, conditionChoice, resaleEvidence, type ResaleEvidenceRo
 import { isPrice, marketplaceOf, normalizeAdUrl, RESALE_CONDITIONS } from '../../resaleRows'
 import { endedListingsOf, estimateHistory, HANDED_OVER, hasOldEstimate, listingWords, marketplacesOf, oldEstimates } from '../../sellingModel'
 import { money, moneyRange, num } from '../shopFormat'
+import { StoreNameField } from '../shopPickers'
 import { MoneyEditor } from './factKit'
+import { WENT_TO } from './factList'
 import { AddressLink } from './AddressLink'
 import { RecordListing } from './RecordListing'
 import { HandoverChecklist } from './HandoverChecklist'
@@ -235,7 +237,7 @@ function QuoteForm({ itemId, onDone }: { itemId: string; onDone: () => void }) {
   }
   return (
     <div className="mb-2 flex flex-col gap-2 rounded-row bg-surface-2 p-2">
-      <input value={dealer} onChange={e => setDealer(e.target.value)} placeholder="Who offered it (a store, a trade-in site)" aria-label="Who offered it" className="input max-w-md" autoFocus />
+      <StoreNameField value={dealer} onChange={setDealer} kinds={WENT_TO} label="Who offered it" placeholder="Who offered it?" className="max-w-md" />
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-[11rem]"><MoneyEditor label="Offered" amount={amount} currency={currency} onAmount={setAmount} onCurrency={setCurrency} /></div>
         <ConditionSelect value={condition} onChange={setCondition} />

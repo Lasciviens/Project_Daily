@@ -30,6 +30,7 @@ import { PurchaseDetailsButton, RecordPurchase } from '../purchase/RecordPurchas
 import { LookElsewhere } from '../purchase/LookElsewhere'
 import { useMarketSearches } from '../../hooks/useShopStores'
 import { useOpenRecord } from './recordOpen'
+import { newCategoryMissing } from './useRecordDraft'
 import type { ShopRecordModel } from './useShopRecord'
 
 /**
@@ -100,7 +101,8 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const box = (id: SectionId, title: string, summary: string | undefined, action: ReactNode, body: ReactNode, keepAction = false) => (
     <RecordSection id={id} title={title} summary={summary} open={sections.open.has(id)} onToggle={() => sections.toggle(id)} action={action} keepAction={keepAction}>{body}</RecordSection>
   )
-  const factsSummary = [item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
+  // A thing still yours names its store in Purchase.
+  const factsSummary = [state !== 'mine' && item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
     .filter(Boolean).join(' · ') || undefined
   const money = hasMoneyLinks(item) || owned || item.status === 'bought'
   const moneySummary = r.chain && r.chain.nodes.length > 1 ? chainTitle(r.chain)
@@ -120,11 +122,11 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
       {state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
         <LookElsewhere item={item} today={today} searches={searches} />)}
       {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
-        <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} section="resale" />
+        <RecordFacts item={item} d={d} state={state} categories={r.categories} today={today} section="resale" />
         <RecordResale r={r} watch={watch} />
       </>)}
       {box('facts', 'Facts', factsSummary, null, <>
-        <RecordFacts item={item} d={d} state={state} categories={r.categories} stores={r.stores} watch={watch} today={today} parents={r.parents} />
+        <RecordFacts item={item} d={d} state={state} categories={r.categories} today={today} parents={r.parents} />
         {!item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={r.accessories} ctx={r.ctx} canAdd={state === 'mine'} />}
       </>)}
       {money && box('money', 'Money', moneySummary, <MoneyChainButton item={item} chain={r.chain} />, <>
@@ -178,7 +180,7 @@ export function RecordFooter({ r }: { r: ShopRecordModel }) {
     <div className="flex items-center gap-2">
       <span className="text-meta text-fg-muted">Unsaved changes</span>
       <Button onClick={r.d.discard} className="ml-auto">Discard</Button>
-      <Button variant="primary" onClick={() => { void r.save() }} loading={r.saving}>Save</Button>
+      <Button variant="primary" onClick={() => { void r.save() }} loading={r.saving} disabled={!!newCategoryMissing(r.d.draft)}>Save</Button>
     </div>
   )
 }

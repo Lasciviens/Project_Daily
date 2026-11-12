@@ -56,7 +56,7 @@ export function FactChips({ chips }: { chips: { id: string; label: string; onAdd
   return (
     <div className="flex flex-wrap gap-1.5 pt-1">
       {chips.map(c => (
-        <button key={c.id} type="button" onClick={c.onAdd} className="chip min-h-[44px] gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
+        <button key={c.id} type="button" onClick={c.onAdd} className="chip gap-1 text-fg-muted hover:bg-surface-hover hover:text-fg-2">
           <Plus aria-hidden className="h-3 w-3" /> {c.label}
         </button>
       ))}

@@ -1,10 +1,10 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { CardHeader } from '../../../../shared/ui'
 import { Fact, FactChips, Toggle } from './factKit'
 import { buyFacts, commonFacts, generalFacts, goneFacts, ownFacts, type FactCtx, type FactDef } from './factList'
-import type { useRecordDraft } from './useRecordDraft'
+import type { RecordDraft, useRecordDraft } from './useRecordDraft'
 import type { RecordState } from './recordState'
-import type { ShopCategory, ShopItem, ShopPriceWatch } from '../../types'
+import type { ShopCategory, ShopItem } from '../../types'
 
 /** The facts the record's Resale section holds (the rest are in Facts). */
 const RESALE_OWN = ['value', 'resale']
@@ -14,23 +14,21 @@ const RESALE_GONE = ['how', 'left', 'soldTo', 'got']
  * The record's facts as text, tap to edit; the empty ones wait as "+" chips.
  * `section`: the Facts section (what it is and how it was bought) or the
  * Resale section (what it could sell for, bought to sell — or how it left).
+ * A thing still yours shows its store and its return and complaint days in Purchase, never here too.
  */
-export function RecordFacts({ item, d, state, categories, stores, watch, today, parents, section = 'facts' }: {
+export function RecordFacts({ item, d, state, categories, today, parents, section = 'facts' }: {
   item: ShopItem
   d: ReturnType<typeof useRecordDraft>
   state: RecordState
   categories: readonly ShopCategory[]
-  stores: readonly string[]
-  watch: ShopPriceWatch | null
   today: string
   /** Things it can be an accessory of (owned only); absent = it cannot become one. */
   parents?: readonly ShopItem[]
   section?: 'facts' | 'resale'
 }) {
-  const listId = useId()
   const [added, setAdded] = useState<Set<string>>(new Set())
-  const v = { ...item, ...d.draft } as ShopItem
-  const ctx: FactCtx = { v, boughtDay: d.boughtDay, set: d.set, categories, stores, watch, today, listId, parents }
+  const v = { ...item, ...d.draft } as ShopItem & RecordDraft
+  const ctx: FactCtx = { v, boughtDay: d.boughtDay, set: d.set, categories, today, parents }
   const owned = state === 'mine' || state === 'gone' || (state === 'other' && item.status === 'bought')
   const byId = new Map<string, FactDef>()
   for (const f of [
@@ -39,7 +37,7 @@ export function RecordFacts({ item, d, state, categories, stores, watch, today, 
     ...(state === 'gone' ? goneFacts(ctx) : []),
   ]) byId.set(f.id, f)
   const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter((f): f is FactDef => !!f)
-  const bought = ['title', 'category', 'parent', 'bought', 'paid', 'rate', 'store', 'region', 'saved', 'returnBy', 'complain', 'serial', 'link', 'notes', 'picture', 'kept']
+  const bought = ['title', 'category', 'parent', 'bought', 'paid', 'rate', ...(state === 'mine' ? [] : ['store']), 'region', 'saved', 'serial', 'link', 'notes', 'picture', 'kept']
   const groups: { title: string | null; facts: FactDef[] }[] = section === 'resale'
     ? [{ title: null, facts: pick(state === 'gone' ? RESALE_GONE : RESALE_OWN) }]
     : state === 'general'
