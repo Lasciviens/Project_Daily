@@ -9,6 +9,7 @@ import { useDeleteShopItems, useUpdateShopItem } from '../../hooks/useShop'
 import { chainName, chainPrices, cheapestStore, webPicture, type GroceryPrice } from '../../groceryModel'
 import { currencyOf, isNoRush, priceLabel } from '../../shopModel'
 import type { ShopItem } from '../../types'
+import { Tick } from './Tick'
 
 /**
  * A matched row's price: still loading, unavailable (the basket says why), or
@@ -22,16 +23,6 @@ const TITLE = 'block text-body font-medium leading-5'
 const OPEN = 'min-h-[44px] min-w-0 flex-1 pb-2 pt-3 text-left'
 const FACTS = 'mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'
 const MENU_ICON = 'h-4 w-4'
-
-/** The 44px tick that leads every row. */
-function Tick({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} aria-label={label} title={hint}
-      className="group grid h-11 w-11 shrink-0 place-items-center rounded-control">
-      <span className="h-5 w-5 rounded-[6px] border-2 border-line-strong transition-colors group-hover:border-success" />
-    </button>
-  )
-}
 
 /**
  * A row's product picture, small at the row's end: its own picture link

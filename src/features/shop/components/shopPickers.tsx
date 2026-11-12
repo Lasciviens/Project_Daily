@@ -33,14 +33,16 @@ const SHOPS: readonly ShopStoreKind[] = ['shop', 'marketplace', 'refurbisher']
 /**
  * A store or marketplace as its name: picked from your Stores (`shop_stores`), so its rules match it, or typed
  * after "Somewhere else…". It still saves a name (the row's `platform`, `sold_to`, …), so nothing else changes.
- * `kinds` narrows the list (marketplaces and refurbishers for where a thing went).
+ * `kinds` narrows the list (marketplaces and refurbishers for where a thing went); `typing` starts with the typed
+ * name open (the quick list: a grocery store is seldom in Stores).
  */
-export function StoreNameField({ value, onChange, kinds = SHOPS, label, placeholder, className }: {
+export function StoreNameField({ value, onChange, kinds = SHOPS, label, placeholder, typing = false, className }: {
   value: string
   onChange: (name: string) => void
   kinds?: readonly ShopStoreKind[]
   label: string
   placeholder?: string
+  typing?: boolean
   className?: string
 }) {
   const id = useId()
@@ -51,7 +53,7 @@ export function StoreNameField({ value, onChange, kinds = SHOPS, label, placehol
   )
   const typed = value.trim().toLowerCase()
   const match = typed ? pickable.find(s => s.name.toLowerCase() === typed) : undefined
-  const [otherMode, setOtherMode] = useState(false)
+  const [otherMode, setOtherMode] = useState(typing)
   const other = otherMode || (!!typed && !match && !isLoading)
   const selectValue = match ? match.id : other ? OTHER : ''
   return (

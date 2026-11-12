@@ -1,13 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, Skeleton } from '../../../shared/ui'
-import { todayStr } from '../../../shared/utils/dateUtils'
-import { middayIso } from '../../media/watchedWhen'
-import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../hooks/useShop'
+import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCategories, useUpdateShopItem } from '../hooks/useShop'
 import { useQuietCheck } from '../hooks/useShopPrices'
 import { useResolveCategory } from '../hooks/useCategorySuggestions'
-import { currencyOf, isSuggested, listOf, localDay, storeNames } from '../shopModel'
+import { currencyOf, isSuggested, listOf } from '../shopModel'
 import { factsToSave } from '../factsKept'
 import { NEW_CATEGORY, ShopItemForm, type ShopDraft } from './ShopItemForm'
 import type { ShopCategory, ShopItem, ShopList } from '../types'
@@ -31,7 +29,6 @@ function draftOf(item: ShopItem | undefined, defaults: ShopItemDefaults, categor
     region:      item?.region ?? '',
     plannedDate: item?.planned_date ?? '',
     status:      item?.status ?? 'wishlist',
-    boughtDay:   item?.status === 'bought' ? localDay(item.bought_at ?? item.updated_at) : todayStr(),
     general:     item ? item.kind === 'general' : !!defaults.general,
     priceMin:    item?.price_min ?? null,
     priceMax:    item?.price_max ?? null,
@@ -45,7 +42,7 @@ function draftOf(item: ShopItem | undefined, defaults: ShopItemDefaults, categor
 interface Props { item?: ShopItem; defaults?: ShopItemDefaults; onClose: () => void }
 
 /**
- * Add or edit one Shop item (both lists). Waits for the categories so the
+ * Add a Shop item (both lists) or edit a quick-list row (a wishlist row opens its record). Waits for the categories so the
  * draft is seeded with the row's real category — seeding before they load
  * would save the row back with none.
  */
@@ -69,7 +66,6 @@ export function ShopItemSheet(props: Props) {
  * reports its own failure.
  */
 function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { categories: ShopCategory[] }) {
-  const { data: items = [] } = useShopItems()
   const createCategory = useCreateShopCategory()
   const suggested = useResolveCategory()
   const createItem = useCreateShopItem()
@@ -79,7 +75,6 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const [seed] = useState<ShopDraft>(() => draftOf(item, defaults, categories))
   const [draft, setDraft] = useState<ShopDraft>(seed)
   const [saving, setSaving] = useState(false)
-  const stores = useMemo(() => storeNames(items), [items])
   const editing = !!item
   // The autofill's answers land later: worked out from the draft as it is then; nothing changed is no new draft.
   const update = useCallback((change: (d: ShopDraft) => Partial<ShopDraft>) => setDraft(d => {
@@ -131,8 +126,6 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
         const categoryTouched = draft.topId !== seed.topId || draft.subId !== seed.subId
         const rest: Partial<typeof fields> = { ...fields }
         delete rest.category_id
-        const statusChanged = draft.status !== item.status
-        const dayChanged = draft.status === 'bought' && draft.boughtDay && draft.boughtDay !== localDay(item.bought_at ?? item.updated_at)
         await updateItem.mutateAsync({
           id: item.id,
           quiet: true,
@@ -140,8 +133,6 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
             ...(categoryTouched ? fields : rest),
             // A price edited by hand is the owner's own, never an AI estimate any more.
             ...(draft.price !== item.price ? { price_source: draft.price != null ? 'manual' : null } : {}),
-            ...(statusChanged ? { status: draft.status } : {}),
-            ...(draft.status === 'bought' && (statusChanged || dayChanged) && draft.boughtDay ? { bought_at: middayIso(draft.boughtDay) } : {}),
           },
         })
       } else if (draft.general && draft.list === 'wishlist') {
@@ -200,7 +191,6 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
         onChange={patch => setDraft(d => ({ ...d, ...patch }))}
         update={update}
         categories={categories}
-        stores={stores}
         editing={editing}
       />
     </ModalShell>

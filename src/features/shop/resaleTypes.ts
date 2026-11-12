@@ -122,7 +122,6 @@ export interface CreateAdNoteInput {
   asking?:      boolean
   noted_on?:    string
 }
-export type UpdateAdNoteInput = Partial<Omit<CreateAdNoteInput, 'item_id'>>
 
 export interface CreateTradeInQuoteInput {
   item_id:    string

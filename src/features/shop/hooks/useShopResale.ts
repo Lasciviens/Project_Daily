@@ -6,15 +6,13 @@ import { qk, STALE } from '../../../shared/query'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { formatMoney } from '../../settings/subscriptionRules'
 import {
-  addResaleDefaults, createAdNote, createAdTemplate, createChecklist, createListing, createTradeInQuote, fetchAdNotes,
-  fetchAdTemplates, fetchChecklists, fetchListings, fetchTradeInQuotes, fetchValueHistory, updateAdNote, updateAdTemplate,
-  updateChecklist, updateListing, updateTradeInQuote,
+  addResaleDefaults, createAdNote, createChecklist, createListing, createTradeInQuote, fetchAdNotes, fetchAdTemplates,
+  fetchChecklists, fetchListings, fetchTradeInQuotes, fetchValueHistory, updateAdTemplate, updateListing,
 } from '../api/shopResaleApi'
 import { priceNow, withPriceChange } from '../listingNudge'
 import type {
-  CreateAdNoteInput, CreateAdTemplateInput, CreateChecklistInput, CreateListingInput, CreateTradeInQuoteInput,
-  ShopAdNote, ShopAdTemplate, ShopHandoverChecklist, ShopListing, ShopTradeInQuote, UpdateAdNoteInput,
-  UpdateAdTemplateInput, UpdateChecklistInput, UpdateListingInput, UpdateTradeInQuoteInput,
+  CreateAdNoteInput, CreateChecklistInput, CreateListingInput, CreateTradeInQuoteInput, ShopAdNote, ShopAdTemplate,
+  ShopHandoverChecklist, ShopListing, ShopTradeInQuote, UpdateAdTemplateInput, UpdateListingInput,
 } from '../resaleTypes'
 
 // Resale and selling (migration 192). Each write answers its row: the cached list takes it at once (a new row is
@@ -68,17 +66,6 @@ export function useCreateAdNote() {
   })
 }
 
-export function useUpdateAdNote() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:         'update_shop_ad_note',
-    successMessage: 'Noted ad saved',
-    mutationFn:     ({ note, patch }: { note: ShopAdNote; patch: UpdateAdNoteInput }) => updateAdNote(note.id, patch, note),
-    onSuccess:      (n: ShopAdNote) => putRowsInCache(qc, qk.shop.adNotes(), [n]),
-    invalidates:    [qk.shop.adNotes()],
-  })
-}
-
 /** Asks, deletes, "Noted ad deleted · Undo". */
 export function useDeleteAdNote() {
   const del = useRowsDelete({ table: 'shop_ad_notes', action: 'delete_shop_ad_note', invalidates: [qk.shop.adNotes()], cache: qk.shop.adNotes() })
@@ -97,17 +84,6 @@ export function useCreateTradeInQuote() {
     successMessage: (q: ShopTradeInQuote) => `Trade-in quote added · ${formatMoney(q.amount, q.currency)}`,
     mutationFn:     (input: CreateTradeInQuoteInput) => createTradeInQuote(input),
     onSuccess:      (q: ShopTradeInQuote) => addToCache(qc, qk.shop.tradeIns(), q),
-    invalidates:    [qk.shop.tradeIns()],
-  })
-}
-
-export function useUpdateTradeInQuote() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:         'update_shop_trade_in_quote',
-    successMessage: 'Trade-in quote saved',
-    mutationFn:     ({ id, patch }: { id: string; patch: UpdateTradeInQuoteInput }) => updateTradeInQuote(id, patch),
-    onSuccess:      (q: ShopTradeInQuote) => putRowsInCache(qc, qk.shop.tradeIns(), [q]),
     invalidates:    [qk.shop.tradeIns()],
   })
 }
@@ -196,29 +172,7 @@ export function priceChangeWords(listing: ShopListing, price: number): string {
   return `Price ${verb} to ${formatMoney(price, listing.currency)}`
 }
 
-/** Asks, deletes, "Listing deleted · Undo" (selling never deletes the thing: this is only the listing). */
-export function useDeleteListing() {
-  const del = useRowsDelete({ table: 'shop_listings', action: 'delete_shop_listing', invalidates: [qk.shop.listings()], cache: qk.shop.listings() })
-  return {
-    run: (l: ShopListing, title: string) => del.run([l.id], {
-      title: 'Delete this listing?', message: `${title} — its price changes go too; the thing stays yours.`, done: 'Listing deleted',
-    }),
-    busy: del.busy,
-  }
-}
-
 // ── Ad templates and hand-over checklists ────────────────────────────────────
-
-export function useCreateAdTemplate() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:         'create_shop_ad_template',
-    successMessage: (t: ShopAdTemplate) => `Template added · ${t.marketplace ?? 'any marketplace'}`,
-    mutationFn:     (input: CreateAdTemplateInput) => createAdTemplate(input),
-    onSuccess:      (t: ShopAdTemplate) => addToCache(qc, qk.shop.adTemplates(), t),
-    invalidates:    [qk.shop.adTemplates()],
-  })
-}
 
 export function useUpdateAdTemplate() {
   const qc = useQueryClient()
@@ -231,15 +185,6 @@ export function useUpdateAdTemplate() {
   })
 }
 
-/** Asks, deletes, "Template deleted · Undo" (Put back the defaults brings a default one back too). */
-export function useDeleteAdTemplate() {
-  const del = useRowsDelete({ table: 'shop_ad_templates', action: 'delete_shop_ad_template', invalidates: [qk.shop.adTemplates()], cache: qk.shop.adTemplates() })
-  return {
-    run: (t: ShopAdTemplate) => del.run([t.id], { title: 'Delete this ad template?', message: t.marketplace ?? 'Any marketplace', done: 'Template deleted' }),
-    busy: del.busy,
-  }
-}
-
 export function useCreateChecklist() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
@@ -249,26 +194,6 @@ export function useCreateChecklist() {
     onSuccess:      (c: ShopHandoverChecklist) => addToCache(qc, qk.shop.handovers(), c),
     invalidates:    [qk.shop.handovers()],
   })
-}
-
-export function useUpdateChecklist() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
-    action:         'update_shop_handover_checklist',
-    successMessage: 'Checklist saved',
-    mutationFn:     ({ id, patch }: { id: string; patch: UpdateChecklistInput }) => updateChecklist(id, patch),
-    onSuccess:      (c: ShopHandoverChecklist) => putRowsInCache(qc, qk.shop.handovers(), [c]),
-    invalidates:    [qk.shop.handovers()],
-  })
-}
-
-/** Asks, deletes, "Checklist deleted · Undo". */
-export function useDeleteChecklist() {
-  const del = useRowsDelete({ table: 'shop_handover_checklists', action: 'delete_shop_handover_checklist', invalidates: [qk.shop.handovers()], cache: qk.shop.handovers() })
-  return {
-    run: (c: ShopHandoverChecklist) => del.run([c.id], { title: 'Delete this checklist?', message: c.category, done: 'Checklist deleted' }),
-    busy: del.busy,
-  }
 }
 
 /** "Put back the default texts": the templates and checklists you have none of. "2 default texts put back" / "…already there". */

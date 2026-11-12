@@ -23,7 +23,6 @@ export interface StepCardProps {
   open: boolean
   canRemove: boolean
   categories: readonly ShopCategory[]
-  stores: readonly string[]
   today: string
   ratesLoading: boolean
   set: SetStep
@@ -75,7 +74,7 @@ export function StepCard(p: StepCardProps) {
             </div>
           )}
           <StepBuy s={s} set={p.set} paid={p.row ? paidOf(p.row) : null} problems={p.problems} sameDay={before?.leftOn ?? null} today={p.today} loading={p.ratesLoading} />
-          <StepMore s={s} set={p.set} categories={p.categories} stores={p.stores} listId={`stores-${s.key}`} />
+          <StepMore s={s} set={p.set} categories={p.categories} />
           <StepLeave s={s} set={p.set} got={p.row ? gotOf(p.row) : null} problems={p.problems} today={p.today} loading={p.ratesLoading} />
           <Problem problems={p.problems} field="rate" />
         </div>

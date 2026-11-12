@@ -20,7 +20,7 @@ export function BoughtBeforeCard({ rows }: { rows: readonly BuyAgain[] }) {
         {rows.map(r => (
           <button key={r.row.id} type="button" onClick={() => add(r.row.id, buyAgainInput(r))} aria-busy={isSaving(r.row.id) || undefined}
             title={`Put ${r.title} back on the quick list`}
-            className="chip min-h-[44px] max-w-full gap-1 hover:bg-surface-hover">
+            className="chip max-w-full gap-1 hover:bg-surface-hover">
             <RotateCcw aria-hidden className="h-3 w-3 shrink-0 text-fg-faint" />
             <Truncate as="span" className="min-w-0">{r.title}</Truncate>
             {r.count > 1 && <span className="shrink-0 text-fg-muted tabular-nums">×{r.count}</span>}

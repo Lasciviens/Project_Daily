@@ -6,9 +6,57 @@ import { newShopId } from '../../api/shopApi'
 import type { DraftAccessory, DraftStep } from '../../chainDraft'
 import { Toggle } from '../record/factKit'
 import { CategoryPicker } from '../CategoryPicker'
-import { categoryIdOf, pickOf } from '../../shopModel'
+import { StoreNameField } from '../shopPickers'
+import { SUGGESTED, categoryIdOf, isSuggested, pickOf, type CategoryPick } from '../../shopModel'
+import { categoryKey, suggestedSubs, suggestedTops } from '../../shopTaxonomy'
 import type { SetStep } from './StepFields'
 import type { ShopCategory, ShopRegion } from '../../types'
+
+const NEW = '__new__'
+/** A name typed after "+ New category…" / "+ New subcategory…"; null where nothing is typed. */
+interface Typed { top: string | null; sub: string | null }
+
+/** The typed names a step's category holds (a restored draft): a suggestion's name the taxonomy doesn't offer was typed. */
+function typedOf(p: CategoryPick, categories: readonly ShopCategory[]): Typed {
+  const name = (v: string) => v.slice(SUGGESTED.length)
+  const offered = (names: readonly string[], v: string) => names.some(n => categoryKey(n) === categoryKey(name(v)))
+  if (isSuggested(p.topId) && !offered(suggestedTops(categories), p.topId)) return { top: name(p.topId), sub: isSuggested(p.subId) ? name(p.subId) : '' }
+  if (isSuggested(p.subId) && !offered(suggestedSubs(categories, p.topId), p.subId)) return { top: null, sub: name(p.subId) }
+  return { top: null, sub: null }
+}
+
+/**
+ * The step's category with "+ New category…", as the add sheet: a typed name rides in the step as a
+ * suggestion's name, and Save makes it with the chain (useResolveCategory: one of that name is reused).
+ */
+function StepCategory({ value, onChange, categories }: { value: string | null; onChange: (id: string | null) => void; categories: readonly ShopCategory[] }) {
+  const pick = pickOf(value, categories)
+  const [typed, setTyped] = useState<Typed>(() => typedOf(pick, categories))
+  function type(t: Typed, topId: string) {
+    setTyped(t)
+    const sub = t.sub?.trim() ? `${SUGGESTED}${t.sub.trim()}` : ''
+    const top = t.top === null ? topId : t.top.trim() ? `${SUGGESTED}${t.top.trim()}` : ''
+    onChange(top ? categoryIdOf({ topId: top, subId: sub }) : null)
+  }
+  const shown: CategoryPick = typed.top !== null ? { topId: NEW, subId: '' } : typed.sub !== null ? { topId: pick.topId, subId: NEW } : pick
+  return (
+    <>
+      <CategoryPicker categories={categories} value={shown} newValue={NEW}
+        onChange={p => {
+          if (p.topId === NEW) type({ top: '', sub: null }, '')
+          else if (p.subId === NEW) type({ top: null, sub: '' }, p.topId)
+          else { setTyped({ top: null, sub: null }); onChange(categoryIdOf(p)) }
+        }}
+        sub={typed.top !== null
+          ? <input value={typed.top} onChange={e => type({ ...typed, top: e.target.value }, '')} placeholder="New category" aria-label="New category name" className="input" />
+          : undefined} />
+      {typed.sub !== null || typed.top !== null ? (
+        <input value={typed.sub ?? ''} onChange={e => type({ ...typed, sub: e.target.value }, pick.topId)}
+          placeholder={typed.top !== null ? 'Subcategory (optional)' : 'New subcategory'} aria-label="New subcategory name" className="input" />
+      ) : null}
+    </>
+  )
+}
 
 /** How many of the folded details are filled — shown on the fold. */
 function filled(s: DraftStep): number {
@@ -20,12 +68,10 @@ function filled(s: DraftStep): number {
  * yes/no facts, notes, a link and accessories bought with it (same day and
  * currency; they leave with it). Editing a copied fact makes it this step's own.
  */
-export function StepMore({ s, set, categories, stores, listId }: {
+export function StepMore({ s, set, categories }: {
   s: DraftStep
   set: SetStep
   categories: readonly ShopCategory[]
-  stores: readonly string[]
-  listId: string
 }) {
   const [open, setOpen] = useState(false)
   const count = filled(s)
@@ -40,9 +86,8 @@ export function StepMore({ s, set, categories, stores, listId }: {
       {open && (
         <div className="mt-1 flex flex-col gap-3">
           <div className="grid grid-cols-1 gap-2 @[30rem]:grid-cols-2">
-            <CategoryPicker categories={categories} value={pickOf(s.categoryId, categories)} onChange={p => set({ categoryId: categoryIdOf(p) })} />
-            <input list={listId} value={s.platform} onChange={e => set({ platform: e.target.value })} placeholder="Bought at (store)" aria-label="Bought at" className="input" />
-            <datalist id={listId}>{stores.map(x => <option key={x} value={x} />)}</datalist>
+            <StepCategory value={s.categoryId} onChange={categoryId => set({ categoryId })} categories={categories} />
+            <StoreNameField label="Bought at" placeholder="Bought at (store)" value={s.platform} onChange={platform => set({ platform })} />
             <select value={s.region ?? ''} onChange={e => set({ region: (e.target.value || null) as ShopRegion | null })} aria-label="Bought in" className="select">
               <option value="">Bought anywhere</option><option value="NO">🇳🇴 Norway</option><option value="TR">🇹🇷 Turkey</option>
             </select>

@@ -386,14 +386,6 @@ export function resaleSummary(items: readonly ShopItem[], ctx: MoneyCtx, p?: Per
   }
 }
 
-/** The average time things were kept before they went (months), or null. */
-export function averageKeptMonths(items: readonly ShopItem[]): number | null {
-  const kept = items
-    .filter(i => isPossession(i) && !i.accessory_of && i.disposal && i.disposal !== 'returned' && i.disposed_on && boughtOn(i))
-    .map(i => daysBetween(boughtOn(i) as string, i.disposed_on as string) / 30.4375)
-  return kept.length ? kept.reduce((s, m) => s + m, 0) / kept.length : null
-}
-
 // ── The Stats screen ─────────────────────────────────────────────────────────
 
 /** The years money moved in — bought, sold, refunded or an extra cost — newest first. */

@@ -8,7 +8,7 @@ import {
 import { allPages } from './shopApi'
 import type {
   CreateAdNoteInput, CreateAdTemplateInput, CreateChecklistInput, CreateListingInput, CreateTradeInQuoteInput, ListingPrice,
-  ShopAdNote, ShopAdTemplate, ShopHandoverChecklist, ShopListing, ShopTradeInQuote, ShopValuePoint, UpdateAdNoteInput,
+  ShopAdNote, ShopAdTemplate, ShopHandoverChecklist, ShopListing, ShopTradeInQuote, ShopValuePoint,
   UpdateAdTemplateInput, UpdateChecklistInput, UpdateListingInput, UpdateTradeInQuoteInput,
 } from '../resaleTypes'
 
@@ -120,16 +120,6 @@ export async function createAdNote(input: CreateAdNoteInput): Promise<ShopAdNote
     item_id: input.item_id, ad_url: adUrl, price: input.price, currency: input.currency, marketplace,
     condition: input.condition ?? null, asking: input.asking, noted_on: input.noted_on,
   }), parseAdNote)
-}
-
-export async function updateAdNote(id: string, patch: UpdateAdNoteInput, current: Pick<ShopAdNote, 'ad_url' | 'marketplace'>): Promise<ShopAdNote> {
-  const adUrl = patch.ad_url === undefined ? undefined : adLink(patch.ad_url)
-  const marketplace = patch.marketplace === undefined ? undefined : trimmed(patch.marketplace)?.toLowerCase() || null
-  checkLink(adUrl ?? current.ad_url, marketplace === undefined ? current.marketplace : marketplace)
-  checkMoney(patch.price, patch.currency, 'The price')
-  checkCondition(patch.condition)
-  checkDay(patch.noted_on, 'The day noted')
-  return updateRow('shop_ad_notes', id, named({ ...patch, ad_url: adUrl, marketplace }), parseAdNote)
 }
 
 // ── Trade-in quotes ──────────────────────────────────────────────────────────

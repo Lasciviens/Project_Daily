@@ -5,6 +5,7 @@ import { Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { useBuyNow, useQuickToPickUp } from '../../../shop/hooks/useShop'
 import { REGION_FLAG } from '../../../shop/shopMeta'
+import { Tick } from '../../../shop/components/quick/Tick'
 
 /** How many quick-list rows the cell lists before "+N more". */
 const SHOWN = 6
@@ -30,15 +31,7 @@ export function ShopCard({ date }: { date: string }) {
         <ul className="flex flex-col">
           {quick.slice(0, SHOWN).map(i => (
             <li key={i.id} className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => buy(i)}
-                aria-label={`Picked up ${i.title}`}
-                title="Picked up"
-                className="group grid h-9 w-9 shrink-0 place-items-center rounded-control hover:bg-success-soft"
-              >
-                <span className="h-4 w-4 rounded-[5px] border-2 border-line-strong transition-colors group-hover:border-success" />
-              </button>
+              <Tick label={`Picked up ${i.title}`} hint="Picked up" onClick={() => buy(i)} />
               <Truncate as="p" fullText={i.title} className="min-w-0 flex-1 text-body text-fg">
                 {i.region && <span className="mr-1">{REGION_FLAG[i.region]}</span>}{i.title}
               </Truncate>

@@ -63,6 +63,7 @@ const all = [w1, w2, w3, w4, q1, b1, d1]
 const ids = list => list.map(i => i.id).sort()
 check('only wishlist rows still to buy', eq(ids(M.filterWishlist(all, cats, M.NO_FILTERS)), ids([w1, w2, w3, w4])))
 check('category filter is the top category', eq(ids(M.filterWishlist(all, cats, { ...M.NO_FILTERS, category: 'tech' })), ids([w1, w3])))
+check('…or one subcategory, as Owned\'s', eq(ids(M.filterWishlist(all, cats, { ...M.NO_FILTERS, category: 'tech-audio' })), ids([w1])))
 check('"No category" filter', eq(ids(M.filterWishlist(all, cats, { ...M.NO_FILTERS, category: 'none' })), ids([w4])))
 check('region filter and "no country set"', eq(ids(M.filterWishlist(all, cats, { ...M.NO_FILTERS, region: 'TR' })), ids([w2]))
   && eq(ids(M.filterWishlist(all, cats, { ...M.NO_FILTERS, region: 'none' })), ids([w3, w4])))
@@ -126,13 +127,8 @@ check('buy again carries the latest purchase (its store/category go with a re-ad
 check('store names by use (first spelling)', eq(M.storeNames(quick), ['Rema', 'Apotek']), JSON.stringify(M.storeNames(quick)))
 
 console.log('bought')
-const b2 = item({ title: 'Desk', status: 'bought', bought_at: '2026-10-05T12:00:00', price: 2000, currency: 'NOK' })
 const b3 = item({ title: 'Lens', status: 'bought', bought_at: null, updated_at: '2025-12-24T12:00:00', price: 100, currency: 'EUR' })
-const bl = M.boughtList([b1, b2, b3, p1, w1])
-check('wishlist purchases only, latest first', eq(bl.map(i => i.title), ['Desk', 'Old phone', 'Lens']))
 check('without bought_at the last edit is the date', M.boughtDay(b3) === '2025-12-24' && M.boughtDay(w1) === null)
-const s = M.spentSummary(bl, today, 'NOK', rates)
-check('spent this month / year / all time', s.month.amount === 6000 && s.year.amount === 6000 && s.all.amount === 7111, JSON.stringify([s.month.amount, s.year.amount, s.all.amount]))
 
 console.log('planning')
 check('"Buy <title>", due on its buy-on day, with its notes', eq(M.planDefaults({ title: ' Lamp ', planned_date: '2026-10-01', notes: 'the brass one' }), { title: 'Buy Lamp', dueDate: '2026-10-01', notes: 'the brass one' }))

@@ -112,7 +112,7 @@ export const categoryIdOf = (p: CategoryPick): string | null =>
 
 export type RegionFilter = 'all' | ShopRegion | 'none'
 export type PriorityFilter = 'all' | ShopPriority
-/** A top category id, 'all', or 'none' (rows without a category). */
+/** A category id (a top one takes its subcategories too), 'all', or 'none' (rows without a category). */
 export type CategoryFilter = string
 
 export interface WishlistFilters {
@@ -137,7 +137,7 @@ export function filterWishlist(items: readonly ShopItem[], categories: readonly 
   return items.filter(item => {
     if (listOf(item) !== 'wishlist' || item.status !== 'wishlist' || item.option_for) return false
     const path = categoryPath(item.category_id, categories)
-    if (f.category === 'none' ? path.topId !== null : f.category !== 'all' && path.topId !== f.category) return false
+    if (f.category === 'none' ? path.topId !== null : f.category !== 'all' && path.topId !== f.category && item.category_id !== f.category) return false
     if (f.region === 'none' ? item.region != null : f.region !== 'all' && item.region !== f.region) return false
     if (f.priority !== 'all' && item.priority !== f.priority) return false
     return matchesSearch(item, f.q, [path.topName, path.subName ?? ''].join(' '))
@@ -486,28 +486,6 @@ export function buyAgainInput(entry: BuyAgain): CreateShopItemInput {
     ...(r.ean ? { ean: r.ean } : {}),
     ...(r.image_url ? { image_url: r.image_url } : {}),
   }
-}
-
-// ── Bought ───────────────────────────────────────────────────────────────────
-
-/** Wishlist purchases, latest first (rows without a date last). */
-export function boughtList(items: readonly ShopItem[]): ShopItem[] {
-  return items
-    .filter(i => listOf(i) === 'wishlist' && i.status === 'bought')
-    .sort((a, b) => {
-      const da = boughtDay(a), db = boughtDay(b)
-      if (da && db) return db.localeCompare(da) || byNewest(a, b)
-      return da ? -1 : db ? 1 : byNewest(a, b)
-    })
-}
-
-export interface Spent { month: Totals; year: Totals; all: Totals }
-
-/** What the bought wishlist rows cost this month, this year and in all. */
-export function spentSummary(bought: readonly ShopItem[], today: string, target: ShopCurrency, rates: UsdRates | null): Spent {
-  const month = bought.filter(i => boughtDay(i)?.slice(0, 7) === today.slice(0, 7))
-  const year = bought.filter(i => boughtDay(i)?.slice(0, 4) === today.slice(0, 4))
-  return { month: totalsIn(month, target, rates), year: totalsIn(year, target, rates), all: totalsIn(bought, target, rates) }
 }
 
 // ── Planning ─────────────────────────────────────────────────────────────────
