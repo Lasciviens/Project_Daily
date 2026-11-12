@@ -290,7 +290,7 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
       const left = daysBetween(today, i.warranty_until)
       if (left <= COMPLAINT_SOON_DAYS) {
         push({ kind: 'complaint_ending', tone: deadlineTone(left, 'info'), itemId: i.id, action: 'open', daysLeft: left, sign: [i.warranty_until],
-          facts: facts(`Can complain until ${formatDate(i.warranty_until)}`, whenWords(left), paidWords(i)) }, i)
+          facts: facts(`Complain by ${formatDate(i.warranty_until)}`, whenWords(left), paidWords(i)) }, i)
       }
     }
     const valueAge = valueAgeDays(i, today)

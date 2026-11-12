@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/* Verification — owning (Shop step C): "Something's wrong" (complaintModel.ts: the complaint right, the return
- * window, the Norwegian letter, what money back is for), the insurance list (insuranceList.ts: rows, value, the
+/* Verification — owning (Shop step C): "Something's wrong" (its days are the Purchase section's; complaintModel.ts:
+ * the Norwegian letter, the store's page, what money back is for), the insurance list (insuranceList.ts: rows, value, the
  * CSV file and its guard against formulas) and Stats' step C definitions (statsModel.ts: bought in the period,
  * was it a wish first, need or fun, saved by watching, this year vs last, wish to purchase and impulse buys,
  * value kept by category, the store scorecard) — each following the picked period.
@@ -33,20 +33,12 @@ const cost = (item_id, amount, label, spent_on, currency = 'NOK', fx_nok = 1) =>
 const rates = { NOK: 10, TRY: 40, EUR: 0.9 }
 const ctx = (costs = []) => O.moneyCtx(costs, rates)
 
-console.log('\n1 · The complaint right and the return window')
+console.log('\n1 · The complaint right and the return window: the Purchase section\'s')
 {
-  const bought = item({ bought_at: at('2026-04-24') })
-  const r = K.complaintRight(bought, TODAY)
-  check('no noted day: the law\'s two years from the purchase day (the earlier day)', r.source === 'law' && r.until === '2028-04-24' && r.law.five === '2031-04-24')
-  check('…with the time left, in words, and a calm tone', r.words === 'until 24.04.2028 · 1 year 5 months left' && r.tone === 'success', r.words)
-  const noted = K.complaintRight(item({ bought_at: at('2026-04-24'), warranty_until: '2026-12-01' }), TODAY)
-  check('a noted "Can complain until" wins, warn inside 60 days', noted.source === 'noted' && noted.until === '2026-12-01' && noted.tone === 'warn')
-  const ended = K.complaintRight(item({ bought_at: at('2024-01-02'), warranty_until: '2026-01-02' }), TODAY)
-  check('an ended right says so, in the danger tone', ended.daysLeft < 0 && ended.tone === 'danger' && ended.words === 'ended 02.01.2026')
-  check('no purchase day and no noted day: nothing made up', K.complaintRight(item({ status: 'wishlist' }), TODAY) === null)
-  check('the return window only while open; warn inside 3 days', K.returnWindow({ return_by: '2026-11-09' }, TODAY) === null
-    && K.returnWindow({ return_by: '2026-11-12' }, TODAY).tone === 'warn' && K.returnWindow({ return_by: '2026-11-30' }, TODAY).tone === 'success')
-  check('the last day says it', K.returnWindow({ return_by: TODAY }, TODAY).words === 'until 10.11.2026 · last day today')
+  const sheet = fs.readFileSync(`${__dirname}/../src/features/shop/components/owned/ComplaintSheet.tsx`, 'utf8')
+  check('Something\'s wrong counts its days as the Purchase section does (deadlinesOf, DeadlineWords) — no law in code of its own',
+    /deadlinesOf\(item, ctx\)/.test(sheet) && /DeadlineWords/.test(sheet) && !/complaintRight|returnWindow|addMonths/.test(sheet))
+  check('…and sends a missing purchase day to Just bought, never to Facts', /shop-just-bought/.test(sheet) && !/in Facts/.test(sheet))
 }
 
 console.log('\n2 · The letter (Norwegian, æ ø å kept)')

@@ -51,7 +51,11 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
         <div className={collapsible ? 'grid w-full grid-cols-2 gap-2' : 'contents'}>
           <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={select}>
             <option value="all">All categories</option>
-            {tops.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {tops.map(t => [
+              <option key={t.id} value={t.id}>{t.name}</option>,
+              ...categories.filter(c => c.parent_id === t.id).sort((a, b) => a.name.localeCompare(b.name))
+                .map(c => <option key={c.id} value={c.id}>{`${t.name} › ${c.name}`}</option>),
+            ])}
             <option value="none">No category</option>
           </select>
           <select value={filters.region} onChange={e => set({ region: e.target.value as WishlistFilters['region'] })} aria-label="Where to buy" className={select}>

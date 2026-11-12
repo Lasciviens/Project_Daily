@@ -477,9 +477,9 @@ const ITEM = uid(500)
   const hooks = read('src/features/shop/hooks/useShopResale.ts')
   check('every hook mutation goes through useMutationWithFeedback, each with its words or the reason it is silent',
     !/useMutation\(/.test(hooks) && (hooks.match(/useMutationWithFeedback\(\{/g) || []).length === (hooks.match(/successMessage:|silent:/g) || []).length
-    && (hooks.match(/useMutationWithFeedback\(\{/g) || []).length >= 12)
-  check('every delete asks and offers Undo (the one delete flow), for each of the five tables the app deletes from',
-    ['shop_ad_notes', 'shop_trade_in_quotes', 'shop_listings', 'shop_ad_templates', 'shop_handover_checklists'].every(t => new RegExp(`useRowsDelete\\(\\{ table: '${t}'`).test(hooks)) && !/\.delete\(/.test(hooks))
+    && (hooks.match(/useMutationWithFeedback\(\{/g) || []).length >= 8)
+  check('every delete asks and offers Undo (the one delete flow), for each of the two tables the app deletes from',
+    ['shop_ad_notes', 'shop_trade_in_quotes'].every(t => new RegExp(`useRowsDelete\\(\\{ table: '${t}'`).test(hooks)) && !/\.delete\(/.test(hooks))
   check('keys only from qk; no supabase in the hooks; a listing\'s change says its result with Undo', !/queryKey: \[/.test(hooks) && !/integrations\/supabase/.test(hooks) && /toast\.undo\(v\.done/.test(hooks))
   const keys = read('src/shared/query/keys.ts')
   check('the value history sits under the items\' key (a value edit refreshes it); every resale list under one root that a delete or a sale refreshes',

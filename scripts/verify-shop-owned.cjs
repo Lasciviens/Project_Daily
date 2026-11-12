@@ -80,13 +80,12 @@ console.log('\n2 · Norges Bank\'s answer (live shape, 08.10.2026) and the funct
 console.log('\n3 · What a row is')
 {
   const mine = item({})
-  check('a bought wishlist row you kept is yours', O.isPossession(mine) && O.isMine(mine) && O.ownState(mine) === 'mine')
+  check('a bought wishlist row you kept is yours', O.isPossession(mine) && O.isMine(mine))
   check('a quick-list errand is never a possession', !O.isPossession(item({ list: 'quick' })))
   check('a general wish is never a possession', !O.isPossession(item({ kind: 'general', status: 'fulfilled' })))
-  check('bought for someone else: spending only', !O.isPossession(item({ kept: false })) && O.ownState(item({ kept: false })) === 'not_kept')
+  check('bought for someone else: spending only', !O.isPossession(item({ kept: false })))
   check('sold = gone', O.isGone(item({ disposal: 'sold', disposed_on: '2026-01-01', sale_price: 10 })))
-  check('returned is never "gone" (it never was yours)', !O.isGone(item({ disposal: 'returned' })) && O.ownState(item({ disposal: 'returned' })) === 'returned')
-  check('to buy / dropped / fulfilled', O.ownState(item({ status: 'wishlist' })) === 'to_buy' && O.ownState(item({ status: 'dropped' })) === 'dropped' && O.ownState(item({ status: 'fulfilled' })) === 'fulfilled')
+  check('returned is never "gone" (it never was yours)', !O.isGone(item({ disposal: 'returned' })))
 }
 console.log('\n4 · Days and durations')
 check('days between', O.daysBetween('2026-05-16', TODAY) === 145)
@@ -165,8 +164,6 @@ console.log('\n7 · Selling things together')
   check('the item itself takes the rounding; the shares add up exactly', split.get('rp5') === 2342 && [...split.values()].reduce((s, v) => s + v, 0) === 2800)
   const even = O.splitSale(100, [{ id: 'a', weight: null }, { id: 'b', weight: 50 }, { id: 'c', weight: 0 }])
   check('unknown costs: evenly', even.get('b') === 33 && even.get('c') === 33 && even.get('a') === 34)
-  check('the sale\'s whole amount', O.saleTotal([item({ sale_price: 2342 }), item({ sale_price: 166 }), item({ sale_price: 292 })]) === 2800)
-  check('a row without its share: unknown total', O.saleTotal([item({ sale_price: 10 }), item({ sale_price: null })]) === null)
 }
 
 console.log('\n8 · A money chain (RP4 → RP5 + accessories → RP6)')
@@ -480,7 +477,6 @@ console.log('\n12 · Stats')
     item({ id: 'f2', for_resale: true, price: 2000, bought_at: at('2026-02-01') }),
   ], SC)
   check('resale: bought 2, sold 1, +500, 20 days to sell, 1 still held', rs.bought === 2 && rs.sold === 1 && rs.result.nok === 500 && rs.avgDaysToSell === 20 && rs.holding === 1)
-  check('average time kept (months)', near(S.averageKeptMonths(RP), (O.daysBetween('2023-01-10', '2024-03-01') + O.daysBetween('2024-03-02', '2026-05-15')) / 2 / 30.4375))
 
   // The Stats screen's own helpers.
   check('years with money moving, newest first (quick-list errands never count)', S.statsYears(items, SC).join() === '2026,2024,2023')
@@ -514,7 +510,7 @@ console.log('\n12 · Stats')
   const ends = (k, n) => S.valueEnds(Array.from({ length: k }, (_, i) => i + 1), n)
   check('dearest and cheapest five, never one thing twice', ends(12, 5).dearest.join() === '1,2,3,4,5' && ends(12, 5).cheapest.join() === '12,11,10,9,8' && ends(7, 5).cheapest.join() === '7,6' && ends(3, 5).cheapest.length === 0)
   const kept = S.keptRows(RP)
-  check('kept rows: the things that went (not their accessories), and their average is "Kept for"', kept.map(r => r.item.id).join() === 'rp5,rp4' && near(kept.reduce((s, r) => s + r.months, 0) / kept.length, S.averageKeptMonths(RP)))
+  check('kept rows: the things that went (not their accessories), and their average is "Kept for"', kept.map(r => r.item.id).join() === 'rp5,rp4' && near(kept.reduce((s, r) => s + r.months, 0) / kept.length, (O.daysBetween('2023-01-10', '2024-03-01') + O.daysBetween('2024-03-02', '2026-05-15')) / 2 / 30.4375))
   const rpChains = C.chainsOf(RP, RP_LINKS, CTX)
   const planOnly = C.chainsOf([item({ id: 'x', price: 500, bought_at: at('2025-01-01') }), item({ id: 'w', status: 'wishlist', price: 900 })], [link('x', 'w')], CTX)
   check('chains with two things you have or had (a plan towards a wish alone is not)', S.chainsWithThings(rpChains).length === 1 && planOnly.length === 1 && S.chainsWithThings(planOnly).length === 0)

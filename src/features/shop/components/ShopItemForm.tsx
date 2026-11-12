@@ -9,6 +9,8 @@ import type { Fact } from '../autofillModel'
 import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
 import type { DraftUpdate } from './autofill/AutofillPanel'
 import { CategoryPicker } from './CategoryPicker'
+import { MoneyEditor } from './record/factKit'
+import { StoreNameField } from './shopPickers'
 
 // The add sheet's autofill loads in its own chunk (the reader's rules, the facts, the scanner): only a new
 // one-product wish shows it, and the Shop page stays within its budget.
@@ -60,7 +62,8 @@ export interface ShopDraft {
   region: ShopRegion | ''
   plannedDate: string
   status: ShopStatus
-  boughtDay: string
+  /** Unused here since the sheet edits only quick-list rows; Add something I own still sets it. */
+  boughtDay?: string
   /** A general wish ("any model") instead of one product — new wishlist rows only. */
   general: boolean
   priceMin: number | null
@@ -81,13 +84,12 @@ const PRIORITIES: { value: ShopPriority; label: string }[] = [
  * (what, where, a note); everything else folds under More details there,
  * while the wishlist shows its planning fields up front.
  */
-export function ShopItemForm({ draft, onChange, update, categories, stores, editing }: {
+export function ShopItemForm({ draft, onChange, update, categories, editing }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   /** A change worked out from the draft as it is then (the autofill's answers land later). */
   update: DraftUpdate
   categories: readonly ShopCategory[]
-  stores: readonly string[]
   editing: boolean
 }) {
   const id = useId()
@@ -115,22 +117,17 @@ export function ShopItemForm({ draft, onChange, update, categories, stores, edit
 
   const price = (
     <div>
-      <label htmlFor={`${id}-price`} className="field-label">Price</label>
-      <div className="flex gap-2">
-        <DecimalInput id={`${id}-price`} value={draft.price} onValue={v => onChange({ price: v })} placeholder="0" className="input min-w-0 flex-1 tabular-nums" />
-        <select value={draft.currency} onChange={e => onChange({ currency: e.target.value as ShopCurrency })} aria-label="Currency" className="select w-[6.5rem] shrink-0">
-          {SHOP_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-      </div>
+      <span className="field-label">Price</span>
+      <MoneyEditor label="Price" amount={draft.price} currency={draft.currency} onAmount={v => onChange({ price: v })} onCurrency={c => onChange({ currency: c })} />
     </div>
   )
 
+  // A grocery store is seldom in Stores: the quick list opens on the typed name.
   const store = (
     <div>
-      <label htmlFor={`${id}-store`} className="field-label">Store</label>
-      <input id={`${id}-store`} list={`${id}-stores`} value={draft.platform} onChange={e => onChange({ platform: e.target.value })}
-        placeholder={quick ? 'Rema, Kiwi, pharmacy…' : 'Where to buy it'} className="input" />
-      <datalist id={`${id}-stores`}>{stores.map(s => <option key={s} value={s} />)}</datalist>
+      <span className="field-label">Store</span>
+      <StoreNameField label="Store" value={draft.platform} onChange={platform => onChange({ platform })} typing={quick}
+        placeholder={quick ? 'Pick a store' : 'Where to buy it'} />
     </div>
   )
 
@@ -187,24 +184,6 @@ export function ShopItemForm({ draft, onChange, update, categories, stores, edit
     </div>
   )
 
-  // The quick list has its own tick (bought) and ✕ (delete with Undo), so its
-  // rows get no status here: a quick row set to "Not any more", or ticked with
-  // an earlier day, would land in no view. Moving between lists is for open
-  // rows only — a bought or dropped row lives in its own list's history.
-  const status = editing && !quick && (
-    <div>
-      <span className="field-label">Status</span>
-      <SegmentedControl<ShopStatus> size="sm" value={draft.status} onChange={s => onChange({ status: s })}
-        options={[{ value: 'wishlist', label: 'To buy' }, { value: 'bought', label: 'Bought' }, { value: 'dropped', label: 'Not any more' }]} />
-      {draft.status === 'bought' && (
-        <div className="mt-2">
-          <span className="field-label">Bought on</span>
-          <DateInput value={draft.boughtDay} onChange={v => onChange({ boughtDay: v })} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
-        </div>
-      )}
-    </div>
-  )
-
   return (
     <div className="flex flex-col gap-3">
       <div>
@@ -248,8 +227,6 @@ export function ShopItemForm({ draft, onChange, update, categories, stores, edit
         </div>
         {reason}{priority}{notes}
       </> : <>{category}<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{price}{store}</div>{reason}{priority}{buyOn}{notes}</>}
-
-      {status}
 
       <div>
         <button type="button" aria-expanded={more} onClick={() => setMore(m => !m)}

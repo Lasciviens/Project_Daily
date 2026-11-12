@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
-import { Button, Truncate, cx } from '../../../../shared/ui'
+import { Button, Truncate } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
@@ -14,11 +14,27 @@ import { boughtOn, complete, costOf, DISPOSAL_LABEL, isMine, PAID_BACK, splitSal
 import { categoryPath, defaultCurrencyFor, listOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
 import { money as moneyText } from '../shopFormat'
+import { ChoiceChips, StoreNameField } from '../shopPickers'
 import { PaidText } from './PaidText'
 import { SaleResult } from './SaleResult'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
 
-const HOW: ShopDisposal[] = ['sold', 'traded_in', 'given', 'returned', 'broken', 'lost', 'other']
+const HOW = (['sold', 'traded_in', 'given', 'returned', 'broken', 'lost', 'other'] as ShopDisposal[]).map(h => ({ value: h, label: DISPOSAL_LABEL[h] }))
+
+const LEFT_TO = ['marketplace', 'refurbisher', 'shop'] as const
+
+/** Who or where it went: a person typed for a gift, else a marketplace, refurbisher or store from your Stores (`StoreNameField`). */
+export function LeftToField({ how, value, onChange }: { how: ShopDisposal; value: string; onChange: (v: string) => void }) {
+  const label = how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : how === 'sold' ? 'Sold to' : 'To'
+  return (
+    <div>
+      <span className="field-label">{label} <span className="font-normal text-fg-muted">(optional)</span></span>
+      {how === 'given'
+        ? <input value={value} onChange={e => onChange(e.target.value)} placeholder="A friend…" aria-label={label} className="input" />
+        : <StoreNameField label={label} value={value} onChange={onChange} kinds={LEFT_TO} placeholder="Pick where" />}
+    </div>
+  )
+}
 
 /**
  * Sell or give away one of your things — with the accessories you tick (the
@@ -99,24 +115,14 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
       <div className="flex flex-col gap-4">
         <div>
           <span className="field-label">How</span>
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How it leaves">
-            {HOW.map(h => (
-              <button key={h} type="button" role="radio" aria-checked={how === h} onClick={() => setHow(h)}
-                className={cx('chip min-h-[44px] px-3', how === h ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
-                {DISPOSAL_LABEL[h]}
-              </button>
-            ))}
-          </div>
+          <ChoiceChips label="How it leaves" value={how} options={HOW} onChange={setHow} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <span className="field-label">On</span>
             <DateInput value={on} onChange={setOn} min={from} max={today} aria-label="On" className="input w-[10rem] tabular-nums" />
           </div>
-          <div>
-            <label className="field-label" htmlFor="sell-to">{how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-muted">(optional)</span></label>
-            <input id="sell-to" value={to} onChange={e => setTo(e.target.value)} placeholder={how === 'traded_in' ? 'Apple, POWER…' : 'FINN, a friend…'} className="input" />
-          </div>
+          <LeftToField how={how} value={to} onChange={setTo} />
         </div>
         {money && (
           <div>
