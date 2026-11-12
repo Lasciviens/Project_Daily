@@ -480,7 +480,6 @@ console.log('\n12 · Stats')
     item({ id: 'f2', for_resale: true, price: 2000, bought_at: at('2026-02-01') }),
   ], SC)
   check('resale: bought 2, sold 1, +500, 20 days to sell, 1 still held', rs.bought === 2 && rs.sold === 1 && rs.result.nok === 500 && rs.avgDaysToSell === 20 && rs.holding === 1)
-  check('average time kept (months)', near(S.averageKeptMonths(RP), (O.daysBetween('2023-01-10', '2024-03-01') + O.daysBetween('2024-03-02', '2026-05-15')) / 2 / 30.4375))
 
   // The Stats screen's own helpers.
   check('years with money moving, newest first (quick-list errands never count)', S.statsYears(items, SC).join() === '2026,2024,2023')
@@ -514,7 +513,7 @@ console.log('\n12 · Stats')
   const ends = (k, n) => S.valueEnds(Array.from({ length: k }, (_, i) => i + 1), n)
   check('dearest and cheapest five, never one thing twice', ends(12, 5).dearest.join() === '1,2,3,4,5' && ends(12, 5).cheapest.join() === '12,11,10,9,8' && ends(7, 5).cheapest.join() === '7,6' && ends(3, 5).cheapest.length === 0)
   const kept = S.keptRows(RP)
-  check('kept rows: the things that went (not their accessories), and their average is "Kept for"', kept.map(r => r.item.id).join() === 'rp5,rp4' && near(kept.reduce((s, r) => s + r.months, 0) / kept.length, S.averageKeptMonths(RP)))
+  check('kept rows: the things that went (not their accessories), and their average is "Kept for"', kept.map(r => r.item.id).join() === 'rp5,rp4' && near(kept.reduce((s, r) => s + r.months, 0) / kept.length, (O.daysBetween('2023-01-10', '2024-03-01') + O.daysBetween('2024-03-02', '2026-05-15')) / 2 / 30.4375))
   const rpChains = C.chainsOf(RP, RP_LINKS, CTX)
   const planOnly = C.chainsOf([item({ id: 'x', price: 500, bought_at: at('2025-01-01') }), item({ id: 'w', status: 'wishlist', price: 900 })], [link('x', 'w')], CTX)
   check('chains with two things you have or had (a plan towards a wish alone is not)', S.chainsWithThings(rpChains).length === 1 && planOnly.length === 1 && S.chainsWithThings(planOnly).length === 0)

@@ -14,7 +14,6 @@
 // the trade-in floor lifts its low end, a dealer's used or refurbished price caps its high end (a buyer gets a
 // shop's warranty for that). Nothing is ever filled in by itself: the range is a suggestion the owner taps to use.
 
-import { formatDate } from '../../shared/utils/dateFormat'
 import { complete, daysBetween, isPossession, nokAt, nokNow, VALUE_STALE_DAYS } from './ownModel'
 import { localDay } from './shopModel'
 import type { UsdRates } from './fx'
@@ -233,12 +232,6 @@ export function suggestedRange(rows: readonly ResaleEvidenceRow[]): ResaleRange 
 export function resaleEvidence(input: ResaleEvidenceInput): ResaleEvidence {
   const rows = evidenceRows(input)
   return { rows, range: suggestedRange(rows) }
-}
-
-/** "2 400 NOK · finn.no ad, asking · like new · 10.11.2026" — one evidence row in words (the amount in its own currency). */
-export function evidenceLine(r: ResaleEvidenceRow, money: (n: number, currency: string) => string): string {
-  const condition = r.condition ? CONDITION_LABEL[r.condition] : null
-  return [money(r.amount, r.currency), r.source, condition, formatDate(r.on), r.why ? `not counted: ${r.why}` : null].filter(Boolean).join(' · ')
 }
 
 /** A condition in the app's words, inside a line ("2 400 NOK · FINN · like new · 03.11.2026"). */

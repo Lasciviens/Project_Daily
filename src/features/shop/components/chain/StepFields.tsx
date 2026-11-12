@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { cx } from '../../../../shared/ui'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { complete, DISPOSAL_LABEL, type Amount } from '../../ownModel'
 import { LEAVE_WAYS, takesMoney, type DraftStep, type ProblemField, type StepProblem } from '../../chainDraft'
 import { MoneyEditor, Toggle } from '../record/factKit'
 import { money } from '../shopFormat'
+import { ChoiceChips, StoreNameField } from '../shopPickers'
 import type { ShopCurrency } from '../../types'
 
 export type SetStep = (patch: Partial<DraftStep>) => void
@@ -79,7 +79,7 @@ export function StepBuy({ s, set, paid, problems, sameDay, today, loading }: {
         <div className="flex flex-wrap items-center gap-2">
           <DateInput value={s.boughtOn} onChange={boughtOn => set({ boughtOn })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
           {sameDay && sameDay !== s.boughtOn && (
-            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip min-h-[44px] tabular-nums hover:bg-surface-hover">
+            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip tabular-nums hover:bg-surface-hover">
               The day it sold · {formatDate(sameDay)}
             </button>
           )}
@@ -89,6 +89,10 @@ export function StepBuy({ s, set, paid, problems, sameDay, today, loading }: {
     </div>
   )
 }
+
+const LEAVE_OPTIONS = LEAVE_WAYS.map(h => ({ value: h, label: DISPOSAL_LABEL[h] }))
+/** Where a thing went when it was sold or traded in: a marketplace, a refurbisher or a shop. */
+const WENT_TO = ['marketplace', 'refurbisher', 'shop'] as const
 
 /** How it left (sold, traded in, given away…), or — still yours — what it could sell for. */
 export function StepLeave({ s, set, got, problems, today, loading }: {
@@ -100,19 +104,13 @@ export function StepLeave({ s, set, got, problems, today, loading }: {
   loading: boolean
 }) {
   const gotCurrency = s.gotCurrency ?? s.currency
+  const toLabel = s.disposal === 'given' ? 'Given to' : s.disposal === 'traded_in' ? 'Traded in at' : s.disposal === 'sold' ? 'Sold to' : 'To'
   return (
     <div className="flex flex-col gap-2">
       <Toggle checked={s.left} onChange={left => set({ left })}>It left me — sold, traded in, given away…</Toggle>
       {s.left ? (
         <div className="flex flex-col gap-3 rounded-row border border-line bg-surface-2 p-3">
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How it left">
-            {LEAVE_WAYS.map(h => (
-              <button key={h} type="button" role="radio" aria-checked={s.disposal === h} onClick={() => set({ disposal: h })}
-                className={cx('chip min-h-[44px] px-3', s.disposal === h ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface')}>
-                {DISPOSAL_LABEL[h]}
-              </button>
-            ))}
-          </div>
+          <ChoiceChips label="How it left" value={s.disposal} options={LEAVE_OPTIONS} onChange={disposal => set({ disposal })} />
           <div className="grid grid-cols-1 gap-3 @[30rem]:grid-cols-2">
             <div>
               <span className="field-label">On</span>
@@ -120,8 +118,10 @@ export function StepLeave({ s, set, got, problems, today, loading }: {
               <Problem problems={problems} field="leftOn" />
             </div>
             <div>
-              <label className="field-label" htmlFor={`to-${s.key}`}>{s.disposal === 'given' ? 'Given to' : s.disposal === 'traded_in' ? 'Traded in at' : 'To'} <span className="font-normal text-fg-muted">(optional)</span></label>
-              <input id={`to-${s.key}`} value={s.soldTo} onChange={e => set({ soldTo: e.target.value })} placeholder={s.disposal === 'traded_in' ? 'Apple, POWER…' : 'FINN, a friend…'} className="input max-w-md" />
+              <span className="field-label">{toLabel} <span className="font-normal text-fg-muted">(optional)</span></span>
+              {s.disposal === 'sold' || s.disposal === 'traded_in'
+                ? <StoreNameField label={toLabel} kinds={WENT_TO} value={s.soldTo} onChange={soldTo => set({ soldTo })} className="max-w-md" />
+                : <input value={s.soldTo} onChange={e => set({ soldTo: e.target.value })} aria-label={toLabel} placeholder={s.disposal === 'given' ? 'A friend…' : 'FINN, a friend…'} className="input max-w-md" />}
             </div>
           </div>
           {takesMoney(s.disposal) && (

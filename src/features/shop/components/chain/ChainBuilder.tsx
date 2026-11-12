@@ -4,7 +4,7 @@ import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, Truncate, cx } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { isPendingCategory, storeNames } from '../../shopModel'
+import { isPendingCategory } from '../../shopModel'
 import { complete, type MoneyCtx } from '../../ownModel'
 import { chainPath } from '../../chainModel'
 import {
@@ -56,7 +56,6 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
   const outcome = useMemo(() => (chain ? draftOutcome(chain, ctx) : null), [chain, ctx])
   const head = headline(outcome)
   const problems = useMemo(() => draftProblems(d.draft, today), [d.draft, today])
-  const stores = useMemo(() => storeNames(items), [items])
   const keys = new Set(d.draft.steps.map(s => s.key))
   const earlier = chain ? chain.nodes.filter(n => !keys.has(n.id) && n.state !== 'wish') : []
 
@@ -152,7 +151,7 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
                     <StepCard
                       s={s} index={i} before={before(i)} row={rows.items.find(r => r.id === s.key)} view={view}
                       problems={shown(s.key)} open={d.open.has(s.key)} canRemove={steps.length > 1}
-                      categories={categories} stores={stores} today={today} ratesLoading={loading}
+                      categories={categories} today={today} ratesLoading={loading}
                       set={patch => d.update(i, patch)} onCopy={on => d.copy(i, on)} onToggle={() => d.toggle(s.key)} onRemove={() => d.remove(i)}
                     />
                     {next && (
