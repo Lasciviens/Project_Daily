@@ -28,6 +28,22 @@ const PRELOAD_ORDER = [
   WishesPage, BooksPage, FootballPage, WorkPage, ProjectsPage, ProjectPage, SettingsPage, DeveloperPage,
 ]
 
+const BY_PATH: Record<string, { preload: () => Promise<void> }> = {
+  '': HomePage, home: HomePage, daily: DailyPage, shop: ShopPage, recipes: RecipesPage, media: MediaPage,
+  football: FootballPage, work: WorkPage, training: TrainingPage, health: HealthPage, projects: ProjectsPage,
+  wishes: WishesPage, books: BooksPage, developer: DeveloperPage, settings: SettingsPage,
+}
+
+/**
+ * Starts loading the code of the page in the address, at the very start — beside the shell's own code, not
+ * after the shell has drawn (it used to be asked for only then: one more round trip before the page's first
+ * read). `hash` is location.hash ("#/daily?tab=week").
+ */
+export function preloadOpenedPage(hash: string): void {
+  const first = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? ''
+  void BY_PATH[first]?.preload()
+}
+
 /** Loads every page's code, one after another, without competing with what is on screen. */
 export async function preloadPages() {
   for (const page of PRELOAD_ORDER) await page.preload()

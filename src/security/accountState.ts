@@ -3,6 +3,7 @@ import { useCalendarStore } from '../app/store'
 import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
 import { forgetCalendarPrefs } from '../features/calendar/areas/calendarPrefsMemory'
 import { forgetLayouts } from '../shared/hooks/useLayoutMemory'
+import { forgetKeptAnswers } from '../shared/query/persist'
 
 // What signing out must leave behind (security audit 10.10.2026). Before this,
 // sign-out only ended the Supabase session: the Google token, the AI chat, the
@@ -58,6 +59,8 @@ export async function refreshThisDevicePush(): Promise<void> {
 
 /** Clears state that belongs to the account that just signed out. */
 export async function clearAccountState(): Promise<void> {
+  // The answers the app keeps for a fast start (shared/query/persist.ts): the device copy and the memory behind it.
+  try { forgetKeptAnswers() } catch { /* */ }
   try { useCalendarStore.getState().setAccessToken(null) } catch { /* */ }
   // The Google calendars picked: their ids name the account (the main one is its address).
   try { useCalendarStore.getState().setSelectedCalendarIds(null) } catch { /* */ }
