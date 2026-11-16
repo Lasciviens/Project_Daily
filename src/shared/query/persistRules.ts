@@ -6,13 +6,14 @@ export const KEEP_MS = 7 * 24 * 60 * 60_000
 
 /**
  * Answers that never go to the device, by the first part of their query key:
- * - where the phone is (`geolocation`, the stops near it) — asked once per session, never stored;
+ * - where the phone is (`geolocation`, the stops near it, the weather there) — never stored;
+ * - signed links to private files (`signed-urls`): they open the file for an hour without a session;
  * - Apple Calendar's status and its queue (`icloud`: one of its reads sends an item — it must run, never replay);
  * - the Developer page's logs (large, and they name every save);
  * - live or one-off outside answers (departures, trips, a stop search, one news article).
  */
 export const NEVER_KEPT: ReadonlySet<string> = new Set([
-  'geolocation', 'nearby-stops', 'icloud', 'audit-logs', 'error-logs',
+  'geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs',
   'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article',
 ])
 

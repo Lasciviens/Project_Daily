@@ -1,5 +1,5 @@
 import { dehydrate, hydrate, type DehydratedState, type QueryClient } from '@tanstack/react-query'
-import { storedSessionUserId } from '../../security/storedSession'
+import { storedSessionIsLive, storedSessionUserId } from '../../security/storedSession'
 import { keepsQuery, mayShowCopy, type KeptCopyFacts } from './persistRules'
 
 // The device copy of the app's last answers (owner, 16.11.2026: "the first time app loads takes too much time").
@@ -21,6 +21,8 @@ const STORE = 'kept'
 const KEY = 'answers'
 /** The start never waits longer than this for the copy; a later one is still put in behind what has loaded. */
 const RESTORE_WAIT_MS = 800
+/** With an expired stored session the copy waits for the real one; reads are never held longer than this. */
+const SESSION_WAIT_MS = 15_000
 /** A save follows the last change by this long … */
 const SAVE_QUIET_MS = 2000
 /** … and never trails the first unsaved change by more than this. */
@@ -33,6 +35,10 @@ let client: QueryClient | null = null
 let owner: string | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let firstUnsavedAt = 0
+/** A copy waits for the real session: the stored one's hour has passed, so nothing is shown on the hint. */
+let restoreWaits = false
+/** Opens the app's reads (startQueryPersistence's promise). */
+let openReads: () => void = () => {}
 /** Answers IndexedDB couldn't copy (a function or a class inside): left out from then on. */
 const unclonable = new Set<string>()
 
@@ -127,41 +133,62 @@ function saveNow() {
   void save()
 }
 
+function restoreNow(qc: QueryClient, forUser: string): void {
+  restoreWaits = false
+  void restore(qc, forUser).catch(() => undefined).then(() => openReads())
+  setTimeout(() => openReads(), RESTORE_WAIT_MS)
+}
+
 /**
  * Starts keeping the app's answers on this device and puts the last copy back. Resolves when the copy is in
  * (or there is none, or it took too long): the app holds its reads until then, so a page draws with its kept
  * answers instead of asking first. Called once, before the app renders.
+ *
+ * The copy goes in at once only while the stored session's access is still running; after that hour it waits
+ * for the real session (`confirmAnswersOwner`), so a session ended elsewhere shows nothing of it.
  */
 export function startQueryPersistence(qc: QueryClient): Promise<void> {
   client = qc
-  if (typeof indexedDB === 'undefined') return Promise.resolve()
   owner = storedSessionUserId()
-  const restored = (owner ? restore(qc, owner) : deleteCopy()).catch(() => undefined)
-  void restored.then(() => {
-    qc.getQueryCache().subscribe(event => {
-      if (event.type === 'removed' || (event.type === 'updated' && event.action.type === 'success')) scheduleSave()
-    })
-    // The app going to the background is the last sure moment: write what waits.
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow() })
-    window.addEventListener('pagehide', saveNow)
+  if (typeof indexedDB === 'undefined') return Promise.resolve()
+  const reads = new Promise<void>(resolve => { openReads = resolve })
+  qc.getQueryCache().subscribe(event => {
+    if (event.type === 'removed' || (event.type === 'updated' && event.action.type === 'success')) scheduleSave()
   })
-  return Promise.race([restored, new Promise<void>(resolve => setTimeout(resolve, RESTORE_WAIT_MS))])
+  // The app going to the background is the last sure moment: write what waits.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow() })
+  window.addEventListener('pagehide', saveNow)
+  if (!owner) {
+    void deleteCopy()
+    openReads()
+  } else if (storedSessionIsLive()) {
+    restoreNow(qc, owner)
+  } else {
+    restoreWaits = true
+    // The session answers within a moment or a round trip; nothing reads behind the sign-in spinner meanwhile.
+    setTimeout(() => openReads(), SESSION_WAIT_MS)
+  }
+  return reads
 }
 
 /**
- * The account now signed in, from the real session (useAuth). Answers kept for another account are dropped —
- * from memory and from the device — before anything of theirs can be shown or written under the new one.
+ * The account now signed in, from the real session (useAuth). Answers kept for anyone else are dropped — from
+ * memory and from the device — before anything of theirs can be shown or written under this account; a copy
+ * that waited for the session goes in now.
  */
 export function confirmAnswersOwner(userId: string): void {
-  if (owner && owner !== userId) forgetKeptAnswers()
+  if (owner !== userId) void forgetKeptAnswers()
   owner = userId
+  if (restoreWaits && client) restoreNow(client, userId)
 }
 
 /** Sign-out, here or elsewhere (accountState.ts): the device copy goes, and so do the answers in memory. */
-export function forgetKeptAnswers(): void {
+export function forgetKeptAnswers(): Promise<void> {
   owner = null
+  restoreWaits = false
   firstUnsavedAt = 0
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   try { client?.clear() } catch { /* */ }
-  if (typeof indexedDB !== 'undefined') void deleteCopy()
+  openReads()
+  return typeof indexedDB !== 'undefined' ? deleteCopy() : Promise.resolve()
 }

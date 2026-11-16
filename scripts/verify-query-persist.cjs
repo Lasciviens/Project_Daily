@@ -23,7 +23,7 @@ check('an answer with no read time is not', !R.keepsQuery(q({ dataUpdatedAt: 0 }
 check('an answer a week old is still kept', R.keepsQuery(q({ dataUpdatedAt: NOW - R.KEEP_MS }), NOW))
 check('an answer older than a week is dropped', !R.keepsQuery(q({ dataUpdatedAt: NOW - R.KEEP_MS - 1 }), NOW))
 check('an answer its hook wants gone at once (gcTime 0) is never kept', !R.keepsQuery(q({ gcTime: 0 }), NOW))
-for (const root of ['geolocation', 'nearby-stops', 'icloud', 'audit-logs', 'error-logs', 'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article']) {
+for (const root of ['geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs', 'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article']) {
   check(`never kept: ${root}`, !R.keepsQuery(q({ queryKey: [root, 'x'] }), NOW))
 }
 check('a key that does not start with a name is not kept', !R.keepsQuery(q({ queryKey: [{ a: 1 }] }), NOW) && !R.keepsQuery(q({ queryKey: [] }), NOW))
@@ -60,15 +60,23 @@ check('nothing is written while signed out or for another account',
   /if \(!qc \|\| !userId \|\| userId !== owner\) return/.test(persist))
 check('only answers go into the copy: no mutations, and each query through keepsQuery',
   /shouldDehydrateMutation: \(\) => false/.test(persist) && /shouldDehydrateQuery: q => !unclonable\.has\(q\.queryHash\) && keepsQuery\(/.test(persist))
-check('forgetting drops the owner, the pending save, the memory and the device copy',
-  /export function forgetKeptAnswers\(\): void \{\s+owner = null\s+firstUnsavedAt = 0\s+if \(saveTimer\) \{ clearTimeout\(saveTimer\); saveTimer = null \}\s+try \{ client\?\.clear\(\) \} catch \{[^}]*\}\s+if \(typeof indexedDB !== 'undefined'\) void deleteCopy\(\)/.test(persist))
-check('another account signing in drops what was kept before it is shown or written',
-  /export function confirmAnswersOwner\(userId: string\): void \{\s+if \(owner && owner !== userId\) forgetKeptAnswers\(\)\s+owner = userId/.test(persist))
+check('forgetting drops the owner, a waiting copy, the pending save and the memory, and hands back the device delete',
+  /export function forgetKeptAnswers\(\): Promise<void> \{\s+owner = null\s+restoreWaits = false\s+firstUnsavedAt = 0\s+if \(saveTimer\) \{ clearTimeout\(saveTimer\); saveTimer = null \}\s+try \{ client\?\.clear\(\) \} catch \{[^}]*\}\s+openReads\(\)\s+return typeof indexedDB !== 'undefined' \? deleteCopy\(\) : Promise\.resolve\(\)/.test(persist))
+check('anyone but the owner signing in drops what is in memory and on the device first (also after a sign-out elsewhere left no owner)',
+  /export function confirmAnswersOwner\(userId: string\): void \{\s+if \(owner !== userId\) void forgetKeptAnswers\(\)\s+owner = userId\s+if \(restoreWaits && client\) restoreNow\(client, userId\)/.test(persist))
+check('the copy goes in at the start only while the stored session\'s access is still running; an expired one waits for the real session',
+  /\} else if \(storedSessionIsLive\(\)\) \{\s+restoreNow\(qc, owner\)\s+\} else \{\s+restoreWaits = true/.test(persist))
+check('the owner is known before the no-IndexedDB return (a browser without it must not clear memory at every start)',
+  persist.indexOf('owner = storedSessionUserId()') < persist.indexOf("if (typeof indexedDB === 'undefined') return Promise.resolve()") && persist.indexOf('owner = storedSessionUserId()') > 0)
 check('the copy holds no session: persist.ts never reads the session\'s tokens', !/access_token|refresh_token|getSession/.test(persist))
 
 const account = src('src/security/accountState.ts')
-check('sign-out (clearAccountState) forgets the kept answers first',
-  /export async function clearAccountState\(\): Promise<void> \{\s+\/\/[^\n]*\n\s+try \{ forgetKeptAnswers\(\) \}/.test(account))
+check('sign-out (clearAccountState) forgets the kept answers first and waits for the device delete before it returns',
+  /export async function clearAccountState\(\): Promise<void> \{\s+(\/\/[^\n]*\n\s+)+let answersGone: Promise<void> = Promise\.resolve\(\)\s+try \{ answersGone = forgetKeptAnswers\(\) \}/.test(account)
+  && /try \{ await answersGone \} catch/.test(account))
+const signOut = src('src/security/supabaseClient.ts')
+check('sign-out removes the stored session itself (offline with an expired token supabase-js leaves it)',
+  /const result = await supabase\.auth\.signOut\(\)\s+await clearAccountState\(\)\s+\/\/[^\n]*\n\s+removeStoredSession\(\)/.test(signOut))
 const auth = src('src/shared/hooks/useAuth.ts')
 check('the real session names the owner, and SIGNED_OUT elsewhere clears the account state',
   (auth.match(/if \(session\) confirmAnswersOwner\(session\.user\.id\)/g) || []).length === 2 && /if \(event === 'SIGNED_OUT'\) void clearAccountState\(\)/.test(auth))
@@ -77,7 +85,17 @@ check('the shell draws on the stored sign-in only while the session is read; no 
   /if \(loading && likelySignedIn\) return <>\{children\}<\/>/.test(guard) && /if \(!session\) return <Navigate to="\/login" replace \/>/.test(guard))
 const stored = src('src/security/storedSession.ts')
 check('the stored sign-in hint needs a user id and a refresh token, and hands out neither token',
-  /typeof id === 'string' && id && typeof session\?\.refresh_token === 'string' \? id : null/.test(stored) && !/return .*(access_token|refresh_token)\b(?!')/.test(stored.replace(/typeof session\?\.refresh_token === 'string'/, '')))
+  /if \(typeof id !== 'string' \|\| !id \|\| typeof session\?\.refresh_token !== 'string'\) return null/.test(stored) && !/access_token/.test(stored) && /return \{ userId: id, live: /.test(stored))
+check('…reads this project\'s exact key, never a look-alike (the site\'s origin is shared)',
+  /localStorage\.getItem\(supabaseSessionKey\)/.test(stored) && !/localStorage\.key\(/.test(stored)
+  && /export const supabaseSessionKey = `sb-\$\{new URL\(supabaseUrl\)\.hostname\.split\('\.'\)\[0\]\}-auth-token`/.test(src('src/integrations/supabase/client.ts')))
+check('…and is "live" only while the access token\'s own hour runs', /live: typeof until === 'number' && until \* 1000 > Date\.now\(\)/.test(stored))
+check('the shell draws on the hint only while it is live', /useState\(\(\) => storedSessionIsLive\(\)\)/.test(auth))
+// Signed links to private files have their own key root, so they are never kept.
+const signedSites = require('child_process').execSync("grep -rl 'createSignedUrl' src --include=*.ts --include=*.tsx || true", { cwd: path.join(__dirname, '..') }).toString().trim().split('\n').filter(Boolean)
+check('signed links are made in one known place', signedSites.length === 1 && signedSites[0] === 'src/features/books/api/koboControlApi.ts', signedSites.join(', '))
+check('…and their query uses the never-kept "signed-urls" root',
+  /queryKey: qk\.signedUrls\.koboSleep\(/.test(src('src/features/books/hooks/useKoboControl.ts')) && /koboSleep: \(paths: string\) => \['signed-urls', 'kobo-sleep', paths\]/.test(keys))
 check('each build has its own id', /define: \{ __BUILD_ID__: JSON\.stringify\(Date\.now\(\)\.toString\(36\)\) \}/.test(src('vite.config.ts')))
 check('the service worker still caches no Supabase answers', !/supabase\.co/.test(src('vite.config.ts').replace(/\/\/[^\n]*/g, '')))
 const providers = src('src/app/providers.tsx')

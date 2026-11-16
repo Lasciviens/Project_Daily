@@ -48,4 +48,7 @@ async function fetchWithTimeZone(input: RequestInfo | URL, init?: RequestInit): 
   }
 }
 
+/** Where supabase-js keeps this project's session in localStorage (its own default name). */
+export const supabaseSessionKey = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`
+
 export const supabase = createClient(supabaseUrl, supabaseKey, { global: { fetch: fetchWithTimeZone } })

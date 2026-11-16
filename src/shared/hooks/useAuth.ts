@@ -2,15 +2,16 @@ import { useEffect, useState } from 'react'
 import { type Session } from '@supabase/supabase-js'
 import { supabase } from '../../security/supabaseClient'
 import { clearAccountState } from '../../security/accountState'
-import { storedSessionUserId } from '../../security/storedSession'
+import { storedSessionIsLive } from '../../security/storedSession'
 import { confirmAnswersOwner } from '../query/persist'
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  // While the session is being read: whether this browser holds a sign-in at all (a hint, read at once —
-  // security/storedSession.ts). The shell draws on it instead of a spinner; `session` then decides.
-  const [likelySignedIn] = useState(() => storedSessionUserId() != null)
+  // While the session is being read: whether this browser holds a sign-in whose access is still running (a
+  // hint, read at once — security/storedSession.ts). The shell draws on it instead of a spinner; `session`
+  // then decides. An expired one waits for the server, as before.
+  const [likelySignedIn] = useState(() => storedSessionIsLive())
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

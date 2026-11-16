@@ -68,7 +68,7 @@ export function useSleepImages() {
 export function useSleepImageUrls(images: SleepImage[]) {
   const paths = images.map(i => i.storage_path)
   return useQuery({
-    queryKey: [...qk.books.sleepImages(), 'urls', paths.join('|')],
+    queryKey: qk.signedUrls.koboSleep(paths.join('|')),
     queryFn: () => sleepImageUrls(paths),
     staleTime: 30 * 60_000,
     enabled: paths.length > 0,
