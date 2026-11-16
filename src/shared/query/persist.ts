@@ -9,8 +9,11 @@ import { keepsQuery, mayShowCopy, type KeptCopyFacts } from './persistRules'
 // (they are marked out of date), so what is on screen is corrected within the same moment the old start needed.
 //
 // What keeps it safe (persistRules.ts, verify-query-persist):
-// - one copy, for one account: shown only to the account whose session this browser holds, written by this
-//   build, within a week; anything else is deleted unread;
+// - one copy, for one account: shown only to the account whose session this browser holds, within a week;
+//   anything else is deleted unread;
+// - it outlives an app update. An update can change what an answer looks like; a kept answer is only on screen
+//   until its own read lands, and if drawing one fails meanwhile, every kept answer not yet read again is
+//   thrown away (memory and device) and the page reloads once — the start an update always had before;
 // - sign-out — here or elsewhere — deletes it and empties the memory it came from (accountState.ts);
 // - nothing is written while signed out, and never an answer on the never-kept list (the phone's position,
 //   Apple Calendar's queue, logs, live departures);
@@ -37,6 +40,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let firstUnsavedAt = 0
 /** A copy waits for the real session: the stored one's hour has passed, so nothing is shown on the hint. */
 let restoreWaits = false
+/** When the copy now in memory was saved: an answer read at or before this has not been read again yet. */
+let restoredSavedAt = 0
 /** Opens the app's reads (startQueryPersistence's promise). */
 let openReads: () => void = () => {}
 /** Answers IndexedDB couldn't copy (a function or a class inside): left out from then on. */
@@ -74,7 +79,7 @@ async function restore(qc: QueryClient, forUser: string): Promise<void> {
   let copy: KeptCopy | undefined
   try { copy = await readCopy() } catch { return }
   if (!copy) return
-  if (!mayShowCopy(copy, { build: __BUILD_ID__, userId: forUser, at: Date.now() })) { await deleteCopy(); return }
+  if (!mayShowCopy(copy, { userId: forUser, at: Date.now() })) { await deleteCopy(); return }
   // Signed out, or another account, while the copy was being read.
   if (owner !== forUser || storedSessionUserId() !== forUser) return
   try {
@@ -85,7 +90,41 @@ async function restore(qc: QueryClient, forUser: string): Promise<void> {
   }
   // A start reads everything again, as it always did: each kept answer shows until its own read lands.
   const savedAt = copy.savedAt
+  restoredSavedAt = savedAt
   void qc.invalidateQueries({ refetchType: 'none', predicate: q => q.state.dataUpdatedAt <= savedAt })
+}
+
+const RELOADED_KEY = 'lasci.answers.reloaded'
+const RELOAD_ONCE_MS = 60_000
+
+/**
+ * Drawing failed (main.tsx hands every render error here). If kept answers that have not been read again are
+ * still in memory, one of them may be why — an update changed what an answer looks like. They are all thrown
+ * away, here and on the device, and read fresh. An error nothing caught has blanked the page, so it reloads —
+ * once (a real bug must not loop). Errors with no kept answer in play are left to the app as before.
+ */
+export function keptAnswersRenderError(kind: 'uncaught' | 'caught'): void {
+  const qc = client
+  const savedAt = restoredSavedAt
+  if (!qc || !savedAt) return
+  const unread = (q: { state: { dataUpdatedAt: number; isInvalidated: boolean } }) => q.state.dataUpdatedAt > 0 && q.state.dataUpdatedAt <= savedAt && q.state.isInvalidated
+  if (!qc.getQueryCache().getAll().some(unread)) return
+  restoredSavedAt = 0
+  firstUnsavedAt = 0
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+  const gone = deleteCopy()
+  if (kind === 'caught') {
+    // The page is alive around the failed part: its kept answers go back to loading and are read now.
+    void qc.resetQueries({ predicate: unread })
+    return
+  }
+  let reloaded = 0
+  try { reloaded = Number(sessionStorage.getItem(RELOADED_KEY)) || 0 } catch { /* */ }
+  if (Date.now() - reloaded < RELOAD_ONCE_MS) return
+  try { sessionStorage.setItem(RELOADED_KEY, String(Date.now())) } catch { return }
+  const reload = () => window.location.reload()
+  void gone.then(reload)
+  setTimeout(reload, 500)
 }
 
 function keptState(qc: QueryClient, now: number): DehydratedState {
