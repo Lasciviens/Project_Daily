@@ -28,6 +28,8 @@ function componentSourceStamp(): Plugin {
 }
 
 export default defineConfig({
+  // One id per build: shared/query/persist.ts drops a device copy another build wrote.
+  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   resolve: {
     // The app uses no Supabase Realtime, but supabase-js would bring realtime-js (16 kB gzip) to every page:
     // the stub keeps the methods the client calls (verify-realtime-stub).

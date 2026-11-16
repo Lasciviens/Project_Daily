@@ -297,6 +297,10 @@ export const qk = {
     /** What undoing one save (an audit transaction) would do — migration 150. */
     undoPlan: (txId: number) => ['audit-logs', 'undo-plan', txId] as const,
   },
+  /** Signed links to private files. Their own root: never kept on the device (persistRules.NEVER_KEPT). */
+  signedUrls: {
+    koboSleep: (paths: string) => ['signed-urls', 'kobo-sleep', paths] as const,
+  },
   external: {
     weather: (lat: number, lon: number) => ['weather', lat.toFixed(2), lon.toFixed(2)] as const,
     currency: () => ['currency'] as const,

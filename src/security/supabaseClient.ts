@@ -1,5 +1,6 @@
 import { supabase } from '../integrations/supabase/client'
 import { clearAccountState, forgetThisDevicePush } from './accountState'
+import { removeStoredSession } from './storedSession'
 
 export { supabase }
 
@@ -16,6 +17,8 @@ export async function signOut() {
   await forgetThisDevicePush()   // while the session still works
   const result = await supabase.auth.signOut()
   await clearAccountState()
+  // Offline with an expired token, supabase-js leaves the session in place: sign-out removes it regardless.
+  removeStoredSession()
   // A fresh page drops every answer cached in memory for the signed-out account.
   window.location.replace(`${window.location.pathname}#/login`)
   window.location.reload()
