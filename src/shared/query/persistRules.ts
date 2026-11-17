@@ -35,7 +35,7 @@ export function keepsQuery(q: KeptQueryFacts, now: number): boolean {
 }
 
 export interface KeptCopyFacts {
-  /** The app build that wrote the copy: another build may read other columns, so its copy is dropped. */
+  /** The app build that wrote the copy (kept for the record; a copy outlives an update — see persist.ts). */
   build: string
   /** The account the answers belong to. */
   userId: string
@@ -43,13 +43,15 @@ export interface KeptCopyFacts {
 }
 
 /**
- * Whether a kept copy may be shown: written by this build, for the account signed in on this device now,
- * within the week. Anything else is deleted, never shown.
+ * Whether a kept copy may be shown: for the account signed in on this device now, within the week. Anything
+ * else is deleted, never shown. The build is not asked: an update used to empty the copy, so every page was
+ * slow once after every update (owner, 16.11.2026: "every page … takes around 1+ s"); an answer whose shape an
+ * update changed is caught where it is drawn instead (persist.ts → keptAnswersRenderError).
  */
-export function mayShowCopy(copy: Partial<KeptCopyFacts> | null | undefined, now: { build: string; userId: string | null; at: number }): boolean {
+export function mayShowCopy(copy: Partial<KeptCopyFacts> | null | undefined, now: { userId: string | null; at: number }): boolean {
   if (!copy || !now.userId) return false
   if (typeof copy.userId !== 'string' || copy.userId !== now.userId) return false
-  if (copy.build !== now.build) return false
+  if (typeof copy.build !== 'string') return false
   if (typeof copy.savedAt !== 'number' || copy.savedAt > now.at || now.at - copy.savedAt > KEEP_MS) return false
   return true
 }

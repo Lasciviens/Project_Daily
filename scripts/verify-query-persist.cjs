@@ -39,19 +39,19 @@ check('every Apple Calendar key sits under "icloud" (its item-send read sends �
 // ── When a kept copy may be shown ────────────────────────────────────────────
 const ME = '00000000-0000-4000-8000-000000000001', OTHER = '00000000-0000-4000-8000-000000000002'
 const copy = (over) => ({ build: 'b1', userId: ME, savedAt: NOW - 60_000, ...over })
-const now = (over) => ({ build: 'b1', userId: ME, at: NOW, ...over })
-check('this account, this build, within the week: shown', R.mayShowCopy(copy(), now()))
+const now = (over) => ({ userId: ME, at: NOW, ...over })
+check('this account, within the week: shown', R.mayShowCopy(copy(), now()))
 check('another account\'s copy is never shown', !R.mayShowCopy(copy({ userId: OTHER }), now()))
 check('signed out: never shown', !R.mayShowCopy(copy(), now({ userId: null })))
-check('another build\'s copy is never shown', !R.mayShowCopy(copy({ build: 'b0' }), now()))
+check('a copy outlives an app update (written by another build: still shown)', R.mayShowCopy(copy({ build: 'b0' }), now()))
 check('a copy older than a week is never shown', !R.mayShowCopy(copy({ savedAt: NOW - R.KEEP_MS - 1 }), now()))
 check('a copy from the future (a clock set back) is never shown', !R.mayShowCopy(copy({ savedAt: NOW + 1 }), now()))
-check('a broken copy is never shown', !R.mayShowCopy(null, now()) && !R.mayShowCopy({}, now()) && !R.mayShowCopy({ build: 'b1', userId: 5, savedAt: NOW }, now()) && !R.mayShowCopy({ build: 'b1', userId: ME, savedAt: 'x' }, now()))
+check('a broken copy is never shown', !R.mayShowCopy(null, now()) && !R.mayShowCopy({}, now()) && !R.mayShowCopy({ build: 'b1', userId: 5, savedAt: NOW }, now()) && !R.mayShowCopy({ build: 'b1', userId: ME, savedAt: 'x' }, now()) && !R.mayShowCopy({ userId: ME, savedAt: NOW }, now()))
 
 // ── The wiring ───────────────────────────────────────────────────────────────
 const persist = src('src/shared/query/persist.ts')
 check('a copy is shown only through mayShowCopy, and deleted otherwise',
-  /if \(!mayShowCopy\(copy, \{ build: __BUILD_ID__, userId: forUser, at: Date\.now\(\) \}\)\) \{ await deleteCopy\(\); return \}/.test(persist))
+  /if \(!mayShowCopy\(copy, \{ userId: forUser, at: Date\.now\(\) \}\)\) \{ await deleteCopy\(\); return \}/.test(persist))
 check('the account is checked again after the read, before anything is put back',
   /if \(owner !== forUser \|\| storedSessionUserId\(\) !== forUser\) return\s+try \{\s+hydrate\(qc, copy\.state\)/.test(persist))
 check('a start reads every kept answer again (they are marked out of date)',
@@ -101,5 +101,19 @@ check('the service worker still caches no Supabase answers', !/supabase\.co/.tes
 const providers = src('src/app/providers.tsx')
 check('reads wait for the kept answers (IsRestoringProvider), and unused answers stay a day in memory',
   /<IsRestoringProvider value=\{restoring\}>/.test(providers) && /gcTime: STALE\.day/.test(providers) && /startQueryPersistence\(queryClient\)/.test(providers))
+
+// ── A kept answer an update reshaped ────────────────────────────────────────
+const main = src('src/main.tsx')
+check('every render error reaches the kept answers\' guard, and is still reported',
+  /onUncaughtError: \(error\) => \{ keptAnswersRenderError\('uncaught'\); reportError\(error\) \}/.test(main)
+  && /onCaughtError: \(error\) => \{ keptAnswersRenderError\('caught'\); console\.error\(error\) \}/.test(main))
+check('the guard acts only while kept answers not read again are in memory',
+  /const unread = \(q: [^)]*\) => q\.state\.dataUpdatedAt > 0 && q\.state\.dataUpdatedAt <= savedAt && q\.state\.isInvalidated\s+if \(!qc\.getQueryCache\(\)\.getAll\(\)\.some\(unread\)\) return/.test(persist))
+check('…then the device copy goes, a caught error reads the kept answers fresh, an uncaught one reloads',
+  /const gone = deleteCopy\(\)\s+if \(kind === 'caught'\) \{[^}]*void qc\.resetQueries\(\{ predicate: unread \}\)\s+return\s+\}/.test(persist) && /void gone\.then\(reload\)/.test(persist))
+check('…once: a second error within a minute never reloads again (a real bug must not loop)',
+  /if \(Date\.now\(\) - reloaded < RELOAD_ONCE_MS\) return\s+try \{ sessionStorage\.setItem\(RELOADED_KEY, String\(Date\.now\(\)\)\) \} catch \{ return \}/.test(persist))
+check('the backend connection opens with the page (preconnect, without cookies)',
+  /<link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin \/>/.test(src('index.html')))
 
 console.log(`${n} passed, 0 failed`)

@@ -21,6 +21,9 @@
       })()
     </script>
     <link rel="icon" type="image/svg+xml" href="/Project_Daily/favicon.svg" />
+    <!-- The connection to the backend opens while the app's code loads, not at its first read (name lookup +
+         TLS: 0.1–0.3 s on a phone). crossorigin: the app's reads go without cookies, on that connection. -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin />
     <!-- Inter's Latin file downloads with the page instead of after the app's
          first render, so text starts in Inter rather than swapping into it (a
          layout shift: docs/design/THEME.md §3). Vite rewrites the path to the
