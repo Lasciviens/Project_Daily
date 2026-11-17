@@ -282,6 +282,9 @@ check('Training Next shows once the plan is in; missed, recovery and the muscle 
     && /ids="training:recovery"/.test(next) && /ids="training:missed"/.test(code('src/features/training/components/program/MissedSessions.tsx'))
     && /ids="muscleWatch:line"/.test(code('src/features/health/goal/MuscleWatchCard.tsx')))
 check('Training Next reads the muscle watch once (in MuscleWatchLine), never a second useMuscleWatch of its own', !/useMuscleWatch/.test(next))
+const ahead = code('src/features/training/components/next/NextReadsAhead.tsx')
+check('…its reads only start early (NextReadsAhead, while the plan loads): it draws nothing and hands nothing on, so no line waits for another\'s read',
+  /<NextReadsAhead \/>/.test(next) && /export function NextReadsAhead\(\) \{\s+useMissedSessions\(\)\s+useRecoveryNotes\(\)\s+useMuscleWatch\(\)\s+return null\s+\}/.test(ahead) && !/isLoading|const /.test(ahead))
 check('Games waits for all three libraries on the first load (one order: Steam and PlayStation rows landed between the retro games)',
   /const firstLoad = retro\.isLoading \|\| steam\.isLoading \|\| psn\.isLoading \|\| !steamReady/.test(code('src/features/games/test-game/useTestGameLibrary.ts')))
 

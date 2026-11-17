@@ -24,6 +24,11 @@ const RELATIONS = {
   'user_tv_episodes.user_tv_entries': { kind: 'one', local: 'tv_entry_id', foreign: 'id' },
   'user_movie_entries.media_watches': { kind: 'many', local: 'id', foreign: 'movie_entry_id' },
   'user_tv_episodes.media_watches': { kind: 'many', local: 'id', foreign: 'episode_id' },
+  // Hevy's foreign keys (migration 024) whose column isn't named after its table.
+  'hevy_workout_exercises.hevy_sets': { kind: 'many', local: 'id', foreign: 'hevy_exercise_id' },
+  'hevy_routines.hevy_routine_exercises': { kind: 'many', local: 'id', foreign: 'hevy_routine_id' },
+  'hevy_routine_exercises.hevy_routine_sets': { kind: 'many', local: 'id', foreign: 'hevy_routine_exercise_id' },
+  'hevy_routines.hevy_routine_folders': { kind: 'one', local: 'folder_id', foreign: 'id' },
 }
 
 // Column defaults an insert gets from the database when the app leaves them out (the migrations'

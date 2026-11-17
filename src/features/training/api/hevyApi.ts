@@ -1,5 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { currentUserId } from '../../../shared/utils/requireUser'
+import { logError } from '../../../shared/utils/logError'
 import { workoutWindowFilter, localDayBoundsIso, workoutLocalDay } from '../workoutDates'
 import type { ProgressSetRow, ProgressTemplateRow } from '../progressAggregate'
 import type {
@@ -59,6 +60,34 @@ async function fetchByIds<T>(ids: readonly string[], page: (part: string[], from
   const parts = await Promise.all(chunks(ids).map(part => fetchAllPages<T>((f, t) => page(part, f, t))))
   return parts.flat()
 }
+
+// ─── Linked reads ────────────────────────────────────────────────────────────
+// A parent with its children in ONE request (PostgREST follows the foreign keys of 024: a routine's exercises
+// and their sets, a workout's exercises and their sets) instead of one request per level, each waiting for the
+// one before (owner, 16.11.2026: "it takes around 1+ s to load from db" — Training's first read took six
+// rounds). The answer is rebuilt in exactly the order the level-by-level read gave. That read stays as the
+// fallback: if the linked one fails for any reason it runs instead, and when the API says it can't follow a
+// link (PGRST200 / PGRST201) the linked read is left out for the rest of the session.
+
+let linkedReadsOff = false
+
+async function linkedOr<T>(what: string, linked: () => Promise<T>, levelByLevel: () => Promise<T>): Promise<T> {
+  if (linkedReadsOff) return levelByLevel()
+  try {
+    return await linked()
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code
+    if (code === 'PGRST200' || code === 'PGRST201') {
+      linkedReadsOff = true
+      logError(`hevy_linked_read_refused: ${what}`, { code, message: (err as { message?: string }).message })
+    }
+    return levelByLevel()
+  }
+}
+
+/** uuid ids in the order Postgres gives them (their text, compared by character code). */
+const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+const byIndexThenId = (a: { index: number; id: string }, b: { index: number; id: string }) => a.index - b.index || byId(a, b)
 
 // ─── Workout dates ───────────────────────────────────────────────────────────
 // Effective date = start_time, else hevy_created_at (workoutDates.ts).
@@ -151,19 +180,66 @@ async function fetchExercisesForWorkouts(workoutIds: string[]): Promise<Exercise
     supabase.from('hevy_workout_exercises').select('id, hevy_workout_id, exercise_template_id').in('hevy_workout_id', part).order('id').range(f, t))
 }
 
+interface WorkoutTree<W, S> { workouts: W[]; exRows: ExerciseRow[]; sets: S[] }
+
+/** The window's workouts, their exercises and those exercises' sets, one level after the other (three rounds). */
+async function fetchWorkoutTreeLevelByLevel<W extends WorkoutDateRow, S extends { id: string; hevy_exercise_id: string }>(
+  cols: string, setCols: string, fromISO: string, toISO: string,
+): Promise<WorkoutTree<W, S>> {
+  const workouts = await fetchWorkoutsInWindow<W>(cols, fromISO, toISO)
+  if (!workouts.length) return { workouts, exRows: [], sets: [] }
+  const exRows = await fetchExercisesForWorkouts(workouts.map(w => w.id))
+  if (!exRows.length) return { workouts, exRows, sets: [] }
+  const sets = await fetchByIds<S>(exRows.map(e => e.id), (part, f, t) =>
+    supabase.from('hevy_sets').select(setCols).in('hevy_exercise_id', part).order('id').range(f, t) as unknown as PageResult<S>)
+  return { workouts, exRows, sets }
+}
+
+/** The same three lists from one linked request, in the order the level-by-level read gives them (its id chunks kept). */
+async function fetchWorkoutTreeLinked<W extends WorkoutDateRow, S extends { id: string; hevy_exercise_id: string }>(
+  cols: string, setCols: string, fromISO: string, toISO: string,
+): Promise<WorkoutTree<W, S>> {
+  type Linked = W & { hevy_workout_exercises?: (ExerciseRow & { hevy_sets?: S[] })[] | null }
+  const rows = await fetchWorkoutsInWindow<Linked>(`${cols}, hevy_workout_exercises(id, hevy_workout_id, exercise_template_id, hevy_sets(${setCols}))`, fromISO, toISO)
+  const setsByExercise = new Map<string, S[]>()
+  const exRows: ExerciseRow[] = []
+  for (const part of chunks(rows)) {
+    const inPart: ExerciseRow[] = []
+    for (const w of part) {
+      for (const { hevy_sets = [], ...e } of w.hevy_workout_exercises ?? []) {
+        inPart.push(e)
+        setsByExercise.set(e.id, hevy_sets ?? [])
+      }
+    }
+    exRows.push(...inPart.sort(byId))
+  }
+  const sets: S[] = []
+  for (const part of chunks(exRows)) sets.push(...part.flatMap(e => setsByExercise.get(e.id) ?? []).sort(byId))
+  const workouts = rows.map(row => {
+    const w = { ...row }
+    delete w.hevy_workout_exercises
+    return w as unknown as W
+  })
+  return { workouts, exRows, sets }
+}
+
+function fetchWorkoutTree<W extends WorkoutDateRow, S extends { id: string; hevy_exercise_id: string }>(
+  cols: string, setCols: string, fromISO: string, toISO: string,
+): Promise<WorkoutTree<W, S>> {
+  return linkedOr('workouts',
+    () => fetchWorkoutTreeLinked<W, S>(cols, setCols, fromISO, toISO),
+    () => fetchWorkoutTreeLevelByLevel<W, S>(cols, setCols, fromISO, toISO))
+}
+
 // Per-exercise WORKING-set counts over a date range, for the volume-based
 // muscle map. Effective date = start_time (hevy_created_at fallback).
 export async function fetchMuscleVolume(fromISO: string, toISO: string): Promise<ExerciseVolumeRow[]> {
-  const workouts = await fetchWorkoutsInWindow<WorkoutDateRow & { routine_id: string | null }>('id, start_time, hevy_created_at, routine_id', fromISO, toISO)
+  const { workouts, exRows, sets } = await fetchWorkoutTree<WorkoutDateRow & { routine_id: string | null }, { id: string; hevy_exercise_id: string; type: string | null }>(
+    'id, start_time, hevy_created_at, routine_id', 'id, hevy_exercise_id, type', fromISO, toISO)
   if (!workouts.length) return []
   const dateByWorkout = new Map(workouts.map(w => [w.id, w.start_time ?? w.hevy_created_at]))
   const routineByWorkout = new Map(workouts.map(w => [w.id, w.routine_id ?? null]))
-
-  const exRows = await fetchExercisesForWorkouts([...dateByWorkout.keys()])
   if (!exRows.length) return []
-
-  const sets = await fetchByIds<{ id: string; hevy_exercise_id: string; type: string | null }>(exRows.map(e => e.id), (part, f, t) =>
-    supabase.from('hevy_sets').select('id, hevy_exercise_id, type').in('hevy_exercise_id', part).order('id').range(f, t))
   const workingByExercise = new Map<string, number>()
   for (const s of sets) {
     if (s.type === 'warmup') continue
@@ -208,7 +284,9 @@ type HistorySetRow = {
 
 export async function fetchTrainingHistory(fromISO: string, toISO: string): Promise<TrainingHistory> {
   type W = WorkoutDateRow & { title: string | null; routine_id: string | null }
-  const workouts = await fetchWorkoutsInWindow<W>('id, title, start_time, hevy_created_at, routine_id', fromISO, toISO)
+  const { workouts, exRows, sets: rows } = await fetchWorkoutTree<W, HistorySetRow>(
+    'id, title, start_time, hevy_created_at, routine_id',
+    'id, hevy_exercise_id, exercise_template_id, index, type, weight_kg, reps, duration_seconds, distance_meters, rpe', fromISO, toISO)
   if (!workouts.length) return { sets: [], templates: [] }
 
   // A session is filed under the LOCAL day it started (the same day the
@@ -216,17 +294,8 @@ export async function fetchTrainingHistory(fromISO: string, toISO: string): Prom
   // on the previous day — and a Monday 00:30 one in the previous week.
   const workoutById = new Map(workouts.map(w => [w.id, w]))
 
-  const exRows = await fetchExercisesForWorkouts([...workoutById.keys()])
   if (!exRows.length) return { sets: [], templates: [] }
   const workoutIdByExercise = new Map(exRows.map(e => [e.id, e.hevy_workout_id]))
-
-  const rows = await fetchByIds<HistorySetRow>(exRows.map(e => e.id), (part, f, t) =>
-    supabase
-      .from('hevy_sets')
-      .select('id, hevy_exercise_id, exercise_template_id, index, type, weight_kg, reps, duration_seconds, distance_meters, rpe')
-      .in('hevy_exercise_id', part)
-      .order('id')
-      .range(f, t))
 
   const sets: ProgressSetRow[] = []
   for (const s of rows) {
@@ -419,7 +488,29 @@ export async function callHevyApi(action: string, payload: unknown): Promise<unk
 // A routine is deleted in the Hevy app and disappears here on the next Sync,
 // which prunes local routines Hevy no longer returns.
 
-export async function fetchHevyRoutines(): Promise<HevyRoutine[]> {
+export function fetchHevyRoutines(): Promise<HevyRoutine[]> {
+  return linkedOr('routines', fetchHevyRoutinesLinked, fetchHevyRoutinesLevelByLevel)
+}
+
+/** Every routine with its folder, exercises and their sets from one linked request (it took four rounds). */
+async function fetchHevyRoutinesLinked(): Promise<HevyRoutine[]> {
+  type LinkedExercise = HevyRoutineExercise & { hevy_routine_sets?: HevyRoutineSet[] | null }
+  type Linked = HevyRoutine & { linked_folder?: { id: number; title: string } | null; hevy_routine_exercises?: LinkedExercise[] | null }
+  const rows = await fetchAllPages<Linked>((f, t) =>
+    supabase.from('hevy_routines')
+      .select('*, linked_folder:hevy_routine_folders(id, title), hevy_routine_exercises(*, hevy_routine_sets(*))')
+      .order('hevy_updated_at', { ascending: false }).order('id').range(f, t) as unknown as PageResult<Linked>)
+  return rows.map(({ linked_folder, hevy_routine_exercises, ...r }) => ({
+    ...(r as HevyRoutine),
+    exercises: [...(hevy_routine_exercises ?? [])].sort(byIndexThenId).map(({ hevy_routine_sets, ...ex }) => ({
+      ...(ex as HevyRoutineExercise),
+      sets: [...(hevy_routine_sets ?? [])].sort(byIndexThenId),
+    })),
+    folder: r.folder_id != null && linked_folder ? (linked_folder as HevyRoutine['folder']) : undefined,
+  }))
+}
+
+async function fetchHevyRoutinesLevelByLevel(): Promise<HevyRoutine[]> {
   const routines = await fetchAllPages<HevyRoutine>((f, t) =>
     supabase.from('hevy_routines').select('*').order('hevy_updated_at', { ascending: false }).order('id').range(f, t))
   if (!routines.length) return []
