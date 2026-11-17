@@ -17,6 +17,7 @@ import { sessionStatus } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import { NEXT_BOARD } from '../../trainingBoards'
 import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
+import { NextReadsAhead } from './NextReadsAhead'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -167,6 +168,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   if (plan.isLoading) {
     return (
       <div className="flex max-w-2xl flex-col gap-3">
+        <NextReadsAhead />
         <Skeleton rounded="rounded-card" className="h-28" />
         <Skeleton rounded="rounded-card" className="h-40" />
         <Skeleton rounded="rounded-card" className="h-40" />

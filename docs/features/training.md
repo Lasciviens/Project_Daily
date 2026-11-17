@@ -145,6 +145,15 @@ Page layout: `PageContainer` + the tab row; each tab is a PageBoard (`trainingBo
 
 DB (Hevy): `hevy_workouts`/`_exercises`/`hevy_sets`, `hevy_routines`/`_exercises`/`hevy_routine_sets` (routine sets also have `rep_range_start/end`), `hevy_exercise_templates`(+`_muscles`; `thumbnail_url` since 154), `hevy_routine_folders`, `hevy_body_measurements`, `hevy_workout_events_cursor`, `hevy_account` (154, read-only for the app).
 
+## How Training reads (17.11.2026)
+
+Owner, 16.11.2026: "It takes around 1+ s to load from db". Training's first read took seven rounds of requests, each waiting for the one before: routines → their exercises → their sets → folders, the same for workouts, the exercise names, and only then the lines around the session. Now:
+
+- **A routine with its folder, exercises and sets, and a workout with its exercises and sets, are one linked request each** (`hevyApi.ts`: `fetchHevyRoutines`, `fetchMuscleVolume`, `fetchTrainingHistory` through `linkedOr`). PostgREST follows the foreign keys of migration 024. The answer is rebuilt in exactly the order the level-by-level read gave (its id chunks kept), so nothing downstream changes. The level-by-level read stays as the fallback: it runs if the linked one fails for any reason, and when the API says it can't follow a link (PGRST200 / PGRST201) the linked read is left out for the rest of the session and the refusal is logged once (`hevy_linked_read_refused`, Developer → Logs). `scripts/verify-hevy-linked-reads.cjs` runs the real module both ways against the harness's data and compares the answers field for field.
+- **The lines around the next session start their reads while the plan loads** (`NextTab` → `NextReadsAhead`: missed sessions, recovery, the muscle watch) — they don't depend on the plan, but mounted only after it.
+
+On the test copy with every answer held 300 ms: Training's first screen 2.3 → 1.5 s (seven rounds → four); Daily, Home and Health, which show Training's cards, finish about 0.6 s sooner (five rounds → three). Not tested against the real database (the fallback covers a refusal).
+
 ## Training session never planned twice
 
 **A training session is never planned twice on one day without asking** (`training/plan/planTwins.ts`, `verify-training-plan`): saving a one-off training block (time-block / task popups) on a day that already has the same session — the weekly ⟳ template by name, or the same routine (`source_id`) or name as another block — asks "Plan this session twice?" first (`UnifiedPlanModal.confirmNoTwin`; a failed read never blocks). Before this, Missed sessions → Plan it, Routines → Plan, Next and Daily could add a second copy on the template's day, and every page then listed the session twice.
