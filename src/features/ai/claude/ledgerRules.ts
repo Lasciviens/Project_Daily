@@ -483,16 +483,26 @@ function wordsOf(v: unknown, depth = 0): string {
   return json(v)
 }
 
-export interface LogPart { label: string; text: string }
+export interface LogPart {
+  label: string
+  text: string
+  /** A text of its own (instructions, the sentence, a schema) — false for a short value that fits beside its label. */
+  block: boolean
+}
+
+function logPart(label: string, v: unknown): LogPart {
+  const text = wordsOf(v)
+  return { label: label.replace(/_/g, ' ').slice(0, 60), text, block: (typeof v === 'object' && v !== null) || text.length > 60 || text.includes('\n') }
+}
 
 /**
- * A logged request or answer as labelled plain text, for a <pre>: an object's own fields one by one, so long
- * instructions read as text and not as one escaped JSON line. Shown as text only — never as HTML or links.
+ * A logged request or answer as labelled plain text: an object's own fields one by one, so long instructions
+ * read as text and not as one escaped JSON line. Shown as text only — never as HTML or links.
  */
 export function logParts(v: unknown): LogPart[] {
   if (v == null || v === '') return []
-  if (typeof v !== 'object' || Array.isArray(v)) return [{ label: '', text: wordsOf(v) }]
-  return Object.entries(v as Record<string, unknown>).filter(([, x]) => x != null && x !== '').map(([label, x]) => ({ label: label.slice(0, 60), text: wordsOf(x) }))
+  if (typeof v !== 'object' || Array.isArray(v)) return [{ ...logPart('', v), block: true }]
+  return Object.entries(v as Record<string, unknown>).filter(([, x]) => x != null && x !== '').map(([label, x]) => logPart(label, x))
 }
 
 // ── Links the page builds ────────────────────────────────────────────────────

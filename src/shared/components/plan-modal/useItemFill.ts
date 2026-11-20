@@ -19,18 +19,17 @@ import type { PlanForm } from './planForm'
 
 /** The answer had nothing this screen takes. */
 export const FILL_NOTHING_READ = "Couldn't read that — try different words"
-/** Said for a failure whose own words wouldn't help (the network, a broken answer). */
+/** Said for a failure that has no sentence of its own (the function's code didn't load, an error nobody named). */
 export const FILL_FAILED = "Couldn't fill the fields — try again in a moment"
-/**
- * The function's reasons whose own sentence the owner sees as it is: each says what to do (switch the job
- * on, raise the budget, wait a minute, set the key, use other words). Any other failure is FILL_FAILED.
- */
-const SAYS_ITSELF: ReadonlySet<string> = new Set(['off', 'budget', 'busy', 'not_configured', 'refused', 'bad_input'])
 
-/** The sentence to show for a failed fill. */
+/**
+ * The sentence to show for a failed fill. A run the function stopped or couldn't finish (ClaudeJobError: the
+ * job is switched off, a budget is reached, too many calls, no key, the model declined, a cut-off or unusable
+ * answer) carries the function's own plain sentence, which says what to do — shown as it is.
+ */
 export function fillFailureText(e: unknown): string {
-  const err = e as { name?: unknown; reason?: unknown; message?: unknown } | null
-  const said = err?.name === 'ClaudeJobError' && typeof err.reason === 'string' && SAYS_ITSELF.has(err.reason) && typeof err.message === 'string' ? err.message.trim() : ''
+  const err = e as { name?: unknown; message?: unknown } | null
+  const said = err?.name === 'ClaudeJobError' && typeof err.message === 'string' ? err.message.trim() : ''
   return said || FILL_FAILED
 }
 

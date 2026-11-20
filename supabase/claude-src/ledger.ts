@@ -11,28 +11,12 @@
 //  Both clients are arguments: main.ts creates them, and a test passes fakes.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 import type { CallMode, CallSummary, Caller, Effort, Outcome } from './types.ts'
 import { gateOf, type Gate } from './guard.ts'
 
-/** What the database answers: the data, or an error with its SQL error code. */
-export interface DbAnswer {
-  data: unknown
-  error: { message: string; code?: string } | null
-}
-
-interface DbRows extends PromiseLike<DbAnswer> {
-  eq(column: string, value: string): DbRows
-  maybeSingle(): PromiseLike<DbAnswer>
-}
-
-/** The few database calls this function makes, as a Supabase client offers them. */
-export interface Db {
-  from(table: string): {
-    select(columns: string): DbRows
-    insert(row: Record<string, unknown>): PromiseLike<DbAnswer>
-  }
-  rpc(name: string, args: Record<string, unknown>): PromiseLike<DbAnswer>
-}
+/** A Supabase database client. The type is all this part takes from the library: main.ts creates the clients. */
+export type Db = SupabaseClient
 
 /** One row of `ai_calls`: one request to the model, or one request that was stopped before it. */
 export interface CallRow {

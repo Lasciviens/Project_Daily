@@ -88,8 +88,8 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
         job.defaults.maxOutputTokens > 0 && `longest answer ${formatCount(job.defaults.maxOutputTokens)} tokens`,
       ]} />
       {job.features.length > 0 && (
-        <ul aria-label="Anthropic features used" className="flex flex-wrap gap-1.5">
-          {job.features.map(f => <li key={f} className="chip">{f}</li>)}
+        <ul aria-label="Anthropic features used" className="flex list-disc flex-col gap-0.5 pl-4 text-meta text-fg-2 marker:text-fg-faint">
+          {job.features.map(f => <li key={f}>{f}</li>)}
         </ul>
       )}
       {job.instructions && <Fold title="The fixed instructions, as sent"><PlainText>{job.instructions}</PlainText></Fold>}

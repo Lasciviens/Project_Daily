@@ -29,7 +29,8 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function TextBlock({ title, parts }: { title: string; parts: LogPart[] }) {
-  const whole = parts.map(p => (p.label ? `${p.label}:\n${p.text}` : p.text)).join('\n\n')
+  const whole = parts.map(p => (p.label ? `${p.label}:${p.block ? '\n' : ' '}${p.text}` : p.text)).join('\n\n')
+  const short = parts.filter(p => !p.block), blocks = parts.filter(p => p.block)
   return (
     <section aria-label={title}>
       <div className="flex items-center justify-between gap-2">
@@ -37,7 +38,12 @@ function TextBlock({ title, parts }: { title: string; parts: LogPart[] }) {
         <IconButton label={`Copy the ${title.toLowerCase()}`} onClick={() => copyText(whole)}><Copy /></IconButton>
       </div>
       <div className="flex flex-col gap-2">
-        {parts.map((p, i) => (
+        {short.length > 0 && (
+          <dl className="grid grid-cols-[minmax(6.5rem,auto)_1fr] gap-x-3 gap-y-1 text-meta">
+            {short.map(p => <Fact key={p.label} label={p.label}>{p.text}</Fact>)}
+          </dl>
+        )}
+        {blocks.map((p, i) => (
           <div key={i}>
             {p.label && <p className="mb-1 text-meta font-medium text-fg-muted">{p.label}</p>}
             <PlainText>{p.text}</PlainText>
@@ -67,7 +73,7 @@ function CallText({ id }: { id: string }) {
     <div className="flex flex-col gap-3">
       {request.length > 0 && <TextBlock title="Request" parts={request} />}
       {response.length > 0 && <TextBlock title="Answer" parts={response} />}
-      {thinking && <TextBlock title="Reasoning summary" parts={[{ label: '', text: thinking }]} />}
+      {thinking && <TextBlock title="Reasoning summary" parts={[{ label: '', text: thinking, block: true }]} />}
     </div>
   )
 }
