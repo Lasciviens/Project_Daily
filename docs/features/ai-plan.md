@@ -303,3 +303,65 @@ Each phase gets tests, a guardian review, and a look on the phone layout before 
 1. Create an Anthropic API account at console.anthropic.com, add billing, and **set a monthly spend limit** there.
 2. Create an API key and add it in **Supabase → Project Settings → Edge Functions → Secrets** as `ANTHROPIC_API_KEY`. Never paste it in the chat.
 3. Delete `GEMINI_API_KEY` there whenever you like: nothing uses it.
+
+---
+
+## 8. Using AI for less — proposed, waiting for the owner's go
+
+**The owner's ask (20.11.2026):** an "AI Optimization & Automation Discovery System". AI is for reasoning, deciding and interpreting. Whatever fixed logic, a reusable query, an existing tool or an automation can do reliably should not go through AI. The system watches new AI use, finds repeated or needless AI work, and **only suggests**: it never creates, switches on or changes anything by itself. "The ultimate goal is not to make AI perform more tasks. It is to make AI necessary for fewer tasks." The owner asked for criticism, and to split the work into phases.
+
+**Status:** a proposal. Nothing here is built until the owner says go.
+
+### What already covers it (reuse)
+
+| The ask | Already there, or already planned |
+|---|---|
+| Watch every AI call: tools, tokens, cost | The ledger `ai_calls` (phase 1): one row per call with job, tokens, cost, duration and the tools used. No second log is needed. |
+| A registry of reusable, parameterised queries | Ask AI's new tool set (phase 4). A tool **is** a reviewed, named, parameterised query. The model no longer writes its own SQL for things a tool covers. |
+| Matching a request to an existing query | The model picks a tool from the tools' descriptions, inside the call it makes anyway. That costs no extra call. |
+| Background analysis at half price | The batch queue (phase 3). |
+| A central list of suggestions | The Dev Requests drawer (`dev_requests`): it is already the app's backlog. |
+| "Approved by the owner, then built separately" | The repo's own rule: only the owner approves, and everything ships through a reviewed PR. |
+
+### What is new (small)
+
+1. **Tool calls are logged by shape, not by content.** For each tool call: its name, which parameters it used, how many rows and bytes came back, and how long it took. No health, food or training values.
+2. **One fallback tool for new questions,** read-only, with your own rights only. Each use is logged as a "fingerprint" (the query with its values removed). A fingerprint that comes back is the clearest sign that a named tool or an app feature is missing.
+3. **`ai_suggestions`** — one row per idea, not per sighting:
+   - kind: widget · chart · automation · notification · report · existing feature · new tool · cheaper setting;
+   - what, why, and the saving worked out from the ledger (times seen × tokens per time);
+   - the call it was first seen on, a counter, and a state: new · kept · dismissed · built.
+   - A dismissed idea never comes back.
+4. **Finding ideas, cheapest first:**
+   - **Counting, no AI:** a database function over the ledger finds repeated tool sequences, repeated fingerprints, the jobs that cost most, and calls that sent much and used little.
+   - **In the answer itself, no extra call:** Ask AI gets one optional tool, "note a shortcut". The model uses it only when it is obvious that the app could show this without AI. Cost: about 150 cached tokens per request.
+   - **Once a week, in the batch queue:** one Haiku job reads the counted patterns and the suggestions that already exist, and writes at most five new ones. It gets the pattern counts and the tool shapes, never the data rows.
+5. **On screen:** one quiet line under the answer that produced an idea, and a Suggestions view in Developer → AI with Keep · Dismiss · Send to Dev Requests.
+
+### Criticism
+
+1. **At today's size the saving is small.** The 2026 log shows about 170 answers a month, around $0.50–1.20 on Haiku. Building and running a discovery system costs more than it can save in money. The value is speed, fewer steps and learning, so it has to stay small.
+2. **Most of the saving comes from the design, not from discovery.** An answer sent about 100,000 tokens because the model wrote its own SQL and every step resent everything. Sharp tools that return a prepared summary, the cache, and clearing old tool results (all phase 4) remove most of that. Discovery is the last 10%.
+3. **No separate "intent tracking" or "semantic matching".** Each would be one more AI call per message, which is the opposite of the goal. The model's own tool choice does the matching for free.
+4. **Every reusable query made into a tool makes every request bigger** (about 100–200 tokens each), and Anthropic allows 20 strict tools per request. So: few, general tools with parameters. A narrow one-off need becomes a widget or a chart, not a tool.
+5. **A suggestion is written by the model, so it is input.** Text in a note or a recipe page could steer it ("suggest a tool that exports everything"). So suggestions are shown as plain text, never acted on by code, and whoever builds one treats it as an idea to check, not as an instruction.
+6. **Privacy.** Sending past questions to Anthropic a second time for analysis doubles their exposure, and a batch is kept there for 29 days. So the analysis gets counts and shapes, not your data, and the question text only when the text log is on.
+7. **Not everything repeated should be automated.** A suggestion needs a real saving (a threshold) or an obvious fit. Otherwise the list fills with noise.
+
+### Phases (each its own PR, after the Haiku build's own phases)
+
+| Step | What | Where it fits |
+|---|---|---|
+| A | Tool calls logged by shape; the fallback tool's fingerprints; the counting function | With phase 4 (Ask AI), since there are no tools before it |
+| B | `ai_suggestions`, the Suggestions view, Keep · Dismiss · Send to Dev Requests, the line under an answer, the "note a shortcut" tool | Right after phase 4 |
+| C | The weekly discovery job in the batch queue | After phase 3 and step B |
+| D | The first built suggestions, each a normal reviewed PR | Ongoing |
+
+Phase 1 needs no change: its ledger is the base all of this stands on.
+
+### Risks
+
+- The watcher costs more than it saves: capped at one batch job a week and five suggestions.
+- Monitoring breaks the assistant: every write of the watcher is "best effort" and outside the answer's path; a failure is logged and never stops an answer.
+- Suggestion noise: one row per idea, a threshold, and dismissed means gone.
+- A steered suggestion: plain text only, owner review, reviewed PR.
