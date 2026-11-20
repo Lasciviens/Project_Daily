@@ -8,8 +8,10 @@
 -- trigger function, and pg_cron's two functions (194 schedules the daily purge).
 do $$ begin create role anon; exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
--- Supabase's service role skips row level security: the claude function writes the ledger as it.
-do $$ begin create role service_role bypassrls; exception when duplicate_object then null; end $$;
+-- Supabase's service role skips row level security: the claude function writes the ledger as it. Roles belong to
+-- the whole server, so one made earlier by another check's base gets the same right here.
+do $$ begin create role service_role; exception when duplicate_object then null; end $$;
+alter role service_role bypassrls;
 create schema if not exists auth;
 create table auth.users (id uuid primary key);
 -- The caller: the owner unless a scenario sets test.uid ('none' = no user: a service-role or signed-out request).

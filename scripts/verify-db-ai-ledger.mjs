@@ -121,7 +121,8 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
       const g = s.match(/^grant (.+?) on (?:table )?(.+?) to (.+)$/i)
       if (g && /\bai_calls\b/.test(g[2]) && /\b(authenticated|anon|public)\b/i.test(g[3]) && g[1].trim().toLowerCase() !== 'select') problems.push(`${f}: "${s}" (the browser only reads the ledger)`)
       if (g && /\bai_calls\b/.test(g[2]) && /\banon\b/i.test(g[3])) problems.push(`${f}: the ledger granted to anon`)
-      if (/^grant .*\ball\b.* on all tables in schema public to .*\b(authenticated|anon)\b/i.test(s)) problems.push(`${f}: "${s}" (it would open the ledger too)`)
+      const every = s.match(/^grant (.+?) on all tables in schema public to (.+)$/i)
+      if (every && /\b(authenticated|anon|public)\b/i.test(every[2]) && every[1].trim().toLowerCase() !== 'select') problems.push(`${f}: "${s}" (it would open the ledger too)`)
       if (/^grant .* on function public\.ai_calls_purge_text\(/i.test(s) && !/ to service_role$/i.test(s)) problems.push(`${f}: "${s}" (the purge is the service role's and the timer's)`)
     }
     for (const m of sql.matchAll(/create policy\s+("[^"]+"|\w+)\s+on\s+public\.ai_calls\b([^;]*)/gi)) {

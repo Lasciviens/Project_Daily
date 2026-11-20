@@ -28,8 +28,9 @@
 --    · Both settings tables: the browser reads, adds and changes its own rows (never deletes). They are INPUT to
 --      the function, which runs every value through its own allow-lists and limits — the CHECKs here are only the
 --      last line. Audited (trg_audit): the owner's own choices, shown in Developer → Activity. ai_settings is
---      keyed by user_id, so Activity can undo a change to it. ai_job_settings is keyed by (user_id, job), so
---      Activity lists its changes but can't undo them (Undo needs a one-column key).
+--      keyed by user_id, so Activity can undo a change to it (not its very first save: that would be a delete).
+--      ai_job_settings is keyed by (user_id, job), so Activity lists its changes but can't undo them (Undo needs
+--      a one-column key).
 --    · Prices are deliberately NOT a table: the wall is worked out from them, so a price row the browser could
 --      write would switch the wall off. They are code in the function.
 -- 4. ai_usage(from, to) — the caller's own calls added up per Oslo day, job, mode and model (Developer → AI).
