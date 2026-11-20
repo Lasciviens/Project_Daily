@@ -7,6 +7,7 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 ## The owner's rules
 
 - **Security before features** (owner, 30.10.2026: "Security > Feature! … Security is always a priority"). When a choice trades safety for a feature, speed or convenience, pick safety; a known security finding is fixed before the feature ships — never "later", never "dormant so it's fine".
+- **AI last** (owner, 20.11.2026: "minimize AI, maximize automation and tool. AI is useful to me when it needs to think"). Before a feature calls a model, ask whether fixed logic, a database query, an existing tool, a widget or a scheduled job does it reliably — then build that. A model is for reasoning, deciding and interpreting; a job that can wait runs in the batch queue. The AI layer only **suggests** new tools or automations; each one ships as a reviewed PR (`docs/features/ai-plan.md` §8).
 - **English everywhere** — code, comments, UI text, commits, PRs, docs and replies to the owner — unless the owner asks for another language. Things about a place (the TRY currency, a country's news or films) are content, not language.
 - The owner is learning the vocabulary: name each technical term and explain it once in plain words, with an everyday example when it helps.
 - **Same job, same features** (owner, 12.11.2026). When you add or change a feature, find every other place that does the same job (for example adding a thing on Wishlist, Owned and the Quick list) and give it the same feature in the same change. Name those places in the PR.

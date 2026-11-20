@@ -306,11 +306,11 @@ Each phase gets tests, a guardian review, and a look on the phone layout before 
 
 ---
 
-## 8. Using AI for less — proposed, waiting for the owner's go
+## 8. Using AI for less — approved by the owner on 20.11.2026
 
 **The owner's ask (20.11.2026):** an "AI Optimization & Automation Discovery System". AI is for reasoning, deciding and interpreting. Whatever fixed logic, a reusable query, an existing tool or an automation can do reliably should not go through AI. The system watches new AI use, finds repeated or needless AI work, and **only suggests**: it never creates, switches on or changes anything by itself. "The ultimate goal is not to make AI perform more tasks. It is to make AI necessary for fewer tasks." The owner asked for criticism, and to split the work into phases.
 
-**Status:** a proposal. Nothing here is built until the owner says go.
+**Status:** approved as written below (owner, 20.11.2026: "I trust on your judgement. Do whatever is best and includes my goal to minimize AI, maximize automation and tool. AI is useful to me when it needs to think. Also pre-defined stuff is also nice."). Decided with it: Ask AI keeps **one** read-only fallback tool for new questions, and everything else is fixed tools. Built in steps A–D below, not all at once.
 
 ### What already covers it (reuse)
 
