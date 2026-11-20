@@ -190,6 +190,16 @@ export function readDescribe(raw: unknown): Describe {
   }
 }
 
+/** A job's title from the function's own list; one it no longer lists shows its name. */
+export function jobTitleOf(jobs: readonly Pick<DescribeJob, 'name' | 'title'>[] | undefined, name: string): string {
+  return jobs?.find(j => j.name === name)?.title || name
+}
+
+/** A model's name from the function's own list; one it no longer lists shows its id. */
+export function modelNameOf(models: Describe['models'] | undefined, id: string): string {
+  return models?.find(m => m.id === id)?.name || id
+}
+
 // ── Outcomes: a plain word and a tone each ───────────────────────────────────
 
 export type LedgerTone = 'success' | 'warn' | 'danger' | 'info' | 'neutral'
