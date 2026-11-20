@@ -31,20 +31,24 @@ set role authenticated;
 -- 144's delete with Undo.
 select public.t_ok(public.t_err($$select public.app_delete_rows('ai_calls', array['a0000000-0000-0000-0000-000000000001'])$$) = '42501',
   'the app''s delete (app_delete_rows) can''t delete a call');
--- 144's Undo of a delete, handed a snapshot the browser made up: a new call, then an old call's cost.
+-- 144's Undo of a delete, handed a snapshot the browser made up: a whole new call, then an old call's cost. (Both
+-- snapshots do write when the ledger is opened by hand: they are real doors, checked while this file was written.)
 select public.t_ok((select (r ->> 'restored')::integer = 0 and r -> 'skipped' ? 'ai_calls' from public.app_restore_rows($j${
     "v": "1", "root": "ai_calls", "links": [], "touched": [], "hidden": [],
     "groups": [{"table": "ai_calls", "pk": "id", "rows": [{"id": "a0000000-0000-0000-0000-000000000002",
-      "user_id": "00000000-0000-0000-0000-000000000001", "job": "item_fill", "caller": "app", "model": "claude-haiku-5-5", "outcome": "ok", "cost_usd": 0}]}]
+      "user_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-01-01T00:00:00+00:00", "run_id": "a0000000-0000-0000-0000-00000000000f",
+      "step": 1, "job": "item_fill", "caller": "app", "mode": "live", "provider": "anthropic", "model": "claude-haiku-5-5", "outcome": "ok",
+      "input_tokens": 0, "cache_read_tokens": 0, "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 0, "thinking_tokens": 0,
+      "long_prompt": false, "cost_usd": 0, "tools": []}]}]
   }$j$::jsonb) r),
   'the app''s restore (app_restore_rows) can''t add a made-up call: the table is skipped');
-select public.t_ok((select (r ->> 'restored')::integer = 0 and (r ->> 'relinked')::integer = 0 from public.app_restore_rows($j${
+select public.t_ok((select (r ->> 'restored')::integer = 0 and (r ->> 'relinked')::integer = 0 and r -> 'skipped' ? 'ai_calls' from public.app_restore_rows($j${
     "v": "1", "root": "ai_calls", "groups": [], "links": [], "hidden": [],
-    "touched": [{"table": "ai_calls", "pk": "id", "columns": ["cost_usd"],
+    "touched": [{"table": "ai_calls", "pk": "id",
       "rows": [{"id": "a0000000-0000-0000-0000-000000000001", "cost_usd": 0}],
-      "after": [{"id": "a0000000-0000-0000-0000-000000000001", "cost_usd": 1.5}]}]
+      "after": {"a0000000-0000-0000-0000-000000000001": {"id": "a0000000-0000-0000-0000-000000000001", "cost_usd": 1.5}}}]
   }$j$::jsonb) r),
-  'nor put a made-up cost back on a call');
+  'nor put a made-up cost on a call');
 -- 151's undo steps, handed steps the browser made up.
 select public.t_ok(public.t_err($q$select public.app_undo_steps('[{"t": "ai_calls", "action": "revert", "rows": [{"id": "a0000000-0000-0000-0000-000000000001", "set": {"cost_usd": 0}}]}]'::jsonb)$q$) = '42501',
   'the app''s undo steps (app_undo_steps) can''t change a call''s cost');

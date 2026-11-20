@@ -1,7 +1,8 @@
 import { useState, useEffect, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
-import { BookOpen, CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Timer, Unplug } from 'lucide-react'
+import { BookOpen, CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Sparkles, Timer, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
 import { Button, PageBoard } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
@@ -26,6 +27,7 @@ import { TraktCard } from '../../media/trakt/TraktCard'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
 import { CalendarReadbackLine, ConvertOldItemsButton } from './ConvertOldItems'
 import { ICloudCard } from '../../calendar/icloud/ICloudCard'
+import { useClaudeDescribe } from '../../ai/claude/hooks/useClaude'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
@@ -40,9 +42,9 @@ import { ICloudCard } from '../../calendar/icloud/ICloudCard'
 //  Two kinds of integration live side by side and are labelled differently:
 //    · user-authorized (Google, Strava, PlayStation) — a real per-user token,
 //      connected and revoked from here;
-//    · server-configured (Steam, Hevy, Apple Health) — a single-user secret in
-//      Supabase Vault with no browser consent step at all, so the card is a
-//      read-only status readout, never a button that pretends to connect.
+//    · server-configured (Steam, Hevy, Apple Health, Anthropic) — a single-user
+//      secret on the server with no browser consent step at all, so the card is
+//      a read-only status readout, never a button that pretends to connect.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function GoogleCard() {
@@ -311,8 +313,27 @@ function KoboCard() {
   )
 }
 
+/**
+ * Anthropic: the key is a server secret (ANTHROPIC_API_KEY), so the card only says whether it is set — what
+ * the claude function reports about itself. The same lines whatever the answer, so nothing moves when it lands.
+ */
+function AnthropicCard() {
+  const about = useClaudeDescribe()
+  const configured = about.data?.configured
+  return (
+    <ConnectionCard service="anthropic" kind="server" icon={<Sparkles />} name="Anthropic (Claude)"
+      description="The model behind the app’s AI features. Today: ✨ on the item screen, which fills the fields from one sentence."
+      status={about.isLoading ? 'unknown' : configured ? 'connected' : about.isError ? 'unknown' : 'disconnected'}
+      statusNote={about.isLoading ? undefined : configured ? 'Key set' : about.isError ? 'Not checked' : 'Key not set'}
+      footer={<>
+        The key is the server secret ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets): there is nothing to sign in to here.
+        Cost, calls and settings are on <Link to="/developer?tab=ai" className="font-semibold text-accent-600">Developer → AI</Link>.
+      </>} />
+  )
+}
+
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
-const CARD_SERVICES = ['google', 'icloud', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo'] as const
+const CARD_SERVICES = ['google', 'icloud', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo', 'anthropic'] as const
 
 const ACCOUNTS_LABEL = 'Signed in by you'
 const SERVER_LABEL = 'Set up on the server'
@@ -328,6 +349,7 @@ export function ConnectionsTab() {
   const hevy = <HevyCard />
   const health = <AppleHealthCard />
   const kobo = <KoboCard />
+  const anthropic = <AnthropicCard />
   // Each step mounts a card once: on its own, or (server-side, from 1920)
   // inside the serverCards grid.
   const sections: Record<ConnectionSection, ReactNode> = {
@@ -341,14 +363,14 @@ export function ConnectionsTab() {
       </div>
     ),
     otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
-    google, icloud, strava, psn, trakt, steam, igdb, hevy, health, kobo,
+    google, icloud, strava, psn, trakt, steam, igdb, hevy, health, kobo, anthropic,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,
     // Short read-only cards of about the same height, so a row grid
     // is safe here (W2 card columns, 19–22rem).
     serverCards: (
       <section aria-label={SERVER_LABEL} className="grid grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] items-start gap-4">
-        {steam}{igdb}{hevy}{health}{kobo}
+        {steam}{igdb}{hevy}{health}{kobo}{anthropic}
       </section>
     ),
   }

@@ -151,20 +151,20 @@ export const API_REGISTRY: readonly ApiEntry[] = [
 
   // ── AI ─────────────────────────────────────────────────────────────────
   {
-    id: 'gemini', name: 'Gemini API', provider: 'Google', category: 'AI', official: true,
-    docsUrl: 'https://ai.google.dev/gemini-api/docs',
-    moreDocs: [{ label: 'Embeddings', url: 'https://ai.google.dev/gemini-api/docs/embeddings' }],
-    purpose: 'Answers Ask AI, the shop companion, the PT coach and phone questions; reads photos, extracts recipes and powers semantic search.',
+    id: 'anthropic', name: 'Claude API', provider: 'Anthropic', category: 'AI', official: true,
+    docsUrl: 'https://platform.claude.com/docs',
+    purpose: 'The model behind the app\'s AI features, rebuilt on Claude one at a time. Today: ✨ on the item screen fills the fields from one sentence.',
     transports: ['edge'],
-    connection: 'Only through the ai-proxy edge function: a tool-calling loop over a curated database catalog, a structured-JSON mode and a server-side page fetch. Falls back across four models.',
-    edgeFunctions: ['ai-proxy'], endpoints: ['generativelanguage.googleapis.com'],
-    auth: 'api-key', secrets: ['GEMINI_API_KEY', 'PHONE_GATEWAY_SECRET (phone branch)'],
-    direction: 'both', cadence: 'On each question — never runs by itself',
-    usedIn: [{ label: 'Ask AI (top bar)', path: '/home' }, { label: 'Shop companion', path: '/shop' }, { label: 'PT coach', path: '/training?tab=coach' }, { label: 'AI memory', path: '/developer?tab=memory' }],
-    tables: ['ai_memory', 'ai_embeddings', 'ai_usage_log', 'ai_query_log'], migrations: ['064', '065'],
-    cost: 'paid', limits: 'A 429 is a real quota error; overload 5xx retries on the next model in the chain.',
-    caveats: ['Every model id must be verified live before it enters the chain.', 'Deletes always need your explicit confirmation.'],
-    since: H0, sinceFrom: 'supabase/functions/ai-proxy/index.ts', sinceIsHistoryStart: true,
+    connection: 'Only through the claude edge function: it checks who asks, the job\'s settings and the monthly budget, calls the Messages API and writes every call — tokens, cost, how it ended — to the ledger. The key never reaches the browser.',
+    edgeFunctions: ['claude'], endpoints: ['api.anthropic.com'],
+    auth: 'api-key', authNote: 'Set up on the server: the key is a Supabase Edge Function secret. Developer → AI shows whether it is set.',
+    secrets: ['ANTHROPIC_API_KEY'],
+    direction: 'both', cadence: 'On each request — never runs by itself',
+    usedIn: [{ label: 'Item screen ✨', path: '/daily' }, { label: 'Developer → AI', path: '/developer?tab=ai' }],
+    tables: ['ai_calls', 'ai_settings', 'ai_job_settings'], migrations: ['194'],
+    cost: 'paid', limits: 'Your own monthly budget stops every call when it is reached; the function also caps calls per minute and per day (Developer → AI → How it works).',
+    caveats: ['The prices live in the function\'s code and are shown, read-only, on Developer → AI → Prices.', 'Set a monthly spend limit in Anthropic\'s Console too: it is the outer wall.'],
+    since: '20.11.2026', sinceFrom: 'supabase/functions/claude/index.ts', hasIntegrationCard: true,
   },
 
   // ── Productivity ───────────────────────────────────────────────────────
