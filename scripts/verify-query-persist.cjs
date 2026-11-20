@@ -23,9 +23,14 @@ check('an answer with no read time is not', !R.keepsQuery(q({ dataUpdatedAt: 0 }
 check('an answer a week old is still kept', R.keepsQuery(q({ dataUpdatedAt: NOW - R.KEEP_MS }), NOW))
 check('an answer older than a week is dropped', !R.keepsQuery(q({ dataUpdatedAt: NOW - R.KEEP_MS - 1 }), NOW))
 check('an answer its hook wants gone at once (gcTime 0) is never kept', !R.keepsQuery(q({ gcTime: 0 }), NOW))
-for (const root of ['geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs', 'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article']) {
+for (const root of ['geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs', 'ai-calls', 'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article']) {
   check(`never kept: ${root}`, !R.keepsQuery(q({ queryKey: [root, 'x'] }), NOW))
 }
+// The AI ledger: a call's text (what the owner asked, what came back) never goes to the device; the month's
+// numbers, the settings and the function's description of itself hold no text and are kept like any page.
+check('the AI ledger\'s list and a call with its text are never kept',
+  !R.keepsQuery(q({ queryKey: ['ai-calls', 'page', { job: '', outcome: '' }, 0] }), NOW) && !R.keepsQuery(q({ queryKey: ['ai-calls', 'call', 'x'] }), NOW))
+check('…while its numbers and settings are (no text in them)', R.keepsQuery(q({ queryKey: ['claude', 'usage', 'a', 'b'] }), NOW) && R.keepsQuery(q({ queryKey: ['claude', 'settings'] }), NOW))
 check('a key that does not start with a name is not kept', !R.keepsQuery(q({ queryKey: [{ a: 1 }] }), NOW) && !R.keepsQuery(q({ queryKey: [] }), NOW))
 check('health, tasks, shop and the diary are kept (the account\'s own pages)', ['health', 'tasks', 'shop', 'diary', 'schedule'].every(r => R.keepsQuery(q({ queryKey: [r] }), NOW)))
 

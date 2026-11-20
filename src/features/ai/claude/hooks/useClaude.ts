@@ -1,0 +1,79 @@
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
+import { qk, STALE } from '../../../../shared/query'
+import { describeClaude } from '../claudeApi'
+import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, saveAiJobSettings, saveAiSettings } from '../ledgerApi'
+import { osloMonthRange } from '../ledgerRules'
+import type { AiCallsFilter, AiJobSettings, AiSettings } from '../types'
+
+// Developer → AI's reads and writes (and Settings → Subscriptions' Anthropic card, which reads `describe`).
+
+/** What the `claude` function says about itself. */
+export function useClaudeDescribe() {
+  return useQuery({ queryKey: qk.claude.describe(), queryFn: describeClaude, staleTime: STALE.default })
+}
+
+/** This Oslo month's usage, per day, job, mode and model, with the month it is for. */
+export function useAiUsageMonth() {
+  const month = osloMonthRange(new Date())
+  const query = useQuery({
+    queryKey: qk.claude.usage(month.from, month.to),
+    queryFn: () => fetchAiUsage(month.from, month.to),
+    staleTime: STALE.short,
+  })
+  return { ...query, month }
+}
+
+/** One page of the ledger, newest first; the page before stays on screen while the next loads. */
+export function useAiCalls(filter: AiCallsFilter, page: number) {
+  return useQuery({
+    queryKey: qk.aiCalls.page(filter, page),
+    queryFn: () => fetchAiCallsPage(filter, page),
+    staleTime: STALE.live,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** One call with its text log, read when it is opened. */
+export function useAiCall(id: string | null) {
+  return useQuery({
+    queryKey: qk.aiCalls.call(id ?? ''),
+    queryFn: () => fetchAiCall(id as string),
+    staleTime: STALE.default,
+    enabled: !!id,
+  })
+}
+
+/** The stored settings row, or null with none (the function's defaults apply: ledgerRules.readSettings). */
+export function useAiSettings() {
+  return useQuery({ queryKey: qk.claude.settings(), queryFn: fetchAiSettings, staleTime: STALE.default })
+}
+
+export function useAiJobSettings() {
+  return useQuery({ queryKey: qk.claude.jobSettings(), queryFn: fetchAiJobSettings, staleTime: STALE.default })
+}
+
+export function useSaveAiSettings() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'save_ai_settings',
+    successMessage: 'AI settings saved',
+    mutationFn: (input: AiSettings) => saveAiSettings(input),
+    // The write's own answer is what is stored now.
+    onSuccess: stored => { qc.setQueryData(qk.claude.settings(), stored) },
+    invalidates: ['aiSettings'],
+  })
+}
+
+export function useSaveAiJobSettings() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'save_ai_job_settings',
+    successMessage: (_stored, v: { input: AiJobSettings; title: string }) => `${v.title}: settings saved`,
+    mutationFn: ({ input }: { input: AiJobSettings; title: string }) => saveAiJobSettings(input),
+    onSuccess: stored => {
+      qc.setQueryData<AiJobSettings[]>(qk.claude.jobSettings(), rows => [...(rows ?? []).filter(r => r.job !== stored.job), stored])
+    },
+    invalidates: ['aiSettings'],
+  })
+}

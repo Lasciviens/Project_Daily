@@ -38,6 +38,10 @@ const groups = {
     // assistant can write the current program / targets / assessments.
     qk.hevy.routines(), qk.training.currentProgram, qk.training.exerciseTargets, qk.training.ptAssessments,
   ],
+  /** A Claude job ran (✨): the ledger has a new row and this month's numbers moved. */
+  aiLedger: [qk.aiCalls.all, qk.claude.usageAll],
+  /** The owner changed an AI setting (the budget, the text log, a job). */
+  aiSettings: [qk.claude.settings(), qk.claude.jobSettings()],
   /** A save was undone (Developer → Activity): it can have changed any table,
    *  so every query refreshes (the empty key matches them all). */
   saveUndone: [[] as const],
