@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Copy } from 'lucide-react'
 import { toast } from '../../../../app/store'
-import { Card, IconButton, Skeleton, cx } from '../../../../shared/ui'
+import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useAiCall } from '../../../ai/claude/hooks/useClaude'
 import { formatCount, formatDuration, formatUsd, jobTitleOf, logParts, outcomeMeta, type LogPart } from '../../../ai/claude/ledgerRules'
@@ -101,7 +101,7 @@ export function AiCallDetail({ call, jobs, framed }: {
         <Fact label="Cost">{formatUsd(call.cost_usd, { fine: true })}{call.long_prompt ? ' · long prompt (higher prices)' : ''}</Fact>
         <Fact label="Input">{formatCount(call.input_tokens)} tokens</Fact>
         <Fact label="Cached">{formatCount(call.cache_read_tokens)} read · {formatCount(written)} written{call.cache_write_1h_tokens > 0 ? ` (${formatCount(call.cache_write_1h_tokens)} for 1 h)` : ''}</Fact>
-        <Fact label="Output">{formatCount(call.output_tokens)} tokens{call.thinking_tokens > 0 ? ` · ${formatCount(call.thinking_tokens)} of them thinking` : ''}</Fact>
+        <Fact label="Output">{formatCount(call.output_tokens)} tokens{call.thinking_tokens > 0 ? ` · thinking ${formatCount(call.thinking_tokens)}` : ''}</Fact>
         {call.request_id && (
           <Fact label="Anthropic id">
             <span className="inline-flex max-w-full items-center gap-1">
@@ -123,5 +123,5 @@ export function AiCallDetail({ call, jobs, framed }: {
   )
   return framed
     ? <Card aria-label="Call details" className="flex max-h-[calc(100dvh-7rem)] flex-col gap-3 overflow-y-auto">{body}</Card>
-    : <div className={cx('flex flex-col gap-3')}>{body}</div>
+    : <div className="flex flex-col gap-3">{body}</div>
 }

@@ -44,7 +44,7 @@ export function Term({ children, term, className }: { children: ReactNode; term:
 
 /**
  * Logged or fixed text exactly as it is: a <pre> whose content is a text node — never HTML, never a link —
- * that wraps inside its box and scrolls past `tall`.
+ * that wraps inside its box and scrolls once it is taller than 20rem.
  */
 export function PlainText({ children, className }: { children: string; className?: string }) {
   return (
