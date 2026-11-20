@@ -11,6 +11,7 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Calendar plan — Apple first (the owner's wishes and phases) | — | [calendar-plan.md](calendar-plan.md) | `planning.md` |
 | One item screen (Apple Calendar style) — the plan and its steps | — | [item-screen-plan.md](item-screen-plan.md) | `planning.md` |
 | Shop renovation plan — decisions, what is done, the three steps left | — | [shop-plan.md](shop-plan.md) | `shop.md` |
+| AI rebuild on Claude — the plan: every use of Gemini today, the new design, the AI page, the phases | — | [ai-plan.md](ai-plan.md) | `ai.md` |
 | One delete, with Undo | — | [delete-undo.md](delete-undo.md) | `database.md`, `ui.md` |
 | Wishes | `/#/wishes` | [wishes.md](wishes.md) | `wishes.md` |
 | Food (diary, plan, recipes, foods, insights) | `/#/recipes` | [food.md](food.md) | `food.md` |
