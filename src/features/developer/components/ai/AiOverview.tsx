@@ -28,7 +28,7 @@ function Figure({ label, value, hint, loading, tone }: { label: ReactNode; value
         {loading ? <Wait className="h-6 w-14" /> : <span data-tone={tone} className={cx('text-kpi font-bold tabular-nums tracking-tight', tone ? 'tone-text' : 'text-fg')}>{value}</span>}
       </span>
       <span className="mt-0.5 flex h-4 items-center">
-        {loading ? <Wait className="h-2.5 w-20" /> : <Truncate className="text-meta text-fg-muted">{hint}</Truncate>}
+        {loading ? <Wait className="h-2.5 w-20" /> : <Truncate className="min-w-0 text-meta text-fg-muted">{hint}</Truncate>}
       </span>
     </div>
   )
@@ -152,7 +152,7 @@ export function AiOverview({ onOpen }: { onOpen: (view: AiView) => void }) {
                   return (
                     <li key={r.job} className="flex items-center gap-3 py-1.5">
                       <div className="min-w-0 flex-1">
-                        <Truncate className="text-body font-medium text-fg">{r.title}</Truncate>
+                        <Truncate className="block text-body font-medium text-fg">{r.title}</Truncate>
                         <MetaLine className="text-meta tabular-nums text-fg-muted" items={[
                           `${formatCount(r.calls)} ${r.calls === 1 ? 'call' : 'calls'}`,
                           r.failed > 0 && `${formatCount(r.failed)} not answered`,

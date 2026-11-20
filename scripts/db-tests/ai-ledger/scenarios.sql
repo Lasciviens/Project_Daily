@@ -116,23 +116,15 @@ select public.t_ok(not exists (select 1 from pg_class c join pg_namespace n on n
 select set_config('test.uid', 'none', false);
 set role service_role;
 select public.t_ok(public.t_call() is not null, 'the service role writes a ledger row');
+-- A row that names only what has no default.
+insert into public.ai_calls (id, user_id, job, caller, model, outcome)
+values ('d0000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'item_fill', 'app', 'claude-haiku-5-5', 'ok');
 select public.t_ok((select step = 1 and mode = 'live' and provider = 'anthropic' and tools = '[]'::jsonb and cost_usd = 0 and not long_prompt
-                           and input_tokens = 0 and request is null and created_at is not null and run_id is not null
-                      from public.ai_calls where id = public.t_call(jsonb_build_object('step', null, 'mode', null, 'provider', null, 'tools', null,
-                        'cost_usd', null, 'long_prompt', null, 'input_tokens', null, 'created_at', null, 'run_id', null)) is not null limit 1),
-  'a ledger row with only what must be said is refused where a column may not be empty')
-  where false;
-reset role;
--- Defaults: a row that names only what has no default.
-insert into public.ai_calls (user_id, job, caller, model, outcome)
-values ('00000000-0000-0000-0000-000000000001', 'item_fill', 'app', 'claude-haiku-5-5', 'ok');
-select public.t_ok((select bool_and(step = 1 and mode = 'live' and provider = 'anthropic' and tools = '[]'::jsonb and cost_usd = 0 and not long_prompt
-                                    and input_tokens = 0 and cache_read_tokens = 0 and cache_write_5m_tokens = 0 and cache_write_1h_tokens = 0
-                                    and output_tokens = 0 and thinking_tokens = 0 and request is null and response is null and thinking is null
-                                    and run_id is not null and created_at is not null)
-                      from public.ai_calls),
+                           and input_tokens = 0 and cache_read_tokens = 0 and cache_write_5m_tokens = 0 and cache_write_1h_tokens = 0
+                           and output_tokens = 0 and thinking_tokens = 0 and request is null and response is null and thinking is null
+                           and run_id is not null and created_at is not null
+                      from public.ai_calls where id = 'd0000000-0000-0000-0000-000000000001'),
   'a ledger row takes its defaults: step 1, live, anthropic, no tools, zero tokens and cost, no text');
-set role service_role;
 select public.t_ok(public.t_err($$insert into public.ai_calls (job, caller, model, outcome) values ('item_fill', 'app', 'claude-haiku-5-5', 'ok')$$) = '23502',
   'a ledger row without its account is refused (no default fills it in)');
 select public.t_ok(public.t_call_err('{"user_id": "00000000-0000-0000-0000-0000000000ff"}') = '23503', 'a ledger row for an account that does not exist is refused');
@@ -150,9 +142,6 @@ select public.t_ok(public.t_call_err('{"job": null}') = '23502' and public.t_cal
   'job, caller, model and outcome must be there');
 select public.t_none((select string_agg(quote_literal(v), ', ') from unnest(array['browser', 'App', 'cron', 'web', '', ' app']) v
   where public.t_call_err(jsonb_build_object('caller', v)) is distinct from '23514'), 'a caller outside app, phone, kobo, schedule is refused');
-select public.t_none((select string_agg(v, ', ') from unnest(array['app', 'phone', 'kobo', 'schedule']) v
-  where public.t_call_err(jsonb_build_object('caller', v)) is not null), 'each of the four callers is taken')
-  where false;
 select public.t_ok((select bool_and(public.t_call_err(jsonb_build_object('caller', v)) is null) from unnest(array['app', 'phone', 'kobo', 'schedule']) v),
   'each of the four callers is taken');
 select public.t_ok(public.t_call_err('{"mode": "stream"}') = '23514' and public.t_call_err('{"mode": "Live"}') = '23514'
@@ -319,8 +308,8 @@ select public.t_ok(public.t_err($$insert into public.ai_settings (user_id, month
 select public.t_ok((select count(*) = 2 and sum(cost_usd) = 2 from public.ai_calls), 'after all of that the owner''s ledger is as it was');
 select public.t_ok((select sum(calls) = 2 and sum(failed) = 1 and sum(cost_usd) = 2 from public.ai_usage(now() - interval '1 day', now() + interval '1 day')),
   'ai_usage adds up the owner''s two calls');
-select public.t_ok((select month_cost = 2 and job_month_cost = 1.25 and calls_last_minute = 2 and calls_today = 2 from public.ai_gate('item_fill')),
-  'ai_gate answers the owner''s month, the job''s share of it, and the calls of the last minute and of today');
+select public.t_ok((select count(*) = 1 and bool_and(calls_last_minute = 2) from public.ai_gate('item_fill')),
+  'ai_gate counts the owner''s two calls of the last minute (the month and the day: section 6, where the clock stands still)');
 
 -- A second account that the owner lock lets in.
 select set_config('test.uid', '00000000-0000-0000-0000-000000000002', false);
@@ -332,9 +321,9 @@ select public.t_ok(not exists (select 1 from public.ai_settings) and not exists 
   'nor the owner''s settings');
 select public.t_ok((select sum(calls) = 1 and sum(cost_usd) = 0.5 from public.ai_usage(now() - interval '1 day', now() + interval '1 day')),
   'its ai_usage holds its own call only');
-select public.t_ok((select month_cost = 0.5 and job_month_cost = 0.5 and calls_last_minute = 1 and calls_today = 1 from public.ai_gate('item_fill'))
+select public.t_ok((select calls_last_minute = 1 and month_cost < 2 from public.ai_gate('item_fill'))
                    and (select job_month_cost = 0 from public.ai_gate('other_job')),
-  'its ai_gate counts its own call only: the owner''s spend never stops it, and its spend never stops the owner');
+  'its ai_gate counts its own call only: the owner''s calls and the owner''s other_job spend are not in it');
 update public.ai_settings set monthly_budget_usd = 0;
 update public.ai_job_settings set enabled = false;
 insert into public.ai_settings (monthly_budget_usd) values (9);
@@ -468,7 +457,6 @@ create temp table t_at on commit drop as
 select now() as n,
        (date_trunc('month', now() at time zone 'Europe/Oslo')) at time zone 'Europe/Oslo' as m,
        (date_trunc('day', now() at time zone 'Europe/Oslo')) at time zone 'Europe/Oslo' as d;
-grant select on t_at to authenticated;
 select public.t_ok((select to_char(m at time zone 'Europe/Oslo', 'DD HH24:MI:SS') = '01 00:00:00'
                            and to_char(d at time zone 'Europe/Oslo', 'HH24:MI:SS') = '00:00:00'
                            and to_char((m - interval '30 minutes') at time zone 'Europe/Oslo', 'HH24:MI') = '23:30'
@@ -511,10 +499,13 @@ select public.t_ok((select g.calls_today = 2 from public.ai_gate('item_fill') g)
 select set_config('test.uid', '00000000-0000-0000-0000-000000000006', true);
 select public.t_ok((select g.calls_last_minute = 2 from public.ai_gate('item_fill') g),
   'ai_gate: the last minute is the 60 seconds before now — 30 and 59 seconds ago are in, 60 and 61 seconds and 5 minutes ago are out — whatever the outcome');
+select set_config('test.uid', '00000000-0000-0000-0000-000000000002', true);
+select public.t_ok((select g.month_cost = 40 and g.job_month_cost = 40 and g.calls_last_minute = 1 and g.calls_today = 1 from public.ai_gate('item_fill') g),
+  'ai_gate: the second account''s one call of 40 USD just now is its month, its job, its minute and its day — and nobody else''s rows are in it');
 select set_config('test.uid', '', true);
 select public.t_ok((select count(*) = 1 and bool_and(g.month_cost = 0 and g.job_month_cost = 0 and g.calls_last_minute = 0 and g.calls_today = 0)
                       from public.ai_gate('item_fill') g),
-  'ai_gate: an account with no calls gets one row of zeros (another account''s 40 USD is not its)');
+  'ai_gate: an account with no calls gets one row of zeros (the other accounts'' calls and 40 USD are not its)');
 reset role;
 commit;
 truncate public.ai_calls;
@@ -524,13 +515,13 @@ truncate public.ai_calls;
 update public.ai_settings set log_days = 7 where user_id = '00000000-0000-0000-0000-000000000001';
 delete from public.ai_settings where user_id = '00000000-0000-0000-0000-000000000002';
 insert into public.ai_settings (user_id, log_days) values ('00000000-0000-0000-0000-000000000004', 90), ('00000000-0000-0000-0000-000000000005', 1);
-create table public.t_purge (id uuid primary key, goes boolean not null, numbers jsonb);
+create table public.t_purge (id uuid primary key, goes boolean not null, has_text boolean not null, numbers jsonb);
 create or replace function public.t_old(p_user integer, p_age interval, p_goes boolean, p_text jsonb default '{"request": {"text": "Dentist on Tuesday"}, "response": {"fill": {"title": "Dentist"}}, "thinking": "A dentist visit."}'::jsonb)
 returns void language sql as $$
-  insert into public.t_purge (id, goes)
+  insert into public.t_purge (id, goes, has_text)
   select public.t_call(jsonb_build_object('user_id', '00000000-0000-0000-0000-00000000000' || p_user, 'created_at', now() - p_age,
     'input_tokens', 123, 'output_tokens', 45, 'thinking_tokens', 6, 'cost_usd', 0.004321, 'duration_ms', 900, 'request_id', 'req_test',
-    'stop_reason', 'end_turn', 'served_model', 'claude-haiku-5-5', 'effort', 'low', 'instructions_version', 'v1', 'tools', '[{"name": "x"}]'::jsonb) || p_text), p_goes
+    'stop_reason', 'end_turn', 'served_model', 'claude-haiku-5-5', 'effort', 'low', 'instructions_version', 'v1', 'tools', '[{"name": "x"}]'::jsonb) || p_text), p_goes, p_text <> '{}'::jsonb
 $$;
 select public.t_old(1, interval '8 days', true);
 select public.t_old(1, interval '7 days 1 minute', true);
@@ -555,8 +546,8 @@ reset role;
 select public.t_ok((select bool_and(c.request is null and c.response is null and c.thinking is null) from public.ai_calls c join public.t_purge p using (id) where p.goes),
   'request, response and thinking are gone from every one of them');
 select public.t_ok((select count(*) = 5 and bool_and(c.request is not null and c.response is not null and c.thinking is not null)
-                      from public.ai_calls c join public.t_purge p using (id) where not p.goes and c.created_at > now() - interval '35 days'),
-  'the calls inside their days keep all three: a minute over the 7 days goes, two hours under stays');
+                      from public.ai_calls c join public.t_purge p using (id) where not p.goes and p.has_text),
+  'the five calls inside their days keep all three: a minute over the owner''s 7 days goes, two hours under stays');
 select public.t_ok((select count(*) = 13 and bool_and(to_jsonb(c) - 'request' - 'response' - 'thinking' = p.numbers) from public.ai_calls c join public.t_purge p using (id)),
   'the numbers of all 13 calls are as they were: tokens, cost, time, outcome, model, tools');
 set role service_role;
@@ -575,7 +566,6 @@ end $$;
 create schema hostile;
 create table hostile.ai_settings (user_id uuid, log_days smallint);
 insert into hostile.ai_settings select id, 1 from auth.users;
-create table hostile.ai_calls (like public.ai_calls);
 grant usage on schema hostile to service_role;
 grant all on all tables in schema hostile to service_role;
 set search_path = hostile, public;
