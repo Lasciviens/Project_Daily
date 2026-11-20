@@ -14,7 +14,7 @@ the browser asks, the harness answers instead of the network):
 | `https://mock.supabase.co/auth/v1/…` | a signed-in session for the made-up owner, Ola Nordmann (`ola.nordmann@example.com`) |
 | `…/rest/v1/<table>` | the made-up rows, read and written through a small PostgREST copy (`postgrest.cjs`); an unknown table answers `[]` |
 | `…/rest/v1/rpc/<name>` | `rpc.cjs`; an unknown function answers `[]` |
-| `…/functions/v1/<name>` | `functions.cjs`: what each function says when nothing outside is connected; an unknown one answers `{}` |
+| `…/functions/v1/<name>` | `functions.cjs`: what each function says when nothing outside is connected (the `claude` function alone answers as if set up: `claude.cjs`); an unknown one answers `{}` |
 | `…/storage/v1/…` | empty lists, signed URLs, a transparent pixel for a file |
 | any other host (TMDB, Open Food Facts, met.no, EnTur, ESPN, Google …) | **blocked**; an image gets a transparent pixel |
 | a WebSocket to any host but the app's | closed before it opens |
@@ -98,9 +98,11 @@ await page.goto('http://127.0.0.1:5371/#/daily')
 - `log: (message) => …` collects what the mock could not answer.
 - `outside: (url, request) => ({ status, headers, body }) | null` answers an outside host
   with a fixture of the test's own; everything else stays blocked.
-- `functions: { 'ai-proxy': ({ body }) => answer }` answers an edge function with a fixture of
-  the test's own, over `functions.cjs` (whose `ai-proxy` says "AI not configured", as the real
-  one does without `GEMINI_API_KEY`). The item screen's ✨ test answers `body.itemFill` this way.
+- `functions: { name: ({ body, store }) => answer }` answers an edge function with a fixture of
+  the test's own, over `functions.cjs`. The `claude` function (Developer → AI, the item
+  screen's ✨) has a ready one in `claude.cjs`: `functions: { claude: claudeMock({ stop:
+  'not_configured' }) }` makes every run stop with that reason (`busy`, `refused`, `budget` …),
+  `claudeMock({ configured: false })` plays a server without the key.
 
 Writes (insert, upsert, update, delete) change the context's own copy, so a flow can
 add a task and see it listed. A new row gets an id, `user_id`, timestamps, `false` for
@@ -125,6 +127,7 @@ valid UUIDs, the same on every run.
 | Shop | wishlist (a general wish with two models, a price watch and its clean reads), quick list with past ticks (bananas, coffee and dish soap due for Buy again, bread and a birthday card bought before), owned things (an accessory, a sold one, a cost); 190's deal days, and its functions answered from these rows (`shop_price_stats`, the three Needs-a-look writes) and the sale and delete calls with their Undo (`shop_record_sale` / `shop_undo_sale`, `shop_delete_items` / `shop_restore_items`) |
 | Work, Projects | work tasks, notes, weekly goals, pinned links; 4 projects with phases, tasks, parts table, log, links and decisions |
 | Wishes, Developer, Games, Books, Football, Settings | wishes with seasons; activity, errors, memory, dev requests; 8 games; 6 books with reading sessions; followed teams; subscriptions and a home stop |
+| Developer → AI | ten days of ✨ calls in the ledger (`ai_calls`: mostly answered, every other outcome once, two on the stronger model; the newest with their text, the oldest without), the AI settings and one job's own budget; `ai_usage` is answered from those rows, and the `claude` function (`claude.cjs`) describes itself, answers ✨ with a fixed fill and writes each run to the ledger |
 
 Nothing is real: names are placeholders (Ola and Kari Nordmann), places public
 landmarks (Jernbanetorget), links `example.com`, every title invented and every

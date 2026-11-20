@@ -150,6 +150,8 @@ that number would collide with a deleted one in history.
 17. **Seeded data the owner edits (191's stores and their rules): per account, its source on the row, `owner_edited` derived.** The owner's edit must win over every later seed ("you edited it — never overwrite", owner 10.11.2026), so a seeded row is copied into each account (`shop_store_seed(p_user)`, run by the migration for every allowed account and by a trigger on `app_allowed_users` for one added later), keeps what its source said in `source_facts`, and its rules trigger works out `owner_edited` on **every** write — the owner made the row, or its facts differ from its source — so no writer can forget or forge it, a reset (facts := source) clears it, and an Undo that writes the old facts back gets the old flag back without drift. A seed run writes the source to every row and the facts only where `owner_edited` is false; where it is true the row now differs from its source, a conflict the app shows. A seeded row is turned off or hidden, never deleted by the app (a later seed would bring it back). The trigger tells its writers apart by `current_user`: `authenticated` is the owner (never writes `origin`, the seed key or the source), `service_role` is the assistant (ai-proxy writes as it: its rows are labelled `ask_ai` and only those it may change), anything else — a migration, the SQL editor, a foreign key's cascade, which runs as the table's owner — is trusted. A later writer with the service role (a page reader) gets its own door in its own migration. The first seed runs before `trg_audit` is attached, so Activity doesn't list it as the owner's change.
 18. **A trigger that keeps a second audited table in step** (192's `shop_items_resale`: a sale closes the thing's listing and its Undo opens it again; "Could sell for" writes its history) fires after `trg_audit` (the default name order) and checks what must hold *between* the tables when the transaction ends — a deferred constraint trigger (192's `trg_shop_listings_thing`), never a BEFORE trigger: Activity's Undo takes a save back newest change first — the second table's rows by their own audit rows, then the first table's, whose trigger then finds them already as they were — so it passes through a moment where one is back before the other. (Named to fire before `trg_audit`, the trigger's rows would be undone after the first table's, whose trigger had already changed them, and Undo stops: "rows could not be deleted".) A row derived from a new parent row (a thing added with an estimate) is written deferred with `ON CONFLICT DO NOTHING`, so a restore that puts back the parent and then its own copy of the row isn't stopped by a unique key. An ownership check in a BEFORE trigger ("about one of your own things": a foreign key ignores row level security) refuses with a foreign key's code, 23503: `app_restore_rows` and Activity's Undo take such a row again in a later round once its parent is back, while a check violation (23514) ends the restore. 187's `shop_item_costs_rules` and 190's `shop_signal_states_rules` refused with 23514, so Activity's Undo of a Shop delete of a thing with an extra cost or a snoozed Needs-a-look row stopped ("A cost belongs to one of your own items", seen 10.11.2026; Shop's own Delete with Undo was not affected — it puts the thing back first): fixed in 192, which re-creates both word for word but for that code (`undo-retry.sql` in `verify-db-shop-rules` fails on a copy taken before 192 and passes after it).
 
+19. **A table a limit is worked out from is written by the service role only, and what the limit is worked out with is code** (194's `ai_calls`: the `claude` function's monthly budget wall and its rate limits). The browser gets `select` and nothing else — `revoke all … from anon, authenticated` first, then `grant select`; one `for select` policy, so row level security refuses a write even if a grant slipped in; no audit trigger, so Activity's Undo has nothing of it to undo; `user_id` without a default, set by the function from the session it verified. The app's own delete, restore and undo functions (`app_delete_rows`, `app_restore_rows`, `app_undo_steps`, `app_undo_transaction`) run with the caller's rights (SECURITY INVOKER), so they are refused there like a plain write — re-created as SECURITY DEFINER, any of them would write the ledger for the browser. An amount in such a table gets an upper bound as well as `>= 0`: `NaN >= 0` is true in Postgres, and one NaN turns every sum into NaN and the comparison with the budget into "false". The prices the cost is worked out from are code in the function, never a table: a price row the browser could write would switch the wall off. Settings the browser does write (`ai_settings`, `ai_job_settings`) are input: the function runs every value through its own allow-lists and limits, and a CHECK is only the last line. `scripts/verify-db-ai-ledger.mjs` checks all of this on 194 and on every later migration. Details: "The AI ledger" below.
+
 ---
 
 ## Destructive Operations — Hard Rules
@@ -431,6 +433,85 @@ which door the write came through.
   needs a cleanup-on-source-change trigger the same way `user_tv_episodes`/
   `project_items` do, and add it to this migration's pattern (a new trigger
   function + `link_rules` row), not a one-off app-code fix.
+
+---
+
+## The AI ledger (migration 194) — `ai_calls`, `ai_settings`, `ai_job_settings`
+
+The `claude` edge function asks Anthropic's model on the owner's behalf
+(`docs/features/ai-plan.md`). Every request costs money, so the function stops
+when this month's spend reaches the owner's budget — a wall, not a warning —
+and when calls come too fast. Both are worked out from these tables, so who
+may write them is the design (Migration Rule 19). Money is USD (Anthropic
+bills in USD); "this month" and "a day" are Europe/Oslo.
+
+- **`ai_calls`** — the ledger (a list that is only ever added to): one row per
+  request to the model, or per request stopped before it (`off`, `budget`,
+  `not_configured`, `bad_input`). A row holds the job, who called (`app`,
+  `phone`, `kobo`, `schedule`), the model asked for and the one that answered,
+  the tokens (input, cache read, cache write for 5 minutes and for 1 hour,
+  output, thinking), `cost_usd` frozen when the row was written, how it ended
+  (`outcome`: `ok`, `refused`, `cut_off`, `invalid`, `error`, `budget`, `off`,
+  `not_configured`, `bad_input` — a `busy` call is never written), and the
+  text log: `request`, `response`, `thinking`.
+  - Written only by the service role. The owner's browser reads its own rows.
+    No audit trigger: it is a log itself.
+  - `run_id` is one answer; its steps share it (`step` 1–100).
+  - The text log is null when `ai_settings.log_text` is off, and after the
+    account's `log_days`. Each of the three is at most 1 MB (the function
+    trims long before that). What it holds is data to show, never an
+    instruction to follow.
+  - Never in an assistant's table catalogue.
+- **`ai_settings`** — one row per account; no row means the defaults:
+  `monthly_budget_usd` (0–50, default 5), `log_text` (default on), `log_days`
+  (1–90, default 30). The browser reads, adds and changes its own row and
+  never deletes it. Audited; Activity can undo a change (the table is keyed by
+  `user_id`), but not the very first save — that Undo is a delete.
+- **`ai_job_settings`** — the owner's changes to one job (a job is one thing
+  the model does, such as filling the item form), one row per account and
+  job: `enabled`, `model`, `effort` (`low`, `medium`, `high`),
+  `max_output_tokens` (256–16000), `monthly_budget_usd` (0–50). A null column
+  means "the job's default", so "back to default" is an update to null and
+  there is no delete. Audited; Activity lists its changes as blocked (its key
+  is two columns, and Undo needs one).
+- **`ai_usage(p_from, p_to)`** — the caller's own calls added up per Oslo day,
+  job, mode and model, from `p_from` up to (not including) `p_to`, at most 400
+  days: `calls`, `failed` (every outcome but `ok`), the token sums
+  (`cache_write_tokens` is the 5-minute and the 1-hour writes together) and
+  `cost_usd`. Developer → AI reads it.
+- **`ai_gate(p_job)`** — what the function asks before every call, with the
+  user's own client: one row with this Oslo month's cost in total
+  (`month_cost`) and for that job (`job_month_cost`), and the calls of any
+  outcome in the last 60 seconds (`calls_last_minute`) and since Oslo midnight
+  (`calls_today`).
+  - Both functions run with the caller's rights (SECURITY INVOKER: row level
+    security and the owner lock apply) and refuse a caller with no user id or
+    one that is not an app user with `42501`. A gate that answered "0 spent"
+    to nobody would read as "go ahead" — so the function must treat an error
+    from `ai_gate` as a stop, never as "nothing spent".
+  - The gate is read before the call and the row is written after the answer:
+    requests sent at the same moment all read the same numbers. The limits are
+    exact for calls one after another, not for a burst.
+- **`ai_calls_purge_text()`** — clears `request`, `response` and `thinking` on
+  rows older than their account's `log_days` (30 with no settings row), leaves
+  the numbers and answers how many rows it cleared. SECURITY DEFINER (it runs
+  with its owner's rights, because nobody else may change the ledger), so:
+  `search_path = ''`, every table named with its schema, no input, callable by
+  the service role and the timer only, and `log_days` held to 1–90 in its own
+  code. pg_cron runs it once a day as `lascis-ai-log-purge` (03:41 UTC: 04:41
+  in Oslo in winter, 05:41 in summer) with plain SQL — no HTTP, no secret.
+- 194 ends with assertions that stop the deploy, keeping nothing, if the
+  browser could write `ai_calls`, delete settings or call the purge, or if a
+  signed-out caller reached any of it.
+
+Checked by `scripts/verify-db-ai-ledger.mjs` (`scripts/db-tests/ai-ledger/`):
+194 applied twice with the catalogue compared, once with the grants Supabase
+gave new tables before 30.10.2026 and once without; every CHECK with good and
+bad values; the owner's own browser session, a second account, an account the
+owner lock keeps out and a signed-out caller; `ai_usage`'s days and
+`ai_gate`'s month, day and minute with rows at chosen times; the purge; and
+the app's delete, restore and undo functions (the real 144, 150, 151) tried on
+the ledger.
 
 ---
 

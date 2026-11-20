@@ -6,6 +6,8 @@
 // outside service answered. A function missing here answers {} and
 // HARNESS_LOG=1 names it.
 
+const { claudeMock } = require('./claude.cjs')
+
 const reply = (status, body) => ({ status, headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(body) })
 
 const FUNCTIONS = {
@@ -39,9 +41,13 @@ const FUNCTIONS = {
   // The lookup (Nasjonalbiblioteket, Open Library) is outside: nothing found.
   'book-meta': () => ({ updated: [], source: null }),
 
-  // No GEMINI_API_KEY in the harness: every AI call answers as the real function does without it. A test that
-  // needs an answer (the item screen's ✨, body.itemFill) gives its own through installMocks' `functions` option.
+  // The old assistant (Ask AI, the coach, recipes, quick guess — until the AI rebuild's later phases). No
+  // GEMINI_API_KEY in the harness: every call answers as the real function does without it.
   'ai-proxy': () => reply(503, { error: 'AI not configured — add GEMINI_API_KEY to Supabase Vault' }),
+
+  // The Claude layer (Developer → AI, the item screen's ✨): the one function here that answers as if it were
+  // set up — claude.cjs says why, and how a test makes it stop (`claudeMock({ stop: 'not_configured' })`).
+  claude: claudeMock(),
 }
 
 module.exports = { FUNCTIONS, reply }

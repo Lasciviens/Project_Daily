@@ -261,4 +261,4 @@ function claudeMock(opts = {}) {
   }
 }
 
-module.exports = { claudeMock, about, callRow, costOf, loggedRequest, ITEM_FILL_VERSION }
+module.exports = { claudeMock, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
