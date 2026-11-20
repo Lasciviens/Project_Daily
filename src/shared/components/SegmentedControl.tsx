@@ -12,6 +12,13 @@ type SegmentedControlProps<T extends string> = {
   fullWidth?: boolean
   /** `sm`: smaller text; `xs`: a 28px pill row for a compact header (This day | All days). */
   size?: 'xs' | 'sm' | 'md'
+  /**
+   * Each segment as wide as its own label, with tighter sides, instead of equal shares: five views with one
+   * long name ("How it works") fit a phone's width on one line (Developer → AI).
+   */
+  fit?: boolean
+  /** What the control switches, for screen readers. */
+  label?: string
 }
 
 // iOS-style segmented control. Generic over a string-union value so callers get
@@ -22,13 +29,17 @@ export function SegmentedControl<T extends string>({
   onChange,
   fullWidth = false,
   size = 'md',
+  fit = false,
+  label,
 }: SegmentedControlProps<T>) {
   return (
     <div
       role="tablist"
+      aria-label={label}
       className={[
         'seg',
         size === 'xs' ? 'seg-xs' : '',
+        fit ? 'auto-cols-auto' : '',
         fullWidth ? 'w-full' : '',
       ].join(' ')}
     >
@@ -44,6 +55,7 @@ export function SegmentedControl<T extends string>({
             className={[
               'seg-btn flex items-center justify-center gap-1.5 whitespace-nowrap',
               size === 'sm' ? 'text-meta' : '',
+              fit ? 'px-2.5' : '',
               isActive ? '' : 'hover:text-fg',
             ].join(' ')}
           >
