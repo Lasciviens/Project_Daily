@@ -108,7 +108,9 @@ Words used below, once:
 
 A new edge function, **`claude`**, is the only place that holds `ANTHROPIC_API_KEY` and talks to Anthropic. Nothing is carried over from `ai-proxy`'s Gemini code (the from-scratch rule above).
 
-**Built in separate parts** (the owner's decision 4), each in its own file of the function:
+**Built in separate parts** (the owner's decision 4), each in its own file under `supabase/claude-src/`. A small script (`scripts/build-claude-function.mjs`) joins them into the one file that is deployed (`supabase/functions/claude/index.ts`), because every function in this repo is deployed as one file. You read and change the parts; a check fails if the joined file is out of date.
+
+The parts:
 - **The provider part** is the only file that imports Anthropic's SDK. It turns our own neutral request ("these instructions, these tools, this conversation") into Anthropic's shape and the answer back. Another provider is another such file.
 - **The loop part** runs an answer: call the model, run the tools it asks for, repeat. It knows no provider. Trying Managed Agents later means writing a second loop part, not changing the jobs.
 - **The jobs part:** one small definition per job (its instructions, tools, answer shape and checks).
@@ -156,10 +158,14 @@ Each job has its own settings and its own log:
   - effort: low, medium or high;
   - the longest answer;
   - a monthly budget in dollars. When it's reached, the job stops and says so.
-- **Total monthly budget.** It's a wall, not a warning.
-- **Per tool:** read-only, ask first, or off. The model never changes these: they're not in its tool list.
-- **Your own instructions:** a text the model gets after its fixed rules, such as "answer in short sentences" or "I train in the morning". The fixed safety rules stay in code.
-- **Conversation log:** keep the full text of requests and answers (on or off), and for how many days.
+- **Total monthly budget.** It's a wall, not a warning. You set it between $0 and $50; the $50 ceiling is in the function's code, so a stolen sign-in can't raise it further. The limit you set in Anthropic's Console is the outer wall.
+- **Per tool:** read-only, ask first, or off. The model never changes these: they're not in its tool list. *Arrives with Ask AI (phase 4), when there are tools.*
+- **Your own instructions:** a text the model gets after its fixed rules, such as "answer in short sentences" or "I train in the morning". The fixed safety rules stay in code. *Arrives with Ask AI (phase 4): a form fill like ✨ should not be steered by free text.*
+- **Conversation log:** keep the full text of requests and answers (on or off), and for how many days (1–90). Text already saved stays until its days have passed.
+
+Every stored setting is treated as input by the function: a model that isn't on its list, or a number outside its limits, is never used.
+
+**Prices are not a setting** (changed 20.11.2026, for safety). The budget wall is worked out from the prices. If the browser could change a price, a stolen sign-in could set it to zero and switch the wall off. So the price table lives in the function's code, the AI page shows it with the date it was checked, and a price change is a reviewed code change that re-checks Anthropic's page.
 
 ### Search by meaning without Gemini
 
@@ -238,13 +244,13 @@ A new section on the **Developer** page (the owner's decision 1). Its tabs:
    - Every call: time, job, model, tokens (input · cached · written · output), cost, duration, the tools it used, and how it ended.
    - Open one to see the request and the answer (if you keep them), the thinking summary, and each tool call with its input and result.
 3. **Settings:** everything in §2's settings list.
-4. **How it works:**
-   - The path of a request, as a diagram: app → function → Claude → tools → your database.
+4. **How it works:** read from the running function itself (it describes its own jobs, limits and prices), so the page shows what is deployed, not a copy.
+   - The path of a request, step by step: app → function → Claude → tools → your database.
    - The fixed instructions of every job, with their version.
    - Every tool: its name, description, inputs, permission, and what it can read or write.
    - A link to each source file on GitHub.
    - A short glossary.
-5. **Prices:** the price table the costs are worked out from, with the date it was checked. You can edit it when Anthropic changes prices.
+5. **Prices:** the price table the costs are worked out from, with the date it was checked and a worked example. Read-only (see "Prices are not a setting" in §2).
 6. **Test bench**
    - Send any question with a model and effort you pick.
    - See the token count before sending, then the answer, its cost, its time and its thinking summary.
@@ -281,7 +287,7 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 | # | What | Old code removed |
 |---|---|---|
 | 0 | **Done (20.11.2026):** `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields, prices, limits and traps, checked against Anthropic's documentation. | — |
-| 1 | **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls, settings and prices;<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
+| 1 | **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls and settings (migration 194);<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
 | 2 | **One-shot jobs:** recipes, quick guess, PT assessment, Kobo passage, phone brief. The Test bench. | their branches in `ai-proxy`, `kobo-sync` and `phone-gateway` |
 | 3 | **Batch jobs:** the queue, the scheduled check, the Batches tab, and the first weekly report. What the report covers is asked when this phase starts. | — |
 | 4 | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
