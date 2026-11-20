@@ -288,14 +288,17 @@ begin
   if v_user is null or not public.is_app_user() then
     raise exception 'Not allowed' using errcode = '42501';
   end if;
+  -- Three separate reads, each with its own start. One read for all four numbers would have to start at the
+  -- earliest of them, and in a month's first minute the last 60 seconds start before the month does.
   return query
-  select coalesce(pg_catalog.sum(c.cost_usd) filter (where c.created_at >= v_month), 0)::numeric,
-         coalesce(pg_catalog.sum(c.cost_usd) filter (where c.created_at >= v_month and c.job = p_job), 0)::numeric,
-         (pg_catalog.count(*) filter (where c.created_at > v_minute))::integer,
-         (pg_catalog.count(*) filter (where c.created_at >= v_day))::integer
-    from public.ai_calls c
-   -- In a month's first minute the last 60 seconds start before the month does.
-   where c.user_id = v_user and c.created_at >= least(v_month, v_minute);
+  select m.total,
+         m.for_job,
+         (select pg_catalog.count(*) from public.ai_calls c where c.user_id = v_user and c.created_at > v_minute)::integer,
+         (select pg_catalog.count(*) from public.ai_calls c where c.user_id = v_user and c.created_at >= v_day)::integer
+    from (select coalesce(pg_catalog.sum(c.cost_usd), 0)::numeric as total,
+                 coalesce(pg_catalog.sum(c.cost_usd) filter (where c.job = p_job), 0)::numeric as for_job
+            from public.ai_calls c
+           where c.user_id = v_user and c.created_at >= v_month) m;
 end;
 $$;
 

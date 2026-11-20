@@ -212,9 +212,9 @@ select public.t_none((select string_agg(v, ', ') from unnest(array['-0.01', '50.
 select public.t_ok(public.t_err($$update public.ai_settings set monthly_budget_usd = 'Infinity'$$) is not null
                    and public.t_err($$update public.ai_settings set monthly_budget_usd = null$$) = '23502',
   'an infinite budget and no budget at all are refused');
-select public.t_ok(public.t_err($$update public.ai_settings set monthly_budget_usd = 0$$) is null and public.t_err($$update public.ai_settings set monthly_budget_usd = 50$$) is null
-                   and (select monthly_budget_usd = 50 from public.ai_settings),
-  'a budget of 0 (nothing may be spent) and of 50 are taken');
+select public.t_ok(public.t_err($$update public.ai_settings set monthly_budget_usd = 0$$) is null, 'a budget of 0 is taken (nothing may be spent)');
+select public.t_ok((select monthly_budget_usd = 0 from public.ai_settings), 'and it is stored');
+select public.t_ok(public.t_err($$update public.ai_settings set monthly_budget_usd = 50$$) is null, 'a budget of 50 is taken');
 select public.t_none((select string_agg(v, ', ') from unnest(array['0', '91', '-1', '366']) v
   where public.t_err(format('update public.ai_settings set log_days = %s', v)) is distinct from '23514'), 'log_days under 1 or over 90 is refused');
 select public.t_ok(public.t_err($$update public.ai_settings set log_days = 1$$) is null and public.t_err($$update public.ai_settings set log_days = 90$$) is null
@@ -570,9 +570,8 @@ grant usage on schema hostile to service_role;
 grant all on all tables in schema hostile to service_role;
 set search_path = hostile, public;
 set role service_role;
-select public.t_ok(public.ai_calls_purge_text() = 0
-                   and (select count(*) = 5 from public.ai_calls where request is not null and thinking is not null),
-  'a look-alike ai_settings earlier on the search path (1 day for everyone) does not shorten anyone''s days');
+select public.t_ok(public.ai_calls_purge_text() = 0, 'a look-alike ai_settings earlier on the search path (1 day for everyone) makes the purge clear nothing more');
+select public.t_ok((select count(*) = 5 from public.ai_calls where request is not null and thinking is not null), 'and the five calls inside their days still have their text');
 reset role;
 reset search_path;
 drop schema hostile cascade;
@@ -583,8 +582,8 @@ alter table public.ai_settings drop constraint ai_settings_log_days_check;
 update public.ai_settings set log_days = 0 where user_id = '00000000-0000-0000-0000-000000000005';
 update public.ai_settings set log_days = 30000 where user_id = '00000000-0000-0000-0000-000000000004';
 update public.ai_calls set request = '{"again": true}'::jsonb where user_id = '00000000-0000-0000-0000-000000000004' and created_at < now() - interval '90 days';
-select public.t_ok(public.ai_calls_purge_text() = 1
-                   and (select request is not null from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000005' and created_at > now() - interval '1 day')
+select public.ai_calls_purge_text();
+select public.t_ok((select request is not null from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000005' and created_at > now() - interval '1 day')
                    and not exists (select 1 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000004' and created_at < now() - interval '90 days' and request is not null),
   'were the CHECK ever gone: 0 days still keeps a 12-hour-old text (1 day), and 30000 days still clears a 91-day-old one (90 days)');
 rollback;

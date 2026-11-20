@@ -54,11 +54,11 @@ export function AiCalls() {
   const sections: Record<ListDetailSection, ReactNode> = {
     toolbar: (
       <div className="flex flex-wrap items-center gap-2">
-        <select value={filter.job} onChange={e => change({ job: e.target.value })} aria-label="Job" className="select w-auto min-w-0 max-w-[11rem] flex-1 sm:flex-none">
+        <select value={filter.job} onChange={e => change({ job: e.target.value })} aria-label="Job" className="select w-auto min-w-0 max-w-[11rem]">
           <option value="">All jobs</option>
           {(jobs ?? []).map(j => <option key={j.name} value={j.name}>{j.title}</option>)}
         </select>
-        <select value={filter.outcome} onChange={e => change({ outcome: e.target.value })} aria-label="Outcome" className="select w-auto min-w-0 max-w-[11rem] flex-1 sm:flex-none">
+        <select value={filter.outcome} onChange={e => change({ outcome: e.target.value })} aria-label="Outcome" className="select w-auto min-w-0 max-w-[11rem]">
           <option value="">All outcomes</option>
           {CALL_OUTCOMES.map(o => <option key={o} value={o}>{OUTCOME_META[o].label}</option>)}
         </select>
