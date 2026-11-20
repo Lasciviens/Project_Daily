@@ -1,14 +1,33 @@
 # AI rebuild on Claude — the plan
 
-**Status: a plan, waiting for the owner's go. No code yet.** Written 20.11.2026.
+**Status: approved by the owner on 20.11.2026, with the changes in "The owner's decisions" below.** Phase 0 is done (`docs/integrations/anthropic.md`). Written 20.11.2026.
 
 **The owner's ask (20.11.2026):** "Let's build Haiku then. Let's be careful and do it right. Note every single use of Gemini we do. I want a place to see every single detail with AI API. The cost, the usage, the stats, everything. I want to see how we configure, set up, use, manipulate AI in every way! I want to see the code, the explanation and everything. I want every single feature Anthropic gives us … so we use it as efficiently as we can. I want to use this AI and understand how this works. We will remove everything about Gemini. Do not try to adapt Haiku to Gemini's code. We will start from scratch. A better, more secure, more useful, more intelligent, and more controlled by myself version."
 
 **What this plan decides:**
 - the new AI layer is built fresh on Claude Haiku 5.5 (`claude-haiku-5-5`);
 - every place Gemini is used today gets a Claude replacement;
-- one new page, **AI**, shows how it all works and what it costs;
-- Gemini is then removed completely.
+- one new section, **Developer → AI**, shows how it all works and what it costs;
+- Gemini is removed completely, part by part as each is rebuilt.
+
+## The owner's decisions (20.11.2026)
+
+1. **The AI page lives under the Developer page** ("Under developer page!").
+2. **The Batch API is in scope,** for cheap jobs that can wait, such as weekly reports ("I do also want to use the batch API feature for cheap solution to use for weekly reports etc.").
+3. **We run the agent loop ourselves:** "I want full control over tool execution, logging, error handling, and Supabase operations." Claude Haiku serves both the real-time requests and the batch jobs.
+4. **The architecture is modular,** "so we can switch providers or try Managed Agents later if needed".
+5. **Gemini has been switched off for months** and nothing depends on it: "You can remove whenever you want." So nothing is kept running for its sake.
+6. **Nothing of the Gemini setup is copied:** "DO NOT COPY ANY OF GEMINI VERSION AI SETUP! Just get the idea what it does and then build it from scratch!"
+
+Taken as proposed, since the owner named no change (each is a setting on the page, except the first):
+- search by meaning becomes the database's own full-text search;
+- the full text of requests and answers is logged, kept 30 days, owner-only;
+- fixed safety rules in code, plus the owner's own editable instructions;
+- a monthly budget of $5 to start, stopping when reached.
+
+### The from-scratch rule
+
+The old code (`ai-proxy`, `aiApi.ts`, the Kobo and phone AI calls) is read for one purpose only: to learn **what each feature does for the owner**. Nothing is carried over: no instruction text, no tool definition, no answer shape, no loop, no model chain, no caching trick. Each job's instructions, tools and answer shape are designed new, for Claude, from the feature's purpose. The one thing kept is knowledge about the owner's data that isn't Gemini's: which tables exist, which columns link a row to an outside account (they stay unwritable by the assistant), and which actions need a Confirm.
 
 Words used below, once:
 - **Token:** a piece of text, about ¾ of a word. Prices are per million tokens ($/M).
@@ -87,7 +106,15 @@ Words used below, once:
 
 ### One server function, built fresh
 
-A new edge function, **`claude`**, is the only place that holds `ANTHROPIC_API_KEY` and talks to Anthropic. Nothing is carried over from `ai-proxy`'s Gemini code. It is deleted at the end.
+A new edge function, **`claude`**, is the only place that holds `ANTHROPIC_API_KEY` and talks to Anthropic. Nothing is carried over from `ai-proxy`'s Gemini code (the from-scratch rule above).
+
+**Built in separate parts** (the owner's decision 4), each in its own file of the function:
+- **The provider part** is the only file that imports Anthropic's SDK. It turns our own neutral request ("these instructions, these tools, this conversation") into Anthropic's shape and the answer back. Another provider is another such file.
+- **The loop part** runs an answer: call the model, run the tools it asks for, repeat. It knows no provider. Trying Managed Agents later means writing a second loop part, not changing the jobs.
+- **The jobs part:** one small definition per job (its instructions, tools, answer shape and checks).
+- **The tools part:** each tool, with its permission and what it may touch.
+- **The ledger part:** logging, cost and budgets.
+- **The guard part:** who may call, limits, and scrubbing of errors.
 
 How each request goes:
 1. The app (or the phone, or the Kobo) asks for a **job**, for example `item_fill`.
@@ -119,6 +146,7 @@ Each job has its own settings and its own log:
 | `item_fill` | One answer, fixed shape | ✨ |
 | `recipe_from_text` · `recipe_from_link` · `recipe_macros` | One answer, fixed shape | Recipe editor |
 | `quick_guess` · `quick_guess_options` | One answer, fixed shape | Quick guess |
+| `weekly_report` (and later reports) | **Batch:** queued, answered within hours, at half price | new |
 
 ### Settings you control (stored in your database, edited on the AI page)
 
@@ -145,7 +173,7 @@ Anthropic has no model that turns text into search numbers ("embeddings"). The r
 
 ## 3. Anthropic features: what we use and why
 
-Checked against Anthropic's API reference for Claude Haiku 5.5. Prices and limits are confirmed live in `docs/integrations/anthropic.md` before any code.
+Checked against Anthropic's documentation on 20.11.2026: every price, limit and field is in `docs/integrations/anthropic.md`.
 
 **Haiku 5.5's price** (per million tokens):
 
@@ -166,13 +194,14 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 | **Prompt caching** | The fixed part (tools + rules, about 7K tokens) costs a tenth on every step after the first. That's the biggest cost lever, since an answer sent ~100K tokens. |
 | **Mid-conversation system messages** | Live context (today, the time, your data) goes in after the cached part, so it never breaks the cache. |
 | **Structured outputs** | ✨, recipes, quick guess and the PT assessment always come back in the exact shape the app expects. Every field is still checked by our code. |
-| **Strict tool use** | A tool's input always matches its definition. |
+| **Strict tool use** | A tool's input always matches its definition. Anthropic allows at most 20 such tools in one request, so the new tool set is small and sharp. |
 | **Adaptive thinking + effort per job** | Low for form fills, medium for chat. The log shows a **summary of how it reasoned**, so you can see why it answered what it did. |
 | **Vision** | Photos in the chat, as today. |
-| **Context editing** (beta) | Old tool results inside a long answer are cleared before the next step, so a 4-step answer stops resending everything. That attacks the 100K-per-answer problem. Its support on Haiku 5.5 is confirmed in phase 0; if it's missing, our own loop trims old results the same way. |
+| **Context editing** (beta) | Old tool results inside a long answer are cleared before the next step, so a 4-step answer stops resending everything. That attacks the 100K-per-answer problem. Haiku 5.5 supports it (checked 20.11.2026). |
 | **Task budgets** (beta) | A token ceiling per answer that the model paces itself to, instead of being cut off. |
 | **Token counting** | The AI page can show what a prompt will cost before it's sent. |
 | **Exact usage per call** | Every answer reports its input, cached, written and output tokens. The log stores them, and cost is worked out from the price table. |
+| **Message Batches** | Jobs that can wait (weekly reports) are queued and answered within hours, usually within one, at **half price**. Results land in the same log. Anthropic keeps a batch's content 29 days, so the results stay downloadable. |
 | **Refusal handling** | Haiku can decline a request its safety filters flag, and Anthropic offers no automatic fallback for it. You see a decline plainly. Optionally (your setting) our function retries it once on Sonnet 5.5. |
 
 ### Later, one at a time, each measured on your own questions
@@ -185,7 +214,6 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 | **Web search / web fetch** | Looking things up. For recipe links we keep our own guarded fetch. |
 | **Citations** | Answers that point to the exact note or row they came from. |
 | **PDF input** | For example, reading a body-composition report. |
-| **Message Batches** | Half price for jobs that can wait hours, such as a weekly review, if you ever want one. |
 | **Memory tool** | A more structured long-term memory than today's `ai_memory`. |
 
 ### Not used, and why
@@ -194,14 +222,14 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 - **Message threads:** the conversation would be kept at Anthropic for a while. Not needed at this size.
 - **Fast mode:** only on Opus and Fable, at 2× the price.
 - **Admin API / official cost reports:** they need an admin key that can manage your whole Anthropic organization, which is too powerful to keep on a server. Our own log has the exact usage per call, and Anthropic's Console shows the official bill.
-- **Data residency** (`inference_geo`): checked in `docs/integrations/anthropic.md`, to see whether an EU option exists for Haiku 5.5.
+- **Data residency** (`inference_geo`): Anthropic offers no EU option (checked 20.11.2026); the only other choice, "us", just costs 10% more.
 - **Computer use, bash, text editor, MCP connector:** nothing in this app needs them.
 
 ---
 
-## 4. The AI page
+## 4. The AI page (Developer → AI)
 
-A new page, **AI**, in the menu. Its tabs:
+A new section on the **Developer** page (the owner's decision 1). Its tabs:
 1. **Overview**
    - This month's cost, total and per job, against your budgets.
    - Answers, tokens, and how much the cache saved.
@@ -222,6 +250,7 @@ A new page, **AI**, in the menu. Its tabs:
    - See the token count before sending, then the answer, its cost, its time and its thinking summary.
 
    This is where you learn how it behaves.
+7. **Batches:** each queued batch job, its state (waiting, done, failed), its cost at the batch price, and its result. Start one by hand, or cancel one that waits.
 
 The page follows the app's rules: phone layout first, dates as DD.MM.YYYY, and every action says its result.
 
@@ -245,16 +274,18 @@ A **guardian review** runs on every phase.
 
 ---
 
-## 6. Phases — each its own PR, after your go
+## 6. Phases — each its own PR
 
-| # | What | Gemini |
+Gemini is off and stays off. Each phase deletes the Gemini code of what it rebuilds; the last leftovers go in phase 5.
+
+| # | What | Old code removed |
 |---|---|---|
-| 0 | `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields we read and write, prices and limits checked live. | runs as today |
-| 1 | **Foundation:**<br>• the `claude` function core: caching, logging, cost, budgets, refusals;<br>• the tables for calls, settings and prices;<br>• the **AI page**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill** on Haiku. | runs everything else |
-| 2 | One-shot jobs: recipes, quick guess, PT assessment, Kobo passage, phone brief. Test bench. | chat only |
-| 3 | **Ask AI from scratch:**<br>• a new tool set: fewer, sharper, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask. | none in use |
-| 4 | Search without embeddings (Postgres full-text), memory. | — |
-| 5 | **Remove Gemini everywhere:**<br>• code, docs, settings rows;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | gone |
+| 0 | **Done (20.11.2026):** `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields, prices, limits and traps, checked against Anthropic's documentation. | — |
+| 1 | **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls, settings and prices;<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
+| 2 | **One-shot jobs:** recipes, quick guess, PT assessment, Kobo passage, phone brief. The Test bench. | their branches in `ai-proxy`, `kobo-sync` and `phone-gateway` |
+| 3 | **Batch jobs:** the queue, the scheduled check, the Batches tab, and the first weekly report. What the report covers is asked when this phase starts. | — |
+| 4 | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
+| 5 | **The last of Gemini:**<br>• docs and checks;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | everything left |
 | 6 | Optional, one at a time and measured: advisor, programmatic tool calling, tool search, web search. | — |
 
 Each phase gets tests, a guardian review, and a look on the phone layout before its PR.
@@ -265,15 +296,4 @@ Each phase gets tests, a guardian review, and a look on the phone layout before 
 
 1. Create an Anthropic API account at console.anthropic.com, add billing, and **set a monthly spend limit** there.
 2. Create an API key and add it in **Supabase → Project Settings → Edge Functions → Secrets** as `ANTHROPIC_API_KEY`. Never paste it in the chat.
-3. After phase 5, delete `GEMINI_API_KEY` there too.
-
----
-
-## 8. Decisions needed before phase 1
-
-1. **Search by meaning:** Postgres full-text search (recommended: no outside service, free), or a separate embedding service (Voyage AI, another provider and key).
-2. **Keep the full text** of requests and answers in the log? Recommended: yes, kept 30 days, owner-only. Otherwise only tokens and costs are logged.
-3. **Instructions:** fixed rules in code, shown on the AI page, plus your own editable instructions (recommended), or every prompt editable.
-4. **Where the AI page lives:** its own page in the menu (recommended), or a tab on Developer.
-5. **Budget:** a monthly total to start with, for example $5, stopping when reached.
-6. **While rebuilding:** keep Gemini running for the jobs not yet moved (recommended: nothing stops working), or switch Gemini off now and live without those AI features until each phase lands.
+3. Delete `GEMINI_API_KEY` there whenever you like: nothing uses it.
