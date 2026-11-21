@@ -1,6 +1,6 @@
 # Anthropic (Claude API)
 
-Checked: 20.11.2026 against Anthropic's own documentation at `platform.claude.com/docs`, read that day. The pages: pricing, batch processing, rate limits, prompt caching, context editing, create a message, task budgets, mid-conversation system messages, token counting, effort, vision, structured outputs, models overview, and API and data retention. Request shapes were also checked against the TypeScript SDK's reference. **No live call has been made yet:** the owner adds the key first. The section "Not confirmed by a live call yet" lists what the first real call must confirm.
+Checked: 20.11.2026 against Anthropic's own documentation at `platform.claude.com/docs`, read that day. The pages: pricing, batch processing, rate limits, prompt caching, context editing, create a message, task budgets, mid-conversation system messages, token counting, effort, vision, structured outputs, models overview, and API and data retention. Request shapes were also checked against the TypeScript SDK's reference. **No live call has been made yet:** the owner adds the key first. Phase 1 (20.11.2026) built the `claude` function and its one job; "What phase 1 sends and reads" below says exactly which of the fields in this file it uses. The section "Not confirmed by a live call yet" lists what the first real call must confirm.
 
 Claude is the model behind every AI feature of the app (the plan: `docs/features/ai-plan.md`). One edge function, `claude`, talks to it. The default model is **Claude Haiku 5.5** (`claude-haiku-5-5`): Anthropic's fastest and cheapest current model, with a 1M-token context window, up to 128K tokens of output, text and image input, and a knowledge cutoff of June 2026.
 
@@ -25,18 +25,18 @@ Words used here, once:
 
 ## Models and prices
 
-Per million tokens, in USD, from Anthropic's pricing page on 20.11.2026. The app keeps these in a table the owner can edit (`ai_prices`); the cost of every call is worked out from that table.
+Per million tokens, in USD, from Anthropic's pricing page on 20.11.2026. The function keeps these in code (`supabase/claude-src/prices.ts`, with the date they were checked), not in a table the browser can write: the budget wall is worked out from them, so an editable price could switch the wall off. A price change is a pull request that re-reads the page. Cache-write prices for Sonnet 5.5 ($2.50 and $4) and Opus 5.5 ($5 and $8) were read from the page on 20.11.2026 too.
 
 | Model | Input | Output | Cache read | Cache write, 5 min | Cache write, 1 h |
 |---|---|---|---|---|---|
 | **Claude Haiku 5.5**, prompt up to 100,000 tokens | $0.10 | $0.50 | $0.01 | $0.125 | $0.20 |
 | **Claude Haiku 5.5**, prompt over 100,000 tokens | $0.50 | $2.50 | $0.05 | $0.625 | $1.00 |
-| Claude Sonnet 5.5 (a stronger option) | $2.00 | $10.00 | $0.10 | — | — |
-| Claude Opus 5.5 (the strongest option here) | $4.00 | $20.00 | $0.20 | — | — |
+| Claude Sonnet 5.5 (a stronger option) | $2.00 | $10.00 | $0.10 | $2.50 | $4.00 |
+| Claude Opus 5.5 (the strongest option here) | $4.00 | $20.00 | $0.20 | $5.00 | $8.00 |
 
-"—" means not read from the pricing page that day. Anthropic's general rule is 1.25× the input price for a 5-minute write and 2× for a 1-hour write.
+Anthropic's general rule is 1.25× the input price for a 5-minute write and 2× for a 1-hour write.
 
-- **The 100,000-token line counts every input token of the request,** cache reads and cache writes included. Above it, the whole request costs 5×. Our function keeps every request under it (see Traps).
+- **The 100,000-token line counts every input token of the request,** cache reads and cache writes included. Above it, the whole request costs 5×. Per the pricing page, only Haiku 5.5 has this higher price list; Sonnet 5.5 and Opus 5.5 include the full 1M window at the normal price. Our function prices it that way (`costOf`) and keeps every request under it (see Traps).
 - **Batch API: half price.** Haiku 5.5 in a batch costs $0.05 input and $0.25 output (up to 100,000 tokens). The discount stacks with caching.
 - **Thinking is billed as output.** `usage.output_tokens` is the total that is billed; `usage.output_tokens_details.thinking_tokens` says how much of it was thinking.
 - **Where the request runs** (`inference_geo`): `"global"` is the default at the normal price; `"us"` costs 1.1×. **There is no EU option.**
@@ -91,7 +91,7 @@ Base `https://api.anthropic.com`. All through the SDK.
 | `usage.service_tier` | `standard` · `priority` · `batch` | the log: a batch call is priced at half |
 | `context_management.applied_edits[]` | `{ type, cleared_tool_uses, cleared_input_tokens }` | the log: what was cleared |
 | response headers `anthropic-ratelimit-*`, `retry-after`, `request-id` | text | `request-id` to the log (it is what Anthropic's support asks for); `retry-after` decides the wait after a 429 |
-| errors | HTTP status + `{ type: "error", error: { type, message } }`: 400 `invalid_request_error` · 401 `authentication_error` · 402 `billing_error` · 403 `permission_error` · 404 `not_found_error` · 413 `request_too_large` · 429 `rate_limit_error` · 500 `api_error` · 529 `overloaded_error` | the SDK's typed errors. 429 (unless it is the spend cap), 500 and 529 are retried by the SDK; the rest end the call with a plain message. Every outcome is logged. |
+| errors | HTTP status + `{ type: "error", error: { type, message } }`: 400 `invalid_request_error` · 401 `authentication_error` · 402 `billing_error` · 403 `permission_error` · 404 `not_found_error` · 413 `request_too_large` · 429 `rate_limit_error` · 500 `api_error` · 529 `overloaded_error` | the SDK's typed errors. Phase 1 does not retry any of them (`maxRetries: 0`): each ends the call with a plain message. Every outcome is logged. |
 
 ### Batches
 
@@ -142,21 +142,46 @@ What we send: the job's instructions, the conversation, and the data its tools r
 11. **A batch's results come in any order,** and a batch can end with some lines `errored` or `expired`. Each line is handled on its own, matched by `custom_id`.
 12. **Token counts are not comparable across providers.** The same text is more tokens for Claude than the numbers in the old Gemini log, so a cost estimate made from that log is rough. `count_tokens` itself is "an estimate".
 13. **A 429 can mean two things:** too many requests (retry after `retry-after`), or the monthly spend cap (don't retry: tell the owner).
-14. **The SDK retries by itself** (2 times by default, on 429, 5xx and connection errors) and its default timeout is 10 minutes. An edge function has a much shorter life, so the function sets its own timeout and retry count, and every retry is visible in the log.
+14. **The SDK retries by itself** (2 times by default, on 429, 5xx and connection errors) and its default timeout is 10 minutes. The function sets `maxRetries: 0` and a 30-second timeout: a retry after a timeout could be a second bill that nobody reserved (the first request may still be generated and billed), so one request is one generation and one reservation. A failed call is shown with its plain message and the owner tries again.
 15. **Images:** at most 8000×8000 px and 10 MB each, no animations. Tokens are about `⌈width/28⌉ × ⌈height/28⌉`, so a large photo costs up to a few thousand tokens. The app already shrinks photos before upload.
+
+## What phase 1 sends and reads
+
+Phase 1 is the `claude` function (`supabase/claude-src/`, joined into `supabase/functions/claude/index.ts`) and its one job, `item_fill` (the ✨ on the item screen). Only `provider-anthropic.ts` imports the SDK. This is what it really does, and the first live call has to confirm it.
+
+**Sent** to `POST https://api.anthropic.com/v1/messages` (non-streaming, `client.messages.create`), through `npm:@anthropic-ai/sdk@1.5.0` with `baseURL` set outright (so the SDK reads no address from the environment), `timeout` 30 s, `maxRetries` 0, `logLevel: 'off'` and `openTelemetry: false` (the SDK's debug log and tracing could print or send the owner's text):
+- `model`: `claude-haiku-5-5`, or Sonnet 5.5 / Opus 5.5 when the owner's setting for the job names one (anything else is ignored);
+- `max_tokens`: 2000 by default, 256–16000 from the settings;
+- `system`: one text block, the job's fixed instructions, with `cache_control: { type: "ephemeral" }`: the same bytes every call, no date, no name;
+- `messages`: one user message: `<now>` (weekday, date, time, zone, from the server's Oslo clock) and `<sentence>` (the owner's sentence with `&`, `<`, `>` written out, so it cannot close its tag);
+- `thinking: { type: "adaptive", display: "summarized" }`;
+- `output_config: { effort: "low" | "medium" | "high", format: { type: "json_schema", schema } }`. The schema has 21 optional fields, `additionalProperties: false`, no `required`, no number or length limits, no link field.
+- The key goes only in `Authorization: Bearer`; the SDK adds `anthropic-version: 2026-10-21`.
+- Not sent: tools, `temperature`, `top_p`, `top_k`, prefill, streaming, betas, `context_management`, `task_budget`, images, `metadata`, `inference_geo`.
+
+**Read back:** `content[]` (`text` joined; `thinking` kept as a summary for the owner's log; other blocks ignored), `stop_reason` (`end_turn` is the only good ending; `refusal` and `max_tokens` have their own outcomes; every other value is an error, never an answer), `stop_details` (a refusal's explanation, for the log), `usage` (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cache_creation.ephemeral_5m_input_tokens` / `.ephemeral_1h_input_tokens`, `output_tokens`, `output_tokens_details.thinking_tokens`; each count is clamped to a whole number the ledger can hold), `model` (the model that answered), and the `request-id` header (via the SDK's `_request_id`). Errors are read by the SDK's typed classes and only single named fields (`status`, `requestID`, `apiMessage`, `type`, `errorCode`): a 401 or 403 is a key problem, a 402 or a 429 with `error.details.error_code` `enforced_spend_limit_reached` is billing, 429 is rate limit, 529 overloaded, 500 a provider fault, 400/404/413/422 a refused request, and a connection error or timeout is its own kind. The message the owner sees is our own fixed sentence; the provider's explanation goes only into the owner's call log, and only while the text log is on.
+
+**Cost is reserved before each call.** The budget wall cannot count a call that has not finished, and a timed-out call may still be billed, so before sending, the function asks the database (`ai_reserve`) to hold the call's worst-case cost against the monthly budget: a prompt estimated at one token per two characters, every token at the dearest prompt price (a 1-hour cache write, long-prompt rule included), plus the whole `max_tokens` at the output price. Parallel requests each hold their own share under a lock. After the answer the row gets the real tokens and the real cost (from `prices.ts`). A failure that may have been billed (timeout, network error, 5xx, 529, an unknown fault) and a failed update both leave the row at the worst case; a refusal at the door (401, 402, 400, 429) costs 0.
 
 ## Not confirmed by a live call yet
 
-The first real calls (phase 1's ✨ and the Test bench) must confirm these, and this file's Log records the result:
+Everything about Anthropic's real behaviour is unconfirmed: no call has been made. Phase 1's tests (`scripts/verify-claude-function.cjs`) run the real SDK against a fake network, so they prove our code reads the shapes the docs and the SDK's types describe, not that Anthropic answers that way. The first real ✨ call must confirm:
 - the exact `usage` object Haiku 5.5 returns, including `output_tokens_details.thinking_tokens` and the `cache_creation` breakdown;
 - that the cache really hits on the second call of a job (`cache_read_input_tokens` above zero);
 - `display: "summarized"` returning readable text on Haiku 5.5;
 - which image resolution tier Haiku 5.5 uses (the vision page doesn't say);
 - task budgets on a non-streaming request (every example in the docs streams);
 - context editing clearing tool results on Haiku 5.5 in practice (`applied_edits` in the answer);
-- the header names carrying the request id.
+- the header names carrying the request id;
+- that a request with `thinking: adaptive` plus `output_config.format` (a JSON schema) and `effort` together is accepted on Haiku 5.5, and that the 21-field schema passes Anthropic's structured-output limits;
+- that the `cache_control` mark on the instructions is accepted below the 512-token minimum or above it, and what `usage` shows on the first and second call;
+- what a timeout looks like on Anthropic's bill (billed or not), which decides whether the worst-case reservation is too careful;
+- `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429.
 
 ## Log
 
 ### 20.11.2026 — first version, before any code
 Written for the AI rebuild (`docs/features/ai-plan.md`, phase 0). Facts from Anthropic's documentation read that day; no live call yet.
+
+### 20.11.2026 — phase 1 built
+The `claude` function and `item_fill`. Section "What phase 1 sends and reads" added; prices moved to code; `maxRetries` 0 and the cost reservation added after the security review. Still no live call.

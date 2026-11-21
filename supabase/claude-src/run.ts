@@ -230,7 +230,7 @@ async function finish(ctx: RunContext, row: CallRow): Promise<void> {
   if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
 }
 
-/** Writes the row. A failed write never fails the answer, but it is said in the server log.
+/** Writes the row. A failed write never fails the answer, but it is said in the server log. */
 async function record(ctx: RunContext, row: CallRow): Promise<void> {
   const problem = await writeCall(ctx.adminDb, row)
   if (problem) ctx.report(`a call was not written to the ledger: ${problem}`)

@@ -456,7 +456,7 @@ export function readUsdInput(typed: string, max: number): number | null | undefi
 
 /** A typed whole number: '' → null (the default); min–max → the number; else undefined. */
 export function readIntInput(typed: string, min: number, max: number): number | null | undefined {
-  const t = typed.trim().replace(/[\s ]/g, '')
+  const t = typed.trim().replace(/[\s\u00a0]/g, '')
   if (t === '') return null
   if (!/^\d{1,7}$/.test(t)) return undefined
   const n = Number(t)

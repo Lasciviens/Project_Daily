@@ -220,7 +220,6 @@ async function go(body, { world: worldOver, network, token = 'owner-jwt', reques
   const fn = load(world, net.impl)
   const res = await fn.handler(request ?? post(body, token))
   const text = await res.text()
-  if (process.env.DBG && res.status === 500) console.log('LOGS', world.logs)
   let json = null
   try { json = JSON.parse(text) } catch { /* not JSON */ }
   return { status: res.status, text, json, world, net, fn, row: world.calls[0] ?? null, headers: res.headers }
@@ -423,28 +422,31 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: JSON.stringify({ title: 'T'.repeat(5000), notes: 'N'.repeat(100000) }) }] })) })
   check('a huge title and notes do not break the run (the job\'s own check cuts or drops them)', r.json?.ok === true && JSON.stringify(r.json.result).length < 20000, JSON.stringify(r.json?.result ?? r.json).length)
 
+  // [name, answer, words in the message, may it have been billed (the row then keeps the reserved worst case)]
   const failures = [
-    ['429 too many requests', () => answerWith(429, errorBody('rate_limit_error', 'Number of requests has exceeded your rate limit.')), /too many requests/, 2],
-    ['429 spend limit reached', () => answerWith(429, errorBody('rate_limit_error', 'Workspace spend limit reached.', { error_code: 'enforced_spend_limit_reached' })), /billing reason/, 2],
-    ['529 overloaded', () => answerWith(529, errorBody('overloaded_error', 'Overloaded')), /overloaded/, 2],
-    ['500', () => answerWith(500, errorBody('api_error', 'Internal server error')), /problem on its side/, 2],
-    ['401 wrong key', () => answerWith(401, errorBody('authentication_error', 'invalid x-api-key')), /ANTHROPIC_API_KEY/, 1],
-    ['403 not allowed', () => answerWith(403, errorBody('permission_error', 'Not allowed')), /ANTHROPIC_API_KEY/, 1],
-    ['402 billing', () => answerWith(402, errorBody('billing_error', 'Your credit balance is too low.')), /billing reason/, 1],
-    ['400 bad request', () => answerWith(400, errorBody('invalid_request_error', 'max_tokens: too large')), /did not accept the request/, 1],
-    ['404 no such model', () => answerWith(404, errorBody('not_found_error', 'model: claude-x')), /did not accept the request/, 1],
+    ['429 too many requests', () => answerWith(429, errorBody('rate_limit_error', 'Number of requests has exceeded your rate limit.')), /too many requests/, false],
+    ['429 spend limit reached', () => answerWith(429, errorBody('rate_limit_error', 'Workspace spend limit reached.', { error_code: 'enforced_spend_limit_reached' })), /billing reason/, false],
+    ['529 overloaded', () => answerWith(529, errorBody('overloaded_error', 'Overloaded')), /overloaded/, true],
+    ['500', () => answerWith(500, errorBody('api_error', 'Internal server error')), /problem on its side/, true],
+    ['401 wrong key', () => answerWith(401, errorBody('authentication_error', 'invalid x-api-key')), /ANTHROPIC_API_KEY/, false],
+    ['403 not allowed', () => answerWith(403, errorBody('permission_error', 'Not allowed')), /ANTHROPIC_API_KEY/, false],
+    ['402 billing', () => answerWith(402, errorBody('billing_error', 'Your credit balance is too low.')), /billing reason/, false],
+    ['400 bad request', () => answerWith(400, errorBody('invalid_request_error', 'max_tokens: too large')), /did not accept the request/, false],
+    ['404 no such model', () => answerWith(404, errorBody('not_found_error', 'model: claude-x')), /did not accept the request/, false],
   ]
-  for (const [name, make, words, fetches] of failures) {
+  for (const [name, make, words, billed] of failures) {
     r = await go(runBody(), { network: pretendNetwork(async () => make()) })
-    check(`${name}: reason error, one plain sentence, ${fetches} fetch${fetches > 1 ? 'es (the SDK tries once more)' : ''}, a row with no tokens and no cost`,
-      r.status === 200 && r.json?.ok === false && r.json.reason === 'error' && words.test(r.json.message) && r.net.seen.length === fetches && r.row?.outcome === 'error' && r.row.input_tokens === 0 && r.row.output_tokens === 0 && r.row.cost_usd === 0 && r.row.request_id === 'req_test_1',
-      { status: r.status, reply: r.json, fetches: r.net.seen.length, row: r.row })
+    const worst = r.world.reserves[0]?.p_worst_cost
+    check(`${name}: reason error, one plain sentence, ONE fetch (no retry), a row with no tokens; ${billed ? 'the cost stays at the reserved worst case' : 'no cost (nothing was generated)'}`,
+      r.status === 200 && r.json?.ok === false && r.json.reason === 'error' && words.test(r.json.message) && r.net.seen.length === 1 && r.row?.outcome === 'error' && r.row.input_tokens === 0 && r.row.output_tokens === 0
+        && r.row.cost_usd === (billed ? worst : 0) && r.json.call.cost_usd === r.row.cost_usd && r.row.request_id === 'req_test_1',
+      { status: r.status, reply: r.json, fetches: r.net.seen.length, row: r.row, worst })
   }
   r = await go(runBody(), { network: pretendNetwork(async () => { throw new TypeError(`error sending request for url (${ENDPOINT}): dns error ${KEY}`) }) })
-  check('a network error: reason error, "could not be reached", two tries, and neither the address detail nor the key reaches the answer, the row or the log',
-    r.json?.reason === 'error' && /could not be reached/.test(r.json.message) && r.net.seen.length === 2 && r.row.outcome === 'error' && leaks(everything(r)).length === 0 && !/dns error/.test(everything(r)), [r.json, r.net.seen.length])
+  check('a network error: reason error, "could not be reached", one try, the worst case stays charged, and neither the address detail nor the key reaches the answer, the row or the log',
+    r.json?.reason === 'error' && /could not be reached/.test(r.json.message) && r.net.seen.length === 1 && r.row.outcome === 'error' && r.row.cost_usd === r.world.reserves[0].p_worst_cost && r.row.cost_usd > 0 && leaks(everything(r)).length === 0 && !/dns error/.test(everything(r)), [r.json, r.net.seen.length])
   r = await go(runBody(), { network: pretendNetwork((url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'AbortError'))))) })
-  check('a call that never answers ends at the SDK\'s timeout: reason error, "did not answer", a row with no tokens', r.json?.reason === 'error' && /did not answer within 30 seconds/.test(r.json.message) && r.row?.outcome === 'error' && r.row.cost_usd === 0 && r.net.seen.length === 2, [r.json, r.net.seen.length])
+  check('a call that never answers ends at the SDK\'s timeout: reason error, "did not answer", no tokens, and the cost stays at the reserved worst case (Anthropic may still bill it)', r.json?.reason === 'error' && /did not answer within 30 seconds/.test(r.json.message) && r.row?.outcome === 'error' && r.row.output_tokens === 0 && r.row.cost_usd === r.world.reserves[0].p_worst_cost && r.row.cost_usd > 0 && r.net.seen.length === 1, [r.json, r.net.seen.length])
   check('every call carries its own abort signal (so the 30 s limit is the SDK\'s, not a hope)', r.net.seen.every(s => s.signal))
   const hostileErrors = [
     ['the key itself', `invalid key ${KEY} for this workspace`],
@@ -457,9 +459,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     check(`an error from Anthropic quoting ${name}: nothing secret in the answer, the row or the log; the row's error fits its column`,
       leaks(everything(r)).length === 0 && !/sk-ant-api03-ZZZ/.test(everything(r)) && (r.row.error ?? '').length <= 500 && !/\n/.test(r.row.error ?? ''), [leaks(everything(r)), (r.row?.error ?? '').slice(0, 200)])
   }
-  r = await go(runBody(), { world: { insertError: { code: '42501', message: `permission denied ${SERVICE}` } } })
-  check('a failed ledger write never fails the answer, and is said in the server log without the row, the text or any secret',
-    r.json?.ok === true && r.world.logs.length === 1 && /not written to the ledger/.test(r.world.logs[0]) && !r.world.logs[0].includes(SENTENCE) && !r.world.logs[0].includes('Dentist') && leaks(r.world.logs.join('\n')).length === 0, r.world.logs)
+  r = await go(runBody(), { world: { updateError: { code: '42501', message: `permission denied ${SERVICE}` } } })
+  check('a failed ledger update never fails the answer: the row stays "pending" at its worst case (fail closed), and the server log says so without the row, the text or any secret',
+    r.json?.ok === true && r.row.outcome === 'pending' && r.row.cost_usd === r.world.reserves[0].p_worst_cost && r.world.logs.length === 1 && /could not be finished in the ledger/.test(r.world.logs[0]) && !r.world.logs[0].includes(SENTENCE) && !r.world.logs[0].includes('Dentist') && leaks(r.world.logs.join('\n')).length === 0, r.world.logs)
   r = await go(runBody(), { network: pretendNetwork(async () => { throw new Error(`weird ${KEY} ${SENTENCE}`) }) })
   check('a plain Error thrown by fetch is a network failure to the SDK: reason error, and its text (the key, the sentence) goes nowhere', r.json?.reason === 'error' && !/weird/.test(everything(r)) && leaks(everything(r)).length === 0, r.json)
 
@@ -585,9 +587,64 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('through a whole run: a prompt of 101000 tokens is marked long and costs ×5', x.row.long_prompt === true && near(x.row.cost_usd, (99_000 * 0.1 + 2_000 * 0.01 + 1000 * 0.5) * 5 / 1e6), x.row)
   x = await go(runBody(), { world: { jobRow: { model: 'claude-sonnet-5-5' } }, network: pretendNetwork(okAnswer({ usage: { input_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 1000 } })) })
   check('through a whole run: Sonnet is priced as Sonnet ($2 and $10 per million)', near(x.row.cost_usd, (1000 * 2 + 1000 * 10) / 1e6) && x.row.long_prompt === false, x.row)
-  x = await go(runBody(), { world: { gate: [{ ...GATE, month_cost: 4.999 }] }, network: pretendNetwork(okAnswer()) })
-  const afterOne = x.row.cost_usd
-  check('a call that goes over the budget is still allowed once (the wall is checked before, from the ledger); the next is stopped', x.json?.ok === true && (await go(runBody(), { world: { gate: [{ ...GATE, month_cost: 4.999 + afterOne + 0.0011 }] } })).json?.reason === 'budget')
+
+  section('7 · the reservation: the worst case is held before the call')
+  x = await go(runBody())
+  const res0 = x.world.reserves[0]
+  check('ai_reserve is called once, with the service-role client, BEFORE any fetch', x.world.reserves.length === 1 && x.world.events.join() === 'reserve,fetch', x.world.events)
+  check('its arguments are all worked out by the function: the verified user, the job, app, live, anthropic, the model and effort used, the version, the budgets and the hard caps',
+    res0.p_user === OWNER && res0.p_job === 'item_fill' && res0.p_caller === 'app' && res0.p_mode === 'live' && res0.p_provider === 'anthropic' && res0.p_model === 'claude-haiku-5-5' && res0.p_effort === 'low'
+    && res0.p_instructions_version === ITEM_FILL_JOB.version && res0.p_budget === 5 && res0.p_job_budget === null && res0.p_per_minute === 20 && res0.p_per_day === 600 && typeof res0.p_worst_cost === 'number', res0)
+  check('the user id is the verified one even when the request names another', (await go({ ...runBody(), user_id: STRANGER, p_user: STRANGER })).world.reserves[0].p_user === OWNER)
+  check('the worst cost is at least the real cost (here 5000+ prompt characters at the dearest prompt price plus the whole 2000-token answer limit)', res0.p_worst_cost >= x.row.cost_usd && res0.p_worst_cost > 0.001 && res0.p_worst_cost < 0.01, [res0.p_worst_cost, x.row.cost_usd])
+  const promptChars = ITEM_FILL_JOB.instructions.length + JSON.stringify(ITEM_FILL_JOB.answerSchema).length + expectedUser.length
+  check('…worked out as ½ token per character at the 1-hour cache-write price, plus max_tokens at the output price',
+    near(res0.p_worst_cost, (Math.ceil(promptChars / 2) * 0.2 + 2000 * 0.5) / 1e6), [res0.p_worst_cost, promptChars])
+  f = await forged(null, { model: 'claude-opus-5-5', max_output_tokens: 16000 })
+  check('a bigger model and a bigger answer limit reserve more: Opus with 16000 tokens', near(f.y.world.reserves[0].p_worst_cost, (Math.ceil(promptChars / 2) * 8 + 16000 * 20) / 1e6) && f.y.world.reserves[0].p_worst_cost > res0.p_worst_cost * 20, f.y.world.reserves[0].p_worst_cost)
+  check('the job\'s own budget goes to the reservation too', (await go(runBody(), { world: { jobRow: { monthly_budget_usd: '2.50' } } })).world.reserves[0].p_job_budget === 2.5)
+  check('after the answer the reserved row is UPDATED by its id and the verified user (never inserted twice), with the real numbers',
+    x.world.updates.length === 1 && x.world.updates[0].filters.id === x.row.id && x.world.updates[0].filters.user_id === OWNER && !('id' in x.world.updates[0].values) && !('user_id' in x.world.updates[0].values) && x.world.calls.length === 1 && x.row.outcome === 'ok' && x.row.cost_usd === 0.000177, x.world.updates[0]?.filters)
+  const justFits = res0.p_worst_cost
+  x = await go(runBody(), { world: { gate: [{ ...GATE, month_cost: 5 - justFits + 0.0000005 }] } })
+  check('a month with less left than the worst case: budget, no fetch (the wall counts the worst case, not the average)', x.json?.reason === 'budget' && x.net.seen.length === 0 && /cannot cover another call/.test(x.json.message) && x.row.outcome === 'budget' && x.row.cost_usd === 0 && x.json.call.id === x.row.id, x.json)
+  x = await go(runBody(), { world: { gate: [{ ...GATE, month_cost: 5 - justFits - 0.000001 }] } })
+  check('a month with just enough left runs', x.json?.ok === true && x.net.seen.length === 1)
+  x = await go(runBody(), { world: { jobRow: { monthly_budget_usd: 1 }, gate: [{ ...GATE, job_month_cost: 1 - justFits + 0.0000005 }], account: { monthly_budget_usd: 20, log_text: true } } })
+  check('the job\'s own budget is a wall for the worst case too', x.json?.reason === 'budget' && /for "Fill an item from a sentence"/.test(x.json.message) && x.net.seen.length === 0, x.json)
+  for (const [name, raw] of [
+    ['an error', { data: null, error: { message: 'boom' } }],
+    ['nothing', { data: null, error: null }],
+    ['an empty list', { data: [], error: null }],
+    ['a row with no id', { data: [{ call_id: null, reason: null }], error: null }],
+    ['an id that is not a uuid', { data: [{ call_id: 'abc; drop table', reason: null }], error: null }],
+    ['a reason it does not know', { data: [{ call_id: crypto.randomUUID(), reason: 'weird' }], error: null }],
+    ['a budget answer with no id', { data: [{ call_id: null, reason: 'budget' }], error: null }],
+  ]) {
+    x = await go(runBody(), { world: { reserveRaw: raw } })
+    check(`ai_reserve answering ${name}: nothing is sent, reason error`, x.net.seen.length === 0 && x.json?.ok === false && x.json.reason === 'error' && /could not be checked/.test(x.json.message) && x.world.logs.length === 1, x.json)
+  }
+  x = await go(runBody(), { world: { reserveRaw: { data: { call_id: null, reason: 'busy' }, error: null } } })
+  check('ai_reserve answering busy (one row, not a list): busy, no fetch, no row, no update', x.json?.reason === 'busy' && x.net.seen.length === 0 && x.world.calls.length === 0 && x.world.updates.length === 0 && !('call' in x.json), x.json)
+  x = await go(runBody(), { world: { gate: [{ ...GATE }], reserveRaw: { data: [{ call_id: null, reason: 'busy' }], error: null } } })
+  check('a request that passed the early read but loses the race (the caps checked again inside the reservation) is busy without a model call', x.json?.reason === 'busy' && x.net.seen.length === 0)
+  for (const [name, world, input] of [['no key', { env: { ANTHROPIC_API_KEY: '' } }, undefined], ['switched off', { jobRow: { enabled: false } }, undefined], ['bad input', {}, {}], ['unreadable settings', { settingsError: true }, undefined]]) {
+    x = await go(runBody(input), { world })
+    check(`${name}: stopped before any reservation (nothing is held)`, x.world.reserves.length === 0 && x.net.seen.length === 0)
+  }
+  x = await go(runBody(), { world: { env: { ANTHROPIC_API_KEY: '' }, insertError: { code: 'XX000', message: 'x' } } })
+  check('a stop whose ledger write fails still answers, and says so in the log', x.json?.reason === 'not_configured' && x.world.logs.length === 1 && /not written to the ledger/.test(x.world.logs[0]))
+  x = await go(runBody(), { network: pretendNetwork(async () => answerWith(500, errorBody('api_error', 'boom'))) })
+  check('the SDK is built with no retry: a 500 is one fetch, so one reservation covers one possible bill', x.net.seen.length === 1 && x.world.reserves.length === 1)
+  check('the provider part sets maxRetries to 0', /ANTHROPIC_RETRIES = 0\b/.test(parts['provider-anthropic.ts']) && /maxRetries: ANTHROPIC_RETRIES/.test(parts['provider-anthropic.ts']))
+  x = await go(runBody(), { world: { account: { monthly_budget_usd: 5, log_text: false } }, network: pretendNetwork(async () => answerWith(400, errorBody('invalid_request_error', 'The owner wrote: Dentist at Jernbanetorget'))) })
+  check('with the text log off, the row\'s error is only our fixed sentence, never the provider\'s explanation', x.row.error === x.json.message && !/Dentist|owner wrote/.test(x.row.error), x.row.error)
+  x = await go(runBody(), { network: pretendNetwork(async () => answerWith(400, errorBody('invalid_request_error', 'Explanation: the model cannot do that'))) })
+  check('with the text log on, the provider\'s short explanation is in the row\'s error', /Explanation: the model cannot do that/.test(x.row.error) && x.row.error.length <= 500)
+  x = await go(runBody(), { network: pretendNetwork(async () => answerWith(400, errorBody('invalid_request_error', '😀'.repeat(400)))) })
+  check('a long error is cut by whole characters: no broken emoji, and within the column (500)', !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(x.row.error) && [...x.row.error].length <= 500 && [...x.row.error].length > 100, [...x.row.error].length)
+  x = await go(runBody(), { network: pretendNetwork(okAnswer({ model: '😀'.repeat(100) })) })
+  check('a served model name is cut by characters too (80)', [...x.row.served_model].length === 80 && !/[\ud800-\udbff](?![\udc00-\udfff])/.test(x.row.served_model))
 
   section('7 · the text log')
   x = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'thinking', thinking: 'T'.repeat(400 * 1024), signature: 's' }, { type: 'text', text: 'Q'.repeat(400 * 1024) }] })) })
@@ -631,6 +688,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const table = /create table if not exists public\.ai_calls \(([\s\S]*?)\n\);/.exec(migration)?.[1] ?? ''
   const columns = table.split('\n').map(l => /^\s{2}([a-z_0-9]+)\s+(uuid|text|smallint|integer|numeric|boolean|jsonb|timestamptz)/.exec(l)?.[1]).filter(Boolean)
   const needed = table.split('\n').map(l => /^\s{2}([a-z_0-9]+)\s+\S+.*\bnot null\b(?!.*\bdefault\b)/.exec(l)?.[1]).filter(Boolean)
+  const reserveSql = /function public\.ai_reserve\(([\s\S]*?)\)\s*returns/i.exec(migration)?.[1] ?? ''
+  const reserveArgs = Object.keys(res0)
+  check('migration 194 has ai_reserve with exactly the arguments the function sends, in the same order', reserveSql !== '' && same([...reserveSql.matchAll(/\b(p_[a-z_0-9]+)\b/g)].map(m => m[1]), reserveArgs), { sql: [...reserveSql.matchAll(/\b(p_[a-z_0-9]+)\b/g)].map(m => m[1]), sent: reserveArgs })
   x = await go(runBody())
   check('migration 194 was read: ai_calls has its columns', columns.length >= 28 && columns.includes('cache_write_1h_tokens'), columns)
   check('every key of the ledger row is a column of ai_calls', Object.keys(x.row).every(k => columns.includes(k)), Object.keys(x.row).filter(k => !columns.includes(k)))
@@ -645,7 +705,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   seenOutcomes.add((await go(runBody(), { network: pretendNetwork(okAnswer({ stop_reason: 'refusal' })) })).row?.outcome)
   seenOutcomes.add((await go(runBody(), { network: pretendNetwork(okAnswer({ stop_reason: 'max_tokens' })) })).row?.outcome)
   seenOutcomes.add((await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: 'no' }] })) })).row?.outcome)
-  check('every outcome the function writes is one the table\'s CHECK allows, and all nine are reached', [...seenOutcomes].every(o => outcomes.includes(o)) && outcomes.every(o => seenOutcomes.has(o)), { outcomes, reached: [...seenOutcomes] })
+  check('every outcome the function writes is one the table\'s CHECK allows, and all nine final ones are reached (\'pending\' is written only by ai_reserve)', [...seenOutcomes].every(o => outcomes.includes(o)) && outcomes.filter(o => o !== 'pending').every(o => seenOutcomes.has(o)), { outcomes, reached: [...seenOutcomes] })
   const sizes = { model: 80, served_model: 80, stop_reason: 60, error: 500, request_id: 120, instructions_version: 40 }
   const rows = (await Promise.all([go(runBody(), { network: pretendNetwork(async () => answerWith(400, errorBody('invalid_request_error', 'e'.repeat(2000)), { 'request-id': 'r'.repeat(400) })) })])).map(y => y.row)
   check('text columns never exceed their CHECK lengths, even from a 2000-character error and a 400-character request id', rows.every(row => Object.entries(sizes).every(([k, n]) => row[k] === null || row[k].length <= n)), rows.map(row => ({ error: row.error?.length, rid: row.request_id?.length })))

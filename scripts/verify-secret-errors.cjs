@@ -67,7 +67,12 @@ function makeDb(tables, users, log) {
     from: builder,
     rpc: async (name, args) => {
       log.push({ rpc: name, args })
-      // The claude function asks the ledger for the month's usage (migration 194): an empty month.
+      // The claude function reads the month's usage (ai_gate) and reserves a call's worst cost (ai_reserve), migration 194.
+      if (name === 'ai_reserve') {
+        const id = `00000000-0000-4000-8000-${String((tables.ai_calls ?? []).length + 1).padStart(12, '0')}`
+        ;(tables.ai_calls ??= []).push({ id, user_id: args.p_user, outcome: 'pending', cost_usd: args.p_worst_cost })
+        return { data: [{ call_id: id, reason: null }], error: null }
+      }
       if (name === 'ai_gate') return { data: [{ month_cost: 0, job_month_cost: 0, calls_last_minute: 0, calls_today: 0 }], error: null }
       return { data: null, error: { message: 'stub rpc' } }
     },
@@ -80,7 +85,9 @@ function load(fnName, { env, tables, users, log, fetchImpl }) {
   const code = sucrase.transform(src, { transforms: ['typescript'] }).code
   let handler
   const Deno = { env: { get: (k) => env[k] }, serve: (f) => { handler = f } }
-  new Function('Deno', 'createClient', 'fetch', ...SDK_NAMES, code)(Deno, () => makeDb(tables, users, log), fetchImpl, ...SDK_NAMES.map(n => SDK[n]))
+  // Only the claude function imports the SDK; ai-proxy declares classes of the same names itself.
+  const sdkNames = fnName === 'claude' ? SDK_NAMES : []
+  new Function('Deno', 'createClient', 'fetch', ...sdkNames, code)(Deno, () => makeDb(tables, users, log), fetchImpl, ...sdkNames.map(n => SDK[n]))
   return handler
 }
 
@@ -140,7 +147,7 @@ process.on('exit', () => {
         const r = await run(fetchImpl)
         const l = leaks(r.text + r.rows + logged.join('\n')).concat(/sk-ant-/.test(r.text + r.rows + logged.join('\n')) ? ['an sk-ant- key'] : [])
         check(`claude: ${name} answers 200 with a failed run, a ledger row, and no key in the answer, the row or the log`,
-          r.status === 200 && JSON.parse(r.text).ok === false && r.rows.includes('"outcome":"error"') && l.length === 0, `${r.status} ${r.text.slice(0, 200)} leaked ${l.join(', ')}`)
+          r.status === 200 && JSON.parse(r.text).ok === false && r.rows.includes('"outcome":"error"') && !r.rows.includes('"outcome":"pending"') && l.length === 0, `${r.status} ${r.text.slice(0, 200)} leaked ${l.join(', ')}`)
       }
     } finally {
       console.error = realConsoleError
