@@ -110,7 +110,7 @@ Nothing here is ever added to an assistant's table catalog (`.claude/rules/ai.md
 
 ## 2. The `claude` edge function
 
-`POST /functions/v1/claude`, platform JWT verification **on** (not listed in `supabase/config.toml`), plus
+A `POST` to the `claude` function, platform JWT verification **on** (not listed in `supabase/config.toml`), plus
 `auth.getUser(token)` and the function's own `isAppUser(user.id)` copy. CORS as `calendar-token`
 (`ALLOWED_ORIGINS`). Request body: JSON, at most 16 KB.
 
