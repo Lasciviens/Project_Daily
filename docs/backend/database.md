@@ -489,9 +489,15 @@ bills in USD); "this month" and "a day" are Europe/Oslo.
     one that is not an app user with `42501`. A gate that answered "0 spent"
     to nobody would read as "go ahead" — so the function must treat an error
     from `ai_gate` as a stop, never as "nothing spent".
-  - The gate is read before the call and the row is written after the answer:
-    requests sent at the same moment all read the same numbers. The limits are
-    exact for calls one after another, not for a burst.
+- **`ai_reserve(…)`** — books a call before it is sent (guardian review,
+  21.11.2026): under a lock per account it reads the same numbers as
+  `ai_gate`, then refuses (`busy`: no row; `budget`: a row costing 0) or adds a
+  `pending` row costing the call's worst case. The function corrects that row
+  to the real numbers after the answer; when it can't (a timeout, a failed
+  write), the worst case stays counted. So a burst of requests can't all pass
+  the wall, and a call Anthropic may bill is never costed 0. SECURITY DEFINER,
+  `search_path = ''`, service role only (the user id is the one the function
+  verified).
 - **`ai_calls_purge_text()`** — clears `request`, `response` and `thinking` on
   rows older than their account's `log_days` (30 with no settings row), leaves
   the numbers and answers how many rows it cleared. SECURITY DEFINER (it runs

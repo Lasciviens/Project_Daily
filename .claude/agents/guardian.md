@@ -31,8 +31,9 @@ check scripts still pass. The app has **one owner** (plus at most a test account
 | **Exact version pins** for every import (`npm:@supabase/supabase-js@2.118.0`, `npm:psn-api@2.18.1`, `npm:web-push@3.6.7`), from npm — never esm.sh, never `@2` or `^2` | `supabase/functions/*` | `grep -rnE "@\^?[0-9]+(\.[0-9]+)?['\"/]" supabase/functions` finds none |
 | **Devices:** the Kobo plugin checks the server certificate and name; the Scriptable `HizliLog` runner only obeys links carrying its Keychain token | `scripts/kobo/`, `docs/scriptable-widgets.md` | `scripts/kobo/test-tls.sh` |
 
-Also: no key in client code (only `VITE_*` values, which are public by nature); the only AI key is
-`GEMINI_API_KEY`, read by `ai-proxy`. Never commit a secret, never print one, never ask the owner to
+Also: no key in client code (only `VITE_*` values, which are public by nature); the AI keys are
+`ANTHROPIC_API_KEY` (read only by the `claude` function) and, until the old assistant is removed,
+`GEMINI_API_KEY` (read by `ai-proxy`). Never commit a secret, never print one, never ask the owner to
 paste one into the chat — say where it is set (`docs/backend/environment.md`).
 
 ## Review steps

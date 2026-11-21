@@ -596,3 +596,44 @@ select public.t_ok(not exists (select 1 from public.ai_calls where user_id = '00
                    and not exists (select 1 from public.ai_settings where user_id = '00000000-0000-0000-0000-000000000005')
                    and exists (select 1 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000001'),
   'deleting an account takes its calls and settings with it, and nobody else''s');
+
+-- ─── 9. Booking a call before it is sent (ai_reserve, guardian review 21.11.2026) ─────
+select public.t_ok((select p.prosecdef and p.proconfig = array['search_path=""'] from pg_proc p where p.proname = 'ai_reserve')
+                   and not has_function_privilege('authenticated', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
+                   and not has_function_privilege('anon', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
+                   and has_function_privilege('service_role', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute'),
+  '194: ai_reserve runs with its owner''s rights on an empty search path, and only the service role may call it');
+set role authenticated;
+select set_config('test.uid', '00000000-0000-0000-0000-000000000006', false);
+select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600)$q$) = '42501',
+  'a signed-in browser cannot book a call (it would write the ledger)');
+reset role;
+set role service_role;
+begin;
+delete from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006';
+-- room for one: 4.90 spent of 5
+select public.t_call(jsonb_build_object('user_id', '00000000-0000-0000-0000-000000000006', 'cost_usd', 4.90));
+select public.t_ok((select r.reason is null and r.call_id is not null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.05, 5, 5, 20, 600) r),
+  'a call that fits is booked');
+select public.t_ok((select outcome = 'pending' and cost_usd = 0.05 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'pending'),
+  'the booking is a pending row costing the worst case');
+select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.06, 5, 5, 20, 600) r),
+  'the next one no longer fits: the first booking already counts (no race through the gate)');
+select public.t_ok((select count(*) = 1 and sum(cost_usd) = 0 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'budget'),
+  'a refusal for the budget is one row costing 0');
+select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'other_job', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 0, 20, 600) r),
+  'a job''s own budget is a wall too');
+select public.t_ok((select r.reason = 'busy' and r.call_id is null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 3, 600) r),
+  'over the per-minute cap: busy, and no row');
+select public.t_ok((select r.reason = 'busy' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 20, 4) r),
+  'over the daily cap: busy');
+select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', -1, 5, 5, 20, 600)$q$) = '22023'
+                   and public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 'NaN'::numeric, 5, 5, 20, 600)$q$) is not null
+                   and public.t_err($q$select * from public.ai_reserve(null, 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600)$q$) = '22023',
+  'a negative, NaN or missing worst cost, or no user, is refused');
+-- the function corrects the booking afterwards; a correction that never comes keeps the worst case
+update public.ai_calls set outcome = 'ok', cost_usd = 0.001 where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'pending';
+select public.t_ok((select cost_usd = 0.001 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'ok' and job = 'item_fill' and cost_usd < 1),
+  'the service role corrects the booking to the real cost');
+rollback;
+reset role;

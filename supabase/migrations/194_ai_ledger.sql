@@ -46,6 +46,14 @@
 --    plain SQL: no HTTP and no secret. pg_cron runs in UTC: 03:41 UTC is 04:41 in Oslo in winter and 05:41 in
 --    summer, and the hour doesn't matter.
 --
+-- 6. ai_reserve(…) — books a call's worst-case cost BEFORE the model is asked (guardian review, 21.11.2026). Without
+--    it, many requests sent at once all read ai_gate before any row exists and all pass, and a call that times out
+--    would be costed 0 although Anthropic may bill it. Under a lock per account it reads the same numbers as
+--    ai_gate and either refuses (too many calls: no row; over a budget: a 'budget' row costing 0) or writes a
+--    'pending' row costing the worst case. The function then corrects that row to the real numbers; if it never
+--    can (a timeout, a crash, a failed write), the worst case stays counted — it fails closed. SECURITY DEFINER
+--    (it writes the ledger), service role only, every name schema-qualified.
+--
 -- None of these tables ever goes into an assistant's table catalogue.
 -- Safe to re-run. Changes no existing row. No BEGIN/COMMIT: the deploy runs it as one transaction.
 
@@ -64,7 +72,7 @@ create table if not exists public.ai_calls (
   served_model          text check (served_model is null or char_length(served_model) <= 80),
   effort                text check (effort is null or effort in ('low', 'medium', 'high', 'xhigh', 'max')),
   outcome               text not null check (outcome in (
-                          'ok', 'refused', 'cut_off', 'invalid', 'error', 'budget', 'off', 'not_configured', 'bad_input')),
+                          'ok', 'refused', 'cut_off', 'invalid', 'error', 'budget', 'off', 'not_configured', 'bad_input', 'pending')),
   stop_reason           text check (stop_reason is null or char_length(stop_reason) <= 60),
   error                 text check (error is null or char_length(error) <= 500),
   request_id            text check (request_id is null or char_length(request_id) <= 120),
@@ -303,6 +311,61 @@ begin
 end;
 $$;
 
+-- Books a call before it is sent (header point 6). Service role only: the user id is the one the function verified.
+create or replace function public.ai_reserve(
+  p_user uuid, p_job text, p_caller text, p_mode text, p_provider text, p_model text, p_effort text,
+  p_instructions_version text, p_worst_cost numeric, p_budget numeric, p_job_budget numeric,
+  p_per_minute integer, p_per_day integer)
+returns table (call_id uuid, reason text)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_now    timestamptz := pg_catalog.now();
+  v_month  timestamptz := pg_catalog.date_trunc('month', v_now, 'Europe/Oslo');
+  v_day    timestamptz := pg_catalog.date_trunc('day', v_now, 'Europe/Oslo');
+  v_total  numeric;
+  v_job    numeric;
+  v_minute integer;
+  v_today  integer;
+  v_id     uuid;
+begin
+  if p_user is null or p_worst_cost is null or p_worst_cost < 0 or p_worst_cost > 1000
+     or p_budget is null or p_job_budget is null or p_per_minute is null or p_per_day is null then
+    raise exception 'ai_reserve: bad arguments' using errcode = '22023';
+  end if;
+  -- One account's reservations queue here, so two calls can't both read "room for one more".
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('ai_reserve:' || p_user::text, 0));
+  select coalesce(pg_catalog.sum(c.cost_usd), 0), coalesce(pg_catalog.sum(c.cost_usd) filter (where c.job = p_job), 0)
+    into v_total, v_job
+    from public.ai_calls c where c.user_id = p_user and c.created_at >= v_month;
+  select pg_catalog.count(*) filter (where c.created_at > v_now - interval '60 seconds'), pg_catalog.count(*)
+    into v_minute, v_today
+    from public.ai_calls c where c.user_id = p_user and c.created_at >= v_day;
+  if v_minute >= p_per_minute or v_today >= p_per_day then
+    return query select null::uuid, 'busy'::text;
+    return;
+  end if;
+  if v_total + p_worst_cost > p_budget or v_job + p_worst_cost > p_job_budget then
+    insert into public.ai_calls (user_id, job, caller, mode, provider, model, effort, outcome, instructions_version)
+    values (p_user, p_job, p_caller, p_mode, p_provider, p_model, p_effort, 'budget', p_instructions_version)
+    returning id into v_id;
+    return query select v_id, 'budget'::text;
+    return;
+  end if;
+  insert into public.ai_calls (user_id, job, caller, mode, provider, model, effort, outcome, cost_usd, instructions_version)
+  values (p_user, p_job, p_caller, p_mode, p_provider, p_model, p_effort, 'pending', p_worst_cost, p_instructions_version)
+  returning id into v_id;
+  return query select v_id, null::text;
+end;
+$$;
+revoke all on function public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)
+  from public, anon, authenticated;
+grant execute on function public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)
+  to service_role;
+
 -- ─── 5. The text log's days ──────────────────────────────────────────────────
 -- Clears the text of calls older than their account's log_days and answers how many rows it cleared. The numbers
 -- stay. log_days is a setting the browser writes, so it is held to 1–90 here as well as by its CHECK.
@@ -386,6 +449,11 @@ begin
      or has_function_privilege('anon', 'public.ai_calls_purge_text()', 'execute')
      or has_function_privilege('public', 'public.ai_calls_purge_text()', 'execute') then
     raise exception 'Migration 194 assertion failed: the browser can call ai_calls_purge_text';
+  end if;
+  if has_function_privilege('authenticated', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
+     or has_function_privilege('anon', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
+     or has_function_privilege('public', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute') then
+    raise exception 'Migration 194 assertion failed: the browser can call ai_reserve';
   end if;
   if has_function_privilege('anon', 'public.ai_usage(timestamptz, timestamptz)', 'execute')
      or has_function_privilege('anon', 'public.ai_gate(text)', 'execute') then

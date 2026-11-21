@@ -68,16 +68,21 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
 
   const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
   const names = fns.map(([, name]) => name).sort().join()
-  if (names !== 'ai_calls_purge_text,ai_gate,ai_usage') problems.push(`functions ${names || 'none'} (expected ai_calls_purge_text, ai_gate, ai_usage)`)
+  if (names !== 'ai_calls_purge_text,ai_gate,ai_reserve,ai_usage') problems.push(`functions ${names || 'none'} (expected ai_calls_purge_text, ai_gate, ai_reserve, ai_usage)`)
   for (const [body, name, args] of fns) {
     if (!/\nset search_path = ''\n/.test(body)) problems.push(`${name} has no search_path ''`)
-    const definer = name === 'ai_calls_purge_text'
+    const definer = name === 'ai_calls_purge_text' || name === 'ai_reserve'
     if (/security definer/i.test(body) !== definer || /security invoker/i.test(body) === definer) problems.push(`${name}: ${definer ? 'not SECURITY DEFINER' : 'not SECURITY INVOKER'}`)
     if (/\bexecute\b/i.test(body)) problems.push(`${name} builds SQL at run time`)
     for (const [, rel] of body.matchAll(/\b(?:from|join|update|into)\s+([a-z_][\w."]*)/gi)) {
-      if (!/^(public|pg_catalog)\./.test(rel) && !/^(p_from|p_to)$/.test(rel)) problems.push(`${name} reads or writes ${rel} without its schema`)
+      if (!/^(public|pg_catalog)\./.test(rel) && !/^(p|v)_[a-z_]+$/.test(rel)) problems.push(`${name} reads or writes ${rel} without its schema`)
     }
-    if (definer) {
+    if (name === 'ai_reserve') {
+      if (!/pg_advisory_xact_lock\(/.test(body)) problems.push('ai_reserve takes no per-account lock (two calls could both pass)')
+      const reads = (body.match(/from public\.ai_calls c\b/g) || []).length
+      if (!reads || (body.match(/where c\.user_id = p_user\b/g) || []).length !== reads) problems.push('ai_reserve: a read of ai_calls is not scoped to p_user')
+      if (/\bupdate\b|\bdelete\b/i.test(body)) problems.push('ai_reserve changes or deletes rows (it may only add one)')
+    } else if (definer) {
       if (args.trim() !== '') problems.push(`${name} takes input`)
       if (!/where s\.user_id = c\.user_id/.test(body)) problems.push(`${name} does not read each row's own account's log_days`)
       if (!/set request = null, response = null, thinking = null\n/.test(body)) problems.push(`${name} changes more, or less, than the three text columns`)
@@ -89,6 +94,9 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
     }
   }
   if (!stmts.includes('revoke all on function public.ai_calls_purge_text() from public, anon, authenticated')) problems.push('ai_calls_purge_text is not revoked from public, anon and authenticated')
+  const reserveGrants = stmts.filter(s => /^grant .* on function public\.ai_reserve\(/i.test(s))
+  if (reserveGrants.length !== 1 || !/ to service_role$/i.test(reserveGrants[0])) problems.push(`ai_reserve is granted as "${reserveGrants.join(' | ')}" (service_role only)`)
+  if (!stmts.some(s => /^revoke all on function public\.ai_reserve\(.*\) from public, anon, authenticated$/i.test(s))) problems.push('ai_reserve is not revoked from public, anon and authenticated')
   const purgeGrants = stmts.filter(s => /^grant .* on function public\.ai_calls_purge_text\(/i.test(s))
   if (purgeGrants.join(' | ') !== 'grant execute on function public.ai_calls_purge_text() to service_role') problems.push(`ai_calls_purge_text is granted as "${purgeGrants.join(' | ')}" (service_role only)`)
   for (const sig of ['ai_usage(timestamptz, timestamptz)', 'ai_gate(text)']) {
@@ -180,10 +188,10 @@ select coalesce(string_agg(x, E'\\n' order by x), '') from (
   union all
   select 'function ' || p.oid::regprocedure || ' definer=' || p.prosecdef || ' ' || p.provolatile::text || ' ' || coalesce(p.proconfig::text, '') || ' ' || md5(p.prosrc)
          || ' ' || pg_get_function_result(p.oid)
-    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_usage', 'ai_gate', 'ai_calls_purge_text')
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_usage', 'ai_gate', 'ai_reserve', 'ai_calls_purge_text')
   union all
   select 'execute ' || p.oid::regprocedure || ' ' || a.grantee::regrole || ' ' || a.privilege_type
-    from pg_proc p, aclexplode(p.proacl) a where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_usage', 'ai_gate', 'ai_calls_purge_text')
+    from pg_proc p, aclexplode(p.proacl) a where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_usage', 'ai_gate', 'ai_reserve', 'ai_calls_purge_text')
   union all
   select 'timer ' || jobname || ' ' || schedule || ' ' || command from cron.job
 ) t(x)`
