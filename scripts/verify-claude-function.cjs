@@ -205,7 +205,7 @@ function pretendNetwork(...answers) {
   return net
 }
 
-const post = (body, token = 'owner-jwt', extra = {}) => new Request('https://x.example.com/functions/v1/claude', {
+const post = (body, token = 'owner-jwt', extra = {}) => new Request('https://x.example.com/claude', {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(extra.headers ?? {}) },
   body: typeof body === 'string' ? body : JSON.stringify(body),

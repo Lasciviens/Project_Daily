@@ -1,11 +1,7 @@
 # AI rebuild, phase 1 — the contract (20.11.2026)
 
-> Kept in the repo only while phase 1 is being built, so a new session can pick the work up. Delete it in the PR that finishes phase 1 (its content then lives in the code and in `docs/backend/`).
+> The design phase 1 was built to (20.11.2026). Kept as the reference for the `claude` function's request and answer shapes and the 194 tables. Changed since: `ai_reserve` books each call's worst case before it is sent (guardian review, 21.11.2026), and `'pending'` is an outcome. The code is the truth where they differ.
 
-Worktree: `/home/user/Project_Daily/.claude/worktrees/agent-a4ef1c0bc4f1d8954`, branch `claude/charming-newton-yhk8i-ai-foundation`.
-Three helpers work in this same worktree at the same time, on **disjoint files** (see "Who owns which file").
-Never `git commit`, `git stash`, `git checkout` or `git reset` — the lead commits. Never touch a file you don't own;
-if you need a change there, say so in your report.
 
 Read first: `AGENTS.md` (the boxed security warning), `docs/features/ai-plan.md` (the approved plan),
 `docs/integrations/anthropic.md` (every Anthropic fact we rely on; do not guess a field that isn't there — look it up),
@@ -221,17 +217,3 @@ describe · main (`Deno.serve`, the only part that touches `Deno` or creates Sup
 - Developer → **AI**: one new Developer tab with five views — Overview · Calls · Settings · Prices · How it works.
 - ✨ (`src/shared/components/plan-modal/useItemFill.ts`) calls `runClaudeJob('item_fill', { text })`.
 - Settings → the Gemini entries become Anthropic ones (a server-configured service: a read-only card, no Connect button).
-
-## Who owns which file
-- **Database helper:** `supabase/migrations/194_ai_ledger.sql`, `scripts/db-tests/ai-ledger/**`,
-  `scripts/verify-db-ai-ledger.mjs`, `.github/workflows/pr-check.yml`, `docs/backend/database.md`, `.claude/rules/database.md`.
-- **Function helper:** `supabase/claude-src/**`, `supabase/functions/claude/**`, `supabase/functions/ai-proxy/index.ts`,
-  `scripts/build-claude-function.mjs`, `scripts/sync-item-fill-shared.mjs`, `scripts/verify-item-fill.cjs`,
-  `scripts/verify-claude-*.cjs`, `scripts/verify-secret-errors.*`, `scripts/verify-supabase-keys.*`,
-  `src/features/items/itemFill.ts`, `package.json` + `package-lock.json`, `.env.example`, `docs/backend/**` except
-  `database.md`, `docs/deploy-checklist.md`, `docs/integrations/anthropic.md`, `.claude/rules/ai.md`,
-  `.claude/rules/edge-functions.md`.
-- **App helper:** everything under `src/` except `src/features/items/itemFill.ts`; `scripts/harness/**`;
-  `scripts/verify-ai-ledger-ui.cjs` (or a similar new name) and other verify scripts that fail because of app changes;
-  `docs/features/**` except `ai-plan.md`; `docs/design/THEME.md`.
-- **Lead:** `docs/features/ai-plan.md`, `AGENTS.md`, `CLAUDE.md`, commits, the PR.
