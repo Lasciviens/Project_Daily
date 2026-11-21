@@ -38,13 +38,14 @@ export const KNOWN_SERVICES: { key: string; label: string }[] = [
   { key: 'apple_health', label: 'Apple Health' },
   { key: 'screenscraper', label: 'ScreenScraper' },
   { key: 'supabase', label: 'Supabase' },
-  { key: 'gemini', label: 'Gemini' },
+  { key: 'anthropic', label: 'Anthropic' },
 ]
 
 const ALIASES: Record<string, string> = {
   psn: 'playstation', 'ps plus': 'playstation', 'playstation plus': 'playstation',
   'apple health': 'apple_health', 'health auto export': 'apple_health',
   'google calendar': 'google', 'google tasks': 'google',
+  claude: 'anthropic', 'claude api': 'anthropic', 'anthropic api': 'anthropic',
 }
 
 /** One key per service: lower case, trimmed, known aliases folded. */

@@ -1,6 +1,17 @@
-# AI (ai-proxy)
+# AI
 
 > Moved out of CLAUDE.md on 13.10.2026 (word for word, apart from translated quotes). This file describes how the feature works and why. The rules Claude must follow while changing it are in `.claude/rules/ai.md`, which Claude Code loads by itself when a matching file is read or edited.
+
+## The Claude layer, app side (phase 1, 21.11.2026)
+
+The AI rebuild's first phase (plan: `ai-plan.md`, contract: `ai-phase1-contract.md`) adds the `claude` edge function and, in the app, the code under `src/features/ai/claude/`. Everything below this section describes the old assistant (`ai-proxy`: Ask AI, the coach, recipes, quick guess), which stays until phase 4.
+
+- **Words.** A *ledger* is the table `ai_calls`: one row for every call, with its tokens, cost and how it ended. A *job* is one named task the function can do; phase 1 has one, `item_fill`. An *outcome* is how a call ended (answered, refused, cut off, over budget …).
+- **Files.** `claudeApi.ts` (`runClaudeJob`, `describeClaude`, `ClaudeJobError`) is the only code that talks to the function. `ledgerApi.ts` reads `ai_usage` (a database function: the month summed per Oslo day, job, mode and model), the `ai_calls` pages (never the text columns; a call's text is read when it is opened) and reads and writes `ai_settings` and `ai_job_settings`. `ledgerRules.ts` holds the pure rules (reading values where they enter, money, the Oslo month, totals, budget tones); `scripts/verify-ai-ledger-ui.cjs` checks it. `hooks/useClaude.ts` has one hook per read and per write.
+- **✨ on the item screen** calls `runClaudeJob('item_fill', { text })`. A stopped run shows the function's own sentence for every reason (`off`, `budget`, `busy`, `not_configured`, `refused`, `cut_off`, `invalid`, `error`); only an answer with no sentence says "Couldn't fill the fields — try again in a moment".
+- **Money** is USD: two decimals from a dollar up and for whole cents, four below a dollar, six in a call's detail. The budget counts a calendar month on Oslo's clock.
+- **Safety.** A call's text is drawn as a text node in a `<pre>`, never as HTML or a link. The price source is a link only for an https address on one of Anthropic's own hosts (exact host match); source files link to GitHub only for a plain repo path. The calls' query is never kept on the device. The app can read the ledger and cannot write it; only the function does.
+- **The page** is Developer → AI (`developer.md`). The harness plays the function in `scripts/harness/claude.cjs` (`scripts/harness/README.md`).
 
 ## Overview
 

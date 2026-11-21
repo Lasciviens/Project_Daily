@@ -175,7 +175,7 @@ export function OtherSubscriptions({ cardKeys }: { cardKeys: readonly string[] }
       <h2 className="section-label mb-2">Other subscriptions</h2>
       <Card>
         {other.length === 0
-          ? <p className="text-meta text-fg-muted">Services without an integration here (ScreenScraper, Supabase, Gemini…) are listed once you add one.</p>
+          ? <p className="text-meta text-fg-muted">Services without an integration here (ScreenScraper, Supabase…) are listed once you add one.</p>
           : <ul className="space-y-0.5">{other.map(s => <SubscriptionRow key={s.id} sub={s} today={today} rates={rates} showService onEdit={() => edit({ sub: s })} />)}</ul>}
         <Button size="sm" variant="ghost" className="mt-1" icon={<Plus />} onClick={() => edit({ sub: null })}>Add subscription</Button>
       </Card>

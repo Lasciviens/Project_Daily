@@ -25,7 +25,8 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Health (Apple Health, scale, goal progress) | `/#/health` | [health.md](health.md) | `health.md` |
 | Work | `/#/work` | [work.md](work.md) | `tasks.md` |
 | Projects | `/#/projects` | [projects.md](projects.md) | — |
-| AI assistant (`ai-proxy`) | Ask AI panel | [ai.md](ai.md) | `ai.md` |
+| AI assistant (`ai-proxy`, the old one) | Ask AI panel | [ai.md](ai.md) | `ai.md` |
+| Claude layer, app side (phase 1) | Developer → AI, ✨ on the item screen | [ai.md](ai.md), [ai-phase1-contract.md](ai-phase1-contract.md) | `ai.md` |
 | iPhone (Shortcuts, Scriptable, Web Push) | — | [iphone.md](iphone.md) | `iphone.md` |
 | Dev Requests (the backlog drawer) | Requests button | [dev-requests.md](dev-requests.md) | `dev-requests.md` |
 | Developer page (activity, errors, memory) | `/#/developer` | [developer.md](developer.md) | — |

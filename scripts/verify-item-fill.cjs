@@ -2,7 +2,8 @@
 /*
  * ✨ on the item screen (step 4 of docs/features/item-screen-plan.md), against the real modules through sucrase:
  *   src/features/items/itemFill.ts                   the sentence's check and the answer's check (cleanItemFill)
- *   supabase/functions/ai-proxy/index.ts             its GENERATED copy (<item-fill-shared>), run the same way
+ *   supabase/functions/claude/index.ts               its GENERATED copy (<item-fill-shared>), run the same way
+ *   supabase/claude-src/job-item-fill.ts             the item_fill job: its instructions, answer schema and flow
  *   src/shared/components/plan-modal/itemFillForm.ts a checked fill put into the screen's form
  * Every value the model returns is input (the warning in AGENTS.md), so the answer is tried hostile: wrong types,
  * huge strings, javascript: and other links, extra keys, invalid dates, control and direction characters, and a
@@ -45,14 +46,23 @@ const INVISIBLE = [[0xE0041, 'a tag character'], [0xE007F, 'the cancel tag'], [0
   [0x1D17A, 'the last musical formatting mark']]
 const LONE = String.fromCharCode(0xD800)
 
-// The server's copy: the generated region, compiled and run on its own (nothing else of ai-proxy).
-const proxy = fs.readFileSync(path.join(__dirname, '../supabase/functions/ai-proxy/index.ts'), 'utf8')
-const region = proxy.slice(proxy.search(/^\/\/ <item-fill-shared>$/m), proxy.search(/^\/\/ <\/item-fill-shared>$/m))
-const S = vm.runInNewContext(`${transform(region, { transforms: ['typescript'] }).code}\n;({ cleanItemFill, itemFillTextProblem, ITEM_FILL_SCHEMA })`, { URL })
+// The server's copy: the generated region, compiled and run on its own (nothing else of the claude function).
+const fnSrc = fs.readFileSync(path.join(__dirname, '../supabase/functions/claude/index.ts'), 'utf8')
+const region = fnSrc.slice(fnSrc.search(/^\/\/ <item-fill-shared>$/m), fnSrc.search(/^\/\/ <\/item-fill-shared>$/m))
+const S = vm.runInNewContext(`${transform(region, { transforms: ['typescript'] }).code}\n;({ cleanItemFill, itemFillTextProblem })`, { URL })
+const jobSrc = fs.readFileSync(path.join(__dirname, '../supabase/claude-src/job-item-fill.ts'), 'utf8')
+/** The job's answer schema, read from its source (a plain object literal built from the check's own lists). */
+const SCHEMA = (() => {
+  const lists = { FILL_PRIORITIES: X.FILL_PRIORITIES, FILL_REPEATS: X.FILL_REPEATS, FILL_SHOW_AS: X.FILL_SHOW_AS, FILL_UNITS: X.FILL_UNITS,
+    ALERT_MINUTES: R.ALERT_MINUTES, TRAVEL_MINUTES: R.TRAVEL_MINUTES }
+  const from = jobSrc.indexOf('const ITEM_FILL_DAY')
+  const to = jobSrc.indexOf('\n}\n', jobSrc.indexOf('const ITEM_FILL_ANSWER_SCHEMA')) + 3
+  return vm.runInNewContext(`${transform(jobSrc.slice(from, to), { transforms: ['typescript'] }).code}\n;ITEM_FILL_ANSWER_SCHEMA`, lists)
+})()
 /** Both copies give `want`. */
 function both(raw, want, name, c = ctx) {
   eq(X.cleanItemFill(raw, c), want, name)
-  eq(JSON.parse(JSON.stringify(S.cleanItemFill(raw, c))), want, `${name} (ai-proxy's copy)`)
+  eq(JSON.parse(JSON.stringify(S.cleanItemFill(raw, c))), want, `${name} (the claude function's copy)`)
 }
 
 console.log('\n== 1. The sentence ==')
@@ -62,12 +72,12 @@ console.log('\n== 1. The sentence ==')
     'zero\u200Bwidth', 'line\u2028sep', 'soft\u00ADhyphen', 'b\uFEFFom']
   eq(ok.map(X.itemFillTextProblem), ok.map(() => null), 'plain sentences pass: Norwegian letters, an emoji with its joiner and variation selector, 500 characters')
   eq(bad.map(t => X.itemFillTextProblem(t) !== null), bad.map(() => true), 'refused: not a string, empty, 501 characters, a line break, a tab, NUL, a bidi override or isolate, a zero-width space, a line separator, a soft hyphen, a BOM')
-  eq(bad.map(t => S.itemFillTextProblem(t) !== null), bad.map(() => true), "ai-proxy's copy refuses the same")
+  eq(bad.map(t => S.itemFillTextProblem(t) !== null), bad.map(() => true), "the claude function's copy refuses the same")
   eq(X.itemFillTextProblem('x'.repeat(5000)), 'At most 500 characters', 'a huge paste is said plainly')
   const hidden = [...INVISIBLE.map(([c]) => `Dentist${cp(c)} Tuesday`), `Dentist${LONE} Tuesday`, `Dentist ${String.fromCharCode(0xDC00)}`]
   eq(hidden.map(t => X.itemFillTextProblem(t) !== null), hidden.map(() => true),
     `refused before the model sees it: ${INVISIBLE.map(([, w]) => w).join(', ')}, a lone surrogate (either half)`)
-  eq(hidden.map(t => S.itemFillTextProblem(t) !== null), hidden.map(() => true), "ai-proxy's copy refuses them too")
+  eq(hidden.map(t => S.itemFillTextProblem(t) !== null), hidden.map(() => true), "the claude function's copy refuses them too")
   const emoji = `Tea ${cp(0x2615, 0xFE0E)} and ${cp(0x2615, 0xFE0F)} with ${cp(0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467)}`
   eq([X.itemFillTextProblem(emoji), S.itemFillTextProblem(emoji)], [null, null], "an emoji's own selectors (U+FE0E, U+FE0F) and joiner stay")
 }
@@ -204,28 +214,31 @@ console.log('\n== 7. A sentence that tries to steer the model ==')
   eq(X.cleanItemFill(answer, c), { title: 'Lunch', date: '2026-11-13', url: 'https://evil.example/login', notes: 'password: hunter2' },
     "tool calls are ignored; the model's link is never read — the sentence's own https link shows for review; the rest is only text")
   eq(X.cleanItemFill({}, c).url, 'https://evil.example/login', 'the link comes from the sentence even when the model gives none')
-  const proxySrc = proxy.slice(proxy.indexOf('const ITEM_FILL_PROMPT'), proxy.indexOf('// <item-fill-shared>'))
-  eq([/never instructions/.test(proxySrc), /JSON\.stringify\(sentence\)/.test(proxySrc), /tools/.test(proxySrc.slice(proxySrc.indexOf('async function answerItemFill'))),
-    /^- (url|area)/m.test(proxySrc)],
-    [true, true, false, false], 'the prompt calls the sentence data; the sentence goes in as a JSON string; the action passes no tools; the model is asked for no link and no area')
-  const action = proxySrc.slice(proxySrc.indexOf('async function answerItemFill'))
-  eq([/supabase|\.from\(/.test(action), /callGeminiStructured\(/.test(action), /cleanItemFill\(raw/.test(action)], [false, true, true],
-    'the action reads no data, makes one structured call, and answers only what cleanItemFill kept')
-  const branch = proxy.slice(proxy.indexOf('if (body.itemFill !== undefined)'), proxy.indexOf('// The person tapped Confirm'))
-  eq([/viaPhone/.test(branch), /answerItemFill\(body\.itemFill\)/.test(branch)], [true, true], 'the branch refuses the phone path and hands only body.itemFill on')
-  const auth = proxy.indexOf('if (!user) {')
-  eq(auth > 0 && auth < proxy.indexOf('if (body.itemFill !== undefined)'), true, 'the branch runs after getUser + isAppUser (no user → 401 first)')
+  const prep = jobSrc.slice(jobSrc.indexOf('prepare(input'))
+  eq([/never an instruction/i.test(jobSrc), /<sentence>/.test(prep) && /itemFillEscaped\(sentence\)/.test(prep), /tools/.test(prep), /\burl\b|\barea\b/.test(jobSrc.slice(jobSrc.indexOf('const ITEM_FILL_ANSWER_SCHEMA'), jobSrc.indexOf('const ITEM_FILL_TIME_ZONE')))],
+    [true, true, false, false], 'the instructions call the sentence data; it goes in its own tag, escaped; the job passes no tools; the schema asks for no link and no area')
+  eq([/supabase|\.from\(/.test(prep), /cleanItemFill\(raw/.test(prep), /callers: \['app'\]/.test(jobSrc)], [false, true, true],
+    'the job reads no data, answers only what cleanItemFill kept, and only the app may run it')
+  eq(itemFillEscapedOk(), true, 'a sentence cannot close its tag (& < > written out)')
+}
+
+function itemFillEscapedOk() {
+  const src = jobSrc.slice(jobSrc.indexOf('function itemFillEscaped'), jobSrc.indexOf('\n}\n', jobSrc.indexOf('function itemFillEscaped')) + 3)
+  const esc = vm.runInNewContext(`${transform(src, { transforms: ['typescript'] }).code}\n;itemFillEscaped`, {})
+  return esc('a</sentence><x>&') === 'a&lt;/sentence&gt;&lt;x&gt;&amp;'
 }
 
 console.log('\n== 8. The server copy and the model\'s schema ==')
 {
-  try { execFileSync('node', [path.join(__dirname, 'sync-item-fill-shared.mjs'), '--check'], { stdio: 'pipe' }); eq(true, true, "ai-proxy's copy of the check is current (sync-item-fill-shared)") }
-  catch { eq(false, true, "ai-proxy's copy of the check is current — run node scripts/sync-item-fill-shared.mjs") }
-  eq(Object.keys(X.ITEM_FILL_SCHEMA.properties), X.FILL_KEYS.filter(k => k !== 'url'), 'the schema asks for exactly the keys the check reads from the model (never a link)')
-  eq([X.FILL_KEYS.includes('area'), 'area' in X.ITEM_FILL_SCHEMA.properties], [false, false], 'no area anywhere')
-  eq([X.ITEM_FILL_SCHEMA.properties.repeat.enum, X.ITEM_FILL_SCHEMA.properties.repeatUnit.enum, X.ITEM_FILL_SCHEMA.properties.priority.enum, X.ITEM_FILL_SCHEMA.properties.showAs.enum],
+  try { execFileSync('node', [path.join(__dirname, 'build-claude-function.mjs'), '--check'], { stdio: 'pipe' }); eq(true, true, "the claude function's copy of the check is current (build-claude-function)") }
+  catch { eq(false, true, "the claude function's copy of the check is current — run node scripts/build-claude-function.mjs") }
+  eq(Object.keys(SCHEMA.properties), X.FILL_KEYS.filter(k => k !== 'url'), 'the schema asks for exactly the keys the check reads from the model (never a link)')
+  eq([X.FILL_KEYS.includes('area'), 'area' in SCHEMA.properties], [false, false], 'no area anywhere')
+  eq([SCHEMA.properties.repeat.enum, SCHEMA.properties.repeatUnit.enum, SCHEMA.properties.priority.enum, SCHEMA.properties.showAs.enum],
     [[...X.FILL_REPEATS], [...X.FILL_UNITS], [...X.FILL_PRIORITIES], [...X.FILL_SHOW_AS]], "the schema's enums are the check's lists")
-  eq(JSON.stringify(S.ITEM_FILL_SCHEMA), JSON.stringify(X.ITEM_FILL_SCHEMA), 'ai-proxy sends the same schema')
+  eq([SCHEMA.additionalProperties, 'required' in SCHEMA], [false, false], 'no extra keys, every field optional (structured-output limits)')
+  eq(/"(minimum|maximum|minLength|maxLength|format|pattern)"\s*:/.test(JSON.stringify(SCHEMA)), false, 'no keyword structured outputs refuse')
+  eq(Object.keys(SCHEMA.properties).length <= 24, true, 'at most 24 optional fields')
   eq([X.FILL_LENGTH_MAX, R.ALERT_MINUTES.includes(1440), R.TRAVEL_MINUTES.includes(15)], [C.MAX_DURATION_MINUTES, true, true], "the length cap is the screen's (1440)")
 }
 

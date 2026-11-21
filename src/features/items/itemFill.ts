@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  ✨ on the item screen (step 4 of docs/features/item-screen-plan.md): the
 //  sentence the owner types, and the field values the assistant may suggest
-//  from it — checked here field by field. ai-proxy's `itemFill` action runs
-//  this check on the model's answer and the browser runs it again on the
-//  server's (scripts/sync-item-fill-shared.mjs copies this file and what it
-//  imports into ai-proxy; verify-item-fill runs both copies). Pure.
+//  from it — checked here field by field. The `claude` edge function's
+//  `item_fill` job (supabase/claude-src/job-item-fill.ts) runs this check on
+//  the model's answer and the browser runs it again on the server's
+//  (scripts/build-claude-function.mjs copies this file and what it imports
+//  into the function; verify-item-fill runs both copies). Pure.
 //
 //  Everything the model says is input (AGENTS.md → the Apple Calendar
 //  warning): a kind, a repeat or an alert only from its allow-list; a real day
@@ -82,7 +83,7 @@ export interface ItemFill {
   priority?: typeof FILL_PRIORITIES[number]
 }
 
-/** Each key of ItemFill, in the order a fill is built — the model's schema has exactly these (verify-item-fill). */
+/** Each key of ItemFill, in the order a fill is built — the model's answer shape has exactly these but the link (verify-item-fill). */
 export const FILL_KEYS = [
   'title', 'date', 'startTime', 'endTime', 'durationMinutes', 'allDay', 'repeat', 'repeatDays', 'repeatEvery', 'repeatUnit',
   'repeatUntil', 'repeatCount', 'place', 'travelMinutes', 'alerts', 'showAs', 'url', 'notes', 'deadlineDate', 'deadlineTime',
@@ -257,31 +258,3 @@ export function cleanItemFill(raw: unknown, ctx: { today: string; sentence: stri
   if (priority) out.priority = priority
   return out
 }
-
-/** The model's answer shape (Gemini's responseSchema): the ItemFill keys, every one optional, the lists as enums. */
-export const ITEM_FILL_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    title: { type: 'STRING' },
-    date: { type: 'STRING', description: 'YYYY-MM-DD' },
-    startTime: { type: 'STRING', description: 'HH:MM, 24-hour' },
-    endTime: { type: 'STRING', description: 'HH:MM, 24-hour' },
-    durationMinutes: { type: 'INTEGER' },
-    allDay: { type: 'BOOLEAN' },
-    repeat: { type: 'STRING', enum: [...FILL_REPEATS] },
-    repeatDays: { type: 'ARRAY', items: { type: 'INTEGER' }, description: '0 = Sunday … 6 = Saturday' },
-    repeatEvery: { type: 'INTEGER' },
-    repeatUnit: { type: 'STRING', enum: [...FILL_UNITS] },
-    repeatUntil: { type: 'STRING', description: 'YYYY-MM-DD' },
-    repeatCount: { type: 'INTEGER' },
-    place: { type: 'STRING' },
-    travelMinutes: { type: 'INTEGER' },
-    alerts: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'minutes before the start' },
-    showAs: { type: 'STRING', enum: [...FILL_SHOW_AS] },
-    notes: { type: 'STRING' },
-    deadlineDate: { type: 'STRING', description: 'YYYY-MM-DD' },
-    deadlineTime: { type: 'STRING', description: 'HH:MM, 24-hour' },
-    doFrom: { type: 'STRING', description: 'YYYY-MM-DD' },
-    priority: { type: 'STRING', enum: [...FILL_PRIORITIES] },
-  },
-} as const

@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  ✨ on the item screen (step 4 of docs/features/item-screen-plan.md): the ✨
-//  button's field ("Describe it…"), the one call (ai-proxy's itemFill), and the
+//  button's field ("Describe it…"), the one call (the `claude` function's
+//  `item_fill` job, on Claude Haiku — docs/features/ai.md), and the
 //  review. Nothing saves by itself: the filled fields show marked until the
 //  owner keeps them — Add on a new item; "Use these" on an edit — and Cancel
 //  or the toast's Undo puts the screen back exactly as it was before ✨ (the
@@ -18,8 +19,19 @@ import type { PlanForm } from './planForm'
 
 /** The answer had nothing this screen takes. */
 export const FILL_NOTHING_READ = "Couldn't read that — try different words"
-/** Messages that already say what to do (aiApi.friendlyError); anything else is said plainly. */
-const SAYS_ITSELF = /^(Daily AI limit|AI is not configured|Session error|Type what it is|At most \d+ characters|Plain text on one line)/
+/** Said for a failure that has no sentence of its own (the function's code didn't load, an error nobody named). */
+export const FILL_FAILED = "Couldn't fill the fields — try again in a moment"
+
+/**
+ * The sentence to show for a failed fill. A run the function stopped or couldn't finish (ClaudeJobError: the
+ * job is switched off, a budget is reached, too many calls, no key, the model declined, a cut-off or unusable
+ * answer) carries the function's own plain sentence, which says what to do — shown as it is.
+ */
+export function fillFailureText(e: unknown): string {
+  const err = e as { name?: unknown; message?: unknown } | null
+  const said = err?.name === 'ClaudeJobError' && typeof err.message === 'string' ? err.message.trim() : ''
+  return said || FILL_FAILED
+}
 
 type Step = { step: 'closed' } | { step: 'asking' } | { step: 'review'; fields: FillField[]; rows: string[] }
 const CLOSED: Step = { step: 'closed' }
@@ -85,18 +97,20 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
     silent: 'useItemFill says the result itself: "Filled … — check them" with its Undo, and the review bar',
     // The sentence may hold personal details; the error log is readable by the assistant.
     logPayload: false,
+    // Every call — answered, refused or stopped at the budget — is a row in the ledger (Developer → AI).
+    invalidates: ['aiLedger'],
     mutationFn: async (text) => {
       const why = itemFillTextProblem(text)
       if (why) throw new Error(why)
       const startedIn = session.current
       let raw: unknown
       try {
-        // The assistant's api module loads only when ✨ is used (the item screen opens on every page).
-        const { fillItemFields } = await import('../../../features/ai/api/aiApi')
-        raw = await fillItemFields(text.trim())
+        // The function's client loads only when ✨ is used (the item screen opens on every page).
+        const { runClaudeJob } = await import('../../../features/ai/claude/claudeApi')
+        const { result } = await runClaudeJob<{ fill?: unknown } | null>('item_fill', { text: text.trim() })
+        raw = result && typeof result === 'object' ? result.fill : undefined
       } catch (e) {
-        const msg = (e as Error).message ?? ''
-        throw new Error(SAYS_ITSELF.test(msg) ? msg : "Couldn't fill the fields — try again in a moment", { cause: e })
+        throw new Error(fillFailureText(e), { cause: e })
       }
       // Closed, or another item opened, while it read: the answer belongs to no screen now — nothing is filled.
       if (session.current !== startedIn || !latest.current.open) return null

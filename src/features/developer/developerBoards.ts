@@ -34,6 +34,72 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
   return ids[0] ?? null
 }
 
+// ── AI: the Claude layer's five views (Developer → AI, `?view=`) ───────────
+// Overview · Calls · Settings · Prices · How it works, switched under the
+// page's bar. Every view has the list + detail tabs' tracks — two from the
+// laptop, three from 1920, and it stops there — so the page's header keeps
+// one width whichever tab or view is open (AI_VIEW_BOARDS → sectionsWidthRem).
+// Calls is LIST_DETAIL_BOARD itself: the list, a call's detail in the pane.
+export const AI_VIEWS = ['overview', 'calls', 'settings', 'prices', 'how'] as const
+export type AiView = typeof AI_VIEWS[number]
+
+export const AI_VIEW_LABEL: Record<AiView, string> = {
+  overview: 'Overview', calls: 'Calls', settings: 'Settings', prices: 'Prices', how: 'How it works',
+}
+
+/** The view an address names; anything else is the Overview. */
+export function parseAiView(raw: string | null | undefined): AiView {
+  return (AI_VIEWS as readonly string[]).includes(raw ?? '') ? raw as AiView : 'overview'
+}
+
+// Overview: the month against its budget and the chart per day in main; the
+// numbers and the cost per job beside them (their own tracks from 1920).
+export const AI_OVERVIEW_SECTIONS = ['budget', 'stats', 'jobs', 'chart'] as const
+export type AiOverviewSection = typeof AI_OVERVIEW_SECTIONS[number]
+
+export const AI_OVERVIEW_BOARD: BoardLayouts<AiOverviewSection> = {
+  1: ['budget', 'stats', 'jobs', 'chart'],
+  2: { columns: [['budget', 'chart'], ['stats', 'jobs']] },
+  3: { columns: [['budget', 'chart'], ['stats'], ['jobs']] },
+}
+
+// Settings: the total budget and the text log first (a rail on the left from
+// the laptop — they frame every job), the jobs in main, over the rest of the
+// board from 1920 (a card per job, more across as the width grows).
+export const AI_SETTINGS_SECTIONS = ['general', 'jobs'] as const
+export type AiSettingsSection = typeof AI_SETTINGS_SECTIONS[number]
+
+export const AI_SETTINGS_BOARD: BoardLayouts<AiSettingsSection> = {
+  1: ['general', 'jobs'],
+  2: { lead: 1, columns: [['general'], ['jobs']] },
+  3: { lead: 1, columns: [['general'], { stack: ['jobs'], span: 2 }] },
+}
+
+// Prices: the table in main; the worked example and why it is read-only beside it.
+export const AI_PRICES_SECTIONS = ['table', 'example', 'about'] as const
+export type AiPricesSection = typeof AI_PRICES_SECTIONS[number]
+
+export const AI_PRICES_BOARD: BoardLayouts<AiPricesSection> = {
+  1: ['table', 'example', 'about'],
+  2: { columns: [['table'], ['example', 'about']] },
+  3: { columns: [['table'], ['example'], ['about']] },
+}
+
+// How it works: whether the key is set comes first on a phone; from the
+// laptop the path of a request and the jobs (the long reads) keep main, with
+// the key, the parts, the fixed rules and the glossary beside them.
+export const AI_HOW_SECTIONS = ['status', 'steps', 'jobs', 'parts', 'rules', 'glossary'] as const
+export type AiHowSection = typeof AI_HOW_SECTIONS[number]
+
+export const AI_HOW_BOARD: BoardLayouts<AiHowSection> = {
+  1: ['status', 'steps', 'jobs', 'parts', 'rules', 'glossary'],
+  2: { columns: [['steps', 'jobs'], ['status', 'parts', 'rules', 'glossary']] },
+  3: { columns: [['steps', 'jobs'], ['status', 'parts'], ['rules', 'glossary']] },
+}
+
+/** Every board the AI tab lays out, for the page header's one width. */
+export const AI_VIEW_BOARDS: ReadonlyArray<BoardLayouts<string>> = [AI_OVERVIEW_BOARD, LIST_DETAIL_BOARD, AI_SETTINGS_BOARD, AI_PRICES_BOARD, AI_HOW_BOARD]
+
 // ── Connections ────────────────────────────────────────────────────────────
 // Six cards of two kinds: the three you sign in to from here (Google,
 // Strava, PlayStation — the ones with controls) and three configured on the
@@ -51,8 +117,10 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 // Since Settings → Subscriptions (2026-09-29) this board lives there; 'intro'
 // carries the subscription summary strip and 'otherSubs' (subscriptions for
 // services without a card) ends the server-side column at every width.
+// Anthropic (20.11.2026, the Claude layer) is the last server-side card: its
+// key is a server secret, so it only says whether the key is set.
 export const CONNECTION_SECTIONS = [
-  'intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo',
+  'intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic',
   'accountsLabel', 'serverLabel', 'serverCards', 'otherSubs',
 ] as const
 export type ConnectionSection = typeof CONNECTION_SECTIONS[number]
@@ -61,8 +129,8 @@ const ACCOUNTS = ['accountsLabel', 'google', 'icloud', 'strava', 'psn', 'trakt']
 const SERVER = ['serverLabel', 'serverCards', 'otherSubs'] as const
 
 export const CONNECTIONS_BOARD: BoardLayouts<ConnectionSection> = {
-  1: ['intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'otherSubs'],
-  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'otherSubs']] },
+  1: ['intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs'],
+  2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs']] },
   3: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 2 }] },
   4: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 3 }] },
 }

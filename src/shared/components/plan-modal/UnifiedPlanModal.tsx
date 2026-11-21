@@ -21,6 +21,16 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-20 · v26 · ✨ asks the new `claude` function (its `item_fill` job, on
+//                    Claude Haiku) instead of ai-proxy's itemFill action, which
+//                    is gone (AI rebuild, phase 1 — docs/features/ai-plan.md).
+//                    The screen's side is unchanged: the answer still goes
+//                    through cleanItemFill here and only into rows the screen
+//                    shows. New: a call stopped before the model says why in
+//                    the function's own words — the job is switched off, a
+//                    monthly budget is reached, too many calls, no key, or the
+//                    model declined — and every call is a row in the ledger
+//                    (Developer → AI).
 //  2026-11-11 · v25 · The item screen, step 4: ✨ beside the title fills the
 //                    fields from one sentence (useItemFill, ItemFill.tsx,
 //                    itemFillForm.ts). ai-proxy's itemFill action answers with

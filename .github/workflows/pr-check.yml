@@ -420,6 +420,22 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 194: the AI ledger — what the claude function's monthly
+      # budget wall and rate limits are worked out from. Only the service role
+      # writes ai_calls: the owner's own browser session, a second account, an
+      # account the owner lock keeps out and a signed-out caller are each
+      # tried, with plain writes and through the app's own delete, restore and
+      # undo functions (the real 144, 150, 151). Every CHECK with hostile
+      # values (a NaN cost, a text over 1 MB, a job name with a line break);
+      # ai_usage's Oslo days and ai_gate's Oslo month, day and last minute
+      # with rows at chosen times; the daily purge of the text log. Run with
+      # Supabase's old default grants and without them; a second run of 194
+      # must leave the catalogue exactly as the first did.
+      - name: AI ledger database scenarios
+        run: node scripts/verify-db-ai-ledger.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each

@@ -214,6 +214,21 @@ export const qk = {
     goalsAll: ['work', 'goals'] as const,
   },
   memory: { all: ['ai-memory'] as const },
+  /** The Claude layer (Developer → AI): what the function says about itself, this month's usage, the owner's settings. */
+  claude: {
+    all: ['claude'] as const,
+    describe: () => ['claude', 'describe'] as const,
+    usageAll: ['claude', 'usage'] as const,
+    usage: (from: string, to: string) => ['claude', 'usage', from, to] as const,
+    settings: () => ['claude', 'settings'] as const,
+    jobSettings: () => ['claude', 'job-settings'] as const,
+  },
+  /** The ledger's rows (ai_calls) and a call's text. Their own root: never kept on the device (persistRules.NEVER_KEPT). */
+  aiCalls: {
+    all: ['ai-calls'] as const,
+    page: (filter: object, page: number) => ['ai-calls', 'page', filter, page] as const,
+    call: (id: string) => ['ai-calls', 'call', id] as const,
+  },
   athlete: {
     profile: ['athlete-profile'] as const,
     limitations: ['athlete-limitations'] as const,

@@ -178,16 +178,16 @@ check('a picked row a filter hid → the first listed row', D.paneSelection(['c'
 check('an empty list → nothing', D.paneSelection([], 'b') === null && D.paneSelection([], null) === null)
 
 console.log('Developer · Connections')
-const CARDS = ['google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo']
-const GROUPS = { serverCards: ['steam', 'igdb', 'hevy', 'health', 'kobo'] }
+const CARDS = ['google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic']
+const GROUPS = { serverCards: ['steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic'] }
 check('step 1 keeps the phone order', eq(D.CONNECTIONS_BOARD[1], ['intro', ...CARDS, 'otherSubs']))
 for (const s of STEPS) {
   const k = keys(D.CONNECTIONS_BOARD, s)
   const shown = k.flatMap(key => GROUPS[key] ?? [key]).filter(x => CARDS.includes(x))
-  check(`step ${s}: each of the seven cards exactly once`, eq([...shown].sort(), [...CARDS].sort()), shown.join(','))
+  check(`step ${s}: each card exactly once`, eq([...shown].sort(), [...CARDS].sort()), shown.join(','))
 }
 check('laptop: your accounts in main, the server-side ones beside them, each under a label',
-  eq(B.resolveBoardLayout(D.CONNECTIONS_BOARD, 2).columns.map(c => c.stack), [['accountsLabel', 'google', 'icloud', 'strava', 'psn', 'trakt'], ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'otherSubs']]))
+  eq(B.resolveBoardLayout(D.CONNECTIONS_BOARD, 2).columns.map(c => c.stack), [['accountsLabel', 'google', 'icloud', 'strava', 'psn', 'trakt'], ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs']]))
 check('from the laptop up the PlayStation card (tall with its npsso form) is in a column stack, never a row beside shorter cards',
   [2, 3, 4].every(s => eq(B.resolveBoardLayout(D.CONNECTIONS_BOARD, s).columns[0].stack, ['accountsLabel', 'google', 'icloud', 'strava', 'psn', 'trakt'])))
 check('1920 and 2450: accounts in a 42rem main, the server-side cards over every other track', [3, 4].every(s => {

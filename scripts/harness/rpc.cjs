@@ -7,6 +7,7 @@
 // delete with their Undo): add an answer here when a test needs one.
 
 const { randomUUID } = require('node:crypto')
+const { osloDay } = require('./seed.cjs')
 
 const DAY_MS = 864e5
 
@@ -181,6 +182,30 @@ const RPCS = {
 
   // 155: Settings' "Convert old items" preview — nothing old to convert.
   app_convert_preview: () => ({ futureStandaloneBlocks: 0, pastStandaloneBlocks: 0, plans: 0, tasksWithSlots: 0, autoClearedEpisodes: 0, examples: [] }),
+
+  // 194: the ledger summed per Oslo day, job, mode and model, as ai_usage answers (failed = any outcome but ok).
+  ai_usage: (a, store) => {
+    const from = Date.parse(a.p_from), to = Date.parse(a.p_to)
+    if (!(to > from) || to - from > 400 * DAY_MS) throw new Error('ai_usage: the range must be more than nothing and at most 400 days')
+    const groups = new Map()
+    for (const c of store.rows('ai_calls')) {
+      const t = Date.parse(c.created_at)
+      if (!(t >= from && t < to)) continue
+      const day = osloDay(new Date(t))
+      const key = [day, c.job, c.mode, c.model].join('|')
+      const g = groups.get(key) ?? { day, job: c.job, mode: c.mode, model: c.model, calls: 0, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0 }
+      g.calls += 1
+      if (c.outcome !== 'ok') g.failed += 1
+      g.input_tokens += c.input_tokens
+      g.cache_read_tokens += c.cache_read_tokens
+      g.cache_write_tokens += c.cache_write_5m_tokens + c.cache_write_1h_tokens
+      g.output_tokens += c.output_tokens
+      g.thinking_tokens += c.thinking_tokens
+      g.cost_usd = Math.round((g.cost_usd + Number(c.cost_usd)) * 1e6) / 1e6
+      groups.set(key, g)
+    }
+    return [...groups.values()].sort((x, y) => x.day.localeCompare(y.day))
+  },
 
   // 180: the owner's own task labels, most used first.
   app_task_labels: (args, store) => {
