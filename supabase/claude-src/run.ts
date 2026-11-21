@@ -12,11 +12,12 @@
 import type {
   AnswerCheck, Caller, ModelAnswer, ModelFailure, ModelRequest, Outcome, PreparedRun, Provider, RunReply, TokenUsage,
 } from './types.ts'
-import { costOf } from './prices.ts'
+import { costOf, worstCostOf } from './prices.ts'
 import {
-  budgetProblem, errorPlace, hideSecrets, rateCapProblem, settingsFor, trimForLog, trimText, TEXT_LOG_MAX_BYTES,
+  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText,
+  TEXT_LOG_MAX_BYTES,
 } from './guard.ts'
-import { readGate, readSettingRows, summaryOf, writeCall, type CallRow, type Db } from './ledger.ts'
+import { finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db } from './ledger.ts'
 import { findJob } from './jobs.ts'
 
 /** Everything a run needs from outside, handed in by main.ts (or by a test). */
@@ -43,6 +44,10 @@ export interface RunContext {
 const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
 const RUN_ERROR_MAX = 500
+// A call that failed in one of these ways may still have been billed (the request may have reached the model), so
+// its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
+// never started a generation.
+const RUN_MAY_BE_BILLED: readonly ModelFailure['kind'][] = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
 const RUN_NO_TOKENS: TokenUsage = {
   inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 0, thinkingTokens: 0,
 }
@@ -61,13 +66,14 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   /** Ends the run before the model is called: a ledger row with no tokens, and the reason for the app. */
   const stop = async (reason: Exclude<Outcome, 'ok'>, message: string): Promise<RunReply> => {
     row.outcome = reason
-    row.error = message.slice(0, RUN_ERROR_MAX)
+    row.error = cutChars(message, RUN_ERROR_MAX)
     await record(ctx, row)
     return { ok: false, reason, message, call: summaryOf(row) }
   }
 
-  // 1 · The rate caps. They come before anything is written, so a flood of requests (bad ones included) fills
-  //     neither the ledger nor the bill: over a cap, the answer is "busy" and no row is written.
+  // 1 · The rate caps, read early. They come before anything is written, so a flood of requests (bad ones included)
+  //     fills neither the ledger nor the bill: over a cap, the answer is "busy" and no row is written. (The
+  //     reservation in step 6 checks the caps again, under a lock, for requests that arrive at the same moment.)
   const gate = await readGate(ctx.userDb, row.job)
   if (!gate) {
     ctx.report('the usage could not be read, so nothing was sent')
@@ -90,10 +96,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   row.model = settings.model
   row.effort = settings.effort
 
-  // 4 · The walls: the job's switch, the budgets, the API key.
+  // 4 · The job's switch and the API key.
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
-  const overBudget = budgetProblem(gate, settings, job.title)
-  if (overBudget) return stop('budget', overBudget)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
@@ -105,6 +109,33 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     userText: prepared.userText,
     answerSchema: job.answerSchema,
   }
+
+  // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
+  //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
+  //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
+  const worstCost = worstCostOf(
+    request.model, request.instructions.length + request.userText.length + JSON.stringify(request.answerSchema ?? '').length, request.maxOutputTokens,
+  )
+  const reservation = await reserveCall(ctx.adminDb, {
+    userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
+    effort: request.effort, instructionsVersion: job.version, worstCostUsd: worstCost,
+    budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay,
+  })
+  if (!reservation) {
+    ctx.report('the budget could not be reserved, so nothing was sent')
+    return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' }
+  }
+  if (reservation.kind === 'busy') {
+    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, or ${LIMITS.callsPerDay} today. Wait a moment and try again.` }
+  }
+  // From here the database holds a row for this call: it is finished by id, never written a second time.
+  row.id = reservation.id
+  if (reservation.kind === 'budget') {
+    row.outcome = 'budget'
+    row.error = cutChars(reservationBudgetProblem(settings, job.title), RUN_ERROR_MAX)
+    return { ok: false, reason: 'budget', message: reservationBudgetProblem(settings, job.title), call: summaryOf(row) }
+  }
   const started = Date.now()
   const answer = await send(ctx, ctx.provider, request)
   row.duration_ms = Math.max(0, Date.now() - started)
@@ -112,14 +143,16 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // run the tool as the owner, add its result to the conversation and send again. Each round gets its own
   // ledger row with this run_id and the next step number.
 
-  // 6 · Reading the answer: how it ended first, then the job's own check of what it says.
+  // 7 · Reading the answer: how it ended first, then the job's own check of what it says.
   const verdict = judge(answer, prepared, settings.maxOutputTokens)
 
-  // 7 · The ledger: what it cost, how long it took, how it ended. The cost comes from this code's price table.
+  // 8 · The ledger: what it cost, how long it took, how it ended. The cost comes from this code's price table.
   const usage = answer.ok ? answer.usage : RUN_NO_TOKENS
   const price = costOf(usage, request.model, row.mode)
   row.outcome = verdict.ok ? 'ok' : verdict.outcome
-  row.error = verdict.ok ? null : hideSecrets(verdict.logLine, ctx.secrets).slice(0, RUN_ERROR_MAX)
+  // The provider's own explanation goes into the row only while the text log is on: with it off, the row holds
+  // nothing but our fixed sentence.
+  row.error = verdict.ok ? null : cutChars(hideSecrets(settings.logText ? verdict.logLine : verdict.message, ctx.secrets), RUN_ERROR_MAX)
   row.request_id = answer.requestId
   row.stop_reason = answer.ok ? answer.stopReason : null
   row.served_model = answer.ok ? answer.servedModel : null
@@ -130,7 +163,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   row.output_tokens = usage.outputTokens
   row.thinking_tokens = usage.thinkingTokens
   row.long_prompt = price.longPrompt
-  row.cost_usd = price.costUsd
+  // A failure that may have been billed (a timeout, a network error, a 5xx, an unknown fault) stays at the worst case.
+  row.cost_usd = !answer.ok && RUN_MAY_BE_BILLED.includes(answer.kind) ? worstCost : price.costUsd
   if (settings.logText) {
     // The text log, only while the owner keeps it on: what was sent, and what came back.
     row.request = trimForLog({
@@ -143,9 +177,9 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
       row.thinking = answer.thinking ? trimText(answer.thinking, TEXT_LOG_MAX_BYTES) : null
     }
   }
-  await record(ctx, row)
+  await finish(ctx, row)
 
-  // 8 · The reply. A message leaves only through hideSecrets.
+  // 9 · The reply. A message leaves only through hideSecrets.
   if (verdict.ok) return { ok: true, job: job.name, result: verdict.result, call: summaryOf(row) }
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
 }
@@ -187,7 +221,16 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
   return check.ok ? { ok: true, result: check.result } : failed('invalid', `The model's answer could not be used: ${check.problem}.`)
 }
 
-/** Writes the row. A failed write never fails the answer, but it is said in the server log. */
+/**
+ * Puts the real numbers on the reserved row. A failed update never fails the answer and is said in the server log;
+ * the row then keeps its worst-case cost, so the budget is only ever counted too much, never too little.
+ */
+async function finish(ctx: RunContext, row: CallRow): Promise<void> {
+  const problem = await finishCall(ctx.adminDb, row)
+  if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
+}
+
+/** Writes the row. A failed write never fails the answer, but it is said in the server log.
 async function record(ctx: RunContext, row: CallRow): Promise<void> {
   const problem = await writeCall(ctx.adminDb, row)
   if (problem) ctx.report(`a call was not written to the ledger: ${problem}`)

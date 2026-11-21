@@ -269,6 +269,20 @@ function priceOf(model: string): ModelPrice {
   return MODEL_PRICES.find(p => p.model === model) ?? dearest
 }
 
+/**
+ * The most one call could cost, worked out BEFORE it is sent and held against the budget (the reservation). The
+ * prompt is estimated generously at one token per two characters (real text is nearer one per four), every one of
+ * them at the dearest prompt price (a one-hour cache write), and the answer is taken to use the whole limit, its
+ * thinking included. A prompt over the long-prompt line is priced as one. The real cost is never above this.
+ */
+function worstCostOf(model: string, promptChars: number, maxOutputTokens: number): number {
+  const promptTokens = Math.ceil(promptChars / 2)
+  return costOf(
+    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
+    model, 'live',
+  ).costUsd
+}
+
 /** The cost of one call in USD (to a millionth of a dollar), and whether the long-prompt prices applied. */
 function costOf(usage: TokenUsage, model: string, mode: CallMode): { costUsd: number; longPrompt: boolean } {
   const price = priceOf(model)
@@ -413,17 +427,19 @@ function rateCapProblem(gate: Gate): string | null {
   return null
 }
 
+/** `text`, or its first `max` characters. Whole characters (code points): a cut never splits a pair in two. */
+function cutChars(text: string, max: number): string {
+  return text.length <= max ? text : [...text].slice(0, max).join('')
+}
+
 const dollars = (usd: number) => `$${usd.toFixed(2)}`
 
-/** Why a budget stops this call, or null. A budget is a wall: at or over it, nothing is sent. */
-function budgetProblem(gate: Gate, settings: RunSettings, jobTitle: string): string | null {
-  if (gate.monthCost >= settings.monthlyBudgetUsd) {
-    return `This month's AI budget of ${dollars(settings.monthlyBudgetUsd)} is used up. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
-  }
-  if (settings.jobBudgetUsd !== null && gate.jobMonthCost >= settings.jobBudgetUsd) {
-    return `This month's budget of ${dollars(settings.jobBudgetUsd)} for "${jobTitle}" is used up. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
-  }
-  return null
+/** Why the reservation was refused for the budget: this call's worst case does not fit in what is left of the month. */
+function reservationBudgetProblem(settings: RunSettings, jobTitle: string): string {
+  const which = settings.jobBudgetUsd !== null && settings.jobBudgetUsd < settings.monthlyBudgetUsd
+    ? `the budget of ${dollars(settings.jobBudgetUsd)} for "${jobTitle}"`
+    : `the AI budget of ${dollars(settings.monthlyBudgetUsd)}`
+  return `This month's ${which} cannot cover another call: what is left is less than the most this call could cost. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
 }
 
 /**
@@ -530,8 +546,9 @@ const ANTHROPIC_INFO: ProviderInfo = {
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
 // An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes.
 const ANTHROPIC_TIMEOUT_MS = 30_000
-// The SDK tries once more by itself after a timeout, a network error, a 429 or a 5xx.
-const ANTHROPIC_RETRIES = 1
+// No retry by the SDK: one request is one generation, so one reservation covers one possible bill. (A timeout may
+// still be billed; a second try would be a second bill nobody reserved.)
+const ANTHROPIC_RETRIES = 0
 const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
@@ -613,8 +630,8 @@ function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | n
     stopReason: /^[a-z_]{1,60}$/.test(message.stop_reason ?? '') ? String(message.stop_reason) : 'unknown',
     refusal: anthropicPlainText(message.stop_details?.explanation ?? message.stop_details?.category ?? '', ''),
     usage: anthropicUsage(message.usage),
-    requestId: typeof message._request_id === 'string' ? message._request_id.slice(0, 120) : null,
-    servedModel: typeof message.model === 'string' ? message.model.slice(0, 80) : null,
+    requestId: typeof message._request_id === 'string' ? anthropicCut(message._request_id, 120) : null,
+    servedModel: typeof message.model === 'string' ? anthropicCut(message.model, 80) : null,
   }
 }
 
@@ -625,6 +642,11 @@ function anthropicEnding(stopReason: Anthropic.StopReason | null): AnswerEnding 
   if (stopReason === 'refusal') return 'refused'
   if (stopReason === 'max_tokens') return 'cut_off'
   return 'unexpected'
+}
+
+/** The first `max` characters, whole ones: a cut never splits a character that is two code units long. */
+function anthropicCut(text: string, max: number): string {
+  return text.length <= max ? text : [...text].slice(0, max).join('')
 }
 
 function anthropicCount(value: unknown): number {
@@ -650,7 +672,7 @@ function anthropicUsage(usage: Anthropic.Usage): TokenUsage {
 /** Text from Anthropic as one short line, with the API key taken out should it ever be quoted. */
 function anthropicPlainText(text: string, apiKey: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
-  return (apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine).slice(0, ANTHROPIC_DETAIL_MAX)
+  return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
 function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
@@ -661,7 +683,7 @@ function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
   if (error instanceof APIConnectionError) return failed('network', null, '', null)
   if (!(error instanceof APIError)) return failed('unknown', null, '', null)
   const status = typeof error.status === 'number' ? error.status : null
-  const requestId = typeof error.requestID === 'string' ? error.requestID.slice(0, 120) : null
+  const requestId = typeof error.requestID === 'string' ? anthropicCut(error.requestID, 120) : null
   return failed(anthropicFailureKind(error), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
 }
 
@@ -757,6 +779,69 @@ async function readSettingRows(userDb: Db, userId: string, job: string): Promise
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
   } catch {
     return null
+  }
+}
+
+/** What `ai_reserve` decided. `reserved`: a row with outcome 'pending' now holds the worst case against the budget. */
+type Reservation =
+  | { kind: 'reserved'; id: string }
+  | { kind: 'busy' }
+  | { kind: 'budget'; id: string }
+
+/** The arguments of `ai_reserve`: everything is a value this function worked out, none comes from the request. */
+interface ReserveArgs {
+  userId: string
+  job: string
+  caller: Caller
+  mode: CallMode
+  provider: string
+  model: string
+  effort: Effort
+  instructionsVersion: string
+  worstCostUsd: number
+  budgetUsd: number
+  jobBudgetUsd: number | null
+  perMinute: number
+  perDay: number
+}
+
+const RESERVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Asks the database to hold the worst case of this call against the budget, in one step under a lock, with the
+ * service-role client. Null when the answer can't be read or isn't one we know: the caller then sends nothing.
+ */
+async function reserveCall(adminDb: Db, a: ReserveArgs): Promise<Reservation | null> {
+  try {
+    const { data, error } = await adminDb.rpc('ai_reserve', {
+      p_user: a.userId, p_job: a.job, p_caller: a.caller, p_mode: a.mode, p_provider: a.provider, p_model: a.model,
+      p_effort: a.effort, p_instructions_version: a.instructionsVersion, p_worst_cost: a.worstCostUsd,
+      p_budget: a.budgetUsd, p_job_budget: a.jobBudgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
+    })
+    if (error) return null
+    const answer = Array.isArray(data) ? data[0] : data
+    const reason = ownValue(answer, 'reason')
+    const id = ownValue(answer, 'call_id')
+    if (reason === 'busy') return { kind: 'busy' }
+    if (typeof id !== 'string' || !RESERVE_UUID.test(id)) return null
+    if (reason === 'budget') return { kind: 'budget', id }
+    return reason === null || reason === undefined ? { kind: 'reserved', id } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Puts the real numbers on a reserved row, by its id and the verified user. If this fails the row keeps its worst-case
+ * cost, which is the safe side. Answers null, or a short word for what went wrong.
+ */
+async function finishCall(adminDb: Db, row: CallRow): Promise<string | null> {
+  try {
+    const { id, user_id: userId, ...values } = row
+    const { error } = await adminDb.from('ai_calls').update(values).eq('id', id).eq('user_id', userId)
+    return error ? `database error ${error.code ?? 'without a code'}` : null
+  } catch {
+    return 'the database could not be reached'
   }
 }
 
@@ -1318,6 +1403,10 @@ interface RunContext {
 const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
 const RUN_ERROR_MAX = 500
+// A call that failed in one of these ways may still have been billed (the request may have reached the model), so
+// its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
+// never started a generation.
+const RUN_MAY_BE_BILLED: readonly ModelFailure['kind'][] = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
 const RUN_NO_TOKENS: TokenUsage = {
   inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 0, thinkingTokens: 0,
 }
@@ -1336,13 +1425,14 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   /** Ends the run before the model is called: a ledger row with no tokens, and the reason for the app. */
   const stop = async (reason: Exclude<Outcome, 'ok'>, message: string): Promise<RunReply> => {
     row.outcome = reason
-    row.error = message.slice(0, RUN_ERROR_MAX)
+    row.error = cutChars(message, RUN_ERROR_MAX)
     await record(ctx, row)
     return { ok: false, reason, message, call: summaryOf(row) }
   }
 
-  // 1 · The rate caps. They come before anything is written, so a flood of requests (bad ones included) fills
-  //     neither the ledger nor the bill: over a cap, the answer is "busy" and no row is written.
+  // 1 · The rate caps, read early. They come before anything is written, so a flood of requests (bad ones included)
+  //     fills neither the ledger nor the bill: over a cap, the answer is "busy" and no row is written. (The
+  //     reservation in step 6 checks the caps again, under a lock, for requests that arrive at the same moment.)
   const gate = await readGate(ctx.userDb, row.job)
   if (!gate) {
     ctx.report('the usage could not be read, so nothing was sent')
@@ -1365,10 +1455,8 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   row.model = settings.model
   row.effort = settings.effort
 
-  // 4 · The walls: the job's switch, the budgets, the API key.
+  // 4 · The job's switch and the API key.
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
-  const overBudget = budgetProblem(gate, settings, job.title)
-  if (overBudget) return stop('budget', overBudget)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
@@ -1380,6 +1468,33 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
     userText: prepared.userText,
     answerSchema: job.answerSchema,
   }
+
+  // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
+  //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
+  //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
+  const worstCost = worstCostOf(
+    request.model, request.instructions.length + request.userText.length + JSON.stringify(request.answerSchema ?? '').length, request.maxOutputTokens,
+  )
+  const reservation = await reserveCall(ctx.adminDb, {
+    userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
+    effort: request.effort, instructionsVersion: job.version, worstCostUsd: worstCost,
+    budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay,
+  })
+  if (!reservation) {
+    ctx.report('the budget could not be reserved, so nothing was sent')
+    return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' }
+  }
+  if (reservation.kind === 'busy') {
+    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, or ${LIMITS.callsPerDay} today. Wait a moment and try again.` }
+  }
+  // From here the database holds a row for this call: it is finished by id, never written a second time.
+  row.id = reservation.id
+  if (reservation.kind === 'budget') {
+    row.outcome = 'budget'
+    row.error = cutChars(reservationBudgetProblem(settings, job.title), RUN_ERROR_MAX)
+    return { ok: false, reason: 'budget', message: reservationBudgetProblem(settings, job.title), call: summaryOf(row) }
+  }
   const started = Date.now()
   const answer = await send(ctx, ctx.provider, request)
   row.duration_ms = Math.max(0, Date.now() - started)
@@ -1387,14 +1502,16 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   // run the tool as the owner, add its result to the conversation and send again. Each round gets its own
   // ledger row with this run_id and the next step number.
 
-  // 6 · Reading the answer: how it ended first, then the job's own check of what it says.
+  // 7 · Reading the answer: how it ended first, then the job's own check of what it says.
   const verdict = judge(answer, prepared, settings.maxOutputTokens)
 
-  // 7 · The ledger: what it cost, how long it took, how it ended. The cost comes from this code's price table.
+  // 8 · The ledger: what it cost, how long it took, how it ended. The cost comes from this code's price table.
   const usage = answer.ok ? answer.usage : RUN_NO_TOKENS
   const price = costOf(usage, request.model, row.mode)
   row.outcome = verdict.ok ? 'ok' : verdict.outcome
-  row.error = verdict.ok ? null : hideSecrets(verdict.logLine, ctx.secrets).slice(0, RUN_ERROR_MAX)
+  // The provider's own explanation goes into the row only while the text log is on: with it off, the row holds
+  // nothing but our fixed sentence.
+  row.error = verdict.ok ? null : cutChars(hideSecrets(settings.logText ? verdict.logLine : verdict.message, ctx.secrets), RUN_ERROR_MAX)
   row.request_id = answer.requestId
   row.stop_reason = answer.ok ? answer.stopReason : null
   row.served_model = answer.ok ? answer.servedModel : null
@@ -1405,7 +1522,8 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   row.output_tokens = usage.outputTokens
   row.thinking_tokens = usage.thinkingTokens
   row.long_prompt = price.longPrompt
-  row.cost_usd = price.costUsd
+  // A failure that may have been billed (a timeout, a network error, a 5xx, an unknown fault) stays at the worst case.
+  row.cost_usd = !answer.ok && RUN_MAY_BE_BILLED.includes(answer.kind) ? worstCost : price.costUsd
   if (settings.logText) {
     // The text log, only while the owner keeps it on: what was sent, and what came back.
     row.request = trimForLog({
@@ -1418,9 +1536,9 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
       row.thinking = answer.thinking ? trimText(answer.thinking, TEXT_LOG_MAX_BYTES) : null
     }
   }
-  await record(ctx, row)
+  await finish(ctx, row)
 
-  // 8 · The reply. A message leaves only through hideSecrets.
+  // 9 · The reply. A message leaves only through hideSecrets.
   if (verdict.ok) return { ok: true, job: job.name, result: verdict.result, call: summaryOf(row) }
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
 }
@@ -1462,7 +1580,16 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
   return check.ok ? { ok: true, result: check.result } : failed('invalid', `The model's answer could not be used: ${check.problem}.`)
 }
 
-/** Writes the row. A failed write never fails the answer, but it is said in the server log. */
+/**
+ * Puts the real numbers on the reserved row. A failed update never fails the answer and is said in the server log;
+ * the row then keeps its worst-case cost, so the budget is only ever counted too much, never too little.
+ */
+async function finish(ctx: RunContext, row: CallRow): Promise<void> {
+  const problem = await finishCall(ctx.adminDb, row)
+  if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
+}
+
+/** Writes the row. A failed write never fails the answer, but it is said in the server log.
 async function record(ctx: RunContext, row: CallRow): Promise<void> {
   const problem = await writeCall(ctx.adminDb, row)
   if (problem) ctx.report(`a call was not written to the ledger: ${problem}`)
@@ -1500,11 +1627,12 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
-  { title: 'Switch, budget and key', part: 'guard', text: "A job that is switched off stops here. So does a request when the total monthly budget or the job's own budget is used up, or when the server has no API key. Each of these is written to the ledger with zero tokens." },
+  { title: 'Switch and key', part: 'run', text: "A job that is switched off stops here, and so does a request when the server has no API key. Each is written to the ledger with zero tokens." },
+  { title: 'Reserving the cost', part: 'ledger', text: "Before anything is sent, the most this call could cost (a generous guess of its prompt, plus its whole answer limit) is held against your monthly budget and the job's budget, in one step in the database under a lock. Calls that arrive at the same moment each hold their own share, so none can slip past the wall. If what is left cannot cover it, nothing is sent." },
   { title: 'Building the request', part: 'run', text: "The request has two parts. First the job's fixed instructions: always the same bytes, so the provider can cache them. Then the part that changes, such as today's date and your text, which travels as data inside a tag." },
-  { title: 'Calling the model', part: 'provider', text: "The provider part turns the request into Anthropic's shape and sends it with Anthropic's official SDK: the key in a header, a time limit, and one more try if the network or Anthropic fails. It turns the answer back into text, a summary of the model's thinking, how it ended and the token counts." },
+  { title: 'Calling the model', part: 'provider', text: "The provider part turns the request into Anthropic's shape and sends it with Anthropic's official SDK: the key in a header and a time limit. There is no automatic retry: one request is one generation, so one reservation covers one possible bill. It turns the answer back into text, a summary of the model's thinking, how it ended and the token counts." },
   { title: 'Checking the answer', part: 'run', text: "An answer the model declined, or one cut off at its length limit, is not used. Otherwise the job checks it value by value with its own code. A value that fails is dropped, never repaired." },
-  { title: 'Writing the ledger', part: 'ledger', text: 'One row goes into your call log: the tokens, the cost (worked out from the price table in this code), the time it took and how it ended. While you keep the text log on, the request, the answer and the thinking summary are kept too.' },
+  { title: 'Writing the ledger', part: 'ledger', text: 'The reserved row gets its real numbers: the tokens, the cost (worked out from the price table in this code), the time it took and how it ended. A call whose bill is unknown, such as a timeout, stays charged at the reserved worst case. While you keep the text log on, the request, the answer and the thinking summary are kept too.' },
   { title: 'The reply', part: 'run', text: "The app gets the checked result with the call's numbers, or a reason with one plain sentence. Every message goes through the filter that takes secrets out." },
 ]
 
@@ -1514,7 +1642,7 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The account the function acts for is always the one it verified. A user id sent in a request is never read.',
   "The API key lives only in the server's secrets. It travels to Anthropic in a header, never in an address, and it is taken out of every error before the error is sent back or written down.",
   'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, and every number is held inside the limits in the code.',
-  `A monthly budget is a wall, not a warning: when it is reached, nothing is sent. It can be at most $${LIMITS.monthlyBudgetMaxUsd}.`,
+  `A monthly budget is a wall, not a warning: the worst case of each call is reserved before it is sent, and when it does not fit, nothing is sent. It can be at most $${LIMITS.monthlyBudgetMaxUsd}.`,
   'The prices are part of the code, not a setting, so the budget wall cannot be switched off by changing a price.',
   `At most ${LIMITS.callsPerMinute} calls in a minute and ${LIMITS.callsPerDay} in a day.`,
   'The text you type is sent as data inside a tag, and the fixed instructions say that text in it is never an instruction.',

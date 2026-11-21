@@ -13,7 +13,7 @@
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 import type { CallMode, CallSummary, Caller, Effort, Outcome } from './types.ts'
-import { gateOf, type Gate } from './guard.ts'
+import { gateOf, ownValue, type Gate } from './guard.ts'
 
 /** A Supabase database client. The type is all this part takes from the library: main.ts creates the clients. */
 export type Db = SupabaseClient
@@ -81,6 +81,69 @@ export async function readSettingRows(userDb: Db, userId: string, job: string): 
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
   } catch {
     return null
+  }
+}
+
+/** What `ai_reserve` decided. `reserved`: a row with outcome 'pending' now holds the worst case against the budget. */
+export type Reservation =
+  | { kind: 'reserved'; id: string }
+  | { kind: 'busy' }
+  | { kind: 'budget'; id: string }
+
+/** The arguments of `ai_reserve`: everything is a value this function worked out, none comes from the request. */
+export interface ReserveArgs {
+  userId: string
+  job: string
+  caller: Caller
+  mode: CallMode
+  provider: string
+  model: string
+  effort: Effort
+  instructionsVersion: string
+  worstCostUsd: number
+  budgetUsd: number
+  jobBudgetUsd: number | null
+  perMinute: number
+  perDay: number
+}
+
+const RESERVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Asks the database to hold the worst case of this call against the budget, in one step under a lock, with the
+ * service-role client. Null when the answer can't be read or isn't one we know: the caller then sends nothing.
+ */
+export async function reserveCall(adminDb: Db, a: ReserveArgs): Promise<Reservation | null> {
+  try {
+    const { data, error } = await adminDb.rpc('ai_reserve', {
+      p_user: a.userId, p_job: a.job, p_caller: a.caller, p_mode: a.mode, p_provider: a.provider, p_model: a.model,
+      p_effort: a.effort, p_instructions_version: a.instructionsVersion, p_worst_cost: a.worstCostUsd,
+      p_budget: a.budgetUsd, p_job_budget: a.jobBudgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
+    })
+    if (error) return null
+    const answer = Array.isArray(data) ? data[0] : data
+    const reason = ownValue(answer, 'reason')
+    const id = ownValue(answer, 'call_id')
+    if (reason === 'busy') return { kind: 'busy' }
+    if (typeof id !== 'string' || !RESERVE_UUID.test(id)) return null
+    if (reason === 'budget') return { kind: 'budget', id }
+    return reason === null || reason === undefined ? { kind: 'reserved', id } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Puts the real numbers on a reserved row, by its id and the verified user. If this fails the row keeps its worst-case
+ * cost, which is the safe side. Answers null, or a short word for what went wrong.
+ */
+export async function finishCall(adminDb: Db, row: CallRow): Promise<string | null> {
+  try {
+    const { id, user_id: userId, ...values } = row
+    const { error } = await adminDb.from('ai_calls').update(values).eq('id', id).eq('user_id', userId)
+    return error ? `database error ${error.code ?? 'without a code'}` : null
+  } catch {
+    return 'the database could not be reached'
   }
 }
 

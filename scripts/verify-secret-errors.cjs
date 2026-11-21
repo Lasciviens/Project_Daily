@@ -9,13 +9,19 @@
  * stubbed Deno, an in-memory database and every outside call failing — no
  * network — and checks the answer contains none of the keys. Also ai-proxy's
  * Gemini timeout: 20 s per attempt, a hung model hands over to the next one,
- * and the answer when the last one hangs is scrubbed too (07.11.2026).
+ * and the answer when the last one hangs is scrubbed too (07.11.2026). The `claude` function (AI phase 1, 20.11.2026)
+ * runs with the REAL Anthropic SDK against a pretend network: a failed call, and an Anthropic error that quotes the
+ * key, answer without it in the reply, the ledger row or the server log.
  *
  *   Run:  node scripts/verify-secret-errors.cjs
  */
 const fs = require('fs')
 const path = require('path')
 const sucrase = require('sucrase')
+const SDK = require('@anthropic-ai/sdk')
+// The names the claude function imports from the SDK (the import line is removed, the names are handed in).
+const SDK_NAMES = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError', 'APIError', 'AuthenticationError', 'BadRequestError',
+  'ContentTooLargeError', 'InternalServerError', 'NotFoundError', 'OverloadedError', 'PermissionDeniedError', 'RateLimitError', 'UnprocessableEntityError']
 const REPO = path.join(__dirname, '..')
 
 // Minimal PostgREST-like builder over in-memory tables. Records every op.
@@ -59,17 +65,22 @@ function makeDb(tables, users, log) {
   }
   return {
     from: builder,
-    rpc: async (name, args) => { log.push({ rpc: name, args }); return { data: null, error: { message: 'stub rpc' } } },
+    rpc: async (name, args) => {
+      log.push({ rpc: name, args })
+      // The claude function asks the ledger for the month's usage (migration 194): an empty month.
+      if (name === 'ai_gate') return { data: [{ month_cost: 0, job_month_cost: 0, calls_last_minute: 0, calls_today: 0 }], error: null }
+      return { data: null, error: { message: 'stub rpc' } }
+    },
     auth: { getUser: async (tok) => ({ data: { user: users[tok] ? { id: users[tok] } : null }, error: null }) },
   }
 }
 
 function load(fnName, { env, tables, users, log, fetchImpl }) {
-  const src = fs.readFileSync(`${REPO}/supabase/functions/${fnName}/index.ts`, 'utf8').replace(/^import .*createClient.*$/m, '')
+  const src = fs.readFileSync(`${REPO}/supabase/functions/${fnName}/index.ts`, 'utf8').replace(/^import .*createClient.*$/m, '').replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '')
   const code = sucrase.transform(src, { transforms: ['typescript'] }).code
   let handler
   const Deno = { env: { get: (k) => env[k] }, serve: (f) => { handler = f } }
-  new Function('Deno', 'createClient', 'fetch', code)(Deno, () => makeDb(tables, users, log), fetchImpl)
+  new Function('Deno', 'createClient', 'fetch', ...SDK_NAMES, code)(Deno, () => makeDb(tables, users, log), fetchImpl, ...SDK_NAMES.map(n => SDK[n]))
   return handler
 }
 
@@ -77,7 +88,8 @@ function load(fnName, { env, tables, users, log, fetchImpl }) {
 const failing = async (url) => { throw new TypeError(`error sending request for url (${url}): client error (Connect): dns error`) }
 const SECRETS = { GEMINI_API_KEY: 'GEMINI-SECRET-123456', STEAM_API_KEY: 'STEAM-SECRET-123456', STEAM_ID64: '76561190000000000',
   IGDB_CLIENT_ID: 'igdb-client-id', IGDB_CLIENT_SECRET: 'IGDB-SECRET-123456', MDBLIST_API_KEY: 'MDBLIST-SECRET-123456',
-  TMDB_API_KEY: 'TMDB-SECRET-123456', TRAKT_CLIENT_ID: 'tci', TRAKT_CLIENT_SECRET: 'TRAKT-SECRET-123456' }
+  TMDB_API_KEY: 'TMDB-SECRET-123456', TRAKT_CLIENT_ID: 'tci', TRAKT_CLIENT_SECRET: 'TRAKT-SECRET-123456',
+  ANTHROPIC_API_KEY: 'sk-ant-api03-FAKEKEY0123456789abcdef' }
 const env = { ...SECRETS, HEVY_USER_ID: 'owner', SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 'SERVICE-SECRET-123456', SUPABASE_ANON_KEY: 'a' }
 let ok = 0, bad = 0
 const check = (n, c, d) => { if (c) { ok++; console.log('  ✓', n) } else { bad++; console.log('  ✗', n, d ?? '') } }
@@ -104,6 +116,36 @@ process.on('exit', () => {
     const text = await res.text()
     const l = leaks(text)
     check(`${fn} ${body.action ?? 'chat'}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
+  }
+
+  // The claude function: the real SDK, a pretend network. A network failure and an Anthropic error that quotes the
+  // key itself must reach the browser, the ledger row and the server log without any key.
+  {
+    const realSetTimeout = global.setTimeout
+    global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100 && ms <= 60_000 ? 2 : ms, ...rest) // the SDK's waits
+    const logged = []
+    const realConsoleError = console.error
+    console.error = (...a) => { logged.push(a.join(' ')) }
+    try {
+      const run = async (fetchImpl) => {
+        const tables = { app_allowed_users: [] }
+        const handler = load('claude', { env, tables, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl })
+        const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ action: 'run', job: 'item_fill', input: { text: 'Dentist on Tuesday at 14:00' } }) }))
+        return { status: res.status, text: await res.text(), rows: JSON.stringify(tables.ai_calls ?? []) }
+      }
+      const quoting = async () => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `bad key ${env.ANTHROPIC_API_KEY} and ${env.SUPABASE_SERVICE_ROLE_KEY}, also sk-ant-api03-OTHERKEY0123456789` } }),
+        { status: 400, headers: { 'content-type': 'application/json' } })
+      for (const [name, fetchImpl] of [['a network failure', failing], ['an Anthropic error that quotes the key', quoting]]) {
+        logged.length = 0
+        const r = await run(fetchImpl)
+        const l = leaks(r.text + r.rows + logged.join('\n')).concat(/sk-ant-/.test(r.text + r.rows + logged.join('\n')) ? ['an sk-ant- key'] : [])
+        check(`claude: ${name} answers 200 with a failed run, a ledger row, and no key in the answer, the row or the log`,
+          r.status === 200 && JSON.parse(r.text).ok === false && r.rows.includes('"outcome":"error"') && l.length === 0, `${r.status} ${r.text.slice(0, 200)} leaked ${l.join(', ')}`)
+      }
+    } finally {
+      console.error = realConsoleError
+      global.setTimeout = realSetTimeout
+    }
   }
 
   // Gemini attempts time out (promised in 038f0168, wired 07.11.2026): every

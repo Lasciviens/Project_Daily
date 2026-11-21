@@ -126,17 +126,19 @@ export function rateCapProblem(gate: Gate): string | null {
   return null
 }
 
+/** `text`, or its first `max` characters. Whole characters (code points): a cut never splits a pair in two. */
+export function cutChars(text: string, max: number): string {
+  return text.length <= max ? text : [...text].slice(0, max).join('')
+}
+
 const dollars = (usd: number) => `$${usd.toFixed(2)}`
 
-/** Why a budget stops this call, or null. A budget is a wall: at or over it, nothing is sent. */
-export function budgetProblem(gate: Gate, settings: RunSettings, jobTitle: string): string | null {
-  if (gate.monthCost >= settings.monthlyBudgetUsd) {
-    return `This month's AI budget of ${dollars(settings.monthlyBudgetUsd)} is used up. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
-  }
-  if (settings.jobBudgetUsd !== null && gate.jobMonthCost >= settings.jobBudgetUsd) {
-    return `This month's budget of ${dollars(settings.jobBudgetUsd)} for "${jobTitle}" is used up. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
-  }
-  return null
+/** Why the reservation was refused for the budget: this call's worst case does not fit in what is left of the month. */
+export function reservationBudgetProblem(settings: RunSettings, jobTitle: string): string {
+  const which = settings.jobBudgetUsd !== null && settings.jobBudgetUsd < settings.monthlyBudgetUsd
+    ? `the budget of ${dollars(settings.jobBudgetUsd)} for "${jobTitle}"`
+    : `the AI budget of ${dollars(settings.monthlyBudgetUsd)}`
+  return `This month's ${which} cannot cover another call: what is left is less than the most this call could cost. Nothing is sent until next month, or until you raise it in Developer → AI → Settings.`
 }
 
 /**

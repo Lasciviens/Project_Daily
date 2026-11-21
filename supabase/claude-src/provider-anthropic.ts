@@ -40,8 +40,9 @@ export const ANTHROPIC_INFO: ProviderInfo = {
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
 // An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes.
 const ANTHROPIC_TIMEOUT_MS = 30_000
-// The SDK tries once more by itself after a timeout, a network error, a 429 or a 5xx.
-const ANTHROPIC_RETRIES = 1
+// No retry by the SDK: one request is one generation, so one reservation covers one possible bill. (A timeout may
+// still be billed; a second try would be a second bill nobody reserved.)
+const ANTHROPIC_RETRIES = 0
 const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
@@ -123,8 +124,8 @@ function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | n
     stopReason: /^[a-z_]{1,60}$/.test(message.stop_reason ?? '') ? String(message.stop_reason) : 'unknown',
     refusal: anthropicPlainText(message.stop_details?.explanation ?? message.stop_details?.category ?? '', ''),
     usage: anthropicUsage(message.usage),
-    requestId: typeof message._request_id === 'string' ? message._request_id.slice(0, 120) : null,
-    servedModel: typeof message.model === 'string' ? message.model.slice(0, 80) : null,
+    requestId: typeof message._request_id === 'string' ? anthropicCut(message._request_id, 120) : null,
+    servedModel: typeof message.model === 'string' ? anthropicCut(message.model, 80) : null,
   }
 }
 
@@ -135,6 +136,11 @@ function anthropicEnding(stopReason: Anthropic.StopReason | null): AnswerEnding 
   if (stopReason === 'refusal') return 'refused'
   if (stopReason === 'max_tokens') return 'cut_off'
   return 'unexpected'
+}
+
+/** The first `max` characters, whole ones: a cut never splits a character that is two code units long. */
+function anthropicCut(text: string, max: number): string {
+  return text.length <= max ? text : [...text].slice(0, max).join('')
 }
 
 function anthropicCount(value: unknown): number {
@@ -160,7 +166,7 @@ function anthropicUsage(usage: Anthropic.Usage): TokenUsage {
 /** Text from Anthropic as one short line, with the API key taken out should it ever be quoted. */
 function anthropicPlainText(text: string, apiKey: string): string {
   const oneLine = text.replace(/\s+/g, ' ').trim()
-  return (apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine).slice(0, ANTHROPIC_DETAIL_MAX)
+  return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
 function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
@@ -171,7 +177,7 @@ function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
   if (error instanceof APIConnectionError) return failed('network', null, '', null)
   if (!(error instanceof APIError)) return failed('unknown', null, '', null)
   const status = typeof error.status === 'number' ? error.status : null
-  const requestId = typeof error.requestID === 'string' ? error.requestID.slice(0, 120) : null
+  const requestId = typeof error.requestID === 'string' ? anthropicCut(error.requestID, 120) : null
   return failed(anthropicFailureKind(error), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
 }
 

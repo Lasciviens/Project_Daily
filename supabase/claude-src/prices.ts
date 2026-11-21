@@ -48,6 +48,20 @@ function priceOf(model: string): ModelPrice {
   return MODEL_PRICES.find(p => p.model === model) ?? dearest
 }
 
+/**
+ * The most one call could cost, worked out BEFORE it is sent and held against the budget (the reservation). The
+ * prompt is estimated generously at one token per two characters (real text is nearer one per four), every one of
+ * them at the dearest prompt price (a one-hour cache write), and the answer is taken to use the whole limit, its
+ * thinking included. A prompt over the long-prompt line is priced as one. The real cost is never above this.
+ */
+export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number): number {
+  const promptTokens = Math.ceil(promptChars / 2)
+  return costOf(
+    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
+    model, 'live',
+  ).costUsd
+}
+
 /** The cost of one call in USD (to a millionth of a dollar), and whether the long-prompt prices applied. */
 export function costOf(usage: TokenUsage, model: string, mode: CallMode): { costUsd: number; longPrompt: boolean } {
   const price = priceOf(model)

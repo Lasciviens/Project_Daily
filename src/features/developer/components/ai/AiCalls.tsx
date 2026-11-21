@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, ReceiptText, RefreshCw } from 'lucide-react'
-import { Button, EmptyState, PageBoard, Skeleton } from '../../../../shared/ui'
+import { Button, EmptyState, IconButton, PageBoard, Skeleton } from '../../../../shared/ui'
 import { useAiCalls, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
 import { CALLS_PAGE_SIZE } from '../../../ai/claude/ledgerApi'
 import { OUTCOME_META, formatCount } from '../../../ai/claude/ledgerRules'
@@ -54,17 +54,17 @@ export function AiCalls() {
   const sections: Record<ListDetailSection, ReactNode> = {
     toolbar: (
       <div className="flex flex-wrap items-center gap-2">
-        <select value={filter.job} onChange={e => change({ job: e.target.value })} aria-label="Job" className="select w-auto min-w-0 max-w-[11rem]">
+        <select value={filter.job} onChange={e => change({ job: e.target.value })} aria-label="Job" className="select w-auto min-w-0 max-w-[10rem] flex-1">
           <option value="">All jobs</option>
           {(jobs ?? []).map(j => <option key={j.name} value={j.name}>{j.title}</option>)}
         </select>
-        <select value={filter.outcome} onChange={e => change({ outcome: e.target.value })} aria-label="Outcome" className="select w-auto min-w-0 max-w-[11rem]">
+        <select value={filter.outcome} onChange={e => change({ outcome: e.target.value })} aria-label="Outcome" className="select w-auto min-w-0 max-w-[10rem] flex-1">
           <option value="">All outcomes</option>
           {CALL_OUTCOMES.map(o => <option key={o} value={o}>{OUTCOME_META[o].label}</option>)}
         </select>
-        <Button size="sm" className="ml-auto" icon={<RefreshCw className={isFetching ? 'animate-spin' : undefined} />} onClick={() => { void refetch() }} disabled={isFetching}>
-          Refresh
-        </Button>
+        <IconButton label="Refresh" className="ml-auto" onClick={() => { void refetch() }} disabled={isFetching}>
+          <RefreshCw aria-hidden className={isFetching ? 'animate-spin' : undefined} />
+        </IconButton>
       </div>
     ),
     list: (
