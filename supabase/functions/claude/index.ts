@@ -816,7 +816,9 @@ async function reserveCall(adminDb: Db, a: ReserveArgs): Promise<Reservation | n
     const { data, error } = await adminDb.rpc('ai_reserve', {
       p_user: a.userId, p_job: a.job, p_caller: a.caller, p_mode: a.mode, p_provider: a.provider, p_model: a.model,
       p_effort: a.effort, p_instructions_version: a.instructionsVersion, p_worst_cost: a.worstCostUsd,
-      p_budget: a.budgetUsd, p_job_budget: a.jobBudgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
+      p_budget: a.budgetUsd,
+      // The database refuses a null here (194): a job with no budget of its own is held to the total one.
+      p_job_budget: a.jobBudgetUsd ?? a.budgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
     })
     if (error) return null
     const answer = Array.isArray(data) ? data[0] : data

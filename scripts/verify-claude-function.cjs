@@ -151,11 +151,15 @@ function fakeCreateClient(world) {
         world.reserves.push(structuredClone(args))
         world.events.push('reserve')
         if (world.reserveRaw) return world.reserveRaw
+        // Like the real one (194): any of these null is refused with 22023 — a fake that took null hid a live bug (22.11.2026).
+        if (['p_user', 'p_worst_cost', 'p_budget', 'p_job_budget', 'p_per_minute', 'p_per_day'].some(k => args[k] === null || args[k] === undefined)) {
+          return { data: null, error: { code: '22023', message: 'ai_reserve: bad arguments' } }
+        }
         const g = Array.isArray(world.gate) ? world.gate[0] : world.gate
         if (g.calls_last_minute >= args.p_per_minute || g.calls_today >= args.p_per_day) return { data: [{ call_id: null, reason: 'busy' }], error: null }
         const id = crypto.randomUUID()
         const base = { id, user_id: args.p_user, run_id: crypto.randomUUID(), step: 1, job: args.p_job, caller: args.p_caller, mode: args.p_mode, provider: args.p_provider, model: args.p_model, effort: args.p_effort, instructions_version: args.p_instructions_version, tools: [], input_tokens: 0, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 0, thinking_tokens: 0, long_prompt: false, request: null, response: null, thinking: null, error: null, served_model: null, stop_reason: null, request_id: null, duration_ms: 0 }
-        const over = Number(g.month_cost) + args.p_worst_cost > args.p_budget || (args.p_job_budget !== null && Number(g.job_month_cost) + args.p_worst_cost > args.p_job_budget)
+        const over = Number(g.month_cost) + args.p_worst_cost > args.p_budget || Number(g.job_month_cost) + args.p_worst_cost > args.p_job_budget
         world.calls.push({ ...base, outcome: over ? 'budget' : 'pending', cost_usd: over ? 0 : args.p_worst_cost })
         return { data: [{ call_id: id, reason: over ? 'budget' : null }], error: null }
       }
@@ -592,9 +596,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   x = await go(runBody())
   const res0 = x.world.reserves[0]
   check('ai_reserve is called once, with the service-role client, BEFORE any fetch', x.world.reserves.length === 1 && x.world.events.join() === 'reserve,fetch', x.world.events)
-  check('its arguments are all worked out by the function: the verified user, the job, app, live, anthropic, the model and effort used, the version, the budgets and the hard caps',
+  check('its arguments are all worked out by the function: the verified user, the job, app, live, anthropic, the model and effort used, the version, the budgets (a job with no budget of its own is held to the total: the database refuses null) and the hard caps',
     res0.p_user === OWNER && res0.p_job === 'item_fill' && res0.p_caller === 'app' && res0.p_mode === 'live' && res0.p_provider === 'anthropic' && res0.p_model === 'claude-haiku-5-5' && res0.p_effort === 'low'
-    && res0.p_instructions_version === ITEM_FILL_JOB.version && res0.p_budget === 5 && res0.p_job_budget === null && res0.p_per_minute === 20 && res0.p_per_day === 600 && typeof res0.p_worst_cost === 'number', res0)
+    && res0.p_instructions_version === ITEM_FILL_JOB.version && res0.p_budget === 5 && res0.p_job_budget === 5 && res0.p_per_minute === 20 && res0.p_per_day === 600 && typeof res0.p_worst_cost === 'number', res0)
   check('the user id is the verified one even when the request names another', (await go({ ...runBody(), user_id: STRANGER, p_user: STRANGER })).world.reserves[0].p_user === OWNER)
   check('the worst cost is at least the real cost (here 5000+ prompt characters at the dearest prompt price plus the whole 2000-token answer limit)', res0.p_worst_cost >= x.row.cost_usd && res0.p_worst_cost > 0.001 && res0.p_worst_cost < 0.01, [res0.p_worst_cost, x.row.cost_usd])
   const promptChars = ITEM_FILL_JOB.instructions.length + JSON.stringify(ITEM_FILL_JOB.answerSchema).length + expectedUser.length
