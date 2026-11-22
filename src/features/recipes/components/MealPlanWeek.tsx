@@ -1,12 +1,15 @@
-import { useState, Fragment } from 'react'
+import { useMemo, useState, Fragment } from 'react'
 import { format, addDays, addWeeks, startOfWeek, endOfWeek, isToday, getISOWeek } from 'date-fns'
 import { formatDateRange, formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { Check, CircleCheck, ClipboardList, Plus } from 'lucide-react'
+import { Check, CircleCheck, ClipboardList, Plus, ShoppingBag } from 'lucide-react'
 import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
+import { useRecipes } from '../hooks/useRecipes'
+import { useAddWeekGroceriesToShop } from '../hooks/useShopIntegration'
+import { weekGroceries } from '../weekGroceries'
 import { useFoodLogRange } from '../hooks/useFoodLog'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Card, IconButton, Truncate, cx } from '../../../shared/ui'
+import { Button, Card, IconButton, Truncate, cx } from '../../../shared/ui'
 import { SLOT_OPTIONS } from './foodLogUtils'
 import type { MealSlot, MealPlanEntry } from '../types'
 import type { LoggedFood } from '../api/foodLogApi'
@@ -50,6 +53,10 @@ export function MealPlanWeek() {
 
   const { data: entries = [] } = useMealPlan(fromStr, toStr)     // the PLAN
   const { data: logged = [] }  = useFoodLogRange(fromStr, toStr) // the DIARY (eaten)
+  // The week's groceries: every planned meal's ingredients added up, one tap to the quick list.
+  const { data: recipes = [] } = useRecipes()
+  const groceries = useMemo(() => weekGroceries(entries, recipes), [entries, recipes])
+  const addGroceries = useAddWeekGroceriesToShop()
 
   // Every planned row for a slot — several are legal since migration 061.
   function plannedFor(dateStr: string, slot: MealSlot): Planned[] {
@@ -96,6 +103,10 @@ export function MealPlanWeek() {
             isToday={weekOffset === 0}
           />
           <span className="text-meta tabular-nums text-fg-muted">{formatDateRange(weekStart, weekEnd)}</span>
+          <Button size="sm" icon={<ShoppingBag />} disabled={groceries.length === 0} loading={addGroceries.isPending}
+            onClick={() => addGroceries.mutate({ lines: groceries, what: `Week ${getISOWeek(weekStart)}` })}>
+            Groceries to Shop
+          </Button>
         </div>
         {/* Plan vs what was actually eaten (the Today diary), shown together. */}
         <p className="flex items-center gap-3 text-meta text-fg-muted">

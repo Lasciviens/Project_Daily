@@ -4,11 +4,13 @@
 // this is the one place Recipes talks to Shop's API directly.
 import { fetchShopCategories, createShopCategory, createShopItem } from '../../shop/api/shopApi'
 import type { RecipeIngredient } from '../types'
+import type { CreateShopItemInput } from '../../shop/types'
+import { noteOf, type GroceryLine } from '../weekGroceries'
 
 const TOP_CATEGORY = 'Groceries'
 const SUB_CATEGORY = 'Recipe Ingredients'
 
-async function resolveTargetCategory(): Promise<string> {
+export async function resolveTargetCategory(): Promise<string> {
   const categories = await fetchShopCategories()
   let top = categories.find(c => !c.parent_id && c.name === TOP_CATEGORY)
   if (!top) top = await createShopCategory({ name: TOP_CATEGORY })
@@ -36,4 +38,11 @@ export async function addMissingIngredientsToShop(
     })
   }
   return ingredients.length
+}
+
+/** The week's grocery lines as quick-list rows, filed under Groceries → Recipe Ingredients. */
+export async function weekGroceryInputs(lines: GroceryLine[]): Promise<CreateShopItemInput[]> {
+  if (!lines.length) return []
+  const categoryId = await resolveTargetCategory()
+  return lines.map(l => ({ category_id: categoryId, title: l.name, notes: noteOf(l), source_type: 'manual', list: 'quick' }))
 }
