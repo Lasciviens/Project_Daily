@@ -71,7 +71,7 @@ export const PROMPT_OVERHEAD_TOKENS = 1000
  * whole limit, its thinking included. A prompt over the long-prompt line is priced as one. Only rare symbols that
  * cost several tokens each could push a real call over it; the ledger then records the real, higher cost.
  */
-export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, extra: { imageTokens?: number; webSearches?: number } = {}): number {
+export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, mode: CallMode = 'live', extra: { imageTokens?: number; webSearches?: number } = {}): number {
   const searches = extra.webSearches ?? 0
   // A photo costs its own tokens (image-rules.ts). A search call is a loop on Anthropic's side: n searches are n + 1 rounds,
   // each reading the prompt again with the results gathered so far, so the input is (n + 1) × the prompt plus
@@ -81,7 +81,7 @@ export function worstCostOf(model: string, promptChars: number, maxOutputTokens:
   const readTokens = (searches + 1) * promptTokens + (searches * (searches + 1) / 2) * WEB_SEARCH_RESULT_TOKENS
   return costOf(
     { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: readTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
-    model, 'live', searches,
+    model, mode, searches,
   ).costUsd
 }
 

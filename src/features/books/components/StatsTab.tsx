@@ -49,7 +49,7 @@ export function StatsTab() {
     <PageBoard layout={STATS_BOARD} stackGap="gap-4" sections={{
       kpis: <StatsKpis events={all} perDay={perDay} books={books} today={today} lastSeenDay={lastSeenDay}
         lastSeen={sync.data?.last_seen_at ?? null} settings={s} />,
-      current: <CurrentlyReadingCard books={books} events={all} today={today} />,
+      current: <CurrentlyReadingCard books={books} events={all} today={today} lastSeenDay={lastSeenDay} />,
       chart: <MinutesChartCard win={win} onWin={setWin} perDay={perDay} today={today} lastSeenDay={lastSeenDay}
         settings={s} empty={empty} />,
       log: <ReadingLogCard sessions={allSessions} byId={byId} today={today} empty={empty} />,

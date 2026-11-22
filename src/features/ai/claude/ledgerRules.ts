@@ -240,7 +240,7 @@ function readJob(raw: unknown): DescribeJob | null {
   if (typeof j.name !== 'string' || !j.name) return null
   const d = rec(j.defaults)
   return {
-    name: text(j.name, 40), title: text(j.title, 80) || text(j.name, 40), what: text(j.what, 600), kind: text(j.kind, 30),
+    name: text(j.name, 40), title: text(j.title, 80) || text(j.name, 40), what: text(j.what, 600), kind: text(j.kind, 30), mode: j.mode === 'batch' ? 'batch' : 'live',
     callers: list(j.callers).map(c => text(c, 20)).filter(Boolean), version: text(j.version, 40),
     defaults: { model: text(d.model, 80), effort: text(d.effort, 20), maxOutputTokens: int(d.maxOutputTokens) },
     timeLimitMs: typeof j.timeLimitMs === 'number' && Number.isFinite(j.timeLimitMs) && j.timeLimitMs > 0 ? Math.round(j.timeLimitMs) : null,

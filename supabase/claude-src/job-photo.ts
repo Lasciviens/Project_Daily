@@ -143,7 +143,7 @@ ${JSON.stringify(RECEIPT_ANSWER_SCHEMA)}`
 const RECEIPT_VERSION = '2026-11-22.1'
 
 /** Today in Oslo as YYYY-MM-DD (the day a receipt may not be after). */
-function osloDay(now: Date): string {
+function receiptToday(now: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
   return parts
 }
@@ -214,7 +214,7 @@ export const RECEIPT_READ_JOB: JobDefinition = {
   prepare(input: unknown, now: Date) {
     const image = checkedImage(ownValue(input, 'image'))
     if (!image.ok) return { problem: image.problem }
-    const today = osloDay(now)
+    const today = receiptToday(now)
     return {
       userText: 'Read the receipt in the photo.',
       images: [image.image],

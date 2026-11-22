@@ -81,6 +81,8 @@ export interface DescribeJob {
   title: string
   what: string
   kind: string
+  /** `batch`: queued at half price and read back later (the weekly report); `live` answers now. */
+  mode: 'live' | 'batch'
   callers: string[]
   version: string
   defaults: { model: string; effort: string; maxOutputTokens: number }

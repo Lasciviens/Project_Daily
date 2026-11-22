@@ -68,19 +68,21 @@ export const DIARY_BOARD: BoardLayouts<DiarySection> = {
 // The task groups become columns, read left to right by time: what needs
 // doing now (overdue · open windows · today) | upcoming | no date | done.
 // The now-column is 42rem (task rows past that only add empty space).
-export const TASK_SECTIONS = ['all', 'now', 'upcoming', 'noDate', 'done', 'later', 'noDateDone'] as const
+export const TASK_SECTIONS = ['decide', 'all', 'now', 'upcoming', 'noDate', 'done', 'later', 'noDateDone'] as const
 export type TaskSection = typeof TASK_SECTIONS[number]
 
 const TASKS_MAIN = '42rem'
 export const TASKS_BOARD: BoardLayouts<TaskSection> = {
-  1: ['all'],
-  2: { main: TASKS_MAIN, columns: [['now'], ['later']] },
-  3: { main: TASKS_MAIN, columns: [['now'], ['upcoming'], ['noDateDone']] },
-  4: { main: TASKS_MAIN, columns: [['now'], ['upcoming'], ['noDate'], ['done']] },
+  1: ['decide', 'all'],
+  2: { main: TASKS_MAIN, columns: [['decide', 'now'], ['later']] },
+  3: { main: TASKS_MAIN, columns: [['decide', 'now'], ['upcoming'], ['noDateDone']] },
+  4: { main: TASKS_MAIN, columns: [['decide', 'now'], ['upcoming'], ['noDate'], ['done']] },
 }
 
 /** Which task groups each Tasks section holds — every step shows all six. */
 export const TASK_SECTION_GROUPS: Record<TaskSection, readonly TaskGroup[]> = {
+  /** Needs a decision: its own card, no task group of its own (it only adds rows). */
+  decide: [],
   all: ['overdue', 'openNow', 'today', 'upcoming', 'noDate', 'done'],
   now: ['overdue', 'openNow', 'today'],
   upcoming: ['upcoming'],

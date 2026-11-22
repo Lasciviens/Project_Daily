@@ -29,7 +29,7 @@
 import { BOARD, boardTemplate, pageStepForWidth, resolveBoardLayout, type BoardLayouts, type PageStep } from '../../../shared/ui/pageBoardRules'
 
 export const HOME_SECTIONS = [
-  'brief', 'tasks', 'pair', 'transit', 'tiles', 'news',
+  'brief', 'report', 'tasks', 'pair', 'transit', 'tiles', 'news',
   'weather', 'currency', 'training', 'media', 'books', 'games',
   // The split laptop layout's tiles: a large weather tile under transit, and
   // the glance row (money, watched, books, games | a large training tile).
@@ -38,9 +38,9 @@ export const HOME_SECTIONS = [
 export type HomeSection = typeof HOME_SECTIONS[number]
 
 // The week and the day are one card (HomeDayCard, owner 31.10.2026: one list of the day).
-const MAIN = ['brief', 'tasks'] as const
+const MAIN = ['brief', 'report', 'tasks'] as const
 /** From the laptop up the day card sits in the board's second row (`pair`). */
-const WIDE_MAIN = ['brief', 'pair'] as const
+const WIDE_MAIN = ['brief', 'report', 'pair'] as const
 /**
  * Home's main track may grow past the default 56rem: the brief and the day's
  * list lay themselves out in two columns once wide (container queries), so a
@@ -68,7 +68,7 @@ export const HOME_BOARD_SPLIT: BoardLayouts<HomeSection> = {
   ...HOME_BOARD,
   2: {
     rows: [
-      [['brief'], ['transit']],
+      [['brief', 'report'], ['transit']],
       [['pair'], ['weatherTile']],
     ],
     bottom: ['glanceRow', 'news'],

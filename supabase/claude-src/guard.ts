@@ -78,6 +78,21 @@ export async function claudeDeviceCredential(serviceKey: string): Promise<string
   return [...mac].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// What the pg_cron timer sends to `claude` for the weekly report (migration 196): HMAC-SHA256 of a fixed label, keyed
+// with PUSH_CRON_SECRET (the secret the other timers already use: it is in Vault for the timer's SQL and in the
+// function secrets), as hex. pg_cron computes the same value in SQL (pgcrypto's hmac), so the secret itself never
+// travels, and a header that leaks (a gateway, a log) opens only `claude`'s two schedule actions, never push-send.
+// The timer's SQL (196) and this function must agree on the label: `verify-claude-function` and the database
+// scenarios both compare them with a value computed outside.
+export async function claudeScheduleCredential(secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('claude-schedule-v1')))
+  return [...mac].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** The actions the schedule may ask for, and nothing else: the weekly report's two steps. */
+export const SCHEDULE_ACTIONS: readonly string[] = ['report_make', 'report_check']
+
 /**
  * A request's time limit, worked out from the longest answer its job may write: 30 s up to 2000 tokens (a ✨ fill),
  * then 10 s more for every further 1000, at most 100 s: a 4000-token recipe is not cut at 30 s, and the whole run

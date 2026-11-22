@@ -19,3 +19,4 @@ Background: `docs/features/books.md`, device facts: `docs/kobo/REFERENCE.md`, se
 - `readingSync.ts` and `opdsFeed.ts` are GENERATED into `kobo-sync` (`scripts/sync-kobo-shared.mjs --check`).
 - Storage object names are ASCII (`book.<ext>`); the real name stays in `filename`.
 - A streak day after the Kobo's last complete sync is unknown, never zero.
+- A finish-by date is `finishBy.ts` only: never shown below 5 % / 20 minutes read or fewer than 3 reading days in 14 — "No pace yet", never a guess.

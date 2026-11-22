@@ -110,9 +110,9 @@ for (const [name, board] of [['', HOME_BOARD], ['split ', HOME_BOARD_SPLIT]]) {
   }
 }
 console.log('Home split laptop layout (owner, 08.10.2026: no hole between the columns; 14.10.2026 and 16.10.2026: cards that line up)')
-check('split step 2: row 1 = brief | transit; row 2 = week | tasks (pair) | weather (large) (owner, 16.10.2026)', (() => {
+check('split step 2: row 1 = brief + the weekly report card | transit; row 2 = week | tasks (pair) | weather (large) (owner, 16.10.2026)', (() => {
   const l = B.resolveBoardLayout(HOME_BOARD_SPLIT, 2)
-  return eq(l.rows.map(r => r.map(c => [c.stack, c.span])), [[[['brief'], 1], [['transit'], 1]], [[['pair'], 1], [['weatherTile'], 1]]])
+  return eq(l.rows.map(r => r.map(c => [c.stack, c.span])), [[[['brief', 'report'], 1], [['transit'], 1]], [[['pair'], 1], [['weatherTile'], 1]]])
 })())
 check('split step 2: no independent column stacks — every card above the glance row is in a row, so tops and bottoms come from the grid, never from content heights',
   B.resolveBoardLayout(HOME_BOARD_SPLIT, 2).columns.length === 0)
@@ -157,9 +157,9 @@ check('HomePage.tsx lays the groups out with GLANCE_GROUP_GRID', (() => {
   return src.includes('GLANCE_GROUP_GRID.all') && src.includes('GLANCE_GROUP_GRID.row')
     && !/grid-cols-\d/.test(src.slice(src.indexOf('function GlanceTiles'), src.indexOf('function HeroAndTasks')))
 })())
-check('step 1 keeps the phone order (brief → the day card → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'tasks', 'transit', 'tiles', 'news']))
+check('step 1 keeps the phone order (brief → the weekly report card, when there is one → the day card → transit → tiles → news)', eq(HOME_BOARD[1], ['brief', 'report', 'tasks', 'transit', 'tiles', 'news']))
 check('step 2 (laptop) uses compact tiles, the owner\'s call', B.keysAt(HOME_BOARD, 2).includes('tiles'))
-check('main column is brief → (week | tasks side by side) from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'pair'])))
+check('main column is brief → the weekly report card → (week | tasks side by side) from step 2 up', [2, 3, 4].every(s => eq(B.resolveBoardLayout(HOME_BOARD, s).columns[0].stack, ['brief', 'report', 'pair'])))
 check('step 3: weather column ends with games, the page-card column with books', (() => {
   const c = B.resolveBoardLayout(HOME_BOARD, 3).columns
   return eq(c[1].stack, ['weather', 'transit', 'currency', 'games']) && eq(c[2].stack, ['training', 'media', 'books'])

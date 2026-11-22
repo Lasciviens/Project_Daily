@@ -231,6 +231,16 @@ export const qk = {
     /** An error's "Explain" answer, kept while the app is open (one paid call per error unless the owner asks again). */
     explain: (errorId: string) => ['ai-calls', 'explain', errorId] as const,
   },
+  /** The weekly reports (ai_reports, migration 196): their text is the owner's own week. Their own root: never kept on the device. */
+  aiReports: {
+    all: ['ai-reports'] as const,
+    list: () => ['ai-reports', 'list'] as const,
+    one: (id: string) => ['ai-reports', 'one', id] as const,
+    /** The newest finished report of the newest week (Home's card). */
+    latest: () => ['ai-reports', 'latest'] as const,
+    /** The ledger cost of the listed reports, by their call ids. */
+    costs: (ids: string) => ['ai-reports', 'costs', ids] as const,
+  },
   athlete: {
     profile: ['athlete-profile'] as const,
     limitations: ['athlete-limitations'] as const,

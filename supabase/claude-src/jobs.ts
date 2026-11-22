@@ -14,7 +14,8 @@ import { QUICK_GUESS_PHOTO_JOB, RECEIPT_READ_JOB } from './job-photo.ts'
 import { DEV_REQUEST_DRAFT_JOB, ERROR_EXPLAIN_JOB } from './job-dev-drafts.ts'
 import { AD_IMPROVE_JOB, PLACE_IDEAS_JOB, WORK_WEEK_JOB } from './job-text-features.ts'
 import { COACH_ASSESSMENT_JOB } from './job-coach.ts'
-import { KOBO_ASK_JOB, PHONE_ASK_JOB, PHONE_BRIEF_JOB } from './job-device.ts'
+import { KOBO_ASK_JOB, PHONE_ASK_JOB } from './job-device.ts'
+import { WEEKLY_REPORT_JOB } from './job-weekly-report.ts'
 import { TEST_BENCH_JOB } from './job-test-bench.ts'
 import { DIAGNOSE_JOB } from './job-diagnose.ts'
 
@@ -22,7 +23,7 @@ export const JOB_LIST: readonly JobDefinition[] = [
   ITEM_FILL_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_FROM_LINK_JOB, RECIPE_MACROS_JOB, QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB,
   // The AI features the owner picked (22.11.2026): photos, Dev Requests, Work, Shop, Wishes.
   QUICK_GUESS_PHOTO_JOB, RECEIPT_READ_JOB, DEV_REQUEST_DRAFT_JOB, ERROR_EXPLAIN_JOB, WORK_WEEK_JOB, AD_IMPROVE_JOB, PLACE_IDEAS_JOB,
-  COACH_ASSESSMENT_JOB, KOBO_ASK_JOB, PHONE_BRIEF_JOB, PHONE_ASK_JOB, TEST_BENCH_JOB, DIAGNOSE_JOB,
+  COACH_ASSESSMENT_JOB, KOBO_ASK_JOB, PHONE_ASK_JOB, WEEKLY_REPORT_JOB, TEST_BENCH_JOB, DIAGNOSE_JOB,
 ]
 
 // A Map, not a plain object: a name like "constructor" or "__proto__" finds nothing in it.

@@ -8,12 +8,18 @@
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
 //    { "action": "count", "input": { … } }          → run.ts (the Test bench's free token count)
 //    { "action": "diagnose" }                       → diagnose.ts
+//    { "action": "report_make" }                    → batch.ts (the weekly report: queue the batch)
+//    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
 //  Two kinds of caller, told apart before anything is read:
 //    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
 //    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
 //      `x-claude-server-key` carries a value derived from the project's service key (HMAC-SHA256 of a fixed
 //      label, guard.ts; never the key itself), compared in constant time with this function's own copy. It may only `run`, and only as caller `kobo` or `phone`, acting as the owner (HEVY_USER_ID, read here,
 //      never from the request), so a job runs for a device only when its `callers` list names that device.
+//    · the schedule (pg_cron, migration 196): the header `x-claude-schedule-key` carries HMAC-SHA256(PUSH_CRON_SECRET,
+//      "claude-schedule-v1") as hex, which the timer's SQL computes from the same secret in Vault; compared in constant
+//      time with this function's own value. It may only ask for `report_make` and `report_check`, as caller `schedule`,
+//      acting as the owner (HEVY_USER_ID). The app may ask for the same two (the Batches view's buttons).
 //  It also hands the run the network and the name lookup a job may use to read
 //  an outside page (the recipe link), since only this part touches Deno.
 //
@@ -25,10 +31,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import { ANTHROPIC_INFO, anthropicProvider } from './provider-anthropic.ts'
 import { describeFunction } from './describe.ts'
-import { claudeDeviceCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret } from './guard.ts'
+import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret, SCHEDULE_ACTIONS } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
 import { findJob } from './jobs.ts'
+import { checkReports, makeWeeklyReport } from './batch.ts'
 import type { DnsLookup } from './types.ts'
 
 // <supabase-keys>
@@ -86,6 +93,27 @@ function sizeWords(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.round(bytes / 1024)} KB`
 }
 
+// The weekly report's push: the push-send function, with the secret the other timers already use. The words are built by
+// code (batch.ts), never by the model. A function address is this project's own, never one from a request. No secret,
+// or a refusal: false, said once in the log; nothing about the answer is logged.
+async function sendPush(message: { title: string; body: string; url: string }): Promise<boolean> {
+  const secret = Deno.env.get('PUSH_CRON_SECRET') ?? ''
+  const base = Deno.env.get('SUPABASE_URL') ?? ''
+  if (!secret || !base) return false
+  const res = await fetch(`${base.replace(/\/+$/, '')}/functions/v1/push-send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret },
+    body: JSON.stringify(message),
+  })
+  if (!res.ok) return false
+  try {
+    const answer = await res.json() as { ok?: boolean; sent?: number }
+    return answer.ok === true && typeof answer.sent === 'number' && answer.sent > 0
+  } catch {
+    return false
+  }
+}
+
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -122,11 +150,22 @@ Deno.serve(async (req) => {
       device = true
     }
 
+    // Who is asking, part 1b: the timer. Its header is compared the same way. A request cannot carry both headers.
+    const scheduleHeader = req.headers.get('x-claude-schedule-key')
+    let schedule = false
+    if (scheduleHeader !== null) {
+      if (device) return reply(400, { error: 'Send one kind of server key' })
+      const secret = Deno.env.get('PUSH_CRON_SECRET') ?? ''
+      const derived = secret ? await claudeScheduleCredential(secret) : ''
+      if (!secret || !(await sameSecret(scheduleHeader, derived))) return reply(401, { error: 'Invalid schedule key' })
+      schedule = true
+    }
+
     // Who is asking, part 2: the app. The token's own account, then the owner list.
     const authHeader = req.headers.get('authorization')
     let userId = ''
-    if (device) {
-      // The account a device acts as comes from this function's own environment, never from the request.
+    if (device || schedule) {
+      // The account a device or the timer acts as comes from this function's own environment, never from the request.
       userId = Deno.env.get('HEVY_USER_ID') ?? ''
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
     } else {
@@ -153,7 +192,11 @@ Deno.serve(async (req) => {
     }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
-    let caller: 'app' | 'kobo' | 'phone' = 'app'
+    let caller: 'app' | 'kobo' | 'phone' | 'schedule' = 'app'
+    if (schedule) {
+      if (typeof action !== 'string' || !SCHEDULE_ACTIONS.includes(action)) return reply(400, { error: 'The schedule may only ask for "report_make" or "report_check"' })
+      caller = 'schedule'
+    }
     if (device) {
       if (action !== 'run') return reply(400, { error: 'A device may only run a job' })
       const named = deviceCaller(ownValue(body, 'caller'))
@@ -162,30 +205,34 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose' && action !== 'count') return reply(400, { error: 'The action must be "describe", "run", "count" or "diagnose"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make" or "report_check"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
     // The app's own client carries the owner's token, so row level security decides what it reads. A device has no
     // token: the service-role client reads instead, and every read of it names the user id in the query itself.
-    const userDb = device ? adminDb : createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
+    const userDb = device || schedule ? adminDb : createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
       global: { headers: { Authorization: authHeader as string } }, auth: sessionOff,
     })
     const context: RunContext = {
       userId,
       caller,
-      readAs: device ? 'server' : 'owner',
+      readAs: device || schedule ? 'server' : 'owner',
       userDb,
       adminDb,
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
       provider: apiKey ? anthropicProvider(apiKey, fetch) : null,
       providerName: ANTHROPIC_INFO.name,
       page: { fetch, dnsLookup },
-      secrets: [apiKey, serviceKey(), publishableKey()],
+      // Only the owner's phone is ever pushed to: any other account's reports (a second allowed account) get no push.
+      push: userId === Deno.env.get('HEVY_USER_ID') ? sendPush : null,
+      secrets: [apiKey, serviceKey(), publishableKey(), Deno.env.get('PUSH_CRON_SECRET')],
       now: () => new Date(),
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),
     }
+    if (action === 'report_make') return reply(200, await makeWeeklyReport(context))
+    if (action === 'report_check') return reply(200, await checkReports(context))
     if (action === 'diagnose') return reply(200, await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
     const answer = await runJob(context, jobName as string, ownValue(body, 'input'))

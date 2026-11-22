@@ -265,6 +265,9 @@ function buildTables(now = new Date()) {
     task(0, 'Renew the parking permit', { status: 'done', completed_at: at(0, '09:12') }),
     task(null, 'Water the plants', { section: 'today' }),
     task(-2, 'Return the library books', { priority: 'high' }),
+    // "Needs a decision": a task far past its day, and one undated for over a month.
+    task(-12, 'Renew the passport photos'),
+    task(null, 'Sort out the loft and the old boxes', { created_at: at(-45, '09:00'), updated_at: at(-45, '09:00') }),
     task(-5, 'Book a dentist appointment'),
     task(-4, 'Pay the electricity bill', { status: 'done' }),
     task(-3, 'Clean the bathroom', { status: 'done' }),
@@ -345,7 +348,8 @@ function buildTables(now = new Date()) {
     id: blockId(), user_id: owner, project_id: garage.id, kind: 'table', title: 'Parts', sort_order: 0, ...stamp(-38),
     settings: { columns: [
       { key: 'part', label: 'Part', type: 'text' }, { key: 'qty', label: 'Qty', type: 'number' },
-      { key: 'price', label: 'Price', type: 'money' }, { key: 'status', label: 'Status', type: 'status', options: ['Needed', 'Ordered', 'Have'] },
+      { key: 'price', label: 'Price', type: 'money' }, { key: 'status', label: 'Status', type: 'status', options: ['Needed', 'To buy', 'Ordered', 'Have'] },
+      { key: 'link', label: 'Shop link', type: 'link' },
     ], currency: 'NOK' },
   }
   const logBlock = { id: blockId(), user_id: owner, project_id: garage.id, kind: 'log', title: 'Log', sort_order: 1, settings: {}, ...stamp(-38) }
@@ -360,6 +364,8 @@ function buildTables(now = new Date()) {
     entry(partsBlock, 0, { data: { part: 'Plywood top 18 mm', qty: 1, price: 890, status: 'Ordered' } }),
     entry(partsBlock, 1, { data: { part: 'Wall rail system', qty: 3, price: 349, status: 'Needed' } }),
     entry(partsBlock, 2, { data: { part: 'LED batten light', qty: 2, price: 499, status: 'Have' } }),
+    entry(partsBlock, 3, { data: { part: 'Wood screws 5 x 60 mm', qty: 2, price: 79, status: 'To buy', link: 'https://example.com/screws' } }),
+    entry(partsBlock, 4, { data: { part: 'Cable clips', qty: 1, price: 49, status: 'To buy' } }),
     entry(logBlock, 0, { title: 'Frame glued and screwed', body: 'Square within a millimetre. Needs a day to cure.', entry_date: day(-6) }),
     entry(logBlock, 1, { title: 'Bought the timber', body: 'Planed spruce, 45×95.', entry_date: day(-15) }),
     entry(linksBlock, 0, { title: 'Workbench plans', url: 'https://example.com/workbench-plans' }),
@@ -1092,6 +1098,34 @@ function buildTables(now = new Date()) {
       thinking: sentence && fill ? 'One thing to plan. The sentence gives what it is and when; nothing else is stated, so the other fields stay empty.' : null,
     })
   })
+  // The weekly report (migration 196): last week's, finished on Monday morning and announced (Home's card shows it), the
+  // week before it, and a Sunday run that failed. Each ready one has its ledger row at the batch price.
+  const { REPORT_TEXT, REPORT_FACTS } = require('./claude.cjs')
+  const mondayOf = (d) => addDays(d, -((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7))
+  const thisMonday = mondayOf(today)
+  const batchCall = (n, over) => callRow({
+    id: `a1ca3300-0000-4000-8000-${String(n).padStart(12, '0')}`, run_id: `a1ca3400-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner,
+    job: 'weekly_report', mode: 'batch', caller: 'schedule', effort: 'medium', instructions_version: '2026-11-22.2', ...over,
+  })
+  const batchCalls = [
+    batchCall(1, { outcome: 'ok', stop_reason: 'end_turn', served_model: HAIKU, input_tokens: 1180, output_tokens: 410, thinking_tokens: 0, cost_usd: 0.000162, duration_ms: 2520000 }),
+    batchCall(2, { outcome: 'ok', stop_reason: 'end_turn', served_model: HAIKU, input_tokens: 1090, output_tokens: 380, cost_usd: 0.000150, duration_ms: 1980000 }),
+    batchCall(3, { outcome: 'error', stop_reason: 'batch_expired', error: 'The batch request expired before it was answered.', cost_usd: 0.001299, duration_ms: 0 }),
+  ]
+  batchCalls[0].created_at = osloInstant(addDays(thisMonday, -1), '23:30')
+  batchCalls[1].created_at = osloInstant(addDays(thisMonday, -8), '23:30')
+  batchCalls[2].created_at = osloInstant(addDays(thisMonday, -15), '23:30')
+  tables.ai_calls.push(...batchCalls)
+  const reportRow = (n, weekStart, over) => ({
+    id: `a1ca5500-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, week_start: weekStart, made_by: 'schedule', status: 'ready', failure: null,
+    content: REPORT_TEXT, facts: { week_start: weekStart, kind: 'scheduled', ...REPORT_FACTS }, call_id: batchCalls[n - 1].id,
+    created_at: osloInstant(addDays(weekStart, 6), '23:30'), ready_at: osloInstant(addDays(weekStart, 7), '00:41'), pushed_at: osloInstant(addDays(weekStart, 7), '00:41'), ...over,
+  })
+  tables.ai_reports = [
+    reportRow(1, addDays(thisMonday, -7), {}),
+    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions').replace('3380', '2410') }),
+    reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
+  ]
   tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]
   tables.ai_job_settings = [{
     user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, thinking: null, updated_at: at(-6, '08:20'),

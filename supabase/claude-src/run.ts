@@ -23,6 +23,13 @@ import {
 } from './ledger.ts'
 import { findJob } from './jobs.ts'
 
+/** A notification: fixed words built by code, and where a tap opens (a hash route inside the app). */
+export interface PushMessage {
+  title: string
+  body: string
+  url: string
+}
+
 /** Everything a run needs from outside, handed in by main.ts (or by a test). */
 export interface RunContext {
   /** The account the session belongs to, as main.ts verified it. Never a value from the request. */
@@ -49,6 +56,11 @@ export interface RunContext {
   newId: () => string
   /** A longer limit for this run's request than the provider's 30 s: only Diagnose sets it. */
   timeoutMs?: number
+  /**
+   * Sends one notification to the owner's phone (main.ts: push-send, with a secret this function holds), or null when
+   * there is no way to. The weekly report is the only caller; the text is built by code, never from the model.
+   */
+  push?: ((message: PushMessage) => Promise<boolean>) | null
   /** One line for the server log. It never gets a secret or any of the owner's text. */
   report: (line: string) => void
 }
@@ -104,7 +116,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
 
   // 2 · The job, by name from the fixed list, and its own check of the input.
   if (!job) return stop('bad_input', 'There is no AI job with that name.')
-  if (!job.callers.includes(ctx.caller)) return stop('bad_input', `"${job.title}" can't be started from here.`)
+  if (!job.callers.includes(ctx.caller) || job.mode === 'batch') return stop('bad_input', `"${job.title}" can't be started from here.`)
   const prepared = job.prepare(input, ctx.now())
   if ('problem' in prepared) return stop('bad_input', prepared.problem)
 
@@ -160,7 +172,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // A photo adds its tokens (worked out from its own header); every search the call may run adds its fee and its results.
   const worstCost = worstCostOf(
     request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
-    { imageTokens: prepared.imageTokens ?? 0, webSearches: request.webSearch?.maxUses ?? 0 },
+    'live', { imageTokens: prepared.imageTokens ?? 0, webSearches: request.webSearch?.maxUses ?? 0 },
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
@@ -238,7 +250,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
 }
 
-function gateScopeOf(ctx: RunContext): GateScope {
+export function gateScopeOf(ctx: RunContext): GateScope {
   return ctx.readAs === 'owner' ? { kind: 'owner' } : { kind: 'server', userId: ctx.userId, caller: ctx.caller, now: ctx.now() }
 }
 
