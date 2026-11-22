@@ -646,20 +646,34 @@ async function buildPhoneBrief(userId: string): Promise<string> {
   const hour = part('hour') + part('minute') / 60
   const input: BriefInput = { hour, today }
   const failedReads: ('tasks' | 'schedule')[] = []
-  // Tasks: today's open ones (its section or due today), overdue when due before today; closed today by completed_at.
+  // Tasks: the same three reads as Home's day list (fetchTasksForDay) and the same rules (taskRules.ts: isOpenTask, closedDay,
+  // onDay, isOverdueOn), so the phone and Home agree on what is overdue and what is done today (owner-critic, 22.11.2026).
   try {
-    const { data, error } = await supabase.from('tasks').select('title, priority, due_date, due_time')
-      .eq('user_id', userId).or(`section.eq.today,due_date.eq.${today}`).neq('status', 'cancelled').neq('status', 'done').limit(50)
-    if (error) throw error
     const dayStart = oslo00(today), dayEnd = oslo00(dateFromToday(1))
-    const done = await supabase.from('tasks').select('id', { count: 'exact', head: true })
-      .eq('user_id', userId).eq('status', 'done').gte('completed_at', dayStart).lt('completed_at', dayEnd)
+    const cols = 'id, title, status, priority, due_date, due_time, section, completed_at, sort_order, created_at'
+    const [dueToday, closedToday, openLate] = await Promise.all([
+      supabase.from('tasks').select(cols).eq('user_id', userId).eq('due_date', today).neq('status', 'cancelled').limit(200),
+      supabase.from('tasks').select(cols).eq('user_id', userId).gte('completed_at', dayStart).lt('completed_at', dayEnd).limit(200),
+      supabase.from('tasks').select(cols).eq('user_id', userId).in('status', ['open', 'in_progress', 'waiting']).or(`due_date.lt.${today},and(due_date.is.null,section.eq.today)`).limit(200),
+    ])
+    for (const r of [dueToday, closedToday, openLate]) if (r.error) throw r.error
+    const seen = new Set<string>()
+    const rows: AnyRecord[] = []
+    for (const r of [dueToday, closedToday, openLate]) for (const t of (r.data ?? []) as AnyRecord[]) if (!seen.has(String(t.id))) { seen.add(String(t.id)); rows.push(t) }
+    const isOpen = (t: AnyRecord) => ['open', 'in_progress', 'waiting'].includes(t.status)
+    const closedDay = (t: AnyRecord) => (t.status === 'done' || t.status === 'cancelled') && t.completed_at ? osloDayOf(String(t.completed_at)) : null
+    const onDay = (t: AnyRecord) => t.due_date === today || closedDay(t) === today || (isOpen(t) && (t.due_date ? t.due_date < today : t.section === 'today'))
+    const mine = rows.filter(onDay)
+    const overdue = (t: AnyRecord) => isOpen(t) && !!t.due_date && t.due_date < today
     input.tasks = {
-      open: ((data ?? []) as AnyRecord[]).map(t => ({
-        title: String(t.title ?? ''), priority: t.priority === 'high' || t.priority === 'low' ? t.priority : 'medium',
-        overdue: typeof t.due_date === 'string' && t.due_date < today, dueTime: t.due_time ? String(t.due_time).slice(0, 5) : null,
-      })),
-      doneToday: done.error || typeof done.count !== 'number' ? 0 : done.count,
+      open: mine.filter(isOpen)
+        .map((t, i) => ({ t, i, late: overdue(t) ? 0 : 1 }))
+        .sort((x, y) => x.late - y.late || (num(x.t.sort_order, Number.MAX_SAFE_INTEGER) - num(y.t.sort_order, Number.MAX_SAFE_INTEGER)) || String(y.t.created_at ?? '').localeCompare(String(x.t.created_at ?? '')) || x.i - y.i)
+        .map(({ t }) => ({
+          title: String(t.title ?? ''), priority: t.priority === 'high' || t.priority === 'low' ? t.priority : 'medium',
+          overdue: overdue(t), dueTime: t.due_time ? String(t.due_time).slice(0, 5) : null,
+        })),
+      doneToday: mine.filter(t => t.status === 'done' && closedDay(t) === today).length,
     }
   } catch { failedReads.push('tasks') }
   // Schedule: today's timed blocks (a skipped session's cancelled task leaves it out).
@@ -680,15 +694,33 @@ async function buildPhoneBrief(userId: string): Promise<string> {
     const tr = blocks.find(b => b.category === 'training' && b.task?.status !== 'done')
     if (tr) trainingToday = { title: String(tr.title ?? ''), startTime: String(tr.start_time).slice(0, 5) }
   } catch { failedReads.push('schedule') }
-  // Training: today's session, else the next planned one within two weeks.
+  // Training, as Home's useDailyBrief gives it: today's session (and then no "next"), else the next planned one within two weeks,
+  // the days since the last Hevy workout, the sessions since Monday (Hevy + Strava, as useWeekTrainingStats) and the weekly target.
   try {
     const { data } = await supabase.from('time_blocks').select('title, date, task:tasks(status)')
       .eq('user_id', userId).eq('category', 'training').gte('date', today).lte('date', dateFromToday(14)).order('date', { ascending: true }).limit(15)
     const next = ((data ?? []) as AnyRecord[]).find(b => b.date !== today && !['cancelled', 'done'].includes(b.task?.status))
-    if (trainingToday || next) {
-      const days = next ? Math.round((Date.parse(`${next.date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000) : 0
-      const dayLabel = days === 1 ? 'tomorrow' : days < 7 ? new Date(`${next?.date}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' }) : briefDmy(String(next?.date))
-      input.training = { today: trainingToday, next: next ? { title: String(next.title ?? ''), date: String(next.date), dayLabel } : null }
+    const weekAt = oslo00(mondayOfDay(today))
+    const [hevyWeek, stravaWeek, lastHevy, profile] = await Promise.all([
+      supabase.from('hevy_workouts').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('start_time', weekAt),
+      supabase.from('strava_activities').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('start_date', weekAt),
+      supabase.from('hevy_workouts').select('start_time, hevy_created_at').eq('user_id', userId).order('start_time', { ascending: false, nullsFirst: false }).limit(1),
+      supabase.from('athlete_profile').select('training_days_per_week').eq('user_id', userId).maybeSingle(),
+    ])
+    const week = (hevyWeek.error || typeof hevyWeek.count !== 'number' ? 0 : hevyWeek.count) + (stravaWeek.error || typeof stravaWeek.count !== 'number' ? 0 : stravaWeek.count)
+    const last = ((lastHevy.data ?? []) as AnyRecord[])[0]
+    const lastAt = last ? String(last.start_time ?? last.hevy_created_at ?? '') : ''
+    const daysSince = lastAt && Number.isFinite(Date.parse(lastAt))
+      ? Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${osloDayOf(lastAt)}T12:00:00Z`)) / 86_400_000) : null
+    const days = next ? Math.round((Date.parse(`${next.date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000) : 0
+    const dayLabel = days === 1 ? 'tomorrow' : days < 7 ? new Date(`${next?.date}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' }) : briefDmy(String(next?.date))
+    const target = profile.error ? null : num(profile.data?.training_days_per_week, 0)
+    input.training = {
+      today: trainingToday,
+      next: next && !trainingToday ? { title: String(next.title ?? ''), date: String(next.date), dayLabel } : null,
+      daysSinceLastWorkout: daysSince,
+      weekSessions: daysSince !== null || week > 0 ? week : null,
+      weekTarget: target && target > 0 ? target : null,
     }
   } catch { /* training left out */ }
   // Food: eaten today against the owner's targets (no targets row: the section is left out).
@@ -709,6 +741,17 @@ async function buildPhoneBrief(userId: string): Promise<string> {
   if (failedReads.length) input.failedReads = failedReads
   const brief = buildDailyBrief(input)
   return [brief.greeting, brief.headline.text, ...brief.sections.flatMap(s => ['', `${s.title}:`, ...s.lines.map(l => `- ${l.text}`)])].join('\n')
+}
+
+// The Oslo day (yyyy-MM-dd) an instant falls on.
+function osloDayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: HOME_TZ })
+}
+
+// The Monday of the week a day (yyyy-MM-dd) is in, by calendar arithmetic (progressAggregate.mondayOf).
+function mondayOfDay(day: string): string {
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
+  return new Date(Date.parse(`${day}T12:00:00Z`) - ((weekday + 6) % 7) * 86_400_000).toISOString().slice(0, 10)
 }
 
 // The instant an Oslo day starts: the clocks change at night, never at midnight, so one correction is enough.

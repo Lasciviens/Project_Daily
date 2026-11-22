@@ -131,13 +131,18 @@ PHASE_2A_JOBS.push(
 )
 // Phase 3: the weekly report, a batch job for the schedule and the app.
 const WEEKLY_REPORT_JOB = {
-  ...phase2a('weekly_report', 'The weekly report', "On Sunday night the function works out your week with code (training, health, food, tasks and time) and queues one request at half price; on Monday morning the model's short written report is saved, shown as a card on Home and announced with a push notification.", 3000, ['schedule', 'app']),
-  mode: 'batch', version: '2026-11-22.1', answerSchema: null,
+  ...phase2a('weekly_report', 'The weekly report', "On Monday at 05:00 the function works out the week that just ended with code (training, health, food, tasks and time) and queues one request at half price; the model's short written report is saved, shown as a card on Home during the next week and announced with a push notification at 07:00.", 3000, ['schedule', 'app']),
+  mode: 'batch', version: '2026-11-22.2', answerSchema: null,
   defaults: { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 },
   sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
 }
 PHASE_2A_JOBS.push(WEEKLY_REPORT_JOB)
 const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
+const REPORT_FACTS = {
+  training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
+  food: { has_data: true, avg_kcal_on_logged_days: 1933, target_kcal: 2200 }, tasks: { has_data: true, done: 3 },
+  sent_text: '<week>09.11.2026 to 15.11.2026</week>\n<training>\nSessions: 3 (the week before: 0.3 a week on average; change: +2.7, +900 %)\nSession 10.11.2026: Push A, 3 working sets, 1 055 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 10 000 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nNO DATA THIS WEEK\n</food>\n<tasks>\nTasks done: 3 (work 2, personal 1)\n</tasks>',
+}
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
   recipe_macros: { calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 },
@@ -515,15 +520,23 @@ function claudeMock(opts = {}) {
       }
       if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
       if (opts.stop) return { ok: false, reason: opts.stop, message: STOP_MESSAGE[opts.stop] ?? 'The report could not be queued.' }
-      const monday = addDays(osloDay(new Date()), -((new Date(`${osloDay(new Date())}T12:00:00Z`).getUTCDay() + 6) % 7))
-      if (reports.some(r => r.week_start === monday && r.made_by === 'app' && r.status === 'queued')) return { ok: true, queued: false, skipped: 'already_queued', week_start: monday }
-      const call = callRow({ user_id: store.ownerId, job: 'weekly_report', mode: 'batch', caller: 'app', outcome: 'pending', stop_reason: 'batch_queued', effort: 'medium', cost_usd: 0.001299, instructions_version: '2026-11-22.1' })
+      // Like the function (owner-critic, 22.11.2026): last week's real report missing or failed → the button makes that one
+      // again (made_by schedule); ready → a test copy of it on Monday and Tuesday, the week so far later. Never the real row.
+      const today0 = osloDay(new Date()), dow = new Date(`${today0}T12:00:00Z`).getUTCDay()
+      const thisMonday = addDays(today0, -((dow + 6) % 7)), lastMonday = addDays(thisMonday, -7)
+      const real = reports.find(r => r.week_start === lastMonday && r.made_by === 'schedule')
+      if (real?.status === 'queued') return { ok: true, queued: false, skipped: 'already_queued', week_start: lastMonday }
+      const kind = !real || real.status !== 'ready' ? 'redo' : (dow === 1 || dow === 2 ? 'copy' : 'so_far')
+      const monday = kind === 'so_far' ? thisMonday : lastMonday
+      const madeBy = kind === 'redo' ? 'schedule' : 'app'
+      if (reports.some(r => r.week_start === monday && r.made_by === madeBy && r.status === 'queued')) return { ok: true, queued: false, skipped: 'already_queued', week_start: monday }
+      const call = callRow({ user_id: store.ownerId, job: 'weekly_report', mode: 'batch', caller: 'app', outcome: 'pending', stop_reason: 'batch_queued', effort: 'medium', cost_usd: 0.001299, instructions_version: '2026-11-22.2' })
       calls0.push(call)
-      const old = reports.findIndex(r => r.week_start === monday && r.made_by === 'app')
+      const old = reports.findIndex(r => r.week_start === monday && r.made_by === madeBy)
       if (old >= 0) reports.splice(old, 1)
-      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: 'app', status: 'queued', failure: null, content: null, facts: {}, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
+      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...REPORT_FACTS, kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
       reports.push(row)
-      return { ok: true, queued: true, report_id: row.id, week_start: monday }
+      return { ok: true, queued: true, report_id: row.id, week_start: monday, kind }
     }
     if (body?.action !== 'run') return { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify({ error: 'The action must be "describe", "run" or "diagnose"' }) }
 
@@ -589,4 +602,4 @@ function claudeMock(opts = {}) {
   }
 }
 
-module.exports = { claudeMock, REPORT_TEXT, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
+module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
