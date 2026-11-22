@@ -1071,10 +1071,10 @@ function answerValue(from: Record<string, unknown>, key: string): unknown {
   return Object.prototype.hasOwnProperty.call(from, key) ? from[key] : undefined
 }
 
-// Control characters other than the tab and the line break.
+// Control characters other than the tab and the line break, and the zero-width and text-direction characters (U+200B–200F,
+// U+202A–202E, U+2066–2069, U+FEFF): they draw nothing and can hide a word from a check (a link split by one) or reorder
+// what the owner reads.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
-// Also the zero-width and text-direction characters (U+200B–200F, U+202A–202E, U+2066–2069, U+FEFF): they draw nothing and
-// can hide a word from a check (a link split by one) or reorder what the owner reads.
 const ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
 
 /**
@@ -3738,7 +3738,7 @@ const ERROR_EXPLAIN_JOB: JobDefinition = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TEXT_LIMITS = {
-  weekText: 1500, closed: 60, goals: 20, title: 160, notes: 3000,
+  weekText: 1500, closed: 60, open: 30, goals: 20, title: 160, notes: 3000,
   adTemplate: 3000, adNotes: 1000, adTitle: 120, adText: 3500,
   place: 120, placeNotes: 500, ideas: 8, ideasMin: 3, idea: 200,
 } as const

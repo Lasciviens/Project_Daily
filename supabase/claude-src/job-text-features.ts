@@ -21,7 +21,7 @@ import { answerValue, checkedAnswerText, checkedLine, checkedList, escapeTagText
 import { checkedDay } from './job-photo.ts'
 
 export const TEXT_LIMITS = {
-  weekText: 1500, closed: 60, goals: 20, title: 160, notes: 3000,
+  weekText: 1500, closed: 60, open: 30, goals: 20, title: 160, notes: 3000,
   adTemplate: 3000, adNotes: 1000, adTitle: 120, adText: 3500,
   place: 120, placeNotes: 500, ideas: 8, ideasMin: 3, idea: 200,
 } as const
