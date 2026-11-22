@@ -113,7 +113,8 @@ export function readCallSummary(raw: unknown): CallSummary | undefined {
 }
 
 export type RunAnswer =
-  | { ok: true; result: unknown; call: CallSummary | undefined }
+  // `source: 'page'`: the function's code alone answered from the page (a recipe link), no model was asked, no `call`.
+  | { ok: true; result: unknown; call: CallSummary | undefined; source: 'page' | undefined }
   | { ok: false; reason: ClaudeReason; message: string; call: CallSummary | undefined }
 
 /** Said when the function gave a reason without a sentence of its own. */
@@ -133,7 +134,7 @@ export const REASON_FALLBACK: Record<ClaudeReason, string> = {
 export function readRunAnswer(raw: unknown): RunAnswer {
   const r = rec(raw)
   const call = readCallSummary(r.call)
-  if (r.ok === true) return { ok: true, result: r.result, call }
+  if (r.ok === true) return { ok: true, result: r.result, call, source: r.source === 'page' ? 'page' : undefined }
   const reason = (CLAUDE_REASONS as readonly string[]).includes(r.reason as string) ? r.reason as ClaudeReason : 'error'
   const said = typeof r.message === 'string' ? r.message.trim().slice(0, 300) : ''
   return { ok: false, reason, message: said || REASON_FALLBACK[reason], call }

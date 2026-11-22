@@ -7,7 +7,7 @@ import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../
 import { toast } from '../../../app/store'
 import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
-import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/api/aiApi'
+import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/claude/recipeJobs'
 import {
   DEFAULT_GUESSES, itemToPreset, parseGuessOptions, readGuessEstimate, recentGuesses,
   type GuessEstimate, type GuessMacros, type GuessOptionGroup, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,

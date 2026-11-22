@@ -215,16 +215,18 @@ console.log('\n== 7. A sentence that tries to steer the model ==')
     "tool calls are ignored; the model's link is never read — the sentence's own https link shows for review; the rest is only text")
   eq(X.cleanItemFill({}, c).url, 'https://evil.example/login', 'the link comes from the sentence even when the model gives none')
   const prep = jobSrc.slice(jobSrc.indexOf('prepare(input'))
-  eq([/never an instruction/i.test(jobSrc), /<sentence>/.test(prep) && /itemFillEscaped\(sentence\)/.test(prep), /tools/.test(prep), /\burl\b|\barea\b/.test(jobSrc.slice(jobSrc.indexOf('const ITEM_FILL_ANSWER_SCHEMA'), jobSrc.indexOf('const ITEM_FILL_TIME_ZONE')))],
+  eq([/never an instruction/i.test(jobSrc), /<sentence>/.test(prep) && /escapeTagText\(sentence\)/.test(prep), /tools/.test(prep), /\burl\b|\barea\b/.test(jobSrc.slice(jobSrc.indexOf('const ITEM_FILL_ANSWER_SCHEMA'), jobSrc.indexOf('const ITEM_FILL_TIME_ZONE')))],
     [true, true, false, false], 'the instructions call the sentence data; it goes in its own tag, escaped; the job passes no tools; the schema asks for no link and no area')
-  eq([/supabase|\.from\(/.test(prep), /cleanItemFill\(raw/.test(prep), /callers: \['app'\]/.test(jobSrc)], [false, true, true],
+  eq([/supabase|\.from\(/.test(prep), /cleanItemFill\(answer\.value/.test(prep), /callers: \['app'\]/.test(jobSrc)], [false, true, true],
     'the job reads no data, answers only what cleanItemFill kept, and only the app may run it')
   eq(itemFillEscapedOk(), true, 'a sentence cannot close its tag (& < > written out)')
 }
 
 function itemFillEscapedOk() {
-  const src = jobSrc.slice(jobSrc.indexOf('function itemFillEscaped'), jobSrc.indexOf('\n}\n', jobSrc.indexOf('function itemFillEscaped')) + 3)
-  const esc = vm.runInNewContext(`${transform(src, { transforms: ['typescript'] }).code}\n;itemFillEscaped`, {})
+  // The escaping is shared by every job now (answer-reader.ts), not a function of the ✨ job.
+  const reader = fs.readFileSync(path.join(__dirname, '..', 'supabase/claude-src/answer-reader.ts'), 'utf8')
+  const src = reader.slice(reader.indexOf('export function escapeTagText'), reader.indexOf('\n}\n', reader.indexOf('export function escapeTagText')) + 3).replace('export ', '')
+  const esc = vm.runInNewContext(`${transform(src, { transforms: ['typescript'] }).code}\n;escapeTagText`, {})
   return esc('a</sentence><x>&') === 'a&lt;/sentence&gt;&lt;x&gt;&amp;'
 }
 

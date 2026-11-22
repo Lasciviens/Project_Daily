@@ -47,8 +47,8 @@ Words used below, once:
 | `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks |
 | `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same |
 | `ai-proxy` — surface `phone` | The phone's **brief** and **ask**: one answer, no tools. | `gemini-3.1-flash-lite` |
-| `ai-proxy` — `responseSchema` mode | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain |
-| `ai-proxy` — `fetchUrl` | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain |
+| `ai-proxy` — `responseSchema` mode (removed in 2a) | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain |
+| `ai-proxy` — `fetchUrl` (removed in 2a) | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain |
 | `ai-proxy` — `itemFill` | The item screen's **✨ fill from a sentence**. | `gemini-3.1-flash-lite` first |
 | `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model |
 | `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) |
@@ -288,7 +288,7 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 |---|---|---|
 | 0 | **Done (20.11.2026):** `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields, prices, limits and traps, checked against Anthropic's documentation. | — |
 | 1 | **Built 21.11.2026 (PR #619):** **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls and settings (migration 194);<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
-| 2 | **One-shot jobs:** recipes, quick guess, PT assessment, Kobo passage, phone brief. The Test bench. | their branches in `ai-proxy`, `kobo-sync` and `phone-gateway` |
+| 2 | **One-shot jobs.** Split in steps, each its own PR:<br>• **2a built 22.11.2026:** recipes (`recipe_from_text`, `recipe_from_link` with AI last — code reads a page's schema.org Recipe and no model is asked —, `recipe_macros`) and quick guess (`quick_guess`, `quick_guess_options`); no enforced answer shape;<br>• 2b: PT assessment, Kobo passage, phone brief; the Test bench. | 2a: `ai-proxy`'s `responseSchema` and `fetchUrl` modes, `callGeminiStructured`, `aiApi.ts`'s structured calls. 2b: their branches in `kobo-sync` and `phone-gateway` |
 | 3 | **Batch jobs:** the queue, the scheduled check, the Batches tab, and the first weekly report. What the report covers is asked when this phase starts. | — |
 | 4 | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
 | 5 | **The last of Gemini:**<br>• docs and checks;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | everything left |

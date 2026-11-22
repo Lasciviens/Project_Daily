@@ -63,184 +63,6 @@ function messagesToContents(messages: Message[]): AnyRecord[] {
 // deno-lint-ignore no-explicit-any
 type AnyRecord = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- loose outside JSON, read field by field all through this function
 
-// True for a dotted-quad that lands in a loopback/private/link-local range.
-// 169.254.0.0/16 covers cloud metadata (169.254.169.254) too. A malformed
-// dotted-numeric string is treated as suspicious (blocked) rather than allowed.
-function isPrivateIPv4(ip: string): boolean {
-  const p = ip.split('.').map(Number)
-  if (p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true
-  const [a, b] = p
-  if (a === 0 || a === 127 || a === 10) return true
-  if (a === 192 && b === 168) return true
-  if (a === 172 && b >= 16 && b <= 31) return true
-  if (a === 169 && b === 254) return true
-  if (a === 100 && b >= 64 && b <= 127) return true   // carrier-grade NAT
-  if (a === 198 && (b === 18 || b === 19)) return true // benchmarking
-  if (a >= 224) return true                            // multicast, reserved, broadcast
-  return false
-}
-
-// Blocks SSRF targets (localhost/loopback/link-local/private ranges) — this
-// fetches whatever URL the user pastes, server-side. Beyond the obvious
-// dotted-quad ranges this also blocks the encodings that trivially bypass a
-// naive string check: numeric-encoded IPv4 (decimal 2130706433, 0x-hex, octal),
-// and every IPv6 literal. A name that resolves to a private address is
-// refused by resolvesToPrivate below, on every redirect hop.
-function isPrivateHost(hostname: string): boolean {
-  let h = hostname.toLowerCase().trim()
-  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)   // [::1] -> ::1
-
-  if (h === 'localhost' || h.endsWith('.localhost')) return true
-
-  // IPv6 literal: refused outright. These fetchers read web pages by name, so an
-  // IPv6 literal is never a real target — and the URL parser rewrites embedded
-  // IPv4 ([::ffff:127.0.0.1] → [::ffff:7f00:1]), which a pattern check misses.
-  if (h.includes(':')) return true
-
-  // Dotted-quad IPv4
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
-
-  // All-numeric or 0x/octal host = decimal/hex/octal-encoded IPv4 (e.g.
-  // 2130706433, 0x7f000001, 017700000001) — Deno's fetch resolves these to the
-  // encoded IP, skipping the dotted-quad checks above. Block outright.
-  if (/^(0x[0-9a-f]+|\d+)$/.test(h)) return true
-
-  return false
-}
-
-// An IPv6 address as its eight 16-bit groups (an embedded IPv4 tail too), or null.
-function ipv6Groups(ip: string): number[] | null {
-  let s = ip.toLowerCase().split('%')[0]
-  const tail = /(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
-  if (tail) {
-    const q = tail.slice(1).map(Number)
-    if (q.some(n => n > 255)) return null
-    s = s.slice(0, tail.index) + `${((q[0] << 8) | q[1]).toString(16)}:${((q[2] << 8) | q[3]).toString(16)}`
-  }
-  const halves = s.split('::')
-  if (halves.length > 2) return null
-  const head = halves[0] ? halves[0].split(':') : []
-  const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : []
-  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
-  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...rest]
-  if (fill < 0 || groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return null
-  return groups.map(g => parseInt(g, 16))
-}
-
-// True for an IPv6 address a public web page never has: unspecified, loopback,
-// IPv4-compatible/-mapped (judged by the IPv4 inside), NAT64, unique local
-// (fd00:ec2::254 is AWS's metadata), link-local, site-local, multicast,
-// documentation, Teredo, 6to4 around a private IPv4, discard.
-function isPrivateIPv6(ip: string): boolean {
-  const g = ipv6Groups(ip)
-  if (!g) return true
-  const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
-  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff) return isPrivateIPv4(v4(g[6], g[7]))
-  if (g.slice(0, 6).every(x => x === 0)) return true
-  if (g[0] === 0x64 && g[1] === 0xff9b) return true
-  if ((g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00) return true
-  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return true
-  if (g[0] === 0x2002) return isPrivateIPv4(v4(g[1], g[2]))
-  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true
-  return false
-}
-
-// A public NAME can still point at a private address (127.0.0.1.nip.io,
-// localtest.me, a record its owner points at 169.254.169.254), so every hop's
-// name is resolved and refused when any A/AAAA answer is private (audit
-// 28.10.2026). Fails closed on the answer: a name that doesn't resolve or a
-// resolver error refuses the hop; "no record of this type" is not an error. A
-// runtime with no DNS lookup to give (no Deno.resolveDns, or one it doesn't
-// allow — PermissionDenied / NotCapable / NotSupported, or a stub) keeps the hostname check alone, as
-// before: refusing there would refuse every link (Supabase's Edge Runtime is
-// not confirmed to allow lookups). Only a timeout (the fetch's own signal) is
-// passed on. fetch
-// resolves the name again, so a rebinding name with a zero TTL can still
-// change its answer in between — this closes the fixed names.
-// Said once per instance, so the logs show whether the name check is on.
-let noLookupSaid = false
-function noLookupHere(why: string): false {
-  if (!noLookupSaid) { noLookupSaid = true; console.warn(`resolvesToPrivate: no DNS lookup here (${why}) — hostname check only`) }
-  return false
-}
-
-async function resolvesToPrivate(hostname: string, signal?: AbortSignal): Promise<boolean> {
-  const h = hostname.toLowerCase().trim()
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return isPrivateIPv4(h)
-  if (h.startsWith('[') || h.includes(':')) return true
-  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
-  let unavailable = ''
-  const lookup = async (type: 'A' | 'AAAA'): Promise<string[] | null> => {
-    try { return await Deno.resolveDns(h, type, { signal }) } catch (e) {
-      const name = (e as Error)?.name
-      if (name === 'AbortError') throw e
-      if (name === 'PermissionDenied' || name === 'NotCapable' || name === 'NotSupported' || e instanceof TypeError) unavailable = name || 'TypeError'
-      return e instanceof Deno.errors.NotFound ? [] : null
-    }
-  }
-  try {
-    const [a, aaaa] = await Promise.all([lookup('A'), lookup('AAAA')])
-    if (unavailable) return noLookupHere(unavailable)
-    if (!a || !aaaa || a.length + aaaa.length === 0) return true
-    return a.some(ip => isPrivateIPv4(ip)) || aaaa.some(ip => isPrivateIPv6(ip))
-  } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw e
-    return true
-  }
-}
-
-// Strips scripts/styles/tags and decodes common entities to leave plain
-// readable text — good enough for an LLM to extract a recipe from, without
-// pulling in a full HTML-parsing dependency.
-function extractReadableText(html: string): string {
-  let s = html
-  s = s.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  s = s.replace(/<style[\s\S]*?<\/style>/gi, ' ')
-  s = s.replace(/<!--[\s\S]*?-->/g, ' ')
-  s = s.replace(/<[^>]+>/g, '\n')
-  s = s
-    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
-  s = s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-  return s.slice(0, 15000)
-}
-
-async function fetchPageText(rawUrl: string): Promise<string> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 8000)
-  try {
-    // Follow redirects MANUALLY so every hop's target is re-checked against the
-    // SSRF guard. With fetch's default automatic redirect following, a URL on a
-    // public host that passes the initial check could 30x-bounce to an internal
-    // address (e.g. 169.254.169.254) that never gets re-validated.
-    let current = rawUrl
-    let res!: Response
-    for (let hop = 0; ; hop++) {
-      let url: URL
-      try { url = new URL(current) } catch { throw new Error('Invalid URL') }
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid URL')
-      if (isPrivateHost(url.hostname) || await resolvesToPrivate(url.hostname, controller.signal)) throw new Error('URL not allowed')
-
-      res = await fetch(url.toString(), {
-        signal:   controller.signal,
-        redirect: 'manual',
-        headers:  { 'User-Agent': 'Mozilla/5.0 (compatible; LascisBoardRecipeBot/1.0)' },
-      })
-
-      const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
-      if (!location) break
-      if (hop >= 5) throw new Error('Too many redirects')
-      current = new URL(location, url).toString()   // resolve relative redirects
-    }
-
-    if (!res.ok) throw new Error(`Failed to fetch URL: ${res.status}`)
-    const html = await res.text()
-    return extractReadableText(html)
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
 class RateLimitError extends Error {
   constructor(
     public readonly dailyLimit: number,
@@ -252,7 +74,7 @@ class RateLimitError extends Error {
 }
 
 // Parses Gemini's 429 error body for the quota/retry-delay hints and throws
-// RateLimitError — was duplicated identically in callGemini and callGeminiStructured.
+// RateLimitError.
 function throwRateLimit(errText: string): never {
   let dailyLimit = 20
   let retryAfterSec = 60
@@ -945,7 +767,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as
-      { messages?: Message[]; systemPrompt?: string; responseSchema?: AnyRecord; fetchUrl?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean; confirmAction?: { id?: string; decision?: string } }
+      { messages?: Message[]; systemPrompt?: string; model?: string; listModels?: boolean; surface?: string; reindexEmbeddings?: boolean; confirmAction?: { id?: string; decision?: string } }
 
     // The person tapped Confirm / Cancel on a proposed delete or routine change.
     if (body.confirmAction) {
@@ -980,16 +802,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Fetch-and-extract-text is a distinct, lightweight action (no Gemini
-    // call) — used to pull a recipe page's readable text server-side, since
-    // the browser can't fetch arbitrary third-party URLs due to CORS.
-    if (body.fetchUrl) {
-      const text = await fetchPageText(body.fetchUrl)
-      return new Response(JSON.stringify({ text }), {
-        status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
-      })
-    }
-
     // Backfill/refresh the semantic-search index over the user's own text rows.
     // User-triggered (a button); embeds each source table's rows and upserts
     // into ai_embeddings. Idempotent on (user_id, source_table, source_id).
@@ -1017,9 +829,9 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: true, indexed, perTable }), { status: 200, headers: { ...headers, 'Content-Type': 'application/json' } })
     }
 
-    const { messages, systemPrompt, responseSchema, model, surface } = body
+    const { messages, systemPrompt, model, surface } = body
     if (!messages?.length) {
-      return new Response(JSON.stringify({ error: 'messages or fetchUrl required' }), {
+      return new Response(JSON.stringify({ error: 'messages required' }), {
         status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
       })
     }
@@ -1043,11 +855,7 @@ Deno.serve(async (req) => {
     const surfaceModel = surface ? SURFACE_MODEL[surface] : undefined
     const preferredModel = isGeminiModel(model) ? model : (isGeminiModel(surfaceModel) ? surfaceModel : undefined)
 
-    // Structured single-shot extraction (no tool-calling loop) — used for
-    // things like parsing pasted recipe text into a JSON shape.
-    const result = responseSchema
-      ? await callGeminiStructured(GEMINI_KEY, messages, systemPrompt, responseSchema, preferredModel)
-      : await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, !viaPhone)
+    const result = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, !viaPhone)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })
@@ -1285,46 +1093,6 @@ function describeStep(name: string, args: AnyRecord, result: AnyRecord): string 
   else if (result?.deleted_count !== undefined) detail = ` → ${result.deleted_count} deleted`
   else if (result?.id) detail = ` → id ${result.id}`
   return `✓ ${name}${tbl}${detail}`
-}
-
-// Single-shot structured extraction — no tools, no multi-turn loop, just
-// "read this text, return JSON matching this schema." Used for pasted-recipe
-// parsing and macro estimation, where the caller wants data back, not chat.
-async function callGeminiStructured(
-  apiKey: string,
-  messages: Message[],
-  systemPrompt: string | undefined,
-  responseSchema: AnyRecord,
-  preferredModel?: GeminiModel,
-): Promise<{ data: AnyRecord }> {
-  const buildUrl = (model: GeminiModel) =>
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-
-  const contents: AnyRecord[] = messagesToContents(messages)
-
-  const baseBody: AnyRecord = { contents }
-  if (systemPrompt) baseBody.systemInstruction = { parts: [{ text: systemPrompt }] }
-
-  // thinking_config is Gemini-3.x-only (see supportsThinking) — built per
-  // model so the 2.5-tier tail of the fallback chain doesn't 400 on it.
-  const { res } = await fetchGeminiWithFallback(apiKey, buildUrl, model => ({
-    ...baseBody,
-    generationConfig: {
-      ...(supportsThinking(model) ? { thinking_config: { thinking_level: 'MINIMAL' } } : {}),
-      responseMimeType: 'application/json',
-      responseSchema,
-    },
-  }), preferredModel)
-
-  if (!res.ok) {
-    const errText = await res.text()
-    if (res.status === 429) throwRateLimit(errText)
-    throw new Error(`Gemini ${res.status}: ${errText}`)
-  }
-
-  const data      = await res.json()
-  const text      = data.candidates?.[0]?.content?.parts?.find((p: AnyRecord) => p.text)?.text ?? '{}'
-  return { data: JSON.parse(text) }
 }
 
 // ─── Confirm before acting (security audit 10.10.2026) ──────────────────────

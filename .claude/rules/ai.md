@@ -19,6 +19,9 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - Prices are code, never a table: the budget wall is worked out from them.
 - `ai_calls` is written only with the service role and the verified user id; the browser only reads it. A ledger write that fails never fails the answer.
 - An enforced answer shape (`enforceAnswerSchema: true`, Anthropic's structured output) stays small: ✨'s 21 optional fields hung for 90 s live (22.11.2026), so ✨ writes its shape into the instructions and our check holds the answer.
+- A job may have a step of plain code before the model (`PreparedRun.early`): after the switch and the key, before the reservation. Code that answers alone is not an AI call: no reservation, no model, no ledger row, the reply says `source: 'page'` (`recipe_from_link`, `docs/features/ai.md`).
+- Fetching a page a link names is `page-fetch.ts` only: https, no user name or port, `isPrivateHost` + `resolvesToPrivate` on every hop, redirects by hand (≤ 4), 10 s, 2 MB, `text/html`, fixed headers. Its address code stays line for line news-article's (`verify-ssrf-guard`); the DNS question is handed in by `main.ts`, because only `main.ts` touches `Deno`.
+- A job's answer check drops what fails and never repairs it (`answer-reader.ts`): wrong type, number out of range, text over its limit, unknown key. The recipe language is the one constant `RECIPE_LANGUAGE_RULE`. Page text and a link are input: the text goes in its own escaped tag, and a link is never put in a prompt or a ledger row's request.
 - The `ai_*` ledger and settings tables never enter an assistant's catalog or tool list.
 - `item_fill` (✨) stays narrow: no tools, no data, nothing written, app callers only; the sentence goes in its own tag, escaped; the answer leaves only through `cleanItemFill` (`src/features/items/itemFill.ts`, copied in by the build script), which the browser runs again. The model is never asked for a link.
 

@@ -5,7 +5,7 @@ import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
-import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
+import { parseRecipeText, parseRecipeFromLink, estimateRecipeMacros, type ParsedRecipe } from '../../ai/claude/recipeJobs'
 import { canComputeFromIngredients, cleanServingLabel, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -141,7 +141,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholePortions(servings), library) : null
 
-  function applyParsedRecipe(parsed: Awaited<ReturnType<typeof parseRecipeText>>) {
+  function applyParsedRecipe(parsed: ParsedRecipe) {
     setTitle(parsed.title)
     setServings(String(Math.max(1, parsed.servings || 1)))
     setInstructions(parsed.instructions ?? '')
@@ -177,11 +177,13 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
   async function handleParseUrl() {
     if (!urlInput.trim()) return
     setParsing(true)
-    const tid = toast.loading('Fetching and parsing recipe…')
+    const tid = toast.loading('Reading the page…')
     try {
-      applyParsedRecipe(await parseRecipeFromUrl(urlInput.trim()))
+      const parsed = await parseRecipeFromLink(urlInput.trim())
+      applyParsedRecipe(parsed)
       setSourceUrl(urlInput.trim())
-      toast.dismiss(tid); toast.success('Parsed ✓ — review before saving')
+      // A page that carries its recipe as structured data is read without AI: say so.
+      toast.dismiss(tid); toast.success(parsed.usedAi ? 'Parsed ✓ — review before saving' : 'Read from the page, no AI used ✓ — review before saving')
       setPasteOpen(false); setUrlInput('')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to fetch/parse URL')

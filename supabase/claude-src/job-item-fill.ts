@@ -14,6 +14,7 @@
 
 import type { AnswerCheck, JobDefinition, JsonSchema } from './types.ts'
 import { ownValue } from './guard.ts'
+import { escapeTagText, readAnswerObject } from './answer-reader.ts'
 import {
   cleanItemFill, itemFillTextProblem, FILL_PRIORITIES, FILL_REPEATS, FILL_SHOW_AS, FILL_UNITS,
 } from '../../src/features/items/itemFill.ts'
@@ -136,21 +137,6 @@ Answer with one JSON object and nothing else: no words before or after it, no wo
 
 ${JSON.stringify(ITEM_FILL_ANSWER_SCHEMA)}`
 
-/**
- * The JSON object in an answer: the text itself; or inside a markdown code fence; or, after a note of working-out
- * ("Today is Sunday, so the next Tuesday is …", seen live 22.11.2026), the object that starts on a line of its own
- * and runs to the end. The note is dropped; the object is then checked like any answer. Anything else stays as it
- * is and fails to parse.
- */
-function itemFillJsonText(answerText: string): string {
-  const text = answerText.trim()
-  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(text)
-  if (fenced) return fenced[1]
-  if (text.startsWith('{') || !text.endsWith('}')) return text
-  const start = text.search(/\n\{/)
-  return start >= 0 ? text.slice(start + 1) : text
-}
-
 const ITEM_FILL_TIME_ZONE = 'Europe/Oslo'
 
 /** Today as the owner's calendar and clock show it: the weekday, the day (YYYY-MM-DD) and the time (HH:MM). */
@@ -161,11 +147,6 @@ function itemFillNow(now: Date): { weekday: string; day: string; time: string } 
   }).formatToParts(now)
   const part = (type: string) => parts.find(p => p.type === type)?.value ?? ''
   return { weekday: part('weekday'), day: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` }
-}
-
-/** The sentence with & < > written out, so nothing in it can close its tag or open another. */
-function itemFillEscaped(sentence: string): string {
-  return sentence.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 export const ITEM_FILL_JOB: JobDefinition = {
@@ -190,16 +171,11 @@ export const ITEM_FILL_JOB: JobDefinition = {
     return {
       // The sentence travels as data inside its own tag; the instructions say it is never an instruction.
       userText: `<now>\n${today.weekday} ${today.day}, ${today.time}. Time zone: ${ITEM_FILL_TIME_ZONE}.\n</now>\n`
-        + `<sentence>\n${itemFillEscaped(sentence)}\n</sentence>`,
+        + `<sentence>\n${escapeTagText(sentence)}\n</sentence>`,
       read(answerText: string): AnswerCheck {
-        let raw: unknown
-        try {
-          raw = JSON.parse(itemFillJsonText(answerText))
-        } catch {
-          return { ok: false, problem: 'it was not JSON' }
-        }
-        if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, problem: 'it was not a JSON object' }
-        return { ok: true, result: { fill: cleanItemFill(raw, { today: today.day, sentence }) } }
+        const answer = readAnswerObject(answerText)
+        if (!answer.ok) return answer
+        return { ok: true, result: { fill: cleanItemFill(answer.value, { today: today.day, sentence }) } }
       },
     }
   },
