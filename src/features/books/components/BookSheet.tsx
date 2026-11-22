@@ -12,6 +12,8 @@ import { canonical, cleanTags, knownValues } from '../libraryFacets'
 import { SuggestInput, TagInput } from './SuggestInput'
 import { useAiNotes, useDeleteAiNote } from '../hooks/useKoboControl'
 import { formatDuration, sessions } from '../readingAggregate'
+import { finishBy, finishByText } from '../finishBy'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Book, BookPatch, ReadStatus } from '../types'
 import { BookCoverEditor } from './BookCoverEditor'
 import { BookDetailsFields } from './BookDetailsFields'
@@ -46,6 +48,10 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const events = useBookEvents(book.id)
   const recent = useMemo(() => sessions(events.data ?? []).slice(-8).reverse(), [events.data])
   const total = useMemo(() => (events.data ?? []).reduce((t, e) => t + e.duration_seconds, 0), [events.data])
+  const finish = useMemo(
+    () => (book.read_status === 'reading' && book.kind !== 'news' && events.data ? finishByText(finishBy(book, events.data, todayStr())) : null),
+    [book, events.data],
+  )
   const set = (p: Partial<Draft>) => setD(x => ({ ...x, ...p }))
   const problem = detailsProblem(d)
   const news = book.kind === 'news'
@@ -107,6 +113,7 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
             <Fact label="Progress" value={book.progress_pct != null ? `${Math.round(book.progress_pct)}%` : null} />
             <Fact label="Time read" value={book.read_seconds ? formatDuration(book.read_seconds) : total ? formatDuration(total) : null} />
+            <Fact label="Finish" value={finish} />
             <Fact label="Pages" value={book.page_count ? String(book.page_count) : null} />
             <Fact label="Last read" value={book.last_read_at ? formatDate(book.last_read_at) : null} />
             <Fact label="Language" value={book.language} />

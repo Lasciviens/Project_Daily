@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ShoppingBag } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatMoney } from '../../settings/subscriptionRules'
-import { useUpdateEntry } from '../hooks/useProjects'
+import { useProjects, useUpdateEntry } from '../hooks/useProjects'
+import { useToBuyToShop } from '../hooks/useToBuy'
+import { toBuyRows } from '../toBuy'
 import {
   cellText, groupRows, moneyTotals, orderEntries, rowTitle, statusColumn, statusCounts, tableSettings, titleColumn, type RowGroup,
 } from '../projectModel'
@@ -24,6 +26,10 @@ export function TableBlockBody({ block, rows, onAdd }: { block: ProjectBlock; ro
   const shown = status && filter ? ordered.filter(r => r.data[status.key] === filter) : ordered
   const groups = groupRows(shown, settings)
   const totals = moneyTotals(shown, settings)
+  const { data: projects = [] } = useProjects()
+  const shop = useToBuyToShop()
+  const toBuy = toBuyRows(block, rows)
+  const projectName = projects.find(p => p.id === block.project_id)?.name ?? 'this project'
   const open = (row: ProjectEntry) => modal.open({ kind: 'project-entry', projectId: block.project_id, blockId: block.id, id: row.id })
 
   if (settings.columns.length === 0) {
@@ -51,6 +57,14 @@ export function TableBlockBody({ block, rows, onAdd }: { block: ProjectBlock; ro
               {option} <span className="count-badge">{count}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {toBuy.length > 0 && (
+        <div>
+          <Button size="sm" icon={<ShoppingBag />} loading={shop.isPending} onClick={() => shop.send(toBuy, projectName)}>
+            Send {toBuy.length} to buy to Shop
+          </Button>
         </div>
       )}
 
