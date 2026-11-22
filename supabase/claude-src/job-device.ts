@@ -208,7 +208,9 @@ export const PHONE_ASK_JOB: JobDefinition = {
   prepare(input: unknown) {
     const rawQuestion = ownValue(input, 'question')
     const question = deviceLine(rawQuestion, PHONE_LIMITS.question)
-    if (!question) return { problem: 'Ask something first.' }
+    if (!question) {
+      return { problem: typeof rawQuestion === 'string' && [...rawQuestion.trim()].length > PHONE_LIMITS.question ? `That question is too long: at most ${PHONE_LIMITS.question} characters.` : 'Ask something first.' }
+    }
     const rawContext = ownValue(input, 'context')
     const context = rawContext === undefined || rawContext === null || rawContext === '' ? null : deviceContext(rawContext, PHONE_LIMITS.context)
     if (rawContext !== undefined && rawContext !== null && rawContext !== '' && context === null) return { problem: 'The context is too long.' }

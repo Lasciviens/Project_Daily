@@ -1853,9 +1853,19 @@ const ASK_DAILY_CAP = 100
 /** How long this function waits for `claude`: its own model limit for the Kobo is 20 s, so a clean answer comes first. */
 const ASK_WAIT_MS = 24_000
 
+// What a device function sends to `claude` instead of the service key itself: HMAC-SHA256 of a fixed label, keyed with
+// the service key, as hex. The raw service key would give whoever reads a header (a gateway, a log) the whole database;
+// this value proves the sender holds the key and opens nothing else. The same few lines are in kobo-sync, phone-gateway
+// and claude's guard.ts (`verify-claude-function` compares them).
+async function claudeDeviceCredential(serviceKey: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(serviceKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('claude-device-v1')))
+  return [...mac].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 /**
  * Asks the `claude` function's `kobo_ask` job. Only that function holds the Anthropic key: this one proves itself
- * with the project's service key in the `x-claude-server-key` header (never in the address, never logged), and
+ * with a value derived from the project's service key (claudeDeviceCredential) in the `x-claude-server-key` header (never in the address, never logged), and
  * names only the job, the caller `kobo` and the checked question. The account is not sent: `claude` acts as the
  * owner from its own environment, so a bug here cannot point the call at another account. What comes back is
  * input again: only text, cleaned for the e-ink screen, ever leaves.
@@ -1868,7 +1878,7 @@ async function askClaude(input: AskInput): Promise<{ answer: string; model: stri
   try {
     const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/claude`, {
       method: 'POST', signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', 'x-claude-server-key': key },
+      headers: { 'Content-Type': 'application/json', 'x-claude-server-key': await claudeDeviceCredential(key) },
       body: JSON.stringify({ action: 'run', caller: 'kobo', job: 'kobo_ask', input }),
     })
     const data = await res.json().catch(() => null) as { ok?: unknown; reason?: unknown; result?: { answer?: unknown }; call?: { served_model?: unknown } } | null

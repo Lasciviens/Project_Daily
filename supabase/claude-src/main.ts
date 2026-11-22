@@ -11,8 +11,8 @@
 //  Two kinds of caller, told apart before anything is read:
 //    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
 //    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
-//      `x-claude-server-key` carries the project's service key, compared in constant time with this function's own
-//      copy. It may only `run`, and only as caller `kobo` or `phone`, acting as the owner (HEVY_USER_ID, read here,
+//      `x-claude-server-key` carries a value derived from the project's service key (HMAC-SHA256 of a fixed
+//      label, guard.ts; never the key itself), compared in constant time with this function's own copy. It may only `run`, and only as caller `kobo` or `phone`, acting as the owner (HEVY_USER_ID, read here,
 //      never from the request), so a job runs for a device only when its `callers` list names that device.
 //  It also hands the run the network and the name lookup a job may use to read
 //  an outside page (the recipe link), since only this part touches Deno.
@@ -25,7 +25,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import { ANTHROPIC_INFO, anthropicProvider } from './provider-anthropic.ts'
 import { describeFunction } from './describe.ts'
-import { deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret } from './guard.ts'
+import { claudeDeviceCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
 import type { DnsLookup } from './types.ts'
@@ -109,8 +109,10 @@ Deno.serve(async (req) => {
     const serverKeyHeader = req.headers.get('x-claude-server-key')
     let device = false
     if (serverKeyHeader !== null) {
+      // The header holds a value derived from the service key (never the key itself); no key set: every device is refused.
       const own = serviceKey()
-      if (!own || !(await sameSecret(serverKeyHeader, own))) return reply(401, { error: 'Invalid server key' })
+      const derived = own ? await claudeDeviceCredential(own) : ''
+      if (!own || !(await sameSecret(serverKeyHeader, derived))) return reply(401, { error: 'Invalid server key' })
       device = true
     }
 

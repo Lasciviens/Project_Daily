@@ -80,6 +80,25 @@ function dateFromToday(days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
+// The `claude` function takes a context of at most 4000 characters (PHONE_LIMITS.context) and refuses a longer one,
+// so the gateway keeps its own context under it: whole lines, the first ones (the date, the tasks, then the schedule
+// and the training), never a line cut in half. Tasks and blocks are each limited to 20 rows, so this only bites on
+// very long titles.
+const BRIEF_CONTEXT_MAX = 3900
+function capLines(lines: string[], max: number): string {
+  const kept: string[] = []
+  let size = 0
+  for (const line of lines.join('\n').split('\n')) {
+    const next = size + line.length + (kept.length ? 1 : 0)
+    if (next > max) break
+    kept.push(line)
+    size = next
+  }
+  return kept.join('\n')
+}
+// The longest question `claude`'s phone_ask takes (PHONE_LIMITS.question).
+const ASK_QUESTION_MAX = 1000
+
 // Build a COMPACT brief context server-side (today's tasks + schedule + upcoming
 // training) so the AI answers in ONE shot with no tool loop — mirrors the web
 // daily-briefing's pre-built-context approach. Service role bypasses RLS, so
@@ -134,12 +153,22 @@ async function buildBriefContext(userId: string): Promise<string> {
       for (const s of tr as AnyRecord[]) lines.push(`  - ${s.date}${s.start_time ? ` ${String(s.start_time).slice(0, 5)}` : ''} ${s.title}`)
     }
   } catch { /* omit section */ }
-  return lines.join('\n')
+  return capLines(lines, BRIEF_CONTEXT_MAX)
+}
+
+// What a device function sends to `claude` instead of the service key itself: HMAC-SHA256 of a fixed label, keyed with
+// the service key, as hex. The raw service key would give whoever reads a header (a gateway, a log) the whole database;
+// this value proves the sender holds the key and opens nothing else. The same few lines are in kobo-sync, phone-gateway
+// and claude's guard.ts (`verify-claude-function` compares them).
+async function claudeDeviceCredential(serviceKey: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(serviceKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('claude-device-v1')))
+  return [...mac].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 // Ask one of the `claude` function's phone jobs. Only that function holds the
-// Anthropic key: this one proves itself with the project's service key in the
-// `x-claude-server-key` header (never in the address, never logged) and names
+// Anthropic key: this one proves itself with a value derived from the project's service key
+// (claudeDeviceCredential) in the `x-claude-server-key` header (never in the address, never logged) and names
 // the job, the caller `phone` and the input. It sends no account: `claude` acts
 // as the owner (HEVY_USER_ID) from its own environment. Bounded by a 22s
 // AbortController so a slow upstream returns a clean error before the client's
@@ -152,7 +181,7 @@ async function askClaude(job: 'phone_brief' | 'phone_ask', input: AnyRecord): Pr
   try {
     const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/claude`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'x-claude-server-key': key },
+      headers: { 'Content-Type': 'application/json', 'x-claude-server-key': await claudeDeviceCredential(key) },
       body: JSON.stringify({ action: 'run', caller: 'phone', job, input }),
       signal: controller.signal,
     })
@@ -584,6 +613,7 @@ Deno.serve(async (req) => {
       case 'ask': {
         const q = String(body.q ?? '').trim()
         if (!q) return json({ ok: false, error: 'q required for action "ask"' }, 400)
+        if (q.length > ASK_QUESTION_MAX) return json({ ok: false, error: `That question is too long (${q.length} characters): at most ${ASK_QUESTION_MAX}. Shorten it and ask again.` }, 400)
         return json(await askClaude('phone_ask', { question: q, context: await buildBriefContext(userId) }))
       }
 

@@ -59,6 +59,16 @@ export async function sameSecret(given: string, expected: string): Promise<boole
   return diff === 0
 }
 
+// What a device function sends to `claude` instead of the service key itself: HMAC-SHA256 of a fixed label, keyed with
+// the service key, as hex. The raw service key would give whoever reads a header (a gateway, a log) the whole database;
+// this value proves the sender holds the key and opens nothing else. The same few lines are in kobo-sync, phone-gateway
+// and this file (`verify-claude-function` compares them).
+export async function claudeDeviceCredential(serviceKey: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(serviceKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('claude-device-v1')))
+  return [...mac].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 /**
  * A request's time limit, worked out from the longest answer its job may write: 30 s up to 2000 tokens (a ✨ fill),
  * then 10 s more for every further 1000, at most 100 s: a 4000-token recipe is not cut at 30 s, and the whole run

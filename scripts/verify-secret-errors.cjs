@@ -328,6 +328,8 @@ process.on('exit', () => {
   {
     const gwEnv = { ...env, PHONE_GATEWAY_SECRET: 'phone-secret-123456', KOBO_SYNC_SECRET: 'kobo-secret-123456' }
     const sent = []
+    // What a device function sends instead of the service key: HMAC-SHA256 of a fixed label, as hex (AI review G1).
+    const credential = require('crypto').createHmac('sha256', env.SUPABASE_SERVICE_ROLE_KEY).update('claude-device-v1').digest('hex')
     const asking = (reply) => async (url, init = {}) => { sent.push({ url: String(url), init, body: JSON.parse(init.body ?? '{}') }); return reply(url) }
     const call = async (fn, path, headers, body, fetchImpl) => {
       const handler = load(fn, { env: gwEnv, tables: { app_allowed_users: [] }, users: {}, log: [], fetchImpl })
@@ -337,13 +339,25 @@ process.on('exit', () => {
     const answerOk = () => new Response(JSON.stringify({ ok: true, result: { text: 'Gün iyi.', answer: 'Fine.' }, call: { served_model: 'claude-haiku-5-5' } }), { status: 200, headers: { 'content-type': 'application/json' } })
     sent.length = 0
     let r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, asking(answerOk))
-    check('phone-gateway: brief calls the claude function (never ai-proxy) with the service key in x-claude-server-key and nothing else as proof',
-      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === env.SUPABASE_SERVICE_ROLE_KEY && !sent[0].init.headers.authorization && !sent[0].init.headers.apikey && !sent[0].url.includes(env.SUPABASE_SERVICE_ROLE_KEY), sent[0] && sent[0].url)
+    check('phone-gateway: brief calls the claude function (never ai-proxy) with a value derived from the service key (never the key itself) in x-claude-server-key and nothing else as proof',
+      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === credential && sent[0].init.headers['x-claude-server-key'] !== env.SUPABASE_SERVICE_ROLE_KEY && !JSON.stringify(sent[0].init).includes(env.SUPABASE_SERVICE_ROLE_KEY) && !sent[0].init.headers.authorization && !sent[0].init.headers.apikey && !sent[0].url.includes(env.SUPABASE_SERVICE_ROLE_KEY), sent[0] && sent[0].url)
     check('phone-gateway: the body is the run, caller phone, job phone_brief, a context — and no account', sent[0] && sent[0].body.action === 'run' && sent[0].body.caller === 'phone' && sent[0].body.job === 'phone_brief' && typeof sent[0].body.input.context === 'string' && Object.keys(sent[0].body).sort().join() === 'action,caller,input,job' && Object.keys(sent[0].body.input).join() === 'context', sent[0] && sent[0].body)
     check('phone-gateway: the answer is the text and the served model', JSON.parse(r.text).ok === true && JSON.parse(r.text).text === 'Gün iyi.' && JSON.parse(r.text).model === 'claude-haiku-5-5', r.text)
     sent.length = 0
     r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'ask', q: 'What is on today?' }, asking(answerOk))
     check('phone-gateway: ask is the job phone_ask with the question and the day\'s context', sent[0] && sent[0].body.job === 'phone_ask' && sent[0].body.caller === 'phone' && sent[0].body.input.question === 'What is on today?' && typeof sent[0].body.input.context === 'string', sent[0] && sent[0].body)
+    sent.length = 0
+    r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'ask', q: 'x'.repeat(1001) }, asking(answerOk))
+    check('phone-gateway: a question over 1000 characters is refused here with its own "too long" sentence, nothing sent to claude (AI review G4)', sent.length === 0 && JSON.parse(r.text).ok === false && /too long/.test(JSON.parse(r.text).error) && !/Ask something/.test(JSON.parse(r.text).error), r.text)
+    sent.length = 0
+    {
+      const longTitle = 'T'.repeat(190)
+      const rows = Array.from({ length: 20 }, (_, i) => ({ title: `${i} ${longTitle}`, status: 'todo', priority: 'high', domain: 'work', due_time: '09:00:00' }))
+      const handler = load('phone-gateway', { env: gwEnv, tables: { app_allowed_users: [], tasks: rows }, users: {}, log: [], fetchImpl: asking(answerOk) })
+      await handler(new Request('http://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, body: JSON.stringify({ action: 'brief' }) }))
+      const context = sent[0] && sent[0].body.input.context
+      check('phone-gateway: the brief context is capped at 3900 characters in whole lines, never cut mid-line (AI review G4)', typeof context === 'string' && context.length <= 3900 && context.length > 3000 && context.split('\n').every(l => l === '' || /^(DATE:|\n|BUG|\s+- \d+ T+ |$)/.test(l) || l.startsWith('BUG')), context && [context.length, context.slice(-80)])
+    }
     r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, failing)
     check('phone-gateway: a network failure answers without any key and without the URL', leaks(r.text).length === 0 && !/u\/functions/.test(r.text) && JSON.parse(r.text).ok === false, r.text)
     r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, asking(() => new Response(JSON.stringify({ ok: false, reason: 'budget', message: `budget ${env.SUPABASE_SERVICE_ROLE_KEY}` }), { status: 200 })))
@@ -354,8 +368,8 @@ process.on('exit', () => {
     sent.length = 0
     const koboAsk = { ask: 'explain', selection: 'Han var sulten.', before: '', after: '', answer_language: 'English', title: 'Sult' }
     r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, koboAsk, asking(answerOk))
-    check('kobo-sync: a passage question goes to the claude function as caller kobo, job kobo_ask, the checked question, the service key in a header and no account',
-      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === env.SUPABASE_SERVICE_ROLE_KEY && sent[0].body.caller === 'kobo' && sent[0].body.job === 'kobo_ask' && sent[0].body.input.selection === 'Han var sulten.' && Object.keys(sent[0].body).sort().join() === 'action,caller,input,job', [r.status, r.text.slice(0, 200), sent[0] && sent[0].body])
+    check('kobo-sync: a passage question goes to the claude function as caller kobo, job kobo_ask, the checked question, the derived credential (not the service key) in a header and no account',
+      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === credential && !JSON.stringify(sent[0].init).includes(env.SUPABASE_SERVICE_ROLE_KEY) && sent[0].body.caller === 'kobo' && sent[0].body.job === 'kobo_ask' && sent[0].body.input.selection === 'Han var sulten.' && Object.keys(sent[0].body).sort().join() === 'action,caller,input,job', [r.status, r.text.slice(0, 200), sent[0] && sent[0].body])
     check('kobo-sync: the answer comes back as the plugin reads it', r.status === 200 && JSON.parse(r.text).answer === 'Fine.' && JSON.parse(r.text).model === 'claude-haiku-5-5', r.text)
     r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, koboAsk, failing)
     check('kobo-sync: a network failure answers 502 no_answer without any key or URL', r.status === 502 && JSON.parse(r.text).error === 'no_answer' && leaks(r.text).length === 0 && !/u\/functions/.test(r.text), r.text)
