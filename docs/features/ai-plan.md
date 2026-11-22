@@ -47,8 +47,8 @@ Words used below, once:
 | `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks |
 | `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same |
 | `ai-proxy` — surface `phone` | The phone's **brief** and **ask**: one answer, no tools. | `gemini-3.1-flash-lite` |
-| `ai-proxy` — `responseSchema` mode | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain |
-| `ai-proxy` — `fetchUrl` | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain |
+| `ai-proxy` — `responseSchema` mode (removed in 2a) | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain |
+| `ai-proxy` — `fetchUrl` (removed in 2a) | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain |
 | `ai-proxy` — `itemFill` | The item screen's **✨ fill from a sentence**. | `gemini-3.1-flash-lite` first |
 | `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model |
 | `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) |
@@ -199,7 +199,7 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 |---|---|
 | **Prompt caching** | The fixed part (tools + rules, about 7K tokens) costs a tenth on every step after the first. That's the biggest cost lever, since an answer sent ~100K tokens. |
 | **Mid-conversation system messages** | Live context (today, the time, your data) goes in after the cached part, so it never breaks the cache. |
-| **Structured outputs** | ✨, recipes, quick guess and the PT assessment always come back in the exact shape the app expects. Every field is still checked by our code. |
+| **Structured outputs** (not used for now) | Anthropic can enforce an answer shape. Live (22.11.2026) ✨'s 21 optional fields hung for 90 s: every optional field doubles the grammar's states, and compiling it can take up to 180 s (cached 24 h after). So no job enforces a shape now: each writes its shape into its instructions and our own check holds every field, as it always did. A later job may enforce a very small shape with every field required (`docs/integrations/anthropic.md`, trap 16). |
 | **Strict tool use** | A tool's input always matches its definition. Anthropic allows at most 20 such tools in one request, so the new tool set is small and sharp. |
 | **Adaptive thinking + effort per job** | Low for form fills, medium for chat. The log shows a **summary of how it reasoned**, so you can see why it answered what it did. |
 | **Vision** | Photos in the chat, as today. |
@@ -288,13 +288,20 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 |---|---|---|
 | 0 | **Done (20.11.2026):** `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields, prices, limits and traps, checked against Anthropic's documentation. | — |
 | 1 | **Built 21.11.2026 (PR #619):** **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls and settings (migration 194);<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
-| 2 | **One-shot jobs:** recipes, quick guess, PT assessment, Kobo passage, phone brief. The Test bench. | their branches in `ai-proxy`, `kobo-sync` and `phone-gateway` |
+| 2 | **One-shot jobs.** Split in steps, each its own PR:<br>• **2a built 22.11.2026:** recipes (`recipe_from_text`, `recipe_from_link` with AI last — code reads a page's schema.org Recipe and no model is asked —, `recipe_macros`) and quick guess (`quick_guess`, `quick_guess_options`); no enforced answer shape;<br>• 2b: PT assessment, Kobo passage, phone brief; the Test bench. | 2a: `ai-proxy`'s `responseSchema` and `fetchUrl` modes, `callGeminiStructured`, `aiApi.ts`'s structured calls. 2b: their branches in `kobo-sync` and `phone-gateway` |
 | 3 | **Batch jobs:** the queue, the scheduled check, the Batches tab, and the first weekly report. What the report covers is asked when this phase starts. | — |
 | 4 | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
 | 5 | **The last of Gemini:**<br>• docs and checks;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | everything left |
 | 6 | Optional, one at a time and measured: advisor, programmatic tool calling, tool search, web search. | — |
 
 Each phase gets tests, a guardian review, and a look on the phone layout before its PR.
+
+### Next (found in phase 2a, not done yet)
+
+- Thinking off for the jobs where it is measured safe (a form fill needs none): less cost and time.
+- ✨ with an enforced shape that has **all fields required** (an empty value means "not given"; `cleanItemFill` compares an enum case-insensitively), tried with Diagnose's real call first.
+- Retry a Haiku refusal once on Sonnet (the promise in section 3 is not built yet).
+- A token count before sending, in the Test bench (2d): `count_tokens` shows what a prompt will cost, though it cannot catch a grammar that will not compile.
 
 ---
 

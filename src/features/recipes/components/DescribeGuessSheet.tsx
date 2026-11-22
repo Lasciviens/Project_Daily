@@ -4,7 +4,7 @@ import { ModalShell } from '../../../shared/modals'
 import { Button, TonePill } from '../../../shared/ui'
 import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { useDescribeGuess, useLogGuess } from '../hooks/useQuickGuess'
-import { draftProblem, EMPTY_DRAFT, type GuessDraft } from '../quickGuess'
+import { draftProblem, EMPTY_DRAFT, KNOWN_GUESS_NOTE, type GuessDraft, type GuessEstimate } from '../quickGuess'
 import type { MealSlot } from '../types'
 import { DecimalInput } from './foodLogKit'
 import { SLOT_OPTIONS } from './foodLogUtils'
@@ -32,6 +32,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const [text, setText] = useState(initialText)
   const [draft, setDraft] = useState<GuessDraft | null>(null)
   const [assumed, setAssumed] = useState<string[]>([])
+  const [from, setFrom] = useState<GuessEstimate['from']>(undefined)
   const [problem, setProblem] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const slotName = SLOT_OPTIONS.find(o => o.id === slot)?.label.toLowerCase() ?? slot
@@ -44,6 +45,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
       const e = await describe.mutateAsync(text)
       setDraft({ ...EMPTY_DRAFT, name: e.title || text.trim().slice(0, 60), portion: e.portion, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, sugar: e.sugar })
       setAssumed(e.assumptions)
+      setFrom(e.from)
     } catch { /* the hook reports it (one toast, shown over this sheet) */ }
   }
 
@@ -70,7 +72,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
       compact
       dismissible={!log.isPending}
       title="Describe it"
-      subtitle={`AI estimate · logs to ${slotName} after you check it`}
+      subtitle={`Logs to ${slotName} after you check it`}
       footer={
         <div className="flex items-center gap-2">
           {draft && <Button size="sm" className="mr-auto" onClick={saveAsPreset} disabled={busy}>Save as preset</Button>}
@@ -98,7 +100,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
         {draft && (
           <>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <TonePill tone="info">AI estimate</TonePill>
+              <TonePill tone="info">{from ? KNOWN_GUESS_NOTE[from] : 'AI estimate'}</TonePill>
               <span className="text-meta text-fg-muted">check the numbers before you log</span>
             </div>
             <label className="flex flex-col gap-1">

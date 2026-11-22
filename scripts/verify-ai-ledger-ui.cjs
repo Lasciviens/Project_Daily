@@ -130,6 +130,7 @@ console.log('\nvalues as they enter')
   const dd = R.readDescribe({ configured: 'yes', models: [{ id: 'm' }, { name: 'no id' }], jobs: [{ name: 'a' }, { title: 'no name' }], prices: { checkedOn: 'today' } })
   check('describe: odd fields become empty, never a crash', dd.configured === false && dd.models.length === 1 && dd.models[0].name === 'm' && dd.jobs.length === 1 && dd.jobs[0].title === 'a' && dd.prices.checkedOn === '' && dd.steps.length === 0)
   check('describe: nothing at all', R.readDescribe(undefined).configured === false && R.readDescribe('x').jobs.length === 0)
+  check('a row for work code did alone (provider page) is labelled "Read by code, no AI"; any other shows its model id', R.callModelLabel({ provider: 'page', model: 'none' }) === 'Read by code, no AI' && R.callModelLabel({ provider: 'anthropic', model: 'claude-haiku-5-5' }) === 'claude-haiku-5-5')
   check('titles and names fall back to the id', R.jobTitleOf([{ name: 'a', title: 'A job' }], 'a') === 'A job' && R.jobTitleOf([], 'gone') === 'gone' && R.jobTitleOf(undefined, 'z') === 'z' && R.modelNameOf([{ id: 'm', name: 'Model' }], 'm') === 'Model' && R.modelNameOf(undefined, 'q') === 'q')
 }
 
@@ -145,6 +146,26 @@ console.log('\nreadRunAnswer')
   check('no sentence: the fallback for error', !bare.ok && bare.message === R.REASON_FALLBACK.error)
   check('garbage is an error, not a throw', R.readRunAnswer(null).ok === false && R.readRunAnswer('x').ok === false && R.readRunAnswer({ ok: 'true' }).ok === false)
   check('a long sentence is cut', R.readRunAnswer({ ok: false, reason: 'busy', message: 'x'.repeat(1000) }).message.length === 300)
+  check('an answer made by code alone says source "page" and has no call; any other source word is ignored', (() => {
+    const page = R.readRunAnswer({ ok: true, result: { title: 't' }, source: 'page' })
+    const odd = R.readRunAnswer({ ok: true, result: {}, source: 'elsewhere', call: { id: 'c' } })
+    return page.ok && page.source === 'page' && page.call === undefined && odd.ok && odd.source === undefined && odd.call.id === 'c'
+  })())
+}
+
+console.log('\nrecipeAnswers (the recipe jobs\' answers, read again in the browser)')
+{
+  const A = require('../src/features/ai/claude/recipeAnswers')
+  const good = { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true }
+  check('a good recipe passes unchanged', J(A.readParsedRecipe(good)) === J(good))
+  const odd = A.readParsedRecipe({ title: ' Cake ', servings: 'x', instructions: ['a'], usedAi: false, extra: 1, ingredients: [{ name: 5 }, null, { name: 'ok', quantity: -1, unit: 4, note: 'n'.repeat(300) }, { name: 'y'.repeat(200) }, { name: 'egg', quantity: 1e9 }], macro_estimate: { calories: -5, protein_g: '8', carbs_g: 9999, fat_g: 7.4, sugar_g: null } })
+  check('hostile values are dropped, never repaired: servings 1, steps none, bad numbers null, long text gone, one extra key never leaves', odd && odd.title === 'Cake' && odd.servings === 1 && odd.instructions === null && odd.usedAi === false
+    && J(odd.ingredients) === J([{ name: 'ok', quantity: null, unit: null, note: null }, { name: 'egg', quantity: null, unit: null, note: null }])
+    && J(odd.macro_estimate) === J({ calories: null, protein_g: null, carbs_g: null, fat_g: 7, sugar_g: null }) && !('extra' in odd), J(odd))
+  check('no title, no ingredient, or something that is not an object is no recipe', A.readParsedRecipe({ ingredients: [{ name: 'a' }] }) === null && A.readParsedRecipe({ title: 'x', ingredients: [] }) === null && A.readParsedRecipe({ title: 'x', ingredients: [{ name: 5 }] }) === null && A.readParsedRecipe(null) === null && A.readParsedRecipe([good]) === null && A.readParsedRecipe('x') === null)
+  check('a recipe is a model\'s unless it says otherwise only with usedAi false', A.readParsedRecipe({ ...good, usedAi: undefined }).usedAi === true && A.readParsedRecipe({ ...good, usedAi: 'no' }).usedAi === true)
+  check('the macros job needs all five values, whole, in range', J(A.readMacroEstimate({ calories: 310.4, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 })) === J({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 })
+    && A.readMacroEstimate({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6 }) === null && A.readMacroEstimate({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: -1 }) === null && A.readMacroEstimate({}) === null && A.readMacroEstimate(5) === null)
 }
 
 console.log('\nlog parts')

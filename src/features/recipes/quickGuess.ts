@@ -439,7 +439,33 @@ export function optionsProblem(groups: readonly GroupDraft[]): string | null {
 // ── AI answers (review-first: they fill a form, never log or save) ─────────
 
 /** "Describe it": the AI's estimate of a described meal, as one diary line. */
-export interface GuessEstimate extends GuessMacros { title: string; portion: string; assumptions: string[] }
+export interface GuessEstimate extends GuessMacros {
+  title: string
+  portion: string
+  assumptions: string[]
+  /** Set when no AI was asked: the description named one of the owner's presets or an earlier diary line. */
+  from?: 'preset' | 'diary'
+}
+
+/** What the sheet says when code answered from the owner's own entries. */
+export const KNOWN_GUESS_NOTE: Record<'preset' | 'diary', string> = {
+  preset: 'From your preset — no AI used',
+  diary: 'From your earlier entry — no AI used',
+}
+
+/**
+ * AI last: a description that is exactly one of the owner's presets, or the title of an earlier one-off diary line
+ * (a preset first; case and white space ignored), is answered from that entry with no AI. Anything else is null.
+ */
+export function matchKnownGuess(text: string, presets: readonly GuessPreset[], recents: readonly RecentGuess[]): GuessEstimate | null {
+  const key = fold(text).replace(/\s+/g, ' ')
+  if (!key) return null
+  const same = (title: string) => fold(title).replace(/\s+/g, ' ') === key
+  const preset = presets.find(p => same(p.title))
+  if (preset) return { title: preset.title, portion: preset.portion, kcal: preset.kcal, protein: preset.protein, carbs: preset.carbs, fat: preset.fat, sugar: preset.sugar, assumptions: [], from: 'preset' }
+  const earlier = recents.find(r => same(r.title))
+  return earlier ? { title: earlier.title, portion: '', kcal: earlier.kcal, protein: earlier.protein, carbs: earlier.carbs, fat: earlier.fat, sugar: earlier.sugar, assumptions: [], from: 'diary' } : null
+}
 
 /** The AI's answer checked where it enters: text cut, numbers whole and within the table's ranges, at most 4 assumptions. */
 export function readGuessEstimate(raw: unknown): GuessEstimate | null {

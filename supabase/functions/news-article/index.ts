@@ -76,6 +76,8 @@ function isPrivateIPv4(ip: string): boolean {
 function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
+  // A trailing dot names the same host ("localhost.", "metadata.google.internal.").
+  h = h.replace(/\.+$/, '')
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true
   // IPv6 literal: refused outright. These fetchers read web pages by name, so an
   // IPv6 literal is never a real target — and the URL parser rewrites embedded

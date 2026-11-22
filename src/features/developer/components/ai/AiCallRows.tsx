@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { MetaLine, Truncate, cx, useBoardStep } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
-import { formatDuration, formatTokens, formatUsd, jobTitleOf } from '../../../ai/claude/ledgerRules'
+import { callModelLabel, formatDuration, formatTokens, formatUsd, jobTitleOf } from '../../../ai/claude/ledgerRules'
 import type { AiCall, Describe } from '../../../ai/claude/types'
 import { DETAIL_PANE_FROM } from '../../developerBoards'
 import { AiCallDetail } from './AiCallDetail'
@@ -27,7 +27,7 @@ function RowFace({ call, jobs }: { call: AiCall; jobs: Describe['jobs'] | undefi
       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
         <OutcomePill outcome={call.outcome} />
         <MetaLine as="span" className="min-w-0 text-meta tabular-nums text-fg-muted" items={[
-          shortModel(call.model),
+          call.provider === 'page' ? callModelLabel(call) : shortModel(call.model),
           sent + call.output_tokens > 0 && `${formatTokens(sent)} in`,
           sent + call.output_tokens > 0 && `${formatTokens(call.output_tokens)} out`,
           formatDuration(call.duration_ms),

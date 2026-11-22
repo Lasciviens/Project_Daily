@@ -128,10 +128,40 @@ export interface ProviderInfo {
 /** A job's reading of the model's text: its checked result, or why the text can't be used. */
 export type AnswerCheck = { ok: true; result: Record<string, unknown> } | { ok: false; problem: string }
 
+/**
+ * One DNS question for the page fetch: the addresses of a name (type A: IPv4, AAAA: IPv6). "No such record" is an
+ * empty list; "this runtime cannot look names up" is an error named `NoLookup`; any other error is a failure.
+ */
+export type DnsLookup = (name: string, type: 'A' | 'AAAA', signal: AbortSignal) => Promise<string[]>
+
+/** What a job may use to read an outside page: the network and the name lookup, both handed in by main.ts. */
+export interface PageEnv {
+  fetch: typeof fetch
+  /** null: no lookup at all (the hostname check alone). */
+  dnsLookup: DnsLookup | null
+}
+
+/**
+ * What a job's step before the model decides. `answer`: code alone made the result (no model is called; the run
+ * writes a finished zero-cost ledger row, provider `page`, model `none`, so the rate caps count it; `note` is what
+ * the row's text log shows, only while the owner keeps the text log on). `model`: send this as the live part of
+ * the prompt. `stop`: nothing usable, in one plain sentence.
+ */
+export type EarlyStep =
+  | { kind: 'answer'; result: Record<string, unknown>; note?: string }
+  | { kind: 'model'; userText: string }
+  | { kind: 'stop'; outcome: 'bad_input' | 'error'; message: string }
+
 /** A run that passed the job's input check: the live part of the prompt, and the reader of its answer. */
 export interface PreparedRun {
   userText: string
   read(answerText: string): AnswerCheck
+  /**
+   * AI last: work that code can do before any model is asked (fetching a page, finding the recipe the page already
+   * holds). It runs after the job's switch and the key are checked and before anything is reserved or sent. It
+   * never throws; whatever it did not answer, `model` carries on to the model with the text it found.
+   */
+  early?(env: PageEnv): Promise<EarlyStep>
 }
 
 /** One job: a fixed task the model does, with its own instructions, answer shape and checks. */
@@ -157,6 +187,8 @@ export interface JobDefinition {
   enforceAnswerSchema: boolean
   /** Repo-relative paths of the files that define this job. */
   sourceFiles: readonly string[]
+  /** What else the Developer page says about this job (a step done by code before the model, say). */
+  extraFeatures?: readonly string[]
   /** Checks the input. Answers why it can't be used, or the prompt's live part with the reader of its answer. */
   prepare(input: unknown, now: Date): { problem: string } | PreparedRun
 }
@@ -185,7 +217,8 @@ export interface CallSummary {
 
 /** The answer to `{ action: 'run' }`. */
 export type RunReply =
-  | { ok: true; job: string; result: Record<string, unknown>; call: CallSummary }
+  // `source: 'page'`: code alone answered from the page itself. No model was asked; the `call` is a zero-cost row.
+  | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
 
 /** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */

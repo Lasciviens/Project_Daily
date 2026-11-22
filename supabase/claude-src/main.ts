@@ -7,6 +7,8 @@
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
 //    { "action": "diagnose" }                       → diagnose.ts
+//  It also hands the run the network and the name lookup a job may use to read
+//  an outside page (the recipe link), since only this part touches Deno.
 //
 //  Supabase checks the sign-in token before this code starts (the function is
 //  not listed in supabase/config.toml, so platform verification is on). That
@@ -20,6 +22,7 @@ import { describeFunction } from './describe.ts'
 import { errorPlace, LIMITS, ownValue, parseObject, readCapped } from './guard.ts'
 import { runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
+import type { DnsLookup } from './types.ts'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -47,6 +50,28 @@ async function isAppUser(userId: string): Promise<boolean> {
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
   const { data, error } = await admin.from('app_allowed_users').select('user_id').eq('user_id', userId).maybeSingle()
   return !error && !!data
+}
+
+// The name lookup of the page fetch (page-fetch.ts): Deno's DNS question, with Deno's own errors turned into the
+// neutral ones the part knows. "No such record" is an empty list. Only a missing `Deno.resolveDns`, `PermissionDenied`
+// and `NotCapable` mean "this runtime has no lookup" (Supabase's Edge Runtime is not confirmed to allow it, so the
+// hostname check then stands alone, said once per instance in the log); every other error fails closed.
+let noLookupSaid = false
+function noLookupHere(why: string): never {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`[claude] no DNS lookup here (${why}), hostname check only`) }
+  throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
+}
+const dnsLookup: DnsLookup = async (name, type, signal) => {
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
+  try {
+    return await Deno.resolveDns(name, type, { signal })
+  } catch (e) {
+    const kind = (e as Error)?.name
+    if (kind === 'AbortError') throw e
+    if (kind === 'PermissionDenied' || kind === 'NotCapable') return noLookupHere(kind)
+    if (Deno.errors?.NotFound && e instanceof Deno.errors.NotFound) return []
+    throw e
+  }
 }
 
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
@@ -103,6 +128,7 @@ Deno.serve(async (req) => {
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
       provider: apiKey ? anthropicProvider(apiKey, fetch) : null,
       providerName: ANTHROPIC_INFO.name,
+      page: { fetch, dnsLookup },
       secrets: [apiKey, serviceKey(), publishableKey()],
       now: () => new Date(),
       newId: () => crypto.randomUUID(),

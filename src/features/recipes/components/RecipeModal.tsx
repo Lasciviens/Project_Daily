@@ -5,10 +5,11 @@ import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
-import { parseRecipeText, parseRecipeFromUrl, estimateRecipeMacros } from '../../ai/api/aiApi'
+import { parseRecipeText, parseRecipeFromLink, estimateRecipeMacros, type ParsedRecipe } from '../../ai/claude/recipeJobs'
 import { canComputeFromIngredients, cleanServingLabel, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
+import { combineEstimate, planMacroEstimate } from '../macroEstimate'
 import type { RecipeWithIngredients, IngredientDraft, MacroMode, IngredientLibraryItem } from '../types'
 import { DecimalInput } from './foodLogKit'
 import { PortionWordSelect } from './PortionWordSelect'
@@ -141,7 +142,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholePortions(servings), library) : null
 
-  function applyParsedRecipe(parsed: Awaited<ReturnType<typeof parseRecipeText>>) {
+  function applyParsedRecipe(parsed: ParsedRecipe) {
     setTitle(parsed.title)
     setServings(String(Math.max(1, parsed.servings || 1)))
     setInstructions(parsed.instructions ?? '')
@@ -177,11 +178,13 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
   async function handleParseUrl() {
     if (!urlInput.trim()) return
     setParsing(true)
-    const tid = toast.loading('Fetching and parsing recipe…')
+    const tid = toast.loading('Reading the page…')
     try {
-      applyParsedRecipe(await parseRecipeFromUrl(urlInput.trim()))
+      const parsed = await parseRecipeFromLink(urlInput.trim())
+      applyParsedRecipe(parsed)
       setSourceUrl(urlInput.trim())
-      toast.dismiss(tid); toast.success('Parsed ✓ — review before saving')
+      // A page that carries its recipe as structured data is read without AI: say so.
+      toast.dismiss(tid); toast.success(parsed.usedAi ? 'Parsed ✓ — review before saving' : 'Read from the page, no AI used ✓ — review before saving')
       setPasteOpen(false); setUrlInput('')
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to fetch/parse URL')
@@ -194,15 +197,19 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
     const named = ingredients.filter(i => i.name.trim())
     if (!named.length) { toast.error('Add at least one ingredient first'); return }
     setEstimating(true)
-    const tid = toast.loading('Estimating macros with AI…')
+    const tid = toast.loading('Estimating macros…')
     try {
-      const est = await estimateRecipeMacros(named, wholePortions(servings))
-      setCalories(est.calories?.toString() ?? '')
-      setProtein(est.protein_g?.toString() ?? '')
-      setCarbs(est.carbs_g?.toString() ?? '')
-      setFat(est.fat_g?.toString() ?? '')
-      setSugar(est.sugar_g?.toString() ?? '')
-      toast.dismiss(tid); toast.success('Estimated ✓ — adjust if needed')
+      // AI last: the library computes what it can; only the rest goes to the model (none left: no AI call).
+      const portions = wholePortions(servings)
+      const plan = planMacroEstimate(named, portions, library)
+      const ai = plan.rest.length ? await estimateRecipeMacros(plan.rest, portions) : null
+      const { values, summary } = combineEstimate(plan, ai)
+      setCalories(values.calories?.toString() ?? '')
+      setProtein(values.protein_g?.toString() ?? '')
+      setCarbs(values.carbs_g?.toString() ?? '')
+      setFat(values.fat_g?.toString() ?? '')
+      setSugar(values.sugar_g?.toString() ?? '')
+      toast.dismiss(tid); toast.success(`${summary} ✓ — adjust if needed`)
     } catch (err) {
       toast.dismiss(tid); toast.error((err as Error).message ?? 'Failed to estimate')
     } finally {
@@ -412,7 +419,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
                 return check?.inconsistent ? warn(`Calories don't match protein/carbs/fat — ${check.deltaPct}% off. Tap the badge for details.`, check) : null
               })()}
               <Button variant="ghost" size="sm" className="mt-2 text-accent-600" icon={<Sparkles />} onClick={handleEstimateMacros} loading={estimating}>
-                Estimate with AI
+                Estimate
               </Button>
             </div>
           ) : (

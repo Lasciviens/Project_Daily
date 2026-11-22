@@ -8,9 +8,13 @@
 
 import type { JobDefinition } from './types.ts'
 import { ITEM_FILL_JOB } from './job-item-fill.ts'
+import { RECIPE_FROM_LINK_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_MACROS_JOB } from './job-recipes.ts'
+import { QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB } from './job-quick-guess.ts'
 import { DIAGNOSE_JOB } from './job-diagnose.ts'
 
-export const JOB_LIST: readonly JobDefinition[] = [ITEM_FILL_JOB, DIAGNOSE_JOB]
+export const JOB_LIST: readonly JobDefinition[] = [
+  ITEM_FILL_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_FROM_LINK_JOB, RECIPE_MACROS_JOB, QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB, DIAGNOSE_JOB,
+]
 
 // A Map, not a plain object: a name like "constructor" or "__proto__" finds nothing in it.
 const JOBS_BY_NAME: ReadonlyMap<string, JobDefinition> = new Map(JOB_LIST.map(job => [job.name, job]))

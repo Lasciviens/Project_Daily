@@ -14,6 +14,7 @@
 
 import type { AnswerCheck, JobDefinition, JsonSchema } from './types.ts'
 import { ownValue } from './guard.ts'
+import { escapeTagText, readAnswerObject } from './answer-reader.ts'
 import {
   cleanItemFill, itemFillTextProblem, FILL_PRIORITIES, FILL_REPEATS, FILL_SHOW_AS, FILL_UNITS,
 } from '../../src/features/items/itemFill.ts'
@@ -29,7 +30,7 @@ The owner types one sentence about one thing to plan: an appointment, a task, a 
 
 Each request has two parts, each in its own tag.
 
-<now> holds today's weekday and date and the time right now, in the owner's time zone. Work out every relative day and time from it.
+<now> holds today's weekday and date and the time right now, in the owner's time zone, then a ready-made list of the next 14 days (each weekday with its date) and the date of next week's Monday. Take every day from that list: never count weekdays yourself.
 
 <sentence> holds what the owner typed. Inside it, the characters & < > are written as &amp; &lt; &gt;.
 
@@ -45,7 +46,7 @@ Keep text values in the language and the words of the sentence, as plain text (w
 
 # Reading days
 
-"Today", "tonight" and "tomorrow" count from the date in <now>. A weekday on its own ("on Tuesday", "på tirsdag") is the next such day after today; when today is a Tuesday, that is the Tuesday in a week. "Next week" is the calendar week after this one, and weeks start on Monday. A day and month without a year is the next time that date comes. When a day stays unclear, leave it out.
+"Today", "tonight" and "tomorrow" count from the date in <now>. A weekday on its own ("on Tuesday", "på tirsdag") is the first such day in the list of the next 14 days, so when today is a Tuesday it is the Tuesday in a week. "Next week" is the calendar week after this one, and weeks start on Monday: use the date given for next week's Monday and count from it. A day and month without a year is the next time that date comes. When a day stays unclear, leave it out.
 
 # The fields
 
@@ -89,7 +90,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-22.2'
+const ITEM_FILL_VERSION = '2026-11-22.3'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }
@@ -136,21 +137,6 @@ Answer with one JSON object and nothing else: no words before or after it, no wo
 
 ${JSON.stringify(ITEM_FILL_ANSWER_SCHEMA)}`
 
-/**
- * The JSON object in an answer: the text itself; or inside a markdown code fence; or, after a note of working-out
- * ("Today is Sunday, so the next Tuesday is …", seen live 22.11.2026), the object that starts on a line of its own
- * and runs to the end. The note is dropped; the object is then checked like any answer. Anything else stays as it
- * is and fails to parse.
- */
-function itemFillJsonText(answerText: string): string {
-  const text = answerText.trim()
-  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(text)
-  if (fenced) return fenced[1]
-  if (text.startsWith('{') || !text.endsWith('}')) return text
-  const start = text.search(/\n\{/)
-  return start >= 0 ? text.slice(start + 1) : text
-}
-
 const ITEM_FILL_TIME_ZONE = 'Europe/Oslo'
 
 /** Today as the owner's calendar and clock show it: the weekday, the day (YYYY-MM-DD) and the time (HH:MM). */
@@ -163,9 +149,24 @@ function itemFillNow(now: Date): { weekday: string; day: string; time: string } 
   return { weekday: part('weekday'), day: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` }
 }
 
-/** The sentence with & < > written out, so nothing in it can close its tag or open another. */
-function itemFillEscaped(sentence: string): string {
-  return sentence.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** The day `offset` days after `day` (YYYY-MM-DD), as { weekday, day }: plain calendar arithmetic, no clock involved. */
+function itemFillDayAfter(day: string, offset: number): { weekday: string; day: string } {
+  const [y, m, d] = day.split('-').map(Number)
+  const at = new Date(Date.UTC(y, m - 1, d + offset))
+  return { weekday: WEEKDAYS[at.getUTCDay()], day: at.toISOString().slice(0, 10) }
+}
+
+/** What <now> holds: today, the next 14 days with their weekdays, and next week's Monday, all worked out by code. */
+export function itemFillNowText(now: Date): string {
+  const today = itemFillNow(now)
+  const next = Array.from({ length: 14 }, (_, i) => itemFillDayAfter(today.day, i + 1))
+  const sinceMonday = (WEEKDAYS.indexOf(today.weekday) + 6) % 7
+  const monday = itemFillDayAfter(today.day, 7 - sinceMonday)
+  return `${today.weekday} ${today.day}, ${today.time}. Time zone: ${ITEM_FILL_TIME_ZONE}.\n`
+    + `The next 14 days: ${next.map(n => `${n.weekday} ${n.day}`).join(', ')}.\n`
+    + `Next week's Monday: ${monday.day}.`
 }
 
 export const ITEM_FILL_JOB: JobDefinition = {
@@ -189,17 +190,12 @@ export const ITEM_FILL_JOB: JobDefinition = {
     const today = itemFillNow(now)
     return {
       // The sentence travels as data inside its own tag; the instructions say it is never an instruction.
-      userText: `<now>\n${today.weekday} ${today.day}, ${today.time}. Time zone: ${ITEM_FILL_TIME_ZONE}.\n</now>\n`
-        + `<sentence>\n${itemFillEscaped(sentence)}\n</sentence>`,
+      userText: `<now>\n${itemFillNowText(now)}\n</now>\n`
+        + `<sentence>\n${escapeTagText(sentence)}\n</sentence>`,
       read(answerText: string): AnswerCheck {
-        let raw: unknown
-        try {
-          raw = JSON.parse(itemFillJsonText(answerText))
-        } catch {
-          return { ok: false, problem: 'it was not JSON' }
-        }
-        if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, problem: 'it was not a JSON object' }
-        return { ok: true, result: { fill: cleanItemFill(raw, { today: today.day, sentence }) } }
+        const answer = readAnswerObject(answerText)
+        if (!answer.ok) return answer
+        return { ok: true, result: { fill: cleanItemFill(answer.value, { today: today.day, sentence }) } }
       },
     }
   },

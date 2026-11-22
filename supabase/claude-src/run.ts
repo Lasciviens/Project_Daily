@@ -10,11 +10,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  AnswerCheck, Caller, ModelAnswer, ModelFailure, ModelRequest, Outcome, PreparedRun, Provider, RunReply, TokenUsage,
+  AnswerCheck, Caller, EarlyStep, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv, PreparedRun, Provider, RunReply, TokenUsage,
 } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import {
-  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText,
+  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog, trimText,
   TEXT_LOG_MAX_BYTES,
 } from './guard.ts'
 import { finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db } from './ledger.ts'
@@ -32,6 +32,8 @@ export interface RunContext {
   /** The model provider, or null while no API key is configured. */
   provider: Provider | null
   providerName: string
+  /** The network and the name lookup for a job that reads an outside page (page-fetch.ts). */
+  page: PageEnv
   /** The secrets this function holds, to keep out of every message. */
   secrets: readonly (string | null | undefined)[]
   now: () => Date
@@ -45,6 +47,8 @@ export interface RunContext {
 // What the ledger shows for a request that named no job this function has.
 const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
+// The provider column of a row for work code did alone (no model asked).
+const RUN_PAGE_PROVIDER = 'page'
 const RUN_ERROR_MAX = 500
 // A call that failed in one of these ways may still have been billed (the request may have reached the model), so
 // its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
@@ -102,15 +106,40 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
+  // 4b · AI last: a job may have work that code does better before any model is asked (reading a recipe page, and
+  //      finding the recipe the page already holds). Code that answers alone is no AI call: nothing is reserved or
+  //      sent, but a finished zero-cost row is written (so the rate caps count every read), and the reply says
+  //      `source: 'page'`.
+  let userText = prepared.userText
+  if (prepared.early) {
+    const earlyStarted = Date.now()
+    const early = await runEarly(ctx, prepared.early.bind(prepared))
+    if (early.kind === 'stop') return stop(early.outcome, early.message)
+    if (early.kind === 'answer') {
+      row.outcome = 'ok'
+      row.provider = RUN_PAGE_PROVIDER
+      row.model = RUN_NO_MODEL
+      row.effort = null
+      row.cost_usd = 0
+      row.duration_ms = Math.max(0, Date.now() - earlyStarted)
+      // The link is input and may be long: it goes in only while the owner keeps the text log on.
+      if (settings.logText && early.note) row.request = trimForLog({ read_by_code: early.note }, TEXT_LOG_MAX_BYTES)
+      await record(ctx, row)
+      return { ok: true, job: job.name, result: early.result, source: 'page', call: summaryOf(row) }
+    }
+    userText = early.userText
+  }
+
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
   const request: ModelRequest = {
     model: settings.model,
     maxOutputTokens: settings.maxOutputTokens,
     effort: settings.effort,
     instructions: job.instructions,
-    userText: prepared.userText,
+    userText,
     answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
-    ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
+    // Diagnose's own limit wins; otherwise the limit follows the job's longest answer.
+    timeoutMs: ctx.timeoutMs ?? requestTimeoutMs(settings.maxOutputTokens),
   }
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
@@ -185,6 +214,16 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // 9 · The reply. A message leaves only through hideSecrets.
   if (verdict.ok) return { ok: true, job: job.name, result: verdict.result, call: summaryOf(row) }
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
+}
+
+/** A job's step before the model. One that throws (it shouldn't) stops the run with a plain sentence. */
+async function runEarly(ctx: RunContext, early: (env: PageEnv) => Promise<EarlyStep>): Promise<EarlyStep> {
+  try {
+    return await early(ctx.page)
+  } catch (error) {
+    ctx.report(`a job's step before the model threw: ${errorPlace(error)}`)
+    return { kind: 'stop', outcome: 'error', message: 'The step before the AI call failed unexpectedly. Try again in a moment.' }
+  }
 }
 
 /** One request to the model. A provider that throws (it shouldn't) is a failed call, not a crashed run. */

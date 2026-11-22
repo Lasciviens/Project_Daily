@@ -148,4 +148,23 @@ ok([F.formatAmount(880, 'g'), F.formatAmount(5400, 'g'), F.formatAmount(18.75, '
 ok([F.oneDecimal(70.56), F.oneDecimal(3), F.oneDecimal(1234.56)], ['70.6', '3.0', '1,234.6'], 'one decimal')
 ok([F.peekGrams(70.56), F.peekGrams(0.05), F.peekGrams(0.049), F.peekGrams(0)], ['70.6 g', '0.1 g', '< 0.1 g', '0.0 g'], 'a peek amount: a trace reads "< 0.1 g", never "0.0 g"')
 
+// ── the recipe editor's Estimate: the library computes first (AI last) ───────
+const E = require('../src/features/recipes/macroEstimate')
+const lib = (id, name, calories, protein_g, carbs_g, fat_g, sugar_g) => ({ id, name, unit: 'g', calories, protein_g, carbs_g, fat_g, fiber_g: 0, sugar_g })
+const L = [lib('oat', 'Rolled Oats', 370, 13, 60, 7, 1), lib('milk', 'Milk', 42, 3.4, 5, 1, 5), lib('dup1', 'Honey', 300, 0, 80, 0, 80), lib('dup2', 'honey', 310, 0, 82, 0, 81), lib('nul', 'Mystery', null, null, null, null, null)]
+const D = (name, quantity, unit, library_ingredient_id = null) => ({ name, quantity, unit, note: null, library_ingredient_id })
+let plan = E.planMacroEstimate([D('Rolled Oats', 100, 'g', 'oat'), D('milk ', 2, 'dl'), D('Honey', 20, 'g'), D('Egg', 2, null), D('Mystery', 50, 'g'), D('Oats', 1, 'cup', 'oat'), D('', null, null)], 2, L)
+ok(plan.computedCount, 2, 'a linked row by weight and an unlinked row whose name is one library food (case and spaces ignored) are computed')
+near(plan.computed.calories, (370 + 84) / 2, 'calories per serving: (100 g oats + 200 ml milk) / 2')
+near(plan.computed.sugar_g, (1 + 10) / 2, 'sugar per serving')
+ok(plan.rest.map(r => r.name), ['Honey', 'Egg', 'Mystery', 'Oats'], 'left to the AI: an ambiguous name, no library match, a food without calories, a unit that is not weight (a cup); an empty row is ignored')
+ok(E.combineEstimate(plan, { calories: 100, protein_g: 4, carbs_g: null, fat_g: null, sugar_g: 2 }).values, { calories: 327, protein_g: 13.9, carbs_g: 35, fat_g: 4.5, sugar_g: 7.5 }, 'the AI part of the rest is added to the computed part')
+ok(E.combineEstimate(plan, null).summary, 'Computed from your library: 2 ingredients · estimated by AI: 4 ingredients', 'the summary says how much was which')
+plan = E.planMacroEstimate([D('Rolled Oats', 50, 'g', 'oat'), D('Milk', 1, 'dl')], 1, L)
+ok(plan.rest.length, 0, 'everything computable: nothing is left for the AI')
+ok(E.combineEstimate(plan, null).summary, 'Computed from your library (2 ingredients) — no AI used', 'and the summary says no AI was used')
+plan = E.planMacroEstimate([D('Egg', 2, null)], 1, L)
+ok([plan.computed, plan.rest.length, E.combineEstimate(plan, null).values.calories, E.combineEstimate(plan, null).summary], [null, 1, null, 'Estimated by AI: 1 ingredient'], 'nothing computable: all of it goes to the AI')
+ok(E.normalizeFoodName('  Brun   Ost '), 'brun ost', 'names compare in lower case with white space collapsed')
+
 console.log(`verify-food-ingredients: ${n} assertions passed`)

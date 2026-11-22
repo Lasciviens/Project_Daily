@@ -3,8 +3,8 @@
  * Verification — server-side fetches of a URL someone else supplied.
  *
  * 1. The private-address guard (isPrivateHost) in the three functions that
- *    fetch a page server-side: ai-proxy (fetchUrl), news-article and
- *    shop-price. Security audit 10.10.2026: the guard used to let IPv6 forms
+ *    fetch a page server-side: claude (the recipe link, phase 2a of the AI
+ *    rebuild; it replaced ai-proxy's fetchUrl), news-article and shop-price. Security audit 10.10.2026: the guard used to let IPv6 forms
  *    of internal addresses through, because the URL parser rewrites
  *    [::ffff:127.0.0.1] as [::ffff:7f00:1] and the guard only knew the first
  *    form. Runs each copy's real text (TypeScript stripped by sucrase) on the
@@ -14,7 +14,10 @@
  *    (127.0.0.1.nip.io, localtest.me), so each copy also resolves the name of
  *    every hop (resolvesToPrivate, Deno.resolveDns stubbed here — no network)
  *    and refuses any private A/AAAA answer, failing closed. Checked on the
- *    helper and through each REAL handler, redirects included.
+ *    helper and through each REAL handler, redirects included. The claude
+ *    function's copy has the same address code (compared text for text) but
+ *    takes its name lookup from main.ts, so it is checked on its own below
+ *    (the guard helpers, and its real fetchPage with a scripted fetch).
  *
  * 2. news-proxy, the one function with no caller check (security review
  *    26.10.2026): its allow-lists held only for the first URL and fetch
@@ -36,6 +39,7 @@ const BLOCK = [
   'http://169.254.169.254/', 'http://10.0.0.1/', 'http://172.16.0.1/', 'http://192.168.1.1/',
   'http://100.64.0.1/', 'http://localhost/', 'http://a.localhost/', 'http://224.0.0.1/',
   'http://255.255.255.255/', 'http://0.0.0.0/',
+  'https://localhost./', 'https://metadata.google.internal./', 'https://a.localhost../',
 ]
 const ALLOW = ['https://www.vg.no/', 'https://example.com/a?b=1', 'http://8.8.8.8/', 'https://www.prisjakt.no/product.php?p=1']
 
@@ -47,7 +51,7 @@ const check = (name, cond, detail) => {
 const fnSource = (fn) => fs.readFileSync(path.join(__dirname, '..', 'supabase/functions', fn, 'index.ts'), 'utf8')
 
 console.log('isPrivateHost')
-for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+for (const fn of ['claude', 'news-article', 'shop-price']) {
   const src = fnSource(fn)
   const start = src.indexOf('function isPrivateIPv4')
   const end = src.indexOf('\n}\n', src.indexOf('function isPrivateHost')) + 3
@@ -139,13 +143,13 @@ function realHandler(fn, pages, fetched, robotsAsked = []) {
   new Function('Deno', 'createClient', 'fetch', 'console', code)(fakeDeno(OWNER_ENV, { serve: (f) => { handler = f } }), () => db, fetchStub, quiet)
   return handler
 }
-const askFor = { 'ai-proxy': (url) => ({ fetchUrl: url }), 'news-article': (url) => ({ url }), 'shop-price': (url) => ({ action: 'read', url }) }
-// Refused = no 2xx with content: ai-proxy throws (an error answer), news-article answers 400, shop-price answers 200 { error, code: 'not_allowed' }.
+const askFor = { 'news-article': (url) => ({ url }), 'shop-price': (url) => ({ action: 'read', url }) }
+// Refused = no 2xx with content: news-article answers 400, shop-price answers 200 { error, code: 'not_allowed' }.
 const refusedAnswer = async (res) => { const body = await res.json().catch(() => ({})); return res.status >= 400 || body.code === 'not_allowed' ? body : null }
 
 async function dnsChecks() {
   console.log('\nresolvesToPrivate — names that resolve to a private address')
-  for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+  for (const fn of ['news-article', 'shop-price']) {
     const g = guardOf(fn, fakeDeno({}))
     const letThrough = []
     for (const name of DNS_BLOCK) if (!(await g.resolvesToPrivate(name))) letThrough.push(name)
@@ -175,11 +179,13 @@ async function dnsChecks() {
   }
 
   const dnsBlock = (fn) => { const src = fnSource(fn), a = src.indexOf('// An IPv6 address as its eight'); return src.slice(a, src.indexOf('\n}\n', src.indexOf('async function resolvesToPrivate')) + 3) }
-  check('the DNS check is one block, identical in ai-proxy, news-article and shop-price',
-    dnsBlock('ai-proxy').length > 1000 && dnsBlock('news-article') === dnsBlock('ai-proxy') && dnsBlock('shop-price') === dnsBlock('ai-proxy'))
+  check('the DNS check is one block, identical in news-article and shop-price',
+    dnsBlock('news-article').length > 1000 && dnsBlock('shop-price') === dnsBlock('news-article'))
+  const ai = fnSource('ai-proxy')
+  check('ai-proxy no longer fetches a page (no fetchUrl, no private-address code left to drift)', !/fetchUrl|isPrivateHost|resolvesToPrivate|responseSchema/.test(ai))
 
   console.log('\nThe real fetchers refuse such names on every hop')
-  for (const fn of ['ai-proxy', 'news-article', 'shop-price']) {
+  for (const fn of ['news-article', 'shop-price']) {
     const robotsAsked = []
     const ask = async (url, pages) => {
       const fetched = []
@@ -204,6 +210,100 @@ async function dnsChecks() {
         robotsAsked.length === 2 && robotsAsked.every(u => /^https:\/\/shop2?\.example\/robots\.txt$/.test(u)), robotsAsked.join(' '))
     }
   }
+}
+
+// ── claude (the recipe link) ──────────────────────────────────────────────────
+// The built function holds the address code verbatim from news-article and takes its DNS question from main.ts
+// (only main.ts touches Deno), so its resolver is checked here against the same table, and its REAL fetchPage with
+// a scripted fetch: no network, every refusal before any request.
+async function claudeChecks() {
+  console.log('\nclaude — the recipe link (page-fetch.ts, joined into supabase/functions/claude/index.ts)')
+  const claude = fnSource('claude')
+  const news = fnSource('news-article')
+  const fnText = (src, name) => { const a = src.search(new RegExp(`^(?:export )?function ${name}\\b`, 'm')); return src.slice(a, src.indexOf('\n}\n', a) + 3) }
+  // Comments and blank lines may differ between the copies; every line of code may not.
+  const code4 = (src, name) => fnText(src, name).split('\n').map(l => l.replace(/\s+\/\/.*$/, '').trim()).filter(l => l && !l.startsWith('//')).join('\n')
+  const diff4 = ['isPrivateIPv4', 'isPrivateHost', 'ipv6Groups', 'isPrivateIPv6'].filter(n => code4(claude, n).length < 100 || code4(claude, n) !== code4(news, n))
+  check('claude\'s isPrivateIPv4, isPrivateHost, ipv6Groups and isPrivateIPv6 are line for line the code of news-article (comments aside)', diff4.length === 0, diff4.join(', '))
+
+  const start = claude.indexOf('function isPrivateIPv4')
+  const end = claude.indexOf('\n}\n', claude.indexOf('async function fetchPage')) + 3
+  const code = transform(claude.slice(start, end), { transforms: ['typescript'] }).code
+  const g = new Function('setTimeout', 'clearTimeout', code + '; return { isPrivateHost, resolvesToPrivate, isPrivateIPv6, fetchPage, linkProblem }')(setTimeout, clearTimeout)
+  const lookupOf = (table, seen = []) => async (name, type, signal) => {
+    seen.push(`${name} ${type}`)
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+    const answer = table[name]?.[type] ?? NX
+    if (answer instanceof NotFound) return []
+    if (answer instanceof Error) throw answer
+    return answer
+  }
+  const lookup = lookupOf(DNS)
+  const live = new AbortController().signal
+  const letThrough = []
+  for (const name of DNS_BLOCK) if (!(await g.resolvesToPrivate(name, lookup, live))) letThrough.push(name)
+  const blocked = []
+  for (const name of DNS_ALLOW) if (await g.resolvesToPrivate(name, lookup, live)) blocked.push(name)
+  check(`claude: ${DNS_BLOCK.length} names with a private (or no, or failing) answer refused, ${DNS_ALLOW.length} public ones allowed`, letThrough.length === 0 && blocked.length === 0, `let through ${letThrough.join(', ')}; blocked ${blocked.join(', ')}`)
+  const seen = []
+  check('claude: a public IPv4 literal needs no lookup', (await g.resolvesToPrivate('8.8.8.8', lookupOf(DNS, seen), live)) === false && seen.length === 0, seen.join(', '))
+  check('claude: no lookup at all (null) keeps the hostname check alone', (await g.resolvesToPrivate('www.vg.no', null, live)) === false && (await g.resolvesToPrivate('[::1]', null, live)) === true && (await g.resolvesToPrivate('10.0.0.1', null, live)) === true)
+  const noLookup = async () => { throw Object.assign(new Error('no DNS here'), { name: 'NoLookup' }) }
+  check('claude: a runtime that says NoLookup keeps the hostname check alone (never refuses every link)', (await g.resolvesToPrivate('www.vg.no', noLookup, live)) === false)
+  const failing = async () => { throw Object.assign(new Error('server failure'), { name: 'Error' }) }
+  check('claude: a resolver error still refuses (fails closed on the answer)', (await g.resolvesToPrivate('www.vg.no', failing, live)) === true)
+  const ctl = new AbortController(); ctl.abort()
+  const aborted = await g.resolvesToPrivate('www.vg.no', lookup, ctl.signal).then(() => 'answered', (e) => e.name)
+  check('claude: a timeout is passed on, not read as a verdict', aborted === 'AbortError', aborted)
+
+  // The real fetchPage: scripted fetch, scripted DNS.
+  const PAGE_DNS = { ...DNS, 'recipes.example': { A: ['93.184.216.34'], AAAA: NX }, 'cdn.example': { A: ['93.184.216.35'], AAAA: NX }, 'evil.example': { A: ['10.1.2.3'], AAAA: NX } }
+  const run = async (url, pages) => {
+    const asked = []
+    const lookups = []
+    const env = {
+      dnsLookup: lookupOf(PAGE_DNS, lookups),
+      fetch: async (u, init) => {
+        asked.push({ url: String(u), redirect: init.redirect })
+        const page = pages[String(u)]
+        if (!page) throw new TypeError(`unexpected fetch ${u}`)
+        return new Response(page.status >= 300 && page.status < 400 ? null : page.body ?? '<html></html>', { status: page.status ?? 200, headers: page.headers ?? { 'content-type': 'text/html' } })
+      },
+    }
+    return { result: await g.fetchPage(url, env), asked, lookups }
+  }
+  const page = { status: 200, body: '<html>ok</html>' }
+  const refusedFirst = ['http://recipes.example/x', 'https://127.0.0.1/', 'https://localhost/', 'https://localhost./', 'https://metadata.google.internal./', 'https://[::1]/', 'https://[::ffff:7f00:1]/', 'https://2130706433/', 'https://0x7f000001/', 'https://169.254.169.254/latest/meta-data/', 'https://10.0.0.1/', 'https://100.64.0.1/',
+    'https://127.0.0.1.nip.io/', 'https://169.254.169.254.nip.io/latest/meta-data/', 'https://localtest.me/', 'https://nxdomain.example/', 'https://servfail.example/', 'https://aaaa-fails.example/', 'https://evil.example/', 'https://user:pw@recipes.example/', 'https://recipes.example:8443/', 'ftp://recipes.example/', 'file:///etc/passwd', 'javascript:alert(1)']
+  const leaked = []
+  for (const url of refusedFirst) {
+    const { result, asked } = await run(url, { [url]: page })
+    if (result.ok || asked.length) leaked.push(url)
+  }
+  check(`claude: ${refusedFirst.length} links (http, private spellings, names that resolve privately or not at all, passwords, ports, other schemes) are refused with no request at all`, leaked.length === 0, leaked.join(' '))
+  let r = await run('https://recipes.example/a', { 'https://recipes.example/a': page })
+  check('claude: a link on a public name is read, by hand (redirect: manual), after its name was looked up', r.result.ok && r.asked.length === 1 && r.asked[0].redirect === 'manual' && r.lookups.length === 2, JSON.stringify(r))
+  const internal = ['https://127.0.0.1.nip.io/admin', 'https://169.254.169.254/latest/meta-data/', 'http://recipes.example/plain', 'https://evil.example/in', 'https://[::1]/', 'https://localhost/x']
+  const hopLeaks = []
+  for (const target of internal) {
+    r = await run('https://recipes.example/a', { 'https://recipes.example/a': { status: 302, headers: { location: target } }, [target]: page })
+    if (r.result.ok || r.asked.length !== 1 || r.asked.some(a => a.url === target)) hopLeaks.push(target)
+  }
+  check(`claude: a redirect to any of ${internal.length} internal or insecure targets is refused and the target is never fetched`, hopLeaks.length === 0, hopLeaks.join(' '))
+  r = await run('https://recipes.example/a', { 'https://recipes.example/a': { status: 301, headers: { location: 'https://cdn.example/b' } }, 'https://cdn.example/b': page })
+  check('claude: a redirect to another public name is followed, and its name is looked up too', r.result.ok && r.asked.length === 2 && r.lookups.some(l => l.startsWith('cdn.example')), JSON.stringify(r))
+  const chain = {}
+  for (let i = 0; i < 6; i++) chain[i === 0 ? 'https://recipes.example/a' : `https://recipes.example/h${i}`] = { status: 302, headers: { location: `https://recipes.example/h${i + 1}` } }
+  r = await run('https://recipes.example/a', chain)
+  check('claude: the fifth redirect is refused', !r.result.ok && r.asked.length === 5, r.asked.length)
+  r = await run('https://recipes.example/a', { 'https://recipes.example/a': { status: 200, headers: { 'content-type': 'text/html', 'content-length': String(3 * MB) }, body: 'x' } })
+  check('claude: a page that declares more than 2 MB is refused', !r.result.ok)
+  r = await run('https://recipes.example/a', { 'https://recipes.example/a': { status: 200, headers: { 'content-type': 'text/html' }, body: new Uint8Array(2 * MB + 1) } })
+  check('claude: a page of more than 2 MB with no length declared is refused', !r.result.ok)
+  r = await run('https://recipes.example/a', { 'https://recipes.example/a': { status: 200, headers: { 'content-type': 'application/json' }, body: '{}' } })
+  check('claude: a page that is not text/html is refused', !r.result.ok)
+  const fetches = claude.match(/\bfetch\(/g)?.length ?? 0
+  check('claude: the page fetch follows no redirect by itself (redirect: manual) and no key or token is sent with it', /env\.fetch\(url\.toString\(\), \{[^}]*redirect: 'manual'[^}]*headers: \{ 'user-agent'[^}]*accept[^}]*\}/.test(claude) && fetches >= 1)
 }
 
 // ── news-proxy ────────────────────────────────────────────────────────────────
@@ -240,6 +340,7 @@ const errorOf = async (res) => { try { return (await res.json()).error } catch {
 
 ;(async () => {
   await dnsChecks()
+  await claudeChecks()
   console.log('\nnews-proxy — images')
   const BBC = 'https://ichef.bbci.co.uk/ace/standard/240/a.jpg'
   const EVIL = 'https://evil.example/steal'

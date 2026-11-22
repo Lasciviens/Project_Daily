@@ -54,6 +54,8 @@ function diagnoseFailure(what: string, failure: ModelFailure, ms: number): strin
 function diagnoseRunSentence(what: string, reply: RunReply, ms: number): string {
   if (reply.ok) {
     const c = reply.call
+    // Only a job with a step before the model can answer without a call; Diagnose runs none of those.
+    if (!c) return `${what} came back in ${diagnoseSecs(ms)} s without asking the model.`
     const promptTokens = c.input_tokens + c.cache_read_tokens + c.cache_write_tokens
     return `${what} came back in ${diagnoseSecs(ms)} s: ${diagnoseTokens(promptTokens)} in, ${diagnoseTokens(c.output_tokens)} out (${c.thinking_tokens} of them thinking), cost ${diagnoseUsd(c.cost_usd)}.`
   }

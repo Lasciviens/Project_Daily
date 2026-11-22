@@ -4,7 +4,7 @@ import { toast } from '../../../../app/store'
 import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useAiCall } from '../../../ai/claude/hooks/useClaude'
-import { formatCount, formatDuration, formatUsd, jobTitleOf, logParts, outcomeMeta, type LogPart } from '../../../ai/claude/ledgerRules'
+import { callModelLabel, formatCount, formatDuration, formatUsd, jobTitleOf, logParts, outcomeMeta, type LogPart } from '../../../ai/claude/ledgerRules'
 import type { AiCall, Describe } from '../../../ai/claude/types'
 import { agoLabel } from '../activityLogMeta'
 import { OutcomePill, PlainText, ReadFailed } from './aiBits'
@@ -99,7 +99,7 @@ export function AiCallDetail({ call, jobs, framed }: {
       <dl className="grid grid-cols-[minmax(6.5rem,auto)_1fr] gap-x-3 gap-y-1 border-t border-line pt-3 text-meta">
         <Fact label="When">{formatDateTime(call.created_at)} · {agoLabel(call.created_at)}</Fact>
         <Fact label="Job">{call.job}{call.instructions_version ? ` · instructions ${call.instructions_version}` : ''}</Fact>
-        <Fact label="Model">{call.model}{call.served_model && call.served_model !== call.model ? ` · answered by ${call.served_model}` : ''}</Fact>
+        <Fact label="Model">{callModelLabel(call)}{call.served_model && call.served_model !== call.model ? ` · answered by ${call.served_model}` : ''}</Fact>
         {call.effort && <Fact label="Effort">{call.effort}</Fact>}
         <Fact label="Asked from">{[call.caller, call.mode, call.step > 1 ? `step ${call.step}` : ''].filter(Boolean).join(' · ')}</Fact>
         {call.stop_reason && <Fact label="Stop reason">{call.stop_reason}</Fact>}

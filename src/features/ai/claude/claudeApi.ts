@@ -33,12 +33,12 @@ async function notAnswered(error: unknown): Promise<ClaudeJobError> {
  * ClaudeJobError with the reason (`off`, `budget`, `busy`, `not_configured`, `refused`, …) and the server's
  * sentence. The result is the caller's to check (✨ runs `cleanItemFill` on it again).
  */
-export async function runClaudeJob<T>(job: string, input: Record<string, unknown>): Promise<{ result: T; call: CallSummary | undefined }> {
+export async function runClaudeJob<T>(job: string, input: Record<string, unknown>): Promise<{ result: T; call: CallSummary | undefined; source: 'page' | undefined }> {
   const { data, error } = await supabase.functions.invoke('claude', { body: { action: 'run', job, input } })
   if (error) throw await notAnswered(error)
   const answer = readRunAnswer(data)
   if (!answer.ok) throw new ClaudeJobError(answer.reason, answer.message, answer.call)
-  return { result: answer.result as T, call: answer.call }
+  return { result: answer.result as T, call: answer.call, source: answer.source }
 }
 
 /** What the function says about itself: whether the key is set, its models, limits, prices, jobs and parts. */
