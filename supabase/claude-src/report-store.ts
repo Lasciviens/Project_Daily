@@ -26,9 +26,11 @@ export interface ReportRow {
   claimed_at: string | null
   created_at: string
   pushed_at: string | null
+  /** A push is owed for this finished report (the real report of an owner's week): sent from 07:00, once. */
+  push_due: boolean
 }
 
-const COLUMNS = 'id, user_id, week_start, made_by, status, batch_id, call_id, claimed_at, created_at, pushed_at'
+const COLUMNS = 'id, user_id, week_start, made_by, status, batch_id, call_id, claimed_at, created_at, pushed_at, push_due'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function reportOf(value: unknown): ReportRow | null {
@@ -39,7 +41,7 @@ function reportOf(value: unknown): ReportRow | null {
   const madeBy = r.made_by === 'schedule' || r.made_by === 'app' ? r.made_by : null
   const status = r.status === 'queued' || r.status === 'ready' || r.status === 'failed' ? r.status : null
   if (!id || !UUID.test(id) || !userId || !weekStart || !madeBy || !status) return null
-  return { id, user_id: userId, week_start: weekStart, made_by: madeBy, status, batch_id: text('batch_id'), call_id: text('call_id'), claimed_at: text('claimed_at'), created_at: text('created_at') ?? '', pushed_at: text('pushed_at') }
+  return { id, user_id: userId, week_start: weekStart, made_by: madeBy, status, batch_id: text('batch_id'), call_id: text('call_id'), claimed_at: text('claimed_at'), created_at: text('created_at') ?? '', pushed_at: text('pushed_at'), push_due: r.push_due === true }
 }
 
 /** The report of a week and a maker: the row, null when there is none, undefined when it could not be read. */
@@ -54,7 +56,7 @@ export async function findReport(db: Db, userId: string, weekStart: string, made
 }
 
 /** Adds a queued report. `exists`: the (user, week, maker) row is already there (the unique key refused it). */
-export async function insertReport(db: Db, row: { id: string; user_id: string; week_start: string; made_by: 'schedule' | 'app'; facts: Record<string, unknown> }): Promise<'ok' | 'exists' | 'error'> {
+export async function insertReport(db: Db, row: { id: string; user_id: string; week_start: string; made_by: 'schedule' | 'app'; facts: Record<string, unknown>; push_due: boolean }): Promise<'ok' | 'exists' | 'error'> {
   try {
     const { error } = await db.from('ai_reports').insert({ ...row, status: 'queued' })
     if (!error) return 'ok'
@@ -65,10 +67,10 @@ export async function insertReport(db: Db, row: { id: string; user_id: string; w
 }
 
 /** Puts a finished report (ready or failed) back to a fresh queued one: the "make it now" button, for testing. */
-export async function requeueReport(db: Db, userId: string, id: string, facts: Record<string, unknown>, nowIso: string): Promise<boolean> {
+export async function requeueReport(db: Db, userId: string, id: string, facts: Record<string, unknown>, nowIso: string, pushDue: boolean): Promise<boolean> {
   try {
     const { data, error } = await db.from('ai_reports').update({
-      status: 'queued', failure: null, content: null, facts, batch_id: null, call_id: null, claimed_at: null, pushed_at: null, ready_at: null, created_at: nowIso,
+      status: 'queued', failure: null, content: null, facts, batch_id: null, call_id: null, claimed_at: null, pushed_at: null, push_due: pushDue, ready_at: null, created_at: nowIso,
     }).eq('id', id).eq('user_id', userId).neq('status', 'queued').select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch {
@@ -76,11 +78,16 @@ export async function requeueReport(db: Db, userId: string, id: string, facts: R
   }
 }
 
-/** Changes a report; with `onlyQueued` only while it is still queued. True when a row changed. */
-export async function patchReport(db: Db, userId: string, id: string, patch: Record<string, unknown>, onlyQueued = false): Promise<boolean> {
+/**
+ * Changes a report; with `onlyQueued` only while it is still queued, and with `createdAt` only while it is still the
+ * report the caller read: a re-made report gets a new `created_at`, so a check that read the old one (a stale claim, a slow
+ * request) can never write into the new one (security review, 22.11.2026). True when a row changed.
+ */
+export async function patchReport(db: Db, userId: string, id: string, patch: Record<string, unknown>, onlyQueued = false, createdAt: string | null = null): Promise<boolean> {
   try {
     let q = db.from('ai_reports').update(patch).eq('id', id).eq('user_id', userId)
     if (onlyQueued) q = q.eq('status', 'queued')
+    if (createdAt !== null) q = q.eq('created_at', createdAt)
     const { data, error } = await q.select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch {
@@ -99,6 +106,17 @@ export async function queuedReports(db: Db, userId: string): Promise<ReportRow[]
   }
 }
 
+/** The finished reports whose push is owed and not yet sent (at most five). Null when they can't be read. */
+export async function pendingPushes(db: Db, userId: string): Promise<ReportRow[] | null> {
+  try {
+    const { data, error } = await db.from('ai_reports').select(COLUMNS).eq('user_id', userId).eq('push_due', true).is('pushed_at', null).in('status', ['ready', 'failed']).order('created_at', { ascending: true }).limit(5)
+    if (error || !Array.isArray(data)) return null
+    return data.map(reportOf).filter((r): r is ReportRow => r !== null)
+  } catch {
+    return null
+  }
+}
+
 /** A check that died holds its claim for ten minutes; then another may take the report. */
 export async function releaseStaleClaims(db: Db, userId: string, olderThanIso: string): Promise<void> {
   try {
@@ -107,9 +125,9 @@ export async function releaseStaleClaims(db: Db, userId: string, olderThanIso: s
 }
 
 /** Takes the report for this check: true for exactly one of two overlapping checks. */
-export async function claimReport(db: Db, userId: string, id: string, nowIso: string): Promise<boolean> {
+export async function claimReport(db: Db, userId: string, id: string, createdAt: string, nowIso: string): Promise<boolean> {
   try {
-    const { data, error } = await db.from('ai_reports').update({ claimed_at: nowIso }).eq('id', id).eq('user_id', userId).eq('status', 'queued').is('claimed_at', null).select('id')
+    const { data, error } = await db.from('ai_reports').update({ claimed_at: nowIso }).eq('id', id).eq('user_id', userId).eq('created_at', createdAt).eq('status', 'queued').is('claimed_at', null).select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch {
     return false
@@ -117,14 +135,14 @@ export async function claimReport(db: Db, userId: string, id: string, nowIso: st
 }
 
 /** Gives the claim back (a check that found nothing to do yet). */
-export async function releaseClaim(db: Db, userId: string, id: string): Promise<void> {
-  await patchReport(db, userId, id, { claimed_at: null }, true)
+export async function releaseClaim(db: Db, userId: string, id: string, createdAt: string): Promise<void> {
+  await patchReport(db, userId, id, { claimed_at: null }, true, createdAt)
 }
 
 /** Stamps the push before it is sent: true for exactly one check, so a report is announced once at most. */
-export async function claimPush(db: Db, userId: string, id: string, nowIso: string): Promise<boolean> {
+export async function claimPush(db: Db, userId: string, id: string, createdAt: string, nowIso: string): Promise<boolean> {
   try {
-    const { data, error } = await db.from('ai_reports').update({ pushed_at: nowIso }).eq('id', id).eq('user_id', userId).is('pushed_at', null).select('id')
+    const { data, error } = await db.from('ai_reports').update({ pushed_at: nowIso }).eq('id', id).eq('user_id', userId).eq('created_at', createdAt).eq('push_due', true).is('pushed_at', null).select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch {
     return false

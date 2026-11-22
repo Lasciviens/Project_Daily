@@ -32,7 +32,7 @@ select public.t_ok((select array_agg(a.attname::text order by a.attname) from pg
                      where a.attrelid = 'public.ai_reports'::regclass and a.attnum > 0 and not a.attisdropped
                        and has_column_privilege('authenticated', a.attrelid, a.attnum, 'select'))
                    = array['call_id', 'content', 'created_at', 'facts', 'failure', 'id', 'made_by', 'pushed_at', 'ready_at', 'status', 'user_id', 'week_start'],
-  '196: the browser reads exactly the finished columns: never batch_id, never claimed_at');
+  '196: the browser reads exactly the finished columns: never batch_id, claimed_at or push_due');
 select public.t_ok((select bool_and(not has_table_privilege('anon', 'public.ai_reports', p)) from unnest(array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']) p)
                    and not has_any_column_privilege('anon', 'public.ai_reports', 'select, insert, update, references'),
   '196: a signed-out caller has no right on ai_reports');
@@ -95,8 +95,8 @@ select set_config('test.uid', '', false);
 set role authenticated;
 select public.t_ok((select count(*) = 2 from (select id, user_id, week_start, made_by, status, failure, content, facts, call_id, created_at, ready_at, pushed_at from public.ai_reports) r),
   '196: the owner reads their own reports, by the finished columns');
-select public.t_ok(public.t_err('select batch_id from public.ai_reports') = '42501' and public.t_err('select claimed_at from public.ai_reports') = '42501' and public.t_err('select * from public.ai_reports') = '42501',
-  '196: the owner''s browser cannot read batch_id or claimed_at, not even through select *');
+select public.t_ok(public.t_err('select batch_id from public.ai_reports') = '42501' and public.t_err('select claimed_at from public.ai_reports') = '42501' and public.t_err('select push_due from public.ai_reports') = '42501' and public.t_err('select * from public.ai_reports') = '42501',
+  '196: the owner''s browser cannot read batch_id, claimed_at or push_due, not even through select *');
 select public.t_ok(public.t_err($q$insert into public.ai_reports (user_id, week_start, made_by) values ('00000000-0000-0000-0000-000000000001', '2026-11-09', 'app')$q$) = '42501'
                    and public.t_err($q$update public.ai_reports set content = 'forged' where true$q$) = '42501'
                    and public.t_err($q$update public.ai_reports set batch_id = 'msgbatch_forged' where true$q$) = '42501'
@@ -119,15 +119,15 @@ reset role;
 -- ─── 4. The two timers ───────────────────────────────────────────────────────
 select public.t_ok((select count(*) = 2 from cron.job where jobname in ('lascis-ai-report-make', 'lascis-ai-report-check')),
   '196: both timers are scheduled');
-select public.t_ok((select schedule = '30 21,22 * * 0' from cron.job where jobname = 'lascis-ai-report-make')
+select public.t_ok((select schedule = '0 3,4 * * 1' from cron.job where jobname = 'lascis-ai-report-make')
                    and (select schedule = '*/15 * * * *' from cron.job where jobname = 'lascis-ai-report-check'),
-  '196: the make timer runs Sundays 21:30 and 22:30 UTC, the check every 15 minutes');
+  '196: the make timer runs Mondays 03:00 and 04:00 UTC (05:00 Oslo, winter and summer), the check every 15 minutes');
 select public.t_ok((select command like '%functions/v1/claude%' and command like '%''report_make''%' and command like '%PUSH_CRON_SECRET%' and command like '%vault.decrypted_secrets%'
                            and command not like '%test-push-secret%' from cron.job where jobname = 'lascis-ai-report-make')
                    and (select command like '%functions/v1/claude%' and command like '%''report_check''%' and command not like '%test-push-secret%' from cron.job where jobname = 'lascis-ai-report-check'),
   '196: each timer calls the claude function for its own action and reads the secret from Vault inside the job');
-select public.t_ok((select command like '%where exists (select 1 from public.ai_reports r where r.status = ''queued'')%' from cron.job where jobname = 'lascis-ai-report-check'),
-  '196: the check timer calls only while a report is queued');
+select public.t_ok((select command like '%where exists (select 1 from public.ai_reports r where r.status = ''queued'')%' and command like '%r.push_due and r.pushed_at is null%' from cron.job where jobname = 'lascis-ai-report-check'),
+  '196: the check timer calls only while a report is queued or a push is owed');
 -- Run the timers' own SQL. First with no secret in Vault: the header is empty (the function refuses it).
 create or replace function public.t_run_timer(p_name text) returns void language plpgsql as $$
 declare c text;
@@ -156,7 +156,14 @@ select public.t_ok((select count(*) = 1 and bool_and(body = '{"action": "report_
 update public.ai_reports set status = 'failed', failure = 'x' where user_id = '00000000-0000-0000-0000-000000000004';
 delete from net.sent;
 select public.t_run_timer('lascis-ai-report-check');
-select public.t_ok((select count(*) = 0 from net.sent), '196: a report that is no longer queued stops the check timer');
+select public.t_ok((select count(*) = 0 from net.sent), '196: a report that is no longer queued, with no push owed, stops the check timer');
+update public.ai_reports set status = 'ready', content = 'x', push_due = true where user_id = '00000000-0000-0000-0000-000000000004';
+select public.t_run_timer('lascis-ai-report-check');
+select public.t_ok((select count(*) = 1 and bool_and(headers ->> 'x-claude-schedule-key' = :'expected_key') from net.sent), '196: a finished report whose push is owed keeps the check timer calling (the push goes from 07:00)');
+update public.ai_reports set pushed_at = now() where user_id = '00000000-0000-0000-0000-000000000004';
+delete from net.sent;
+select public.t_run_timer('lascis-ai-report-check');
+select public.t_ok((select count(*) = 0 from net.sent), '196: once the push is stamped sent, the check timer is quiet again');
 
 -- ─── 5. Deleting an account takes its reports ────────────────────────────────
 delete from auth.users where id = '00000000-0000-0000-0000-000000000004';

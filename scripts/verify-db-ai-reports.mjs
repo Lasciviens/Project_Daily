@@ -39,7 +39,7 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
   if (toApp.length !== 1 || !/^grant select \(([a-z_, ]+)\) on public\.ai_reports to authenticated$/i.test(toApp[0])) problems.push(`the browser's grant is "${toApp.join(' | ')}" (expected one column-list select)`)
   else {
     const cols = toApp[0].match(/\(([^)]+)\)/)[1].split(',').map(c => c.trim())
-    for (const secret of ['batch_id', 'claimed_at']) if (cols.includes(secret)) problems.push(`the browser may read ${secret} (a link to an outside service, and the check's own bookkeeping)`)
+    for (const secret of ['batch_id', 'claimed_at', 'push_due']) if (cols.includes(secret)) problems.push(`the browser may read ${secret} (a link to an outside service, and the check's own bookkeeping)`)
     for (const need of ['id', 'user_id', 'week_start', 'status', 'content', 'facts', 'call_id']) if (!cols.includes(need)) problems.push(`the browser cannot read ${need}`)
   }
   if (stmts.some(s => /^grant .* on (table )?public\.ai_reports to .*\banon\b/i.test(s))) problems.push('a grant to anon')

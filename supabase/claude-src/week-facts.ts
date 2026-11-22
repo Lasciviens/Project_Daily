@@ -94,20 +94,46 @@ export function osloWeek(monday: string): WeekRange {
 }
 
 /**
- * The week the Sunday-night timer reports on. The timer fires at 21:30 and 22:30 UTC on a Sunday, which is one of
- * 22:30 / 23:30 (winter) or 23:30 / 00:30 (summer) in Oslo: only the run that lands from 23:00 on Sunday until
- * 01:00 on Monday acts (the other is "not the time"), and a run after midnight still reports the week that just
- * ended. Null outside that window.
+ * The week the Monday-morning timer reports on: the week that ended last night, complete (owner-critic, 22.11.2026: a
+ * report made on Sunday night missed Sunday's steps, sleep and food). The timer fires at 03:00 and 04:00 UTC on a Monday,
+ * which is 04:00 / 05:00 (winter) or 05:00 / 06:00 (summer) in Oslo: only a run that lands from 05:00 to 07:00 Oslo time
+ * acts (the earlier winter run is "not the time", a second run in the window finds the report made). Null outside it.
  */
 export function scheduledReportWeek(now: Date): WeekRange | null {
   const { hour, weekday } = osloClock(now)
-  const inWindow = (weekday === 7 && hour >= 23) || (weekday === 1 && hour < 1)
-  return inWindow ? osloWeekOf(new Date(now.getTime() - 2 * 3_600_000)) : null
+  // A day back from a Monday morning is Sunday of the week that ended, whatever a clock change did to the hours.
+  return weekday === 1 && hour >= 5 && hour < 7 ? osloWeekOf(new Date(now.getTime() - 24 * 3_600_000)) : null
 }
 
-/** The window of the "make it now" button: the week so far (Monday up to now). */
-export function manualReportWeek(now: Date): WeekRange {
-  return osloWeekOf(now)
+/** The last complete Oslo week before the one `now` is in. */
+export function lastFullWeek(now: Date): WeekRange {
+  return osloWeek(shiftDay(osloWeekOf(now).start, -7))
+}
+
+/** What the button makes, and for whom. `redo`: the scheduled report of the last full week (missing or failed) is made now. */
+export type ManualPlan =
+  | { kind: 'redo'; week: WeekRange }
+  | { kind: 'copy'; week: WeekRange }
+  | { kind: 'so_far'; week: WeekRange }
+
+/**
+ * The button's week (owner-critic, 22.11.2026). Last week has no ready scheduled report (not made, or failed): the button
+ * makes THAT report, the real one, again. Last week's report is ready: on Monday and Tuesday the button makes a test copy
+ * of last week (never replacing the real one), later in the week the week so far.
+ */
+export function manualReportPlan(now: Date, lastWeekReportReady: boolean): ManualPlan {
+  const last = lastFullWeek(now)
+  if (!lastWeekReportReady) return { kind: 'redo', week: last }
+  return osloClock(now).weekday <= 2 ? { kind: 'copy', week: last } : { kind: 'so_far', week: osloWeekOf(now) }
+}
+
+/**
+ * Whether a push may go now: from 07:00 to 22:00 Oslo time (owner-critic, 22.11.2026: a report finished at 05:30 is announced
+ * at 07:00, not on a sleeping phone).
+ */
+export function pushWindowOpen(now: Date): boolean {
+  const { hour } = osloClock(now)
+  return hour >= 7 && hour < 22
 }
 
 /** DD.MM.YYYY, the app's one way to write a date. */
@@ -591,16 +617,55 @@ export function hasAnyData(f: WeekFacts): boolean {
   return !!(f.training?.has_data || f.health?.has_data || f.food?.has_data || f.tasks?.has_data)
 }
 
-const n = (v: number | null, unit = '') => (v === null ? 'unknown' : `${v}${unit}`)
-const delta = (cur: number | null, prev: number | null, unit: string) =>
-  cur === null || prev === null ? '' : ` (the week before: ${prev}${unit})`
+const n = (v: number | null, unit = '') => (v === null ? 'unknown' : `${grp(v)}${unit}`)
 const text = (s: string) => escapeTagText(s)
 
-/**
- * The prepared figures as the text the model gets: one tag per section, a section with no data says so in one line.
- * Every number was worked out above; a free text is escaped and inside its tag. The line formats and the job's
- * instructions describe each other.
- */
+// ── How the figures are written for the model ───────────────────────────────
+// Code computes every difference and every duration (owner-critic, 22.11.2026): a model that is asked to subtract or to
+// turn 6.79 hours into hours and minutes does it wrong now and then. The text carries "+3 286 steps a day, +55 %" and
+// "6 h 47 min"; the instructions tell the model to copy them.
+
+/** An integer with a space between thousands: 9286 → "9 286". */
+export function grp(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  const [whole, frac] = String(Math.abs(rounded)).split('.')
+  return `${rounded < 0 ? '-' : ''}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}${frac ? `.${frac}` : ''}`
+}
+
+/** Hours as "6 h 47 min", "7 h", "47 min". */
+export function dur(hours: number): string {
+  const total = Math.round(Math.abs(hours) * 60)
+  const h = Math.floor(total / 60), m = total % 60
+  return h > 0 ? (m > 0 ? `${h} h ${m} min` : `${h} h`) : `${m} min`
+}
+
+/** A signed difference of two durations in hours: "+12 min", "-1 h 5 min", or "no change". */
+export function sdur(diffHours: number): string {
+  const total = Math.round(Math.abs(diffHours) * 60)
+  return total === 0 ? 'no change' : `${diffHours < 0 ? '-' : '+'}${dur(diffHours)}`
+}
+
+/** A signed number: "+3 286", "-0.5", or "no change". */
+export function sgn(diff: number, unit = ''): string {
+  const r = Math.round(diff * 10) / 10
+  return r === 0 ? 'no change' : `${r < 0 ? '-' : '+'}${grp(Math.abs(r))}${unit}`
+}
+
+/** The change in percent against the week before: "+55 %", "-12 %", "no change"; null when the week before was zero or unknown. */
+export function pctChange(cur: number, prev: number | null): string | null {
+  if (prev === null || prev <= 0) return null
+  const p = Math.round(((cur - prev) / prev) * 100)
+  return p === 0 ? 'no change' : `${p < 0 ? '-' : '+'}${Math.abs(p)} %`
+}
+
+/** " (the week before: X; change: +A, +P %)" or nothing. `show` writes a value, `diff` writes the signed difference. */
+function against(cur: number | null, prev: number | null, show: (v: number) => string, diff: (d: number) => string): string {
+  if (cur === null || prev === null) return ''
+  const d = diff(cur - prev)
+  const p = pctChange(cur, prev)
+  return ` (the week before: ${show(prev)}; change: ${d}${p && d !== 'no change' ? `, ${p}` : ''})`
+}
+
 export function factsText(f: WeekFacts): string {
   const out: string[] = [`<week>${dmy(f.week_start)} to ${dmy(f.week_end)}${f.partial ? ' (the week is not over yet)' : ''}</week>`]
   const section = (name: string, lines: string[] | null) => {
@@ -608,35 +673,37 @@ export function factsText(f: WeekFacts): string {
   }
   const t = f.training
   section('training', !t || !t.has_data ? null : [
-    `Sessions: ${t.session_count}${delta(t.session_count, t.previous_weeks_avg_sessions, ' a week on average')}`,
-    `Working sets: ${t.working_sets}; volume ${t.volume_kg} kg${delta(t.volume_kg, t.previous_weeks_avg_volume_kg, ' kg a week on average')}`,
-    ...t.sessions.map(s => `Session ${s.date}: ${text(s.title)}, ${s.working_sets} working sets, ${s.volume_kg} kg`),
+    `Sessions: ${t.session_count}${against(t.session_count, t.previous_weeks_avg_sessions, v => `${v} a week on average`, d => sgn(d))}`,
+    `Working sets: ${t.working_sets}; volume ${grp(t.volume_kg)} kg${against(t.volume_kg, t.previous_weeks_avg_volume_kg, v => `${grp(v)} kg a week on average`, d => sgn(d, ' kg'))}`,
+    ...t.sessions.map(s => `Session ${s.date}: ${text(s.title)}, ${s.working_sets} working sets, ${grp(s.volume_kg)} kg`),
     ...(t.muscles.length ? [`Credited sets per muscle: ${t.muscles.map(m => `${text(m.muscle)} ${m.sets}`).join(', ')}`] : []),
-    ...t.key_lifts.map(l => `Key lift ${text(l.exercise)}: top set ${l.top_set}; ${l.change === 'no_history' ? 'no earlier weeks to compare' : l.change === 'new_best' ? `a new best (before: ${n(l.best_before_kg, ' kg')})` : l.change === 'same' ? 'the same as the best before' : `below the best before (${n(l.best_before_kg, ' kg')})`}`),
+    ...t.key_lifts.map(l => `Key lift ${text(l.exercise)}: top set ${l.top_set}; ${l.change === 'no_history' ? 'no earlier weeks to compare' : l.change === 'new_best' ? `a new best (before: ${n(l.best_before_kg, ' kg')}; change: ${sgn(l.top_weight_kg - (l.best_before_kg ?? 0), ' kg')})` : l.change === 'same' ? 'the same as the best before' : `below the best before (${n(l.best_before_kg, ' kg')}; change: ${sgn(l.top_weight_kg - (l.best_before_kg ?? 0), ' kg')})`}`),
   ])
   const h = f.health
   section('health', !h || !h.has_data ? null : [
     ...(h.truncated ? ['Note: some readings could not be read in full, so these figures may be partial.'] : []),
-    h.sleep ? `Sleep: ${h.sleep.nights} nights recorded, average ${h.sleep.avg_hours} h, best ${h.sleep.best_hours} h, worst ${h.sleep.worst_hours} h, ${h.sleep.under_6h_nights} under 6 h${delta(h.sleep.avg_hours, h.sleep.previous_avg_hours, ' h average')}` : 'Sleep: no nights recorded',
-    h.steps ? `Steps: average ${h.steps.avg_per_day} a day over ${h.steps.days} days, best day ${h.steps.best_day}${delta(h.steps.avg_per_day, h.steps.previous_avg_per_day, ' a day')}` : 'Steps: no data',
-    h.active_energy ? `Active energy: average ${h.active_energy.avg_kcal_per_day} kcal a day${delta(h.active_energy.avg_kcal_per_day, h.active_energy.previous_avg_kcal_per_day, ' kcal a day')}` : 'Active energy: no data',
-    h.resting_heart_rate ? `Resting heart rate: average ${h.resting_heart_rate.avg_bpm} bpm${delta(h.resting_heart_rate.avg_bpm, h.resting_heart_rate.previous_avg_bpm, ' bpm')}` : 'Resting heart rate: no data',
-    h.weight ? `Weight: ${h.weight.latest_kg} kg at the last weigh-in; ${h.weight.change_in_week_kg === null ? 'one weigh-in this week' : `${h.weight.change_in_week_kg} kg change within the week`}; ${h.weight.change_since_before_week_kg === null ? 'no earlier weigh-in to compare' : `${h.weight.change_since_before_week_kg} kg since before the week`}` : 'Weight: no weigh-in this week',
+    h.sleep ? `Sleep: ${h.sleep.nights} nights recorded, average ${dur(h.sleep.avg_hours as number)}, best ${dur(h.sleep.best_hours as number)}, worst ${dur(h.sleep.worst_hours as number)}, ${h.sleep.under_6h_nights} under 6 h${against(h.sleep.avg_hours, h.sleep.previous_avg_hours, dur, sdur)}` : 'Sleep: no nights recorded',
+    h.steps ? `Steps: average ${grp(h.steps.avg_per_day as number)} a day over ${h.steps.days} days, best day ${grp(h.steps.best_day as number)}${against(h.steps.avg_per_day, h.steps.previous_avg_per_day, v => `${grp(v)} a day`, d => sgn(d, ' steps a day'))}` : 'Steps: no data',
+    h.active_energy ? `Active energy: average ${grp(h.active_energy.avg_kcal_per_day as number)} kcal a day${against(h.active_energy.avg_kcal_per_day, h.active_energy.previous_avg_kcal_per_day, v => `${grp(v)} kcal a day`, d => sgn(d, ' kcal a day'))}` : 'Active energy: no data',
+    h.resting_heart_rate ? `Resting heart rate: average ${h.resting_heart_rate.avg_bpm} bpm${against(h.resting_heart_rate.avg_bpm, h.resting_heart_rate.previous_avg_bpm, v => `${v} bpm`, d => sgn(d, ' bpm'))}` : 'Resting heart rate: no data',
+    h.weight ? `Weight: ${h.weight.latest_kg} kg at the last weigh-in; ${h.weight.change_in_week_kg === null ? 'one weigh-in this week' : `${sgn(h.weight.change_in_week_kg, ' kg')} within the week`}; ${h.weight.change_since_before_week_kg === null ? 'no earlier weigh-in to compare' : `${sgn(h.weight.change_since_before_week_kg, ' kg')} since before the week`}` : 'Weight: no weigh-in this week',
   ])
   const fd = f.food
+  const vsTarget = (cur: number | null, target: number | null, unit: string) =>
+    cur === null || target === null ? '' : ` (against the target: ${sgn(cur - target, unit)}${pctChange(cur, target) && cur !== target ? `, ${pctChange(cur, target)}` : ''})`
   section('food', !fd || !fd.has_data ? null : [
     `Days with food logged: ${fd.days_logged} of 7`,
-    `Average on logged days: ${n(fd.avg_kcal_on_logged_days, ' kcal')}, ${n(fd.avg_protein_g_on_logged_days, ' g')} protein`,
+    `Average on logged days: ${n(fd.avg_kcal_on_logged_days, ' kcal')}${vsTarget(fd.avg_kcal_on_logged_days, fd.target_kcal, ' kcal')}, ${n(fd.avg_protein_g_on_logged_days, ' g')} protein${vsTarget(fd.avg_protein_g_on_logged_days, fd.target_protein_g, ' g')}`,
     `Targets: ${n(fd.target_kcal, ' kcal')}, ${n(fd.target_protein_g, ' g')} protein, ${n(fd.target_water_ml, ' ml')} water`,
     `Days within 10% of the calorie target: ${n(fd.days_within_10pct_of_kcal_target)}; days the protein target was met: ${n(fd.days_protein_target_met)}`,
-    `Water: average ${n(fd.avg_water_ml_on_logged_days, ' ml')} on days with water logged`,
+    `Water: average ${n(fd.avg_water_ml_on_logged_days, ' ml')} on days with water logged${vsTarget(fd.avg_water_ml_on_logged_days, fd.target_water_ml, ' ml')}`,
   ])
   const k = f.tasks
   section('tasks', !k || !k.has_data ? null : [
     `Tasks done: ${k.done}${k.done_by_area.length ? ` (${k.done_by_area.map(a => `${text(a.area)} ${a.count}`).join(', ')})` : ''}`,
     `Slipped (due this week, still open): ${k.slipped}${k.slipped_titles.length ? `: ${k.slipped_titles.map(x => `"${text(x)}"`).join(', ')}` : ''}`,
     `Older tasks still open: ${k.carried_over_open}; tasks created this week: ${n(k.created)}`,
-    k.scheduled_hours_by_area.length ? `Scheduled time per area: ${k.scheduled_hours_by_area.map(a => `${text(a.area)} ${a.hours} h`).join(', ')}` : 'Scheduled time per area: none',
+    k.scheduled_hours_by_area.length ? `Scheduled time per area: ${k.scheduled_hours_by_area.map(a => `${text(a.area)} ${dur(a.hours)}`).join(', ')}` : 'Scheduled time per area: none',
   ])
   return out.join('\n')
 }

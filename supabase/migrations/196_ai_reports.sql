@@ -1,7 +1,8 @@
 -- 196 · The weekly reports (AI rebuild, phase 3, 22.11.2026 — docs/features/ai-plan.md §6, docs/features/ai.md).
 --
--- Every Sunday night the `claude` function works out the owner's week with code, queues ONE request at the batch
--- price (half) and, when Anthropic has answered, saves the written report and sends a push. This file adds:
+-- Every Monday at about 05:00 (Oslo) the `claude` function works out the owner's last week with code (Sunday is
+-- complete by then), queues ONE request at the batch price (half) and, when Anthropic has answered, saves the written
+-- report; the push for it goes out from 07:00. This file adds:
 --
 -- 1. ai_reports — one row per report: its week (the Monday, Europe/Oslo), who made it (the Sunday timer or the
 --    "Make this week's report now" button), `queued` → `ready` or `failed`, the English text, the figures the model
@@ -15,20 +16,23 @@
 --      out `batch_id` and `claimed_at` (the check's own bookkeeping). No browser-writable table holds a target the
 --      function reads back (AGENTS.md, the boxed warning). The assistant never sees this table (it is in no
 --      catalogue, and a link column of it would belong in AI_NO_WRITE if it ever were).
---    · unique (user_id, week_start, made_by): a second Sunday run, a repeated tap or two overlapping runs make one
---      report per week and maker, never two; a failed scheduled week is not tried again (no loop).
+--    · unique (user_id, week_start, made_by): a second timer run, a repeated tap or two overlapping runs make one
+--      report per week and maker, never two; a failed scheduled week is not tried again by the timer (no loop). The
+--      real report is `made_by = 'schedule'` (the button redoes a missing or failed one as that row); a button copy is
+--      `made_by = 'app'`, shown as a test, never the real one and never pushed.
+--    · `push_due` (server-only, like `batch_id` and `claimed_at`): a push is owed for this finished report (the owner's
+--      real report only). The check timer sends it from 07:00 Oslo time, stamping `pushed_at` first, so it goes once.
 --    · Every CHECK is the last line behind the function's own: a Monday date, short texts, a batch id of the
 --      characters Anthropic's ids have, a ready report with its text.
 --    · No audit trigger: it is a server-written log of finished work, never edited by the owner, and Activity's
 --      Undo must never reach it. Deleting the account deletes the reports; deleting a ledger row (the purge never
 --      does) leaves the report with no cost link.
 -- 2. Two timers (pg_cron, UTC), both calling the `claude` function with a value computed from a Vault secret:
---    · lascis-ai-report-make  Sundays 21:30 and 22:30 UTC. Oslo is UTC+1 or UTC+2, so one of them is 23:30 on
---      Sunday and the other is 22:30 Sunday (winter) or 00:30 Monday (summer); the function acts only from 23:00
---      Sunday to 01:00 Monday and answers "not the time" to the other, and a week that already has a report is
---      skipped, so the night makes one report.
---    · lascis-ai-report-check every 15 minutes, only while a report is queued (`where exists`): it asks the
---      function to read back the batch. Nothing is called on a week with no queued report.
+--    · lascis-ai-report-make  Mondays 03:00 and 04:00 UTC. Oslo is UTC+1 or UTC+2, so these are 04:00 / 05:00 (winter)
+--      or 05:00 / 06:00 (summer); the function acts only from 05:00 to 07:00 Oslo time and answers "not the time" to
+--      an earlier run, and a week that already has a report is skipped, so the morning makes one report.
+--    · lascis-ai-report-check every 15 minutes, only while a report is queued or a push is owed (`where exists`): it
+--      asks the function to read back the batch and to send the owed push from 07:00. Nothing is called otherwise.
 --    The header `x-claude-schedule-key` is HMAC-SHA256('claude-schedule-v1', PUSH_CRON_SECRET) as hex, computed in
 --    SQL with pgcrypto's hmac from the secret the other timers already keep in Vault (and the functions in their
 --    secrets). The secret itself never travels, and a leaked header opens only `claude`'s two schedule actions.
@@ -58,6 +62,8 @@ create table if not exists public.ai_reports (
   created_at  timestamptz not null default now(),
   ready_at    timestamptz,
   pushed_at   timestamptz,
+  -- A push is owed (server-only).
+  push_due    boolean not null default false,
   constraint ai_reports_week_maker unique (user_id, week_start, made_by),
   constraint ai_reports_ready_has_text check (status <> 'ready' or content is not null)
 );
@@ -79,12 +85,14 @@ grant select, insert, update, delete on public.ai_reports to service_role;
 
 -- What the check timer's `where exists` and the check itself read.
 create index if not exists idx_ai_reports_queued on public.ai_reports (user_id, created_at) where status = 'queued';
+create index if not exists idx_ai_reports_push on public.ai_reports (user_id, created_at) where push_due and pushed_at is null;
 create index if not exists idx_ai_reports_user_week on public.ai_reports (user_id, week_start desc);
 
 comment on table public.ai_reports is
   'The weekly reports: one row per week and maker. Written only by the service role (the claude function); the owner reads the finished columns. batch_id and claimed_at are server-only.';
 comment on column public.ai_reports.batch_id is 'Anthropic''s batch id: a link to an outside service. Server-only: the browser can neither write nor read it.';
-comment on column public.ai_reports.facts is 'The figures the model was given, worked out by code. Shown in Developer → AI → Batches.';
+comment on column public.ai_reports.facts is 'The figures the model was given, worked out by code, with the exact text it read (sent_text). Shown in Developer → AI → Batches as Figures sent.';
+comment on column public.ai_reports.push_due is 'A push is owed for this finished report (the owner''s real report only). Server-only. Sent from 07:00 Oslo time, once.';
 comment on column public.ai_reports.call_id is 'The ledger row of this report''s cost (ai_calls, mode batch).';
 
 -- ─── 2. The two timers ───────────────────────────────────────────────────────
@@ -97,7 +105,7 @@ begin
   if exists (select 1 from cron.job where jobname = 'lascis-ai-report-make') then
     perform cron.unschedule('lascis-ai-report-make');
   end if;
-  perform cron.schedule('lascis-ai-report-make', '30 21,22 * * 0', $cron$
+  perform cron.schedule('lascis-ai-report-make', '0 3,4 * * 1', $cron$
     select net.http_post(
       url := 'https://hsaedwwqpcjizeozjbch.supabase.co/functions/v1/claude',
       headers := jsonb_build_object(
@@ -119,7 +127,8 @@ begin
       ),
       body := jsonb_build_object('action', 'report_check')
     )
-    where exists (select 1 from public.ai_reports r where r.status = 'queued');
+    where exists (select 1 from public.ai_reports r where r.status = 'queued')
+       or exists (select 1 from public.ai_reports r where r.push_due and r.pushed_at is null);
   $cron$);
 end $$;
 
@@ -134,6 +143,7 @@ begin
   end if;
   if has_column_privilege('authenticated', 'public.ai_reports', 'batch_id', 'select')
      or has_column_privilege('authenticated', 'public.ai_reports', 'claimed_at', 'select')
+     or has_column_privilege('authenticated', 'public.ai_reports', 'push_due', 'select')
      or has_table_privilege('authenticated', 'public.ai_reports', 'select') then
     raise exception 'Migration 196 assertion failed: the browser can read a server-only column of ai_reports';
   end if;

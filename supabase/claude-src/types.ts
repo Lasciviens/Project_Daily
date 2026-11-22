@@ -308,13 +308,13 @@ export type RunReply =
  * `skipped`: nothing was done on purpose (outside the schedule's window, or a report for that week exists).
  */
 export type ReportMakeReply =
-  | { ok: true; queued: true; report_id: string; week_start: string }
+  | { ok: true; queued: true; report_id: string; week_start: string; kind: 'scheduled' | 'redo' | 'copy' | 'so_far' }
   | { ok: true; queued: false; skipped: 'not_the_time' | 'already_made' | 'already_queued' | 'no_data'; week_start: string | null }
   | { ok: false; reason: Reason | 'failed'; message: string; report_id?: string }
 
 /** The answer to `{ action: 'report_check' }`: what the check found among the queued reports. */
 export type ReportCheckReply =
-  | { ok: true; checked: number; ready: number; failed: number; waiting: number }
+  | { ok: true; checked: number; ready: number; failed: number; waiting: number; pushed: number }
   | { ok: false; message: string }
 
 /** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */

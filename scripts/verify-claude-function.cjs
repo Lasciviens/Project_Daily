@@ -68,7 +68,7 @@ const builtCode = sucrase.transform(
   builtSource.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''),
   { transforms: ['typescript'] },
 ).code
-const EXPOSED = ['costOf', 'hideSecrets', 'trimText', 'trimForLog', 'settingsFor', 'readCapped', 'ownValue', 'MODEL_PRICES', 'ITEM_FILL_JOB', 'RECIPE_FROM_TEXT_JOB', 'RECIPE_FROM_LINK_JOB', 'RECIPE_MACROS_JOB', 'QUICK_GUESS_JOB', 'QUICK_GUESS_OPTIONS_JOB', 'isPrivateHost', 'fetchPage', 'recipeFromPage', 'pageVisibleText', 'findJob', 'describeFunction', 'gateOf', 'requestTimeoutMs', 'readAnswerObject', 'itemFillNowText', 'COACH_ASSESSMENT_JOB', 'KOBO_ASK_JOB', 'PHONE_ASK_JOB', 'TEST_BENCH_JOB', 'sameSecret', 'deviceCaller', 'checkedAnswerText', 'WEEKLY_REPORT_JOB', 'readWeeklyReport', 'osloWeekOf', 'osloWeek', 'scheduledReportWeek', 'manualReportWeek', 'osloMidnight', 'osloDay', 'shiftDay', 'dmy', 'trainingFacts', 'healthFacts', 'foodFacts', 'taskFacts', 'factsText', 'hasAnyData', 'sleepNights', 'collapseSumRows', 'claudeScheduleCredential', 'shortText', 'readWeekFacts', 'WEEKLY_REPORT_HEADINGS']
+const EXPOSED = ['costOf', 'hideSecrets', 'trimText', 'trimForLog', 'settingsFor', 'readCapped', 'ownValue', 'MODEL_PRICES', 'ITEM_FILL_JOB', 'RECIPE_FROM_TEXT_JOB', 'RECIPE_FROM_LINK_JOB', 'RECIPE_MACROS_JOB', 'QUICK_GUESS_JOB', 'QUICK_GUESS_OPTIONS_JOB', 'isPrivateHost', 'fetchPage', 'recipeFromPage', 'pageVisibleText', 'findJob', 'describeFunction', 'gateOf', 'requestTimeoutMs', 'readAnswerObject', 'itemFillNowText', 'COACH_ASSESSMENT_JOB', 'KOBO_ASK_JOB', 'PHONE_ASK_JOB', 'TEST_BENCH_JOB', 'sameSecret', 'deviceCaller', 'checkedAnswerText', 'WEEKLY_REPORT_JOB', 'readWeeklyReport', 'osloWeekOf', 'osloWeek', 'scheduledReportWeek', 'lastFullWeek', 'manualReportPlan', 'pushWindowOpen', 'grp', 'dur', 'sdur', 'sgn', 'pctChange', 'osloMidnight', 'osloDay', 'shiftDay', 'dmy', 'trainingFacts', 'healthFacts', 'foodFacts', 'taskFacts', 'factsText', 'hasAnyData', 'sleepNights', 'collapseSumRows', 'claudeScheduleCredential', 'shortText', 'readWeekFacts', 'WEEKLY_REPORT_HEADINGS']
 
 const FIXED_NOW = new Date('2026-11-11T13:30:00Z') // Wednesday 11.11.2026, 14:30 in Oslo
 class FixedDate extends Date {
@@ -1754,9 +1754,13 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the week the clocks go back (25.10.2026) is 169 hours long: it starts at 00:00 summer time and ends at 00:00 winter time', wk.start === '2026-10-19' && wk.startAt === '2026-10-18T22:00:00.000Z' && wk.endAt === '2026-10-25T23:00:00.000Z' && (Date.parse(wk.endAt) - Date.parse(wk.startAt)) / 3600000 === 169, wk)
   check('Sunday 22:59 Oslo is still that week, Monday 00:00 Oslo starts the next (the day is the Oslo day, not the UTC day)', wf.osloWeekOf(T('2026-11-22T21:59:00Z')).start === '2026-11-16' && wf.osloWeekOf(T('2026-11-22T22:59:00Z')).start === '2026-11-16' && wf.osloWeekOf(T('2026-11-22T23:00:00Z')).start === '2026-11-23' && wf.osloDay(T('2026-11-22T23:30:00Z')) === '2026-11-23')
   check('osloMidnight finds the start of an Oslo day in winter and in summer', wf.osloMidnight('2026-01-15').toISOString() === '2026-01-14T23:00:00.000Z' && wf.osloMidnight('2026-07-15').toISOString() === '2026-07-14T22:00:00.000Z' && wf.osloMidnight('2026-03-29').toISOString() === '2026-03-28T23:00:00.000Z' && wf.osloMidnight('2026-10-25').toISOString() === '2026-10-24T22:00:00.000Z')
-  check('the Sunday timer acts only from Sunday 23:00 to Monday 01:00 Oslo (winter: the second run; summer: the first), and reports the week that just ended', wf.scheduledReportWeek(T('2026-11-22T21:30:00Z')) === null && wf.scheduledReportWeek(T('2026-11-22T22:30:00Z'))?.start === '2026-11-16' && wf.scheduledReportWeek(T('2026-11-22T23:30:00Z'))?.start === '2026-11-16' && wf.scheduledReportWeek(T('2026-11-23T00:00:00Z')) === null && wf.scheduledReportWeek(T('2026-11-11T13:30:00Z')) === null)
-  check('…and in summer time: 21:30 UTC is 23:30 Oslo (acts), 22:30 UTC is 00:30 Monday (acts: the same week, a report already there is skipped), 23:30 UTC is 01:30 Monday (not the time)', wf.scheduledReportWeek(T('2026-06-14T21:30:00Z'))?.start === '2026-06-08' && wf.scheduledReportWeek(T('2026-06-14T22:30:00Z'))?.start === '2026-06-08' && wf.scheduledReportWeek(T('2026-06-14T23:30:00Z')) === null)
-  check('the button\'s week is the week so far (the Oslo week of now)', wf.manualReportWeek(T('2026-11-11T13:30:00Z')).start === '2026-11-09')
+  check('the Monday timer acts only from 05:00 to 07:00 Oslo (winter: the second run; summer: the first), and reports the week that just ended, complete', wf.scheduledReportWeek(T('2026-11-23T03:00:00Z')) === null && wf.scheduledReportWeek(T('2026-11-23T04:00:00Z'))?.start === '2026-11-16' && wf.scheduledReportWeek(T('2026-11-23T05:59:00Z'))?.start === '2026-11-16' && wf.scheduledReportWeek(T('2026-11-23T06:00:00Z')) === null && wf.scheduledReportWeek(T('2026-11-22T22:30:00Z')) === null && wf.scheduledReportWeek(T('2026-11-11T13:30:00Z')) === null)
+  check('…and in summer time: 03:00 UTC is 05:00 Oslo (acts), 04:00 UTC is 06:00 (acts: the same week, a report already there is skipped), 02:00 UTC is 04:00 (not the time)', wf.scheduledReportWeek(T('2026-06-15T03:00:00Z'))?.start === '2026-06-08' && wf.scheduledReportWeek(T('2026-06-15T04:00:00Z'))?.start === '2026-06-08' && wf.scheduledReportWeek(T('2026-06-15T02:00:00Z')) === null && wf.scheduledReportWeek(T('2026-06-15T05:00:00Z')) === null)
+  check('the week across the clock change (Monday 30.03.2026 05:00 summer time) is still the week before: 23.03 to 29.03', wf.scheduledReportWeek(T('2026-03-30T03:00:00Z'))?.start === '2026-03-23' && wf.scheduledReportWeek(T('2026-11-02T04:00:00Z'))?.start === '2026-10-26')
+  check('a push may go only from 07:00 to 22:00 Oslo time (winter and summer)', !wf.pushWindowOpen(T('2026-11-23T05:59:00Z')) && wf.pushWindowOpen(T('2026-11-23T06:00:00Z')) && wf.pushWindowOpen(T('2026-11-23T20:59:00Z')) && !wf.pushWindowOpen(T('2026-11-23T21:00:00Z')) && !wf.pushWindowOpen(T('2026-06-15T04:59:00Z')) && wf.pushWindowOpen(T('2026-06-15T05:00:00Z')))
+  check('the last full week is the one before this week, across a clock change too', wf.lastFullWeek(T('2026-11-11T13:30:00Z')).start === '2026-11-02' && wf.lastFullWeek(T('2026-03-30T00:30:00Z')).start === '2026-03-23' && wf.lastFullWeek(T('2026-03-29T10:00:00Z')).start === '2026-03-16')
+  const planA = wf.manualReportPlan(T('2026-11-18T10:00:00Z'), false), planB = wf.manualReportPlan(T('2026-11-24T10:00:00Z'), true), planC = wf.manualReportPlan(T('2026-11-26T10:00:00Z'), true)
+  check('the button: last week has no ready report → it makes that real report (redo); ready → a copy of it on Monday and Tuesday, the week so far later in the week', planA.kind === 'redo' && planA.week.start === '2026-11-09' && planB.kind === 'copy' && planB.week.start === '2026-11-16' && planC.kind === 'so_far' && planC.week.start === '2026-11-23' && wf.manualReportPlan(T('2026-11-23T10:00:00Z'), true).kind === 'copy')
   check('dmy writes DD.MM.YYYY', wf.dmy('2026-11-22') === '22.11.2026')
 
   section('17 · the week\'s figures, by code')
@@ -1858,7 +1862,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('…with no fetch and no reservation', live.net.seen.length === 0 && live.world.reserves.length === 0)
 
   section('17 · the weekly report: schedule auth')
-  const SUNDAY = Date.parse('2026-11-22T22:30:00Z')
+  // Monday 23.11.2026, 05:00 in Oslo (winter time): where the timer acts, with Sunday complete.
+  const MAKE_AT = Date.parse('2026-11-23T04:00:00Z')
   const WEEK_TABLES = {
     hevy_workouts: TRAIN.workouts.map(w => ({ ...w, user_id: OWNER })), hevy_workout_exercises: TRAIN.exercises, hevy_sets: TRAIN.sets, hevy_exercise_templates: TRAIN.templates, hevy_exercise_template_muscles: TRAIN.secondaries,
     health_metrics: [...HEALTH.sleep.map(r => ({ ...r, metric_name: 'sleep_analysis', user_id: OWNER })), ...HEALTH.metrics.map(r => ({ ...r, user_id: OWNER }))],
@@ -1897,20 +1902,20 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   }
   const okLine = (id, text = REPORT, over = {}) => ({ custom_id: id, result: { type: 'succeeded', message: message({ content: [{ type: 'text', text }], usage: { input_tokens: 900, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 400, output_tokens_details: { thinking_tokens: 0 } }, ...over }) } })
   const makeBody = { action: 'report_make' }
-  let sw = await go(null, { request: schedReq(makeBody, null), world: wkWorld(), network: batchNet(), at: SUNDAY })
+  let sw = await go(null, { request: schedReq(makeBody, null), world: wkWorld(), network: batchNet(), at: MAKE_AT })
   check('a request with no schedule key and no token is 401', sw.status === 401 && sw.net.seen.length === 0, sw.status)
   for (const [label, key] of [['a wrong key', 'x'.repeat(64)], ['an empty key', ''], ['the key with one character more', SCHED_KEY + '0'], ['the key cut short', SCHED_KEY.slice(0, -1)], ['the secret itself (only its derived value opens it)', PUSH], ['the device credential', crypto.createHmac('sha256', SERVICE).update('claude-device-v1').digest('hex')], ['the credential under another label', crypto.createHmac('sha256', PUSH).update('claude-schedule-v2').digest('hex')], ['the credential of another secret', crypto.createHmac('sha256', KEY).update('claude-schedule-v1').digest('hex')], ['the service key', SERVICE]]) {
-    sw = await go(null, { request: schedReq(makeBody, key, { authorization: 'Bearer owner-jwt' }), world: wkWorld(), network: batchNet(), at: SUNDAY })
+    sw = await go(null, { request: schedReq(makeBody, key, { authorization: 'Bearer owner-jwt' }), world: wkWorld(), network: batchNet(), at: MAKE_AT })
     check(`schedule key: ${label}: 401, nothing read, nothing sent, nothing reserved — a valid sign-in beside it does not let it through`, sw.status === 401 && sw.net.seen.length === 0 && sw.world.reserves.length === 0 && sw.world.tableLog.length === 0 && sw.world.calls.length === 0, [sw.status, sw.text])
   }
-  sw = await go(null, { request: schedReq(makeBody), world: wkWorld({ env: { PUSH_CRON_SECRET: undefined } }), network: batchNet(), at: SUNDAY })
+  sw = await go(null, { request: schedReq(makeBody), world: wkWorld({ env: { PUSH_CRON_SECRET: undefined } }), network: batchNet(), at: MAKE_AT })
   check('a server with no PUSH_CRON_SECRET refuses the schedule (fail closed), even with an empty header', sw.status === 401 && sw.world.calls.length === 0)
-  sw = await go(null, { request: schedReq(makeBody, ''), world: wkWorld({ env: { PUSH_CRON_SECRET: undefined } }), network: batchNet(), at: SUNDAY })
+  sw = await go(null, { request: schedReq(makeBody, ''), world: wkWorld({ env: { PUSH_CRON_SECRET: undefined } }), network: batchNet(), at: MAKE_AT })
   check('…and an empty key never equals an empty secret', sw.status === 401)
-  sw = await go(null, { request: schedReq(makeBody, SCHED_KEY, { 'x-claude-server-key': credentialOf(SERVICE) }), world: wkWorld(), network: batchNet(), at: SUNDAY })
+  sw = await go(null, { request: schedReq(makeBody, SCHED_KEY, { 'x-claude-server-key': credentialOf(SERVICE) }), world: wkWorld(), network: batchNet(), at: MAKE_AT })
   check('both server headers in one request are refused (400): nothing falls through to the other path', sw.status === 400 && sw.net.seen.length === 0 && sw.world.calls.length === 0, sw.status)
   for (const action of ['run', 'describe', 'count', 'diagnose', 'delete', undefined]) {
-    sw = await go(null, { request: schedReq({ action, job: 'item_fill', input: { text: 'x' } }), world: wkWorld(), network: batchNet(), at: SUNDAY })
+    sw = await go(null, { request: schedReq({ action, job: 'item_fill', input: { text: 'x' } }), world: wkWorld(), network: batchNet(), at: MAKE_AT })
     check(`the schedule may not ask for ${JSON.stringify(action)}: 400, nothing sent, nothing written`, sw.status === 400 && sw.net.seen.length === 0 && sw.world.calls.length === 0, [sw.status, sw.text])
   }
   check('guard.ts: the credential is the same HMAC as the timer\'s SQL (Node and the function agree), and sameSecret compares it in main.ts, never ===', (await wf.claudeScheduleCredential(PUSH)) === SCHED_KEY && /sameSecret\(scheduleHeader, derived\)/.test(parts['main.ts']) && /claudeScheduleCredential\(secret\)/.test(parts['main.ts']) && !/scheduleHeader\s*(===|!==)(?!\s*null)|(===|!==)\s*scheduleHeader/.test(parts['main.ts']) && parts['main.ts'].indexOf('x-claude-schedule-key') < parts['main.ts'].indexOf('readCapped(req.body'))
@@ -1919,12 +1924,12 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('17 · the weekly report: make (queue the batch)')
   const reportsOf = (r) => r.world.tables.ai_reports
   let net = batchNet()
-  let mk = await go(null, { request: schedReq({ ...makeBody, caller: 'kobo', user_id: GUEST, userId: GUEST }), world: wkWorld(), network: net, at: SUNDAY })
+  let mk = await go(null, { request: schedReq({ ...makeBody, caller: 'kobo', user_id: GUEST, userId: GUEST }), world: wkWorld(), network: net, at: MAKE_AT })
   const rep = reportsOf(mk)[0]
   check('Sunday 23:30 Oslo: the report is queued — ok, queued, the week 16.11.2026, one report row of the owner (a caller or user id in the body changes nothing)', mk.status === 200 && mk.json?.ok === true && mk.json.queued === true && mk.json.week_start === '2026-11-16' && reportsOf(mk).length === 1 && rep.user_id === OWNER && rep.made_by === 'schedule' && rep.week_start === '2026-11-16' && rep.status === 'queued' && mk.json.report_id === rep.id, mk.json)
   check('exactly one fetch (the batch), to the batches address, with the key in the authorization header only', net.seen.length === 1 && net.seen[0].method === 'POST' && net.seen[0].url === 'https://api.anthropic.com/v1/messages/batches' && net.seen[0].headers.authorization === `Bearer ${KEY}` && !JSON.stringify(net.seen[0].body).includes(KEY), net.seen.map(x => x.url))
   const bb = net.state.created[0]
-  check('the batch has one request: custom_id is the report id, params are the live request (Haiku, 3000 tokens, cached instructions, adaptive thinking, medium effort) with no answer format', bb.requests.length === 1 && bb.requests[0].custom_id === rep.id && same(sorted(bb.requests[0].params), sorted({ model: 'claude-haiku-5-5', max_tokens: 3000, system: [{ type: 'text', text: jw.instructions, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: bb.requests[0].params.messages[0].content }], thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'medium' } })) && !JSON.stringify(bb).includes('json_schema'), bb.requests[0].params)
+  check('the batch has one request: custom_id is the ledger row id (unique per submission), params are the live request (Haiku, 3000 tokens, cached instructions, adaptive thinking, medium effort) with no answer format', bb.requests.length === 1 && bb.requests[0].custom_id === rep.call_id && rep.call_id !== rep.id && same(sorted(bb.requests[0].params), sorted({ model: 'claude-haiku-5-5', max_tokens: 3000, system: [{ type: 'text', text: jw.instructions, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: bb.requests[0].params.messages[0].content }], thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'medium' } })) && !JSON.stringify(bb).includes('json_schema'), bb.requests[0].params)
   check('the live text is the prepared figures: the week, the four sections, a dated session', bb.requests[0].params.messages[0].content.startsWith('<week>16.11.2026 to 22.11.2026</week>') && /Session 17\.11\.2026: Push A/.test(bb.requests[0].params.messages[0].content) && /Key lift Bench Press: top set 85 kg × 3; a new best/.test(bb.requests[0].params.messages[0].content), bb.requests[0].params.messages[0].content.slice(0, 200))
   check('the reservation came BEFORE the batch was sent, as mode batch for the caller schedule, at the batch price (half of the live worst case)', mk.world.events.indexOf('reserve') >= 0 && mk.world.events.indexOf('reserve') < mk.world.events.indexOf('fetch') && mk.world.reserves.length === 1 && mk.world.reserves[0].p_mode === 'batch' && mk.world.reserves[0].p_caller === 'schedule' && mk.world.reserves[0].p_job === 'weekly_report' && mk.world.reserves[0].p_user === OWNER, mk.world.events)
   const chars = jw.instructions.length + bb.requests[0].params.messages[0].content.length
@@ -1936,10 +1941,10 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('nothing was pushed, and the answer carries no secret', net.state.pushes.length === 0 && !leaks(mk.text, JSON.stringify(mk.world.logs)).length)
   // The second run of the night, and a retry: the week already has its report.
   const w1 = mk.world
-  mk = await go(null, { request: schedReq(makeBody), world: w1, network: batchNet(), at: SUNDAY + 3600_000 })
+  mk = await go(null, { request: schedReq(makeBody), world: w1, network: batchNet(), at: MAKE_AT + 3600_000 })
   check('the second timer run of the night finds the queued report and does nothing: skipped already_queued, no fetch, no new reservation', mk.json?.queued === false && mk.json.skipped === 'already_queued' && mk.net.seen.length === 0 && w1.reserves.length === 1 && reportsOf(mk).length === 1, mk.json)
   w1.tables.ai_reports[0].status = 'failed'
-  mk = await go(null, { request: schedReq(makeBody), world: w1, network: batchNet(), at: SUNDAY + 3600_000 })
+  mk = await go(null, { request: schedReq(makeBody), world: w1, network: batchNet(), at: MAKE_AT + 3600_000 })
   check('a scheduled week that failed is not tried again (no loop): skipped already_made, no fetch', mk.json?.skipped === 'already_made' && mk.net.seen.length === 0 && w1.reserves.length === 1, mk.json)
   mk = await go(null, { request: schedReq(makeBody), world: wkWorld(), network: batchNet(), at: Date.parse('2026-11-18T10:00:00Z') })
   check('on a Wednesday the timer is "not the time": nothing read, nothing written, no fetch', mk.json?.skipped === 'not_the_time' && mk.net.seen.length === 0 && mk.world.tableLog.length === 0 && mk.world.calls.length === 0 && mk.world.reserves.length === 0, mk.json)
@@ -1953,21 +1958,21 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['the master switch (all AI off)', { account: { ai_enabled: false } }, 'off'], ['the job\'s own switch', { jobRow: { enabled: false } }, 'off'],
     ['the monthly budget wall (0)', { account: { monthly_budget_usd: 0 } }, 'budget'], ['no API key', { env: { ANTHROPIC_API_KEY: undefined } }, 'not_configured'],
   ]) {
-    mk = await go(null, { request: schedReq(makeBody), world: wkWorld(over), network: batchNet(), at: SUNDAY })
+    mk = await go(null, { request: schedReq(makeBody), world: wkWorld(over), network: batchNet(), at: MAKE_AT })
     const row = reportsOf(mk)[0]
     check(`${label}: nothing is queued (no fetch), the answer says why, the week is recorded as failed (not tried again), and nothing is pushed`, mk.json?.ok === false && mk.json.reason === reason && mk.net.seen.length === 0 && row?.status === 'failed' && typeof row.failure === 'string' && row.failure.length > 0 && row.batch_id === null && mk.net.state.pushes.length === 0, [mk.json, row])
     if (reason !== 'budget') check(`${label}: the ledger has one row, outcome ${reason}, no tokens, no cost`, mk.world.calls.length === 1 && mk.world.calls[0].outcome === reason && mk.world.calls[0].cost_usd === 0 && mk.world.calls[0].mode === 'batch', mk.world.calls)
     else check(`${label}: the reservation refused it (a budget row costing 0) and the report says it was the budget`, mk.world.calls.length === 1 && mk.world.calls[0].outcome === 'budget' && mk.world.calls[0].cost_usd === 0 && /budget/.test(row.failure))
   }
-  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ tables: { ...structuredClone(WEEK_TABLES), hevy_workouts: [], health_metrics: [], food_log_entries: [], water_log_entries: [], tasks: [], time_blocks: [], hevy_body_measurements: [] } }), network: batchNet(), at: SUNDAY })
+  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ tables: { ...structuredClone(WEEK_TABLES), hevy_workouts: [], health_metrics: [], food_log_entries: [], water_log_entries: [], tasks: [], time_blocks: [], hevy_body_measurements: [] } }), network: batchNet(), at: MAKE_AT })
   check('a week with no data at all: skipped no_data, no model asked, no reservation, the week recorded as failed with a sentence', mk.json?.skipped === 'no_data' && mk.net.seen.length === 0 && mk.world.reserves.length === 0 && reportsOf(mk)[0]?.status === 'failed' && /no data/i.test(reportsOf(mk)[0].failure), [mk.json, reportsOf(mk)])
-  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ tableErrors: { hevy_workouts: { code: 'XX000', message: 'boom' } } }), network: batchNet(), at: SUNDAY })
+  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ tableErrors: { hevy_workouts: { code: 'XX000', message: 'boom' } } }), network: batchNet(), at: MAKE_AT })
   check('a section that cannot be read is said so in the text, and the other sections still go ahead', mk.json?.queued === true && /<training>\nCOULD NOT BE READ/.test(mk.net.state.created[0].requests[0].params.messages[0].content) && /<health>\nCOULD NOT BE READ/.test(mk.net.state.created[0].requests[0].params.messages[0].content) === false && mk.world.tables.ai_reports[0].facts.unreadable.join() === 'training', mk.json)
-  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ gateError: null, seedCalls: Array.from({ length: 20 }, () => ({ id: crypto.randomUUID(), user_id: OWNER, caller: 'app', job: 'x', outcome: 'ok', cost_usd: 0, created_at: new Date(SUNDAY - 1000).toISOString() })) }), network: batchNet(), at: SUNDAY })
+  mk = await go(null, { request: schedReq(makeBody), world: wkWorld({ gateError: null, seedCalls: Array.from({ length: 20 }, () => ({ id: crypto.randomUUID(), user_id: OWNER, caller: 'app', job: 'x', outcome: 'ok', cost_usd: 0, created_at: new Date(MAKE_AT - 1000).toISOString() })) }), network: batchNet(), at: MAKE_AT })
   check('the ledger\'s rate caps bind the schedule too: 20 calls in a minute make it busy, no fetch, no report row', mk.json?.reason === 'busy' && mk.net.seen.length === 0 && reportsOf(mk).length === 0, mk.json)
   for (const [label, create, kind, billed] of [['a 400 from Anthropic', () => answerWith(400, errorBody('invalid_request_error', 'bad')), 'refused', false], ['a 500 from Anthropic', () => answerWith(500, errorBody('api_error', 'down')), 'provider fault', true], ['a network failure', async () => { throw new Error('socket hang up') }, 'network', true]]) {
     net = batchNet({ createFails: create })
-    mk = await go(null, { request: schedReq(makeBody), world: wkWorld(), network: net, at: SUNDAY })
+    mk = await go(null, { request: schedReq(makeBody), world: wkWorld(), network: net, at: MAKE_AT })
     const r0 = reportsOf(mk)[0], c0 = mk.world.calls[0]
     check(`${label} when the batch is made: the report is failed with a plain sentence, the failure is pushed once (a scheduled report the owner expects), the ledger row is closed as an error, and ${billed ? 'it keeps the worst case (it may have been billed)' : 'it costs nothing (Anthropic refused it)'}`, mk.json?.ok === false && r0.status === 'failed' && r0.batch_id === null && net.state.pushes.length === 1 && /could not be made/.test(net.state.pushes[0].body.body) && c0.outcome === 'error' && c0.stop_reason === 'batch_not_queued' && (billed ? near(c0.cost_usd, mk.world.reserves[0].p_worst_cost) : c0.cost_usd === 0) && !leaks(everything(mk)).length, [mk.json, c0 && [c0.outcome, c0.cost_usd]])
   }
@@ -1986,10 +1991,10 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const firstId = mk.world.tables.ai_reports[0].id
   mk = await go(makeBody, { world: mk.world, network: batchNet(), at: Date.parse('2026-11-18T10:00:00Z') })
   check('after it finished, the button makes it again (for testing): the same row goes back to queued with a new batch, a second reservation, the old text gone', mk.json?.queued === true && reportsOf(mk).length === 1 && reportsOf(mk)[0].id === firstId && reportsOf(mk)[0].status === 'queued' && reportsOf(mk)[0].content === null && mk.world.reserves.length === 2, mk.json)
-  const sched1 = await go(makeBody, { world: mk.world, network: batchNet(), at: SUNDAY, request: schedReq(makeBody) })
+  const sched1 = await go(makeBody, { world: mk.world, network: batchNet(), at: MAKE_AT, request: schedReq(makeBody) })
   check('a button report does not block the Sunday report of the same week: each maker has its own row', sched1.json?.queued === true && reportsOf(sched1).length === 2 && reportsOf(sched1).map(r => r.made_by).sort().join() === 'app,schedule', sched1.json)
   for (const [caller, action] of [['phone', 'report_make'], ['kobo', 'report_check']]) {
-    const d = await go(null, { request: devPost({ action, caller, input: {} }), world: wkWorld(), network: batchNet(), at: SUNDAY })
+    const d = await go(null, { request: devPost({ action, caller, input: {} }), world: wkWorld(), network: batchNet(), at: MAKE_AT })
     check(`a ${caller} device cannot ask for ${action}: 400 (a device may only run a job)`, d.status === 400 && d.net.seen.length === 0 && d.world.calls.length === 0)
   }
 
@@ -1997,11 +2002,12 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   /** A world with a report made on Sunday night: the batch was queued; returns what the checks need. */
   const queuedWorld = async (over = {}) => {
     const n = batchNet(over.net ?? {})
-    const m = await go(null, { request: schedReq(makeBody), world: wkWorld(over.world ?? {}), network: n, at: SUNDAY })
-    n.state.reportId = m.json.report_id
+    const m = await go(null, { request: schedReq(makeBody), world: wkWorld(over.world ?? {}), network: n, at: MAKE_AT })
+    // The result line is found by the ledger row's id (unique per submission), not the report's.
+    n.state.reportId = m.world.tables.ai_reports[0].call_id
     return { world: m.world, net: n, id: m.json.report_id, reserved: m.world.reserves[0].p_worst_cost }
   }
-  const checkAt = (q, at = SUNDAY + 3600_000, req) => go(null, { request: req ?? schedReq({ action: 'report_check' }), world: q.world, network: q.net, at })
+  const checkAt = (q, at = MAKE_AT + 4 * 3600_000, req) => go(null, { request: req ?? schedReq({ action: 'report_check' }), world: q.world, network: q.net, at })
   let q = await queuedWorld()
   q.net.state.status = 'in_progress'
   let ck = await checkAt(q)
@@ -2019,7 +2025,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const realBatch = ck.fn.costOf({ inputTokens: 900, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 400, thinkingTokens: 0 }, 'claude-haiku-5-5', 'batch').costUsd
   check('the ledger row is corrected to the real cost at the BATCH price (half of the live price), with the real tokens, outcome ok, mode batch, the served model; the worst case is gone', led.outcome === 'ok' && near(led.cost_usd, realBatch) && near(realBatch * 2, realLive) && led.cost_usd < q.reserved && led.input_tokens === 900 && led.output_tokens === 400 && led.served_model === 'claude-haiku-5-5' && led.mode === 'batch' && led.response?.text === REPORT, [led.cost_usd, realBatch, q.reserved])
   check('exactly one push, through push-send with the shared secret in x-cron-secret, only fixed words and the link to the report; none of the model\'s text', q.net.state.pushes.length === 1 && q.net.state.pushes[0].headers['x-cron-secret'] === PUSH && same(Object.keys(q.net.state.pushes[0].body).sort(), ['body', 'title', 'url']) && q.net.state.pushes[0].body.title === 'Weekly report' && q.net.state.pushes[0].body.body === 'Your report for 16.11.2026 – 22.11.2026 is ready.' && q.net.state.pushes[0].body.url === `#/home?report=${q.id}` && !JSON.stringify(q.net.state.pushes).includes('Three sessions') && typeof done.pushed_at === 'string', q.net.state.pushes)
-  ck = await checkAt(q, SUNDAY + 7200_000)
+  ck = await checkAt(q, MAKE_AT + 7200_000)
   check('a later check finds nothing queued: no request, no second push', ck.json?.checked === 0 && q.net.state.pushes.length === 1 && q.net.state.resultsRead === 1)
   // Two checks at once: one owns the report.
   q = await queuedWorld(); q.net.state.status = 'ended'; q.net.state.lines = (id) => [okLine(id)]
@@ -2027,10 +2033,10 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('two checks at the same moment: one reads the result and sends the push, the other finds the report taken (one push, one ledger correction)', q.net.state.pushes.length === 1 && q.net.state.resultsRead === 1 && [c1.json.checked, c2.json.checked].sort().join() === '0,1' && q.world.calls.length === 1 && q.world.tables.ai_reports[0].status === 'ready', [c1.json, c2.json])
   // A stale claim is taken over.
   q = await queuedWorld(); q.net.state.status = 'ended'; q.net.state.lines = (id) => [okLine(id)]
-  q.world.tables.ai_reports[0].claimed_at = new Date(SUNDAY).toISOString()
-  ck = await checkAt(q, SUNDAY + 5 * 60_000)
+  q.world.tables.ai_reports[0].claimed_at = new Date(MAKE_AT).toISOString()
+  ck = await checkAt(q, MAKE_AT + 5 * 60_000)
   check('a claim younger than ten minutes holds the report (a check at work)', ck.json?.checked === 0 && q.net.state.resultsRead === 0)
-  ck = await checkAt(q, SUNDAY + 11 * 60_000)
+  ck = await checkAt(q, MAKE_AT + 11 * 60_000)
   check('…an older one (a check that died) is taken over', ck.json?.ready === 1 && q.world.tables.ai_reports[0].status === 'ready')
   // The result lines.
   q = await queuedWorld(); q.net.state.status = 'ended'; q.net.state.lines = () => [okLine('11111111-1111-4111-8111-111111111111'), okLine('not-ours')]
@@ -2044,7 +2050,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ck = await checkAt(q)
     const r1 = q.world.tables.ai_reports[0], l1 = q.world.calls[0]
     check(`a batch request that ${type}: the report is failed with a plain sentence, the ledger keeps the worst case (outcome error, stop reason batch_${type}), one failure push, and no second push on a later check`, ck.json?.failed === 1 && r1.status === 'failed' && word.test(r1.failure) && l1.outcome === 'error' && l1.stop_reason === `batch_${type}` && near(l1.cost_usd, q.reserved) && q.net.state.pushes.length === 1 && /could not be made/.test(q.net.state.pushes[0].body.body) && !leaks(everything(ck)).length && !JSON.stringify(q.world.tables.ai_reports).includes('LEAKY'), [ck.json, r1, l1 && [l1.outcome, l1.cost_usd]])
-    await checkAt(q, SUNDAY + 7200_000)
+    await checkAt(q, MAKE_AT + 7200_000)
     check(`…${type}: nothing more happens later (no second push, no second read)`, q.net.state.pushes.length === 1 && q.net.state.resultsRead === 1)
   }
   for (const [label, over, textOrLines] of [['a text with a link', {}, '**Training**\nSee https://evil.example.com now'], ['an unknown heading', {}, '**Secrets**\nx'], ['an empty text', {}, ''], ['a model that declined', { stop_reason: 'refusal', content: [] }, 'x'], ['an answer cut off', { stop_reason: 'max_tokens' }, REPORT], ['an unknown stop', { stop_reason: 'pause_turn' }, REPORT]]) {
@@ -2054,31 +2060,31 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     check(`${label}: the report fails, nothing is repaired, the ledger row gets the real cost at the batch price (the model answered, so it was billed), and one failure push`, ck.json?.failed === 1 && q.world.tables.ai_reports[0].status === 'failed' && q.world.tables.ai_reports[0].content === null && l2.outcome !== 'ok' && l2.outcome !== 'pending' && near(l2.cost_usd, realBatch) && q.net.state.pushes.length === 1, [ck.json, l2 && [l2.outcome, l2.cost_usd]])
   }
   q = await queuedWorld(); q.net.state.status = 'ended'; q.net.state.lines = (id) => [okLine(id)]
-  q.net.state.pushes = []; const pushNone = batchNet({ status: 'ended', lines: (id) => [okLine(id)], pushSent: 0 }); pushNone.state.reportId = q.id; pushNone.state.created = q.net.state.created
+  q.net.state.pushes = []; const pushNone = batchNet({ status: 'ended', lines: (id) => [okLine(id)], pushSent: 0 }); pushNone.state.reportId = q.world.tables.ai_reports[0].call_id; pushNone.state.created = q.net.state.created
   ck = await checkAt({ world: q.world, net: pushNone })
   check('a push that reaches no device is not repeated: the report is ready, the push stamped once, never sent twice', ck.json?.ready === 1 && pushNone.state.pushes.length === 1 && typeof q.world.tables.ai_reports[0].pushed_at === 'string')
-  ck = await checkAt({ world: q.world, net: pushNone }, SUNDAY + 7200_000)
+  ck = await checkAt({ world: q.world, net: pushNone }, MAKE_AT + 7200_000)
   check('…and a later check sends none', pushNone.state.pushes.length === 1)
   q = await queuedWorld(); q.net.state.status = 'ended'; q.net.state.lines = (id) => [okLine(id)]
   q.world.env.PUSH_CRON_SECRET = undefined
-  ck = await checkAt(q, SUNDAY + 3600_000, schedReq({ action: 'report_check' }, null, { authorization: 'Bearer owner-jwt' }))
+  ck = await checkAt(q, MAKE_AT + 3600_000, schedReq({ action: 'report_check' }, null, { authorization: 'Bearer owner-jwt' }))
   check('the app may ask for a check too (owner token): the same flow, and with no push secret the report is still saved and the missing push is only said in the log', ck.json?.ready === 1 && q.world.tables.ai_reports[0].status === 'ready' && q.net.state.pushes.length === 0)
   q = await queuedWorld(); q.net.state.status = 'in_progress'
-  ck = await checkAt(q, SUNDAY + 27 * 3600_000)
+  ck = await checkAt(q, MAKE_AT + 27 * 3600_000)
   check('a batch still not ended after 26 hours is given up: the report fails ("did not end within a day"), the worst case stays, one failure push', ck.json?.failed === 1 && /did not end/.test(q.world.tables.ai_reports[0].failure) && q.world.calls[0].stop_reason === 'batch_expired' && near(q.world.calls[0].cost_usd, q.reserved) && q.net.state.pushes.length === 1)
   q = await queuedWorld(); q.world.tables.ai_reports[0].batch_id = null
-  ck = await checkAt(q, SUNDAY + 10 * 60_000)
+  ck = await checkAt(q, MAKE_AT + 10 * 60_000)
   check('a report with no batch id yet (a make still at work) waits for 30 minutes…', ck.json?.waiting === 1 && q.world.tables.ai_reports[0].status === 'queued')
-  ck = await checkAt(q, SUNDAY + 40 * 60_000)
+  ck = await checkAt(q, MAKE_AT + 40 * 60_000)
   check('…then it is given up: the batch was never registered, the worst case stays', ck.json?.failed === 1 && /never registered/.test(q.world.tables.ai_reports[0].failure) && near(q.world.calls[0].cost_usd, q.reserved))
   q = await queuedWorld()
   const brokenNet = batchNet({ status: 'ended' })
   brokenNet.impl0 = brokenNet.impl; brokenNet.impl = async (url, init) => String(url).includes('/batches/') ? (() => { throw new Error('socket hang up') })() : brokenNet.impl0(url, init)
   ck = await checkAt({ world: q.world, net: brokenNet })
   check('Anthropic not answering when asked: the report keeps waiting (the next check asks again), nothing is lost or pushed', ck.json?.waiting === 1 && q.world.tables.ai_reports[0].status === 'queued' && q.world.tables.ai_reports[0].claimed_at === null && brokenNet.state.pushes.length === 0)
-  ck = await go(null, { request: schedReq({ action: 'report_check' }), world: wkWorld({ env: { ANTHROPIC_API_KEY: undefined } }), network: batchNet(), at: SUNDAY })
+  ck = await go(null, { request: schedReq({ action: 'report_check' }), world: wkWorld({ env: { ANTHROPIC_API_KEY: undefined } }), network: batchNet(), at: MAKE_AT })
   check('no API key: the check answers a plain sentence and asks nobody', ck.json?.ok === false && ck.net.seen.length === 0)
-  ck = await go(null, { request: schedReq({ action: 'report_check' }), world: wkWorld(), network: batchNet(), at: SUNDAY })
+  ck = await go(null, { request: schedReq({ action: 'report_check' }), world: wkWorld(), network: batchNet(), at: MAKE_AT })
   check('nothing queued: a check does nothing and asks nobody (the timer would not even have called)', ck.json?.ok === true && ck.json.checked === 0 && ck.net.seen.length === 0)
   check('batch.ts: the batch id is read only from the report row, and the text of an answer is never used as an id, an address or a target', !/answer\.text.*batch|batchStatus\([^)]*(text|answer)/.test(parts['batch.ts']) && /report\.batch_id/.test(parts['batch.ts']) && !/\bnew URL\(|fetch\(/.test(parts['batch.ts']))
   check('the batch calls are in the provider part only (create, retrieve, results)', only(/messages\.batches\./).join() === 'provider-anthropic.ts')
