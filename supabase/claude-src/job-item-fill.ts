@@ -89,7 +89,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-20.1'
+const ITEM_FILL_VERSION = '2026-11-22.1'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }
@@ -127,6 +127,21 @@ const ITEM_FILL_ANSWER_SCHEMA: JsonSchema = {
   },
 }
 
+/** The instructions as sent: the shape is part of them, since Anthropic does not enforce it for this job (types.ts). */
+const ITEM_FILL_INSTRUCTIONS_WITH_SHAPE = `${ITEM_FILL_INSTRUCTIONS}
+
+# Your answer
+
+Answer with one JSON object and nothing else: no words before or after it, no code fence. Leave out every field the sentence does not give; an empty object {} is a valid answer. The object follows this JSON Schema:
+
+${JSON.stringify(ITEM_FILL_ANSWER_SCHEMA)}`
+
+/** The answer's text, without a markdown code fence around it if the model added one anyway. Nothing else is cut. */
+function itemFillJsonText(answerText: string): string {
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(answerText.trim())
+  return fenced ? fenced[1] : answerText.trim()
+}
+
 const ITEM_FILL_TIME_ZONE = 'Europe/Oslo'
 
 /** Today as the owner's calendar and clock show it: the weekday, the day (YYYY-MM-DD) and the time (HH:MM). */
@@ -152,8 +167,9 @@ export const ITEM_FILL_JOB: JobDefinition = {
   callers: ['app'],
   version: ITEM_FILL_VERSION,
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
-  instructions: ITEM_FILL_INSTRUCTIONS,
+  instructions: ITEM_FILL_INSTRUCTIONS_WITH_SHAPE,
   answerSchema: ITEM_FILL_ANSWER_SCHEMA,
+  enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/job-item-fill.ts', 'src/features/items/itemFill.ts'],
 
   prepare(input: unknown, now: Date) {
@@ -169,7 +185,7 @@ export const ITEM_FILL_JOB: JobDefinition = {
       read(answerText: string): AnswerCheck {
         let raw: unknown
         try {
-          raw = JSON.parse(answerText)
+          raw = JSON.parse(itemFillJsonText(answerText))
         } catch {
           return { ok: false, problem: 'it was not JSON' }
         }

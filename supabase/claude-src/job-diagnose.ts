@@ -26,6 +26,7 @@ export const DIAGNOSE_JOB: JobDefinition = {
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 512 },
   instructions: DIAGNOSE_INSTRUCTIONS,
   answerSchema: null,
+  enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/job-diagnose.ts', 'supabase/claude-src/diagnose.ts'],
 
   // It takes no input: whatever the request sent is ignored, and the question is always the same.

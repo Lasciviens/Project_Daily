@@ -350,7 +350,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const fillAbout = about.jobs.find(j => j.name === 'item_fill')
   const diagAbout = about.jobs.find(j => j.name === 'diagnose')
   check('the job list is item_fill and diagnose: diagnose is a tiny one-shot, app only, no tools, no answer shape', same(about.jobs.map(j => j.name), ['item_fill', 'diagnose']) && diagAbout.kind === 'one_shot' && same(diagAbout.callers, ['app']) && same(diagAbout.tools, []) && diagAbout.answerSchema === null && diagAbout.defaults.maxOutputTokens <= 512 && diagAbout.defaults.effort === 'low' && !diagAbout.features.some(f => /Structured output/.test(f)), diagAbout)
-  check('item_fill: Haiku 5.5, low effort, 2000 tokens, app only, no tools, structured output', fillAbout && fillAbout.kind === 'one_shot' && same(fillAbout.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 }) && same(fillAbout.callers, ['app']) && same(fillAbout.tools, []) && fillAbout.answerSchema?.additionalProperties === false && fillAbout.features.some(f => /Structured output/.test(f)), fillAbout && { ...fillAbout, instructions: '…' })
+  check('item_fill: Haiku 5.5, low effort, 2000 tokens, app only, no tools, a fixed answer shape written into its instructions', fillAbout && fillAbout.kind === 'one_shot' && same(fillAbout.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 }) && same(fillAbout.callers, ['app']) && same(fillAbout.tools, []) && fillAbout.answerSchema?.additionalProperties === false && fillAbout.features.some(f => /fixed answer shape/.test(f)), fillAbout && { ...fillAbout, instructions: '…' })
   check('the answer schema has 21 optional fields and no required list, format, pattern, limit or null union (the provider\'s own rules)', (() => {
     const p = fillAbout.answerSchema.properties
     const text = JSON.stringify(fillAbout.answerSchema)
@@ -374,13 +374,13 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the anthropic-version header is the one the description states', sent.headers['anthropic-version'] === about.provider.apiVersion, sent.headers['anthropic-version'])
   const body = JSON.parse(sent.body)
   const expectedUser = `<now>\nWednesday 2026-11-11, 14:30. Time zone: Europe/Oslo.\n</now>\n<sentence>\n${SENTENCE}\n</sentence>`
-  check('the request body is exactly the contract\'s: model, max_tokens, one cached instructions block, the user part, adaptive thinking, effort and the schema',
+  check('the request body is exactly the contract\'s: model, max_tokens, one cached instructions block, the user part, adaptive thinking and effort — no enforced answer shape (Anthropic could not prepare it in time, 22.11.2026)',
     same(sorted(body), sorted({
       model: 'claude-haiku-5-5', max_tokens: 2000,
       system: [{ type: 'text', text: fillAbout.instructions, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: expectedUser }],
       thinking: { type: 'adaptive', display: 'summarized' },
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: fillAbout.answerSchema } },
+      output_config: { effort: 'low' },
     })), { keys: Object.keys(body), user: body.messages?.[0]?.content })
   check('no temperature, top_p, top_k, prefill or stream in the request', !('temperature' in body) && !('top_p' in body) && !('top_k' in body) && !('stream' in body) && body.messages.length === 1 && body.messages[0].role === 'user')
   check('the fixed instructions hold no date, no name, nothing that changes (they are cached), and the date goes after them', !/2026-11-11|Wednesday 2026/.test(body.system[0].text) && /<now>/.test(body.messages[0].content))
@@ -432,7 +432,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('a stop reason that is not a short lower-case word is stored as "unknown" (the column holds 60)', r.row.stop_reason === 'unknown', r.row.stop_reason)
   const hostile = [
     ['text that is not JSON', 'Sure! Here is your fill.', 'invalid'],
-    ['JSON in a markdown fence', '```json\n{"title":"A"}\n```', 'invalid'],
+    ['words before the JSON', 'Here it is: {"title":"A"}', 'invalid'],
     ['a JSON array', '[{"title":"A"}]', 'invalid'],
     ['JSON null', 'null', 'invalid'],
     ['an empty answer', '', 'invalid'],
@@ -441,6 +441,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text }] })) })
     check(`${name}: ${outcome}, thrown away, billed, written`, r.json?.reason === outcome && r.row.outcome === outcome && r.row.cost_usd > 0 && !('result' in r.json), [r.text.slice(0, 160), r.row?.outcome])
   }
+  r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: '```json\n{"title":"A"}\n```' }] })) })
+  check('JSON in a markdown fence: the fence is taken off and the object checked as always (no enforced shape, 22.11.2026)', r.json?.ok === true && r.json.result.fill.title === 'A', r.text.slice(0, 160))
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: JSON.stringify({ title: 'Meet', url: 'https://evil.example.com/x', link: 'javascript:alert(1)', date: '2026-02-31', startTime: '25:99', repeat: 'hourly', alerts: [7], priority: 'urgent', durationMinutes: 'long' }) }] })) })
   check('a fill with a link, a made-up date, a time that is not one, a repeat or alert off the lists: ok, and every bad value dropped, never repaired',
     r.json?.ok === true && r.json.result.fill.title === 'Meet' && !/evil\.example|javascript|2026-02-31|25:99|hourly|urgent/.test(JSON.stringify(r.json.result)) && !('url' in r.json.result.fill) && !('alerts' in r.json.result.fill && r.json.result.fill.alerts.includes(7)), r.json?.result)
@@ -624,7 +626,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     && res0.p_instructions_version === ITEM_FILL_JOB.version && res0.p_budget === 5 && res0.p_job_budget === 5 && res0.p_per_minute === 20 && res0.p_per_day === 600 && typeof res0.p_worst_cost === 'number', res0)
   check('the user id is the verified one even when the request names another', (await go({ ...runBody(), user_id: STRANGER, p_user: STRANGER })).world.reserves[0].p_user === OWNER)
   check('the worst cost is at least the real cost (here 5000+ prompt characters at the dearest prompt price plus the whole 2000-token answer limit)', res0.p_worst_cost >= x.row.cost_usd && res0.p_worst_cost > 0.001 && res0.p_worst_cost < 0.01, [res0.p_worst_cost, x.row.cost_usd])
-  const promptChars = ITEM_FILL_JOB.instructions.length + JSON.stringify(ITEM_FILL_JOB.answerSchema).length + expectedUser.length
+  const promptChars = ITEM_FILL_JOB.instructions.length + expectedUser.length
   check('…worked out as ½ token per character at the 1-hour cache-write price, plus max_tokens at the output price',
     near(res0.p_worst_cost, (Math.ceil(promptChars / 2) * 0.2 + 2000 * 0.5) / 1e6), [res0.p_worst_cost, promptChars])
   f = await forged(null, { model: 'claude-opus-5-5', max_output_tokens: 16000 })
@@ -706,7 +708,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('findJob finds item_fill and nothing else', findJob('item_fill') === ITEM_FILL_JOB && findJob('__proto__') === null && findJob(undefined) === null && findJob(['item_fill']) === null && findJob({ toString: () => 'item_fill' }) === null)
   // The version is pinned to a hash of what the model is told: change the instructions or the schema and this fails
   // until the version is bumped (job-item-fill.ts) and the new pair is added below.
-  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3' }
+  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3', '2026-11-22.1': '12b955a313f710fc' }
   const hash = crypto.createHash('sha256').update(`${ITEM_FILL_JOB.instructions}\n${JSON.stringify(ITEM_FILL_JOB.answerSchema)}`).digest('hex').slice(0, 16)
   check('the item_fill version names the instructions and schema it was made with (a change to either needs a new version, then a new pin here)',
     PINNED[ITEM_FILL_JOB.version] === hash, `version ${ITEM_FILL_JOB.version}, hash of the instructions and schema is ${hash} (pinned: ${PINNED[ITEM_FILL_JOB.version] ?? 'none for this version'})`)
@@ -750,7 +752,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     const u = String(url)
     if (u.includes('/v1/models')) return over.list ? over.list(url, init) : answerWith(200, MODEL_LIST)
     if (u.includes('/count_tokens')) return over.count ? over.count(url, init) : answerWith(200, { input_tokens: 2774 })
-    const isFill = !!JSON.parse(init.body).output_config?.format
+    const isFill = JSON.parse(init.body).messages[0].content.includes('<sentence>')
     const custom = isFill ? over.fill : over.tiny
     return custom ? custom(url, init) : answerWith(200, isFill ? message() : TINY())
   })
@@ -789,9 +791,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('no service key or publishable key goes to Anthropic', leaks(JSON.stringify(dn.seen)).filter(k => k !== KEY).length === 0)
   const countBody = JSON.parse(dn.seen[1].body), tinyBody = JSON.parse(dn.seen[2].body), fillBody = JSON.parse(dn.seen[3].body)
   const { max_tokens: fillMax, ...fillRest } = fillBody
-  check('step 2 counts ✨\'s real request: the same body a run sends, but for the answer limit', same(sorted(countBody), sorted(fillRest)) && fillMax === 2000 && !('max_tokens' in countBody) && countBody.messages[0].content.includes(SENTENCE) && countBody.output_config.format.type === 'json_schema', Object.keys(countBody))
+  check('step 2 counts ✨\'s real request: the same body a run sends, but for the answer limit', same(sorted(countBody), sorted(fillRest)) && fillMax === 2000 && !('max_tokens' in countBody) && countBody.messages[0].content.includes(SENTENCE) && !('format' in countBody.output_config), Object.keys(countBody))
   check('step 3 is a tiny question with no answer shape: "Reply with the word OK.", low effort, a small limit', tinyBody.messages[0].content === 'Reply with the word OK.' && !('format' in (tinyBody.output_config ?? {})) && tinyBody.output_config.effort === 'low' && tinyBody.max_tokens <= 512, tinyBody)
-  check('step 4 is ✨\'s own request: the made-up sentence and the real schema, as a run sends it', fillBody.messages[0].content.includes(`<sentence>\n${SENTENCE}\n</sentence>`) && same(sorted(fillBody.output_config.format.schema), sorted(fillAbout.answerSchema)) && fillBody.system[0].text === fillAbout.instructions, fillBody.messages)
+  check('step 4 is ✨\'s own request: the made-up sentence, the shape inside the instructions, as a run sends it', fillBody.messages[0].content.includes(`<sentence>\n${SENTENCE}\n</sentence>`) && !('format' in fillBody.output_config) && fillBody.system[0].text === fillAbout.instructions && fillBody.system[0].text.includes(JSON.stringify(fillAbout.answerSchema)), fillBody.messages)
   check('the time limits: 20 s for the list, the count and the tiny answer, 90 s for ✨\'s request', same(timers, [20000, 20000, 20000, 90000]), timers)
   used()
   r = await go(runBody())

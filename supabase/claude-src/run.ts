@@ -109,7 +109,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     effort: settings.effort,
     instructions: job.instructions,
     userText: prepared.userText,
-    answerSchema: job.answerSchema,
+    answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
     ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
   }
 
@@ -117,7 +117,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
   //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
   const worstCost = worstCostOf(
-    request.model, request.instructions.length + request.userText.length + JSON.stringify(request.answerSchema ?? '').length, request.maxOutputTokens,
+    request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,

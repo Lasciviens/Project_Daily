@@ -154,6 +154,13 @@ interface JobDefinition {
   defaults: { model: string; effort: Effort; maxOutputTokens: number }
   instructions: string
   answerSchema: JsonSchema | null
+  /**
+   * true: the provider enforces the shape (Anthropic's structured output). false: the shape is written into the
+   * instructions and only our own check holds the answer to it. ✨ is false: Anthropic could not prepare its shape
+   * (21 optional fields) within 90 s in production, while the same request without it answers in about a second
+   * (Diagnose, 22.11.2026).
+   */
+  enforceAnswerSchema: boolean
   /** Repo-relative paths of the files that define this job. */
   sourceFiles: readonly string[]
   /** Checks the input. Answers why it can't be used, or the prompt's live part with the reader of its answer. */
@@ -1347,7 +1354,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-20.1'
+const ITEM_FILL_VERSION = '2026-11-22.1'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }
@@ -1385,6 +1392,21 @@ const ITEM_FILL_ANSWER_SCHEMA: JsonSchema = {
   },
 }
 
+/** The instructions as sent: the shape is part of them, since Anthropic does not enforce it for this job (types.ts). */
+const ITEM_FILL_INSTRUCTIONS_WITH_SHAPE = `${ITEM_FILL_INSTRUCTIONS}
+
+# Your answer
+
+Answer with one JSON object and nothing else: no words before or after it, no code fence. Leave out every field the sentence does not give; an empty object {} is a valid answer. The object follows this JSON Schema:
+
+${JSON.stringify(ITEM_FILL_ANSWER_SCHEMA)}`
+
+/** The answer's text, without a markdown code fence around it if the model added one anyway. Nothing else is cut. */
+function itemFillJsonText(answerText: string): string {
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(answerText.trim())
+  return fenced ? fenced[1] : answerText.trim()
+}
+
 const ITEM_FILL_TIME_ZONE = 'Europe/Oslo'
 
 /** Today as the owner's calendar and clock show it: the weekday, the day (YYYY-MM-DD) and the time (HH:MM). */
@@ -1410,8 +1432,9 @@ const ITEM_FILL_JOB: JobDefinition = {
   callers: ['app'],
   version: ITEM_FILL_VERSION,
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
-  instructions: ITEM_FILL_INSTRUCTIONS,
+  instructions: ITEM_FILL_INSTRUCTIONS_WITH_SHAPE,
   answerSchema: ITEM_FILL_ANSWER_SCHEMA,
+  enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/job-item-fill.ts', 'src/features/items/itemFill.ts'],
 
   prepare(input: unknown, now: Date) {
@@ -1427,7 +1450,7 @@ const ITEM_FILL_JOB: JobDefinition = {
       read(answerText: string): AnswerCheck {
         let raw: unknown
         try {
-          raw = JSON.parse(answerText)
+          raw = JSON.parse(itemFillJsonText(answerText))
         } catch {
           return { ok: false, problem: 'it was not JSON' }
         }
@@ -1465,6 +1488,7 @@ const DIAGNOSE_JOB: JobDefinition = {
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 512 },
   instructions: DIAGNOSE_INSTRUCTIONS,
   answerSchema: null,
+  enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/job-diagnose.ts', 'supabase/claude-src/diagnose.ts'],
 
   // It takes no input: whatever the request sent is ignored, and the question is always the same.
@@ -1597,7 +1621,7 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
     effort: settings.effort,
     instructions: job.instructions,
     userText: prepared.userText,
-    answerSchema: job.answerSchema,
+    answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
     ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
   }
 
@@ -1605,7 +1629,7 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
   //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
   const worstCost = worstCostOf(
-    request.model, request.instructions.length + request.userText.length + JSON.stringify(request.answerSchema ?? '').length, request.maxOutputTokens,
+    request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
@@ -1841,7 +1865,7 @@ async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
     if (!fillJob || !settings || 'problem' in prepared) return { ok: false, detail: 'The ✨ request could not be built here.' }
     const request: ModelRequest = {
       model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, instructions: fillJob.instructions,
-      userText: prepared.userText, answerSchema: fillJob.answerSchema, timeoutMs: DIAGNOSE_SHORT_MS,
+      userText: prepared.userText, answerSchema: fillJob.enforceAnswerSchema ? fillJob.answerSchema : null, timeoutMs: DIAGNOSE_SHORT_MS,
     }
     const t0 = Date.now()
     const count = await provider.countTokens(request)
@@ -1947,7 +1971,9 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     tools: [],
     features: [
       'Prompt caching: the instructions are one cached block',
-      ...(job.answerSchema ? ['Structured output: the answer follows a JSON Schema'] : []),
+      ...(job.answerSchema ? [job.enforceAnswerSchema
+        ? 'Structured output: Anthropic holds the answer to a JSON Schema'
+        : 'A fixed answer shape, written into the instructions as a JSON Schema and checked by our own code'] : []),
       `Adaptive thinking (${job.defaults.effort} effort)`,
       'A summary of the thinking, kept in the text log',
     ],
