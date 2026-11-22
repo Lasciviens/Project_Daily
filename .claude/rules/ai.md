@@ -18,6 +18,7 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - Settings rows (`ai_settings`, `ai_job_settings`) are browser-writable, so they are input: models through the code's allow-list, numbers clamped to the code's limits ($50 a month at most).
 - Prices are code, never a table: the budget wall is worked out from them.
 - `ai_calls` is written only with the service role and the verified user id; the browser only reads it. A ledger write that fails never fails the answer.
+- An enforced answer shape (`enforceAnswerSchema: true`, Anthropic's structured output) stays small: ✨'s 21 optional fields hung for 90 s live (22.11.2026), so ✨ writes its shape into the instructions and our check holds the answer.
 - The `ai_*` ledger and settings tables never enter an assistant's catalog or tool list.
 - `item_fill` (✨) stays narrow: no tools, no data, nothing written, app callers only; the sentence goes in its own tag, escaped; the answer leaves only through `cleanItemFill` (`src/features/items/itemFill.ts`, copied in by the build script), which the browser runs again. The model is never asked for a link.
 

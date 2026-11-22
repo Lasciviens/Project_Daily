@@ -148,6 +148,13 @@ export interface JobDefinition {
   defaults: { model: string; effort: Effort; maxOutputTokens: number }
   instructions: string
   answerSchema: JsonSchema | null
+  /**
+   * true: the provider enforces the shape (Anthropic's structured output). false: the shape is written into the
+   * instructions and only our own check holds the answer to it. ✨ is false: Anthropic could not prepare its shape
+   * (21 optional fields) within 90 s in production, while the same request without it answers in about a second
+   * (Diagnose, 22.11.2026).
+   */
+  enforceAnswerSchema: boolean
   /** Repo-relative paths of the files that define this job. */
   sourceFiles: readonly string[]
   /** Checks the input. Answers why it can't be used, or the prompt's live part with the reader of its answer. */

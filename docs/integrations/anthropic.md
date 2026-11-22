@@ -145,6 +145,7 @@ What we send: the job's instructions, the conversation, and the data its tools r
 13. **A 429 can mean two things:** too many requests (retry after `retry-after`), or the monthly spend cap (don't retry: tell the owner).
 14. **The SDK retries by itself** (2 times by default, on 429, 5xx and connection errors) and its default timeout is 10 minutes. The function sets `maxRetries: 0` and a 30-second timeout: a retry after a timeout could be a second bill that nobody reserved (the first request may still be generated and billed), so one request is one generation and one reservation. A failed call is shown with its plain message and the owner tries again.
 15. **Images:** at most 8000×8000 px and 10 MB each, no animations. Tokens are about `⌈width/28⌉ × ⌈height/28⌉`, so a large photo costs up to a few thousand tokens. The app already shrinks photos before upload.
+16. **A large enforced answer shape can hang (seen live, 22.11.2026).** ✨'s shape (21 optional fields) sent as `output_config.format` got no answer within 90 s, twice, while the same request without it answered in about a second, and `count_tokens` accepted it in 0.2 s (Developer → AI → Diagnose). So ✨ now writes its JSON Schema into its instructions and leaves `format` out (`enforceAnswerSchema: false`); our own check (`cleanItemFill`) holds every field, as it always did. A job that enforces a shape keeps it small (few optional fields), and is tried with Diagnose before it ships.
 
 ## What Diagnose sends and reads (22.11.2026)
 

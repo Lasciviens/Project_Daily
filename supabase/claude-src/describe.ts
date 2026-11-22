@@ -78,7 +78,9 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     tools: [],
     features: [
       'Prompt caching: the instructions are one cached block',
-      ...(job.answerSchema ? ['Structured output: the answer follows a JSON Schema'] : []),
+      ...(job.answerSchema ? [job.enforceAnswerSchema
+        ? 'Structured output: Anthropic holds the answer to a JSON Schema'
+        : 'A fixed answer shape, written into the instructions as a JSON Schema and checked by our own code'] : []),
       `Adaptive thinking (${job.defaults.effort} effort)`,
       'A summary of the thinking, kept in the text log',
     ],

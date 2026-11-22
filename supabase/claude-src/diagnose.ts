@@ -117,7 +117,7 @@ export async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
     if (!fillJob || !settings || 'problem' in prepared) return { ok: false, detail: 'The ✨ request could not be built here.' }
     const request: ModelRequest = {
       model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, instructions: fillJob.instructions,
-      userText: prepared.userText, answerSchema: fillJob.answerSchema, timeoutMs: DIAGNOSE_SHORT_MS,
+      userText: prepared.userText, answerSchema: fillJob.enforceAnswerSchema ? fillJob.answerSchema : null, timeoutMs: DIAGNOSE_SHORT_MS,
     }
     const t0 = Date.now()
     const count = await provider.countTokens(request)
