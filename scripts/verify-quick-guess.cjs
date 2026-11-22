@@ -260,5 +260,16 @@ check('a one-off line with kcal is a guess; a food, a recipe, a scheduled dose, 
   Q.isGuessLine({ library_ingredient_id: null, recipe_id: null, supplement_schedule_id: 'sch-1' }, 5),
 ], [true, false, false, false, false, false, false])
 
+console.log('"Describe it" answers from your own entries first (AI last)')
+const mine = [{ ...Q.itemToPreset({ id: 'p1', name: 'Oat Latte', icon: null, portion: 'a mug', calories: 180, protein_g: 5, carbs_g: 24, fat_g: 7, sugar_g: 10, sort_order: 0, options: [] }) }]
+const earlier = [{ key: 'c:kebab', title: 'Kebab', count: 3, kcal: 700, protein: 35, carbs: 60, fat: 30, sugar: 5 }]
+check('a preset name, in any case and spacing, is answered from the preset', Q.matchKnownGuess('  oat   LATTE ', mine, earlier), { title: 'Oat Latte', portion: 'a mug', kcal: 180, protein: 5, carbs: 24, fat: 7, sugar: 10, assumptions: [], from: 'preset' })
+check('an earlier diary title is answered from it', Q.matchKnownGuess('kebab', mine, earlier)?.from, 'diary')
+check('…with its per-portion values', [Q.matchKnownGuess('Kebab', mine, earlier).kcal, Q.matchKnownGuess('Kebab', mine, earlier).protein], [700, 35])
+check('a preset wins over an earlier line with the same name', Q.matchKnownGuess('Kebab', [{ ...mine[0], title: 'Kebab' }], earlier)?.from, 'preset')
+check('a longer description is not a match (the AI is asked)', [Q.matchKnownGuess('two kebabs and a cola', mine, earlier), Q.matchKnownGuess('Oat Latte with syrup', mine, earlier)], [null, null])
+check('an empty or blank description is not a match', [Q.matchKnownGuess('', mine, earlier), Q.matchKnownGuess('   ', mine, earlier)], [null, null])
+check('the sheet says so in words', Q.KNOWN_GUESS_NOTE, { preset: 'From your preset — no AI used', diary: 'From your earlier entry — no AI used' })
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

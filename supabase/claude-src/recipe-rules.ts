@@ -59,8 +59,6 @@ export function checkedNutrition(raw: unknown): Record<NutritionKey, number | nu
  */
 export function cleanRecipe(raw: unknown): { ok: true; recipe: RecipeFields } | { ok: false; problem: string } {
   if (!isPlainObject(raw)) return { ok: false, problem: 'it was not a recipe' }
-  const title = checkedLine(answerValue(raw, 'title'), RECIPE_LIMITS.title)
-  if (!title) return { ok: false, problem: 'it gave no title' }
   const ingredients: RecipeFields['ingredients'] = []
   for (const item of checkedList(answerValue(raw, 'ingredients'), RECIPE_LIMITS.ingredients)) {
     if (!isPlainObject(item)) continue
@@ -74,7 +72,10 @@ export function cleanRecipe(raw: unknown): { ok: true; recipe: RecipeFields } | 
       note: checkedLine(answerValue(item, 'note'), RECIPE_LIMITS.note),
     })
   }
+  // No ingredients is checked before the title: a text that is not a recipe has neither, and that is the clearer thing to say.
   if (!ingredients.length) return { ok: false, problem: 'it found no ingredients, so the text is probably not a recipe' }
+  const title = checkedLine(answerValue(raw, 'title'), RECIPE_LIMITS.title)
+  if (!title) return { ok: false, problem: 'it gave no title' }
   const servings = checkedNumber(answerValue(raw, 'servings'), 1, RECIPE_LIMITS.servingsMax)
   const steps: string[] = []
   for (const step of checkedList(answerValue(raw, 'steps'), RECIPE_LIMITS.steps)) {

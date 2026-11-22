@@ -256,6 +256,11 @@ export function jobTitleOf(jobs: readonly Pick<DescribeJob, 'name' | 'title'>[] 
   return jobs?.find(j => j.name === name)?.title || name
 }
 
+/** What a ledger row names as its model: a row for work code did alone (provider `page`) says so; any other shows the model id. */
+export function callModelLabel(call: { provider: string; model: string }): string {
+  return call.provider === 'page' ? 'Read by code, no AI' : call.model
+}
+
 /** A model's name from the function's own list; one it no longer lists shows its id. */
 export function modelNameOf(models: Describe['models'] | undefined, id: string): string {
   return models?.find(m => m.id === id)?.name || id

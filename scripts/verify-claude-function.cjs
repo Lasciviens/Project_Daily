@@ -68,7 +68,7 @@ const builtCode = sucrase.transform(
   builtSource.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''),
   { transforms: ['typescript'] },
 ).code
-const EXPOSED = ['costOf', 'hideSecrets', 'trimText', 'trimForLog', 'settingsFor', 'readCapped', 'ownValue', 'MODEL_PRICES', 'ITEM_FILL_JOB', 'RECIPE_FROM_TEXT_JOB', 'RECIPE_FROM_LINK_JOB', 'RECIPE_MACROS_JOB', 'QUICK_GUESS_JOB', 'QUICK_GUESS_OPTIONS_JOB', 'isPrivateHost', 'fetchPage', 'recipeFromPage', 'pageVisibleText', 'findJob', 'describeFunction', 'gateOf']
+const EXPOSED = ['costOf', 'hideSecrets', 'trimText', 'trimForLog', 'settingsFor', 'readCapped', 'ownValue', 'MODEL_PRICES', 'ITEM_FILL_JOB', 'RECIPE_FROM_TEXT_JOB', 'RECIPE_FROM_LINK_JOB', 'RECIPE_MACROS_JOB', 'QUICK_GUESS_JOB', 'QUICK_GUESS_OPTIONS_JOB', 'isPrivateHost', 'fetchPage', 'recipeFromPage', 'pageVisibleText', 'findJob', 'describeFunction', 'gateOf', 'requestTimeoutMs', 'readAnswerObject', 'itemFillNowText']
 
 const FIXED_NOW = new Date('2026-11-11T13:30:00Z') // Wednesday 11.11.2026, 14:30 in Oslo
 class FixedDate extends Date {
@@ -385,7 +385,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('no service key or publishable key goes to Anthropic', leaks(sent.body, JSON.stringify(sent.headers), sent.url).filter(k => k !== KEY).length === 0)
   check('the anthropic-version header is the one the description states', sent.headers['anthropic-version'] === about.provider.apiVersion, sent.headers['anthropic-version'])
   const body = JSON.parse(sent.body)
-  const expectedUser = `<now>\nWednesday 2026-11-11, 14:30. Time zone: Europe/Oslo.\n</now>\n<sentence>\n${SENTENCE}\n</sentence>`
+  const expectedUser = `<now>\nWednesday 2026-11-11, 14:30. Time zone: Europe/Oslo.\nThe next 14 days: Thursday 2026-11-12, Friday 2026-11-13, Saturday 2026-11-14, Sunday 2026-11-15, Monday 2026-11-16, Tuesday 2026-11-17, Wednesday 2026-11-18, Thursday 2026-11-19, Friday 2026-11-20, Saturday 2026-11-21, Sunday 2026-11-22, Monday 2026-11-23, Tuesday 2026-11-24, Wednesday 2026-11-25.\nNext week's Monday: 2026-11-16.\n</now>\n<sentence>\n${SENTENCE}\n</sentence>`
   check('the request body is exactly the contract\'s: model, max_tokens, one cached instructions block, the user part, adaptive thinking and effort — no enforced answer shape (Anthropic could not prepare it in time, 22.11.2026)',
     same(sorted(body), sorted({
       model: 'claude-haiku-5-5', max_tokens: 2000,
@@ -444,8 +444,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('a stop reason that is not a short lower-case word is stored as "unknown" (the column holds 60)', r.row.stop_reason === 'unknown', r.row.stop_reason)
   const hostile = [
     ['text that is not JSON', 'Sure! Here is your fill.', 'invalid'],
-    ['words before the JSON on the same line', 'Here it is: {"title":"A"}', 'invalid'],
-    ['a note, then an object followed by more words', 'Tuesday is the 24th.\n{"title":"A"}\nHope that helps', 'invalid'],
+    ['two objects that are not JSON, a stray brace and no object', 'use { braces } like this {x}', 'invalid'],
+    ['an array followed by a note', '[{"title":"A"}]\nHope that helps', 'invalid'],
     ['a JSON array', '[{"title":"A"}]', 'invalid'],
     ['JSON null', 'null', 'invalid'],
     ['an empty answer', '', 'invalid'],
@@ -456,6 +456,20 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   }
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: 'Today is Sunday 2026-11-22, so the next Tuesday is 2026-11-24.\n\n{"title":"Dentist","date":"2026-11-24"}' }] })) })
   check('a note of working-out, then the object on its own line (seen live 22.11.2026): the note is dropped, the object checked', r.json?.ok === true && r.json.result.fill.title === 'Dentist' && r.json.result.fill.date === '2026-11-24', r.text.slice(0, 160))
+  for (const [name, text] of [
+    ['JSON followed by a trailing note', '{"title":"A"}\n\nHope that helps!'],
+    ['a note and the object on the same line', 'Tuesday is the 24th. {"title":"A"}'],
+    ['a note followed by a code fence', 'Tuesday is the 24th, so:\n```json\n{"title":"A"}\n```'],
+    ['a note with a stray brace, the object, then a note with braces', 'Use { for the shape: {"title":"A","notes":"a } in a text"}\nNote: {x}'],
+    ['JSON, then a second object that is not JSON', '{"title":"A"} {oops}'],
+  ]) {
+    r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text }] })) })
+    check(`${name}: the last top-level object that parses is used`, r.json?.ok === true && r.json.result.fill.title === 'A', r.text.slice(0, 160))
+  }
+  r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: '{"title":"First"}\nNo, better: {"title":"Second"}' }] })) })
+  check('two objects: the last one wins; a nested object is never taken for the answer', r.json?.ok === true && r.json.result.fill.title === 'Second', r.text.slice(0, 160))
+  r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: '{"title":"A","place":{"x":1}} note' }] })) })
+  check('an object with a nested object and a note: the whole object is read (the inner one is not the answer)', r.json?.ok === true && r.json.result.fill.title === 'A', r.text.slice(0, 160))
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: '```json\n{"title":"A"}\n```' }] })) })
   check('JSON in a markdown fence: the fence is taken off and the object checked as always (no enforced shape, 22.11.2026)', r.json?.ok === true && r.json.result.fill.title === 'A', r.text.slice(0, 160))
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: JSON.stringify({ title: 'Meet', url: 'https://evil.example.com/x', link: 'javascript:alert(1)', date: '2026-02-31', startTime: '25:99', repeat: 'hourly', alerts: [7], priority: 'urgent', durationMinutes: 'long' }) }] })) })
@@ -475,6 +489,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['401 wrong key', () => answerWith(401, errorBody('authentication_error', 'invalid x-api-key')), /ANTHROPIC_API_KEY/, false],
     ['403 not allowed', () => answerWith(403, errorBody('permission_error', 'Not allowed')), /ANTHROPIC_API_KEY/, false],
     ['402 billing', () => answerWith(402, errorBody('billing_error', 'Your credit balance is too low.')), /billing reason/, false],
+    ['400 Console spend limit', () => answerWith(400, errorBody('invalid_request_error', 'You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC.')), /monthly spend limit in Anthropic's Console is reached/, false],
     ['400 bad request', () => answerWith(400, errorBody('invalid_request_error', 'max_tokens: too large')), /did not accept the request/, false],
     ['404 no such model', () => answerWith(404, errorBody('not_found_error', 'model: claude-x')), /did not accept the request/, false],
   ]
@@ -642,10 +657,10 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the user id is the verified one even when the request names another', (await go({ ...runBody(), user_id: STRANGER, p_user: STRANGER })).world.reserves[0].p_user === OWNER)
   check('the worst cost is at least the real cost (here 5000+ prompt characters at the dearest prompt price plus the whole 2000-token answer limit)', res0.p_worst_cost >= x.row.cost_usd && res0.p_worst_cost > 0.001 && res0.p_worst_cost < 0.01, [res0.p_worst_cost, x.row.cost_usd])
   const promptChars = ITEM_FILL_JOB.instructions.length + expectedUser.length
-  check('…worked out as ½ token per character at the 1-hour cache-write price, plus max_tokens at the output price',
-    near(res0.p_worst_cost, (Math.ceil(promptChars / 2) * 0.2 + 2000 * 0.5) / 1e6), [res0.p_worst_cost, promptChars])
+  check('…worked out as one token per character plus 1000 at the 1-hour cache-write price, plus max_tokens at the output price',
+    near(res0.p_worst_cost, ((promptChars + 1000) * 0.2 + 2000 * 0.5) / 1e6), [res0.p_worst_cost, promptChars])
   f = await forged(null, { model: 'claude-opus-5-5', max_output_tokens: 16000 })
-  check('a bigger model and a bigger answer limit reserve more: Opus with 16000 tokens', near(f.y.world.reserves[0].p_worst_cost, (Math.ceil(promptChars / 2) * 8 + 16000 * 20) / 1e6) && f.y.world.reserves[0].p_worst_cost > res0.p_worst_cost * 20, f.y.world.reserves[0].p_worst_cost)
+  check('a bigger model and a bigger answer limit reserve more: Opus with 16000 tokens', near(f.y.world.reserves[0].p_worst_cost, ((promptChars + 1000) * 8 + 16000 * 20) / 1e6) && f.y.world.reserves[0].p_worst_cost > res0.p_worst_cost * 20, f.y.world.reserves[0].p_worst_cost)
   check('the job\'s own budget goes to the reservation too', (await go(runBody(), { world: { jobRow: { monthly_budget_usd: '2.50' } } })).world.reserves[0].p_job_budget === 2.5)
   check('after the answer the reserved row is UPDATED by its id and the verified user (never inserted twice), with the real numbers',
     x.world.updates.length === 1 && x.world.updates[0].filters.id === x.row.id && x.world.updates[0].filters.user_id === OWNER && !('id' in x.world.updates[0].values) && !('user_id' in x.world.updates[0].values) && x.world.calls.length === 1 && x.row.outcome === 'ok' && x.row.cost_usd === 0.000177, x.world.updates[0]?.filters)
@@ -723,7 +738,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('findJob finds item_fill and nothing else', findJob('item_fill') === ITEM_FILL_JOB && findJob('__proto__') === null && findJob(undefined) === null && findJob(['item_fill']) === null && findJob({ toString: () => 'item_fill' }) === null)
   // The version is pinned to a hash of what the model is told: change the instructions or the schema and this fails
   // until the version is bumped (job-item-fill.ts) and the new pair is added below.
-  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3', '2026-11-22.1': '12b955a313f710fc', '2026-11-22.2': 'c2de985b66e3c3f4' }
+  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3', '2026-11-22.1': '12b955a313f710fc', '2026-11-22.2': 'c2de985b66e3c3f4', '2026-11-22.3': '8dbddc2f72f09026' }
   const hash = crypto.createHash('sha256').update(`${ITEM_FILL_JOB.instructions}\n${JSON.stringify(ITEM_FILL_JOB.answerSchema)}`).digest('hex').slice(0, 16)
   check('the item_fill version names the instructions and schema it was made with (a change to either needs a new version, then a new pin here)',
     PINNED[ITEM_FILL_JOB.version] === hash, `version ${ITEM_FILL_JOB.version}, hash of the instructions and schema is ${hash} (pinned: ${PINNED[ITEM_FILL_JOB.version] ?? 'none for this version'})`)
@@ -922,7 +937,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
 
   // ── recipe_from_text ──
   const RECIPE_TEXT = 'Pancakes (4 servings): 2 cups flour, 2 eggs, a pinch of salt. Mix, then fry.'
+  used()
   r = await runJobWith('recipe_from_text', { text: RECIPE_TEXT }, GOOD_RECIPE)
+  check('recipe_from_text (4000 tokens at most) gets 50 s, not the 30 s of ✨: the limit follows the job\'s longest answer', same(used(), [50000]))
   let b = sentBody(r)
   check('recipe_from_text: one fetch to Anthropic; the body is exactly model, max_tokens 4000, one cached instructions block, the text in its tag, adaptive thinking, low effort — and NO enforced answer shape',
     r.net.seen.length === 1 && same(sorted(b), sorted({ model: 'claude-haiku-5-5', max_tokens: 4000, system: [{ type: 'text', text: RECIPE_FROM_TEXT_JOB.instructions, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: `<recipe>\n${RECIPE_TEXT}\n</recipe>` }], thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: 'low' } })), { keys: Object.keys(b), oc: b.output_config })
@@ -946,7 +963,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('…servings 2.6 rounds to 3; macros with nothing usable are null', j9.result.servings === 3 && j9.result.macro_estimate === null, j9.result)
   j9 = await recipeOf({ ...GOOD_RECIPE, ingredients: Array.from({ length: 120 }, (_, i) => ({ name: `i${i}` })), steps: Array.from({ length: 120 }, (_, i) => `s${i}`) })
   check('…at most 80 ingredients and 80 steps are kept', j9.result.ingredients.length === 80 && j9.result.instructions.split('\n').length === 80, [j9.result.ingredients.length])
-  for (const [label, answer, why] of [['a title that is too long', { ...GOOD_RECIPE, title: 'T'.repeat(151) }, /no title/], ['no title', { ingredients: GOOD_RECIPE.ingredients }, /no title/], ['a title that is a number', { ...GOOD_RECIPE, title: 7 }, /no title/], ['no ingredient', { title: 'Pie', ingredients: [] }, /no ingredients/], ['ingredients that are not a list', { title: 'Pie', ingredients: 'flour' }, /no ingredients/], ['an empty object', {}, /no title/], ['a list', [GOOD_RECIPE], /not a JSON object/], ['not JSON', 'Sure! Here is your recipe: Pancakes', /not JSON/]]) {
+  for (const [label, answer, why] of [['a title that is too long', { ...GOOD_RECIPE, title: 'T'.repeat(151) }, /no title/], ['no title', { ingredients: GOOD_RECIPE.ingredients }, /no title/], ['a title that is a number', { ...GOOD_RECIPE, title: 7 }, /no title/], ['no ingredient', { title: 'Pie', ingredients: [] }, /no ingredients/], ['ingredients that are not a list', { title: 'Pie', ingredients: 'flour' }, /no ingredients/], ['an empty object', {}, /no ingredients/], ['a list', [GOOD_RECIPE], /not a JSON object/], ['not JSON', 'Sure! Here is your recipe: Pancakes', /not JSON/]]) {
     j9 = await recipeOf(answer)
     check(`recipe_from_text: ${label} is no recipe: invalid, with the reason`, j9?.ok === false && j9.reason === 'invalid' && why.test(j9.message), j9)
   }
@@ -1081,8 +1098,13 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
       { name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'baking powder', quantity: 1.5, unit: 'tsp', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null },
       { name: 'a pinch of salt', quantity: null, unit: null, note: null }, { name: 'milk', quantity: 1.5, unit: 'dl', note: null }, { name: 'butter, melted', quantity: 200, unit: 'g', note: null }, { name: '2-3 apples', quantity: null, unit: null, note: null },
     ], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 8, sugar_g: 5 }, usedAi: false }), L.json.result)
-  check('…NO model call, nothing reserved, no ledger row (a call that never reaches the model is not an AI call), and no call summary in the reply',
-    L.model.length === 0 && L.world.reserves.length === 0 && L.world.calls.length === 0 && L.world.rpcs.every(c => c.name !== 'ai_reserve') && !('call' in L.json), { model: L.model.length, reserves: L.world.reserves.length, calls: L.world.calls.length })
+  check('…NO model call and nothing reserved, but one finished zero-cost ledger row (so the rate caps count it): ok, provider "page", model "none", no effort, no tokens, a link only in the text log; the reply carries its summary',
+    L.model.length === 0 && L.world.reserves.length === 0 && L.world.rpcs.every(c => c.name !== 'ai_reserve') && L.world.calls.length === 1 && L.row.outcome === 'ok' && L.row.provider === 'page' && L.row.model === 'none' && L.row.effort === null && L.row.cost_usd === 0 && L.row.input_tokens === 0 && L.row.output_tokens === 0 && Number.isInteger(L.row.duration_ms) && L.row.job === 'recipe_from_link' && L.row.instructions_version === RECIPE_FROM_LINK_JOB.version && same(L.row.request, { read_by_code: PAGE_URL }) && L.json.call?.model === 'none' && L.json.call.cost_usd === 0 && L.json.call.id === L.row.id,
+    { model: L.model.length, reserves: L.world.reserves.length, calls: L.world.calls.length, row: L.row })
+  const noLog = await linkRun(PAGE_URL, { [PAGE_URL]: htmlPage(LD_PAGE) }, { world: { account: { monthly_budget_usd: 5, log_text: false } } })
+  check('…with the text log off the row holds no link at all', noLog.json?.source === 'page' && noLog.row?.request === null && !JSON.stringify(noLog.world.calls).includes('recipes.example'), noLog.row)
+  const flood = await linkRun(PAGE_URL, { [PAGE_URL]: htmlPage(LD_PAGE) }, { world: { gate: [{ ...GATE, calls_last_minute: 20 }] } })
+  check('…and because the row counts, a page read over the per-minute cap is busy, with no page fetched', flood.json?.reason === 'busy' && flood.asked.length === 0, flood.json)
   check('…the page was asked once, by hand (redirect: manual), as a GET with only a user agent and an accept header: no key, no token, nothing of the owner\'s',
     L.asked.length === 1 && L.asked[0].redirect === 'manual' && L.asked[0].method === 'GET' && same(Object.keys(L.asked[0].headers).sort(), ['accept', 'user-agent']) && leaks(JSON.stringify(L.asked), L.asked[0].url).length === 0, L.asked)
   check('…its name was looked up (A and AAAA) before it was fetched', L.world.dns.includes('recipes.example A') && L.world.dns.includes('recipes.example AAAA'), L.world.dns)
@@ -1179,7 +1201,50 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('recipe_from_link on a page that needs the model, with the budget used up: budget (the page was read, the model is not asked)', res.json?.reason === 'budget' && res.model.length === 0, res.json)
   res = await linkRun(PAGE_URL, { [PAGE_URL]: htmlPage(LD_PAGE) }, { world: { gate: [{ ...GATE, month_cost: 4.99999 }] } })
   check('…but a page that needs no model costs nothing, so the budget does not stop it', res.json?.source === 'page', res.json)
-  check('the link\'s own text is never in the ledger row, the request or a reply (only the page\'s words are)', !JSON.stringify([res.world.calls]).includes('recipes.example/pancakes'))
+  check('the link is never in a model request, and only a page read by code keeps it in its row (text log on)', !JSON.stringify(res.model).includes('recipes.example/pancakes'))
+
+  // ═══ hostile pages and answers must cost linear time (security review 22.11.2026: a 2 MB page took minutes) ═══
+  section('9 · linear time on hostile input')
+  const hot = load(makeWorld(), null)
+  const BIG = 2 * 1024 * 1024
+  const hostilePages = {
+    'a lone "<" 2 MB long': '<'.repeat(BIG),
+    'repeated "<!--" (no end)': '<!--'.repeat(BIG / 4),
+    'repeated "<script>" (no end)': '<script>'.repeat(BIG / 8),
+    'repeated "<script " (no ">")': '<script '.repeat(BIG / 8),
+    'repeated ld+json openers, no closer': '<script type=application/ld+json>'.repeat(Math.floor(BIG / 33)),
+    'repeated ld+json blocks': '<script type=application/ld+json>{}</script>'.repeat(Math.floor(BIG / 44)),
+    'one "<script" and many type attributes': '<script' + ' type=application/ld+json'.repeat(Math.floor(BIG / 25)),
+    'repeated "<p" (no ">")': '<p '.repeat(BIG / 3),
+    'repeated "</script" with spaces': '<script>' + '</script   '.repeat(BIG / 11),
+    'a 600 KB JSON-LD name of "<"': `<script type="application/ld+json">${JSON.stringify({ '@type': 'Recipe', name: '<'.repeat(590_000), recipeIngredient: ['1 egg'] })}</script>`,
+    'a JSON-LD name of "<" and 120 steps': `<script type="application/ld+json">${JSON.stringify({ '@type': 'Recipe', name: 'X', recipeIngredient: ['1 egg'], recipeInstructions: Array.from({ length: 100 }, () => '<'.repeat(5000)) })}</script>`,
+  }
+  for (const [name, html] of Object.entries(hostilePages)) {
+    let t0 = performance.now()
+    hot.recipeFromPage(html)
+    const a = performance.now() - t0
+    t0 = performance.now()
+    hot.pageVisibleText(html, 12000)
+    const b = performance.now() - t0
+    check(`${name} (${(html.length / 1024 / 1024).toFixed(1)} MB): recipeFromPage ${a.toFixed(0)} ms and pageVisibleText ${b.toFixed(0)} ms, both under 500 ms`, a < 500 && b < 500, { a, b })
+  }
+  const hostileAnswers = {
+    'many opening braces': '{'.repeat(60_000),
+    'many "{" and "}" pairs': '{}'.repeat(30_000),
+    'braces after an open string': '{"a":"' + '{'.repeat(60_000),
+    'nested braces never closed': '{"a":'.repeat(20_000),
+    'a long note with stray braces then an object': ('use { ' .repeat(10_000)) + '{"title":"A"}',
+  }
+  for (const [name, text] of Object.entries(hostileAnswers)) {
+    const t0 = performance.now()
+    const got = hot.readAnswerObject(text)
+    const ms = performance.now() - t0
+    check(`an answer of ${name} (${(text.length / 1024).toFixed(0)} KB): read in ${ms.toFixed(0)} ms (under 500)`, ms < 500 && (!got.ok || name === 'many "{" and "}" pairs'), { ms, got })
+  }
+  check('requestTimeoutMs: 30 s up to 2000 tokens, 10 s more for each further 1000, 100 s at most', hot.requestTimeoutMs(256) === 30000 && hot.requestTimeoutMs(2000) === 30000 && hot.requestTimeoutMs(4000) === 50000 && hot.requestTimeoutMs(4001) === 60000 && hot.requestTimeoutMs(16000) === 100000)
+  check('✨\'s <now> lists the next 14 days and next week\'s Monday, worked out by code (a Sunday: the Monday is the day after; a Monday: in 7 days)',
+    hot.itemFillNowText(new Date('2026-11-22T12:00:00Z')).includes("Next week's Monday: 2026-11-23") && hot.itemFillNowText(new Date('2026-11-23T12:00:00Z')).includes("Next week's Monday: 2026-11-30") && hot.itemFillNowText(new Date('2026-11-22T12:00:00Z')).includes('Tuesday 2026-11-24') && hot.itemFillNowText(new Date('2026-12-30T12:00:00Z')).includes('Friday 2027-01-01'), hot.itemFillNowText(new Date('2026-11-22T12:00:00Z')))
 
   // The SSRF guard of this function against the same lists the other fetchers are checked with.
   const BLOCKED_HOSTS = ['[::ffff:127.0.0.1]', '[::ffff:7f00:1]', '[::1]', '[fd00::1]', '127.1', '0x7f000001', '2130706433', '169.254.169.254', '10.0.0.1', '172.16.0.1', '192.168.1.1', '100.64.0.1', 'localhost', 'a.localhost', '224.0.0.1', '255.255.255.255', '0.0.0.0']

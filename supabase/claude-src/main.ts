@@ -53,18 +53,22 @@ async function isAppUser(userId: string): Promise<boolean> {
 }
 
 // The name lookup of the page fetch (page-fetch.ts): Deno's DNS question, with Deno's own errors turned into the
-// neutral ones the part knows. "No such record" is an empty list. A runtime that cannot look names up says
-// `NoLookup` (Supabase's Edge Runtime is not confirmed to allow it, so the hostname check then stands alone).
+// neutral ones the part knows. "No such record" is an empty list. Only a missing `Deno.resolveDns`, `PermissionDenied`
+// and `NotCapable` mean "this runtime has no lookup" (Supabase's Edge Runtime is not confirmed to allow it, so the
+// hostname check then stands alone, said once per instance in the log); every other error fails closed.
+let noLookupSaid = false
+function noLookupHere(why: string): never {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`[claude] no DNS lookup here (${why}), hostname check only`) }
+  throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
+}
 const dnsLookup: DnsLookup = async (name, type, signal) => {
-  if (typeof Deno.resolveDns !== 'function') throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
   try {
     return await Deno.resolveDns(name, type, { signal })
   } catch (e) {
     const kind = (e as Error)?.name
     if (kind === 'AbortError') throw e
-    if (kind === 'PermissionDenied' || kind === 'NotCapable' || kind === 'NotSupported' || e instanceof TypeError) {
-      throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
-    }
+    if (kind === 'PermissionDenied' || kind === 'NotCapable') return noLookupHere(kind)
     if (Deno.errors?.NotFound && e instanceof Deno.errors.NotFound) return []
     throw e
   }

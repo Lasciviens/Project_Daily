@@ -142,12 +142,13 @@ export interface PageEnv {
 }
 
 /**
- * What a job's step before the model decides. `answer`: code alone made the result (no model is called, no ledger
- * row is written: a call that never reaches the model is not an AI call). `model`: send this as the live part of
+ * What a job's step before the model decides. `answer`: code alone made the result (no model is called; the run
+ * writes a finished zero-cost ledger row, provider `page`, model `none`, so the rate caps count it; `note` is what
+ * the row's text log shows, only while the owner keeps the text log on). `model`: send this as the live part of
  * the prompt. `stop`: nothing usable, in one plain sentence.
  */
 export type EarlyStep =
-  | { kind: 'answer'; result: Record<string, unknown> }
+  | { kind: 'answer'; result: Record<string, unknown>; note?: string }
   | { kind: 'model'; userText: string }
   | { kind: 'stop'; outcome: 'bad_input' | 'error'; message: string }
 
@@ -216,7 +217,7 @@ export interface CallSummary {
 
 /** The answer to `{ action: 'run' }`. */
 export type RunReply =
-  // `source: 'page'`: code alone answered from the page itself. No model was asked, so there is no `call`.
+  // `source: 'page'`: code alone answered from the page itself. No model was asked; the `call` is a zero-cost row.
   | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
 

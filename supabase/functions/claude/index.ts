@@ -148,12 +148,13 @@ interface PageEnv {
 }
 
 /**
- * What a job's step before the model decides. `answer`: code alone made the result (no model is called, no ledger
- * row is written: a call that never reaches the model is not an AI call). `model`: send this as the live part of
+ * What a job's step before the model decides. `answer`: code alone made the result (no model is called; the run
+ * writes a finished zero-cost ledger row, provider `page`, model `none`, so the rate caps count it; `note` is what
+ * the row's text log shows, only while the owner keeps the text log on). `model`: send this as the live part of
  * the prompt. `stop`: nothing usable, in one plain sentence.
  */
 type EarlyStep =
-  | { kind: 'answer'; result: Record<string, unknown> }
+  | { kind: 'answer'; result: Record<string, unknown>; note?: string }
   | { kind: 'model'; userText: string }
   | { kind: 'stop'; outcome: 'bad_input' | 'error'; message: string }
 
@@ -222,7 +223,7 @@ interface CallSummary {
 
 /** The answer to `{ action: 'run' }`. */
 type RunReply =
-  // `source: 'page'`: code alone answered from the page itself. No model was asked, so there is no `call`.
+  // `source: 'page'`: code alone answered from the page itself. No model was asked; the `call` is a zero-cost row.
   | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
 
@@ -344,14 +345,19 @@ function priceOf(model: string): ModelPrice {
   return MODEL_PRICES.find(p => p.model === model) ?? dearest
 }
 
+/** Tokens the provider adds that we do not send: the hidden system prompt of thinking, and the message framing. */
+const PROMPT_OVERHEAD_TOKENS = 1000
+
 /**
  * The most one call could cost, worked out BEFORE it is sent and held against the budget (the reservation). The
- * prompt is estimated generously at one token per two characters (real text is nearer one per four), every one of
- * them at the dearest prompt price (a one-hour cache write), and the answer is taken to use the whole limit, its
- * thinking included. A prompt over the long-prompt line is priced as one. The real cost is never above this.
+ * prompt is estimated at one token per character (real text is nearer one per three or four, and one per character
+ * covers dense text such as digits, code and JSON) plus 1000 for what the provider adds (thinking's hidden system
+ * prompt), every token at the dearest prompt price (a one-hour cache write), and the answer is taken to use the
+ * whole limit, its thinking included. A prompt over the long-prompt line is priced as one. Only rare symbols that
+ * cost several tokens each could push a real call over it; the ledger then records the real, higher cost.
  */
 function worstCostOf(model: string, promptChars: number, maxOutputTokens: number): number {
-  const promptTokens = Math.ceil(promptChars / 2)
+  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS
   return costOf(
     { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
     model, 'live',
@@ -406,6 +412,16 @@ const LIMITS = {
   logDays: { min: 1, max: 90 },
   requestMaxBytes: 16 * 1024,
 } as const
+
+/**
+ * A request's time limit, worked out from the longest answer its job may write: 30 s up to 2000 tokens (a ✨ fill),
+ * then 10 s more for every further 1000, at most 100 s: a 4000-token recipe is not cut at 30 s, and the whole run
+ * (a page read first, the ledger) still ends inside the edge function's 150 s.
+ */
+function requestTimeoutMs(maxOutputTokens: number): number {
+  const extra = Math.max(0, maxOutputTokens - 2000)
+  return Math.min(30_000 + Math.ceil(extra / 1000) * 10_000, 100_000)
+}
 
 /** What applies while the owner has saved no settings. */
 const DEFAULTS = { monthlyBudgetUsd: 5, logText: true, logDays: 30 } as const
@@ -630,13 +646,68 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+// How far the scan for an object goes: it starts again after a stray "{" (in a note) at most this many times, and it
+// tries the last this-many objects it finds, so a hostile text costs a few passes over itself, never more.
+const SCAN_RESTARTS = 8
+const SCAN_TRIES = 8
+
+/** Where the object that opens at `start` closes (string-aware: a brace inside a "text" does not count), or -1. */
+function objectEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (inString) {
+      if (c === 92) i++ // a backslash: the next character is part of the string
+      else if (c === 34) inString = false
+    } else if (c === 34) inString = true
+    else if (c === 123) depth++
+    else if (c === 125 && --depth === 0) return i
+  }
+  return -1
+}
+
+/**
+ * The last top-level `{…}` in the text that parses as a JSON object: for an answer that is JSON followed by a note,
+ * a note and the object on one line, or a note followed by a code fence. Linear: one pass finds the top-level objects
+ * (restarting after a stray "{" a few times), and only the last few are parsed. A list (or anything starting with
+ * "[") is never searched: an array answer stays refused.
+ */
+function lastObjectIn(text: string): Record<string, unknown> | null {
+  if (text.trimStart().startsWith('[')) return null
+  const found: [number, number][] = []
+  let from = 0
+  let restarts = 0
+  while (from < text.length) {
+    const start = text.indexOf('{', from)
+    if (start < 0) break
+    const end = objectEnd(text, start)
+    if (end < 0) {
+      if (++restarts > SCAN_RESTARTS) break
+      from = start + 1
+    } else {
+      found.push([start, end])
+      from = end + 1
+    }
+  }
+  for (const [start, end] of found.slice(-SCAN_TRIES).reverse()) {
+    try {
+      const value: unknown = JSON.parse(text.slice(start, end + 1))
+      if (isPlainObject(value)) return value
+    } catch { /* not JSON: the one before it */ }
+  }
+  return null
+}
+
 /** The answer as one JSON object, or why it is not. Nothing in it is checked yet. */
 function readAnswerObject(answerText: string): { ok: true; value: Record<string, unknown> } | { ok: false; problem: string } {
   let raw: unknown
   try {
     raw = JSON.parse(answerJsonText(answerText))
   } catch {
-    return { ok: false, problem: 'it was not JSON' }
+    const found = lastObjectIn(answerText)
+    if (!found) return { ok: false, problem: 'it was not JSON' }
+    return { ok: true, value: found }
   }
   if (!isPlainObject(raw)) return { ok: false, problem: 'it was not a JSON object' }
   return { ok: true, value: raw }
@@ -724,6 +795,8 @@ function isPrivateIPv4(ip: string): boolean {
 function isPrivateHost(hostname: string): boolean {
   let h = hostname.toLowerCase().trim()
   if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1)
+  // A trailing dot names the same host ("localhost.", "metadata.google.internal.").
+  h = h.replace(/\.+$/, '')
   if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true
   // IPv6 literal: refused outright. These fetchers read web pages by name, so an
   // IPv6 literal is never a real target — and the URL parser rewrites embedded
@@ -952,8 +1025,6 @@ function checkedNutrition(raw: unknown): Record<NutritionKey, number | null> | n
  */
 function cleanRecipe(raw: unknown): { ok: true; recipe: RecipeFields } | { ok: false; problem: string } {
   if (!isPlainObject(raw)) return { ok: false, problem: 'it was not a recipe' }
-  const title = checkedLine(answerValue(raw, 'title'), RECIPE_LIMITS.title)
-  if (!title) return { ok: false, problem: 'it gave no title' }
   const ingredients: RecipeFields['ingredients'] = []
   for (const item of checkedList(answerValue(raw, 'ingredients'), RECIPE_LIMITS.ingredients)) {
     if (!isPlainObject(item)) continue
@@ -967,7 +1038,10 @@ function cleanRecipe(raw: unknown): { ok: true; recipe: RecipeFields } | { ok: f
       note: checkedLine(answerValue(item, 'note'), RECIPE_LIMITS.note),
     })
   }
+  // No ingredients is checked before the title: a text that is not a recipe has neither, and that is the clearer thing to say.
   if (!ingredients.length) return { ok: false, problem: 'it found no ingredients, so the text is probably not a recipe' }
+  const title = checkedLine(answerValue(raw, 'title'), RECIPE_LIMITS.title)
+  if (!title) return { ok: false, problem: 'it gave no title' }
   const servings = checkedNumber(answerValue(raw, 'servings'), 1, RECIPE_LIMITS.servingsMax)
   const steps: string[] = []
   for (const step of checkedList(answerValue(raw, 'steps'), RECIPE_LIMITS.steps)) {
@@ -1001,6 +1075,7 @@ function cleanRecipe(raw: unknown): { ok: true; recipe: RecipeFields } | { ok: f
 const PAGE_TEXT_MAX = 12_000
 const LD_BLOCK_MAX = 600_000
 const LD_NODES_MAX = 4000
+const LD_TYPE = /\btype\s*=\s*["']?application\/ld\+json/i
 
 const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', deg: '°', frac12: '½', frac14: '¼', frac34: '¾' }
 
@@ -1018,10 +1093,10 @@ function decodeEntities(text: string): string {
 /** The words a page shows: no scripts, styles or tags; line breaks where blocks end; at most `max` characters. */
 function pageVisibleText(html: string, max: number): string {
   const text = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|noscript|svg|template|head|iframe)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|section|article|header|footer|nav|table|form)\b[^>]*>/gi, '\n')
-    .replace(/<[^>]*>/g, ' ')
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, ' ')
+    .replace(/<(script|style|noscript|svg|template|head|iframe)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
+    .replace(/<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|section|article|header|footer|nav|table|form)\b[^<>]*>/gi, '\n')
+    .replace(/<[^<>]*>/g, ' ')
   return decodeEntities(text)
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
@@ -1032,18 +1107,26 @@ function pageVisibleText(html: string, max: number): string {
 
 /** A text from the page's data: tags and entities taken out, white space collapsed. */
 function plainFrom(value: unknown): string {
-  return typeof value === 'string' ? decodeEntities(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim() : ''
+  return typeof value === 'string' ? decodeEntities(value.replace(/<[^<>]*>/g, ' ')).replace(/\s+/g, ' ').trim() : ''
 }
 
 /** The schema.org Recipe nodes of a page's ld+json blocks, in the order they stand. */
 function recipeNodes(html: string): Record<string, unknown>[] {
   const found: Record<string, unknown>[] = []
-  const blocks = html.matchAll(/<script\b[^>]*\btype\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script\s*>/gi)
+  // Linear on purpose: each opener is found alone, its type read from the opener's own text, and the block's end is
+  // found with indexOf (a lazy regex over a page of repeated openers took minutes).
   let seen = 0
-  for (const block of blocks) {
-    if (block[1].length > LD_BLOCK_MAX) continue
+  let readTo = 0
+  for (const opener of html.matchAll(/<script\b([^<>]*)>/gi)) {
+    if (opener.index < readTo || !LD_TYPE.test(opener[1])) continue
+    const start = opener.index + opener[0].length
+    const end = html.indexOf('</script', start)
+    // An opener with no closer: nothing after it has one either, so the page is read to its end once.
+    readTo = end < 0 ? html.length : end
+    const body = html.slice(start, readTo)
+    if (body.length > LD_BLOCK_MAX) { if (end < 0) break; continue }
     let data: unknown
-    try { data = JSON.parse(block[1]) } catch { continue }
+    try { data = JSON.parse(body) } catch { continue }
     const stack: unknown[] = [data]
     while (stack.length && seen < LD_NODES_MAX) {
       const node = stack.pop()
@@ -1100,7 +1183,7 @@ function ingredientLine(line: string): { name: string; quantity?: number; unit?:
 function stepLines(value: unknown, out: string[] = [], depth = 0): string[] {
   if (depth > 4 || out.length > 120) return out
   if (typeof value === 'string') {
-    for (const part of value.replace(/<\/?(?:p|br|li)\b[^>]*>/gi, '\n').split('\n')) {
+    for (const part of value.replace(/<\/?(?:p|br|li)\b[^<>]*>/gi, '\n').split('\n')) {
       const line = plainFrom(part)
       if (line) out.push(line)
     }
@@ -1179,6 +1262,9 @@ const ANTHROPIC_RETRIES = 0
 const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
+
+const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
+const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
 
 const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   key: 'Anthropic did not accept the API key for this request. Check ANTHROPIC_API_KEY in Supabase → Edge Functions → Secrets.',
@@ -1338,7 +1424,7 @@ function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Mo
     ok: false, kind, status, detail, requestId,
     message: kind === 'timeout'
       ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`
-      : ANTHROPIC_FAILURES[kind],
+      : kind === 'billing' && status === 400 ? ANTHROPIC_SPEND_LIMIT_MESSAGE : ANTHROPIC_FAILURES[kind],
   })
   // The most specific kind first: a timeout is a connection error, and both are API errors.
   if (error instanceof APIConnectionTimeoutError) return failed('timeout', null, '', null)
@@ -1346,16 +1432,19 @@ function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Mo
   if (!(error instanceof APIError)) return failed('unknown', null, '', null)
   const status = typeof error.status === 'number' ? error.status : null
   const requestId = typeof error.requestID === 'string' ? anthropicCut(error.requestID, 120) : null
-  return failed(anthropicFailureKind(error), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
+  return failed(anthropicFailureKind(error, status), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
 }
 
-function anthropicFailureKind(error: APIError): ModelFailure['kind'] {
+function anthropicFailureKind(error: APIError, status: number | null): ModelFailure['kind'] {
   if (error instanceof AuthenticationError || error instanceof PermissionDeniedError) return 'key'
   // A 429 is "slow down" or the account's spend limit; only the first is worth trying again.
   if (error instanceof RateLimitError) return error.errorCode === 'enforced_spend_limit_reached' ? 'billing' : 'rate_limit'
   if (error instanceof OverloadedError) return 'overloaded'
   if (error instanceof InternalServerError) return 'provider_fault'
   if (error.type === 'billing_error') return 'billing'
+  // The Console's own spend limit answers 400 invalid_request_error, not 429 (rate-limits page): told apart by its
+  // message, which starts with a fixed sentence. Any other 400 is a request Anthropic did not accept.
+  if (status === 400 && (error.apiMessage ?? '').startsWith(ANTHROPIC_SPEND_LIMIT_START)) return 'billing'
   if (error instanceof BadRequestError || error instanceof NotFoundError || error instanceof ContentTooLargeError
     || error instanceof UnprocessableEntityError) return 'refused_request'
   return 'unknown'
@@ -1875,7 +1964,7 @@ The owner types one sentence about one thing to plan: an appointment, a task, a 
 
 Each request has two parts, each in its own tag.
 
-<now> holds today's weekday and date and the time right now, in the owner's time zone. Work out every relative day and time from it.
+<now> holds today's weekday and date and the time right now, in the owner's time zone, then a ready-made list of the next 14 days (each weekday with its date) and the date of next week's Monday. Take every day from that list: never count weekdays yourself.
 
 <sentence> holds what the owner typed. Inside it, the characters & < > are written as &amp; &lt; &gt;.
 
@@ -1891,7 +1980,7 @@ Keep text values in the language and the words of the sentence, as plain text (w
 
 # Reading days
 
-"Today", "tonight" and "tomorrow" count from the date in <now>. A weekday on its own ("on Tuesday", "på tirsdag") is the next such day after today; when today is a Tuesday, that is the Tuesday in a week. "Next week" is the calendar week after this one, and weeks start on Monday. A day and month without a year is the next time that date comes. When a day stays unclear, leave it out.
+"Today", "tonight" and "tomorrow" count from the date in <now>. A weekday on its own ("on Tuesday", "på tirsdag") is the first such day in the list of the next 14 days, so when today is a Tuesday it is the Tuesday in a week. "Next week" is the calendar week after this one, and weeks start on Monday: use the date given for next week's Monday and count from it. A day and month without a year is the next time that date comes. When a day stays unclear, leave it out.
 
 # The fields
 
@@ -1935,7 +2024,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-22.2'
+const ITEM_FILL_VERSION = '2026-11-22.3'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }
@@ -1994,6 +2083,26 @@ function itemFillNow(now: Date): { weekday: string; day: string; time: string } 
   return { weekday: part('weekday'), day: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` }
 }
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** The day `offset` days after `day` (YYYY-MM-DD), as { weekday, day }: plain calendar arithmetic, no clock involved. */
+function itemFillDayAfter(day: string, offset: number): { weekday: string; day: string } {
+  const [y, m, d] = day.split('-').map(Number)
+  const at = new Date(Date.UTC(y, m - 1, d + offset))
+  return { weekday: WEEKDAYS[at.getUTCDay()], day: at.toISOString().slice(0, 10) }
+}
+
+/** What <now> holds: today, the next 14 days with their weekdays, and next week's Monday, all worked out by code. */
+function itemFillNowText(now: Date): string {
+  const today = itemFillNow(now)
+  const next = Array.from({ length: 14 }, (_, i) => itemFillDayAfter(today.day, i + 1))
+  const sinceMonday = (WEEKDAYS.indexOf(today.weekday) + 6) % 7
+  const monday = itemFillDayAfter(today.day, 7 - sinceMonday)
+  return `${today.weekday} ${today.day}, ${today.time}. Time zone: ${ITEM_FILL_TIME_ZONE}.\n`
+    + `The next 14 days: ${next.map(n => `${n.weekday} ${n.day}`).join(', ')}.\n`
+    + `Next week's Monday: ${monday.day}.`
+}
+
 const ITEM_FILL_JOB: JobDefinition = {
   name: 'item_fill',
   title: 'Fill an item from a sentence',
@@ -2015,7 +2124,7 @@ const ITEM_FILL_JOB: JobDefinition = {
     const today = itemFillNow(now)
     return {
       // The sentence travels as data inside its own tag; the instructions say it is never an instruction.
-      userText: `<now>\n${today.weekday} ${today.day}, ${today.time}. Time zone: ${ITEM_FILL_TIME_ZONE}.\n</now>\n`
+      userText: `<now>\n${itemFillNowText(now)}\n</now>\n`
         + `<sentence>\n${escapeTagText(sentence)}\n</sentence>`,
       read(answerText: string): AnswerCheck {
         const answer = readAnswerObject(answerText)
@@ -2214,7 +2323,7 @@ const RECIPE_FROM_LINK_JOB: JobDefinition = {
     'supabase/claude-src/recipe-rules.ts', 'supabase/claude-src/answer-reader.ts',
   ],
   extraFeatures: [
-    'AI last: the page is fetched by code first (https only, private addresses and redirects into them refused, 10 s, 2 MB), and a recipe the page already holds as schema.org data is read by code with no model call and no ledger row',
+    'AI last: the page is fetched by code first (https only, private addresses and redirects into them refused, 10 s, 2 MB), and a recipe the page already holds as schema.org data is read by code with no model call (a zero-cost ledger row, "Read by code, no AI", still counts toward the rate caps)',
   ],
 
   prepare(input: unknown): { problem: string } | PreparedRun {
@@ -2227,7 +2336,7 @@ const RECIPE_FROM_LINK_JOB: JobDefinition = {
         const page = await fetchPage(got.link, env)
         if (!page.ok) return { kind: 'stop', outcome: page.outcome, message: page.message }
         const recipe = recipeFromPage(page.html)
-        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false } }
+        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false }, note: got.link }
         const text = pageVisibleText(page.html, PAGE_TEXT_MAX)
         if (text.length < 80) return { kind: 'stop', outcome: 'bad_input', message: 'That page has no text that looks like a recipe.' }
         return { kind: 'model', userText: `<page>\n${escapeTagText(text)}\n</page>` }
@@ -2649,6 +2758,8 @@ interface RunContext {
 // What the ledger shows for a request that named no job this function has.
 const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
+// The provider column of a row for work code did alone (no model asked).
+const RUN_PAGE_PROVIDER = 'page'
 const RUN_ERROR_MAX = 500
 // A call that failed in one of these ways may still have been billed (the request may have reached the model), so
 // its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
@@ -2707,13 +2818,26 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
   // 4b · AI last: a job may have work that code does better before any model is asked (reading a recipe page, and
-  //      finding the recipe the page already holds). Code that answers alone is no AI call: nothing is reserved,
-  //      sent or written to the ledger, and the reply says `source: 'page'`.
+  //      finding the recipe the page already holds). Code that answers alone is no AI call: nothing is reserved or
+  //      sent, but a finished zero-cost row is written (so the rate caps count every read), and the reply says
+  //      `source: 'page'`.
   let userText = prepared.userText
   if (prepared.early) {
+    const earlyStarted = Date.now()
     const early = await runEarly(ctx, prepared.early.bind(prepared))
     if (early.kind === 'stop') return stop(early.outcome, early.message)
-    if (early.kind === 'answer') return { ok: true, job: job.name, result: early.result, source: 'page' }
+    if (early.kind === 'answer') {
+      row.outcome = 'ok'
+      row.provider = RUN_PAGE_PROVIDER
+      row.model = RUN_NO_MODEL
+      row.effort = null
+      row.cost_usd = 0
+      row.duration_ms = Math.max(0, Date.now() - earlyStarted)
+      // The link is input and may be long: it goes in only while the owner keeps the text log on.
+      if (settings.logText && early.note) row.request = trimForLog({ read_by_code: early.note }, TEXT_LOG_MAX_BYTES)
+      await record(ctx, row)
+      return { ok: true, job: job.name, result: early.result, source: 'page', call: summaryOf(row) }
+    }
     userText = early.userText
   }
 
@@ -2725,7 +2849,8 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
     instructions: job.instructions,
     userText,
     answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
-    ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
+    // Diagnose's own limit wins; otherwise the limit follows the job's longest answer.
+    timeoutMs: ctx.timeoutMs ?? requestTimeoutMs(settings.maxOutputTokens),
   }
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
@@ -3054,7 +3179,7 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
   { title: 'Switch and key', part: 'run', text: "A job that is switched off stops here, and so does a request when the server has no API key. Each is written to the ledger with zero tokens." },
   { title: 'Reserving the cost', part: 'ledger', text: "Before anything is sent, the most this call could cost (a generous guess of its prompt, plus its whole answer limit) is held against your monthly budget and the job's budget, in one step in the database under a lock. Calls that arrive at the same moment each hold their own share, so none can slip past the wall. If what is left cannot cover it, nothing is sent." },
-  { title: 'Code before the model', part: 'run', text: 'AI last: a job may have work that code does better, and it is done before anything is reserved or sent. Reading a recipe link is one: the page is fetched by code and, when it carries its recipe as structured data, code alone answers. That is not an AI call, so nothing is reserved and no ledger row is written; the reply says it came from the page.' },
+  { title: 'Code before the model', part: 'run', text: 'AI last: a job may have work that code does better, and it is done before anything is reserved or sent. Reading a recipe link is one: the page is fetched by code and, when it carries its recipe as structured data, code alone answers. That is not an AI call: nothing is reserved and no model is asked, but a finished zero-cost ledger row (\'Read by code, no AI\') is written so the rate caps count it; the reply says it came from the page.' },
   { title: 'Building the request', part: 'run', text: "The request has two parts. First the job's fixed instructions: always the same bytes, so the provider can cache them. Then the part that changes, such as today's date and your text, which travels as data inside a tag." },
   { title: 'Calling the model', part: 'provider', text: "The provider part turns the request into Anthropic's shape and sends it with Anthropic's official SDK: the key in a header and a time limit. There is no automatic retry: one request is one generation, so one reservation covers one possible bill. It turns the answer back into text, a summary of the model's thinking, how it ended and the token counts." },
   { title: 'Checking the answer', part: 'run', text: "An answer the model declined, or one cut off at its length limit, is not used. Otherwise the job checks it value by value with its own code. A value that fails is dropped, never repaired." },
@@ -3183,18 +3308,22 @@ async function isAppUser(userId: string): Promise<boolean> {
 }
 
 // The name lookup of the page fetch (page-fetch.ts): Deno's DNS question, with Deno's own errors turned into the
-// neutral ones the part knows. "No such record" is an empty list. A runtime that cannot look names up says
-// `NoLookup` (Supabase's Edge Runtime is not confirmed to allow it, so the hostname check then stands alone).
+// neutral ones the part knows. "No such record" is an empty list. Only a missing `Deno.resolveDns`, `PermissionDenied`
+// and `NotCapable` mean "this runtime has no lookup" (Supabase's Edge Runtime is not confirmed to allow it, so the
+// hostname check then stands alone, said once per instance in the log); every other error fails closed.
+let noLookupSaid = false
+function noLookupHere(why: string): never {
+  if (!noLookupSaid) { noLookupSaid = true; console.warn(`[claude] no DNS lookup here (${why}), hostname check only`) }
+  throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
+}
 const dnsLookup: DnsLookup = async (name, type, signal) => {
-  if (typeof Deno.resolveDns !== 'function') throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
+  if (typeof Deno.resolveDns !== 'function') return noLookupHere('missing')
   try {
     return await Deno.resolveDns(name, type, { signal })
   } catch (e) {
     const kind = (e as Error)?.name
     if (kind === 'AbortError') throw e
-    if (kind === 'PermissionDenied' || kind === 'NotCapable' || kind === 'NotSupported' || e instanceof TypeError) {
-      throw Object.assign(new Error('no DNS lookup here'), { name: 'NoLookup' })
-    }
+    if (kind === 'PermissionDenied' || kind === 'NotCapable') return noLookupHere(kind)
     if (Deno.errors?.NotFound && e instanceof Deno.errors.NotFound) return []
     throw e
   }

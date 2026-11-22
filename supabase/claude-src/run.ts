@@ -14,7 +14,7 @@ import type {
 } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import {
-  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText,
+  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog, trimText,
   TEXT_LOG_MAX_BYTES,
 } from './guard.ts'
 import { finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db } from './ledger.ts'
@@ -47,6 +47,8 @@ export interface RunContext {
 // What the ledger shows for a request that named no job this function has.
 const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
+// The provider column of a row for work code did alone (no model asked).
+const RUN_PAGE_PROVIDER = 'page'
 const RUN_ERROR_MAX = 500
 // A call that failed in one of these ways may still have been billed (the request may have reached the model), so
 // its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
@@ -105,13 +107,26 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
   // 4b · AI last: a job may have work that code does better before any model is asked (reading a recipe page, and
-  //      finding the recipe the page already holds). Code that answers alone is no AI call: nothing is reserved,
-  //      sent or written to the ledger, and the reply says `source: 'page'`.
+  //      finding the recipe the page already holds). Code that answers alone is no AI call: nothing is reserved or
+  //      sent, but a finished zero-cost row is written (so the rate caps count every read), and the reply says
+  //      `source: 'page'`.
   let userText = prepared.userText
   if (prepared.early) {
+    const earlyStarted = Date.now()
     const early = await runEarly(ctx, prepared.early.bind(prepared))
     if (early.kind === 'stop') return stop(early.outcome, early.message)
-    if (early.kind === 'answer') return { ok: true, job: job.name, result: early.result, source: 'page' }
+    if (early.kind === 'answer') {
+      row.outcome = 'ok'
+      row.provider = RUN_PAGE_PROVIDER
+      row.model = RUN_NO_MODEL
+      row.effort = null
+      row.cost_usd = 0
+      row.duration_ms = Math.max(0, Date.now() - earlyStarted)
+      // The link is input and may be long: it goes in only while the owner keeps the text log on.
+      if (settings.logText && early.note) row.request = trimForLog({ read_by_code: early.note }, TEXT_LOG_MAX_BYTES)
+      await record(ctx, row)
+      return { ok: true, job: job.name, result: early.result, source: 'page', call: summaryOf(row) }
+    }
     userText = early.userText
   }
 
@@ -123,7 +138,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     instructions: job.instructions,
     userText,
     answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
-    ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
+    // Diagnose's own limit wins; otherwise the limit follows the job's longest answer.
+    timeoutMs: ctx.timeoutMs ?? requestTimeoutMs(settings.maxOutputTokens),
   }
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step

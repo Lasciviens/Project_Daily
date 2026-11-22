@@ -9,7 +9,7 @@ import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
 import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/claude/recipeJobs'
 import {
-  DEFAULT_GUESSES, itemToPreset, parseGuessOptions, readGuessEstimate, recentGuesses,
+  DEFAULT_GUESSES, itemToPreset, matchKnownGuess, parseGuessOptions, readGuessEstimate, recentGuesses,
   type GuessEstimate, type GuessMacros, type GuessOptionGroup, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,
 } from '../quickGuess'
 import { SLOT_OPTIONS } from '../components/foodLogUtils'
@@ -41,9 +41,9 @@ export function useQuickGuessPresets(): { presets: readonly GuessPreset[]; isLoa
 }
 
 /** Your own recent guesses: past one-off lines from the 30-day recents, your presets left out (quickGuess.recentGuesses). */
-export function useRecentGuesses(presets: readonly GuessPreset[]): RecentGuess[] {
+export function useRecentGuesses(presets: readonly GuessPreset[], limit = 4): RecentGuess[] {
   const { data = [] } = useRecentFoods()
-  return useMemo(() => recentGuesses(data, presets.map(p => p.title)), [data, presets])
+  return useMemo(() => recentGuesses(data, presets.map(p => p.title), limit), [data, presets, limit])
 }
 
 /**
@@ -110,10 +110,15 @@ export function useMoveQuickGuess() {
  * person's own tap.
  */
 export function useDescribeGuess() {
+  const { presets } = useQuickGuessPresets()
+  const recents = useRecentGuesses(presets, 500)
   return useMutationWithFeedback<GuessEstimate, string>({
     action: 'describe_quick_guess',
-    silent: 'the estimate fills the sheet, marked AI estimate, for review',
+    silent: 'the estimate fills the sheet, marked AI estimate (or "no AI used" when it came from your own entry), for review',
     mutationFn: async text => {
+      // AI last: the owner's own preset or earlier diary line with this name answers without the model.
+      const known = matchKnownGuess(text, presets, recents)
+      if (known) return known
       const estimate = readGuessEstimate(await describeGuess(text))
       if (!estimate) throw new Error("The AI didn't send an estimate — try again")
       return estimate

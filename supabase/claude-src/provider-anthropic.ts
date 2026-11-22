@@ -50,6 +50,9 @@ const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
 
+const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
+const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
+
 const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   key: 'Anthropic did not accept the API key for this request. Check ANTHROPIC_API_KEY in Supabase → Edge Functions → Secrets.',
   billing: "Anthropic stopped the request for a billing reason: the account's spend limit or its credit. Look at Billing in the Anthropic Console.",
@@ -208,7 +211,7 @@ function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Mo
     ok: false, kind, status, detail, requestId,
     message: kind === 'timeout'
       ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`
-      : ANTHROPIC_FAILURES[kind],
+      : kind === 'billing' && status === 400 ? ANTHROPIC_SPEND_LIMIT_MESSAGE : ANTHROPIC_FAILURES[kind],
   })
   // The most specific kind first: a timeout is a connection error, and both are API errors.
   if (error instanceof APIConnectionTimeoutError) return failed('timeout', null, '', null)
@@ -216,16 +219,19 @@ function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Mo
   if (!(error instanceof APIError)) return failed('unknown', null, '', null)
   const status = typeof error.status === 'number' ? error.status : null
   const requestId = typeof error.requestID === 'string' ? anthropicCut(error.requestID, 120) : null
-  return failed(anthropicFailureKind(error), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
+  return failed(anthropicFailureKind(error, status), status, anthropicPlainText(error.apiMessage ?? '', apiKey), requestId)
 }
 
-function anthropicFailureKind(error: APIError): ModelFailure['kind'] {
+function anthropicFailureKind(error: APIError, status: number | null): ModelFailure['kind'] {
   if (error instanceof AuthenticationError || error instanceof PermissionDeniedError) return 'key'
   // A 429 is "slow down" or the account's spend limit; only the first is worth trying again.
   if (error instanceof RateLimitError) return error.errorCode === 'enforced_spend_limit_reached' ? 'billing' : 'rate_limit'
   if (error instanceof OverloadedError) return 'overloaded'
   if (error instanceof InternalServerError) return 'provider_fault'
   if (error.type === 'billing_error') return 'billing'
+  // The Console's own spend limit answers 400 invalid_request_error, not 429 (rate-limits page): told apart by its
+  // message, which starts with a fixed sentence. Any other 400 is a request Anthropic did not accept.
+  if (status === 400 && (error.apiMessage ?? '').startsWith(ANTHROPIC_SPEND_LIMIT_START)) return 'billing'
   if (error instanceof BadRequestError || error instanceof NotFoundError || error instanceof ContentTooLargeError
     || error instanceof UnprocessableEntityError) return 'refused_request'
   return 'unknown'

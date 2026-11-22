@@ -14,6 +14,7 @@ import { cleanRecipe, type RecipeFields } from './recipe-rules.ts'
 export const PAGE_TEXT_MAX = 12_000
 const LD_BLOCK_MAX = 600_000
 const LD_NODES_MAX = 4000
+const LD_TYPE = /\btype\s*=\s*["']?application\/ld\+json/i
 
 const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', deg: '°', frac12: '½', frac14: '¼', frac34: '¾' }
 
@@ -31,10 +32,10 @@ function decodeEntities(text: string): string {
 /** The words a page shows: no scripts, styles or tags; line breaks where blocks end; at most `max` characters. */
 export function pageVisibleText(html: string, max: number): string {
   const text = html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(script|style|noscript|svg|template|head|iframe)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-    .replace(/<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|section|article|header|footer|nav|table|form)\b[^>]*>/gi, '\n')
-    .replace(/<[^>]*>/g, ' ')
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, ' ')
+    .replace(/<(script|style|noscript|svg|template|head|iframe)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, ' ')
+    .replace(/<\/?(?:p|div|br|li|ul|ol|h[1-6]|tr|section|article|header|footer|nav|table|form)\b[^<>]*>/gi, '\n')
+    .replace(/<[^<>]*>/g, ' ')
   return decodeEntities(text)
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
@@ -45,18 +46,26 @@ export function pageVisibleText(html: string, max: number): string {
 
 /** A text from the page's data: tags and entities taken out, white space collapsed. */
 function plainFrom(value: unknown): string {
-  return typeof value === 'string' ? decodeEntities(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim() : ''
+  return typeof value === 'string' ? decodeEntities(value.replace(/<[^<>]*>/g, ' ')).replace(/\s+/g, ' ').trim() : ''
 }
 
 /** The schema.org Recipe nodes of a page's ld+json blocks, in the order they stand. */
 function recipeNodes(html: string): Record<string, unknown>[] {
   const found: Record<string, unknown>[] = []
-  const blocks = html.matchAll(/<script\b[^>]*\btype\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script\s*>/gi)
+  // Linear on purpose: each opener is found alone, its type read from the opener's own text, and the block's end is
+  // found with indexOf (a lazy regex over a page of repeated openers took minutes).
   let seen = 0
-  for (const block of blocks) {
-    if (block[1].length > LD_BLOCK_MAX) continue
+  let readTo = 0
+  for (const opener of html.matchAll(/<script\b([^<>]*)>/gi)) {
+    if (opener.index < readTo || !LD_TYPE.test(opener[1])) continue
+    const start = opener.index + opener[0].length
+    const end = html.indexOf('</script', start)
+    // An opener with no closer: nothing after it has one either, so the page is read to its end once.
+    readTo = end < 0 ? html.length : end
+    const body = html.slice(start, readTo)
+    if (body.length > LD_BLOCK_MAX) { if (end < 0) break; continue }
     let data: unknown
-    try { data = JSON.parse(block[1]) } catch { continue }
+    try { data = JSON.parse(body) } catch { continue }
     const stack: unknown[] = [data]
     while (stack.length && seen < LD_NODES_MAX) {
       const node = stack.pop()
@@ -113,7 +122,7 @@ function ingredientLine(line: string): { name: string; quantity?: number; unit?:
 function stepLines(value: unknown, out: string[] = [], depth = 0): string[] {
   if (depth > 4 || out.length > 120) return out
   if (typeof value === 'string') {
-    for (const part of value.replace(/<\/?(?:p|br|li)\b[^>]*>/gi, '\n').split('\n')) {
+    for (const part of value.replace(/<\/?(?:p|br|li)\b[^<>]*>/gi, '\n').split('\n')) {
       const line = plainFrom(part)
       if (line) out.push(line)
     }

@@ -48,14 +48,19 @@ function priceOf(model: string): ModelPrice {
   return MODEL_PRICES.find(p => p.model === model) ?? dearest
 }
 
+/** Tokens the provider adds that we do not send: the hidden system prompt of thinking, and the message framing. */
+export const PROMPT_OVERHEAD_TOKENS = 1000
+
 /**
  * The most one call could cost, worked out BEFORE it is sent and held against the budget (the reservation). The
- * prompt is estimated generously at one token per two characters (real text is nearer one per four), every one of
- * them at the dearest prompt price (a one-hour cache write), and the answer is taken to use the whole limit, its
- * thinking included. A prompt over the long-prompt line is priced as one. The real cost is never above this.
+ * prompt is estimated at one token per character (real text is nearer one per three or four, and one per character
+ * covers dense text such as digits, code and JSON) plus 1000 for what the provider adds (thinking's hidden system
+ * prompt), every token at the dearest prompt price (a one-hour cache write), and the answer is taken to use the
+ * whole limit, its thinking included. A prompt over the long-prompt line is priced as one. Only rare symbols that
+ * cost several tokens each could push a real call over it; the ledger then records the real, higher cost.
  */
 export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number): number {
-  const promptTokens = Math.ceil(promptChars / 2)
+  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS
   return costOf(
     { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
     model, 'live',

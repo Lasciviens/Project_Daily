@@ -130,6 +130,7 @@ console.log('\nvalues as they enter')
   const dd = R.readDescribe({ configured: 'yes', models: [{ id: 'm' }, { name: 'no id' }], jobs: [{ name: 'a' }, { title: 'no name' }], prices: { checkedOn: 'today' } })
   check('describe: odd fields become empty, never a crash', dd.configured === false && dd.models.length === 1 && dd.models[0].name === 'm' && dd.jobs.length === 1 && dd.jobs[0].title === 'a' && dd.prices.checkedOn === '' && dd.steps.length === 0)
   check('describe: nothing at all', R.readDescribe(undefined).configured === false && R.readDescribe('x').jobs.length === 0)
+  check('a row for work code did alone (provider page) is labelled "Read by code, no AI"; any other shows its model id', R.callModelLabel({ provider: 'page', model: 'none' }) === 'Read by code, no AI' && R.callModelLabel({ provider: 'anthropic', model: 'claude-haiku-5-5' }) === 'claude-haiku-5-5')
   check('titles and names fall back to the id', R.jobTitleOf([{ name: 'a', title: 'A job' }], 'a') === 'A job' && R.jobTitleOf([], 'gone') === 'gone' && R.jobTitleOf(undefined, 'z') === 'z' && R.modelNameOf([{ id: 'm', name: 'Model' }], 'm') === 'Model' && R.modelNameOf(undefined, 'q') === 'q')
 }
 

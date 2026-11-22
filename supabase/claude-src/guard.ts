@@ -31,6 +31,16 @@ export const LIMITS = {
   requestMaxBytes: 16 * 1024,
 } as const
 
+/**
+ * A request's time limit, worked out from the longest answer its job may write: 30 s up to 2000 tokens (a ✨ fill),
+ * then 10 s more for every further 1000, at most 100 s: a 4000-token recipe is not cut at 30 s, and the whole run
+ * (a page read first, the ledger) still ends inside the edge function's 150 s.
+ */
+export function requestTimeoutMs(maxOutputTokens: number): number {
+  const extra = Math.max(0, maxOutputTokens - 2000)
+  return Math.min(30_000 + Math.ceil(extra / 1000) * 10_000, 100_000)
+}
+
 /** What applies while the owner has saved no settings. */
 export const DEFAULTS = { monthlyBudgetUsd: 5, logText: true, logDays: 30 } as const
 

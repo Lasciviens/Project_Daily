@@ -194,7 +194,7 @@ export const RECIPE_FROM_LINK_JOB: JobDefinition = {
     'supabase/claude-src/recipe-rules.ts', 'supabase/claude-src/answer-reader.ts',
   ],
   extraFeatures: [
-    'AI last: the page is fetched by code first (https only, private addresses and redirects into them refused, 10 s, 2 MB), and a recipe the page already holds as schema.org data is read by code with no model call and no ledger row',
+    'AI last: the page is fetched by code first (https only, private addresses and redirects into them refused, 10 s, 2 MB), and a recipe the page already holds as schema.org data is read by code with no model call (a zero-cost ledger row, "Read by code, no AI", still counts toward the rate caps)',
   ],
 
   prepare(input: unknown): { problem: string } | PreparedRun {
@@ -207,7 +207,7 @@ export const RECIPE_FROM_LINK_JOB: JobDefinition = {
         const page = await fetchPage(got.link, env)
         if (!page.ok) return { kind: 'stop', outcome: page.outcome, message: page.message }
         const recipe = recipeFromPage(page.html)
-        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false } }
+        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false }, note: got.link }
         const text = pageVisibleText(page.html, PAGE_TEXT_MAX)
         if (text.length < 80) return { kind: 'stop', outcome: 'bad_input', message: 'That page has no text that looks like a recipe.' }
         return { kind: 'model', userText: `<page>\n${escapeTagText(text)}\n</page>` }

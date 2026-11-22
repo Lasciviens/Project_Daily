@@ -199,7 +199,7 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 |---|---|
 | **Prompt caching** | The fixed part (tools + rules, about 7K tokens) costs a tenth on every step after the first. That's the biggest cost lever, since an answer sent ~100K tokens. |
 | **Mid-conversation system messages** | Live context (today, the time, your data) goes in after the cached part, so it never breaks the cache. |
-| **Structured outputs** | ✨, recipes, quick guess and the PT assessment always come back in the exact shape the app expects. Every field is still checked by our code. |
+| **Structured outputs** (not used for now) | Anthropic can enforce an answer shape. Live (22.11.2026) ✨'s 21 optional fields hung for 90 s: every optional field doubles the grammar's states, and compiling it can take up to 180 s (cached 24 h after). So no job enforces a shape now: each writes its shape into its instructions and our own check holds every field, as it always did. A later job may enforce a very small shape with every field required (`docs/integrations/anthropic.md`, trap 16). |
 | **Strict tool use** | A tool's input always matches its definition. Anthropic allows at most 20 such tools in one request, so the new tool set is small and sharp. |
 | **Adaptive thinking + effort per job** | Low for form fills, medium for chat. The log shows a **summary of how it reasoned**, so you can see why it answered what it did. |
 | **Vision** | Photos in the chat, as today. |
@@ -295,6 +295,13 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 | 6 | Optional, one at a time and measured: advisor, programmatic tool calling, tool search, web search. | — |
 
 Each phase gets tests, a guardian review, and a look on the phone layout before its PR.
+
+### Next (found in phase 2a, not done yet)
+
+- Thinking off for the jobs where it is measured safe (a form fill needs none): less cost and time.
+- ✨ with an enforced shape that has **all fields required** (an empty value means "not given"; `cleanItemFill` compares an enum case-insensitively), tried with Diagnose's real call first.
+- Retry a Haiku refusal once on Sonnet (the promise in section 3 is not built yet).
+- A token count before sending, in the Test bench (2d): `count_tokens` shows what a prompt will cost, though it cannot catch a grammar that will not compile.
 
 ---
 

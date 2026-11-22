@@ -31,13 +31,68 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+// How far the scan for an object goes: it starts again after a stray "{" (in a note) at most this many times, and it
+// tries the last this-many objects it finds, so a hostile text costs a few passes over itself, never more.
+const SCAN_RESTARTS = 8
+const SCAN_TRIES = 8
+
+/** Where the object that opens at `start` closes (string-aware: a brace inside a "text" does not count), or -1. */
+function objectEnd(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (inString) {
+      if (c === 92) i++ // a backslash: the next character is part of the string
+      else if (c === 34) inString = false
+    } else if (c === 34) inString = true
+    else if (c === 123) depth++
+    else if (c === 125 && --depth === 0) return i
+  }
+  return -1
+}
+
+/**
+ * The last top-level `{…}` in the text that parses as a JSON object: for an answer that is JSON followed by a note,
+ * a note and the object on one line, or a note followed by a code fence. Linear: one pass finds the top-level objects
+ * (restarting after a stray "{" a few times), and only the last few are parsed. A list (or anything starting with
+ * "[") is never searched: an array answer stays refused.
+ */
+function lastObjectIn(text: string): Record<string, unknown> | null {
+  if (text.trimStart().startsWith('[')) return null
+  const found: [number, number][] = []
+  let from = 0
+  let restarts = 0
+  while (from < text.length) {
+    const start = text.indexOf('{', from)
+    if (start < 0) break
+    const end = objectEnd(text, start)
+    if (end < 0) {
+      if (++restarts > SCAN_RESTARTS) break
+      from = start + 1
+    } else {
+      found.push([start, end])
+      from = end + 1
+    }
+  }
+  for (const [start, end] of found.slice(-SCAN_TRIES).reverse()) {
+    try {
+      const value: unknown = JSON.parse(text.slice(start, end + 1))
+      if (isPlainObject(value)) return value
+    } catch { /* not JSON: the one before it */ }
+  }
+  return null
+}
+
 /** The answer as one JSON object, or why it is not. Nothing in it is checked yet. */
 export function readAnswerObject(answerText: string): { ok: true; value: Record<string, unknown> } | { ok: false; problem: string } {
   let raw: unknown
   try {
     raw = JSON.parse(answerJsonText(answerText))
   } catch {
-    return { ok: false, problem: 'it was not JSON' }
+    const found = lastObjectIn(answerText)
+    if (!found) return { ok: false, problem: 'it was not JSON' }
+    return { ok: true, value: found }
   }
   if (!isPlainObject(raw)) return { ok: false, problem: 'it was not a JSON object' }
   return { ok: true, value: raw }

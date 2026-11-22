@@ -39,6 +39,7 @@ const BLOCK = [
   'http://169.254.169.254/', 'http://10.0.0.1/', 'http://172.16.0.1/', 'http://192.168.1.1/',
   'http://100.64.0.1/', 'http://localhost/', 'http://a.localhost/', 'http://224.0.0.1/',
   'http://255.255.255.255/', 'http://0.0.0.0/',
+  'https://localhost./', 'https://metadata.google.internal./', 'https://a.localhost../',
 ]
 const ALLOW = ['https://www.vg.no/', 'https://example.com/a?b=1', 'http://8.8.8.8/', 'https://www.prisjakt.no/product.php?p=1']
 
@@ -272,7 +273,7 @@ async function claudeChecks() {
     return { result: await g.fetchPage(url, env), asked, lookups }
   }
   const page = { status: 200, body: '<html>ok</html>' }
-  const refusedFirst = ['http://recipes.example/x', 'https://127.0.0.1/', 'https://localhost/', 'https://[::1]/', 'https://[::ffff:7f00:1]/', 'https://2130706433/', 'https://0x7f000001/', 'https://169.254.169.254/latest/meta-data/', 'https://10.0.0.1/', 'https://100.64.0.1/',
+  const refusedFirst = ['http://recipes.example/x', 'https://127.0.0.1/', 'https://localhost/', 'https://localhost./', 'https://metadata.google.internal./', 'https://[::1]/', 'https://[::ffff:7f00:1]/', 'https://2130706433/', 'https://0x7f000001/', 'https://169.254.169.254/latest/meta-data/', 'https://10.0.0.1/', 'https://100.64.0.1/',
     'https://127.0.0.1.nip.io/', 'https://169.254.169.254.nip.io/latest/meta-data/', 'https://localtest.me/', 'https://nxdomain.example/', 'https://servfail.example/', 'https://aaaa-fails.example/', 'https://evil.example/', 'https://user:pw@recipes.example/', 'https://recipes.example:8443/', 'ftp://recipes.example/', 'file:///etc/passwd', 'javascript:alert(1)']
   const leaked = []
   for (const url of refusedFirst) {
