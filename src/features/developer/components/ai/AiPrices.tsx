@@ -48,6 +48,9 @@ function PriceTable({ about }: { about: Describe }) {
         {prices.longPromptOverTokens > 0 && (
           <li>A prompt over {formatCount(prices.longPromptOverTokens)} tokens costs {prices.longPromptMultiplier}× on every line above.</li>
         )}
+        {prices.webSearchUsdEach > 0 && (
+          <li>A web search costs {formatUsd(prices.webSearchUsdEach, { fine: true })} each, on top of the tokens. Only “Ideas for this place” uses it, at most {prices.webSearchMaxUses} a call, and each call says how many it ran.</li>
+        )}
         {prices.batchMultiplier > 0 && (
           <li>A batch job (one that can wait a few hours) costs {prices.batchMultiplier}× the price.</li>
         )}

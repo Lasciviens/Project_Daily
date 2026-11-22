@@ -1,11 +1,16 @@
 import { useRef, type ReactNode } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Sparkles } from 'lucide-react'
 import { Button, IconButton } from '../../../../shared/ui'
 
 /**
  * "Take or pick a photo": a button that opens the phone's camera or photo library (or a file picker) and hands the
  * chosen picture to `onFile`. The photo is shrunk and sent by the caller's hook; nothing is kept here.
  */
+/** A camera with a small ✨: the one mark for "this is an AI call" (a photo that is read by the model). */
+function CameraAi() {
+  return <span className="relative inline-flex"><Camera aria-hidden /><Sparkles aria-hidden className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" /></span>
+}
+
 export function PhotoButton({ children, onFile, loading, disabled, icon, variant = 'secondary', className, iconOnly }: {
   children: ReactNode
   onFile: (file: File) => void
@@ -35,8 +40,8 @@ export function PhotoButton({ children, onFile, loading, disabled, icon, variant
         }}
       />
       {iconOnly ? (
-        <IconButton label={String(children)} className={className} disabled={disabled || loading} aria-busy={loading || undefined} onClick={() => input.current?.click()}>{icon ?? <Camera />}</IconButton>
-      ) : <Button size="sm" variant={variant} className={className} icon={icon ?? <Camera />} loading={loading} disabled={disabled} onClick={() => input.current?.click()}>
+        <IconButton label={String(children)} className={className} disabled={disabled || loading} aria-busy={loading || undefined} onClick={() => input.current?.click()}>{icon ?? <CameraAi />}</IconButton>
+      ) : <Button size="sm" variant={variant} className={className} icon={icon ?? <CameraAi />} loading={loading} disabled={disabled} onClick={() => input.current?.click()}>
         {children}
       </Button>}
     </>

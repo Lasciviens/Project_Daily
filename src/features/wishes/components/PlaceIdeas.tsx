@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Sparkles, X } from 'lucide-react'
 import { Button, TonePill } from '../../../shared/ui'
 import { usePlaceIdeas } from '../../ai/claude/hooks/useAiFeatures'
-import { ideasBlock, notesWithIdeas } from '../../ai/claude/featureRules'
+import { costNote, ideasBlock, notesWithIdeas } from '../../ai/claude/featureRules'
 
 /**
  * "Ideas" for a place wish: 5–8 things to do there, for the notes. The model may search the web (a small place is where
@@ -12,7 +12,7 @@ import { ideasBlock, notesWithIdeas } from '../../ai/claude/featureRules'
  */
 export function PlaceIdeas({ title, city, country, notes, onNotes }: { title: string; city: string; country: string; notes: string; onNotes: (notes: string) => void }) {
   const ask = usePlaceIdeas()
-  const [shown, setShown] = useState<{ ideas: string[]; fromSearch: boolean } | null>(null)
+  const [shown, setShown] = useState<{ ideas: string[]; fromSearch: boolean; costUsd: number | null } | null>(null)
   const place = [city.trim(), country.trim()].filter(Boolean).join(', ') || title.trim()
 
   async function run() {
@@ -29,6 +29,7 @@ export function PlaceIdeas({ title, city, country, notes, onNotes }: { title: st
         <div className="rounded-row border border-line bg-surface-2 p-3">
           <div className="mb-1.5 flex items-center gap-2">
             <TonePill tone={shown.fromSearch ? 'success' : 'warn'}>{shown.fromSearch ? 'Found with web search' : "Model's general knowledge — check before you go"}</TonePill>
+            {costNote(shown.costUsd) && <span className="text-meta tabular-nums text-fg-muted">{costNote(shown.costUsd)}</span>}
             <button type="button" aria-label="Dismiss the ideas" onClick={() => setShown(null)} className="ml-auto text-fg-muted hover:text-fg"><X aria-hidden className="h-4 w-4" /></button>
           </div>
           <ul className="list-disc space-y-0.5 pl-5 text-body text-fg">

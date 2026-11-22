@@ -74,7 +74,7 @@ check('a printed name merely containing a store somewhere inside does not match 
 
 section('receipt: what it fills')
 const fill1 = R.receiptFill(GOOD, STORES, null)
-check('one line: its name and price, the currency, the day, the matched store, and a warranty in the note with its date', fill1.title === 'Sony WH-1000XM5' && fill1.price === 2990 && fill1.currency === 'NOK' && fill1.day === '2026-11-08' && fill1.storeId === 's1' && fill1.storeName === null && /warranty on the receipt: 24 months \(until 08\.11\.2028\)/.test(fill1.note) && fill1.left.length === 0, fill1)
+check('one line: its name and price, the currency, the day, the matched store (its own name), and a warranty in the note with its date, said once', fill1.title === 'Sony WH-1000XM5' && fill1.price === 2990 && fill1.currency === 'NOK' && fill1.day === '2026-11-08' && fill1.storeId === 's1' && fill1.storeName === null && fill1.storeLabel === 'Elkjøp' && fill1.note === 'From the receipt: 24 months warranty, until 08.11.2028.' && fill1.warrantyUntil === '2028-11-08' && fill1.left.length === 0, fill1)
 const many = { ...GOOD, items: [{ name: 'TV', price: 8990 }, { name: 'Cable', price: 199 }], total: 9189 }
 const fillM = R.receiptFill(many, STORES, null)
 check('several lines, none picked: no name, no price (never a guess), and it says to pick', fillM.title === undefined && fillM.price === undefined && fillM.left.some(l => /pick the one you bought/.test(l)), fillM)
@@ -85,11 +85,11 @@ check('"Use the total" fills the total and no name', fillTotal.price === 9189 &&
 const sek = R.receiptFill({ ...GOOD, currency: 'SEK' }, STORES, null)
 check('a currency this app does not hold: no amount, no currency (never converted), and it says why', sek.price === undefined && sek.currency === undefined && sek.left.some(l => /SEK/.test(l)), sek)
 const noCur = R.receiptFill({ ...GOOD, currency: undefined }, STORES, null)
-check('no currency printed: the amount is filled and the owner is told to check the currency', noCur.price === 2990 && noCur.currency === undefined && noCur.left.some(l => /no clear currency/.test(l)), noCur)
+check('no currency printed: the amount is left out (never assumed) and the owner is told', noCur.price === undefined && noCur.currency === undefined && noCur.left.some(l => /no clear currency/.test(l)), noCur)
 const unknownStore = R.receiptFill({ ...GOOD, store: 'Jernbanetorget Kiosk' }, STORES, null)
 check('an unmatched store keeps its printed name as text; no store id', unknownStore.storeId === null && unknownStore.storeName === 'Jernbanetorget Kiosk')
 check('nothing read of a field is nothing filled (no invented day, amount or store)', (() => { const f = R.receiptFill({ items: [{ name: 'Thing', price: null }] }, STORES, null); return f.price === undefined && f.day === undefined && f.storeId === null && f.storeName === null && f.title === 'Thing' })())
-check('a warranty with no day is noted without a date', /warranty on the receipt: 12 months\./.test(R.receiptFill({ warranty_months: 12 }, STORES, null).note))
+check('a warranty with no day is noted without a date', R.receiptFill({ warranty_months: 12 }, STORES, null).note === 'From the receipt: 12 months warranty.')
 check('addMonthsToDay keeps the day, or the month\'s last day', R.addMonthsToDay('2026-11-08', 24) === '2028-11-08' && R.addMonthsToDay('2026-01-31', 1) === '2026-02-28' && R.addMonthsToDay('2024-01-31', 1) === '2024-02-29' && R.addMonthsToDay('2026-12-15', 1) === '2027-01-15' && R.addMonthsToDay('2026-03-31', 12) === '2027-03-31')
 
 section('week')
@@ -104,13 +104,15 @@ const tasks = [
   T('Last week', 'done', '2026-11-06T10:00:00Z'), T('Next week', 'done', '2026-11-16T10:00:00Z'), T('Still open', 'open', null), T('Reopened', 'open', '2026-11-10T10:00:00Z'),
   T('No stamp', 'done', null), T('Bad stamp', 'done', 'not a date'), T('  ', 'done', '2026-11-10T10:00:00Z'),
 ]
-const wk = R.weekInput(tasks, [{ title: 'Release', done: true }, { title: ' ', done: false }, { title: 'Docs', done: false }], '  rough notes ', '2026-11-11', isClosed)
+const RULES = { isClosed: t => isClosed(t.status), isOpen: t => t.status === 'open', isOverdue: (t, today) => !!t.due_date && t.due_date < today }
+const wk = R.weekInput(tasks, [{ title: 'Release', done: true }, { title: ' ', done: false }, { title: 'Docs', done: false }], '  rough notes ', '2026-11-11', RULES)
 check('only tasks closed this week count, by their local day (23:30 UTC on Sunday is Monday 09.11 in Oslo)', same(wk.closed.map(t => t.title), ['Ship export', 'Fix login', 'Mon early']), wk.closed)
 check('an open task, one closed outside the week, with no or a bad stamp, or no title is left out', !wk.closed.some(t => ['Still open', 'Reopened', 'Last week', 'Next week', 'No stamp', 'Bad stamp'].includes(t.title)) && wk.closed.length === 3)
 check('the week, the goals (a blank one dropped) and the trimmed notes go along', wk.week_start === '2026-11-09' && wk.week_end === '2026-11-15' && same(wk.goals, [{ done: true, title: 'Release' }, { done: false, title: 'Docs' }]) && wk.notes === 'rough notes')
-const lots = R.weekInput(Array.from({ length: 100 }, (_, i) => T(`t${i} ${'x'.repeat(300)}`, 'done', '2026-11-10T10:00:00Z')), Array.from({ length: 30 }, (_, i) => ({ title: `g${i}`, done: false })), 'n'.repeat(5000), '2026-11-11', isClosed)
-check('at most 60 tasks, 20 goals, 3000 characters of notes, 160 per title', lots.closed.length === 60 && lots.goals.length === 20 && lots.notes.length === 3000 && lots.closed.every(t => [...t.title].length <= 160))
-check('nothing at all gives empty lists (the sheet then asks no AI)', (() => { const e = R.weekInput([], [], null, '2026-11-11', isClosed); return e.closed.length === 0 && e.goals.length === 0 && e.notes === '' })())
+const lots = R.weekInput([...Array.from({ length: 100 }, (_, i) => T(`t${i} ${'x'.repeat(300)}`, 'done', '2026-11-10T10:00:00Z')), ...Array.from({ length: 50 }, (_, i) => ({ ...T(`o${i}`, 'open', null), due_date: i < 5 ? '2026-11-01' : null }))], Array.from({ length: 30 }, (_, i) => ({ title: `g${i}`, done: false })), 'n'.repeat(5000), '2026-11-11', RULES)
+check('at most 60 closed tasks, 30 open ones listed (the totals count all 50, 5 overdue, overdue first), 20 goals, 3000 characters of notes, 160 per title', lots.closed.length === 60 && lots.open.length === 30 && lots.open_total === 50 && lots.overdue_total === 5 && lots.open.slice(0, 5).every(t => t.overdue) && lots.goals.length === 20 && lots.notes.length === 3000 && lots.closed.every(t => [...t.title].length <= 160))
+check('nothing at all gives empty lists (the sheet then asks no AI)', (() => { const e = R.weekInput([], [], null, '2026-11-11', RULES); return e.closed.length === 0 && e.open.length === 0 && e.open_total === 0 && e.goals.length === 0 && e.notes === '' })())
+check('an open task listed with its overdue mark; a closed one is never open', (() => { const e = R.weekInput([{ ...T('Late', 'open', null), due_date: '2026-11-10' }, { ...T('Fine', 'open', null), due_date: '2026-11-20' }, T('Done', 'done', '2026-11-10T10:00:00Z')], [], null, '2026-11-11', RULES); return same(e.open, [{ title: 'Late', overdue: true }, { title: 'Fine', overdue: false }]) && e.open_total === 2 && e.overdue_total === 1 })())
 
 section('an error, before it is sent')
 const JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
@@ -141,6 +143,44 @@ check('ideas: a line with a link and a repeat are dropped, at most 8, and a sear
 check('fewer than 3 ideas, no list or null is refused; "from_search" must be exactly true', R.readIdeas({ ideas: ['a', 'b'] }) === null && R.readIdeas({ ideas: 'x' }) === null && R.readIdeas(null) === null && R.readIdeas({ ideas: ['a', 'b', 'c'], from_search: 'true' }).fromSearch === false)
 check('the block says where the ideas come from', /^Ideas \(found with web search\):\n- a\n- b$/.test(R.ideasBlock(['a', 'b'], true)) && /general knowledge, check before you go/.test(R.ideasBlock(['a'], false)))
 check('the block is added after the notes with one blank line, or alone', R.notesWithIdeas('Maybe in June  \n', 'BLOCK') === 'Maybe in June\n\nBLOCK' && R.notesWithIdeas('', 'BLOCK') === 'BLOCK')
+
+section('Tidy up keeps the owner\'s words')
+check('hasMarks sees a Pick link or a review mark, nothing else', R.hasMarks('see [[@abc]] here') && R.hasMarks('x\n[[review p1 fixed]]') && !R.hasMarks('plain [text] with brackets'))
+check('the owner\'s words are kept as one paragraph under "Said:", the points above them', R.tidiedDescription(['Make it red.', 'Dark mode too.'], 'um make it red\n\n\nalso dark mode') === 'Make it red.\n\nDark mode too.\n\nSaid: um make it red\nalso dark mode')
+check('splitSaid finds the block and the rest; a description with none says so', same(R.splitSaid('A.\n\nB.\n\nSaid: first words'), { rest: 'A.\n\nB.', said: 'first words' }) && R.splitSaid('A.\n\nB.').said === null)
+check('no points still keeps the words', R.tidiedDescription([], 'hello') === 'Said: hello')
+
+section('a receipt line, and the facts')
+check('matchLine: a model-like word picks the line ("XM5"), two shared words pick one, a stranger matches none', R.matchLine('Sony WH-1000XM5 headphones', ['USB-C cable 2 m', 'Sony WH-1000XM5']) === 1 && R.matchLine('Laptop sleeve 13 inch', ['Laptop sleeve', 'Mouse']) === 0 && R.matchLine('Laptop', ['TV Samsung 55', 'Cable']) === null && R.matchLine('Laptop', []) === null)
+check('matchLine: two lines that both fit are not guessed between', R.matchLine('Cable', ['USB-C cable', 'HDMI cable']) === null)
+const RF = require('../src/features/shop/receiptFacts')
+const AM = require('../src/features/shop/autofillModel')
+const manyLines = { ...GOOD, items: [{ name: 'TV', price: 8990 }, { name: 'Cable', price: 199 }], total: 9189 }
+const fFill = R.receiptFill(GOOD, STORES, null)
+const rFacts = RF.receiptFacts(fFill, '2026-11-11T10:00:00Z')
+check('receiptFacts: the name, the amount with its currency and the store, from "the receipt", the store exact when matched', same(rFacts.map(f => f.key), ['title', 'price', 'store']) && rFacts.every(f => f.source.label === 'the receipt' && f.source.origin === 'receipt' && f.on) && rFacts[2].confidence === 'exact' && rFacts[1].value.amount === 2990, rFacts)
+check('an unmatched store is a fact to check; no price without a currency', RF.receiptFacts(R.receiptFill({ ...GOOD, store: 'Kiosk' }, STORES, null), 'x').find(f => f.key === 'store').confidence === 'check' && !RF.receiptFacts(R.receiptFill({ ...GOOD, currency: undefined }, STORES, null), 'x').some(f => f.key === 'price'))
+const emptyDraft = { title: '', price: null, currency: 'NOK', image: null, platform: '', topId: '', subId: '' }
+const merged = AM.mergeFacts([], 'receipt', rFacts)
+const patch = AM.fieldsAfter(emptyDraft, [], merged)
+check('into an empty form the receipt fills name, price, currency and store', patch.title === 'Sony WH-1000XM5' && patch.price === 2990 && patch.currency === 'NOK' && patch.platform === 'Elkjøp', patch)
+const typedDraft = { ...emptyDraft, title: 'My own name', price: 100, platform: 'Corner shop' }
+check('over what the owner typed the receipt fills nothing (it never overwrites)', same(AM.fieldsAfter(typedDraft, [], merged), {}), AM.fieldsAfter(typedDraft, [], merged))
+const second = AM.mergeFacts(merged, 'receipt', RF.receiptFacts(R.receiptFill(manyLines, STORES, 1), 'x'))
+check('another line picked replaces what the receipt put there, and only that', (() => { const filled = { ...emptyDraft, ...patch }; const p2 = AM.fieldsAfter(filled, merged, second); return p2.title === 'Cable' && p2.price === 199 })())
+check('another line picked leaves a name the owner changed after the first fill alone', (() => { const filled = { ...emptyDraft, ...patch, title: 'Owner renamed' }; const p2 = AM.fieldsAfter(filled, merged, second); return !('title' in p2) && p2.price === 199 })())
+check('the receipt\'s other lines are the accessories on offer: the picked one is not among them, and none without a pick', same(R.receiptFill(manyLines, STORES, 1).others, [{ name: 'TV', price: 8990 }]) && R.receiptFill(GOOD, STORES, null).others.length === 0 && R.receiptFill(manyLines, STORES, null).others.length === 0)
+
+section('the cost line, the zero-width and link filters, the search in the breakdown')
+check('costNote: four decimals under a cent, three above; nothing when unknown', R.costNote(0.00031) === '≈ $0.0003' && R.costNote(0.0123) === '≈ $0.012' && R.costNote(null) === '' && R.costNote(-1) === '' && R.costNote(NaN) === '')
+check('ideas: anything that reads as a host name is dropped, zero-width characters are taken out of the lines that stay', (() => { const r = R.readIdeas({ ideas: ['Visit example.no today', 'Visit exam​ple.no', 'Walk at the harbour.', 'The old‮ church.', 'Sunset at the quay.'] }); return same(r.ideas, ['Walk at the harbour.', 'The old church.', 'Sunset at the quay.']) })())
+const LR = require('../src/features/ai/claude/ledgerRules')
+const priced = { checkedOn: '2026-11-20', source: '', longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, webSearchUsdEach: 0.01, webSearchMaxUses: 3, models: [{ model: 'claude-haiku-5-5', inputPerMTok: 0.1, outputPerMTok: 0.5, cacheReadPerMTok: 0.01, cacheWrite5mPerMTok: 0.125, cacheWrite1hPerMTok: 0.2 }] }
+const searchCall = { outcome: 'ok', model: 'claude-haiku-5-5', mode: 'live', long_prompt: false, input_tokens: 9000, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 400, thinking_tokens: 0, cost_usd: 0.0011 + 0.02, tools: [{ name: 'web_search', searches: 2 }] }
+const bd = LR.costBreakdown(searchCall, priced)
+check('a call that searched: the breakdown has the search line (2 × $0.01), adds it after the tokens, and matches the stored cost (no "prices may have changed" gap)', bd.searches === 2 && bd.searchEach === 0.01 && bd.searchUsd === 0.02 && Math.abs(bd.worked - searchCall.cost_usd) < 0.0000015, bd)
+check('a call without searches has none; tools that are not searches or have a bad count count nothing', LR.costBreakdown({ ...searchCall, tools: [] }, priced).searches === 0 && LR.searchesOf({ tools: [{ name: 'other', searches: 5 }, { name: 'web_search', searches: -1 }, { name: 'web_search', searches: 'x' }, null, 'y'] }) === 0 && LR.searchesOf({ tools: [{ name: 'web_search', searches: 1 }, { name: 'web_search', searches: 2 }] }) === 3)
+check('a long prompt multiplies the tokens, never the searches', (() => { const c = { ...searchCall, long_prompt: true, cost_usd: 0.0011 * 5 + 0.02 }; const b2 = LR.costBreakdown(c, priced); return Math.abs(b2.worked - c.cost_usd) < 0.0000015 })())
 
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

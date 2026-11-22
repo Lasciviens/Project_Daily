@@ -10,6 +10,12 @@
 //   Dev Requests  the draft's fields, checked against the app's own page list
 //   ideas         the idea lines as they are appended to a wish's notes
 
+/** What a call cost, for the line after a result: four decimals under a cent, else three; empty when it is not known. */
+export function costNote(usd: number | null | undefined): string {
+  if (typeof usd !== 'number' || !Number.isFinite(usd) || usd < 0) return ''
+  return '≈ $' + (usd < 0.01 ? usd.toFixed(4) : usd.toFixed(3))
+}
+
 // ── photos ────────────────────────────────────────────────────────────────────
 
 /** The longest side of a photo that is sent (the function accepts 1600). */
@@ -137,8 +143,15 @@ export interface ReceiptFill {
   /** The owner's own store it matched, or null; `storeName` is what is printed when none matched. */
   storeId: string | null
   storeName: string | null
-  /** A line for the receipt note: what was read and could not go in a field (a warranty, a currency this app doesn't hold). */
+  /** The store as a form shows it: the matched store's own name, else the printed one. */
+  storeLabel: string | null
+  /** A line for the receipt note: what was read and could not go in a field (a warranty, a total that differs). */
   note: string
+  /** The day a printed warranty ends (the purchase day plus its months), YYYY-MM-DD. */
+  warrantyUntil?: string
+  /** Every item line's name (for matching a thing to a line), and the lines that were not picked (with a price). */
+  lines: string[]
+  others: ReceiptLine[]
   /** Why a value was left out, in a sentence for the owner. */
   left: string[]
 }
@@ -155,32 +168,58 @@ export function addMonthsToDay(day: string, months: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`
 }
 
+/** The words of a thing's name that say what it is (3 or more letters or digits, no filler). */
+function nameWords(s: string): string[] {
+  const filler = new Set(['the', 'and', 'for', 'with', 'new', 'used', 'black', 'white', 'grey', 'gray', 'blue', 'red', 'pro', 'max'])
+  return (s.normalize('NFKD').replace(/\p{M}/gu, '').replace(/ø/gi, 'o').replace(/æ/gi, 'ae').replace(/å/gi, 'a').toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter(w => !filler.has(w))
+}
+
+/**
+ * The receipt line that is this thing: the line sharing a model-like word with it (a word with a digit, "xm5"),
+ * else the one sharing at least two words, else the only line sharing one when the others share none. Null when no
+ * line looks like it: Just bought then warns instead of putting a stranger's price on the thing.
+ */
+export function matchLine(itemTitle: string, lines: readonly string[]): number | null {
+  const mine = new Set(nameWords(itemTitle))
+  if (!mine.size) return null
+  const shared = lines.map(l => nameWords(l).filter(w => mine.has(w)))
+  const withDigit = shared.map((w, i) => ({ i, hit: w.some(x => /\d/.test(x)) })).filter(x => x.hit)
+  if (withDigit.length === 1) return withDigit[0].i
+  const two = shared.map((w, i) => ({ i, n: new Set(w).size })).filter(x => x.n >= 2)
+  if (two.length === 1) return two[0].i
+  const one = shared.map((w, i) => ({ i, n: w.length })).filter(x => x.n >= 1)
+  return one.length === 1 && two.length === 0 && withDigit.length === 0 ? one[0].i : null
+}
+
 /**
  * The form fields a read receipt fills. `pick` is the item line the owner chose (a receipt of many lines is never
  * guessed at): its price is the amount paid; a receipt of one line takes that line, and with no line the total is
- * the amount. An amount in a currency this app doesn't hold is left out (never converted or relabelled).
+ * the amount. An amount is only filled with a currency this app holds (never converted, never assumed).
  */
 export function receiptFill(read: ReceiptRead, stores: readonly { id: string; name: string; hidden?: boolean; kind?: string }[], pick: number | null | 'total'): ReceiptFill {
   const left: string[] = []
   const lines = read.items ?? []
-  const chosen = pick === 'total' ? null : typeof pick === 'number' ? lines[pick] ?? null : lines.length === 1 ? lines[0] : null
-  const fill: ReceiptFill = { storeId: null, storeName: null, note: '', left }
+  const chosenAt = pick === 'total' ? null : typeof pick === 'number' && lines[pick] ? pick : lines.length === 1 ? 0 : null
+  const chosen = chosenAt === null ? null : lines[chosenAt]
+  const store = matchStore(read.store, stores)
+  const fill: ReceiptFill = {
+    storeId: store ? store.id : null, storeName: store || !read.store ? null : read.store, storeLabel: store ? store.name : read.store ?? null,
+    note: '', left, lines: lines.map(l => l.name), others: chosen ? lines.filter((_, i) => i !== chosenAt) : [],
+  }
   if (chosen) fill.title = chosen.name
   const price = chosen ? chosen.price ?? undefined : lines.length <= 1 || pick === 'total' ? read.total : undefined
   if (price !== undefined) {
-    if (read.currency && !RECEIPT_CURRENCIES.includes(read.currency)) left.push(`The receipt is in ${read.currency}, which this app doesn't hold (NOK, TRY, EUR, USD): the amount is left out.`)
-    else if (!read.currency) left.push('The receipt shows no clear currency: the amount is filled, check the currency.')
-    if (!read.currency || RECEIPT_CURRENCIES.includes(read.currency)) {
-      fill.price = price
-      if (read.currency) fill.currency = read.currency
-    }
+    if (read.currency && RECEIPT_CURRENCIES.includes(read.currency)) { fill.price = price; fill.currency = read.currency }
+    else if (read.currency) left.push(`The receipt is in ${read.currency}, which this app doesn't hold (NOK, TRY, EUR, USD): the amount is left out.`)
+    else left.push('The receipt shows no clear currency: the amount is left out.')
   } else if (lines.length > 1 && pick == null) left.push('Several lines: pick the one you bought to fill its name and price.')
   if (read.date) fill.day = read.date
-  const store = matchStore(read.store, stores)
-  if (store) fill.storeId = store.id
-  else if (read.store) fill.storeName = read.store
   const parts: string[] = []
-  if (read.warranty_months) parts.push(`warranty on the receipt: ${read.warranty_months} months${read.date ? ` (until ${dotDay(addMonthsToDay(read.date, read.warranty_months))})` : ''}`)
+  if (read.warranty_months) {
+    const until = read.date ? addMonthsToDay(read.date, read.warranty_months) : null
+    if (until) fill.warrantyUntil = until
+    parts.push(`${read.warranty_months} months warranty${until ? `, until ${dotDay(until)}` : ''}`)
+  }
   if (read.total !== undefined && chosen && chosen.price !== read.total) parts.push(`receipt total ${read.total}${read.currency ? ` ${read.currency}` : ''}`)
   if (parts.length) fill.note = `From the receipt: ${parts.join('; ')}.`
   return fill
@@ -198,8 +237,14 @@ export function weekBounds(day: string): { start: string; end: string } {
   return { start: iso(start), end: iso(new Date(start.getTime() + 6 * 86_400_000)) }
 }
 
-export interface WeekTask { title: string; status: string; completed_at: string | null }
+export interface WeekTask { title: string; status: string; completed_at: string | null; due_date?: string | null }
 export interface WeekGoal { title: string; done: boolean }
+/** The task rules the week reads (todo/taskRules.ts is the one place that knows them): closed, open, overdue on a day. */
+export interface WeekRules {
+  isClosed: (task: WeekTask) => boolean
+  isOpen: (task: WeekTask) => boolean
+  isOverdue: (task: WeekTask, today: string) => boolean
+}
 
 /** The local calendar day (YYYY-MM-DD) an ISO moment falls on, in the browser's own zone (Oslo for the owner). */
 function localDayOfIso(iso: string | null): string | null {
@@ -213,19 +258,26 @@ const cut = (s: string, n: number) => [...s.replace(/\s+/g, ' ').trim()].slice(0
 
 /**
  * The input of "Write my week": the Work tasks closed this week (closed = done on a day, `completed_at`, never
- * `updated_at`), the weekly goals, the notes. Code finds and cuts; the function counts again and the model writes.
- * `closedStatuses` is what the task rules call closed.
+ * `updated_at`), the Work tasks still open (the overdue ones marked, the oldest deadline first), the weekly goals and
+ * the notes. Code finds and cuts; the function counts again and the model writes. The task rules come in as `rules`.
  */
-export function weekInput(tasks: readonly WeekTask[], goals: readonly WeekGoal[], notes: string | null | undefined, today: string, isClosed: (status: string) => boolean) {
+export function weekInput(tasks: readonly WeekTask[], goals: readonly WeekGoal[], notes: string | null | undefined, today: string, rules: WeekRules) {
   const { start, end } = weekBounds(today)
   const closed = tasks
-    .filter(t => isClosed(t.status))
+    .filter(t => rules.isClosed(t))
     .map(t => ({ day: localDayOfIso(t.completed_at), title: cut(t.title, 160) }))
     .filter((t): t is { day: string; title: string } => !!t.day && t.day >= start && t.day <= end && !!t.title)
     .sort((a, b) => b.day.localeCompare(a.day))
     .slice(0, 60)
+  const open = tasks
+    .filter(t => rules.isOpen(t) && t.title.trim())
+    .map(t => ({ title: cut(t.title, 160), overdue: rules.isOverdue(t, today), due: t.due_date ?? null }))
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due ?? '9999').localeCompare(b.due ?? '9999'))
   return {
     week_start: start, week_end: end, closed,
+    // The number of open and overdue tasks is counted here, over all of them; the list the model reads is the first 30.
+    open_total: open.length, overdue_total: open.filter(t => t.overdue).length,
+    open: open.slice(0, 30).map(t => ({ title: t.title, overdue: t.overdue })),
     goals: goals.filter(g => g.title.trim()).slice(0, 20).map(g => ({ done: g.done, title: cut(g.title, 160) })),
     notes: (notes ?? '').trim().slice(0, 3000),
   }
@@ -274,7 +326,7 @@ export function scrubErrorForAi(text: string, maxChars: number): string {
   t = t.replace(/\b(api[_-]?key|apikey|token|secret|password|passwd)[ \t]+(?=[A-Za-z0-9._~+/=-]{12,})(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]+/gi, `$1 ${HIDDEN}`)
   t = t.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, '[hidden e-mail]')
   // A phone number; a date written 2026-11-22 is not one.
-  t = t.replace(/\+?\d[\d \-]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
+  t = t.replace(/\+?\d[\d -]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
   t = t.replace(/[A-Za-z0-9+/_=-]{32,}/g, HIDDEN)
   // Then the cut: 14 lines, then the limit.
   t = t.split('\n').slice(0, 14).join('\n').replace(/\s+\n/g, '\n').trim()
@@ -329,6 +381,37 @@ export function readRequestDraft(raw: unknown, pages: readonly string[], fallbac
     priority: PRIORITIES.find(p => p === raw.priority) ?? 'medium',
     points,
   }
+}
+
+/** The paragraph that keeps the owner's own words under a drafted outline. */
+export const SAID_PREFIX = 'Said: '
+
+/** A description split into what is above the owner's "Said:" paragraph and the words in it (null when there is none). */
+export function splitSaid(description: string): { rest: string; said: string | null } {
+  const paragraphs = description.replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/)
+  const at = paragraphs.findIndex(p => p.startsWith(SAID_PREFIX))
+  if (at < 0) return { rest: description, said: null }
+  const said = paragraphs[at].slice(SAID_PREFIX.length)
+  return { rest: paragraphs.filter((_, i) => i !== at).join('\n\n'), said }
+}
+
+/** The owner's words as one paragraph (blank lines inside would start new points), under the same prefix. */
+export function saidBlock(said: string): string {
+  return SAID_PREFIX + said.replace(/\r\n?/g, '\n').replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n').trim()
+}
+
+/** Does a description hold a Pick-on-page link or a review mark (`[[…]]`): text the AI must never send or change. */
+export function hasMarks(description: string): boolean {
+  return description.includes('[[')
+}
+
+/**
+ * What "Tidy up" writes: the drafted points, then the owner's own words kept as typed under "Said:" (the first
+ * tidy-up's words; a second one never wraps the first draft as if it were what was said).
+ */
+export function tidiedDescription(points: readonly string[], said: string): string {
+  const block = saidBlock(said)
+  return points.length ? `${points.join('\n\n')}\n\n${block}` : block
 }
 
 /** The outline text of a draft: one point per paragraph (a blank line separates points). */

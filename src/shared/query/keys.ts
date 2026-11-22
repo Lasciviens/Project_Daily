@@ -228,6 +228,8 @@ export const qk = {
     all: ['ai-calls'] as const,
     page: (filter: object, page: number) => ['ai-calls', 'page', filter, page] as const,
     call: (id: string) => ['ai-calls', 'call', id] as const,
+    /** An error's "Explain" answer, kept while the app is open (one paid call per error unless the owner asks again). */
+    explain: (errorId: string) => ['ai-calls', 'explain', errorId] as const,
   },
   athlete: {
     profile: ['athlete-profile'] as const,

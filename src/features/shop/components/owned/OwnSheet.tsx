@@ -19,6 +19,8 @@ import { LeftToField } from './SellSheet'
 import { ReceiptPhoto } from '../purchase/ReceiptPhoto'
 import { useShopStores } from '../../hooks/useShopStores'
 import type { ReceiptFill } from '../../../ai/claude/featureRules'
+import { receiptFacts } from '../../receiptFacts'
+import { fieldsAfter, mergeFacts } from '../../autofillModel'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
 
 /** The fields this sheet shares with the Wishlist's add (title, category, price, store, link, picture, facts): one draft, so the same autofill fills them. */
@@ -70,21 +72,25 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const money = how === 'sold' || how === 'traded_in' || how === 'other'
   const sources = items.filter(i => isPossession(i) && !i.accessory_of && i.disposal)
   const targets = items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i)))
-  // A read receipt fills what it found (title only into an empty field); the owner checks and edits every field.
-  const receiptTitle = useRef('')
+  // A read receipt goes in as autofill facts ("Filled in for you · untick what's wrong"): a fact fills its field only when the
+  // field is empty or still holds an earlier receipt value, never over what was typed. The day and the note follow the same rule.
+  const [receipt, setReceipt] = useState<ReceiptFill | null>(null)
+  const [withOthers, setWithOthers] = useState(false)
+  const receiptDay = useRef('')
   const fromReceipt = useCallback((f: ReceiptFill) => {
-    const previous = receiptTitle.current
-    update(d => ({
-      // The name is the receipt's while it is still the one the receipt put there; what the owner typed stays.
-      ...(f.title && (!d.title.trim() || d.title === previous) ? { title: f.title } : {}),
-      ...(f.price !== undefined ? { price: f.price } : {}),
-      ...(f.currency ? { currency: f.currency as ShopCurrency } : {}),
-      ...(f.storeId ? { platform: stores.find(s => s.id === f.storeId)?.name ?? d.platform } : f.storeName ? { platform: f.storeName } : {}),
-      ...(f.note && !d.notes.includes(f.note) ? { notes: d.notes.trim() ? `${d.notes.trim()}\n${f.note}` : f.note } : {}),
-    }))
-    if (f.title) receiptTitle.current = f.title
-    if (f.day) { setDay(f.day); setApprox(false) }
-  }, [update, stores])
+    setReceipt(f)
+    update(d => {
+      const facts = mergeFacts(d.facts, 'receipt', receiptFacts(f, new Date().toISOString()))
+      const note = f.note && !d.notes.includes(f.note) ? { notes: d.notes.trim() ? `${d.notes.trim()}\n${f.note}` : f.note } : {}
+      return { facts, ...fieldsAfter(d, d.facts, facts), ...note }
+    })
+    if (f.day) {
+      const was = receiptDay.current
+      setDay(d => (!d || d === was ? f.day as string : d))
+      setApprox(a => (was || !day ? false : a))
+      receiptDay.current = f.day
+    }
+  }, [update, day])
   const valid = title.trim() && day && (!had || (left && left >= day))
 
   async function save() {
@@ -111,6 +117,17 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
       if (paidFrom) await link.mutateAsync({ from_id: paidFrom, to_id: row.id })
       if (had && moneyTo) await link.mutateAsync({ from_id: row.id, to_id: moneyTo })
     } catch { /* the link's own hook toasted it; the thing itself is saved */ }
+    // The receipt's other lines as accessories of this thing (the owner ticked it): same store, same day, their own prices.
+    if (withOthers && receipt && receipt.currency && receipt.others.length) {
+      try {
+        for (const l of receipt.others) {
+          await create.mutateAsync({ quiet: true, input: {
+            title: l.name, price: l.price, currency: receipt.currency as ShopCurrency, platform: draft.platform.trim() || null, list: 'wishlist', category_id: row.category_id,
+            accessory_of: row.id, status: 'bought', bought_at: middayIso(day), approx_dates: approx,
+          } })
+        }
+      } catch { /* the hook toasted it; the thing itself is saved */ }
+    }
     if (row.url) check([row.id])
     if (currency !== 'NOK' || (had && gotCurrency !== 'NOK')) fill()
     onClose()
@@ -133,6 +150,9 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
         </div>
         <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
         <ReceiptPhoto stores={stores} onFill={fromReceipt} />
+        {receipt && receipt.others.length > 0 && receipt.currency && (
+          <Toggle checked={withOthers} onChange={setWithOthers}>Add the other {receipt.others.length === 1 ? 'line' : `${receipt.others.length} lines`} as {receipt.others.length === 1 ? 'an accessory' : 'accessories'}</Toggle>
+        )}
         <div>
           <span className="field-label">Category</span>
           <div className="grid grid-cols-2 gap-2">

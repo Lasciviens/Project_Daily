@@ -6,6 +6,7 @@ import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { useDescribeGuess, useLogGuess } from '../hooks/useQuickGuess'
 import { PhotoButton } from '../../ai/claude/components/PhotoButton'
 import { usePhotoGuess } from '../../ai/claude/hooks/useAiFeatures'
+import { costNote } from '../../ai/claude/featureRules'
 import { draftProblem, EMPTY_DRAFT, KNOWN_GUESS_NOTE, type GuessDraft, type GuessEstimate } from '../quickGuess'
 import type { MealSlot } from '../types'
 import { DecimalInput } from './foodLogKit'
@@ -36,6 +37,8 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const [draft, setDraft] = useState<GuessDraft | null>(null)
   const [assumed, setAssumed] = useState<string[]>([])
   const [from, setFrom] = useState<GuessEstimate['from']>(undefined)
+  // What the photo's AI call cost (empty after a described or remembered estimate).
+  const [photoCost, setPhotoCost] = useState<number | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const slotName = SLOT_OPTIONS.find(o => o.id === slot)?.label.toLowerCase() ?? slot
@@ -52,6 +55,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
     setProblem(null)
     try {
       applyEstimate(await describe.mutateAsync(text), text.trim())
+      setPhotoCost(null)
     } catch { /* the hook reports it (one toast, shown over this sheet) */ }
   }
 
@@ -59,7 +63,9 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   async function fromPhoto(file: File) {
     setProblem(null)
     try {
-      applyEstimate(await photo.mutateAsync({ file, text }), text.trim() || 'Meal')
+      const e = await photo.mutateAsync({ file, text })
+      applyEstimate(e, text.trim() || 'Meal')
+      setPhotoCost(e.costUsd)
     } catch { /* the hook reports it */ }
   }
 
@@ -117,7 +123,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
         {draft && (
           <>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <TonePill tone="info">{from ? KNOWN_GUESS_NOTE[from] : 'AI estimate'}</TonePill>
+              <TonePill tone="info">{from ? KNOWN_GUESS_NOTE[from] : `AI estimate${costNote(photoCost) ? ` ${costNote(photoCost)}` : ''}`}</TonePill>
               <span className="text-meta text-fg-muted">check the numbers before you log</span>
             </div>
             <label className="flex flex-col gap-1">

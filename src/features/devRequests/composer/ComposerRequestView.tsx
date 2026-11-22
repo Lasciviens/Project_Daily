@@ -1,6 +1,6 @@
-import { useMemo, type Ref, type RefObject } from 'react'
+import { useMemo, useState, type Ref, type RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, ListChecks, Plus, Quote, Send, Sparkles, Trash2, Undo2 } from 'lucide-react'
+import { ArrowUpRight, CalendarClock, Check, CheckCheck, CornerUpLeft, Crosshair, FileText, ListChecks, Plus, Quote, Send, Sparkles, Trash2, Undo2 } from 'lucide-react'
 import { useDevRequestDrafts } from '../devRequestDraftStore'
 import { cardTimeline, draftFromRow, isDraftEmpty, type ComposerTarget, type DraftFields } from '../devRequestRules'
 import { useDeleteDevRequests, useDevRequests, useUpdateDevRequest } from '../hooks/useDevRequests'
@@ -16,8 +16,7 @@ import { PageContextToggle } from '../components/PageContextToggle'
 import type { OutlineHandle } from '../components/OutlineEditor'
 import { PAGE_OPTIONS, pageOptionFor } from '../components/devRequestMeta'
 import { useDraftDevRequest } from '../../ai/claude/hooks/useAiFeatures'
-import { outlineOf } from '../../ai/claude/featureRules'
-import { toast } from '../../../app/store'
+import { costNote, hasMarks, splitSaid, tidiedDescription } from '../../ai/claude/featureRules'
 import { Button, IconButton, Skeleton, Truncate } from '../../../shared/ui'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 
@@ -63,6 +62,8 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const editTailNote = useEditTailNote()
   const composerPrompt = useComposerPrompt()
   const draftAi = useDraftDevRequest()
+  // After a Tidy up: what was there before (for Undo) and what the call cost, shown above the footer until dismissed.
+  const [tidied, setTidied] = useState<{ before: Pick<DraftFields, 'title' | 'description' | 'page' | 'category' | 'priority'>; costUsd: number | null } | null>(null)
 
   const fields: DraftFields | null = target.kind === 'new' ? newDraft : (editDraft ?? seed)
   const parsed = useMemo(() => parseDescription(fields?.description ?? ''), [fields?.description])
@@ -116,23 +117,29 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const dirty = target.kind === 'new' ? !isDraftEmpty(newDraft) : !!editDraft
   const timeline = row ? [cardTimeline(row), row.prompted_at ? `Prompted ${formatDateTime(row.prompted_at)}` : ''].filter(Boolean).join(' · ') : ''
 
-  // ✨: what is written (or dictated) here → a title, page, category, priority and the outline's points, in English. It
-  // fills the fields for review; Undo puts the owner's own words back. The page comes only from the app's own list.
+  // Tidy up: what is written (or dictated) here → a title, page, category, priority and the outline's points, in English. It
+  // fills the fields for review. The owner's own words stay as typed in a "Said:" paragraph under the points, and Undo
+  // (above the footer) puts every field back. The page comes only from the app's own list. A request with Pick links or
+  // review marks is never sent: those lines belong to the request and the AI neither reads nor changes them.
+  const marked = hasMarks(fields.description)
   async function tidyUp() {
-    if (!fields || draftAi.isPending) return
-    const before = { title: fields.title, description: fields.description, page: fields.page, category: fields.category, priority: fields.priority }
-    const said = [fields.title.trim(), fields.description.trim()].filter(Boolean).join('\n\n')
+    if (draftAi.isPending) return
+    const before = { title: fields!.title, description: fields!.description, page: fields!.page, category: fields!.category, priority: fields!.priority }
+    const { rest, said: earlier } = splitSaid(fields!.description)
+    const typed = [fields!.title.trim(), rest.trim()].filter(Boolean).join('\n\n')
+    const text = earlier ? `${earlier}\n\n${typed}`.trim() : typed
     try {
-      const d = await draftAi.mutateAsync({ text: said, pages: [...PAGE_OPTIONS, 'other'], currentPage: pageOptionFor(pathname) })
-      onChange({ title: d.title, description: outlineOf(d.points), page: d.page, category: d.category, priority: d.priority })
-      toast.undo('Request drafted — check it before you save', () => onChange(before))
+      const d = await draftAi.mutateAsync({ text, pages: [...PAGE_OPTIONS, 'other'], currentPage: pageOptionFor(pathname) })
+      // The words kept are the first ones said: a second Tidy up keeps the first "Said:" block as it is.
+      onChange({ title: d.title, description: tidiedDescription(d.points, earlier ?? typed), page: d.page, category: d.category, priority: d.priority })
+      setTidied({ before, costUsd: d.costUsd })
     } catch { /* the hook reports it */ }
   }
 
   const tools = (
     <>
-      <Button size="sm" variant="ghost" icon={<Sparkles />} loading={draftAi.isPending} disabled={isDraftEmpty(fields)} onClick={() => { void tidyUp() }}
-        title="Turn what you wrote or dictated into a title, page, category, priority and points (English) — you check it, Undo brings your words back">Tidy up</Button>
+      <Button size="sm" variant="ghost" icon={<Sparkles />} loading={draftAi.isPending} disabled={isDraftEmpty(fields) || marked} onClick={() => { void tidyUp() }}
+        title={marked ? 'Off while the request has Pick links or review marks: the AI never reads or changes them' : 'AI: turn what you wrote or dictated into a title, page, category, priority and points (English). Your words stay under "Said:", Undo puts everything back'}>Tidy up</Button>
       <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} title={`Point at something on the page: a link to it goes where the caret is${mouse ? ' (or Alt-click anything while this window is open)' : ''}`}>Pick on page</Button>
       {onQuote && (
         // mousedown would clear the page selection before the click reads it.
@@ -174,6 +181,14 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
             </>
           }
         />
+        {tidied && (
+          <div role="status" data-tone="info" className="tone-soft flex flex-wrap items-center gap-x-2 gap-y-1 rounded-row border border-[rgb(var(--tone)/0.35)] px-3 py-2 text-meta">
+            <Sparkles aria-hidden className="h-3.5 w-3.5 shrink-0 tone-text" />
+            <span className="min-w-0 flex-1 text-fg-2">Drafted by AI{costNote(tidied.costUsd) ? ` (${costNote(tidied.costUsd)})` : ''} — check it. Your words are kept under “Said:”.</span>
+            <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => { onChange(tidied.before); setTidied(null) }}>Undo</button>
+            <button type="button" aria-label="Dismiss" className="text-fg-muted hover:text-fg" onClick={() => setTidied(null)}>×</button>
+          </div>
+        )}
         {target.kind === 'new' && (
           <PageContextToggle start={newDraft.start} checked={newDraft.attachContext} onChange={v => useDevRequestDrafts.getState().patchNewDraft({ attachContext: v })} />
         )}
@@ -192,7 +207,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           <Button
             variant="ghost"
             size="sm"
-            icon={<Sparkles />}
+            icon={<FileText />}
             disabled={isDraftEmpty(fields)}
             onClick={() => void composerPrompt.build(target)}
             title={dirty ? 'Build the prompt for Claude from this request as written now (no save needed)' : 'Build the prompt for Claude for this request'}

@@ -12,7 +12,7 @@ import type { ShopCurrency, ShopItem, ShopItemCost, UpdateShopItemInput } from '
 const NEW_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'] as const
 
 export type PurchasePatch = Pick<UpdateShopItemInput,
-  'platform' | 'bought_at' | 'return_by' | 'warranty_until' | 'bought_channel' | 'arrived_on' | 'extra_warranty_until' | 'receipt_note' | 'search_opened_on'>
+  'price' | 'currency' | 'platform' | 'bought_at' | 'return_by' | 'warranty_until' | 'bought_channel' | 'arrived_on' | 'extra_warranty_until' | 'receipt_note' | 'search_opened_on'>
 
 type PgError = { code?: string; message?: string }
 const missingColumn = (e: PgError) => e.code === '42703' || e.code === 'PGRST204'

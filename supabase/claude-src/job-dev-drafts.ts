@@ -61,7 +61,7 @@ export function scrubErrorText(text: string, maxChars: number): string {
   t = t.replace(/\b(api[_-]?key|apikey|token|secret|password|passwd)[ \t]+(?=[A-Za-z0-9._~+/=-]{12,})(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]+/gi, `$1 ${HIDDEN}`)
   t = t.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, '[hidden e-mail]')
   // A phone number; a date written 2026-11-22 is not one.
-  t = t.replace(/\+?\d[\d \-]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
+  t = t.replace(/\+?\d[\d -]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
   t = t.replace(/[A-Za-z0-9+/_=-]{32,}/g, HIDDEN)
   // Then the cut: 14 lines, then the limit.
   t = t.split('\n').slice(0, 14).join('\n').replace(/\s+\n/g, '\n').trim()

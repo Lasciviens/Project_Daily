@@ -11,21 +11,22 @@ import type { ReceiptRead, RequestDraft } from '../featureRules'
 
 /** Food → Quick guess → "From a photo". */
 export function usePhotoGuess() {
-  return useMutationWithFeedback<GuessEstimate, { file: File; text: string }>({
+  return useMutationWithFeedback<GuessEstimate & { costUsd: number | null }, { file: File; text: string }>({
     action: 'guess_from_photo',
     silent: 'the estimate fills the sheet, marked AI estimate, for review',
     logPayload: false,
     mutationFn: async ({ file, text }) => {
-      const estimate = readGuessEstimate(await describeGuessPhoto(await shrinkPhoto(file), text))
+      const { result, costUsd } = await describeGuessPhoto(await shrinkPhoto(file), text)
+      const estimate = readGuessEstimate(result)
       if (!estimate || !estimate.title) throw new Error("That didn't look like food — try another photo")
-      return estimate
+      return { ...estimate, costUsd }
     },
   })
 }
 
 /** Shop → "From a receipt". */
 export function useReadReceipt() {
-  return useMutationWithFeedback<ReceiptRead, File>({
+  return useMutationWithFeedback<ReceiptRead & { costUsd: number | null }, File>({
     action: 'read_receipt',
     silent: 'the receipt fills the form, which you check before saving',
     logPayload: false,
@@ -35,7 +36,7 @@ export function useReadReceipt() {
 
 /** Dev Requests composer ✨. */
 export function useDraftDevRequest() {
-  return useMutationWithFeedback<RequestDraft, { text: string; pages: readonly string[]; currentPage: string }>({
+  return useMutationWithFeedback<RequestDraft & { costUsd: number | null }, { text: string; pages: readonly string[]; currentPage: string }>({
     action: 'draft_dev_request',
     silent: 'the draft fills the composer, with Undo, for review',
     mutationFn: ({ text, pages, currentPage }) => draftDevRequest(text, pages, currentPage),
@@ -55,7 +56,7 @@ export function useExplainError() {
 
 /** Work → "Write my week". */
 export function useWriteWeek() {
-  return useMutationWithFeedback<string, Record<string, unknown>>({
+  return useMutationWithFeedback<{ text: string; costUsd: number | null }, Record<string, unknown>>({
     action: 'write_week',
     silent: 'the text is shown with a Copy button',
     mutationFn: input => writeWeek(input),
@@ -64,7 +65,7 @@ export function useWriteWeek() {
 
 /** Shop → "Write the ad" → "Improve". */
 export function useImproveAd() {
-  return useMutationWithFeedback<string, { title: string; template: string; notes: string }>({
+  return useMutationWithFeedback<{ text: string; costUsd: number | null }, { title: string; template: string; notes: string }>({
     action: 'improve_ad',
     silent: 'the improved text replaces the ad in the sheet, with Undo, for editing',
     mutationFn: ({ title, template, notes }) => improveAd(title, template, notes),
@@ -73,7 +74,7 @@ export function useImproveAd() {
 
 /** Wishes → "Ideas" for a place. */
 export function usePlaceIdeas() {
-  return useMutationWithFeedback<{ ideas: string[]; fromSearch: boolean }, { place: string; wish: string; notes: string }>({
+  return useMutationWithFeedback<{ ideas: string[]; fromSearch: boolean; costUsd: number | null }, { place: string; wish: string; notes: string }>({
     action: 'place_ideas',
     silent: 'the ideas are shown for you to add to the notes',
     mutationFn: ({ place, wish, notes }) => placeIdeas(place, wish, notes),

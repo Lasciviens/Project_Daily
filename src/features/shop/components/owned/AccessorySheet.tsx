@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, Truncate } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -10,6 +10,9 @@ import { boughtOn } from '../../ownModel'
 import { currencyOf } from '../../shopModel'
 import { MoneyEditor } from '../record/factKit'
 import { StoreNameField } from '../shopPickers'
+import { ReceiptPhoto } from '../purchase/ReceiptPhoto'
+import { useShopStores } from '../../hooks/useShopStores'
+import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import type { ShopCurrency, ShopItem } from '../../types'
 
 /**
@@ -28,6 +31,21 @@ export function AccessorySheet({ parent, onClose }: { parent: ShopItem; onClose:
   const [store, setStore] = useState(parent.platform ?? '')
   const [added, setAdded] = useState<string[]>([])
   const input = useRef<HTMLInputElement>(null)
+  const { data: stores = [] } = useShopStores()
+  // A read receipt fills the name, the price, the day and the store — each only while it is empty or still the receipt's
+  // own earlier value, never over what was typed (each "Add another" starts from the sheet's own values again).
+  const fromReceiptWas = useRef<{ title?: string; price?: number; currency?: ShopCurrency; day?: string; store?: string }>({})
+  const fromReceipt = useCallback((f: ReceiptFill) => {
+    const was = fromReceiptWas.current
+    if (f.title) setTitle(t => (!t.trim() || t === was.title ? f.title as string : t))
+    if (f.price !== undefined && f.currency) {
+      setPrice(p => (p == null || p === was.price ? f.price as number : p))
+      setCurrency(c => (c === was.currency || was.price === undefined ? f.currency as ShopCurrency : c))
+    }
+    if (f.day && owned) setDay(d => (d === was.day || d === (boughtOn(parent) ?? todayStr()) ? f.day as string : d))
+    if (f.storeLabel) setStore(st => (!st.trim() || st === was.store || st === (parent.platform ?? '') ? f.storeLabel as string : st))
+    fromReceiptWas.current = { title: f.title, price: f.price, currency: f.currency as ShopCurrency | undefined, day: f.day, store: f.storeLabel ?? undefined }
+  }, [owned, parent])
 
   async function save(another: boolean) {
     const t = title.trim()
@@ -63,6 +81,7 @@ export function AccessorySheet({ parent, onClose }: { parent: ShopItem; onClose:
           <label htmlFor="acc-title" className="field-label">Accessory</label>
           <input ref={input} id="acc-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="Case, memory card, controller…" autoFocus className="input" enterKeyHint="next" />
         </div>
+        {owned && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
         <div>
           <span className="field-label">{owned ? 'Paid' : 'Price'} <span className="font-normal text-fg-muted">(0 if it came with it)</span></span>
           <MoneyEditor label="Price" amount={price} currency={currency} onAmount={setPrice} onCurrency={setCurrency} />

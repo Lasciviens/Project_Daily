@@ -1725,7 +1725,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('only place_ideas has a tool (web_search), the others none; its time limit is 70 s', FEATURE_JOBS.every(n => (n === 'place_ideas') === (featureAbout(n).tools.length === 1 && featureAbout(n).tools[0].name === 'web_search')) && featureAbout('place_ideas').timeLimitMs === 70000)
   const FEATURE_PINS = {
     quick_guess_photo: ['2026-11-22.1', '7510e7849a3bb92e'], receipt_read: ['2026-11-22.1', '9ffaf3edacc0455e'], dev_request_draft: ['2026-11-22.1', 'f45ddb395249be39'],
-    error_explain: ['2026-11-22.1', '48d5d6dea56e0f0e'], work_week: ['2026-11-22.1', '692dda0fb9b6e978'], ad_improve: ['2026-11-22.1', 'babe999b81871474'], place_ideas: ['2026-11-22.1', '90d9345691fcdd28'],
+    error_explain: ['2026-11-22.1', '48d5d6dea56e0f0e'], work_week: ['2026-11-22.2', 'fb7257cebce1d59a'], ad_improve: ['2026-11-22.1', 'babe999b81871474'], place_ideas: ['2026-11-22.1', '90d9345691fcdd28'],
   }
   for (const name of FEATURE_JOBS) {
     const job = F[FEATURE_EXPORT[name]]
@@ -1893,12 +1893,12 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   }
 
   // ── work_week ──
-  const WEEK = { week_start: '2026-11-09', week_end: '2026-11-15', closed: [{ day: '2026-11-12', title: 'Ship the invoice export' }, { day: '2026-11-10', title: 'Fix <login> & redirect' }], goals: [{ done: true, title: 'Release 2.4' }, { done: false, title: 'Docs for the API' }], notes: 'Waiting for design on the dashboard.' }
-  const WEEK_GOOD = { text: 'I closed 2 Work tasks this week and finished 1 of my 2 goals.\nDone: the invoice export and the login redirect.\nOpen: the API docs; waiting for design on the dashboard.' }
+  const WEEK = { week_start: '2026-11-09', week_end: '2026-11-15', closed: [{ day: '2026-11-12', title: 'Ship the invoice export' }, { day: '2026-11-10', title: 'Fix <login> & redirect' }], open_total: 3, overdue_total: 1, open: [{ overdue: true, title: 'Pay the <supplier>' }, { overdue: false, title: 'Plan Q1' }], goals: [{ done: true, title: 'Release 2.4' }, { done: false, title: 'Docs for the API' }], notes: 'Waiting for design on the dashboard.' }
+  const WEEK_GOOD = { text: 'I closed 2 Work tasks this week and finished 1 of my 2 goals; 3 are still open, 1 overdue.\nDone: the invoice export and the login redirect.\nOpen: the API docs; waiting for design on the dashboard.' }
   r = await go(runBody(WEEK, 'work_week'), { network: pretendNetwork(modelText(JSON.stringify(WEEK_GOOD))) })
   b = sentBody(r)
-  check('work_week: the request: 1500 tokens; the counts are worked out by code (2 closed, 1 of 2 goals), the tasks sorted by day and escaped; dates DD.MM.YYYY',
-    b.max_tokens === 1500 && b.messages[0].content === '<week>09.11.2026 to 15.11.2026</week>\n<facts>\nclosed work tasks: 2\nweekly goals done: 1 of 2\n</facts>\n<closed_tasks>\n- 10.11 Fix &lt;login&gt; &amp; redirect\n- 12.11 Ship the invoice export\n</closed_tasks>\n<goals>\n- [done] Release 2.4\n- [open] Docs for the API\n</goals>\n<notes>\nWaiting for design on the dashboard.\n</notes>', b.messages[0].content)
+  check('work_week: the request: 1500 tokens; the counts are worked out by code (2 closed, 3 open of which 1 overdue — the app\'s count over every open task —, 1 of 2 goals), the tasks sorted by day and escaped; the open ones with their overdue mark; dates DD.MM.YYYY',
+    b.max_tokens === 1500 && b.messages[0].content === '<week>09.11.2026 to 15.11.2026</week>\n<facts>\nclosed work tasks: 2\nopen work tasks: 3 (1 overdue)\nweekly goals done: 1 of 2\n</facts>\n<closed_tasks>\n- 10.11 Fix &lt;login&gt; &amp; redirect\n- 12.11 Ship the invoice export\n</closed_tasks>\n<open_tasks>\n- [overdue] Pay the &lt;supplier&gt;\n- Plan Q1\n</open_tasks>\n<goals>\n- [done] Release 2.4\n- [open] Docs for the API\n</goals>\n<notes>\nWaiting for design on the dashboard.\n</notes>', b.messages[0].content)
   check('work_week: the answer is the text, shown not saved', same(r.json?.result, WEEK_GOOD) && r.row.job === 'work_week', r.json)
   let wj = (await go(runBody(WEEK, 'work_week'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'I closed 7 Work tasks this week.' }))) })).json
   check('work_week: a number that is in none of the facts (7) is invalid', wj?.ok === false && wj.reason === 'invalid' && /number/.test(wj.message), wj)
@@ -1908,9 +1908,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     wj = (await go(runBody(WEEK, 'work_week'), { network: pretendNetwork(modelText(JSON.stringify(answer))) })).json
     check(`work_week: ${label}: invalid`, wj?.ok === false && wj.reason === 'invalid', wj)
   }
-  x = await go(runBody({ ...WEEK, closed: [], goals: [], notes: '' }, 'work_week'), { network: pretendNetwork(modelText('{}')) })
+  x = await go(runBody({ ...WEEK, closed: [], open: [], open_total: 0, overdue_total: 0, goals: [], notes: '' }, 'work_week'), { network: pretendNetwork(modelText('{}')) })
   check('work_week: nothing to write about (no tasks, goals or notes) is no call at all (AI last)', x.json?.reason === 'bad_input' && /nothing to write about/.test(x.json.message) && x.net.seen.length === 0, x.json)
-  for (const [label, input] of [['a week that ends before it starts', { ...WEEK, week_end: '2026-11-01' }], ['a day that is not a date', { ...WEEK, closed: [{ day: 'yesterday', title: 'x' }] }], ['61 closed tasks', { ...WEEK, closed: Array.from({ length: 61 }, () => ({ day: '2026-11-10', title: 'x' })) }], ['21 goals', { ...WEEK, goals: Array.from({ length: 21 }, () => ({ done: true, title: 'x' })) }], ['a goal whose done is text', { ...WEEK, goals: [{ done: 'yes', title: 'x' }] }], ['notes of 3001 characters', { ...WEEK, notes: 'n'.repeat(3001) }], ['a task title of 161 characters', { ...WEEK, closed: [{ day: '2026-11-10', title: 't'.repeat(161) }] }]]) {
+  for (const [label, input] of [['a week that ends before it starts', { ...WEEK, week_end: '2026-11-01' }], ['a day that is not a date', { ...WEEK, closed: [{ day: 'yesterday', title: 'x' }] }], ['61 closed tasks', { ...WEEK, closed: Array.from({ length: 61 }, () => ({ day: '2026-11-10', title: 'x' })) }], ['21 goals', { ...WEEK, goals: Array.from({ length: 21 }, () => ({ done: true, title: 'x' })) }], ['a goal whose done is text', { ...WEEK, goals: [{ done: 'yes', title: 'x' }] }], ['notes of 3001 characters', { ...WEEK, notes: 'n'.repeat(3001) }], ['a task title of 161 characters', { ...WEEK, closed: [{ day: '2026-11-10', title: 't'.repeat(161) }] }], ['31 open tasks', { ...WEEK, open: Array.from({ length: 31 }, () => ({ overdue: false, title: 'x' })) }], ['an open task whose overdue is text', { ...WEEK, open: [{ overdue: 'yes', title: 'x' }] }], ['more overdue than open', { ...WEEK, open_total: 1, overdue_total: 2 }], ['a count smaller than the list', { ...WEEK, open_total: 1 }], ['a count that is not whole', { ...WEEK, open_total: 2.5 }]]) {
     x = await go(runBody(input, 'work_week'), { network: pretendNetwork(modelText('{}')) })
     check(`work_week: ${label}: bad_input, nothing sent`, x.json?.reason === 'bad_input' && x.net.seen.length === 0, x.json)
   }

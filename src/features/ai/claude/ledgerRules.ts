@@ -227,6 +227,7 @@ function readPrices(raw: unknown): DescribePrices {
     checkedOn: DAY.test(text(p.checkedOn, 10)) ? text(p.checkedOn, 10) : '',
     source: text(p.source, 300),
     longPromptOverTokens: int(p.longPromptOverTokens), longPromptMultiplier: num(p.longPromptMultiplier), batchMultiplier: num(p.batchMultiplier),
+    webSearchUsdEach: num(p.webSearchUsdEach), webSearchMaxUses: int(p.webSearchMaxUses),
     models: list(p.models).map(rec).filter(m => typeof m.model === 'string' && m.model).map(m => ({
       model: text(m.model, 80), inputPerMTok: num(m.inputPerMTok), outputPerMTok: num(m.outputPerMTok), cacheReadPerMTok: num(m.cacheReadPerMTok),
       cacheWrite5mPerMTok: num(m.cacheWrite5mPerMTok), cacheWrite1hPerMTok: num(m.cacheWrite1hPerMTok),
@@ -595,6 +596,20 @@ export interface CostBreakdown {
   held: boolean
   /** The model has no price in the function's table (the stored cost is all there is to show). */
   unpriced: boolean
+  /** Web searches the call ran (the row's `tools`), what each cost, and their sum: part of `worked`, never multiplied. */
+  searches: number
+  searchEach: number
+  searchUsd: number
+}
+
+/** How many web searches a ledger row says it ran (its `tools`: `{ name: 'web_search', searches }`). */
+export function searchesOf(call: Pick<AiCall, 'tools'>): number {
+  let n = 0
+  for (const t of call.tools) {
+    const o = rec(t)
+    if (o.name === 'web_search' && typeof o.searches === 'number' && Number.isFinite(o.searches) && o.searches > 0) n += Math.min(Math.floor(o.searches), 1000)
+  }
+  return n
 }
 
 /**
@@ -605,7 +620,10 @@ export interface CostBreakdown {
 export function costBreakdown(call: AiCall, prices: DescribePrices | undefined): CostBreakdown {
   const held = heldAtWorstCase(call)
   const price = prices?.models.find(m => m.model === call.model)
-  const base = { stored: call.cost_usd, held }
+  const searches = searchesOf(call)
+  const searchEach = prices?.webSearchUsdEach ?? 0
+  const searchUsd = round6(searches * searchEach)
+  const base = { stored: call.cost_usd, held, searches, searchEach, searchUsd }
   if (held || !prices || !price) return { ...base, lines: [], multiplier: 1, multiplierWhy: [], worked: call.cost_usd, unpriced: !held && !price }
   const kinds: [CostLine['key'], string, string, number, number][] = [
     ['input', 'Input', 'your text (and the instructions when too short to cache)', call.input_tokens, price.inputPerMTok],
@@ -619,7 +637,8 @@ export function costBreakdown(call: AiCall, prices: DescribePrices | undefined):
   let multiplier = 1
   if (call.long_prompt && prices.longPromptMultiplier > 0) { multiplier *= prices.longPromptMultiplier; why.push(`long prompt ×${prices.longPromptMultiplier}`) }
   if (call.mode === 'batch' && prices.batchMultiplier > 0) { multiplier *= prices.batchMultiplier; why.push(`batch ×${prices.batchMultiplier}`) }
-  const worked = round6(lines.reduce((s, l) => s + l.tokens * l.perMTok, 0) / 1_000_000 * multiplier)
+  // A search is billed per search: it is added after the multipliers (a long prompt does not make a search dearer).
+  const worked = round6(lines.reduce((s, l) => s + l.tokens * l.perMTok, 0) / 1_000_000 * multiplier + searchUsd)
   return { ...base, lines, multiplier, multiplierWhy: why, worked, unpriced: false }
 }
 
