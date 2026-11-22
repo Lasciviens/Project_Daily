@@ -231,10 +231,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   blocks.push({ type: 'text', text })
   const newMessage: ChatMessage = { role: 'user', content: blocks }
   const wire: ChatMessage[] = [...asChatMessages(history), newMessage]
-  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, firstEventTimeoutMs?: number): ChatRequest => ({
+  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, clocks?: { firstEventTimeoutMs: number; idleTimeoutMs: number }): ChatRequest => ({
     model, maxOutputTokens, effort, thinking, system: CHAT_SYSTEM, ownerInstructions, tools, noTools, messages,
     previousMessageId: typeof history.filter(m => m.role === 'assistant').pop()?.meta.message_id === 'string' ? history.filter(m => m.role === 'assistant').pop()?.meta.message_id as string : null,
-    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(firstEventTimeoutMs ? { firstEventTimeoutMs } : {}), signal,
+    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(clocks ?? {}), signal,
   })
 
   // The wall: the last prompt's size plus the new words is an estimate; near the line the provider counts it exactly (free).
@@ -286,7 +286,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, Math.min(CHAT_LIMITS.roundTimeoutMs, remaining), Math.min(CHAT_LIMITS.firstEventMs, remaining))
+    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.

@@ -24,7 +24,7 @@ async function notAnswered(error: unknown): Promise<ClaudeJobError> {
   const status = (error as { context?: { status?: number } })?.context?.status
   if (status === 401 || status === 403) return new ClaudeJobError('error', 'Session error — refresh the page and sign in again.')
   const body = await parseFunctionErrorBody(error)
-  const said = typeof body?.message === 'string' ? body.message.trim().slice(0, 300) : ''
+  const said = typeof body?.message === 'string' ? body.message.trim().slice(0, 300) : status === 503 && typeof body?.error === 'string' ? body.error.trim().slice(0, 300) : ''
   return new ClaudeJobError('error', said || 'The AI function didn\'t answer — try again in a moment.')
 }
 

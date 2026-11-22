@@ -22,7 +22,7 @@
 import type { ChatRequest, DiagnoseReply, DiagnoseStep, ModelFailure, ModelRequest, RunReply } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import { cutChars, errorPlace, hideSecrets, LIMITS, reservationBudgetProblem, settingsFor, trimForLog, TEXT_LOG_MAX_BYTES } from './guard.ts'
-import { finishCall, hasRecentCall, readSettingRows, reserveCall } from './ledger.ts'
+import { finishCall, hasRecentCall, hasRecentChatDiagnose, readSettingRows, reserveCall } from './ledger.ts'
 import { findJob } from './jobs.ts'
 import { newRow, runJob, RUN_ERROR_MAX, RUN_MAY_BE_BILLED, RUN_NO_TOKENS, type RunContext } from './run.ts'
 import { CHAT_JOB, CHAT_LIMITS, CHAT_SYSTEM, CHAT_VERSION, liveContextText, toolModes, toolsForNewChat } from './chat-rules.ts'
@@ -171,6 +171,11 @@ export const DIAGNOSE_CHAT_MS = 120_000
  * the ledger as a round of the job `chat` (its request text says it is Diagnose).
  */
 export async function runDiagnoseChat(ctx: RunContext): Promise<DiagnoseReply> {
+  // The same one-a-minute pause as Diagnose, kept by the ledger: its rows are the chat's step 1 with `diagnose` in the request.
+  const since = new Date(ctx.now().getTime() - DIAGNOSE_PAUSE_MS).toISOString()
+  const recent = await hasRecentChatDiagnose(ctx.userDb, ctx.userId, since)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was tried. Try again in a moment.' }
+  if (recent) return { ok: false, reason: 'busy', message: 'The chat check already ran in the last minute. Wait a moment and run it again.' }
   const provider = ctx.provider
   const title = "The chat's real request"
   if (!provider) return { ok: true, steps: [{ name: 'chat_request', title, ok: false, ms: 0, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }] }

@@ -41,11 +41,11 @@ export const CHAT_LIMITS = {
   databaseRows: 40,
   /** A tool that takes longer than this is an error result, not a hung answer. */
   toolTimeoutMs: 12_000,
-  /** One request to the model, from sending to the end of its stream, takes at most this long (then it is cut). */
-  roundTimeoutMs: 60_000,
+  /** Once a request's stream has started, it is cut after this long with no event (every event starts the clock again). */
+  idleMs: 30_000,
   /** A request that has shown no stream event at all after this long is cut (a compile or a stall, never an answer). */
   firstEventMs: 45_000,
-  /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it. */
+  /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it, even one that is still streaming. */
   answerDeadlineMs: 110_000,
   /** A proposal waits this long for its Confirm. */
   proposalHours: 24,
@@ -197,7 +197,7 @@ export const CHAT_JOB: JobDefinition = {
     'Cache diagnostics: why a cache miss happened is kept with the answer',
     'The thinking check is strict: a chat whose history changed is refused, never sent',
     'Small flat tools with no optional field; our own check holds every value the model sends (not strict, so Anthropic compiles no grammar)',
-    'A deadline: no first stream event in 45 s or an answer over 110 s is stopped, never left running',
+    'A deadline: no first stream event in 45 s, a stream silent for 30 s, or an answer over 110 s is stopped, never left running',
     'Citations: what find_text finds is cited, and each citation is checked to be your own row before it is shown',
     'A wall at 90 000 prompt tokens: the chat asks you to start a new one',
     'Writes are proposals only: a card in the app, a Confirm tap, and then the app\'s own rights write the row',

@@ -175,7 +175,20 @@ Deno.serve(async (req) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
     } else {
       if (!authHeader) return reply(401, { error: 'Missing authorization header' })
-      const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+      let user: { id: string } | null = null
+      let authError: { name?: string; status?: number } | null = null
+      try {
+        const checked = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+        user = checked.data?.user ?? null
+        authError = checked.error
+      } catch {
+        authError = { name: 'AuthRetryableFetchError' }
+      }
+      // A token the auth server refused is a 401 (the app refreshes it once). A check that could not be made at all (the
+      // auth server down, the network) says nothing about the token: a 503 the app shows as it is, with no refresh.
+      if (authError && (authError.name === 'AuthRetryableFetchError' || authError.status === 0 || (typeof authError.status === 'number' && authError.status >= 500))) {
+        return reply(503, { error: 'Sign-in could not be checked — try again.' })
+      }
       if (authError || !user) return reply(401, { error: 'Invalid token' })
       if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
       userId = user.id

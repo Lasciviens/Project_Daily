@@ -221,10 +221,12 @@ export interface ChatRequest {
   previousMessageId: string | null
   /** When the provider clears old tool results from a long prompt (tokens). */
   contextEditing: { triggerTokens: number; keepToolUses: number; clearAtLeastTokens: number }
-  /** The whole round, from sending to the last stream event: a stream still open then is cut. */
+  /** The hard limit of the whole round, from sending to the last stream event: a stream still open then is cut, however well it is going. */
   timeoutMs: number
   /** A round that has shown no stream event at all (a ping does not count) after this long is cut: Anthropic may be compiling something. */
   firstEventTimeoutMs?: number
+  /** Once events flow, a round that then shows none for this long is cut. Every event starts this clock again, so a long answer that keeps streaming is never cut by it. */
+  idleTimeoutMs?: number
   /** Stops the request when the app goes away. */
   signal?: AbortSignal
 }

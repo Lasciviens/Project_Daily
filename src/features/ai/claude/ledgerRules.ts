@@ -202,7 +202,8 @@ export function diagnoseVerdict(steps: readonly DiagnoseStep[]): DiagnoseVerdict
   const base = diagnoseBaseVerdict(steps)
   const chat = steps.find(s => s.name === 'chat_request')
   if (!chat) return base
-  if (!chat.ok) return { tone: 'danger', text: `${base.text} The chat’s own request failed after ${stepSeconds(chat.ms)}: ${chat.detail}` }
+  // The step's own sentence already says what happened and when (or that it did not run): it is not worded a second time.
+  if (!chat.ok) return { tone: 'danger', text: `${base.text} ${chat.detail}` }
   if (chat.ms >= CHAT_SLOW_MS) return { tone: base.tone === 'success' ? 'warn' : base.tone, text: `${base.text} The chat’s own request took ${stepSeconds(chat.ms)}, which is slow.` }
   return { ...base, text: `${base.text} The chat’s own request took ${stepSeconds(chat.ms)}.` }
 }
@@ -324,6 +325,9 @@ export const OUTCOME_META: Record<CallOutcome, OutcomeMeta> = {
 /** A call reserved longer ago than this has no live request behind it: Supabase stops a function at 150 s. */
 export const PENDING_STOPPED_AFTER_MS = 150_000
 
+/** The Calls filter's own choice for a reserved row that was stopped (the outcome stored is still `pending`). */
+export const STOPPED_FILTER = 'stopped'
+
 /** A call that is "In flight" and older than the function can live is not in flight: it was stopped with no answer. */
 export function isStoppedPending(call: { outcome: unknown; created_at: unknown }, now: number = Date.now()): boolean {
   if (call.outcome !== 'pending' || typeof call.created_at !== 'string') return false
@@ -334,7 +338,7 @@ export function isStoppedPending(call: { outcome: unknown; created_at: unknown }
 /** The word, tone and meaning of a call's outcome, with a stale "In flight" shown as stopped (computed from its age, never stored). */
 export function callOutcomeMeta(call: { outcome: unknown; created_at: unknown }, now: number = Date.now()): OutcomeMeta & { known: boolean } {
   if (isStoppedPending(call, now)) {
-    return { label: 'Stopped — no answer (held at worst case)', tone: 'warn', what: 'The call was reserved against the budget but never got a result: the function was stopped before Anthropic answered. Its worst case stays counted, because Anthropic may still have billed it.', known: true }
+    return { label: 'Stopped', tone: 'warn', what: 'No answer — stopped (held at worst case). The call was reserved against the budget but never got a result: the function was stopped before Anthropic answered. Its worst case stays counted, because Anthropic may still have billed it.', known: true }
   }
   return outcomeMeta(call.outcome)
 }

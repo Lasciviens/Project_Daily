@@ -54,7 +54,7 @@ const ANTHROPIC_DETAIL_MAX = 300
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
 
 /** What the person reads when a chat round was cut for taking too long. */
-export const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'Anthropic took too long — nothing was saved. Try again.'
+export const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'No answer — Anthropic took too long. Try again.'
 
 const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
 const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
@@ -177,22 +177,25 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
       // The SDK's own timeout covers only the wait for the response headers: a stream that opens and then says nothing
       // would wait for ever (seen live, 22.11.2026). So the round has its own two clocks, and a signal of its own.
       const controller = new AbortController()
-      let stoppedBy: 'first_event' | 'round' | null = null
-      const stop = (why: 'first_event' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
+      let stoppedBy: 'first_event' | 'idle' | 'round' | null = null
+      const stop = (why: 'first_event' | 'idle' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
       const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('round stopped')), { once: true }))
       aborted.catch(() => {})
       const outer = request.signal
       const onOuterAbort = () => controller.abort()
       if (outer) { if (outer.aborted) controller.abort(); else outer.addEventListener('abort', onOuterAbort, { once: true }) }
       const roundTimer = setTimeout(() => stop('round'), timeout)
-      let firstTimer: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
+      // One silence clock: the first-event limit until the first event, then the idle limit, started again by every event.
+      let quiet: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
       let began = false
       try {
         const stream = client.beta.messages.stream(body, { timeout, signal: controller.signal })
         stream.on('text', piece => { if (piece) onDelta({ kind: 'text', text: piece }) })
         stream.on('streamEvent', event => {
-          if ((event.type as string) !== 'ping' && !began) { began = true; onDelta({ kind: 'started' }) }
-          if ((event.type as string) !== 'ping' && firstTimer) { clearTimeout(firstTimer); firstTimer = undefined }
+          if ((event.type as string) === 'ping') return
+          if (!began) { began = true; onDelta({ kind: 'started' }) }
+          if (quiet) clearTimeout(quiet)
+          quiet = typeof request.idleTimeoutMs === 'number' ? setTimeout(() => stop('idle'), request.idleTimeoutMs) : undefined
           if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') onDelta({ kind: 'tool', name: anthropicCut(event.content_block.name, 60) })
         })
         const finished = stream.finalMessage()
@@ -204,7 +207,7 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         if (stoppedBy) {
           return {
             ok: false, kind: 'timeout', status: null, requestId: null, sent,
-            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : 'the round took too long',
+            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : stoppedBy === 'idle' ? 'the stream went silent' : 'the round took too long',
             message: ANTHROPIC_CHAT_TIMEOUT_MESSAGE,
           }
         }
@@ -212,7 +215,7 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         return { ...anthropicFailure(error, apiKey, timeout), sent }
       } finally {
         clearTimeout(roundTimer)
-        if (firstTimer) clearTimeout(firstTimer)
+        if (quiet) clearTimeout(quiet)
         outer?.removeEventListener('abort', onOuterAbort)
       }
     },

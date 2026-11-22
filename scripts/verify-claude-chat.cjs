@@ -42,7 +42,8 @@ let finished = false
 process.on('exit', () => { if (!finished) { console.log('  ✗ the script ended before every check ran (an await never settled)'); process.exitCode = 1 } })
 global.fetch = () => { throw new Error('the real fetch was called: this script must never use the network') }
 const realSetTimeout = global.setTimeout
-global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100 && ms <= 120_000 ? 3 : ms, ...rest)
+// A limit of 100 s or more is the hard limit (the answer's 110 s, Diagnose's 120 s): 2 s here. The silence clock (30 s) is 40 ms; every other shorter clock (45 s, 20 s…) is 3 ms.
+global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100_000 && ms <= 120_000 ? 2000 : ms === 30_000 ? 40 : ms >= 100 && ms < 100_000 ? 3 : ms, ...rest)
 
 // ─── Loading the generated function ──────────────────────────────────────────
 const SDK_NAMES = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError', 'APIError', 'AuthenticationError', 'BadRequestError',
@@ -64,7 +65,7 @@ const uuid = (n) => `aaaaaaaa-0000-4000-8000-${String(n).padStart(12, '0')}`
 
 // ─── A pretend database with real tables ─────────────────────────────────────
 const CHAT_TABLES = ['ai_conversations', 'ai_messages', 'ai_chat_proposals']
-const USER_READS = new Set(['quick_guess_items', 'recipes', 'ai_memory', 'tasks', 'time_blocks', 'food_log_entries', 'water_log_entries', 'day_targets', 'diary_entries', 'hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'ai_settings', 'ai_job_settings'])
+const USER_READS = new Set(['quick_guess_items', 'recipes', 'ai_memory', 'tasks', 'time_blocks', 'food_log_entries', 'water_log_entries', 'day_targets', 'diary_entries', 'hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'ai_settings', 'ai_job_settings', 'ai_calls'])
 const USER_WRITES = new Set(['tasks', 'food_log_entries'])
 const GATE = { month_cost: 0, job_month_cost: 0, calls_last_minute: 0, calls_today: 0 }
 
@@ -91,7 +92,7 @@ function fakeCreateClient(world) {
       const add = (fn) => { q.tests.push(fn); return q }
       if (who === 'user' && !USER_READS.has(table) && !USER_WRITES.has(table)) throw new Error(`user client must not touch ${table}`)
       q.select = (cols, o) => { if (q.mode === 'select') { q.countOpts = o ?? null } else q.returning = true; return q }
-      q.eq = (c, v) => { q.eqs = { ...(q.eqs ?? {}), [c]: v }; return add(r => r[c] === v) }
+      q.eq = (c, v) => { q.eqs = { ...(q.eqs ?? {}), [c]: v }; return add(r => (c.includes('->>') ? String(r[c.split('->>')[0]]?.[c.split('->>')[1]]) : r[c]) === v) }
       q.neq = (c, v) => add(r => r[c] !== v)
       q.lt = (c, v) => add(r => r[c] != null && r[c] < v)
       q.gte = (c, v) => add(r => r[c] != null && r[c] >= v)
@@ -166,7 +167,7 @@ function fakeCreateClient(world) {
         if (g.calls_last_minute >= args.p_per_minute || g.calls_today >= args.p_per_day) return { data: [{ call_id: null, reason: 'busy' }], error: null }
         const id = crypto.randomUUID()
         const over = Number(g.month_cost) + args.p_worst_cost > args.p_budget || Number(g.job_month_cost) + args.p_worst_cost > args.p_job_budget
-        calls.push({ id, user_id: args.p_user, run_id: crypto.randomUUID(), step: 1, job: args.p_job, caller: args.p_caller, mode: args.p_mode, provider: args.p_provider, model: args.p_model, effort: args.p_effort, instructions_version: args.p_instructions_version, tools: [], outcome: over ? 'budget' : 'pending', cost_usd: over ? 0 : args.p_worst_cost, request: null, response: null, thinking: null })
+        calls.push({ id, created_at: new Date(FixedDate.at).toISOString(), user_id: args.p_user, run_id: crypto.randomUUID(), step: 1, job: args.p_job, caller: args.p_caller, mode: args.p_mode, provider: args.p_provider, model: args.p_model, effort: args.p_effort, instructions_version: args.p_instructions_version, tools: [], outcome: over ? 'budget' : 'pending', cost_usd: over ? 0 : args.p_worst_cost, request: null, response: null, thinking: null })
         return { data: [{ call_id: id, reason: over ? 'budget' : null }], error: null }
       }
       client.auth = { getUser: async (token) => ({ data: { user: TOKENS[token] ? { id: TOKENS[token] } : null }, error: TOKENS[token] ? null : { message: 'bad token' } }) }
@@ -1035,8 +1036,8 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   // The deadline. The fake clock of this script turns every timer between 0.1 s and 120 s into 3 ms, so a request that
   // never answers (or answers late) meets the code's own clocks at once; what is checked is what happens then.
   {
-    check('the chat\'s clocks: 45 s to a first event, 60 s a round, 110 s in all, all under the 150 s wall of Supabase', LIM.firstEventMs === 45_000 && LIM.roundTimeoutMs === 60_000 && LIM.answerDeadlineMs === 110_000 && LIM.answerDeadlineMs < 150_000)
-    const TOO_SLOW = 'Anthropic took too long — nothing was saved. Try again.'
+    check('the chat\'s clocks: 45 s to a first event, 30 s of silence once streaming, 110 s in all, all under the 150 s wall of Supabase', LIM.firstEventMs === 45_000 && LIM.idleMs === 30_000 && !('roundTimeoutMs' in LIM) && LIM.answerDeadlineMs === 110_000 && LIM.answerDeadlineMs < 150_000)
+    const TOO_SLOW = 'No answer — Anthropic took too long. Try again.'
     const never = () => new Promise(() => {})
     const silentBody = () => new Response(new ReadableStream({ start() {} }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
     const encoder = new TextEncoder()
@@ -1060,6 +1061,28 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
       check(`${label}: the round's ledger row is finished as an error with the worst case held, never left in flight, and nothing is retried`, rows.length === 1 && rows[0].outcome === 'error' && rows[0].cost_usd > 0 && rows.every(r => r.outcome !== 'pending') && res.net.seen.length === 1, rows.map(r => [r.outcome, r.cost_usd]))
       check(`${label}: no secret in what the app or the ledger holds`, leaks(res.text, JSON.stringify(rows), w.logs).length === 0)
     }
+    // A long answer that keeps streaming is not cut by the silence clock; a stream that never ends is cut by the hard limit.
+    const drip = (chunks, gapMs, endless = false) => () => new Response(new ReadableStream({
+      start(c) {
+        let i = 0
+        const until = Date.now() + 4000
+        const tick = () => {
+          try {
+            if (Date.now() > until) { c.close(); return }
+            if (i < chunks.length) { c.enqueue(encoder.encode(chunks[i++])); realSetTimeout(tick, gapMs) } else if (endless) { c.enqueue(encoder.encode('event: content_block_delta\ndata: ' + JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '.' } }) + '\n\n')); realSetTimeout(tick, gapMs) } else c.close()
+          } catch { /* cut already */ }
+        }
+        tick()
+      },
+    }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const pieces = Array.from({ length: 60 }, (_, n) => `word${n} `)
+    const wLong = makeWorld()
+    const longRes = await chat({ conversation_id: null, text: 'write a long answer' }, { world: wLong, network: pretend(drip(sse(textMsg('x', { blocks: [{ type: 'text', pieces, text: '' }] })).split('\n\n').filter(Boolean).map(e => `${e}\n\n`), 5)) })
+    check('a long answer that keeps streaming past the silence limit (about 400 ms here against 40 ms) is not cut and finishes', final(longRes).event === 'done' && final(longRes).text.includes('word59') && callsOf(wLong)[0].outcome === 'ok', final(longRes))
+    const wEnd = makeWorld()
+    const startedEnd = Date.now()
+    const endRes = await chat({ conversation_id: null, text: 'never stop' }, { world: wEnd, network: pretend(drip([sse({ blocks: [{ type: 'text', pieces: ['go '], text: '' }] }).split('event: content_block_stop')[0]], 5, true)) })
+    check('a stream that never stops but keeps sending is cut by the hard limit of the answer: the clear error, the row finished with the worst case, text retracted', final(endRes).reason === 'timeout' && final(endRes).message === TOO_SLOW && Date.now() - startedEnd >= 1500 && endRes.events.some(e => e.event === 'retract') && callsOf(wEnd)[0].outcome === 'error' && callsOf(wEnd)[0].cost_usd > 0 && messagesOf(wEnd).length === 1, final(endRes))
     // A chat that is going well is not cut: a fast answer is untouched by the clocks.
     const wOk = makeWorld()
     const okRes = await chat({ conversation_id: null, text: 'a quick one' }, { world: wOk, network: pretend(textMsg('Quick.')) })
@@ -1104,8 +1127,43 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
     const over = await (await load(wBudget, netB.impl).handler(post({ action: 'diagnose', part: 'chat' }))).json()
     check('a budget that is used up refuses the chat step before anything is sent', netB.seen.length === 0 && (over.ok === false || over.steps?.[0]?.ok === false), over)
 
+    // The one-a-minute pause: the ledger row the first run left is the clock.
+    const again = await (await fn.handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a second chat check inside a minute is refused as busy, nothing is sent', again.ok === false && again.reason === 'busy' && net.seen.length === 1 && callsOf(w).length === 1, again)
+    const wLater = makeWorld({ tables: { ai_calls: [{ id: 'old', user_id: OWNER, job: 'chat', step: 1, request: { diagnose: true }, created_at: new Date(FIXED_NOW.getTime() - 120_000).toISOString() }, { id: 'real', user_id: OWNER, job: 'chat', step: 1, request: { user_text: 'hi' }, created_at: new Date(FIXED_NOW.getTime() - 5_000).toISOString() }] } })
+    const netL = pretend(toolMsg([['toolu_D2', 'get_day_plan', { date: '' }]]))
+    netL.world = wLater
+    const later = await (await load(wLater, netL.impl).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a chat check from two minutes ago, and a real chat answer from five seconds ago, do not block it', later.ok === true && later.steps[0].ok === true && netL.seen.length === 1, later)
+
     const guest = await load(makeWorld({ allowed: [GUEST] }), net.impl).handler(post({ action: 'diagnose', part: 'chat' }, 'nobody'))
     check('a caller who is not signed in cannot start it', guest.status === 401)
+  }
+
+  // A sign-in check that cannot be made is not an invalid token.
+  {
+    const w = makeWorld()
+    const net = pretend(textMsg('x'))
+    net.world = w
+    const fn = load(w, net.impl)
+    const failWith = (error, thrown = false) => { const f = fakeCreateClient(w); return (u, k, o) => { const c = f(u, k, o); if (!o?.global?.headers) c.auth = { getUser: async () => { if (thrown) throw error; return { data: { user: null }, error } } }; return c } }
+    const attempt = async (error, thrown) => {
+      const world = makeWorld()
+      const n = pretend(textMsg('x'))
+      n.world = world
+      const Deno = { env: { get: (k) => world.env[k] }, serve: (f) => { world.h = f }, errors: {} }
+      new Function('Deno', 'createClient', 'fetch', 'Date', 'console', ...SDK_NAMES, `${builtCode}\nreturn {}`)(Deno, failWith(error, thrown), n.impl, FixedDate, { error() {}, log() {} }, ...SDK_NAMES.map(x => SDK[x]))
+      const res = await world.h(post({ action: 'chat', text: 'hi', stream: true }))
+      return { status: res.status, body: await res.json(), seen: n.seen.length }
+    }
+    for (const [label, error, thrown] of [['a retryable fetch error', { name: 'AuthRetryableFetchError', message: 'fetch failed', status: 0 }, false], ['a 500 from the auth server', { name: 'AuthApiError', message: 'down', status: 500 }, false], ['a 503', { name: 'AuthApiError', message: 'down', status: 503 }, false], ['an exception', new Error('socket hang up'), true]]) {
+      const a = await attempt(error, thrown)
+      check(`${label} while checking the token: 503 "Sign-in could not be checked — try again.", nothing sent to Anthropic`, a.status === 503 && a.body.error === 'Sign-in could not be checked — try again.' && a.seen === 0, a)
+    }
+    for (const [label, error] of [['a bad token (401)', { name: 'AuthApiError', message: 'invalid JWT', status: 401 }], ['a missing session', { name: 'AuthSessionMissingError', message: 'Auth session missing!', status: 400 }]]) {
+      const a = await attempt(error, false)
+      check(`${label}: still 401 "Invalid token" (the app refreshes once)`, a.status === 401 && a.body.error === 'Invalid token', a)
+    }
   }
 
   finished = true

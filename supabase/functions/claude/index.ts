@@ -227,10 +227,12 @@ interface ChatRequest {
   previousMessageId: string | null
   /** When the provider clears old tool results from a long prompt (tokens). */
   contextEditing: { triggerTokens: number; keepToolUses: number; clearAtLeastTokens: number }
-  /** The whole round, from sending to the last stream event: a stream still open then is cut. */
+  /** The hard limit of the whole round, from sending to the last stream event: a stream still open then is cut, however well it is going. */
   timeoutMs: number
   /** A round that has shown no stream event at all (a ping does not count) after this long is cut: Anthropic may be compiling something. */
   firstEventTimeoutMs?: number
+  /** Once events flow, a round that then shows none for this long is cut. Every event starts this clock again, so a long answer that keeps streaming is never cut by it. */
+  idleTimeoutMs?: number
   /** Stops the request when the app goes away. */
   signal?: AbortSignal
 }
@@ -1717,7 +1719,7 @@ const ANTHROPIC_DETAIL_MAX = 300
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
 
 /** What the person reads when a chat round was cut for taking too long. */
-const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'Anthropic took too long — nothing was saved. Try again.'
+const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'No answer — Anthropic took too long. Try again.'
 
 const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
 const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
@@ -1840,22 +1842,25 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
       // The SDK's own timeout covers only the wait for the response headers: a stream that opens and then says nothing
       // would wait for ever (seen live, 22.11.2026). So the round has its own two clocks, and a signal of its own.
       const controller = new AbortController()
-      let stoppedBy: 'first_event' | 'round' | null = null
-      const stop = (why: 'first_event' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
+      let stoppedBy: 'first_event' | 'idle' | 'round' | null = null
+      const stop = (why: 'first_event' | 'idle' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
       const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('round stopped')), { once: true }))
       aborted.catch(() => {})
       const outer = request.signal
       const onOuterAbort = () => controller.abort()
       if (outer) { if (outer.aborted) controller.abort(); else outer.addEventListener('abort', onOuterAbort, { once: true }) }
       const roundTimer = setTimeout(() => stop('round'), timeout)
-      let firstTimer: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
+      // One silence clock: the first-event limit until the first event, then the idle limit, started again by every event.
+      let quiet: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
       let began = false
       try {
         const stream = client.beta.messages.stream(body, { timeout, signal: controller.signal })
         stream.on('text', piece => { if (piece) onDelta({ kind: 'text', text: piece }) })
         stream.on('streamEvent', event => {
-          if ((event.type as string) !== 'ping' && !began) { began = true; onDelta({ kind: 'started' }) }
-          if ((event.type as string) !== 'ping' && firstTimer) { clearTimeout(firstTimer); firstTimer = undefined }
+          if ((event.type as string) === 'ping') return
+          if (!began) { began = true; onDelta({ kind: 'started' }) }
+          if (quiet) clearTimeout(quiet)
+          quiet = typeof request.idleTimeoutMs === 'number' ? setTimeout(() => stop('idle'), request.idleTimeoutMs) : undefined
           if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') onDelta({ kind: 'tool', name: anthropicCut(event.content_block.name, 60) })
         })
         const finished = stream.finalMessage()
@@ -1867,7 +1872,7 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
         if (stoppedBy) {
           return {
             ok: false, kind: 'timeout', status: null, requestId: null, sent,
-            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : 'the round took too long',
+            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : stoppedBy === 'idle' ? 'the stream went silent' : 'the round took too long',
             message: ANTHROPIC_CHAT_TIMEOUT_MESSAGE,
           }
         }
@@ -1875,7 +1880,7 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
         return { ...anthropicFailure(error, apiKey, timeout), sent }
       } finally {
         clearTimeout(roundTimer)
-        if (firstTimer) clearTimeout(firstTimer)
+        if (quiet) clearTimeout(quiet)
         outer?.removeEventListener('abort', onOuterAbort)
       }
     },
@@ -2292,6 +2297,16 @@ async function readSettingRow(
 async function hasRecentCall(userDb: Db, userId: string, job: string, sinceIso: string): Promise<boolean | null> {
   try {
     const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', job).gte('created_at', sinceIso).limit(1)
+    return error || !Array.isArray(data) ? null : data.length > 0
+  } catch {
+    return null
+  }
+}
+
+/** Whether the chat check of Diagnose ran since `sinceIso`: its rows are job `chat` with `diagnose` set in the request. Null when it can't be read. */
+async function hasRecentChatDiagnose(userDb: Db, userId: string, sinceIso: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', 'chat').eq('request->>diagnose', 'true').gte('created_at', sinceIso).limit(1)
     return error || !Array.isArray(data) ? null : data.length > 0
   } catch {
     return null
@@ -5734,11 +5749,11 @@ const CHAT_LIMITS = {
   databaseRows: 40,
   /** A tool that takes longer than this is an error result, not a hung answer. */
   toolTimeoutMs: 12_000,
-  /** One request to the model, from sending to the end of its stream, takes at most this long (then it is cut). */
-  roundTimeoutMs: 60_000,
+  /** Once a request's stream has started, it is cut after this long with no event (every event starts the clock again). */
+  idleMs: 30_000,
   /** A request that has shown no stream event at all after this long is cut (a compile or a stall, never an answer). */
   firstEventMs: 45_000,
-  /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it. */
+  /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it, even one that is still streaming. */
   answerDeadlineMs: 110_000,
   /** A proposal waits this long for its Confirm. */
   proposalHours: 24,
@@ -5890,7 +5905,7 @@ const CHAT_JOB: JobDefinition = {
     'Cache diagnostics: why a cache miss happened is kept with the answer',
     'The thinking check is strict: a chat whose history changed is refused, never sent',
     'Small flat tools with no optional field; our own check holds every value the model sends (not strict, so Anthropic compiles no grammar)',
-    'A deadline: no first stream event in 45 s or an answer over 110 s is stopped, never left running',
+    'A deadline: no first stream event in 45 s, a stream silent for 30 s, or an answer over 110 s is stopped, never left running',
     'Citations: what find_text finds is cited, and each citation is checked to be your own row before it is shown',
     'A wall at 90 000 prompt tokens: the chat asks you to start a new one',
     'Writes are proposals only: a card in the app, a Confirm tap, and then the app\'s own rights write the row',
@@ -7816,10 +7831,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   blocks.push({ type: 'text', text })
   const newMessage: ChatMessage = { role: 'user', content: blocks }
   const wire: ChatMessage[] = [...asChatMessages(history), newMessage]
-  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, firstEventTimeoutMs?: number): ChatRequest => ({
+  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, clocks?: { firstEventTimeoutMs: number; idleTimeoutMs: number }): ChatRequest => ({
     model, maxOutputTokens, effort, thinking, system: CHAT_SYSTEM, ownerInstructions, tools, noTools, messages,
     previousMessageId: typeof history.filter(m => m.role === 'assistant').pop()?.meta.message_id === 'string' ? history.filter(m => m.role === 'assistant').pop()?.meta.message_id as string : null,
-    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(firstEventTimeoutMs ? { firstEventTimeoutMs } : {}), signal,
+    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(clocks ?? {}), signal,
   })
 
   // The wall: the last prompt's size plus the new words is an estimate; near the line the provider counts it exactly (free).
@@ -7871,7 +7886,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, Math.min(CHAT_LIMITS.roundTimeoutMs, remaining), Math.min(CHAT_LIMITS.firstEventMs, remaining))
+    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.
@@ -8354,6 +8369,11 @@ const DIAGNOSE_CHAT_MS = 120_000
  * the ledger as a round of the job `chat` (its request text says it is Diagnose).
  */
 async function runDiagnoseChat(ctx: RunContext): Promise<DiagnoseReply> {
+  // The same one-a-minute pause as Diagnose, kept by the ledger: its rows are the chat's step 1 with `diagnose` in the request.
+  const since = new Date(ctx.now().getTime() - DIAGNOSE_PAUSE_MS).toISOString()
+  const recent = await hasRecentChatDiagnose(ctx.userDb, ctx.userId, since)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was tried. Try again in a moment.' }
+  if (recent) return { ok: false, reason: 'busy', message: 'The chat check already ran in the last minute. Wait a moment and run it again.' }
   const provider = ctx.provider
   const title = "The chat's real request"
   if (!provider) return { ok: true, steps: [{ name: 'chat_request', title, ok: false, ms: 0, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }] }
@@ -8753,7 +8773,20 @@ Deno.serve(async (req) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
     } else {
       if (!authHeader) return reply(401, { error: 'Missing authorization header' })
-      const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+      let user: { id: string } | null = null
+      let authError: { name?: string; status?: number } | null = null
+      try {
+        const checked = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+        user = checked.data?.user ?? null
+        authError = checked.error
+      } catch {
+        authError = { name: 'AuthRetryableFetchError' }
+      }
+      // A token the auth server refused is a 401 (the app refreshes it once). A check that could not be made at all (the
+      // auth server down, the network) says nothing about the token: a 503 the app shows as it is, with no refresh.
+      if (authError && (authError.name === 'AuthRetryableFetchError' || authError.status === 0 || (typeof authError.status === 'number' && authError.status >= 500))) {
+        return reply(503, { error: 'Sign-in could not be checked — try again.' })
+      }
       if (authError || !user) return reply(401, { error: 'Invalid token' })
       if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
       userId = user.id

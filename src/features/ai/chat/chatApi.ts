@@ -44,6 +44,11 @@ export async function streamChat(input: { conversationId: string | null; text: s
     throw new ChatError('error', 'The AI function could not be reached — check the connection and try again.')
   }
   if (!res || isSessionRefusal(res.status)) throw new ChatError('error', 'Session error — refresh the page and sign in again.')
+  if (res.status === 503) {
+    // The function could not check the sign-in (not a bad token): its own sentence, no refresh, no "sign in again".
+    const said = await res.json().then((b: unknown) => (b !== null && typeof b === 'object' && typeof (b as { error?: unknown }).error === 'string' ? (b as { error: string }).error.slice(0, 200) : ''), () => '')
+    throw new ChatError('error', said || 'The AI function could not check your sign-in — try again in a moment.')
+  }
   if (!res.ok || !res.body) throw new ChatError('error', 'The AI function did not answer — try again in a moment.')
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
