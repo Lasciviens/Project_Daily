@@ -432,7 +432,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('a stop reason that is not a short lower-case word is stored as "unknown" (the column holds 60)', r.row.stop_reason === 'unknown', r.row.stop_reason)
   const hostile = [
     ['text that is not JSON', 'Sure! Here is your fill.', 'invalid'],
-    ['words before the JSON', 'Here it is: {"title":"A"}', 'invalid'],
+    ['words before the JSON on the same line', 'Here it is: {"title":"A"}', 'invalid'],
+    ['a note, then an object followed by more words', 'Tuesday is the 24th.\n{"title":"A"}\nHope that helps', 'invalid'],
     ['a JSON array', '[{"title":"A"}]', 'invalid'],
     ['JSON null', 'null', 'invalid'],
     ['an empty answer', '', 'invalid'],
@@ -441,6 +442,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text }] })) })
     check(`${name}: ${outcome}, thrown away, billed, written`, r.json?.reason === outcome && r.row.outcome === outcome && r.row.cost_usd > 0 && !('result' in r.json), [r.text.slice(0, 160), r.row?.outcome])
   }
+  r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: 'Today is Sunday 2026-11-22, so the next Tuesday is 2026-11-24.\n\n{"title":"Dentist","date":"2026-11-24"}' }] })) })
+  check('a note of working-out, then the object on its own line (seen live 22.11.2026): the note is dropped, the object checked', r.json?.ok === true && r.json.result.fill.title === 'Dentist' && r.json.result.fill.date === '2026-11-24', r.text.slice(0, 160))
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: '```json\n{"title":"A"}\n```' }] })) })
   check('JSON in a markdown fence: the fence is taken off and the object checked as always (no enforced shape, 22.11.2026)', r.json?.ok === true && r.json.result.fill.title === 'A', r.text.slice(0, 160))
   r = await go(runBody(), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: JSON.stringify({ title: 'Meet', url: 'https://evil.example.com/x', link: 'javascript:alert(1)', date: '2026-02-31', startTime: '25:99', repeat: 'hourly', alerts: [7], priority: 'urgent', durationMinutes: 'long' }) }] })) })
@@ -708,7 +711,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('findJob finds item_fill and nothing else', findJob('item_fill') === ITEM_FILL_JOB && findJob('__proto__') === null && findJob(undefined) === null && findJob(['item_fill']) === null && findJob({ toString: () => 'item_fill' }) === null)
   // The version is pinned to a hash of what the model is told: change the instructions or the schema and this fails
   // until the version is bumped (job-item-fill.ts) and the new pair is added below.
-  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3', '2026-11-22.1': '12b955a313f710fc' }
+  const PINNED = { '2026-11-20.1': 'd80b2526998f8db3', '2026-11-22.1': '12b955a313f710fc', '2026-11-22.2': 'c2de985b66e3c3f4' }
   const hash = crypto.createHash('sha256').update(`${ITEM_FILL_JOB.instructions}\n${JSON.stringify(ITEM_FILL_JOB.answerSchema)}`).digest('hex').slice(0, 16)
   check('the item_fill version names the instructions and schema it was made with (a change to either needs a new version, then a new pin here)',
     PINNED[ITEM_FILL_JOB.version] === hash, `version ${ITEM_FILL_JOB.version}, hash of the instructions and schema is ${hash} (pinned: ${PINNED[ITEM_FILL_JOB.version] ?? 'none for this version'})`)
