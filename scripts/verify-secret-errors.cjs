@@ -356,7 +356,7 @@ process.on('exit', () => {
       const handler = load('phone-gateway', { env: gwEnv, tables: { app_allowed_users: [], tasks: rows }, users: {}, log: [], fetchImpl: asking(answerOk) })
       await handler(new Request('http://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, body: JSON.stringify({ action: 'brief' }) }))
       const context = sent[0] && sent[0].body.input.context
-      check('phone-gateway: the brief context is capped at 3900 characters in whole lines, never cut mid-line (AI review G4)', typeof context === 'string' && context.length <= 3900 && context.length > 3000 && context.split('\n').every(l => l === '' || /^(DATE:|\n|BUG|\s+- \d+ T+ |$)/.test(l) || l.startsWith('BUG')), context && [context.length, context.slice(-80)])
+      check('phone-gateway: the brief context is capped at 3900 characters in whole lines, never cut mid-line (AI review G4)', typeof context === 'string' && context.length <= 3900 && context.length > 3000 && context.split('\n').every(l => l === '' || /^(DATE:|\n|TODAY|\s+- \d+ T+ |$)/.test(l) || l.startsWith("TODAY'S")), context && [context.length, context.slice(-80)])
     }
     r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, failing)
     check('phone-gateway: a network failure answers without any key and without the URL', leaks(r.text).length === 0 && !/u\/functions/.test(r.text) && JSON.parse(r.text).ok === false, r.text)

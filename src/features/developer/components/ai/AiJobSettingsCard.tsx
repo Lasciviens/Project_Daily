@@ -74,7 +74,7 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
             {effort !== '' && !about.efforts.includes(effort) && <option value={effort}>{effort} (not offered — the default is used)</option>}
           </select>
         </Field>
-        <Field className="min-w-[8rem] flex-1" label={<Term term="Thinking">Thinking</Term>}>
+        <Field className="min-w-[13rem] flex-[2]" label={<Term term="Thinking">Thinking</Term>}>
           <select value={thinking} onChange={e => setThinking(e.target.value)} aria-label={`${job.title}: thinking`} className="select">
             <option value="">Default (adaptive)</option>
             <option value="adaptive">Adaptive</option>
