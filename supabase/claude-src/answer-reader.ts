@@ -117,6 +117,20 @@ export function checkedLine(value: unknown, max: number): string | null {
   return text.length >= 1 && [...text].length <= max ? text : null
 }
 
+/**
+ * A model's free-text answer: control characters out, each line's ends trimmed, three or more line breaks in a row
+ * made two. With `bold: false` the markdown marks a small screen cannot show (**, a leading #) are taken out too;
+ * with `bold: true` the **bold** marks stay (the PT screen draws them). Null when nothing is left, or when it is
+ * longer than `max` characters: a long answer is thrown away, never cut short.
+ */
+export function checkedAnswerText(value: unknown, max: number, bold: boolean): string | null {
+  if (typeof value !== 'string') return null
+  let text = value.replace(ANSWER_CONTROL, '').replace(/\r\n?/g, '\n')
+  if (!bold) text = text.replace(/\*\*/g, '').replace(/^[ \t]*#+[ \t]*/gm, '')
+  text = text.split('\n').map(line => line.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return text.length >= 1 && [...text].length <= max ? text : null
+}
+
 /** A number (a real number, never text that looks like one) from `min` to `max`; anything else is null. */
 export function checkedNumber(value: unknown, min: number, max: number): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null

@@ -14,7 +14,10 @@
 /** How much the model reasons and writes. The owner picks one per job. */
 export type Effort = 'low' | 'medium' | 'high'
 
-/** Who started a run. Phase 1 has only the app. */
+/**
+ * Who started a run: `app` (the signed-in owner's browser), `phone` and `kobo` (the two device functions,
+ * phone-gateway and kobo-sync, after they checked their own device secret), `schedule` (phase 3).
+ */
 export type Caller = 'app' | 'phone' | 'kobo' | 'schedule'
 
 /** `live` answers now; `batch` (phase 3) is queued and costs half. */
@@ -35,6 +38,11 @@ export interface ModelRequest {
   userText: string
   /** The shape the answer must have, or null for free text. */
   answerSchema: JsonSchema | null
+  /**
+   * `adaptive` (the default): the model decides how much to reason and returns a summary of it. `off`: no
+   * reasoning at all, which costs and takes less. Only the Test bench asks for `off`, to show the difference.
+   */
+  thinking?: 'adaptive' | 'off'
   /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
   timeoutMs?: number
 }
@@ -125,6 +133,12 @@ export interface ProviderInfo {
   endpoint: string
 }
 
+/** What a job may use from the answer besides its text: the thinking summary and the model that really answered. */
+export interface AnswerDetails {
+  thinking: string
+  servedModel: string | null
+}
+
 /** A job's reading of the model's text: its checked result, or why the text can't be used. */
 export type AnswerCheck = { ok: true; result: Record<string, unknown> } | { ok: false; problem: string }
 
@@ -152,10 +166,22 @@ export type EarlyStep =
   | { kind: 'model'; userText: string }
   | { kind: 'stop'; outcome: 'bad_input' | 'error'; message: string }
 
+/**
+ * What a request may pick for one run, for the one job that offers it (the Test bench): a model, an effort and
+ * whether the model thinks. The run checks it again against the code's lists, so a job cannot widen them.
+ */
+export interface RunChoice {
+  model?: string
+  effort?: Effort
+  thinking?: 'adaptive' | 'off'
+}
+
 /** A run that passed the job's input check: the live part of the prompt, and the reader of its answer. */
 export interface PreparedRun {
   userText: string
-  read(answerText: string): AnswerCheck
+  read(answerText: string, details: AnswerDetails): AnswerCheck
+  /** What the request picked, when the job lets it (see RunChoice). Absent: the owner's settings decide. */
+  choice?: RunChoice
   /**
    * AI last: work that code can do before any model is asked (fetching a page, finding the recipe the page already
    * holds). It runs after the job's switch and the key are checked and before anything is reserved or sent. It
@@ -176,6 +202,13 @@ export interface JobDefinition {
   /** Changes whenever the instructions or the answer shape change; every ledger row carries it. */
   version: string
   defaults: { model: string; effort: Effort; maxOutputTokens: number }
+  /**
+   * How long the model may take, in milliseconds, when the job has a caller that gives up sooner than
+   * `requestTimeoutMs` would wait (the phone's shortcut answers within about 22 s). Left out: `requestTimeoutMs`.
+   */
+  timeLimitMs?: number
+  /** true: a request may pick the model, the effort and the thinking (inside the lists): the Test bench. */
+  pickable?: boolean
   instructions: string
   answerSchema: JsonSchema | null
   /**
@@ -213,7 +246,14 @@ export interface CallSummary {
   thinking_tokens: number
   cost_usd: number
   duration_ms: number
+  /** The model that really answered, or null when none did. */
+  served_model: string | null
 }
+
+/** The answer to `{ action: 'count' }`: what a Test bench question would cost in prompt tokens, before it is sent. */
+export type CountReply =
+  | { ok: true; input_tokens: number; model: string; effort: Effort; thinking: 'adaptive' | 'off' }
+  | { ok: false; reason: 'bad_input' | 'busy' | 'off' | 'not_configured' | 'error'; message: string }
 
 /** The answer to `{ action: 'run' }`. */
 export type RunReply =
@@ -251,6 +291,10 @@ export interface Describe {
     maxOutputTokens: { min: number; max: number }
     logDays: { min: number; max: number }
     requestMaxBytes: number
+    /** The longest question the Test bench takes, in characters. */
+    benchTextMax: number
+    /** What one device (the Kobo, the phone) may ask in a day. */
+    deviceCallsPerDay: { kobo: number; phone: number }
   }
   defaults: { monthlyBudgetUsd: number; logText: boolean; logDays: number }
   prices: {
@@ -279,6 +323,8 @@ export interface Describe {
     callers: string[]
     version: string
     defaults: { model: string; effort: string; maxOutputTokens: number }
+    /** The longest the model may take for this job, in milliseconds. */
+    timeLimitMs: number | null
     instructions: string
     answerSchema: unknown | null
     tools: { name: string; what: string }[]

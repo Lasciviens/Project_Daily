@@ -54,14 +54,34 @@ export interface CallRow {
   thinking: string | null
 }
 
+/** Who is reading the ledger: the owner's own client (`ai_gate`, row level security), or the server for a device run. */
+export type GateScope = { kind: 'owner' } | { kind: 'server'; userId: string; caller: Caller; now: Date }
+
 /**
  * What the ledger says about the account right now: this month's cost and the recent calls (`ai_gate`).
  * Null when it can't be read: the caller then sends nothing.
+ *
+ * A device run has no sign-in token, so `ai_gate` (which asks who is signed in) cannot answer it. The server client
+ * counts the owner's own rows instead: the calls of the last minute and of the last 24 hours, and this device's
+ * own calls in those 24 hours. This early read only saves a call that would be refused anyway: the real wall is
+ * `ai_reserve`, which counts and holds the budget in the database under a lock.
  */
-export async function readGate(userDb: Db, job: string): Promise<Gate | null> {
+export async function readGate(db: Db, job: string, scope: GateScope): Promise<Gate | null> {
   try {
-    const { data, error } = await userDb.rpc('ai_gate', { p_job: job })
-    return error ? null : gateOf(data)
+    if (scope.kind === 'owner') {
+      const { data, error } = await db.rpc('ai_gate', { p_job: job })
+      return error ? null : gateOf(data)
+    }
+    const count = async (sinceMs: number, caller: Caller | null): Promise<number | null> => {
+      let q = db.from('ai_calls').select('id', { count: 'exact', head: true })
+        .eq('user_id', scope.userId).gte('created_at', new Date(scope.now.getTime() - sinceMs).toISOString())
+      if (caller) q = q.eq('caller', caller)
+      const { count: n, error } = await q
+      return error || typeof n !== 'number' ? null : n
+    }
+    const [minute, day, byCaller] = await Promise.all([count(60_000, null), count(86_400_000, null), count(86_400_000, scope.caller)])
+    if (minute === null || day === null || byCaller === null) return null
+    return { monthCost: 0, jobMonthCost: 0, callsLastMinute: minute, callsToday: day, callsTodayByCaller: byCaller }
   } catch {
     return null
   }
@@ -187,5 +207,6 @@ export function summaryOf(row: CallRow): CallSummary {
     thinking_tokens: row.thinking_tokens,
     cost_usd: row.cost_usd,
     duration_ms: row.duration_ms,
+    served_model: row.served_model,
   }
 }

@@ -135,8 +135,9 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
     system: [{ type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } }],
     // Everything that changes from call to call comes after the cached block.
     messages: [{ role: 'user', content: request.userText }],
-    // The model decides how much to reason. `summarized` returns a readable summary for the ledger.
-    thinking: { type: 'adaptive', display: 'summarized' },
+    // The model decides how much to reason. `summarized` returns a readable summary for the ledger. `disabled` asks
+    // for no reasoning at all (the SDK's ThinkingConfigDisabled): it takes no `display`, and no summary comes back.
+    thinking: request.thinking === 'off' ? { type: 'disabled' } : { type: 'adaptive', display: 'summarized' },
     output_config: {
       effort: request.effort,
       // A fixed answer shape: the answer is JSON that follows this schema, in a text block.

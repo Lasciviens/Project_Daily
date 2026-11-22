@@ -6,21 +6,27 @@
 //  clients, and decides who is asking. Then it hands over:
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
+//    { "action": "count", "input": { … } }          → run.ts (the Test bench's free token count)
 //    { "action": "diagnose" }                       → diagnose.ts
+//  Two kinds of caller, told apart before anything is read:
+//    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
+//    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
+//      `x-claude-server-key` carries the project's service key, compared in constant time with this function's own
+//      copy. It may only `run`, and only as caller `kobo` or `phone`, acting as the owner (HEVY_USER_ID, read here,
+//      never from the request), so a job runs for a device only when its `callers` list names that device.
 //  It also hands the run the network and the name lookup a job may use to read
 //  an outside page (the recipe link), since only this part touches Deno.
 //
-//  Supabase checks the sign-in token before this code starts (the function is
-//  not listed in supabase/config.toml, so platform verification is on). That
-//  check admits any token of the project, so the code below still asks whose
-//  token it is and whether that account is on the owner list.
+//  Platform JWT verification is OFF for this function (supabase/config.toml): the new `sb_secret_` keys are not
+//  JWTs, so the platform would refuse the device path. Both paths are therefore checked here, before the body is
+//  read: a request with neither a valid sign-in token of an owner-list account nor the right server key is a 401.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import { ANTHROPIC_INFO, anthropicProvider } from './provider-anthropic.ts'
 import { describeFunction } from './describe.ts'
-import { errorPlace, LIMITS, ownValue, parseObject, readCapped } from './guard.ts'
-import { runJob, type RunContext } from './run.ts'
+import { deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret } from './guard.ts'
+import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
 import type { DnsLookup } from './types.ts'
 
@@ -94,14 +100,34 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return reply(405, { error: 'Use POST' })
 
   try {
-    // Who is asking: the token's own account, then the owner list.
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader) return reply(401, { error: 'Missing authorization header' })
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
     const sessionOff = { persistSession: false, autoRefreshToken: false }
     const adminDb = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey(), { auth: sessionOff })
-    const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
-    if (authError || !user) return reply(401, { error: 'Invalid token' })
-    if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
+
+    // Who is asking, part 1: a device function. The header is the service key; any other value (or none while the
+    // server has no key) is refused outright, and a request with the header never falls through to the token path.
+    const serverKeyHeader = req.headers.get('x-claude-server-key')
+    let device = false
+    if (serverKeyHeader !== null) {
+      const own = serviceKey()
+      if (!own || !(await sameSecret(serverKeyHeader, own))) return reply(401, { error: 'Invalid server key' })
+      device = true
+    }
+
+    // Who is asking, part 2: the app. The token's own account, then the owner list.
+    const authHeader = req.headers.get('authorization')
+    let userId = ''
+    if (device) {
+      // The account a device acts as comes from this function's own environment, never from the request.
+      userId = Deno.env.get('HEVY_USER_ID') ?? ''
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
+    } else {
+      if (!authHeader) return reply(401, { error: 'Missing authorization header' })
+      const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+      if (authError || !user) return reply(401, { error: 'Invalid token' })
+      if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
+      userId = user.id
+    }
 
     // What is asked: a small JSON object with an action.
     const text = await readCapped(req.body, LIMITS.requestMaxBytes)
@@ -109,20 +135,30 @@ Deno.serve(async (req) => {
     const body = parseObject(text)
     if (!body) return reply(400, { error: 'The request must be a JSON object' })
     const action = ownValue(body, 'action')
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+
+    // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
+    let caller: 'app' | 'kobo' | 'phone' = 'app'
+    if (device) {
+      if (action !== 'run') return reply(400, { error: 'A device may only run a job' })
+      const named = deviceCaller(ownValue(body, 'caller'))
+      if (!named) return reply(400, { error: 'The caller must be "kobo" or "phone"' })
+      caller = named as 'kobo' | 'phone'
+    }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose') return reply(400, { error: 'The action must be "describe", "run" or "diagnose"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count') return reply(400, { error: 'The action must be "describe", "run", "count" or "diagnose"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
-    // The owner's own client: it carries their token, so row level security decides what it reads.
-    const userDb = createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
-      global: { headers: { Authorization: authHeader } }, auth: sessionOff,
+    // The app's own client carries the owner's token, so row level security decides what it reads. A device has no
+    // token: the service-role client reads instead, and every read of it names the user id in the query itself.
+    const userDb = device ? adminDb : createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
+      global: { headers: { Authorization: authHeader as string } }, auth: sessionOff,
     })
     const context: RunContext = {
-      userId: user.id,
-      caller: 'app',
+      userId,
+      caller,
+      readAs: device ? 'server' : 'owner',
       userDb,
       adminDb,
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
@@ -135,6 +171,7 @@ Deno.serve(async (req) => {
       report: line => console.error(`[claude] ${line}`),
     }
     if (action === 'diagnose') return reply(200, await runDiagnose(context))
+    if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
     const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)
   } catch (error) {

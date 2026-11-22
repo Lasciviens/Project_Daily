@@ -10,7 +10,7 @@
 //  No part of this file talks to the network or the database: it decides.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Effort, JobDefinition } from './types.ts'
+import type { Caller, Effort, JobDefinition, RunChoice } from './types.ts'
 
 /** The models a job may run on, the default first. A stored model that is not here is ignored. */
 export const MODELS: readonly { id: string; name: string; note: string }[] = [
@@ -29,7 +29,35 @@ export const LIMITS = {
   maxOutputTokens: { min: 256, max: 16_000 },
   logDays: { min: 1, max: 90 },
   requestMaxBytes: 16 * 1024,
+  /** The longest question the Test bench takes, in characters. */
+  benchTextMax: 2000,
+  /**
+   * What one device may ask in a rolling 24 hours, counted from the ledger's own rows by `caller`. A leaked device
+   * secret can cost at most this many answers a day (the Kobo's own 100 a day is kept, kobo-sync counts it too).
+   */
+  deviceCallsPerDay: { kobo: 100, phone: 100 },
 } as const
+
+/** The callers that are server-side device functions: they act as the owner with the server key, never with a token. */
+export const DEVICE_CALLERS: readonly Caller[] = ['kobo', 'phone']
+
+/** `caller` as a device caller, or null: only the two names above ever pass, whatever a request says. */
+export function deviceCaller(value: unknown): Caller | null {
+  return DEVICE_CALLERS.find(c => c === value) ?? null
+}
+
+/**
+ * Constant-time secret check (security review 26.10.2026): both sides are
+ * hashed to the same length first, so the answer time shows neither the
+ * secret's length nor how much of it matched. Never log either value.
+ */
+export async function sameSecret(given: string, expected: string): Promise<boolean> {
+  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
+  const [a, b] = await Promise.all([hash(given), hash(expected)])
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
 
 /**
  * A request's time limit, worked out from the longest answer its job may write: 30 s up to 2000 tokens (a ✨ fill),
@@ -103,6 +131,18 @@ export function settingsFor(job: JobDefinition, accountRow: unknown, jobRow: unk
   }
 }
 
+/**
+ * What a request may pick for one run, after the code's lists have had their say: a model that is not on the list
+ * or an effort that is not on it is refused (null), and `thinking` is either of its two words. Left out stays the
+ * owner's setting (or, for thinking, the default).
+ */
+export function checkedChoice(choice: RunChoice): RunChoice | null {
+  if (choice.model !== undefined && !MODELS.some(m => m.id === choice.model)) return null
+  if (choice.effort !== undefined && !EFFORTS.includes(choice.effort)) return null
+  if (choice.thinking !== undefined && choice.thinking !== 'adaptive' && choice.thinking !== 'off') return null
+  return choice
+}
+
 /** What the ledger says about the account right now (the database's `ai_gate`). */
 export interface Gate {
   /** This month's cost so far, in USD, over every job. */
@@ -111,6 +151,8 @@ export interface Gate {
   jobMonthCost: number
   callsLastMinute: number
   callsToday: number
+  /** A device run only: this device's own calls in the last 24 hours. Null for the app. */
+  callsTodayByCaller: number | null
 }
 
 /** The database's answer as a Gate, or null when it can't be read: the caller then sends nothing. */
@@ -122,11 +164,15 @@ export function gateOf(data: unknown): Gate | null {
   const callsToday = numberFrom(ownValue(row, 'calls_today'))
   if (monthCost === null || jobMonthCost === null || callsLastMinute === null || callsToday === null) return null
   if (monthCost < 0 || jobMonthCost < 0 || callsLastMinute < 0 || callsToday < 0) return null
-  return { monthCost, jobMonthCost, callsLastMinute, callsToday }
+  return { monthCost, jobMonthCost, callsLastMinute, callsToday, callsTodayByCaller: null }
 }
 
 /** Why this call is one too many right now, or null. */
-export function rateCapProblem(gate: Gate): string | null {
+export function rateCapProblem(gate: Gate, caller: Caller): string | null {
+  const deviceCap = caller === 'kobo' || caller === 'phone' ? LIMITS.deviceCallsPerDay[caller] : null
+  if (deviceCap !== null && (gate.callsTodayByCaller ?? 0) >= deviceCap) {
+    return `That is ${deviceCap} AI calls from this device in 24 hours. Try again tomorrow.`
+  }
   if (gate.callsLastMinute >= LIMITS.callsPerMinute) {
     return `That is more than ${LIMITS.callsPerMinute} AI calls in a minute. Wait a moment and try again.`
   }
