@@ -26,14 +26,15 @@ function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   )
 }
 
-function CountLine({ count, about }: { count: BenchCount; about: Describe }) {
+function CountLine({ count, about, stale }: { count: BenchCount; about: Describe; stale: boolean }) {
   const price = about.prices.models.find(m => m.model === count.model)
   const input = price ? callCost(price, { input: count.inputTokens }) : null
   const job = about.jobs.find(j => j.name === 'test_bench')
   return (
-    <p role="status" className="text-meta text-fg-2">
-      <span className="font-semibold tabular-nums text-fg">{formatTokens(count.inputTokens)}</span> in the prompt
-      {input !== null && <> — about <span className="font-semibold tabular-nums text-fg">{formatUsd(input, { fine: true })}</span> of input</>}
+    <p role="status" className={cx('text-meta', stale ? 'text-fg-muted' : 'text-fg-2')}>
+      {stale && <span className="font-semibold text-fg-2">The text changed: count again. Last count: </span>}
+      <span className={cx('font-semibold tabular-nums', stale ? 'text-fg-muted' : 'text-fg')}>{formatTokens(count.inputTokens)}</span> in the prompt
+      {input !== null && <> — about <span className={cx('font-semibold tabular-nums', stale ? 'text-fg-muted' : 'text-fg')}>{formatUsd(input, { fine: true })}</span> of input</>}
       {job && <>; the answer adds output tokens, at most {formatCount(job.defaults.maxOutputTokens)}</>}
       . Anthropic’s count is an estimate.
     </p>
@@ -56,10 +57,12 @@ function AnswerCard({ a, about }: { a: BenchAnswer; about: Describe }) {
           {c.cache_read_tokens > 0 ? ` · ${formatTokens(c.cache_read_tokens)} read from the cache` : ''}
         </p>
       )}
-      <details className="text-meta text-fg-2">
-        <summary className="cursor-pointer select-none font-medium">Thinking summary</summary>
-        <p className="mt-1 whitespace-pre-wrap break-words">{a.thinking || (a.pick.thinking === 'off' ? 'Thinking was switched off.' : 'The model did not think about this one.')}</p>
-      </details>
+      {a.thinking && (
+        <details className="text-meta text-fg-2">
+          <summary className="cursor-pointer select-none font-medium">Thinking summary</summary>
+          <p className="mt-1 whitespace-pre-wrap break-words">{a.thinking}</p>
+        </details>
+      )}
     </Card>
   )
 }
@@ -73,7 +76,7 @@ export function AiTestBench() {
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('')
   const [thinking, setThinking] = useState<'adaptive' | 'off'>('adaptive')
-  const [counted, setCounted] = useState<BenchCount | null>(null)
+  const [counted, setCounted] = useState<{ count: BenchCount; for: string } | null>(null)
   const [answers, setAnswers] = useState<BenchAnswer[]>([])
   const [comparing, setComparing] = useState(false)
 
@@ -83,9 +86,10 @@ export function AiTestBench() {
   const max = d.limits.benchTextMax
   const pick: BenchPick = { model: model || job.defaults.model, effort: effort || job.defaults.effort, thinking }
   const text = question.trim()
-  const busy = run.isPending || comparing
+  const busy = run.isPending || comparing || count.isPending
+  const countKey = JSON.stringify([text, pick])
   const keep = (a: BenchAnswer) => setAnswers(list => [a, ...list].slice(0, MAX_KEPT))
-  const edit = (apply: () => void) => { apply(); setCounted(null) }
+  const edit = (apply: () => void) => apply()
 
   function ask(p: BenchPick, then?: () => void) {
     run.mutate({ question: text, pick: p }, { onSuccess: a => { keep(a); then?.() }, onError: () => setComparing(false) })
@@ -124,12 +128,12 @@ export function AiTestBench() {
             <SegmentedControl<'adaptive' | 'off'> size="sm" label="Thinking" options={[...THINKING_OPTIONS]} value={thinking} onChange={v => edit(() => setThinking(v))} />
           </Field>
         </div>
-        {counted && <CountLine count={counted} about={d} />}
-        <div className="flex flex-wrap items-center gap-2">
+        {counted && <CountLine count={counted.count} about={d} stale={counted.for !== countKey} />}
+        <div className="flex items-center gap-2">
           <Button variant="secondary" icon={<Hash />} disabled={!text || busy} loading={count.isPending}
-            onClick={() => count.mutate({ question: text, pick }, { onSuccess: setCounted })}>Count tokens</Button>
-          <Button variant="primary" icon={<Send />} disabled={!text} loading={run.isPending && !comparing} onClick={() => ask(pick)}>Ask</Button>
-          <Button variant="secondary" icon={<GitCompare />} disabled={!text || busy} loading={comparing} onClick={compare}>Compare thinking</Button>
+            onClick={() => count.mutate({ question: text, pick }, { onSuccess: c => setCounted({ count: c, for: countKey }) })}>Count</Button>
+          <Button variant="primary" icon={<Send />} disabled={!text || busy} loading={run.isPending && !comparing} onClick={() => ask(pick)}>Ask</Button>
+          <Button variant="secondary" icon={<GitCompare />} disabled={!text || busy} loading={comparing} onClick={compare}>Compare</Button>
         </div>
         {comparing && <p role="status" className="text-meta text-fg-muted">Asking twice: thinking adaptive, then off…</p>}
       </Card>

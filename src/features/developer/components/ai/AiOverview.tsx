@@ -20,15 +20,15 @@ import { ReadFailed, Term } from './aiBits'
 const Wait = ({ className }: { className: string }) => <Skeleton rounded="rounded-md" className={className} />
 
 /** One number with its eyebrow label and a line of context (the StatTile look, with room kept while loading). */
-function Figure({ label, value, hint, loading, tone }: { label: ReactNode; value: string; hint: string; loading: boolean; tone?: 'danger' }) {
+function Figure({ label, value, hint, loading, tone, wrap }: { label: ReactNode; value: string; hint: string; loading: boolean; tone?: 'danger'; wrap?: boolean }) {
   return (
     <div className="card flex min-w-0 flex-col p-4">
       <span className="section-label">{label}</span>
       <span className="mt-1.5 flex h-[30px] items-center">
         {loading ? <Wait className="h-6 w-14" /> : <span data-tone={tone} className={cx('text-kpi font-bold tabular-nums tracking-tight', tone ? 'tone-text' : 'text-fg')}>{value}</span>}
       </span>
-      <span className="mt-0.5 flex h-4 items-center">
-        {loading ? <Wait className="h-2.5 w-20" /> : <Truncate className="min-w-0 text-meta text-fg-muted">{hint}</Truncate>}
+      <span className={cx('mt-0.5 flex items-center', wrap && !loading ? 'min-h-4' : 'h-4')}>
+        {loading ? <Wait className="h-2.5 w-20" /> : wrap ? <span className="min-w-0 text-meta text-fg-muted">{hint}</span> : <Truncate className="min-w-0 text-meta text-fg-muted">{hint}</Truncate>}
       </span>
     </div>
   )
@@ -64,9 +64,12 @@ export function AiOverview({ onOpen }: { onOpen: (view: AiView) => void }) {
       }
     })
   }, [rows, about.data, jobSettings.data])
+  // A job with no call this month and no switch turned off is not worth a row of its own: one line counts them.
+  const shownRows = jobRows.filter(r => r.calls > 0 || r.off)
+  const quietJobs = jobRows.length - shownRows.length
   const masterOff = settings.isSuccess && settings.data != null && settings.data.ai_enabled === false
   const jobsLoading = usage.isLoading || about.isLoading || jobSettings.isLoading
-  const jobsRoom = useRememberedCount('ai:jobs', jobRows.length, !jobsLoading && !usage.isError && !about.isError && !jobSettings.isError, 1)
+  const jobsRoom = useRememberedCount('ai:jobs', shownRows.length + (quietJobs > 0 ? 1 : 0), !jobsLoading && !usage.isError && !about.isError && !jobSettings.isError, 1)
 
   const sections: Record<AiOverviewSection, ReactNode> = {
     budget: (
@@ -134,8 +137,8 @@ export function AiOverview({ onOpen }: { onOpen: (view: AiView) => void }) {
           />
           <Figure
             label={<Term term="Cache">Cache saved</Term>} loading={usage.isLoading || about.isLoading}
-            value={cache ? `${cache.net < 0 ? '−' : ''}${formatUsd(Math.abs(cache.net))}` : '—'}
-            hint={!cache ? 'Prices not loaded' : cache.net < 0 ? 'Stored, not read back yet' : cache.readTokens > 0 ? `${formatTokens(cache.readTokens)} tokens read from it` : 'Nothing read from it yet'}
+            wrap value={cache ? `${cache.net < 0 ? '−' : ''}${formatUsd(Math.abs(cache.net))}` : '—'}
+            hint={!cache ? 'Prices not loaded' : cache.net < 0 ? 'Written to the cache, not read back yet — pays off on the next call' : cache.readTokens > 0 ? `${formatTokens(cache.readTokens)} tokens read from it` : 'Nothing read from it yet'}
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -173,8 +176,9 @@ export function AiOverview({ onOpen }: { onOpen: (view: AiView) => void }) {
           : jobRows.length === 0
             ? <p className="text-body text-fg-muted">No calls yet this month</p>
             : (
+              <>
               <ul className="-my-1.5 divide-y divide-line">
-                {jobRows.map(r => {
+                {shownRows.map(r => {
                   const own = r.budget == null ? null : budgetProgress(r.cost_usd, r.budget)
                   return (
                     <li key={r.job} className="flex items-center gap-3 py-1.5">
@@ -214,6 +218,12 @@ export function AiOverview({ onOpen }: { onOpen: (view: AiView) => void }) {
                   )
                 })}
               </ul>
+              {quietJobs > 0 && (
+                <p className={cx('text-meta text-fg-muted', shownRows.length > 0 && 'mt-2 border-t border-line pt-2')}>
+                  {formatCount(quietJobs)} {quietJobs === 1 ? 'job' : 'jobs'} with no calls this month
+                </p>
+              )}
+              </>
             )}
         {about.isError && !jobsLoading && (
           <ReadFailed className="mt-2" what="the jobs’ names" error={about.error} onRetry={() => { void about.refetch() }} retrying={about.isFetching} />

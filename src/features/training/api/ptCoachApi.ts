@@ -51,7 +51,8 @@ export async function fetchAssessments(limit = 14): Promise<PTAssessmentRow[]> {
   return data ?? []
 }
 
-export interface PTAssessmentResult { text: string; model: string | null }
+/** `saveProblem` is why the log row was not written (the assessment itself is still shown), or null when it was saved. */
+export interface PTAssessmentResult { text: string; model: string | null; saveProblem: string | null }
 
 export async function generatePTAssessment(input: PTAssessmentInput): Promise<PTAssessmentResult> {
   const data = await gatherCoachData()
@@ -59,7 +60,7 @@ export async function generatePTAssessment(input: PTAssessmentInput): Promise<PT
   const verdicts = formatPtVerdicts(ptVerdicts(data, input.feeling))
 
   // The coach's continuity: hand it its own last assessment so it can follow
-  // up on whether the advice was applied (the job's FOLLOW-UP rule).
+  // up on whether the advice was applied (the job's previous-assessment sentence).
   let previous: string | undefined
   try {
     const [prev] = await fetchAssessments(1)
@@ -79,21 +80,24 @@ export async function generatePTAssessment(input: PTAssessmentInput): Promise<PT
   // The model that really answered, as the function says it (not the one asked for).
   const model = call?.served_model ?? call?.model ?? null
 
-  // Persist the log — best-effort (an insert failure must not eat the reply).
+  // Persist the log. A failed save never eats the reply, but it is reported, never silent.
+  let saveProblem: string | null = null
   try {
     const userId = await currentUserId()
-    if (userId) {
-      await supabase.from('pt_assessments').insert({
-        user_id:    userId,
-        date:       todayStr(),
-        feeling:    input.feeling,
-        note:       input.note ?? null,
-        snapshot:   `${verdicts}\n\n${snapshot}`,
-        assessment: text,
-        model,
-      })
-    }
-  } catch { /* logged assessment is a bonus, not a gate */ }
+    if (!userId) throw new Error('not signed in')
+    const { error } = await supabase.from('pt_assessments').insert({
+      user_id:    userId,
+      date:       todayStr(),
+      feeling:    input.feeling,
+      note:       input.note ?? null,
+      snapshot:   `${verdicts}\n\n${snapshot}`,
+      assessment: text,
+      model,
+    })
+    if (error) throw error
+  } catch (e) {
+    saveProblem = e instanceof Error && e.message ? e.message : typeof (e as { message?: unknown })?.message === 'string' ? (e as { message: string }).message : 'unknown error'
+  }
 
-  return { text, model }
+  return { text, model, saveProblem }
 }

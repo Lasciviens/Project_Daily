@@ -85,6 +85,11 @@ function dateFromToday(days: number): string {
 // and the training), never a line cut in half. Tasks and blocks are each limited to 20 rows, so this only bites on
 // very long titles.
 const BRIEF_CONTEXT_MAX = 3900
+// A date for the model's context as the app shows it: DD.MM.YYYY (the stored form is yyyy-MM-dd).
+function dmy(iso: unknown): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso))
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso)
+}
 function capLines(lines: string[], max: number): string {
   const kept: string[] = []
   let size = 0
@@ -106,7 +111,7 @@ const ASK_QUESTION_MAX = 1000
 // omitted, never breaks the brief. Column names mirror briefingApi.ts.
 async function buildBriefContext(userId: string): Promise<string> {
   const today = todayLocal()
-  const lines: string[] = [`DATE: ${today}`]
+  const lines: string[] = [`DATE: ${dmy(today)}`]
   try {
     const { data: tasks } = await supabase.from('tasks')
       .select('title, status, priority, domain, due_time')
@@ -114,15 +119,15 @@ async function buildBriefContext(userId: string): Promise<string> {
       .neq('status', 'cancelled').neq('status', 'done')
       .order('due_time', { ascending: true }).limit(20)
     if (tasks?.length) {
-      lines.push(`\nBUGÜNKÜ İŞLER (${tasks.length} açık):`)
+      lines.push(`\nTODAY'S TASKS (${tasks.length} open):`)
       for (const t of tasks as AnyRecord[]) {
         lines.push(`  - ${t.title} [${t.priority}${t.domain ? `, ${t.domain}` : ''}]${t.due_time ? ` @${String(t.due_time).slice(0, 5)}` : ''}`)
       }
-    } else { lines.push('\nBUGÜNKÜ İŞLER: yok') }
+    } else { lines.push('\nTODAY\'S TASKS: none') }
   } catch { /* omit section */ }
   try {
     // A skipped session (its task cancelled, migration 142) is not on today's program.
-    // A slot with no length (busy false, 155: "do it at 14:00") shows no "(Ndk)" —
+    // A slot with no length (busy false, 155: "do it at 14:00") shows no "(N min)" —
     // its stored minutes are nominal. Before 155 there is no busy column: read without it.
     const read = (cols: string) => supabase.from('time_blocks')
       .select(cols)
@@ -136,8 +141,8 @@ async function buildBriefContext(userId: string): Promise<string> {
     }
     const withTime = (blocks as AnyRecord[] ?? []).filter(b => b.start_time && b.task?.status !== 'cancelled')
     if (withTime.length) {
-      lines.push('\nBUGÜNKÜ PROGRAM:')
-      for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes && b.busy !== false ? ` (${b.duration_minutes}dk)` : ''}`)
+      lines.push('\nSCHEDULE:')
+      for (const b of withTime) lines.push(`  - ${String(b.start_time).slice(0, 5)} ${b.title}${b.duration_minutes && b.busy !== false ? ` (${b.duration_minutes} min)` : ''}`)
     }
   } catch { /* omit section */ }
   try {
@@ -149,8 +154,8 @@ async function buildBriefContext(userId: string): Promise<string> {
       .order('date', { ascending: true }).limit(15)
     const tr = (rows as AnyRecord[] ?? []).filter(b => !['cancelled', 'done'].includes(b.task?.status)).slice(0, 5)
     if (tr.length) {
-      lines.push('\nYAKLAŞAN ANTRENMANLAR:')
-      for (const s of tr as AnyRecord[]) lines.push(`  - ${s.date}${s.start_time ? ` ${String(s.start_time).slice(0, 5)}` : ''} ${s.title}`)
+      lines.push('\nUPCOMING TRAINING:')
+      for (const s of tr as AnyRecord[]) lines.push(`  - ${dmy(s.date)}${s.start_time ? ` ${String(s.start_time).slice(0, 5)}` : ''} ${s.title}`)
     }
   } catch { /* omit section */ }
   return capLines(lines, BRIEF_CONTEXT_MAX)
@@ -627,7 +632,7 @@ Deno.serve(async (req) => {
       case 'sleep': {
         const nights = await computeSleepNightsGw(userId)
         if (!nights.length) return json({ ok: false, error: 'No sleep data in the last 7 days.' })
-        const lines = nights.map(n => `${n.date}: ${n.hours} h asleep (deep ${n.deep_h} h, core ${n.core_h} h, REM ${n.rem_h} h, awake ${n.awake_h} h)${n.start ? `, ${n.start}–${n.end}` : ''}`)
+        const lines = nights.map(n => `${dmy(n.date)}: ${n.hours} h asleep (deep ${n.deep_h} h, core ${n.core_h} h, REM ${n.rem_h} h, awake ${n.awake_h} h)${n.start ? `, ${n.start}–${n.end}` : ''}`)
         const context = `SLEEP, last ${nights.length} nights (the date is the day woken up), oldest first:\n${lines.join('\n')}`
         return json(await askClaude('phone_ask', { question: 'How did I sleep last night? Compare it with the average of the nights given and comment shortly.', context }))
       }

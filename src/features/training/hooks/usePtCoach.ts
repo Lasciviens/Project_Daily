@@ -15,7 +15,7 @@ export function useGeneratePtAssessment() {
   return useMutationWithFeedback({
     action:         'generate_pt_assessment',
     loadingMessage: 'The coach is reviewing your data…',
-    successMessage: 'Assessment ready',
+    successMessage: result => (result.saveProblem ? `Assessment ready — not saved: ${result.saveProblem}` : 'Assessment ready'),
     mutationFn:     (input: PTAssessmentInput) => generatePTAssessment(input),
     invalidates:    [qk.training.ptAssessments],
   })

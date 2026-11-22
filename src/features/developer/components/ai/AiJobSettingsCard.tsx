@@ -52,7 +52,7 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-lead font-semibold text-fg">{job.title}</p>
-          <p className="text-meta text-fg-muted"><span className="font-mono">{job.name}</span>{job.version ? ` · instructions ${job.version}` : ''}</p>
+          <p className="text-meta text-fg-muted"><span className="font-mono">{job.name}</span>{job.version && <> · <span className="whitespace-nowrap">instructions version {job.version}</span></>}</p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5 text-meta font-medium text-fg-2">
           {enabled ? 'On' : 'Off'}
@@ -76,7 +76,7 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
         </Field>
         <Field className="min-w-[8rem] flex-1" label={<Term term="Thinking">Thinking</Term>}>
           <select value={thinking} onChange={e => setThinking(e.target.value)} aria-label={`${job.title}: thinking`} className="select">
-            <option value="">Default</option>
+            <option value="">Default (adaptive)</option>
             <option value="adaptive">Adaptive</option>
             <option value="off">Off (cheaper, faster)</option>
           </select>

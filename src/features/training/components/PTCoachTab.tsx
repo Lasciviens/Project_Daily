@@ -16,7 +16,7 @@ import { feelingOf, PT_FEELINGS, type PtFeeling } from '../coach/coachFacts'
 //  is browsable below. DB is the source of truth (localStorage cache retired).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The `id` values stay Turkish deliberately: they are sent verbatim into the
+// The `id` values are the English feeling words: they are sent verbatim into the
 // `coach_assessment` job's allow-list and stored in pt_assessments.feeling, so changing them
 // would break the job's allow-list. Rows saved before 22.11.2026 hold the Turkish words: `feelingLabel` reads both.
 const FEELINGS: { id: PtFeeling; label: string }[] = [
