@@ -17,7 +17,7 @@
   service-role key NEVER touches the phone. A leaked secret is **revocable** in
   seconds (change it in Vault + in the shortcuts).
 - Deterministic actions (log a supplement, read today's nutrition) run directly
-  in the gateway — instant, free, no AI. AI actions (`ask`/`brief`/`sleep`) the
+  in the gateway — instant, free, no AI. AI actions (`ask`/`sleep`; `brief` is built by fixed rules, no AI) the
   gateway forwards to `ai-proxy` (which now also accepts the same secret).
 
 ---
@@ -166,7 +166,7 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 | `tasks_today` | `{}` | `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}` | no |
 | `import_body_composition` | see below | see below | no |
 | `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
-| `brief` | `{}` | `{ok, text}` | yes (context pre-built, single-shot) |
+| `brief` | `{}` | `{ok, text, source: 'rules'}` | no (Home's fixed brief rules, built in the gateway; no AI, no cost) |
 | `sleep` | `{}` | `{ok, text}` | yes |
 
 `date` defaults to the server's UTC date; pass a `yyyy-MM-dd` (Format Date in the

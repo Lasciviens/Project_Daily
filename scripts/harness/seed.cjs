@@ -1092,6 +1092,34 @@ function buildTables(now = new Date()) {
       thinking: sentence && fill ? 'One thing to plan. The sentence gives what it is and when; nothing else is stated, so the other fields stay empty.' : null,
     })
   })
+  // The weekly report (migration 196): last week's, finished on Monday morning and announced (Home's card shows it), the
+  // week before it, and a Sunday run that failed. Each ready one has its ledger row at the batch price.
+  const { REPORT_TEXT } = require('./claude.cjs')
+  const mondayOf = (d) => addDays(d, -((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7))
+  const thisMonday = mondayOf(today)
+  const batchCall = (n, over) => callRow({
+    id: `a1ca3300-0000-4000-8000-${String(n).padStart(12, '0')}`, run_id: `a1ca3400-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner,
+    job: 'weekly_report', mode: 'batch', caller: 'schedule', effort: 'medium', instructions_version: '2026-11-22.1', ...over,
+  })
+  const batchCalls = [
+    batchCall(1, { outcome: 'ok', stop_reason: 'end_turn', served_model: HAIKU, input_tokens: 1180, output_tokens: 410, thinking_tokens: 0, cost_usd: 0.000162, duration_ms: 2520000 }),
+    batchCall(2, { outcome: 'ok', stop_reason: 'end_turn', served_model: HAIKU, input_tokens: 1090, output_tokens: 380, cost_usd: 0.000150, duration_ms: 1980000 }),
+    batchCall(3, { outcome: 'error', stop_reason: 'batch_expired', error: 'The batch request expired before it was answered.', cost_usd: 0.001299, duration_ms: 0 }),
+  ]
+  batchCalls[0].created_at = osloInstant(addDays(thisMonday, -1), '23:30')
+  batchCalls[1].created_at = osloInstant(addDays(thisMonday, -8), '23:30')
+  batchCalls[2].created_at = osloInstant(addDays(thisMonday, -15), '23:30')
+  tables.ai_calls.push(...batchCalls)
+  const reportRow = (n, weekStart, over) => ({
+    id: `a1ca5500-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, week_start: weekStart, made_by: 'schedule', status: 'ready', failure: null,
+    content: REPORT_TEXT, facts: { week_start: weekStart, training: { session_count: 3 } }, call_id: batchCalls[n - 1].id,
+    created_at: osloInstant(addDays(weekStart, 6), '23:30'), ready_at: osloInstant(addDays(weekStart, 7), '00:41'), pushed_at: osloInstant(addDays(weekStart, 7), '00:41'), ...over,
+  })
+  tables.ai_reports = [
+    reportRow(1, addDays(thisMonday, -7), {}),
+    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions').replace('3380', '2410') }),
+    reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
+  ]
   tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]
   tables.ai_job_settings = [{
     user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, thinking: null, updated_at: at(-6, '08:20'),

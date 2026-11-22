@@ -93,7 +93,7 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
     count('supabase/functions/phone-gateway/index.ts', '.or(`section.eq.today,due_date.eq.${today}`)'),
     count('supabase/functions/push-send/index.ts', '.or(`section.eq.today,due_date.eq.${today}`)'),
     count('supabase/functions/ai-proxy/index.ts', '.or(`section.eq.today,due_date.eq.${date}`)'),
-  ], [2, 1, 1], 'the server-side today lists (phone-gateway ×2, push-send, ai-proxy) read the Today section')
+  ], [3, 1, 1], 'the server-side today lists (phone-gateway ×3: the tasks list, the ask context, the rule-built brief; push-send; ai-proxy) read the Today section')
 }
 
 // ── One day's list ──

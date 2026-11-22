@@ -272,7 +272,16 @@ Reference: `068_push_subscriptions.sql`.
   A missing secret must degrade to the target function rejecting the call (no
   action, no harm), not to a leaked value in migration history.
 - pg_cron runs in **UTC** — state the intended local time and accept the DST
-  drift explicitly, or compute it.
+  drift explicitly, or compute it. Where the local time matters (the weekly report,
+  Sunday 23:30 Oslo), schedule **both** UTC hours the local time can be and let the
+  function decide (`scheduledReportWeek`: it acts only from 23:00 Sunday to 01:00
+  Monday Oslo time) — never a schedule that is right for half the year.
+- A timer that calls an edge function with a credential and needs it **derived**
+  (so the secret itself never travels) can compute an HMAC in SQL:
+  `encode(extensions.hmac('<label>', decrypted_secret, 'sha256'), 'hex')`
+  (pgcrypto lives in the `extensions` schema on Supabase), read from Vault inside
+  the job; the function derives the same hex with Web Crypto and compares with
+  `sameSecret` (migration 196's `lascis-ai-report-*`).
 
 ---
 
@@ -529,6 +538,44 @@ owner lock keeps out and a signed-out caller; `ai_usage`'s days and
 `ai_gate`'s month, day and minute with rows at chosen times; the purge; and
 the app's delete, restore and undo functions (the real 144, 150, 151) tried on
 the ledger.
+
+---
+
+## The weekly reports (migration 196) — `ai_reports`
+
+AI phase 3 (`docs/features/ai.md`, "The weekly report"). One row per report:
+`week_start` (the Oslo Monday, CHECK `isodow = 1`), `made_by` (`schedule` or
+`app`), `status` (`queued` → `ready` | `failed`), `failure` (≤ 300), `content`
+(the English report, ≤ 6000, required when `ready`), `facts` (the figures the model
+read, a jsonb object ≤ 64 KB), `batch_id`, `call_id` (→ `ai_calls`, `on delete set
+null`: the ledger row holding its cost), `claimed_at`, `created_at`, `ready_at`,
+`pushed_at`. `unique (user_id, week_start, made_by)`: one report a week and maker,
+which is what makes a second timer run, a repeated tap and two overlapping runs
+harmless.
+
+- **Written only by the service role** (the `claude` function). `user_id` has no
+  default. **`batch_id` is a link to an outside service**, so the browser can neither
+  write nor read it: `revoke all … from anon, authenticated`, then
+  `grant select (<the finished columns>) to authenticated` — a column list without
+  `batch_id` and `claimed_at` (so `select *` from the browser is a 42501; the app
+  names its columns, `REPORT_COLUMNS`). One `for select` policy plus the owner
+  lock; no audit trigger (a server-written log; Undo must never reach it). A new
+  column the browser may read joins that grant list in its own migration.
+- **Two timers** (pg_cron, UTC, the guard pattern; secrets from Vault inside the job):
+  `lascis-ai-report-make` (`30 21,22 * * 0`) and `lascis-ai-report-check`
+  (`*/15 * * * *`, with `where exists (select 1 from public.ai_reports r where
+  r.status = 'queued')`: it calls nothing while no report waits). Both send
+  `x-claude-schedule-key` = HMAC-SHA256(`'claude-schedule-v1'`, the Vault secret
+  `PUSH_CRON_SECRET`) as hex to `functions/v1/claude`; no secret in Vault sends an
+  empty header, which the function refuses.
+- **Checks:** `scripts/verify-db-ai-reports.mjs` (static checks on 196 and 38
+  scenarios on two throwaway databases, with Supabase's old default grants and
+  without them; 196 runs twice and must leave the catalogue unchanged): the
+  browser's exact column list, no write, a second account / a locked-out account /
+  a signed-out caller see nothing, every CHECK with good and bad values, the unique
+  key, the ledger link, and the timers (their SQL is run: the header equals the HMAC
+  Node computes, with no secret the header is empty, the check timer stays quiet
+  with no queued report). CI step "AI weekly reports database scenarios".
 
 ---
 
