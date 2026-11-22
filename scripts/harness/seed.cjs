@@ -1126,6 +1126,8 @@ function buildTables(now = new Date()) {
     reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions').replace('3380', '2410') }),
     reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
   ]
+  // Ask AI (migration 197): two stored chats, one with a proposal still waiting for the owner's tap.
+  Object.assign(tables, require('./claude-chat.cjs').chatSeed(owner, (tables.tasks[0] ?? {}).id ?? '00000000-0000-4000-8000-0000000000aa', at))
   tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]
   tables.ai_job_settings = [{
     user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, thinking: null, updated_at: at(-6, '08:20'),

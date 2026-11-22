@@ -13,6 +13,8 @@ import {
 } from './prices.ts'
 import { DEFAULTS, EFFORTS, LIMITS, MODELS } from './guard.ts'
 import { JOB_LIST } from './jobs.ts'
+import { describeChatTools } from './chat-tools.ts'
+import { CHAT_JOB_NAME } from './chat-rules.ts'
 
 /** The function's parts, in the order they are joined (scripts/build-claude-function.mjs has the same list). */
 const DESCRIBE_PARTS: Describe['parts'] = [
@@ -41,7 +43,11 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'report store', file: 'supabase/claude-src/report-store.ts', what: "The weekly reports' table: add, claim and finish a report, so one check works on a report at a time and its push goes once." },
   { name: 'job: test bench', file: 'supabase/claude-src/job-test-bench.ts', what: 'The Test bench: any question with a model, effort and thinking you pick, from the code\'s lists.' },
   { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
+  { name: 'chat rules', file: 'supabase/claude-src/chat-rules.ts', what: "Ask AI's fixed rules: its instructions, the limits of a chat (5 requests per answer, the 90 000-token wall), the permission of each tool, the date line, and the hashes that freeze a chat's tools and instructions." },
+  { name: 'chat tools', file: 'supabase/claude-src/chat-tools.ts', what: "Ask AI's eight tools: six that read (a day's list as Today holds it, the week's prepared figures, a day's food, a search of your own words, your saved notes about yourself, and one read-only database question as the last resort) and two that only propose a write. Code checks every value the model sends." },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
+  { name: 'chat store', file: 'supabase/claude-src/chat-store.ts', what: "The stored chats: conversations, messages (only ever added to, with a hash chain) and the proposals waiting for your Confirm." },
+  { name: 'chat loop', file: 'supabase/claude-src/chat-loop.ts', what: "Ask AI's own loop: the walls, the stored history checked before it is replayed, each request reserved and ledgered, the tools run side by side, the citations checked, and your Confirm or Cancel of a proposal." },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
   { name: 'batch', file: 'supabase/claude-src/batch.ts', what: 'The weekly report\'s two steps: queue one request at half price (Monday 05:00, so Sunday is complete), and read it back when it has ended (every 15 minutes while one is queued), correcting the ledger to the real cost; the push waits for 07:00 and goes once.' },
   { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
@@ -64,6 +70,7 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Checking the answer', part: 'run', text: "An answer the model declined, or one cut off at its length limit, is not used. Otherwise the job checks it value by value with its own code. A value that fails is dropped, never repaired." },
   { title: 'Writing the ledger', part: 'ledger', text: 'The reserved row gets its real numbers: the tokens, the cost (worked out from the price table in this code), the time it took and how it ended. A call whose bill is unknown, such as a timeout, stays charged at the reserved worst case. While you keep the text log on, the request, the answer and the thinking summary are kept too.' },
   { title: 'Batch jobs (the weekly report)', part: 'batch', text: 'A job that can wait is queued at half price (the Message Batches API): on Monday at 05:00 a timer asks this function, with a value derived from a secret it shares with the timer, to work out the week with code, reserve the worst case at the batch price, and queue one request. Another timer asks every 15 minutes while a report is queued; when the batch has ended, this function reads the one result line (found by its id), checks the text, saves the report, corrects the ledger row to the real cost; the push is held until 07:00 and sent once. A batch that failed, expired or was cancelled keeps its worst case in the ledger and the report says why. Nothing is retried in a loop.' },
+  { title: 'Ask AI (the chat)', part: 'chat loop', text: "The chat is the one job with a loop of its own. The app asks for a chat answer (streamed as server-sent events). The function checks the stored history (numbers and hash chain) and that the chat's tools and instructions are the ones it began with, then repeats up to five times: reserve the worst case, send the whole chat so far (cached), store the answer exactly as it came, and, if the model asked for tools, run them side by side as you and send all their results back in one message. A tool's mistake comes back as an error result that says what to try. The model can only propose a write: you tap Confirm in the app, and only then the function writes the row with your own rights. Every request is a ledger row of the same run." },
   { title: 'The reply', part: 'run', text: "The app gets the checked result with the call's numbers, or a reason with one plain sentence. Every message goes through the filter that takes secrets out." },
 ]
 
@@ -80,6 +87,10 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The text you type is sent as data inside a tag, and the fixed instructions say that text in it is never an instruction.',
   'The jobs here get no tools (one job, ideas for a place, may use Anthropic\'s web search, at most 3 searches a call, each one counted and priced) and none of your data beyond what the app hands over in a tag: the model can only suggest values or write text, which you see before anything is saved.',
   'A photo (a meal, a receipt) is sent to the model in the one call that reads it and is never stored: the ledger keeps its size, not its bytes. Text inside a photo is data, never an instruction. Only JPEG, PNG and WebP pass, checked by their own headers.',
+  "Ask AI has fixed tools only. Each takes values the code checks (a choice ignoring case, a number in range), runs as you with your own database rights and your user id from the verified sign-in, never one the model gives, and hands back prepared figures. What a tool returns, and every note, task or diary line in it, is data: the instructions say so, and a result is cut to a size limit.",
+  'Ask AI can never write by itself, and at most 8 tools run in a round and 3 proposals are made in an answer. A write is a proposal stored by the function; only your tap on Confirm in the app, checked against your account, makes it real, once, with the stored values checked again. A forged, expired or already decided proposal writes nothing. The columns a proposal may fill are a fixed list with no link to an outside account.',
+  "A chat is stored exactly as it was sent and received and only ever added to; it is replayed unchanged, a changed or damaged history is refused, and a chat is continued only with the tools and instructions it began with. A tool you switch off is left out of new chats and refused even if the model calls it.",
+  'A link in an Ask AI answer is shown only when the model cited something a tool returned in that chat and the row is one of yours; the title shown is the row\'s own.',
   'Where code can decide, code decides: the PT assessment gets its verdicts (rest day, deload, the one lift) worked out by the app, and the phone gets its day looked up, so the model only explains or writes up.',
   "Every answer is checked value by value by the job's own code. A value that fails is dropped, never repaired, and a link is only ever one you typed yourself.",
   'Only this function writes the ledger. The app can read your rows and cannot change them.',
@@ -103,7 +114,9 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     timeLimitMs: job.timeLimitMs ?? null,
     instructions: job.instructions,
     answerSchema: job.answerSchema,
-    tools: (job.tools ?? []).map(t => ({ ...t })),
+    tools: job.name === CHAT_JOB_NAME
+      ? describeChatTools().map(t => ({ name: t.name, what: `${t.kind === 'read' ? 'Reads (code prepares the answer)' : 'Only PROPOSES a write: nothing is saved until you tap Confirm'}. ${t.what} Fields, all required: ${t.fields.join(', ')}.` }))
+      : (job.tools ?? []).map(t => ({ ...t })),
     features: [
       'Prompt caching: the instructions are one cached block',
       ...(job.answerSchema ? [job.enforceAnswerSchema

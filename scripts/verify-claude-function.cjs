@@ -1003,7 +1003,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('9 · the recipe and quick guess jobs')
   const NEW_JOBS = ['recipe_from_text', 'recipe_from_link', 'recipe_macros', 'quick_guess', 'quick_guess_options']
   const jobAbout = (name) => about.jobs.find(j => j.name === name)
-  check('the job list is item_fill, the five phase 2a jobs, the seven feature jobs of 22.11.2026, the coach, the two device jobs, the weekly report, the Test bench and diagnose', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas', 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'test_bench', 'diagnose']), about.jobs.map(j => j.name))
+  check('the job list is item_fill, the five phase 2a jobs, the seven feature jobs of 22.11.2026, the coach, the two device jobs, the weekly report, the Test bench, diagnose and Ask AI (chat)', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas', 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'test_bench', 'diagnose', 'chat']), about.jobs.map(j => j.name))
   const TOKENS_OF = { recipe_from_text: 4000, recipe_from_link: 4000, recipe_macros: 1500, quick_guess: 1500, quick_guess_options: 2500 }
   for (const name of NEW_JOBS) {
     const j = jobAbout(name)
@@ -2505,7 +2505,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('ad_improve: one extra link beside a typed one is invalid (each found must be typed, the check is never switched off)', wj?.ok === false && wj.reason === 'invalid', wj)
   wj = (await go(runBody(AD_LINK, 'ad_improve'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'Sony selges. Spør ola@evil.example' }))) })).json
   check('ad_improve: another e-mail address is invalid', wj?.ok === false && wj.reason === 'invalid', wj)
-  check('the tool switches on only for a job whose definition names it (run.ts), and only place_ideas does', /job\.tools\?\.some\(t => t\.name === 'web_search'\)/.test(read(`${PARTS_DIR}/run.ts`)) && same(about.jobs.filter(j => j.tools.length).map(j => j.name), ['place_ideas']))
+  check('the tool switches on only for a job whose definition names it (run.ts), and only place_ideas does (the chat has its own tools, none of them web search)', /job\.tools\?\.some\(t => t\.name === 'web_search'\)/.test(read(`${PARTS_DIR}/run.ts`)) && same(about.jobs.filter(j => j.tools.length && j.kind === 'one_shot').map(j => j.name), ['place_ideas']) && about.jobs.find(j => j.name === 'chat').tools.every(t => t.name !== 'web_search'))
   x = await go(null, { request: post(photoBody({ image: { media_type: 'image/jpeg', data: 'A'.repeat(1_600_000) } })) })
   check('a body over the image limit names that limit (1.5 MB); a device body names 16 KB; a non-image job names 16 KB', /1\.5 MB/.test(x.json?.error ?? '') && (await go(null, { request: devPost({ action: 'run', caller: 'phone', job: 'phone_ask', input: { question: 'q', context: 'x'.repeat(20_000) } }) })).json?.error?.includes('16 KB') && /16 KB/.test((await go(null, { request: post(runBody({ text: 'x'.repeat(20_000) }, 'quick_guess')) })).json?.error ?? ''), x.text)
   check('describe states the price of a search and the cap (from code, for the Prices page)', about.prices.webSearchUsdEach === 0.01 && about.prices.webSearchMaxUses === 3, about.prices)

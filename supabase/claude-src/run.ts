@@ -70,17 +70,17 @@ const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
 // The provider column of a row for work code did alone (no model asked).
 const RUN_PAGE_PROVIDER = 'page'
-const RUN_ERROR_MAX = 500
+export const RUN_ERROR_MAX = 500
 // A call that failed in one of these ways may still have been billed (the request may have reached the model), so
 // its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
 // never started a generation.
-const RUN_MAY_BE_BILLED: readonly ModelFailure['kind'][] = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
-const RUN_NO_TOKENS: TokenUsage = {
+export const RUN_MAY_BE_BILLED: readonly ModelFailure['kind'][] = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
+export const RUN_NO_TOKENS: TokenUsage = {
   inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 0, thinkingTokens: 0,
 }
 
 /** A ledger row for this run, with every column at "nothing happened yet". */
-function newRow(ctx: RunContext, job: JobDefinition | null | undefined): CallRow {
+export function newRow(ctx: RunContext, job: JobDefinition | null | undefined): CallRow {
   return {
     id: ctx.newId(), user_id: ctx.userId, run_id: ctx.newId(), step: 1,
     job: job?.name ?? RUN_UNKNOWN_JOB, caller: ctx.caller, mode: 'live', provider: ctx.providerName,

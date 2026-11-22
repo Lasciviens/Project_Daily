@@ -19,6 +19,7 @@
 
 const { randomUUID } = require('node:crypto')
 const { osloDay, addDays } = require('./seed.cjs')
+const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./claude-chat.cjs')
 
 // The REAL function's own jobs (the generated supabase/functions/claude/index.ts, run under Node with a pretend Deno): the AI
 // features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
@@ -420,7 +421,7 @@ function about(configured) {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
       longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, webSearchUsdEach: 0.01, webSearchMaxUses: 3, models: PRICES,
     },
-    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE].map(j => ({ mode: 'live', ...j })),
+    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE, CHAT_JOB_ABOUT].map(j => ({ mode: 'live', ...j })),
     steps: DESCRIBE_STEPS,
     parts: DESCRIBE_PARTS,
     safetyRules: DESCRIBE_SAFETY_RULES,
@@ -531,6 +532,9 @@ function diagnoseAnswer(opts, store, configured) {
 function claudeMock(opts = {}) {
   const configured = opts.configured !== false
   return ({ body, store }) => {
+    if (body?.action === 'chat') return chatAnswer(body, store, { configured })
+    if (body?.action === 'chat_confirm') return confirmAnswer(body, store)
+    if (body?.action === 'chat_delete' || body?.action === 'chat_restore') return deleteAnswer(body, store, body.action === 'chat_delete')
     if (body?.action === 'describe') return { ok: true, about: about(configured) }
     if (body?.action === 'diagnose') return diagnoseAnswer(opts, store, configured)
     if (body?.action === 'count') {

@@ -628,17 +628,6 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     cost: 'free', caveats: ['The Oslo fallback is not a real fix — nearby stops only use a real one.'],
     since: '17.07.2026', sinceFrom: 'src/features/home/hooks/useGeolocation.ts',
   },
-  {
-    id: 'web-speech', name: 'Web Speech API', provider: 'Browser', category: 'Device', official: true,
-    docsUrl: 'https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API',
-    purpose: 'Dictation and hands-free voice chat with Ask AI (Turkish or English).',
-    transports: ['browser'],
-    connection: 'Speech recognition and speech synthesis built into the browser — no key, no server.',
-    auth: 'none', direction: 'both', cadence: 'While voice mode is on',
-    usedIn: [{ label: 'Ask AI', path: '/home' }],
-    cost: 'free', caveats: ['Unreliable inside an installed iOS app — use the AI\'a Sor Shortcut there.'],
-    since: '26.07.2026', sinceFrom: 'src/features/ai/hooks/useVoiceChat.ts',
-  },
 ]
 
 // ── Pure helpers ─────────────────────────────────────────────────────────

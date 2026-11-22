@@ -26,7 +26,10 @@ import {
   UnprocessableEntityError,
   type ClientOptions,
 } from 'npm:@anthropic-ai/sdk@1.5.0'
-import type { AnswerEnding, BatchLine, BatchResults, BatchStatus, BatchSubmitted, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, SentRequest, TokenCount, TokenUsage } from './types.ts'
+import type {
+  AnswerEnding, BatchLine, BatchResults, BatchStatus, BatchSubmitted, Block, CacheMiss, ChatAnswer, ChatDelta, ChatRequest, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider,
+  ProviderInfo, SentRequest, TokenCount, TokenUsage,
+} from './types.ts'
 
 /** What the "How it works" page shows. The verify script compares each line with what the SDK really sends. */
 export const ANTHROPIC_INFO: ProviderInfo = {
@@ -158,6 +161,39 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
           } else if (result.type === 'canceled' || result.type === 'expired') lines.push({ customId, kind: result.type, detail: '' })
         }
         return { ok: true, lines }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
+    // One round of a chat, streamed: the SDK's own `messages.stream()` accumulates the events, `finalMessage()` is the
+    // answer. Only our two small deltas leave this part (text pieces, "a tool is being called"), never a raw event.
+    async chatRound(request: ChatRequest, onDelta: (delta: ChatDelta) => void): Promise<ChatAnswer | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
+      const body = anthropicChatBody(request)
+      const sent = anthropicChatSent(request, body, timeout)
+      try {
+        const stream = client.beta.messages.stream(body, { timeout, ...(request.signal ? { signal: request.signal } : {}) })
+        stream.on('text', piece => { if (piece) onDelta({ kind: 'text', text: piece }) })
+        stream.on('streamEvent', event => {
+          if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') onDelta({ kind: 'tool', name: anthropicCut(event.content_block.name, 60) })
+        })
+        const message = await stream.finalMessage()
+        return { ...anthropicChatAnswer(message), sent }
+      } catch (error) {
+        // A failure in the middle of a stream (an error event, a dropped connection, the app going away) lands here too.
+        return { ...anthropicFailure(error, apiKey, timeout), sent }
+      }
+    },
+    // Free: the chat's prompt tokens, counted with the same body (context editing included) but for the answer limit.
+    async countChat(request: ChatRequest): Promise<TokenCount | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
+      try {
+        const body = anthropicChatBody(request)
+        const count = await client.beta.messages.countTokens({
+          model: body.model, messages: body.messages, system: body.system, tools: body.tools, thinking: body.thinking,
+          context_management: body.context_management, betas: body.betas,
+        }, { timeout })
+        return { ok: true, inputTokens: anthropicCount(count.input_tokens) }
       } catch (error) {
         return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
@@ -329,4 +365,102 @@ function anthropicFailureKind(error: APIError, status: number | null): ModelFail
   if (error instanceof BadRequestError || error instanceof NotFoundError || error instanceof ContentTooLargeError
     || error instanceof UnprocessableEntityError) return 'refused_request'
   return 'unknown'
+}
+
+// ── Ask AI (chat) ────────────────────────────────────────────────────────────
+
+// The two beta features the chat asks for. Context editing clears old tool results from a long prompt; the thinking
+// binding control makes a history whose thinking blocks no longer match fail with a 400 instead of reaching the model
+// (docs/integrations/anthropic.md, trap 4). Both are in the Developer page's description.
+const ANTHROPIC_CHAT_BETAS = ['context-management-2025-06-27', 'thinking-binding-controls-2026-08-01']
+
+/** The chat request in Anthropic's shape. Every breakpoint of the cache layout is here: the last tool, the fixed instructions, the owner's instructions, and the top-level automatic one for the messages. */
+function anthropicChatBody(request: ChatRequest): Anthropic.Beta.Messages.MessageCreateParamsNonStreaming {
+  const mark = { type: 'ephemeral' as const }
+  const last = request.tools.length - 1
+  return {
+    model: request.model,
+    max_tokens: request.maxOutputTokens,
+    betas: ANTHROPIC_CHAT_BETAS,
+    // Automatic caching of the whole conversation so far: the cache follows the end of the messages.
+    cache_control: mark,
+    system: [
+      { type: 'text', text: request.system, cache_control: mark },
+      ...(request.ownerInstructions ? [{ type: 'text' as const, text: request.ownerInstructions, cache_control: mark }] : []),
+    ],
+    tools: request.tools.map((tool, i) => ({
+      name: tool.name,
+      description: tool.description,
+      // Strict: the model's input always matches. Every property is required and nothing else is allowed.
+      strict: true,
+      input_schema: { type: 'object' as const, properties: tool.properties, required: Object.keys(tool.properties), additionalProperties: false },
+      ...(i === last ? { cache_control: mark } : {}),
+    })),
+    ...(request.noTools ? { tool_choice: { type: 'none' as const } } : {}),
+    messages: request.messages as unknown as Anthropic.Beta.Messages.BetaMessageParam[],
+    thinking: request.thinking === 'off'
+      ? { type: 'disabled' }
+      : { type: 'adaptive', display: 'summarized', block_binding: { prefix_mismatch_behavior: 'error' } },
+    output_config: { effort: request.effort },
+    context_management: {
+      edits: [{
+        type: 'clear_tool_uses_20250919',
+        trigger: { type: 'input_tokens', value: request.contextEditing.triggerTokens },
+        keep: { type: 'tool_uses', value: request.contextEditing.keepToolUses },
+        clear_at_least: { type: 'input_tokens', value: request.contextEditing.clearAtLeastTokens },
+      }],
+    },
+    // Why the cache missed, compared with the previous answer of this chat (stable, no header).
+    diagnostics: { previous_message_id: request.previousMessageId },
+  }
+}
+
+/** The chat request as built, for the text log: its settings, the sizes of the long parts, never the key or the messages themselves (they are in ai_messages). */
+function anthropicChatSent(request: ChatRequest, body: Anthropic.Beta.Messages.MessageCreateParamsNonStreaming, timeoutMs: number): SentRequest {
+  return {
+    model: body.model,
+    max_tokens: body.max_tokens,
+    betas: body.betas,
+    cache_control: body.cache_control,
+    system: `(the chat's fixed instructions: ${request.system.length} characters, and ${request.ownerInstructions.length} of the owner's own)`,
+    tools: request.tools.map(t => t.name),
+    tool_choice: request.noTools ? 'none' : 'auto',
+    messages: `(${request.messages.length} messages, stored in the chat)`,
+    thinking: body.thinking,
+    output_config: body.output_config,
+    context_management: body.context_management,
+    diagnostics: body.diagnostics,
+    timeout_ms: timeoutMs,
+  }
+}
+
+function anthropicChatAnswer(message: Anthropic.Beta.Messages.BetaMessage & { _request_id?: string | null }): Omit<ChatAnswer, 'sent'> {
+  const thoughts: string[] = []
+  for (const block of message.content) if (block.type === 'thinking' && block.thinking) thoughts.push(block.thinking)
+  const ending: ChatAnswer['ending'] = message.stop_reason === 'tool_use' ? 'tool_calls' : anthropicEnding(message.stop_reason as Anthropic.StopReason | null)
+  const reason = message.diagnostics?.cache_miss_reason
+  const cacheMiss: CacheMiss | null = reason && typeof reason.type === 'string' && /^[a-z_]{1,40}$/.test(reason.type)
+    ? { reason: reason.type, tokens: 'cache_missed_input_tokens' in reason ? anthropicCount(reason.cache_missed_input_tokens) : null }
+    : null
+  let cleared = null as ChatAnswer['cleared']
+  for (const edit of message.context_management?.applied_edits ?? []) {
+    if (edit.type === 'clear_tool_uses_20250919') {
+      cleared = { toolUses: (cleared?.toolUses ?? 0) + anthropicCount(edit.cleared_tool_uses), tokens: (cleared?.tokens ?? 0) + anthropicCount(edit.cleared_input_tokens) }
+    }
+  }
+  return {
+    ok: true,
+    // The blocks exactly as received: they are stored and sent back unchanged (a chat is only added to).
+    content: message.content as unknown as Block[],
+    ending,
+    stopReason: /^[a-z_]{1,60}$/.test(message.stop_reason ?? '') ? String(message.stop_reason) : 'unknown',
+    refusal: anthropicPlainText(message.stop_details?.explanation ?? message.stop_details?.category ?? '', ''),
+    usage: anthropicUsage(message.usage as Anthropic.Usage),
+    requestId: typeof message._request_id === 'string' ? anthropicCut(message._request_id, 120) : null,
+    messageId: typeof message.id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(message.id) ? message.id : null,
+    servedModel: typeof message.model === 'string' ? anthropicCut(message.model, 80) : null,
+    thinking: thoughts.join('\n\n'),
+    cacheMiss,
+    cleared,
+  }
 }

@@ -31,6 +31,7 @@ function RowFace({ call, jobs }: { call: AiCall; jobs: Describe['jobs'] | undefi
           sent + call.output_tokens > 0 && `${formatTokens(sent)} in`,
           sent + call.output_tokens > 0 && `${formatTokens(call.output_tokens)} out`,
           formatDuration(call.duration_ms),
+          call.job === 'chat' && `step ${call.step} of an answer`,
         ]} />
       </span>
     </span>
@@ -47,18 +48,20 @@ export function AiCallList({ calls, jobs, picked, onPick }: {
   const [expanded, setExpanded] = useState<string | null>(null)
   return (
     <ul className="card divide-y divide-line overflow-hidden">
-      {calls.map(call => {
+      {calls.map((call, index) => {
+        // Ask AI's requests of one answer share a run (newest first): the earlier steps hang under the last one.
+        const sameRun = call.job === 'chat' && index > 0 && calls[index - 1].run_id === call.run_id && calls[index - 1].job === 'chat'
         const open = !paneMode && expanded === call.id
         const selected = paneMode && picked === call.id
         return (
-          <li key={call.id}>
+          <li key={call.id} className={cx(sameRun && 'border-l-2 border-line-strong bg-surface-2/40')}>
             <button
               type="button"
               onClick={() => (paneMode ? onPick(call.id) : setExpanded(e => (e === call.id ? null : call.id)))}
               aria-expanded={paneMode ? undefined : open}
               aria-current={selected ? 'true' : undefined}
               className={cx(
-                'flex w-full items-center gap-2 px-3 py-2 text-left transition-colors',
+                'flex w-full items-center gap-2 py-2 pr-3 text-left transition-colors', sameRun ? 'pl-5' : 'pl-3',
                 selected ? 'bg-accent-50' : '[@media(hover:hover)]:hover:bg-surface-hover',
               )}
             >

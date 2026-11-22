@@ -152,6 +152,8 @@ export interface AiCallsFilter {
   job: string
   /** '' = every outcome. */
   outcome: string
+  /** '' = every run; else only the requests of one answer (a uuid: Ask AI's cost line links here). */
+  runId: string
 }
 
 export interface AiCallsPage {

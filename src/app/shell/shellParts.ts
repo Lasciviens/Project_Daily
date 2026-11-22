@@ -5,7 +5,7 @@ import { lazyPart } from '../../shared/utils/lazyPage'
 // their code once the first page is drawn with its data (whenSettled), before
 // the other pages, and then mounts the two drawers closed, as they always were.
 export const CommandPalette = lazyPart('command-palette', () => import('../../shared/components/CommandPalette').then(m => m.CommandPalette))
-export const AIPanel = lazyPart('ai-panel', () => import('../../features/ai/components/AIPanel').then(m => m.AIPanel))
+export const AIPanel = lazyPart('ai-panel', () => import('../../features/ai/chat/AskAiPanel').then(m => m.AskAIPanel))
 export const DevRequestsDrawer = lazyPart('dev-requests-drawer', () => import('../../features/devRequests/components/DevRequestsDrawer').then(m => m.DevRequestsDrawer))
 
 export const SHELL_PARTS = [CommandPalette, AIPanel, DevRequestsDrawer]

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ReceiptText, RefreshCw } from 'lucide-react'
 import { Button, EmptyState, IconButton, PageBoard, Skeleton } from '../../../../shared/ui'
 import { useAiCalls, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
@@ -14,10 +15,14 @@ import { ReadFailed } from './aiBits'
 // equality reads on indexed rows. On a wide page the picked call opens in a pane beside the list
 // (developerBoards.ts → LIST_DETAIL_BOARD); on phones it opens in place under its row.
 
-const NO_FILTER: AiCallsFilter = { job: '', outcome: '' }
+const NO_FILTER: AiCallsFilter = { job: '', outcome: '', runId: '' }
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function AiCalls() {
-  const [filter, setFilter] = useState<AiCallsFilter>(NO_FILTER)
+  // `?run=` (Ask AI's cost line) opens the list for one answer's requests; it is checked like any input.
+  const [params, setParams] = useSearchParams()
+  const runParam = params.get('run') ?? ''
+  const [filter, setFilter] = useState<AiCallsFilter>({ ...NO_FILTER, runId: RUN_ID.test(runParam) ? runParam : '' })
   const [page, setPage] = useState(0)
   const [picked, setPicked] = useState<string | null>(null)
   const about = useClaudeDescribe()
@@ -25,7 +30,7 @@ export function AiCalls() {
   const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useAiCalls(filter, page)
   const calls = data?.calls ?? []
   const total = data?.total ?? 0
-  const filtering = filter.job !== '' || filter.outcome !== ''
+  const filtering = filter.job !== '' || filter.outcome !== '' || filter.runId !== ''
 
   const shownId = paneSelection(calls.map(c => c.id), picked)
   const shown = calls.find(c => c.id === shownId) ?? null
@@ -35,6 +40,10 @@ export function AiCalls() {
   function change(patch: Partial<AiCallsFilter>) {
     setFilter(f => ({ ...f, ...patch }))
     setPage(0)
+  }
+  function clearRun() {
+    change({ runId: '' })
+    setParams(p => { const n = new URLSearchParams(p); n.delete('run'); return n }, { replace: true })
   }
 
   let list: ReactNode
@@ -62,6 +71,7 @@ export function AiCalls() {
           <option value="">All outcomes</option>
           {CALL_OUTCOMES.map(o => <option key={o} value={o}>{OUTCOME_META[o].label}</option>)}
         </select>
+        {filter.runId && <div className="basis-full"><Button size="sm" onClick={clearRun}>One answer · Show all</Button></div>}
         <IconButton label="Refresh" className="ml-auto" onClick={() => { void refetch() }} disabled={isFetching}>
           <RefreshCw aria-hidden className={isFetching ? 'animate-spin' : undefined} />
         </IconButton>

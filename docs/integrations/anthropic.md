@@ -113,7 +113,37 @@ SDK `@anthropic-ai/sdk@1.5.0`, checked against its `.d.ts` (`resources/messages/
 - **Not used:** `cancel`, `list`, `delete` (a waiting batch is read, not cancelled, in this phase), the `user_profile_id` and `workspace_id` headers.
 - **Traps:** results come in any order (found by `custom_id`); a batch ends within 24 hours or its requests `expire`; results are kept 29 days (we read them within hours and save the text ourselves); a `results()` call on a batch that is not ended throws (we ask the status first); a batch costs nothing for `errored`, `canceled` or `expired` lines, but our ledger keeps the reserved worst case for them (the owner's rule: the safe side).
 
+## What phase 4a sends and reads (Ask AI, 22.11.2026)
+
+Checked against Anthropic's pages re-read on 22.11.2026 for this phase (saved in the session's `docs/` folder) and against the SDK's own types (`@anthropic-ai/sdk` 1.5.0 `.d.ts`). The chat uses `client.beta.messages.stream()` (+ `finalMessage()`), `maxRetries: 0`.
+
+| What | Value | Why |
+|---|---|---|
+| Beta headers | `context-management-2025-06-27`, `thinking-binding-controls-2026-08-01` | context editing; the strict thinking check (trap 4) |
+| `cache_control` | on the last tool, the fixed system block, the owner's instructions (a second system block, empty in 4a, so left out), and top-level `{type:"ephemeral"}` for the messages (automatic) | at most 4 marks; 5-minute TTL (a 1-hour TTL only if the ledger shows gaps of 5–60 minutes) |
+| `tools[]` | `strict: true`, flat, **every property `required`**, `additionalProperties: false`, no `minimum`/`maximum`/`format`/`pattern`; "" or "any" means "not given"; our code checks every value and matches a choice ignoring case | the 24-optional-parameters limit is combined across the whole request (trap 18) |
+| `tool_choice` | omitted (auto); `{type:"none"}` for the last allowed round | forced choices lose the messages cache and drop the thinking block |
+| `thinking` | `{type:"adaptive", display:"summarized", block_binding:{prefix_mismatch_behavior:"error"}}` | |
+| `output_config.effort` | `medium`, frozen for the whole chat | changing effort in a conversation loses the messages cache |
+| `max_tokens` | at least 6000 | thinking counts toward it |
+| `context_management` | `clear_tool_uses_20250919`, trigger 40 000 input tokens, keep 4, `clear_at_least` 10 000 | the default trigger is 100 000 (Haiku's 5× line); clearing invalidates cached prefixes, so each clear must free enough |
+| `diagnostics.previous_message_id` | the id of the chat's previous answer (null the first time) | stable, no header; the answer's `diagnostics.cache_miss_reason` (`model_changed`, `system_changed`, `tools_changed`, `messages_changed`, `previous_message_not_found`, `unavailable`) is stored with the answer and shown in Developer → AI → Calls |
+| `search_result` blocks | in `tool_result.content`, `citations: {enabled: true}` on every one (all results of a request must agree: switching loses the system cache) | cited text costs no tokens; a text block's `citations[].type === "search_result_location"` carries `source`, `search_result_index`, `cited_text`; each `source` is input and is checked against what a tool returned and against the owner's own row |
+| `count_tokens` | with the same `context_management`, `tools`, `thinking`; free | the "start a new chat" wall near 90 000 tokens |
+
+What it reads back: `content` blocks stored **exactly as received** (thinking with `signature`, `tool_use`, text with `citations`), `stop_reason` (`end_turn`, `tool_use`, `max_tokens`, `refusal`; anything else is an error), `stop_details`, `usage`, `diagnostics.cache_miss_reason`, `context_management.applied_edits[].cleared_tool_uses / cleared_input_tokens`, the message `id`. Streaming events are read by the SDK; only our own two small deltas (text pieces, a tool being called) leave the provider part.
+
 ## Fields we deliberately don't use
+
+| Field or feature | Why not |
+|---|---|
+| Tool search | 20 tools are about 4K cached tokens, about $0.00004 a request: loading definitions on demand would cost more than it saves (research, 22.11.2026). |
+| Programmatic tool calling | Keeps data up to 30 days, not available with strict tools, a 4-minute timeout, about 8% dearer. |
+| `eager_input_streaming`, task budgets, threshold compaction, the memory tool, message threads, forced `tool_choice`, server-side fallbacks | Not now (task budgets count earlier turns and act like a refusal when too small; threshold compaction needs ≥ 50 000 tokens; fallbacks are not on Haiku 5.5). |
+| `output_config.format` together with tools while thinking is off | Not combined: the chat's tools are strict instead. |
+| IP allowlist in the Console | Supabase's edge egress addresses are not fixed. |
+| Web search / fetch for the chat | `place_ideas` (PR #628) uses web search, so web search stays enabled in the Console; the chat does not use it. |
+
 
 | Field or feature | Why not |
 |---|---|
@@ -144,7 +174,7 @@ What we send: the job's instructions, the conversation, and the data its tools r
 1. **The 100,000-token line is per request and counts cached tokens.** One token over it and the whole request costs 5×. The function estimates each request's size before sending. Above a safe margin it trims old tool results, or stops with a plain message. It never sends a request over the line silently.
 2. **Thinking is on by default and billed as output.** It also counts toward `max_tokens`: a `max_tokens` set too low cuts the answer off mid-thought (`stop_reason: "max_tokens"`).
 3. **The thinking text is empty unless asked for.** `display: "summarized"` returns a summary. A `thinking` block with empty text is still a real block: it must be sent back.
-4. **History is append-only.** A `thinking` block stays valid only while everything before it is unchanged. Sending one back after changing `system`, `tools` or an earlier message returns a 400. So: instructions and tools are frozen for a conversation; new instructions go in as `{ role: "system" }` messages; old tool results are cleared with context editing (Anthropic's own, allowed way), never by rewriting history ourselves.
+4. **History is append-only, and a changed prefix does not always give a 400 (corrected 22.11.2026).** A `thinking` block is bound to the messages before it. On Haiku 5.5 a block that fails the check is **not** always refused: it can reach the model and be billed (preserved-thinking → prefix checks). Only with the beta header `thinking-binding-controls-2026-08-01` and `thinking.block_binding.prefix_mismatch_behavior: "error"` does a failing block always give a 400; the chat sends both, so a changed history is an error, never a billed guess. Thinking blocks may be left out only as the oldest, the newest or all of them, never one in the middle. Context editing and compaction never count against the check. So: instructions and tools are frozen for a conversation (the chat stores their hashes); the date and other news go in the newest user message; old tool results are cleared with context editing (Anthropic's own way), never by rewriting history ourselves.
 5. **A system message in `messages` has placement rules.** It cannot be first. It must come right after a user message, and then either be last or be followed by an assistant message. It cannot sit between a `tool_use` and its `tool_result` (400).
 6. **Any byte change at the front breaks the cache.** The order is tools → system → messages. A date in the instructions, tools in a different order, or a changed `output_config.format` each throw the cache away. The cache also needs at least 512 tokens and lives 5 minutes (renewed on each read). Writing it costs 1.25×, so a prompt used once is slightly dearer with caching than without.
 7. **Changing `effort` between requests of one conversation can also break the cache.** Each job has one effort.
@@ -157,6 +187,19 @@ What we send: the job's instructions, the conversation, and the data its tools r
 14. **The SDK retries by itself** (2 times by default, on 429, 5xx and connection errors) and its default timeout is 10 minutes. The function sets `maxRetries: 0` and a 30-second timeout: a retry after a timeout could be a second bill that nobody reserved (the first request may still be generated and billed), so one request is one generation and one reservation. A failed call is shown with its plain message and the owner tries again.
 15. **Images:** at most 8000×8000 px and 10 MB each, no animations. Tokens are about `⌈width/28⌉ × ⌈height/28⌉`, so a large photo costs up to a few thousand tokens. The app already shrinks photos before upload.
 16. **An enforced answer shape can look like a hang (seen live, 22.11.2026).** ✨'s shape (21 optional fields) sent as `output_config.format` got no answer within 90 s, twice, while the same request without it answered in about a second. The cause is in the structured-outputs page: every optional parameter roughly doubles the grammar's states, so 21 optional fields make a very large grammar; compiling it "may take up to 180 seconds", and compiled grammars are cached for 24 hours from last use. `count_tokens` does **not** compile the grammar (it accepted the same request in 0.2 s), so Diagnose's step 2 cannot catch this. So no job enforces a shape for now: each writes its JSON Schema into its instructions (`enforceAnswerSchema: false`) and our own check (`cleanItemFill`, `cleanRecipe`, …) holds every field. A job that enforces a shape later must have **all fields required** (no optional ones; "not given" is an empty value) and be tried with Diagnose's real call, never with the token count.
+
+17. **Haiku 5.5 keeps every earlier turn's thinking in context (billed as input), and shows no progress updates** (`display: "updates"` gives nothing). A long chat therefore grows faster than its visible text: the wall at 90 000 tokens (`CHAT_LIMITS.wallTokens`) is measured on the prompt, not on the words.
+18. **Strict-tool limits are combined across the whole request.** At most 24 optional parameters in total over every strict schema, 16 union types; "Schema is too complex" and a 180-second compile timeout are the failures. The grammar cache is lost when the **set** of tools changes (a changed name or description alone keeps it); a choice's letter case may vary in the model's answer. After any change to the tool list, try a real call in Diagnose: `count_tokens` does not compile the grammar (trap 16). The chat has zero optional parameters, so it is far from the limit.
+19. **Forced `tool_choice` works on Haiku 5.5, but the answer then has no thinking block, and changing `tool_choice` loses the messages cache.** The chat forces nothing, except that its last allowed round (the fifth, or the one after the prompt nears the wall) says `none`: that round **loses the messages cache** (the whole chat is written to the cache again at 1.25×), a deliberate, rare cost that guarantees an answer in words.
+20. **Tool use adds a hidden system prompt on Haiku 5.5:** 286 tokens with `auto`/`none`, 406 with `any`/`tool`.
+21. **Context editing's default trigger is 100 000 input tokens, and clearing invalidates cached prefixes.** So the chat triggers at 40 000 and asks for `clear_at_least` 10 000: a clear that frees little would cost the cache for nothing.
+22. **After tool results, Haiku 5.5 can ignore a user's words placed in a system message as a prompt injection.** Text that others can edit, and anything stored, goes only inside a `tool_result` block; the owner's own words are the user message; the app's date line and notices are separate text blocks in the user message (never mixed with the owner's words).
+23. **Tools are fixed per conversation.** Turning one off for a single request is `tool_choice: none`; adding or removing one mid-conversation needs the `inline-tools-2026-09-15` beta blocks, which the chat does not use: a new tool list is a new chat.
+24. **Vision on Haiku 5.5** is the high-resolution tier: a long edge up to 2 576 px, at most 4 784 tokens an image; the first image in a conversation loses the messages cache. Photos come in 4b (shrunk to 1 200–1 568 px in the browser).
+25. **Caching:** the lookback is 20 blocks (a run of tool calls and results counts as one block); parallel requests hit the cache only after the first one's response has started; `max_tokens: 0` warms the cache (not with streaming). Cache diagnostics are stable (no beta header) and supported on Haiku 5.5.
+26. **Compaction:** the threshold trigger needs at least 50 000 tokens; on-demand compaction (`compact-2026-09-04`) supports Haiku. Not used: the chat ends at the wall instead.
+27. **A refusal can arrive after partial output, also while streaming, and Haiku 5.5 has no server-side fallback.** The chat takes the streamed text back (a `retract` event), stores nothing of the round, and says it was declined.
+28. **Token-efficient tool use needs no header now.** Code execution (1 550 free hours a month, then $0.05 an hour) and programmatic tool calling (data kept up to 30 days) are not used.
 
 ## What Diagnose sends and reads (22.11.2026)
 
@@ -224,9 +267,13 @@ Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 
 - what a timeout looks like on Anthropic's bill (billed or not), which decides whether the worst-case reservation is too careful;
 - `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429;
 - that `thinking: { type: "disabled" }` with `effort` is accepted on Haiku 5.5 (Test bench → Compare thinking);
+- that the chat's strict tools (7, no optional field) compile and answer, that `thinking.block_binding` and `diagnostics` are accepted on Haiku 5.5 together with the two beta headers, and that a `search_result` citation comes back as `search_result_location` (phase 4a; try it with a real chat before relying on any of it);
 - that a call from `kobo-sync` / `phone-gateway` with the derived credential (HMAC of the service key, not the key) in `x-claude-server-key` reaches `claude` through the platform with `verify_jwt = false` (new and legacy key formats).
 
 ## Log
+
+### 22.11.2026: phase 4a (Ask AI)
+The chat on Claude: the section "What phase 4a sends and reads", trap 4 corrected (a changed prefix may not give a 400; the strict binding makes it always give one), traps 17–28 added from the docs re-read, Fields we deliberately don't use extended. Nothing of the new request is confirmed by a live call yet (a real strict-tool call, the cache layout's `usage`, a `diagnostics` answer, an `applied_edits` answer, a citation on a `search_result_location`): Diagnose does not yet try the chat's request; see "Not confirmed" below. 
 
 ### 20.11.2026 — first version, before any code
 Written for the AI rebuild (`docs/features/ai-plan.md`, phase 0). Facts from Anthropic's documentation read that day; no live call yet.

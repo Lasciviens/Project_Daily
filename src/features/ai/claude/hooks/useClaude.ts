@@ -3,6 +3,7 @@ import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWit
 import { qk, STALE } from '../../../../shared/query'
 import { describeClaude, diagnoseClaude } from '../claudeApi'
 import { countBenchQuestion, runBenchQuestion, type BenchPick } from '../benchJobs'
+import { fetchCallMeta } from '../../chat/chatApi'
 import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, saveAiJobSettings, saveAiSettings } from '../ledgerApi'
 import { osloMonthRange } from '../ledgerRules'
 import type { AiCallsFilter, AiJobSettings, AiSettings } from '../types'
@@ -110,4 +111,9 @@ export function useBenchRun() {
     mutationFn: ({ question, pick }: { question: string; pick: BenchPick }) => runBenchQuestion(question, pick),
     invalidates: ['aiLedger'],
   })
+}
+
+/** The cache-miss reason and the context-editing numbers kept with an Ask AI answer (Developer → AI → Calls). */
+export function useAiCallMeta(callId: string | null, enabled: boolean) {
+  return useQuery({ queryKey: qk.aiChat.callMeta(callId ?? ''), queryFn: () => fetchCallMeta(callId as string), staleTime: STALE.default, enabled: enabled && !!callId })
 }
