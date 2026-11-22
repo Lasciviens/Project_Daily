@@ -30,7 +30,7 @@ import { osloDay } from './week-facts.ts'
 import {
   canonicalJson, CHAT_JOB, CHAT_LIMITS, CHAT_SYSTEM, CHAT_VERSION, holdsNul, liveContextText, messageDigest, needsLiveContext, sha256Hex, toolModes, toolsForNewChat,
 } from './chat-rules.ts'
-import { applyProposal, checkedProposal, chatToolsNamed, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
+import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
 import { escapeTagText } from './answer-reader.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
@@ -191,6 +191,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     history = messages
   }
   const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes)
+  // A chat that names a tool this code no longer has cannot be replayed with the same tool list.
+  if (conversation && toolNames.some(n => !KNOWN_TOOL_NAMES.includes(n))) return errorEvent('stale', 'This chat was started before an update changed the assistant. Start a new chat.', conversation.id)
   const tools = chatToolsNamed(toolNames)
   const ownerInstructions = ''
   const hashes = await chatHashes(tools, ownerInstructions)
@@ -440,7 +442,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       )
       let finalOutput = output
       let card: ProposalCard | null = null
-      if (output.ok && output.proposal) {
+      // Only a write tool can make a proposal.
+      if (output.ok && output.proposal && chatToolKind(name) === 'write') {
         const made = await makeProposal(ctx, conversationId, id, output.proposal, now)
         if (made) card = made
         else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }

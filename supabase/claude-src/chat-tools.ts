@@ -394,7 +394,7 @@ export function allChatTools(): ChatTool[] {
 
 /** The definitions of the named tools in the fixed order: a chat's frozen list. */
 export function chatToolsNamed(names: readonly string[]): ChatTool[] {
-  return CHAT_TOOL_ORDER.filter(n => names.includes(n)).map(name => chatToolOf(TOOLS_BY_NAME.get(name) as ToolDef))
+  return allChatTools().filter(t => names.includes(t.name))
 }
 
 /** What the Developer page shows for every tool: its words, its fields, what it may touch. */

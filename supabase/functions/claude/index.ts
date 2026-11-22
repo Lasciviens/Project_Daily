@@ -5219,7 +5219,7 @@ function allChatTools(): ChatTool[] {
 
 /** The definitions of the named tools in the fixed order: a chat's frozen list. */
 function chatToolsNamed(names: readonly string[]): ChatTool[] {
-  return CHAT_TOOL_ORDER.filter(n => names.includes(n)).map(name => chatToolOf(TOOLS_BY_NAME.get(name) as ToolDef))
+  return allChatTools().filter(t => names.includes(t.name))
 }
 
 /** What the Developer page shows for every tool: its words, its fields, what it may touch. */
@@ -6592,6 +6592,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     history = messages
   }
   const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes)
+  // A chat that names a tool this code no longer has cannot be replayed with the same tool list.
+  if (conversation && toolNames.some(n => !KNOWN_TOOL_NAMES.includes(n))) return errorEvent('stale', 'This chat was started before an update changed the assistant. Start a new chat.', conversation.id)
   const tools = chatToolsNamed(toolNames)
   const ownerInstructions = ''
   const hashes = await chatHashes(tools, ownerInstructions)
@@ -6841,7 +6843,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       )
       let finalOutput = output
       let card: ProposalCard | null = null
-      if (output.ok && output.proposal) {
+      // Only a write tool can make a proposal.
+      if (output.ok && output.proposal && chatToolKind(name) === 'write') {
         const made = await makeProposal(ctx, conversationId, id, output.proposal, now)
         if (made) card = made
         else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }

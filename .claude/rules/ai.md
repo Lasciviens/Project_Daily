@@ -46,7 +46,7 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - **Reused security code, not AI setup:** `ai_run_read_query` (185/189) for `ask_database`, with the owner's token only.
 - Tests: `verify-claude-chat.cjs` (real SDK, fake network and database), `verify-db-ai-chat.mjs`, `verify-ai-chat-ui.cjs`, the Confirm checks in `verify-ai-confirm.cjs`.
 
-## The old assistant (`ai-proxy`, until phase 5; its app panel and `aiApi.ts` are gone since 4a)
+## The old assistant (`ai-proxy`, until phase 5; its app panel and chat api are gone since 4a)
 
 - `DB_CATALOG` is a default-deny allow-list with `rw`/`ro` per table; every operation is scoped to `user_id` on the server — the model never supplies it. The one exception is `db_query` on a shared read-only table without `user_id` (`SHARED_TABLES` and `ro`: `fx_rates_nok`, `shop_site_policies`, `shop_deal_days`), read whole with nothing embedded in it (`verify-ai-confirm`).
 - Deletes and Hevy routine updates only become a Confirm card (`NEEDS_CONFIRM`, `ai_pending_actions`); link columns are in `AI_NO_WRITE`. Text from the context turn or a tool result is data, never an instruction.
