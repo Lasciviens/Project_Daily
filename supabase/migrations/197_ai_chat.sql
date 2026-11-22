@@ -30,6 +30,8 @@
 --      row would be a write the owner never agreed to. Every column the assistant may fill is a fixed list in the
 --      function's code (title, notes, due date, priority / title, meal, date, calories, macros): no link column (the
 --      outside-account ones in AI_NO_WRITE) is among them.
+-- 3b. Deleting a chat is soft (`deleted_at`, set by the function; the Undo clears it) and ai_chats_purge() (daily timer)
+--    removes deleted chats after 7 days and every chat older than the AI log's retention (`log_days`), whole.
 -- 4. ai_find_text(query, kind, limit) — full-text search over your own tasks and diary (Postgres' own, the `simple`
 --    configuration: no stemming, so Turkish, Norwegian and English words all work as typed), plus a substring match on
 --    titles so a half-typed word still finds. SECURITY INVOKER: it runs with the caller's rights (row level security and
@@ -59,6 +61,8 @@ create table if not exists public.ai_conversations (
   tool_names       text[] not null default '{}'::text[]
                      check (cardinality(tool_names) <= 12 and pg_catalog.array_to_string(tool_names, ',') ~ '^[a-z_,]*$'),
   status           text not null default 'open' check (status in ('open', 'full', 'closed')),
+  -- Deleting a chat is soft (the Undo): the function sets this, the list hides the chat, the purge removes it for good.
+  deleted_at       timestamptz,
   message_count    integer not null default 0 check (message_count >= 0),
   -- The prompt of the last request, in tokens: the "start a new chat" wall reads it.
   last_prompt_tokens integer not null default 0 check (last_prompt_tokens >= 0),
@@ -110,13 +114,19 @@ end $$;
 revoke all on public.ai_messages from anon, authenticated;
 grant select on public.ai_messages to authenticated;
 grant select, insert, update, delete on public.ai_messages to service_role;
--- No update and no delete for anyone: a conversation is only added to. An account's deletion cascades from
--- auth.users through a foreign-key trigger (trigger depth 1), so its delete reaches this one at depth 2 and passes;
--- a direct delete is depth 1 and is refused.
+-- No update and no delete for anyone: a conversation is only added to. A foreign-key action (the account's or a
+-- chat's deletion cascading, the ledger link being cleared) runs at trigger depth 1, so it reaches this guard at depth 2
+-- and passes; a direct statement is depth 1 and is refused.
 create or replace function public.ai_messages_append_only() returns trigger
 language plpgsql set search_path = '' as $$
 begin
   if tg_op = 'UPDATE' then
+    -- The one change allowed: the foreign key `call_id → ai_calls` (on delete set null) clearing the link when the
+    -- ledger row goes with the account (trigger depth 2). Nothing else in the row may differ.
+    if pg_catalog.pg_trigger_depth() >= 2 and new.call_id is null
+       and pg_catalog.to_jsonb(new) - 'call_id' = pg_catalog.to_jsonb(old) - 'call_id' then
+      return new;
+    end if;
     raise exception 'ai_messages is append-only' using errcode = '42501';
   end if;
   if pg_catalog.pg_trigger_depth() < 2 then
@@ -166,6 +176,47 @@ grant select on public.ai_chat_proposals to authenticated;
 grant select, insert, update, delete on public.ai_chat_proposals to service_role;
 create index if not exists idx_ai_chat_proposals_conversation on public.ai_chat_proposals (conversation_id, created_at);
 
+-- ─── 3b. Deleting a chat, and how long chats are kept ────────────────────────
+-- ai_chats_purge() removes whole chats for good: (a) a chat deleted by the owner (deleted_at set) more than 7 days ago —
+-- the days of the Undo — and (b) a chat whose last message is older than the account's log_days (the AI log's retention
+-- from ai_settings: 30 days when no row, held to 1–90 like ai_calls_purge_text). A conversation's text cannot be trimmed
+-- (it is replayed unchanged and carries a hash chain), so the whole chat goes; its messages and proposals follow through
+-- the foreign keys (the append-only guard lets a cascade pass). SECURITY DEFINER, owned by the table owner, service role and
+-- the daily timer only, no input, every name schema-qualified. Answers how many chats it removed.
+create or replace function public.ai_chats_purge()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  n integer;
+begin
+  delete from public.ai_conversations c
+   where (c.deleted_at is not null and c.deleted_at < pg_catalog.now() - interval '7 days')
+      or c.updated_at < pg_catalog.now() - pg_catalog.make_interval(days => least(greatest(coalesce(
+           (select s.log_days from public.ai_settings s where s.user_id = c.user_id), 30), 1), 90)::integer);
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function public.ai_chats_purge() from public, anon, authenticated;
+grant execute on function public.ai_chats_purge() to service_role;
+comment on function public.ai_chats_purge() is
+  'Deletes chats the owner deleted more than 7 days ago and chats older than the AI log retention (ai_settings.log_days, 30 by default, 1 to 90). Whole chats: a conversation is never trimmed.';
+
+do $$
+begin
+  if to_regclass('cron.job') is null then
+    raise notice 'pg_cron is not installed here: lascis-ai-chat-purge not scheduled';
+    return;
+  end if;
+  if exists (select 1 from cron.job where jobname = 'lascis-ai-chat-purge') then
+    perform cron.unschedule('lascis-ai-chat-purge');
+  end if;
+  perform cron.schedule('lascis-ai-chat-purge', '47 3 * * *', 'select public.ai_chats_purge()');
+end $$;
+
 select public.owner_lock_apply('public.ai_conversations');
 select public.owner_lock_apply('public.ai_messages');
 select public.owner_lock_apply('public.ai_chat_proposals');
@@ -214,7 +265,7 @@ begin
        where p_kind in ('any', 'task') and t.user_id = v_user
          and (pg_catalog.to_tsvector('pg_catalog.simple', t.title || ' ' || coalesce(t.description, '')) @@ v_q or t.title ilike v_like)
       union all
-      select 'diary'::text, d.id, ('Diary ' || d.day::text)::text,
+      select 'diary'::text, d.id, ('Diary ' || pg_catalog.to_char(d.day, 'DD.MM.YYYY'))::text,
              pg_catalog.left(d.body, 300), d.day,
              pg_catalog.ts_rank(pg_catalog.to_tsvector('pg_catalog.simple', d.body), v_q)::real
         from public.diary_entries d

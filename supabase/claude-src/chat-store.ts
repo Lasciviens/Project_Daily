@@ -28,6 +28,8 @@ export interface ConversationRow {
   message_count: number
   last_prompt_tokens: number
   cost_usd: number
+  /** Set when the owner deleted the chat (the Undo window): such a chat is treated as not there. */
+  deleted_at: string | null
 }
 
 export interface StoredMessage {
@@ -61,7 +63,7 @@ const MAX_MESSAGES = 600
 
 export const isUuid = (value: unknown): value is string => typeof value === 'string' && STORE_UUID.test(value)
 
-const CONVERSATION_COLUMNS = 'id, user_id, title, model, effort, thinking, tools_hash, system_hash, tool_names, status, message_count, last_prompt_tokens, cost_usd'
+const CONVERSATION_COLUMNS = 'id, user_id, title, model, effort, thinking, tools_hash, system_hash, tool_names, status, message_count, last_prompt_tokens, cost_usd, deleted_at'
 
 function conversationOf(row: unknown): ConversationRow | null {
   const effort = ownValue(row, 'effort')
@@ -82,10 +84,11 @@ function conversationOf(row: unknown): ConversationRow | null {
     tools_hash: String(ownValue(row, 'tools_hash')), system_hash: String(ownValue(row, 'system_hash')),
     tool_names: names as string[], status, message_count: num(ownValue(row, 'message_count')) || 0,
     last_prompt_tokens: num(ownValue(row, 'last_prompt_tokens')) || 0, cost_usd: num(ownValue(row, 'cost_usd')) || 0,
+    deleted_at: typeof ownValue(row, 'deleted_at') === 'string' ? ownValue(row, 'deleted_at') as string : null,
   }
 }
 
-export async function createConversation(admin: Db, row: Omit<ConversationRow, 'message_count' | 'last_prompt_tokens' | 'cost_usd' | 'status'>): Promise<string | null> {
+export async function createConversation(admin: Db, row: Omit<ConversationRow, 'message_count' | 'last_prompt_tokens' | 'cost_usd' | 'status' | 'deleted_at'>): Promise<string | null> {
   try {
     const { error } = await admin.from('ai_conversations').insert({ ...row })
     return error ? `database error ${error.code ?? 'without a code'}` : null
@@ -99,6 +102,14 @@ export async function readConversation(admin: Db, userId: string, id: string): P
     if (error) return { conversation: null, error: true }
     return { conversation: data ? conversationOf(data) : null, error: false }
   } catch { return { conversation: null, error: true } }
+}
+
+/** Deletes a chat softly (the Undo window) or brings it back. True when a row of this user changed. */
+export async function setConversationDeleted(admin: Db, userId: string, id: string, deletedAt: string | null): Promise<boolean> {
+  try {
+    const { data, error } = await admin.from('ai_conversations').update({ deleted_at: deletedAt }).eq('id', id).eq('user_id', userId).select('id')
+    return !error && Array.isArray(data) && data.length === 1
+  } catch { return false }
 }
 
 export async function updateConversation(admin: Db, userId: string, id: string, patch: Record<string, unknown>): Promise<string | null> {
@@ -214,9 +225,10 @@ export async function readProposal(admin: Db, userId: string, id: string): Promi
  * Decides a pending proposal once: the update only matches a row that is still pending, for this user, so two taps (or a
  * tap and a replay) cannot both win. True when this call is the one that decided it.
  */
-export async function decideProposal(admin: Db, userId: string, id: string, status: 'confirmed' | 'cancelled' | 'failed', nowIso: string): Promise<boolean> {
+export async function decideProposal(admin: Db, userId: string, id: string, status: 'confirmed' | 'cancelled' | 'failed', nowIso: string, args?: Record<string, unknown>): Promise<boolean> {
   try {
-    const { data, error } = await admin.from('ai_chat_proposals').update({ status, decided_at: nowIso })
+    // `args`: the owner's edits (a changed title or date), already checked, kept on the row so it says what was written.
+    const { data, error } = await admin.from('ai_chat_proposals').update({ status, decided_at: nowIso, ...(args ? { args } : {}) })
       .eq('id', id).eq('user_id', userId).eq('status', 'pending').select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch { return false }

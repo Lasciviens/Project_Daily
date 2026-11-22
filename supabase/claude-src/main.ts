@@ -12,7 +12,8 @@
 //    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
 //    { "action": "chat", "conversation_id", "text", "stream" } → chat-loop.ts (Ask AI: one answer; `stream: true` answers as
 //                                                       server-sent events with our own small events only, else one JSON)
-//    { "action": "chat_confirm", "proposal_id", "decision" }   → chat-loop.ts (the owner's tap on a proposed write)
+//    { "action": "chat_confirm", "proposal_id", "decision", "title"?, "date"? } → chat-loop.ts (the owner's tap on a proposed write, with the edits they made on the card)
+//    { "action": "chat_delete" | "chat_restore", "conversation_id" } → chat-loop.ts (delete a chat softly, and its Undo)
 //  Two kinds of caller, told apart before anything is read:
 //    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
 //    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
@@ -38,7 +39,7 @@ import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPl
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
-import { decideChatProposal, runChat, type ChatEvent } from './chat-loop.ts'
+import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
 import type { DnsLookup } from './types.ts'
 
 // <supabase-keys>
@@ -195,7 +196,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'chat' && action !== 'chat_confirm') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "chat" or "chat_confirm"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'chat' && action !== 'chat_confirm' && action !== 'chat_delete' && action !== 'chat_restore') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "chat", "chat_confirm", "chat_delete" or "chat_restore"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
@@ -222,6 +223,7 @@ Deno.serve(async (req) => {
       report: line => console.error(`[claude] ${line}`),
     }
     if (action === 'chat_confirm') return reply(200, await decideChatProposal(context, body))
+    if (action === 'chat_delete' || action === 'chat_restore') return reply(200, await setChatDeleted(context, body, action === 'chat_delete'))
     if (action === 'chat') {
       if (ownValue(body, 'stream') !== true) {
         const result = await runChat(context, body, () => {})

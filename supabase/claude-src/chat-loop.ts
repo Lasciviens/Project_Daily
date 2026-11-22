@@ -31,10 +31,9 @@ import {
   canonicalJson, CHAT_JOB, CHAT_LIMITS, CHAT_SYSTEM, CHAT_VERSION, holdsNul, liveContextText, messageDigest, needsLiveContext, sha256Hex, toolModes, toolsForNewChat,
 } from './chat-rules.ts'
 import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
-import { escapeTagText } from './answer-reader.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
-  readMessages, readProposal, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
+  readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
 } from './chat-store.ts'
 
 /** The only events the app ever gets from a chat: our own small ones. */
@@ -43,9 +42,11 @@ export type ChatEvent =
   | { event: 'text'; t: string }
   | { event: 'step'; name: string; label: string }
   | { event: 'retract' }
+  /** The tool call as the code understood it (checked inputs), after it ran: shown on its step. */
+  | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
   | { event: 'proposal'; id: string; tool: string; summary: string; expires_at: string }
-  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off' }
-  | { event: 'error'; reason: ChatReason; message: string; conversation_id?: string }
+  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off'; prompt_tokens: number; thinking: string }
+  | { event: 'error'; reason: ChatReason; message: string; conversation_id?: string; cost_usd?: number; run_id?: string }
 
 export type ChatReason = 'bad_input' | 'busy' | 'off' | 'not_configured' | 'budget' | 'wall' | 'stale' | 'changed' | 'not_found' | 'declined' | 'timeout' | 'conflict' | 'error'
 
@@ -76,8 +77,8 @@ export function cleanChatText(value: unknown): string | null {
   return length >= 1 && length <= CHAT_LIMITS.textMax ? text : null
 }
 
-const errorEvent = (reason: ChatReason, message: string, conversationId?: string): Extract<ChatEvent, { event: 'error' }> =>
-  ({ event: 'error', reason, message, ...(conversationId ? { conversation_id: conversationId } : {}) })
+const errorEvent = (reason: ChatReason, message: string, conversationId?: string, spent?: { cost: number; runId: string }): Extract<ChatEvent, { event: 'error' }> =>
+  ({ event: 'error', reason, message, ...(conversationId ? { conversation_id: conversationId } : {}), ...(spent && spent.cost > 0 ? { cost_usd: Math.round(spent.cost * 1_000_000) / 1_000_000, run_id: spent.runId } : {}) })
 
 /** The shape of one tool call for the ledger (and phase 4c's suggestions): its name, which fields it filled, how much came back. Never a value. */
 interface ToolShape { name: string; fields: string[]; ok: boolean; rows: number | null; bytes: number; ms: number; fingerprint?: string }
@@ -177,7 +178,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   if (typeof askedId === 'string') {
     const found = await readConversation(ctx.adminDb, ctx.userId, askedId)
     if (found.error) return errorEvent('error', 'The chat could not be read, so nothing was sent. Try again in a moment.')
-    if (!found.conversation) return errorEvent('not_found', 'That chat was not found. Start a new one.')
+    if (!found.conversation || found.conversation.deleted_at) return errorEvent('not_found', 'That chat was not found. Start a new one.')
     conversation = found.conversation
     if (conversation.status !== 'open') return errorEvent('wall', 'This chat is full. Start a new chat: it keeps working at its best when it is short.', conversation.id)
     if (!MODELS.some(m => m.id === conversation?.model)) return errorEvent('changed', 'This chat uses a model this app no longer offers. Start a new chat.', conversation.id)
@@ -223,7 +224,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   if (conversation && last) {
     const decided = await decidedProposalsSince(ctx.adminDb, ctx.userId, conversation.id, last.created_at)
     if (decided.length) {
-      blocks.push({ type: 'text', text: `<app_updates>${decided.map(p => `The proposal "${escapeTagText(p.summary)}" was ${p.status === 'confirmed' ? 'confirmed by the person and saved' : p.status === 'cancelled' ? 'cancelled by the person (not saved)' : 'confirmed, but saving it failed (not saved)'}.`).join(' ')} This note comes from the app, not from the person.</app_updates>` })
+      // Only the kind of proposal and what happened: the owner's words (a title they may have edited) never go into this block.
+      blocks.push({ type: 'text', text: `<app_updates>${decided.map(p => `The proposal to ${p.tool === 'add_task' ? 'add a task' : 'log a food line'} was ${p.status === 'confirmed' ? 'confirmed by the person and saved' : p.status === 'cancelled' ? 'cancelled by the person (not saved)' : 'confirmed, but saving it failed (not saved)'}.`).join(' ')} This note comes from the app, not from the person.</app_updates>` })
     }
   }
   blocks.push({ type: 'text', text })
@@ -260,6 +262,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   let streamed = false
   let lastPrompt = conversation ? conversation.last_prompt_tokens : 0
   let createdNow = false
+  let forceNoTools = false
+  let thinkingSummary = ''
   let endedWith: { text: string; ending: 'complete' | 'cut_off' } | null = null
   let finalCitations: ChatCitation[] = []
   const messages: ChatMessage[] = [...wire]
@@ -275,14 +279,14 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   }
   const fail = (reason: ChatReason, message: string): ChatResult => {
     if (streamed) emit({ event: 'retract' })
-    return errorEvent(reason, hideSecrets(message, ctx.secrets), createdNow || conversation ? conversationId : undefined)
+    return errorEvent(reason, hideSecrets(message, ctx.secrets), createdNow || conversation ? conversationId : undefined, { cost: costTotal, runId })
   }
 
   for (let round = 1; round <= CHAT_LIMITS.maxRounds; round++) {
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds, Math.min(CHAT_LIMITS.roundTimeoutMs, remaining))
+    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, Math.min(CHAT_LIMITS.roundTimeoutMs, remaining))
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.
@@ -405,8 +409,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     const assistantMeta: Record<string, unknown> = {
       ...(answer.messageId ? { message_id: answer.messageId } : {}), round, ending: answer.ending, prompt_tokens: lastPrompt,
       ...(answer.cacheMiss ? { cache_miss: answer.cacheMiss } : {}), ...(answer.cleared ? { cleared: answer.cleared } : {}),
-      cost_usd: row.cost_usd,
+      cost_usd: row.cost_usd, run_id: runId,
     }
+    if (answer.thinking) thinkingSummary = trimText(`${thinkingSummary}${thinkingSummary ? '\n\n' : ''}${answer.thinking}`, 8000)
     messages.push({ role: 'assistant', content: answer.content })
     answerMessages.push({ content: answer.content })
     if (answer.messageId) previousMessageId = answer.messageId
@@ -431,15 +436,28 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       await finishCall(ctx.adminDb, row)
       return fail('error', 'The answer could not be saved. Try again in a moment.')
     }
-    const results = await Promise.all(toolCalls.map(async (call): Promise<{ block: Block; shape: ToolShape; proposal: ProposalCard | null }> => {
+    // The caps: more than 8 calls in a round, or more than 3 proposals in an answer, are not run: each gets an error result.
+    let writesLeft = CHAT_LIMITS.maxProposalsPerAnswer - proposals.length
+    const verdicts = toolCalls.map((call, i): string | null => {
+      if (i >= CHAT_LIMITS.maxToolCallsPerRound) return `Too many tool calls in one round (the most is ${CHAT_LIMITS.maxToolCallsPerRound}): this call did not run. Ask for fewer things at once.`
+      if (chatToolKind(typeof call.name === 'string' ? call.name : '') === 'write') {
+        if (writesLeft <= 0) return `At most ${CHAT_LIMITS.maxProposalsPerAnswer} proposals in one answer: this one did not run. Tell the person what is left to propose and let them ask again.`
+        writesLeft -= 1
+      }
+      return null
+    })
+    const results = await Promise.all(toolCalls.map(async (call, index): Promise<{ block: Block; shape: ToolShape; proposal: ProposalCard | null }> => {
       const toolStarted = Date.now()
       const name = typeof call.name === 'string' ? call.name : ''
       const id = typeof call.id === 'string' && TOOL_USE_ID.test(call.id) ? call.id : ''
       const timedOut: ToolOutput = { ok: false, message: 'That tool took too long. Try again with a narrower question, or answer without it.' }
-      const output = await withTimeout(
-        runChatTool(name, call.input, toolNames, modes, { db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs }),
-        CHAT_LIMITS.toolTimeoutMs, timedOut,
-      )
+      const blocked = verdicts[index]
+      const output: ToolOutput = blocked
+        ? { ok: false, message: blocked }
+        : await withTimeout(
+          runChatTool(name, call.input, toolNames, modes, { db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs }),
+          CHAT_LIMITS.toolTimeoutMs, timedOut,
+        )
       let finalOutput = output
       let card: ProposalCard | null = null
       // Only a write tool can make a proposal.
@@ -448,6 +466,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         if (made) card = made
         else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }
       }
+      if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
       const block = resultBlock(id, finalOutput)
       const bytes = JSON.stringify(block).length
       const fields = call.input !== null && typeof call.input === 'object' ? Object.entries(call.input as Record<string, unknown>).filter(([, v]) => v !== '' && v !== 'any' && v !== null && v !== undefined).map(([k]) => k) : []
@@ -469,6 +488,13 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     const wroteResults = await store('user', resultBlocks, null, {})
     if (wroteResults !== 'ok') return fail('error', 'The tool results could not be saved. Try again in a moment.')
     messages.push({ role: 'user', content: resultBlocks })
+    // The wall inside an answer: this round's prompt + what it wrote + the new results is what the next request would carry.
+    const nextPrompt = lastPrompt + usage.outputTokens + Math.ceil(JSON.stringify(resultBlocks).length / 3)
+    if (nextPrompt >= CHAT_LIMITS.stopFromTokens) {
+      await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal, status: 'full' })
+      return fail('wall', 'This chat grew too long while looking things up. Start a new chat and ask again.')
+    }
+    if (nextPrompt >= CHAT_LIMITS.forceAnswerFromTokens) forceNoTools = true
     await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
   }
 
@@ -480,6 +506,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   return {
     event: 'done', conversation_id: conversationId, text: endedWith.text, citations, proposals, rounds: answerMessages.length,
     cost_usd: Math.round(costTotal * 1_000_000) / 1_000_000, wall, run_id: runId, ending: endedWith.ending,
+    prompt_tokens: lastPrompt, thinking: thinkingSummary,
   }
 }
 
@@ -497,8 +524,8 @@ async function makeProposal(ctx: RunContext, conversationId: string, toolUseId: 
 // ── The owner's tap ─────────────────────────────────────────────────────────
 
 export type ProposalDecision =
-  | { ok: true; status: 'confirmed' | 'cancelled'; summary: string; result_id: string | null; tool: string }
-  | { ok: false; reason: 'bad_input' | 'not_found' | 'already_decided' | 'expired' | 'failed' | 'error'; message: string }
+  | { ok: true; status: 'confirmed' | 'cancelled'; summary: string; result_id: string | null; tool: string; date?: string | null }
+  | { ok: false; reason: 'bad_input' | 'not_found' | 'already_decided' | 'expired' | 'failed' | 'off' | 'error'; message: string }
 
 /**
  * Confirm or Cancel of a proposal. The proposal is read BY ID AND VERIFIED USER (a forged or another account's id finds
@@ -516,7 +543,8 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   if (!proposal) return { ok: false, reason: 'not_found', message: 'That proposal was not found.' }
   if (proposal.status !== 'pending') return { ok: false, reason: 'already_decided', message: `That proposal was already ${proposal.status === 'confirmed' ? 'confirmed' : proposal.status === 'cancelled' ? 'cancelled' : 'decided (saving it failed)'}.` }
   const now = ctx.now()
-  if (Date.parse(proposal.expires_at) < now.getTime()) {
+  // Fail closed: a date that cannot be read counts as expired.
+  if (!(Date.parse(proposal.expires_at) > now.getTime())) {
     await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
     return { ok: false, reason: 'expired', message: 'That proposal expired. Ask again.' }
   }
@@ -524,19 +552,52 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
     return won ? { ok: true, status: 'cancelled', summary: proposal.summary, result_id: null, tool: proposal.tool } : { ok: false, reason: 'already_decided', message: 'That proposal was already decided.' }
   }
-  // Check before claiming, so a stored value that no longer passes never uses up the one decision as a success.
+  // The owner may edit the title and the date on the card; the edited values go through the same check as the proposal did.
   const today = osloDay(now)
-  if (!checkedProposal(proposal.tool, proposal.args, today).ok) {
+  const editedTitle = ownValue(input, 'title')
+  const editedDate = ownValue(input, 'date')
+  if ((editedTitle !== undefined && typeof editedTitle !== 'string') || (editedDate !== undefined && typeof editedDate !== 'string')) {
+    return { ok: false, reason: 'bad_input', message: 'The title and the date must be text.' }
+  }
+  const stored = proposal.args !== null && typeof proposal.args === 'object' && !Array.isArray(proposal.args) ? proposal.args as Record<string, unknown> : {}
+  const merged: Record<string, unknown> = {
+    ...stored,
+    ...(editedTitle !== undefined ? { title: editedTitle } : {}),
+    ...(editedDate !== undefined ? (proposal.tool === 'add_task' ? { due_date: editedDate === '' ? null : editedDate } : { date: editedDate }) : {}),
+  }
+  // The tool must still be "ask first": a tool the owner has since switched off writes nothing (the setting itself arrives in 4b).
+  if (toolModes(null)[proposal.tool === 'add_task' ? 'propose_add_task' : 'propose_log_food'] !== 'ask') {
+    await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
+    return { ok: false, reason: 'off', message: 'That kind of change is switched off for Ask AI, so nothing was saved.' }
+  }
+  // Check before claiming, so a stored or edited value that does not pass never uses up the one decision as a success.
+  const rechecked = checkedProposal(proposal.tool, merged, today)
+  if (!rechecked.ok) {
+    if (editedTitle !== undefined || editedDate !== undefined) return { ok: false, reason: 'bad_input', message: rechecked.message }
     await decideProposal(ctx.adminDb, ctx.userId, id, 'failed', now.toISOString())
     return { ok: false, reason: 'failed', message: 'That proposal is not valid any more, so nothing was saved.' }
   }
-  const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'confirmed', now.toISOString())
+  const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'confirmed', now.toISOString(), rechecked.draft.args)
   if (!won) return { ok: false, reason: 'already_decided', message: 'That proposal was already decided.' }
-  const written = await applyProposal(ctx.userDb, ctx.userId, proposal.tool, proposal.args, today)
+  const written = await applyProposal(ctx.userDb, ctx.userId, proposal.tool, rechecked.draft.args, today)
   if (!written.ok) {
     await markProposalFailed(ctx.adminDb, ctx.userId, id)
     return { ok: false, reason: 'failed', message: written.message }
   }
   await setProposalResult(ctx.adminDb, ctx.userId, id, written.id)
-  return { ok: true, status: 'confirmed', summary: proposal.summary, result_id: written.id, tool: proposal.tool }
+  return { ok: true, status: 'confirmed', summary: rechecked.draft.summary, result_id: written.id, tool: proposal.tool, date: proposal.tool === 'log_food' ? String(rechecked.draft.args.date) : null }
+}
+
+/** Deletes a chat softly (the Undo window; ai_chats_purge removes it for good later) or brings it back. */
+export async function setChatDeleted(ctx: RunContext, input: unknown, deleted: boolean): Promise<{ ok: true; id: string; title: string } | { ok: false; reason: 'bad_input' | 'not_found' | 'error'; message: string }> {
+  if (ctx.caller !== 'app' || ctx.readAs !== 'owner') return { ok: false, reason: 'bad_input', message: 'A chat can only be deleted in the app.' }
+  const id = ownValue(input, 'conversation_id')
+  if (!isUuid(id)) return { ok: false, reason: 'bad_input', message: 'That is not a chat this app knows.' }
+  const found = await readConversation(ctx.adminDb, ctx.userId, id)
+  if (found.error) return { ok: false, reason: 'error', message: 'The chat could not be read. Try again in a moment.' }
+  const c = found.conversation
+  // Deleting needs a chat that is there; restoring needs one that is deleted (and not yet purged).
+  if (!c || (deleted ? c.deleted_at !== null : c.deleted_at === null)) return { ok: false, reason: 'not_found', message: deleted ? 'That chat was already deleted.' : 'That chat is not there to restore.' }
+  const changed = await setConversationDeleted(ctx.adminDb, ctx.userId, id, deleted ? ctx.now().toISOString() : null)
+  return changed ? { ok: true, id, title: c.title ?? 'Chat' } : { ok: false, reason: 'error', message: 'The chat could not be changed. Try again in a moment.' }
 }

@@ -109,9 +109,39 @@ set role authenticated;
 select public.t_ok(public.t_err($q$select * from public.ai_find_text('dentist', 'any', 5)$q$) = '42501', '197: ai_find_text refuses a caller who is not signed in');
 reset role;
 
+-- 4b · the ledger link: clearing it with the ledger row passes the guard, a direct change does not
+insert into public.ai_calls (id, user_id, job, caller, model, outcome) values ('ca110000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000002', 'chat', 'app', 'claude-haiku-5-5', 'ok');
+insert into public.ai_conversations (id, user_id, model, effort, tools_hash, system_hash) values ('c0000000-0000-4000-8000-000000000009', '00000000-0000-0000-0000-000000000002', 'm', 'low', repeat('a', 64), repeat('b', 64));
+insert into public.ai_messages (conversation_id, user_id, seq, role, content, digest, call_id) values ('c0000000-0000-4000-8000-000000000009', '00000000-0000-0000-0000-000000000002', 1, 'assistant', '[]', repeat('a', 64), 'ca110000-0000-4000-8000-000000000001');
+set role service_role;
+select public.t_ok(public.t_err($q$update public.ai_messages set call_id = null where conversation_id = 'c0000000-0000-4000-8000-000000000009'$q$) = '42501', '197: a direct change of call_id is refused too');
+reset role;
+delete from public.ai_calls where id = 'ca110000-0000-4000-8000-000000000001';
+select public.t_ok((select call_id is null from public.ai_messages where conversation_id = 'c0000000-0000-4000-8000-000000000009'), '197: deleting the ledger row clears the message''s link (the one allowed change)');
+select public.t_ok((select content = '[]'::jsonb and seq = 1 from public.ai_messages where conversation_id = 'c0000000-0000-4000-8000-000000000009'), '197: …and nothing else of the message changed');
+
+-- 4c · deleting a chat and the retention
+insert into public.ai_conversations (id, user_id, model, effort, tools_hash, system_hash, updated_at, deleted_at) values
+  ('c0000000-0000-4000-8000-0000000000d1', '00000000-0000-0000-0000-000000000002', 'm', 'low', repeat('a', 64), repeat('b', 64), now(), now() - interval '8 days'),
+  ('c0000000-0000-4000-8000-0000000000d2', '00000000-0000-0000-0000-000000000002', 'm', 'low', repeat('a', 64), repeat('b', 64), now(), now() - interval '2 days'),
+  ('c0000000-0000-4000-8000-0000000000d3', '00000000-0000-0000-0000-000000000002', 'm', 'low', repeat('a', 64), repeat('b', 64), now() - interval '40 days', null),
+  ('c0000000-0000-4000-8000-0000000000d4', '00000000-0000-0000-0000-000000000002', 'm', 'low', repeat('a', 64), repeat('b', 64), now() - interval '5 days', null);
+insert into public.ai_messages (conversation_id, user_id, seq, role, content, digest) values ('c0000000-0000-4000-8000-0000000000d1', '00000000-0000-0000-0000-000000000002', 1, 'user', '[]', repeat('a', 64));
+select public.t_ok(not has_function_privilege('authenticated', 'public.ai_chats_purge()', 'execute') and not has_function_privilege('anon', 'public.ai_chats_purge()', 'execute') and has_function_privilege('service_role', 'public.ai_chats_purge()', 'execute'), '197: only the service role may run the chat purge');
+set role service_role;
+select public.t_ok((select public.ai_chats_purge()) = 2, '197: the purge removes a chat deleted 8 days ago and a chat past the 30-day retention');
+reset role;
+select public.t_ok((select array_agg(right(id::text, 2) order by id) from public.ai_conversations where id::text like 'c0000000-0000-4000-8000-0000000000d%') = array['d2', 'd4'], '197: a chat deleted 2 days ago (Undo still possible) and a recent chat stay');
+select public.t_ok((select count(*) from public.ai_messages where conversation_id = 'c0000000-0000-4000-8000-0000000000d1') = 0, '197: a purged chat takes its messages with it (the guard lets the cascade pass)');
+update public.ai_settings set log_days = 3 where false;
+insert into public.ai_settings (user_id, log_days) values ('00000000-0000-0000-0000-000000000002', 3) on conflict (user_id) do update set log_days = 3;
+set role service_role;
+select public.t_ok((select public.ai_chats_purge()) = 1, '197: the account''s own retention (3 days) is used: the 5-day-old chat goes');
+reset role;
+
 -- 5 · deleting an account takes its chats with it (the cascade passes the append-only guard)
 delete from public.tasks where user_id = '00000000-0000-0000-0000-000000000002';
 delete from public.diary_entries where user_id = '00000000-0000-0000-0000-000000000002';
 delete from auth.users where id = '00000000-0000-0000-0000-000000000001';
-select public.t_ok((select count(*) from public.ai_messages) = 0 and (select count(*) from public.ai_conversations where user_id = '00000000-0000-0000-0000-000000000001') = 0
-  and (select count(*) from public.ai_chat_proposals) = 0, '197: deleting an account deletes its conversations, messages and proposals');
+select public.t_ok((select count(*) from public.ai_messages where user_id = '00000000-0000-0000-0000-000000000001') = 0 and (select count(*) from public.ai_conversations where user_id = '00000000-0000-0000-0000-000000000001') = 0
+  and (select count(*) from public.ai_chat_proposals where user_id = '00000000-0000-0000-0000-000000000001') = 0, '197: deleting an account deletes its conversations, messages and proposals');
