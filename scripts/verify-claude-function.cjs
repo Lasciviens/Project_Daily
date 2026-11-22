@@ -1003,7 +1003,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('9 · the recipe and quick guess jobs')
   const NEW_JOBS = ['recipe_from_text', 'recipe_from_link', 'recipe_macros', 'quick_guess', 'quick_guess_options']
   const jobAbout = (name) => about.jobs.find(j => j.name === name)
-  check('the job list is item_fill, the five phase 2a jobs, the coach, the two device jobs, the weekly report, the Test bench and diagnose', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'test_bench', 'diagnose']), about.jobs.map(j => j.name))
+  check('the job list is item_fill, the five phase 2a jobs, the coach, the two device jobs, the weekly report, the Test bench, diagnose and Ask AI (chat)', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'test_bench', 'diagnose', 'chat']), about.jobs.map(j => j.name))
   const TOKENS_OF = { recipe_from_text: 4000, recipe_from_link: 4000, recipe_macros: 1500, quick_guess: 1500, quick_guess_options: 2500 }
   for (const name of NEW_JOBS) {
     const j = jobAbout(name)

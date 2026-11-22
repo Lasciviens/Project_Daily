@@ -106,6 +106,30 @@ function checkLinkColumnsNoWrite() {
   check(`every outside link Undo knows (${cols.length}) is closed to the assistant (AI_NO_WRITE)`, cols.length >= 5 && !open.length, open.join(', '))
 }
 
+// The new assistant (claude function, migration 197): it never writes by itself. Static checks on its tool part and its
+// migration; the behaviour (a forged, another account's, an expired, a repeated Confirm) is in verify-claude-chat.cjs.
+function checkClaudeConfirm() {
+  const tools = fs.readFileSync(`${REPO}/supabase/claude-src/chat-tools.ts`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  const loop = fs.readFileSync(`${REPO}/supabase/claude-src/chat-loop.ts`, 'utf8').replace(/\/\/.*$/gm, '')
+  const rules = fs.readFileSync(`${REPO}/supabase/claude-src/chat-rules.ts`, 'utf8')
+  const mig = fs.readFileSync(`${REPO}/supabase/migrations/197_ai_chat.sql`, 'utf8').replace(/--.*$/gm, '')
+  const migDir = `${REPO}/supabase/migrations`
+  const latest = fs.readdirSync(migDir).filter(f => /^\d+_.*\.sql$/.test(f)).sort().map(f => fs.readFileSync(`${migDir}/${f}`, 'utf8'))
+    .filter(t => /function public\.app_undo_links\(p_table text\)/.test(t)).pop() ?? ''
+  const body = latest.slice(latest.indexOf('function public.app_undo_links(p_table text)'))
+  const links = [...new Set([...body.slice(0, body.indexOf('$$;')).matchAll(/'([a-z_]+)'/g)].map(m => m[1]).filter(c => /_(id|area|href)$/.test(c) && !/^(tasks|time_blocks|schedule_blocks|user_[a-z_]+)$/.test(c)))]
+  const apply = tools.slice(tools.indexOf('export async function applyProposal'))
+  const written = [...apply.slice(apply.indexOf('const row'), apply.indexOf('const table')).matchAll(/\b([a-z_]+): /g)].map(m => m[1])
+  const hits = written.filter(c => links.includes(c))
+  check(`the columns a confirmed proposal writes (${written.length}) include none of the outside-account links Undo knows (${links.length})`, links.length >= 5 && written.length >= 15 && !hits.length, hits.join(', '))
+  check('the only writes in the assistant\'s tool part are the two inserts of a confirmed proposal: no update, delete or upsert, and no table named outside tasks and food_log_entries', (apply.match(/\.insert\(/g) || []).length === 1 && !/\.(update|delete|upsert)\(/.test(tools) && !/\.insert\(/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))) && /const table = tool === 'add_task' \? 'tasks' : 'food_log_entries'/.test(apply))
+  check('the write tools are proposals only and the proposal tools are exactly the two the database allows', /WRITE_TOOL_NAMES = \['propose_add_task', 'propose_log_food'\]/.test(rules) && /check \(tool in \('add_task', 'log_food'\)\)/.test(mig))
+  check('a write tool can never be "on": its modes are ask and off only, and the model\'s tool run never calls applyProposal', /\['ask', 'off'\] : \['on', 'off'\]/.test(rules) && !/applyProposal/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))))
+  check('applyProposal is called from one place only, the owner\'s Confirm (decideChatProposal), with the owner\'s own client', (loop.match(/applyProposal\(/g) || []).length === 1 && /applyProposal\(ctx\.userDb, ctx\.userId,/.test(loop))
+  check('the browser can read its proposals and write none: one select policy, one select grant, no browser write', /grant select on public\.ai_chat_proposals to authenticated;/.test(mig) && !/grant [^;]*(insert|update|delete)[^;]* on public\.ai_chat_proposals to authenticated/.test(mig) && (mig.match(/create policy [^;]*on public\.ai_chat_proposals/g) || []).length === 1)
+  check('the proposals and chats are in no assistant catalogue: the old assistant\'s DB_CATALOG names none of the new tables', !/ai_chat_proposals|ai_conversations|ai_messages/.test(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')))
+}
+
 function checkAiWriteGroup() {
   require('sucrase/register')
   const { INVALIDATION_GROUPS } = require(`${REPO}/src/shared/query/invalidate.ts`)
@@ -292,6 +316,8 @@ function checkAiWriteGroup() {
   // 11. every column Undo treats as a link to an outside copy (the latest app_undo_links) is one the
   //     assistant may not write — a forged link would steer a sync to someone else's data (30.10.2026)
   checkLinkColumnsNoWrite()
+  // 12. Ask AI on Claude (phase 4a): the same promises for the `claude` function's proposals
+  checkClaudeConfirm()
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()
