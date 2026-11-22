@@ -26,7 +26,7 @@ import {
   UnprocessableEntityError,
   type ClientOptions,
 } from 'npm:@anthropic-ai/sdk@1.5.0'
-import type { AnswerEnding, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, TokenCount, TokenUsage } from './types.ts'
+import type { AnswerEnding, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, SentRequest, TokenCount, TokenUsage } from './types.ts'
 
 /** What the "How it works" page shows. The verify script compares each line with what the SDK really sends. */
 export const ANTHROPIC_INFO: ProviderInfo = {
@@ -84,11 +84,13 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
     name: ANTHROPIC_INFO.name,
     async send(request: ModelRequest): Promise<ModelAnswer | ModelFailure> {
       const timeout = anthropicTimeout(request.timeoutMs)
+      const body = anthropicRequest(request)
+      const sent = anthropicSent(request, body, timeout)
       try {
-        return anthropicAnswer(await client.messages.create(anthropicRequest(request), { timeout }))
+        return { ...anthropicAnswer(await client.messages.create(body, { timeout })), sent }
       } catch (error) {
         // The SDK's error object can hold the request and its headers: only single, named fields are read from it.
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent }
       }
     },
     // Free: GET /v1/models.
@@ -98,7 +100,7 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         const page = await client.models.list({ limit: ANTHROPIC_LIST_LIMIT }, { timeout })
         return { ok: true, modelIds: page.data.map(model => model.id).filter(id => typeof id === 'string').slice(0, ANTHROPIC_LIST_LIMIT) }
       } catch (error) {
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
     // Free: POST /v1/messages/count_tokens, with the same body `send` would send (but for the answer limit).
@@ -111,7 +113,7 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         const count = await client.messages.countTokens(counted as Anthropic.MessageCountTokensParams, { timeout })
         return { ok: true, inputTokens: anthropicCount(count.input_tokens) }
       } catch (error) {
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
   }
@@ -146,7 +148,24 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
   }
 }
 
-function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | null }): ModelAnswer {
+/**
+ * The request as built, for the text log: every field that shapes the call (the model, the answer limit, the cache
+ * mark on the instructions, the thinking setting, the effort and answer shape, the time limit). The two long texts
+ * are named by their length, since the log already holds them; the key is never in a body, so it cannot be here.
+ */
+function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParamsNonStreaming, timeoutMs: number): SentRequest {
+  return {
+    model: body.model,
+    max_tokens: body.max_tokens,
+    system: [{ type: 'text', cache_control: { type: 'ephemeral' }, text: `(the job's fixed instructions: ${request.instructions.length} characters, shown above)` }],
+    messages: [{ role: 'user', content: `(the live text: ${request.userText.length} characters, shown above)` }],
+    thinking: body.thinking,
+    output_config: body.output_config,
+    timeout_ms: timeoutMs,
+  }
+}
+
+function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | null }): Omit<ModelAnswer, 'sent'> {
   let text = ''
   const thoughts: string[] = []
   // An answer is a list of blocks; one that thought first begins with thinking blocks. Read each by its type.
@@ -207,8 +226,8 @@ function anthropicPlainText(text: string, apiKey: string): string {
   return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
-function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): ModelFailure {
-  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure => ({
+function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Omit<ModelFailure, 'sent'> {
+  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): Omit<ModelFailure, 'sent'> => ({
     ok: false, kind, status, detail, requestId,
     message: kind === 'timeout'
       ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`

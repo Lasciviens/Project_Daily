@@ -40,7 +40,8 @@ export interface ModelRequest {
   answerSchema: JsonSchema | null
   /**
    * `adaptive` (the default): the model decides how much to reason and returns a summary of it. `off`: no
-   * reasoning at all, which costs and takes less. Only the Test bench asks for `off`, to show the difference.
+   * reasoning at all, which costs and takes less. The owner picks one per job (Settings; adaptive until a job's
+   * answers are measured to be as good without), and the Test bench's request may pick it for one run.
    */
   thinking?: 'adaptive' | 'off'
   /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
@@ -69,6 +70,13 @@ export interface TokenUsage {
  */
 export type AnswerEnding = 'complete' | 'refused' | 'cut_off' | 'unexpected'
 
+/**
+ * The request exactly as the provider part built it, for the text log: the settings that shaped it (the cache mark,
+ * the thinking setting, the answer shape, the time limit). The instructions and the owner's text are not repeated in
+ * it (the log already holds them), and it never holds a key: the provider sends that in a header, not in the body.
+ */
+export type SentRequest = Record<string, unknown>
+
 /** The model answered (which doesn't yet mean the answer is usable: read `ending` first). */
 export interface ModelAnswer {
   ok: true
@@ -85,6 +93,8 @@ export interface ModelAnswer {
   requestId: string | null
   /** The model that really answered. */
   servedModel: string | null
+  /** What the provider part built and sent (see SentRequest). */
+  sent: SentRequest | null
 }
 
 /** The call failed. Nothing here is the provider's raw error: `message` and `detail` are already scrubbed. */
@@ -98,6 +108,8 @@ export interface ModelFailure {
   /** The provider's own short explanation, for the ledger. */
   detail: string
   requestId: string | null
+  /** What the provider part built and sent (see SentRequest); null when nothing was built. */
+  sent: SentRequest | null
 }
 
 /** The ids of the models the provider lists for this key. */

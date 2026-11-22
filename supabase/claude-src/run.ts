@@ -117,7 +117,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   row.model = settings.model
   row.effort = settings.effort
 
-  // 4 · The job's switch and the API key.
+  // 4 · The master switch, the job's switch and the API key.
+  if (!settings.aiEnabled) return stop('off', 'All AI is switched off in Developer → AI → Settings.')
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
@@ -146,7 +147,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   }
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request = buildRequest(job, settings, userText, choice.thinking ?? 'adaptive', ctx.timeoutMs)
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs)
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
@@ -209,6 +210,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
       model: request.model, effort: request.effort, max_output_tokens: request.maxOutputTokens,
       instructions_version: job.version, instructions: request.instructions, user_text: request.userText,
       answer_schema: request.answerSchema, thinking: request.thinking,
+      // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
+      ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
     }, TEXT_LOG_MAX_BYTES)
     if (answer.ok) {
       row.response = trimForLog({ text: answer.text, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
@@ -268,9 +271,10 @@ export async function countJob(ctx: RunContext, jobName: unknown, input: unknown
   const settings = settingsFor(job, stored.account, stored.job)
   if (choice.model) settings.model = choice.model
   if (choice.effort) settings.effort = choice.effort
+  if (!settings.aiEnabled) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
   if (!settings.enabled) return { ok: false, reason: 'off', message: `"${job.title}" is switched off in Developer → AI → Settings.` }
   if (!ctx.provider) return { ok: false, reason: 'not_configured', message: 'AI is not set up yet: the server has no API key for it.' }
-  const thinking = choice.thinking ?? 'adaptive'
+  const thinking = choice.thinking ?? settings.thinking
   let counted
   try {
     counted = await ctx.provider.countTokens(buildRequest(job, settings, prepared.userText, thinking, COUNT_TIMEOUT_MS))
@@ -301,7 +305,7 @@ async function send(ctx: RunContext, provider: Provider, request: ModelRequest):
     return await provider.send(request)
   } catch (error) {
     ctx.report(`the provider part threw: ${errorPlace(error)}`)
-    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null }
+    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }
   }
 }
 

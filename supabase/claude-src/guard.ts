@@ -93,10 +93,15 @@ function clamp(n: number, min: number, max: number): number {
 
 /** The settings one run uses, after every stored value has been through its list or its limits. */
 export interface RunSettings {
+  /** The master switch (ai_settings.ai_enabled): false stops every job, the devices' too. */
+  aiEnabled: boolean
+  /** This job's own switch. */
   enabled: boolean
   model: string
   effort: Effort
   maxOutputTokens: number
+  /** Whether the model reasons (`adaptive`, the default) or not (`off`), as the owner set it for this job. */
+  thinking: 'adaptive' | 'off'
   /** The total monthly budget, in USD. */
   monthlyBudgetUsd: number
   /** This job's own monthly budget in USD, or null when it has none. */
@@ -117,14 +122,20 @@ export function settingsFor(job: JobDefinition, accountRow: unknown, jobRow: unk
   const jobBudget = numberFrom(ownValue(jobRow, 'monthly_budget_usd'))
   const budget = numberFrom(ownValue(accountRow, 'monthly_budget_usd'))
   const logText = ownValue(accountRow, 'log_text')
+  const aiEnabled = ownValue(accountRow, 'ai_enabled')
+  const thinking = ownValue(jobRow, 'thinking')
   return {
     // A stored value that is neither true nor false switches the job off and the text log off: the careful side.
+    // A value that is missing altogether (no row yet, or a schema from before migration 195) is the default: on.
+    aiEnabled: aiEnabled === undefined ? true : aiEnabled === true,
     enabled: enabled === undefined ? true : enabled === true,
     model: MODELS.some(m => m.id === model) ? (model as string) : job.defaults.model,
     effort: EFFORTS.includes(effort as Effort) ? (effort as Effort) : job.defaults.effort,
     maxOutputTokens: maxTokens === null
       ? job.defaults.maxOutputTokens
       : clamp(Math.round(maxTokens), LIMITS.maxOutputTokens.min, LIMITS.maxOutputTokens.max),
+    // Only the word "off" turns reasoning off; anything else (null, an unknown word) is the default.
+    thinking: thinking === 'off' ? 'off' : 'adaptive',
     monthlyBudgetUsd: budget === null ? DEFAULTS.monthlyBudgetUsd : clamp(budget, 0, LIMITS.monthlyBudgetMaxUsd),
     jobBudgetUsd: jobBudget === null ? null : clamp(jobBudget, 0, LIMITS.monthlyBudgetMaxUsd),
     logText: logText === undefined ? DEFAULTS.logText : logText === true,

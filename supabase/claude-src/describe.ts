@@ -46,8 +46,8 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "count" gives the Test bench's token count for free, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
-  { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
-  { title: 'Switch and key', part: 'run', text: "A job that is switched off stops here, and so does a request when the server has no API key. Each is written to the ledger with zero tokens." },
+  { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, a thinking setting that is not \"adaptive\" or \"off\" becomes adaptive, and a number is held inside the limits." },
+  { title: 'Switch and key', part: 'run', text: "The master switch (all AI off), a job that is switched off, and a server with no API key each stop the request here, the devices' requests too. Each is written to the ledger with zero tokens." },
   { title: 'Reserving the cost', part: 'ledger', text: "Before anything is sent, the most this call could cost (a generous guess of its prompt, plus its whole answer limit) is held against your monthly budget and the job's budget, in one step in the database under a lock. Calls that arrive at the same moment each hold their own share, so none can slip past the wall. If what is left cannot cover it, nothing is sent." },
   { title: 'Code before the model', part: 'run', text: 'AI last: a job may have work that code does better, and it is done before anything is reserved or sent. Reading a recipe link is one: the page is fetched by code and, when it carries its recipe as structured data, code alone answers. That is not an AI call: nothing is reserved and no model is asked, but a finished zero-cost ledger row (\'Read by code, no AI\') is written so the rate caps count it; the reply says it came from the page.' },
   { title: 'Building the request', part: 'run', text: "The request has two parts. First the job's fixed instructions: always the same bytes, so the provider can cache them. Then the part that changes, such as today's date and your text, which travels as data inside a tag." },
@@ -63,7 +63,7 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The account the function acts for is always the one it verified (the app) or the owner account of its own environment (a device). A user id sent in a request is never read.',
   "The Kobo and the phone reach this function only through their own server functions, with the server key in a header, checked in constant time. That path can only run a job named for that device: the phone cannot start the item fill, the app cannot start the Kobo's question. A device has its own daily limit.",
   "The API key lives only in the server's secrets. It travels to Anthropic in a header, never in an address, and it is taken out of every error before the error is sent back or written down.",
-  'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, and every number is held inside the limits in the code.',
+  'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, a thinking setting is one of two words, a switch that is neither true nor false means off, and every number is held inside the limits in the code.',
   `A monthly budget is a wall, not a warning: the worst case of each call is reserved before it is sent, and when it does not fit, nothing is sent. It can be at most $${LIMITS.monthlyBudgetMaxUsd}.`,
   'The prices are part of the code, not a setting, so the budget wall cannot be switched off by changing a price.',
   `At most ${LIMITS.callsPerMinute} calls in a minute and ${LIMITS.callsPerDay} in a day.`,
@@ -95,7 +95,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
       ...(job.answerSchema ? [job.enforceAnswerSchema
         ? 'Structured output: Anthropic holds the answer to a JSON Schema'
         : 'A fixed answer shape, written into the instructions as a JSON Schema and checked by our own code'] : []),
-      job.pickable ? 'Thinking: adaptive or off, as the request picks' : `Adaptive thinking (${job.defaults.effort} effort)`,
+      job.pickable ? 'Thinking: adaptive or off, as the request picks' : `Thinking: adaptive by default (${job.defaults.effort} effort); you can switch it off for this job in Settings`,
       'A summary of the thinking, kept in the text log',
       ...(job.extraFeatures ?? []),
     ],

@@ -46,7 +46,8 @@ interface ModelRequest {
   answerSchema: JsonSchema | null
   /**
    * `adaptive` (the default): the model decides how much to reason and returns a summary of it. `off`: no
-   * reasoning at all, which costs and takes less. Only the Test bench asks for `off`, to show the difference.
+   * reasoning at all, which costs and takes less. The owner picks one per job (Settings; adaptive until a job's
+   * answers are measured to be as good without), and the Test bench's request may pick it for one run.
    */
   thinking?: 'adaptive' | 'off'
   /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
@@ -75,6 +76,13 @@ interface TokenUsage {
  */
 type AnswerEnding = 'complete' | 'refused' | 'cut_off' | 'unexpected'
 
+/**
+ * The request exactly as the provider part built it, for the text log: the settings that shaped it (the cache mark,
+ * the thinking setting, the answer shape, the time limit). The instructions and the owner's text are not repeated in
+ * it (the log already holds them), and it never holds a key: the provider sends that in a header, not in the body.
+ */
+type SentRequest = Record<string, unknown>
+
 /** The model answered (which doesn't yet mean the answer is usable: read `ending` first). */
 interface ModelAnswer {
   ok: true
@@ -91,6 +99,8 @@ interface ModelAnswer {
   requestId: string | null
   /** The model that really answered. */
   servedModel: string | null
+  /** What the provider part built and sent (see SentRequest). */
+  sent: SentRequest | null
 }
 
 /** The call failed. Nothing here is the provider's raw error: `message` and `detail` are already scrubbed. */
@@ -104,6 +114,8 @@ interface ModelFailure {
   /** The provider's own short explanation, for the ledger. */
   detail: string
   requestId: string | null
+  /** What the provider part built and sent (see SentRequest); null when nothing was built. */
+  sent: SentRequest | null
 }
 
 /** The ids of the models the provider lists for this key. */
@@ -521,10 +533,15 @@ function clamp(n: number, min: number, max: number): number {
 
 /** The settings one run uses, after every stored value has been through its list or its limits. */
 interface RunSettings {
+  /** The master switch (ai_settings.ai_enabled): false stops every job, the devices' too. */
+  aiEnabled: boolean
+  /** This job's own switch. */
   enabled: boolean
   model: string
   effort: Effort
   maxOutputTokens: number
+  /** Whether the model reasons (`adaptive`, the default) or not (`off`), as the owner set it for this job. */
+  thinking: 'adaptive' | 'off'
   /** The total monthly budget, in USD. */
   monthlyBudgetUsd: number
   /** This job's own monthly budget in USD, or null when it has none. */
@@ -545,14 +562,20 @@ function settingsFor(job: JobDefinition, accountRow: unknown, jobRow: unknown): 
   const jobBudget = numberFrom(ownValue(jobRow, 'monthly_budget_usd'))
   const budget = numberFrom(ownValue(accountRow, 'monthly_budget_usd'))
   const logText = ownValue(accountRow, 'log_text')
+  const aiEnabled = ownValue(accountRow, 'ai_enabled')
+  const thinking = ownValue(jobRow, 'thinking')
   return {
     // A stored value that is neither true nor false switches the job off and the text log off: the careful side.
+    // A value that is missing altogether (no row yet, or a schema from before migration 195) is the default: on.
+    aiEnabled: aiEnabled === undefined ? true : aiEnabled === true,
     enabled: enabled === undefined ? true : enabled === true,
     model: MODELS.some(m => m.id === model) ? (model as string) : job.defaults.model,
     effort: EFFORTS.includes(effort as Effort) ? (effort as Effort) : job.defaults.effort,
     maxOutputTokens: maxTokens === null
       ? job.defaults.maxOutputTokens
       : clamp(Math.round(maxTokens), LIMITS.maxOutputTokens.min, LIMITS.maxOutputTokens.max),
+    // Only the word "off" turns reasoning off; anything else (null, an unknown word) is the default.
+    thinking: thinking === 'off' ? 'off' : 'adaptive',
     monthlyBudgetUsd: budget === null ? DEFAULTS.monthlyBudgetUsd : clamp(budget, 0, LIMITS.monthlyBudgetMaxUsd),
     jobBudgetUsd: jobBudget === null ? null : clamp(jobBudget, 0, LIMITS.monthlyBudgetMaxUsd),
     logText: logText === undefined ? DEFAULTS.logText : logText === true,
@@ -1403,11 +1426,13 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
     name: ANTHROPIC_INFO.name,
     async send(request: ModelRequest): Promise<ModelAnswer | ModelFailure> {
       const timeout = anthropicTimeout(request.timeoutMs)
+      const body = anthropicRequest(request)
+      const sent = anthropicSent(request, body, timeout)
       try {
-        return anthropicAnswer(await client.messages.create(anthropicRequest(request), { timeout }))
+        return { ...anthropicAnswer(await client.messages.create(body, { timeout })), sent }
       } catch (error) {
         // The SDK's error object can hold the request and its headers: only single, named fields are read from it.
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent }
       }
     },
     // Free: GET /v1/models.
@@ -1417,7 +1442,7 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
         const page = await client.models.list({ limit: ANTHROPIC_LIST_LIMIT }, { timeout })
         return { ok: true, modelIds: page.data.map(model => model.id).filter(id => typeof id === 'string').slice(0, ANTHROPIC_LIST_LIMIT) }
       } catch (error) {
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
     // Free: POST /v1/messages/count_tokens, with the same body `send` would send (but for the answer limit).
@@ -1430,7 +1455,7 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
         const count = await client.messages.countTokens(counted as Anthropic.MessageCountTokensParams, { timeout })
         return { ok: true, inputTokens: anthropicCount(count.input_tokens) }
       } catch (error) {
-        return anthropicFailure(error, apiKey, timeout)
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
   }
@@ -1465,7 +1490,24 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
   }
 }
 
-function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | null }): ModelAnswer {
+/**
+ * The request as built, for the text log: every field that shapes the call (the model, the answer limit, the cache
+ * mark on the instructions, the thinking setting, the effort and answer shape, the time limit). The two long texts
+ * are named by their length, since the log already holds them; the key is never in a body, so it cannot be here.
+ */
+function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParamsNonStreaming, timeoutMs: number): SentRequest {
+  return {
+    model: body.model,
+    max_tokens: body.max_tokens,
+    system: [{ type: 'text', cache_control: { type: 'ephemeral' }, text: `(the job's fixed instructions: ${request.instructions.length} characters, shown above)` }],
+    messages: [{ role: 'user', content: `(the live text: ${request.userText.length} characters, shown above)` }],
+    thinking: body.thinking,
+    output_config: body.output_config,
+    timeout_ms: timeoutMs,
+  }
+}
+
+function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | null }): Omit<ModelAnswer, 'sent'> {
   let text = ''
   const thoughts: string[] = []
   // An answer is a list of blocks; one that thought first begins with thinking blocks. Read each by its type.
@@ -1526,8 +1568,8 @@ function anthropicPlainText(text: string, apiKey: string): string {
   return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
-function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): ModelFailure {
-  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure => ({
+function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): Omit<ModelFailure, 'sent'> {
+  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): Omit<ModelFailure, 'sent'> => ({
     ok: false, kind, status, detail, requestId,
     message: kind === 'timeout'
       ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`
@@ -1650,14 +1692,35 @@ async function readGate(db: Db, job: string, scope: GateScope): Promise<Gate | n
 async function readSettingRows(userDb: Db, userId: string, job: string): Promise<{ account: unknown; job: unknown } | null> {
   try {
     const [account, perJob] = await Promise.all([
-      userDb.from('ai_settings').select('monthly_budget_usd, log_text').eq('user_id', userId).maybeSingle(),
-      userDb.from('ai_job_settings').select('enabled, model, effort, max_output_tokens, monthly_budget_usd')
-        .eq('user_id', userId).eq('job', job).maybeSingle(),
+      readSettingRow(userDb, 'ai_settings', ACCOUNT_COLUMNS, ACCOUNT_COLUMNS_194, userId, null),
+      readSettingRow(userDb, 'ai_job_settings', JOB_COLUMNS, JOB_COLUMNS_194, userId, job),
     ])
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
   } catch {
     return null
   }
+}
+
+// The columns of each settings table. Migration 195 added `ai_enabled` and `thinking`: a database that has not run it
+// yet answers 42703 (no such column), and the read is made again without them, so the function keeps working on the
+// older schema with both settings at their defaults (on, adaptive). Remove the fallback once 195 has run everywhere.
+const ACCOUNT_COLUMNS = 'monthly_budget_usd, log_text, ai_enabled'
+const ACCOUNT_COLUMNS_194 = 'monthly_budget_usd, log_text'
+const JOB_COLUMNS = 'enabled, model, effort, max_output_tokens, monthly_budget_usd, thinking'
+const JOB_COLUMNS_194 = 'enabled, model, effort, max_output_tokens, monthly_budget_usd'
+const UNDEFINED_COLUMN = '42703'
+
+async function readSettingRow(
+  userDb: Db, table: string, columns: string, olderColumns: string, userId: string, job: string | null,
+): Promise<{ data: unknown; error: unknown }> {
+  const read = async (cols: string) => {
+    let q = userDb.from(table).select(cols).eq('user_id', userId)
+    if (job !== null) q = q.eq('job', job)
+    return q.maybeSingle()
+  }
+  const first = await read(columns)
+  if (first.error?.code === UNDEFINED_COLUMN) return read(olderColumns)
+  return first
 }
 
 /**
@@ -3365,7 +3428,8 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   row.model = settings.model
   row.effort = settings.effort
 
-  // 4 · The job's switch and the API key.
+  // 4 · The master switch, the job's switch and the API key.
+  if (!settings.aiEnabled) return stop('off', 'All AI is switched off in Developer → AI → Settings.')
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
@@ -3394,7 +3458,7 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
   }
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request = buildRequest(job, settings, userText, choice.thinking ?? 'adaptive', ctx.timeoutMs)
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs)
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
@@ -3457,6 +3521,8 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
       model: request.model, effort: request.effort, max_output_tokens: request.maxOutputTokens,
       instructions_version: job.version, instructions: request.instructions, user_text: request.userText,
       answer_schema: request.answerSchema, thinking: request.thinking,
+      // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
+      ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
     }, TEXT_LOG_MAX_BYTES)
     if (answer.ok) {
       row.response = trimForLog({ text: answer.text, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
@@ -3516,9 +3582,10 @@ async function countJob(ctx: RunContext, jobName: unknown, input: unknown): Prom
   const settings = settingsFor(job, stored.account, stored.job)
   if (choice.model) settings.model = choice.model
   if (choice.effort) settings.effort = choice.effort
+  if (!settings.aiEnabled) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
   if (!settings.enabled) return { ok: false, reason: 'off', message: `"${job.title}" is switched off in Developer → AI → Settings.` }
   if (!ctx.provider) return { ok: false, reason: 'not_configured', message: 'AI is not set up yet: the server has no API key for it.' }
-  const thinking = choice.thinking ?? 'adaptive'
+  const thinking = choice.thinking ?? settings.thinking
   let counted
   try {
     counted = await ctx.provider.countTokens(buildRequest(job, settings, prepared.userText, thinking, COUNT_TIMEOUT_MS))
@@ -3549,7 +3616,7 @@ async function send(ctx: RunContext, provider: Provider, request: ModelRequest):
     return await provider.send(request)
   } catch (error) {
     ctx.report(`the provider part threw: ${errorPlace(error)}`)
-    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null }
+    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }
   }
 }
 
@@ -3711,7 +3778,7 @@ async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
     if (!fillJob || !settings || 'problem' in prepared) return { ok: false, detail: 'The ✨ request could not be built here.' }
     const request: ModelRequest = {
       model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, instructions: fillJob.instructions,
-      userText: prepared.userText, answerSchema: fillJob.enforceAnswerSchema ? fillJob.answerSchema : null, timeoutMs: DIAGNOSE_SHORT_MS,
+      userText: prepared.userText, answerSchema: fillJob.enforceAnswerSchema ? fillJob.answerSchema : null, thinking: settings.thinking, timeoutMs: DIAGNOSE_SHORT_MS,
     }
     const t0 = Date.now()
     const count = await provider.countTokens(request)
@@ -3785,8 +3852,8 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "count" gives the Test bench's token count for free, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
-  { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
-  { title: 'Switch and key', part: 'run', text: "A job that is switched off stops here, and so does a request when the server has no API key. Each is written to the ledger with zero tokens." },
+  { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, a thinking setting that is not \"adaptive\" or \"off\" becomes adaptive, and a number is held inside the limits." },
+  { title: 'Switch and key', part: 'run', text: "The master switch (all AI off), a job that is switched off, and a server with no API key each stop the request here, the devices' requests too. Each is written to the ledger with zero tokens." },
   { title: 'Reserving the cost', part: 'ledger', text: "Before anything is sent, the most this call could cost (a generous guess of its prompt, plus its whole answer limit) is held against your monthly budget and the job's budget, in one step in the database under a lock. Calls that arrive at the same moment each hold their own share, so none can slip past the wall. If what is left cannot cover it, nothing is sent." },
   { title: 'Code before the model', part: 'run', text: 'AI last: a job may have work that code does better, and it is done before anything is reserved or sent. Reading a recipe link is one: the page is fetched by code and, when it carries its recipe as structured data, code alone answers. That is not an AI call: nothing is reserved and no model is asked, but a finished zero-cost ledger row (\'Read by code, no AI\') is written so the rate caps count it; the reply says it came from the page.' },
   { title: 'Building the request', part: 'run', text: "The request has two parts. First the job's fixed instructions: always the same bytes, so the provider can cache them. Then the part that changes, such as today's date and your text, which travels as data inside a tag." },
@@ -3802,7 +3869,7 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The account the function acts for is always the one it verified (the app) or the owner account of its own environment (a device). A user id sent in a request is never read.',
   "The Kobo and the phone reach this function only through their own server functions, with the server key in a header, checked in constant time. That path can only run a job named for that device: the phone cannot start the item fill, the app cannot start the Kobo's question. A device has its own daily limit.",
   "The API key lives only in the server's secrets. It travels to Anthropic in a header, never in an address, and it is taken out of every error before the error is sent back or written down.",
-  'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, and every number is held inside the limits in the code.',
+  'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, a thinking setting is one of two words, a switch that is neither true nor false means off, and every number is held inside the limits in the code.',
   `A monthly budget is a wall, not a warning: the worst case of each call is reserved before it is sent, and when it does not fit, nothing is sent. It can be at most $${LIMITS.monthlyBudgetMaxUsd}.`,
   'The prices are part of the code, not a setting, so the budget wall cannot be switched off by changing a price.',
   `At most ${LIMITS.callsPerMinute} calls in a minute and ${LIMITS.callsPerDay} in a day.`,
@@ -3834,7 +3901,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
       ...(job.answerSchema ? [job.enforceAnswerSchema
         ? 'Structured output: Anthropic holds the answer to a JSON Schema'
         : 'A fixed answer shape, written into the instructions as a JSON Schema and checked by our own code'] : []),
-      job.pickable ? 'Thinking: adaptive or off, as the request picks' : `Adaptive thinking (${job.defaults.effort} effort)`,
+      job.pickable ? 'Thinking: adaptive or off, as the request picks' : `Thinking: adaptive by default (${job.defaults.effort} effort); you can switch it off for this job in Settings`,
       'A summary of the thinking, kept in the text log',
       ...(job.extraFeatures ?? []),
     ],

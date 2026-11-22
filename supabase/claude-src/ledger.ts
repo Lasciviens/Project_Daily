@@ -94,14 +94,35 @@ export async function readGate(db: Db, job: string, scope: GateScope): Promise<G
 export async function readSettingRows(userDb: Db, userId: string, job: string): Promise<{ account: unknown; job: unknown } | null> {
   try {
     const [account, perJob] = await Promise.all([
-      userDb.from('ai_settings').select('monthly_budget_usd, log_text').eq('user_id', userId).maybeSingle(),
-      userDb.from('ai_job_settings').select('enabled, model, effort, max_output_tokens, monthly_budget_usd')
-        .eq('user_id', userId).eq('job', job).maybeSingle(),
+      readSettingRow(userDb, 'ai_settings', ACCOUNT_COLUMNS, ACCOUNT_COLUMNS_194, userId, null),
+      readSettingRow(userDb, 'ai_job_settings', JOB_COLUMNS, JOB_COLUMNS_194, userId, job),
     ])
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
   } catch {
     return null
   }
+}
+
+// The columns of each settings table. Migration 195 added `ai_enabled` and `thinking`: a database that has not run it
+// yet answers 42703 (no such column), and the read is made again without them, so the function keeps working on the
+// older schema with both settings at their defaults (on, adaptive). Remove the fallback once 195 has run everywhere.
+const ACCOUNT_COLUMNS = 'monthly_budget_usd, log_text, ai_enabled'
+const ACCOUNT_COLUMNS_194 = 'monthly_budget_usd, log_text'
+const JOB_COLUMNS = 'enabled, model, effort, max_output_tokens, monthly_budget_usd, thinking'
+const JOB_COLUMNS_194 = 'enabled, model, effort, max_output_tokens, monthly_budget_usd'
+const UNDEFINED_COLUMN = '42703'
+
+async function readSettingRow(
+  userDb: Db, table: string, columns: string, olderColumns: string, userId: string, job: string | null,
+): Promise<{ data: unknown; error: unknown }> {
+  const read = async (cols: string) => {
+    let q = userDb.from(table).select(cols).eq('user_id', userId)
+    if (job !== null) q = q.eq('job', job)
+    return q.maybeSingle()
+  }
+  const first = await read(columns)
+  if (first.error?.code === UNDEFINED_COLUMN) return read(olderColumns)
+  return first
 }
 
 /**
