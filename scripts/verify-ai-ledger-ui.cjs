@@ -17,7 +17,7 @@ function check(name, cond, detail) {
 }
 const J = JSON.stringify
 const hours = (r) => (Date.parse(r.to) - Date.parse(r.from)) / 36e5
-const usage = (o) => ({ day: '2026-11-02', job: 'item_fill', mode: 'live', model: 'claude-haiku-5-5', calls: 1, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0, ...o })
+const usage = (o) => ({ day: '2026-11-02', job: 'item_fill', mode: 'live', model: 'claude-haiku-5-5', calls: 1, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0, avg_duration_ms: 0, max_duration_ms: 0, timed_calls: 0, held_calls: 0, held_cost_usd: 0, ...o })
 
 console.log('\nnum')
 check('numeric text is read', R.num('0.012300') === 0.0123 && R.num(' 5 ') === 5 && R.num('1e-3') === 0.001)
@@ -122,8 +122,8 @@ console.log('\nvalues as they enter')
   const t = R.readCallWithText({ id: 'a', created_at: '2026-11-01T10:00:00Z', request: { x: 1 }, response: null, thinking: '' })
   check('a call with text: thinking "" is null', t.request.x === 1 && t.response === null && t.thinking === null)
   const d = { monthlyBudgetUsd: 5, logText: true, logDays: 30 }
-  check('settings: none → defaults', J(R.readSettings(null, d)) === J({ monthly_budget_usd: 5, log_text: true, log_days: 30 }))
-  check('settings: odd fields → defaults, a budget of 0 stays 0', J(R.readSettings({ monthly_budget_usd: 0, log_text: 'yes', log_days: 'x' }, d)) === J({ monthly_budget_usd: 0, log_text: true, log_days: 30 }))
+  check('settings: none → defaults', J(R.readSettings(null, d)) === J({ monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true }))
+  check('settings: odd fields → defaults, a budget of 0 stays 0', J(R.readSettings({ monthly_budget_usd: 0, log_text: 'yes', log_days: 'x' }, d)) === J({ monthly_budget_usd: 0, log_text: true, log_days: 30, ai_enabled: true }))
   const j = R.readJobSettings([{ job: 'item_fill', enabled: false, max_output_tokens: '2000', monthly_budget_usd: '1' }, { job: '' }, { enabled: true }])
   check('job settings: bad rows skipped, text numbers read', j.length === 1 && j[0].enabled === false && j[0].max_output_tokens === 2000 && j[0].monthly_budget_usd === 1 && j[0].model === null)
   check('jobSettingsOf: none changed → defaults on', R.jobSettingsOf([], 'x').enabled === true && R.jobSettingsOf(j, 'item_fill').enabled === false)
@@ -156,13 +156,14 @@ console.log('\nreadRunAnswer')
 console.log('\nrecipeAnswers (the recipe jobs\' answers, read again in the browser)')
 {
   const A = require('../src/features/ai/claude/recipeAnswers')
-  const good = { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true }
+  const good = { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true, language: 'english' }
   check('a good recipe passes unchanged', J(A.readParsedRecipe(good)) === J(good))
   const odd = A.readParsedRecipe({ title: ' Cake ', servings: 'x', instructions: ['a'], usedAi: false, extra: 1, ingredients: [{ name: 5 }, null, { name: 'ok', quantity: -1, unit: 4, note: 'n'.repeat(300) }, { name: 'y'.repeat(200) }, { name: 'egg', quantity: 1e9 }], macro_estimate: { calories: -5, protein_g: '8', carbs_g: 9999, fat_g: 7.4, sugar_g: null } })
   check('hostile values are dropped, never repaired: servings 1, steps none, bad numbers null, long text gone, one extra key never leaves', odd && odd.title === 'Cake' && odd.servings === 1 && odd.instructions === null && odd.usedAi === false
     && J(odd.ingredients) === J([{ name: 'ok', quantity: null, unit: null, note: null }, { name: 'egg', quantity: null, unit: null, note: null }])
     && J(odd.macro_estimate) === J({ calories: null, protein_g: null, carbs_g: null, fat_g: 7, sugar_g: null }) && !('extra' in odd), J(odd))
   check('no title, no ingredient, or something that is not an object is no recipe', A.readParsedRecipe({ ingredients: [{ name: 'a' }] }) === null && A.readParsedRecipe({ title: 'x', ingredients: [] }) === null && A.readParsedRecipe({ title: 'x', ingredients: [{ name: 5 }] }) === null && A.readParsedRecipe(null) === null && A.readParsedRecipe([good]) === null && A.readParsedRecipe('x') === null)
+  check('a recipe is English unless the function says its language is the page\'s (code read it, no model)', A.readParsedRecipe({ ...good, language: undefined }).language === 'english' && A.readParsedRecipe({ ...good, language: 'source' }).language === 'source' && A.readParsedRecipe({ ...good, language: 'Turkish' }).language === 'english')
   check('a recipe is a model\'s unless it says otherwise only with usedAi false', A.readParsedRecipe({ ...good, usedAi: undefined }).usedAi === true && A.readParsedRecipe({ ...good, usedAi: 'no' }).usedAi === true)
   check('the macros job needs all five values, whole, in range', J(A.readMacroEstimate({ calories: 310.4, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 })) === J({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 })
     && A.readMacroEstimate({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6 }) === null && A.readMacroEstimate({ calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: -1 }) === null && A.readMacroEstimate({}) === null && A.readMacroEstimate(5) === null)
@@ -226,6 +227,82 @@ console.log('\nDiagnose: the answer as it enters')
   check('stepSeconds: one decimal under 10 s, whole seconds above', R.stepSeconds(412).replace(/\u00a0/g, ' ') === '0.4 s' && R.stepSeconds(48250).replace(/\u00a0/g, ' ') === '48 s')
   check('no steps at all: a sentence, not a crash', R.diagnoseVerdict([]).text.length > 10)
   check('every verdict is one line of plain text: no newline', [v(net(false)), v(net(true), shape(false)), v(net(true), shape(true), tiny(true), fill(true, 50000))].every(r => !/\n/.test(r.text)))
+}
+
+console.log('\nmigration 195: the times and held calls in ai_usage, the two settings')
+{
+  const row = (o) => usage({ calls: 2, ...o })
+  const u = R.readUsageRows([{ day: '2026-11-01', job: 'item_fill', model: 'm', calls: 5, avg_duration_ms: '1200', max_duration_ms: 9000, timed_calls: '4', held_calls: 1, held_cost_usd: '0.0019' }, { day: '2026-11-02', job: 'old' }])
+  check('usage rows read the five new columns, also as text', u[0].avg_duration_ms === 1200 && u[0].max_duration_ms === 9000 && u[0].timed_calls === 4 && u[0].held_calls === 1 && u[0].held_cost_usd === 0.0019, J(u[0]))
+  check('a database from before 195 sends none of them: all read as 0 (no crash, no NaN)', u[1].avg_duration_ms === 0 && u[1].timed_calls === 0 && u[1].held_calls === 0 && u[1].held_cost_usd === 0)
+  const rows = [
+    row({ job: 'a', model: 'claude-haiku-5-5', calls: 4, timed_calls: 4, avg_duration_ms: 1000, max_duration_ms: 2000, cost_usd: 0.004, input_tokens: 100, cache_read_tokens: 300, cache_write_tokens: 100, thinking_tokens: 40 }),
+    row({ job: 'a', model: 'claude-haiku-5-5', calls: 2, timed_calls: 2, avg_duration_ms: 4000, max_duration_ms: 9000, cost_usd: 0.002, input_tokens: 50, cache_read_tokens: 0, cache_write_tokens: 50, thinking_tokens: 10 }),
+    row({ job: 'a', model: 'claude-sonnet-5-5', calls: 1, timed_calls: 1, avg_duration_ms: 3000, max_duration_ms: 3000, cost_usd: 0.02 }),
+    row({ job: 'b', model: 'claude-haiku-5-5', calls: 3, timed_calls: 2, avg_duration_ms: 500, max_duration_ms: 700, cost_usd: 0.0069, held_calls: 1, held_cost_usd: 0.0019 }),
+    row({ job: 'c', calls: 2, timed_calls: 0, cost_usd: 0 }),
+  ]
+  const byJob = Object.fromEntries(R.totalsByJob(rows).map(t => [t.job, t]))
+  check('a job\'s average time is weighted by the calls that ran (not an average of averages): (4×1000 + 2×4000 + 1×3000) ÷ 7', R.avgDurationMs(byJob.a) === Math.round(15000 / 7) && byJob.a.max_duration_ms === 9000, J(byJob.a))
+  check('a job whose calls all stopped before sending has no average time (null), never 0 ms', R.avgDurationMs(byJob.c) === null)
+  check('the average cost leaves the held calls out of both sides: ($0.0069 − $0.0019) ÷ (2 − 1)', R.avgCostUsd(byJob.b) === 0.005 && R.avgCostUsd(byJob.a) === Math.round((0.026 / 7) * 1e6) / 1e6 && R.avgCostUsd(byJob.c) === null, J([R.avgCostUsd(byJob.a), R.avgCostUsd(byJob.b)]))
+  const month = R.usageTotals(rows)
+  check('the month totals: held calls and what they hold are kept apart from the rest', month.held_calls === 1 && month.held_cost_usd === 0.0019 && month.timed_calls === 9 && month.max_duration_ms === 9000, J(month))
+  check('cache hit: cached ÷ (input + cached + written), as a whole percent; null with no prompt', R.cacheHitPercent(byJob.a) === Math.round((300 / 600) * 100) && R.cacheHitPercent(byJob.c) === null && R.cacheHitPercent({ input_tokens: 10, cache_read_tokens: 90, cache_write_tokens: 0 }) === 90)
+  const models = R.totalsByModel(rows, 'a')
+  check('split by model for one job, the most used first: Haiku 6 calls, Sonnet 1', models.map(m => `${m.model}:${m.calls}`).join() === 'claude-haiku-5-5:6,claude-sonnet-5-5:1', models.map(m => m.model).join())
+  check('split by model for the whole month when no job is named', R.totalsByModel(rows).reduce((n, m) => n + m.calls, 0) === 12)
+  check('thinking tokens add up per job', byJob.a.thinking_tokens === 50)
+  check('a day with no calls has zero for every new field too', (() => { const d = R.totalsByDay(rows, ['2026-11-02', '2026-12-31']); return d[1].timed_calls === 0 && d[1].held_calls === 0 && d[1].max_duration_ms === 0 })())
+  const j = R.readJobSettings([{ job: 'a', thinking: 'off' }, { job: 'b', thinking: 'adaptive' }, { job: 'c', thinking: 'maybe' }, { job: 'd' }, { job: 'e', thinking: null }, { job: 'f', thinking: 5 }])
+  check('a job\'s thinking: off, adaptive, or null (the default) for anything else or nothing', j.map(x => x.thinking).join() === 'off,adaptive,,,,', j.map(x => x.thinking).join())
+  check('no stored row means every default, thinking null', R.jobSettingsOf([], 'x').thinking === null)
+  check('the master switch reads false only when it is false: a missing column or odd value is on', R.readSettings({ monthly_budget_usd: 5, ai_enabled: false }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === false && R.readSettings({ monthly_budget_usd: 5 }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === true && R.readSettings({ ai_enabled: 'no' }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === true)
+  check('a call still pending has its own word, "In flight", and is not unknown', R.outcomeMeta('pending').known === true && R.outcomeMeta('pending').label === 'In flight')
+}
+
+console.log('\nthe cost of one call: each kind of token times its price')
+{
+  const prices = { checkedOn: '2026-11-20', source: '', longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, models: [
+    { model: 'claude-haiku-5-5', inputPerMTok: 0.10, outputPerMTok: 0.50, cacheReadPerMTok: 0.01, cacheWrite5mPerMTok: 0.125, cacheWrite1hPerMTok: 0.20 },
+    { model: 'claude-sonnet-5-5', inputPerMTok: 2, outputPerMTok: 10, cacheReadPerMTok: 0.10, cacheWrite5mPerMTok: 2.5, cacheWrite1hPerMTok: 4 },
+  ] }
+  const call = (o) => ({ id: 'c', created_at: '2026-11-22T10:00:00Z', run_id: 'r', step: 1, job: 'item_fill', caller: 'app', mode: 'live', provider: 'anthropic', model: 'claude-haiku-5-5', served_model: null, effort: 'low', outcome: 'ok', stop_reason: 'end_turn', error: null, request_id: null, input_tokens: 0, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 0, thinking_tokens: 0, long_prompt: false, cost_usd: 0, duration_ms: 1000, instructions_version: 'v', tools: [], ...o })
+  // 120 input, 1500 cached, 300 output (100 of it thinking) on Haiku, the numbers of the function's own test.
+  const c = call({ input_tokens: 120, cache_read_tokens: 1500, output_tokens: 300, thinking_tokens: 100, cost_usd: 0.000177 })
+  const b = R.costBreakdown(c, prices)
+  check('one line per kind of token used, each tokens × price ÷ 1 000 000', b.lines.map(l => `${l.key}:${l.tokens}:${l.usd}`).join() === 'input:120:0.000012,cacheRead:1500:0.000015,output:300:0.00015', J(b.lines))
+  check('the lines add up to the stored cost, to the ledger\'s six decimals', b.worked === 0.000177 && b.stored === 0.000177 && b.multiplier === 1 && !b.held, J(b))
+  check('the output line says how much of it was thinking, and the cached line says it is the instructions', /100 tokens of it thinking/.test(b.lines[2].what) && /instructions/.test(b.lines[1].what) && /your text/.test(b.lines[0].what))
+  const w = R.costBreakdown(call({ cache_write_5m_tokens: 2000, cache_write_1h_tokens: 1000, input_tokens: 10, output_tokens: 10, cost_usd: 1 }), prices)
+  check('both cache writes are their own lines at their own prices', w.lines.find(l => l.key === 'cacheWrite5m').usd === 0.00025 && w.lines.find(l => l.key === 'cacheWrite1h').usd === 0.0002, J(w.lines))
+  const lp = R.costBreakdown(call({ input_tokens: 150000, output_tokens: 1000, long_prompt: true, cost_usd: 0.0775 }), prices)
+  check('a long prompt multiplies every line by 5 and says so; 150 000 × 0.10 + 1 000 × 0.50 per million = 0.0155, ×5 = 0.0775', lp.multiplier === 5 && lp.multiplierWhy.join() === 'long prompt ×5' && lp.worked === 0.0775, J(lp))
+  const ba = R.costBreakdown(call({ mode: 'batch', input_tokens: 1000000, cost_usd: 0.05 }), prices)
+  check('a batch call costs half, and says so', ba.multiplier === 0.5 && ba.worked === 0.05 && ba.multiplierWhy.join() === 'batch ×0.5')
+  check('both together multiply: ×2.5', R.costBreakdown(call({ mode: 'batch', long_prompt: true, input_tokens: 1000000 }), prices).multiplier === 2.5)
+  // Held at the worst case.
+  const held = call({ outcome: 'error', stop_reason: null, cost_usd: 0.00191, duration_ms: 30020 })
+  check('a failed call with a cost and no token is held at worst case: no lines, the stored amount is the reservation', R.heldAtWorstCase(held) && R.costBreakdown(held, prices).held && R.costBreakdown(held, prices).lines.length === 0 && R.costBreakdown(held, prices).stored === 0.00191)
+  check('a pending call with a reservation is held too', R.heldAtWorstCase(call({ outcome: 'pending', cost_usd: 0.002 })))
+  check('a failure with tokens is a real bill, not held; a failure that cost nothing (a refused key) is not held; an answered call never', !R.heldAtWorstCase(call({ outcome: 'error', cost_usd: 0.0001, input_tokens: 10 })) && !R.heldAtWorstCase(call({ outcome: 'error', cost_usd: 0 })) && !R.heldAtWorstCase(call({ outcome: 'ok', cost_usd: 0.001 })) && !R.heldAtWorstCase(call({ outcome: 'budget', cost_usd: 0 })))
+  const un = R.costBreakdown(call({ model: 'claude-unknown-9', input_tokens: 10, cost_usd: 0.5 }), prices)
+  check('a model with no price in the table shows the stored cost and says it is unpriced', un.unpriced && un.lines.length === 0 && un.stored === 0.5)
+  check('prices not loaded yet: the stored cost, no crash', R.costBreakdown(c, undefined).lines.length === 0 && R.costBreakdown(c, undefined).stored === 0.000177)
+  check('a stop before sending has no lines and no hold', (() => { const s = R.costBreakdown(call({ outcome: 'budget' }), prices); return s.lines.length === 0 && !s.held && s.stored === 0 })())
+  check('a changed price shows up as a difference between the worked and the stored cost', Math.abs(R.costBreakdown(call({ input_tokens: 1000000, cost_usd: 0.2 }), prices).worked - 0.1) < 1e-9)
+}
+
+console.log('\nthe AI views: four, with Learn holding three')
+{
+  const B = require('../src/features/developer/developerBoards')
+  check('four views under the bar', J(B.AI_VIEWS) === J(['overview', 'calls', 'settings', 'learn']) && J(B.AI_LEARN_VIEWS) === J(['how', 'prices', 'bench']))
+  check('the four labels are short enough for a phone: none over 10 characters', B.AI_VIEWS.every(v => B.AI_VIEW_LABEL[v].length <= 10))
+  check('an address names its view; anything else is the Overview', J(B.parseAiLocation(null, null)) === J({ view: 'overview', learn: 'how' }) && B.parseAiLocation('calls', null).view === 'calls' && B.parseAiLocation('nonsense', 'bench').view === 'overview' && B.parseAiLocation('constructor', null).view === 'overview')
+  check('Learn names its page; an unknown page is How it works', J(B.parseAiLocation('learn', 'prices')) === J({ view: 'learn', learn: 'prices' }) && B.parseAiLocation('learn', 'x').learn === 'how' && B.parseAiLocation('learn', null).learn === 'how')
+  check('the older links ?view=how, ?view=prices and ?view=bench still land on their page inside Learn', ['how', 'prices', 'bench'].every(v => J(B.parseAiLocation(v, null)) === J({ view: 'learn', learn: v })))
+  check('the page board of How it works puts Diagnose right after the path of a request, and Gemini\'s leftovers before the jobs', J(B.AI_HOW_BOARD[1]) === J(['status', 'steps', 'diagnose', 'gemini', 'jobs', 'parts', 'rules', 'glossary']) && J(B.AI_HOW_SECTIONS) === J(B.AI_HOW_BOARD[1]))
+  check('every board is still counted for the page header\'s one width', B.AI_VIEW_BOARDS.length === 6)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

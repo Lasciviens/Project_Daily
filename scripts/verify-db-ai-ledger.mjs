@@ -1,4 +1,5 @@
-// Runs migration 194's scenarios (the AI ledger) on a throwaway Postgres. The monthly budget wall and the rate
+// Runs migration 194's and 195's scenarios (the AI ledger; 195 adds the master switch, a job's thinking setting, ai_usage's
+// times and held calls, and ai_reserve's per-caller daily cap) on a throwaway Postgres. The monthly budget wall and the rate
 // limits of the `claude` function are worked out from public.ai_calls, so the question everywhere is: can anyone
 // but the service role move them?
 // Three databases, each from scripts/db-tests/ai-ledger/base.sql and the real 194 applied twice (the second run
@@ -26,6 +27,7 @@ const migDir = join(root, 'supabase/migrations')
 const mig = f => join(migDir, f)
 const dir = join(root, 'scripts/db-tests/ai-ledger')
 const FILE = '194_ai_ledger.sql'
+const FILE2 = '195_ai_controls.sql'
 const TABLES = ['ai_calls', 'ai_settings', 'ai_job_settings']
 const fail = msg => { console.error(`verify-db-ai-ledger: ${msg}`); process.exit(1) }
 
@@ -108,6 +110,46 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
     problems.push('the daily purge is not scheduled with the guard (no pg_cron: a notice; unschedule first; plain SQL)')
   }
   if (problems.length) fail(`migration 194 has ${problems.join('; ')}`)
+}
+
+// Static, 195.
+{
+  const src = readFileSync(mig(FILE2), 'utf8')
+  const sql = noComments(src)
+  const stmts = statementsOf(src)
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
+  if (/create table/i.test(sql)) problems.push('a new table (195 only changes what 194 made)')
+  if (!stmts.includes('alter table public.ai_settings add column if not exists ai_enabled boolean not null default true')) problems.push('ai_settings.ai_enabled is not "boolean not null default true"')
+  if (!/alter table public\.ai_job_settings add column if not exists thinking text check \(thinking is null or thinking in \('adaptive', 'off'\)\)/i.test(stmts.join(';\n'))) problems.push('ai_job_settings.thinking has no CHECK on adaptive/off')
+  const fns = [...sql.matchAll(/create (?:or replace )?function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?\n\$\$;/gi)]
+  if (fns.map(f => f[1]).sort().join() !== 'ai_reserve,ai_usage') problems.push(`creates functions ${fns.map(f => f[1]).join(', ') || 'none'} (expected ai_reserve, ai_usage)`)
+  for (const [body, name] of fns) {
+    if (!/\nset search_path = ''\n/.test(body)) problems.push(`${name} has no search_path ''`)
+    const definer = name === 'ai_reserve'
+    if (/security definer/i.test(body) !== definer || /security invoker/i.test(body) === definer) problems.push(`${name}: ${definer ? 'not SECURITY DEFINER' : 'not SECURITY INVOKER'}`)
+    if (/\bexecute\b/i.test(body)) problems.push(`${name} builds SQL at run time`)
+    const reads = (body.match(/from public\.ai_calls c\b/g) || []).length
+    const scope = name === 'ai_reserve' ? /where c\.user_id = p_user\b/g : /where c\.user_id = v_user\b/g
+    if (!reads || (body.match(scope) || []).length !== reads) problems.push(`${name}: a read of ai_calls is not scoped to the account`)
+    if (name === 'ai_reserve') {
+      if (!/pg_advisory_xact_lock\(/.test(body)) problems.push('ai_reserve takes no per-account lock')
+      if (!/c\.caller = p_caller and c\.created_at > v_now - interval '24 hours'/.test(body)) problems.push('ai_reserve does not count this caller\'s own 24 hours under the lock')
+      if (!/v_by_caller >= p_caller_per_day/.test(body)) problems.push('ai_reserve does not refuse a caller over its daily cap')
+      if (/\bupdate\b|\bdelete\b/i.test(body)) problems.push('ai_reserve changes or deletes rows (it may only add one)')
+    } else {
+      if (!/\nstable\n/.test(body)) problems.push('ai_usage is not STABLE')
+      if (!/v_user is null or not public\.is_app_user\(\)/.test(body)) problems.push('ai_usage does not refuse a caller who is not an app user')
+    }
+  }
+  if (!stmts.includes('drop function if exists public.ai_usage(timestamptz, timestamptz)')) problems.push('the old ai_usage is not dropped first (a result cannot change with CREATE OR REPLACE)')
+  if (!stmts.some(s => /^drop function if exists public\.ai_reserve\(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer\)$/.test(s))) problems.push('the old 13-argument ai_reserve is not dropped (the cap could be skipped by calling it)')
+  const reserveGrants = stmts.filter(s => /^grant .* on function public\.ai_reserve\(/i.test(s))
+  if (reserveGrants.length !== 1 || !/ to service_role$/i.test(reserveGrants[0])) problems.push(`ai_reserve is granted as "${reserveGrants.join(' | ')}" (service_role only)`)
+  if (!stmts.some(s => /^revoke all on function public\.ai_reserve\(.*\) from public, anon, authenticated$/i.test(s))) problems.push('ai_reserve is not revoked from public, anon and authenticated')
+  if (!stmts.includes('revoke all on function public.ai_usage(timestamptz, timestamptz) from public, anon')) problems.push('ai_usage is not revoked from public and anon')
+  if (!stmts.includes('grant execute on function public.ai_usage(timestamptz, timestamptz) to authenticated, service_role')) problems.push('ai_usage is not granted to authenticated and service_role')
+  if (problems.length) fail(`migration 195 has ${problems.join('; ')}`)
 }
 
 // Static, every migration from 194 on: nothing opens the ledger to the browser later, the app's generic delete and
@@ -217,15 +259,21 @@ for (const s of suites) {
     if (s.before.length) step(`${s.key}: old default grants`, () => psql(target, s.before))
     for (const f of s.chain) step(`${s.key}: ${f}`, () => psql(target, ['-f', mig(f)]))
     step(`${s.key}: 194`, () => psql(target, ['-f', mig(FILE)]))
-    const first = step(`${s.key}: fingerprint`, () => psql(target, ['-At', '-c', FINGERPRINT]))
-    step(`${s.key}: 194 again`, () => psql(target, ['-f', mig(FILE)]))
-    const second = psql(target, ['-At', '-c', FINGERPRINT])
-    if (first.split('\n').length < 80) throw Object.assign(new Error('fingerprint'), { stderr: `ERROR: the catalogue fingerprint has only ${first.split('\n').length} lines (it read nothing?)` })
-    if (first !== second) {
-      const a = new Set(first.split('\n')), b = new Set(second.split('\n'))
-      const diff = [...second.split('\n').filter(l => !a.has(l)).map(l => `+ ${l}`), ...first.split('\n').filter(l => !b.has(l)).map(l => `- ${l}`)]
-      throw Object.assign(new Error('not idempotent'), { stderr: `ERROR: a second run of 194 changed the database:\n${diff.slice(0, 12).map(l => `DETAIL: ${l}`).join('\n')}` })
+    // Each migration runs twice, one after the other (194 twice, then 195 twice): the catalogue must not change.
+    const twice = (file, label) => {
+      const first = step(`${s.key}: fingerprint after ${label}`, () => psql(target, ['-At', '-c', FINGERPRINT]))
+      step(`${s.key}: ${label} again`, () => psql(target, ['-f', mig(file)]))
+      const second = psql(target, ['-At', '-c', FINGERPRINT])
+      if (first.split('\n').length < 80) throw Object.assign(new Error('fingerprint'), { stderr: `ERROR: the catalogue fingerprint has only ${first.split('\n').length} lines (it read nothing?)` })
+      if (first !== second) {
+        const a = new Set(first.split('\n')), b = new Set(second.split('\n'))
+        const diff = [...second.split('\n').filter(l => !a.has(l)).map(l => `+ ${l}`), ...first.split('\n').filter(l => !b.has(l)).map(l => `- ${l}`)]
+        throw Object.assign(new Error('not idempotent'), { stderr: `ERROR: a second run of ${label} changed the database:\n${diff.slice(0, 12).map(l => `DETAIL: ${l}`).join('\n')}` })
+      }
     }
+    twice(FILE, '194')
+    step(`${s.key}: 195`, () => psql(target, ['-f', mig(FILE2)]))
+    twice(FILE2, '195')
     done[s.key] = step(`${s.key}: ${s.scenarios}`, () => runScenarios(target, join(dir, s.scenarios)))
   } catch (e) {
     code = 1
@@ -236,4 +284,4 @@ for (const s of suites) {
   if (code) break
 }
 if (code) process.exit(code)
-console.log(`verify-db-ai-ledger: 194 ran twice on three databases and left each as its first run did; ${done.old} scenarios passed with the old default grants, ${done.now} without them, and ${done.doors} at the app's delete and undo doors`)
+console.log(`verify-db-ai-ledger: 194 and 195 ran twice on three databases and left each as its first run did; ${done.old} scenarios passed with the old default grants, ${done.now} without them, and ${done.doors} at the app's delete and undo doors`)

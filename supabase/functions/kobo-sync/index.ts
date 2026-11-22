@@ -1870,7 +1870,7 @@ async function claudeDeviceCredential(serviceKey: string): Promise<string> {
  * owner from its own environment, so a bug here cannot point the call at another account. What comes back is
  * input again: only text, cleaned for the e-ink screen, ever leaves.
  */
-async function askClaude(input: AskInput): Promise<{ answer: string; model: string | null } | { failure: Response }> {
+async function askClaude(input: AskInput): Promise<{ answer: string; answerEn: string; model: string | null } | { failure: Response }> {
   const key = serviceKey()
   if (!key) return { failure: json({ error: 'not_configured', message: 'The server has no key to reach the AI function.' }, 503) }
   const ctrl = new AbortController()
@@ -1881,10 +1881,12 @@ async function askClaude(input: AskInput): Promise<{ answer: string; model: stri
       headers: { 'Content-Type': 'application/json', 'x-claude-server-key': await claudeDeviceCredential(key) },
       body: JSON.stringify({ action: 'run', caller: 'kobo', job: 'kobo_ask', input }),
     })
-    const data = await res.json().catch(() => null) as { ok?: unknown; reason?: unknown; result?: { answer?: unknown }; call?: { served_model?: unknown } } | null
+    const data = await res.json().catch(() => null) as { ok?: unknown; reason?: unknown; result?: { answer?: unknown; answer_en?: unknown }; call?: { served_model?: unknown } } | null
     if (data?.ok === true) {
+      // `answer` is for the screen (the language the reader chose), `answer_en` is the English copy that is saved.
       const answer = cleanAnswer(data.result?.answer)
-      if (answer) return { answer, model: typeof data.call?.served_model === 'string' ? data.call.served_model.slice(0, 80) : null }
+      const answerEn = cleanAnswer((data.result as { answer_en?: unknown } | undefined)?.answer_en)
+      if (answer && answerEn) return { answer, answerEn, model: typeof data.call?.served_model === 'string' ? data.call.served_model.slice(0, 80) : null }
       return { failure: json({ error: 'no_answer', message: 'No answer this time — try again.' }, 502) }
     }
     // The reasons `claude` gives, as the codes the plugin already knows.
@@ -1907,7 +1909,7 @@ async function handleAsk(db: Db, userId: string, raw: unknown) {
   if ((count ?? 0) >= ASK_DAILY_CAP) return json({ error: 'rate_limited', message: `That is ${ASK_DAILY_CAP} questions in a day — try again tomorrow.` }, 429)
   const asked = await askClaude(input)
   if ('failure' in asked) return asked.failure
-  const { answer, model } = asked
+  const { answer, answerEn, model } = asked
   const md5 = (raw as { md5?: unknown })?.md5
   let bookId: string | null = null
   if (typeof md5 === 'string' && MD5.test(md5)) {
@@ -1916,9 +1918,10 @@ async function handleAsk(db: Db, userId: string, raw: unknown) {
   }
   const { error } = await db.from('book_ai_notes').insert({
     user_id: userId, book_id: bookId, book_title: input.title, ask: input.ask, question: input.question,
-    selection: input.selection, answer, model, percent: input.percent,
+    selection: input.selection, answer: answerEn, model, percent: input.percent,
   })
   if (error) console.error('kobo-sync ask save', errText(error))
+  // The Kobo's screen gets the answer in its language; the notes keep the English copy (everything saved is English).
   return json({ ok: true, answer, model, saved: !error })
 }
 

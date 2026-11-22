@@ -42,7 +42,7 @@ Answer with one JSON object in the required format and nothing else.
 
 Give a field only when the sentence states it or plainly implies it, and leave every other field out. An empty field costs the owner nothing: they fill it in themselves. A guessed value does harm, because the owner trusts a filled field to be what they wrote. If the sentence gives you nothing to fill, answer {}.
 
-Keep text values in the language and the words of the sentence, as plain text (write & < > as themselves). Write every day as YYYY-MM-DD and every time as HH:MM on the 24-hour clock: "2 pm" is 14:00, "half past eight in the evening" is 20:30, "noon" is 12:00.
+Write the title and the notes in English, whatever language the sentence is in: items are saved, and everything the app saves is English. A name of a person or a place stays as the owner wrote it, and so does the place field. Text values are plain text (write & < > as themselves). Write every day as YYYY-MM-DD and every time as HH:MM on the 24-hour clock: "2 pm" is 14:00, "half past eight in the evening" is 20:30, "noon" is 12:00.
 
 # Reading days
 
@@ -90,7 +90,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-22.3'
+const ITEM_FILL_VERSION = '2026-11-22.4'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }

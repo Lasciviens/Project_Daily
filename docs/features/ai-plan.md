@@ -40,49 +40,51 @@ Words used below, once:
 
 ## 1. Every use of Gemini today
 
+**Where Gemini still is (22.11.2026):** only Ask AI and the PT coach chat (phase 4), the search by meaning (phase 4–5) and the leftovers named in phase 5. Developer → AI → Learn → How it works has a "Still on Gemini" card with the same list.
+
 ### Server (the Gemini key lives only here)
 
-| Where | What it does | Model today |
-|---|---|---|
-| `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks |
-| `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same |
-| `ai-proxy` — surface `phone` | The phone's **brief** and **ask**: one answer, no tools. | `gemini-3.1-flash-lite` |
-| `ai-proxy` — `responseSchema` mode (removed in 2a) | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain |
-| `ai-proxy` — `fetchUrl` (removed in 2a) | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain |
-| `ai-proxy` — `itemFill` | The item screen's **✨ fill from a sentence**. | `gemini-3.1-flash-lite` first |
-| `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model |
-| `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) |
-| `supabase/functions/kobo-sync` → `handleAsk` | A question about a book passage, asked from the Kobo. At most 100 a day; answers saved in `book_ai_notes`. | `gemini-3.1-flash-lite`, `gemini-2.5-flash` |
-| `supabase/functions/phone-gateway` → `ask`, `brief` | Forwards the iPhone shortcut's questions to `ai-proxy`, surface `phone`. | via ai-proxy |
+| Where | What it does | Model today | Status (22.11.2026) |
+|---|---|---|---|
+| `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks | Still on Gemini until phase 4 (Gemini is off: it answers nothing) |
+| `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same | Still on Gemini until phase 4 |
+| `ai-proxy` — surface `phone` | The phone's **brief** and **ask**: one answer, no tools. | `gemini-3.1-flash-lite` | **Removed in 2c:** `phone-gateway` calls `claude` (`phone_brief`, `phone_ask`) itself |
+| `ai-proxy` — `responseSchema` mode (removed in 2a) | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain | **Removed in 2a** |
+| `ai-proxy` — `fetchUrl` (removed in 2a) | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain | **Removed in 2a** |
+| `ai-proxy` — `itemFill` | The item screen's **✨ fill from a sentence**. | `gemini-3.1-flash-lite` first | **Removed in phase 1** |
+| `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model | Still on Gemini until phase 4–5 (the old Reindex button is hidden since 22.11.2026) |
+| `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) | Stays until phase 4 (no AI call) |
+| `supabase/functions/kobo-sync` → `handleAsk` | A question about a book passage, asked from the Kobo. At most 100 a day; answers saved in `book_ai_notes`. | `gemini-3.1-flash-lite`, `gemini-2.5-flash` | **Removed in 2c:** the `kobo_ask` job |
+| `supabase/functions/phone-gateway` → `ask`, `brief` | Forwards the iPhone shortcut's questions to `ai-proxy`, surface `phone`. | via ai-proxy | **Moved in 2c:** the `phone_brief` / `phone_ask` jobs |
 
 ### App screens
 
-| Screen | Function | File |
-|---|---|---|
-| Ask AI panel: chat, photos, voice, Confirm / Cancel | `sendMessage`, `sendCoachMessage`, `settleAIAction` | `src/features/ai/components/AIPanel.tsx`, `src/features/ai/api/aiApi.ts` (695 lines) |
-| Training → Coach: the PT assessment | `generatePTAssessment` → `invokeAI` | `src/features/training/api/ptCoachApi.ts`, `PTCoachTab.tsx` (shows the Gemini model name) |
-| Recipe editor: from text, from a link, macros | `parseRecipeText`, `parseRecipeFromUrl`, `estimateRecipeMacros` | `src/features/recipes/components/RecipeModal.tsx` |
-| Food → Quick guess | `describeGuess`, `suggestGuessOptions` | `src/features/recipes/hooks/useQuickGuess.ts` |
-| Item screen ✨ | `fillItemFields` | `src/shared/components/plan-modal/useItemFill.ts`, `src/features/items/itemFill.ts` |
-| Developer → Reindex AI search | `reindexAiSearch` | `src/features/developer/pages/DeveloperPage.tsx` |
-| Kobo passage question (the prompt) | `buildAskPrompt` | `src/features/books/koboDevice.ts` |
-| Settings → APIs and Subscriptions | the "Gemini API" entry and the `gemini` service | `src/features/settings/apiRegistry.ts`, `subscriptionRules.ts`, `SubscriptionBits.tsx` |
+| Screen | Function | File | Status (22.11.2026) |
+|---|---|---|---|
+| Ask AI panel: chat, photos, voice, Confirm / Cancel | `sendMessage`, `sendCoachMessage`, `settleAIAction` | `src/features/ai/components/AIPanel.tsx`, `src/features/ai/api/aiApi.ts` (695 lines) | Still on Gemini until phase 4 |
+| Training → Coach: the PT assessment | `generatePTAssessment` → `invokeAI` | `src/features/training/api/ptCoachApi.ts`, `PTCoachTab.tsx` (shows the Gemini model name) | **Removed in 2b** (`coach_assessment`; the tab shows the saved model) |
+| Recipe editor: from text, from a link, macros | `parseRecipeText`, `parseRecipeFromUrl`, `estimateRecipeMacros` | `src/features/recipes/components/RecipeModal.tsx` | **Removed in 2a** |
+| Food → Quick guess | `describeGuess`, `suggestGuessOptions` | `src/features/recipes/hooks/useQuickGuess.ts` | **Removed in 2a** |
+| Item screen ✨ | `fillItemFields` | `src/shared/components/plan-modal/useItemFill.ts`, `src/features/items/itemFill.ts` | **Removed in phase 1** |
+| Developer → Reindex AI search | `reindexAiSearch` | `src/features/developer/pages/DeveloperPage.tsx` | Hidden since 22.11.2026; removed in phase 5 |
+| Kobo passage question (the prompt) | `buildAskPrompt` | `src/features/books/koboDevice.ts` | **Removed in 2c** |
+| Settings → APIs and Subscriptions | the "Gemini API" entry and the `gemini` service | `src/features/settings/apiRegistry.ts`, `subscriptionRules.ts`, `SubscriptionBits.tsx` | **Removed in phase 1** |
 
 ### Database
 
-| Item | Migration | What it holds |
-|---|---|---|
-| `ai_usage_log` | 064 | Tokens per chat answer. Has data for 22.07–25.08.2026. |
-| `ai_query_log` | 064 | Every data read the assistant ran. |
-| `ai_memory` | 064 | Facts and preferences the assistant saved about you. |
-| `ai_run_read_query()` | 064 | The assistant's read-only SQL, run with your own rights. |
-| `ai_embeddings` (vector of 768) + `ai_semantic_search()` | 065 | Search by meaning. **Gemini-specific numbers.** |
-| `ai_reviews` | 065 | Unused, empty. |
-| `ai_pending_actions` | 140 | Writes waiting for your Confirm. |
-| `ai_embeddings_follow_source` trigger | 140 | Drops a search copy when its row changes. |
-| `book_ai_notes` | Kobo | Passage questions and answers. |
-| `pt_assessments.model` | 051 | Which model wrote an assessment. |
-| `service_subscriptions` value `gemini` | 115 | Gemini as a listed service. |
+| Item | Migration | What it holds | Status (22.11.2026) |
+|---|---|---|---|
+| `ai_usage_log` | 064 | Tokens per chat answer. Has data for 22.07–25.08.2026. | Stays (history) |
+| `ai_query_log` | 064 | Every data read the assistant ran. | Stays until phase 4 |
+| `ai_memory` | 064 | Facts and preferences the assistant saved about you. | Stays until phase 4 |
+| `ai_run_read_query()` | 064 | The assistant's read-only SQL, run with your own rights. | Stays until phase 4 |
+| `ai_embeddings` (vector of 768) + `ai_semantic_search()` | 065 | Search by meaning. **Gemini-specific numbers.** | Phase 5 (dropping needs the owner's OK) |
+| `ai_reviews` | 065 | Unused, empty. | Phase 5 (OK needed) |
+| `ai_pending_actions` | 140 | Writes waiting for your Confirm. | Stays until phase 4 |
+| `ai_embeddings_follow_source` trigger | 140 | Drops a search copy when its row changes. | Phase 4 |
+| `book_ai_notes` | Kobo | Passage questions and answers. | Stays (answers saved by the Kobo, now English) |
+| `pt_assessments.model` | 051 | Which model wrote an assessment. | Stays (old rows say Gemini) |
+| `service_subscriptions` value `gemini` | 115 | Gemini as a listed service. | Phase 5 |
 
 ### Secrets, tests and docs
 
@@ -195,20 +197,20 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 
 ### Used from the start
 
-| Feature | What it gives you |
-|---|---|
-| **Prompt caching** | The fixed part (tools + rules, about 7K tokens) costs a tenth on every step after the first. That's the biggest cost lever, since an answer sent ~100K tokens. |
-| **Mid-conversation system messages** | Live context (today, the time, your data) goes in after the cached part, so it never breaks the cache. |
-| **Structured outputs** (not used for now) | Anthropic can enforce an answer shape. Live (22.11.2026) ✨'s 21 optional fields hung for 90 s: every optional field doubles the grammar's states, and compiling it can take up to 180 s (cached 24 h after). So no job enforces a shape now: each writes its shape into its instructions and our own check holds every field, as it always did. A later job may enforce a very small shape with every field required (`docs/integrations/anthropic.md`, trap 16). |
-| **Strict tool use** | A tool's input always matches its definition. Anthropic allows at most 20 such tools in one request, so the new tool set is small and sharp. |
-| **Adaptive thinking + effort per job** | Low for form fills, medium for chat. The log shows a **summary of how it reasoned**, so you can see why it answered what it did. |
-| **Vision** | Photos in the chat, as today. |
-| **Context editing** (beta) | Old tool results inside a long answer are cleared before the next step, so a 4-step answer stops resending everything. That attacks the 100K-per-answer problem. Haiku 5.5 supports it (checked 20.11.2026). |
-| **Task budgets** (beta) | A token ceiling per answer that the model paces itself to, instead of being cut off. |
-| **Token counting** | The AI page can show what a prompt will cost before it's sent. |
-| **Exact usage per call** | Every answer reports its input, cached, written and output tokens. The log stores them, and cost is worked out from the price table. |
-| **Message Batches** | Jobs that can wait (weekly reports) are queued and answered within hours, usually within one, at **half price**. Results land in the same log. Anthropic keeps a batch's content 29 days, so the results stay downloadable. |
-| **Refusal handling** | Haiku can decline a request its safety filters flag, and Anthropic offers no automatic fallback for it. You see a decline plainly. Optionally (your setting) our function retries it once on Sonnet 5.5. |
+| Feature | What it gives you | Status (22.11.2026) |
+|---|---|---|
+| **Prompt caching** | The fixed part (tools + rules, about 7K tokens) costs a tenth on every step after the first. That's the biggest cost lever, since an answer sent ~100K tokens. | **Built** (phase 1) |
+| **Mid-conversation system messages** | Live context (today, the time, your data) goes in after the cached part, so it never breaks the cache. | Phase 4 |
+| **Structured outputs** (not used for now) | Anthropic can enforce an answer shape. Live (22.11.2026) ✨'s 21 optional fields hung for 90 s: every optional field doubles the grammar's states, and compiling it can take up to 180 s (cached 24 h after). So no job enforces a shape now: each writes its shape into its instructions and our own check holds every field, as it always did. A later job may enforce a very small shape with every field required (`docs/integrations/anthropic.md`, trap 16). | **Dropped for now:** not used (the live test of 22.11.2026), see the row |
+| **Strict tool use** | A tool's input always matches its definition. Anthropic allows at most 20 such tools in one request, so the new tool set is small and sharp. | Phase 4 |
+| **Adaptive thinking + effort per job** | Low for form fills, medium for chat. The log shows a **summary of how it reasoned**, so you can see why it answered what it did. | **Built** (phase 1); a job's thinking can be switched off in Settings (migration 195), adaptive until measured |
+| **Vision** | Photos in the chat, as today. | Phase 4 |
+| **Context editing** (beta) | Old tool results inside a long answer are cleared before the next step, so a 4-step answer stops resending everything. That attacks the 100K-per-answer problem. Haiku 5.5 supports it (checked 20.11.2026). | Phase 4 |
+| **Task budgets** (beta) | A token ceiling per answer that the model paces itself to, instead of being cut off. | Phase 4 |
+| **Token counting** | The AI page can show what a prompt will cost before it's sent. | **Built** (2d: the Test bench's free count) |
+| **Exact usage per call** | Every answer reports its input, cached, written and output tokens. The log stores them, and cost is worked out from the price table. | **Built** (phase 1) |
+| **Message Batches** | Jobs that can wait (weekly reports) are queued and answered within hours, usually within one, at **half price**. Results land in the same log. Anthropic keeps a batch's content 29 days, so the results stay downloadable. | Phase 3 |
+| **Refusal handling** | Haiku can decline a request its safety filters flag, and Anthropic offers no automatic fallback for it. You see a decline plainly. A retry once on Sonnet 5.5 was planned as a setting: **not built** — it waits for a real refusal to look at (owner-critic round, 22.11.2026), and Settings does not offer it. | **Not built.** A decline is shown plainly; the retry on Sonnet waits for a real refusal to look at |
 
 ### Later, one at a time, each measured on your own questions
 
@@ -227,6 +229,8 @@ Haiku 5.5 has a 1M context window and up to 128K tokens of output. The function 
 - **Managed Agents:** see "Why we run the loop ourselves" above.
 - **Message threads:** the conversation would be kept at Anthropic for a while. Not needed at this size.
 - **Fast mode:** only on Opus and Fable, at 2× the price.
+- **Retry of a refusal on Sonnet:** not built. There has been no real refusal to look at, and Settings does not offer it; a decline is shown plainly.
+- **Streaming:** the function waits for the whole answer. The jobs' answers are short and arrive in about a second (a 4000-token recipe has 50 s), so streaming would add code for nothing visible; reconsidered with the chat in phase 4.
 - **Admin API / official cost reports:** they need an admin key that can manage your whole Anthropic organization, which is too powerful to keep on a server. Our own log has the exact usage per call, and Anthropic's Console shows the official bill.
 - **Data residency** (`inference_geo`): Anthropic offers no EU option (checked 20.11.2026); the only other choice, "us", just costs 10% more.
 - **Computer use, bash, text editor, MCP connector:** nothing in this app needs them.
@@ -274,9 +278,9 @@ Written down before code, as `AGENTS.md` requires. For each input, what an attac
 | The model's answer | A wrong or harmful value in a form, or an address that opens somewhere else | Every field checked by our own code, allow-lists, never "fixed up". Links taken only from what you typed (as ✨ does today). |
 | Tool calls | A write to another account, or a target built from stored data | Every query forced to your user id. Write targets built server-side at the moment of use. New link columns go into `AI_NO_WRITE`. |
 | The device secret (Kobo, phone), stolen | Calls to the phone or Kobo actions from anywhere | The device function checks it in constant time and fixes the caller and job itself; `claude` runs only jobs whose `callers` names that device, answers 100 calls a day per device, and the ledger's caps and the budget wall bind too. The thief gets short, tool-less answers within those caps, and with the phone secret nothing the phone's deterministic actions did not already give (`tasks_today`, `sleep_stats`); no longer `ai-proxy`'s tools. |
-| The server key `claude` receives from a device function | A request with a forged or guessed key, or a device function that is steered into naming another account | `x-claude-server-key` is compared with `sameSecret` against `claude`'s own service key (no key set: refused), before the body is read; a request that carries the header never falls through to the token path. The body names only the caller (from a fixed list of two), the job and its input; the account is `HEVY_USER_ID` from `claude`'s environment, never from the body. Holding the service key already means holding the database, so this adds no new power; the header name keeps it out of `Authorization`, which a gateway or a log could print. |
+| The credential `claude` receives from a device function | A request with a forged or guessed credential, a device function steered into naming another account, or the key leaking from a header or a log | `x-claude-server-key` holds **not the service key but HMAC-SHA256(service key, "claude-device-v1") as hex** (security review, 22.11.2026), computed by the same few lines in `kobo-sync`, `phone-gateway` and `claude`'s guard (`verify-claude-function` compares them), and compared with `sameSecret` against `claude`'s own copy (no key set: refused) before the body is read; a request that carries the header never falls through to the token path, and the raw service key itself is refused. A leaked header opens only `claude`'s device path (jobs whose `callers` names the device, 100 calls a day each, the budget wall), never the database. The body names only the caller (from a fixed list of two), the job and its input; the account is `HEVY_USER_ID` from `claude`'s environment, never from the body. The 100-a-day cap of each device is counted inside `ai_reserve` under the account's lock (migration 195), not only by the early read. |
 | A passage of a book, a calendar title, a note (Kobo, phone, coach) | Text that tells the model what to do | Each travels in its own escaped tag, the instructions say the tags are data, the jobs have no tools and write nothing, answers are plain text checked for length, the Kobo's saved note is the owner's own table. |
-| The Test bench's pick | A model or effort outside the lists, a very long or costly request | `prepare` and `run.ts` check the pick against the code's lists; the text is ≤ 2000 characters; the worst case of the picked model is reserved like any call; `count` is free and refused at a rate cap. |
+| The Test bench's pick | A model or effort outside the lists, a very long or costly request | `prepare` and `run.ts` check the pick against the code's lists; the text is ≤ 2000 characters; the worst case of the picked model is reserved like any call; `count` is free, refused at a rate cap and capped at 10 a minute (it leaves a zero-cost row, stop reason `count_tokens`, that the cap and the account's caps count). |
 | The log | Personal data kept forever | Owner-locked, a retention you choose, and never readable by the model. |
 | Settings | The model turning on its own tools | The settings tables are not in the model's tool list or catalog. |
 
@@ -292,7 +296,7 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 |---|---|---|
 | 0 | **Done (20.11.2026):** `docs/integrations/anthropic.md`: how we authenticate, the endpoints, the fields, prices, limits and traps, checked against Anthropic's documentation. | — |
 | 1 | **Built 21.11.2026 (PR #619):** **Foundation:**<br>• the `claude` function in its separate parts: provider, loop, jobs, ledger, guard;<br>• the tables for calls and settings (migration 194);<br>• **Developer → AI**: Overview, Calls, Settings, Prices, and a first How it works;<br>• the first job, **✨ fill**, on Haiku. | the ✨ branch of `ai-proxy`, the Gemini entries in Settings |
-| 2 | **One-shot jobs.** Split in steps, each its own PR:<br>• **2a built 22.11.2026:** recipes (`recipe_from_text`, `recipe_from_link` with AI last — code reads a page's schema.org Recipe and no model is asked —, `recipe_macros`) and quick guess (`quick_guess`, `quick_guess_options`); no enforced answer shape;<br>• **2b built 22.11.2026:** the PT assessment (`coach_assessment`; its decisions are code, `coachFacts.ts`);<br>• **2c built 22.11.2026:** the Kobo passage question (`kobo_ask`) and the phone's brief and ask (`phone_brief`, `phone_ask`), reaching `claude` through their own server functions with the service key (§5);<br>• **2d built 22.11.2026:** the Test bench (sixth view of Developer → AI) with the free token count and a thinking adaptive-vs-off comparison. | 2a: `ai-proxy`'s `responseSchema` and `fetchUrl` modes, `callGeminiStructured`, `aiApi.ts`'s structured calls. 2b–2c: the Gemini calls of `ptCoachApi.ts`, `kobo-sync` and `phone-gateway`, and the phone secret's way into `ai-proxy` |
+| 2 | **One-shot jobs.** Split in steps, each its own PR:<br>• **2a built 22.11.2026:** recipes (`recipe_from_text`, `recipe_from_link` with AI last — code reads a page's schema.org Recipe and no model is asked —, `recipe_macros`) and quick guess (`quick_guess`, `quick_guess_options`); no enforced answer shape;<br>• **2b built 22.11.2026:** the PT assessment (`coach_assessment`; its decisions are code, `coachFacts.ts`);<br>• **2c built 22.11.2026:** the Kobo passage question (`kobo_ask`) and the phone's brief and ask (`phone_brief`, `phone_ask`), reaching `claude` through their own server functions with the service key (§5);<br>• **2d built 22.11.2026:** the Test bench (sixth view of Developer → AI) with the free token count and a thinking adaptive-vs-off comparison;<br>• **owner-critic and security round, 22.11.2026 (migration 195):** a master "all AI off" switch and a per-job thinking switch (adaptive by default), cost breakdown per call and the request as sent in Calls, run time and cache stats in the Overview, the views grouped into Overview · Calls · Settings · Learn, a device credential derived from the service key, the per-caller daily cap and the token-count cap, and everything saved is English. | 2a: `ai-proxy`'s `responseSchema` and `fetchUrl` modes, `callGeminiStructured`, `aiApi.ts`'s structured calls. 2b–2c: the Gemini calls of `ptCoachApi.ts`, `kobo-sync` and `phone-gateway`, and the phone secret's way into `ai-proxy` |
 | 3 | **Batch jobs:** the queue, the scheduled check, the Batches tab, and the first weekly report. What the report covers is asked when this phase starts. | — |
 | 4 | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
 | 5 | **The last of Gemini:**<br>• docs and checks;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | everything left |
@@ -304,7 +308,8 @@ Each phase gets tests, a guardian review, and a look on the phone layout before 
 
 - Thinking off for the jobs where it is measured safe (a form fill needs none): less cost and time. **The tool exists since 2d** (`ModelRequest.thinking: 'adaptive' | 'off'`, compared in the Test bench); no job turns it off yet, because nothing has been measured live.
 - ✨ with an enforced shape that has **all fields required** (an empty value means "not given"; `cleanItemFill` compares an enum case-insensitively), tried with Diagnose's real call first.
-- Retry a Haiku refusal once on Sonnet (the promise in section 3 is not built yet).
+- Retry a Haiku refusal once on Sonnet: **not built**, on purpose (owner-critic round, 22.11.2026): there has been no real refusal to look at yet.
+- Phase 4 with §8: a code-first reader of ✨'s sentence (dates, times, places by rules, the model only for what is left) and an input fingerprint (the same sentence twice is answered from the first answer). Decided 22.11.2026 to wait: a rule reader is not reliable across languages, and ✨ costs under $0.0001 and about a second today. Raise it with the owner when §8 starts.
 - ~~A token count before sending, in the Test bench (2d)~~ built (`{ action: 'count' }`); it cannot catch a grammar that will not compile.
 
 ---

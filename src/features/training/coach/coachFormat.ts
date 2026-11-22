@@ -90,56 +90,56 @@ export function formatPtSnapshot(d: CoachData): string {
   const { profile, progress } = d
 
   const parts: string[] = []
-  if (profile?.goal) parts.push(`Odak ${profile.goal}`)
-  if (d.phase) parts.push(`Faz ${d.phase}`)
-  if (profile?.experience_level) parts.push(`Seviye ${profile.experience_level}`)
-  if (profile?.equipment_access) parts.push(`Ekipman ${profile.equipment_access}`)
-  if (profile?.training_days_per_week) parts.push(`Haftada ${profile.training_days_per_week} gün`)
-  if (parts.length > 0) lines.push(`PROFİL: ${parts.join(' · ')}`)
+  if (profile?.goal) parts.push(`Focus ${profile.goal}`)
+  if (d.phase) parts.push(`Phase ${d.phase}`)
+  if (profile?.experience_level) parts.push(`Level ${profile.experience_level}`)
+  if (profile?.equipment_access) parts.push(`Equipment ${profile.equipment_access}`)
+  if (profile?.training_days_per_week) parts.push(`${profile.training_days_per_week} days a week`)
+  if (parts.length > 0) lines.push(`PROFILE: ${parts.join(' · ')}`)
   for (const lim of d.limitations) {
-    lines.push(`  Kısıtlama: ${limitationName(lim.movement_pattern)} (${lim.severity})${lim.note ? ` — ${lim.note}` : ''}`)
+    lines.push(`  Limitation: ${limitationName(lim.movement_pattern)} (${lim.severity})${lim.note ? ` — ${lim.note}` : ''}`)
   }
 
   // ── The program and the app's own progress decisions ──
-  const target = profile?.training_days_per_week ? ` (hedef ${profile.training_days_per_week})` : ''
+  const target = profile?.training_days_per_week ? ` (target ${profile.training_days_per_week})` : ''
   if (progress.needsCurrentProgram) {
-    lines.push(`PROGRAM: ${progress.staleProgram ? 'kayıtlı rutinler artık Hevy\'de yok' : 'seçilmemiş'} — ilerleme kararı yok. Bu hafta ${d.sessionsThisWeek} antrenman${target}.`)
+    lines.push(`PROGRAM: ${progress.staleProgram ? 'the saved routines are no longer in Hevy' : 'none selected'} — no progress decisions. This week ${d.sessionsThisWeek} workouts${target}.`)
   } else {
-    lines.push(`PROGRAM: ${programTitles(d).join(', ')} · bu hafta ${d.sessionsThisWeek} antrenman${target}`)
+    lines.push(`PROGRAM: ${programTitles(d).join(', ')} · this week ${d.sessionsThisWeek} workouts${target}`)
     for (const m of d.missedSessions ?? []) lines.push(`  ${missedLine(m)}`)
     if (progress.program) {
-      lines.push(`İLERLEME: ${progressVerdictHeadline(progress.program.progressVerdict)} — ${progress.program.improvingCount}/${progress.program.analyzableCount} hareket gelişiyor · iş yükü: ${workloadLabel(progress.program.workload)}${progress.program.corroboratingSignal ? ` (${progress.program.corroboratingSignal})` : ''}`)
+      lines.push(`PROGRESS: ${progressVerdictHeadline(progress.program.progressVerdict)} — ${progress.program.improvingCount}/${progress.program.analyzableCount} lifts improving · workload: ${workloadLabel(progress.program.workload)}${progress.program.corroboratingSignal ? ` (${progress.program.corroboratingSignal})` : ''}`)
     }
     for (const r of progress.decisions) {
       const title = progress.titleById.get(r.exerciseTemplateId) ?? r.exerciseTemplateId
       const latest = r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind, { rpe: true }) : '—'
       const next = nextTargetText(r)
-      const nextText = next ? ` · sonraki: ${next}` : ''
-      lines.push(`  Karar: ${title}: ${r.currentAction} "${actionLabel(r.currentAction)}" · son: ${latest}${nextText} · kanıt ${r.evidence.progress}`)
+      const nextText = next ? ` · next: ${next}` : ''
+      lines.push(`  Decision: ${title}: ${r.currentAction} "${actionLabel(r.currentAction)}" · latest: ${latest}${nextText} · evidence ${r.evidence.progress}`)
     }
   }
 
   // ── Latest session in full + the previous numbers per exercise ──
   const latest = d.sessions[0]
   if (!latest) {
-    lines.push('ANTRENMAN: Hiç kayıtlı antrenman yok.')
+    lines.push('WORKOUTS: none logged.')
   } else {
     const prevByTitle = new Map<string, string>()
     for (const s of d.sessions.slice(1)) for (const ex of s.exercises) if (!prevByTitle.has(ex.title)) prevByTitle.set(ex.title, ex.sets)
-    lines.push(`SON ANTRENMAN (${latest.date === d.today ? 'BUGÜN' : latest.date}): ${latest.title ?? 'Workout'}`)
+    lines.push(`LATEST WORKOUT (${latest.date === d.today ? 'TODAY' : latest.date}): ${latest.title ?? 'Workout'}`)
     for (const ex of latest.exercises) {
       const prev = prevByTitle.get(ex.title)
-      lines.push(`  ${ex.title}: ${ex.sets}${prev ? ` (önceki: ${prev})` : ''}`)
+      lines.push(`  ${ex.title}: ${ex.sets}${prev ? ` (previous: ${prev})` : ''}`)
     }
-    lines.push(`Son antrenman günleri: ${d.sessions.slice(0, 4).map(s => s.date).join(', ')}`)
+    lines.push(`Recent workout days: ${d.sessions.slice(0, 4).map(s => s.date).join(', ')}`)
   }
 
   // ── Weekly hard-set volume per muscle vs landmarks ──
   if (d.weeklyMuscleSets.length > 0) {
-    lines.push('HAFTALIK HACİM (son 7 gün, sert set; birincil 1 + ikincil 0.5):')
+    lines.push('WEEKLY VOLUME (last 7 days, hard sets; primary 1 + secondary 0.5):')
     for (const m of d.weeklyMuscleSets) {
       const L = m.landmarks
-      lines.push(`  ${labelForSlug(m.slug)}: ${r1(m.sets)} set/hf${L ? ` [MEV ${L.mev} · MAV ${L.mav} · MRV ${L.mrv}]` : ''}${m.restriction ? ` (kısıtlı: ${m.restriction})` : ''}`)
+      lines.push(`  ${labelForSlug(m.slug)}: ${r1(m.sets)} sets/wk${L ? ` [MEV ${L.mev} · MAV ${L.mav} · MRV ${L.mrv}]` : ''}${m.restriction ? ` (restricted: ${m.restriction})` : ''}`)
     }
   }
 
@@ -151,20 +151,20 @@ export function formatPtSnapshot(d: CoachData): string {
   const last = nights[nights.length - 1]
   if (last) {
     const avg = nights.reduce((s, x) => s + x.total, 0) / nights.length
-    lines.push(`UYKU: son gece ${last.total.toFixed(1)}h (7g ort ${avg.toFixed(1)}h)${last.date !== d.today ? ` — son veri ${last.date}` : ''}`)
-  } else lines.push('UYKU: veri yok.')
+    lines.push(`SLEEP: last night ${last.total.toFixed(1)}h (7-day avg ${avg.toFixed(1)}h)${last.date !== d.today ? ` — last data ${last.date}` : ''}`)
+  } else lines.push('SLEEP: no data.')
 
   const yesterday = shiftIso(d.today, -1)
   const fmt = (arr: CoachDay[], unit: string) =>
-    arr.filter(x => x.date >= yesterday).map(x => `${x.date === d.today ? 'bugün' : 'dün'} ${Math.round(x.value)}${unit}`).join(', ') || 'veri yok'
-  lines.push(`ADIM: ${fmt(d.steps, '')} · AKTİF ENERJİ: ${fmt(d.activeKcal, ' kcal')}`)
+    arr.filter(x => x.date >= yesterday).map(x => `${x.date === d.today ? 'today' : 'yesterday'} ${Math.round(x.value)}${unit}`).join(', ') || 'no data'
+  lines.push(`STEPS: ${fmt(d.steps, '')} · ACTIVE ENERGY: ${fmt(d.activeKcal, ' kcal')}`)
 
   const weights = d.bodyweight.filter(w => w.date >= shiftIso(d.today, -30))
   if (weights.length >= 2) {
     const first = weights[0], lastW = weights[weights.length - 1]
-    lines.push(`KİLO: ${lastW.kg.toFixed(1)}kg (${first.date}'den beri ${signed(lastW.kg - first.kg)}kg)`)
+    lines.push(`WEIGHT: ${lastW.kg.toFixed(1)}kg (${signed(lastW.kg - first.kg)}kg since ${first.date})`)
   } else if (weights.length === 1) {
-    lines.push(`KİLO: ${weights[0].kg.toFixed(1)}kg`)
+    lines.push(`WEIGHT: ${weights[0].kg.toFixed(1)}kg`)
   }
 
   return lines.join('\n')
@@ -284,4 +284,44 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
   const fat = weights.filter(w => w.fatPct != null)
   if (fat.length) ctx.bodyfat_pct = fat.map(w => ({ d: w.date, v: r1(w.fatPct as number) }))
   return ctx
+}
+
+
+/** `text`, or its first lines that fit in `max` characters (the least important come last in the snapshot). */
+export function fitLines(text: string, max: number): string {
+  if (text.length <= max) return text
+  const kept: string[] = []
+  let size = 0
+  for (const line of text.split('\n')) {
+    if (size + line.length + 1 > max) break
+    kept.push(line)
+    size += line.length + 1
+  }
+  return kept.join('\n')
+}
+
+const utf8Bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length
+
+/**
+ * The assessment's input as the function will receive it, cut so that its JSON is at most `maxBytes` bytes
+ * (the function refuses a request over 16 KB, and an accent takes two bytes): the snapshot loses its last lines first
+ * and stops at 500 characters, then the previous assessment is dropped, then the snapshot goes on shrinking. The
+ * verdicts (the decisions) and the owner's note are never cut here.
+ */
+export function fitRequestBytes<T extends { snapshot: string; previous?: string }>(input: T, maxBytes: number): T {
+  const wrapped = (i: T) => ({ action: 'run', job: 'coach_assessment', input: i })
+  let out = input
+  for (let guard = 0; guard < 60 && utf8Bytes(wrapped(out)) > maxBytes; guard++) {
+    const excess = utf8Bytes(wrapped(out)) - maxBytes
+    if (out.snapshot.length > 500) {
+      out = { ...out, snapshot: fitLines(out.snapshot, Math.max(500, out.snapshot.length - Math.max(200, excess))) }
+    } else if (out.previous !== undefined) {
+      const rest: Partial<T> = { ...out }
+      delete rest.previous
+      out = rest as T
+    } else {
+      out = { ...out, snapshot: fitLines(out.snapshot, Math.max(0, out.snapshot.length - Math.max(100, excess))) }
+    }
+  }
+  return out
 }

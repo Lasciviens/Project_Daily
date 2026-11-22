@@ -9,7 +9,7 @@
 //
 //  No tools and no database: the model sees only the tags below. The answer is plain text with **bold** headers,
 //  shown on the screen and saved by the owner's own browser in `pt_assessments` (the saved model is the one that
-//  answered). The coach's language is one constant (COACH_LANGUAGE_RULE): the owner reads Turkish there.
+//  answered). The assessment is saved, so it is English (COACH_LANGUAGE_RULE): everything the app saves is English.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AnswerCheck, JobDefinition } from './types.ts'
@@ -18,11 +18,18 @@ import { checkedAnswerText, escapeTagText } from './answer-reader.ts'
 
 export const COACH_LIMITS = { note: 300, snapshot: 8000, verdicts: 1500, previous: 2000, answer: 3000 } as const
 
-/** The four feelings the screen offers; the words are what `pt_assessments.feeling` stores. */
-export const COACH_FEELINGS = ['az çalıştım', 'normal', 'yorgunum', 'çok yorgunum'] as const
+/** The four feelings the screen offers; the words are what `pt_assessments.feeling` stores (English since 22.11.2026). */
+export const COACH_FEELINGS = ['undertrained', 'normal', 'tired', 'very tired'] as const
 
-/** The one sentence that says which language the assessment is written in. */
-export const COACH_LANGUAGE_RULE = 'Write the assessment in Turkish, the language the owner reads their coach in.'
+/**
+ * What an app opened before 22.11.2026 may still send: the Turkish words, taken as their English ones so an old tab
+ * is not refused. Not listed in the instructions: the model only ever sees the English word.
+ */
+const COACH_LEGACY_FEELINGS: Record<string, (typeof COACH_FEELINGS)[number]> = { 'az çalıştım': 'undertrained', yorgunum: 'tired', 'çok yorgunum': 'very tired' }
+
+/** The one sentence that says which language the assessment is written in. The assessment is saved, so it is English. */
+export const COACH_LANGUAGE_RULE = "Write the assessment in English, whatever language the owner's note is in: the assessment is saved in the owner's log, and everything the app saves is English. Keep the names of exercises and people as written."
+
 
 const COACH_INSTRUCTIONS = `You are the personal strength coach (hypertrophy focus) in a personal training app. Once a day the owner asks for an assessment of today. You write it: a short, calm note from an experienced human coach. Your answer is shown on the owner's screen and saved in their log; nothing you write changes a program or any data.
 
@@ -30,7 +37,7 @@ const COACH_INSTRUCTIONS = `You are the personal strength coach (hypertrophy foc
 
 Each request has up to five tags. Inside each, the characters & < > are written as &amp; &lt; &gt;.
 
-<feeling>: how the owner says they feel. One of four fixed values: "az çalıştım" (undertrained), "normal", "yorgunum" (tired), "çok yorgunum" (very tired).
+<feeling>: how the owner says they feel. One of four fixed values: "undertrained", "normal", "tired", "very tired".
 
 <note>: an optional line the owner typed (pain, motivation, a goal).
 
@@ -42,7 +49,7 @@ Each request has up to five tags. Inside each, the characters & < > are written 
 - IMBALANCE: push-heavy or quad-heavy ratios, planned and done, as the app computed them. Quote them; never compute a ratio of your own.
 - MISSED: routines of the program not done for over a week.
 
-<snapshot>: the figures the verdicts came from, pre-aggregated by the app, in the app's own labels: PROFİL (focus, phase, level, equipment, days a week; one "Kısıtlama" line per active limitation: avoid = never recommend that movement, limit = only at reduced load and say so, monitor = just keep it in view), PROGRAM and "Karar" lines (the progress engine's per-exercise decisions with the last sets and the next target), the latest workout with the previous numbers, HAFTALIK HACİM (hard sets per muscle in the last 7 days against minimum, productive and ceiling), BALANCE, UYKU (sleep), ADIM (steps), AKTİF ENERJİ and KİLO (weight). "@ RPE 8/9/10" after sets is the effort the owner logged, self-reported and context only: it never changes a target. Missing data is simply absent: say so in one line and go on with what exists.
+<snapshot>: the figures the verdicts came from, pre-aggregated by the app, in the app's own labels: PROFILE (focus, phase, level, equipment, days a week; one "Limitation" line per active limitation: avoid = never recommend that movement, limit = only at reduced load and say so, monitor = just keep it in view), PROGRAM and "Decision" lines (the progress engine's per-exercise decisions with the latest sets and the next target), the latest workout with the previous numbers, WEEKLY VOLUME (hard sets per muscle in the last 7 days against minimum, productive and ceiling), BALANCE, SLEEP, STEPS, ACTIVE ENERGY and WEIGHT. "@ RPE 8/9/10" after sets is the effort the owner logged, self-reported and context only: it never changes a target. Missing data is simply absent: say so in one line and go on with what exists.
 
 <previous_assessment>: your own last assessment, when there is one. Say in one sentence whether its main recommendation seems applied, then move on. That is accountability, not blame.
 
@@ -57,12 +64,12 @@ ${COACH_LANGUAGE_RULE}
 # Your answer
 
 Plain text, 200 to 300 words, exactly these four parts, each starting with its bold header on a line of its own, and nothing before or after:
-**Değerlendirme** — the verdict for the day, with one or two numbers.
-**Toparlanma** — sleep, energy and feeling read together, and what that means for training.
-**Bir sonraki antrenman için TEK öncelik** — the one exercise-level instruction: the exercise, the sets, the load or reps (the PRIORITY line, or the recovery verdict when that overrides it, said openly).
-**Kapanış** — one line anchored in a real trend from the data.`
+**Assessment** — the verdict for the day, with one or two numbers.
+**Recovery** — sleep, energy and feeling read together, and what that means for training.
+**The ONE priority for the next workout** — the one exercise-level instruction: the exercise, the sets, the load or reps (the PRIORITY line, or the recovery verdict when that overrides it, said openly).
+**Closing** — one line anchored in a real trend from the data.`
 
-const COACH_VERSION = '2026-11-22.1'
+const COACH_VERSION = '2026-11-22.2'
 
 /** A tag's text: a string within its limit, escaped. Null when it is not a usable string. */
 function tagged(value: unknown, max: number): string | null {
@@ -87,7 +94,8 @@ export const COACH_ASSESSMENT_JOB: JobDefinition = {
   extraFeatures: ['AI last: the verdicts (rest day, deload cue, the one lift) are decided by code and handed over as figures to explain'],
 
   prepare(input: unknown) {
-    const feeling = ownValue(input, 'feeling')
+    const rawFeeling = ownValue(input, 'feeling')
+    const feeling = typeof rawFeeling === 'string' && Object.prototype.hasOwnProperty.call(COACH_LEGACY_FEELINGS, rawFeeling) ? COACH_LEGACY_FEELINGS[rawFeeling] : rawFeeling
     if (!COACH_FEELINGS.some(f => f === feeling)) return { problem: 'Pick how you feel first.' }
     const rawNote = ownValue(input, 'note')
     const note = rawNote === undefined || rawNote === null || rawNote === '' ? null : tagged(rawNote, COACH_LIMITS.note)

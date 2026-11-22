@@ -138,6 +138,20 @@ export async function hasRecentCall(userDb: Db, userId: string, job: string, sin
   }
 }
 
+/**
+ * How many rows of `job` with this stop reason the account has since `sinceIso` (read with the owner's own client, so
+ * row level security shows only their rows). Null when it can't be read: the caller then does nothing.
+ */
+export async function countRecentCalls(userDb: Db, userId: string, job: string, sinceIso: string, stopReason: string): Promise<number | null> {
+  try {
+    const { count, error } = await userDb.from('ai_calls').select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).eq('job', job).eq('stop_reason', stopReason).gte('created_at', sinceIso)
+    return error || typeof count !== 'number' ? null : count
+  } catch {
+    return null
+  }
+}
+
 /** What `ai_reserve` decided. `reserved`: a row with outcome 'pending' now holds the worst case against the budget. */
 export type Reservation =
   | { kind: 'reserved'; id: string }
@@ -159,6 +173,8 @@ export interface ReserveArgs {
   jobBudgetUsd: number | null
   perMinute: number
   perDay: number
+  /** This caller's own cap in a rolling 24 hours, counted under the same lock (195). */
+  callerPerDay: number
 }
 
 const RESERVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -175,6 +191,7 @@ export async function reserveCall(adminDb: Db, a: ReserveArgs): Promise<Reservat
       p_budget: a.budgetUsd,
       // The database refuses a null here (194): a job with no budget of its own is held to the total one.
       p_job_budget: a.jobBudgetUsd ?? a.budgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
+      p_caller_per_day: a.callerPerDay,
     })
     if (error) return null
     const answer = Array.isArray(data) ? data[0] : data

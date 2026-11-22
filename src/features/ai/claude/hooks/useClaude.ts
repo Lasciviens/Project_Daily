@@ -92,12 +92,13 @@ export function useClaudeDiagnose() {
   })
 }
 
-/** Developer → AI → Test bench: "Count tokens" is free and writes nothing, so there is nothing to refresh. */
+/** Developer → AI → Test bench: "Count tokens" is free, but it leaves a zero-cost row in Calls (that is what its few-a-minute cap counts). */
 export function useBenchCount() {
   return useMutationWithFeedback({
     action: 'claude_bench_count',
     silent: 'the Test bench shows the count itself',
     mutationFn: ({ question, pick }: { question: string; pick: BenchPick }) => countBenchQuestion(question, pick),
+    invalidates: ['aiLedger'],
   })
 }
 

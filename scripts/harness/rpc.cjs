@@ -193,7 +193,7 @@ const RPCS = {
       if (!(t >= from && t < to)) continue
       const day = osloDay(new Date(t))
       const key = [day, c.job, c.mode, c.model].join('|')
-      const g = groups.get(key) ?? { day, job: c.job, mode: c.mode, model: c.model, calls: 0, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0 }
+      const g = groups.get(key) ?? { day, job: c.job, mode: c.mode, model: c.model, calls: 0, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0, duration_sum: 0, max_duration_ms: 0, timed_calls: 0, held_calls: 0, held_cost_usd: 0 }
       g.calls += 1
       if (c.outcome !== 'ok') g.failed += 1
       g.input_tokens += c.input_tokens
@@ -202,9 +202,17 @@ const RPCS = {
       g.output_tokens += c.output_tokens
       g.thinking_tokens += c.thinking_tokens
       g.cost_usd = Math.round((g.cost_usd + Number(c.cost_usd)) * 1e6) / 1e6
+      // 195: the time of calls that really ran, and the calls held at their worst case (a cost with no token behind it).
+      if (['ok', 'refused', 'cut_off', 'invalid', 'error'].includes(c.outcome) && c.duration_ms > 0) {
+        g.timed_calls += 1; g.duration_sum += c.duration_ms; g.max_duration_ms = Math.max(g.max_duration_ms, c.duration_ms)
+      }
+      const noTokens = c.input_tokens + c.cache_read_tokens + c.cache_write_5m_tokens + c.cache_write_1h_tokens + c.output_tokens === 0
+      if (['error', 'pending'].includes(c.outcome) && Number(c.cost_usd) > 0 && noTokens) {
+        g.held_calls += 1; g.held_cost_usd = Math.round((g.held_cost_usd + Number(c.cost_usd)) * 1e6) / 1e6
+      }
       groups.set(key, g)
     }
-    return [...groups.values()].sort((x, y) => x.day.localeCompare(y.day))
+    return [...groups.values()].map(({ duration_sum, ...g }) => ({ ...g, avg_duration_ms: g.timed_calls ? Math.round(duration_sum / g.timed_calls) : 0 })).sort((x, y) => x.day.localeCompare(y.day))
   },
 
   // 180: the owner's own task labels, most used first.

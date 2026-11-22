@@ -470,7 +470,9 @@ bills in USD); "this month" and "a day" are Europe/Oslo.
 - **`ai_job_settings`** — the owner's changes to one job (a job is one thing
   the model does, such as filling the item form), one row per account and
   job: `enabled`, `model`, `effort` (`low`, `medium`, `high`),
-  `max_output_tokens` (256–16000), `monthly_budget_usd` (0–50). A null column
+  `max_output_tokens` (256–16000), `monthly_budget_usd` (0–50), `thinking`
+  (195: `adaptive` or `off`, null = adaptive). `ai_settings` has `ai_enabled` (195,
+  the master "all AI off", default true). A null column
   means "the job's default", so "back to default" is an update to null and
   there is no delete. Audited; Activity lists its changes as blocked (its key
   is two columns, and Undo needs one).
@@ -478,7 +480,13 @@ bills in USD); "this month" and "a day" are Europe/Oslo.
   job, mode and model, from `p_from` up to (not including) `p_to`, at most 400
   days: `calls`, `failed` (every outcome but `ok`), the token sums
   (`cache_write_tokens` is the 5-minute and the 1-hour writes together) and
-  `cost_usd`. Developer → AI reads it.
+  `cost_usd`. Developer → AI reads it. Migration 195 added five columns at its
+  end: `avg_duration_ms`, `max_duration_ms` and `timed_calls` (the calls that really
+  ran: an outcome of ok, refused, cut_off, invalid or error with a time above 0),
+  and `held_calls` / `held_cost_usd` (outcome error or pending, a cost, no token:
+  the reserved worst case of a call whose bill is unknown). A function's result
+  cannot change with `create or replace`, so 195 drops it and creates it again
+  with the same rights and refusals.
 - **`ai_gate(p_job)`** — what the function asks before every call, with the
   user's own client: one row with this Oslo month's cost in total
   (`month_cost`) and for that job (`job_month_cost`), and the calls of any
@@ -497,7 +505,10 @@ bills in USD); "this month" and "a day" are Europe/Oslo.
   write), the worst case stays counted. So a burst of requests can't all pass
   the wall, and a call Anthropic may bill is never costed 0. SECURITY DEFINER,
   `search_path = ''`, service role only (the user id is the one the function
-  verified).
+  verified). Since 195 it takes a 14th argument, `p_caller_per_day`, and also
+  refuses (`busy`) a caller that has that many rows (any outcome) in its last 24
+  hours, counted under the same lock: a device's daily cap is now a wall, not only
+  an early read. The signature changed, so 195 dropped the 13-argument function.
 - **`ai_calls_purge_text()`** — clears `request`, `response` and `thinking` on
   rows older than their account's `log_days` (30 with no settings row), leaves
   the numbers and answers how many rows it cleared. SECURITY DEFINER (it runs

@@ -153,7 +153,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
   {
     id: 'anthropic', name: 'Claude API', provider: 'Anthropic', category: 'AI', official: true,
     docsUrl: 'https://platform.claude.com/docs',
-    purpose: 'The model behind the app\'s AI features, rebuilt on Claude one at a time. Today: ✨ on the item screen fills the fields from one sentence.',
+    purpose: 'The model behind the app\'s AI features, rebuilt on Claude one at a time. Today: ✨ on the item screen, the recipe editor, Food\'s quick guess, the PT coach\'s assessment, the Kobo\'s passage question, the phone\'s brief and question, and the Test bench. Ask AI (the chat) is still on Gemini until phase 4.',
     transports: ['edge'],
     connection: 'Only through the claude edge function: it checks who asks, the job\'s settings and the monthly budget, calls the Messages API and writes every call — tokens, cost, how it ended — to the ledger. The key never reaches the browser.',
     edgeFunctions: ['claude'], endpoints: ['api.anthropic.com'],
@@ -161,7 +161,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     secrets: ['ANTHROPIC_API_KEY'],
     direction: 'both', cadence: 'On each request — never runs by itself',
     usedIn: [{ label: 'Item screen ✨', path: '/daily' }, { label: 'Developer → AI', path: '/developer?tab=ai' }],
-    tables: ['ai_calls', 'ai_settings', 'ai_job_settings'], migrations: ['194'],
+    tables: ['ai_calls', 'ai_settings', 'ai_job_settings'], migrations: ['194', '195'],
     cost: 'paid', limits: 'Your own monthly budget stops every call when it is reached; the function also caps calls per minute and per day (Developer → AI → How it works).',
     caveats: ['The prices live in the function\'s code and are shown, read-only, on Developer → AI → Prices.', 'Set a monthly spend limit in Anthropic\'s Console too: it is the outer wall.'],
     since: '20.11.2026', sinceFrom: 'supabase/functions/claude/index.ts', hasIntegrationCard: true,

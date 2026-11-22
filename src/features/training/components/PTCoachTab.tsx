@@ -7,7 +7,7 @@ import { COACH_BOARD } from '../trainingBoards'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ProfileSummaryCard } from './program/ProfileSummaryCard'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { PT_FEELINGS, type PtFeeling } from '../coach/coachFacts'
+import { feelingOf, PT_FEELINGS, type PtFeeling } from '../coach/coachFacts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT — user-initiated daily assessment (NEVER auto-runs; each run costs
@@ -18,7 +18,7 @@ import { PT_FEELINGS, type PtFeeling } from '../coach/coachFacts'
 
 // The `id` values stay Turkish deliberately: they are sent verbatim into the
 // `coach_assessment` job's allow-list and stored in pt_assessments.feeling, so changing them
-// would break both the prompt contract and every archived assessment.
+// would break the job's allow-list. Rows saved before 22.11.2026 hold the Turkish words: `feelingLabel` reads both.
 const FEELINGS: { id: PtFeeling; label: string }[] = [
   { id: PT_FEELINGS[0], label: '😴 Undertrained' },
   { id: PT_FEELINGS[1], label: '🙂 Normal' },
@@ -27,6 +27,9 @@ const FEELINGS: { id: PtFeeling; label: string }[] = [
 ]
 const FEELING_LABEL: Record<string, string> =
   Object.fromEntries(FEELINGS.map(f => [f.id, f.label.replace(/^\S+\s/, '')]))
+
+/** A stored feeling as its label, whether it was saved in English or (before 22.11.2026) in Turkish. */
+const feelingLabel = (stored: string): string => FEELING_LABEL[feelingOf(stored) ?? stored] ?? stored
 
 // Minimal markdown: only **bold** (matches AIPanel's renderer).
 function renderBold(text: string) {
@@ -123,7 +126,7 @@ export function PTCoachTab() {
               </div>
               {/* Which model ACTUALLY answered (the function's served model, saved with the row). */}
               <p className="mt-2 text-micro font-normal normal-case text-fg-faint">
-                {modelLabel(current.model)} · feeling: {FEELING_LABEL[current.feeling] ?? current.feeling}
+                {modelLabel(current.model)} · feeling: {feelingLabel(current.feeling)}
                 {current.note ? ` · "${current.note}"` : ''}
               </p>
             </div>
@@ -146,7 +149,7 @@ export function PTCoachTab() {
                       className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left"
                     >
                       <span className="shrink-0 text-meta font-semibold tabular-nums text-fg">{fmtDate(a.date)}</span>
-                      <Truncate className="flex-1 text-meta text-fg-muted">{`${FEELING_LABEL[a.feeling] ?? a.feeling}${a.note ? ` · ${a.note}` : ''}`}</Truncate>
+                      <Truncate className="flex-1 text-meta text-fg-muted">{`${feelingLabel(a.feeling)}${a.note ? ` · ${a.note}` : ''}`}</Truncate>
                       <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-fg-faint transition-transform ${open ? 'rotate-180' : ''}`} />
                     </button>
                     {open && (

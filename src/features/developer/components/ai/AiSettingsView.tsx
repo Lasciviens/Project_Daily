@@ -8,12 +8,13 @@ import { AI_SETTINGS_BOARD, type AiSettingsSection } from '../../developerBoards
 import { AiJobSettingsCard } from './AiJobSettingsCard'
 import { ReadFailed, Term } from './aiBits'
 
-// Developer → AI → Settings: the total monthly budget, the text log, and each job's own settings. Every choice
+// Developer → AI → Settings: the master switch, the total monthly budget, the text log, and each job's own settings. Every choice
 // and limit comes from the function (`describe`), never a list of the app's own; what is saved here is input to
 // the function, which checks it again against the same lists and limits. Each card has one Save, and says its result.
 
 function GeneralForm({ stored, about }: { stored: AiSettings; about: Describe }) {
   const save = useSaveAiSettings()
+  const [aiEnabled, setAiEnabled] = useState(stored.ai_enabled)
   const [budget, setBudget] = useState(stored.monthly_budget_usd.toFixed(2))
   const [logText, setLogText] = useState(stored.log_text)
   const [days, setDays] = useState(String(stored.log_days))
@@ -22,11 +23,25 @@ function GeneralForm({ stored, about }: { stored: AiSettings; about: Describe })
   const budgetValue = readUsdInput(budget, monthlyBudgetMaxUsd)
   const daysValue = readIntInput(days, logDays.min, logDays.max)
   const valid = typeof budgetValue === 'number' && typeof daysValue === 'number'
-  const dirty = budgetValue !== stored.monthly_budget_usd || logText !== stored.log_text || daysValue !== stored.log_days
+  const dirty = aiEnabled !== stored.ai_enabled || budgetValue !== stored.monthly_budget_usd || logText !== stored.log_text || daysValue !== stored.log_days
 
   return (
     <Card className="flex flex-col gap-4">
       <div>
+        <div className="flex items-center justify-between gap-3">
+          <SectionLabel>All AI</SectionLabel>
+          <span className="flex shrink-0 items-center gap-1.5 text-meta font-medium text-fg-2">
+            {aiEnabled ? 'On' : 'Off'}
+            <Switch on={aiEnabled} onChange={setAiEnabled} label="All AI: switched on" />
+          </span>
+        </div>
+        <p data-tone={aiEnabled ? undefined : 'warn'} className={aiEnabled ? 'text-meta text-fg-muted' : 'tone-text text-meta font-medium'}>
+          {aiEnabled
+            ? 'The master switch. Off stops every AI job at once, the Kobo’s and the phone’s too; each is logged as “Switched off” and nothing is sent.'
+            : 'Off: every AI job is stopped, the Kobo’s and the phone’s too. Save to apply it.'}
+        </p>
+      </div>
+      <div className="border-t border-line pt-3">
         <SectionLabel><Term term="Budget">Monthly budget</Term></SectionLabel>
         <div className="mt-1.5 flex items-center gap-2">
           <span className="text-body text-fg-muted">$</span>
@@ -64,7 +79,7 @@ function GeneralForm({ stored, about }: { stored: AiSettings; about: Describe })
       </div>
       <div className="flex justify-end">
         <Button size="sm" disabled={!dirty || !valid} loading={save.isPending}
-          onClick={() => { if (typeof budgetValue === 'number' && typeof daysValue === 'number') save.mutate({ monthly_budget_usd: budgetValue, log_text: logText, log_days: daysValue }) }}>
+          onClick={() => { if (typeof budgetValue === 'number' && typeof daysValue === 'number') save.mutate({ monthly_budget_usd: budgetValue, log_text: logText, log_days: daysValue, ai_enabled: aiEnabled }) }}>
           Save
         </Button>
       </div>
@@ -89,8 +104,8 @@ export function AiSettingsView() {
     general: settings.isError
       ? <ReadFailed what="your AI settings" error={settings.error} onRetry={() => { void settings.refetch() }} retrying={settings.isFetching} />
       : !about.data || !stored
-        ? <Skeleton rounded="rounded-card" className="h-[21rem] w-full" />
-        : <GeneralForm key={`${stored.monthly_budget_usd}|${stored.log_text}|${stored.log_days}`} stored={stored} about={about.data} />,
+        ? <Skeleton rounded="rounded-card" className="h-[26rem] w-full" />
+        : <GeneralForm key={`${stored.monthly_budget_usd}|${stored.log_text}|${stored.log_days}|${stored.ai_enabled}`} stored={stored} about={about.data} />,
     jobs: jobSettings.isError
       ? <ReadFailed what="the jobs’ settings" error={jobSettings.error} onRetry={() => { void jobSettings.refetch() }} retrying={jobSettings.isFetching} />
       : (

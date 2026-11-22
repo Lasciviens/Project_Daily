@@ -38,6 +38,9 @@ export function readUsageRows(raw: unknown): AiUsageRow[] {
       calls: int(r.calls), failed: int(r.failed), input_tokens: int(r.input_tokens), cache_read_tokens: int(r.cache_read_tokens),
       cache_write_tokens: int(r.cache_write_tokens), output_tokens: int(r.output_tokens), thinking_tokens: int(r.thinking_tokens),
       cost_usd: num(r.cost_usd),
+      // Migration 195's columns: before it they are not in the answer, and read as nothing.
+      avg_duration_ms: int(r.avg_duration_ms), max_duration_ms: int(r.max_duration_ms), timed_calls: int(r.timed_calls),
+      held_calls: int(r.held_calls), held_cost_usd: num(r.held_cost_usd),
     })
   }
   return out
@@ -74,12 +77,14 @@ export function readCallWithText(raw: unknown): AiCallWithText | null {
 
 /** The stored settings row, or the function's defaults when there is none (or a field isn't what it should be). */
 export function readSettings(raw: unknown, defaults: Describe['defaults']): AiSettings {
-  if (raw == null) return { monthly_budget_usd: defaults.monthlyBudgetUsd, log_text: defaults.logText, log_days: defaults.logDays }
+  if (raw == null) return { monthly_budget_usd: defaults.monthlyBudgetUsd, log_text: defaults.logText, log_days: defaults.logDays, ai_enabled: true }
   const r = rec(raw)
   return {
     monthly_budget_usd: r.monthly_budget_usd == null ? defaults.monthlyBudgetUsd : num(r.monthly_budget_usd),
     log_text: flag(r.log_text, defaults.logText),
     log_days: int(r.log_days) || defaults.logDays,
+    // No such column before migration 195: on.
+    ai_enabled: flag(r.ai_enabled, true),
   }
 }
 
@@ -92,6 +97,7 @@ export function readJobSettings(raw: unknown): AiJobSettings[] {
       job: text(r.job, 40), enabled: flag(r.enabled, true), model: textOrNull(r.model, 80), effort: textOrNull(r.effort, 20),
       max_output_tokens: r.max_output_tokens == null ? null : int(r.max_output_tokens),
       monthly_budget_usd: r.monthly_budget_usd == null ? null : num(r.monthly_budget_usd),
+      thinking: r.thinking === 'off' || r.thinking === 'adaptive' ? r.thinking : null,
     })
   }
   return out
@@ -99,7 +105,7 @@ export function readJobSettings(raw: unknown): AiJobSettings[] {
 
 /** One job's stored changes, or "everything default" when the owner changed nothing. */
 export function jobSettingsOf(rows: readonly AiJobSettings[], job: string): AiJobSettings {
-  return rows.find(r => r.job === job) ?? { job, enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: null }
+  return rows.find(r => r.job === job) ?? { job, enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: null, thinking: null }
 }
 
 export function readCallSummary(raw: unknown): CallSummary | undefined {
@@ -299,6 +305,7 @@ export const OUTCOME_META: Record<CallOutcome, OutcomeMeta> = {
   off: { label: 'Switched off', tone: 'neutral', what: 'The job is switched off, so nothing was sent.' },
   not_configured: { label: 'No key', tone: 'neutral', what: 'ANTHROPIC_API_KEY is not set on the server, so nothing was sent.' },
   bad_input: { label: 'Bad input', tone: 'neutral', what: 'The request was refused before anything was sent.' },
+  pending: { label: 'In flight', tone: 'info', what: 'The call was reserved against the budget and has no result yet. If it never gets one (a crash), the reserved worst case stays counted.' },
 }
 
 /** An outcome's word and tone; one this version doesn't know shows its own word, grey. */
@@ -431,9 +438,29 @@ export interface UsageTotals {
   output_tokens: number
   thinking_tokens: number
   cost_usd: number
+  /** The calls that ran and the sum of their times (an average of averages would be wrong), and the slowest of them. */
+  timed_calls: number
+  duration_sum_ms: number
+  max_duration_ms: number
+  /** Calls whose bill is unknown (held at the worst case), and what they hold. */
+  held_calls: number
+  held_cost_usd: number
 }
 
-const NO_USAGE: UsageTotals = { calls: 0, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0 }
+const NO_USAGE: UsageTotals = {
+  calls: 0, failed: 0, input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0, thinking_tokens: 0, cost_usd: 0,
+  timed_calls: 0, duration_sum_ms: 0, max_duration_ms: 0, held_calls: 0, held_cost_usd: 0,
+}
+
+/** What `ai_usage` rows carry, in the shape the totals add up. */
+function totalsOfRow(r: AiUsageRow): UsageTotals {
+  return {
+    calls: r.calls, failed: r.failed, input_tokens: r.input_tokens, cache_read_tokens: r.cache_read_tokens, cache_write_tokens: r.cache_write_tokens,
+    output_tokens: r.output_tokens, thinking_tokens: r.thinking_tokens, cost_usd: r.cost_usd,
+    timed_calls: r.timed_calls, duration_sum_ms: r.avg_duration_ms * r.timed_calls, max_duration_ms: r.max_duration_ms,
+    held_calls: r.held_calls, held_cost_usd: r.held_cost_usd,
+  }
+}
 
 function add(a: UsageTotals, r: UsageTotals): UsageTotals {
   return {
@@ -441,25 +468,57 @@ function add(a: UsageTotals, r: UsageTotals): UsageTotals {
     cache_read_tokens: a.cache_read_tokens + r.cache_read_tokens, cache_write_tokens: a.cache_write_tokens + r.cache_write_tokens,
     output_tokens: a.output_tokens + r.output_tokens, thinking_tokens: a.thinking_tokens + r.thinking_tokens,
     cost_usd: round6(a.cost_usd + r.cost_usd),
+    timed_calls: a.timed_calls + r.timed_calls, duration_sum_ms: a.duration_sum_ms + r.duration_sum_ms,
+    max_duration_ms: Math.max(a.max_duration_ms, r.max_duration_ms),
+    held_calls: a.held_calls + r.held_calls, held_cost_usd: round6(a.held_cost_usd + r.held_cost_usd),
   }
 }
 
 export function usageTotals(rows: readonly AiUsageRow[]): UsageTotals {
-  return rows.reduce<UsageTotals>(add, NO_USAGE)
+  return rows.reduce<UsageTotals>((t, r) => add(t, totalsOfRow(r)), NO_USAGE)
 }
 
 /** One total per job, the most expensive first (then the most used, then by name). */
 export function totalsByJob(rows: readonly AiUsageRow[]): Array<UsageTotals & { job: string }> {
   const by = new Map<string, UsageTotals>()
-  for (const r of rows) by.set(r.job, add(by.get(r.job) ?? NO_USAGE, r))
+  for (const r of rows) by.set(r.job, add(by.get(r.job) ?? NO_USAGE, totalsOfRow(r)))
   return [...by].map(([job, t]) => ({ job, ...t })).sort((a, b) => b.cost_usd - a.cost_usd || b.calls - a.calls || a.job.localeCompare(b.job))
+}
+
+/** One total per model, the most used first: the split of a job's (or the month's) calls between Haiku, Sonnet and Opus. */
+export function totalsByModel(rows: readonly AiUsageRow[], job?: string): Array<UsageTotals & { model: string }> {
+  const by = new Map<string, UsageTotals>()
+  for (const r of rows) if (job === undefined || r.job === job) by.set(r.model, add(by.get(r.model) ?? NO_USAGE, totalsOfRow(r)))
+  return [...by].map(([model, t]) => ({ model, ...t })).sort((a, b) => b.calls - a.calls || a.model.localeCompare(b.model))
 }
 
 /** One total per day of `days`, in their order: a day without calls is a zero, so the chart has no holes. */
 export function totalsByDay(rows: readonly AiUsageRow[], days: readonly string[]): Array<UsageTotals & { day: string }> {
   const by = new Map<string, UsageTotals>()
-  for (const r of rows) by.set(r.day, add(by.get(r.day) ?? NO_USAGE, r))
+  for (const r of rows) by.set(r.day, add(by.get(r.day) ?? NO_USAGE, totalsOfRow(r)))
   return days.map(day => ({ day, ...(by.get(day) ?? NO_USAGE) }))
+}
+
+// ── What a job's numbers mean per call ───────────────────────────────────────
+
+/** The average time of the calls that ran, in ms; null when none ran (a stop before sending has no time). */
+export function avgDurationMs(t: Pick<UsageTotals, 'timed_calls' | 'duration_sum_ms'>): number | null {
+  return t.timed_calls > 0 ? Math.round(t.duration_sum_ms / t.timed_calls) : null
+}
+
+/**
+ * The average real cost of a call that ran: the calls held at their worst case are left out of both sides (their
+ * bill is unknown; a guess would only inflate the average), and so is a stop before sending (it cost nothing).
+ */
+export function avgCostUsd(t: Pick<UsageTotals, 'cost_usd' | 'timed_calls' | 'held_calls' | 'held_cost_usd'>): number | null {
+  const ran = t.timed_calls - t.held_calls
+  return ran > 0 ? round6((t.cost_usd - t.held_cost_usd) / ran) : null
+}
+
+/** The share of the prompt tokens that were read from the cache, 0–100; null when no prompt was sent. */
+export function cacheHitPercent(t: Pick<UsageTotals, 'input_tokens' | 'cache_read_tokens' | 'cache_write_tokens'>): number | null {
+  const prompt = t.input_tokens + t.cache_read_tokens + t.cache_write_tokens
+  return prompt > 0 ? Math.round((t.cache_read_tokens / prompt) * 100) : null
 }
 
 // ── Prices ───────────────────────────────────────────────────────────────────
@@ -499,6 +558,69 @@ export function cacheEffect(rows: readonly AiUsageRow[], prices: DescribePrices)
     extra += r.cache_write_tokens * Math.max(0, p.cacheWrite5mPerMTok - p.inputPerMTok) * k
   }
   return { saved: round6(saved), extra: round6(extra), net: round6(saved - extra), readTokens }
+}
+
+// ── What one call's cost is made of ──────────────────────────────────────────
+
+/**
+ * A call whose bill is unknown: it failed in a way that may still have been billed (a timeout, a network error, a
+ * 5xx), so its row keeps the reserved worst case, or it is still pending. A cost with no token behind it.
+ */
+export function heldAtWorstCase(c: Pick<AiCall, 'outcome' | 'cost_usd' | 'input_tokens' | 'cache_read_tokens' | 'cache_write_5m_tokens' | 'cache_write_1h_tokens' | 'output_tokens'>): boolean {
+  return (c.outcome === 'error' || c.outcome === 'pending') && c.cost_usd > 0
+    && c.input_tokens + c.cache_read_tokens + c.cache_write_5m_tokens + c.cache_write_1h_tokens + c.output_tokens === 0
+}
+
+export interface CostLine {
+  key: 'input' | 'cacheRead' | 'cacheWrite5m' | 'cacheWrite1h' | 'output'
+  label: string
+  /** What the tokens are, in the owner's words (the instructions, the text, the answer). */
+  what: string
+  tokens: number
+  perMTok: number
+  usd: number
+}
+
+export interface CostBreakdown {
+  /** One line per kind of token the call used, each tokens × its price ÷ 1 000 000. Empty for a held call. */
+  lines: CostLine[]
+  /** ×5 for a long prompt, ×0.5 for a batch: 1 when neither applies. */
+  multiplier: number
+  multiplierWhy: string[]
+  /** The sum of the lines times the multiplier, rounded like the ledger's own six decimals. */
+  worked: number
+  /** What the ledger holds for the call. */
+  stored: number
+  /** The bill is unknown: `stored` is the reserved worst case, not a worked-out cost. */
+  held: boolean
+  /** The model has no price in the function's table (the stored cost is all there is to show). */
+  unpriced: boolean
+}
+
+/**
+ * Each kind of token times its price (the function's own table, from `describe`), then the long-prompt or batch
+ * multiplier: the same sum the function made when it wrote the row, so the owner can check any bill by hand. A call
+ * held at its worst case has no lines: its cost is a reservation, labelled as one.
+ */
+export function costBreakdown(call: AiCall, prices: DescribePrices | undefined): CostBreakdown {
+  const held = heldAtWorstCase(call)
+  const price = prices?.models.find(m => m.model === call.model)
+  const base = { stored: call.cost_usd, held }
+  if (held || !prices || !price) return { ...base, lines: [], multiplier: 1, multiplierWhy: [], worked: call.cost_usd, unpriced: !held && !price }
+  const kinds: [CostLine['key'], string, string, number, number][] = [
+    ['input', 'Input', 'your text (and the instructions when too short to cache)', call.input_tokens, price.inputPerMTok],
+    ['cacheRead', 'Cached read', 'the instructions, read from the cache', call.cache_read_tokens, price.cacheReadPerMTok],
+    ['cacheWrite5m', 'Cache write, 5 min', 'the instructions, stored for 5 minutes', call.cache_write_5m_tokens, price.cacheWrite5mPerMTok],
+    ['cacheWrite1h', 'Cache write, 1 h', 'the instructions, stored for an hour', call.cache_write_1h_tokens, price.cacheWrite1hPerMTok],
+    ['output', 'Output', call.thinking_tokens > 0 ? `thinking and answer (${int(call.thinking_tokens)} tokens of it thinking)` : 'the answer', call.output_tokens, price.outputPerMTok],
+  ]
+  const lines = kinds.filter(([, , , tokens]) => tokens > 0).map(([key, label, what, tokens, perMTok]) => ({ key, label, what, tokens, perMTok, usd: round6((tokens * perMTok) / 1_000_000) }))
+  const why: string[] = []
+  let multiplier = 1
+  if (call.long_prompt && prices.longPromptMultiplier > 0) { multiplier *= prices.longPromptMultiplier; why.push(`long prompt ×${prices.longPromptMultiplier}`) }
+  if (call.mode === 'batch' && prices.batchMultiplier > 0) { multiplier *= prices.batchMultiplier; why.push(`batch ×${prices.batchMultiplier}`) }
+  const worked = round6(lines.reduce((s, l) => s + l.tokens * l.perMTok, 0) / 1_000_000 * multiplier)
+  return { ...base, lines, multiplier, multiplierWhy: why, worked, unpriced: false }
 }
 
 // ── Budget ───────────────────────────────────────────────────────────────────

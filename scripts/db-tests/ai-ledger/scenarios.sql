@@ -410,11 +410,11 @@ reset role;
 select set_config('test.uid', '', false);
 set role authenticated;
 select public.t_ok((select jsonb_agg(to_jsonb(u) order by u.day, u.job, u.mode, u.model) from public.ai_usage('2026-10-31T00:00:00+01:00', '2026-11-02T00:00:00+01:00') u) = $j$[
-  {"day": "2026-10-31", "job": "item_fill", "mode": "live", "model": "claude-haiku-5-5", "calls": 1, "failed": 0, "input_tokens": 100, "cache_read_tokens": 1000, "cache_write_tokens": 30, "output_tokens": 50, "thinking_tokens": 5, "cost_usd": 0.001000},
-  {"day": "2026-11-01", "job": "item_fill", "mode": "batch", "model": "claude-haiku-5-5", "calls": 1, "failed": 0, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.000500},
-  {"day": "2026-11-01", "job": "item_fill", "mode": "live", "model": "claude-haiku-5-5", "calls": 2, "failed": 1, "input_tokens": 500, "cache_read_tokens": 5000, "cache_write_tokens": 180, "output_tokens": 130, "thinking_tokens": 13, "cost_usd": 0.005000},
-  {"day": "2026-11-01", "job": "item_fill", "mode": "live", "model": "claude-sonnet-5-5", "calls": 1, "failed": 1, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 2000, "thinking_tokens": 0, "cost_usd": 0.500000},
-  {"day": "2026-11-01", "job": "other_job", "mode": "live", "model": "claude-haiku-5-5", "calls": 2, "failed": 2, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.010000}
+  {"day": "2026-10-31", "job": "item_fill", "mode": "live", "model": "claude-haiku-5-5", "calls": 1, "failed": 0, "input_tokens": 100, "cache_read_tokens": 1000, "cache_write_tokens": 30, "output_tokens": 50, "thinking_tokens": 5, "cost_usd": 0.001000, "avg_duration_ms": 0, "max_duration_ms": 0, "timed_calls": 0, "held_calls": 0, "held_cost_usd": 0},
+  {"day": "2026-11-01", "job": "item_fill", "mode": "batch", "model": "claude-haiku-5-5", "calls": 1, "failed": 0, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.000500, "avg_duration_ms": 0, "max_duration_ms": 0, "timed_calls": 0, "held_calls": 0, "held_cost_usd": 0},
+  {"day": "2026-11-01", "job": "item_fill", "mode": "live", "model": "claude-haiku-5-5", "calls": 2, "failed": 1, "input_tokens": 500, "cache_read_tokens": 5000, "cache_write_tokens": 180, "output_tokens": 130, "thinking_tokens": 13, "cost_usd": 0.005000, "avg_duration_ms": 0, "max_duration_ms": 0, "timed_calls": 0, "held_calls": 0, "held_cost_usd": 0},
+  {"day": "2026-11-01", "job": "item_fill", "mode": "live", "model": "claude-sonnet-5-5", "calls": 1, "failed": 1, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 2000, "thinking_tokens": 0, "cost_usd": 0.500000, "avg_duration_ms": 0, "max_duration_ms": 0, "timed_calls": 0, "held_calls": 0, "held_cost_usd": 0},
+  {"day": "2026-11-01", "job": "other_job", "mode": "live", "model": "claude-haiku-5-5", "calls": 2, "failed": 2, "input_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "output_tokens": 0, "thinking_tokens": 0, "cost_usd": 0.010000, "avg_duration_ms": 0, "max_duration_ms": 0, "timed_calls": 0, "held_calls": 0, "held_cost_usd": 0}
 ]$j$::jsonb,
   'ai_usage: one line per Oslo day, job, mode and model — the call at 00:30 on 01.11 (31.10 in UTC) is 01.11''s, failed counts every outcome but ok, cache writes are the 5-minute and the 1-hour ones together, and the second account''s call is not there');
 select public.t_ok((select array_agg(u.day::text || '/' || u.job || '/' || u.mode || '/' || u.model) from public.ai_usage('2026-10-31T00:00:00+01:00', '2026-11-02T00:00:00+01:00') u)
@@ -599,13 +599,13 @@ select public.t_ok(not exists (select 1 from public.ai_calls where user_id = '00
 
 -- ─── 9. Booking a call before it is sent (ai_reserve, guardian review 21.11.2026) ─────
 select public.t_ok((select p.prosecdef and p.proconfig = array['search_path=""'] from pg_proc p where p.proname = 'ai_reserve')
-                   and not has_function_privilege('authenticated', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
-                   and not has_function_privilege('anon', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute')
-                   and has_function_privilege('service_role', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)', 'execute'),
+                   and not has_function_privilege('authenticated', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and not has_function_privilege('anon', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and has_function_privilege('service_role', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute'),
   '194: ai_reserve runs with its owner''s rights on an empty search path, and only the service role may call it');
 set role authenticated;
 select set_config('test.uid', '00000000-0000-0000-0000-000000000006', false);
-select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600)$q$) = '42501',
+select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600, 600)$q$) = '42501',
   'a signed-in browser cannot book a call (it would write the ledger)');
 reset role;
 set role service_role;
@@ -613,27 +613,110 @@ begin;
 delete from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006';
 -- room for one: 4.90 spent of 5
 select public.t_call(jsonb_build_object('user_id', '00000000-0000-0000-0000-000000000006', 'cost_usd', 4.90));
-select public.t_ok((select r.reason is null and r.call_id is not null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.05, 5, 5, 20, 600) r),
+select public.t_ok((select r.reason is null and r.call_id is not null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.05, 5, 5, 20, 600, 600) r),
   'a call that fits is booked');
 select public.t_ok((select outcome = 'pending' and cost_usd = 0.05 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'pending'),
   'the booking is a pending row costing the worst case');
-select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.06, 5, 5, 20, 600) r),
+select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.06, 5, 5, 20, 600, 600) r),
   'the next one no longer fits: the first booking already counts (no race through the gate)');
 select public.t_ok((select count(*) = 1 and sum(cost_usd) = 0 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'budget'),
   'a refusal for the budget is one row costing 0');
-select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'other_job', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 0, 20, 600) r),
+select public.t_ok((select r.reason = 'budget' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'other_job', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 0, 20, 600, 600) r),
   'a job''s own budget is a wall too');
-select public.t_ok((select r.reason = 'busy' and r.call_id is null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 3, 600) r),
+select public.t_ok((select r.reason = 'busy' and r.call_id is null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 3, 600, 600) r),
   'over the per-minute cap: busy, and no row');
-select public.t_ok((select r.reason = 'busy' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 20, 4) r),
+select public.t_ok((select r.reason = 'busy' from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 50, 50, 20, 4, 600) r),
   'over the daily cap: busy');
-select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', -1, 5, 5, 20, 600)$q$) = '22023'
-                   and public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 'NaN'::numeric, 5, 5, 20, 600)$q$) is not null
-                   and public.t_err($q$select * from public.ai_reserve(null, 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600)$q$) = '22023',
+select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', -1, 5, 5, 20, 600, 600)$q$) = '22023'
+                   and public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 'NaN'::numeric, 5, 5, 20, 600, 600)$q$) is not null
+                   and public.t_err($q$select * from public.ai_reserve(null, 'item_fill', 'app', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0, 5, 5, 20, 600, 600)$q$) = '22023',
   'a negative, NaN or missing worst cost, or no user, is refused');
 -- the function corrects the booking afterwards; a correction that never comes keeps the worst case
 update public.ai_calls set outcome = 'ok', cost_usd = 0.001 where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'pending';
 select public.t_ok((select cost_usd = 0.001 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006' and outcome = 'ok' and job = 'item_fill' and cost_usd < 1),
   'the service role corrects the booking to the real cost');
+rollback;
+reset role;
+
+-- ─── 10. Migration 195: the two settings, ai_usage's times and held calls, ai_reserve's per-caller cap ────
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+select public.t_ok(public.t_err($q$insert into public.ai_job_settings (job, thinking) values ('item_fill', 'off') on conflict (user_id, job) do update set thinking = 'off'$q$) is null
+                   and public.t_err($q$update public.ai_job_settings set thinking = 'adaptive' where job = 'item_fill'$q$) is null
+                   and public.t_err($q$update public.ai_job_settings set thinking = null where job = 'item_fill'$q$) is null,
+  '195: the owner may set a job''s thinking to off, adaptive or the default (null)');
+select public.t_ok(public.t_err($q$update public.ai_job_settings set thinking = 'maybe' where job = 'item_fill'$q$) = '23514'
+                   and public.t_err($q$update public.ai_job_settings set thinking = 'OFF' where job = 'item_fill'$q$) = '23514',
+  '195: a thinking value other than adaptive or off is refused by the CHECK');
+select public.t_ok(public.t_err($q$insert into public.ai_settings (ai_enabled) values (false) on conflict (user_id) do update set ai_enabled = false$q$) is null,
+  '195: the owner may switch all AI off');
+select public.t_ok((select ai_enabled = false from public.ai_settings), '195: and it reads back as off');
+select public.t_ok(public.t_err($q$update public.ai_settings set ai_enabled = null$q$) = '23502', '195: the master switch is never null');
+select public.t_ok(public.t_err($q$update public.ai_settings set ai_enabled = true$q$) is null, '195: the owner may switch it back on');
+select public.t_ok((select ai_enabled from public.ai_settings), '195: and it reads back as on');
+reset role;
+delete from public.ai_settings where user_id = '00000000-0000-0000-0000-000000000001';
+delete from public.ai_job_settings where user_id = '00000000-0000-0000-0000-000000000001' and job = 'item_fill';
+select public.t_ok((select not exists (select 1 from pg_attribute a where a.attrelid = 'public.ai_settings'::regclass and a.attname = 'ai_enabled' and not a.attnotnull)
+                           and (select pg_get_expr(d.adbin, d.adrelid) = 'true' from pg_attrdef d join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+                                 where d.adrelid = 'public.ai_settings'::regclass and a.attname = 'ai_enabled')),
+  '195: ai_enabled is NOT NULL and defaults to true (an account that changed nothing keeps AI on)');
+
+-- ai_usage's new columns: the times of calls that really ran, and the calls whose bill is unknown.
+select set_config('test.uid', 'none', false);
+set role service_role;
+select public.t_call('{"created_at": "2026-12-05T10:00:00+01:00", "job": "stat_job", "duration_ms": 1000}');
+select public.t_call('{"created_at": "2026-12-05T10:01:00+01:00", "job": "stat_job", "duration_ms": 3000}');
+select public.t_call('{"created_at": "2026-12-05T10:02:00+01:00", "job": "stat_job", "outcome": "error", "duration_ms": 30000, "cost_usd": 0.05}');
+select public.t_call('{"created_at": "2026-12-05T10:03:00+01:00", "job": "stat_job", "outcome": "budget", "duration_ms": 4}');
+select public.t_call('{"created_at": "2026-12-05T10:04:00+01:00", "job": "stat_job", "outcome": "pending", "cost_usd": 0.02}');
+select public.t_call('{"created_at": "2026-12-05T10:05:00+01:00", "job": "stat_job", "outcome": "error", "duration_ms": 900, "cost_usd": 0.01, "input_tokens": 40}');
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+select public.t_ok((select u.calls = 6 and u.timed_calls = 4 and u.avg_duration_ms = 8725 and u.max_duration_ms = 30000
+                           and u.held_calls = 2 and u.held_cost_usd = 0.07
+                      from public.ai_usage('2026-12-05T00:00:00+01:00', '2026-12-06T00:00:00+01:00') u where u.job = 'stat_job'),
+  '195: ai_usage averages and maxes the time of calls that ran (not the budget stop or the pending row), and holds apart the error and pending rows that have a cost and no token (a failure with tokens is a real bill, not held)');
+select public.t_ok((select pg_get_function_result('public.ai_usage(timestamptz, timestamptz)'::regprocedure) like 'TABLE(day date, job text, mode text, model text, calls bigint, failed bigint, input_tokens bigint, cache_read_tokens bigint, cache_write_tokens bigint, output_tokens bigint, thinking_tokens bigint, cost_usd numeric, avg_duration_ms bigint, max_duration_ms bigint, timed_calls bigint, held_calls bigint, held_cost_usd numeric)'),
+  '195: ai_usage keeps every old column in its place and adds the five new ones at the end');
+reset role;
+select public.t_ok((select not p.prosecdef and p.proconfig = array['search_path=""'] and p.provolatile = 's' from pg_proc p where p.oid = 'public.ai_usage(timestamptz, timestamptz)'::regprocedure)
+                   and not has_function_privilege('anon', 'public.ai_usage(timestamptz, timestamptz)', 'execute')
+                   and has_function_privilege('authenticated', 'public.ai_usage(timestamptz, timestamptz)', 'execute'),
+  '195: ai_usage is still SECURITY INVOKER, stable, on an empty search path, refused to a signed-out caller');
+select set_config('test.uid', 'none', false);
+set role authenticated;
+select public.t_ok(public.t_err($q$select * from public.ai_usage(now() - interval '1 day', now())$q$) is not null, '195: ai_usage still answers a caller with no session an error (never "nothing spent")');
+reset role;
+
+-- ai_reserve: this caller's daily cap, counted under the lock.
+select public.t_ok(to_regprocedure('public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer)') is null
+                   and to_regprocedure('public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)') is not null
+                   and (select count(*) = 1 from pg_proc p where p.proname = 'ai_reserve' and p.pronamespace = 'public'::regnamespace),
+  '195: the old ai_reserve without the per-caller cap is gone, so no way round the cap is left');
+select public.t_ok(not has_function_privilege('authenticated', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and not has_function_privilege('anon', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and not has_function_privilege('public', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and has_function_privilege('service_role', 'public.ai_reserve(uuid, text, text, text, text, text, text, text, numeric, numeric, numeric, integer, integer, integer)', 'execute')
+                   and (select p.prosecdef and p.proconfig = array['search_path=""'] from pg_proc p where p.proname = 'ai_reserve' and p.pronamespace = 'public'::regnamespace),
+  '195: the new ai_reserve is SECURITY DEFINER on an empty search path and only the service role may call it');
+set role service_role;
+begin;
+delete from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006';
+select public.t_call(('{"user_id": "00000000-0000-0000-0000-000000000006", "caller": "kobo", "created_at": "' || (now() - interval '1 hour') || '"}')::jsonb);
+select public.t_call(('{"user_id": "00000000-0000-0000-0000-000000000006", "caller": "kobo", "outcome": "bad_input", "created_at": "' || (now() - interval '2 hours') || '"}')::jsonb);
+select public.t_call(('{"user_id": "00000000-0000-0000-0000-000000000006", "caller": "kobo", "created_at": "' || (now() - interval '25 hours') || '"}')::jsonb);
+select public.t_ok((select r.reason = 'busy' and r.call_id is null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'kobo_ask', 'kobo', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, 2) r),
+  '195: a caller with its cap of rows in the last 24 hours (any outcome) is told busy, and no row is written');
+select public.t_ok((select count(*) = 3 from public.ai_calls where user_id = '00000000-0000-0000-0000-000000000006'), '195: the refusal wrote nothing');
+select public.t_ok((select r.reason is null and r.call_id is not null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'kobo_ask', 'kobo', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, 3) r),
+  '195: one more than the cap allows is booked (the row older than 24 hours does not count)');
+select public.t_ok((select r.reason is null from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'phone_ask', 'phone', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, 2) r),
+  '195: another caller''s rows do not count against this caller''s cap');
+select public.t_ok(public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'kobo_ask', 'kobo', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, -1)$q$) = '22023'
+                   and public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'kobo_ask', 'kobo', 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, null)$q$) = '22023'
+                   and public.t_err($q$select * from public.ai_reserve('00000000-0000-0000-0000-000000000006', 'kobo_ask', null, 'live', 'anthropic', 'claude-haiku-5-5', 'low', 'v1', 0.01, 50, 50, 20, 600, 100)$q$) = '22023',
+  '195: a negative or missing caller cap, or no caller, is refused');
 rollback;
 reset role;

@@ -15,11 +15,11 @@ import type {
 } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import {
-  checkedChoice, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog,
+  callerDailyCap, checkedChoice, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog,
   trimText, TEXT_LOG_MAX_BYTES, type RunSettings,
 } from './guard.ts'
 import {
-  finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db, type GateScope,
+  countRecentCalls, finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db, type GateScope,
 } from './ledger.ts'
 import { findJob } from './jobs.ts'
 
@@ -67,9 +67,9 @@ const RUN_NO_TOKENS: TokenUsage = {
   inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 0, thinkingTokens: 0,
 }
 
-export async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<RunReply> {
-  const job = findJob(jobName)
-  const row: CallRow = {
+/** A ledger row for this run, with every column at "nothing happened yet". */
+function newRow(ctx: RunContext, job: JobDefinition | null | undefined): CallRow {
+  return {
     id: ctx.newId(), user_id: ctx.userId, run_id: ctx.newId(), step: 1,
     job: job?.name ?? RUN_UNKNOWN_JOB, caller: ctx.caller, mode: 'live', provider: ctx.providerName,
     model: job?.defaults.model ?? RUN_NO_MODEL, served_model: null, effort: null,
@@ -78,6 +78,11 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     output_tokens: 0, thinking_tokens: 0, long_prompt: false, cost_usd: 0, duration_ms: 0,
     instructions_version: job?.version ?? null, tools: [], request: null, response: null, thinking: null,
   }
+}
+
+export async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<RunReply> {
+  const job = findJob(jobName)
+  const row = newRow(ctx, job)
   /** Ends the run before the model is called: a ledger row with no tokens, and the reason for the app. */
   const stop = async (reason: Exclude<Outcome, 'ok'>, message: string): Promise<RunReply> => {
     row.outcome = reason
@@ -159,14 +164,14 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
     effort: request.effort, instructionsVersion: job.version, worstCostUsd: worstCost,
     budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
-    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay, callerPerDay: callerDailyCap(ctx.caller),
   })
   if (!reservation) {
     ctx.report('the budget could not be reserved, so nothing was sent')
     return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' }
   }
   if (reservation.kind === 'busy') {
-    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, or ${LIMITS.callsPerDay} today. Wait a moment and try again.` }
+    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, ${LIMITS.callsPerDay} today, or ${callerDailyCap(ctx.caller)} in 24 hours from ${ctx.caller === 'app' ? 'the app' : 'this device'}. Wait a moment and try again.` }
   }
   // From here the database holds a row for this call: it is finished by id, never written a second time.
   row.id = reservation.id
@@ -275,16 +280,36 @@ export async function countJob(ctx: RunContext, jobName: unknown, input: unknown
   if (!settings.enabled) return { ok: false, reason: 'off', message: `"${job.title}" is switched off in Developer → AI → Settings.` }
   if (!ctx.provider) return { ok: false, reason: 'not_configured', message: 'AI is not set up yet: the server has no API key for it.' }
   const thinking = choice.thinking ?? settings.thinking
+  // The count costs nothing, but it is a request to Anthropic: a few a minute, counted from the ledger (security
+  // review G3). Each count leaves a zero-cost row (stop reason 'count_tokens') that this check reads and that the
+  // account's own caps count like any call. Two counts at the same instant may both pass: the cap is small and the
+  // count is free, so it is read without a lock.
+  const recent = await countRecentCalls(ctx.userDb, ctx.userId, job.name, new Date(ctx.now().getTime() - 60_000).toISOString(), COUNT_STOP_REASON)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was counted. Try again in a moment.' }
+  if (recent >= LIMITS.countsPerMinute) return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.countsPerMinute} token counts in a minute. Wait a moment and try again.` }
+  const started = Date.now()
   let counted
   try {
     counted = await ctx.provider.countTokens(buildRequest(job, settings, prepared.userText, thinking, COUNT_TIMEOUT_MS))
   } catch (error) {
     ctx.report(`the provider part threw: ${errorPlace(error)}`)
-    return { ok: false, reason: 'error', message: 'The token count failed unexpectedly. Try again in a moment.' }
+    counted = null
   }
+  const row = newRow(ctx, job)
+  row.model = settings.model
+  row.effort = settings.effort
+  row.outcome = counted?.ok ? 'ok' : 'error'
+  row.stop_reason = COUNT_STOP_REASON
+  row.error = counted?.ok ? null : 'The token count failed.'
+  row.duration_ms = Math.max(0, Date.now() - started)
+  await record(ctx, row)
+  if (!counted) return { ok: false, reason: 'error', message: 'The token count failed unexpectedly. Try again in a moment.' }
   if (!counted.ok) return { ok: false, reason: 'error', message: hideSecrets(counted.message, ctx.secrets) }
   return { ok: true, input_tokens: counted.inputTokens, model: settings.model, effort: settings.effort, thinking }
 }
+
+// The ledger row a token count leaves (zero tokens, zero cost): the app labels it "Token count", and the cap reads it.
+const COUNT_STOP_REASON = 'count_tokens'
 
 // The free count waits at most this long: it only reads the prompt, it writes no answer.
 const COUNT_TIMEOUT_MS = 20_000

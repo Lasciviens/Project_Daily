@@ -3,14 +3,19 @@ import { Copy } from 'lucide-react'
 import { toast } from '../../../../app/store'
 import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
-import { useAiCall } from '../../../ai/claude/hooks/useClaude'
-import { callModelLabel, formatCount, formatDuration, formatUsd, jobTitleOf, logParts, outcomeMeta, type LogPart } from '../../../ai/claude/ledgerRules'
+import { useAiCall, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
+import {
+  callModelLabel, costBreakdown, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, outcomeMeta, type CostBreakdown, type LogPart,
+} from '../../../ai/claude/ledgerRules'
 import type { AiCall, Describe } from '../../../ai/claude/types'
+import { Term } from './aiBits'
 import { agoLabel } from '../activityLogMeta'
 import { OutcomePill, PlainText, ReadFailed } from './aiBits'
+import { InfoBubble } from '../../../../shared/components/InfoBubble'
 
-// Everything on one row of the ledger: the call's numbers (from the list's own read) and — read when it is
-// opened — its text log: what was sent, what came back and the reasoning summary. The text is the owner's own
+// Everything on one row of the ledger: the call's numbers (from the list's own read), what its cost is made of (each
+// kind of token times its price) and — read when it is opened — its text log: what was sent, what came back and the
+// reasoning summary. The text is the owner's own
 // words and a model's answer: drawn as plain text only (PlainText), never as HTML or links.
 
 function copyText(text: string) {
@@ -54,12 +59,65 @@ function TextBlock({ title, parts }: { title: string; parts: LogPart[] }) {
   )
 }
 
+/** The log's own field names as the owner reads them: which part of the request each is, and what it is billed as. */
+const REQUEST_LABELS: Record<string, string> = {
+  instructions: 'Instructions (billed as cached input)',
+  'user text': 'Your text (billed as input)',
+  'sent to provider': 'Sent to the provider, as built',
+  'answer schema': 'Answer shape (written into the instructions)',
+  'max output tokens': 'Longest answer (tokens)',
+}
+const relabel = (parts: LogPart[], labels: Record<string, string>): LogPart[] => parts.map(p => ({ ...p, label: labels[p.label] ?? p.label }))
+
+function CostLines({ cost }: { cost: CostBreakdown }) {
+  return (
+    <section aria-label="What the call cost">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="section-label"><Term term="MTok">What it cost</Term></h4>
+        <span className="text-body font-semibold tabular-nums text-fg">{formatUsd(cost.stored, { fine: true })}</span>
+      </div>
+      {cost.held ? (
+        <p data-tone="warn" className="tone-text mt-1 text-meta">
+          <span className="font-semibold">Held at worst case — the real bill is unknown.</span>{' '}
+          No token count came back (the call timed out or was lost), and Anthropic may still have billed it. The most this call could cost stays counted against your budget, so it can only ever be too much, never too little.{' '}
+          <InfoBubble label="What “held at worst case” means">{'Before a call is sent, its worst-case cost is reserved. A call that answered replaces the reservation with its real cost; one that did not stays at the reservation. Anthropic’s Console has the official bill.'}</InfoBubble>
+        </p>
+      ) : cost.unpriced ? (
+        <p className="mt-1 text-meta text-fg-muted">This model has no price in the function’s table, so the stored cost is shown as it is.</p>
+      ) : cost.lines.length === 0 ? (
+        <p className="mt-1 text-meta text-fg-muted">No tokens were used: nothing was sent, so nothing was billed.</p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1.5">
+          {cost.lines.map(l => (
+            <li key={l.key} className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-meta text-fg"><span className="font-medium">{l.label}</span> <span className="text-fg-muted">· {l.what}</span></p>
+                <p className="text-meta tabular-nums text-fg-muted">{formatCount(l.tokens)} tokens × {formatPrice(l.perMTok)} per million</p>
+              </div>
+              <span className="shrink-0 text-meta font-medium tabular-nums text-fg">{formatUsd(l.usd, { fine: true })}</span>
+            </li>
+          ))}
+          {cost.multiplier !== 1 && (
+            <li className="flex items-baseline justify-between gap-3 text-meta text-fg-2">
+              <span>× {cost.multiplier} ({cost.multiplierWhy.join(', ')})</span>
+              <span className="shrink-0 font-medium tabular-nums text-fg">{formatUsd(cost.worked, { fine: true })}</span>
+            </li>
+          )}
+          {Math.abs(cost.worked - cost.stored) > 0.0000015 && (
+            <li className="text-meta text-fg-muted">The ledger holds {formatUsd(cost.stored, { fine: true })}: the prices may have changed since it was written.</li>
+          )}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function CallText({ id }: { id: string }) {
   const q = useAiCall(id)
   if (q.isLoading) return <Skeleton rounded="rounded-row" className="h-24 w-full" />
   if (q.isError) return <ReadFailed what="this call’s text" error={q.error} onRetry={() => { void q.refetch() }} retrying={q.isFetching} />
   if (!q.data) return <p className="text-meta text-fg-muted">This call is no longer in the ledger.</p>
-  const request = logParts(q.data.request), response = logParts(q.data.response)
+  const request = relabel(logParts(q.data.request), REQUEST_LABELS), response = logParts(q.data.response)
   const thinking = q.data.thinking
   if (request.length === 0 && response.length === 0 && !thinking) {
     return (
@@ -72,8 +130,8 @@ function CallText({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-3">
       {request.length > 0 && <TextBlock title="Request" parts={request} />}
-      {response.length > 0 && <TextBlock title="Answer" parts={response} />}
-      {thinking && <TextBlock title="Reasoning summary" parts={[{ label: '', text: thinking, block: true }]} />}
+      {response.length > 0 && <TextBlock title="Answer (billed as output)" parts={response} />}
+      {thinking && <TextBlock title="Reasoning summary (billed as output)" parts={[{ label: '', text: thinking, block: true }]} />}
     </div>
   )
 }
@@ -85,7 +143,8 @@ export function AiCallDetail({ call, jobs, framed }: {
   framed: boolean
 }) {
   const meta = outcomeMeta(call.outcome)
-  const written = call.cache_write_5m_tokens + call.cache_write_1h_tokens
+  const prices = useClaudeDescribe().data?.prices
+  const cost = costBreakdown(call, prices)
   const body = (
     <>
       <div className="flex flex-col gap-1">
@@ -102,12 +161,8 @@ export function AiCallDetail({ call, jobs, framed }: {
         <Fact label="Model">{callModelLabel(call)}{call.served_model && call.served_model !== call.model ? ` · answered by ${call.served_model}` : ''}</Fact>
         {call.effort && <Fact label="Effort">{call.effort}</Fact>}
         <Fact label="Asked from">{[call.caller, call.mode, call.step > 1 ? `step ${call.step}` : ''].filter(Boolean).join(' · ')}</Fact>
-        {call.stop_reason && <Fact label="Stop reason">{call.stop_reason}</Fact>}
+        {call.stop_reason && <Fact label="Stop reason">{call.stop_reason === 'count_tokens' ? 'count_tokens (a free token count of the Test bench: nothing was generated)' : call.stop_reason}</Fact>}
         {call.duration_ms != null && <Fact label="Duration">{formatDuration(call.duration_ms)}</Fact>}
-        <Fact label="Cost">{formatUsd(call.cost_usd, { fine: true })}{call.long_prompt ? ' · long prompt (higher prices)' : ''}</Fact>
-        <Fact label="Input">{formatCount(call.input_tokens)} tokens</Fact>
-        <Fact label="Cached">{formatCount(call.cache_read_tokens)} read · {formatCount(written)} written{call.cache_write_1h_tokens > 0 ? ` (${formatCount(call.cache_write_1h_tokens)} for 1 h)` : ''}</Fact>
-        <Fact label="Output">{formatCount(call.output_tokens)} tokens{call.thinking_tokens > 0 ? ` · thinking ${formatCount(call.thinking_tokens)}` : ''}</Fact>
         {call.request_id && (
           <Fact label="Anthropic id">
             <span className="inline-flex max-w-full items-center gap-1">
@@ -118,6 +173,7 @@ export function AiCallDetail({ call, jobs, framed }: {
         )}
         {call.run_id && <Fact label="Run"><span className="break-all font-mono">{call.run_id}</span></Fact>}
       </dl>
+      <div className="border-t border-line pt-3"><CostLines cost={cost} /></div>
       {call.tools.length > 0 && (
         <section aria-label="Tools" className="border-t border-line pt-3">
           <h4 className="section-label mb-1">Tools</h4>

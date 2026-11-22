@@ -7,7 +7,7 @@ export const CLAUDE_REASONS = ['bad_input', 'off', 'budget', 'busy', 'not_config
 export type ClaudeReason = typeof CLAUDE_REASONS[number]
 
 /** How a call ended, as the ledger stores it (`ai_calls.outcome`). */
-export const CALL_OUTCOMES = ['ok', 'refused', 'cut_off', 'invalid', 'error', 'budget', 'off', 'not_configured', 'bad_input'] as const
+export const CALL_OUTCOMES = ['ok', 'refused', 'cut_off', 'invalid', 'error', 'budget', 'off', 'not_configured', 'bad_input', 'pending'] as const
 export type CallOutcome = typeof CALL_OUTCOMES[number]
 
 export interface CallSummary {
@@ -160,6 +160,8 @@ export interface AiSettings {
   monthly_budget_usd: number
   log_text: boolean
   log_days: number
+  /** The master switch (migration 195): false stops every AI job. Before 195 there is no such column: on. */
+  ai_enabled: boolean
 }
 
 /** The owner's changes to one job: null = the job's default. */
@@ -170,6 +172,8 @@ export interface AiJobSettings {
   effort: string | null
   max_output_tokens: number | null
   monthly_budget_usd: number | null
+  /** `null`: the job's default (adaptive). Migration 195; before it the column is not there and this is null. */
+  thinking: 'adaptive' | 'off' | null
 }
 
 /** One row of `ai_usage`: a day (Europe/Oslo), a job, a mode and a model. */
@@ -186,4 +190,11 @@ export interface AiUsageRow {
   output_tokens: number
   thinking_tokens: number
   cost_usd: number
+  /** Migration 195 (0 before it): the average and the slowest time of the calls that ran, over `timed_calls` of them. */
+  avg_duration_ms: number
+  max_duration_ms: number
+  timed_calls: number
+  /** Calls whose bill is unknown (a timeout): charged at the reserved worst case, and what that adds up to. */
+  held_calls: number
+  held_cost_usd: number
 }

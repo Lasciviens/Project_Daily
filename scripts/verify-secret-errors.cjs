@@ -336,7 +336,7 @@ process.on('exit', () => {
       const res = await handler(new Request(`http://x${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) }))
       return { status: res.status, text: await res.text() }
     }
-    const answerOk = () => new Response(JSON.stringify({ ok: true, result: { text: 'Gün iyi.', answer: 'Fine.' }, call: { served_model: 'claude-haiku-5-5' } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    const answerOk = () => new Response(JSON.stringify({ ok: true, result: { text: 'Gün iyi.', answer: 'Fine.', answer_en: 'Fine.' }, call: { served_model: 'claude-haiku-5-5' } }), { status: 200, headers: { 'content-type': 'application/json' } })
     sent.length = 0
     let r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, asking(answerOk))
     check('phone-gateway: brief calls the claude function (never ai-proxy) with a value derived from the service key (never the key itself) in x-claude-server-key and nothing else as proof',
@@ -352,7 +352,7 @@ process.on('exit', () => {
     sent.length = 0
     {
       const longTitle = 'T'.repeat(190)
-      const rows = Array.from({ length: 20 }, (_, i) => ({ title: `${i} ${longTitle}`, status: 'todo', priority: 'high', domain: 'work', due_time: '09:00:00' }))
+      const rows = Array.from({ length: 20 }, (_, i) => ({ user_id: env.HEVY_USER_ID, title: `${i} ${longTitle}`, status: 'todo', priority: 'high', domain: 'work', due_time: '09:00:00' }))
       const handler = load('phone-gateway', { env: gwEnv, tables: { app_allowed_users: [], tasks: rows }, users: {}, log: [], fetchImpl: asking(answerOk) })
       await handler(new Request('http://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, body: JSON.stringify({ action: 'brief' }) }))
       const context = sent[0] && sent[0].body.input.context

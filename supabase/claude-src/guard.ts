@@ -36,10 +36,17 @@ export const LIMITS = {
    * secret can cost at most this many answers a day (the Kobo's own 100 a day is kept, kobo-sync counts it too).
    */
   deviceCallsPerDay: { kobo: 100, phone: 100 },
+  /** The Test bench's free token count: at most this many a minute for the account (counted from the ledger). */
+  countsPerMinute: 10,
 } as const
 
 /** The callers that are server-side device functions: they act as the owner with the server key, never with a token. */
 export const DEVICE_CALLERS: readonly Caller[] = ['kobo', 'phone']
+
+/** The most calls one caller may have in a rolling 24 hours: a device's own cap, else the account's daily cap. */
+export function callerDailyCap(caller: Caller): number {
+  return caller === 'kobo' || caller === 'phone' ? LIMITS.deviceCallsPerDay[caller] : LIMITS.callsPerDay
+}
 
 /** `caller` as a device caller, or null: only the two names above ever pass, whatever a request says. */
 export function deviceCaller(value: unknown): Caller | null {

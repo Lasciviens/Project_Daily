@@ -130,13 +130,13 @@ console.log('\n5 · Coach snapshot + JSON')
   }
   const text = formatPtSnapshot(data)
   if (process.env.SHOW) console.log(text, JSON.stringify(buildCoachJson(data, 30)))
-  check('PROGRAM line names the real routines', /PROGRAM: Push · bu hafta 1 antrenman \(hedef 3\)/.test(text), text.split('\n').find(l => l.startsWith('PROGRAM')))
-  check('a Karar line per current-program exercise', /Karar: Bench Press: [A-Z_]+ "/.test(text), text)
-  check('limitation name resolved, never undefined', text.includes('Kısıtlama: Heavy hip hinge [= Hinge (deadlift pattern)] (limit) — lower back') && !/undefined/.test(text))
-  check('latest session with previous numbers', text.includes('Bench Press: 3×10@60kg (önceki: 3×8@60kg)'), text)
-  check('a load increase with no known step uses the engine headline, not the old load', /sonraki: Ready to increase from 60 kg/.test(text), text.split('\n').find(l => l.includes('Karar')))
+  check('PROGRAM line names the real routines', /PROGRAM: Push · this week 1 workouts \(target 3\)/.test(text), text.split('\n').find(l => l.startsWith('PROGRAM')))
+  check('a Decision line per current-program exercise', /Decision: Bench Press: [A-Z_]+ "/.test(text), text)
+  check('limitation name resolved, never undefined', text.includes('Limitation: Heavy hip hinge [= Hinge (deadlift pattern)] (limit) — lower back') && !/undefined/.test(text))
+  check('latest session with previous numbers', text.includes('Bench Press: 3×10@60kg (previous: 3×8@60kg)'), text)
+  check('a load increase with no known step uses the engine headline, not the old load', /next: Ready to increase from 60 kg/.test(text), text.split('\n').find(l => l.includes('Decision')))
   check('no hard-coded split in the snapshot', !/bro-split|Back\/Chest/.test(text))
-  check('weight trend line', text.includes("KİLO: 79.5kg (2026-09-20'den beri -0.5kg)"))
+  check('weight trend line', text.includes("WEIGHT: 79.5kg (-0.5kg since 2026-09-20)"))
 
   const json = buildCoachJson(data, 30)
   check('JSON carries the program', json.program.selected === true && json.program.routines[0].t === 'Push')
@@ -145,8 +145,25 @@ console.log('\n5 · Coach snapshot + JSON')
   check('JSON body fat only where known', json.bodyfat_pct.length === 1)
 
   const noProgram = { ...data, progress: computeProgressModel({ ...base, currentProgram: [] }) }
-  check('no program → snapshot says so, no Karar lines', /PROGRAM: seçilmemiş/.test(formatPtSnapshot(noProgram)) && !/Karar:/.test(formatPtSnapshot(noProgram)))
+  check('no program → snapshot says so, no Decision lines', /PROGRAM: none selected/.test(formatPtSnapshot(noProgram)) && !/Decision:/.test(formatPtSnapshot(noProgram)))
   check('no program → JSON program.selected false, no progress', buildCoachJson(noProgram, 30).program.selected === false && !('progress' in buildCoachJson(noProgram, 30)))
+}
+
+console.log('\n5b · The request is cut by bytes before it is sent (the function takes 16 KB; an accent takes two bytes)')
+{
+  const { fitRequestBytes, fitLines } = require('../src/features/training/coach/coachFormat')
+  const bytes = (i) => Buffer.byteLength(JSON.stringify({ action: 'run', job: 'coach_assessment', input: i }))
+  const turkish = Array.from({ length: 400 }, (_, i) => `  satır ${i}: şğüöçı İ ışık yağmur ${'ğ'.repeat(12)}`).join('\n')
+  const big = { feeling: 'tired', note: 'ş'.repeat(300), snapshot: fitLines(turkish, 8000), verdicts: 'RECOVERY: normal'.padEnd(1500, 'ü'), previous: 'ç'.repeat(2000) }
+  check('the worst case of the limits in characters (accented text) is over 16 KB in bytes — the problem is real', bytes(big) > 16384, bytes(big))
+  const fit = fitRequestBytes(big, 15 * 1024)
+  check('fitRequestBytes brings it under 15 KB, so the 16 KB request limit holds', bytes(fit) <= 15 * 1024, bytes(fit))
+  check('the verdicts, the note and the feeling are never cut', fit.verdicts === big.verdicts && fit.note === big.note && fit.feeling === big.feeling)
+  check('the snapshot loses whole lines from its end (never mid-line), and keeps its start', fit.snapshot.length < big.snapshot.length && big.snapshot.startsWith(fit.snapshot) && (big.snapshot[fit.snapshot.length] === '\n' || fit.snapshot.length === big.snapshot.length), fit.snapshot.slice(-30))
+  const small = { feeling: 'normal', snapshot: 'a\nb', verdicts: 'v' }
+  check('a request that already fits is returned as it is', fitRequestBytes(small, 15 * 1024) === small)
+  const tight = fitRequestBytes({ ...big, snapshot: 'x'.repeat(600), previous: 'ç'.repeat(2000), verdicts: 'v'.repeat(1500) }, 2500)
+  check('under a very small budget the previous assessment goes first, then the snapshot shrinks', bytes(tight) <= 2500 && !('previous' in tight), bytes(tight))
 }
 
 console.log('\n6 · RPE (Hevy) in both coaches — compact, context only')
@@ -163,8 +180,8 @@ console.log('\n6 · RPE (Hevy) in both coaches — compact, context only')
     weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [],
   })
   const text = formatPtSnapshot(mk(rated, progressRated))
-  check('snapshot workout line carries RPE, previous session unrated', text.includes('Bench Press: 3×10@60kg @ RPE 8/9/10 (önceki: 3×8@60kg)'), text)
-  check('Karar "son:" carries RPE', /son: 60 kg × 10\/10\/10 @ RPE 8\/9\/10 ·/.test(text), text.split('\n').find(l => l.includes('Karar')))
+  check('snapshot workout line carries RPE, previous session unrated', text.includes('Bench Press: 3×10@60kg @ RPE 8/9/10 (previous: 3×8@60kg)'), text)
+  check('Decision "latest:" carries RPE', /latest: 60 kg × 10\/10\/10 @ RPE 8\/9\/10 ·/.test(text), text.split('\n').find(l => l.includes('Decision')))
   check('RPE never changes the Karar action', progressRated.decisions[0].currentAction === progressPlain.decisions[0].currentAction)
   const json = buildCoachJson(mk(rated, progressRated), 30)
   check('JSON progress.last carries RPE', json.progress[0].last === '60 kg × 10/10/10 @ RPE 8/9/10', json.progress[0].last)
@@ -234,7 +251,10 @@ console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, 
   check('5.5 h: technique day, with its reason', gate([night('2026-09-22', 7), night('2026-09-23', 5.5)]).gate === 'technique_day' && /under 6 h/.test(gate([night('2026-09-23', 5.5)]).reason))
   check('under 5 h two nights running: rest day', gate([night('2026-09-22', 4.5), night('2026-09-23', 4.8)]).gate === 'rest_day')
   check('under 5 h after a good night: technique day, not rest', gate([night('2026-09-22', 7), night('2026-09-23', 4.8)]).gate === 'technique_day')
-  check('"çok yorgunum" with a night below the average: technique day; "normal" with the same night: normal', gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)], 'çok yorgunum').gate === 'technique_day' && gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)]).gate === 'normal')
+  check('"very tired" with a night below the average: technique day; "normal" with the same night: normal', gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)], 'very tired').gate === 'technique_day' && gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)]).gate === 'normal')
+  { const { feelingOf, PT_FEELINGS } = require('../src/features/training/coach/coachFacts')
+    check('the stored feelings are English; rows saved in Turkish before 22.11.2026 still read (mapped), anything else is not a feeling', PT_FEELINGS.join() === 'undertrained,normal,tired,very tired' && feelingOf('az çalıştım') === 'undertrained' && feelingOf('yorgunum') === 'tired' && feelingOf('çok yorgunum') === 'very tired' && feelingOf('normal') === 'normal' && feelingOf('very tired') === 'very tired' && feelingOf('constructor') === null && feelingOf(5) === null && feelingOf('') === null)
+    check('a legacy "çok yorgunum" is the same gate input as "very tired"', gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)], feelingOf('çok yorgunum')).gate === 'technique_day') }
   check('last night from another day is named', gate([night('2026-09-21', 7)]).lastNightDate === '2026-09-21')
   const heavy = ptVerdicts(mk({ weeklyMuscleSets: [
     { slug: 'chest', sets: 24, landmarks: { mev: 8, mav: 16, mrv: 22 }, restriction: null },

@@ -5,7 +5,7 @@ import { formatCount, formatUsd, modelNameOf, readIntInput, readUsdInput } from 
 import type { AiJobSettings, Describe, DescribeJob } from '../../../ai/claude/types'
 import { Term } from './aiBits'
 
-// One job's settings (Developer → AI → Settings): on or off, and four values that are each "Default" until the
+// One job's settings (Developer → AI → Settings): on or off, and five values that are each "Default" until the
 // owner picks one — stored as null, so a changed default in the function reaches the job by itself. The choices
 // and limits are the function's own (`describe`); it checks every stored value again before it uses one.
 
@@ -26,6 +26,7 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
   const [enabled, setEnabled] = useState(stored.enabled)
   const [model, setModel] = useState(stored.model ?? '')
   const [effort, setEffort] = useState(stored.effort ?? '')
+  const [thinking, setThinking] = useState<string>(stored.thinking ?? '')
   const [longest, setLongest] = useState(stored.max_output_tokens == null ? '' : String(stored.max_output_tokens))
   const [budget, setBudget] = useState(stored.monthly_budget_usd == null ? '' : stored.monthly_budget_usd.toFixed(2))
 
@@ -35,14 +36,15 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
   const valid = longestValue !== undefined && budgetValue !== undefined
   const next: AiJobSettings = {
     job: job.name, enabled, model: model || null, effort: effort || null,
+    thinking: thinking === 'off' ? 'off' : thinking === 'adaptive' ? 'adaptive' : null,
     max_output_tokens: longestValue ?? null, monthly_budget_usd: budgetValue ?? null,
   }
-  const dirty = next.enabled !== stored.enabled || next.model !== stored.model || next.effort !== stored.effort
+  const dirty = next.enabled !== stored.enabled || next.model !== stored.model || next.effort !== stored.effort || next.thinking !== stored.thinking
     || next.max_output_tokens !== stored.max_output_tokens || next.monthly_budget_usd !== stored.monthly_budget_usd
-  const changed = model !== '' || effort !== '' || longest.trim() !== '' || budget.trim() !== ''
+  const changed = model !== '' || effort !== '' || thinking !== '' || longest.trim() !== '' || budget.trim() !== ''
 
   function backToDefaults() {
-    setModel(''); setEffort(''); setLongest(''); setBudget('')
+    setModel(''); setEffort(''); setThinking(''); setLongest(''); setBudget('')
   }
 
   return (
@@ -70,6 +72,13 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
             <option value="">Default ({job.defaults.effort})</option>
             {about.efforts.map(e => <option key={e} value={e}>{e}</option>)}
             {effort !== '' && !about.efforts.includes(effort) && <option value={effort}>{effort} (not offered — the default is used)</option>}
+          </select>
+        </Field>
+        <Field className="min-w-[8rem] flex-1" label={<Term term="Thinking">Thinking</Term>}>
+          <select value={thinking} onChange={e => setThinking(e.target.value)} aria-label={`${job.title}: thinking`} className="select">
+            <option value="">Default</option>
+            <option value="adaptive">Adaptive</option>
+            <option value="off">Off (cheaper, faster)</option>
           </select>
         </Field>
         <Field

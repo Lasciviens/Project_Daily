@@ -17,9 +17,23 @@ import { nextTargetText, type CoachData } from './coachFormat'
 //  (scripts/verify-coach-context.cjs).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The four feelings the screen offers. The Turkish words are the stored values of `pt_assessments.feeling`. */
-export const PT_FEELINGS = ['az çalıştım', 'normal', 'yorgunum', 'çok yorgunum'] as const
+/** The four feelings the screen offers. These English words are the stored values of `pt_assessments.feeling`. */
+export const PT_FEELINGS = ['undertrained', 'normal', 'tired', 'very tired'] as const
 export type PtFeeling = typeof PT_FEELINGS[number]
+
+/**
+ * Rows saved before 22.11.2026 hold the Turkish words (everything saved is English since the owner's rule of that
+ * day). Reads accept both; new writes are English. Remove once the owner has run the one-off conversion in
+ * docs/deploy-checklist.md.
+ */
+const LEGACY_FEELINGS: Record<string, PtFeeling> = { 'az çalıştım': 'undertrained', yorgunum: 'tired', 'çok yorgunum': 'very tired' }
+
+/** A stored feeling as one of the four English words; a word nobody knows stays as it is (null: not a feeling). */
+export function feelingOf(stored: unknown): PtFeeling | null {
+  if (typeof stored !== 'string') return null
+  if ((PT_FEELINGS as readonly string[]).includes(stored)) return stored as PtFeeling
+  return Object.prototype.hasOwnProperty.call(LEGACY_FEELINGS, stored) ? LEGACY_FEELINGS[stored] : null
+}
 
 export const SHORT_NIGHT_HOURS = 6
 export const VERY_SHORT_NIGHT_HOURS = 5
@@ -71,7 +85,7 @@ function recoveryOf(d: CoachData, feeling: PtFeeling): PtVerdicts['recovery'] {
     return { gate: 'rest_day', ...base, reason: `under ${VERY_SHORT_NIGHT_HOURS} h two nights running` }
   }
   if (last.total < SHORT_NIGHT_HOURS) return { gate: 'technique_day', ...base, reason: `last night was under ${SHORT_NIGHT_HOURS} h` }
-  if (feeling === 'çok yorgunum' && last.total < average) return { gate: 'technique_day', ...base, reason: 'very tired, and last night was below the seven-night average' }
+  if (feeling === 'very tired' && last.total < average) return { gate: 'technique_day', ...base, reason: 'very tired, and last night was below the seven-night average' }
   return { gate: 'normal', ...base, reason: '' }
 }
 
@@ -112,7 +126,7 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
   }
   return {
     recovery, overreach, workloadReview, regressionLifts,
-    deloadCue: overreach.length > 0 || workloadReview || (regressionLifts.length >= 2 && feeling === 'çok yorgunum'),
+    deloadCue: overreach.length > 0 || workloadReview || (regressionLifts.length >= 2 && feeling === 'very tired'),
     belowMinimum, priority, balanceFlags,
     missed: (d.missedSessions ?? []).map(m => `${m.title} (due ${m.dueDate})`),
   }

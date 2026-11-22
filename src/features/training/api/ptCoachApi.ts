@@ -3,8 +3,8 @@ import { currentUserId } from '../../../shared/utils/requireUser'
 import { runClaudeJob } from '../../ai/claude/claudeApi'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { gatherCoachData } from '../coach/coachData'
-import { formatPtSnapshot } from '../coach/coachFormat'
-import { formatPtVerdicts, ptVerdicts, type PtFeeling } from '../coach/coachFacts'
+import { fitLines, fitRequestBytes, formatPtSnapshot } from '../coach/coachFormat'
+import { feelingOf, formatPtVerdicts, ptVerdicts, type PtFeeling } from '../coach/coachFacts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AI PT coach — daily assessment. AI last: all data is gathered and pre-aggregated here into ONE compact text
@@ -18,26 +18,15 @@ import { formatPtVerdicts, ptVerdicts, type PtFeeling } from '../coach/coachFact
 const SNAPSHOT_MAX = 8000
 const PREVIOUS_MAX = 2000
 const NOTE_MAX = 300
+/** The function's request limit is 16 KB (`requestMaxBytes`); the wrapper (action, job name) takes a hundred bytes more. */
+const REQUEST_BYTES_MAX = 15 * 1024
 
 export async function buildTrainingSnapshot(): Promise<string> {
   return fitLines(formatPtSnapshot(await gatherCoachData()), SNAPSHOT_MAX)
 }
 
-/** `text`, or its first lines that fit in `max` characters (the least important come last in the snapshot). */
-export function fitLines(text: string, max: number): string {
-  if (text.length <= max) return text
-  const kept: string[] = []
-  let size = 0
-  for (const line of text.split('\n')) {
-    if (size + line.length + 1 > max) break
-    kept.push(line)
-    size += line.length + 1
-  }
-  return kept.join('\n')
-}
-
 export interface PTAssessmentInput {
-  feeling:  PtFeeling     // "az çalıştım" | "normal" | "yorgunum" | "çok yorgunum"
+  feeling:  PtFeeling     // "undertrained" | "normal" | "tired" | "very tired"
   note?:    string        // free text
 }
 
@@ -74,14 +63,17 @@ export async function generatePTAssessment(input: PTAssessmentInput): Promise<PT
   let previous: string | undefined
   try {
     const [prev] = await fetchAssessments(1)
-    if (prev) previous = `(${prev.date}, owner felt: ${prev.feeling})\n${prev.assessment}`.slice(0, PREVIOUS_MAX)
+    if (prev) previous = `(${prev.date}, owner felt: ${feelingOf(prev.feeling) ?? prev.feeling})\n${prev.assessment}`.slice(0, PREVIOUS_MAX)
   } catch { /* history is optional (table may not exist pre-migration) */ }
 
-  const { result, call } = await runClaudeJob<{ text?: unknown }>('coach_assessment', {
+  // The function takes 16 KB for a whole request, counted in bytes: a snapshot of 8000 characters with accents is
+  // more than that, so the text is cut by bytes here (the snapshot's last lines first, then the previous assessment).
+  const sent = fitRequestBytes({
     feeling: input.feeling,
     ...(input.note ? { note: input.note.slice(0, NOTE_MAX) } : {}),
     snapshot, verdicts, ...(previous ? { previous } : {}),
-  })
+  }, REQUEST_BYTES_MAX)
+  const { result, call } = await runClaudeJob<{ text?: unknown }>('coach_assessment', sent)
   const text = typeof result?.text === 'string' ? result.text.trim() : ''
   if (!text) throw new Error("The coach didn't send an assessment — try again")
   // The model that really answered, as the function says it (not the one asked for).
