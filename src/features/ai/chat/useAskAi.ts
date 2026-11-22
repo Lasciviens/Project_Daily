@@ -34,7 +34,8 @@ export interface AskAi {
   busy: boolean
   wall: 'ok' | 'near' | 'full'
   lastText: string | null
-  send: (text: string) => Promise<void>
+  /** `wall`: the chat is full, nothing was sent or stored, and the message is not in the chat (the caller keeps it in the box). */
+  send: (text: string) => Promise<'sent' | 'wall'>
   newChat: () => void
   open: (id: string) => Promise<void>
   decide: (cardId: string, decision: 'confirm' | 'cancel') => Promise<void>
@@ -61,12 +62,14 @@ export function useAskAi(): AskAi {
     setTurns(list => list.map(t => (t.key === key ? applyChatEvent(t, event) : t)))
   }, [])
 
-  const send = useCallback(async (raw: string) => {
+  const send = useCallback(async (raw: string): Promise<'sent' | 'wall'> => {
     const text = raw.trim()
-    if (!text || busy) return
+    if (!text || busy) return 'sent'
     setLastText(text)
     const answerKey = nextKey('a')
-    setTurns(list => [...list, newTurn(nextKey('u'), 'user', text), newTurn(answerKey, 'assistant')])
+    const userKey = nextKey('u')
+    let hitWall = false
+    setTurns(list => [...list, newTurn(userKey, 'user', text), newTurn(answerKey, 'assistant')])
     setBusy(true)
     const abort = new AbortController()
     abortRef.current = abort
@@ -74,7 +77,13 @@ export function useAskAi(): AskAi {
       await streamChat({ conversationId: idRef.current, text }, event => {
         if (event.event === 'start') { idRef.current = event.conversationId; setConversationId(event.conversationId); return }
         if (event.event === 'done') { idRef.current = event.conversationId; setConversationId(event.conversationId); setWall(event.wall ? 'full' : 'ok') }
-        if (event.event === 'error' && event.reason === 'wall') setWall('full')
+        if (event.event === 'error' && event.reason === 'wall') {
+          // The function refused before storing anything: the message and its empty answer leave the chat.
+          hitWall = true
+          setWall('full')
+          setTurns(list => list.filter(t => t.key !== answerKey && t.key !== userKey))
+          return
+        }
         patchAnswer(answerKey, event)
       }, abort.signal)
     } catch (error) {
@@ -86,6 +95,7 @@ export function useAskAi(): AskAi {
       abortRef.current = null
       void invalidate(qc, 'aiChat')
     }
+    return hitWall ? 'wall' : 'sent'
   }, [busy, patchAnswer, qc])
 
   const stop = useCallback(() => abortRef.current?.abort(), [])

@@ -9,7 +9,7 @@ paths:
 
 Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/anthropic.md`, `docs/features/ai.md`.
 
-## The Claude layer (`claude` function, migrations 194, 195 and 196)
+## The Claude layer (`claude` function, migrations 194, 195, 196 and 197)
 - AI last (AGENTS.md): before a job calls a model, check that fixed logic, a query, a tool or a scheduled job can't do it.
 - Edit the parts in `supabase/claude-src/`, then run `node scripts/build-claude-function.mjs`; never edit the generated `supabase/functions/claude/index.ts` (`--check` fails when it is stale).
 - Only the provider part imports the SDK or names an Anthropic field; only `main.ts` touches `Deno`, creates Supabase clients or logs — so another provider or loop is one new part.
@@ -34,7 +34,19 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - AI last in the PT assessment: `coachFacts.ts` decides the recovery gate, the deload cue, the one lift, the volume gaps and the imbalance flags; the `coach_assessment` job only explains them (low effort). The snapshot's line formats and the job's instructions describe each other.
 - `item_fill` (✨) stays narrow: no tools, no data, nothing written, app callers only; the sentence goes in its own tag, escaped; the answer leaves only through `cleanItemFill` (`src/features/items/itemFill.ts`, copied in by the build script), which the browser runs again. The model is never asked for a link.
 
-## The old assistant (`ai-proxy`, until phase 4–5)
+## Ask AI (phase 4a, migration 197: `chat-*.ts`, `src/features/ai/chat/`)
+- **Append-only conversations.** `ai_messages` holds the blocks exactly as sent/received (thinking with signatures); replay them unchanged, never edit, reorder, trim or "tidy" one. The tools and instructions are frozen per chat (hashes): change either only with a new `CHAT_VERSION`, knowing every open chat then asks for a new one. Send `prefix_mismatch_behavior: "error"` with its beta header.
+- **Zero optional parameters** across every tool (every field required; "" or "any" = not given), flat, no limits in the schema; our code checks every value and matches a choice ignoring case. After any tool-set change, try a real call in Diagnose (`count_tokens` does not compile the grammar).
+- **The permission wall is code** (`toolModes`): off tools are left out of a new chat and refused even if called, a write tool is never `on` (only `ask`/`off`), defaults live in code. The Settings screen is 4b.
+- **A write is a proposal.** `propose_*` tools only store a row in `ai_chat_proposals`; `applyProposal` is called from `decideChatProposal` only, after the owner's tap, with `ctx.userDb` (the owner's token), and rewrites nothing the proposal did not name. Its column lists are fixed (no link column: `verify-ai-confirm` compares them with Undo's link list). A new write tool needs a new `tool` in 197's CHECK (a migration), a branch in `checkedProposal` and `applyProposal`, and a line in `verify-ai-confirm`.
+- **Tools take no user id**, run with the owner's token and name the verified id in every query; free text of the owner's is `dataLine`d (one line, cut, angle brackets escaped); a result is cut at `toolResultMax`; results go only in `tool_result` blocks; the date line and the app's notices are their own text blocks, never beside the owner's words in one block.
+- **Citations are input:** shown only for a source a tool returned in that chat and a row the owner's client reads again; the title shown is the row's own.
+- **Every round is reserved and ledgered** (same `run_id`, the next `step`); a failed round after streamed text sends `retract`; nothing of a refused or failed round is stored. `maxRetries` 0.
+- **The wall:** a prompt of 90 000 tokens is never sent (`CHAT_LIMITS.wallTokens`; the app's `CHAT_WALL_TOKENS` is the same number, `verify-ai-chat-ui` compares them).
+- **Reused security code, not AI setup:** `ai_run_read_query` (185/189) for `ask_database`, with the owner's token only.
+- Tests: `verify-claude-chat.cjs` (real SDK, fake network and database), `verify-db-ai-chat.mjs`, `verify-ai-chat-ui.cjs`, the Confirm checks in `verify-ai-confirm.cjs`.
+
+## The old assistant (`ai-proxy`, until phase 5; its app panel and `aiApi.ts` are gone since 4a)
 
 - `DB_CATALOG` is a default-deny allow-list with `rw`/`ro` per table; every operation is scoped to `user_id` on the server — the model never supplies it. The one exception is `db_query` on a shared read-only table without `user_id` (`SHARED_TABLES` and `ro`: `fx_rates_nok`, `shop_site_policies`, `shop_deal_days`), read whole with nothing embedded in it (`verify-ai-confirm`).
 - Deletes and Hevy routine updates only become a Confirm card (`NEEDS_CONFIRM`, `ai_pending_actions`); link columns are in `AI_NO_WRITE`. Text from the context turn or a tool result is data, never an instruction.

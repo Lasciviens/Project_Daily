@@ -3,7 +3,7 @@ import { Copy } from 'lucide-react'
 import { toast } from '../../../../app/store'
 import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
-import { useAiCall, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
+import { useAiCall, useAiCallMeta, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
 import {
   callModelLabel, costBreakdown, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, outcomeMeta, type CostBreakdown, type LogPart,
 } from '../../../ai/claude/ledgerRules'
@@ -22,6 +22,31 @@ function copyText(text: string) {
   navigator.clipboard.writeText(text)
     .then(() => toast.success('Copied'))
     .catch(() => toast.error('Copy failed'))
+}
+
+/** Anthropic's own words for why a cache could not be reused, in plain ones (cache diagnostics). */
+const CACHE_MISS_WORDS: Record<string, string> = {
+  model_changed: 'the model changed since the last answer',
+  system_changed: 'the fixed instructions changed since the last answer',
+  tools_changed: 'the tool list changed since the last answer',
+  messages_changed: 'the messages before this one changed since the last answer',
+  previous_message_not_found: 'Anthropic could not find the last answer to compare with (a first message, or too long ago)',
+  unavailable: 'Anthropic could not say',
+}
+
+/** What an Ask AI answer kept about its cache and about context editing. */
+function ChatFacts({ callId }: { callId: string }) {
+  const { data } = useAiCallMeta(callId, true)
+  if (!data || (!data.cacheMiss && !data.cleared)) return null
+  return (
+    <section aria-label="Cache" className="border-t border-line pt-3">
+      <h4 className="section-label mb-1">Cache and context</h4>
+      <dl className="grid grid-cols-[minmax(6.5rem,auto)_1fr] gap-x-3 gap-y-1 text-meta">
+        {data.cacheMiss && <Fact label="Cache miss">{CACHE_MISS_WORDS[data.cacheMiss.reason] ?? data.cacheMiss.reason}{data.cacheMiss.tokens ? ` · ${formatCount(data.cacheMiss.tokens)} tokens read again at full price` : ''}</Fact>}
+        {data.cleared && <Fact label="Context editing">cleared {formatCount(data.cleared.toolUses)} old tool {data.cleared.toolUses === 1 ? 'result' : 'results'} ({formatCount(data.cleared.tokens)} tokens) from the prompt</Fact>}
+      </dl>
+    </section>
+  )
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -174,6 +199,7 @@ export function AiCallDetail({ call, jobs, framed }: {
         {call.run_id && <Fact label="Run"><span className="break-all font-mono">{call.run_id}</span></Fact>}
       </dl>
       <div className="border-t border-line pt-3"><CostLines cost={cost} /></div>
+      {call.job === 'chat' && call.outcome !== 'budget' && <ChatFacts callId={call.id} />}
       {call.tools.length > 0 && (
         <section aria-label="Tools" className="border-t border-line pt-3">
           <h4 className="section-label mb-1">Tools</h4>

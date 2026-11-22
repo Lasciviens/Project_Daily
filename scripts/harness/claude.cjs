@@ -19,6 +19,7 @@
 
 const { randomUUID } = require('node:crypto')
 const { osloDay, addDays } = require('./seed.cjs')
+const { chatAnswer, confirmAnswer, CHAT_JOB_ABOUT } = require('./claude-chat.cjs')
 
 const MODELS = [
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', note: 'The default: the fastest and cheapest. A prompt over 100,000 tokens costs five times as much.' },
@@ -381,7 +382,7 @@ function about(configured) {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
       longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, models: PRICES,
     },
-    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE].map(j => ({ mode: 'live', ...j })),
+    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE, CHAT_JOB_ABOUT].map(j => ({ mode: 'live', ...j })),
     steps: DESCRIBE_STEPS,
     parts: DESCRIBE_PARTS,
     safetyRules: DESCRIBE_SAFETY_RULES,
@@ -492,6 +493,8 @@ function diagnoseAnswer(opts, store, configured) {
 function claudeMock(opts = {}) {
   const configured = opts.configured !== false
   return ({ body, store }) => {
+    if (body?.action === 'chat') return chatAnswer(body, store, { configured })
+    if (body?.action === 'chat_confirm') return confirmAnswer(body, store)
     if (body?.action === 'describe') return { ok: true, about: about(configured) }
     if (body?.action === 'diagnose') return diagnoseAnswer(opts, store, configured)
     if (body?.action === 'count') {

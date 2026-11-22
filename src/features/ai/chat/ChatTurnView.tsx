@@ -28,7 +28,7 @@ function CitationLink({ citation }: { citation: ChatCitation }) {
   return (
     <button type="button" onClick={open} className="inline-flex min-h-[32px] max-w-full items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 text-meta text-fg-2 [@media(hover:hover)]:hover:border-line-strong [@media(hover:hover)]:hover:text-fg [@media(pointer:coarse)]:min-h-[44px]">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      <Truncate as="span" className="min-w-0">{citation.title}{citation.kind === 'task' && citation.day ? ` · ${formatDate(citation.day)}` : ''}</Truncate>
+      <Truncate as="span" className="min-w-0">{citation.title}{citation.day ? ` · ${formatDate(citation.day)}` : ''}</Truncate>
     </button>
   )
 }

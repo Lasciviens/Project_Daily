@@ -38,7 +38,7 @@ export function AskAIPanel() {
     if (!text.trim() || chat.busy || chat.wall === 'full') return
     setInput('')
     setView('chat')
-    void chat.send(text)
+    void chat.send(text).then(r => { if (r === 'wall') setInput(text) })
   }
   const retry = () => { if (chat.lastText) { void chat.send(chat.lastText) } }
   const empty = chat.turns.length === 0

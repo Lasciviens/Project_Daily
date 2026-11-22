@@ -581,6 +581,17 @@ harmless.
 
 ---
 
+## Ask AI's chats (migration 197) — `ai_conversations`, `ai_messages`, `ai_chat_proposals`, `ai_find_text`
+
+Written only by the `claude` function (service role) with the user id it verified; the browser reads its own rows and writes nothing. No audit trigger and no Undo (server-written logs); owner lock on all three; never in an assistant's catalogue.
+
+- **`ai_conversations`**: title (the first words typed), model, effort, thinking, `tools_hash` and `system_hash` (sha256 of the tool list and the fixed instructions the chat began with), `tool_names` (frozen; an off tool is left out of a new chat), status (`open`, `full`, `closed`), counters, `last_prompt_tokens` (the wall), `cost_usd`. `unique (id, user_id)` is what messages and proposals point at, so neither can name another account's chat.
+- **`ai_messages`** is **append-only**: the blocks exactly as sent or received (thinking blocks with signatures, tool calls and results), a hash chain (`digest`), the ledger row (`call_id`), `meta` (cache-miss reason, context editing, the provider's message id, prompt tokens, cost, citations). `unique (conversation_id, seq)` stops two answers at once. A trigger refuses every update and every delete that is not the account's own cascade (a foreign-key cascade runs at trigger depth 2); the service role has the usual grants (the repo's grant check demands them), the trigger is what holds.
+- **`ai_chat_proposals`**: tool (`add_task` | `log_food`), the checked arguments, the Confirm card's summary, status (`pending` → `confirmed` | `cancelled` | `failed`), expiry (24 h), `result_id` (the row it made), `unique (conversation_id, tool_use_id)`. Why not `ai_pending_actions` (140): see `docs/features/ai.md`.
+- **`ai_find_text(query, kind, limit)`**: SECURITY **INVOKER** (the caller's rights, owner lock and row level security apply, `search_path = ''`), Postgres full-text (`simple`) over the caller's tasks and diary plus a title substring, at most 10 rows with 300-character snippets.
+- **Checks:** `scripts/verify-db-ai-chat.mjs` (static checks on 197, then 38 scenarios on two throwaway databases, one with the old default grants and one without; 197 runs twice and must leave the catalogue unchanged; step "AI chat database scenarios" in `pr-check.yml`).
+- **Client:** the app reads the tables through `chatApi.ts`; before 197 the list is empty (a missing-table guard). `qk.aiChat` is in `NEVER_KEPT` (never stored on the device).
+
 ## Edge Function Rules
 
 - Runtime: **Deno** — use `import` not `require`, no Node built-ins.
