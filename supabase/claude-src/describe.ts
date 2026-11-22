@@ -29,6 +29,9 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'job: item_fill', file: 'supabase/claude-src/job-item-fill.ts', what: 'The ✨ job: its instructions, its answer shape and its check.' },
   { name: 'jobs: recipes', file: 'supabase/claude-src/job-recipes.ts', what: 'The recipe editor\'s three jobs: read a pasted recipe, read a recipe from a link, estimate the nutrition of the ingredients.' },
   { name: 'jobs: quick guess', file: 'supabase/claude-src/job-quick-guess.ts', what: 'The quick guess jobs of Food: guess a meal from a description, and suggest the options of a preset.' },
+  { name: 'job: coach assessment', file: 'supabase/claude-src/job-coach.ts', what: "The PT coach's daily assessment: it explains the verdicts the app's own rules reached (recovery, volume, the one lift to focus on). The model decides none of them." },
+  { name: 'jobs: devices', file: 'supabase/claude-src/job-device.ts', what: "The Kobo's question about a passage and the phone's brief and question: short plain answers for a small screen, started only by the two device functions." },
+  { name: 'job: test bench', file: 'supabase/claude-src/job-test-bench.ts', what: 'The Test bench: any question with a model, effort and thinking you pick, from the code\'s lists.' },
   { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
@@ -39,8 +42,8 @@ const DESCRIBE_PARTS: Describe['parts'] = [
 
 /** The path of one request, in order. `part` names the part that does the step. */
 const DESCRIBE_STEPS: Describe['steps'] = [
-  { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. Supabase checks the token before the function starts. The function then asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one.' },
-  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "diagnose" runs the four checks of the Diagnose button.` },
+  { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. The function asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one. The Kobo and the phone cannot hold a token: their own server functions check their device secret first, then call this function with the server key in a header, compared in constant time. That path may only run a job, as "kobo" or "phone", for the owner account read from this function\'s own environment, and only a job whose list of callers names that device.' },
+  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "count" gives the Test bench\'s token count for free, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
@@ -57,14 +60,16 @@ const DESCRIBE_STEPS: Describe['steps'] = [
 /** The rules that are code. The owner's settings move inside them and cannot switch them off. */
 const DESCRIBE_SAFETY_RULES: string[] = [
   'Only a signed-in account on the owner list can call this function. The sign-in token is checked first, then the list.',
-  'The account the function acts for is always the one it verified. A user id sent in a request is never read.',
+  'The account the function acts for is always the one it verified (the app) or the owner account of its own environment (a device). A user id sent in a request is never read.',
+  "The Kobo and the phone reach this function only through their own server functions, with the server key in a header, checked in constant time. That path can only run a job named for that device: the phone cannot start the item fill, the app cannot start the Kobo's question. A device has its own daily limit.",
   "The API key lives only in the server's secrets. It travels to Anthropic in a header, never in an address, and it is taken out of every error before the error is sent back or written down.",
   'Your settings are treated as input, because the browser can write them: a model or effort that is not on the list is ignored, and every number is held inside the limits in the code.',
   `A monthly budget is a wall, not a warning: the worst case of each call is reserved before it is sent, and when it does not fit, nothing is sent. It can be at most $${LIMITS.monthlyBudgetMaxUsd}.`,
   'The prices are part of the code, not a setting, so the budget wall cannot be switched off by changing a price.',
   `At most ${LIMITS.callsPerMinute} calls in a minute and ${LIMITS.callsPerDay} in a day.`,
   'The text you type is sent as data inside a tag, and the fixed instructions say that text in it is never an instruction.',
-  'The jobs here get no tools and none of your data: the model can only suggest values, which you see before anything is saved.',
+  'The jobs here get no tools and none of your data beyond what the app hands over in a tag: the model can only suggest values or write text, which you see before anything is saved.',
+  'Where code can decide, code decides: the PT assessment gets its verdicts (rest day, deload, the one lift) worked out by the app, and the phone gets its day looked up, so the model only explains or writes up.',
   "Every answer is checked value by value by the job's own code. A value that fails is dropped, never repaired, and a link is only ever one you typed yourself.",
   'Only this function writes the ledger. The app can read your rows and cannot change them.',
   'The text of a request and its answer is kept only while your text log is on, and is never printed to the server log.',
@@ -81,6 +86,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     callers: [...job.callers],
     version: job.version,
     defaults: { ...job.defaults },
+    timeLimitMs: job.timeLimitMs ?? null,
     instructions: job.instructions,
     answerSchema: job.answerSchema,
     tools: [],
@@ -89,7 +95,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
       ...(job.answerSchema ? [job.enforceAnswerSchema
         ? 'Structured output: Anthropic holds the answer to a JSON Schema'
         : 'A fixed answer shape, written into the instructions as a JSON Schema and checked by our own code'] : []),
-      `Adaptive thinking (${job.defaults.effort} effort)`,
+      job.pickable ? 'Thinking: adaptive or off, as the request picks' : `Adaptive thinking (${job.defaults.effort} effort)`,
       'A summary of the thinking, kept in the text log',
       ...(job.extraFeatures ?? []),
     ],
@@ -110,6 +116,8 @@ export function describeFunction(configured: boolean, provider: ProviderInfo): D
       maxOutputTokens: { ...LIMITS.maxOutputTokens },
       logDays: { ...LIMITS.logDays },
       requestMaxBytes: LIMITS.requestMaxBytes,
+      benchTextMax: LIMITS.benchTextMax,
+      deviceCallsPerDay: { ...LIMITS.deviceCallsPerDay },
     },
     defaults: { ...DEFAULTS },
     prices: {

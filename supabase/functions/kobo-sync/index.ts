@@ -1529,36 +1529,7 @@ function cleanAsk(raw: unknown): AskInput | string {
   }
 }
 
-const TASK: Record<AskKind, string> = {
-  explain: 'Explain what the selected passage means in plain words: what happens, what is implied, any idiom or reference.',
-  translate: 'Translate the selected passage. Keep the tone. Add one short line on any phrase that does not translate literally.',
-  word: 'Explain the selected word or phrase as used here: meaning in this context, base form, and one short example.',
-  character: 'Say who or what the selected name is, using only what the book has shown so far.',
-  free: 'Answer the reader’s question about the selected passage.',
-}
-
-/** The system instruction and the user turn for Gemini. Stable wording keeps answers consistent. */
-function buildAskPrompt(a: AskInput): { system: string; user: string } {
-  const where = a.percent !== null ? `The reader is ${Math.round(a.percent)}% through the book.` : ''
-  const system = [
-    'You help someone reading a book on an e-reader. Answers appear on a small e-ink screen.',
-    `Answer in ${a.answer_language}. Be brief: at most 120 words, plain text, no markdown, no lists unless needed.`,
-    'Never reveal anything that happens later in the book than where the reader is. If you are not sure whether something is a spoiler, leave it out.',
-    'If the passage alone is not enough to answer, say so in one sentence.',
-  ].join(' ')
-  const book = [a.title && `Book: ${a.title}`, a.author && `Author: ${a.author}`, a.language && `Book language: ${a.language}`, where].filter(Boolean).join('\n')
-  const user = [
-    book,
-    `Task: ${TASK[a.ask]}`,
-    a.question ? `Reader’s question: ${a.question}` : '',
-    `Text before: …${a.before}`,
-    `Selected: «${a.selection}»`,
-    `Text after: ${a.after}…`,
-  ].filter(Boolean).join('\n\n')
-  return { system, user }
-}
-
-/** Gemini's text, trimmed to what an e-ink box shows well. */
+/** The model's text, trimmed to what an e-ink box shows well (kobo-sync applies it again to what the `claude` function answered). */
 function cleanAnswer(text: unknown): string | null {
   if (typeof text !== 'string') return null
   const t = text.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim()
@@ -1876,52 +1847,57 @@ async function handleCapture(db: Db, userId: string, raw: unknown) {
   return { ok: true, done, failed }
 }
 
-// ── A question about a passage (the Gemini key stays here) ──────────────────
-const ASK_MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash'] as const
-/** A leaked device secret can cost at most this many answers a day. */
+// ── A question about a passage (answered by the `claude` function) ──────────
+/** A leaked device secret can cost at most this many answers a day (`claude` counts the Kobo's own rows too). */
 const ASK_DAILY_CAP = 100
-/** Thinking stays minimal so it never eats the answer's token budget (the ai-proxy rule: 3.x takes a level, 2.5 a budget). */
-const thinkingFor = (model: string) => model.startsWith('gemini-3') ? { thinking_config: { thinking_level: 'MINIMAL' } } : { thinkingConfig: { thinkingBudget: 0 } }
+/** How long this function waits for `claude`: its own model limit for the Kobo is 20 s, so a clean answer comes first. */
+const ASK_WAIT_MS = 24_000
+
+/**
+ * Asks the `claude` function's `kobo_ask` job. Only that function holds the Anthropic key: this one proves itself
+ * with the project's service key in the `x-claude-server-key` header (never in the address, never logged), and
+ * names only the job, the caller `kobo` and the checked question. The account is not sent: `claude` acts as the
+ * owner from its own environment, so a bug here cannot point the call at another account. What comes back is
+ * input again: only text, cleaned for the e-ink screen, ever leaves.
+ */
+async function askClaude(input: AskInput): Promise<{ answer: string; model: string | null } | { failure: Response }> {
+  const key = serviceKey()
+  if (!key) return { failure: json({ error: 'not_configured', message: 'The server has no key to reach the AI function.' }, 503) }
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ASK_WAIT_MS)
+  try {
+    const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/claude`, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-claude-server-key': key },
+      body: JSON.stringify({ action: 'run', caller: 'kobo', job: 'kobo_ask', input }),
+    })
+    const data = await res.json().catch(() => null) as { ok?: unknown; reason?: unknown; result?: { answer?: unknown }; call?: { served_model?: unknown } } | null
+    if (data?.ok === true) {
+      const answer = cleanAnswer(data.result?.answer)
+      if (answer) return { answer, model: typeof data.call?.served_model === 'string' ? data.call.served_model.slice(0, 80) : null }
+      return { failure: json({ error: 'no_answer', message: 'No answer this time — try again.' }, 502) }
+    }
+    // The reasons `claude` gives, as the codes the plugin already knows.
+    const reason = data?.reason
+    if (reason === 'busy' || reason === 'budget') return { failure: json({ error: 'rate_limited', message: 'The AI is busy or its budget is used up — try again later.' }, 429) }
+    if (reason === 'not_configured' || reason === 'off') return { failure: json({ error: 'not_configured', message: 'The AI is not set up or switched off.' }, 503) }
+    if (reason === 'bad_input') return { failure: json({ error: 'invalid', message: 'That question could not be sent.' }, 400) }
+    return { failure: json({ error: 'no_answer', message: 'No answer this time — try again.' }, 502) }
+  } catch (e) {
+    console.error('kobo-sync ask', (e as Error)?.name === 'AbortError' ? 'timed out' : errText(e))
+    return { failure: json({ error: 'no_answer', message: 'No answer this time — try again.' }, 502) }
+  } finally { clearTimeout(timer) }
+}
 
 async function handleAsk(db: Db, userId: string, raw: unknown) {
-  const key = Deno.env.get('GEMINI_API_KEY')
-  if (!key) return json({ error: 'not_configured', message: 'GEMINI_API_KEY is not set.' }, 503)
   const input = cleanAsk(raw)
   if (typeof input === 'string') return json({ error: 'invalid', message: input }, 400)
   const dayStart = new Date(Date.now() - 86400 * 1000).toISOString()
   const { count } = await db.from('book_ai_notes').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', dayStart)
   if ((count ?? 0) >= ASK_DAILY_CAP) return json({ error: 'rate_limited', message: `That is ${ASK_DAILY_CAP} questions in a day — try again tomorrow.` }, 429)
-  const { system, user } = buildAskPrompt(input)
-  const deadline = Date.now() + 20000
-  let answer: string | null = null
-  let model: string | null = null
-  for (const m of ASK_MODELS) {
-    const left = deadline - Date.now()
-    if (left < 2000) break
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), left)
-    try {
-      // The key goes in a header, never the URL (a fetch error message carries the URL into the logs).
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
-        method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts: [{ text: user }] }],
-          generationConfig: { maxOutputTokens: 800, temperature: 0.3, ...thinkingFor(m) },
-        }),
-      })
-      if (r.ok) {
-        const j = await r.json()
-        answer = cleanAnswer(j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join(''))
-        if (answer) { model = m; break }
-      } else if (r.status === 429) {
-        return json({ error: 'rate_limited', message: 'The AI is busy — try again in a minute.' }, 429)
-      }
-    } catch (e) {
-      console.error('kobo-sync ask', m, errText(e))
-    } finally { clearTimeout(timer) }
-  }
-  if (!answer) return json({ error: 'no_answer', message: 'No answer this time — try again.' }, 502)
+  const asked = await askClaude(input)
+  if ('failure' in asked) return asked.failure
+  const { answer, model } = asked
   const md5 = (raw as { md5?: unknown })?.md5
   let bookId: string | null = null
   if (typeof md5 === 'string' && MD5.test(md5)) {

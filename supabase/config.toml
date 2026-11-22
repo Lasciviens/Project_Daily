@@ -32,6 +32,13 @@ verify_jwt = false
 [functions.ai-proxy]
 verify_jwt = false
 
+# The AI function (AI rebuild). Dual-auth, all in code and before the body is read: the browser's sign-in token
+# (getUser + the owner list) OR a device function (kobo-sync, phone-gateway) that sends the project's service key in
+# `x-claude-server-key`. The new `sb_secret_` keys are not JWTs, so platform verification would refuse the device
+# path; the function refuses everything that has neither (401) and `sameSecret` compares the key in constant time.
+[functions.claude]
+verify_jwt = false
+
 # The iPhone's single durable entry point — authenticates by x-phone-secret
 # (device secret), acts as the single user via the service role, server-side.
 [functions.phone-gateway]

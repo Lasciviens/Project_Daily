@@ -81,36 +81,7 @@ export function cleanAsk(raw: unknown): AskInput | string {
   }
 }
 
-const TASK: Record<AskKind, string> = {
-  explain: 'Explain what the selected passage means in plain words: what happens, what is implied, any idiom or reference.',
-  translate: 'Translate the selected passage. Keep the tone. Add one short line on any phrase that does not translate literally.',
-  word: 'Explain the selected word or phrase as used here: meaning in this context, base form, and one short example.',
-  character: 'Say who or what the selected name is, using only what the book has shown so far.',
-  free: 'Answer the reader’s question about the selected passage.',
-}
-
-/** The system instruction and the user turn for Gemini. Stable wording keeps answers consistent. */
-export function buildAskPrompt(a: AskInput): { system: string; user: string } {
-  const where = a.percent !== null ? `The reader is ${Math.round(a.percent)}% through the book.` : ''
-  const system = [
-    'You help someone reading a book on an e-reader. Answers appear on a small e-ink screen.',
-    `Answer in ${a.answer_language}. Be brief: at most 120 words, plain text, no markdown, no lists unless needed.`,
-    'Never reveal anything that happens later in the book than where the reader is. If you are not sure whether something is a spoiler, leave it out.',
-    'If the passage alone is not enough to answer, say so in one sentence.',
-  ].join(' ')
-  const book = [a.title && `Book: ${a.title}`, a.author && `Author: ${a.author}`, a.language && `Book language: ${a.language}`, where].filter(Boolean).join('\n')
-  const user = [
-    book,
-    `Task: ${TASK[a.ask]}`,
-    a.question ? `Reader’s question: ${a.question}` : '',
-    `Text before: …${a.before}`,
-    `Selected: «${a.selection}»`,
-    `Text after: ${a.after}…`,
-  ].filter(Boolean).join('\n\n')
-  return { system, user }
-}
-
-/** Gemini's text, trimmed to what an e-ink box shows well. */
+/** The model's text, trimmed to what an e-ink box shows well (kobo-sync applies it again to what the `claude` function answered). */
 export function cleanAnswer(text: unknown): string | null {
   if (typeof text !== 'string') return null
   const t = text.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim()
