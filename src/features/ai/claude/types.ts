@@ -70,6 +70,9 @@ export interface DescribePrices {
   longPromptOverTokens: number
   longPromptMultiplier: number
   batchMultiplier: number
+  /** What one web search costs on top of the tokens, and the most a call may run (0 from a function that does not say). */
+  webSearchUsdEach: number
+  webSearchMaxUses: number
   models: DescribeModelPrice[]
 }
 

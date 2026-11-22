@@ -34,6 +34,7 @@ import { describeFunction } from './describe.ts'
 import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret, SCHEDULE_ACTIONS } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
+import { findJob } from './jobs.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
 import type { DnsLookup } from './types.ts'
 
@@ -85,6 +86,11 @@ const dnsLookup: DnsLookup = async (name, type, signal) => {
     if (Deno.errors?.NotFound && e instanceof Deno.errors.NotFound) return []
     throw e
   }
+}
+
+/** A size in the unit people say it in (16 KB, 1.5 MB), for the message of the limit that was really hit. */
+function sizeWords(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.round(bytes / 1024)} KB`
 }
 
 // The weekly report's push: the push-send function, with the secret the other timers already use. The words are built by
@@ -171,11 +177,19 @@ Deno.serve(async (req) => {
     }
 
     // What is asked: a small JSON object with an action.
-    const text = await readCapped(req.body, LIMITS.requestMaxBytes)
-    if (text === null) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+    // The app may send a photo (up to LIMITS.imageRequestMaxBytes) but only to a job that takes one; every other
+    // request, and every device request, stays within LIMITS.requestMaxBytes. The bigger read is only a read: the
+    // size is checked again once the job is known.
+    const readLimit = device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes
+    const text = await readCapped(req.body, readLimit)
+    if (text === null) return reply(400, { error: `The request is larger than ${sizeWords(readLimit)}` })
     const body = parseObject(text)
     if (!body) return reply(400, { error: 'The request must be a JSON object' })
     const action = ownValue(body, 'action')
+    if (new TextEncoder().encode(text).length > LIMITS.requestMaxBytes) {
+      const job = action === 'run' ? findJob(ownValue(body, 'job')) : null
+      if (!job?.acceptsImage) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+    }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
     let caller: 'app' | 'kobo' | 'phone' | 'schedule' = 'app'

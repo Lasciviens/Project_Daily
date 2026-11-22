@@ -191,16 +191,31 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
     // 5 minutes, Anthropic reads them from its cache at a tenth of the price.
     system: [{ type: 'text', text: request.instructions, cache_control: { type: 'ephemeral' } }],
     // Everything that changes from call to call comes after the cached block.
-    messages: [{ role: 'user', content: request.userText }],
+    messages: [{ role: 'user', content: anthropicContent(request) }],
     // The model decides how much to reason. `summarized` returns a readable summary for the ledger. `disabled` asks
     // for no reasoning at all (the SDK's ThinkingConfigDisabled): it takes no `display`, and no summary comes back.
     thinking: request.thinking === 'off' ? { type: 'disabled' } : { type: 'adaptive', display: 'summarized' },
+    // The one server-side tool: Anthropic's web search, run by Anthropic (no result passes through this code), at most
+    // `max_uses` searches in the call. No other tool is ever sent.
+    ...(request.webSearch ? { tools: [{ type: 'web_search_20250305' as const, name: 'web_search' as const, max_uses: request.webSearch.maxUses }] } : {}),
     output_config: {
       effort: request.effort,
       // A fixed answer shape: the answer is JSON that follows this schema, in a text block.
       ...(request.answerSchema ? { format: { type: 'json_schema' as const, schema: request.answerSchema } } : {}),
     },
   }
+}
+
+/**
+ * The message's content: the live text, or, with photos, the photos first and the text after them (Anthropic's advice
+ * for a question about an image). A photo is an `image` block with a base64 source; the type is one of three.
+ */
+function anthropicContent(request: ModelRequest): string | Anthropic.ContentBlockParam[] {
+  if (!request.images?.length) return request.userText
+  return [
+    ...request.images.map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),
+    { type: 'text' as const, text: request.userText },
+  ]
 }
 
 /**
@@ -214,6 +229,9 @@ function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParam
     max_tokens: body.max_tokens,
     system: [{ type: 'text', cache_control: { type: 'ephemeral' }, text: `(the job's fixed instructions: ${request.instructions.length} characters, shown above)` }],
     messages: [{ role: 'user', content: `(the live text: ${request.userText.length} characters, shown above)` }],
+    // A photo is never kept: only how many were sent and how big (in base64 characters).
+    ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
+    ...(body.tools ? { tools: body.tools } : {}),
     thinking: body.thinking,
     output_config: body.output_config,
     timeout_ms: timeoutMs,
@@ -238,6 +256,7 @@ function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | n
     usage: anthropicUsage(message.usage),
     requestId: typeof message._request_id === 'string' ? anthropicCut(message._request_id, 120) : null,
     servedModel: typeof message.model === 'string' ? anthropicCut(message.model, 80) : null,
+    webSearches: anthropicCount(message.usage?.server_tool_use?.web_search_requests),
   }
 }
 

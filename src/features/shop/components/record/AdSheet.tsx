@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy, Sparkles } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, cx } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
@@ -11,6 +11,8 @@ import { categoryNamesOf, fillAd, templateFor, unknownFields, AD_FIELDS } from '
 import { adClipboardText, adFactsOf, adPriceOf, marketplaceLink, marketplacesOf } from '../../sellingModel'
 import { boughtOn, isMine } from '../../ownModel'
 import { MoneyEditor, Toggle } from './factKit'
+import { useImproveAd } from '../../../ai/claude/hooks/useAiFeatures'
+import { costNote } from '../../../ai/claude/featureRules'
 import { AddressLink } from './AddressLink'
 import type { ShopRecordModel } from './useShopRecord'
 import type { ResaleCondition, ShopListing } from '../../resaleTypes'
@@ -27,6 +29,11 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
   const { data: templates = [], isLoading } = useAdTemplates()
   const defaults = useAddResaleDefaults()
   const create = useCreateListing()
+  const improve = useImproveAd()
+  // The owner's condition words are kept per thing on this device (a convenience, never sent anywhere but to Improve).
+  const notesKey = `shop:adCondition:${r.item.id}`
+  const [condNotes, setCondNotes] = useState(() => { try { return localStorage.getItem(notesKey) ?? '' } catch { return '' } })
+  const keepNotes = (v: string) => { setCondNotes(v); try { if (v) localStorage.setItem(notesKey, v); else localStorage.removeItem(notesKey) } catch { /* no storage: the words stay in the sheet */ } }
   const change = useChangeListing()
   const markets = useMemo(() => marketplacesOf(templates), [templates])
   const [market, setMarket] = useState<string | null | undefined>(listing ? listing.marketplace : undefined)
@@ -44,6 +51,13 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
   const filled = template ? fillAd(template, facts) : null
   // The text follows the choices until the owner edits it; then it stays theirs (Fill in again takes the template's).
   const [edited, setEdited] = useState<{ title: string; body: string } | null>(listing?.ad_text ? splitAd(listing.ad_text) : null)
+  // A change of the choices refills the text from the template; the text it replaces (an edit, an improved ad) comes back with Undo.
+  function resetText() {
+    if (!edited) return
+    const previous = edited
+    setEdited(null)
+    toast.undo('The text was refilled from your choices', () => setEdited(previous))
+  }
   const title = edited?.title ?? filled?.title ?? item.title
   const body = edited?.body ?? filled?.body ?? ''
   const [editingTemplate, setEditingTemplate] = useState(false)
@@ -60,6 +74,17 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
     } catch {
       toast.error('Couldn\'t copy — select the text and copy it by hand')
     }
+  }
+
+  // "Improve": the text as it stands (the template's, or the owner's edit) rewritten with the owner's condition words, in the
+  // language they are in (Norwegian for FINN). It lands in the editable text and Undo brings back what was there.
+  async function improveIt() {
+    const before = { title, body }
+    try {
+      const better = await improve.mutateAsync({ title, template: body, notes: condNotes })
+      setEdited({ title, body: better.text })
+      toast.undo(`Ad improved by AI${costNote(better.costUsd) ? ` (${costNote(better.costUsd)})` : ''} — read it before you copy it`, () => setEdited(before))
+    } catch { /* the hook reports it */ }
   }
 
   function keep() {
@@ -88,7 +113,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
           <span className="field-label">Where</span>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Marketplace">
             {[...markets, null].map(m => (
-              <button key={m ?? 'other'} type="button" role="radio" aria-checked={where === m} onClick={() => { setMarket(m); setEdited(null) }}
+              <button key={m ?? 'other'} type="button" role="radio" aria-checked={where === m} onClick={() => { setMarket(m); resetText() }}
                 className={cx('chip min-h-[36px] px-3', where === m ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
                 {m ?? 'Elsewhere'}
               </button>
@@ -99,21 +124,21 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="field-label">Condition</span>
-            <select value={condition ?? ''} onChange={e => { setCondition((e.target.value || null) as ResaleCondition | null); setEdited(null) }} className="select max-w-xs">
+            <select value={condition ?? ''} onChange={e => { setCondition((e.target.value || null) as ResaleCondition | null); resetText() }} className="select max-w-xs">
               <option value="">Not said</option>
               {RESALE_CONDITIONS.map(c => <option key={c} value={c}>{conditionChoice(c)}</option>)}
             </select>
           </label>
           <div className="flex flex-col gap-1">
             <span className="field-label">Asking price</span>
-            <MoneyEditor label="Asking price" amount={price} currency={currency} onAmount={p => { setPrice(p); setEdited(null) }} onCurrency={c => { setCurrency(c); setEdited(null) }} />
+            <MoneyEditor label="Asking price" amount={price} currency={currency} onAmount={p => { setPrice(p); resetText() }} onCurrency={c => { setCurrency(c); resetText() }} />
             {start.from === 'estimate' && price === start.price && <span className="text-meta text-fg-muted">Your estimate</span>}
           </div>
         </div>
         <div className="flex flex-col">
-          {boughtOn(item) && <Toggle checked={bought} onChange={v => { setBought(v); setEdited(null) }}>Say when it was bought ({item.approx_dates ? 'ca. ' : ''}{formatDate(boughtOn(item))})</Toggle>}
+          {boughtOn(item) && <Toggle checked={bought} onChange={v => { setBought(v); resetText() }}>Say when it was bought ({item.approx_dates ? 'ca. ' : ''}{formatDate(boughtOn(item))})</Toggle>}
           {mine.map(a => (
-            <Toggle key={a.id} checked={withIt.has(a.id)} onChange={v => { setWithIt(s => { const n = new Set(s); if (v) n.add(a.id); else n.delete(a.id); return n }); setEdited(null) }}>
+            <Toggle key={a.id} checked={withIt.has(a.id)} onChange={v => { setWithIt(s => { const n = new Set(s); if (v) n.add(a.id); else n.delete(a.id); return n }); resetText() }}>
               With it: {a.title}
             </Toggle>
           ))}
@@ -132,13 +157,19 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
           <span className="field-label">Text</span>
           <textarea value={body} onChange={e => setEdited({ title, body: e.target.value })} rows={8} className="input resize-y" aria-label="The ad's text" />
         </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={condNotes} onChange={e => keepNotes(e.target.value)} maxLength={1000} placeholder="Condition in your words: scratches, what is included…"
+            aria-label="Condition, in your words" className="input input-sm min-w-0 flex-1" />
+          <Button size="sm" icon={<Sparkles />} loading={improve.isPending} disabled={!condNotes.trim() || !body.trim()} onClick={() => { void improveIt() }}
+            title="AI call: rewrites the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
+        </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}
-          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEdited(null)}>Fill in again</button>}
+          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()}>Fill in again</button>}
           {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)}>Edit the template</button>}
         </div>
         {filled && filled.unknown.length > 0 && <p className="text-meta text-warn">The template names {filled.unknown.map(f => `{${f}}`).join(', ')}, which the app doesn't fill.</p>}
-        {template && editingTemplate && <TemplateEditor id={template.id} title={template.title} body={template.body} onDone={() => { setEditingTemplate(false); setEdited(null) }} />}
+        {template && editingTemplate && <TemplateEditor id={template.id} title={template.title} body={template.body} onDone={() => { setEditingTemplate(false); resetText() }} />}
       </div>
     </ModalShell>
   )

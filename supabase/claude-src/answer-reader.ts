@@ -103,9 +103,11 @@ export function answerValue(from: Record<string, unknown>, key: string): unknown
   return Object.prototype.hasOwnProperty.call(from, key) ? from[key] : undefined
 }
 
-// Control characters other than the tab and the line break.
+// Control characters other than the tab and the line break, and the zero-width and text-direction characters (U+200B–200F,
+// U+202A–202E, U+2066–2069, U+FEFF): they draw nothing and can hide a word from a check (a link split by one) or reorder
+// what the owner reads.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
-const ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g
+const ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
 
 /**
  * A one-line text: a string whose white space (line breaks included) is collapsed to single spaces, at least one

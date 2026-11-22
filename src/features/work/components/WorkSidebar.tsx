@@ -6,6 +6,7 @@ import QuickNotesWidget from './QuickNotesWidget'
 import WeeklyGoalsWidget from './WeeklyGoalsWidget'
 import PinnedLinksWidget from './PinnedLinksWidget'
 import EODSummaryWidget from './EODSummaryWidget'
+import { WriteWeek } from './WriteWeek'
 
 // Right rail — everything visible at once as stacked collapsible cards
 // (replaces the old tabbed sidebar where 3 of the 4 tools were always hidden).
@@ -68,6 +69,7 @@ export default function WorkSidebar({ tasks }: { tasks: Task[] }) {
       </RailSection>
       <RailSection id="goals" title="This week" icon={<Target />}>
         <WeeklyGoalsWidget />
+        <WriteWeek tasks={tasks} />
       </RailSection>
       <RailSection id="links" title="Pinned links" icon={<Link2 />} defaultCollapsed>
         <PinnedLinksWidget />
