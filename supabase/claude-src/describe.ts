@@ -31,10 +31,15 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'jobs: quick guess', file: 'supabase/claude-src/job-quick-guess.ts', what: 'The quick guess jobs of Food: guess a meal from a description, and suggest the options of a preset.' },
   { name: 'job: coach assessment', file: 'supabase/claude-src/job-coach.ts', what: "The PT coach's daily assessment: it explains the verdicts the app's own rules reached (recovery, volume, the one lift to focus on). The model decides none of them." },
   { name: 'jobs: devices', file: 'supabase/claude-src/job-device.ts', what: "The Kobo's question about a passage and the phone's brief and question: short plain answers for a small screen, started only by the two device functions." },
+  { name: 'job: weekly report', file: 'supabase/claude-src/job-weekly-report.ts', what: "The weekly report's instructions and its check: five fixed headings, a length limit, no link or markup. A batch job: it is never run live." },
+  { name: 'week facts', file: 'supabase/claude-src/week-facts.ts', what: "AI last: every number of the weekly report (training, health, food, tasks and time) is worked out here by code, for the Oslo week Monday to Sunday. The model only reads the prepared text." },
+  { name: 'week data', file: 'supabase/claude-src/week-data.ts', what: "Reads the week's rows with the server's rights, each query naming your user id, and hands them to the figures." },
+  { name: 'report store', file: 'supabase/claude-src/report-store.ts', what: "The weekly reports' table: add, claim and finish a report, so one check works on a report at a time and its push goes once." },
   { name: 'job: test bench', file: 'supabase/claude-src/job-test-bench.ts', what: 'The Test bench: any question with a model, effort and thinking you pick, from the code\'s lists.' },
   { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
+  { name: 'batch', file: 'supabase/claude-src/batch.ts', what: 'The weekly report\'s two steps: queue one request at half price (Sunday night), and read it back when it has ended (every 15 minutes while one is queued), correcting the ledger to the real cost and sending the push once.' },
   { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
   { name: 'describe', file: 'supabase/claude-src/describe.ts', what: 'This description: where the page you are reading comes from.' },
   { name: 'main', file: 'supabase/claude-src/main.ts', what: 'The entry point: it checks who is asking, reads the request, creates the database clients and hands over to the run.' },
@@ -54,6 +59,7 @@ const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Calling the model', part: 'provider', text: "The provider part turns the request into Anthropic's shape and sends it with Anthropic's official SDK: the key in a header and a time limit. There is no automatic retry: one request is one generation, so one reservation covers one possible bill. It turns the answer back into text, a summary of the model's thinking, how it ended and the token counts." },
   { title: 'Checking the answer', part: 'run', text: "An answer the model declined, or one cut off at its length limit, is not used. Otherwise the job checks it value by value with its own code. A value that fails is dropped, never repaired." },
   { title: 'Writing the ledger', part: 'ledger', text: 'The reserved row gets its real numbers: the tokens, the cost (worked out from the price table in this code), the time it took and how it ended. A call whose bill is unknown, such as a timeout, stays charged at the reserved worst case. While you keep the text log on, the request, the answer and the thinking summary are kept too.' },
+  { title: 'Batch jobs (the weekly report)', part: 'batch', text: 'A job that can wait is queued at half price (the Message Batches API): on Sunday night a timer asks this function, with a value derived from a secret it shares with the timer, to work out the week with code, reserve the worst case at the batch price, and queue one request. Another timer asks every 15 minutes while a report is queued; when the batch has ended, this function reads the one result line (found by its id), checks the text, saves the report, corrects the ledger row to the real cost and sends one push. A batch that failed, expired or was cancelled keeps its worst case in the ledger and the report says why. Nothing is retried in a loop.' },
   { title: 'The reply', part: 'run', text: "The app gets the checked result with the call's numbers, or a reason with one plain sentence. Every message goes through the filter that takes secrets out." },
 ]
 
@@ -74,6 +80,8 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'Only this function writes the ledger. The app can read your rows and cannot change them.',
   'The text of a request and its answer is kept only while your text log is on, and is never printed to the server log.',
   'A link you paste is input from outside: only https is read, a private address (in any spelling, or a name that points at one) is refused on every redirect, the read has a time limit and a size limit, and only fixed headers are sent. Text on the page is data in a tag, never an instruction.',
+  "The timer reaches this function with a value derived from a secret it shares with the database (an HMAC of a fixed label), compared in constant time; that path can only ask for the weekly report's two steps, as the owner account of this function's own environment. The batch's id is stored where only the server can read it and is only ever read back from that table.",
+  'The weekly report is made from figures code worked out: a task title or a workout name in them is data in a tag, the model has no tools and writes nothing but the report text, and its answer is checked (length, five fixed headings, no link or markup) and never repaired.',
   'The ledger and the AI settings are never given to an assistant as data or as a tool.',
 ]
 
@@ -83,6 +91,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     title: job.title,
     what: job.what,
     kind: job.kind,
+    mode: job.mode ?? 'live',
     callers: [...job.callers],
     version: job.version,
     defaults: { ...job.defaults },

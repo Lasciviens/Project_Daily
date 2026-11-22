@@ -12,12 +12,13 @@ import { RECIPE_FROM_LINK_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_MACROS_JOB } from '.
 import { QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB } from './job-quick-guess.ts'
 import { COACH_ASSESSMENT_JOB } from './job-coach.ts'
 import { KOBO_ASK_JOB, PHONE_ASK_JOB, PHONE_BRIEF_JOB } from './job-device.ts'
+import { WEEKLY_REPORT_JOB } from './job-weekly-report.ts'
 import { TEST_BENCH_JOB } from './job-test-bench.ts'
 import { DIAGNOSE_JOB } from './job-diagnose.ts'
 
 export const JOB_LIST: readonly JobDefinition[] = [
   ITEM_FILL_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_FROM_LINK_JOB, RECIPE_MACROS_JOB, QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB,
-  COACH_ASSESSMENT_JOB, KOBO_ASK_JOB, PHONE_BRIEF_JOB, PHONE_ASK_JOB, TEST_BENCH_JOB, DIAGNOSE_JOB,
+  COACH_ASSESSMENT_JOB, KOBO_ASK_JOB, PHONE_BRIEF_JOB, PHONE_ASK_JOB, WEEKLY_REPORT_JOB, TEST_BENCH_JOB, DIAGNOSE_JOB,
 ]
 
 // A Map, not a plain object: a name like "constructor" or "__proto__" finds nothing in it.
