@@ -444,6 +444,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 197 (Ask AI chats): who may read and write conversations, messages and proposals, the append-only guard
+      # on messages, the foreign keys that keep a message in its own account's conversation, and ai_find_text. 197 runs
+      # twice: the catalogue must not change.
+      - name: AI chat database scenarios
+        run: node scripts/verify-db-ai-chat.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each
