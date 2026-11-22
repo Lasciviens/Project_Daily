@@ -573,6 +573,15 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   {
     const res = await (async () => { const net = pretend(textMsg('x')); net.world = world8; const fn = load(world8, net.impl); const rq = await fn.handler(post({ action: 'chat_confirm', proposal_id: addId, decision: 'confirm' }, 'guest-jwt')); return rq.json() })()
     check('ANOTHER account\'s Confirm of the owner\'s proposal id finds nothing and writes nothing (the read names the verified user)', res.ok === false && res.reason === 'not_found' && rowsOf(world8, 'tasks').length === 0 && rowsOf(world8, 'ai_chat_proposals').every(p => p.status === 'pending'), res)
+    {
+      const net = pretend(textMsg('x')); net.world = world8
+      const fn = load(world8, net.impl)
+      const forged = await (await fn.handler(post({ action: 'chat_confirm', proposal_id: addId, decision: 'confirm', user_id: OWNER, userId: OWNER }, 'guest-jwt'))).json()
+      check('a user id in the Confirm request is never read: the other account still finds nothing', forged.ok === false && forged.reason === 'not_found' && rowsOf(world8, 'tasks').length === 0, forged)
+      const chatForged = await fn.handler(post({ action: 'chat', stream: true, conversation_id: rowsOf(world8, 'ai_conversations')[0].id, text: 'hi', user_id: OWNER }, 'guest-jwt'))
+      const evs = parseEvents(await chatForged.text())
+      check('a user id in a chat request is never read: the other account cannot continue the owner\'s chat', evs.at(-1).reason === 'not_found' && net.seen.length === 0, evs.at(-1))
+    }
     const net = pretend(textMsg('x')); net.world = world8
     const fn = load(world8, net.impl)
     const dev = await fn.handler(post({ action: 'chat_confirm', proposal_id: addId, decision: 'confirm', caller: 'phone' }, null, { headers: { 'x-claude-server-key': await deviceKey() } }))
@@ -668,6 +677,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   check('a source the model made up, another account\'s row, a web address and a malformed source are all dropped', !JSON.stringify(final(r).citations).includes(uuid(3)) && !JSON.stringify(final(r).citations).includes(uuid(99)) && !JSON.stringify(final(r).citations).includes('evil'))
   check('the citation check read the rows with the owner\'s client and named the user', world9.ops.filter(o => (o.table === 'tasks' || o.table === 'diary_entries') && o.eqs?.id).every(o => o.who === 'user' && o.eqs.user_id === OWNER))
   check('the stored answer keeps the model\'s citations unchanged (the history is replayed exactly)', messagesOf(world9)[3].content[1].citations.length === 6)
+  check('the checked citations and the round\'s cost are kept in the answer\'s meta, so a chat opened later shows the same links and cost', messagesOf(world9)[3].meta.citations.length === 2 && messagesOf(world9)[3].meta.cost_usd > 0 && messagesOf(world9)[3].meta.citations.every(c => /^(task|diary)$/.test(c.kind)), messagesOf(world9)[3].meta)
   {
     const w = makeWorld({ findText: [] })
     const n = pretend(toolMsg([['toolu_E', 'find_text', { query: 'zzz', kind: 'any' }]], { id: 'msg_e1' }), textMsg('Nothing found.', { id: 'msg_e2' }))
