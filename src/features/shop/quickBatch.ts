@@ -27,10 +27,3 @@ export function splitNew<T extends { title: string }>(wanted: readonly T[], onLi
   }
   return { fresh, skipped }
 }
-
-/** "Added 5 items to the quick list · Week 48 · 2 already there" (the toast's words before Undo). */
-export function batchWords(added: number, skipped: number, what: string): string {
-  const parts = [`Added ${added} ${added === 1 ? 'item' : 'items'} to the quick list${what ? ` · ${what}` : ''}`]
-  if (skipped > 0) parts.push(`${skipped} already there`)
-  return parts.join(' · ')
-}

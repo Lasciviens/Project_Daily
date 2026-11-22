@@ -6,7 +6,8 @@
  * Run: node scripts/verify-week-groceries.cjs */
 require('sucrase/register')
 const { weekGroceries, unitKey, quantityText, noteOf } = require('../src/features/recipes/weekGroceries')
-const { splitNew, foldedTitles, batchWords } = require('../src/features/shop/quickBatch')
+const { splitNew, foldedTitles } = require('../src/features/shop/quickBatch')
+const { batchWords } = require('../src/features/shop/quickBatchWords')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
   if (cond) { passed++; console.log(`  ✓ ${name}`) } else { failed++; console.log(`  ✗ ${name}${detail ? ' — ' + detail : ''}`) }

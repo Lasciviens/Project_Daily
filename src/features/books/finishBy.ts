@@ -48,13 +48,22 @@ export function finishBy(book: BookFacts, events: readonly ReadingEvent[], today
   return days > FAR_DAYS ? { kind: 'far', minutesPerDay } : { kind: 'date', day: addDays(today, days), days, minutesPerDay }
 }
 
-/** The words for a result: "Finish around 03.12.2026 · about 25 min a day", or why there is no date. */
+/** The words for a result: "Finish around 03.12.2026 · 25 min/day", or why there is no date. */
 export function finishByText(f: FinishBy): string {
   switch (f.kind) {
-    case 'date': return `Finish around ${formatDate(f.day)} · about ${f.minutesPerDay} min a day`
-    case 'far':  return `Over a year at this pace (about ${f.minutesPerDay} min a day)`
+    case 'date': return `Finish around ${formatDate(f.day)} · ${f.minutesPerDay} min/day`
+    case 'far':  return `Over a year at ${f.minutesPerDay} min/day`
     default:     return f.why === 'no-pace'
-      ? `No pace yet — read on ${MIN_PACE_DAYS} days in two weeks for a finish date`
-      : 'No finish date yet — too little read to tell'
+      ? `No pace yet · needs ${MIN_PACE_DAYS} reading days`
+      : 'Too early for a finish date'
+  }
+}
+
+/** The same answer for a narrow fact column: "12.12.2026 · 14 min a day", "No pace yet". */
+export function finishByShort(f: FinishBy): string {
+  switch (f.kind) {
+    case 'date': return `${formatDate(f.day)} · ${f.minutesPerDay} min a day`
+    case 'far':  return 'Over a year away'
+    default:     return f.why === 'no-pace' ? 'No pace yet' : 'Too early to tell'
   }
 }

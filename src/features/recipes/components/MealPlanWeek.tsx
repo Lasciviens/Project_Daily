@@ -103,17 +103,19 @@ export function MealPlanWeek() {
             isToday={weekOffset === 0}
           />
           <span className="text-meta tabular-nums text-fg-muted">{formatDateRange(weekStart, weekEnd)}</span>
-          <Button size="sm" icon={<ShoppingBag />} disabled={groceries.length === 0} loading={addGroceries.isPending}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* Plan vs what was actually eaten (the Today diary), shown together. */}
+          <p className="flex items-center gap-3 text-meta text-fg-muted">
+            <span className="inline-flex items-center gap-1"><ClipboardList aria-hidden className="h-3.5 w-3.5" />Planned</span>
+            <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="h-3.5 w-3.5" />Eaten</span>
+            <span className="inline-flex items-center gap-1"><CircleCheck aria-hidden className="h-3.5 w-3.5" />Mark eaten</span>
+          </p>
+          <Button size="sm" icon={<ShoppingBag />} aria-label="Add the week's groceries to Shop" disabled={groceries.length === 0} loading={addGroceries.isPending}
             onClick={() => addGroceries.mutate({ lines: groceries, what: `Week ${getISOWeek(weekStart)}` })}>
-            Groceries to Shop
+            Week to Shop
           </Button>
         </div>
-        {/* Plan vs what was actually eaten (the Today diary), shown together. */}
-        <p className="flex items-center gap-3 text-meta text-fg-muted">
-          <span className="inline-flex items-center gap-1"><ClipboardList aria-hidden className="h-3.5 w-3.5" />Planned</span>
-          <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="h-3.5 w-3.5" />Eaten</span>
-          <span className="inline-flex items-center gap-1"><CircleCheck aria-hidden className="h-3.5 w-3.5" />Mark eaten</span>
-        </p>
       </div>
 
       {/* ── A narrow plan (phones, sideways phones, tablets): one day at a time ── */}

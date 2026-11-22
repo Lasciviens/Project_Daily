@@ -51,4 +51,8 @@ Its technical document stays in git (`docs/kitchen-scale/README.md`) — session
 ## Not yet
 
 - Photos and files (an upload store for a project) — links to an album or a document work meanwhile.
-- Sending a table's "To buy" rows to Shop.
+- A link from a Shop row back to its project row (needs a column on `shop_items`).
+
+## To buy → Shop (22.11.2026)
+
+A table with a choice column that has a choice named "To buy" (any case) shows **Send N to buy to Shop** above its rows. One tap puts those rows on Shop's Quick list (`projects/toBuy.ts`, `verify-project-to-buy`): the row's name, "×2" from a number column named Qty / Quantity / Amount / Count, the row's own link when it is a web address (`new URL`, http or https, no password), notes "×2 · for Kitchen scale" — `shop_items` has no project column, so the note is the way back (a column would be a migration). A title already on the list is skipped, one Undo takes the batch off (`useAddBatchToQuickList`). The row's price is not sent and the row stays To buy: ticking it off after the shop trip is the owner's, there is no link that could do it.
