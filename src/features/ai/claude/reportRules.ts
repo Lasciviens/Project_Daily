@@ -110,7 +110,10 @@ export const REPORT_STATUS_TONE: Record<ReportStatus, 'info' | 'success' | 'dang
 /** What the "Make this week's report now" button's answer means, in one sentence (the function's own for a stop). */
 export function reportMakeMessage(answer: unknown): { ok: boolean; message: string } {
   const a = rec(answer)
-  if (a.ok === true && a.queued === true) return { ok: true, message: 'Queued at half price. It is ready within about an hour; Check now reads it back.' }
+  if (a.ok === true && a.queued === true) {
+    const what = a.kind === 'redo' ? 'The real report of last week is made again' : a.kind === 'copy' ? 'A test copy of last week is queued' : a.kind === 'so_far' ? 'A report of the week so far is queued (a test)' : 'Queued'
+    return { ok: true, message: `${what}, at half price. It is ready within about an hour; Check now reads it back.` }
+  }
   if (a.ok === true && a.skipped === 'already_queued') return { ok: false, message: 'This week’s report is already waiting for its answer.' }
   if (a.ok === true && a.skipped === 'no_data') return { ok: false, message: 'There is no data in this week yet, so there is nothing to report.' }
   if (a.ok === true) return { ok: false, message: 'Nothing was queued.' }
@@ -125,4 +128,66 @@ export function reportCheckMessage(answer: unknown): { ok: boolean; message: str
   if (n(a.failed)) return { ok: true, message: 'The batch ended without a usable report. The row says why.' }
   if (n(a.waiting)) return { ok: true, message: 'Anthropic is still working on it. It is checked again every 15 minutes.' }
   return { ok: true, message: 'Nothing is waiting.' }
+}
+
+// ── What the app says about a report (owner-critic, 22.11.2026) ─────────────
+
+/** A number with a space between thousands: 9286 → "9 286". */
+export function groupDigits(value: number): string {
+  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+/**
+ * A short summary of the week, built by code from the saved figures (never from the model's text): sessions, steps a day,
+ * calories against the target, tasks done. Each part only with its figure; '' when there is none. The figures are input
+ * too (a jsonb the database holds): every one is read as a number or left out.
+ */
+export function reportSummary(facts: Record<string, unknown>): string {
+  const at = (...path: string[]): unknown => path.reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), facts)
+  const sessions = num(at('training', 'session_count')), steps = num(at('health', 'steps', 'avg_per_day'))
+  const kcal = num(at('food', 'avg_kcal_on_logged_days')), target = num(at('food', 'target_kcal')), done = num(at('tasks', 'done'))
+  const parts: string[] = []
+  if (sessions !== null && at('training', 'has_data') === true) parts.push(`${sessions} ${sessions === 1 ? 'session' : 'sessions'}`)
+  if (steps !== null) parts.push(`${groupDigits(steps)} steps a day`)
+  if (kcal !== null) parts.push(target !== null && target > 0 ? `${groupDigits(kcal)} of ${groupDigits(target)} kcal` : `${groupDigits(kcal)} kcal`)
+  if (done !== null && at('tasks', 'has_data') === true) parts.push(`${done} ${done === 1 ? 'task' : 'tasks'} done`)
+  return parts.join(' · ')
+}
+
+/** yyyy-MM-dd shifted by whole days (noon UTC, so no clock change moves it). */
+function shiftDay(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** Home's card shows only in the week after the report's week (Monday to Sunday), and only the real (scheduled) report. */
+export function reportShownOn(report: Pick<AiReport, 'week_start' | 'made_by' | 'status'>, today: string): boolean {
+  if (report.made_by !== 'schedule' || report.status !== 'ready' || !DAY.test(report.week_start) || !DAY.test(today)) return false
+  return today >= shiftDay(report.week_start, 7) && today <= shiftDay(report.week_start, 13)
+}
+
+/** What kind of report a row is, in a few words: the real one, a redo of it, a test copy, or the week so far. */
+export function reportKindLabel(report: Pick<AiReport, 'made_by' | 'facts'>): string {
+  const kind = report.facts.kind
+  if (report.made_by === 'app') return kind === 'so_far' ? 'Test · week so far' : 'Test copy'
+  return kind === 'redo' ? 'Report, made again by the button' : 'Monday timer'
+}
+
+/**
+ * The cost of a report as the Batches view says it. A waiting one is held at its worst case; a failed one that still holds
+ * the worst case says why that is probably not a real bill: Anthropic bills nothing for a failed, expired or cancelled batch.
+ */
+export function reportCostNote(status: ReportStatus, outcome: string | undefined, costUsd: number, usd: (n: number) => string): string | null {
+  if (outcome === undefined) return null
+  if (status === 'queued') return `${usd(costUsd)} held`
+  if (status === 'failed' && outcome === 'error' && costUsd > 0) return `${usd(costUsd)} held, likely $0`
+  return usd(costUsd)
+}
+
+export const REPORT_HELD_SENTENCE = 'Held at the most it could cost, likely $0: Anthropic bills nothing for a failed batch. The ledger keeps the worst case so the budget can only be counted too high, never too low.'
+
+/** The figures the model was given, as saved with the report: exactly the text it read. '' when there is none. */
+export function reportFiguresSent(facts: Record<string, unknown>): string {
+  return typeof facts.sent_text === 'string' ? facts.sent_text.slice(0, 20_000) : ''
 }

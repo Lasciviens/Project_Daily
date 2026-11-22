@@ -3,7 +3,8 @@ import { ChevronRight } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Skeleton } from '../../../shared/ui'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
-import { useReport } from '../claude/hooks/useReports'
+import { useReport, useReportCosts } from '../claude/hooks/useReports'
+import { formatUsd } from '../claude/ledgerRules'
 import { reportWeekLabel } from '../claude/reportRules'
 import { WeeklyReportText } from './WeeklyReportText'
 
@@ -14,6 +15,8 @@ import { WeeklyReportText } from './WeeklyReportText'
 export function WeeklyReportSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
   const q = useReport(id)
   const report = q.data
+  const costs = useReportCosts(report?.call_id ? [report.call_id] : [])
+  const cost = report?.call_id ? costs.data?.[report.call_id] : undefined
   return (
     <ModalShell
       open={!!id}
@@ -23,7 +26,7 @@ export function WeeklyReportSheet({ id, onClose }: { id: string | null; onClose:
       size="sm"
       footer={(
         <div className="flex items-center justify-between gap-3">
-          <span className="text-meta text-fg-muted">{report?.ready_at ? `Made ${formatDateTime(report.ready_at)}` : ''}</span>
+          <span className="text-meta tabular-nums text-fg-muted">{report?.ready_at ? `Made ${formatDateTime(report.ready_at)}` : ''}{cost ? ` · ${formatUsd(cost.cost_usd)} at batch price` : ''}</span>
           <Link to="/developer?tab=ai&view=learn&learn=batches" replace className="btn-secondary">
             Batches <ChevronRight aria-hidden className="h-4 w-4" />
           </Link>

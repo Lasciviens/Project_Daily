@@ -30,9 +30,9 @@ export async function fetchReport(id: string): Promise<AiReport | null> {
   return readReport(data)
 }
 
-/** The newest finished report of the newest week, for Home's card. */
+/** The newest finished REAL (scheduled) report, for Home's card: a button copy never stands in for it. */
 export async function fetchLatestReadyReport(): Promise<AiReport | null> {
-  const { data, error } = await supabase.from('ai_reports').select(REPORT_COLUMNS).eq('status', 'ready')
+  const { data, error } = await supabase.from('ai_reports').select(REPORT_COLUMNS).eq('status', 'ready').eq('made_by', 'schedule')
     .order('week_start', { ascending: false }).order('ready_at', { ascending: false }).limit(1)
   if (error) {
     if (isMissing(error)) return null
