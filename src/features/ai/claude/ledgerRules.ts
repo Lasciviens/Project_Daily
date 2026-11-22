@@ -109,6 +109,7 @@ export function readCallSummary(raw: unknown): CallSummary | undefined {
     id: r.id, run_id: text(r.run_id, 40), job: text(r.job, 40), model: text(r.model, 80), outcome: text(r.outcome, 40),
     input_tokens: int(r.input_tokens), cache_read_tokens: int(r.cache_read_tokens), cache_write_tokens: int(r.cache_write_tokens),
     output_tokens: int(r.output_tokens), thinking_tokens: int(r.thinking_tokens), cost_usd: num(r.cost_usd), duration_ms: int(r.duration_ms),
+    served_model: typeof r.served_model === 'string' && r.served_model ? text(r.served_model, 80) : null,
   }
 }
 
@@ -138,6 +139,20 @@ export function readRunAnswer(raw: unknown): RunAnswer {
   const reason = (CLAUDE_REASONS as readonly string[]).includes(r.reason as string) ? r.reason as ClaudeReason : 'error'
   const said = typeof r.message === 'string' ? r.message.trim().slice(0, 300) : ''
   return { ok: false, reason, message: said || REASON_FALLBACK[reason], call }
+}
+
+/** The function's answer to the Test bench's token count: the count and what was counted, or the sentence of why not. */
+export type CountAnswer =
+  | { ok: true; inputTokens: number; model: string; effort: string; thinking: 'adaptive' | 'off' }
+  | { ok: false; message: string }
+
+export function readCountAnswer(raw: unknown): CountAnswer {
+  const r = rec(raw)
+  if (r.ok === true && typeof r.input_tokens === 'number' && Number.isFinite(r.input_tokens) && r.input_tokens >= 0) {
+    return { ok: true, inputTokens: Math.round(r.input_tokens), model: text(r.model, 80), effort: text(r.effort, 20), thinking: r.thinking === 'off' ? 'off' : 'adaptive' }
+  }
+  const said = typeof r.message === 'string' ? r.message.trim().slice(0, 300) : ''
+  return { ok: false, message: said || 'The token count failed — try again in a moment.' }
 }
 
 /** The function's answer to Diagnose: its steps, or the sentence of why it did not run. Anything else is an error. */
@@ -221,9 +236,10 @@ function readJob(raw: unknown): DescribeJob | null {
     name: text(j.name, 40), title: text(j.title, 80) || text(j.name, 40), what: text(j.what, 600), kind: text(j.kind, 30),
     callers: list(j.callers).map(c => text(c, 20)).filter(Boolean), version: text(j.version, 40),
     defaults: { model: text(d.model, 80), effort: text(d.effort, 20), maxOutputTokens: int(d.maxOutputTokens) },
+    timeLimitMs: typeof j.timeLimitMs === 'number' && Number.isFinite(j.timeLimitMs) && j.timeLimitMs > 0 ? Math.round(j.timeLimitMs) : null,
     instructions: text(j.instructions, 60_000), answerSchema: j.answerSchema ?? null,
     tools: list(j.tools).map(rec).filter(t => typeof t.name === 'string').map(t => ({ name: text(t.name, 60), what: text(t.what, 400) })),
-    features: list(j.features).map(f => text(f, 80)).filter(Boolean),
+    features: list(j.features).map(f => text(f, 200)).filter(Boolean),
     sourceFiles: list(j.sourceFiles).map(f => text(f, 200)).filter(Boolean),
   }
 }
@@ -241,6 +257,7 @@ export function readDescribe(raw: unknown): Describe {
     limits: {
       monthlyBudgetMaxUsd: num(limits.monthlyBudgetMaxUsd), callsPerMinute: int(limits.callsPerMinute), callsPerDay: int(limits.callsPerDay),
       maxOutputTokens: range(limits.maxOutputTokens), logDays: range(limits.logDays), requestMaxBytes: int(limits.requestMaxBytes),
+      benchTextMax: int(limits.benchTextMax) || 2000, deviceCallsPerDay: { kobo: int(rec(limits.deviceCallsPerDay).kobo), phone: int(rec(limits.deviceCallsPerDay).phone) },
     },
     defaults: { monthlyBudgetUsd: num(defaults.monthlyBudgetUsd), logText: flag(defaults.logText, true), logDays: int(defaults.logDays) },
     prices: readPrices(a.prices),

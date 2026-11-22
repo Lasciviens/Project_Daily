@@ -1515,7 +1515,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('count: only the Test bench is counted: the action takes no job name, and nothing else is pickable', parts['main.ts'].includes("countJob(context, 'test_bench'") && ['item_fill', 'recipe_from_text', 'kobo_ask', 'coach_assessment'].every(n => !eq.findJob(n).pickable))
 
   // The pinned versions of the new jobs.
-  const PIN_2B = { coach_assessment: ['2026-11-22.1', 'PIN'], kobo_ask: ['2026-11-22.1', 'PIN'], phone_brief: ['2026-11-22.1', 'PIN'], phone_ask: ['2026-11-22.1', 'PIN'], test_bench: ['2026-11-22.1', 'PIN'] }
+  const PIN_2B = { coach_assessment: ['2026-11-22.1', 'd0e7a88fb04e7b1f'], kobo_ask: ['2026-11-22.1', 'bc459b0d82aaf1d8'], phone_brief: ['2026-11-22.1', '50fe781b446464e2'], phone_ask: ['2026-11-22.1', '0912fd676d786ae8'], test_bench: ['2026-11-22.1', 'b3c269c0f8140205'] }
   for (const [name, job] of [['coach_assessment', COACH_ASSESSMENT_JOB], ['kobo_ask', KOBO_ASK_JOB], ['phone_brief', PHONE_BRIEF_JOB], ['phone_ask', PHONE_ASK_JOB], ['test_bench', TEST_BENCH_JOB]]) {
     const h = crypto.createHash('sha256').update(`${job.instructions}\n${JSON.stringify(job.answerSchema)}`).digest('hex').slice(0, 16)
     check(`${name}: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, PIN_2B[name][0] === job.version && PIN_2B[name][1] === h, `version ${job.version}, hash ${h}`)

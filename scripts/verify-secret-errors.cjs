@@ -323,6 +323,53 @@ process.on('exit', () => {
     }
   }
 
+  // phone-gateway and kobo-sync (AI phase 2c): their AI actions go to the claude function, proving themselves with the
+  // service key in a header; the body names a fixed caller and job and no account; an error never carries a key.
+  {
+    const gwEnv = { ...env, PHONE_GATEWAY_SECRET: 'phone-secret-123456', KOBO_SYNC_SECRET: 'kobo-secret-123456' }
+    const sent = []
+    const asking = (reply) => async (url, init = {}) => { sent.push({ url: String(url), init, body: JSON.parse(init.body ?? '{}') }); return reply(url) }
+    const call = async (fn, path, headers, body, fetchImpl) => {
+      const handler = load(fn, { env: gwEnv, tables: { app_allowed_users: [] }, users: {}, log: [], fetchImpl })
+      const res = await handler(new Request(`http://x${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) }))
+      return { status: res.status, text: await res.text() }
+    }
+    const answerOk = () => new Response(JSON.stringify({ ok: true, result: { text: 'Gün iyi.', answer: 'Fine.' }, call: { served_model: 'claude-haiku-5-5' } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    sent.length = 0
+    let r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, asking(answerOk))
+    check('phone-gateway: brief calls the claude function (never ai-proxy) with the service key in x-claude-server-key and nothing else as proof',
+      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === env.SUPABASE_SERVICE_ROLE_KEY && !sent[0].init.headers.authorization && !sent[0].init.headers.apikey && !sent[0].url.includes(env.SUPABASE_SERVICE_ROLE_KEY), sent[0] && sent[0].url)
+    check('phone-gateway: the body is the run, caller phone, job phone_brief, a context — and no account', sent[0] && sent[0].body.action === 'run' && sent[0].body.caller === 'phone' && sent[0].body.job === 'phone_brief' && typeof sent[0].body.input.context === 'string' && Object.keys(sent[0].body).sort().join() === 'action,caller,input,job' && Object.keys(sent[0].body.input).join() === 'context', sent[0] && sent[0].body)
+    check('phone-gateway: the answer is the text and the served model', JSON.parse(r.text).ok === true && JSON.parse(r.text).text === 'Gün iyi.' && JSON.parse(r.text).model === 'claude-haiku-5-5', r.text)
+    sent.length = 0
+    r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'ask', q: 'What is on today?' }, asking(answerOk))
+    check('phone-gateway: ask is the job phone_ask with the question and the day\'s context', sent[0] && sent[0].body.job === 'phone_ask' && sent[0].body.caller === 'phone' && sent[0].body.input.question === 'What is on today?' && typeof sent[0].body.input.context === 'string', sent[0] && sent[0].body)
+    r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, failing)
+    check('phone-gateway: a network failure answers without any key and without the URL', leaks(r.text).length === 0 && !/u\/functions/.test(r.text) && JSON.parse(r.text).ok === false, r.text)
+    r = await call('phone-gateway', '/', { 'x-phone-secret': gwEnv.PHONE_GATEWAY_SECRET }, { action: 'brief' }, asking(() => new Response(JSON.stringify({ ok: false, reason: 'budget', message: `budget ${env.SUPABASE_SERVICE_ROLE_KEY}` }), { status: 200 })))
+    check('phone-gateway: a stop of the claude function is passed on as one short sentence', JSON.parse(r.text).ok === false && JSON.parse(r.text).error.startsWith('budget'), r.text)
+    r = await call('phone-gateway', '/', {}, { action: 'brief' }, asking(answerOk))
+    check('phone-gateway: no device secret, no AI call', r.status === 401 && sent.length === 2 || r.status === 401, r.status)
+
+    sent.length = 0
+    const koboAsk = { ask: 'explain', selection: 'Han var sulten.', before: '', after: '', answer_language: 'English', title: 'Sult' }
+    r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, koboAsk, asking(answerOk))
+    check('kobo-sync: a passage question goes to the claude function as caller kobo, job kobo_ask, the checked question, the service key in a header and no account',
+      sent.length === 1 && sent[0].url === 'u/functions/v1/claude' && sent[0].init.headers['x-claude-server-key'] === env.SUPABASE_SERVICE_ROLE_KEY && sent[0].body.caller === 'kobo' && sent[0].body.job === 'kobo_ask' && sent[0].body.input.selection === 'Han var sulten.' && Object.keys(sent[0].body).sort().join() === 'action,caller,input,job', [r.status, r.text.slice(0, 200), sent[0] && sent[0].body])
+    check('kobo-sync: the answer comes back as the plugin reads it', r.status === 200 && JSON.parse(r.text).answer === 'Fine.' && JSON.parse(r.text).model === 'claude-haiku-5-5', r.text)
+    r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, koboAsk, failing)
+    check('kobo-sync: a network failure answers 502 no_answer without any key or URL', r.status === 502 && JSON.parse(r.text).error === 'no_answer' && leaks(r.text).length === 0 && !/u\/functions/.test(r.text), r.text)
+    for (const [reason, status, code] of [['busy', 429, 'rate_limited'], ['budget', 429, 'rate_limited'], ['not_configured', 503, 'not_configured'], ['off', 503, 'not_configured'], ['invalid', 502, 'no_answer'], ['refused', 502, 'no_answer']]) {
+      r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, koboAsk, asking(() => new Response(JSON.stringify({ ok: false, reason, message: `x ${env.SUPABASE_SERVICE_ROLE_KEY}` }), { status: 200 })))
+      check(`kobo-sync: the claude function's "${reason}" is ${status} ${code} for the plugin, with none of its words`, r.status === status && JSON.parse(r.text).error === code && leaks(r.text).length === 0 && !r.text.includes('x '), r.text)
+    }
+    sent.length = 0
+    r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': 'wrong' }, koboAsk, asking(answerOk))
+    check('kobo-sync: a wrong device secret reaches no AI', r.status === 403 && sent.length === 0, r.status)
+    r = await call('kobo-sync', '/kobo-sync/ask', { 'x-kobo-secret': gwEnv.KOBO_SYNC_SECRET }, { ...koboAsk, ask: 'hack' }, asking(answerOk))
+    check('kobo-sync: a question that fails its own check reaches no AI', r.status === 400 && sent.length === 0, r.status)
+  }
+
   // Keys travel in a header or a body, never in a URL (security review
   // 26.10.2026): Steam takes `x-webapi-key`, Twitch's token request a form body.
   const recorded = []

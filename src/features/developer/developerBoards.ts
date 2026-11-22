@@ -35,16 +35,16 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 }
 
 // ── AI: the Claude layer's five views (Developer → AI, `?view=`) ───────────
-// Overview · Calls · Settings · Prices · How it works, switched under the
+// Overview · Calls · Settings · Prices · How it works · Test bench, switched under the
 // page's bar. Every view has the list + detail tabs' tracks — two from the
 // laptop, three from 1920, and it stops there — so the page's header keeps
 // one width whichever tab or view is open (AI_VIEW_BOARDS → sectionsWidthRem).
 // Calls is LIST_DETAIL_BOARD itself: the list, a call's detail in the pane.
-export const AI_VIEWS = ['overview', 'calls', 'settings', 'prices', 'how'] as const
+export const AI_VIEWS = ['overview', 'calls', 'settings', 'prices', 'how', 'bench'] as const
 export type AiView = typeof AI_VIEWS[number]
 
 export const AI_VIEW_LABEL: Record<AiView, string> = {
-  overview: 'Overview', calls: 'Calls', settings: 'Settings', prices: 'Prices', how: 'How it works',
+  overview: 'Overview', calls: 'Calls', settings: 'Settings', prices: 'Prices', how: 'How it works', bench: 'Test bench',
 }
 
 /** The view an address names; anything else is the Overview. */
@@ -97,8 +97,18 @@ export const AI_HOW_BOARD: BoardLayouts<AiHowSection> = {
   3: { columns: [['diagnose', 'steps', 'jobs'], ['status', 'parts'], ['rules', 'glossary']] },
 }
 
+// Test bench: the question and its pick first, the answer beside it from the laptop (their own tracks from 1920).
+export const AI_BENCH_SECTIONS = ['ask', 'answer'] as const
+export type AiBenchSection = typeof AI_BENCH_SECTIONS[number]
+
+export const AI_BENCH_BOARD: BoardLayouts<AiBenchSection> = {
+  1: ['ask', 'answer'],
+  2: { columns: [['ask'], ['answer']] },
+  3: { columns: [['ask'], ['answer']] },
+}
+
 /** Every board the AI tab lays out, for the page header's one width. */
-export const AI_VIEW_BOARDS: ReadonlyArray<BoardLayouts<string>> = [AI_OVERVIEW_BOARD, LIST_DETAIL_BOARD, AI_SETTINGS_BOARD, AI_PRICES_BOARD, AI_HOW_BOARD]
+export const AI_VIEW_BOARDS: ReadonlyArray<BoardLayouts<string>> = [AI_OVERVIEW_BOARD, LIST_DETAIL_BOARD, AI_SETTINGS_BOARD, AI_PRICES_BOARD, AI_HOW_BOARD, AI_BENCH_BOARD]
 
 // ── Connections ────────────────────────────────────────────────────────────
 // Six cards of two kinds: the three you sign in to from here (Google,

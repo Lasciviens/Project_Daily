@@ -50,7 +50,7 @@ Base `https://api.anthropic.com`. All through the SDK.
 | Endpoint | SDK call | Called by | When | Limits |
 |---|---|---|---|---|
 | `POST /v1/messages` | `client.messages.create` (`client.beta.messages.create` when a beta feature is on) | `claude` → every real-time job | each AI answer; a chat answer is several calls (one per tool round) | Start tier: 4,000 requests, 2M input tokens and 400K output tokens a minute. Cache reads don't count toward the input limit. |
-| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → Diagnose step 2 (22.11.2026; later also the Test bench's "what will this cost") | on the Diagnose button, once | free; 5,000 requests a minute; the count is an estimate |
+| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → Diagnose step 2 (22.11.2026) and the Test bench's "Count tokens" (`{ action: 'count' }`, 22.11.2026: the request exactly as a run would send it, `thinking` and the picked model and effort included) | on those buttons | free; 5,000 requests a minute; the count is an estimate |
 | `GET /v1/models` | `client.models.list({ limit: 1000 })` | `claude` → Diagnose step 1 | on the Diagnose button, once | free; one page, newest first |
 | `POST /v1/messages/batches` | `client.messages.batches.create` | `claude` → batch jobs (weekly reports), from the batch phase | when a report is queued | 100,000 requests or 256 MB per batch; 1,000 batch requests a minute |
 | `GET /v1/messages/batches/{id}` | `client.messages.batches.retrieve` | `claude` → the batch check (a scheduled job) | until `processing_status` is `ended` | most batches end within 1 hour; one that isn't done after 24 hours expires |
@@ -174,6 +174,12 @@ Phase 1 is the `claude` function (`supabase/claude-src/`, joined into `supabase/
 
 **Cost is reserved before each call.** The budget wall cannot count a call that has not finished, and a timed-out call may still be billed, so before sending, the function asks the database (`ai_reserve`) to hold the call's worst-case cost against the monthly budget: a prompt estimated at one token per character plus 1000 (for thinking's hidden system prompt; dense text such as digits and JSON comes close to one per character), every token at the dearest prompt price (a 1-hour cache write, long-prompt rule included), plus the whole `max_tokens` at the output price. Parallel requests each hold their own share under a lock. After the answer the row gets the real tokens and the real cost (from `prices.ts`). A failure that may have been billed (timeout, network error, 5xx, 529, an unknown fault) and a failed update both leave the row at the worst case; a refusal at the door (401, 402, 400, 429) costs 0.
 
+## Phase 2b–2d additions (22.11.2026)
+
+- **`thinking: { type: "disabled" }`** (SDK type `ThinkingConfigDisabled`, `@anthropic-ai/sdk@1.5.0`: `{ type: 'disabled' }`, no other field, so no `display`) is sent instead of the adaptive object only when the Test bench asks for thinking off (`ModelRequest.thinking: 'off'`). The request keeps `output_config.effort`. That Haiku 5.5 accepts disabled thinking together with `effort` low, medium and high is **not confirmed by a live call**; the Test bench's "Compare thinking" is the way to check. With thinking off the answer has no `thinking` block and `thinking_tokens` is 0.
+- **`count_tokens` with the Test bench's request** carries `model`, `system`, `messages`, `thinking` and `output_config` (never `max_tokens`), exactly as `buildRequest` builds a run's request; it answers `input_tokens` only.
+- **Device jobs** (`kobo_ask`, `phone_brief`, `phone_ask`) and `coach_assessment` send nothing new to Anthropic: one user message of tagged text, the cached instructions, adaptive thinking, low effort, no tools. `timeLimitMs` per job (Kobo 20 s, phone 18 s) goes to the SDK as the per-request `timeout` like every limit.
+
 ## Not confirmed by a live call yet
 
 Everything about Anthropic's real behaviour is unconfirmed: no call has been made. Phase 1's tests (`scripts/verify-claude-function.cjs`) run the real SDK against a fake network, so they prove our code reads the shapes the docs and the SDK's types describe, not that Anthropic answers that way. The first real ✨ call must confirm:
@@ -186,7 +192,9 @@ Everything about Anthropic's real behaviour is unconfirmed: no call has been mad
 - that a request with `thinking: adaptive` plus `output_config.format` (a small, all-required JSON schema) and `effort` together is accepted on Haiku 5.5 (the 21-optional-field schema is known to hang, trap 16);
 - that the `cache_control` mark on the instructions is accepted below the 512-token minimum or above it, and what `usage` shows on the first and second call;
 - what a timeout looks like on Anthropic's bill (billed or not), which decides whether the worst-case reservation is too careful;
-- `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429.
+- `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429;
+- that `thinking: { type: "disabled" }` with `effort` is accepted on Haiku 5.5 (Test bench → Compare thinking);
+- that a call from `kobo-sync` / `phone-gateway` with the service key in `x-claude-server-key` reaches `claude` through the platform with `verify_jwt = false` (new and legacy key formats).
 
 ## Log
 

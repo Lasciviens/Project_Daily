@@ -26,7 +26,10 @@ const {
   resolveMovementPattern, movementPatternLabel, restrictionsBySlug, limitedSlugsFromLimitations, weeklySetGap, MUSCLE_LANDMARKS,
 } = require('../src/features/training/muscleMap')
 const { computeProgressModel } = require('../src/features/training/progressModel')
-const { formatPtSnapshot, buildCoachJson, limitationName, PT_SYSTEM_PROMPT } = require('../src/features/training/coach/coachFormat')
+const { formatPtSnapshot, buildCoachJson, limitationName } = require('../src/features/training/coach/coachFormat')
+const { ptVerdicts, formatPtVerdicts } = require('../src/features/training/coach/coachFacts')
+// The snapshot's other half of the contract is the `coach_assessment` job's instructions (they run in the `claude` function).
+const PT_SYSTEM_PROMPT = require('fs').readFileSync(require('path').join(__dirname, '../supabase/claude-src/job-coach.ts'), 'utf8')
 const { summarizeWorkingSets, sessionsFromHistory } = require('../src/features/training/coach/coachModel')
 
 let passed = 0, failed = 0
@@ -167,7 +170,7 @@ console.log('\n6 · RPE (Hevy) in both coaches — compact, context only')
   check('JSON progress.last carries RPE', json.progress[0].last === '60 kg × 10/10/10 @ RPE 8/9/10', json.progress[0].last)
   check('JSON workout sets carry RPE', json.workouts[0].ex[0].s === '3×10@60kg @ RPE 8/9/10', json.workouts[0].ex[0].s)
   check('JSON explains the RPE suffix once', /RPE/.test(json.about) && /never overrides/.test(json.about))
-  check('PT prompt documents the RPE suffix (snapshot contract)', PT_SYSTEM_PROMPT.includes('@ RPE 8/9/10') && /never overrides a Karar/.test(PT_SYSTEM_PROMPT))
+  check('PT prompt documents the RPE suffix (snapshot contract)', PT_SYSTEM_PROMPT.includes('@ RPE 8/9/10') && /never changes a target/.test(PT_SYSTEM_PROMPT))
 }
 
 console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, migration 112)')
@@ -190,7 +193,7 @@ console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, mi
   check('JSON program.missed with status and reason', json.program.missed?.length === 2 && json.program.missed[1].status === 'skipped' && json.program.missed[1].reason === 'Sick — flu', JSON.stringify(json.program.missed))
   const none = buildCoachJson({ ...data, missedSessions: [] }, 30)
   check('nothing missed → no missed key, no Missed line', !('missed' in none.program) && !/Missed:/.test(formatPtSnapshot({ ...data, missedSessions: undefined })))
-  check('PT prompt documents the Missed line (snapshot contract)', PT_SYSTEM_PROMPT.includes('"Missed:" lines under PROGRAM') && PT_SYSTEM_PROMPT.includes('skipped: <reason>'))
+  check('PT prompt documents the Missed line (snapshot contract)', PT_SYSTEM_PROMPT.includes('- MISSED:') && PT_SYSTEM_PROMPT.includes('PROGRAM'))
 }
 
 console.log('\n8 · Push:pull balance — the same numbers the app shows (plan/muscleBalance.ts)')
@@ -217,7 +220,36 @@ console.log('\n8 · Push:pull balance — the same numbers the app shows (plan/m
   const json = buildCoachJson(data, 30)
   check('JSON balance: rule, planned, done_30d, why', /1\.5×/.test(json.balance.rule) && json.balance.planned.push_pull.lean === 'push-heavy' && json.balance.done_30d.push_pull.ratio === '1.50 : 1' && json.balance.why.length === 1, json.balance)
   check('no balance → no block, no key', !formatPtSnapshot({ ...data, balance: undefined }).includes('BALANCE') && !('balance' in buildCoachJson({ ...data, balance: undefined }, 30)))
-  check('PT prompt documents BALANCE (snapshot contract)', PT_SYSTEM_PROMPT.includes('- BALANCE:') && PT_SYSTEM_PROMPT.includes('never compute your own ratio'))
+  check('PT prompt documents BALANCE (snapshot contract)', PT_SYSTEM_PROMPT.includes('- IMBALANCE:') && PT_SYSTEM_PROMPT.includes('never compute a ratio of your own'))
+}
+
+console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, the model explains)')
+{
+  const progress = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
+  const night = (date, total) => ({ date, total, deep: 1, rem: 1.5 })
+  const mk = (over) => ({ today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: [], sessionsThisWeek: 0, weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [], ...over })
+  const gate = (sleep, feeling = 'normal') => ptVerdicts(mk({ sleep }), feeling).recovery
+  check('no sleep data: the gate says so, no hours', gate([]).gate === 'no_sleep_data' && gate([]).lastNightHours === null)
+  check('7.2 h: normal', gate([night('2026-09-22', 7), night('2026-09-23', 7.2)]).gate === 'normal')
+  check('5.5 h: technique day, with its reason', gate([night('2026-09-22', 7), night('2026-09-23', 5.5)]).gate === 'technique_day' && /under 6 h/.test(gate([night('2026-09-23', 5.5)]).reason))
+  check('under 5 h two nights running: rest day', gate([night('2026-09-22', 4.5), night('2026-09-23', 4.8)]).gate === 'rest_day')
+  check('under 5 h after a good night: technique day, not rest', gate([night('2026-09-22', 7), night('2026-09-23', 4.8)]).gate === 'technique_day')
+  check('"çok yorgunum" with a night below the average: technique day; "normal" with the same night: normal', gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)], 'çok yorgunum').gate === 'technique_day' && gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)]).gate === 'normal')
+  check('last night from another day is named', gate([night('2026-09-21', 7)]).lastNightDate === '2026-09-21')
+  const heavy = ptVerdicts(mk({ weeklyMuscleSets: [
+    { slug: 'chest', sets: 24, landmarks: { mev: 8, mav: 16, mrv: 22 }, restriction: null },
+    { slug: 'hamstring', sets: 2, landmarks: { mev: 6, mav: 12, mrv: 16 }, restriction: null },
+    { slug: 'quadriceps', sets: 1, landmarks: { mev: 6, mav: 12, mrv: 16 }, restriction: 'limit' },
+    { slug: 'biceps', sets: 9, landmarks: { mev: 6, mav: 14, mrv: 20 }, restriction: null },
+  ] }), 'normal')
+  check('a muscle at its ceiling is a deload cue, named with its sets', heavy.deloadCue && heavy.overreach.length === 1 && heavy.overreach[0].sets === 24 && heavy.overreach[0].mrv === 22, heavy.overreach)
+  check('below the minimum: only an unrestricted muscle is listed', heavy.belowMinimum.length === 1 && heavy.belowMinimum[0].sets === 2, heavy.belowMinimum)
+  check('nothing over, nothing under: no cue, none listed', !ptVerdicts(mk({}), 'normal').deloadCue && ptVerdicts(mk({}), 'normal').belowMinimum.length === 0)
+  const text = formatPtVerdicts(heavy)
+  check('the text has one labelled line per verdict, in a fixed order', ['RECOVERY:', 'OVERREACH:', 'PRIORITY:', 'BELOW MINIMUM VOLUME:', 'IMBALANCE:', 'MISSED:'].every((l, i) => text.split('\n')[i].startsWith(l)), text)
+  check('OVERREACH names the muscle and its ceiling; BELOW MINIMUM names the gap', /OVERREACH: deload cue · at the ceiling: .* 24\/22/.test(text) && /BELOW MINIMUM VOLUME: .* 2\/6/.test(text), text)
+  check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))), formatPtVerdicts(ptVerdicts(mk({}), 'normal')))
+  check('every figure is a number, never "undefined" or "NaN"', !/undefined|NaN/.test(text))
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

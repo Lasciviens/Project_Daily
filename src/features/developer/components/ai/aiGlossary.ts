@@ -9,7 +9,7 @@ export const AI_GLOSSARY: readonly GlossaryTerm[] = [
   { term: 'Prompt', what: 'Everything sent to the model in one call: the job’s fixed instructions, then your text.' },
   { term: 'Input and output', what: 'Input is what we send, output is what the model writes back. Output costs more per token than input (the Prices view has both).' },
   { term: 'Cache', what: 'The part of a prompt that repeats — the fixed instructions — is stored at Anthropic for a few minutes. Storing it (“written”) costs a little more than normal input; reading it back (“cached”) costs a small part of it.' },
-  { term: 'Thinking', what: 'The model’s reasoning before it answers. It is billed as output. The log keeps a summary of it, so you can see why it answered as it did.' },
+  { term: 'Thinking', what: 'The model’s reasoning before it answers. It is billed as output. The log keeps a summary of it, so you can see why it answered as it did. In the Test bench it can be switched off, to see what it costs and how much time it takes.' },
   { term: 'Effort', what: 'How much the model reasons before it answers: low, medium or high. Low is the fastest and cheapest and suits a form fill; high suits a hard question.' },
   { term: 'Model', what: 'Which Claude answers. Haiku is the fastest and cheapest; Sonnet and Opus are stronger and cost more.' },
   { term: 'Longest answer', what: 'A ceiling on the output tokens of one answer. Thinking counts toward it; an answer that reaches it is cut off and not used.' },

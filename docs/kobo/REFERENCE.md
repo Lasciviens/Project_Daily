@@ -1036,7 +1036,7 @@ its default domain, so such a page would live on GitHub Pages).
   progress on Home's Books tile and Daily's Reading cell (§9.1 "Now reading"); `books` in the
   AI's catalogue and semantic search (§9.1; highlights are not built yet).
 - **Built differently:** the on-device AI is **Ask Lasci's AI** in our own plugin (round 2),
-  which goes through `kobo-sync` `/ask`, so no key lives on the Kobo and `assistant.koplugin`
+  which goes through `kobo-sync` `/ask` (to the `claude` function's `kobo_ask` job since 22.11.2026; Gemini before), so no key lives on the Kobo and `assistant.koplugin`
   (§9.4) is not needed. The sleep screen is driven from the app (own images, Bookshelf
   options) instead of a rendered "Today" card (§9.2).
 - **Picked by the owner, not built:** the reading heatmap and year in books (§9.1, Phase 6).

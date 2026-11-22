@@ -715,17 +715,6 @@ async function semanticSearch(args: AnyRecord, authHeader?: string, supabase?: A
   } catch (e) { return { success: false, error: hideSecrets((e as Error).message) } }
 }
 
-// Constant-time secret check (security review 26.10.2026): both sides are
-// hashed to the same length first, so the answer time shows neither the
-// secret's length nor how much of it matched. Never log either value.
-async function sameSecret(given: string, expected: string): Promise<boolean> {
-  const hash = async (s: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))
-  const [a, b] = await Promise.all([hash(given), hash(expected)])
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
-  return diff === 0
-}
-
 Deno.serve(async (req) => {
   const origin  = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -737,20 +726,13 @@ Deno.serve(async (req) => {
     serviceKey(),
   )
 
-  // Auth: EITHER a Supabase user JWT (the browser, validated by getUser below)
-  // OR the phone device-secret (x-phone-secret === PHONE_GATEWAY_SECRET → act as
-  // the single user). The secret path is why config.toml now sets
-  // verify_jwt=false here — same in-code auth pattern as hevy-sync; the JWT path
-  // still fully validates via getUser, so the browser flow is unchanged.
+  // Auth: a Supabase user JWT only (the browser), validated by getUser below and
+  // then the owner list. The phone's device secret is NOT accepted any more
+  // (AI phase 2c): phone-gateway calls the `claude` function's phone jobs now, so
+  // a stolen phone secret no longer reaches this function's tools.
   const authHeader   = req.headers.get('authorization') ?? undefined
-  const phoneSecret  = Deno.env.get('PHONE_GATEWAY_SECRET')
-  const givenSecret  = req.headers.get('x-phone-secret')
   let user: { id: string } | null = null
-  const viaPhone = !!phoneSecret && await sameSecret(givenSecret ?? '', phoneSecret)
-  if (viaPhone) {
-    const uid = Deno.env.get('HEVY_USER_ID')          // single-user app, same id everywhere
-    if (uid) user = { id: uid }
-  } else if (authHeader) {
+  if (authHeader) {
     const { data } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
     user = data?.user ? { id: data.user.id } : null
     if (user && !(await isAppUser(user.id))) {
@@ -771,7 +753,7 @@ Deno.serve(async (req) => {
 
     // The person tapped Confirm / Cancel on a proposed delete or routine change.
     if (body.confirmAction) {
-      if (viaPhone || !body.confirmAction.id) {
+      if (!body.confirmAction.id) {
         return new Response(JSON.stringify({ error: 'Confirm in the app.' }), {
           status: 400, headers: { ...headers, 'Content-Type': 'application/json' },
         })
@@ -855,7 +837,7 @@ Deno.serve(async (req) => {
     const surfaceModel = surface ? SURFACE_MODEL[surface] : undefined
     const preferredModel = isGeminiModel(model) ? model : (isGeminiModel(surfaceModel) ? surfaceModel : undefined)
 
-    const result = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, !viaPhone)
+    const result = await callGemini(GEMINI_KEY, messages, systemPrompt, supabase, user.id, preferredModel, authHeader, surface, true)
     return new Response(JSON.stringify(result), {
       status: 200, headers: { ...headers, 'Content-Type': 'application/json' },
     })

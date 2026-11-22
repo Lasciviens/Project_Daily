@@ -23,6 +23,8 @@ export interface CallSummary {
   thinking_tokens: number
   cost_usd: number
   duration_ms: number
+  /** The model that really answered (`model` is the one asked for), or null when none did. */
+  served_model: string | null
 }
 
 /** The four checks of Diagnose, in the order the function runs them. */
@@ -47,6 +49,9 @@ export interface DescribeLimits {
   maxOutputTokens: { min: number; max: number }
   logDays: { min: number; max: number }
   requestMaxBytes: number
+  /** The longest question the Test bench takes, in characters. */
+  benchTextMax: number
+  deviceCallsPerDay: { kobo: number; phone: number }
 }
 
 export interface DescribeModelPrice {
@@ -76,6 +81,8 @@ export interface DescribeJob {
   callers: string[]
   version: string
   defaults: { model: string; effort: string; maxOutputTokens: number }
+  /** The longest the model may take for this job, in milliseconds; null: by the length of its answer. */
+  timeLimitMs: number | null
   instructions: string
   answerSchema: unknown | null
   tools: { name: string; what: string }[]

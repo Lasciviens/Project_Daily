@@ -163,12 +163,12 @@ function checkAiWriteGroup() {
   const c2 = r.body.confirms?.[0]
   r = await call({ confirmAction: { id: c2.id, decision: 'cancel' } }, web)
   check('Cancel deletes nothing', /Cancelled/.test(r.body.text) && tables.tasks.length === 1)
-  // 5. phone path: no button → refused, loop continues
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }]), gemini([{ text: 'Open the app to delete it.' }])]
+  // 5. the phone's device secret no longer opens ai-proxy at all (AI phase 2c: phone-gateway calls `claude`)
+  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }])]
   r = await call({ messages: msg, surface: 'general' }, { 'x-phone-secret': 'phone' })
-  check('phone: delete refused, no card, nothing deleted', !r.body.confirms && tables.tasks.length === 1 && r.body.text === 'Open the app to delete it.', JSON.stringify(r.body))
+  check('the phone secret is refused (401): nothing runs, nothing deleted', r.status === 401 && tables.tasks.length === 1, JSON.stringify(r.body))
   r = await call({ confirmAction: { id: c2.id, decision: 'confirm' } }, { 'x-phone-secret': 'phone' })
-  check('phone cannot send a confirmation', r.status === 400)
+  check('the phone secret cannot send a confirmation either', r.status === 401)
   // 6. a confirmation belongs to its account
   script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }])]
   r = await call({ messages: msg }, web)

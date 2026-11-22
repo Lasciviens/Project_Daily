@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../../shared/query'
 import { describeClaude, diagnoseClaude } from '../claudeApi'
+import { countBenchQuestion, runBenchQuestion, type BenchPick } from '../benchJobs'
 import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, saveAiJobSettings, saveAiSettings } from '../ledgerApi'
 import { osloMonthRange } from '../ledgerRules'
 import type { AiCallsFilter, AiJobSettings, AiSettings } from '../types'
@@ -87,6 +88,25 @@ export function useClaudeDiagnose() {
     action: 'claude_diagnose',
     silent: 'the Diagnose card shows its own result',
     mutationFn: () => diagnoseClaude(),
+    invalidates: ['aiLedger'],
+  })
+}
+
+/** Developer → AI → Test bench: "Count tokens" is free and writes nothing, so there is nothing to refresh. */
+export function useBenchCount() {
+  return useMutationWithFeedback({
+    action: 'claude_bench_count',
+    silent: 'the Test bench shows the count itself',
+    mutationFn: ({ question, pick }: { question: string; pick: BenchPick }) => countBenchQuestion(question, pick),
+  })
+}
+
+/** Developer → AI → Test bench: a real call (reserved, ledgered). The bench shows the answer, so the hook says nothing more. */
+export function useBenchRun() {
+  return useMutationWithFeedback({
+    action: 'claude_bench_run',
+    silent: 'the Test bench shows the answer and its cost itself',
+    mutationFn: ({ question, pick }: { question: string; pick: BenchPick }) => runBenchQuestion(question, pick),
     invalidates: ['aiLedger'],
   })
 }
