@@ -28,6 +28,7 @@ import { describeFunction } from './describe.ts'
 import { claudeDeviceCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
+import { findJob } from './jobs.ts'
 import type { DnsLookup } from './types.ts'
 
 // <supabase-keys>
@@ -132,11 +133,18 @@ Deno.serve(async (req) => {
     }
 
     // What is asked: a small JSON object with an action.
-    const text = await readCapped(req.body, LIMITS.requestMaxBytes)
+    // The app may send a photo (up to LIMITS.imageRequestMaxBytes) but only to a job that takes one; every other
+    // request, and every device request, stays within LIMITS.requestMaxBytes. The bigger read is only a read: the
+    // size is checked again once the job is known.
+    const text = await readCapped(req.body, device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes)
     if (text === null) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
     const body = parseObject(text)
     if (!body) return reply(400, { error: 'The request must be a JSON object' })
     const action = ownValue(body, 'action')
+    if (new TextEncoder().encode(text).length > LIMITS.requestMaxBytes) {
+      const job = action === 'run' ? findJob(ownValue(body, 'job')) : null
+      if (!job?.acceptsImage) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+    }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
     let caller: 'app' | 'kobo' | 'phone' = 'app'

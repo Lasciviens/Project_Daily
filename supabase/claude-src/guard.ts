@@ -29,6 +29,8 @@ export const LIMITS = {
   maxOutputTokens: { min: 256, max: 16_000 },
   logDays: { min: 1, max: 90 },
   requestMaxBytes: 16 * 1024,
+  /** A request that carries a photo (only the jobs with `acceptsImage`): the photo is at most 1.4 million base64 characters (about 1 MB), the text beside it small. */
+  imageRequestMaxBytes: 1.5 * 1024 * 1024,
   /** The longest question the Test bench takes, in characters. */
   benchTextMax: 2000,
   /**

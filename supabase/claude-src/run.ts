@@ -11,9 +11,9 @@
 
 import type {
   AnswerCheck, Caller, CountReply, EarlyStep, JobDefinition, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv,
-  PreparedRun, Provider, RunReply, TokenUsage,
+  PreparedRun, Provider, RequestImage, RunReply, TokenUsage,
 } from './types.ts'
-import { costOf, worstCostOf } from './prices.ts'
+import { costOf, WEB_SEARCH_MAX_USES, worstCostOf } from './prices.ts'
 import {
   callerDailyCap, checkedChoice, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog,
   trimText, TEXT_LOG_MAX_BYTES, type RunSettings,
@@ -152,13 +152,15 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   }
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs)
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs, { images: prepared.images, webSearchMax: prepared.webSearchMax })
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
   //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
+  // A photo adds its tokens (worked out from its own header); every search the call may run adds its fee and its results.
   const worstCost = worstCostOf(
     request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
+    { imageTokens: prepared.imageTokens ?? 0, webSearches: request.webSearch?.maxUses ?? 0 },
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
@@ -192,7 +194,10 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
 
   // 8 · The ledger: what it cost, how long it took, how it ended. The cost comes from this code's price table.
   const usage = answer.ok ? answer.usage : RUN_NO_TOKENS
-  const price = costOf(usage, request.model, row.mode)
+  const searches = answer.ok ? answer.webSearches : 0
+  const price = costOf(usage, request.model, row.mode, searches)
+  // The searches the call really ran are logged (the count, never what was found).
+  if (searches > 0) row.tools = [{ name: 'web_search', searches }]
   row.outcome = verdict.ok ? 'ok' : verdict.outcome
   // The provider's own explanation goes into the row only while the text log is on: with it off, the row holds
   // nothing but our fixed sentence.
@@ -215,6 +220,9 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
       model: request.model, effort: request.effort, max_output_tokens: request.maxOutputTokens,
       instructions_version: job.version, instructions: request.instructions, user_text: request.userText,
       answer_schema: request.answerSchema, thinking: request.thinking,
+      // A photo is never kept in the log: only how many were sent and how big.
+      ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
+      ...(request.webSearch ? { web_search_max_uses: request.webSearch.maxUses } : {}),
       // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
       ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
     }, TEXT_LOG_MAX_BYTES)
@@ -240,8 +248,11 @@ function gateScopeOf(ctx: RunContext): GateScope {
  */
 export function buildRequest(
   job: JobDefinition, settings: RunSettings, userText: string, thinking: 'adaptive' | 'off', timeoutOverride?: number,
+  extra: { images?: RequestImage[]; webSearchMax?: number } = {},
 ): ModelRequest {
   return {
+    ...(extra.images?.length && job.acceptsImage ? { images: extra.images } : {}),
+    ...(extra.webSearchMax && extra.webSearchMax > 0 ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
     model: settings.model,
     maxOutputTokens: settings.maxOutputTokens,
     effort: settings.effort,
@@ -353,7 +364,7 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
   if (answer.ending !== 'complete') return failed('error', `The model stopped in a way this app does not handle yet (${answer.stopReason}).`)
   let check: AnswerCheck
   try {
-    check = prepared.read(answer.text, { thinking: answer.thinking, servedModel: answer.servedModel })
+    check = prepared.read(answer.text, { thinking: answer.thinking, servedModel: answer.servedModel, webSearches: answer.webSearches })
   } catch {
     check = { ok: false, problem: 'its check failed' }
   }
