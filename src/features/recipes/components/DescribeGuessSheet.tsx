@@ -101,8 +101,8 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
         <div className="flex flex-col gap-1">
           <div className="flex items-end justify-between gap-2">
             <label htmlFor={textId} className="field-label mb-0">What did you have?</label>
-            <PhotoButton variant="ghost" className="-my-1.5 -mr-1.5" onFile={f => { void fromPhoto(f) }} loading={photo.isPending} disabled={describe.isPending || log.isPending}>
-              {draft ? 'New photo' : 'From a photo'}
+            <PhotoButton variant="ghost" iconOnly={!!draft} className="-my-1.5 ml-auto" onFile={f => { void fromPhoto(f) }} loading={photo.isPending} disabled={describe.isPending || log.isPending}>
+              From a photo
             </PhotoButton>
             {draft && (
               <button type="button" className={chipClass('quiet', '-my-1.5 -mr-1.5')} disabled={describe.isPending} aria-busy={describe.isPending || undefined}

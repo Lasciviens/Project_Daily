@@ -17,3 +17,7 @@
 - **Prompt for Claude:** pick requests in the drawer (two-line preview of each description) → Build prompt → the window's prompt mode: an editable textarea (edits persist), Copy, Reset to generated, the included requests and Change selection. Building again over an edited prompt asks first.
 - **Drag reorder** renumbers the whole list (`planReorder`) and writes only changed rows (the old optimistic update replaced the cache with just the dragged, filtered rows).
 - Pure modules `devRequestContext.ts` / `devRequestRules.ts` / `devRequestPrompt.ts` and `clampPosition` (+ `devRequestMarks.ts`, `checkpoints.ts`) (+ `outline.ts`, `pointText.ts`, `points.ts`, `windowSize.ts`, `propertyPillsPlacement.ts`) are verified by `scripts/verify-dev-request-context.cjs` (358 assertions).
+
+## Tidy up (22.11.2026)
+
+The composer's "Tidy up" turns what was written or dictated (title and outline) into a title, the page (only from the app's own page list, else "other"), a category, a priority and the outline's points, in English; it fills the fields, the owner reads and saves, and the toast's Undo brings the original words back. Explain this error (Developer → Errors) can open the composer with a draft too. Details: `docs/features/ai.md`.

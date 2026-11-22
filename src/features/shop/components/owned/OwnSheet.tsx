@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from 'react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, SegmentedControl } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -71,14 +71,18 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const sources = items.filter(i => isPossession(i) && !i.accessory_of && i.disposal)
   const targets = items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i)))
   // A read receipt fills what it found (title only into an empty field); the owner checks and edits every field.
+  const receiptTitle = useRef('')
   const fromReceipt = useCallback((f: ReceiptFill) => {
+    const previous = receiptTitle.current
     update(d => ({
-      ...(f.title && !d.title.trim() ? { title: f.title } : {}),
+      // The name is the receipt's while it is still the one the receipt put there; what the owner typed stays.
+      ...(f.title && (!d.title.trim() || d.title === previous) ? { title: f.title } : {}),
       ...(f.price !== undefined ? { price: f.price } : {}),
       ...(f.currency ? { currency: f.currency as ShopCurrency } : {}),
       ...(f.storeId ? { platform: stores.find(s => s.id === f.storeId)?.name ?? d.platform } : f.storeName ? { platform: f.storeName } : {}),
       ...(f.note && !d.notes.includes(f.note) ? { notes: d.notes.trim() ? `${d.notes.trim()}\n${f.note}` : f.note } : {}),
     }))
+    if (f.title) receiptTitle.current = f.title
     if (f.day) { setDay(f.day); setApprox(false) }
   }, [update, stores])
   const valid = title.trim() && day && (!had || (left && left >= day))

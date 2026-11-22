@@ -50,7 +50,7 @@ export function ReceiptPhoto({ stores, onFill, withTitle = true }: { stores: rea
             Read: {[data.store, data.total !== undefined ? `${data.total}${data.currency ? ` ${data.currency}` : ''}` : null, data.date ? formatDate(data.date) : null].filter(Boolean).join(' · ') || 'nothing clear'}
             {fill.storeId ? '' : fill.storeName ? ' · not one of your stores' : ''}
           </p>
-          {lines.length > 1 && (
+          {withTitle && lines.length > 1 && (
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Which line did you buy?">
               {lines.map((l, i) => (
                 <ChoiceChip key={i} on={pick === i} onClick={() => setPick(i)}>{l.name}{l.price != null ? ` · ${l.price}` : ''}</ChoiceChip>
@@ -58,7 +58,7 @@ export function ReceiptPhoto({ stores, onFill, withTitle = true }: { stores: rea
               <ChoiceChip on={pick === 'total'} onClick={() => setPick('total')}>Use the total</ChoiceChip>
             </div>
           )}
-          {fill.left.map(l => <p key={l} className="text-meta text-warn">{l}</p>)}
+          {withTitle && fill.left.map(l => <p key={l} className="text-meta text-warn">{l}</p>)}
         </>
       )}
     </div>

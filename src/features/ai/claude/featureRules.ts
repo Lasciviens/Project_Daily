@@ -265,9 +265,7 @@ export function errorContextForAi(context: Record<string, unknown> | null | unde
     return o
   }
   if (!context || Object.keys(context).length === 0) return ''
-  let json = ''
-  try { json = JSON.stringify(blank(context, 0)) } catch { return '' }
-  return scrubErrorForAi(json, max)
+  try { return scrubErrorForAi(JSON.stringify(blank(context, 0)), max) } catch { return '' }
 }
 
 // ── Dev Requests ──────────────────────────────────────────────────────────────

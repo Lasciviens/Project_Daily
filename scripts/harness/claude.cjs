@@ -34,7 +34,7 @@ const PRICES = [
 
 const LIMITS = {
   monthlyBudgetMaxUsd: 50, callsPerMinute: 20, callsPerDay: 600,
-  maxOutputTokens: { min: 256, max: 16000 }, logDays: { min: 1, max: 90 }, requestMaxBytes: 16 * 1024,
+  maxOutputTokens: { min: 256, max: 16000 }, logDays: { min: 1, max: 90 }, requestMaxBytes: 16 * 1024, imageRequestMaxBytes: 1.5 * 1024 * 1024,
   benchTextMax: 2000, deviceCallsPerDay: { kobo: 100, phone: 100 },
 }
 const DEFAULTS = { monthlyBudgetUsd: 5, logText: true, logDays: 30 }
@@ -130,6 +130,16 @@ PHASE_2A_JOBS.push(
   phase2a('phone_ask', 'A question from the phone', "The iPhone shortcut's free question.", 800, ['phone'], 18000),
   phase2a('test_bench', 'Test bench: any question', 'Developer → AI → Test bench sends any question with the model, effort and thinking you pick.', 2000),
 )
+// The AI features of 22.11.2026: photos, Dev Requests, Work, Shop, Wishes.
+PHASE_2A_JOBS.push(
+  phase2a('quick_guess_photo', 'Guess a meal from a photo', 'In Food → Quick guess, "From a photo" fills in one diary line.', 1500),
+  phase2a('receipt_read', 'Read a receipt photo', 'In Shop, "From a receipt" reads a photo of a receipt.', 1500),
+  phase2a('dev_request_draft', 'Tidy up a Dev Request', 'In the Dev Requests composer, "Tidy up" drafts the fields from what you dictated.', 2000),
+  phase2a('error_explain', 'Explain an error', 'In Developer → Errors, "Explain" says what an error means.', 2000),
+  phase2a('work_week', 'Write my week (Work)', 'On Work, "Write my week" writes a status text.', 1500),
+  phase2a('ad_improve', 'Improve the ad text', 'In Shop, "Improve" rewrites the ad.', 2000),
+  phase2a('place_ideas', 'Ideas for a place wish', 'In Wishes, "Ideas for this place".', 3000, ['app'], 70000),
+)
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
   recipe_macros: { calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 },
@@ -137,6 +147,13 @@ const PHASE_2A_RESULTS = {
   quick_guess_options: { groups: [{ name: 'Extra', pick: 'any', choices: [{ name: 'Cheese', calories: 80, protein_g: 5, carbs_g: 0, fat_g: 7, sugar_g: 0 }] }] },
 }
 PHASE_2A_RESULTS.recipe_from_link = PHASE_2A_RESULTS.recipe_from_text
+PHASE_2A_RESULTS.quick_guess_photo = { title: 'Pasta with meat sauce', portion: 'one full plate, about 400 g', calories: 650, protein_g: 28, carbs_g: 80, fat_g: 22, sugar_g: 9, assumptions: ['A full dinner plate.', 'Beef mince sauce.'] }
+PHASE_2A_RESULTS.receipt_read = { store: 'ELKJØP NORGE AS', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Sony WH-1000XM5', price: 2990 }, { name: 'USB-C cable 2 m', price: 199 }], warranty_months: 24 }
+PHASE_2A_RESULTS.dev_request_draft = { title: 'Water card should be red', page: '/daily', category: 'improvement', priority: 'medium', points: ['Make the water card on Daily red.', 'Also in dark mode.'] }
+PHASE_2A_RESULTS.error_explain = { explanation: 'The app asked for a task that is no longer there, so it got null (nothing) and then tried to read its id. It is not a network problem: the server answered, with an empty result.', terms: [{ term: 'null', meaning: 'The value that means "nothing is here".' }, { term: 'HTTP 404', meaning: 'The server\'s way of saying "I found nothing at that address".' }], request: { title: 'Task detail fails on a deleted task', category: 'bug', priority: 'medium', points: ['Guard the null task before reading its id.', 'Show "This task was deleted" instead of failing.'] } }
+PHASE_2A_RESULTS.work_week = { text: 'I closed 3 Work tasks this week and finished 1 of my 2 goals.\nDone: the invoice export, the login redirect and the API docs outline.\nOpen: the dashboard, waiting for design.' }
+PHASE_2A_RESULTS.ad_improve = { text: 'Sony WH-1000XM5 selges.\nLiten ripe på høyre øre, ellers som ny. Etui følger med.\nPris 1800 kr.' }
+PHASE_2A_RESULTS.place_ideas = { ideas: ['The old harbour walk, about an hour, best at sunset.', 'Fresh fish at the quay market.', 'The wooden church on the hill.', 'A rainy-day visit to the local museum.', 'Swim at the sandy beach in summer.'], from_search: true, searches: 2 }
 PHASE_2A_RESULTS.coach_assessment = { text: '**Today** — Yesterday\'s workout went well and sleep was 7.2 h, so train as planned.\n\n**Next workout** — Bench Press, 4 sets of 8 at 62.5 kg.\n\nThree steady weeks in a row: keep going.' }
 PHASE_2A_RESULTS.test_bench = { text: 'The sky looks blue because air scatters short (blue) light from the sun far more than long (red) light, in every direction.', thinking: 'A short physics question: Rayleigh scattering.', served_model: 'claude-haiku-5-5' }
 
