@@ -124,6 +124,28 @@ export interface TokenCount {
   inputTokens: number
 }
 
+/** A batch the provider accepted: its id (a link to an outside service, kept server-side only). */
+export interface BatchSubmitted {
+  ok: true
+  batchId: string
+}
+
+/** How far a batch is: `in_progress` and `canceling` are not done; `ended` means every line has a result. */
+export interface BatchStatus {
+  ok: true
+  status: 'in_progress' | 'canceling' | 'ended'
+}
+
+/** One result line of an ended batch, found by the id we gave the request. */
+export type BatchLine =
+  | { customId: string; kind: 'succeeded'; answer: ModelAnswer }
+  | { customId: string; kind: 'errored' | 'canceled' | 'expired'; detail: string }
+
+export interface BatchResults {
+  ok: true
+  lines: BatchLine[]
+}
+
 /**
  * A model provider, as the run part sees it. `send` is the real request. The other two are free checks that
  * Diagnose uses: they cost no tokens and never generate anything.
@@ -135,6 +157,12 @@ export interface Provider {
   listModels(timeoutMs: number): Promise<ModelList | ModelFailure>
   /** Counts the tokens of a request exactly as `send` would build it (`request.timeoutMs` is its limit). */
   countTokens(request: ModelRequest): Promise<TokenCount | ModelFailure>
+  /** Queues requests at the batch price: each is built exactly as `send` builds it and found again by its `customId`. */
+  submitBatch(items: readonly { customId: string; request: ModelRequest }[], timeoutMs: number): Promise<BatchSubmitted | ModelFailure>
+  /** Asks how far a batch is. Free. */
+  batchStatus(batchId: string, timeoutMs: number): Promise<BatchStatus | ModelFailure>
+  /** Reads the results of an ended batch, in whatever order they come. Free. */
+  batchResults(batchId: string, timeoutMs: number): Promise<BatchResults | ModelFailure>
 }
 
 /** What the "How it works" page says about the provider. */
@@ -210,6 +238,8 @@ export interface JobDefinition {
   /** What it does for the owner, in a sentence. */
   what: string
   kind: 'one_shot'
+  /** `live` (the default) answers now; `batch` is queued at half price and read back later (batch.ts). */
+  mode?: CallMode
   callers: readonly Caller[]
   /** Changes whenever the instructions or the answer shape change; every ledger row carries it. */
   version: string
@@ -273,6 +303,20 @@ export type RunReply =
   | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
 
+/**
+ * The answer to `{ action: 'report_make' }`. `queued`: the batch was accepted and the report row exists.
+ * `skipped`: nothing was done on purpose (outside the schedule's window, or a report for that week exists).
+ */
+export type ReportMakeReply =
+  | { ok: true; queued: true; report_id: string; week_start: string }
+  | { ok: true; queued: false; skipped: 'not_the_time' | 'already_made' | 'already_queued' | 'no_data'; week_start: string | null }
+  | { ok: false; reason: Reason | 'failed'; message: string; report_id?: string }
+
+/** The answer to `{ action: 'report_check' }`: what the check found among the queued reports. */
+export type ReportCheckReply =
+  | { ok: true; checked: number; ready: number; failed: number; waiting: number }
+  | { ok: false; message: string }
+
 /** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */
 export interface DiagnoseStep {
   name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request'
@@ -332,6 +376,7 @@ export interface Describe {
     title: string
     what: string
     kind: 'one_shot'
+    mode: CallMode
     callers: string[]
     version: string
     defaults: { model: string; effort: string; maxOutputTokens: number }
