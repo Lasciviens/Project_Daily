@@ -20,6 +20,28 @@
 const { randomUUID } = require('node:crypto')
 const { osloDay, addDays } = require('./seed.cjs')
 
+// The REAL function's own jobs (the generated supabase/functions/claude/index.ts, run under Node with a pretend Deno): the AI
+// features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
+// list, the week's counts) and its own answer check (`read`), so a screen is drawn from what really survives them — the model's
+// text is the one canned part. Built once, on the first run of one of those jobs.
+const REAL_CHECKED = new Set(['quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
+let realJobs = null
+function realFindJob(name) {
+  if (!realJobs) {
+    const fs = require('node:fs'), path = require('node:path')
+    const sucrase = require('sucrase')
+    const root = path.join(__dirname, '..', '..')
+    const SDK = require(path.join(root, 'node_modules/@anthropic-ai/sdk'))
+    const names = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError', 'APIError', 'AuthenticationError', 'BadRequestError', 'ContentTooLargeError', 'InternalServerError', 'NotFoundError', 'OverloadedError', 'PermissionDeniedError', 'RateLimitError', 'UnprocessableEntityError']
+    const source = fs.readFileSync(path.join(root, 'supabase/functions/claude/index.ts'), 'utf8')
+    const code = sucrase.transform(source.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''), { transforms: ['typescript'] }).code
+    const quiet = { error() {}, log() {}, warn() {}, info() {} }
+    const Deno = { env: { get: () => undefined }, serve() {}, errors: {} }
+    realJobs = new Function('Deno', 'createClient', 'fetch', 'console', ...names, `${code}\nreturn { findJob }`)(Deno, () => ({}), async () => { throw new Error('no network') }, quiet, ...names.map(n => SDK[n]))
+  }
+  return realJobs.findJob(name)
+}
+
 const MODELS = [
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', note: 'The default: the fastest and cheapest. A prompt over 100,000 tokens costs five times as much.' },
   { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', note: 'Stronger, at 20 times the price of Haiku.' },
@@ -164,9 +186,9 @@ PHASE_2A_RESULTS.quick_guess_photo = { title: 'Pasta with meat sauce', portion: 
 PHASE_2A_RESULTS.receipt_read = { store: 'ELKJØP NORGE AS', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Sony WH-1000XM5', price: 2990 }, { name: 'USB-C cable 2 m', price: 199 }], warranty_months: 24 }
 PHASE_2A_RESULTS.dev_request_draft = { title: 'Water card should be red', page: '/daily', category: 'improvement', priority: 'medium', points: ['Make the water card on Daily red.', 'Also in dark mode.'] }
 PHASE_2A_RESULTS.error_explain = { explanation: 'The app asked for a task that is no longer there, so it got null (nothing) and then tried to read its id. It is not a network problem: the server answered, with an empty result.', terms: [{ term: 'null', meaning: 'The value that means "nothing is here".' }, { term: 'HTTP 404', meaning: 'The server\'s way of saying "I found nothing at that address".' }], request: { title: 'Task detail fails on a deleted task', category: 'bug', priority: 'medium', points: ['Guard the null task before reading its id.', 'Show "This task was deleted" instead of failing.'] } }
-PHASE_2A_RESULTS.work_week = { text: 'I closed 3 Work tasks this week and finished 1 of my 2 goals.\nDone: the invoice export, the login redirect and the API docs outline.\nOpen: the dashboard, waiting for design.' }
+PHASE_2A_RESULTS.work_week = { text: 'I closed 1 Work task this week and finished 1 of my 3 goals; 9 are still open, 1 overdue.\nDone: the support inbox.\nOpen: the planning slides and the onboarding review; the overdue one needs a decision.' }
 PHASE_2A_RESULTS.ad_improve = { text: 'Sony WH-1000XM5 selges.\nLiten ripe på høyre øre, ellers som ny. Etui følger med.\nPris 1800 kr.' }
-PHASE_2A_RESULTS.place_ideas = { ideas: ['The old harbour walk, about an hour, best at sunset.', 'Fresh fish at the quay market.', 'The wooden church on the hill.', 'A rainy-day visit to the local museum.', 'Swim at the sandy beach in summer.'], from_search: true, searches: 2 }
+PHASE_2A_RESULTS.place_ideas = { ideas: ['The old harbour walk, about an hour, best at sunset.', 'Fresh fish at the quay market.', 'The wooden church on the hill.', 'A rainy-day visit to the local museum.', 'Swim at the sandy beach in summer.'] }
 PHASE_2A_RESULTS.coach_assessment = { text: '**Today** — Yesterday\'s workout went well and sleep was 7.2 h, so train as planned.\n\n**Next workout** — Bench Press, 4 sets of 8 at 62.5 kg.\n\nThree steady weeks in a row: keep going.' }
 PHASE_2A_RESULTS.test_bench = { text: 'The sky looks blue because air scatters short (blue) light from the sun far more than long (red) light, in every direction.', thinking: 'A short physics question: Rayleigh scattering.', served_model: 'claude-haiku-5-5' }
 
@@ -396,7 +418,7 @@ function about(configured) {
     defaults: DEFAULTS,
     prices: {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
-      longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, models: PRICES,
+      longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, webSearchUsdEach: 0.01, webSearchMaxUses: 3, models: PRICES,
     },
     jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE].map(j => ({ mode: 'live', ...j })),
     steps: DESCRIBE_STEPS,
@@ -595,7 +617,18 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      const result = opts.results?.[other.name] ?? PHASE_2A_RESULTS[other.name]
+      let result = opts.results?.[other.name] ?? PHASE_2A_RESULTS[other.name]
+      if (REAL_CHECKED.has(other.name)) {
+        // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
+        // report the searches the canned call ran.
+        const job = realFindJob(other.name)
+        const prepared = job.prepare(body.input, now)
+        if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : 0 })
+        if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
+        result = checked.result
+        if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }
+      }
       return { ok: true, job: other.name, result: thinkingOff && picked ? { ...result, thinking: '' } : result, call: summaryOf(row) }
     }
     if (body.job !== 'item_fill') return stopWith('bad_input', 'There is no AI job with that name.')

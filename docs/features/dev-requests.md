@@ -20,4 +20,4 @@
 
 ## Tidy up (22.11.2026)
 
-The composer's "Tidy up" turns what was written or dictated (title and outline) into a title, the page (only from the app's own page list, else "other"), a category, a priority and the outline's points, in English; it fills the fields, the owner reads and saves, and the toast's Undo brings the original words back. Explain this error (Developer → Errors) can open the composer with a draft too. Details: `docs/features/ai.md`.
+The composer's "Tidy up" turns what was written or dictated (title and outline) into a title, the page (only from the app's own page list, else "other"), a category, a priority and the outline's points, in English; it fills the fields, the owner reads and saves, and the owner's own words stay as typed under "Said:" in the description. Undo (a line above the footer) brings the old fields back. Tidy up is off while the request has Pick links or review marks (they are never sent or changed). A request made from an error says "Drafted by AI from an error". Explain this error (Developer → Errors) can open the composer with a draft too. Details: `docs/features/ai.md`.

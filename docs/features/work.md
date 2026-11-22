@@ -10,4 +10,4 @@
 
 ## Write my week (22.11.2026)
 
-Under "This week" in the side panel: "Write my week" opens a sheet with a short status text for a manager or a team, built from this week's closed Work tasks (Monday–Sunday, by `completed_at`), the weekly goals and the Notes. Code finds and counts them; the model writes the sentences (English), and a number it uses that is in none of the facts is refused. The text is editable, has a Copy button and is not saved; with nothing to write about no AI is asked. Details: `docs/features/ai.md`.
+Under "This week" in the side panel: "Write my week" opens a sheet with a short status text for a manager or a team, built from this week's closed Work tasks (Monday–Sunday, by `completed_at`), the weekly goals and the Notes. The open and overdue Work tasks go along (counted over all of them, the first 30 listed). Code finds and counts them; the model writes the sentences (English), and a number it uses that is in none of the facts is refused. The text is editable, has a Copy button and is not saved; with nothing to write about no AI is asked. Details: `docs/features/ai.md`.
