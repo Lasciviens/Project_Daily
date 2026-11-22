@@ -265,6 +265,9 @@ function buildTables(now = new Date()) {
     task(0, 'Renew the parking permit', { status: 'done', completed_at: at(0, '09:12') }),
     task(null, 'Water the plants', { section: 'today' }),
     task(-2, 'Return the library books', { priority: 'high' }),
+    // "Needs a decision": a task far past its day, and one undated for over a month.
+    task(-12, 'Renew the passport photos'),
+    task(null, 'Sort out the loft and the old boxes', { created_at: at(-45, '09:00'), updated_at: at(-45, '09:00') }),
     task(-5, 'Book a dentist appointment'),
     task(-4, 'Pay the electricity bill', { status: 'done' }),
     task(-3, 'Clean the bathroom', { status: 'done' }),
@@ -345,7 +348,8 @@ function buildTables(now = new Date()) {
     id: blockId(), user_id: owner, project_id: garage.id, kind: 'table', title: 'Parts', sort_order: 0, ...stamp(-38),
     settings: { columns: [
       { key: 'part', label: 'Part', type: 'text' }, { key: 'qty', label: 'Qty', type: 'number' },
-      { key: 'price', label: 'Price', type: 'money' }, { key: 'status', label: 'Status', type: 'status', options: ['Needed', 'Ordered', 'Have'] },
+      { key: 'price', label: 'Price', type: 'money' }, { key: 'status', label: 'Status', type: 'status', options: ['Needed', 'To buy', 'Ordered', 'Have'] },
+      { key: 'link', label: 'Shop link', type: 'link' },
     ], currency: 'NOK' },
   }
   const logBlock = { id: blockId(), user_id: owner, project_id: garage.id, kind: 'log', title: 'Log', sort_order: 1, settings: {}, ...stamp(-38) }
@@ -360,6 +364,8 @@ function buildTables(now = new Date()) {
     entry(partsBlock, 0, { data: { part: 'Plywood top 18 mm', qty: 1, price: 890, status: 'Ordered' } }),
     entry(partsBlock, 1, { data: { part: 'Wall rail system', qty: 3, price: 349, status: 'Needed' } }),
     entry(partsBlock, 2, { data: { part: 'LED batten light', qty: 2, price: 499, status: 'Have' } }),
+    entry(partsBlock, 3, { data: { part: 'Wood screws 5 x 60 mm', qty: 2, price: 79, status: 'To buy', link: 'https://example.com/screws' } }),
+    entry(partsBlock, 4, { data: { part: 'Cable clips', qty: 1, price: 49, status: 'To buy' } }),
     entry(logBlock, 0, { title: 'Frame glued and screwed', body: 'Square within a millimetre. Needs a day to cure.', entry_date: day(-6) }),
     entry(logBlock, 1, { title: 'Bought the timber', body: 'Planed spruce, 45×95.', entry_date: day(-15) }),
     entry(linksBlock, 0, { title: 'Workbench plans', url: 'https://example.com/workbench-plans' }),

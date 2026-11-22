@@ -61,3 +61,7 @@ Owner: "When re-watching, don't show everything green. Show a counter instead (m
 ## TMDB images
 
 **TMDB images:** `https://image.tmdb.org/t/p/{size}{path}` (e.g. `w342`)
+
+## Plan: pick the match for Trakt's unmatched titles (not built, 22.11.2026)
+
+`trakt_unmatched` (116) is rewritten from Trakt's data on every sync and nothing in the app reads it yet, and the sync joins everything on `ids.tmdb` (`trakt-api`: the plan builders skip an item with none). A pick saved in the browser would therefore link nothing: it needs a place the sync reads. Plan: (1) a migration `trakt_manual_matches (user_id, kind, trakt_id, tmdb_id, unique (user_id, kind, trakt_id))` with owner policy, owner lock, grants and `trg_audit`; (2) `trakt-api` loads it right after `snapshot()` and fills `ids.tmdb` of the items that have none — then the existing path (catalogue upsert, `backfillIds`, `recordUnmatched`) does the rest, one edge-function change in a deploy-ordered PR (the function ships before the screen); (3) a list on Settings → Subscriptions → Trakt (connections live in one place) with a title + year search through `tmdbApi.searchMovies/searchTV` and a short pick list (poster, year, overview), Save writes the match with Undo. Open point for the owner: `tmdbFetch` sends the TMDB key as `api_key` in the URL; TMDB also takes a v4 read token as a header — the key would move out of the URL in the same change. Needs a security review (a new table and an edge-function change).

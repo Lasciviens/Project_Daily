@@ -221,13 +221,17 @@ async function insertTaskWithFallback(row: Record<string, unknown>): Promise<Tas
   throw new Error('createTask: exceeded missing-column retry budget')
 }
 
-async function updateTaskWithFallback(id: string, row: Record<string, unknown>): Promise<Task> {
+/** Columns whose loss must not pass as a save: a write that needs one says so by name instead of dropping it. */
+export const NEEDS_180_LABELS = 'Not saved — migration 180 (task labels) is not applied yet.'
+
+async function updateTaskWithFallback(id: string, row: Record<string, unknown>, required: Record<string, string> = {}): Promise<Task> {
   const mutable = { ...row }
   for (let attempt = 0; attempt < 15; attempt++) {
     const { data, error } = await supabase.from('tasks').update(mutable).eq('id', id).select().single()
     if (!error) return data
     const col = missingColumnName(error)
     if (!col || !(col in mutable)) throw error
+    if (required[col]) throw new Error(required[col])
     delete mutable[col]
   }
   throw new Error('updateTask: exceeded missing-column retry budget')
@@ -276,7 +280,8 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
 
 export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Task> {
   const row: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() }
-  return updateTaskWithFallback(id, row)
+  // A labels write (Someday) is never silently dropped on a database before 180.
+  return updateTaskWithFallback(id, row, patch.labels !== undefined ? { labels: NEEDS_180_LABELS } : {})
 }
 
 export async function swapTaskOrder(id1: string, id2: string): Promise<void> {

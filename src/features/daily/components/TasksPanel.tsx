@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { useAllTasks } from '../../todo/hooks/useTodos'
+import { useNeedsDecision } from '../../todo/hooks/useNeedsDecision'
+import { NeedsDecisionCard } from './NeedsDecisionCard'
 import { ToDoItem } from '../../todo/components/ToDoItem'
 import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { taskGroups } from '../../todo/taskRules'
@@ -26,6 +28,7 @@ const GROUP_META: Record<TaskGroup, { title: string; tone: Tone }> = {
 
 /** What a column card says when all of its groups are empty. */
 const EMPTY_TEXT: Record<TaskSection, string> = {
+  decide: '',
   all: '',
   now: 'Nothing overdue or due today.',
   upcoming: 'Nothing upcoming.',
@@ -58,6 +61,7 @@ export function TasksPanel() {
 
   // The groups come from the task rules every page shares (taskRules.taskGroups).
   const g = useMemo(() => taskGroups(tasks, today), [tasks, today])
+  const decisions = useNeedsDecision(tasks)
 
   if (isLoading) {
     return (
@@ -96,7 +100,8 @@ export function TasksPanel() {
       </Card>
     )
   }
-  const sections = Object.fromEntries(TASK_SECTIONS.map(k => [k, card(k)])) as Record<TaskSection, ReactNode>
+  const sections = Object.fromEntries(TASK_SECTIONS.map(k => [k, k === 'decide' ? null : card(k)])) as Record<TaskSection, ReactNode>
+  sections.decide = decisions.length > 0 ? <NeedsDecisionCard rows={decisions} /> : null
   sections.all = card('all', 'flex max-w-2xl flex-col gap-3 stagger-in')
 
   return <PageBoard sections={sections} layout={TASKS_BOARD} />

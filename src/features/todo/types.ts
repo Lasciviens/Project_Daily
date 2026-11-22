@@ -119,6 +119,8 @@ export interface UpdateTaskInput {
   parent_task_id?:           string | null
   google_tasklist_id?:       string | null
   completed_at?:             string | null
+  /** The owner's own labels (migration 180; the database cleans them). Someday on "Needs a decision" writes it. */
+  labels?:                   string[]
   /** Flipping false→true (the "Push" catch-up action) enqueues a fresh Google create — see migration 071's enqueue trigger. */
   google_sync_enabled?:      boolean
 }

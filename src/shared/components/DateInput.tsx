@@ -28,6 +28,10 @@ interface Props {
   min?:        string             // YYYY-MM-DD
   max?:        string             // YYYY-MM-DD
   'aria-label'?: string
+  /** Not editable (a save is running). */
+  disabled?:   boolean
+  /** A row of 32 px fields: the calendar button is 32 px too (default 44). */
+  compact?:    boolean
 }
 
 function problem(check: SlotsCheck, min?: string, max?: string): string | undefined {
@@ -45,7 +49,7 @@ function problem(check: SlotsCheck, min?: string, max?: string): string | undefi
  * pasted. The value changes once the date is whole, real and inside min–max;
  * anything else shows red and is not saved.
  */
-export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel }: Props) {
+export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel, disabled, compact }: Props) {
   const coarse = useCoarsePointer()
   const inputRef = useRef<HTMLInputElement>(null)
   const caretRef = useRef<number | null>(null)
@@ -173,7 +177,7 @@ export function DateInput({ value, onChange, className, placeholder, min, max, '
       <Popover className={cx('relative', full ? 'block w-full' : 'inline-block')}>
         {({ close }) => (
           <>
-            <PopoverButton aria-label={ariaLabel ?? 'Pick a date'}
+            <PopoverButton aria-label={ariaLabel ?? 'Pick a date'} disabled={disabled}
               className={cx(className, 'inline-flex items-center justify-between gap-2 text-left tabular-nums', full && 'w-full')}>
               <span className={shown ? undefined : 'text-fg-faint'}>{shown || (placeholder ?? 'DD.MM.YYYY')}</span>
               <CalendarDays className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
@@ -205,12 +209,13 @@ export function DateInput({ value, onChange, className, placeholder, min, max, '
             onBlur={handleBlur}
             placeholder={placeholder ?? 'DD.MM.YYYY'}
             aria-label={ariaLabel}
+            disabled={disabled}
             aria-invalid={invalid || undefined}
             title={invalid ? problem(check, min, max) : undefined}
             className={cx(className, 'tabular-nums aria-[invalid=true]:border-danger', full && 'min-w-0 flex-1')}
           />
-          <PopoverButton aria-label="Open calendar"
-            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg">
+          <PopoverButton aria-label="Open calendar" disabled={disabled}
+            className={cx('flex w-9 shrink-0 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-50', compact ? 'h-8' : 'h-11')}>
             <CalendarDays className="h-4 w-4" aria-hidden />
           </PopoverButton>
           {panel(close)}

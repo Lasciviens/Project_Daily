@@ -15,3 +15,4 @@ Background: `docs/features/projects.md`.
 - Text pages and log text render through `proseModel` / `ProseText` — never as HTML.
 - Secondary facts (dates, Done when, a log entry's text, a link's note) wait behind a `HoverPeek` or a disclosure (owner, 18.10.2026: "no unneeded information directly but when clicked").
 - A new block kind: `project_blocks.kind`'s check (a migration), `BLOCK_KINDS` and its body in `BlockCard`, the entry form in `ProjectEntryEntityModal`, the assistant's `DB_CATALOG`.
+- "To buy → Shop" reads a table only through `toBuyRows` (`tableSettings`, never raw settings JSON); a link is passed on only as a parsed http(s) address.
