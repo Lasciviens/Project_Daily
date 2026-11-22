@@ -1854,6 +1854,25 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   // The app scrubs an error before it sends it; the function scrubs again. The two are the same rules (featureRules.ts is the app's copy).
   const clientRules = (() => { const m = { exports: {} }; new Function('module', 'exports', sucrase.transform(read('src/features/ai/claude/featureRules.ts'), { transforms: ['typescript', 'imports'] }).code)(m, m.exports); return m.exports })()
   check('the app\'s scrub and the function\'s scrub give the same text on the hostile error, on odd input and on plain words', [HOSTILE_ERR, 'Invalid token for the key column', 'x '.repeat(5000), 'a=b&'.repeat(100) + '{'.repeat(100), '😀'.repeat(300) + ' secret: abc', `Bearer ${JWT}`, 'https://u:p@h.example/a?b=c#d'].every(t => clientRules.scrubErrorForAi(t, 800) === F.scrubErrorText(t, 800)))
+  const SCRUB_SAMPLES = [
+    ['webhook_secret=whsec_abcdef123456', 'whsec_abcdef123456'], ['strava_refresh_token=abc123def456ghi789', 'abc123def456ghi789'], ['{"authToken":"tok_live_12345"}', 'tok_live_12345'],
+    ['{"secretKey":"s3cr3tk3y"}', 's3cr3tk3y'], ['{"privateKey": "pk_live_987"}', 'pk_live_987'], ['cookie: sid=abc; other=def; csrf=xyz', 'other=def'], ['Set-Cookie: session=abc123; Path=/; HttpOnly', 'abc123'],
+    ['Authorization: Token abcdef123456', 'abcdef123456'], ['Authorization: Basic dXNlcjpwYXNz', 'dXNlcjpwYXNz'], ['fetch failed https://api.example.com/v1/x?foo=bar#frag', 'foo=bar'], ['fetch failed ftp://files.example.com/a#frag-secret', 'frag-secret'],
+    ['GET api.example.com/v1/items?id=42&user=ola failed', 'user=ola'], ['GET /rest/v1/tasks?select=title&owner=abc failed', 'owner=abc'], ['npsso abc123def456', 'abc123def456'],
+    ['key ghp_abcdefghijklmnopqrst1234', 'ghp_abcdefghijklmnopqrst1234'], ['key github_pat_11ABCDEFG0abcdefghijkl_xyz', 'github_pat_11ABCDEFG0abcdefghijkl_xyz'], ['key xoxb-12345678-abcdefgh', 'xoxb-12345678-abcdefgh'], ['key AKIAIOSFODNN7EXAMPLE', 'AKIAIOSFODNN7EXAMPLE'],
+    ['call me on +47 912 34 567', '912 34 567'], ['phone 912345678 failed', '912345678'], ['oauth code=abc123 state=zzz', 'abc123'], ['redirect https://x.example/cb?code=4%2F0AbCdEf', '0AbCdEf'],
+    ['{"client_secret":"abc","api_key":"def789"}', 'def789'], ['password: "hunter two"', 'hunter two'], ['user ola@example.com failed', 'ola@example.com'], ['token=a.b.c-d_e', 'a.b.c-d_e'],
+  ]
+  check('error scrub: every sample of the security review is taken out (prefixed and camelCase key names, whole cookie and authorization lines, a Token header, a link\'s query on any scheme or bare host and path, a bare path\'s query, a space instead of =, GitHub, Slack and AWS key shapes, phone numbers, OAuth code=), in the function and in the app, with the same text',
+    SCRUB_SAMPLES.every(([text, secret]) => { const a = F.scrubErrorText(text, 800), b2 = clientRules.scrubErrorForAi(text, 800); return !a.includes(secret) && a === b2 }), SCRUB_SAMPLES.filter(([text, secret]) => F.scrubErrorText(text, 800).includes(secret) || F.scrubErrorText(text, 800) !== clientRules.scrubErrorForAi(text, 800)).map(([t]) => [t, F.scrubErrorText(t, 800)]))
+  check('error scrub: what is not secret stays (status, route, a date, a word like "Invalid token")', (() => { const t = F.scrubErrorText('status=404 route=#/daily at 2026-11-22T10:00:00Z Invalid token for the key column', 800); return /status=404/.test(t) && /#\/daily/.test(t) && /2026-11-22/.test(t) && /Invalid token for the key column/.test(t) })())
+  check('error scrub: it scrubs first and cuts after (a secret across the 800th character is not half kept), and is fast on hostile text of 20,000 characters (long keys, dots, equals, quotes)', (() => {
+    const t0 = Date.now()
+    const secret = 'sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZ'
+    const cut = F.scrubErrorText('x '.repeat(395) + secret, 800)
+    for (const hostile of ['a'.repeat(20000), 'a.'.repeat(10000), 'a='.repeat(10000), '"a":"'.repeat(4000), 'token='.repeat(3000), 'https://'.repeat(2500), '/a?'.repeat(6000), '1 '.repeat(10000), 'a@'.repeat(10000)]) { F.scrubErrorText(hostile, 800); clientRules.scrubErrorForAi(hostile, 800) }
+    return !cut.includes('ZZZZ') && Date.now() - t0 < 4000
+  })(), Date.now())
   const EXPLAIN_GOOD = { explanation: 'The app asked for a task that is not there, so it got null and tried to read id from it. It is not a network problem.', terms: [{ term: 'null', meaning: 'The value that means nothing is here.' }], request: { title: 'Task detail crashes on a deleted task', category: 'bug', priority: 'medium', points: ['Guard the null task before reading its id.'] } }
   r = await go(runBody({ message: HOSTILE_ERR, context: `{"route":"#/daily","token":"${ERR_SECRETS[7]}","status":404}` }, 'error_explain'), { network: pretendNetwork(modelText(JSON.stringify(EXPLAIN_GOOD))) })
   const sentText = sentBody(r).messages[0].content
@@ -1926,11 +1945,22 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     same(b.tools, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }]) && b.max_tokens === 3000 && b.messages[0].content === '<place>Grimstad</place>\n<wish>Things to do in Grimstad</wish>\n<notes>\nMaybe in June\n</notes>' && same(Object.keys(b).sort(), ['max_tokens', 'messages', 'model', 'output_config', 'system', 'thinking', 'tools']) && same(used(), [70000]), b)
   check('place_ideas: the answer is the idea lines, and says a search really ran (2 searches)', same(r.json?.result, { ideas: IDEAS.ideas, from_search: true, searches: 2 }), r.json)
   check('place_ideas: the ledger counts the searches in `tools`, and the cost is the tokens plus 2 × $0.01', same(r.row.tools, [{ name: 'web_search', searches: 2 }]) && near(r.row.cost_usd, F.costOf(TOKENS_9000_400, 'claude-haiku-5-5', 'live').costUsd + 0.02), r.row)
-  check('place_ideas: the reservation holds 3 searches ($0.03) and their results (3 × 10,000 tokens at the one-hour write price)', (() => {
+  check('place_ideas: the reservation is the search loop\'s worst case: (n+1) × the prompt + n(n+1)/2 × 25,000 result tokens (n = 3: 4 prompts + 150,000), as one prompt for the long-prompt line (×5 on Haiku), + 3 × $0.01', (() => {
     const worst = r.world.reserves[0].p_worst_cost
-    const without = F.worstCostOf('claude-haiku-5-5', F.PLACE_IDEAS_JOB.instructions.length + b.messages[0].content.length, 3000)
-    return near(worst - without, 0.03 + 30000 * priceH.cacheWrite1hPerMTok / 1e6)
+    const chars = F.PLACE_IDEAS_JOB.instructions.length + b.messages[0].content.length
+    const tokens = 4 * (chars + 1000) + 6 * 25000
+    const expected = Math.round(((tokens * priceH.cacheWrite1hPerMTok + 3000 * priceH.outputPerMTok) / 1e6 * 5 + 0.03) * 1e6) / 1e6
+    return tokens > 100_000 && near(worst, expected)
   })(), r.world.reserves[0])
+  check('worstCostOf: with no search nothing changes (one prompt); with 1 search it is 2 prompts + 25,000; the long-prompt line is crossed only when the sum passes 100,000', (() => {
+    const base = F.worstCostOf('claude-haiku-5-5', 2000, 1500)
+    const one = F.worstCostOf('claude-haiku-5-5', 2000, 1500, { webSearches: 1 })
+    const exp1 = Math.round(((2 * 3000 + 25000) * priceH.cacheWrite1hPerMTok + 1500 * priceH.outputPerMTok) / 1e6 * 1e6) / 1e6 + 0.01
+    const two = F.worstCostOf('claude-haiku-5-5', 2000, 1500, { webSearches: 2 })
+    const exp2 = Math.round(((3 * 3000 + 3 * 25000) * priceH.cacheWrite1hPerMTok + 1500 * priceH.outputPerMTok) / 1e6 * 1e6) / 1e6 + 0.02
+    const three = F.worstCostOf('claude-haiku-5-5', 2000, 1500, { webSearches: 3 })
+    return near(base, Math.round(((3000) * priceH.cacheWrite1hPerMTok + 1500 * priceH.outputPerMTok) / 1e6 * 1e6) / 1e6) && near(one, exp1) && near(two, exp2) && three > 4 * two
+  })())
   r = await go(runBody({ place: 'Grimstad' }, 'place_ideas'), { network: pretendNetwork(okAnswer({ content: [{ type: 'text', text: JSON.stringify(IDEAS) }] })) })
   check('place_ideas: with no search run, the answer says so (the model\'s own knowledge) and the ledger has no tools', r.json?.result?.from_search === false && r.json.result.searches === 0 && same(r.row.tools, []), r.json)
   r = await go(runBody({ place: 'Grimstad' }, 'place_ideas'), { network: pretendNetwork(modelText(JSON.stringify({ ideas: ['Walk at the harbour.', 'See https://evil.example/tickets for tickets', 'Visit www.evil.example', 'Fresh fish at the quay.', 'Walk at the harbour.', 'The museum on the hill.', ...Array.from({ length: 10 }, (_, i) => `Idea number ${i}`)] }))) })
@@ -1953,6 +1983,19 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     x = await go(runBody(input, 'place_ideas'), { network: pretendNetwork(searchAnswer(1)) })
     check(`place_ideas: ${label}: bad_input, nothing sent`, x.json?.reason === 'bad_input' && x.net.seen.length === 0, x.json)
   }
+  r = await go(runBody({ place: 'Grimstad' }, 'place_ideas'), { network: pretendNetwork(modelText(JSON.stringify({ ideas: ['Visit example.no today', 'Go to museum.example.com', 'Walk at the harbour.', 'The old church.', 'Sunset at the quay.', "See St. Olav's church", 'View from a.b.example.org/x', 'Visit exam\u200bple.no', 'Walk\u200b at\u202e the\u2066 shore.\ufeff'] }))) })
+  check('place_ideas: anything that reads as a host name is dropped (example.no, museum.example.com, one split by a zero-width space); sentences with "St." stay; zero-width and direction characters are taken out of what stays', same(r.json?.result?.ideas, ['Walk at the harbour.', 'The old church.', 'Sunset at the quay.', "See St. Olav's church", 'Walk at the shore.']), r.json)
+  const AD_LINK = { title: 'Sony', template: 'Selger Sony. Se https://finn.no/ad/123 eller ola@example.com', notes: 'Som ny.' }
+  wj = (await go(runBody(AD_LINK, 'ad_improve'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'Sony selges. Se https://finn.no/ad/123, spør ola@example.com.' }))) })).json
+  check('ad_improve: a link or an e-mail address that IS in what the owner typed may stay', wj?.ok === true, wj)
+  wj = (await go(runBody(AD_LINK, 'ad_improve'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'Sony selges. Se https://finn.no/ad/123 og https://evil.example/pay' }))) })).json
+  check('ad_improve: one extra link beside a typed one is invalid (each found must be typed, the check is never switched off)', wj?.ok === false && wj.reason === 'invalid', wj)
+  wj = (await go(runBody(AD_LINK, 'ad_improve'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'Sony selges. Spør ola@evil.example' }))) })).json
+  check('ad_improve: another e-mail address is invalid', wj?.ok === false && wj.reason === 'invalid', wj)
+  check('the tool switches on only for a job whose definition names it (run.ts), and only place_ideas does', /job\.tools\?\.some\(t => t\.name === 'web_search'\)/.test(read(`${PARTS_DIR}/run.ts`)) && same(about.jobs.filter(j => j.tools.length).map(j => j.name), ['place_ideas']))
+  x = await go(null, { request: post(photoBody({ image: { media_type: 'image/jpeg', data: 'A'.repeat(1_600_000) } })) })
+  check('a body over the image limit names that limit (1.5 MB); a device body names 16 KB; a non-image job names 16 KB', /1\.5 MB/.test(x.json?.error ?? '') && (await go(null, { request: devPost({ action: 'run', caller: 'phone', job: 'phone_ask', input: { question: 'q', context: 'x'.repeat(20_000) } }) })).json?.error?.includes('16 KB') && /16 KB/.test((await go(null, { request: post(runBody({ text: 'x'.repeat(20_000) }, 'quick_guess')) })).json?.error ?? ''), x.text)
+  check('describe states the price of a search and the cap (from code, for the Prices page)', about.prices.webSearchUsdEach === 0.01 && about.prices.webSearchMaxUses === 3, about.prices)
   check('no other job ever sends a tool: the request of every other job has no "tools" key', await (async () => {
     for (const [job, input] of [['item_fill', { text: SENTENCE }], ['quick_guess', { text: 'a beer' }], ['quick_guess_photo', SHOT()], ['work_week', WEEK]]) {
       const q = await go(runBody(input, job), { network: pretendNetwork(modelText('{}')) })

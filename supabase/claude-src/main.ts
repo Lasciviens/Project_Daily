@@ -81,6 +81,11 @@ const dnsLookup: DnsLookup = async (name, type, signal) => {
   }
 }
 
+/** A size in the unit people say it in (16 KB, 1.5 MB), for the message of the limit that was really hit. */
+function sizeWords(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.round(bytes / 1024)} KB`
+}
+
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -136,8 +141,9 @@ Deno.serve(async (req) => {
     // The app may send a photo (up to LIMITS.imageRequestMaxBytes) but only to a job that takes one; every other
     // request, and every device request, stays within LIMITS.requestMaxBytes. The bigger read is only a read: the
     // size is checked again once the job is known.
-    const text = await readCapped(req.body, device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes)
-    if (text === null) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+    const readLimit = device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes
+    const text = await readCapped(req.body, readLimit)
+    if (text === null) return reply(400, { error: `The request is larger than ${sizeWords(readLimit)}` })
     const body = parseObject(text)
     if (!body) return reply(400, { error: 'The request must be a JSON object' })
     const action = ownValue(body, 'action')

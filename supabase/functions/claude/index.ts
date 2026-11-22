@@ -348,6 +348,9 @@ interface Describe {
     longPromptOverTokens: number
     longPromptMultiplier: number
     batchMultiplier: number
+    /** What one web search costs, on top of the tokens (only the ideas for a place use it), and the most a call may run. */
+    webSearchUsdEach: number
+    webSearchMaxUses: number
     models: {
       model: string
       inputPerMTok: number
@@ -419,8 +422,11 @@ const LONG_PROMPT_MULTIPLIER = 5
  * billed as usual). Read from the pricing page 22.11.2026 (docs/integrations/anthropic.md).
  */
 const WEB_SEARCH_USD_EACH = 0.01
-/** What the results of one search may add to the prompt, for the reservation: 10,000 tokens (a page's worth of snippets). */
-const WEB_SEARCH_RESULT_TOKENS = 10_000
+/**
+ * What one search's results may add to the prompt, for the reservation: 25,000 tokens (the results of a search are
+ * several pages of text). Every later round of the server's search loop reads the whole prompt again, results included.
+ */
+const WEB_SEARCH_RESULT_TOKENS = 25_000
 /** The most searches any single call may run, whatever a job asks for. */
 const WEB_SEARCH_MAX_USES = 3
 /** A batch call (phase 3) costs half. */
@@ -451,10 +457,14 @@ const PROMPT_OVERHEAD_TOKENS = 1000
  */
 function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, extra: { imageTokens?: number; webSearches?: number } = {}): number {
   const searches = extra.webSearches ?? 0
-  // A photo costs its own tokens (image-rules.ts); each possible search adds its fee and the tokens of what it brings back.
-  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS + (extra.imageTokens ?? 0) + searches * WEB_SEARCH_RESULT_TOKENS
+  // A photo costs its own tokens (image-rules.ts). A search call is a loop on Anthropic's side: n searches are n + 1 rounds,
+  // each reading the prompt again with the results gathered so far, so the input is (n + 1) × the prompt plus
+  // n(n + 1) / 2 × the results of one search. All of it is counted at the dearest prompt price, and as one prompt for the
+  // long-prompt line (`costOf` multiplies when the sum passes it).
+  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS + (extra.imageTokens ?? 0)
+  const readTokens = (searches + 1) * promptTokens + (searches * (searches + 1) / 2) * WEB_SEARCH_RESULT_TOKENS
   return costOf(
-    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
+    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: readTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
     model, 'live', searches,
   ).costUsd
 }
@@ -1003,7 +1013,9 @@ function answerValue(from: Record<string, unknown>, key: string): unknown {
 
 // Control characters other than the tab and the line break.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
-const ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g
+// Also the zero-width and text-direction characters (U+200B–200F, U+202A–202E, U+2066–2069, U+FEFF): they draw nothing and
+// can hide a word from a check (a link split by one) or reorder what the owner reads.
+const ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
 
 /**
  * A one-line text: a string whose white space (line breaks included) is collapsed to single spaces, at least one
@@ -3307,29 +3319,48 @@ const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
 
 // ── scrubbing an error before it leaves ──────────────────────────────────────
 
-/** What replaces a secret. Said in the explanation's own instructions so the model knows it was taken out. */
-const HIDDEN = '[hidden]'
-
 /**
  * An error's text with everything that could be a secret or a person taken out, by code, before it is put in a prompt
- * (and again on what the model writes back): tokens of every kind (JWTs, `sk-…`, `sb_secret_…`, Bearer), the value of
- * any `key=` / `token:` / `password` pair, a web link's query string and fragment (where keys travel) and its
- * `user:password@`, an e-mail address, and any long unbroken run of letters and digits (a key, a hash, an id).
- * A stack trace keeps its first lines only. It never throws.
+ * (and again on what the model writes back): the rest of a `cookie:` / `set-cookie:` / `authorization:` line, tokens of
+ * every known shape (JWTs, `sk-`, `sb_…`, GitHub, Slack, AWS, Bearer), the value of any key whose name holds a secret
+ * word (`webhook_secret=`, `"authToken":`, `strava_refresh_token=`, `privateKey`, `code=`, a bare `npsso abc…`), a
+ * web link's query and fragment (after `scheme://`, after `host/path?`, after `/path?k=v`) and its `user:password@`,
+ * e-mail addresses, phone numbers, and any long unbroken run of letters and digits. The text is scrubbed WHOLE first
+ * (capped at 20,000 characters), then cut to 14 lines and to the limit, so a secret near a cut is never half kept.
+ * Every pattern is bounded (no unbounded run in front of another), so a hostile text costs a few passes. Never throws.
  */
 function scrubErrorText(text: string, maxChars: number): string {
-  let t = text.replace(/\r\n?/g, '\n').split('\n').slice(0, 14).join('\n')
+  const HIDDEN = '[hidden]'
+  let t = text.slice(0, 20_000).replace(/\r\n?/g, '\n')
+  // The whole rest of the line.
+  t = t.replace(/\b(set-cookie|cookie|proxy-authorization|authorization)\b[ \t]*[:=][^\n]*/gi, (_a, k: string) => `${k}: ${HIDDEN}`)
+  // Tokens by their shape.
   t = t.replace(/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]*)?/g, HIDDEN)
   t = t.replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+/gi, HIDDEN)
   t = t.replace(/\bsk-[A-Za-z0-9_-]{8,}/g, HIDDEN)
+  t = t.replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, HIDDEN)
+  t = t.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}/g, HIDDEN)
+  t = t.replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}/g, HIDDEN)
+  t = t.replace(/\b(?:AKIA|ASIA)[0-9A-Z]{12,}/g, HIDDEN)
   t = t.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, `$1 ${HIDDEN}`)
-  // A web link keeps its host and path only.
-  t = t.replace(/(https?:\/\/)([^\s/@:]+:[^\s/@]*@)?([^\s?#"'<>)\]]*)[?#][^\s"'<>)\]]*/gi, (_all, scheme: string, _auth: string | undefined, rest: string) => `${scheme}${rest}?${HIDDEN}`)
-  t = t.replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]*@/gi, `$1${HIDDEN}@`)
-  t = t.replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|client[_-]?secret|password|passwd|authorization|npsso|code[_-]?verifier|cookie|session)\b(["']?\s*[:=]\s*)(["']?)[^\s"',;}&]+/gi, (_a, k: string, sep: string, q: string) => `${k}${sep}${q}${HIDDEN}`)
-  t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A link: its credentials, then its query and fragment — after a scheme, after a host and path, after a bare path.
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/)[^\s/@]{1,200}@/gi, `$1${HIDDEN}@`)
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,6}\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\/[A-Za-z0-9._~%/-]{1,500})\?[^\s"'<>]*=[^\s"'<>]*/g, `$1?${HIDDEN}`)
+  // A key that names a secret, with its value (quoted or bare); the key may carry a prefix or camelCase.
+  const SECRET_KEY = /api[_-]?key|token|secret|passw(?:or)?d|passphrase|private[_-]?key|credential|authorization|npsso|code[_-]?verifier|cookie|session|signature|refresh|(?:^|[_.-])(?:code|sig|pwd|otp|jwt)$/i
+  t = t.replace(/(["']?)([A-Za-z0-9_.-]{1,64})(["']?)(\s*[:=]\s*)("[^"\n]{0,2000}"|'[^'\n]{0,2000}'|[^\s"',;}&]{1,2000})/g,
+    (all: string, q1: string, key: string, q2: string, sep: string, value: string) => (SECRET_KEY.test(key) ? `${q1}${key}${q2}${sep}${/^["']/.test(value) ? `"${HIDDEN}"` : HIDDEN}` : all))
+  // A secret word followed by a space and its value (`npsso abc123…`).
+  t = t.replace(/\bnpsso[ \t]+[^\s"',;}]{4,}/gi, `npsso ${HIDDEN}`)
+  t = t.replace(/\b(api[_-]?key|apikey|token|secret|password|passwd)[ \t]+(?=[A-Za-z0-9._~+/=-]{12,})(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]+/gi, `$1 ${HIDDEN}`)
+  t = t.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A phone number; a date written 2026-11-22 is not one.
+  t = t.replace(/\+?\d[\d \-]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
   t = t.replace(/[A-Za-z0-9+/_=-]{32,}/g, HIDDEN)
-  t = t.replace(/\s+\n/g, '\n').trim()
+  // Then the cut: 14 lines, then the limit.
+  t = t.split('\n').slice(0, 14).join('\n').replace(/\s+\n/g, '\n').trim()
   return [...t].length > maxChars ? [...t].slice(0, maxChars).join('') : t
 }
 
@@ -3562,9 +3593,9 @@ const ERROR_EXPLAIN_JOB: JobDefinition = {
     if (typeof message !== 'string' || !message.trim()) return { problem: 'There is no error to explain.' }
     const context = ownValue(input, 'context')
     if (context !== undefined && context !== null && typeof context !== 'string') return { problem: 'The error\'s context must be text.' }
-    // Over the limit is cut, never refused: an error message can be a whole stack. The cut text is what gets scrubbed.
-    const safeMessage = scrubErrorText(message.slice(0, DRAFT_LIMITS.message * 4), DRAFT_LIMITS.message)
-    const safeContext = typeof context === 'string' && context.trim() ? scrubErrorText(context.slice(0, DRAFT_LIMITS.context * 4), DRAFT_LIMITS.context) : 'none'
+    // Over the limit is cut, never refused: an error message can be a whole stack. It is scrubbed whole first, then cut.
+    const safeMessage = scrubErrorText(message, DRAFT_LIMITS.message)
+    const safeContext = typeof context === 'string' && context.trim() ? scrubErrorText(context, DRAFT_LIMITS.context) : 'none'
     if (!safeMessage) return { problem: 'There is no error to explain.' }
     return {
       userText: `<error>\n${escapeTagText(safeMessage)}\n</error>\n<context>\n${escapeTagText(safeContext)}\n</context>`,
@@ -3608,6 +3639,9 @@ function inventedNumber(text: string, facts: string): string | null {
   for (const n of numbersIn(text)) if (!known.has(String(Number(n)))) return n
   return null
 }
+
+/** A link, or anything that reads as a host name ("example.no", "a.b.example.com"): never written into a wish's notes. */
+const LINKISH = /https?:|www\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
 
 const dotDay = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
 
@@ -3772,8 +3806,10 @@ const AD_IMPROVE_JOB: JobDefinition = {
         if (!answer.ok) return answer
         const text = checkedAnswerText(answerValue(answer.value, 'text'), TEXT_LIMITS.adText, false)
         if (!text) return { ok: false, problem: 'it gave no text, or one over the limit' }
-        // A link or a contact detail the owner did not type is never accepted.
-        if (/https?:\/\/|www\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i.test(text) && !/https?:\/\/|www\.|@/i.test(facts)) return { ok: false, problem: 'it added a link or an e-mail address' }
+        // A link or an e-mail address the owner did not type is never accepted: each one found must be in what was typed.
+        const typed = facts.toLowerCase()
+        const found = text.match(/https?:\/\/[^\s)]+|www\.[^\s)]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gi) ?? []
+        if (found.some(f => !typed.includes(f.toLowerCase().replace(/[.,;:!?]+$/, '')))) return { ok: false, problem: 'it added a link or an e-mail address' }
         const wrong = inventedNumber(text, facts)
         if (wrong !== null) return { ok: false, problem: 'it used a number that nobody typed' }
         return { ok: true, result: { text } }
@@ -3854,7 +3890,7 @@ const PLACE_IDEAS_JOB: JobDefinition = {
         for (const item of checkedList(raw, 30)) {
           const line = checkedLine(item, TEXT_LIMITS.idea)
           // A link is never written into a wish's notes.
-          if (line && !/https?:|www\.|\.(com|no|org|net)\//i.test(line) && !ideas.includes(line) && ideas.length < TEXT_LIMITS.ideas) ideas.push(line)
+          if (line && !LINKISH.test(line) && !ideas.includes(line) && ideas.length < TEXT_LIMITS.ideas) ideas.push(line)
         }
         if (ideas.length < TEXT_LIMITS.ideasMin) return { ok: false, problem: `it gave fewer than ${TEXT_LIMITS.ideasMin} usable ideas` }
         return { ok: true, result: { ideas, from_search: details.webSearches > 0, searches: Math.min(details.webSearches, 3) } }
@@ -4600,7 +4636,8 @@ function buildRequest(
 ): ModelRequest {
   return {
     ...(extra.images?.length && job.acceptsImage ? { images: extra.images } : {}),
-    ...(extra.webSearchMax && extra.webSearchMax > 0 ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
+    // The tool only for a job whose definition names it (a job's prepare alone can never switch a tool on).
+    ...(extra.webSearchMax && extra.webSearchMax > 0 && job.tools?.some(t => t.name === 'web_search') ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
     model: settings.model,
     maxOutputTokens: settings.maxOutputTokens,
     effort: settings.effort,
@@ -5011,6 +5048,8 @@ function describeFunction(configured: boolean, provider: ProviderInfo): Describe
       longPromptOverTokens: LONG_PROMPT_OVER_TOKENS,
       longPromptMultiplier: LONG_PROMPT_MULTIPLIER,
       batchMultiplier: BATCH_MULTIPLIER,
+    webSearchUsdEach: WEB_SEARCH_USD_EACH,
+    webSearchMaxUses: WEB_SEARCH_MAX_USES,
       models: MODEL_PRICES.map(p => ({ ...p })),
     },
     jobs: JOB_LIST.map(describeJob),
@@ -5095,6 +5134,11 @@ const dnsLookup: DnsLookup = async (name, type, signal) => {
   }
 }
 
+/** A size in the unit people say it in (16 KB, 1.5 MB), for the message of the limit that was really hit. */
+function sizeWords(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${Math.round(bytes / 104857.6) / 10} MB` : `${Math.round(bytes / 1024)} KB`
+}
+
 const ALLOWED_ORIGINS = ['https://lasciviens.github.io', 'http://localhost:5173']
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -5150,8 +5194,9 @@ Deno.serve(async (req) => {
     // The app may send a photo (up to LIMITS.imageRequestMaxBytes) but only to a job that takes one; every other
     // request, and every device request, stays within LIMITS.requestMaxBytes. The bigger read is only a read: the
     // size is checked again once the job is known.
-    const text = await readCapped(req.body, device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes)
-    if (text === null) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+    const readLimit = device ? LIMITS.requestMaxBytes : LIMITS.imageRequestMaxBytes
+    const text = await readCapped(req.body, readLimit)
+    if (text === null) return reply(400, { error: `The request is larger than ${sizeWords(readLimit)}` })
     const body = parseObject(text)
     if (!body) return reply(400, { error: 'The request must be a JSON object' })
     const action = ownValue(body, 'action')

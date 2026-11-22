@@ -38,6 +38,9 @@ function inventedNumber(text: string, facts: string): string | null {
   return null
 }
 
+/** A link, or anything that reads as a host name ("example.no", "a.b.example.com"): never written into a wish's notes. */
+export const LINKISH = /https?:|www\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
+
 const dotDay = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
 
 const TEXT_ONLY_SCHEMA: JsonSchema = {
@@ -201,8 +204,10 @@ export const AD_IMPROVE_JOB: JobDefinition = {
         if (!answer.ok) return answer
         const text = checkedAnswerText(answerValue(answer.value, 'text'), TEXT_LIMITS.adText, false)
         if (!text) return { ok: false, problem: 'it gave no text, or one over the limit' }
-        // A link or a contact detail the owner did not type is never accepted.
-        if (/https?:\/\/|www\.|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i.test(text) && !/https?:\/\/|www\.|@/i.test(facts)) return { ok: false, problem: 'it added a link or an e-mail address' }
+        // A link or an e-mail address the owner did not type is never accepted: each one found must be in what was typed.
+        const typed = facts.toLowerCase()
+        const found = text.match(/https?:\/\/[^\s)]+|www\.[^\s)]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gi) ?? []
+        if (found.some(f => !typed.includes(f.toLowerCase().replace(/[.,;:!?]+$/, '')))) return { ok: false, problem: 'it added a link or an e-mail address' }
         const wrong = inventedNumber(text, facts)
         if (wrong !== null) return { ok: false, problem: 'it used a number that nobody typed' }
         return { ok: true, result: { text } }
@@ -283,7 +288,7 @@ export const PLACE_IDEAS_JOB: JobDefinition = {
         for (const item of checkedList(raw, 30)) {
           const line = checkedLine(item, TEXT_LIMITS.idea)
           // A link is never written into a wish's notes.
-          if (line && !/https?:|www\.|\.(com|no|org|net)\//i.test(line) && !ideas.includes(line) && ideas.length < TEXT_LIMITS.ideas) ideas.push(line)
+          if (line && !LINKISH.test(line) && !ideas.includes(line) && ideas.length < TEXT_LIMITS.ideas) ideas.push(line)
         }
         if (ideas.length < TEXT_LIMITS.ideasMin) return { ok: false, problem: `it gave fewer than ${TEXT_LIMITS.ideasMin} usable ideas` }
         return { ok: true, result: { ideas, from_search: details.webSearches > 0, searches: Math.min(details.webSearches, 3) } }

@@ -23,29 +23,48 @@ const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const
 
 // ── scrubbing an error before it leaves ──────────────────────────────────────
 
-/** What replaces a secret. Said in the explanation's own instructions so the model knows it was taken out. */
-const HIDDEN = '[hidden]'
-
 /**
  * An error's text with everything that could be a secret or a person taken out, by code, before it is put in a prompt
- * (and again on what the model writes back): tokens of every kind (JWTs, `sk-…`, `sb_secret_…`, Bearer), the value of
- * any `key=` / `token:` / `password` pair, a web link's query string and fragment (where keys travel) and its
- * `user:password@`, an e-mail address, and any long unbroken run of letters and digits (a key, a hash, an id).
- * A stack trace keeps its first lines only. It never throws.
+ * (and again on what the model writes back): the rest of a `cookie:` / `set-cookie:` / `authorization:` line, tokens of
+ * every known shape (JWTs, `sk-`, `sb_…`, GitHub, Slack, AWS, Bearer), the value of any key whose name holds a secret
+ * word (`webhook_secret=`, `"authToken":`, `strava_refresh_token=`, `privateKey`, `code=`, a bare `npsso abc…`), a
+ * web link's query and fragment (after `scheme://`, after `host/path?`, after `/path?k=v`) and its `user:password@`,
+ * e-mail addresses, phone numbers, and any long unbroken run of letters and digits. The text is scrubbed WHOLE first
+ * (capped at 20,000 characters), then cut to 14 lines and to the limit, so a secret near a cut is never half kept.
+ * Every pattern is bounded (no unbounded run in front of another), so a hostile text costs a few passes. Never throws.
  */
 export function scrubErrorText(text: string, maxChars: number): string {
-  let t = text.replace(/\r\n?/g, '\n').split('\n').slice(0, 14).join('\n')
+  const HIDDEN = '[hidden]'
+  let t = text.slice(0, 20_000).replace(/\r\n?/g, '\n')
+  // The whole rest of the line.
+  t = t.replace(/\b(set-cookie|cookie|proxy-authorization|authorization)\b[ \t]*[:=][^\n]*/gi, (_a, k: string) => `${k}: ${HIDDEN}`)
+  // Tokens by their shape.
   t = t.replace(/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]*)?/g, HIDDEN)
   t = t.replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+/gi, HIDDEN)
   t = t.replace(/\bsk-[A-Za-z0-9_-]{8,}/g, HIDDEN)
+  t = t.replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, HIDDEN)
+  t = t.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}/g, HIDDEN)
+  t = t.replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}/g, HIDDEN)
+  t = t.replace(/\b(?:AKIA|ASIA)[0-9A-Z]{12,}/g, HIDDEN)
   t = t.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, `$1 ${HIDDEN}`)
-  // A web link keeps its host and path only.
-  t = t.replace(/(https?:\/\/)([^\s/@:]+:[^\s/@]*@)?([^\s?#"'<>)\]]*)[?#][^\s"'<>)\]]*/gi, (_all, scheme: string, _auth: string | undefined, rest: string) => `${scheme}${rest}?${HIDDEN}`)
-  t = t.replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]*@/gi, `$1${HIDDEN}@`)
-  t = t.replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|client[_-]?secret|password|passwd|authorization|npsso|code[_-]?verifier|cookie|session)\b(["']?\s*[:=]\s*)(["']?)[^\s"',;}&]+/gi, (_a, k: string, sep: string, q: string) => `${k}${sep}${q}${HIDDEN}`)
-  t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A link: its credentials, then its query and fragment — after a scheme, after a host and path, after a bare path.
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/)[^\s/@]{1,200}@/gi, `$1${HIDDEN}@`)
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,6}\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\/[A-Za-z0-9._~%/-]{1,500})\?[^\s"'<>]*=[^\s"'<>]*/g, `$1?${HIDDEN}`)
+  // A key that names a secret, with its value (quoted or bare); the key may carry a prefix or camelCase.
+  const SECRET_KEY = /api[_-]?key|token|secret|passw(?:or)?d|passphrase|private[_-]?key|credential|authorization|npsso|code[_-]?verifier|cookie|session|signature|refresh|(?:^|[_.-])(?:code|sig|pwd|otp|jwt)$/i
+  t = t.replace(/(["']?)([A-Za-z0-9_.-]{1,64})(["']?)(\s*[:=]\s*)("[^"\n]{0,2000}"|'[^'\n]{0,2000}'|[^\s"',;}&]{1,2000})/g,
+    (all: string, q1: string, key: string, q2: string, sep: string, value: string) => (SECRET_KEY.test(key) ? `${q1}${key}${q2}${sep}${/^["']/.test(value) ? `"${HIDDEN}"` : HIDDEN}` : all))
+  // A secret word followed by a space and its value (`npsso abc123…`).
+  t = t.replace(/\bnpsso[ \t]+[^\s"',;}]{4,}/gi, `npsso ${HIDDEN}`)
+  t = t.replace(/\b(api[_-]?key|apikey|token|secret|password|passwd)[ \t]+(?=[A-Za-z0-9._~+/=-]{12,})(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]+/gi, `$1 ${HIDDEN}`)
+  t = t.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A phone number; a date written 2026-11-22 is not one.
+  t = t.replace(/\+?\d[\d \-]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
   t = t.replace(/[A-Za-z0-9+/_=-]{32,}/g, HIDDEN)
-  t = t.replace(/\s+\n/g, '\n').trim()
+  // Then the cut: 14 lines, then the limit.
+  t = t.split('\n').slice(0, 14).join('\n').replace(/\s+\n/g, '\n').trim()
   return [...t].length > maxChars ? [...t].slice(0, maxChars).join('') : t
 }
 
@@ -278,9 +297,9 @@ export const ERROR_EXPLAIN_JOB: JobDefinition = {
     if (typeof message !== 'string' || !message.trim()) return { problem: 'There is no error to explain.' }
     const context = ownValue(input, 'context')
     if (context !== undefined && context !== null && typeof context !== 'string') return { problem: 'The error\'s context must be text.' }
-    // Over the limit is cut, never refused: an error message can be a whole stack. The cut text is what gets scrubbed.
-    const safeMessage = scrubErrorText(message.slice(0, DRAFT_LIMITS.message * 4), DRAFT_LIMITS.message)
-    const safeContext = typeof context === 'string' && context.trim() ? scrubErrorText(context.slice(0, DRAFT_LIMITS.context * 4), DRAFT_LIMITS.context) : 'none'
+    // Over the limit is cut, never refused: an error message can be a whole stack. It is scrubbed whole first, then cut.
+    const safeMessage = scrubErrorText(message, DRAFT_LIMITS.message)
+    const safeContext = typeof context === 'string' && context.trim() ? scrubErrorText(context, DRAFT_LIMITS.context) : 'none'
     if (!safeMessage) return { problem: 'There is no error to explain.' }
     return {
       userText: `<error>\n${escapeTagText(safeMessage)}\n</error>\n<context>\n${escapeTagText(safeContext)}\n</context>`,

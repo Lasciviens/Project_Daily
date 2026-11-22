@@ -252,7 +252,8 @@ export function buildRequest(
 ): ModelRequest {
   return {
     ...(extra.images?.length && job.acceptsImage ? { images: extra.images } : {}),
-    ...(extra.webSearchMax && extra.webSearchMax > 0 ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
+    // The tool only for a job whose definition names it (a job's prepare alone can never switch a tool on).
+    ...(extra.webSearchMax && extra.webSearchMax > 0 && job.tools?.some(t => t.name === 'web_search') ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
     model: settings.model,
     maxOutputTokens: settings.maxOutputTokens,
     effort: settings.effort,

@@ -342,6 +342,9 @@ export interface Describe {
     longPromptOverTokens: number
     longPromptMultiplier: number
     batchMultiplier: number
+    /** What one web search costs, on top of the tokens (only the ideas for a place use it), and the most a call may run. */
+    webSearchUsdEach: number
+    webSearchMaxUses: number
     models: {
       model: string
       inputPerMTok: number

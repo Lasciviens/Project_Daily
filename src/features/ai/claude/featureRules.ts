@@ -56,7 +56,8 @@ export interface ReceiptRead {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const line = (v: unknown, max: number): string | null => {
   if (typeof v !== 'string') return null
-  const t = v.replace(/\s+/g, ' ').trim()
+  // Zero-width and text-direction characters draw nothing and can hide a word from a check: out first.
+  const t = v.replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '').replace(/\s+/g, ' ').trim()
   return t && [...t].length <= max ? t : null
 }
 const amount = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0.01 && v <= AMOUNT_MAX ? Math.round(v * 100) / 100 : null)
@@ -233,22 +234,51 @@ export function weekInput(tasks: readonly WeekTask[], goals: readonly WeekGoal[]
 // ── an error, before it is sent ──────────────────────────────────────────────
 
 const HIDDEN = '[hidden]'
-const SECRET_KEY = /npsso|token|secret|password|passwd|api[_-]?key|authorization|refresh|code_verifier|p256dh|cookie|session|^auth$/i
+const CONTEXT_SECRET_KEY = /npsso|token|secret|password|passwd|api[_-]?key|authorization|refresh|code_verifier|p256dh|cookie|session|^auth$/i
 
-/** Text with secrets, links' query strings, e-mail addresses and long keys taken out (the function does the same again). */
-export function scrubErrorForAi(text: string, max: number): string {
-  let t = text.replace(/\r\n?/g, '\n').split('\n').slice(0, 14).join('\n')
+/**
+ * An error's text with everything that could be a secret or a person taken out, by code, before it is put in a prompt
+ * (and again on what the model writes back): the rest of a `cookie:` / `set-cookie:` / `authorization:` line, tokens of
+ * every known shape (JWTs, `sk-`, `sb_…`, GitHub, Slack, AWS, Bearer), the value of any key whose name holds a secret
+ * word (`webhook_secret=`, `"authToken":`, `strava_refresh_token=`, `privateKey`, `code=`, a bare `npsso abc…`), a
+ * web link's query and fragment (after `scheme://`, after `host/path?`, after `/path?k=v`) and its `user:password@`,
+ * e-mail addresses, phone numbers, and any long unbroken run of letters and digits. The text is scrubbed WHOLE first
+ * (capped at 20,000 characters), then cut to 14 lines and to the limit, so a secret near a cut is never half kept.
+ * Every pattern is bounded (no unbounded run in front of another), so a hostile text costs a few passes. Never throws.
+ */
+/** Text with secrets, phone numbers, e-mail addresses and links' queries taken out (the function's `scrubErrorText` does the same again; `verify-claude-function` compares them). */
+export function scrubErrorForAi(text: string, maxChars: number): string {
+  let t = text.slice(0, 20_000).replace(/\r\n?/g, '\n')
+  // The whole rest of the line.
+  t = t.replace(/\b(set-cookie|cookie|proxy-authorization|authorization)\b[ \t]*[:=][^\n]*/gi, (_a, k: string) => `${k}: ${HIDDEN}`)
+  // Tokens by their shape.
   t = t.replace(/\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}(?:\.[A-Za-z0-9_-]*)?/g, HIDDEN)
   t = t.replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+/gi, HIDDEN)
   t = t.replace(/\bsk-[A-Za-z0-9_-]{8,}/g, HIDDEN)
+  t = t.replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, HIDDEN)
+  t = t.replace(/\bgithub_pat_[A-Za-z0-9_]{16,}/g, HIDDEN)
+  t = t.replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}/g, HIDDEN)
+  t = t.replace(/\b(?:AKIA|ASIA)[0-9A-Z]{12,}/g, HIDDEN)
   t = t.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, `$1 ${HIDDEN}`)
-  t = t.replace(/(https?:\/\/)([^\s/@:]+:[^\s/@]*@)?([^\s?#"'<>)\]]*)[?#][^\s"'<>)\]]*/gi, (_all, scheme: string, _auth: string | undefined, rest: string) => `${scheme}${rest}?${HIDDEN}`)
-  t = t.replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]*@/gi, `$1${HIDDEN}@`)
-  t = t.replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|client[_-]?secret|password|passwd|authorization|npsso|code[_-]?verifier|cookie|session)\b(["']?\s*[:=]\s*)(["']?)[^\s"',;}&]+/gi, (_a, k: string, sep: string, q: string) => `${k}${sep}${q}${HIDDEN}`)
-  t = t.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A link: its credentials, then its query and fragment — after a scheme, after a host and path, after a bare path.
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/)[^\s/@]{1,200}@/gi, `$1${HIDDEN}@`)
+  t = t.replace(/(\b[a-z][a-z0-9+.-]{0,20}:\/\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\b[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,6}\/[^\s?#"'<>)\]]{0,500})[?#][^\s"'<>]*/gi, `$1?${HIDDEN}`)
+  t = t.replace(/(\/[A-Za-z0-9._~%/-]{1,500})\?[^\s"'<>]*=[^\s"'<>]*/g, `$1?${HIDDEN}`)
+  // A key that names a secret, with its value (quoted or bare); the key may carry a prefix or camelCase.
+  const SECRET_KEY = /api[_-]?key|token|secret|passw(?:or)?d|passphrase|private[_-]?key|credential|authorization|npsso|code[_-]?verifier|cookie|session|signature|refresh|(?:^|[_.-])(?:code|sig|pwd|otp|jwt)$/i
+  t = t.replace(/(["']?)([A-Za-z0-9_.-]{1,64})(["']?)(\s*[:=]\s*)("[^"\n]{0,2000}"|'[^'\n]{0,2000}'|[^\s"',;}&]{1,2000})/g,
+    (all: string, q1: string, key: string, q2: string, sep: string, value: string) => (SECRET_KEY.test(key) ? `${q1}${key}${q2}${sep}${/^["']/.test(value) ? `"${HIDDEN}"` : HIDDEN}` : all))
+  // A secret word followed by a space and its value (`npsso abc123…`).
+  t = t.replace(/\bnpsso[ \t]+[^\s"',;}]{4,}/gi, `npsso ${HIDDEN}`)
+  t = t.replace(/\b(api[_-]?key|apikey|token|secret|password|passwd)[ \t]+(?=[A-Za-z0-9._~+/=-]{12,})(?=[A-Za-z0-9._~+/=-]*\d)[A-Za-z0-9._~+/=-]+/gi, `$1 ${HIDDEN}`)
+  t = t.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g, '[hidden e-mail]')
+  // A phone number; a date written 2026-11-22 is not one.
+  t = t.replace(/\+?\d[\d \-]{7,}\d/g, (m: string) => (/^\d{4}-\d{2}-\d{2}$/.test(m) ? m : '[hidden number]'))
   t = t.replace(/[A-Za-z0-9+/_=-]{32,}/g, HIDDEN)
-  t = t.replace(/\s+\n/g, '\n').trim()
-  return [...t].length > max ? [...t].slice(0, max).join('') : t
+  // Then the cut: 14 lines, then the limit.
+  t = t.split('\n').slice(0, 14).join('\n').replace(/\s+\n/g, '\n').trim()
+  return [...t].length > maxChars ? [...t].slice(0, maxChars).join('') : t
 }
 
 /** A logged error's context object as one scrubbed line of JSON: secret-looking keys blanked at any depth first. */
@@ -260,7 +290,7 @@ export function errorContextForAi(context: Record<string, unknown> | null | unde
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
       // The browser's own description (user agent) says nothing about the failure.
       if (k === 'user_agent') continue
-      o[k] = SECRET_KEY.test(k) && x != null && x !== '' ? HIDDEN : blank(x, depth + 1)
+      o[k] = CONTEXT_SECRET_KEY.test(k) && x != null && x !== '' ? HIDDEN : blank(x, depth + 1)
     }
     return o
   }
@@ -308,13 +338,16 @@ export function outlineOf(points: readonly string[]): string {
 
 // ── ideas ─────────────────────────────────────────────────────────────────────
 
+/** A link, or anything that reads as a host name: never written into a wish's notes (the function's `LINKISH`, the same pattern). */
+export const LINKISH = /https?:|www\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
+
 /** The ideas as read back, within their limits: at most 8 lines, none with a link. */
 export function readIdeas(raw: unknown): { ideas: string[]; fromSearch: boolean } | null {
   if (!isObj(raw) || !Array.isArray(raw.ideas)) return null
   const ideas: string[] = []
   for (const i of raw.ideas.slice(0, 30)) {
     const t = line(i, 200)
-    if (t && !/https?:|www\./i.test(t) && !ideas.includes(t) && ideas.length < 8) ideas.push(t)
+    if (t && !LINKISH.test(t) && !ideas.includes(t) && ideas.length < 8) ideas.push(t)
   }
   return ideas.length >= 3 ? { ideas, fromSearch: raw.from_search === true } : null
 }

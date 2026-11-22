@@ -9,7 +9,7 @@
 
 import type { Describe, JobDefinition, ProviderInfo } from './types.ts'
 import {
-  BATCH_MULTIPLIER, LONG_PROMPT_MULTIPLIER, LONG_PROMPT_OVER_TOKENS, MODEL_PRICES, PRICES_CHECKED_ON, PRICES_SOURCE,
+  BATCH_MULTIPLIER, LONG_PROMPT_MULTIPLIER, WEB_SEARCH_MAX_USES, WEB_SEARCH_USD_EACH, LONG_PROMPT_OVER_TOKENS, MODEL_PRICES, PRICES_CHECKED_ON, PRICES_SOURCE,
 } from './prices.ts'
 import { DEFAULTS, EFFORTS, LIMITS, MODELS } from './guard.ts'
 import { JOB_LIST } from './jobs.ts'
@@ -132,6 +132,8 @@ export function describeFunction(configured: boolean, provider: ProviderInfo): D
       longPromptOverTokens: LONG_PROMPT_OVER_TOKENS,
       longPromptMultiplier: LONG_PROMPT_MULTIPLIER,
       batchMultiplier: BATCH_MULTIPLIER,
+    webSearchUsdEach: WEB_SEARCH_USD_EACH,
+    webSearchMaxUses: WEB_SEARCH_MAX_USES,
       models: MODEL_PRICES.map(p => ({ ...p })),
     },
     jobs: JOB_LIST.map(describeJob),

@@ -38,8 +38,11 @@ export const LONG_PROMPT_MULTIPLIER = 5
  * billed as usual). Read from the pricing page 22.11.2026 (docs/integrations/anthropic.md).
  */
 export const WEB_SEARCH_USD_EACH = 0.01
-/** What the results of one search may add to the prompt, for the reservation: 10,000 tokens (a page's worth of snippets). */
-export const WEB_SEARCH_RESULT_TOKENS = 10_000
+/**
+ * What one search's results may add to the prompt, for the reservation: 25,000 tokens (the results of a search are
+ * several pages of text). Every later round of the server's search loop reads the whole prompt again, results included.
+ */
+export const WEB_SEARCH_RESULT_TOKENS = 25_000
 /** The most searches any single call may run, whatever a job asks for. */
 export const WEB_SEARCH_MAX_USES = 3
 /** A batch call (phase 3) costs half. */
@@ -70,10 +73,14 @@ export const PROMPT_OVERHEAD_TOKENS = 1000
  */
 export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, extra: { imageTokens?: number; webSearches?: number } = {}): number {
   const searches = extra.webSearches ?? 0
-  // A photo costs its own tokens (image-rules.ts); each possible search adds its fee and the tokens of what it brings back.
-  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS + (extra.imageTokens ?? 0) + searches * WEB_SEARCH_RESULT_TOKENS
+  // A photo costs its own tokens (image-rules.ts). A search call is a loop on Anthropic's side: n searches are n + 1 rounds,
+  // each reading the prompt again with the results gathered so far, so the input is (n + 1) × the prompt plus
+  // n(n + 1) / 2 × the results of one search. All of it is counted at the dearest prompt price, and as one prompt for the
+  // long-prompt line (`costOf` multiplies when the sum passes it).
+  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS + (extra.imageTokens ?? 0)
+  const readTokens = (searches + 1) * promptTokens + (searches * (searches + 1) / 2) * WEB_SEARCH_RESULT_TOKENS
   return costOf(
-    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
+    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: readTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
     model, 'live', searches,
   ).costUsd
 }
