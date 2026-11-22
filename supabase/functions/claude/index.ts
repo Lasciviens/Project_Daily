@@ -1354,7 +1354,7 @@ priority: "low", "medium" or "high", only when the sentence says how important i
 
 The form takes a web address from the sentence by itself, so never put one in any field.`
 
-const ITEM_FILL_VERSION = '2026-11-22.1'
+const ITEM_FILL_VERSION = '2026-11-22.2'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }
@@ -1397,14 +1397,23 @@ const ITEM_FILL_INSTRUCTIONS_WITH_SHAPE = `${ITEM_FILL_INSTRUCTIONS}
 
 # Your answer
 
-Answer with one JSON object and nothing else: no words before or after it, no code fence. Leave out every field the sentence does not give; an empty object {} is a valid answer. The object follows this JSON Schema:
+Answer with one JSON object and nothing else: no words before or after it, no working-out, no code fence. Work out dates silently. Leave out every field the sentence does not give; an empty object {} is a valid answer. The object follows this JSON Schema:
 
 ${JSON.stringify(ITEM_FILL_ANSWER_SCHEMA)}`
 
-/** The answer's text, without a markdown code fence around it if the model added one anyway. Nothing else is cut. */
+/**
+ * The JSON object in an answer: the text itself; or inside a markdown code fence; or, after a note of working-out
+ * ("Today is Sunday, so the next Tuesday is …", seen live 22.11.2026), the object that starts on a line of its own
+ * and runs to the end. The note is dropped; the object is then checked like any answer. Anything else stays as it
+ * is and fails to parse.
+ */
 function itemFillJsonText(answerText: string): string {
-  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(answerText.trim())
-  return fenced ? fenced[1] : answerText.trim()
+  const text = answerText.trim()
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n?```$/.exec(text)
+  if (fenced) return fenced[1]
+  if (text.startsWith('{') || !text.endsWith('}')) return text
+  const start = text.search(/\n\{/)
+  return start >= 0 ? text.slice(start + 1) : text
 }
 
 const ITEM_FILL_TIME_ZONE = 'Europe/Oslo'
