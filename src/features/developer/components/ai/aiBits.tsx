@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button, TonePill, cx } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { outcomeMeta } from '../../../ai/claude/ledgerRules'
+import { callOutcomeMeta } from '../../../ai/claude/ledgerRules'
 import { glossaryOf } from './aiGlossary'
 
 // Small parts every view of Developer → AI shares.
@@ -25,10 +25,10 @@ export function ReadFailed({ what, error, onRetry, retrying, className }: {
   )
 }
 
-/** How a call ended: its plain word on its tone. */
-export function OutcomePill({ outcome, className }: { outcome: string; className?: string }) {
-  const meta = outcomeMeta(outcome)
-  return <TonePill tone={meta.tone} className={cx('shrink-0', className)}>{meta.label}</TonePill>
+/** How a call ended: its plain word on its tone (a reserved call with no answer after the function's limit reads "Stopped"). */
+export function OutcomePill({ call, className }: { call: { outcome: string; created_at: string }; className?: string }) {
+  const meta = callOutcomeMeta(call)
+  return <TonePill tone={meta.tone} className={cx('max-w-full', className)}>{meta.label}</TonePill>
 }
 
 /** A label with an ⓘ that says the glossary's plain words for it. */

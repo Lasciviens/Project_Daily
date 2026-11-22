@@ -53,6 +53,9 @@ const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
 
+/** What the person reads when a chat round was cut for taking too long. */
+export const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'Anthropic took too long — nothing was saved. Try again.'
+
 const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
 const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
 
@@ -171,17 +174,46 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
       const timeout = anthropicTimeout(request.timeoutMs)
       const body = anthropicChatBody(request)
       const sent = anthropicChatSent(request, body, timeout)
+      // The SDK's own timeout covers only the wait for the response headers: a stream that opens and then says nothing
+      // would wait for ever (seen live, 22.11.2026). So the round has its own two clocks, and a signal of its own.
+      const controller = new AbortController()
+      let stoppedBy: 'first_event' | 'round' | null = null
+      const stop = (why: 'first_event' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
+      const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('round stopped')), { once: true }))
+      aborted.catch(() => {})
+      const outer = request.signal
+      const onOuterAbort = () => controller.abort()
+      if (outer) { if (outer.aborted) controller.abort(); else outer.addEventListener('abort', onOuterAbort, { once: true }) }
+      const roundTimer = setTimeout(() => stop('round'), timeout)
+      let firstTimer: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
+      let began = false
       try {
-        const stream = client.beta.messages.stream(body, { timeout, ...(request.signal ? { signal: request.signal } : {}) })
+        const stream = client.beta.messages.stream(body, { timeout, signal: controller.signal })
         stream.on('text', piece => { if (piece) onDelta({ kind: 'text', text: piece }) })
         stream.on('streamEvent', event => {
+          if ((event.type as string) !== 'ping' && !began) { began = true; onDelta({ kind: 'started' }) }
+          if ((event.type as string) !== 'ping' && firstTimer) { clearTimeout(firstTimer); firstTimer = undefined }
           if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') onDelta({ kind: 'tool', name: anthropicCut(event.content_block.name, 60) })
         })
-        const message = await stream.finalMessage()
+        const finished = stream.finalMessage()
+        finished.catch(() => {})
+        const message = await Promise.race([finished, aborted])
         return { ...anthropicChatAnswer(message), sent }
       } catch (error) {
+        // Stopped by one of the two clocks: a timeout, whatever error the cut stream raised (the bill is unknown).
+        if (stoppedBy) {
+          return {
+            ok: false, kind: 'timeout', status: null, requestId: null, sent,
+            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : 'the round took too long',
+            message: ANTHROPIC_CHAT_TIMEOUT_MESSAGE,
+          }
+        }
         // A failure in the middle of a stream (an error event, a dropped connection, the app going away) lands here too.
         return { ...anthropicFailure(error, apiKey, timeout), sent }
+      } finally {
+        clearTimeout(roundTimer)
+        if (firstTimer) clearTimeout(firstTimer)
+        outer?.removeEventListener('abort', onOuterAbort)
       }
     },
     // Free: the chat's prompt tokens, counted with the same body (context editing included) but for the answer limit.
@@ -391,8 +423,9 @@ function anthropicChatBody(request: ChatRequest): Anthropic.Beta.Messages.Messag
     tools: request.tools.map((tool, i) => ({
       name: tool.name,
       description: tool.description,
-      // Strict: the model's input always matches. Every property is required and nothing else is allowed.
-      strict: true,
+      // Not strict (trap 16): a strict tool makes Anthropic compile a grammar on the first request with that tool set, which
+      // can take up to 180 s, longer than an edge function lives. Our own check (chat-tools.ts) holds every input instead.
+      // The schema stays small and flat: every property listed as required and nothing else allowed, as a hint to the model.
       input_schema: { type: 'object' as const, properties: tool.properties, required: Object.keys(tool.properties), additionalProperties: false },
       ...(i === last ? { cache_control: mark } : {}),
     })),

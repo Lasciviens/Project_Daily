@@ -7,7 +7,7 @@
  * @anthropic-ai/sdk from node_modules whose `fetch` is a fake that answers in Anthropic's own server-sent-event format.
  * Nothing touches the network. scripts/verify-claude-function.cjs holds the one-shot jobs; this file holds the chat:
  *
- *   1  the tools         no optional parameter anywhere, strict, flat, case-insensitive choices, the permission wall
+ *   1  the tools         no optional parameter anywhere, not strict, flat, case-insensitive choices, the permission wall
  *   2  the request       the exact body: cache layout, betas, thinking and its binding, effort, context editing, diagnostics
  *   3  the walls         who may chat, the switches, the rate caps and the budget, bad input: nothing sent
  *   4  an answer         the stream's events, what is stored, the ledger row, the frozen chat
@@ -20,6 +20,7 @@
  *   9  citations         only what a tool returned and only the owner's own rows
  *  10  hostile data      a task title with instructions, another account's rows, a huge result, the database tool
  *  11  streaming         a refusal after partial text, an error in the middle of the stream, one try only
+ *  14  deadline          malformed tool inputs, a request that never answers or answers late, Diagnose's chat step
  *
  *   Run:  node scripts/verify-claude-chat.cjs
  */
@@ -274,14 +275,14 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.CHAT_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.CHAT_TOOL_ORDER].sort()), probe.KNOWN_TOOL_NAMES)
   check('six read tools and two write tools, and the write tools are the two proposals', same(probe.READ_TOOL_NAMES, ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database']) && same(probe.WRITE_TOOL_NAMES, ['propose_add_task', 'propose_log_food']) && probe.WRITE_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'write') && probe.READ_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'read'))
   const schemaText = JSON.stringify(tools)
-  check('every field is described with a plain type and no limit, format, pattern, default, union or null (strict-tool grammar stays small)', !/"(minimum|maximum|minLength|maxLength|format|pattern|default|anyOf|oneOf|allOf|nullable|minItems|maxItems)"/.test(schemaText) && !/"type":\[/.test(schemaText) && tools.every(t => Object.values(t.properties).every(p => ['string', 'number', 'integer'].includes(p.type))), schemaText.slice(0, 300))
+  check('every field is described with a plain type and no limit, format, pattern, default, union or null (the schemas stay small and flat)', !/"(minimum|maximum|minLength|maxLength|format|pattern|default|anyOf|oneOf|allOf|nullable|minItems|maxItems)"/.test(schemaText) && !/"type":\[/.test(schemaText) && tools.every(t => Object.values(t.properties).every(p => ['string', 'number', 'integer'].includes(p.type))), schemaText.slice(0, 300))
   check('no tool has a nested object or a list (flat)', tools.every(t => Object.values(t.properties).every(p => !('properties' in p) && !('items' in p))))
   check('every tool has at least one field and a description', tools.every(t => Object.keys(t.properties).length >= 1 && t.description.length > 40))
   const net0 = pretend(textMsg('Hello.'))
   const first = await chat({ conversation_id: null, text: 'Hello there' }, { network: net0 })
   const body0 = net0.seen[0].body
-  check('in the request every tool is strict, every property is required, nothing else is allowed', body0.tools.every(t => t.strict === true && same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && t.input_schema.type === 'object'))
-  check('zero optional parameters across every strict schema (Anthropic allows 24 in all)', body0.tools.every(t => t.input_schema.required.length === Object.keys(t.input_schema.properties).length))
+  check('in the request no tool is strict; every property is listed as required and nothing else is allowed', body0.tools.every(t => !('strict' in t) && same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && t.input_schema.type === 'object'))
+  check('zero optional parameters across every schema (small and flat, as a hint)', body0.tools.every(t => t.input_schema.required.length === Object.keys(t.input_schema.properties).length))
   check('enum choices: the ones the code lists, including "any"/"" for not given', (() => {
     const find = body0.tools.find(t => t.name === 'find_text').input_schema.properties
     const prio = body0.tools.find(t => t.name === 'propose_add_task').input_schema.properties.priority
@@ -968,6 +969,144 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   const source = fs.readFileSync(path.join(REPO, 'supabase/functions/claude/index.ts'), 'utf8')
   check('the chat parts never read a user id from the request body', !/ownValue\((body|input), '(user_id|userId|user)'\)/.test(source))
   check('the model cannot reach the ledger or the settings: no tool names ai_calls, ai_settings, ai_job_settings or the chat tables, and the search function reads tasks and the diary only', (() => { const t = fs.readFileSync(path.join(REPO, 'supabase/claude-src/chat-tools.ts'), 'utf8').replace(/\/\/.*$/gm, ''); return !/ai_calls|ai_settings|ai_job_settings|ai_messages|ai_conversations|ai_chat_proposals|ai_reports/.test(t) })())
+
+  // ═══ 14 · not strict, a deadline, Diagnose's chat step ═══════════════════
+  section('14 · tools that are not strict, a deadline that always ends the round, the chat step of Diagnose')
+  {
+    const net = pretend(textMsg('Hello.'))
+    await chat({ conversation_id: null, text: 'Hello there' }, { network: net })
+    const sentTools = net.seen[0].body.tools
+    check('no tool is sent as strict (a strict tool makes Anthropic compile a grammar, up to 180 s)', sentTools.length === 8 && sentTools.every(t => !('strict' in t)), sentTools.map(t => t.strict))
+    check('the schemas stay small and flat: every property listed as required, nothing else allowed, plain types only', sentTools.every(t => same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && Object.values(t.input_schema.properties).every(p => ['string', 'number', 'integer'].includes(p.type))))
+    check('the last tool still carries the cache breakpoint', sentTools.at(-1).cache_control?.type === 'ephemeral' && sentTools.slice(0, -1).every(t => !('cache_control' in t)))
+  }
+
+  // Every tool's own check, with malformed input: an error result that says what to fix, never an exception, never a query.
+  {
+    const w = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const ctx = ctxFor(w)
+    const called = async (name, input) => { try { return await probe.runChatTool(name, input, probe.CHAT_TOOL_ORDER, modes, ctx) } catch (e) { return { threw: String(e) } } }
+    let bad = 0, total = 0
+    const expectRefused = async (label, name, input, pattern) => {
+      total++
+      const out = await called(name, input)
+      if (!(out.ok === false && typeof out.message === 'string' && out.message.length > 10 && (!pattern || pattern.test(out.message)))) { bad++; console.log('    ✗', label, JSON.stringify(out).slice(0, 200)) }
+    }
+    const before = w.ops.length
+    for (const t of tools) {
+      const fields = Object.entries(t.properties)
+      const valid = Object.fromEntries(fields.map(([k, p]) => [k, p.type === 'string' ? (p.enum ? p.enum[0] : 'x') : 1]))
+      for (const [label, input] of [['null', null], ['undefined', undefined], ['an array', []], ['a string', 'date'], ['a number', 5], ['true', true]]) await expectRefused(`${t.name}: input is ${label}`, t.name, input, /must be an object/)
+      await expectRefused(`${t.name}: an extra field`, t.name, { ...valid, user_id: GUEST }, /Unknown field "user_id"/)
+      await expectRefused(`${t.name}: __proto__ as a field`, t.name, JSON.parse('{"__proto__": {"x": 1}}'), /Unknown field "__proto__"/)
+      await expectRefused(`${t.name}: constructor as a field`, t.name, { ...valid, constructor: 'x' }, /Unknown field "constructor"/)
+      await expectRefused(`${t.name}: no fields at all`, t.name, {}, /is missing/)
+      for (const [k, p] of fields) {
+        const { [k]: _gone, ...rest } = valid
+        await expectRefused(`${t.name}.${k}: missing`, t.name, rest, new RegExp(`"${k}" is missing`))
+        await expectRefused(`${t.name}.${k}: null`, t.name, { ...valid, [k]: null }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: an object`, t.name, { ...valid, [k]: { a: 1 } }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: a list`, t.name, { ...valid, [k]: ['x'] }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: true`, t.name, { ...valid, [k]: true }, new RegExp(`"${k}" must be`))
+        if (p.type === 'string') {
+          await expectRefused(`${t.name}.${k}: a number for text`, t.name, { ...valid, [k]: 7 }, new RegExp(`"${k}" must be text`))
+          await expectRefused(`${t.name}.${k}: far too long`, t.name, { ...valid, [k]: 'x'.repeat(5000) }, new RegExp(`"${k}" is longer than`))
+          if (p.enum) {
+            await expectRefused(`${t.name}.${k}: not a choice`, t.name, { ...valid, [k]: 'bogus' }, /must be one of/)
+            await expectRefused(`${t.name}.${k}: a choice with something added`, t.name, { ...valid, [k]: `${p.enum[0]} x` }, /must be one of|longer than/)
+            await expectRefused(`${t.name}.${k}: an empty choice`, t.name, { ...valid, [k]: '' }, p.enum.includes('') ? undefined : /must be one of/)
+            // letter case is ignored: an upper-case spelling is never refused as "not a choice"
+            total++
+            const shout = await (async () => { try { return await probe.runChatTool(t.name, { ...valid, [k]: p.enum[0].toUpperCase() }, probe.CHAT_TOOL_ORDER, modes, ctxFor(makeWorld({ tables: { tasks: [], time_blocks: [] } }))) } catch (e) { return { threw: String(e) } } })()
+            if (shout.threw || (shout.ok === false && /must be one of/.test(shout.message))) { bad++; console.log('    ✗', `${t.name}.${k}: upper case refused`, JSON.stringify(shout).slice(0, 200)) }
+          }
+        } else {
+          await expectRefused(`${t.name}.${k}: text for a number`, t.name, { ...valid, [k]: '5' }, new RegExp(`"${k}" must be a number`))
+          for (const [label, v] of [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['a huge number', 1e12], ['a negative number', -1e12]]) await expectRefused(`${t.name}.${k}: ${label}`, t.name, { ...valid, [k]: v }, /must be (a number|between)/)
+          if (p.type === 'integer') await expectRefused(`${t.name}.${k}: a fraction`, t.name, { ...valid, [k]: 1.5 }, /whole number/)
+        }
+      }
+    }
+    check(`malformed input to each of the 8 tools (${total} cases: wrong shape, extra and missing fields, wrong types, enums, lengths, numbers): always an error result that says what to fix`, bad === 0 && total > 200, { bad, total })
+    check('a refused input never reaches the database', w.ops.length === before, w.ops.slice(before).map(o => o.table))
+    check('an unknown tool, an empty name, a name with odd characters: an error result', (await Promise.all(['', ' ', 'get_day_plan ', 'GET_DAY_PLAN', 'a'.repeat(500), 'constructor', 'toString'].map(n => called(n, {})))).every(o => o.ok === false))
+  }
+
+  // The deadline. The fake clock of this script turns every timer between 0.1 s and 120 s into 3 ms, so a request that
+  // never answers (or answers late) meets the code's own clocks at once; what is checked is what happens then.
+  {
+    check('the chat\'s clocks: 45 s to a first event, 60 s a round, 110 s in all, all under the 150 s wall of Supabase', LIM.firstEventMs === 45_000 && LIM.roundTimeoutMs === 60_000 && LIM.answerDeadlineMs === 110_000 && LIM.answerDeadlineMs < 150_000)
+    const TOO_SLOW = 'Anthropic took too long — nothing was saved. Try again.'
+    const never = () => new Promise(() => {})
+    const silentBody = () => new Response(new ReadableStream({ start() {} }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const encoder = new TextEncoder()
+    const stallAfter = (first) => () => new Response(new ReadableStream({ start(c) { c.enqueue(encoder.encode(first)) } }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const late = () => new Response(new ReadableStream({ start(c) { realSetTimeout(() => { try { c.enqueue(encoder.encode(sse(textMsg('Too late.')))); c.close() } catch { /* cut already */ } }, 60) } }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const cases = [
+      ['a request that never answers (no response at all)', never],
+      ['a stream that opens and then says nothing (what hung live)', silentBody],
+      ['a stream that only pings', stallAfter('event: ping\ndata: {"type":"ping"}\n\n')],
+      ['an answer that comes too late', late],
+      ['text that starts and then stalls', stallAfter(sse({ blocks: [{ type: 'text', pieces: ['Half of an ans'], text: '' }] }).split('event: content_block_stop')[0])],
+    ]
+    for (const [label, step] of cases) {
+      const w = makeWorld()
+      const started = Date.now()
+      const res = await chat({ conversation_id: null, text: 'add a task for tomorrow' }, { world: w, network: pretend(step) })
+      const evs = res.events.map(e => e.event)
+      const rows = callsOf(w)
+      check(`${label}: the app gets the clear error and the stream ends`, final(res).event === 'error' && final(res).reason === 'timeout' && final(res).message === TOO_SLOW && Date.now() - started < 5000, final(res))
+      check(`${label}: any text that streamed is retracted, and nothing of the round is stored (only the question)`, (!evs.includes('text') || evs.includes('retract')) && messagesOf(w).length === 1 && messagesOf(w)[0].role === 'user' && !evs.includes('done'))
+      check(`${label}: the round's ledger row is finished as an error with the worst case held, never left in flight, and nothing is retried`, rows.length === 1 && rows[0].outcome === 'error' && rows[0].cost_usd > 0 && rows.every(r => r.outcome !== 'pending') && res.net.seen.length === 1, rows.map(r => [r.outcome, r.cost_usd]))
+      check(`${label}: no secret in what the app or the ledger holds`, leaks(res.text, JSON.stringify(rows), w.logs).length === 0)
+    }
+    // A chat that is going well is not cut: a fast answer is untouched by the clocks.
+    const wOk = makeWorld()
+    const okRes = await chat({ conversation_id: null, text: 'a quick one' }, { world: wOk, network: pretend(textMsg('Quick.')) })
+    check('a fast answer is still an answer', final(okRes).event === 'done' && callsOf(wOk)[0].outcome === 'ok')
+    // A second round that stalls: the first round and its tool results stay stored, the stalled round stores nothing.
+    const w2 = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const r2 = await chat({ conversation_id: null, text: 'what is on today' }, { world: w2, network: pretend(toolMsg([['toolu_S1', 'get_day_plan', { date: '' }]]), silentBody) })
+    check('a stall in the second round: the first round and its results stay, the second stores nothing, both rows are finished', final(r2).reason === 'timeout' && messagesOf(w2).map(m => m.role).join() === 'user,assistant,user' && callsOf(w2).length === 2 && callsOf(w2).map(r => r.outcome).join() === 'ok,error' && callsOf(w2).every(r => r.outcome !== 'pending'), callsOf(w2).map(r => r.outcome))
+  }
+
+  // Diagnose's chat step: the chat's real first request, with its real tools, timed.
+  {
+    const w = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const net = pretend(toolMsg([['toolu_D1', 'get_day_plan', { date: '' }]]))
+    net.world = w
+    const fn = load(w, net.impl)
+    const res = await fn.handler(post({ action: 'diagnose', part: 'chat' }))
+    const body = await res.json()
+    const sent = net.seen[0]?.body
+    const step = body.steps?.[0]
+    check('Diagnose part "chat": one step, named chat_request, passed, with the time to the first event and the total', res.status === 200 && body.ok === true && body.steps.length === 1 && step.name === 'chat_request' && step.ok === true && /first event came after \d+\.\d s, finished after \d+\.\d s/.test(step.detail) && /asked for get_day_plan \(not run here\)/.test(step.detail), body)
+    check('it sends the chat\'s real request: its tools (8, not strict), its fixed instructions, the date line, the made-up question, and a 120 s round', sent && same(sent.tools.map(t => t.name), probe.CHAT_TOOL_ORDER) && sent.tools.every(t => !('strict' in t)) && sent.system[0].text === probe.CHAT_SYSTEM && sent.messages.length === 1 && sent.messages[0].content.length === 2 && /Today is/.test(sent.messages[0].content[0].text) && sent.messages[0].content[1].text === 'What is on my plan today?' && /context-management/.test(net.seen[0].headers['anthropic-beta'] ?? '') && net.seen.length === 1, sent && Object.keys(sent))
+    check('the tool the model asked for is not run (no read of the owner\'s tasks) and nothing is stored in a chat', !w.ops.some(o => o.table === 'tasks' || o.table === 'time_blocks') && rowsOf(w, 'ai_messages').length === 0 && rowsOf(w, 'ai_conversations').length === 0)
+    const rows = callsOf(w)
+    check('it is one real call in the ledger, job chat, step 1, finished, with its tokens, cost and the word "diagnose" in its request', rows.length === 1 && rows[0].job === 'chat' && rows[0].step === 1 && rows[0].outcome === 'ok' && rows[0].cost_usd > 0 && rows[0].input_tokens + rows[0].cache_read_tokens > 0 && rows[0].request?.diagnose === true && rows[0].request?.question === 'What is on my plan today?', rows[0])
+    check('the answer carries no secret', leaks(JSON.stringify(body), JSON.stringify(rows)).length === 0)
+
+    const wSlow = makeWorld()
+    const netSlow = pretend(() => new Promise(() => {}))
+    netSlow.world = wSlow
+    const slow = await load(wSlow, netSlow.impl).handler(post({ action: 'diagnose', part: 'chat' }))
+    const slowBody = await slow.json()
+    check('a chat request that never answers is a failed step with the plain sentence, the row is finished (worst case held), nothing hangs', slowBody.ok === true && slowBody.steps[0].ok === false && /took too long/.test(slowBody.steps[0].detail) && callsOf(wSlow).length === 1 && callsOf(wSlow)[0].outcome === 'error' && callsOf(wSlow)[0].cost_usd > 0, slowBody)
+
+    const wNoKey = makeWorld({ env: { ANTHROPIC_API_KEY: '' } })
+    const noKey = await (await load(wNoKey, async () => { throw new Error('no network') }).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('without a key the step fails with a sentence and nothing is sent', noKey.ok === true && noKey.steps[0].ok === false && /no Anthropic key/.test(noKey.steps[0].detail) && callsOf(wNoKey).length === 0)
+
+    const wBudget = makeWorld({ gate: [{ ...GATE, month_cost: 999 }], account: { monthly_budget_usd: 1 } })
+    const netB = pretend(textMsg('x'))
+    netB.world = wBudget
+    const over = await (await load(wBudget, netB.impl).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a budget that is used up refuses the chat step before anything is sent', netB.seen.length === 0 && (over.ok === false || over.steps?.[0]?.ok === false), over)
+
+    const guest = await load(makeWorld({ allowed: [GUEST] }), net.impl).handler(post({ action: 'diagnose', part: 'chat' }, 'nobody'))
+    check('a caller who is not signed in cannot start it', guest.status === 401)
+  }
 
   finished = true
   console.log(`\n${ok} passed, ${bad} failed`)

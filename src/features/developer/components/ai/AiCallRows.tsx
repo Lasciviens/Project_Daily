@@ -25,7 +25,7 @@ function RowFace({ call, jobs }: { call: AiCall; jobs: Describe['jobs'] | undefi
         <span className="shrink-0 text-body font-semibold tabular-nums text-fg">{formatUsd(call.cost_usd)}</span>
       </span>
       <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <OutcomePill outcome={call.outcome} />
+        <OutcomePill call={call} />
         <MetaLine as="span" className="min-w-0 text-meta tabular-nums text-fg-muted" items={[
           call.stop_reason === 'count_tokens' ? 'token count, free' : call.provider === 'page' ? callModelLabel(call) : shortModel(call.model),
           sent + call.output_tokens > 0 && `${formatTokens(sent)} in`,

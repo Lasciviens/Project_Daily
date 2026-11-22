@@ -221,13 +221,16 @@ export interface ChatRequest {
   previousMessageId: string | null
   /** When the provider clears old tool results from a long prompt (tokens). */
   contextEditing: { triggerTokens: number; keepToolUses: number; clearAtLeastTokens: number }
+  /** The whole round, from sending to the last stream event: a stream still open then is cut. */
   timeoutMs: number
+  /** A round that has shown no stream event at all (a ping does not count) after this long is cut: Anthropic may be compiling something. */
+  firstEventTimeoutMs?: number
   /** Stops the request when the app goes away. */
   signal?: AbortSignal
 }
 
-/** What the provider tells the chat while an answer arrives. Only these two, never a raw provider event. */
-export type ChatDelta = { kind: 'text'; text: string } | { kind: 'tool'; name: string }
+/** What the provider tells the chat while an answer arrives. Only these, never a raw provider event (`started`: the first stream event, once). */
+export type ChatDelta = { kind: 'text'; text: string } | { kind: 'tool'; name: string } | { kind: 'started' }
 
 /** Why the provider's prompt cache could not be reused (a short word and the tokens that missed), or null. */
 export interface CacheMiss {
@@ -422,7 +425,7 @@ export type ReportCheckReply =
 
 /** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */
 export interface DiagnoseStep {
-  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request'
+  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request' | 'chat_request'
   title: string
   ok: boolean
   /** How long the step took, in milliseconds. */

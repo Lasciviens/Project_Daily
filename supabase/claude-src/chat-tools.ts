@@ -6,8 +6,9 @@
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:
-//    · Strict and flat, with NO optional parameter (Anthropic compiles every optional field into the grammar, and the
-//      limit is 24 across the whole request): every field is required, "" (or "any") means "not given".
+//    · Small, flat, with NO optional parameter, and NOT strict (a strict tool makes Anthropic compile a grammar on the
+//      first request, up to 180 s, longer than an edge function lives): every field is required, "" (or "any") means
+//      "not given", and `checkedArgs` holds what the model really sends.
 //    · The model's values are input. Our own code checks every one, ignoring letter case in a choice, and an error
 //      comes back as a result that says what to try (`is_error`), never as an exception.
 //    · Every query names the verified user id and runs with the OWNER'S rights (the database client that carries the

@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { parseSse, readChatEvent, type ChatEvent, type StoredMessageRow, type StoredProposalRow } from './chatRules'
+import { isSessionRefusal, parseSse, readChatEvent, sendWithSession, type ChatEvent, type StoredMessageRow, type StoredProposalRow } from './chatRules'
 
 // The app's door to Ask AI (the `claude` function, job `chat`, migration 197). The answer streams in as server-sent
 // events, so it goes through `fetch` (supabase.functions.invoke cannot stream). The owner's sign-in token is the only
@@ -26,21 +26,24 @@ export class ChatError extends Error {
  * stream arrives as an `error` event (the caller shows it).
  */
 export async function streamChat(input: { conversationId: string | null; text: string }, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new ChatError('error', 'Session error — refresh the page and sign in again.')
-  let res: Response
+  // The token is read right before each request: getSession() refreshes an expired one, and a 401 gets one refresh and one retry.
+  let res: Response | null
   try {
-    res = await fetch(`${SUPABASE_URL}/functions/v1/claude`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_KEY },
-      body: JSON.stringify({ action: 'chat', stream: true, conversation_id: input.conversationId, text: input.text }),
-      signal,
+    res = await sendWithSession({
+      currentToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+      refreshedToken: async () => (await supabase.auth.refreshSession()).data.session?.access_token ?? null,
+      send: token => fetch(`${SUPABASE_URL}/functions/v1/claude`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_KEY },
+        body: JSON.stringify({ action: 'chat', stream: true, conversation_id: input.conversationId, text: input.text }),
+        signal,
+      }),
     })
   } catch (error) {
     if ((error as Error)?.name === 'AbortError') return
     throw new ChatError('error', 'The AI function could not be reached — check the connection and try again.')
   }
-  if (res.status === 401 || res.status === 403) throw new ChatError('error', 'Session error — refresh the page and sign in again.')
+  if (!res || isSessionRefusal(res.status)) throw new ChatError('error', 'Session error — refresh the page and sign in again.')
   if (!res.ok || !res.body) throw new ChatError('error', 'The AI function did not answer — try again in a moment.')
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

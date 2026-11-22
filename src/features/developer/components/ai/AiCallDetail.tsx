@@ -5,7 +5,7 @@ import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useAiCall, useAiCallMeta, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
 import {
-  callModelLabel, costBreakdown, searchesOf, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, outcomeMeta, type CostBreakdown, type LogPart,
+  callModelLabel, costBreakdown, searchesOf, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, callOutcomeMeta, type CostBreakdown, type LogPart,
 } from '../../../ai/claude/ledgerRules'
 import type { AiCall, Describe } from '../../../ai/claude/types'
 import { Term } from './aiBits'
@@ -182,7 +182,7 @@ export function AiCallDetail({ call, jobs, framed }: {
   /** The detail pane's own card (laptop); false under a row on a phone. */
   framed: boolean
 }) {
-  const meta = outcomeMeta(call.outcome)
+  const meta = callOutcomeMeta(call)
   const prices = useClaudeDescribe().data?.prices
   const cost = costBreakdown(call, prices)
   const body = (
@@ -190,7 +190,7 @@ export function AiCallDetail({ call, jobs, framed }: {
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <p className="text-body font-semibold text-fg">{jobTitleOf(jobs, call.job)}</p>
-          <OutcomePill outcome={call.outcome} />
+          <OutcomePill call={call} />
         </div>
         <p className="text-meta text-fg-2">{meta.what}</p>
         {call.error && <p data-tone="danger" className="tone-text break-words text-meta">{call.error}</p>}
