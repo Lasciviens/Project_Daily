@@ -31,7 +31,7 @@ const FEELING_LABEL: Record<string, string> =
 /** A stored feeling as its label, whether it was saved in English or (before 22.11.2026) in Turkish. */
 const feelingLabel = (stored: string): string => FEELING_LABEL[feelingOf(stored) ?? stored] ?? stored
 
-// Minimal markdown: only **bold** (matches AIPanel's renderer).
+// Minimal markdown: only **bold** (the same as Ask AI's).
 function renderBold(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
   return parts.map((p, i) =>

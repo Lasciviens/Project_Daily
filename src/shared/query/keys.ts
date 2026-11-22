@@ -229,6 +229,14 @@ export const qk = {
     page: (filter: object, page: number) => ['ai-calls', 'page', filter, page] as const,
     call: (id: string) => ['ai-calls', 'call', id] as const,
   },
+  /** Ask AI's chats (ai_conversations / ai_messages / ai_chat_proposals, migration 197): what the owner asked and was answered. Their own root: never kept on the device (persistRules.NEVER_KEPT). */
+  aiChat: {
+    all: ['ai-chat'] as const,
+    conversations: () => ['ai-chat', 'conversations'] as const,
+    turns: (id: string) => ['ai-chat', 'turns', id] as const,
+    callMeta: (callId: string) => ['ai-chat', 'call-meta', callId] as const,
+    runCalls: (runId: string) => ['ai-chat', 'run-calls', runId] as const,
+  },
   /** The weekly reports (ai_reports, migration 196): their text is the owner's own week. Their own root: never kept on the device. */
   aiReports: {
     all: ['ai-reports'] as const,

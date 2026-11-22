@@ -6660,6 +6660,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   let lastPrompt = conversation ? conversation.last_prompt_tokens : 0
   let createdNow = false
   let endedWith: { text: string; ending: 'complete' | 'cut_off' } | null = null
+  let finalCitations: ChatCitation[] = []
   const messages: ChatMessage[] = [...wire]
   let pendingUser: { content: Block[]; meta: Record<string, unknown> } | null = { content: blocks, meta: withDate ? { live_at: now.toISOString() } : {} }
   const known = knownSources(history)
@@ -6803,6 +6804,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     const assistantMeta: Record<string, unknown> = {
       ...(answer.messageId ? { message_id: answer.messageId } : {}), round, ending: answer.ending, prompt_tokens: lastPrompt,
       ...(answer.cacheMiss ? { cache_miss: answer.cacheMiss } : {}), ...(answer.cleared ? { cleared: answer.cleared } : {}),
+      cost_usd: row.cost_usd,
     }
     messages.push({ role: 'assistant', content: answer.content })
     answerMessages.push({ content: answer.content })
@@ -6811,6 +6813,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (answer.ending !== 'tool_calls') {
       logRound()
       await finishCall(ctx.adminDb, row)
+      // The citations are checked BEFORE the answer is stored and kept with it, so a chat opened later shows the same links.
+      finalCitations = await checkedCitations(ctx, answerMessages.flatMap(m => m.content), known)
+      if (finalCitations.length) assistantMeta.citations = finalCitations
       const wrote = await store('assistant', answer.content, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
@@ -6866,7 +6871,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   }
 
   if (!endedWith) return fail('error', 'The answer did not finish. Try again.')
-  const citations = await checkedCitations(ctx, answerMessages.flatMap(m => m.content), known)
+  const citations = finalCitations
   // The wall after this answer: a prompt near the line means the next message would not fit.
   const wall = lastPrompt >= CHAT_LIMITS.wallTokens
   if (wall) await updateConversation(ctx.adminDb, ctx.userId, conversationId, { status: 'full' })
