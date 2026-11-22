@@ -228,6 +228,8 @@ export const qk = {
     all: ['ai-calls'] as const,
     page: (filter: object, page: number) => ['ai-calls', 'page', filter, page] as const,
     call: (id: string) => ['ai-calls', 'call', id] as const,
+    /** An error's "Explain" answer, kept while the app is open (one paid call per error unless the owner asks again). */
+    explain: (errorId: string) => ['ai-calls', 'explain', errorId] as const,
   },
   /** Ask AI's chats (ai_conversations / ai_messages / ai_chat_proposals, migration 197): what the owner asked and was answered. Their own root: never kept on the device (persistRules.NEVER_KEPT). */
   aiChat: {

@@ -46,6 +46,16 @@ export interface ModelRequest {
   thinking?: 'adaptive' | 'off'
   /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
   timeoutMs?: number
+  /** Photos the model looks at (a quick guess, a receipt). Already checked by image-rules.ts; never stored anywhere. */
+  images?: RequestImage[]
+  /** The provider's own web search, at most `maxUses` searches in this one call (a place's ideas). Absent: no tools at all. */
+  webSearch?: { maxUses: number }
+}
+
+/** One photo as it travels: its type and its bytes as base64 (no `data:` prefix). Only these three types ever pass. */
+export interface RequestImage {
+  mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
+  base64: string
 }
 
 /** What a request cost, in tokens. A token is a piece of text, about ¾ of a word. */
@@ -95,6 +105,8 @@ export interface ModelAnswer {
   servedModel: string | null
   /** What the provider part built and sent (see SentRequest). */
   sent: SentRequest | null
+  /** How many web searches the provider ran for this answer (each one is billed on its own). */
+  webSearches: number
 }
 
 /** The call failed. Nothing here is the provider's raw error: `message` and `detail` are already scrubbed. */
@@ -255,6 +267,8 @@ export interface ProviderInfo {
 export interface AnswerDetails {
   thinking: string
   servedModel: string | null
+  /** How many web searches the answer is based on (0: the model's own knowledge). */
+  webSearches: number
 }
 
 /** A job's reading of the model's text: its checked result, or why the text can't be used. */
@@ -297,6 +311,12 @@ export interface RunChoice {
 /** A run that passed the job's input check: the live part of the prompt, and the reader of its answer. */
 export interface PreparedRun {
   userText: string
+  /** Checked photos for the model to look at (only a job with `acceptsImage`). */
+  images?: RequestImage[]
+  /** What the photos cost in prompt tokens (image-rules.ts), held in the reservation. */
+  imageTokens?: number
+  /** Let the model search the web, at most this many times in the call (only a job with `webSearchMax`). */
+  webSearchMax?: number
   read(answerText: string, details: AnswerDetails): AnswerCheck
   /** What the request picked, when the job lets it (see RunChoice). Absent: the owner's settings decide. */
   choice?: RunChoice
@@ -330,6 +350,8 @@ export interface JobDefinition {
   timeLimitMs?: number
   /** true: a request may pick the model, the effort and the thinking (inside the lists): the Test bench. */
   pickable?: boolean
+  /** true: the request may carry one photo (image-rules.ts), so main.ts reads a body up to the image limit for it. */
+  acceptsImage?: boolean
   instructions: string
   answerSchema: JsonSchema | null
   /**
@@ -341,6 +363,8 @@ export interface JobDefinition {
   enforceAnswerSchema: boolean
   /** Repo-relative paths of the files that define this job. */
   sourceFiles: readonly string[]
+  /** The tools the job lets the model use (only place_ideas: Anthropic's web search), for the Developer page. */
+  tools?: readonly { name: string; what: string }[]
   /** What else the Developer page says about this job (a step done by code before the model, say). */
   extraFeatures?: readonly string[]
   /** Checks the input. Answers why it can't be used, or the prompt's live part with the reader of its answer. */
@@ -426,6 +450,8 @@ export interface Describe {
     maxOutputTokens: { min: number; max: number }
     logDays: { min: number; max: number }
     requestMaxBytes: number
+    /** The most a request that carries a photo may be (only the jobs that accept one). */
+    imageRequestMaxBytes: number
     /** The longest question the Test bench takes, in characters. */
     benchTextMax: number
     /** What one device (the Kobo, the phone) may ask in a day. */
@@ -439,6 +465,9 @@ export interface Describe {
     longPromptOverTokens: number
     longPromptMultiplier: number
     batchMultiplier: number
+    /** What one web search costs, on top of the tokens (only the ideas for a place use it), and the most a call may run. */
+    webSearchUsdEach: number
+    webSearchMaxUses: number
     models: {
       model: string
       inputPerMTok: number

@@ -40,3 +40,7 @@ Owner, 14.10.2026: a save changed 73 TV episodes and had to be taken back by han
 ## A user-facing activity feed (not built)
 
 - **Activity Log / stats widget** (user-facing feed, if ever built) — it must be **immutable append-only**: SELECT + INSERT policies only, and the **absence** of UPDATE/DELETE policies is the enforcement mechanism. Sketched event vocabulary: `task_created`, `task_updated`, `task_completed`, `task_cancelled`, `media_added`, `media_status_changed`, `media_planned`, `media_completed`, `media_dropped`, `ai_action_proposed`, `ai_action_confirmed`, `ai_action_cancelled`, `calendar_event_synced`. **`audit_logs` (migration 037) already covers the CRUD audit trail — don't rebuild that**; this would be a user-facing feed, not an audit table.
+
+## Explain this error (22.11.2026)
+
+Errors → the ✨ on a row opens a sheet: what the error means in plain English, the technical words it uses explained ("Words used"), and a draft request. The message and its context are scrubbed of secrets before they are sent (`scrubErrorForAi`, again in the function); "Create Dev Request" fills the request window (page from the error's own route when it is one of the app's pages) and only when that window is empty, so an unsaved request is never overwritten. The answer is kept for that error while the app is open (reopening costs nothing; "Explain again" is a second call). Nothing is saved by the sheet. Details: `docs/features/ai.md`.

@@ -398,3 +398,17 @@ Phase 1 needs no change: its ledger is the base all of this stands on.
 - Monitoring breaks the assistant: every write of the watcher is "best effort" and outside the answer's path; a failure is logged and never stops an answer.
 - Suggestion noise: one row per idea, a threshold, and dismissed means gone.
 - A steered suggestion: plain text only, owner review, reviewed PR.
+
+## 9. The features the owner picked (22.11.2026)
+
+Picked from the proposal list; each is one job of the `claude` function and one screen (`docs/features/ai.md` has the table of what code does before and after the model). Phase 3 (the weekly report) is separate.
+
+1. **Quick guess from a photo** (`quick_guess_photo`): Food → Quick guess → Describe it.
+4. **✨ for Dev Requests** (`dev_request_draft`; the button reads "Tidy up"): the composer.
+6. **Explain this error** (`error_explain`): Developer → Errors.
+8. **Write my week** (`work_week`): Work.
+10. **Receipt photo → Just bought** (`receipt_read`): Add something I own, and Just bought.
+14. **Improve the ad text** (`ad_improve`): Shop → Write the ad.
+15. **Ideas for a place wish** (`place_ideas`): Wishes, with web search.
+
+Decisions: the photo road is `image-rules.ts` plus the browser's shrink step (≤ 1280 px, JPEG 85 %), a 1.5 MB body only for image jobs; the web search tool is `web_search_20250305` with at most 3 searches a call (the SDK supports it cleanly and `deno check` passes), priced and ledgered; no migration (every feature fills a form that saves through its existing hook). Not live-tested: the model's reading of real photos, the web search tool on Haiku 5.5, and the organization's web search setting (`docs/integrations/anthropic.md`).

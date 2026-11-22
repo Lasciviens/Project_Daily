@@ -21,3 +21,7 @@
 ## Deliberately not built
 
 - 🔶 **Wishes — deliberately NOT built, don't rebuild it:** no `wish_periods`/`contexts` grouping table · no recurring MM-DD windows, wrap-around resolver or `lead_days` (periods are concrete dates) · no seasonal reset and no annual review prompt · no `lat`/`lon`, map, geofence or proximity trigger (CSP blocks map tiles, the only wired geocoder is EnTur/Norway-only, and `useGeolocation` returns the Oslo fallback as a *success* — a denial would read as "he is in Oslo") · no SQL view and no generated column · no new AI tool, `phone-gateway` action or Shortcut · no 7th glance-board cell and no 5th Daily mode tab (that control is `grid grid-cols-4`). Note that the `windowChips` season chips are the **only** practical way to capture a period — `DateInput` has no calendar popup, so a typed range costs 16 digit taps against a chip's one; don't remove them in favour of date boxes.
+
+## Ideas for a place (22.11.2026)
+
+A place wish (Kind: Place) has "Ideas for this place" under Notes: 5–8 things to do, from the city and country (or the title). The model may search the web (at most 3 searches, $0.01 each); the result is labelled "Found with web search" or "Model's general knowledge — check before you go", and **Add to notes** (the owner's confirmation) writes it under a heading that says which, in English. Nothing is saved until the wish is. Details: `docs/features/ai.md`.

@@ -339,7 +339,7 @@ const ASK_DATABASE: ToolDef = {
 
 // ── The write tools: proposals only ─────────────────────────────────────────
 
-const PRIORITIES = ['any', 'low', 'medium', 'high'] as const
+const CHAT_PRIORITIES = ['any', 'low', 'medium', 'high'] as const
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 
 const oneLine = (value: unknown): string => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '')
@@ -397,7 +397,7 @@ const PROPOSE_ADD_TASK: ToolDef = {
     title: { type: 'string', max: 200, description: 'The task title, in the words the person used.' },
     note: { type: 'string', max: 1000, description: 'A note in English, or "".' },
     due_date: { type: 'string', max: 10, description: 'The due day as YYYY-MM-DD, or "" for none.' },
-    priority: { type: 'string', max: 10, enum: PRIORITIES, description: 'low, medium or high, or "any" when not said (it becomes medium).' },
+    priority: { type: 'string', max: 10, enum: CHAT_PRIORITIES, description: 'low, medium or high, or "any" when not said (it becomes medium).' },
   },
   async run(args, ctx) {
     const priority = args.priority === 'any' ? 'medium' : args.priority

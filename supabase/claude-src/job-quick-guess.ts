@@ -20,9 +20,9 @@ import { ownValue } from './guard.ts'
 import { answerValue, checkedLine, checkedList, checkedNumber, escapeTagText, isPlainObject, readAnswerObject } from './answer-reader.ts'
 import { NUTRITION_KEYS, NUTRITION_MAX, type NutritionKey } from './recipe-rules.ts'
 
-const GUESS_LIMITS = { description: 500, title: 60, portion: 120, assumptions: 4, assumption: 200, presetName: 60, groups: 3, choices: 6, optionName: 30, factorMax: 10, examined: 30 } as const
+export const GUESS_LIMITS = { description: 500, title: 60, portion: 120, assumptions: 4, assumption: 200, presetName: 60, groups: 3, choices: 6, optionName: 30, factorMax: 10, examined: 30 } as const
 
-const GUESS_ANSWER_SCHEMA: JsonSchema = {
+export const GUESS_ANSWER_SCHEMA: JsonSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
@@ -150,6 +150,31 @@ function guessWhole(value: unknown, max: number): number | null {
   return n === null ? null : Math.round(n)
 }
 
+/** The diary line in an answer, every value checked (shared by "Describe it" and its photo sibling). */
+export function readQuickGuess(answerText: string): AnswerCheck {
+  const answer = readAnswerObject(answerText)
+  if (!answer.ok) return answer
+  const raw = answer.value
+  const title = checkedLine(answerValue(raw, 'title'), GUESS_LIMITS.title)
+  if (!title) return { ok: false, problem: 'it gave no title for the line' }
+  // Every number is needed: a missing one would show as a plain 0 on a line the owner is about to log.
+  const numbers = {} as Record<NutritionKey, number>
+  for (const key of NUTRITION_KEYS) {
+    const n = guessWhole(answerValue(raw, key), NUTRITION_MAX[key])
+    if (n === null) return { ok: false, problem: `it gave no usable value for ${key} (0 to ${NUTRITION_MAX[key]})` }
+    numbers[key] = n
+  }
+  const assumptions: string[] = []
+  for (const item of checkedList(answerValue(raw, 'assumptions'), GUESS_LIMITS.examined)) {
+    const line = checkedLine(item, GUESS_LIMITS.assumption)
+    if (line && assumptions.length < GUESS_LIMITS.assumptions) assumptions.push(line)
+  }
+  return {
+    ok: true,
+    result: { title, portion: checkedLine(answerValue(raw, 'portion'), GUESS_LIMITS.portion) ?? '', ...numbers, assumptions },
+  }
+}
+
 export const QUICK_GUESS_JOB: JobDefinition = {
   name: 'quick_guess',
   title: 'Guess a meal from a description',
@@ -169,29 +194,7 @@ export const QUICK_GUESS_JOB: JobDefinition = {
     if (text.trim().length > GUESS_LIMITS.description) return { problem: `Keep the description to ${GUESS_LIMITS.description} characters.` }
     return {
       userText: `<description>\n${escapeTagText(text.trim())}\n</description>`,
-      read(answerText: string): AnswerCheck {
-        const answer = readAnswerObject(answerText)
-        if (!answer.ok) return answer
-        const raw = answer.value
-        const title = checkedLine(answerValue(raw, 'title'), GUESS_LIMITS.title)
-        if (!title) return { ok: false, problem: 'it gave no title for the line' }
-        // Every number is needed: a missing one would show as a plain 0 on a line the owner is about to log.
-        const numbers = {} as Record<NutritionKey, number>
-        for (const key of NUTRITION_KEYS) {
-          const n = guessWhole(answerValue(raw, key), NUTRITION_MAX[key])
-          if (n === null) return { ok: false, problem: `it gave no usable value for ${key} (0 to ${NUTRITION_MAX[key]})` }
-          numbers[key] = n
-        }
-        const assumptions: string[] = []
-        for (const item of checkedList(answerValue(raw, 'assumptions'), GUESS_LIMITS.examined)) {
-          const line = checkedLine(item, GUESS_LIMITS.assumption)
-          if (line && assumptions.length < GUESS_LIMITS.assumptions) assumptions.push(line)
-        }
-        return {
-          ok: true,
-          result: { title, portion: checkedLine(answerValue(raw, 'portion'), GUESS_LIMITS.portion) ?? '', ...numbers, assumptions },
-        }
-      },
+      read: readQuickGuess,
     }
   },
 }

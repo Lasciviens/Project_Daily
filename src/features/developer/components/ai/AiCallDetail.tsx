@@ -5,7 +5,7 @@ import { Card, IconButton, Skeleton } from '../../../../shared/ui'
 import { formatDateTime } from '../../../../shared/utils/dateFormat'
 import { useAiCall, useAiCallMeta, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
 import {
-  callModelLabel, costBreakdown, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, outcomeMeta, type CostBreakdown, type LogPart,
+  callModelLabel, costBreakdown, searchesOf, formatCount, formatDuration, formatPrice, formatUsd, jobTitleOf, logParts, outcomeMeta, type CostBreakdown, type LogPart,
 } from '../../../ai/claude/ledgerRules'
 import type { AiCall, Describe } from '../../../ai/claude/types'
 import { Term } from './aiBits'
@@ -94,6 +94,12 @@ const REQUEST_LABELS: Record<string, string> = {
 }
 const relabel = (parts: LogPart[], labels: Record<string, string>): LogPart[] => parts.map(p => ({ ...p, label: labels[p.label] ?? p.label }))
 
+/** What a row's tools say, in plain words: "Searched the web 2 times". */
+function toolsInWords(tools: unknown[]): string {
+  const n = searchesOf({ tools })
+  return n > 0 ? `Searched the web ${n} ${n === 1 ? 'time' : 'times'} (billed per search, on top of the tokens).` : 'No tool was used.'
+}
+
 function CostLines({ cost }: { cost: CostBreakdown }) {
   return (
     <section aria-label="What the call cost">
@@ -109,7 +115,7 @@ function CostLines({ cost }: { cost: CostBreakdown }) {
         </p>
       ) : cost.unpriced ? (
         <p className="mt-1 text-meta text-fg-muted">This model has no price in the function’s table, so the stored cost is shown as it is.</p>
-      ) : cost.lines.length === 0 ? (
+      ) : cost.lines.length === 0 && cost.searches === 0 ? (
         <p className="mt-1 text-meta text-fg-muted">No tokens were used: nothing was sent, so nothing was billed.</p>
       ) : (
         <ul className="mt-1 flex flex-col gap-1.5">
@@ -126,6 +132,15 @@ function CostLines({ cost }: { cost: CostBreakdown }) {
             <li className="flex items-baseline justify-between gap-3 text-meta text-fg-2">
               <span>× {cost.multiplier} ({cost.multiplierWhy.join(', ')})</span>
               <span className="shrink-0 font-medium tabular-nums text-fg">{formatUsd(cost.worked, { fine: true })}</span>
+            </li>
+          )}
+          {cost.searches > 0 && (
+            <li className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-meta text-fg"><span className="font-medium">Web search</span> <span className="text-fg-muted">· Anthropic searched the web for the answer</span></p>
+                <p className="text-meta tabular-nums text-fg-muted">{cost.searches} {cost.searches === 1 ? 'search' : 'searches'} × {formatUsd(cost.searchEach, { fine: true })}</p>
+              </div>
+              <span className="shrink-0 text-meta font-medium tabular-nums text-fg">{formatUsd(cost.searchUsd, { fine: true })}</span>
             </li>
           )}
           {Math.abs(cost.worked - cost.stored) > 0.0000015 && (
@@ -203,7 +218,7 @@ export function AiCallDetail({ call, jobs, framed }: {
       {call.tools.length > 0 && (
         <section aria-label="Tools" className="border-t border-line pt-3">
           <h4 className="section-label mb-1">Tools</h4>
-          <PlainText>{JSON.stringify(call.tools, null, 2)}</PlainText>
+          <p className="text-body text-fg">{toolsInWords(call.tools)}</p>
         </section>
       )}
       <div className="border-t border-line pt-3"><CallText id={call.id} /></div>

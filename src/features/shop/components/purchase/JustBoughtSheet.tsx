@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -13,9 +13,11 @@ import { categoryPath } from '../../shopModel'
 import { boughtDayOf, complaintYearsOf, dateSource, factsOf, storeOfItem } from '../../purchaseModel'
 import { purchaseDeadlines } from '../../storeRules'
 import { DateFact, DeadlineWords } from './purchaseKit'
+import { ReceiptPhoto } from './ReceiptPhoto'
+import { matchLine, RECEIPT_CURRENCIES, type ReceiptFill, type ReceiptRead } from '../../../ai/claude/featureRules'
 import { ChoiceChip } from '../shopPickers'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
-import type { ShopItem, ShopStore } from '../../types'
+import type { ShopCurrency, ShopItem, ShopStore } from '../../types'
 
 type Channel = 'online' | 'in_store'
 const OTHER = 'other'
@@ -69,7 +71,37 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
   const complainOwn = storedYears == null && item.warranty_until ? item.warranty_until : null
   const [keepComplain, setKeepComplain] = useState(complainOwn != null)
   const returnBy = returnOwn ?? dl?.returnBy?.day ?? null
-  const complainBy = keepComplain && complainOwn ? complainOwn : dl?.complaintBy?.day ?? null
+
+  // A read receipt fills the store, the day and the receipt note (a printed warranty goes in the note); what the owner chose
+  // or typed is never overwritten (only a value an earlier receipt put there is replaced). The amount and the warranty's
+  // day are offered as chips, never filled: "Paid … — use it" writes the thing's price, a "(receipt)" chip sets a date.
+  const [rd, setRd] = useState<{ fill: ReceiptFill; read: ReceiptRead } | null>(null)
+  const [usePaid, setUsePaid] = useState(false)
+  const [useReceiptComplain, setUseReceiptComplain] = useState(false)
+  const last = useRef<{ store: string | null; day: string | null; other: string | null }>({ store: null, day: null, other: null })
+  const fromReceipt = useCallback((f: ReceiptFill, read: ReceiptRead) => {
+    setRd({ fill: f, read })
+    const wasStore = last.current.store
+    const nextStore = f.storeId ?? (f.storeName ? OTHER : null)
+    if (nextStore) {
+      setStorePick(p => (p === null || p === wasStore ? nextStore : p))
+      if (!f.storeId && f.storeName) { const wasOther = last.current.other; setOtherName(o => (o === null || o === '' || o === wasOther ? f.storeName : o)); last.current.other = f.storeName }
+      last.current.store = nextStore
+    }
+    if (f.day && f.day <= today) {
+      const wasDay = last.current.day
+      setDay(d => (d === boughtDay || d === wasDay ? f.day as string : d))
+      last.current.day = f.day
+    }
+    if (f.note) setNote(n => (n.includes(f.note) ? n : n.trim() ? `${n.trim()}\n${f.note}` : f.note))
+  }, [today, boughtDay])
+  // The line that is this thing, and what was paid for it: the line's price; with no lines the receipt's total.
+  const lineAt = rd?.read.items?.length ? matchLine(item.title, rd.fill.lines) : null
+  const paid = !rd ? null : lineAt !== null ? rd.read.items?.[lineAt]?.price ?? null : rd.read.items?.length ? null : rd.read.total ?? null
+  const paidCur = rd?.read.currency && RECEIPT_CURRENCIES.includes(rd.read.currency) ? rd.read.currency as ShopCurrency : null
+  const noLine = !!rd && !!rd.read.items?.length && lineAt === null
+  const receiptWarranty = rd?.fill.warrantyUntil ?? null
+  const complainBy = useReceiptComplain && rd?.fill.warrantyUntil ? rd.fill.warrantyUntil : keepComplain && complainOwn ? complainOwn : dl?.complaintBy?.day ?? null
 
   const gone = !bought
   const valid = !!day && day <= today && (!arrived || channel !== 'online' || arrived >= day) && note.length <= NOTE_MAX
@@ -85,6 +117,7 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
       extra_warranty_until: extra || null,
       receipt_note: note.trim() || null,
     }
+    if (usePaid && paid != null && paidCur) { patch.price = paid; patch.currency = paidCur }
     if (storePick !== null || otherName !== null) patch.platform = name
     if (day !== boughtDay) patch.bought_at = middayIso(day)
     save.mutate({ id: item.id, patch, done: returnBy ? `Purchase saved — return by ${formatDate(returnBy)}` : 'Purchase saved' }, { onSuccess: onClose })
@@ -100,6 +133,18 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
       }>
       {gone ? <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p> : (
         <div className="flex flex-col gap-3">
+          <ReceiptPhoto stores={stores} onFill={fromReceipt} pickLines={false} />
+          {rd && (
+            <div className="flex flex-col gap-1.5">
+              {paid != null && paidCur && (item.price !== paid || item.currency !== paidCur) && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <ChoiceChip on={usePaid} onClick={() => setUsePaid(v => !v)}>Paid {paid} {paidCur} — use it</ChoiceChip>
+                  <span className="text-meta text-fg-muted">{item.price != null ? `now ${item.price} ${item.currency ?? 'NOK'}` : 'no price saved yet'}; the NOK rate of the day is set when you save</span>
+                </div>
+              )}
+              {noLine && <p className="text-meta text-warn">No line on the receipt looks like “{item.title}” — check that it is the right receipt.</p>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1.5" role="radiogroup" aria-label="How it was bought">
               <ChoiceChip on={channel === 'online'} onClick={() => setChannel('online')}>Online</ChoiceChip>
@@ -147,19 +192,21 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
             <DateFact label="Complain by" day={complainBy} today={today}>
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Complaint years">
                 {([2, 5] as const).map(y => (
-                  <ChoiceChip key={y} on={!keepComplain && years === y} onClick={() => { setYears(y); setKeepComplain(false) }}>
+                  <ChoiceChip key={y} on={!keepComplain && !useReceiptComplain && years === y} onClick={() => { setYears(y); setKeepComplain(false); setUseReceiptComplain(false) }}>
                     {y} years{y === 5 ? ' — meant to last' : ''}{y === suggestedYears ? ' (suggested)' : ''}
                   </ChoiceChip>
                 ))}
-                {complainOwn && <ChoiceChip on={keepComplain} onClick={() => setKeepComplain(true)}>Keep {formatDate(complainOwn)}</ChoiceChip>}
+                {complainOwn && <ChoiceChip on={keepComplain && !useReceiptComplain} onClick={() => { setKeepComplain(true); setUseReceiptComplain(false) }}>Keep {formatDate(complainOwn)}</ChoiceChip>}
+                {receiptWarranty && <ChoiceChip on={useReceiptComplain} onClick={() => { setUseReceiptComplain(true); setKeepComplain(false) }}>{formatDate(receiptWarranty)} (receipt)</ChoiceChip>}
               </div>
-              {!keepComplain && <DeadlineWords deadline={dl?.complaintBy ?? null} />}
+              {!keepComplain && !useReceiptComplain && <DeadlineWords deadline={dl?.complaintBy ?? null} />}
             </DateFact>
           </div>
 
           <label className="flex flex-wrap items-center gap-2 text-meta font-medium text-fg-muted">
             Extra warranty until
             <DateInput value={extra} onChange={setExtra} min={day} aria-label="Extra warranty until" className="input input-sm w-[8.5rem] tabular-nums" />
+            {receiptWarranty && extra !== receiptWarranty && <ChoiceChip on={false} onClick={() => setExtra(receiptWarranty)}>{formatDate(receiptWarranty)} (receipt)</ChoiceChip>}
             <span className="font-normal">its price goes under Extra costs</span>
           </label>
           <div>

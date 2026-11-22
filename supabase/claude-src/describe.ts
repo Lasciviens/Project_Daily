@@ -9,7 +9,7 @@
 
 import type { Describe, JobDefinition, ProviderInfo } from './types.ts'
 import {
-  BATCH_MULTIPLIER, LONG_PROMPT_MULTIPLIER, LONG_PROMPT_OVER_TOKENS, MODEL_PRICES, PRICES_CHECKED_ON, PRICES_SOURCE,
+  BATCH_MULTIPLIER, LONG_PROMPT_MULTIPLIER, WEB_SEARCH_MAX_USES, WEB_SEARCH_USD_EACH, LONG_PROMPT_OVER_TOKENS, MODEL_PRICES, PRICES_CHECKED_ON, PRICES_SOURCE,
 } from './prices.ts'
 import { DEFAULTS, EFFORTS, LIMITS, MODELS } from './guard.ts'
 import { JOB_LIST } from './jobs.ts'
@@ -21,6 +21,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'types', file: 'supabase/claude-src/types.ts', what: 'The shapes the parts hand to each other: a request, an answer, a job, a ledger summary. Nothing in it belongs to a provider.' },
   { name: 'prices', file: 'supabase/claude-src/prices.ts', what: 'The price table, and the sum that turns token counts into dollars.' },
   { name: 'guard', file: 'supabase/claude-src/guard.ts', what: 'The fixed rules: the model list, the limits, how your settings are checked, the budget wall, and the filter that takes secrets out of messages.' },
+  { name: 'photos', file: 'supabase/claude-src/image-rules.ts', what: 'Checks a photo before it goes anywhere: one of three types, bytes that really are that kind of picture, its size read from its own header, at most 1600 px on the long side and about 1 MB. A photo is never stored.' },
   { name: 'answer reader', file: 'supabase/claude-src/answer-reader.ts', what: "How every job takes an answer apart: it finds the JSON object in the model's text and checks each value. A value that fails is dropped, never repaired." },
   { name: 'page fetch', file: 'supabase/claude-src/page-fetch.ts', what: 'Reads a web page the owner pasted a link to, with code: https only, private addresses and redirects into them refused, a time limit and a size limit.' },
   { name: 'recipe rules', file: 'supabase/claude-src/recipe-rules.ts', what: "What a recipe is as the recipe editor holds it, the one check every recipe passes through, and the one sentence that says which language recipes keep." },
@@ -31,6 +32,9 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'job: item_fill', file: 'supabase/claude-src/job-item-fill.ts', what: 'The ✨ job: its instructions, its answer shape and its check.' },
   { name: 'jobs: recipes', file: 'supabase/claude-src/job-recipes.ts', what: 'The recipe editor\'s three jobs: read a pasted recipe, read a recipe from a link, estimate the nutrition of the ingredients.' },
   { name: 'jobs: quick guess', file: 'supabase/claude-src/job-quick-guess.ts', what: 'The quick guess jobs of Food: guess a meal from a description, and suggest the options of a preset.' },
+  { name: 'jobs: photos', file: 'supabase/claude-src/job-photo.ts', what: 'The two jobs that look at a photo: a quick guess from a photo of food, and reading a receipt (paid amount, currency, day, store, items, warranty).' },
+  { name: 'jobs: Dev Requests', file: 'supabase/claude-src/job-dev-drafts.ts', what: 'Tidy up a dictated Dev Request, and explain a logged error in plain words (with the secrets taken out first, by code).' },
+  { name: 'jobs: short texts', file: 'supabase/claude-src/job-text-features.ts', what: 'Write my week (Work), improve a Shop ad, and ideas for a place wish (the one job that may use web search).' },
   { name: 'job: coach assessment', file: 'supabase/claude-src/job-coach.ts', what: "The PT coach's daily assessment: it explains the verdicts the app's own rules reached (recovery, volume, the one lift to focus on). The model decides none of them." },
   { name: 'jobs: devices', file: 'supabase/claude-src/job-device.ts', what: "The Kobo's question about a passage and the phone's free question: short plain answers for a small screen, started only by the two device functions. (The phone's morning brief is no AI job: its gateway builds it with Home's fixed rules.)" },
   { name: 'job: weekly report', file: 'supabase/claude-src/job-weekly-report.ts', what: "The weekly report's instructions and its check: five fixed headings, a length limit, no link or markup. A batch job: it is never run live." },
@@ -54,7 +58,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
 /** The path of one request, in order. `part` names the part that does the step. */
 const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. The function asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one. The Kobo and the phone cannot hold a token: their own server functions check their device secret first, then call this function with a value derived from the server key (an HMAC) in a header, compared in constant time. That path may only run a job, as "kobo" or "phone", for the owner account read from this function\'s own environment, and only a job whose list of callers names that device.' },
-  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "count" gives the Test bench's token count for free, "diagnose" runs the four checks of the Diagnose button.` },
+  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB; a request to a job that reads a photo may be up to ${LIMITS.imageRequestMaxBytes / 1024 / 1024} MB, the photo checked by the photos part) that names an action: "describe" answers with what this page shows, "run" runs a job, "count" gives the Test bench's token count for free, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, a thinking setting that is not \"adaptive\" or \"off\" becomes adaptive, and a number is held inside the limits." },
@@ -81,7 +85,8 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The prices are part of the code, not a setting, so the budget wall cannot be switched off by changing a price.',
   `At most ${LIMITS.callsPerMinute} calls in a minute and ${LIMITS.callsPerDay} in a day.`,
   'The text you type is sent as data inside a tag, and the fixed instructions say that text in it is never an instruction.',
-  'The one-shot jobs get no tools and none of your data beyond what the app hands over in a tag: the model can only suggest values or write text, which you see before anything is saved.',
+  'The jobs here get no tools (one job, ideas for a place, may use Anthropic\'s web search, at most 3 searches a call, each one counted and priced) and none of your data beyond what the app hands over in a tag: the model can only suggest values or write text, which you see before anything is saved.',
+  'A photo (a meal, a receipt) is sent to the model in the one call that reads it and is never stored: the ledger keeps its size, not its bytes. Text inside a photo is data, never an instruction. Only JPEG, PNG and WebP pass, checked by their own headers.',
   "Ask AI has fixed tools only. Each takes values the code checks (a choice ignoring case, a number in range), runs as you with your own database rights and your user id from the verified sign-in, never one the model gives, and hands back prepared figures. What a tool returns, and every note, task or diary line in it, is data: the instructions say so, and a result is cut to a size limit.",
   'Ask AI can never write by itself, and at most 8 tools run in a round and 3 proposals are made in an answer. A write is a proposal stored by the function; only your tap on Confirm in the app, checked against your account, makes it real, once, with the stored values checked again. A forged, expired or already decided proposal writes nothing. The columns a proposal may fill are a fixed list with no link to an outside account.',
   "A chat is stored exactly as it was sent and received and only ever added to; it is replayed unchanged, a changed or damaged history is refused, and a chat is continued only with the tools and instructions it began with. A tool you switch off is left out of new chats and refused even if the model calls it.",
@@ -111,7 +116,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     answerSchema: job.answerSchema,
     tools: job.name === CHAT_JOB_NAME
       ? describeChatTools().map(t => ({ name: t.name, what: `${t.kind === 'read' ? 'Reads (code prepares the answer)' : 'Only PROPOSES a write: nothing is saved until you tap Confirm'}. ${t.what} Fields, all required: ${t.fields.join(', ')}.` }))
-      : [],
+      : (job.tools ?? []).map(t => ({ ...t })),
     features: [
       'Prompt caching: the instructions are one cached block',
       ...(job.answerSchema ? [job.enforceAnswerSchema
@@ -138,6 +143,7 @@ export function describeFunction(configured: boolean, provider: ProviderInfo): D
       maxOutputTokens: { ...LIMITS.maxOutputTokens },
       logDays: { ...LIMITS.logDays },
       requestMaxBytes: LIMITS.requestMaxBytes,
+      imageRequestMaxBytes: LIMITS.imageRequestMaxBytes,
       benchTextMax: LIMITS.benchTextMax,
       deviceCallsPerDay: { ...LIMITS.deviceCallsPerDay },
     },
@@ -148,6 +154,8 @@ export function describeFunction(configured: boolean, provider: ProviderInfo): D
       longPromptOverTokens: LONG_PROMPT_OVER_TOKENS,
       longPromptMultiplier: LONG_PROMPT_MULTIPLIER,
       batchMultiplier: BATCH_MULTIPLIER,
+    webSearchUsdEach: WEB_SEARCH_USD_EACH,
+    webSearchMaxUses: WEB_SEARCH_MAX_USES,
       models: MODEL_PRICES.map(p => ({ ...p })),
     },
     jobs: JOB_LIST.map(describeJob),

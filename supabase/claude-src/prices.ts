@@ -33,6 +33,18 @@ export const PRICES_SOURCE = 'https://platform.claude.com/docs/en/about-claude/p
  */
 export const LONG_PROMPT_OVER_TOKENS = 100_000
 export const LONG_PROMPT_MULTIPLIER = 5
+/**
+ * Anthropic's web search tool: $10 per 1,000 searches, on top of the tokens (the results it reads are input tokens,
+ * billed as usual). Read from the pricing page 22.11.2026 (docs/integrations/anthropic.md).
+ */
+export const WEB_SEARCH_USD_EACH = 0.01
+/**
+ * What one search's results may add to the prompt, for the reservation: 25,000 tokens (the results of a search are
+ * several pages of text). Every later round of the server's search loop reads the whole prompt again, results included.
+ */
+export const WEB_SEARCH_RESULT_TOKENS = 25_000
+/** The most searches any single call may run, whatever a job asks for. */
+export const WEB_SEARCH_MAX_USES = 3
 /** A batch call (phase 3) costs half. */
 export const BATCH_MULTIPLIER = 0.5
 
@@ -59,16 +71,22 @@ export const PROMPT_OVERHEAD_TOKENS = 1000
  * whole limit, its thinking included. A prompt over the long-prompt line is priced as one. Only rare symbols that
  * cost several tokens each could push a real call over it; the ledger then records the real, higher cost.
  */
-export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, mode: CallMode = 'live'): number {
-  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS
+export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, mode: CallMode = 'live', extra: { imageTokens?: number; webSearches?: number } = {}): number {
+  const searches = extra.webSearches ?? 0
+  // A photo costs its own tokens (image-rules.ts). A search call is a loop on Anthropic's side: n searches are n + 1 rounds,
+  // each reading the prompt again with the results gathered so far, so the input is (n + 1) × the prompt plus
+  // n(n + 1) / 2 × the results of one search. All of it is counted at the dearest prompt price, and as one prompt for the
+  // long-prompt line (`costOf` multiplies when the sum passes it).
+  const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS + (extra.imageTokens ?? 0)
+  const readTokens = (searches + 1) * promptTokens + (searches * (searches + 1) / 2) * WEB_SEARCH_RESULT_TOKENS
   return costOf(
-    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
-    model, mode,
+    { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: readTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
+    model, mode, searches,
   ).costUsd
 }
 
 /** The cost of one call in USD (to a millionth of a dollar), and whether the long-prompt prices applied. */
-export function costOf(usage: TokenUsage, model: string, mode: CallMode): { costUsd: number; longPrompt: boolean } {
+export function costOf(usage: TokenUsage, model: string, mode: CallMode, webSearches = 0): { costUsd: number; longPrompt: boolean } {
   const price = priceOf(model)
   const promptTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWrite5mTokens + usage.cacheWrite1hTokens
   const longPrompt = price.longPromptPricing && promptTokens > LONG_PROMPT_OVER_TOKENS
@@ -81,5 +99,7 @@ export function costOf(usage: TokenUsage, model: string, mode: CallMode): { cost
     + usage.outputTokens * price.outputPerMTok
   ) / 1_000_000
   const multiplier = (longPrompt ? LONG_PROMPT_MULTIPLIER : 1) * (mode === 'batch' ? BATCH_MULTIPLIER : 1)
-  return { costUsd: Math.round(dollarsAtListPrice * multiplier * 1_000_000) / 1_000_000, longPrompt }
+  // A search is billed per search, whatever the model, and the long-prompt price does not apply to it.
+  const searchDollars = Math.max(0, Math.floor(webSearches)) * WEB_SEARCH_USD_EACH
+  return { costUsd: Math.round((dollarsAtListPrice * multiplier + searchDollars) * 1_000_000) / 1_000_000, longPrompt }
 }

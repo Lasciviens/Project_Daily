@@ -6,6 +6,7 @@ import type { ErrorLog } from '../hooks/useLogs'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 import { agoLabel } from './activityLogMeta'
 import { DETAIL_PANE_FROM } from '../developerBoards'
+import { ExplainButton } from './ExplainError'
 
 // Rows and the detail pane of the error log (ErrorLogTab): a row opens its
 // context in place on phones and tablets, and picks the error for the pane
@@ -48,6 +49,7 @@ function InlineRow({ log, open, onToggle }: { log: ErrorLog; open: boolean; onTo
           <p className="mt-0.5 text-meta tabular-nums text-fg-muted">{fmtDate(log.created_at)}</p>
         </div>
         <div className="flex shrink-0 items-center">
+          <ExplainButton log={log} />
           <IconButton label="Copy message" onClick={() => copyText(log.message)}><Copy /></IconButton>
           {hasContext(log) && (
             <IconButton label={open ? 'Hide context' : 'Show context'} aria-expanded={open} onClick={onToggle}>
@@ -107,6 +109,7 @@ export function ErrorDetail({ log }: { log: ErrorLog }) {
           <p className="break-words text-body font-medium text-fg">{log.message}</p>
           <p className="mt-0.5 text-meta tabular-nums text-fg-muted">{fmtDate(log.created_at)} · {agoLabel(log.created_at)}</p>
         </div>
+        <ExplainButton log={log} />
         <IconButton label="Copy message" onClick={() => copyText(log.message)}><Copy /></IconButton>
       </div>
       <div className="border-t border-line pt-3">
