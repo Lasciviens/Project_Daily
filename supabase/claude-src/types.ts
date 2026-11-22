@@ -163,6 +163,84 @@ export interface Provider {
   batchStatus(batchId: string, timeoutMs: number): Promise<BatchStatus | ModelFailure>
   /** Reads the results of an ended batch, in whatever order they come. Free. */
   batchResults(batchId: string, timeoutMs: number): Promise<BatchResults | ModelFailure>
+  /** One round of a chat, streamed: `onDelta` gets our own small events while the answer arrives (see ChatRequest). */
+  chatRound(request: ChatRequest, onDelta: (delta: ChatDelta) => void): Promise<ChatAnswer | ModelFailure>
+  /** Counts the prompt tokens of a chat request exactly as `chatRound` would send it. Free. */
+  countChat(request: ChatRequest): Promise<TokenCount | ModelFailure>
+}
+
+// ── Ask AI (chat) ────────────────────────────────────────────────────────────
+
+/**
+ * One block of a message, exactly as the provider part produced it (the model's own blocks: text, thinking with its
+ * signature, tool calls) or as this code built it (the owner's text, a live-context line, a tool result). Other parts
+ * read only `type`, `text`, `id`, `name` and `input` and never change a block they did not make: a chat is replayed
+ * byte for byte.
+ */
+export type Block = Record<string, unknown>
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: Block[]
+}
+
+/** A tool the model may call. The schema lists every field as required (no optional parameters, ever). */
+export interface ChatTool {
+  name: string
+  description: string
+  properties: Record<string, JsonSchema>
+}
+
+export interface ChatRequest {
+  model: string
+  maxOutputTokens: number
+  effort: Effort
+  thinking: 'adaptive' | 'off'
+  /** The fixed instructions of the chat (the same bytes for its whole life). */
+  system: string
+  /** The owner's own instructions (a second, cached block; '' leaves it out). */
+  ownerInstructions: string
+  /** The chat's frozen tool list, in a fixed order. */
+  tools: ChatTool[]
+  /** true: the model may not call a tool this round (the round that must answer). */
+  noTools: boolean
+  messages: ChatMessage[]
+  /** The provider's id of the previous answer of this chat, for the cache diagnostics (null: the first). */
+  previousMessageId: string | null
+  /** When the provider clears old tool results from a long prompt (tokens). */
+  contextEditing: { triggerTokens: number; keepToolUses: number; clearAtLeastTokens: number }
+  timeoutMs: number
+  /** Stops the request when the app goes away. */
+  signal?: AbortSignal
+}
+
+/** What the provider tells the chat while an answer arrives. Only these two, never a raw provider event. */
+export type ChatDelta = { kind: 'text'; text: string } | { kind: 'tool'; name: string }
+
+/** Why the provider's prompt cache could not be reused (a short word and the tokens that missed), or null. */
+export interface CacheMiss {
+  reason: string
+  tokens: number | null
+}
+
+export interface ChatAnswer {
+  ok: true
+  /** The blocks of the answer, exactly as received. */
+  content: Block[]
+  ending: AnswerEnding | 'tool_calls'
+  stopReason: string
+  refusal: string
+  usage: TokenUsage
+  requestId: string | null
+  /** The provider's id of this answer. */
+  messageId: string | null
+  servedModel: string | null
+  /** The thinking summary, '' when there was none. */
+  thinking: string
+  cacheMiss: CacheMiss | null
+  /** What context editing cleared from the prompt, when it did. */
+  cleared: { toolUses: number; tokens: number } | null
+  sent: SentRequest | null
 }
 
 /** What the "How it works" page says about the provider. */
@@ -237,7 +315,8 @@ export interface JobDefinition {
   title: string
   /** What it does for the owner, in a sentence. */
   what: string
-  kind: 'one_shot'
+  /** `one_shot`: one request, one answer. `conversation`: Ask AI (chat-loop.ts): a stored chat with tools, started from the chat action. */
+  kind: 'one_shot' | 'conversation'
   /** `live` (the default) answers now; `batch` is queued at half price and read back later (batch.ts). */
   mode?: CallMode
   callers: readonly Caller[]
@@ -375,7 +454,7 @@ export interface Describe {
     name: string
     title: string
     what: string
-    kind: 'one_shot'
+    kind: 'one_shot' | 'conversation'
     mode: CallMode
     callers: string[]
     version: string

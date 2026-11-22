@@ -43,7 +43,7 @@ const PARTS = [
   'types.ts', 'prices.ts', 'guard.ts', 'answer-reader.ts', 'page-fetch.ts', 'recipe-rules.ts', 'recipe-page.ts',
   'provider-anthropic.ts', 'ledger.ts',
   RULES,
-  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'run.ts', 'batch.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
+  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'chat-rules.ts', 'chat-tools.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'run.ts', 'batch.ts', 'chat-store.ts', 'chat-loop.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
 ]
 
 function stop(message) {

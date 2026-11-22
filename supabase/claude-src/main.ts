@@ -10,6 +10,9 @@
 //    { "action": "diagnose" }                       → diagnose.ts
 //    { "action": "report_make" }                    → batch.ts (the weekly report: queue the batch)
 //    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
+//    { "action": "chat", "conversation_id", "text", "stream" } → chat-loop.ts (Ask AI: one answer; `stream: true` answers as
+//                                                       server-sent events with our own small events only, else one JSON)
+//    { "action": "chat_confirm", "proposal_id", "decision" }   → chat-loop.ts (the owner's tap on a proposed write)
 //  Two kinds of caller, told apart before anything is read:
 //    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
 //    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
@@ -35,6 +38,7 @@ import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPl
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose } from './diagnose.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
+import { decideChatProposal, runChat, type ChatEvent } from './chat-loop.ts'
 import type { DnsLookup } from './types.ts'
 
 // <supabase-keys>
@@ -191,7 +195,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make" or "report_check"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'chat' && action !== 'chat_confirm') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "chat" or "chat_confirm"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
@@ -216,6 +220,33 @@ Deno.serve(async (req) => {
       now: () => new Date(),
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),
+    }
+    if (action === 'chat_confirm') return reply(200, await decideChatProposal(context, body))
+    if (action === 'chat') {
+      if (ownValue(body, 'stream') !== true) {
+        const result = await runChat(context, body, () => {})
+        return reply(200, { ok: result.event === 'done', ...result })
+      }
+      // Server-sent events: only our own small events, one `event:` / `data:` pair each. The app going away aborts the answer.
+      const encoder = new TextEncoder()
+      const abort = new AbortController()
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const send = (event: ChatEvent) => {
+            try { controller.enqueue(encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event)}\n\n`)) } catch { /* the app went away */ }
+          }
+          try {
+            await runChat(context, body, send, abort.signal)
+          } catch (error) {
+            console.error(`[claude] chat failed: ${errorPlace(error)}`)
+            send({ event: 'error', reason: 'error', message: 'The chat failed unexpectedly. Try again in a moment.' })
+          } finally {
+            try { controller.close() } catch { /* already closed */ }
+          }
+        },
+        cancel() { abort.abort() },
+      })
+      return new Response(stream, { status: 200, headers: { ...headers, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } })
     }
     if (action === 'report_make') return reply(200, await makeWeeklyReport(context))
     if (action === 'report_check') return reply(200, await checkReports(context))
