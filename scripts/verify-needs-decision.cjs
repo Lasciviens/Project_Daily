@@ -6,6 +6,30 @@
  * the answers (pick a day, Someday) and what Undo writes back.
  * Run: node scripts/verify-needs-decision.cjs */
 require('sucrase/register')
+// tasksApi imports the live Supabase client: a stand-in whose `tasks` table has no `labels` column (a database before migration 180).
+const Module = require('module')
+const seen = []
+const fakeSupabase = {
+  from() {
+    let row = null
+    const q = new Proxy({}, {
+      get(_, k) {
+        if (k === 'update') return r => { row = r; seen.push(r); return q }
+        if (k === 'single') return () => Promise.resolve('labels' in row
+          ? { data: null, error: { code: '42703', message: 'column "labels" of relation "tasks" does not exist' } }
+          : { data: { id: 'x', ...row }, error: null })
+        return () => q
+      },
+    })
+    return q
+  },
+}
+const origLoad = Module._load
+Module._load = function (request) {
+  if (/integrations\/supabase\/client$/.test(request)) return { supabase: fakeSupabase }
+  return origLoad.apply(this, arguments)
+}
+const { updateTask, NEEDS_180_LABELS } = require('../src/features/todo/api/tasksApi')
 const { needsDecision, pickDayPatch, somedayPatch, reversePatch, isSomeday } = require('../src/features/todo/needsDecision')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -56,11 +80,26 @@ check('pick today → today section', pickDayPatch(TODAY, TODAY).section === 'to
 const lab = task({ labels: ['Errands'] })
 check('Someday keeps the other labels', JSON.stringify(somedayPatch(lab).labels) === JSON.stringify(['Errands', 'Someday']))
 check('Someday twice is once', somedayPatch(task({ labels: ['someday'] })).labels.length === 1)
+check('Someday also clears the date and files it in Backlog', somedayPatch(lab).due_date === null && somedayPatch(lab).section === 'backlog')
+const parked = needsDecision([{ ...task({ due_date: '2026-10-01', section: 'today' }), ...somedayPatch(lab) }], TODAY)
+check('a task parked with Someday is no longer listed', parked.length === 0)
 check('isSomeday', isSomeday({ labels: ['Someday'] }) && !isSomeday({ labels: [] }) && !isSomeday({}))
 const dated = task({ due_date: '2026-11-01', section: 'backlog' })
 check('Undo of a pick restores date and section', JSON.stringify(reversePatch(dated, pickDayPatch('2026-11-25', TODAY))) === JSON.stringify({ due_date: '2026-11-01', section: 'backlog' }))
 check('Undo of a pick on an undated task clears the date', reversePatch(b, pickDayPatch('2026-11-25', TODAY)).due_date === null)
-check('Undo of Someday restores the labels', JSON.stringify(reversePatch(lab, somedayPatch(lab)).labels) === JSON.stringify(['Errands']))
+const late = task({ due_date: '2026-10-01', section: 'today', labels: ['Errands'] })
+const back = reversePatch(late, somedayPatch(late))
+check('Undo of Someday restores labels, date and section', JSON.stringify(back.labels) === JSON.stringify(['Errands']) && back.due_date === '2026-10-01' && back.section === 'today', JSON.stringify(back))
 
-console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+console.log('Someday on a database before migration 180')
+const cleanRun = async () => {
+  seen.length = 0
+  let err = null
+  try { await updateTask('x', { labels: ['Someday'], due_date: null, section: 'backlog' }) } catch (e) { err = e }
+  check('a labels write is refused by name, never saved without the label', err && err.message === NEEDS_180_LABELS, err && err.message)
+  check('and nothing but that one failed write was sent', seen.length === 1)
+  const ok = await updateTask('x', { due_date: '2026-11-25' })
+  check('a write without labels still goes through', ok && ok.due_date === '2026-11-25')
+}
+cleanRun().then(() => { console.log(`\n${passed} passed, ${failed} failed`)
+process.exit(failed ? 1 : 0) })

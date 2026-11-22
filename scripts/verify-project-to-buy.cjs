@@ -5,7 +5,7 @@
  * are skipped by the shared batch rule (shop/quickBatch).
  * Run: node scripts/verify-project-to-buy.cjs */
 require('sucrase/register')
-const { toBuyRows, toShopInput, safeWebUrl } = require('../src/features/projects/toBuy')
+const { toBuyRows, toShopInput, safeWebUrl, sentChoice, sentData } = require('../src/features/projects/toBuy')
 const { splitNew, foldedTitles } = require('../src/features/shop/quickBatch')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -40,9 +40,17 @@ r = toBuyRows(parts, [row({ part: 'Cell', state: 'To buy', link: 'https://exampl
 check('row link carried, bad link dropped', r[0].url === 'https://example.com/cell' && r[1].url === null)
 
 console.log('the shop row')
-let s = toShopInput({ entryId: 'e', title: 'Load cell', quantity: 2, url: null }, 'Kitchen scale')
+let s = toShopInput({ entryId: 'e', title: 'Load cell', quantity: 2, url: null, data: {} }, 'Kitchen scale')
 check('notes name the amount and the project', s.notes === '×2 · for Kitchen scale' && s.title === 'Load cell' && s.list === 'quick', JSON.stringify(s))
-check('no amount → just the project', toShopInput({ entryId: 'e', title: 'Screws', quantity: null, url: null }, 'Kitchen scale').notes === 'for Kitchen scale')
+check('no amount → just the project', toShopInput({ entryId: 'e', title: 'Screws', quantity: null, url: null, data: {} }, 'Kitchen scale').notes === 'for Kitchen scale')
+
+console.log('sent rows become Ordered')
+const sc = sentChoice(parts)
+check('the table has Ordered → key and both choices', sc && sc.key === 'state' && sc.from === 'To buy' && sc.to === 'Ordered', JSON.stringify(sc))
+check('no Ordered choice → rows stay', sentChoice(block([col('a', 'Item', 'text'), col('s', 'Status', 'status', ['To buy', 'Bought'])])) === null)
+const first = toBuyRows(parts, rows)[0]
+check('sent data has the new choice and keeps the rest', sentData(first, sc).state === 'Ordered' && sentData(first, sc).part === 'Load cell' && first.data.state === 'To buy')
+check('after sending, nothing is left to send', toBuyRows(parts, rows.map(x => ({ ...x, data: x.data.state === 'To buy' ? sentData(x, sc) : x.data }))).length === 0)
 
 console.log('duplicates')
 const inputs = toBuyRows(parts, rows).map(x => toShopInput(x, 'Kitchen scale'))

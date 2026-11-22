@@ -28,6 +28,7 @@ const GROUP_META: Record<TaskGroup, { title: string; tone: Tone }> = {
 
 /** What a column card says when all of its groups are empty. */
 const EMPTY_TEXT: Record<TaskSection, string> = {
+  decide: '',
   all: '',
   now: 'Nothing overdue or due today.',
   upcoming: 'Nothing upcoming.',
@@ -99,13 +100,9 @@ export function TasksPanel() {
       </Card>
     )
   }
-  const sections = Object.fromEntries(TASK_SECTIONS.map(k => [k, card(k)])) as Record<TaskSection, ReactNode>
+  const sections = Object.fromEntries(TASK_SECTIONS.map(k => [k, k === 'decide' ? null : card(k)])) as Record<TaskSection, ReactNode>
+  sections.decide = decisions.length > 0 ? <NeedsDecisionCard rows={decisions} /> : null
   sections.all = card('all', 'flex max-w-2xl flex-col gap-3 stagger-in')
 
-  return (
-    <div className="flex flex-col gap-3 sm:gap-4">
-      {decisions.length > 0 && <NeedsDecisionCard rows={decisions} />}
-      <PageBoard sections={sections} layout={TASKS_BOARD} />
-    </div>
-  )
+  return <PageBoard sections={sections} layout={TASKS_BOARD} />
 }

@@ -10,7 +10,7 @@ import { PAGES_NOTE } from './statsFormat'
 import { finishBy, finishByText } from '../../finishBy'
 
 /** Books in hand: how far, how long, how fast, and about how long is left. */
-export function CurrentlyReadingCard({ books, events, today }: { books: readonly Book[]; events: readonly ReadingEvent[]; today: string }) {
+export function CurrentlyReadingCard({ books, events, today, lastSeenDay }: { books: readonly Book[]; events: readonly ReadingEvent[]; today: string; lastSeenDay: string | null }) {
   const rows = useMemo(() => currentlyReading(books, events, today), [books, events, today])
   const byId = useMemo(() => new Map(books.map(b => [b.id, b])), [books])
   return (
@@ -23,7 +23,7 @@ export function CurrentlyReadingCard({ books, events, today }: { books: readonly
       ) : (
         <div className="@container">
           <ul className="grid grid-cols-1 gap-2 @[46rem]:grid-cols-2">
-            {rows.map(r => { const b = byId.get(r.bookId); return b ? <CurrentRow key={r.bookId} row={r} book={b} today={today} events={events} /> : null })}
+            {rows.map(r => { const b = byId.get(r.bookId); return b ? <CurrentRow key={r.bookId} row={r} book={b} today={today} events={events} lastSeenDay={lastSeenDay} /> : null })}
           </ul>
           <p className="mt-3 text-micro text-fg-muted">{PAGES_NOTE} Time left is an estimate from your pace on this book so far.</p>
         </div>
@@ -32,9 +32,9 @@ export function CurrentlyReadingCard({ books, events, today }: { books: readonly
   )
 }
 
-function CurrentRow({ row: r, book: b, today, events }: { row: CurrentBook; book: Book; today: string; events: readonly ReadingEvent[] }) {
+function CurrentRow({ row: r, book: b, today, events, lastSeenDay }: { row: CurrentBook; book: Book; today: string; events: readonly ReadingEvent[]; lastSeenDay: string | null }) {
   const modal = useEntityModal()
-  const finish = useMemo(() => finishBy(b, events.filter(e => e.book_id === b.id), today), [b, events, today])
+  const finish = useMemo(() => finishBy(b, events.filter(e => e.book_id === b.id), today, lastSeenDay), [b, events, today, lastSeenDay])
   const pct = r.progressPct
   const facts = [
     r.seconds > 0 ? `${formatDuration(r.seconds)} read` : null,

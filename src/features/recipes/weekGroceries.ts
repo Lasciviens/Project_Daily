@@ -1,5 +1,5 @@
 import { fold } from '../shop/shopModel'
-import type { MealPlanEntry, RecipeWithIngredients } from './types'
+import type { FoodLogEntry, MealPlanEntry, RecipeWithIngredients } from './types'
 
 // The week's groceries: the ingredients of every planned meal of a week, added
 // up by ingredient and unit. Pure, so scripts/verify-week-groceries.cjs checks
@@ -37,6 +37,28 @@ export function unitKey(unit: string | null | undefined): string | null {
   const u = (unit ?? '').trim().toLowerCase()
   if (!u) return null
   return UNIT_ALIASES[u] ?? u
+}
+
+type EatenSource = Pick<FoodLogEntry, 'date' | 'recipe_id' | 'library_ingredient_id'>
+
+/**
+ * The planned meals still to shop for: from `today` on, and not already eaten.
+ * A diary row of the same recipe or food on the same day counts one planned
+ * meal as eaten (a meal eaten without ticking its plan off), each row once.
+ */
+export function stillToShopFor<T extends PlanSource & { date: string }>(plan: readonly T[], eaten: readonly EatenSource[], today: string): T[] {
+  const left = new Map<string, number>()
+  for (const e of eaten) {
+    const what = e.recipe_id ?? e.library_ingredient_id
+    if (what) left.set(`${e.date}|${what}`, (left.get(`${e.date}|${what}`) ?? 0) + 1)
+  }
+  return plan.filter(p => {
+    if (p.date < today) return false
+    const what = p.recipe_id ?? p.ingredient?.id
+    const key = `${p.date}|${what}`
+    if (what && (left.get(key) ?? 0) > 0) { left.set(key, left.get(key)! - 1); return false }
+    return true
+  })
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100

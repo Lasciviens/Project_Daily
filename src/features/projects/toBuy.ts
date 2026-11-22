@@ -11,7 +11,7 @@ import type { ProjectBlock, ProjectEntry, TableSettings } from './types'
 
 export const TO_BUY = 'to buy'
 
-export interface ToBuyRow { entryId: string; title: string; quantity: number | null; url: string | null }
+export interface ToBuyRow { entryId: string; title: string; quantity: number | null; url: string | null; data: Record<string, unknown> }
 
 /** The table's "To buy" choice, if it has a choice column with one. */
 function toBuyOption(settings: TableSettings): { key: string; option: string } | null {
@@ -52,6 +52,7 @@ export function toBuyRows(block: Pick<ProjectBlock, 'kind' | 'settings'>, rows: 
         title: rowTitle(settings, r.data).slice(0, 200),
         quantity: typeof q === 'number' && Number.isFinite(q) && q > 0 ? q : null,
         url: linkKey ? safeWebUrl(r.data[linkKey]) : null,
+        data: r.data,
       }
     })
     .filter(r => r.title !== 'Untitled')
@@ -66,4 +67,22 @@ export function toShopInput(row: ToBuyRow, projectName: string): CreateShopItemI
     list: 'quick',
     source_type: 'manual',
   }
+}
+
+/**
+ * Sent rows move from "To buy" to "Ordered" (so a second tap finds nothing to
+ * send): the choice column's key and both choices as the table spells them;
+ * null when the table has no "Ordered" choice — its rows then stay as they are.
+ */
+export function sentChoice(block: Pick<ProjectBlock, 'settings'>): { key: string; from: string; to: string } | null {
+  const settings = tableSettings(block.settings)
+  const want = toBuyOption(settings)
+  const col = statusColumn(settings)
+  const to = col?.options?.find(o => o.trim().toLowerCase() === 'ordered')
+  return want && to ? { key: want.key, from: want.option, to } : null
+}
+
+/** A row's data after it is sent. */
+export function sentData(row: Pick<ToBuyRow, 'data'>, c: { key: string; to: string }): Record<string, unknown> {
+  return { ...row.data, [c.key]: c.to }
 }

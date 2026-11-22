@@ -25,27 +25,31 @@ export type FinishBy =
  * `events`: this book's page events (any span — the window is cut here).
  * `none` / `no-progress`: under 5 % read or 20 minutes spent, so the time left
  * can't be told yet; `no-pace`: fewer than 3 reading days in the last 14.
+ * `lastSeenDay`: the local day of the Kobo's last sync. A day after it is
+ * unknown, never zero (docs/features/books.md), so the window ends there and
+ * the days left are counted from there; a date before today is today.
  */
-export function finishBy(book: BookFacts, events: readonly ReadingEvent[], today: string): FinishBy {
+export function finishBy(book: BookFacts, events: readonly ReadingEvent[], today: string, lastSeenDay: string | null = null): FinishBy {
   const total = events.reduce((t, e) => t + e.duration_seconds, 0)
   const left = estimateFinishSeconds(book.progress_pct, Math.max(book.read_seconds ?? 0, total))
   if (left == null) return { kind: 'none', why: 'no-progress' }
 
-  const from = addDays(today, -(PACE_WINDOW_DAYS - 1))
+  const end = lastSeenDay && lastSeenDay < today ? lastSeenDay : today
+  const from = addDays(end, -(PACE_WINDOW_DAYS - 1))
   const perDay = new Map<string, number>()
   for (const e of events) {
     const d = localDay(new Date(e.started_at))
-    if (d >= from && d <= today) perDay.set(d, (perDay.get(d) ?? 0) + e.duration_seconds)
+    if (d >= from && d <= end) perDay.set(d, (perDay.get(d) ?? 0) + e.duration_seconds)
   }
   if (perDay.size < MIN_PACE_DAYS) return { kind: 'none', why: 'no-pace' }
   const first = [...perDay.keys()].sort()[0]
-  const span = Math.min(PACE_WINDOW_DAYS, daysBetween(first, today) + 1)
+  const span = Math.min(PACE_WINDOW_DAYS, daysBetween(first, end) + 1)
   const seconds = [...perDay.values()].reduce((t, s) => t + s, 0)
   const rate = seconds / span
   if (rate <= 0) return { kind: 'none', why: 'no-pace' }
   const days = Math.max(1, Math.ceil(left / rate))
   const minutesPerDay = Math.max(1, Math.round(rate / 60))
-  return days > FAR_DAYS ? { kind: 'far', minutesPerDay } : { kind: 'date', day: addDays(today, days), days, minutesPerDay }
+  return days > FAR_DAYS ? { kind: 'far', minutesPerDay } : { kind: 'date', day: addDays(end, days) < today ? today : addDays(end, days), days, minutesPerDay }
 }
 
 /** The words for a result: "Finish around 03.12.2026 · 25 min/day", or why there is no date. */

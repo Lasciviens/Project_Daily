@@ -59,9 +59,13 @@ export function pickDayPatch(day: string, today: string): UpdateTaskInput {
   return { due_date: day, section: sectionForDay(day, today) }
 }
 
-/** Someday: the label added (never twice, never past the label limits). */
+/**
+ * Someday: the label added (never twice, never past the label limits) and the
+ * date taken off, filed in Backlog — it is a decision that it is not for any
+ * day, so it must not keep nagging as late or undated (Undo writes all three back).
+ */
 export function somedayPatch(task: Pick<Task, 'labels'>): UpdateTaskInput {
-  return { labels: cleanLabels([...labelsOf(task), SOMEDAY_LABEL]) }
+  return { labels: cleanLabels([...labelsOf(task), SOMEDAY_LABEL]), due_date: null, section: 'backlog' }
 }
 
 /** What an Undo writes back for a patch: the fields it touched, as they were. */

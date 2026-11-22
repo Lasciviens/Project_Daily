@@ -4,7 +4,7 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { needsDecision, pickDayPatch, reversePatch, somedayPatch, SOMEDAY_LABEL } from '../needsDecision'
 import { useTaskActions } from './useTaskActions'
-import { useAllTasks, useUpdateTask } from './useTodos'
+import { useUpdateTask } from './useTodos'
 import type { Task, UpdateTaskInput } from '../types'
 
 /** The tasks that need a decision, from the Tasks tab's own read (the list only adds rows). */
@@ -32,5 +32,3 @@ export function useDecisionActions() {
     busy: update.isPending || back.isPending || actions.busy,
   }
 }
-
-export { useAllTasks }

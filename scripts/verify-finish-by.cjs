@@ -46,5 +46,18 @@ r = finishBy({ progress_pct: 6, read_seconds: 1300 }, [ev('2026-11-20', 30), ev(
 check('over a year → no date printed', r.kind === 'far', JSON.stringify(r))
 check('far words', finishByText(r).startsWith('Over a year'))
 
+console.log('days after the last sync are unknown, never zero')
+// Last sync on the 18th; today the 22nd. Reading on 16th, 17th, 18th, 1 h each: the window ends on the 18th,
+// span 3 days (16–18) → 3 600 s/day → 7 days left counted from the 18th = the 25th.
+r = finishBy(book, [ev('2026-11-16', 3600), ev('2026-11-17', 3600), ev('2026-11-18', 3600)], TODAY, '2026-11-18')
+check('window ends at the last sync, days counted from there', r.kind === 'date' && r.day === '2026-11-25' && r.days === 7, JSON.stringify(r))
+r = finishBy(book, [ev('2026-11-16', 3600), ev('2026-11-17', 3600), ev('2026-11-18', 3600)], TODAY, null)
+check('without it the 4 unreported days would count as zero (pace 3 h / 7 days)', r.kind === 'date' && r.days === 17, JSON.stringify(r))
+r = finishBy(book, [ev('2026-11-16', 3600), ev('2026-11-17', 3600), ev('2026-11-18', 3600)], TODAY, '2026-11-22')
+check('a sync today changes nothing', r.kind === 'date' && r.day !== '2026-11-25')
+r = finishBy(book, [ev('2026-11-10', 3600), ev('2026-11-11', 3600), ev('2026-11-12', 3600)], TODAY, '2026-11-12')
+check('a finish date already past is today', r.kind === 'date' && r.day === TODAY, JSON.stringify(r))
+check('reading after the last-sync day is not counted', finishBy(book, [ev('2026-11-16', 3600), ev('2026-11-17', 3600), ev('2026-11-20', 3600)], TODAY, '2026-11-18').why === 'no-pace')
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

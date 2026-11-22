@@ -7,11 +7,12 @@ import { DateInput } from '../../../shared/components/DateInput'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
 import { StarRating } from '../../media/components/StarRating'
 import { READ_STATUS_LABEL, READ_STATUSES } from '../bookTones'
+import { useKoboFeedState } from '../hooks/useBooks'
 import { statusPatch, useBookEvents, useDeleteBook, useLibrary, useUpdateBook } from '../hooks/useLibrary'
 import { canonical, cleanTags, knownValues } from '../libraryFacets'
 import { SuggestInput, TagInput } from './SuggestInput'
 import { useAiNotes, useDeleteAiNote } from '../hooks/useKoboControl'
-import { formatDuration, sessions } from '../readingAggregate'
+import { formatDuration, localDay, sessions } from '../readingAggregate'
 import { finishBy, finishByShort } from '../finishBy'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Book, BookPatch, ReadStatus } from '../types'
@@ -48,9 +49,12 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
   const events = useBookEvents(book.id)
   const recent = useMemo(() => sessions(events.data ?? []).slice(-8).reverse(), [events.data])
   const total = useMemo(() => (events.data ?? []).reduce((t, e) => t + e.duration_seconds, 0), [events.data])
+  const sync = useKoboFeedState()
+  const seenAt = sync.data?.last_seen_at ?? null
   const finish = useMemo(
-    () => (book.read_status === 'reading' && book.kind !== 'news' && events.data ? finishByShort(finishBy(book, events.data, todayStr())) : null),
-    [book, events.data],
+    () => (book.read_status === 'reading' && book.kind !== 'news' && events.data
+      ? finishByShort(finishBy(book, events.data, todayStr(), seenAt ? localDay(new Date(seenAt)) : null)) : null),
+    [book, events.data, seenAt],
   )
   const set = (p: Partial<Draft>) => setD(x => ({ ...x, ...p }))
   const problem = detailsProblem(d)

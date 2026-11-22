@@ -5,7 +5,7 @@
  * adding nothing; what is already on the list left out; no title twice.
  * Run: node scripts/verify-week-groceries.cjs */
 require('sucrase/register')
-const { weekGroceries, unitKey, quantityText, noteOf } = require('../src/features/recipes/weekGroceries')
+const { stillToShopFor, weekGroceries, unitKey, quantityText, noteOf } = require('../src/features/recipes/weekGroceries')
 const { splitNew, foldedTitles } = require('../src/features/shop/quickBatch')
 const { batchWords } = require('../src/features/shop/quickBatchWords')
 let passed = 0, failed = 0
@@ -59,6 +59,21 @@ l = weekGroceries([meal('gone', 1)], recipes)
 check('a recipe that is not loaded adds nothing', l.length === 0)
 check('empty plan → empty', weekGroceries([], recipes).length === 0)
 check('note reads "300g · for Pasta, Soup"', noteOf(weekGroceries([meal('r1', 2), meal('r2', 4)], recipes).find(x => x.name === 'Pasta')) === '300g · for Pasta, Soup')
+
+console.log('only what is still to cook')
+const pm = (date, recipe_id, extra = {}) => ({ date, ...meal(recipe_id, 1), ...extra })
+const TODAY = '2026-11-22'
+let rest = stillToShopFor([pm('2026-11-21', 'r1'), pm('2026-11-22', 'r1'), pm('2026-11-23', 'r2')], [], TODAY)
+check('days before today are skipped', rest.length === 2 && rest[0].date === '2026-11-22')
+rest = stillToShopFor([pm('2026-11-22', 'r1'), pm('2026-11-23', 'r2')], [{ date: '2026-11-22', recipe_id: 'r1', library_ingredient_id: null }], TODAY)
+check('a meal logged as eaten that day is skipped', rest.length === 1 && rest[0].recipe_id === 'r2')
+rest = stillToShopFor([pm('2026-11-22', 'r1'), pm('2026-11-22', 'r1')], [{ date: '2026-11-22', recipe_id: 'r1', library_ingredient_id: null }], TODAY)
+check('one eaten row covers one planned meal only', rest.length === 1)
+rest = stillToShopFor([pm('2026-11-23', 'r1')], [{ date: '2026-11-22', recipe_id: 'r1', library_ingredient_id: null }], TODAY)
+check('eaten on another day changes nothing', rest.length === 1)
+rest = stillToShopFor([{ date: '2026-11-22', recipe_id: null, servings: 1, ingredient_quantity: 100, ingredient_unit: 'g', ingredient: { id: 'f1', name: 'Rice' }, recipe: null }], [{ date: '2026-11-22', recipe_id: null, library_ingredient_id: 'f1' }], TODAY)
+check('a planned food eaten that day is skipped', rest.length === 0)
+check('one-off lines are kept (nothing to match)', stillToShopFor([pm('2026-11-22', null)], [], TODAY).length === 1)
 
 console.log('quick list batch')
 const wanted = [{ title: 'Milk' }, { title: 'Kjøttdeig' }, { title: 'milk' }, { title: 'Eggs' }, { title: '  ' }]

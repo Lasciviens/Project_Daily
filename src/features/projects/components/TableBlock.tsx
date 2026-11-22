@@ -62,8 +62,8 @@ export function TableBlockBody({ block, rows, onAdd }: { block: ProjectBlock; ro
 
       {toBuy.length > 0 && (
         <div>
-          <Button size="sm" icon={<ShoppingBag />} loading={shop.isPending} onClick={() => shop.send(toBuy, projectName)}>
-            Send {toBuy.length} to buy to Shop
+          <Button size="sm" icon={<ShoppingBag />} loading={shop.isPending} onClick={() => shop.send(block, toBuy, projectName)}>
+            Send {toBuy.length} to Shop
           </Button>
         </div>
       )}

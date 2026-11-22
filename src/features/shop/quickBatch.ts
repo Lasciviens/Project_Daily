@@ -1,7 +1,7 @@
 import { fold } from './shopModel'
 
 // Adding several things to the quick list at once (the week's groceries, a
-// project's "To buy" rows): pure, so scripts/verify-quick-batch.cjs checks it.
+// project's "To buy" rows): pure, so scripts/verify-week-groceries.cjs checks it.
 // A thing already on the list is never added twice — compared by its folded
 // title, the way the rest of Shop compares titles.
 

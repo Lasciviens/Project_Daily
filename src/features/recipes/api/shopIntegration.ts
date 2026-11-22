@@ -1,15 +1,17 @@
-// Recipes → Shop bridge: pushes ingredients you don't already have onto the
-// Shop's quick list (the errand list — migration 134), still filed under
-// Groceries → Recipe Ingredients. Crosses the feature boundary deliberately —
-// this is the one place Recipes talks to Shop's API directly.
-import { fetchShopCategories, createShopCategory, createShopItem } from '../../shop/api/shopApi'
-import type { RecipeIngredient } from '../types'
+// Recipes → Shop bridge: builds the rows that put ingredients you don't already
+// have onto the Shop's quick list (the errand list — migration 134), still
+// filed under Groceries → Recipe Ingredients. Crosses the feature boundary
+// deliberately — this is the one place Recipes talks to Shop's API directly.
+// Writing is Shop's: `useAddBatchToQuickList` (duplicates skipped, one Undo).
+import { fetchShopCategories, createShopCategory } from '../../shop/api/shopApi'
 import type { CreateShopItemInput } from '../../shop/types'
+import type { RecipeIngredient } from '../types'
 import { noteOf, type GroceryLine } from '../weekGroceries'
 
 const TOP_CATEGORY = 'Groceries'
 const SUB_CATEGORY = 'Recipe Ingredients'
 
+/** The Groceries → Recipe Ingredients category (made when missing; the batch hook refreshes the category list). */
 export async function resolveTargetCategory(): Promise<string> {
   const categories = await fetchShopCategories()
   let top = categories.find(c => !c.parent_id && c.name === TOP_CATEGORY)
@@ -20,27 +22,20 @@ export async function resolveTargetCategory(): Promise<string> {
   return sub.id
 }
 
-export async function addMissingIngredientsToShop(
-  ingredients: RecipeIngredient[],
-  recipeTitle: string,
-): Promise<number> {
-  if (!ingredients.length) return 0
+/** One recipe's missing ingredients as quick-list rows ("400g · for Pasta"). */
+export async function missingIngredientInputs(ingredients: RecipeIngredient[], recipeTitle: string): Promise<CreateShopItemInput[]> {
+  if (!ingredients.length) return []
   const categoryId = await resolveTargetCategory()
-
-  for (const ing of ingredients) {
+  return ingredients.map(ing => {
     const qty = ing.quantity != null ? `${ing.quantity}${ing.unit ?? ''}` : null
-    await createShopItem({
-      category_id: categoryId,
-      title:       ing.name,
-      notes:       [qty, `for ${recipeTitle}`].filter(Boolean).join(' · '),
-      source_type: 'manual',
-      list:        'quick',
-    })
-  }
-  return ingredients.length
+    return {
+      category_id: categoryId, title: ing.name, notes: [qty, `for ${recipeTitle}`].filter(Boolean).join(' · '),
+      source_type: 'manual', list: 'quick',
+    }
+  })
 }
 
-/** The week's grocery lines as quick-list rows, filed under Groceries → Recipe Ingredients. */
+/** The week's grocery lines as quick-list rows, filed the same way. */
 export async function weekGroceryInputs(lines: GroceryLine[]): Promise<CreateShopItemInput[]> {
   if (!lines.length) return []
   const categoryId = await resolveTargetCategory()

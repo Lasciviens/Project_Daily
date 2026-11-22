@@ -5,7 +5,8 @@ import { Check, CircleCheck, ClipboardList, Plus, ShoppingBag } from 'lucide-rea
 import { useMealPlan, useEatPlannedEntry } from '../hooks/useMealPlan'
 import { useRecipes } from '../hooks/useRecipes'
 import { useAddWeekGroceriesToShop } from '../hooks/useShopIntegration'
-import { weekGroceries } from '../weekGroceries'
+import { stillToShopFor, weekGroceries } from '../weekGroceries'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import { useFoodLogRange } from '../hooks/useFoodLog'
 import { useEntityModal } from '../../../shared/modals/useEntityModal'
 import { DateNav } from '../../../shared/components/DateNav'
@@ -55,7 +56,7 @@ export function MealPlanWeek() {
   const { data: logged = [] }  = useFoodLogRange(fromStr, toStr) // the DIARY (eaten)
   // The week's groceries: every planned meal's ingredients added up, one tap to the quick list.
   const { data: recipes = [] } = useRecipes()
-  const groceries = useMemo(() => weekGroceries(entries, recipes), [entries, recipes])
+  const groceries = useMemo(() => weekGroceries(stillToShopFor(entries, logged, todayStr()), recipes), [entries, logged, recipes])
   const addGroceries = useAddWeekGroceriesToShop()
 
   // Every planned row for a slot — several are legal since migration 061.
