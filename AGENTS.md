@@ -33,6 +33,7 @@ Codex reads this file by itself; `CLAUDE.md` imports it, so Claude and Codex fol
 - The backlog is the in-app Dev Requests drawer (`dev_requests`), not a markdown list.
 - Work with a few agents at a time; there is no hard limit (owner, 11.11.2026).
 - A security review (`guardian`) is for changes to the database, Apple or Google, links, or the assistant; a screen-only change gets the automatic checks plus a look at its screenshots (owner, 11.11.2026).
+- **Every PR gets a critic** (owner, 22.11.2026): before it is reported, an `owner-critic` reviews the work against what the owner asked. Each point where the critic is right or might be right is discussed with the critic once; the lead decides the winner and acts on it. The PR lists each point and its outcome.
 - Findings that don't block go into the PR's "To do later" list; those lists are fixed together in one cleanup PR (owner, 11.11.2026).
 - Report to the owner only when a PR is ready (owner, 11.11.2026).
 - **Raise at the start of every session until settled:**
