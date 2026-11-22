@@ -64,7 +64,7 @@ title: the name of the dish, as the recipe calls it.
 
 servings: how many portions the recipe makes, as a whole number. When the recipe doesn't say, give 1.
 
-ingredients: one entry for each ingredient, in the order they are listed. name is the ingredient itself ("flour", "onion"). quantity is a plain number: write 1/2 as 0.5 and 1 1/2 as 1.5, and leave it out for "to taste", "a little" or when no amount is written. unit is the unit as written ("g", "cups", "tbsp", "cloves"), left out when there is none: "2 eggs" is quantity 2 and name "eggs". note is what is said about the ingredient that is not its name ("finely chopped", "room temperature"), left out when there is none. Split a line such as "2 cups flour" into quantity 2, unit "cups", name "flour".
+ingredients: one entry for each ingredient, in the order they are listed. name is the ingredient itself ("flour", "onion"). quantity is a plain number: write 1/2 as 0.5 and 1 1/2 as 1.5, and leave it out for "to taste", "a little" or when no amount is written. unit is the unit as written, in its English word ("g", "cups", "tbsp", "cloves"), left out when there is none: "2 eggs" is quantity 2 and name "eggs". note is what is said about the ingredient that is not its name ("finely chopped", "room temperature"), left out when there is none. Split a line such as "2 cups flour" into quantity 2, unit "cups", name "flour".
 
 steps: the method, one string for each step in order, without numbering.
 
@@ -132,8 +132,8 @@ Answer with one JSON object and nothing else: no words before or after it, no wo
 
 ${JSON.stringify(MACROS_ANSWER_SCHEMA)}`
 
-const RECIPE_FROM_TEXT_VERSION = '2026-11-22.1'
-const RECIPE_FROM_LINK_VERSION = '2026-11-22.1'
+const RECIPE_FROM_TEXT_VERSION = '2026-11-22.2'
+const RECIPE_FROM_LINK_VERSION = '2026-11-22.2'
 const RECIPE_MACROS_VERSION = '2026-11-22.1'
 
 /** The longest pasted recipe: a request is at most 16 KB (guard.ts), and this leaves room for letters of two bytes. */
@@ -145,7 +145,7 @@ function readRecipeAnswer(answerText: string): AnswerCheck {
   const answer = readAnswerObject(answerText)
   if (!answer.ok) return answer
   const checked = cleanRecipe(answer.value)
-  return checked.ok ? { ok: true, result: { ...checked.recipe, usedAi: true } } : checked
+  return checked.ok ? { ok: true, result: { ...checked.recipe, usedAi: true, language: 'english' } } : checked
 }
 
 export const RECIPE_FROM_TEXT_JOB: JobDefinition = {
@@ -207,7 +207,7 @@ export const RECIPE_FROM_LINK_JOB: JobDefinition = {
         const page = await fetchPage(got.link, env)
         if (!page.ok) return { kind: 'stop', outcome: page.outcome, message: page.message }
         const recipe = recipeFromPage(page.html)
-        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false }, note: got.link }
+        if (recipe) return { kind: 'answer', result: { ...recipe, usedAi: false, language: 'source' }, note: got.link }
         const text = pageVisibleText(page.html, PAGE_TEXT_MAX)
         if (text.length < 80) return { kind: 'stop', outcome: 'bad_input', message: 'That page has no text that looks like a recipe.' }
         return { kind: 'model', userText: `<page>\n${escapeTagText(text)}\n</page>` }

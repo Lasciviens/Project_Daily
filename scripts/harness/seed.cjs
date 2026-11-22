@@ -1085,14 +1085,16 @@ function buildTables(now = new Date()) {
       served_model: sent ? model : null, stop_reason: ENDED[outcome] ?? null, error: outcome === 'ok' ? null : STOP_MESSAGE[outcome],
       request_id: sent ? `req_harness_${no}` : null,
       input_tokens: input, cache_read_tokens: read, cache_write_5m_tokens: write, output_tokens: output, thinking_tokens: thinking, duration_ms: ms,
+      // A timeout (the one 'error' row) may still have been billed: its row keeps the reserved worst case, as the function does.
+      ...(outcome === 'error' ? { cost_usd: 0.00191 } : {}),
       request: sentence ? loggedRequest(model, 'low', sentence, new Date(at(n, hhmm))) : null,
       response: sentence && sent ? { text: fill ? JSON.stringify(fill) : outcome === 'invalid' ? 'Water the plants — when?' : '' } : null,
       thinking: sentence && fill ? 'One thing to plan. The sentence gives what it is and when; nothing else is stated, so the other fields stay empty.' : null,
     })
   })
-  tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, updated_at: at(-9, '10:45') }]
+  tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]
   tables.ai_job_settings = [{
-    user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, updated_at: at(-6, '08:20'),
+    user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, thinking: null, updated_at: at(-6, '08:20'),
   }]
 
   // Read by the pages and empty for this owner: nothing connected outside, nothing overridden.

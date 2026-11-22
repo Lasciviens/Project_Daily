@@ -1,20 +1,17 @@
 import { Suspense, useState } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
-import { RefreshCw } from 'lucide-react'
 import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
 import { MemoryTab } from '../components/MemoryTab'
 import { DeveloperHeroArt } from '../components/DeveloperHeroArt'
-import { reindexAiSearch } from '../../ai/api/aiApi'
-import { toast } from '../../../app/store'
-import { Button, HERO_BAND_BLEED, PageContainer, PageHeader, SkeletonTab, cx, usePageStep } from '../../../shared/ui'
+import { HERO_BAND_BLEED, PageContainer, PageHeader, SkeletonTab, cx, usePageStep } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { sectionsWidthRem } from '../../../shared/ui/pageBoardRules'
 import { AI_VIEW_BOARDS, LIST_DETAIL_BOARD } from '../developerBoards'
 
-// The AI tab (the Claude layer's five views, with its chart) loads when opened, and in idle time once the page shows.
+// The AI tab (the Claude layer's four views, Learn's three pages, with its chart) loads when opened, and in idle time once the page shows.
 const AiTab = lazyPart('developer-ai', () => import('../components/ai/AiTab').then(m => m.AiTab))
 const OTHER_TABS = [AiTab]
 
@@ -35,34 +32,16 @@ export function DeveloperPage() {
   const [params, setParams] = useSearchParams()
   const initial = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'activity'
   const [tab, setTab] = useState<Tab>(initial)
-  const [reindexing, setReindexing] = useState(false)
   useIdlePreload(OTHER_TABS)
   // One header for every tab and every view of the AI tab: as wide as the widest board below it
-  // (pageBoardRules.sectionsWidthRem), so it never resizes on a switch and Reindex sits over the last card
-  // (the boards stop at three tracks; it floated 29rem past the pane).
+  // (pageBoardRules.sectionsWidthRem), so it never resizes on a switch (the boards stop at three tracks).
   const { ref: widthRef, step } = usePageStep<HTMLDivElement>()
   const headerCap = step == null ? null : sectionsWidthRem(BOARDS, step)
 
   function selectTab(next: Tab) {
     setTab(next)
-    // A tab's own view (?view=, the AI tab's) doesn't follow to another tab.
-    setParams(p => { p.set('tab', next); p.delete('view'); return p }, { replace: true })
-  }
-
-  // Rebuilds the semantic-search index over the user's own text so the AI's
-  // semantic_search tool can find it (a plain api call, not a mutation).
-  async function handleReindex() {
-    if (reindexing) return
-    setReindexing(true)
-    const tid = toast.loading('Reindexing AI search…')
-    try {
-      const r = await reindexAiSearch()
-      toast.dismiss(tid); toast.success(`AI search reindexed (${r.indexed} items)`)
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message || 'Reindex failed')
-    } finally {
-      setReindexing(false)
-    }
+    // A tab's own view (?view= and ?learn=, the AI tab's) doesn't follow to another tab.
+    setParams(p => { p.set('tab', next); p.delete('view'); p.delete('learn'); return p }, { replace: true })
   }
 
   // Connections moved to Settings → Subscriptions. An old link (or a Strava
@@ -80,11 +59,6 @@ export function DeveloperPage() {
           <PageHeader
             title="Developer"
             art={<DeveloperHeroArt />}
-            actions={
-              <Button size="sm" icon={<RefreshCw />} onClick={() => { void handleReindex() }} loading={reindexing} title="Rebuild the AI semantic-search index">
-                Reindex AI search
-              </Button>
-            }
           >
             <div role="tablist" aria-label="Developer sections" className={cx('scroll-x flex gap-1', HERO_BAND_BLEED)}>
               {TABS.map(t => (

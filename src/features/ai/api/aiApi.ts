@@ -284,7 +284,7 @@ function friendlyError(body: { error?: string; daily_limit?: number; retry_after
     return `Daily AI limit reached (${body.daily_limit ?? 20} requests/day). It resets tomorrow. To lift it, add billing in Google AI Studio → Billing.`
   }
   if (body.error.includes('GEMINI_API_KEY')) {
-    return 'AI is not configured. Add GEMINI_API_KEY under Supabase Dashboard → Edge Functions → Secrets.'
+    return 'Ask AI is being rebuilt on Claude (phase 4 of the AI rebuild) and does not answer until then.'
   }
   if (body.error === 'Unauthorized') {
     return 'Session error — refresh the page and sign in again.'

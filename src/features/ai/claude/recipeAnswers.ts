@@ -25,6 +25,11 @@ export interface ParsedRecipe {
   macro_estimate: MacroEstimate | null
   /** false: the recipe was read from the page's own data, no AI was used. */
   usedAi: boolean
+  /**
+   * `english`: the model wrote it in English (everything saved is English). `source`: code read the page's own data
+   * with no model, so the recipe keeps the page's language; an English rewrite would be an AI call, not built yet.
+   */
+  language: 'english' | 'source'
 }
 
 /** The longest pasted recipe the function reads (its request is small): longer text is turned back here, with a sentence. */
@@ -75,6 +80,7 @@ export function readParsedRecipe(raw: unknown): ParsedRecipe | null {
     ingredients,
     macro_estimate: macros(raw.macro_estimate),
     usedAi: raw.usedAi !== false,
+    language: raw.language === 'source' ? 'source' : 'english',
   }
 }
 

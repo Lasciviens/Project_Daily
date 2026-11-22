@@ -28,7 +28,7 @@ export async function parseRecipeFromLink(url: string): Promise<ParsedRecipe> {
   const { result, source } = await runClaudeJob<unknown>('recipe_from_link', { url: url.trim() })
   const recipe = readParsedRecipe(result)
   if (!recipe) throw new Error(NOT_A_RECIPE)
-  return source === 'page' ? { ...recipe, usedAi: false } : recipe
+  return source === 'page' ? { ...recipe, usedAi: false, language: 'source' } : recipe
 }
 
 /** "Estimate": one serving's calories, protein, carbs, fat and sugar, from the ingredients. */

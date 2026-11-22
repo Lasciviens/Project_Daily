@@ -4,7 +4,7 @@ import { useClaudeDiagnose } from '../../../ai/claude/hooks/useClaude'
 import { diagnoseVerdict, stepSeconds } from '../../../ai/claude/ledgerRules'
 import type { DiagnoseStep } from '../../../ai/claude/types'
 
-// Developer → AI → How it works → Diagnose: the `claude` function's four checks of ✨'s road to Anthropic, one row
+// Developer → AI → Learn → How it works → Diagnose: the `claude` function's four checks of the road to Anthropic (✨'s request is the one it tries), one row
 // each (a tick or a cross, its time, its sentence), under one plain verdict worked out from them. Two of the
 // checks are real calls (a tiny answer, and ✨'s own request with a 90 s limit): they cost a fraction of a cent
 // and appear in Calls as the job "Diagnose: a tiny answer" and "Fill an item from a sentence".
@@ -33,13 +33,13 @@ export function AiDiagnose() {
   const verdict = steps ? diagnoseVerdict(steps) : null
   return (
     <Card className="flex flex-col gap-3">
-      <CardHeader variant="label" title="Diagnose" />
+      <CardHeader variant="label" title="Check the connection to Anthropic" />
       <p className="text-body text-fg-2">
-        Does ✨ time out because the request never reaches Anthropic, or because Anthropic takes long to answer? Four checks, each timed. The last two are real calls: together they cost a fraction of a cent.
+        Is a slow or failed call the connection, the key, the shape of the request or Anthropic’s own answer time? Four checks, each timed, using ✨’s request as the example. The last two are real calls: together they cost a fraction of a cent.
       </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button variant="secondary" icon={<Stethoscope />} loading={diagnose.isPending} onClick={() => diagnose.mutate()}>
-          {steps ? 'Diagnose again' : 'Diagnose'}
+          {steps ? 'Check again' : 'Check the connection'}
         </Button>
         {diagnose.isPending && <p role="status" className="text-meta text-fg-muted">Checking… this can take up to 2 minutes.</p>}
       </div>

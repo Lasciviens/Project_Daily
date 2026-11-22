@@ -1,6 +1,6 @@
 # Anthropic (Claude API)
 
-Checked: 20.11.2026 against Anthropic's own documentation at `platform.claude.com/docs`, read that day. The pages: pricing, batch processing, rate limits, prompt caching, context editing, create a message, task budgets, mid-conversation system messages, token counting, effort, vision, structured outputs, models overview, and API and data retention. Request shapes were also checked against the TypeScript SDK's reference. **No live call has been made yet:** the owner adds the key first. Phase 1 (20.11.2026) built the `claude` function and its one job; "What phase 1 sends and reads" below says exactly which of the fields in this file it uses. The section "Not confirmed by a live call yet" lists what the first real call must confirm.
+Checked: 20.11.2026 against Anthropic's own documentation at `platform.claude.com/docs`, read that day. The pages: pricing, batch processing, rate limits, prompt caching, context editing, create a message, task budgets, mid-conversation system messages, token counting, effort, vision, structured outputs, models overview, and API and data retention. Request shapes were also checked against the TypeScript SDK's reference. **Live calls have been made since** (22.11.2026, Developer → AI → Diagnose and ✨): the network and the key work, a tiny answer takes about a second, and ✨'s request with its 21-optional-field answer shape did not finish in 90 s while the same request without the shape answered in about a second (trap 16). Phase 1 (20.11.2026) built the `claude` function and its one job; "What phase 1 sends and reads" below says exactly which of the fields in this file it uses. The section "Not confirmed by a live call yet" lists what no live call has shown yet.
 
 Claude is the model behind every AI feature of the app (the plan: `docs/features/ai-plan.md`). One edge function, `claude`, talks to it. The default model is **Claude Haiku 5.5** (`claude-haiku-5-5`): Anthropic's fastest and cheapest current model, with a 1M-token context window, up to 128K tokens of output, text and image input, and a knowledge cutoff of June 2026.
 
@@ -50,7 +50,7 @@ Base `https://api.anthropic.com`. All through the SDK.
 | Endpoint | SDK call | Called by | When | Limits |
 |---|---|---|---|---|
 | `POST /v1/messages` | `client.messages.create` (`client.beta.messages.create` when a beta feature is on) | `claude` → every real-time job | each AI answer; a chat answer is several calls (one per tool round) | Start tier: 4,000 requests, 2M input tokens and 400K output tokens a minute. Cache reads don't count toward the input limit. |
-| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → Diagnose step 2 (22.11.2026; later also the Test bench's "what will this cost") | on the Diagnose button, once | free; 5,000 requests a minute; the count is an estimate |
+| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → Diagnose step 2 (22.11.2026) and the Test bench's "Count tokens" (`{ action: 'count' }`, 22.11.2026: the request exactly as a run would send it, `thinking` and the picked model and effort included) | on those buttons | free; 5,000 requests a minute; the count is an estimate |
 | `GET /v1/models` | `client.models.list({ limit: 1000 })` | `claude` → Diagnose step 1 | on the Diagnose button, once | free; one page, newest first |
 | `POST /v1/messages/batches` | `client.messages.batches.create` | `claude` → batch jobs (weekly reports), from the batch phase | when a report is queued | 100,000 requests or 256 MB per batch; 1,000 batch requests a minute |
 | `GET /v1/messages/batches/{id}` | `client.messages.batches.retrieve` | `claude` → the batch check (a scheduled job) | until `processing_status` is `ended` | most batches end within 1 hour; one that isn't done after 24 hours expires |
@@ -79,7 +79,7 @@ Base `https://api.anthropic.com`. All through the SDK.
 
 | Field | Shape | Where it goes |
 |---|---|---|
-| `id` | text (`msg_…`) | the call log (`ai_calls.provider_message_id`) |
+| `id` | text (`msg_…`) | not kept: the call log keeps the request id Anthropic sends in its response header instead (`ai_calls.request_id`), which is what its support asks for |
 | `model` | text | the log: the model that really answered |
 | `content[]` | blocks: `text` · `thinking` (`thinking`, `signature`) · `tool_use` (`id`, `name`, `input`) | `text` → the answer, or the JSON for fixed-shape jobs (parsed, then every field checked by our own code). `thinking` → its summary to the log; the whole block is sent back unchanged in the next round. `tool_use` → the tool loop. |
 | `stop_reason` | `end_turn` · `max_tokens` · `stop_sequence` · `tool_use` · `pause_turn` · `refusal` · `model_context_window_exceeded` | the loop's next step, and the log. Read before `content`. |
@@ -107,7 +107,7 @@ Base `https://api.anthropic.com`. All through the SDK.
 | Field or feature | Why not |
 |---|---|
 | `temperature`, `top_p`, `top_k` | On API version `2026-10-21` any value returns a 400. Behaviour is steered by the instructions and by effort. |
-| `fallbacks` (Anthropic retries a declined request on another model) | Not available for Haiku 5.5: a list of models returns a 400. A decline is shown plainly; our own function may retry once on Sonnet 5.5 if the owner turns that on. |
+| `fallbacks` (Anthropic retries a declined request on another model) | Not available for Haiku 5.5: a list of models returns a 400. A decline is shown plainly. **A retry on Sonnet 5.5 is not built** (owner-critic round, 22.11.2026): it waits for a real refusal to look at, and Settings does not offer it. |
 | `tool_choice: any` / a named tool | Fixed-shape answers use `output_config.format` instead. |
 | assistant prefill (ending `messages` with a half-written answer) | Returns a 400 on Haiku 5.5. |
 | `metadata.user_id` | It would send an identifier of the owner for no benefit here. |
@@ -168,15 +168,25 @@ Phase 1 is the `claude` function (`supabase/claude-src/`, joined into `supabase/
 - `thinking: { type: "adaptive", display: "summarized" }`;
 - `output_config: { effort: "low" | "medium" | "high" }` and **no `format`** (since 22.11.2026, trap 16). The shape (21 optional fields, `additionalProperties: false`, no number or length limits, no link field) is written into the instructions instead.
 - The key goes only in `Authorization: Bearer`; the SDK adds `anthropic-version: 2026-10-21`.
-- Not sent: tools, `temperature`, `top_p`, `top_k`, prefill, streaming, betas, `context_management`, `task_budget`, images, `metadata`, `inference_geo`.
+- Not sent: tools, `temperature`, `top_p`, `top_k`, prefill, streaming (the function waits for the whole answer: ✨'s answers are short and come in about a second, so streaming would add code for nothing visible; reconsidered with the chat in phase 4), betas, `context_management`, `task_budget`, images, `metadata`, `inference_geo`.
 
 **Read back:** `content[]` (`text` joined; `thinking` kept as a summary for the owner's log; other blocks ignored), `stop_reason` (`end_turn` is the only good ending; `refusal` and `max_tokens` have their own outcomes; every other value is an error, never an answer), `stop_details` (a refusal's explanation, for the log), `usage` (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cache_creation.ephemeral_5m_input_tokens` / `.ephemeral_1h_input_tokens`, `output_tokens`, `output_tokens_details.thinking_tokens`; each count is clamped to a whole number the ledger can hold), `model` (the model that answered), and the `request-id` header (via the SDK's `_request_id`). Errors are read by the SDK's typed classes and only single named fields (`status`, `requestID`, `apiMessage`, `type`, `errorCode`): a 401 or 403 is a key problem, a 402 or a 429 with `error.details.error_code` `enforced_spend_limit_reached` is billing, 429 is rate limit, 529 overloaded, 500 a provider fault, 400/404/413/422 a refused request, and a connection error or timeout is its own kind. The message the owner sees is our own fixed sentence; the provider's explanation goes only into the owner's call log, and only while the text log is on.
 
 **Cost is reserved before each call.** The budget wall cannot count a call that has not finished, and a timed-out call may still be billed, so before sending, the function asks the database (`ai_reserve`) to hold the call's worst-case cost against the monthly budget: a prompt estimated at one token per character plus 1000 (for thinking's hidden system prompt; dense text such as digits and JSON comes close to one per character), every token at the dearest prompt price (a 1-hour cache write, long-prompt rule included), plus the whole `max_tokens` at the output price. Parallel requests each hold their own share under a lock. After the answer the row gets the real tokens and the real cost (from `prices.ts`). A failure that may have been billed (timeout, network error, 5xx, 529, an unknown fault) and a failed update both leave the row at the worst case; a refusal at the door (401, 402, 400, 429) costs 0.
 
+## Phase 2b–2d additions (22.11.2026)
+
+- **The request as sent is kept in the text log** (`request.sent_to_provider`, shown in a call's detail as "Sent to the provider, as built"): the model, `max_tokens`, the cache mark on the instructions, `thinking`, `output_config` and the time limit. The instructions and the owner's text are named by their length there (the log already holds them), and the key is never in a body: it travels in a header.
+- **Thinking is a per-job setting** (migration 195, `ai_job_settings.thinking`: null, `adaptive` or `off`; default adaptive until a job's answers are measured to be as good without it). Anything stored that is not the word `off` is adaptive. The Test bench's own pick still wins for its one run.
+- **Prompt caching is marked on every job**, although a job's instructions (1–3k tokens) may be under the model's minimum cacheable prefix, where the mark does nothing. An unused mark costs about $0.00003 a call, so there is no per-job switch (owner-critic round, 22.11.2026; Diagnose and the ledger's cached/written columns show whether a job's instructions are cached).
+
+- **`thinking: { type: "disabled" }`** (SDK type `ThinkingConfigDisabled`, `@anthropic-ai/sdk@1.5.0`: `{ type: 'disabled' }`, no other field, so no `display`) is sent instead of the adaptive object only when the Test bench asks for thinking off (`ModelRequest.thinking: 'off'`). The request keeps `output_config.effort`. That Haiku 5.5 accepts disabled thinking together with `effort` low, medium and high is **not confirmed by a live call**; the Test bench's "Compare thinking" is the way to check. With thinking off the answer has no `thinking` block and `thinking_tokens` is 0.
+- **`count_tokens` with the Test bench's request** carries `model`, `system`, `messages`, `thinking` and `output_config` (never `max_tokens`), exactly as `buildRequest` builds a run's request; it answers `input_tokens` only.
+- **Device jobs** (`kobo_ask`, `phone_brief`, `phone_ask`) and `coach_assessment` send nothing new to Anthropic: one user message of tagged text, the cached instructions, adaptive thinking, low effort, no tools. `timeLimitMs` per job (Kobo 20 s, phone 18 s) goes to the SDK as the per-request `timeout` like every limit.
+
 ## Not confirmed by a live call yet
 
-Everything about Anthropic's real behaviour is unconfirmed: no call has been made. Phase 1's tests (`scripts/verify-claude-function.cjs`) run the real SDK against a fake network, so they prove our code reads the shapes the docs and the SDK's types describe, not that Anthropic answers that way. The first real ✨ call must confirm:
+Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 22.11.2026 showed (above): the network and key work, and requests with adaptive thinking, an effort and the cache mark on the instructions were answered (a tiny answer, ✨ without an answer shape). Phase 1's tests (`scripts/verify-claude-function.cjs`) run the real SDK against a fake network, so they prove our code reads the shapes the docs and the SDK's types describe, not that Anthropic answers that way. No live call has yet confirmed:
 - the exact `usage` object Haiku 5.5 returns, including `output_tokens_details.thinking_tokens` and the `cache_creation` breakdown;
 - `display: "summarized"` returning readable text on Haiku 5.5;
 - which image resolution tier Haiku 5.5 uses (the vision page doesn't say);
@@ -186,7 +196,9 @@ Everything about Anthropic's real behaviour is unconfirmed: no call has been mad
 - that a request with `thinking: adaptive` plus `output_config.format` (a small, all-required JSON schema) and `effort` together is accepted on Haiku 5.5 (the 21-optional-field schema is known to hang, trap 16);
 - that the `cache_control` mark on the instructions is accepted below the 512-token minimum or above it, and what `usage` shows on the first and second call;
 - what a timeout looks like on Anthropic's bill (billed or not), which decides whether the worst-case reservation is too careful;
-- `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429.
+- `error.details.error_code` `enforced_spend_limit_reached` on a real spend-limit 429;
+- that `thinking: { type: "disabled" }` with `effort` is accepted on Haiku 5.5 (Test bench → Compare thinking);
+- that a call from `kobo-sync` / `phone-gateway` with the derived credential (HMAC of the service key, not the key) in `x-claude-server-key` reaches `claude` through the platform with `verify_jwt = false` (new and legacy key formats).
 
 ## Log
 

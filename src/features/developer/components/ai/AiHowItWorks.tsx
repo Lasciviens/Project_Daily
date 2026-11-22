@@ -10,9 +10,10 @@ import { AI_GLOSSARY } from './aiGlossary'
 import { PlainText, ReadFailed } from './aiBits'
 import { AiDiagnose } from './AiDiagnose'
 
-// Developer → AI → How it works: what the `claude` function says about itself (`describe`) — whether its key
+// Developer → AI → Learn → How it works: what the `claude` function says about itself (`describe`) — whether its key
 // is set, the path of one request, its parts with their source files, every job with its fixed instructions
-// and answer shape, and the rules that are code — plus the page's own glossary. Nothing here can be changed.
+// and answer shape, and the rules that are code — plus the page's own glossary, the check of the connection
+// (Diagnose) and what is still on Gemini. Nothing here can be changed.
 
 /** A source file as a link to its page on GitHub; a path that isn't a plain repo path stays text. */
 function SourceLink({ file }: { file: string }) {
@@ -57,7 +58,7 @@ function StatusCard({ about }: { about: Describe }) {
       </p>
       <dl className="mt-3 grid grid-cols-[minmax(6.5rem,auto)_1fr] gap-x-3 gap-y-1 border-t border-line pt-3 text-meta">
         {([
-          ['Provider', provider.name], ['SDK', provider.sdk], ['API version', provider.apiVersion], ['Endpoint', provider.endpoint],
+          ['Provider', provider.name], ['SDK', provider.sdk], ['Anthropic API version', provider.apiVersion], ['Endpoint', provider.endpoint],
           ['Calls', `${formatCount(limits.callsPerMinute)} a minute · ${formatCount(limits.callsPerDay)} a day at most`],
           ['Budget ceiling', `${formatUsd(limits.monthlyBudgetMaxUsd)} a month`],
           ['Request size', `${formatCount(limits.requestMaxBytes)} bytes at most`],
@@ -78,7 +79,7 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
       <div>
         <p className="text-lead font-semibold text-fg">{job.title}</p>
         <MetaLine className="text-meta text-fg-muted" items={[
-          <span className="font-mono">{job.name}</span>, job.version && `instructions ${job.version}`,
+          <span className="font-mono">{job.name}</span>, job.version && <span className="whitespace-nowrap">instructions version {job.version}</span>,
           job.kind && job.kind.replace(/_/g, ' '), job.callers.length > 0 && `asked from: ${job.callers.join(', ')}`,
         ]} />
       </div>
@@ -111,6 +112,38 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
   )
 }
 
+/**
+ * What still runs on Google's Gemini, written by hand because it is exactly what the new function does not know about
+ * (the app has to say it): each row, and the phase of the rebuild that moves it. Gemini has been off for months, so
+ * these answer nothing today (docs/features/ai-plan.md §1 has the same table, with the removed parts).
+ */
+const STILL_ON_GEMINI: readonly { what: string; phase: string }[] = [
+  { what: 'Ask AI, the chat panel (tools, photos, voice, Confirm cards)', phase: 'Rebuilt on Claude in phase 4' },
+  { what: 'The PT coach chat (Ask AI in coach mode)', phase: 'Phase 4' },
+  { what: 'Search by meaning: the saved-notes index and Developer’s old “Reindex AI search” button (hidden since 22.11.2026)', phase: 'Phase 4 replaces it with the database’s full-text search; the index is removed in phase 5' },
+  { what: 'The GEMINI_API_KEY secret and the Gemini API entry in Settings', phase: 'Phase 5' },
+]
+
+function StillOnGemini() {
+  return (
+    <Card>
+      <CardHeader variant="label" title="Still on Gemini" />
+      <p className="text-body text-fg-2">
+        Everything on this page is Claude. These parts of the app are not yet: they were never rebuilt, and Gemini is switched off, so they do not answer until their phase.
+      </p>
+      <ul className="mt-2 divide-y divide-line">
+        {STILL_ON_GEMINI.map(g => (
+          <li key={g.what} className="py-1.5 first:pt-0 last:pb-0">
+            <p className="text-body text-fg">{g.what}</p>
+            <p className="text-meta text-fg-muted">{g.phase}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-meta text-fg-muted">Already moved to Claude: the item ✨, the recipe editor, Food’s quick guess, the PT assessment, the Kobo’s and the phone’s questions.</p>
+    </Card>
+  )
+}
+
 export function AiHowItWorks() {
   const about = useClaudeDescribe()
   // Diagnose does not need the description: it stays usable when the description could not be read.
@@ -126,6 +159,7 @@ export function AiHowItWorks() {
   const wait = (h: string) => <Skeleton rounded="rounded-card" className={`${h} w-full`} />
   const sections: Record<AiHowSection, ReactNode> = {
     diagnose: <AiDiagnose />,
+    gemini: <StillOnGemini />,
     status: d ? <StatusCard about={d} /> : wait('h-60'),
     steps: !d ? wait('h-96') : (
       <Card>

@@ -54,14 +54,34 @@ export interface CallRow {
   thinking: string | null
 }
 
+/** Who is reading the ledger: the owner's own client (`ai_gate`, row level security), or the server for a device run. */
+export type GateScope = { kind: 'owner' } | { kind: 'server'; userId: string; caller: Caller; now: Date }
+
 /**
  * What the ledger says about the account right now: this month's cost and the recent calls (`ai_gate`).
  * Null when it can't be read: the caller then sends nothing.
+ *
+ * A device run has no sign-in token, so `ai_gate` (which asks who is signed in) cannot answer it. The server client
+ * counts the owner's own rows instead: the calls of the last minute and of the last 24 hours, and this device's
+ * own calls in those 24 hours. This early read only saves a call that would be refused anyway: the real wall is
+ * `ai_reserve`, which counts and holds the budget in the database under a lock.
  */
-export async function readGate(userDb: Db, job: string): Promise<Gate | null> {
+export async function readGate(db: Db, job: string, scope: GateScope): Promise<Gate | null> {
   try {
-    const { data, error } = await userDb.rpc('ai_gate', { p_job: job })
-    return error ? null : gateOf(data)
+    if (scope.kind === 'owner') {
+      const { data, error } = await db.rpc('ai_gate', { p_job: job })
+      return error ? null : gateOf(data)
+    }
+    const count = async (sinceMs: number, caller: Caller | null): Promise<number | null> => {
+      let q = db.from('ai_calls').select('id', { count: 'exact', head: true })
+        .eq('user_id', scope.userId).gte('created_at', new Date(scope.now.getTime() - sinceMs).toISOString())
+      if (caller) q = q.eq('caller', caller)
+      const { count: n, error } = await q
+      return error || typeof n !== 'number' ? null : n
+    }
+    const [minute, day, byCaller] = await Promise.all([count(60_000, null), count(86_400_000, null), count(86_400_000, scope.caller)])
+    if (minute === null || day === null || byCaller === null) return null
+    return { monthCost: 0, jobMonthCost: 0, callsLastMinute: minute, callsToday: day, callsTodayByCaller: byCaller }
   } catch {
     return null
   }
@@ -74,14 +94,35 @@ export async function readGate(userDb: Db, job: string): Promise<Gate | null> {
 export async function readSettingRows(userDb: Db, userId: string, job: string): Promise<{ account: unknown; job: unknown } | null> {
   try {
     const [account, perJob] = await Promise.all([
-      userDb.from('ai_settings').select('monthly_budget_usd, log_text').eq('user_id', userId).maybeSingle(),
-      userDb.from('ai_job_settings').select('enabled, model, effort, max_output_tokens, monthly_budget_usd')
-        .eq('user_id', userId).eq('job', job).maybeSingle(),
+      readSettingRow(userDb, 'ai_settings', ACCOUNT_COLUMNS, ACCOUNT_COLUMNS_194, userId, null),
+      readSettingRow(userDb, 'ai_job_settings', JOB_COLUMNS, JOB_COLUMNS_194, userId, job),
     ])
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
   } catch {
     return null
   }
+}
+
+// The columns of each settings table. Migration 195 added `ai_enabled` and `thinking`: a database that has not run it
+// yet answers 42703 (no such column), and the read is made again without them, so the function keeps working on the
+// older schema with both settings at their defaults (on, adaptive). Remove the fallback once 195 has run everywhere.
+const ACCOUNT_COLUMNS = 'monthly_budget_usd, log_text, ai_enabled'
+const ACCOUNT_COLUMNS_194 = 'monthly_budget_usd, log_text'
+const JOB_COLUMNS = 'enabled, model, effort, max_output_tokens, monthly_budget_usd, thinking'
+const JOB_COLUMNS_194 = 'enabled, model, effort, max_output_tokens, monthly_budget_usd'
+const UNDEFINED_COLUMN = '42703'
+
+async function readSettingRow(
+  userDb: Db, table: string, columns: string, olderColumns: string, userId: string, job: string | null,
+): Promise<{ data: unknown; error: unknown }> {
+  const read = async (cols: string) => {
+    let q = userDb.from(table).select(cols).eq('user_id', userId)
+    if (job !== null) q = q.eq('job', job)
+    return q.maybeSingle()
+  }
+  const first = await read(columns)
+  if (first.error?.code === UNDEFINED_COLUMN) return read(olderColumns)
+  return first
 }
 
 /**
@@ -92,6 +133,20 @@ export async function hasRecentCall(userDb: Db, userId: string, job: string, sin
   try {
     const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', job).gte('created_at', sinceIso).limit(1)
     return error || !Array.isArray(data) ? null : data.length > 0
+  } catch {
+    return null
+  }
+}
+
+/**
+ * How many rows of `job` with this stop reason the account has since `sinceIso` (read with the owner's own client, so
+ * row level security shows only their rows). Null when it can't be read: the caller then does nothing.
+ */
+export async function countRecentCalls(userDb: Db, userId: string, job: string, sinceIso: string, stopReason: string): Promise<number | null> {
+  try {
+    const { count, error } = await userDb.from('ai_calls').select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).eq('job', job).eq('stop_reason', stopReason).gte('created_at', sinceIso)
+    return error || typeof count !== 'number' ? null : count
   } catch {
     return null
   }
@@ -118,6 +173,8 @@ export interface ReserveArgs {
   jobBudgetUsd: number | null
   perMinute: number
   perDay: number
+  /** This caller's own cap in a rolling 24 hours, counted under the same lock (195). */
+  callerPerDay: number
 }
 
 const RESERVE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -134,6 +191,7 @@ export async function reserveCall(adminDb: Db, a: ReserveArgs): Promise<Reservat
       p_budget: a.budgetUsd,
       // The database refuses a null here (194): a job with no budget of its own is held to the total one.
       p_job_budget: a.jobBudgetUsd ?? a.budgetUsd, p_per_minute: a.perMinute, p_per_day: a.perDay,
+      p_caller_per_day: a.callerPerDay,
     })
     if (error) return null
     const answer = Array.isArray(data) ? data[0] : data
@@ -187,5 +245,6 @@ export function summaryOf(row: CallRow): CallSummary {
     thinking_tokens: row.thinking_tokens,
     cost_usd: row.cost_usd,
     duration_ms: row.duration_ms,
+    served_model: row.served_model,
   }
 }

@@ -24,12 +24,17 @@ verify_jwt = false
 [functions.google-tasks-sync]
 verify_jwt = false
 
-# Dual-auth: browser user JWT (validated in-code by getUser) OR the iPhone
-# device secret (x-phone-secret === PHONE_GATEWAY_SECRET → acts as the single
-# user). The secret path is not a Supabase JWT, so platform verification is off
-# and auth is enforced in-code. The browser flow is unchanged (getUser still
-# validates its JWT).
+# Browser user JWT, validated in code by getUser and the owner list. The phone's device secret is no longer
+# accepted here (AI phase 2c); verification stays off only because the function has always been listed (its
+# removal is part of the Gemini clean-up, phase 4–5).
 [functions.ai-proxy]
+verify_jwt = false
+
+# The AI function (AI rebuild). Dual-auth, all in code and before the body is read: the browser's sign-in token
+# (getUser + the owner list) OR a device function (kobo-sync, phone-gateway) that sends the project's service key in
+# `x-claude-server-key`. The new `sb_secret_` keys are not JWTs, so platform verification would refuse the device
+# path; the function refuses everything that has neither (401) and `sameSecret` compares the key in constant time.
+[functions.claude]
 verify_jwt = false
 
 # The iPhone's single durable entry point — authenticates by x-phone-secret

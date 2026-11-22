@@ -10,14 +10,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  AnswerCheck, Caller, EarlyStep, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv, PreparedRun, Provider, RunReply, TokenUsage,
+  AnswerCheck, Caller, CountReply, EarlyStep, JobDefinition, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv,
+  PreparedRun, Provider, RunReply, TokenUsage,
 } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import {
-  cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog, trimText,
-  TEXT_LOG_MAX_BYTES,
+  callerDailyCap, checkedChoice, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog,
+  trimText, TEXT_LOG_MAX_BYTES, type RunSettings,
 } from './guard.ts'
-import { finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db } from './ledger.ts'
+import {
+  countRecentCalls, finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db, type GateScope,
+} from './ledger.ts'
 import { findJob } from './jobs.ts'
 
 /** Everything a run needs from outside, handed in by main.ts (or by a test). */
@@ -25,7 +28,13 @@ export interface RunContext {
   /** The account the session belongs to, as main.ts verified it. Never a value from the request. */
   userId: string
   caller: Caller
-  /** The owner's own database client: row level security decides what it reads. */
+  /**
+   * Who reads the owner's settings and the ledger's counts. `owner` (the app): `userDb` carries the owner's own
+   * token, so row level security decides what it reads and `ai_gate` answers. `server` (a device run, which has no
+   * token): `userDb` is the service-role client, every read of it is scoped to `userId` in the query itself.
+   */
+  readAs: 'owner' | 'server'
+  /** The database client the settings and the ledger counts are read with (see `readAs`). */
   userDb: Db
   /** The service-role client: the only writer of the ledger. */
   adminDb: Db
@@ -58,9 +67,9 @@ const RUN_NO_TOKENS: TokenUsage = {
   inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, outputTokens: 0, thinkingTokens: 0,
 }
 
-export async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<RunReply> {
-  const job = findJob(jobName)
-  const row: CallRow = {
+/** A ledger row for this run, with every column at "nothing happened yet". */
+function newRow(ctx: RunContext, job: JobDefinition | null | undefined): CallRow {
+  return {
     id: ctx.newId(), user_id: ctx.userId, run_id: ctx.newId(), step: 1,
     job: job?.name ?? RUN_UNKNOWN_JOB, caller: ctx.caller, mode: 'live', provider: ctx.providerName,
     model: job?.defaults.model ?? RUN_NO_MODEL, served_model: null, effort: null,
@@ -69,6 +78,11 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     output_tokens: 0, thinking_tokens: 0, long_prompt: false, cost_usd: 0, duration_ms: 0,
     instructions_version: job?.version ?? null, tools: [], request: null, response: null, thinking: null,
   }
+}
+
+export async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<RunReply> {
+  const job = findJob(jobName)
+  const row = newRow(ctx, job)
   /** Ends the run before the model is called: a ledger row with no tokens, and the reason for the app. */
   const stop = async (reason: Exclude<Outcome, 'ok'>, message: string): Promise<RunReply> => {
     row.outcome = reason
@@ -80,12 +94,12 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // 1 · The rate caps, read early. They come before anything is written, so a flood of requests (bad ones included)
   //     fills neither the ledger nor the bill: over a cap, the answer is "busy" and no row is written. (The
   //     reservation in step 6 checks the caps again, under a lock, for requests that arrive at the same moment.)
-  const gate = await readGate(ctx.userDb, row.job)
+  const gate = await readGate(ctx.userDb, row.job, gateScopeOf(ctx))
   if (!gate) {
     ctx.report('the usage could not be read, so nothing was sent')
     return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was sent. Try again in a moment.' }
   }
-  const tooMany = rateCapProblem(gate)
+  const tooMany = rateCapProblem(gate, ctx.caller)
   if (tooMany) return { ok: false, reason: 'busy', message: tooMany }
 
   // 2 · The job, by name from the fixed list, and its own check of the input.
@@ -99,10 +113,17 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   const stored = await readSettingRows(ctx.userDb, ctx.userId, job.name)
   if (!stored) return stop('error', 'Your AI settings could not be read, so nothing was sent. Try again in a moment.')
   const settings = settingsFor(job, stored.account, stored.job)
+  // A job that lets the request pick (the Test bench) still goes through the code's lists: a model or an effort that
+  // is not on them is refused here, whatever the job said.
+  const choice = prepared.choice ? checkedChoice(prepared.choice) : {}
+  if (!choice) return stop('bad_input', 'That model, effort or thinking setting is not one this app offers.')
+  if (choice.model) settings.model = choice.model
+  if (choice.effort) settings.effort = choice.effort
   row.model = settings.model
   row.effort = settings.effort
 
-  // 4 · The job's switch and the API key.
+  // 4 · The master switch, the job's switch and the API key.
+  if (!settings.aiEnabled) return stop('off', 'All AI is switched off in Developer → AI → Settings.')
   if (!settings.enabled) return stop('off', `"${job.title}" is switched off in Developer → AI → Settings.`)
   if (!ctx.provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
@@ -131,16 +152,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   }
 
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request: ModelRequest = {
-    model: settings.model,
-    maxOutputTokens: settings.maxOutputTokens,
-    effort: settings.effort,
-    instructions: job.instructions,
-    userText,
-    answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
-    // Diagnose's own limit wins; otherwise the limit follows the job's longest answer.
-    timeoutMs: ctx.timeoutMs ?? requestTimeoutMs(settings.maxOutputTokens),
-  }
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs)
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
@@ -152,14 +164,14 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
     effort: request.effort, instructionsVersion: job.version, worstCostUsd: worstCost,
     budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
-    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay, callerPerDay: callerDailyCap(ctx.caller),
   })
   if (!reservation) {
     ctx.report('the budget could not be reserved, so nothing was sent')
     return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' }
   }
   if (reservation.kind === 'busy') {
-    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, or ${LIMITS.callsPerDay} today. Wait a moment and try again.` }
+    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, ${LIMITS.callsPerDay} today, or ${callerDailyCap(ctx.caller)} in 24 hours from ${ctx.caller === 'app' ? 'the app' : 'this device'}. Wait a moment and try again.` }
   }
   // From here the database holds a row for this call: it is finished by id, never written a second time.
   row.id = reservation.id
@@ -202,7 +214,9 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     row.request = trimForLog({
       model: request.model, effort: request.effort, max_output_tokens: request.maxOutputTokens,
       instructions_version: job.version, instructions: request.instructions, user_text: request.userText,
-      answer_schema: request.answerSchema,
+      answer_schema: request.answerSchema, thinking: request.thinking,
+      // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
+      ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
     }, TEXT_LOG_MAX_BYTES)
     if (answer.ok) {
       row.response = trimForLog({ text: answer.text, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
@@ -215,6 +229,90 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   if (verdict.ok) return { ok: true, job: job.name, result: verdict.result, call: summaryOf(row) }
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
 }
+
+function gateScopeOf(ctx: RunContext): GateScope {
+  return ctx.readAs === 'owner' ? { kind: 'owner' } : { kind: 'server', userId: ctx.userId, caller: ctx.caller, now: ctx.now() }
+}
+
+/**
+ * The request a run sends, from the job, the checked settings and the live text. The Test bench's token count
+ * builds it the same way, so the number it shows is the number of the request that would be sent.
+ */
+export function buildRequest(
+  job: JobDefinition, settings: RunSettings, userText: string, thinking: 'adaptive' | 'off', timeoutOverride?: number,
+): ModelRequest {
+  return {
+    model: settings.model,
+    maxOutputTokens: settings.maxOutputTokens,
+    effort: settings.effort,
+    instructions: job.instructions,
+    userText,
+    answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
+    thinking,
+    // Diagnose's own limit wins; then the job's own (a phone shortcut gives up sooner); else the limit follows the
+    // job's longest answer.
+    timeoutMs: timeoutOverride ?? job.timeLimitMs ?? requestTimeoutMs(settings.maxOutputTokens),
+  }
+}
+
+/**
+ * The Test bench's "what will this cost": the prompt tokens of the request a run of `jobName` would send, counted by
+ * the provider without generating anything (free, nothing reserved, nothing written). The same checks as a run come
+ * first: the caller, the input, the lists, the switch and the key; and it refuses while the account is at a rate cap.
+ */
+export async function countJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<CountReply> {
+  const job = findJob(jobName)
+  if (!job || !job.pickable || !job.callers.includes(ctx.caller)) return { ok: false, reason: 'bad_input', message: 'There is nothing to count for that job.' }
+  const prepared = job.prepare(input, ctx.now())
+  if ('problem' in prepared) return { ok: false, reason: 'bad_input', message: prepared.problem }
+  const choice = prepared.choice ? checkedChoice(prepared.choice) : {}
+  if (!choice) return { ok: false, reason: 'bad_input', message: 'That model, effort or thinking setting is not one this app offers.' }
+  const gate = await readGate(ctx.userDb, job.name, gateScopeOf(ctx))
+  if (!gate) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was counted. Try again in a moment.' }
+  const tooMany = rateCapProblem(gate, ctx.caller)
+  if (tooMany) return { ok: false, reason: 'busy', message: tooMany }
+  const stored = await readSettingRows(ctx.userDb, ctx.userId, job.name)
+  if (!stored) return { ok: false, reason: 'error', message: 'Your AI settings could not be read, so nothing was counted. Try again in a moment.' }
+  const settings = settingsFor(job, stored.account, stored.job)
+  if (choice.model) settings.model = choice.model
+  if (choice.effort) settings.effort = choice.effort
+  if (!settings.aiEnabled) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
+  if (!settings.enabled) return { ok: false, reason: 'off', message: `"${job.title}" is switched off in Developer → AI → Settings.` }
+  if (!ctx.provider) return { ok: false, reason: 'not_configured', message: 'AI is not set up yet: the server has no API key for it.' }
+  const thinking = choice.thinking ?? settings.thinking
+  // The count costs nothing, but it is a request to Anthropic: a few a minute, counted from the ledger (security
+  // review G3). Each count leaves a zero-cost row (stop reason 'count_tokens') that this check reads and that the
+  // account's own caps count like any call. Two counts at the same instant may both pass: the cap is small and the
+  // count is free, so it is read without a lock.
+  const recent = await countRecentCalls(ctx.userDb, ctx.userId, job.name, new Date(ctx.now().getTime() - 60_000).toISOString(), COUNT_STOP_REASON)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was counted. Try again in a moment.' }
+  if (recent >= LIMITS.countsPerMinute) return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.countsPerMinute} token counts in a minute. Wait a moment and try again.` }
+  const started = Date.now()
+  let counted
+  try {
+    counted = await ctx.provider.countTokens(buildRequest(job, settings, prepared.userText, thinking, COUNT_TIMEOUT_MS))
+  } catch (error) {
+    ctx.report(`the provider part threw: ${errorPlace(error)}`)
+    counted = null
+  }
+  const row = newRow(ctx, job)
+  row.model = settings.model
+  row.effort = settings.effort
+  row.outcome = counted?.ok ? 'ok' : 'error'
+  row.stop_reason = COUNT_STOP_REASON
+  row.error = counted?.ok ? null : 'The token count failed.'
+  row.duration_ms = Math.max(0, Date.now() - started)
+  await record(ctx, row)
+  if (!counted) return { ok: false, reason: 'error', message: 'The token count failed unexpectedly. Try again in a moment.' }
+  if (!counted.ok) return { ok: false, reason: 'error', message: hideSecrets(counted.message, ctx.secrets) }
+  return { ok: true, input_tokens: counted.inputTokens, model: settings.model, effort: settings.effort, thinking }
+}
+
+// The ledger row a token count leaves (zero tokens, zero cost): the app labels it "Token count", and the cap reads it.
+const COUNT_STOP_REASON = 'count_tokens'
+
+// The free count waits at most this long: it only reads the prompt, it writes no answer.
+const COUNT_TIMEOUT_MS = 20_000
 
 /** A job's step before the model. One that throws (it shouldn't) stops the run with a plain sentence. */
 async function runEarly(ctx: RunContext, early: (env: PageEnv) => Promise<EarlyStep>): Promise<EarlyStep> {
@@ -232,7 +330,7 @@ async function send(ctx: RunContext, provider: Provider, request: ModelRequest):
     return await provider.send(request)
   } catch (error) {
     ctx.report(`the provider part threw: ${errorPlace(error)}`)
-    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null }
+    return { ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }
   }
 }
 
@@ -255,7 +353,7 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
   if (answer.ending !== 'complete') return failed('error', `The model stopped in a way this app does not handle yet (${answer.stopReason}).`)
   let check: AnswerCheck
   try {
-    check = prepared.read(answer.text)
+    check = prepared.read(answer.text, { thinking: answer.thinking, servedModel: answer.servedModel })
   } catch {
     check = { ok: false, problem: 'its check failed' }
   }

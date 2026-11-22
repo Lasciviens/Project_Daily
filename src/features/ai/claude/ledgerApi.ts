@@ -7,8 +7,12 @@ import type { AiCallWithText, AiCallsFilter, AiCallsPage, AiJobSettings, AiSetti
 // (service role); the browser reads its own rows. `ai_settings` and `ai_job_settings` are the owner's to write —
 // and input to the function, which checks every value again against its own lists and limits.
 // Before 194 runs: a read answers empty, a write names the migration. Remove the guard once 194 is live.
+// Migration 195 added two settings (`ai_settings.ai_enabled`, `ai_job_settings.thinking`) and `ai_usage`'s times: a read
+// of a database that has not run it asks again without them (42703), a write of a default value does the same, and a
+// write that needs them names the migration. Remove these fallbacks once 195 is live.
 
 const NOT_MIGRATED_194 = 'AI settings are not available yet — migration 194 (ai_ledger) has not been applied.'
+const NOT_MIGRATED_195 = 'This setting is not available yet — migration 195 (ai_controls) has not been applied.'
 
 interface PgError { code?: string; message?: string }
 const isMissing = (e: PgError | null): boolean =>
@@ -18,6 +22,9 @@ const isMissing = (e: PgError | null): boolean =>
 const CALL_COLUMNS = 'id, created_at, run_id, step, job, caller, mode, provider, model, served_model, effort, outcome, stop_reason, error, request_id, '
   + 'input_tokens, cache_read_tokens, cache_write_5m_tokens, cache_write_1h_tokens, output_tokens, thinking_tokens, long_prompt, cost_usd, duration_ms, '
   + 'instructions_version, tools'
+
+/** 42703 (a SQL column) or PGRST204 (PostgREST's own): the database has no such column yet. */
+const isMissingColumn = (e: PgError | null): boolean => !!e && (e.code === '42703' || e.code === 'PGRST204')
 
 export const CALLS_PAGE_SIZE = 50
 
@@ -58,7 +65,9 @@ export async function fetchAiCall(id: string): Promise<AiCallWithText | null> {
 
 /** The account's settings row as stored; null with no row yet (the function's defaults apply). */
 export async function fetchAiSettings(): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase.from('ai_settings').select('monthly_budget_usd, log_text, log_days').maybeSingle()
+  let { data, error } = await supabase.from('ai_settings').select('monthly_budget_usd, log_text, log_days, ai_enabled').maybeSingle()
+  // Before 195 there is no ai_enabled: ask again without it (the switch then reads as on).
+  if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_settings').select('monthly_budget_usd, log_text, log_days').maybeSingle())
   if (error) {
     if (isMissing(error)) return null
     throw error
@@ -68,13 +77,22 @@ export async function fetchAiSettings(): Promise<Record<string, unknown> | null>
 
 export async function saveAiSettings(input: AiSettings): Promise<AiSettings> {
   const user = await requireUser()
-  const { error } = await supabase.from('ai_settings').upsert({ user_id: user.id, ...input }, { onConflict: 'user_id' })
+  const row = { user_id: user.id, ...input }
+  let { error } = await supabase.from('ai_settings').upsert(row, { onConflict: 'user_id' })
+  if (isMissingColumn(error)) {
+    // The switch is a setting only 195 has: turning AI off cannot be saved without it, and saying so beats a silent no.
+    if (!input.ai_enabled) throw new Error(NOT_MIGRATED_195)
+    const older: Partial<typeof row> = { ...row }
+    delete older.ai_enabled
+    ;({ error } = await supabase.from('ai_settings').upsert(older, { onConflict: 'user_id' }))
+  }
   if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_194) : error
   return input
 }
 
 export async function fetchAiJobSettings(): Promise<AiJobSettings[]> {
-  const { data, error } = await supabase.from('ai_job_settings').select('job, enabled, model, effort, max_output_tokens, monthly_budget_usd')
+  let { data, error } = await supabase.from('ai_job_settings').select('job, enabled, model, effort, max_output_tokens, monthly_budget_usd, thinking')
+  if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_job_settings').select('job, enabled, model, effort, max_output_tokens, monthly_budget_usd'))
   if (error) {
     if (isMissing(error)) return []
     throw error
@@ -85,7 +103,14 @@ export async function fetchAiJobSettings(): Promise<AiJobSettings[]> {
 /** One job's row: a null column is "the job's default" (back to default is this same write, with nulls). */
 export async function saveAiJobSettings(input: AiJobSettings): Promise<AiJobSettings> {
   const user = await requireUser()
-  const { error } = await supabase.from('ai_job_settings').upsert({ user_id: user.id, ...input }, { onConflict: 'user_id,job' })
+  const row = { user_id: user.id, ...input }
+  let { error } = await supabase.from('ai_job_settings').upsert(row, { onConflict: 'user_id,job' })
+  if (isMissingColumn(error)) {
+    if (input.thinking !== null) throw new Error(NOT_MIGRATED_195)
+    const older: Partial<typeof row> = { ...row }
+    delete older.thinking
+    ;({ error } = await supabase.from('ai_job_settings').upsert(older, { onConflict: 'user_id,job' }))
+  }
   if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_194) : error
   return input
 }

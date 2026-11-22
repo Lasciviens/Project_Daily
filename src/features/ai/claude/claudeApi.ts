@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
-import { readDescribe, readDiagnoseAnswer, readRunAnswer } from './ledgerRules'
+import { readCountAnswer, readDescribe, readDiagnoseAnswer, readRunAnswer, type CountAnswer } from './ledgerRules'
 import type { CallSummary, ClaudeReason, Describe, DiagnoseStep } from './types'
 
 // The app's one door to the `claude` edge function (supabase/claude-src): it holds ANTHROPIC_API_KEY, checks
@@ -60,4 +60,13 @@ export async function diagnoseClaude(): Promise<DiagnoseStep[]> {
   const answer = readDiagnoseAnswer(data)
   if (!answer.ok) throw new ClaudeJobError(answer.reason, answer.message)
   return answer.steps
+}
+
+/** The Test bench's "what will this cost": the prompt tokens of the question as it would be sent. Free: nothing is written. */
+export async function countClaudeBench(input: Record<string, unknown>): Promise<Extract<CountAnswer, { ok: true }>> {
+  const { data, error } = await supabase.functions.invoke('claude', { body: { action: 'count', input } })
+  if (error) throw await notAnswered(error)
+  const answer = readCountAnswer(data)
+  if (!answer.ok) throw new ClaudeJobError('error', answer.message)
+  return answer
 }
