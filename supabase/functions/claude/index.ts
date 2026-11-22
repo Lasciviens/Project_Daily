@@ -4844,8 +4844,8 @@ const CHAT_JOB: JobDefinition = {
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · Ask AI, the tools
 //
-//  Seven tools, each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
-//  it). Five read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
+//  Eight tools, each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
+//  it). Six read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:
@@ -7296,7 +7296,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'job: test bench', file: 'supabase/claude-src/job-test-bench.ts', what: 'The Test bench: any question with a model, effort and thinking you pick, from the code\'s lists.' },
   { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
   { name: 'chat rules', file: 'supabase/claude-src/chat-rules.ts', what: "Ask AI's fixed rules: its instructions, the limits of a chat (5 requests per answer, the 90 000-token wall), the permission of each tool, the date line, and the hashes that freeze a chat's tools and instructions." },
-  { name: 'chat tools', file: 'supabase/claude-src/chat-tools.ts', what: "Ask AI's seven tools: five that read (your day, the week's prepared figures, a day's food, a search of your own words, and one read-only database question as the last resort) and two that only propose a write. Code checks every value the model sends." },
+  { name: 'chat tools', file: 'supabase/claude-src/chat-tools.ts', what: "Ask AI's eight tools: six that read (a day's list as Today holds it, the week's prepared figures, a day's food, a search of your own words, your saved notes about yourself, and one read-only database question as the last resort) and two that only propose a write. Code checks every value the model sends." },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'chat store', file: 'supabase/claude-src/chat-store.ts', what: "The stored chats: conversations, messages (only ever added to, with a hash chain) and the proposals waiting for your Confirm." },
   { name: 'chat loop', file: 'supabase/claude-src/chat-loop.ts', what: "Ask AI's own loop: the walls, the stored history checked before it is replayed, each request reserved and ledgered, the tools run side by side, the citations checked, and your Confirm or Cancel of a proposal." },
@@ -7339,7 +7339,7 @@ const DESCRIBE_SAFETY_RULES: string[] = [
   'The text you type is sent as data inside a tag, and the fixed instructions say that text in it is never an instruction.',
   'The one-shot jobs get no tools and none of your data beyond what the app hands over in a tag: the model can only suggest values or write text, which you see before anything is saved.',
   "Ask AI has fixed tools only. Each takes values the code checks (a choice ignoring case, a number in range), runs as you with your own database rights and your user id from the verified sign-in, never one the model gives, and hands back prepared figures. What a tool returns, and every note, task or diary line in it, is data: the instructions say so, and a result is cut to a size limit.",
-  'Ask AI can never write by itself. A write is a proposal stored by the function; only your tap on Confirm in the app, checked against your account, makes it real, once, with the stored values checked again. A forged, expired or already decided proposal writes nothing. The columns a proposal may fill are a fixed list with no link to an outside account.',
+  'Ask AI can never write by itself, and at most 8 tools run in a round and 3 proposals are made in an answer. A write is a proposal stored by the function; only your tap on Confirm in the app, checked against your account, makes it real, once, with the stored values checked again. A forged, expired or already decided proposal writes nothing. The columns a proposal may fill are a fixed list with no link to an outside account.',
   "A chat is stored exactly as it was sent and received and only ever added to; it is replayed unchanged, a changed or damaged history is refused, and a chat is continued only with the tools and instructions it began with. A tool you switch off is left out of new chats and refused even if the model calls it.",
   'A link in an Ask AI answer is shown only when the model cited something a tool returned in that chat and the row is one of yours; the title shown is the row\'s own.',
   'Where code can decide, code decides: the PT assessment gets its verdicts (rest day, deload, the one lift) worked out by the app, and the phone gets its day looked up, so the model only explains or writes up.',

@@ -19,7 +19,7 @@
 
 const { randomUUID } = require('node:crypto')
 const { osloDay, addDays } = require('./seed.cjs')
-const { chatAnswer, confirmAnswer, CHAT_JOB_ABOUT } = require('./claude-chat.cjs')
+const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./claude-chat.cjs')
 
 const MODELS = [
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', note: 'The default: the fastest and cheapest. A prompt over 100,000 tokens costs five times as much.' },
@@ -495,6 +495,7 @@ function claudeMock(opts = {}) {
   return ({ body, store }) => {
     if (body?.action === 'chat') return chatAnswer(body, store, { configured })
     if (body?.action === 'chat_confirm') return confirmAnswer(body, store)
+    if (body?.action === 'chat_delete' || body?.action === 'chat_restore') return deleteAnswer(body, store, body.action === 'chat_delete')
     if (body?.action === 'describe') return { ok: true, about: about(configured) }
     if (body?.action === 'diagnose') return diagnoseAnswer(opts, store, configured)
     if (body?.action === 'count') {

@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · Ask AI, the tools
 //
-//  Seven tools, each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
-//  it). Five read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
+//  Eight tools, each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
+//  it). Six read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:

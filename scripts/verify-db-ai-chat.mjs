@@ -42,6 +42,9 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
   if (!/create trigger trg_ai_messages_append_only before update or delete on public\.ai_messages/i.test(sql)) problems.push('no append-only trigger on ai_messages')
   if ((sql.match(/create trigger/gi) || []).length !== 1) problems.push('a trigger besides the append-only guard (these are server-written logs: no audit)')
   if (!/foreign key \(conversation_id, user_id\)\s+references public\.ai_conversations \(id, user_id\)/i.test(sql)) problems.push('a message or proposal can name another account\'s conversation')
+  if (!/create or replace function public\.ai_chats_purge\(\)[\s\S]*?security definer[\s\S]*?set search_path = ''/i.test(sql)) problems.push('ai_chats_purge is not security definer with an empty search_path')
+  if (!/revoke all on function public\.ai_chats_purge\(\) from public, anon, authenticated/i.test(sql) || !/grant execute on function public\.ai_chats_purge\(\) to service_role/i.test(sql)) problems.push('ai_chats_purge is callable by the browser roles or not by the service role')
+  if (!/cron\.schedule\('lascis-ai-chat-purge', '47 3 \* \* \*', 'select public\.ai_chats_purge\(\)'\)/.test(sql)) problems.push('the chat purge timer is missing')
   if (!/security invoker/i.test(sql.slice(sql.indexOf('function public.ai_find_text')))) problems.push('ai_find_text is not security invoker')
   if (/security definer/i.test(sql.slice(sql.indexOf('function public.ai_find_text')))) problems.push('ai_find_text is security definer')
   if (!/revoke all on function public\.ai_find_text\(text, text, integer\) from public, anon/i.test(sql)) problems.push('ai_find_text is callable signed out')
@@ -84,7 +87,7 @@ select coalesce(string_agg(x, E'\\n' order by x), '') from (
   union all select 'constraint ' || conrelid::regclass || ' ' || conname || ' ' || pg_get_constraintdef(oid) from pg_constraint where conrelid in ${TABLES}
   union all select 'index ' || indexdef from pg_indexes where schemaname = 'public' and tablename in ('ai_conversations', 'ai_messages', 'ai_chat_proposals')
   union all select 'trigger ' || tgname || ' ' || pg_get_triggerdef(oid) from pg_trigger where tgrelid in ${TABLES} and not tgisinternal
-  union all select 'function ' || p.oid::regprocedure || ' ' || md5(p.prosrc) || ' ' || coalesce(p.proacl::text, '') from pg_proc p where p.proname in ('ai_find_text', 'ai_messages_append_only')
+  union all select 'function ' || p.oid::regprocedure || ' ' || md5(p.prosrc) || ' ' || coalesce(p.proacl::text, '') from pg_proc p where p.proname in ('ai_find_text', 'ai_messages_append_only', 'ai_chats_purge')
 ) t(x)`
 
 const OLD_DEFAULTS = [

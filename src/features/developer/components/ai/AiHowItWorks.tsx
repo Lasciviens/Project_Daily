@@ -118,8 +118,8 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
  * these answer nothing today (docs/features/ai-plan.md §1 has the same table, with the removed parts).
  */
 const STILL_ON_GEMINI: readonly { what: string; phase: string }[] = [
-  { what: 'Ask AI’s photos, voice and the owner’s own instructions (the text chat, its tools and its Confirm cards run on Claude since phase 4a)', phase: 'Rebuilt on Claude in phase 4b' },
-  { what: 'The PT coach chat (Ask AI in coach mode)', phase: 'Phase 4b' },
+  { what: 'Ask AI’s photos and voice (dictation and hands-free chat): removed with the old panel on 22.11.2026 (the text chat, its tools and its Confirm cards run on Claude since phase 4a); the owner’s own instructions are new', phase: 'Removed, returns rebuilt on Claude in phase 4b' },
+  { what: 'The PT coach chat (Ask AI in coach mode): removed with the old panel on 22.11.2026', phase: 'Removed, returns rebuilt on Claude in phase 4b' },
   { what: 'Search by meaning: the saved-notes index and Developer’s old “Reindex AI search” button (hidden since 22.11.2026)', phase: 'Ask AI’s find_text tool already uses the database’s full-text search (phase 4a); the index is removed in phase 5' },
   { what: 'The GEMINI_API_KEY secret and the Gemini API entry in Settings', phase: 'Phase 5' },
 ]

@@ -44,6 +44,7 @@ export async function fetchAiCallsPage(filter: AiCallsFilter, page: number): Pro
   let q = supabase.from('ai_calls').select(CALL_COLUMNS, { count: 'exact' })
   if (filter.job) q = q.eq('job', filter.job)
   if (filter.outcome) q = q.eq('outcome', filter.outcome)
+  if (filter.runId) q = q.eq('run_id', filter.runId)
   const { data, error, count } = await q.order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, from + CALLS_PAGE_SIZE - 1)
   if (error) {
     if (isMissing(error)) return { calls: [], total: 0 }

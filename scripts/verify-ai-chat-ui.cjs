@@ -42,7 +42,7 @@ console.log('\n2 · the turns of an answer')
   t = R.applyChatEvent(t, ev('step', { name: 'get_day_plan', label: "Looking at the day's plan" }))
   t = R.applyChatEvent(t, ev('text', { t: 'You have ' }))
   t = R.applyChatEvent(t, ev('text', { t: 'two things.' }))
-  check('text after a lookup starts a new paragraph, text within a request does not; a step is listed once', t.text === 'Let me look.\n\nYou have two things.' && t.steps.length === 1 && t.streaming === true, t)
+  check('text after a lookup starts a new paragraph, text within a request does not; every lookup is its own step', t.text === 'Let me look.\n\nYou have two things.' && t.steps.length === 2 && t.streaming === true, t)
   t = R.applyChatEvent(t, ev('proposal', { id: U(2), tool: 'add_task', summary: 'Add task "x"', expires_at: '2026-11-23T10:00:00Z' }))
   t = R.applyChatEvent(t, ev('proposal', { id: U(2), tool: 'add_task', summary: 'Add task "x"', expires_at: '2026-11-23T10:00:00Z' }))
   check('a proposal makes one card, however often it is repeated', t.cards.length === 1)
@@ -81,6 +81,51 @@ console.log('\n4 · the wall, the links, the words')
   check('a task citation opens the task popup by id; a diary line opens its day in Personal', same(R.citationTarget({ kind: 'task', id: U(1), title: 't', day: null }), { kind: 'task', id: U(1) }) && same(R.citationTarget({ kind: 'diary', id: U(2), title: 'd', day: '2026-11-20' }), { kind: 'route', path: '/daily?date=2026-11-20' }))
   check('card words', R.cardStateLabel('confirmed') === 'Saved' && R.cardStateLabel('cancelled') === 'Cancelled' && R.cardStateLabel('expired') === 'Expired' && R.cardStateLabel('failed') === 'Could not be saved' && R.cardStateLabel('pending') === '')
   check('boldParts: **bold** only, never other markdown, never across lines', same(R.boldParts('a **b** c'), [{ text: 'a ', bold: false }, { text: 'b', bold: true }, { text: ' c', bold: false }]) && same(R.boldParts('**a\nb**'), [{ text: '**a\nb**', bold: false }]) && R.boldParts('<b>x</b> **').every(p => !p.bold))
+}
+
+console.log('\n5 · what a card shows, what a step shows (the review)')
+{
+  const args = { title: 'Buy flowers — a very long title that the old summary would have cut at eighty characters, and then some more words after it', description: 'Red ones, for Anna\'s birthday, to pick up on the way home from the station', due_date: '2026-11-25', priority: 'high' }
+  const f = R.proposalFields('add_task', args, '2026-11-22')
+  const text = f.map(x => `${x.label}: ${x.value}`).join('\n')
+  check('S1: the task card shows the FULL title and the FULL note, the date as DD.MM.YYYY, the priority, and where it goes', text.includes(args.title) && text.includes(args.description) && text.includes('Due date: 25.11.2026') && text.includes('Priority: High') && text.includes('Goes to: Backlog'), text)
+  check('S1: …and the parts the function adds itself (area, status, source), so the card says everything that is written', text.includes('Area: Personal') && text.includes('Status: Open') && text.includes('Source: Added by Ask AI'))
+  check('S1: a task due today goes to Today, one with no date to the Inbox; a missing note says "none"', R.proposalFields('add_task', { ...args, due_date: '2026-11-22', description: '' }, '2026-11-22').some(x => x.value === 'Today') && R.proposalFields('add_task', { ...args, due_date: null, description: '' }, '2026-11-22').some(x => x.label === 'Goes to' && x.value === 'Inbox') && R.proposalFields('add_task', { ...args, description: '' }, '2026-11-22').some(x => x.label === 'Note' && x.value === 'none'))
+  const food = { title: 'Lentil soup with a long name that would be cut', meal: 'dinner', date: '2026-11-21', calories: 310, protein_g: 18, carbs_g: 42.5, fat_g: 6, basis: 'recipe' }
+  const g = R.proposalFields('log_food', food, '2026-11-22').map(x => `${x.label}: ${x.value}`).join('\n')
+  check('S1: the food card shows every written field: title, meal, date, amount, calories, protein, carbs, fat, status, and where the figures come from', [food.title, 'Meal: Dinner', 'Date: 21.11.2026', 'Amount: 1 serving', 'Calories: 310 kcal', 'Protein: 18 g', 'Carbs: 42.5 g', 'Fat: 6 g', 'Status: Eaten', 'Your own recipe'].every(x => g.includes(x)), g)
+  check('S1: every key of the stored arguments appears on its card', Object.entries(args).every(([k, v]) => v === null || g.length > 0 && text.toLowerCase().includes(String(k === 'due_date' ? '25.11.2026' : k === 'priority' ? 'high' : v).toLowerCase())) && Object.entries(food).every(([k, v]) => k === 'basis' || g.toLowerCase().includes(String(k === 'date' ? '21.11.2026' : v).toLowerCase())))
+  check('S1: the fields are written in the same order as the columns the function writes (a column list in chat-tools.ts is covered: title, description, due_date, priority, section; title, meal, date, calories, protein, carbs, fat)', (() => {
+    const src = fs.readFileSync(path.join(__dirname, '../supabase/claude-src/chat-tools.ts'), 'utf8')
+    const body = src.slice(src.indexOf('const row: Record<string, unknown>'), src.indexOf('const table = tool'))
+    const cols = [...body.matchAll(/\b([a-z_]+): /g)].map(m => m[1]).filter(c => c !== 'user_id' && c !== 'row')
+    const label = { title: 'Title', description: 'Note', domain: 'Area', section: 'Goes to', status: 'Status', priority: 'Priority', due_date: 'Due date', source_type: 'Source', date: 'Date', meal_slot: 'Meal', custom_title: 'Title', quantity: 'Amount', unit: 'Amount', calories: 'Calories', protein_g: 'Protein', carbs_g: 'Carbs', fat_g: 'Fat' }
+    const shown = new Set([...f, ...R.proposalFields('log_food', food, '2026-11-22')].map(x => x.label))
+    return cols.length >= 18 && cols.every(c => label[c] && shown.has(label[c]))
+  })())
+  check('L1: a card whose expiry cannot be read is expired, one whose time has passed is expired, a future one is pending',
+    R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'propose_add_task', input: {} }], meta: {} }], [{ id: U(9), tool_use_id: 'toolu_1', tool: 'add_task', summary: 's', status: 'pending', expires_at: 'garbage' }], 1000)[0].cards[0].state === 'expired'
+    && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'propose_add_task', input: {} }], meta: {} }], [{ id: U(9), tool_use_id: 'toolu_1', tool: 'add_task', summary: 's', status: 'pending', expires_at: '' }], 1000)[0].cards[0].state === 'expired'
+    && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'propose_add_task', input: {} }], meta: {} }], [{ id: U(9), tool_use_id: 'toolu_1', tool: 'add_task', summary: 's', status: 'pending', expires_at: '2026-11-23T10:00:00Z' }], Date.parse('2026-11-22T10:00:00Z'))[0].cards[0].state === 'pending')
+  check('C3: describeInput shows the date as DD.MM.YYYY, the words, and marks the SQL as long (behind a peek); empty and "any" are left out', same(R.describeInput({ date: '2026-11-24', query: 'dentist', kind: 'any', sql: 'select 1', week: '' }).map(x => [x.label, x.value, x.long]), [['Date', '24.11.2026', false], ['Words', 'dentist', false], ['SQL', 'select 1', true]]))
+  let t = R.newTurn('a', 'assistant')
+  t = R.applyChatEvent(t, R.readChatEvent('step', { name: 'find_text', label: 'Searching your tasks and diary' }))
+  t = R.applyChatEvent(t, R.readChatEvent('detail', { name: 'find_text', input: { query: 'dentist', kind: 'any' }, ok: true }))
+  check('C3: a detail event puts the checked inputs on its step', t.steps.length === 1 && same(t.steps[0].input.map(x => x.value), ['dentist']) && R.readChatEvent('detail', { name: 'x', input: 'bad' }) === null)
+  const done = R.applyChatEvent(t, R.readChatEvent('done', { conversation_id: U(1), text: 'x', citations: [], proposals: [], cost_usd: 0.002, wall: false, prompt_tokens: 72000, run_id: U(7), thinking: 'I looked.' }))
+  check('C3/C4: done keeps the run (the cost line links to its calls), the reasoning summary, and the prompt size the warning follows', done.runId === U(7) && done.thinking === 'I looked.' && R.readChatEvent('done', { conversation_id: U(1), prompt_tokens: 72000 }).promptTokens === 72000 && R.wallState(72000, 'open') === 'near')
+  const failed = R.applyChatEvent(R.newTurn('a', 'assistant'), R.readChatEvent('error', { reason: 'declined', message: 'The model declined to answer this one.', cost_usd: 0.0013, run_id: U(8) }))
+  check('C3: a refused or failed answer keeps what it cost and its run, and why it failed (a refusal offers editing the question)', failed.costUsd === 0.0013 && failed.runId === U(8) && failed.errorReason === 'declined')
+  const reopened = R.turnsFromStored([
+    { seq: 1, role: 'user', content: [{ type: 'text', text: 'q' }], meta: {} },
+    { seq: 2, role: 'assistant', content: [{ type: 'thinking', thinking: 'Thought about it.', signature: 's' }, { type: 'tool_use', id: 'toolu_1', name: 'find_text', input: { query: 'dentist', kind: 'any' } }], meta: { run_id: U(7) } },
+    { seq: 3, role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'x' }], meta: {} },
+    { seq: 4, role: 'assistant', content: [{ type: 'text', text: 'a' }], meta: { cost_usd: 0.002 } },
+  ], [])
+  check('C3: a reopened chat shows the same steps with their inputs, the reasoning and the run', reopened[1].steps[0].input[0].value === 'dentist' && reopened[1].thinking === 'Thought about it.' && reopened[1].runId === U(7) && reopened[1].costUsd === 0.002)
+  check('C7: a stored proposal row brings its stored arguments and its result row to the card', R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'propose_add_task', input: {} }], meta: {} }], [{ id: U(9), tool_use_id: 'toolu_1', tool: 'add_task', summary: 's', status: 'confirmed', expires_at: '2026-11-23T10:00:00Z', args: { title: 'T' }, result_id: U(10) }])[0].cards[0].resultId === U(10))
+  const noMin = ['AskAiPanel.tsx', 'ChatTurnView.tsx', 'ChatHistory.tsx'].filter(f => /min-h-\[44px\]/.test(fs.readFileSync(path.join(__dirname, '../src/features/ai/chat', f), 'utf8')))
+  check('C8: no hand-made minimum height on the panel\'s buttons (the primitives keep touch targets comfortable)', noMin.length === 0, noMin)
 }
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

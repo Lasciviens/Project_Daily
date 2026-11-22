@@ -10,20 +10,41 @@ export const CHAT_TEXT_MAX = 4000
 
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
 
-export type CardState = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired' | 'busy'
+export type CardState = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired' | 'busy' | 'undone'
 
-/** A proposed write waiting for the owner's tap. */
-export interface ChatCard { id: string; tool: 'add_task' | 'log_food'; summary: string; expiresAt: string; state: CardState }
+/**
+ * A proposed write waiting for the owner's tap. `args` is what is stored in ai_chat_proposals (read from the table, never
+ * the summary): the card shows every field that would be written. null while it is being read.
+ */
+export interface ChatCard {
+  id: string
+  tool: 'add_task' | 'log_food'
+  summary: string
+  expiresAt: string
+  state: CardState
+  args: Record<string, unknown> | null
+  /** The row a confirmed proposal made (for Open and Undo). */
+  resultId: string | null
+}
+
+/** One lookup of an answer, with the inputs the code checked and used (the date, the words, the SQL). */
+export interface ChatStep { name: string; label: string; input: { key: string; label: string; value: string; long: boolean }[] | null }
 
 export interface ChatTurn {
   key: string
   role: 'user' | 'assistant'
   text: string
   /** The lookups the answer made, in order ("Looking up the week's figures"). */
-  steps: string[]
+  steps: ChatStep[]
   citations: ChatCitation[]
   cards: ChatCard[]
   costUsd: number | null
+  /** The ledger's run of this answer (the cost line links to its calls). */
+  runId: string | null
+  /** The model's reasoning summary, when it gave one (shown behind a peek). */
+  thinking: string
+  /** Why the answer failed (`declined` offers editing the question). */
+  errorReason: string | null
   /** The answer is still arriving. */
   streaming: boolean
   /** A plain sentence when the answer failed (its text was taken back). */
@@ -39,9 +60,10 @@ export type ChatEvent =
   | { event: 'text'; text: string }
   | { event: 'step'; name: string; label: string }
   | { event: 'retract' }
+  | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
   | { event: 'proposal'; card: ChatCard }
-  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; costUsd: number; wall: boolean; cutOff: boolean }
-  | { event: 'error'; reason: string; message: string; conversationId: string | null }
+  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; costUsd: number; wall: boolean; cutOff: boolean; promptTokens: number; runId: string | null; thinking: string }
+  | { event: 'error'; reason: string; message: string; conversationId: string | null; costUsd: number; runId: string | null }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -52,7 +74,7 @@ function readCard(v: unknown): ChatCard | null {
   if (v.tool !== 'add_task' && v.tool !== 'log_food') return null
   const summary = str(v.summary, 300)
   if (!summary) return null
-  return { id: v.id, tool: v.tool, summary, expiresAt: str(v.expires_at ?? v.expiresAt, 40), state: 'pending' }
+  return { id: v.id, tool: v.tool, summary, expiresAt: str(v.expires_at ?? v.expiresAt, 40), state: 'pending', args: null, resultId: null }
 }
 
 export function readCitations(v: unknown): ChatCitation[] {
@@ -78,6 +100,12 @@ export function readChatEvent(name: string, data: unknown): ChatEvent | null {
       return { event: 'step', name: str(data.name, 60), label: str(data.label, 80) || 'Working on it' }
     case 'retract':
       return { event: 'retract' }
+    case 'detail': {
+      if (!isObject(data.input)) return null
+      const input: Record<string, string | number> = {}
+      for (const [k, v] of Object.entries(data.input).slice(0, 12)) if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) input[k.slice(0, 30)] = typeof v === 'string' ? v.slice(0, 1500) : v
+      return { event: 'detail', name: str(data.name, 60), input, ok: data.ok === true }
+    }
     case 'proposal': {
       const card = readCard(data)
       return card ? { event: 'proposal', card } : null
@@ -89,10 +117,17 @@ export function readChatEvent(name: string, data: unknown): ChatEvent | null {
         event: 'done', conversationId: data.conversation_id, text: str(data.text, 40_000), citations: readCitations(data.citations),
         cards: (Array.isArray(data.proposals) ? data.proposals : []).map(readCard).filter((c): c is ChatCard => c !== null).slice(0, 10),
         costUsd: cost, wall: data.wall === true, cutOff: data.ending === 'cut_off',
+        promptTokens: typeof data.prompt_tokens === 'number' && Number.isFinite(data.prompt_tokens) && data.prompt_tokens >= 0 ? data.prompt_tokens : 0,
+        runId: typeof data.run_id === 'string' && UUID.test(data.run_id) ? data.run_id : null, thinking: str(data.thinking, 8000),
       }
     }
     case 'error':
-      return { event: 'error', reason: str(data.reason, 30) || 'error', message: str(data.message, 400) || 'Something went wrong.', conversationId: typeof data.conversation_id === 'string' && UUID.test(data.conversation_id) ? data.conversation_id : null }
+      return {
+        event: 'error', reason: str(data.reason, 30) || 'error', message: str(data.message, 400) || 'Something went wrong.',
+        conversationId: typeof data.conversation_id === 'string' && UUID.test(data.conversation_id) ? data.conversation_id : null,
+        costUsd: typeof data.cost_usd === 'number' && Number.isFinite(data.cost_usd) && data.cost_usd > 0 ? data.cost_usd : 0,
+        runId: typeof data.run_id === 'string' && UUID.test(data.run_id) ? data.run_id : null,
+      }
     default:
       return null
   }
@@ -117,7 +152,7 @@ export function parseSse(buffer: string): { events: { name: string; data: unknow
 }
 
 export const newTurn = (key: string, role: ChatTurn['role'], text = ''): ChatTurn =>
-  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, streaming: role === 'assistant', error: null, cutOff: false })
+  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false })
 
 /**
  * The answer's turn after one more event. Text from a later request of the same answer (after a lookup) starts a new
@@ -130,24 +165,96 @@ export function applyChatEvent(turn: ChatTurn, event: ChatEvent): ChatTurn {
       return { ...turn, text: turn.text + gap + event.text, pendingBreak: false }
     }
     case 'step':
-      return { ...turn, steps: turn.steps.includes(event.label) ? turn.steps : [...turn.steps, event.label], pendingBreak: true }
+      return { ...turn, steps: [...turn.steps, { name: event.name, label: event.label, input: null }], pendingBreak: true }
+    case 'detail': {
+      // The checked inputs belong to the latest step of that tool that has none yet; a tool the stream never announced gets its own step.
+      const at = turn.steps.map(st => st.name === event.name && st.input === null).lastIndexOf(true)
+      const input = describeInput(event.input)
+      if (at < 0) return { ...turn, steps: [...turn.steps, { name: event.name, label: STEP_WORDS[event.name] ?? 'Working on it', input }] }
+      return { ...turn, steps: turn.steps.map((st, i) => (i === at ? { ...st, label: STEP_WORDS[event.name] ?? st.label, input } : st)) }
+    }
     case 'retract':
       return { ...turn, text: '' }
     case 'proposal':
       return { ...turn, cards: turn.cards.some(c => c.id === event.card.id) ? turn.cards : [...turn.cards, event.card] }
     case 'done':
-      return { ...turn, text: event.text || turn.text, citations: event.citations, cards: event.cards.length ? event.cards : turn.cards, costUsd: event.costUsd, streaming: false, cutOff: event.cutOff, error: null }
+      return {
+        ...turn, text: event.text || turn.text, citations: event.citations, costUsd: event.costUsd, runId: event.runId, thinking: event.thinking,
+        // The cards already shown keep what has been read for them; a card the stream did not announce is added.
+        cards: [...turn.cards, ...event.cards.filter(c => !turn.cards.some(x => x.id === c.id))],
+        streaming: false, cutOff: event.cutOff, error: null, errorReason: null,
+      }
     case 'error':
-      return { ...turn, text: '', streaming: false, error: event.message }
+      return { ...turn, text: '', streaming: false, error: event.message, errorReason: event.reason, costUsd: event.costUsd > 0 ? event.costUsd : turn.costUsd, runId: event.runId ?? turn.runId }
     default:
       return turn
   }
 }
 
+// ── What a step shows, and what a card shows ────────────────────────────────
+
+const INPUT_LABELS: Record<string, string> = { date: 'Date', week: 'Week', section: 'Part', query: 'Words', kind: 'Kind', sql: 'SQL', title: 'Title', note: 'Note', due_date: 'Due date', priority: 'Priority', meal: 'Meal' }
+
+/** "2026-11-24" as "24.11.2026"; anything else as it is. */
+export function dmy(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : value
+}
+
+/** The inputs a lookup used, as label and value (empty and "any" left out); the SQL is `long`, shown behind a peek. */
+export function describeInput(input: Record<string, unknown>): ChatStep['input'] {
+  const out: NonNullable<ChatStep['input']> = []
+  for (const [key, raw] of Object.entries(input).slice(0, 12)) {
+    if ((typeof raw !== 'string' && typeof raw !== 'number') || raw === '' || raw === 'any') continue
+    const value = typeof raw === 'number' ? String(raw) : /date/.test(key) ? dmy(raw) : raw
+    out.push({ key, label: INPUT_LABELS[key] ?? key, value: value.slice(0, 1500), long: key === 'sql' })
+  }
+  return out
+}
+
+const PRIORITY_WORDS: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' }
+const MEAL_WORDS: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
+const BASIS_WORDS: Record<string, string> = { preset: 'Your own saved preset (exact figures)', recipe: 'Your own recipe (per serving)', diary: 'Your earlier diary line (one portion)', estimate: 'The AI\'s estimate' }
+
+/**
+ * Every field a confirmed proposal would write, as label and value, from the stored arguments: nothing is cut. The
+ * constant parts the function adds (area, status, source, amount) are shown too, so the card says exactly what is saved.
+ * `today` is the Oslo day (YYYY-MM-DD): a task due today goes to Today, a task with a later date to Backlog, none to Inbox.
+ */
+export function proposalFields(tool: string, args: Record<string, unknown>, today: string): { label: string; value: string }[] {
+  const text = (k: string) => (typeof args[k] === 'string' ? args[k] as string : '')
+  const num = (k: string) => (typeof args[k] === 'number' ? String(args[k]) : '?')
+  if (tool === 'add_task') {
+    const due = typeof args.due_date === 'string' ? args.due_date : ''
+    return [
+      { label: 'Title', value: text('title') },
+      { label: 'Note', value: text('description') || 'none' },
+      { label: 'Due date', value: due ? dmy(due) : 'none' },
+      { label: 'Priority', value: PRIORITY_WORDS[text('priority')] ?? text('priority') },
+      { label: 'Goes to', value: due === today ? 'Today' : due ? 'Backlog' : 'Inbox' },
+      { label: 'Area', value: 'Personal' },
+      { label: 'Status', value: 'Open' },
+      { label: 'Source', value: 'Added by Ask AI' },
+    ]
+  }
+  return [
+    { label: 'Title', value: text('title') },
+    { label: 'Meal', value: MEAL_WORDS[text('meal')] ?? text('meal') },
+    { label: 'Date', value: dmy(text('date')) },
+    { label: 'Amount', value: '1 serving' },
+    { label: 'Calories', value: `${num('calories')} kcal` },
+    { label: 'Protein', value: `${num('protein_g')} g` },
+    { label: 'Carbs', value: `${num('carbs_g')} g` },
+    { label: 'Fat', value: `${num('fat_g')} g` },
+    { label: 'Status', value: 'Eaten' },
+    { label: 'Figures from', value: BASIS_WORDS[text('basis')] ?? BASIS_WORDS.estimate },
+  ]
+}
+
 // ── Turns from a stored chat ────────────────────────────────────────────────
 
 export interface StoredMessageRow { seq: number; role: 'user' | 'assistant'; content: unknown; meta: unknown }
-export interface StoredProposalRow { id: string; tool_use_id: string; tool: string; summary: string; status: string; expires_at: string }
+export interface StoredProposalRow { id: string; tool_use_id: string; tool: string; summary: string; status: string; expires_at: string; args?: unknown; result_id?: string | null }
 
 const isBlock = (b: unknown): b is Record<string, unknown> => isObject(b) && typeof b.type === 'string'
 
@@ -167,7 +274,8 @@ const STEP_WORDS: Record<string, string> = {
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
   if (status === 'confirmed' || status === 'cancelled' || status === 'failed') return status
-  return Date.parse(expiresAt) < now ? 'expired' : 'pending'
+  // Fail closed: a time that cannot be read counts as past.
+  return Date.parse(expiresAt) > now ? 'pending' : 'expired'
 }
 
 /** The conversation as the panel draws it: one turn per message of the person, one per answer (its requests joined). */
@@ -189,14 +297,17 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
     if (text) answer.text = answer.text ? `${answer.text}\n\n${text}` : text
     for (const b of m.content.filter(isBlock)) {
       if (b.type !== 'tool_use' || typeof b.name !== 'string') continue
-      const label = STEP_WORDS[b.name] ?? 'Working on it'
-      if (!answer.steps.includes(label)) answer.steps.push(label)
+      const input = isObject(b.input) ? describeInput(b.input) : []
+      answer.steps.push({ name: b.name, label: STEP_WORDS[b.name] ?? 'Working on it', input })
       const p = proposals.find(x => x.tool_use_id === b.id)
       if (p && (p.tool === 'add_task' || p.tool === 'log_food') && !answer.cards.some(c => c.id === p.id)) {
-        answer.cards.push({ id: p.id, tool: p.tool, summary: p.summary, expiresAt: p.expires_at, state: cardState(p.status, p.expires_at, now) })
+        answer.cards.push({ id: p.id, tool: p.tool, summary: p.summary, expiresAt: p.expires_at, state: cardState(p.status, p.expires_at, now), args: isObject(p.args) ? p.args : null, resultId: typeof p.result_id === 'string' ? p.result_id : null })
       }
     }
+    const thought = m.content.filter(isBlock).filter(b => b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking).map(b => b.thinking as string).join('\n\n')
+    if (thought) answer.thinking = answer.thinking ? `${answer.thinking}\n\n${thought}` : thought
     const meta = isObject(m.meta) ? m.meta : {}
+    if (typeof meta.run_id === 'string' && UUID.test(meta.run_id)) answer.runId = meta.run_id
     if (typeof meta.cost_usd === 'number' && Number.isFinite(meta.cost_usd)) answer.costUsd = (answer.costUsd ?? 0) + meta.cost_usd
     if (Array.isArray(meta.citations)) answer.citations = readCitations(meta.citations)
     if (meta.ending === 'cut_off') answer.cutOff = true
