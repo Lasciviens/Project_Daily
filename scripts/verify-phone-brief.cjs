@@ -144,8 +144,8 @@ const tables = (over = {}) => structuredClone({
   }
 
   let text = await compare('a normal Wednesday', tables())
-  check('overdue tasks are counted (Pay the rent, Waiting for Ola), the waiting one as open, the headline names them', /2 tasks overdue/.test(text) && /2 done|\b2 done\b/.test(text) || /overdue/.test(text), text)
-  check('done today counts what was closed today by completed_at in Oslo time (00:30 included, yesterday and cancelled not): two done', /2 done/.test(text) || /· 2 done/.test(text), text)
+  check('overdue tasks are counted (Pay the rent, Waiting for Ola), the waiting one as open, the headline names them', /2 tasks overdue/.test(text) && /4 open tasks · 2 overdue/.test(text), text)
+  check('done today counts what was closed today by completed_at in Oslo time (00:30 included, yesterday and cancelled not): two done', /· 2 done/.test(text), text)
   check('training: today\'s session is named and no "Next planned" line follows it (Home hides the next one when one is today)', /Training today at 18:00: Upper A/.test(text) && !/Next planned/.test(text), text)
   check('training: the sessions this week come with the target (Hevy since Monday + Strava): 3 of 4', /3 of 4 sessions this week/.test(text), text)
   const noToday = tables(); noToday.time_blocks = noToday.time_blocks.filter(b => b.title !== 'Upper A')

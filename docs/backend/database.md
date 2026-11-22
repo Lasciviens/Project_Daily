@@ -273,8 +273,8 @@ Reference: `068_push_subscriptions.sql`.
   action, no harm), not to a leaked value in migration history.
 - pg_cron runs in **UTC** — state the intended local time and accept the DST
   drift explicitly, or compute it. Where the local time matters (the weekly report,
-  Sunday 23:30 Oslo), schedule **both** UTC hours the local time can be and let the
-  function decide (`scheduledReportWeek`: it acts only from 23:00 Sunday to 01:00
+  Monday 05:00 Oslo), schedule **both** UTC hours the local time can be and let the
+  function decide (`scheduledReportWeek`: it acts only from 05:00 to 07:00
   Monday Oslo time) — never a schedule that is right for half the year.
 - A timer that calls an edge function with a credential and needs it **derived**
   (so the secret itself never travels) can compute an HMAC in SQL:
@@ -549,7 +549,7 @@ AI phase 3 (`docs/features/ai.md`, "The weekly report"). One row per report:
 (the English report, ≤ 6000, required when `ready`), `facts` (the figures the model
 read, a jsonb object ≤ 64 KB), `batch_id`, `call_id` (→ `ai_calls`, `on delete set
 null`: the ledger row holding its cost), `claimed_at`, `created_at`, `ready_at`,
-`pushed_at`. `unique (user_id, week_start, made_by)`: one report a week and maker,
+`pushed_at`, `push_due`. `unique (user_id, week_start, made_by)`: one report a week and maker,
 which is what makes a second timer run, a repeated tap and two overlapping runs
 harmless.
 
@@ -557,14 +557,16 @@ harmless.
   default. **`batch_id` is a link to an outside service**, so the browser can neither
   write nor read it: `revoke all … from anon, authenticated`, then
   `grant select (<the finished columns>) to authenticated` — a column list without
-  `batch_id` and `claimed_at` (so `select *` from the browser is a 42501; the app
+  `batch_id`, `claimed_at` and `push_due` (so `select *` from the browser is a 42501; the app
   names its columns, `REPORT_COLUMNS`). One `for select` policy plus the owner
   lock; no audit trigger (a server-written log; Undo must never reach it). A new
   column the browser may read joins that grant list in its own migration.
 - **Two timers** (pg_cron, UTC, the guard pattern; secrets from Vault inside the job):
-  `lascis-ai-report-make` (`30 21,22 * * 0`) and `lascis-ai-report-check`
-  (`*/15 * * * *`, with `where exists (select 1 from public.ai_reports r where
-  r.status = 'queued')`: it calls nothing while no report waits). Both send
+  `lascis-ai-report-make` (`0 3,4 * * 1`: 05:00 Oslo in winter and summer, the
+  function picks the one in its window) and `lascis-ai-report-check`
+  (`*/15 * * * *`, with `where exists (queued report) or exists (push_due and
+  pushed_at is null)`: it calls nothing while no report waits and no push is owed;
+  the function sends the owed push only from 07:00 to 22:00 Oslo time). Both send
   `x-claude-schedule-key` = HMAC-SHA256(`'claude-schedule-v1'`, the Vault secret
   `PUSH_CRON_SECRET`) as hex to `functions/v1/claude`; no secret in Vault sends an
   empty header, which the function refuses.
