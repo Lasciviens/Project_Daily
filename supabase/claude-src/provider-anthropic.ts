@@ -26,7 +26,7 @@ import {
   UnprocessableEntityError,
   type ClientOptions,
 } from 'npm:@anthropic-ai/sdk@1.5.0'
-import type { AnswerEnding, ModelAnswer, ModelFailure, ModelRequest, Provider, ProviderInfo, TokenUsage } from './types.ts'
+import type { AnswerEnding, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, TokenCount, TokenUsage } from './types.ts'
 
 /** What the "How it works" page shows. The verify script compares each line with what the SDK really sends. */
 export const ANTHROPIC_INFO: ProviderInfo = {
@@ -38,8 +38,11 @@ export const ANTHROPIC_INFO: ProviderInfo = {
 
 // Given to the SDK outright: left out, it would take the address from an environment variable.
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
-// An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes.
+// An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes. A request may
+// ask for another limit (ModelRequest.timeoutMs: Diagnose gives ✨ 90 s once, to see its true time).
 const ANTHROPIC_TIMEOUT_MS = 30_000
+// The model list is read once, whole: Anthropic lists a handful of models, and 1000 is the most a page takes.
+const ANTHROPIC_LIST_LIMIT = 1000
 // No retry by the SDK: one request is one generation, so one reservation covers one possible bill. (A timeout may
 // still be billed; a second try would be a second bill nobody reserved.)
 const ANTHROPIC_RETRIES = 0
@@ -54,7 +57,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
   refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
-  timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`,
+  timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',
   unknown: 'The call to Anthropic failed in a way this app does not know yet.',
 }
@@ -77,14 +80,45 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
   return {
     name: ANTHROPIC_INFO.name,
     async send(request: ModelRequest): Promise<ModelAnswer | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
       try {
-        return anthropicAnswer(await client.messages.create(anthropicRequest(request)))
+        return anthropicAnswer(await client.messages.create(anthropicRequest(request), { timeout }))
       } catch (error) {
         // The SDK's error object can hold the request and its headers: only single, named fields are read from it.
-        return anthropicFailure(error, apiKey)
+        return anthropicFailure(error, apiKey, timeout)
+      }
+    },
+    // Free: GET /v1/models.
+    async listModels(timeoutMs: number): Promise<ModelList | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const page = await client.models.list({ limit: ANTHROPIC_LIST_LIMIT }, { timeout })
+        return { ok: true, modelIds: page.data.map(model => model.id).filter(id => typeof id === 'string').slice(0, ANTHROPIC_LIST_LIMIT) }
+      } catch (error) {
+        return anthropicFailure(error, apiKey, timeout)
+      }
+    },
+    // Free: POST /v1/messages/count_tokens, with the same body `send` would send (but for the answer limit).
+    async countTokens(request: ModelRequest): Promise<TokenCount | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
+      try {
+        const counted: Partial<Anthropic.MessageCreateParamsNonStreaming> = anthropicRequest(request)
+        // Counting takes no answer limit.
+        delete counted.max_tokens
+        const count = await client.messages.countTokens(counted as Anthropic.MessageCountTokensParams, { timeout })
+        return { ok: true, inputTokens: anthropicCount(count.input_tokens) }
+      } catch (error) {
+        return anthropicFailure(error, apiKey, timeout)
       }
     },
   }
+}
+
+/** The limit for one request: the one it asks for (at least a second, at most 2 minutes), else the default. */
+function anthropicTimeout(timeoutMs: number | undefined): number {
+  return typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)
+    ? Math.min(Math.max(Math.round(timeoutMs), 1_000), 120_000)
+    : ANTHROPIC_TIMEOUT_MS
 }
 
 /** Our request in Anthropic's shape. No temperature, top_p or top_k: this API version refuses them. */
@@ -169,9 +203,13 @@ function anthropicPlainText(text: string, apiKey: string): string {
   return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
-function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
-  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure =>
-    ({ ok: false, kind, status, message: ANTHROPIC_FAILURES[kind], detail, requestId })
+function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): ModelFailure {
+  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure => ({
+    ok: false, kind, status, detail, requestId,
+    message: kind === 'timeout'
+      ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`
+      : ANTHROPIC_FAILURES[kind],
+  })
   // The most specific kind first: a timeout is a connection error, and both are API errors.
   if (error instanceof APIConnectionTimeoutError) return failed('timeout', null, '', null)
   if (error instanceof APIConnectionError) return failed('network', null, '', null)

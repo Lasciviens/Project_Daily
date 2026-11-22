@@ -6,6 +6,7 @@
 //  clients, and decides who is asking. Then it hands over:
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
+//    { "action": "diagnose" }                       → diagnose.ts
 //
 //  Supabase checks the sign-in token before this code starts (the function is
 //  not listed in supabase/config.toml, so platform verification is on). That
@@ -17,7 +18,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import { ANTHROPIC_INFO, anthropicProvider } from './provider-anthropic.ts'
 import { describeFunction } from './describe.ts'
 import { errorPlace, LIMITS, ownValue, parseObject, readCapped } from './guard.ts'
-import { runJob } from './run.ts'
+import { runJob, type RunContext } from './run.ts'
+import { runDiagnose } from './diagnose.ts'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -85,15 +87,15 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run') return reply(400, { error: 'The action must be "describe" or "run"' })
+    if (action !== 'run' && action !== 'diagnose') return reply(400, { error: 'The action must be "describe", "run" or "diagnose"' })
     const jobName = ownValue(body, 'job')
-    if (typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
+    if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
     // The owner's own client: it carries their token, so row level security decides what it reads.
     const userDb = createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
       global: { headers: { Authorization: authHeader } }, auth: sessionOff,
     })
-    const answer = await runJob({
+    const context: RunContext = {
       userId: user.id,
       caller: 'app',
       userDb,
@@ -101,11 +103,13 @@ Deno.serve(async (req) => {
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
       provider: apiKey ? anthropicProvider(apiKey, fetch) : null,
       providerName: ANTHROPIC_INFO.name,
-      secrets: [apiKey, serviceKey()],
+      secrets: [apiKey, serviceKey(), publishableKey()],
       now: () => new Date(),
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),
-    }, jobName, ownValue(body, 'input'))
+    }
+    if (action === 'diagnose') return reply(200, await runDiagnose(context))
+    const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)
   } catch (error) {
     console.error(`[claude] unexpected error: ${errorPlace(error)}`)

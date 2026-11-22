@@ -13,6 +13,8 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - AI last (AGENTS.md): before a job calls a model, check that fixed logic, a query, a tool or a scheduled job can't do it.
 - Edit the parts in `supabase/claude-src/`, then run `node scripts/build-claude-function.mjs`; never edit the generated `supabase/functions/claude/index.ts` (`--check` fails when it is stale).
 - Only the provider part imports the SDK or names an Anthropic field; only `main.ts` touches `Deno`, creates Supabase clients or logs — so another provider or loop is one new part.
+- A request's time limit is the neutral `ModelRequest.timeoutMs` (default 30 s); only Diagnose raises it (✨ gets 90 s there, once, to see its true time), and every message names the limit that was used. One client, never a second.
+- Diagnose (`{ action: 'diagnose' }`, one a minute per account, counted from the ledger's `diagnose` rows): its two free steps (models list, token count) cost nothing, its two real calls go through `runJob` like any call (reserved, ledgered); a detail is one scrubbed sentence, never a raw SDK object; the whole action stays under 140 s.
 - Settings rows (`ai_settings`, `ai_job_settings`) are browser-writable, so they are input: models through the code's allow-list, numbers clamped to the code's limits ($50 a month at most).
 - Prices are code, never a table: the budget wall is worked out from them.
 - `ai_calls` is written only with the service role and the verified user id; the browser only reads it. A ledger write that fails never fails the answer.

@@ -36,6 +36,8 @@ export interface RunContext {
   secrets: readonly (string | null | undefined)[]
   now: () => Date
   newId: () => string
+  /** A longer limit for this run's request than the provider's 30 s: only Diagnose sets it. */
+  timeoutMs?: number
   /** One line for the server log. It never gets a secret or any of the owner's text. */
   report: (line: string) => void
 }
@@ -108,6 +110,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     instructions: job.instructions,
     userText: prepared.userText,
     answerSchema: job.answerSchema,
+    ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
   }
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step

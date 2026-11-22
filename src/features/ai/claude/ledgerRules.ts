@@ -5,7 +5,7 @@
 import {
   CALL_OUTCOMES, CLAUDE_REASONS,
   type AiCall, type AiCallWithText, type AiJobSettings, type AiSettings, type AiUsageRow, type CallOutcome, type CallSummary,
-  type ClaudeReason, type Describe, type DescribeJob, type DescribeModelPrice, type DescribePrices,
+  DIAGNOSE_STEP_NAMES, type ClaudeReason, type Describe, type DiagnoseStep, type DescribeJob, type DescribeModelPrice, type DescribePrices,
 } from './types'
 
 // ── Values as they enter ─────────────────────────────────────────────────────
@@ -137,6 +137,66 @@ export function readRunAnswer(raw: unknown): RunAnswer {
   const reason = (CLAUDE_REASONS as readonly string[]).includes(r.reason as string) ? r.reason as ClaudeReason : 'error'
   const said = typeof r.message === 'string' ? r.message.trim().slice(0, 300) : ''
   return { ok: false, reason, message: said || REASON_FALLBACK[reason], call }
+}
+
+/** The function's answer to Diagnose: its steps, or the sentence of why it did not run. Anything else is an error. */
+export type DiagnoseAnswer = { ok: true; steps: DiagnoseStep[] } | { ok: false; reason: 'busy' | 'error'; message: string }
+
+export function readDiagnoseAnswer(raw: unknown): DiagnoseAnswer {
+  const r = rec(raw)
+  if (r.ok === true) {
+    const steps: DiagnoseStep[] = []
+    for (const item of list(r.steps)) {
+      const s = rec(item)
+      const name = (DIAGNOSE_STEP_NAMES as readonly string[]).includes(s.name as string) ? s.name as DiagnoseStep['name'] : null
+      if (!name || typeof s.ok !== 'boolean') continue
+      steps.push({ name, title: text(s.title, 80) || name, ok: s.ok, ms: int(s.ms), detail: text(s.detail, 500) })
+    }
+    return steps.length > 0 ? { ok: true, steps } : { ok: false, reason: 'error', message: 'Diagnose gave no result — try again in a moment.' }
+  }
+  const said = typeof r.message === 'string' ? r.message.trim().slice(0, 300) : ''
+  return { ok: false, reason: r.reason === 'busy' ? 'busy' : 'error', message: said || 'Diagnose could not run — try again in a moment.' }
+}
+
+/** The step's time in seconds, as the rows and the verdict say it: "1.2 s", "48 s". */
+export function stepSeconds(ms: number): string {
+  const s = ms / 1000
+  return `${s < 10 ? s.toFixed(1) : Math.round(s)}${NBSP}s`
+}
+
+export interface DiagnoseVerdict { tone: LedgerTone; text: string }
+
+// A fill this much slower than a tiny answer, and slower than this, points at the answer form (the schema).
+const SLOW_FILL_MS = 10_000
+const SLOW_FILL_FACTOR = 3
+// ✨'s own limit in the function: a request that takes longer fails there.
+const FILL_LIMIT_MS = 30_000
+
+/** One plain sentence about where the trouble is, worked out from the four steps. */
+export function diagnoseVerdict(steps: readonly DiagnoseStep[]): DiagnoseVerdict {
+  const by = (name: DiagnoseStep['name']) => steps.find(s => s.name === name)
+  const net = by('network_key'), shape = by('request_shape'), tiny = by('tiny_answer'), fill = by('fill_request')
+  if (!net) return { tone: 'neutral', text: 'Diagnose gave no result for the network check.' }
+  if (!net.ok && !shape) return { tone: 'danger', text: `Anthropic could not be reached from the server, or it did not accept the key: ${net.detail}` }
+  const works = net.ok ? 'The network and key work' : 'The network works, but the list of models is not what ✨ needs'
+  if (shape && !shape.ok) return { tone: 'danger', text: `${works}, but Anthropic did not accept ✨’s request as it is built: ${shape.detail}` }
+  if (tiny && !tiny.ok) return { tone: 'danger', text: `${works}, but even a tiny answer did not come back: ${tiny.detail}` }
+  const tinyIs = tiny ? `, and a tiny answer came in ${stepSeconds(tiny.ms)}` : ''
+  if (!fill) return { tone: 'neutral', text: `${works}${tinyIs}; ✨’s own request was not tried.` }
+  if (!fill.ok) {
+    return fill.ms >= FILL_LIMIT_MS
+      ? { tone: 'danger', text: `${works}${tinyIs}, but ✨’s request ran ${stepSeconds(fill.ms)} and then failed: ${fill.detail}` }
+      : { tone: 'danger', text: `${works}${tinyIs}, but ✨’s request failed after ${stepSeconds(fill.ms)}: ${fill.detail}` }
+  }
+  const slowAgainstTiny = tiny ? fill.ms >= SLOW_FILL_FACTOR * Math.max(tiny.ms, 1) : true
+  if (fill.ms >= SLOW_FILL_MS && slowAgainstTiny) {
+    return {
+      tone: 'warn',
+      text: `${works}${tinyIs}, but ✨’s request took ${stepSeconds(fill.ms)}: the answer form is the slow part.${fill.ms > FILL_LIMIT_MS ? ' That is over ✨’s 30 s limit, which is why it times out.' : ''} Run Diagnose again: a first call with a new form is slower once.`,
+    }
+  }
+  if (fill.ms > FILL_LIMIT_MS) return { tone: 'warn', text: `${works}${tinyIs}, and ✨’s request took ${stepSeconds(fill.ms)}, over its 30 s limit: Anthropic is slow overall right now.` }
+  return { tone: 'success', text: `${works}${tinyIs}, and ✨’s request took ${stepSeconds(fill.ms)}: everything answers in time.` }
 }
 
 function readPrices(raw: unknown): DescribePrices {

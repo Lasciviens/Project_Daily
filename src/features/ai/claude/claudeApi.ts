@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
-import { readDescribe, readRunAnswer } from './ledgerRules'
-import type { CallSummary, ClaudeReason, Describe } from './types'
+import { readDescribe, readDiagnoseAnswer, readRunAnswer } from './ledgerRules'
+import type { CallSummary, ClaudeReason, Describe, DiagnoseStep } from './types'
 
 // The app's one door to the `claude` edge function (supabase/claude-src): it holds ANTHROPIC_API_KEY, checks
 // who asks, the owner's settings and the budget, calls the model and writes the ledger. The browser only names
@@ -47,4 +47,17 @@ export async function describeClaude(): Promise<Describe> {
   if (error) throw await notAnswered(error)
   if (data?.ok !== true || !data.about || typeof data.about !== 'object') throw new Error('The AI function gave no description of itself.')
   return readDescribe(data.about)
+}
+
+/**
+ * Diagnose: the function's four checks of ✨'s road to Anthropic (the network and key, the request's shape, a tiny
+ * answer, ✨'s own request with a 90 s limit). It can take up to two minutes. A Diagnose that did not run (one was
+ * run in the last minute, the usage could not be read) throws a ClaudeJobError with the function's sentence.
+ */
+export async function diagnoseClaude(): Promise<DiagnoseStep[]> {
+  const { data, error } = await supabase.functions.invoke('claude', { body: { action: 'diagnose' } })
+  if (error) throw await notAnswered(error)
+  const answer = readDiagnoseAnswer(data)
+  if (!answer.ok) throw new ClaudeJobError(answer.reason, answer.message)
+  return answer.steps
 }

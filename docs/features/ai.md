@@ -6,12 +6,34 @@
 
 The AI rebuild's first phase (plan: `ai-plan.md`, contract: `ai-phase1-contract.md`) adds the `claude` edge function and, in the app, the code under `src/features/ai/claude/`. Everything below this section describes the old assistant (`ai-proxy`: Ask AI, the coach, recipes, quick guess), which stays until phase 4.
 
-- **Words.** A *ledger* is the table `ai_calls`: one row for every call, with its tokens, cost and how it ended. A *job* is one named task the function can do; phase 1 has one, `item_fill`. An *outcome* is how a call ended (answered, refused, cut off, over budget …).
-- **Files.** `claudeApi.ts` (`runClaudeJob`, `describeClaude`, `ClaudeJobError`) is the only code that talks to the function. `ledgerApi.ts` reads `ai_usage` (a database function: the month summed per Oslo day, job, mode and model), the `ai_calls` pages (never the text columns; a call's text is read when it is opened) and reads and writes `ai_settings` and `ai_job_settings`. `ledgerRules.ts` holds the pure rules (reading values where they enter, money, the Oslo month, totals, budget tones); `scripts/verify-ai-ledger-ui.cjs` checks it. `hooks/useClaude.ts` has one hook per read and per write.
+- **Words.** A *ledger* is the table `ai_calls`: one row for every call, with its tokens, cost and how it ended. A *job* is one named task the function can do; phase 1 has `item_fill` and the tiny `diagnose` (see Diagnose below). An *outcome* is how a call ended (answered, refused, cut off, over budget …).
+- **Files.** `claudeApi.ts` (`runClaudeJob`, `describeClaude`, `diagnoseClaude`, `ClaudeJobError`) is the only code that talks to the function. `ledgerApi.ts` reads `ai_usage` (a database function: the month summed per Oslo day, job, mode and model), the `ai_calls` pages (never the text columns; a call's text is read when it is opened) and reads and writes `ai_settings` and `ai_job_settings`. `ledgerRules.ts` holds the pure rules (reading values where they enter, money, the Oslo month, totals, budget tones); `scripts/verify-ai-ledger-ui.cjs` checks it. `hooks/useClaude.ts` has one hook per read and per write.
 - **✨ on the item screen** calls `runClaudeJob('item_fill', { text })`. A stopped run shows the function's own sentence for every reason (`off`, `budget`, `busy`, `not_configured`, `refused`, `cut_off`, `invalid`, `error`); only an answer with no sentence says "Couldn't fill the fields — try again in a moment".
 - **Money** is USD: two decimals from a dollar up and for whole cents, four below a dollar, six in a call's detail. The budget counts a calendar month on Oslo's clock.
 - **Safety.** A call's text is drawn as a text node in a `<pre>`, never as HTML or a link. The price source is a link only for an https address on one of Anthropic's own hosts (exact host match); source files link to GitHub only for a plain repo path. The calls' query is never kept on the device. The app can read the ledger and cannot write it; only the function does.
 - **The page** is Developer → AI (`developer.md`). The harness plays the function in `scripts/harness/claude.cjs` (`scripts/harness/README.md`).
+
+### Diagnose (22.11.2026)
+
+**Why.** On 22.11.2026 every ✨ call waited exactly 30 s and got nothing back from Anthropic (no request id, 0 tokens), then the function gave up (`APIConnectionTimeoutError`); the Supabase log showed only a POST 200 after about 30 s. Two causes fit: the request never reached Anthropic (the network or the SDK between Supabase's edge runtime and `api.anthropic.com`), or Anthropic got it and was slow (most likely the one-time compile of ✨'s answer shape: 21 optional fields; Anthropic says a new schema is compiled once and then cached for 24 hours). Diagnose tells the two apart from production, with one tap.
+
+**Where.** Developer → AI → How it works, the first card, a **Diagnose** button (`AiDiagnose.tsx`). It is on How it works, not a sixth view, because it is a question about how the function works and it shares the page's "read only, nothing to set" nature; a sixth tab would be one card on a page of its own. While it runs the card says "Checking… this can take up to 2 minutes." The result is four rows (a tick or a cross, the time, the function's own sentence) under one verdict line worked out from them (`diagnoseVerdict` in `ledgerRules.ts`, checked by `verify-ai-ledger-ui`). The card stays when the description of the function can't be read, since Diagnose doesn't need it.
+
+**The four checks** (`{ action: 'diagnose' }` → `{ ok: true, steps: [{ name, title, ok, ms, detail }] }`, `supabase/claude-src/diagnose.ts`):
+1. *Network and key* — lists the models (free, 20 s). Says how long, how many models, and whether `claude-haiku-5-5` is in the list; or the error kind and HTTP status. **Only this check stops the others:** with no connection nothing after it tells us anything.
+2. *Request shape* — counts the tokens of ✨'s real request (its instructions, answer shape and a made-up sentence; free, 20 s). A 400 here would show Anthropic refuses the answer shape.
+3. *Tiny answer* — "Reply with the word OK.", no answer shape, effort low, 512 tokens at most (20 s), through the normal run path: reserved against the budget, sent, written to the ledger as the job `diagnose` (a real, tiny call; it shows in Calls and in How it works → Jobs).
+4. *✨'s real request* — the `item_fill` job with the same made-up sentence through the normal run path (reserved, ledger row), with **90 s** instead of 30 s, so its true time shows.
+
+The whole action stays under Supabase's 150 s limit: step 4 gets at most 90 s and at most what is left of 140 s; if less than 10 s is left it is skipped and says so. A step that throws is a failed step, never a crashed function. Each `detail` is one plain sentence with numbers, through `hideSecrets`, at most 400 characters; never the key, never a raw SDK object.
+
+**Reading it.** Tiny answer fast and ✨ slow means the answer form is the slow part (run it again: the first call with a new form compiles it once). Step 1 failing means the server can't reach Anthropic or the key is refused. Both slow means Anthropic is slow overall.
+
+**Rate cap: one a minute per account.** The function reads the ledger with the owner's own client: a `diagnose` row written in the last 60 s means "busy" (a plain sentence, nothing sent). Step 3's reservation writes that row even when the budget refuses it, so the ledger is the clock and no new table or column is needed. A read that fails answers an error and runs nothing (fail closed). Not counted: a Diagnose that stopped at step 1, which sends only the free list request. Two taps in the same instant can both pass the check; the database's own rate caps and budget wall in `ai_reserve` still bound them. The tiny job can also be started by a plain `run` from the app (it is tiny and capped like any job).
+
+**Cost.** Steps 1 and 2 are free. Steps 3 and 4 cost a fraction of a cent (the ✨ call is about $0.0002 once the instructions are cached); each holds its worst-case cost against the budget first, like every call.
+
+**Trade-off for this test.** The provider's time limit is a per-request option (`ModelRequest.timeoutMs`, default 30 s), not a second client; only Diagnose sets it. The message for a timeout names the limit that was used ("within 90 seconds").
 
 ## Overview
 

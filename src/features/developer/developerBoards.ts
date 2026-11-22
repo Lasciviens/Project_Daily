@@ -88,13 +88,13 @@ export const AI_PRICES_BOARD: BoardLayouts<AiPricesSection> = {
 // How it works: whether the key is set comes first on a phone; from the
 // laptop the path of a request and the jobs (the long reads) keep main, with
 // the key, the parts, the fixed rules and the glossary beside them.
-export const AI_HOW_SECTIONS = ['status', 'steps', 'jobs', 'parts', 'rules', 'glossary'] as const
+export const AI_HOW_SECTIONS = ['diagnose', 'status', 'steps', 'jobs', 'parts', 'rules', 'glossary'] as const
 export type AiHowSection = typeof AI_HOW_SECTIONS[number]
 
 export const AI_HOW_BOARD: BoardLayouts<AiHowSection> = {
-  1: ['status', 'steps', 'jobs', 'parts', 'rules', 'glossary'],
-  2: { columns: [['steps', 'jobs'], ['status', 'parts', 'rules', 'glossary']] },
-  3: { columns: [['steps', 'jobs'], ['status', 'parts'], ['rules', 'glossary']] },
+  1: ['diagnose', 'status', 'steps', 'jobs', 'parts', 'rules', 'glossary'],
+  2: { columns: [['diagnose', 'steps', 'jobs'], ['status', 'parts', 'rules', 'glossary']] },
+  3: { columns: [['diagnose', 'steps', 'jobs'], ['status', 'parts'], ['rules', 'glossary']] },
 }
 
 /** Every board the AI tab lays out, for the page header's one width. */

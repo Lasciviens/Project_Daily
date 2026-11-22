@@ -50,7 +50,8 @@ Base `https://api.anthropic.com`. All through the SDK.
 | Endpoint | SDK call | Called by | When | Limits |
 |---|---|---|---|---|
 | `POST /v1/messages` | `client.messages.create` (`client.beta.messages.create` when a beta feature is on) | `claude` → every real-time job | each AI answer; a chat answer is several calls (one per tool round) | Start tier: 4,000 requests, 2M input tokens and 400K output tokens a minute. Cache reads don't count toward the input limit. |
-| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → the Test bench's "what will this cost" | before a test question is sent | free; 5,000 requests a minute; the count is an estimate |
+| `POST /v1/messages/count_tokens` | `client.messages.countTokens` | `claude` → Diagnose step 2 (22.11.2026; later also the Test bench's "what will this cost") | on the Diagnose button, once | free; 5,000 requests a minute; the count is an estimate |
+| `GET /v1/models` | `client.models.list({ limit: 1000 })` | `claude` → Diagnose step 1 | on the Diagnose button, once | free; one page, newest first |
 | `POST /v1/messages/batches` | `client.messages.batches.create` | `claude` → batch jobs (weekly reports), from the batch phase | when a report is queued | 100,000 requests or 256 MB per batch; 1,000 batch requests a minute |
 | `GET /v1/messages/batches/{id}` | `client.messages.batches.retrieve` | `claude` → the batch check (a scheduled job) | until `processing_status` is `ended` | most batches end within 1 hour; one that isn't done after 24 hours expires |
 | `GET /v1/messages/batches/{id}/results` | `client.messages.batches.results` | the same | once ended | results stay 29 days; lines come in any order: match by `custom_id` |
@@ -144,6 +145,15 @@ What we send: the job's instructions, the conversation, and the data its tools r
 13. **A 429 can mean two things:** too many requests (retry after `retry-after`), or the monthly spend cap (don't retry: tell the owner).
 14. **The SDK retries by itself** (2 times by default, on 429, 5xx and connection errors) and its default timeout is 10 minutes. The function sets `maxRetries: 0` and a 30-second timeout: a retry after a timeout could be a second bill that nobody reserved (the first request may still be generated and billed), so one request is one generation and one reservation. A failed call is shown with its plain message and the owner tries again.
 15. **Images:** at most 8000×8000 px and 10 MB each, no animations. Tokens are about `⌈width/28⌉ × ⌈height/28⌉`, so a large photo costs up to a few thousand tokens. The app already shrinks photos before upload.
+
+## What Diagnose sends and reads (22.11.2026)
+
+Added to find out why ✨ timed out live (`docs/features/ai.md` → Diagnose). Both calls go through the same SDK client, with the same key in the same header, `maxRetries: 0` and no logging; each takes its own time limit (20 s). The SDK's types were read from `@anthropic-ai/sdk@1.5.0` (`resources/models.d.ts`, `resources/messages/messages.d.ts`). **Not yet confirmed by a live call** (that is the point of the button).
+
+- **`GET /v1/models`** (`client.models.list({ limit: 1000 })`). Sent: only `limit`. Read: `data[].id` (text, kept up to 1000 ids) to see whether `claude-haiku-5-5` is listed, and the length of the list. Not read: `display_name`, `created_at`, `capabilities`, `max_input_tokens`, `max_tokens`, `has_more`, the cursors. Only the first page is read: Anthropic lists few models, and a page of 1000 is the most it gives.
+- **`POST /v1/messages/count_tokens`** (`client.messages.countTokens`). Sent: the body ✨ sends to `/v1/messages` without `max_tokens`: `model`, `system` (the cached instructions block), `messages`, `thinking`, `output_config` (`effort` and the `json_schema` format). Read: `input_tokens` (clamped to a whole number). A 400 means Anthropic refuses the request as built. Whether count_tokens also compiles the schema is **not known**: a pass here proves the request is accepted, not that the schema is cached.
+- **A per-request time limit** goes to the SDK as `{ timeout }` in the request options (`RequestOptions.timeout`, in ms) on `messages.create`, `models.list` and `messages.countTokens`: 20 s for the free calls and the tiny answer, 90 s for ✨'s request during Diagnose; every other call keeps 30 s.
+- The tiny answer and ✨'s Diagnose request are ordinary `POST /v1/messages` calls (sections below), so they are billed and logged like any call.
 
 ## What phase 1 sends and reads
 

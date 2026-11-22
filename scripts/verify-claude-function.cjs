@@ -13,6 +13,8 @@
  *   5. hostile answers: refusal, cut off, unknown stops, bad JSON, every HTTP error, a network error, a timeout
  *   6. hostile settings rows, and the walls that stop a run before any fetch (budget, switch, key, rate caps)
  *   7. cost maths, the text log, hideSecrets, unknown job names, the pinned instructions version, ledger columns
+ *   8. Diagnose: who may call, the four steps in order, the key only in a header, an early stop, the ledger rows,
+ *      the 90 s limit for ✨ (normal runs keep 30 s), no secret in a detail, one a minute
  *
  *   Run:  node scripts/verify-claude-function.cjs
  */
@@ -48,7 +50,12 @@ const realFetch = global.fetch
 global.fetch = () => { throw new Error('the real fetch was called: this script must never use the network') }
 // The SDK waits before a retry and for its 30 s timeout: shortened here so the cases run in milliseconds.
 const realSetTimeout = global.setTimeout
-global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100 && ms <= 60_000 ? 2 : ms, ...rest)
+// The limits it was asked for are kept in `armed`, so a check can say which request had which time limit.
+const armed = []
+global.setTimeout = (fn, ms, ...rest) => {
+  if (ms >= 1000) armed.push(ms)
+  return realSetTimeout(fn, ms >= 100 && ms <= 120_000 ? 2 : ms, ...rest)
+}
 
 // ─── Loading the generated function ──────────────────────────────────────────
 
@@ -90,8 +97,10 @@ function makeWorld(over = {}) {
     settingsError: over.settingsError ?? false,
     insertError: over.insertError ?? null,
     updateError: over.updateError ?? null,
+    recentError: over.recentError ?? false,
+    seedCalls: over.seedCalls ?? [],
     reserveRaw: over.reserveRaw, // a forged answer of ai_reserve: { data, error }
-    calls: [], clients: [], rpcs: [], reserves: [], updates: [], events: [], reads: [], logs: [],
+    calls: structuredClone(over.seedCalls ?? []), clients: [], rpcs: [], reserves: [], updates: [], events: [], reads: [], logs: [],
   }
 }
 
@@ -113,6 +122,18 @@ function fakeCreateClient(world) {
         }
         if (who === 'admin' && table === 'app_allowed_users') return answer(world.allowed.has(q.filters.user_id) ? { user_id: q.filters.user_id } : null)
         return refuse()
+      }
+      if (who === 'user' && table === 'ai_calls') {
+        // The one read of ai_calls the function makes with the owner's client: has a job a row since a time?
+        q.gte = (c, v) => { q.filters[`>=${c}`] = v; return q }
+        q.limit = () => q
+        q.then = (res, rej) => Promise.resolve().then(() => {
+          world.reads.push({ who, table, filters: q.filters })
+          if (world.recentError) return { data: null, error: { message: 'boom' } }
+          const since = q.filters['>=created_at']
+          const rows = world.calls.filter(r => r.job === q.filters.job && r.user_id === q.filters.user_id && (r.created_at ?? FIXED_NOW.toISOString()) >= since)
+          return { data: rows.map(r => ({ id: r.id })), error: null }
+        }).then(res, rej)
       }
       q.update = (values) => {
         const u = { filters: {}, values }
@@ -327,7 +348,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     about.prices.checkedOn === '2026-11-20' && about.prices.longPromptOverTokens === 100000 && about.prices.longPromptMultiplier === 5 && about.prices.batchMultiplier === 0.5 && /^https:\/\/[a-z.]*(anthropic|claude)\.com\//.test(about.prices.source), about.prices)
   check('only Haiku has the long-prompt prices, and every price is a positive number', about.prices.models.every(p => (p.model === 'claude-haiku-5-5') === p.longPromptPricing && [p.inputPerMTok, p.outputPerMTok, p.cacheReadPerMTok, p.cacheWrite5mPerMTok, p.cacheWrite1hPerMTok].every(n => typeof n === 'number' && n > 0)), about.prices.models)
   const fillAbout = about.jobs.find(j => j.name === 'item_fill')
-  check('one job, item_fill: Haiku 5.5, low effort, 2000 tokens, app only, no tools, structured output', about.jobs.length === 1 && fillAbout && fillAbout.kind === 'one_shot' && same(fillAbout.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 }) && same(fillAbout.callers, ['app']) && same(fillAbout.tools, []) && fillAbout.answerSchema?.additionalProperties === false && fillAbout.features.some(f => /Structured output/.test(f)), fillAbout && { ...fillAbout, instructions: '…' })
+  const diagAbout = about.jobs.find(j => j.name === 'diagnose')
+  check('the job list is item_fill and diagnose: diagnose is a tiny one-shot, app only, no tools, no answer shape', same(about.jobs.map(j => j.name), ['item_fill', 'diagnose']) && diagAbout.kind === 'one_shot' && same(diagAbout.callers, ['app']) && same(diagAbout.tools, []) && diagAbout.answerSchema === null && diagAbout.defaults.maxOutputTokens <= 512 && diagAbout.defaults.effort === 'low' && !diagAbout.features.some(f => /Structured output/.test(f)), diagAbout)
+  check('item_fill: Haiku 5.5, low effort, 2000 tokens, app only, no tools, structured output', fillAbout && fillAbout.kind === 'one_shot' && same(fillAbout.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 }) && same(fillAbout.callers, ['app']) && same(fillAbout.tools, []) && fillAbout.answerSchema?.additionalProperties === false && fillAbout.features.some(f => /Structured output/.test(f)), fillAbout && { ...fillAbout, instructions: '…' })
   check('the answer schema has 21 optional fields and no required list, format, pattern, limit or null union (the provider\'s own rules)', (() => {
     const p = fillAbout.answerSchema.properties
     const text = JSON.stringify(fillAbout.answerSchema)
@@ -717,6 +740,135 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('settingsFor is the one place a stored setting is read (a quick direct check: nothing on a row can add a model)', settingsFor(ITEM_FILL_JOB, null, { model: 'claude-opus-4-1' }).model === 'claude-haiku-5-5')
   const stream = new ReadableStream({ start(cc) { cc.enqueue(new TextEncoder().encode('{"a":')); cc.enqueue(new TextEncoder().encode('1}')); cc.close() } })
   check('readCapped joins chunks and stops over the cap', (await readCapped(stream, 100)) === '{"a":1}' && (await readCapped(new ReadableStream({ start(cc) { cc.enqueue(new Uint8Array(50)); cc.enqueue(new Uint8Array(51)); cc.close() } }), 100)) === null)
+
+  // ═══ 8 · Diagnose ════════════════════════════════════════════════════════
+  section('8 · Diagnose')
+  const MODEL_LIST = { data: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'].map(id => ({ id, type: 'model', display_name: id, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: 'claude-haiku-5-5', last_id: 'claude-opus-5-5' }
+  const TINY = (text = 'OK') => message({ content: [{ type: 'text', text }], usage: { input_tokens: 31, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 24, output_tokens_details: { thinking_tokens: 18 } } })
+  /** The pretend Anthropic for Diagnose: the model list, the token count, a tiny answer and ✨'s answer, each replaceable. */
+  const diagNet = (over = {}) => pretendNetwork(async (url, init) => {
+    const u = String(url)
+    if (u.includes('/v1/models')) return over.list ? over.list(url, init) : answerWith(200, MODEL_LIST)
+    if (u.includes('/count_tokens')) return over.count ? over.count(url, init) : answerWith(200, { input_tokens: 2774 })
+    const isFill = !!JSON.parse(init.body).output_config?.format
+    const custom = isFill ? over.fill : over.tiny
+    return custom ? custom(url, init) : answerWith(200, isFill ? message() : TINY())
+  })
+  const never = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted', 'AbortError'))))
+  const diagBody = { action: 'diagnose' }
+  const STEP_NAMES = ['network_key', 'request_shape', 'tiny_answer', 'fill_request']
+  const used = () => armed.splice(0)
+  const stepOf = (res, name) => res.json?.steps?.find(st => st.name === name)
+
+  // Who may call: the same wall as a run.
+  r = await go(diagBody, { token: null })
+  check('diagnose without a sign-in: 401, nothing sent, nothing written', r.status === 401 && r.net.seen.length === 0 && r.world.calls.length === 0, r.status)
+  r = await go(diagBody, { token: 'forged-jwt' })
+  check('diagnose with a token that is nobody\'s: 401', r.status === 401 && r.net.seen.length === 0)
+  r = await go(diagBody, { token: 'stranger-jwt', network: diagNet() })
+  check('diagnose by an account that is not on the owner list: 403, nothing sent (not even the free list call), nothing written', r.status === 403 && r.net.seen.length === 0 && r.world.calls.length === 0 && r.world.rpcs.length === 0 && r.world.reserves.length === 0, [r.status, r.text])
+  r = await go(diagBody, { token: 'guest-jwt', network: diagNet() })
+  check('an account on the owner list may diagnose, and the rows carry that account', r.status === 200 && r.json?.ok === true && r.world.calls.length === 2 && r.world.calls.every(c => c.user_id === GUEST), [r.status, r.text.slice(0, 200)])
+  r = await go({ ...diagBody, user_id: STRANGER, caller: 'schedule', model: 'claude-opus-5-5', job: 'item_fill', input: { text: 'x' } }, { network: diagNet() })
+  check('a user id, caller, model, job or input in a diagnose request is never read', r.world.calls.every(c => c.user_id === OWNER && c.caller === 'app' && c.model === 'claude-haiku-5-5') && same(r.world.calls.map(c => c.job), ['diagnose', 'item_fill']), r.world.calls.map(c => [c.job, c.model]))
+
+  // A whole, healthy diagnosis.
+  used()
+  const dn = diagNet()
+  r = await go(diagBody, { network: dn })
+  const timers = used()
+  const steps = r.json?.steps ?? []
+  check('diagnose answers { ok: true, steps } with the four steps in order', r.status === 200 && r.json?.ok === true && same(steps.map(st => st.name), STEP_NAMES), r.text.slice(0, 300))
+  check('every step is { name, title, ok, ms, detail } and nothing else: a whole number of ms, one plain sentence', steps.every(st => same(Object.keys(st).sort(), ['detail', 'name', 'ms', 'ok', 'title'].sort()) && typeof st.title === 'string' && st.title && typeof st.ok === 'boolean' && Number.isInteger(st.ms) && st.ms >= 0 && typeof st.detail === 'string' && st.detail.length > 20 && st.detail.length <= 400 && !/[\r\n]/.test(st.detail)), steps)
+  check('titles: Network and key, Request shape, Tiny answer, ✨\'s real request', same(steps.map(st => st.title), ['Network and key', 'Request shape', 'Tiny answer', '✨\'s real request']), steps.map(st => st.title))
+  check('all four pass against a healthy Anthropic', steps.every(st => st.ok), steps)
+  check('the details say the numbers: the models and haiku in the list, 2774 tokens, the tiny answer\'s 31 in and 24 out, the cost', /3 models/.test(steps[0].detail) && /claude-haiku-5-5 is in the list/.test(steps[0].detail) && /2774 tokens/.test(steps[1].detail) && /31 tokens in, 24 tokens out/.test(steps[2].detail) && /\$0\.0000\d/.test(steps[2].detail) && /1620 tokens in, 300 tokens out/.test(steps[3].detail) && /cost \$0\.00018/.test(steps[3].detail), steps.map(st => st.detail))
+  const seenUrls = dn.seen.map(x => `${x.method} ${new URL(x.url).pathname}`)
+  check('the requests go in order: list the models, count the tokens, the tiny answer, ✨\'s answer', same(seenUrls, ['GET /v1/models', 'POST /v1/messages/count_tokens', 'POST /v1/messages', 'POST /v1/messages']), seenUrls)
+  check('on every request the key is in the authorization header and nowhere else (not in the address, the body or another header)', dn.seen.every(x => x.headers.authorization === `Bearer ${KEY}` && !x.url.includes(KEY) && !(x.body ?? '').includes(KEY) && Object.entries(x.headers).filter(([k]) => k !== 'authorization').every(([, v]) => !v.includes(KEY))), dn.seen.map(x => Object.keys(x.headers)))
+  check('no service key or publishable key goes to Anthropic', leaks(JSON.stringify(dn.seen)).filter(k => k !== KEY).length === 0)
+  const countBody = JSON.parse(dn.seen[1].body), tinyBody = JSON.parse(dn.seen[2].body), fillBody = JSON.parse(dn.seen[3].body)
+  const { max_tokens: fillMax, ...fillRest } = fillBody
+  check('step 2 counts ✨\'s real request: the same body a run sends, but for the answer limit', same(sorted(countBody), sorted(fillRest)) && fillMax === 2000 && !('max_tokens' in countBody) && countBody.messages[0].content.includes(SENTENCE) && countBody.output_config.format.type === 'json_schema', Object.keys(countBody))
+  check('step 3 is a tiny question with no answer shape: "Reply with the word OK.", low effort, a small limit', tinyBody.messages[0].content === 'Reply with the word OK.' && !('format' in (tinyBody.output_config ?? {})) && tinyBody.output_config.effort === 'low' && tinyBody.max_tokens <= 512, tinyBody)
+  check('step 4 is ✨\'s own request: the made-up sentence and the real schema, as a run sends it', fillBody.messages[0].content.includes(`<sentence>\n${SENTENCE}\n</sentence>`) && same(sorted(fillBody.output_config.format.schema), sorted(fillAbout.answerSchema)) && fillBody.system[0].text === fillAbout.instructions, fillBody.messages)
+  check('the time limits: 20 s for the list, the count and the tiny answer, 90 s for ✨\'s request', same(timers, [20000, 20000, 20000, 90000]), timers)
+  used()
+  r = await go(runBody())
+  check('a normal ✨ run keeps the 30 s limit', same(used(), [30000]))
+  const dr = await go(diagBody, { network: diagNet() })
+  check('two rows, in order: diagnose, then item_fill; both outcome ok, with their tokens and cost', dr.world.calls.length === 2 && same(dr.world.calls.map(c => c.job), ['diagnose', 'item_fill']) && dr.world.calls.every(c => c.outcome === 'ok' && c.provider === 'anthropic' && c.step === 1) && dr.world.calls[0].output_tokens === 24 && dr.world.calls[0].cost_usd > 0 && dr.world.calls[1].cost_usd === 0.000177, dr.world.calls.map(c => [c.job, c.outcome, c.cost_usd]))
+  check('each is reserved before it is sent and finished by its id: reserve, fetch, update (twice), the free calls write nothing', same(dr.world.events.filter(e => e === 'reserve' || e === 'fetch'), ['fetch', 'fetch', 'reserve', 'fetch', 'reserve', 'fetch']) && dr.world.updates.length === 2 && dr.world.updates.every(u => u.filters.user_id === OWNER) && dr.world.reserves.length === 2 && same(dr.world.reserves.map(x => x.p_job), ['diagnose', 'item_fill']), dr.world.events)
+  check('the tiny job is on the registry: instructions version set on its row, the model is the default', dr.world.calls[0].instructions_version === diagAbout.version && dr.world.calls[0].model === 'claude-haiku-5-5')
+  check('the text log keeps the tiny question and its answer like any other call', dr.world.calls[0].request?.user_text === 'Reply with the word OK.' && dr.world.calls[0].response?.text === 'OK', dr.world.calls[0].request)
+  check('no secret in the answer, the rows or the server log, and nothing in the server log for a good run', leaks(everything(dr)).length === 0 && dr.world.logs.length === 0, [leaks(everything(dr)), dr.world.logs])
+
+  // Step 1 fails: nothing after it is tried.
+  for (const [name, list, expect] of [
+    ['the key is refused (401)', async () => answerWith(401, errorBody('authentication_error', 'invalid x-api-key')), /HTTP 401/],
+    ['the network fails', async () => { throw new TypeError('fetch failed') }, /could not be reached/],
+    ['Anthropic never answers', never, /did not answer within 20 seconds/],
+  ]) {
+    r = await go(diagBody, { network: diagNet({ list }) })
+    const only1 = r.json?.steps ?? []
+    check(`step 1 fails — ${name}: one step, not ok, with its sentence; nothing else sent, nothing reserved or written`, r.status === 200 && r.json?.ok === true && only1.length === 1 && only1[0].name === 'network_key' && only1[0].ok === false && expect.test(only1[0].detail) && r.net.seen.length === 1 && r.world.reserves.length === 0 && r.world.calls.length === 0, [r.text.slice(0, 300), r.net.seen.length])
+  }
+  r = await go(diagBody, { world: { env: { ANTHROPIC_API_KEY: '' } }, network: diagNet() })
+  check('with no key on the server: step 1 says so, one step, no fetch at all', r.json?.steps?.length === 1 && r.json.steps[0].ok === false && /no Anthropic key/.test(r.json.steps[0].detail) && r.net.seen.length === 0 && r.world.calls.length === 0, r.text.slice(0, 300))
+  r = await go(diagBody, { network: diagNet({ list: async () => answerWith(200, { data: [{ id: 'claude-sonnet-5-5', type: 'model' }], has_more: false, first_id: null, last_id: null }) }) })
+  check('a list without claude-haiku-5-5: step 1 fails but says what it saw, and the later steps still run (they show the real answer)', stepOf(r, 'network_key')?.ok === false && /claude-haiku-5-5 is NOT in the list/.test(stepOf(r, 'network_key').detail) && r.json.steps.length === 4, r.text.slice(0, 300))
+
+  // Step 2 fails: a 400 here is the schema.
+  r = await go(diagBody, { network: diagNet({ count: async () => answerWith(400, errorBody('invalid_request_error', 'output_config.format.schema: too many optional fields')) }) })
+  check('step 2: a 400 names HTTP 400, the provider\'s own reason and the schema as the suspect; steps 3 and 4 still run', stepOf(r, 'request_shape')?.ok === false && /HTTP 400/.test(stepOf(r, 'request_shape').detail) && /too many optional fields/.test(stepOf(r, 'request_shape').detail) && /answer shape/.test(stepOf(r, 'request_shape').detail) && r.json.steps.length === 4, stepOf(r, 'request_shape'))
+
+  // Step 3 and 4 fail in their own ways.
+  r = await go(diagBody, { network: diagNet({ tiny: async () => answerWith(529, errorBody('overloaded_error', 'Overloaded')) }) })
+  check('step 3 fails (529): not ok with the sentence and 0 tokens; ✨\'s request is still tried', stepOf(r, 'tiny_answer')?.ok === false && /overloaded/i.test(stepOf(r, 'tiny_answer').detail) && /0 tokens/.test(stepOf(r, 'tiny_answer').detail) && stepOf(r, 'fill_request')?.ok === true, r.json?.steps)
+  used()
+  r = await go(diagBody, { network: diagNet({ fill: never }) })
+  const t4 = used()
+  check('step 4 never answers: it waited its 90 s (not 30), says "within 90 seconds", and its row stays at the worst case as for any timeout', stepOf(r, 'fill_request')?.ok === false && /did not answer within 90 seconds/.test(stepOf(r, 'fill_request').detail) && t4.includes(90000) && !t4.includes(30000) && r.world.calls[1].outcome === 'error' && r.world.calls[1].cost_usd === r.world.reserves[1].p_worst_cost, [stepOf(r, 'fill_request'), t4])
+  r = await go(diagBody, { network: diagNet({ fill: okAnswer({ content: [{ type: 'text', text: 'not json' }] }) }) })
+  check('step 4 gets an answer ✨ could not use: not ok, its outcome and its time, tokens still counted', stepOf(r, 'fill_request')?.ok === false && /invalid/.test(stepOf(r, 'fill_request').detail) && /300 tokens out/.test(stepOf(r, 'fill_request').detail), stepOf(r, 'fill_request'))
+  r = await go(diagBody, { world: { jobRow: { enabled: false } }, network: diagNet() })
+  check('the jobs switched off in Settings: steps 3 and 4 say so and send nothing (steps 1 and 2 are free and still ran)', stepOf(r, 'fill_request')?.ok === false && stepOf(r, 'tiny_answer')?.ok === false && /switched off/.test(stepOf(r, 'fill_request').detail) && r.net.seen.length === 2, r.json?.steps)
+
+  // The budget wall applies to the two real calls.
+  r = await go(diagBody, { world: { gate: [{ ...GATE, month_cost: 9 }] }, network: diagNet() })
+  check('a spent budget: steps 3 and 4 are refused before any message is sent (rows with outcome budget), the free steps still answer', stepOf(r, 'network_key')?.ok && stepOf(r, 'request_shape')?.ok && stepOf(r, 'tiny_answer')?.ok === false && stepOf(r, 'fill_request')?.ok === false && /budget/i.test(stepOf(r, 'tiny_answer').detail) && r.net.seen.length === 2 && same(r.world.calls.map(c => c.outcome), ['budget', 'budget']), [r.json?.steps, r.net.seen.length])
+  r = await go(diagBody, { world: { reserveRaw: { data: null, error: { message: 'boom' } } }, network: diagNet() })
+  check('a reservation that fails sends nothing: steps 3 and 4 fail, no message request', stepOf(r, 'tiny_answer')?.ok === false && stepOf(r, 'fill_request')?.ok === false && r.net.seen.length === 2, r.json?.steps)
+
+  // One a minute.
+  const world1 = makeWorld()
+  const first = await go(diagBody, { world: world1, network: diagNet() })
+  const second = await go(diagBody, { world: world1, network: diagNet() })
+  check('a second diagnose right after the first is refused: reason busy, a plain sentence, nothing sent, no new row', first.json?.ok === true && second.status === 200 && second.json?.ok === false && second.json.reason === 'busy' && /last minute/.test(second.json.message) && second.net.seen.length === 0 && world1.calls.length === 2 && world1.reserves.length === 2, second.text)
+  check('the cap is read with the owner\'s own client, for this account and this job, from one minute ago', (() => { const rd = world1.reads.filter(x => x.table === 'ai_calls'); return rd.length === 2 && rd.every(x => x.who === 'user' && x.filters.user_id === OWNER && x.filters.job === 'diagnose' && x.filters['>=created_at'] === '2026-11-11T13:29:00.000Z') })(), world1.reads.filter(x => x.table === 'ai_calls'))
+  r = await go(diagBody, { world: { seedCalls: [{ id: 'old', user_id: OWNER, job: 'diagnose', created_at: '2026-11-11T13:28:00.000Z' }] }, network: diagNet() })
+  check('a diagnose two minutes ago does not count', r.json?.ok === true && r.json.steps?.length === 4, r.text.slice(0, 200))
+  r = await go(diagBody, { world: { seedCalls: [{ id: 'other', user_id: OWNER, job: 'item_fill', created_at: '2026-11-11T13:29:50.000Z' }, { id: 'someone', user_id: GUEST, job: 'diagnose', created_at: '2026-11-11T13:29:50.000Z' }] }, network: diagNet() })
+  check('another job\'s rows, or another account\'s, do not count', r.json?.ok === true && r.json.steps?.length === 4, r.text.slice(0, 200))
+  r = await go(diagBody, { world: { recentError: true }, network: diagNet() })
+  check('a cap that cannot be read fails closed: ok false, reason error, nothing sent', r.json?.ok === false && r.json.reason === 'error' && r.net.seen.length === 0 && r.world.calls.length === 0, r.text)
+  r = await go(diagBody, { world: { seedCalls: [{ id: 'budgetrow', user_id: OWNER, job: 'diagnose', outcome: 'budget' }] }, network: diagNet() })
+  check('a diagnose the budget refused still counts (its row is in the ledger)', r.json?.reason === 'busy')
+
+  // Secrets never reach a detail, even when Anthropic quotes them.
+  r = await go(diagBody, { network: diagNet({
+    list: async () => answerWith(401, errorBody('authentication_error', `invalid key ${KEY} and ${SERVICE} and ${PUBLISHABLE}`)),
+  }) })
+  check('an Anthropic error that quotes every key we hold: none reaches the answer, the rows or the log (step 1)', leaks(everything(r)).length === 0 && /\[hidden\]/.test(r.json.steps[0].detail), [leaks(everything(r)), r.json.steps[0].detail])
+  r = await go(diagBody, { network: diagNet({
+    count: async () => answerWith(400, errorBody('invalid_request_error', `bad ${KEY} ${SERVICE} sk-ant-api03-OTHERKEY123456789 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop`)),
+    tiny: async () => answerWith(400, errorBody('invalid_request_error', `bad ${KEY}`)),
+    fill: async () => answerWith(401, errorBody('authentication_error', `bad ${KEY} ${SERVICE}`)),
+  }) })
+  check('…and in steps 2, 3 and 4, in the details, the ledger rows and the server log, a key shaped value of anyone\'s is taken out too', leaks(everything(r)).length === 0 && !/sk-ant-|sb_secret_|eyJhbGci/.test(r.text), [leaks(everything(r)), r.json.steps.map(st => st.detail)])
+  check('a detail is never a raw SDK object: no braces, no "headers", no "APIError"', r.json.steps.every(st => !/[{}]|headers|APIError|\[object/.test(st.detail)), r.json.steps.map(st => st.detail))
+  r = await go(diagBody, { network: diagNet({ tiny: async () => answerWith(400, errorBody('invalid_request_error', 'x'.repeat(5000))) }) })
+  check('a 5000-character explanation is cut: a detail is at most 400 characters', r.json.steps.every(st => st.detail.length <= 400), r.json.steps.map(st => st.detail.length))
 
   global.fetch = realFetch
   global.setTimeout = realSetTimeout

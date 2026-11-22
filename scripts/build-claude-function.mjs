@@ -42,7 +42,7 @@ const RULES_CLOSE = '// </item-fill-shared>'
 const PARTS = [
   'types.ts', 'prices.ts', 'guard.ts', 'provider-anthropic.ts', 'ledger.ts',
   RULES,
-  'job-item-fill.ts', 'jobs.ts', 'run.ts', 'describe.ts', 'main.ts',
+  'job-item-fill.ts', 'job-diagnose.ts', 'jobs.ts', 'run.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
 ]
 
 function stop(message) {
