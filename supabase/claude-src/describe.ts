@@ -23,8 +23,10 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'ledger', file: 'supabase/claude-src/ledger.ts', what: "The database calls: your settings and usage are read with your own rights, and each call is written to the log with the server's." },
   { name: 'item form rules', file: 'src/features/items/itemFill.ts', what: "The item form's own field rules, copied in when the function is built. The app runs the same check again on the answer." },
   { name: 'job: item_fill', file: 'supabase/claude-src/job-item-fill.ts', what: 'The ✨ job: its instructions, its answer shape and its check.' },
+  { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
+  { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
   { name: 'describe', file: 'supabase/claude-src/describe.ts', what: 'This description: where the page you are reading comes from.' },
   { name: 'main', file: 'supabase/claude-src/main.ts', what: 'The entry point: it checks who is asking, reads the request, creates the database clients and hands over to the run.' },
 ]
@@ -32,7 +34,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
 /** The path of one request, in order. `part` names the part that does the step. */
 const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. Supabase checks the token before the function starts. The function then asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one.' },
-  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job.` },
+  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },

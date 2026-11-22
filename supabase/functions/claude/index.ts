@@ -41,6 +41,8 @@ interface ModelRequest {
   userText: string
   /** The shape the answer must have, or null for free text. */
   answerSchema: JsonSchema | null
+  /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
+  timeoutMs?: number
 }
 
 /** What a request cost, in tokens. A token is a piece of text, about ¾ of a word. */
@@ -96,10 +98,29 @@ interface ModelFailure {
   requestId: string | null
 }
 
-/** A model provider, as the run part sees it: one method. */
+/** The ids of the models the provider lists for this key. */
+interface ModelList {
+  ok: true
+  modelIds: string[]
+}
+
+/** What the provider counted for a request, without running it. */
+interface TokenCount {
+  ok: true
+  inputTokens: number
+}
+
+/**
+ * A model provider, as the run part sees it. `send` is the real request. The other two are free checks that
+ * Diagnose uses: they cost no tokens and never generate anything.
+ */
 interface Provider {
   name: string
   send(request: ModelRequest): Promise<ModelAnswer | ModelFailure>
+  /** Lists the models this key may use. */
+  listModels(timeoutMs: number): Promise<ModelList | ModelFailure>
+  /** Counts the tokens of a request exactly as `send` would build it (`request.timeoutMs` is its limit). */
+  countTokens(request: ModelRequest): Promise<TokenCount | ModelFailure>
 }
 
 /** What the "How it works" page says about the provider. */
@@ -165,6 +186,21 @@ interface CallSummary {
 type RunReply =
   | { ok: true; job: string; result: Record<string, unknown>; call: CallSummary }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
+
+/** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */
+interface DiagnoseStep {
+  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request'
+  title: string
+  ok: boolean
+  /** How long the step took, in milliseconds. */
+  ms: number
+  detail: string
+}
+
+/** The answer to `{ action: 'diagnose' }`. `busy`: one was run less than a minute ago. */
+type DiagnoseReply =
+  | { ok: true; steps: DiagnoseStep[] }
+  | { ok: false; reason: 'busy' | 'error'; message: string }
 
 /** The answer to `{ action: 'describe' }`: what this code is and does, for the Developer → AI page. */
 interface Describe {
@@ -544,8 +580,11 @@ const ANTHROPIC_INFO: ProviderInfo = {
 
 // Given to the SDK outright: left out, it would take the address from an environment variable.
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com'
-// An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes.
+// An edge function lives for a short time, so a call may not wait the SDK's default 10 minutes. A request may
+// ask for another limit (ModelRequest.timeoutMs: Diagnose gives ✨ 90 s once, to see its true time).
 const ANTHROPIC_TIMEOUT_MS = 30_000
+// The model list is read once, whole: Anthropic lists a handful of models, and 1000 is the most a page takes.
+const ANTHROPIC_LIST_LIMIT = 1000
 // No retry by the SDK: one request is one generation, so one reservation covers one possible bill. (A timeout may
 // still be billed; a second try would be a second bill nobody reserved.)
 const ANTHROPIC_RETRIES = 0
@@ -560,7 +599,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
   refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
-  timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`,
+  timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',
   unknown: 'The call to Anthropic failed in a way this app does not know yet.',
 }
@@ -583,14 +622,45 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
   return {
     name: ANTHROPIC_INFO.name,
     async send(request: ModelRequest): Promise<ModelAnswer | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
       try {
-        return anthropicAnswer(await client.messages.create(anthropicRequest(request)))
+        return anthropicAnswer(await client.messages.create(anthropicRequest(request), { timeout }))
       } catch (error) {
         // The SDK's error object can hold the request and its headers: only single, named fields are read from it.
-        return anthropicFailure(error, apiKey)
+        return anthropicFailure(error, apiKey, timeout)
+      }
+    },
+    // Free: GET /v1/models.
+    async listModels(timeoutMs: number): Promise<ModelList | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const page = await client.models.list({ limit: ANTHROPIC_LIST_LIMIT }, { timeout })
+        return { ok: true, modelIds: page.data.map(model => model.id).filter(id => typeof id === 'string').slice(0, ANTHROPIC_LIST_LIMIT) }
+      } catch (error) {
+        return anthropicFailure(error, apiKey, timeout)
+      }
+    },
+    // Free: POST /v1/messages/count_tokens, with the same body `send` would send (but for the answer limit).
+    async countTokens(request: ModelRequest): Promise<TokenCount | ModelFailure> {
+      const timeout = anthropicTimeout(request.timeoutMs)
+      try {
+        const counted: Partial<Anthropic.MessageCreateParamsNonStreaming> = anthropicRequest(request)
+        // Counting takes no answer limit.
+        delete counted.max_tokens
+        const count = await client.messages.countTokens(counted as Anthropic.MessageCountTokensParams, { timeout })
+        return { ok: true, inputTokens: anthropicCount(count.input_tokens) }
+      } catch (error) {
+        return anthropicFailure(error, apiKey, timeout)
       }
     },
   }
+}
+
+/** The limit for one request: the one it asks for (at least a second, at most 2 minutes), else the default. */
+function anthropicTimeout(timeoutMs: number | undefined): number {
+  return typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)
+    ? Math.min(Math.max(Math.round(timeoutMs), 1_000), 120_000)
+    : ANTHROPIC_TIMEOUT_MS
 }
 
 /** Our request in Anthropic's shape. No temperature, top_p or top_k: this API version refuses them. */
@@ -675,9 +745,13 @@ function anthropicPlainText(text: string, apiKey: string): string {
   return anthropicCut(apiKey ? oneLine.split(apiKey).join('[hidden]') : oneLine, ANTHROPIC_DETAIL_MAX)
 }
 
-function anthropicFailure(error: unknown, apiKey: string): ModelFailure {
-  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure =>
-    ({ ok: false, kind, status, message: ANTHROPIC_FAILURES[kind], detail, requestId })
+function anthropicFailure(error: unknown, apiKey: string, timeoutMs: number): ModelFailure {
+  const failed = (kind: ModelFailure['kind'], status: number | null, detail: string, requestId: string | null): ModelFailure => ({
+    ok: false, kind, status, detail, requestId,
+    message: kind === 'timeout'
+      ? `Anthropic did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again in a moment.`
+      : ANTHROPIC_FAILURES[kind],
+  })
   // The most specific kind first: a timeout is a connection error, and both are API errors.
   if (error instanceof APIConnectionTimeoutError) return failed('timeout', null, '', null)
   if (error instanceof APIConnectionError) return failed('network', null, '', null)
@@ -777,6 +851,19 @@ async function readSettingRows(userDb: Db, userId: string, job: string): Promise
         .eq('user_id', userId).eq('job', job).maybeSingle(),
     ])
     return account.error || perJob.error ? null : { account: account.data, job: perJob.data }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether the account has a call of `job` (any outcome) written since `sinceIso`: read with the owner's own client,
+ * so row level security shows only their rows. Null when it can't be read: the caller then does nothing.
+ */
+async function hasRecentCall(userDb: Db, userId: string, job: string, sinceIso: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', job).gte('created_at', sinceIso).limit(1)
+    return error || !Array.isArray(data) ? null : data.length > 0
   } catch {
     return null
   }
@@ -1351,6 +1438,46 @@ const ITEM_FILL_JOB: JobDefinition = {
   },
 }
 
+// ═══ supabase/claude-src/job-diagnose.ts ═══
+// ─────────────────────────────────────────────────────────────────────────────
+//  The `claude` function · the job `diagnose`
+//
+//  The tiny answer of Developer → AI → How it works → Diagnose: one fixed
+//  question, "Reply with the word OK.", with no answer shape. It exists so the
+//  third check of Diagnose goes through the normal run path (reserved, sent,
+//  written to the ledger) and shows up in Calls like every other call. The app
+//  cannot start it by itself in any other way: it takes no input, and it is
+//  asked only by diagnose.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DIAGNOSE_JOB_VERSION = '2026-11-22.1'
+
+const DIAGNOSE_INSTRUCTIONS = 'You are a connection test. Do what the message says, in as few words as possible.'
+const DIAGNOSE_QUESTION = 'Reply with the word OK.'
+
+const DIAGNOSE_JOB: JobDefinition = {
+  name: 'diagnose',
+  title: 'Diagnose: a tiny answer',
+  what: 'The third check of Diagnose: a question with a one-word answer and no answer shape, to see how fast the smallest possible request comes back. It is started only by the Diagnose button.',
+  kind: 'one_shot',
+  callers: ['app'],
+  version: DIAGNOSE_JOB_VERSION,
+  defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 512 },
+  instructions: DIAGNOSE_INSTRUCTIONS,
+  answerSchema: null,
+  sourceFiles: ['supabase/claude-src/job-diagnose.ts', 'supabase/claude-src/diagnose.ts'],
+
+  // It takes no input: whatever the request sent is ignored, and the question is always the same.
+  prepare() {
+    return {
+      userText: DIAGNOSE_QUESTION,
+      read(answerText: string) {
+        return { ok: true as const, result: { text: answerText.trim().slice(0, 200) } }
+      },
+    }
+  },
+}
+
 // ═══ supabase/claude-src/jobs.ts ═══
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · the job list
@@ -1360,7 +1487,7 @@ const ITEM_FILL_JOB: JobDefinition = {
 //  A new job is a new job-<name>.ts file and one line here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const JOB_LIST: readonly JobDefinition[] = [ITEM_FILL_JOB]
+const JOB_LIST: readonly JobDefinition[] = [ITEM_FILL_JOB, DIAGNOSE_JOB]
 
 // A Map, not a plain object: a name like "constructor" or "__proto__" finds nothing in it.
 const JOBS_BY_NAME: ReadonlyMap<string, JobDefinition> = new Map(JOB_LIST.map(job => [job.name, job]))
@@ -1397,6 +1524,8 @@ interface RunContext {
   secrets: readonly (string | null | undefined)[]
   now: () => Date
   newId: () => string
+  /** A longer limit for this run's request than the provider's 30 s: only Diagnose sets it. */
+  timeoutMs?: number
   /** One line for the server log. It never gets a secret or any of the owner's text. */
   report: (line: string) => void
 }
@@ -1469,6 +1598,7 @@ async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promis
     instructions: job.instructions,
     userText: prepared.userText,
     answerSchema: job.answerSchema,
+    ...(ctx.timeoutMs ? { timeoutMs: ctx.timeoutMs } : {}),
   }
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
@@ -1597,6 +1727,152 @@ async function record(ctx: RunContext, row: CallRow): Promise<void> {
   if (problem) ctx.report(`a call was not written to the ledger: ${problem}`)
 }
 
+// ═══ supabase/claude-src/diagnose.ts ═══
+// ─────────────────────────────────────────────────────────────────────────────
+//  The `claude` function · Diagnose
+//
+//  `{ action: 'diagnose' }`, behind the Diagnose button on Developer → AI → How
+//  it works. When ✨ is slow or times out, this answers the one question that
+//  matters: does the request not reach Anthropic at all, or does Anthropic get
+//  it and take long? Four checks, in order, each timed:
+//    1 · Network and key   list the models (free)
+//    2 · Request shape     count the tokens of ✨'s real request (free): a 400 here would say the answer shape is refused
+//    3 · Tiny answer       the job `diagnose` ("Reply with the word OK.") through the normal run path
+//    4 · ✨'s real request  the job `item_fill` with a made-up sentence, through the normal run path, 90 s limit
+//  Steps 3 and 4 are real calls: each is reserved against the budget and written to the ledger like any other.
+//  Nothing in a request chooses anything here: the sentence, the models and the limits are fixed in this file.
+//
+//  The answer carries only our own sentences and numbers. A message goes out through hideSecrets, and no raw
+//  provider object is ever put in one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The made-up sentence every check uses: ✨'s own example. No personal data. */
+const DIAGNOSE_SENTENCE = 'Dentist on Tuesday at 14:00 for an hour at Jernbanetorget, remind me a day before'
+
+/** At most one Diagnose a minute for an account: the `diagnose` rows of the ledger are the count. */
+const DIAGNOSE_PAUSE_MS = 60_000
+/** Steps 1 to 3 wait at most this long each. */
+const DIAGNOSE_SHORT_MS = 20_000
+/** Step 4 waits this long: three times ✨'s own 30 s, so its true time shows. */
+const DIAGNOSE_LONG_MS = 90_000
+/** The whole action stays under Supabase's 150 s limit, with room to answer. */
+const DIAGNOSE_TOTAL_MS = 140_000
+// A step 4 with less time than this left would only time out: it is skipped and says so.
+const DIAGNOSE_LONG_MIN_MS = 10_000
+const DIAGNOSE_DETAIL_MAX = 400
+// ✨'s default model: the list must hold it for ✨ to work with its default settings.
+const FILL_MODEL = 'claude-haiku-5-5'
+
+const diagnoseSecs = (ms: number) => (ms / 1000).toFixed(1)
+const diagnoseUsd = (usd: number) => `$${usd.toFixed(5)}`
+const diagnoseTokens = (n: number) => `${n} token${n === 1 ? '' : 's'}`
+
+/** One plain sentence for a failed call: our own wording, the status and the provider's short explanation. */
+function diagnoseFailure(what: string, failure: ModelFailure, ms: number): string {
+  const status = failure.status === null ? '' : ` (HTTP ${failure.status})`
+  const said = failure.detail ? ` Anthropic says: ${failure.detail}` : ''
+  return `${what} failed after ${diagnoseSecs(ms)} s${status}: ${failure.message}${said}`
+}
+
+/** What a real call (steps 3 and 4) amounts to, as one sentence. */
+function diagnoseRunSentence(what: string, reply: RunReply, ms: number): string {
+  if (reply.ok) {
+    const c = reply.call
+    const promptTokens = c.input_tokens + c.cache_read_tokens + c.cache_write_tokens
+    return `${what} came back in ${diagnoseSecs(ms)} s: ${diagnoseTokens(promptTokens)} in, ${diagnoseTokens(c.output_tokens)} out (${c.thinking_tokens} of them thinking), cost ${diagnoseUsd(c.cost_usd)}.`
+  }
+  const c = reply.call
+  const numbers = c && (c.input_tokens || c.output_tokens)
+    ? ` It used ${diagnoseTokens(c.input_tokens + c.cache_read_tokens + c.cache_write_tokens)} in and ${diagnoseTokens(c.output_tokens)} out.`
+    : ' It used 0 tokens.'
+  return `${what} did not give a usable answer after ${diagnoseSecs(ms)} s (${reply.reason}): ${reply.message}${numbers}`
+}
+
+async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
+  // One a minute: a Diagnose leaves a `diagnose` row in the ledger (step 3 reserves one even when the budget
+  // refuses it), so the ledger itself is the clock. A read that fails answers "error": nothing runs unchecked.
+  const since = new Date(ctx.now().getTime() - DIAGNOSE_PAUSE_MS).toISOString()
+  const recent = await hasRecentCall(ctx.userDb, ctx.userId, 'diagnose', since)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was tried. Try again in a moment.' }
+  if (recent) return { ok: false, reason: 'busy', message: 'Diagnose already ran in the last minute. Wait a moment and run it again.' }
+
+  const started = Date.now()
+  const steps: DiagnoseStep[] = []
+  /** Runs one check, times it and records its sentence. A check that throws is a failed check, never a crash. */
+  const check = async (name: DiagnoseStep['name'], title: string, body: () => Promise<{ ok: boolean; detail: string }>): Promise<void> => {
+    const t0 = Date.now()
+    let outcome: { ok: boolean; detail: string }
+    try {
+      outcome = await body()
+    } catch (error) {
+      ctx.report(`a diagnose step threw: ${errorPlace(error)}`)
+      outcome = { ok: false, detail: 'This check failed in a way the function does not know.' }
+    }
+    steps.push({ name, title, ok: outcome.ok, ms: Math.max(0, Date.now() - t0), detail: cutChars(hideSecrets(outcome.detail, ctx.secrets), DIAGNOSE_DETAIL_MAX) })
+  }
+  const provider = ctx.provider
+
+  // 1 · Network and key.
+  let reached = false
+  await check('network_key', 'Network and key', async () => {
+    if (!provider) return { ok: false, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }
+    const t0 = Date.now()
+    const list = await provider.listModels(DIAGNOSE_SHORT_MS)
+    const ms = Date.now() - t0
+    if (!list.ok) return { ok: false, detail: diagnoseFailure('Listing the models', list, ms) }
+    reached = true
+    const has = list.modelIds.includes(FILL_MODEL)
+    return {
+      ok: has,
+      detail: `Anthropic listed ${list.modelIds.length} model${list.modelIds.length === 1 ? '' : 's'} in ${diagnoseSecs(ms)} s, so the network and the key work; ${FILL_MODEL} ${has ? 'is' : 'is NOT'} in the list.`,
+    }
+  })
+  // Without a connection nothing after it can tell us anything.
+  if (!reached || !provider) return { ok: true, steps }
+
+  // The request ✨ sends, built the way a run builds it (the owner's own settings for the job included).
+  const fillJob = findJob('item_fill')
+  const prepared = fillJob ? fillJob.prepare({ text: DIAGNOSE_SENTENCE }, ctx.now()) : { problem: 'the ✨ job is missing' }
+  const stored = await readSettingRows(ctx.userDb, ctx.userId, 'item_fill')
+  const settings = fillJob ? settingsFor(fillJob, stored?.account ?? null, stored?.job ?? null) : null
+
+  // 2 · Request shape.
+  await check('request_shape', 'Request shape', async () => {
+    if (!fillJob || !settings || 'problem' in prepared) return { ok: false, detail: 'The ✨ request could not be built here.' }
+    const request: ModelRequest = {
+      model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, instructions: fillJob.instructions,
+      userText: prepared.userText, answerSchema: fillJob.answerSchema, timeoutMs: DIAGNOSE_SHORT_MS,
+    }
+    const t0 = Date.now()
+    const count = await provider.countTokens(request)
+    const ms = Date.now() - t0
+    if (count.ok) return { ok: true, detail: `Anthropic accepted ✨'s request and its answer shape and counted ${diagnoseTokens(count.inputTokens)} in ${diagnoseSecs(ms)} s.` }
+    const refused = count.kind === 'refused_request' ? ' The request as built is refused, so the answer shape may be the problem.' : ''
+    return { ok: false, detail: `${diagnoseFailure('Counting the tokens', count, ms)}${refused}` }
+  })
+
+  // 3 · A tiny answer, through the normal run path.
+  await check('tiny_answer', 'Tiny answer', async () => {
+    const t0 = Date.now()
+    const reply = await runJob({ ...ctx, timeoutMs: DIAGNOSE_SHORT_MS }, 'diagnose', {})
+    return { ok: reply.ok, detail: diagnoseRunSentence('A tiny answer', reply, Date.now() - t0) }
+  })
+
+  // 4 · ✨'s real request, with room: 90 s, or what is left of the whole action.
+  const timeLeft = DIAGNOSE_TOTAL_MS - (Date.now() - started)
+  const longLimit = Math.min(DIAGNOSE_LONG_MS, timeLeft)
+  await check('fill_request', "✨'s real request", async () => {
+    if (longLimit < DIAGNOSE_LONG_MIN_MS) {
+      return { ok: false, detail: `Skipped: the earlier checks used ${diagnoseSecs(DIAGNOSE_TOTAL_MS - Math.max(timeLeft, 0))} s of the ${DIAGNOSE_TOTAL_MS / 1000} s this action has in all.` }
+    }
+    const t0 = Date.now()
+    const reply = await runJob({ ...ctx, timeoutMs: longLimit }, 'item_fill', { text: DIAGNOSE_SENTENCE })
+    return { ok: reply.ok, detail: diagnoseRunSentence("✨'s request", reply, Date.now() - t0) }
+  })
+
+  return { ok: true, steps }
+}
+
 // ═══ supabase/claude-src/describe.ts ═══
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · what it says about itself
@@ -1616,8 +1892,10 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'ledger', file: 'supabase/claude-src/ledger.ts', what: "The database calls: your settings and usage are read with your own rights, and each call is written to the log with the server's." },
   { name: 'item form rules', file: 'src/features/items/itemFill.ts', what: "The item form's own field rules, copied in when the function is built. The app runs the same check again on the answer." },
   { name: 'job: item_fill', file: 'supabase/claude-src/job-item-fill.ts', what: 'The ✨ job: its instructions, its answer shape and its check.' },
+  { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
+  { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
   { name: 'describe', file: 'supabase/claude-src/describe.ts', what: 'This description: where the page you are reading comes from.' },
   { name: 'main', file: 'supabase/claude-src/main.ts', what: 'The entry point: it checks who is asking, reads the request, creates the database clients and hands over to the run.' },
 ]
@@ -1625,7 +1903,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
 /** The path of one request, in order. `part` names the part that does the step. */
 const DESCRIBE_STEPS: Describe['steps'] = [
   { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. Supabase checks the token before the function starts. The function then asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one.' },
-  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job.` },
+  { title: 'What is asked', part: 'main', text: `The request must be a small piece of JSON (at most ${LIMITS.requestMaxBytes / 1024} KB) that names an action: "describe" answers with what this page shows, "run" runs a job, "diagnose" runs the four checks of the Diagnose button.` },
   { title: 'Rate limits', part: 'guard', text: `The function asks the ledger how many calls you made in the last minute and today. At ${LIMITS.callsPerMinute} in a minute or ${LIMITS.callsPerDay} in a day it answers "busy" and writes nothing.` },
   { title: 'Which job', part: 'jobs', text: 'The job is looked up by its name in a fixed list in the code, and the job checks what you sent. A request cannot add a job or change one.' },
   { title: 'Your settings', part: 'guard', text: "Your settings for the job are read with your own database rights, and every value is checked again: a model or an effort that is not on the list becomes the job's default, and a number is held inside the limits." },
@@ -1716,6 +1994,7 @@ function describeFunction(configured: boolean, provider: ProviderInfo): Describe
 //  clients, and decides who is asking. Then it hands over:
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
+//    { "action": "diagnose" }                       → diagnose.ts
 //
 //  Supabase checks the sign-in token before this code starts (the function is
 //  not listed in supabase/config.toml, so platform verification is on). That
@@ -1789,15 +2068,15 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run') return reply(400, { error: 'The action must be "describe" or "run"' })
+    if (action !== 'run' && action !== 'diagnose') return reply(400, { error: 'The action must be "describe", "run" or "diagnose"' })
     const jobName = ownValue(body, 'job')
-    if (typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
+    if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
     // The owner's own client: it carries their token, so row level security decides what it reads.
     const userDb = createClient(Deno.env.get('SUPABASE_URL')!, publishableKey(), {
       global: { headers: { Authorization: authHeader } }, auth: sessionOff,
     })
-    const answer = await runJob({
+    const context: RunContext = {
       userId: user.id,
       caller: 'app',
       userDb,
@@ -1805,11 +2084,13 @@ Deno.serve(async (req) => {
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
       provider: apiKey ? anthropicProvider(apiKey, fetch) : null,
       providerName: ANTHROPIC_INFO.name,
-      secrets: [apiKey, serviceKey()],
+      secrets: [apiKey, serviceKey(), publishableKey()],
       now: () => new Date(),
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),
-    }, jobName, ownValue(body, 'input'))
+    }
+    if (action === 'diagnose') return reply(200, await runDiagnose(context))
+    const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)
   } catch (error) {
     console.error(`[claude] unexpected error: ${errorPlace(error)}`)

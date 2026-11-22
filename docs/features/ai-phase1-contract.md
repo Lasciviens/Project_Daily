@@ -117,6 +117,10 @@ A `POST` to the `claude` function, platform JWT verification **on** (not listed 
   - `{ ok: false, reason, message, call?: CallSummary }` — HTTP 200 for every reason below; 401/403 only for the
     session/owner check, 400 for a body that isn't valid, 405 for a wrong method.
 
+- `{ "action": "diagnose" }` → `{ ok: true, steps: DiagnoseStep[] }` or `{ ok: false, reason: 'busy' | 'error', message }`.
+  `DiagnoseStep = { name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request', title, ok, ms, detail }`; `detail`
+  is one scrubbed sentence. Same auth as `run`. One a minute per account. `docs/features/ai.md` → Diagnose.
+
 `reason`: `bad_input` · `off` (the job is switched off) · `budget` (a monthly budget is reached) · `busy` (too many calls;
 this one is **not** written to the ledger) · `not_configured` (no `ANTHROPIC_API_KEY`) · `refused` (stop_reason `refusal`) ·
 `cut_off` (`max_tokens`) · `invalid` (the answer failed our check) · `error`.

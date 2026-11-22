@@ -100,6 +100,22 @@ const ITEM_FILL = {
   sourceFiles: ['supabase/claude-src/job-item-fill.ts', 'src/features/items/itemFill.ts'],
 }
 
+const DIAGNOSE_JOB_VERSION = '2026-11-22.1'
+const DIAGNOSE = {
+  name: 'diagnose',
+  title: 'Diagnose: a tiny answer',
+  what: 'The third check of Diagnose: a question with a one-word answer and no answer shape, to see how fast the smallest possible request comes back. It is started only by the Diagnose button.',
+  kind: 'one_shot',
+  callers: ['app'],
+  version: DIAGNOSE_JOB_VERSION,
+  defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 512 },
+  instructions: 'You are a connection test. Do what the message says, in as few words as possible.',
+  answerSchema: null,
+  tools: [],
+  features: ['Prompt caching: the instructions are one cached block', 'Adaptive thinking (low effort)', 'A summary of the thinking, kept in the text log'],
+  sourceFiles: ['supabase/claude-src/job-diagnose.ts', 'supabase/claude-src/diagnose.ts'],
+}
+
 /** What `{ action: 'describe' }` answers, in the real function's own shape. */
 function about(configured) {
   return {
@@ -113,7 +129,7 @@ function about(configured) {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
       longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, models: PRICES,
     },
-    jobs: [ITEM_FILL],
+    jobs: [ITEM_FILL, DIAGNOSE],
     steps: [
       { title: 'Who is asking', part: 'main', text: 'The app sends your sign-in token with the request. Supabase checks the token before the function starts. The function then asks whose token it is and checks that account against the owner list. From here on the only user id used is that verified one.' },
       { title: 'What is asked', part: 'main', text: 'The request must be a small piece of JSON (at most 16 KB) that names an action: "describe" answers with what this page shows, "run" runs a job.' },
@@ -134,6 +150,8 @@ function about(configured) {
       { name: 'provider', file: 'supabase/claude-src/provider-anthropic.ts', what: "The only part that uses Anthropic's SDK. It turns a request into Anthropic's shape, and the answer or the error back." },
       { name: 'ledger', file: 'supabase/claude-src/ledger.ts', what: "The database calls: your settings and usage are read with your own rights, and each call is written to the log with the server's." },
       { name: 'job: item_fill', file: 'supabase/claude-src/job-item-fill.ts', what: 'The ✨ job: its instructions, its answer shape and its check.' },
+      { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
+      { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: "The Diagnose button's four checks: the network and key, the shape of the fill request, a tiny answer, and the fill request with a longer time limit." },
       { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
       { name: 'describe', file: 'supabase/claude-src/describe.ts', what: 'This description: where the page you are reading comes from.' },
       { name: 'main', file: 'supabase/claude-src/main.ts', what: 'The entry point: it checks who is asking, reads the request, creates the database clients and hands over to the run.' },
@@ -211,16 +229,46 @@ function nextTuesday(today) {
 }
 
 /**
+ * `{ action: 'diagnose' }` as the real function answers it: four steps, the last two written to the ledger as real
+ * calls. By default the fill request is the slow one (48 s against a tiny answer's 1.3 s), as seen live on 22.11.2026.
+ * @param opts.diagnose  the steps to answer instead (an array), or 'busy' for the one-a-minute refusal
+ */
+function diagnoseAnswer(opts, store, configured) {
+  const calls = (store.tables.ai_calls ??= [])
+  if (opts.diagnose === 'busy' || calls.some(c => c.job === 'diagnose' && Date.now() - Date.parse(c.created_at) < 60000)) {
+    return { ok: false, reason: 'busy', message: 'Diagnose already ran in the last minute. Wait a moment and run it again.' }
+  }
+  if (Array.isArray(opts.diagnose)) return { ok: true, steps: opts.diagnose }
+  if (!configured) {
+    return { ok: true, steps: [{ name: 'network_key', title: 'Network and key', ok: false, ms: 0, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }] }
+  }
+  const tiny = callRow({ user_id: store.ownerId, job: 'diagnose', instructions_version: DIAGNOSE_JOB_VERSION, effort: 'low', served_model: 'claude-haiku-5-5', stop_reason: 'end_turn', input_tokens: 31, output_tokens: 24, thinking_tokens: 18, duration_ms: 1210, request_id: 'req_harness_diag_1' })
+  const fill = callRow({ user_id: store.ownerId, served_model: 'claude-haiku-5-5', stop_reason: 'end_turn', input_tokens: 64, cache_read_tokens: 2710, output_tokens: 186, thinking_tokens: 92, duration_ms: 48200, request_id: 'req_harness_diag_2' })
+  calls.push(tiny, fill)
+  return {
+    ok: true,
+    steps: [
+      { name: 'network_key', title: 'Network and key', ok: true, ms: 412, detail: 'Anthropic listed 9 models in 0.4 s, so the network and the key work; claude-haiku-5-5 is in the list.' },
+      { name: 'request_shape', title: 'Request shape', ok: true, ms: 380, detail: "Anthropic accepted \u2728's request and its answer shape and counted 2774 tokens in 0.4 s." },
+      { name: 'tiny_answer', title: 'Tiny answer', ok: true, ms: 1260, detail: `A tiny answer came back in 1.3 s: 31 tokens in, 24 tokens out (18 of them thinking), cost $${tiny.cost_usd.toFixed(5)}.` },
+      { name: 'fill_request', title: "\u2728's real request", ok: true, ms: 48250, detail: `\u2728's request came back in 48.3 s: 2774 tokens in, 186 tokens out (92 of them thinking), cost $${fill.cost_usd.toFixed(5)}.` },
+    ],
+  }
+}
+
+/**
  * The `claude` function for a context.
  * @param opts.configured false: no key on the server (describe says so, a run answers `not_configured`)
  * @param opts.stop       a reason every run stops with (`busy` writes no ledger row, as in the real function)
+ * @param opts.diagnose the steps Diagnose answers instead (or 'busy')
  * @param opts.fill       the fill a run answers, instead of the fixed dentist appointment
  */
 function claudeMock(opts = {}) {
   const configured = opts.configured !== false
   return ({ body, store }) => {
     if (body?.action === 'describe') return { ok: true, about: about(configured) }
-    if (body?.action !== 'run') return { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify({ error: 'The action must be "describe" or "run"' }) }
+    if (body?.action === 'diagnose') return diagnoseAnswer(opts, store, configured)
+    if (body?.action !== 'run') return { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify({ error: 'The action must be "describe", "run" or "diagnose"' }) }
 
     const now = new Date()
     const calls = (store.tables.ai_calls ??= [])

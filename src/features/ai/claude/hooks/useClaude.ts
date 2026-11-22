@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../../shared/query'
-import { describeClaude } from '../claudeApi'
+import { describeClaude, diagnoseClaude } from '../claudeApi'
 import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, saveAiJobSettings, saveAiSettings } from '../ledgerApi'
 import { osloMonthRange } from '../ledgerRules'
 import type { AiCallsFilter, AiJobSettings, AiSettings } from '../types'
@@ -75,5 +75,18 @@ export function useSaveAiJobSettings() {
       qc.setQueryData<AiJobSettings[]>(qk.claude.jobSettings(), rows => [...(rows ?? []).filter(r => r.job !== stored.job), stored])
     },
     invalidates: ['aiSettings'],
+  })
+}
+
+/**
+ * Developer → AI → How it works → Diagnose. Two of its four checks are real calls, so they land in Calls and in the
+ * month's usage: those lists refresh. The Diagnose card shows the result itself, so the hook says nothing more.
+ */
+export function useClaudeDiagnose() {
+  return useMutationWithFeedback({
+    action: 'claude_diagnose',
+    silent: 'the Diagnose card shows its own result',
+    mutationFn: () => diagnoseClaude(),
+    invalidates: ['aiLedger'],
   })
 }

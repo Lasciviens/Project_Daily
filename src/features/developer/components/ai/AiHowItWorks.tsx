@@ -8,6 +8,7 @@ import type { Describe, DescribeJob } from '../../../ai/claude/types'
 import { AI_HOW_BOARD, type AiHowSection } from '../../developerBoards'
 import { AI_GLOSSARY } from './aiGlossary'
 import { PlainText, ReadFailed } from './aiBits'
+import { AiDiagnose } from './AiDiagnose'
 
 // Developer → AI → How it works: what the `claude` function says about itself (`describe`) — whether its key
 // is set, the path of one request, its parts with their source files, every job with its fixed instructions
@@ -112,12 +113,19 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
 
 export function AiHowItWorks() {
   const about = useClaudeDescribe()
+  // Diagnose does not need the description: it stays usable when the description could not be read.
   if (about.isError) {
-    return <ReadFailed what="the function’s description of itself" error={about.error} onRetry={() => { void about.refetch() }} retrying={about.isFetching} />
+    return (
+      <div className="flex max-w-4xl flex-col gap-3">
+        <AiDiagnose />
+        <ReadFailed what="the function’s description of itself" error={about.error} onRetry={() => { void about.refetch() }} retrying={about.isFetching} />
+      </div>
+    )
   }
   const d = about.data
   const wait = (h: string) => <Skeleton rounded="rounded-card" className={`${h} w-full`} />
   const sections: Record<AiHowSection, ReactNode> = {
+    diagnose: <AiDiagnose />,
     status: d ? <StatusCard about={d} /> : wait('h-60'),
     steps: !d ? wait('h-96') : (
       <Card>

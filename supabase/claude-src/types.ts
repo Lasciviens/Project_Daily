@@ -35,6 +35,8 @@ export interface ModelRequest {
   userText: string
   /** The shape the answer must have, or null for free text. */
   answerSchema: JsonSchema | null
+  /** How long the provider may take, in milliseconds. Left out: the provider's own limit (30 s). */
+  timeoutMs?: number
 }
 
 /** What a request cost, in tokens. A token is a piece of text, about ¾ of a word. */
@@ -90,10 +92,29 @@ export interface ModelFailure {
   requestId: string | null
 }
 
-/** A model provider, as the run part sees it: one method. */
+/** The ids of the models the provider lists for this key. */
+export interface ModelList {
+  ok: true
+  modelIds: string[]
+}
+
+/** What the provider counted for a request, without running it. */
+export interface TokenCount {
+  ok: true
+  inputTokens: number
+}
+
+/**
+ * A model provider, as the run part sees it. `send` is the real request. The other two are free checks that
+ * Diagnose uses: they cost no tokens and never generate anything.
+ */
 export interface Provider {
   name: string
   send(request: ModelRequest): Promise<ModelAnswer | ModelFailure>
+  /** Lists the models this key may use. */
+  listModels(timeoutMs: number): Promise<ModelList | ModelFailure>
+  /** Counts the tokens of a request exactly as `send` would build it (`request.timeoutMs` is its limit). */
+  countTokens(request: ModelRequest): Promise<TokenCount | ModelFailure>
 }
 
 /** What the "How it works" page says about the provider. */
@@ -159,6 +180,21 @@ export interface CallSummary {
 export type RunReply =
   | { ok: true; job: string; result: Record<string, unknown>; call: CallSummary }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
+
+/** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */
+export interface DiagnoseStep {
+  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request'
+  title: string
+  ok: boolean
+  /** How long the step took, in milliseconds. */
+  ms: number
+  detail: string
+}
+
+/** The answer to `{ action: 'diagnose' }`. `busy`: one was run less than a minute ago. */
+export type DiagnoseReply =
+  | { ok: true; steps: DiagnoseStep[] }
+  | { ok: false; reason: 'busy' | 'error'; message: string }
 
 /** The answer to `{ action: 'describe' }`: what this code is and does, for the Developer → AI page. */
 export interface Describe {

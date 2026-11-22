@@ -84,6 +84,19 @@ export async function readSettingRows(userDb: Db, userId: string, job: string): 
   }
 }
 
+/**
+ * Whether the account has a call of `job` (any outcome) written since `sinceIso`: read with the owner's own client,
+ * so row level security shows only their rows. Null when it can't be read: the caller then does nothing.
+ */
+export async function hasRecentCall(userDb: Db, userId: string, job: string, sinceIso: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', job).gte('created_at', sinceIso).limit(1)
+    return error || !Array.isArray(data) ? null : data.length > 0
+  } catch {
+    return null
+  }
+}
+
 /** What `ai_reserve` decided. `reserved`: a row with outcome 'pending' now holds the worst case against the budget. */
 export type Reservation =
   | { kind: 'reserved'; id: string }

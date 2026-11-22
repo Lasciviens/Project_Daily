@@ -25,6 +25,19 @@ export interface CallSummary {
   duration_ms: number
 }
 
+/** The four checks of Diagnose, in the order the function runs them. */
+export const DIAGNOSE_STEP_NAMES = ['network_key', 'request_shape', 'tiny_answer', 'fill_request'] as const
+export type DiagnoseStepName = typeof DIAGNOSE_STEP_NAMES[number]
+
+/** One check: `detail` is the function's own sentence (secrets already taken out), `ms` how long it took. */
+export interface DiagnoseStep {
+  name: DiagnoseStepName
+  title: string
+  ok: boolean
+  ms: number
+  detail: string
+}
+
 export interface DescribeModel { id: string; name: string; note: string }
 
 export interface DescribeLimits {
