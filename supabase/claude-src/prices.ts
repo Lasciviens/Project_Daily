@@ -59,11 +59,11 @@ export const PROMPT_OVERHEAD_TOKENS = 1000
  * whole limit, its thinking included. A prompt over the long-prompt line is priced as one. Only rare symbols that
  * cost several tokens each could push a real call over it; the ledger then records the real, higher cost.
  */
-export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number): number {
+export function worstCostOf(model: string, promptChars: number, maxOutputTokens: number, mode: CallMode = 'live'): number {
   const promptTokens = Math.ceil(promptChars) + PROMPT_OVERHEAD_TOKENS
   return costOf(
     { inputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: promptTokens, outputTokens: maxOutputTokens, thinkingTokens: 0 },
-    model, 'live',
+    model, mode,
   ).costUsd
 }
 

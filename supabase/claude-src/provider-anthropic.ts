@@ -26,7 +26,7 @@ import {
   UnprocessableEntityError,
   type ClientOptions,
 } from 'npm:@anthropic-ai/sdk@1.5.0'
-import type { AnswerEnding, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, SentRequest, TokenCount, TokenUsage } from './types.ts'
+import type { AnswerEnding, BatchLine, BatchResults, BatchStatus, BatchSubmitted, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider, ProviderInfo, SentRequest, TokenCount, TokenUsage } from './types.ts'
 
 /** What the "How it works" page shows. The verify script compares each line with what the SDK really sends. */
 export const ANTHROPIC_INFO: ProviderInfo = {
@@ -116,7 +116,62 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
+    // POST /v1/messages/batches: one request per item, at half price, answered within 24 hours (usually within one).
+    async submitBatch(items, timeoutMs): Promise<BatchSubmitted | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const batch = await client.messages.batches.create({
+          requests: items.map(item => ({ custom_id: item.customId, params: anthropicRequest(item.request) })),
+        }, { timeout })
+        return typeof batch.id === 'string' && ANTHROPIC_BATCH_ID.test(batch.id)
+          ? { ok: true, batchId: batch.id }
+          : { ...anthropicOddAnswer(), sent: null }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
+    // GET /v1/messages/batches/{id}: free.
+    async batchStatus(batchId, timeoutMs): Promise<BatchStatus | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const batch = await client.messages.batches.retrieve(batchId, {}, { timeout })
+        const status = batch.processing_status
+        return status === 'in_progress' || status === 'canceling' || status === 'ended' ? { ok: true, status } : { ...anthropicOddAnswer(), sent: null }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
+    // GET /v1/messages/batches/{id}/results (the batch's own results_url): a .jsonl stream, lines in any order.
+    async batchResults(batchId, timeoutMs): Promise<BatchResults | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const stream = await client.messages.batches.results(batchId, {}, { timeout })
+        const lines: BatchLine[] = []
+        for await (const line of stream) {
+          if (lines.length >= ANTHROPIC_BATCH_MAX_LINES) break
+          const customId = line.custom_id
+          if (typeof customId !== 'string' || !customId) continue
+          const result = line.result
+          if (result.type === 'succeeded') lines.push({ customId, kind: 'succeeded', answer: { ...anthropicAnswer(result.message), sent: null } })
+          else if (result.type === 'errored') {
+            lines.push({ customId, kind: 'errored', detail: anthropicPlainText(`${result.error?.error?.type ?? 'error'}: ${result.error?.error?.message ?? ''}`, apiKey) })
+          } else if (result.type === 'canceled' || result.type === 'expired') lines.push({ customId, kind: result.type, detail: '' })
+        }
+        return { ok: true, lines }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
   }
+}
+
+// A batch id is shaped msgbatch_… ; anything else is an answer this code does not know.
+const ANTHROPIC_BATCH_ID = /^[A-Za-z0-9_-]{1,100}$/
+// We queue one request at a time, so a batch has one result line; a few more are read in case of a surprise.
+const ANTHROPIC_BATCH_MAX_LINES = 50
+
+function anthropicOddAnswer(): Omit<ModelFailure, 'sent'> {
+  return { ok: false, kind: 'unknown', status: null, message: ANTHROPIC_FAILURES.unknown, detail: 'an answer this code does not know', requestId: null }
 }
 
 /** The limit for one request: the one it asks for (at least a second, at most 2 minutes), else the default. */

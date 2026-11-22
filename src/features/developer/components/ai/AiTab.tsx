@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 import { SegmentedControl } from '../../../../shared/ui'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { AI_LEARN_LABEL, AI_LEARN_VIEWS, AI_VIEWS, AI_VIEW_LABEL, parseAiLocation, type AiLearnView, type AiView } from '../../developerBoards'
+import { AiBatches } from './AiBatches'
 import { AiCalls } from './AiCalls'
 import { AiHowItWorks } from './AiHowItWorks'
 import { AiOverview } from './AiOverview'
@@ -10,7 +11,7 @@ import { AiSettingsView } from './AiSettingsView'
 import { AiTestBench } from './AiTestBench'
 
 // Developer → AI: the Claude layer in four views — what it cost (Overview), every call (Calls), what the owner
-// controls (Settings) and everything that explains it (Learn: How it works, Prices, Test bench). The view lives in
+// controls (Settings) and everything that explains it (Learn: How it works, Prices, Test bench, Batches). The view lives in
 // `?view=` and Learn's page in `?learn=`; they are switched under the page's bar (which keeps its shape on every
 // tab: THEME.md §6.3), and Learn's own switcher sits under it, only inside Learn. Each view sits in its own
 // ErrorBoundary: what the function and the ledger answer is read field by field (ledgerRules), and a shape nobody
@@ -48,6 +49,7 @@ export function AiTab() {
         {view === 'learn' && learn === 'how' && <AiHowItWorks />}
         {view === 'learn' && learn === 'prices' && <AiPrices />}
         {view === 'learn' && learn === 'bench' && <AiTestBench />}
+        {view === 'learn' && learn === 'batches' && <AiBatches />}
       </ErrorBoundary>
     </>
   )

@@ -3,6 +3,7 @@ import { PageBoard, PageContainer, cx, useBoardStep } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { DailyBrief } from '../components/DailyBrief'
+import { WeeklyReportCard } from '../components/WeeklyReportCard'
 import { HomeDayCard } from '../components/HomeDayCard'
 import { TransitCard } from '../components/TransitCard'
 import { WeatherWidget, WeatherTile } from '../components/WeatherWidget'
@@ -96,6 +97,7 @@ export function HomePage() {
 
   const sections: Record<HomeSection, ReactNode> = {
     brief: <DailyBrief />,
+    report: <WeeklyReportCard />,
     tasks: <HomeDayCard day={day} onDay={setDay} />,
     pair: <DayCardCell day={day} onDay={setDay} />,
     transit: <TransitCard />,

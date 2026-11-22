@@ -99,8 +99,19 @@ Base `https://api.anthropic.com`. All through the SDK.
 | Field | Shape | Where it goes |
 |---|---|---|
 | request item | `{ custom_id, params }`; `custom_id` matches `^[a-zA-Z0-9_-]{1,64}$`; `params` is a normal Messages request | `custom_id` is our own batch item id (a uuid without anything personal in it) |
-| batch `id`, `processing_status` | `in_progress` · `canceling` · `ended` | `ai_batches` |
-| result line | `{ custom_id, result: { type, message } }`; `type` is `succeeded` · `errored` · `canceled` · `expired` | each line becomes a row in the call log, priced at the batch rate |
+| batch `id`, `processing_status` | `in_progress` · `canceling` · `ended` | `ai_reports.batch_id` (server-only) and the timer's check |
+| result line | `{ custom_id, result: { type, message } }`; `type` is `succeeded` · `errored` · `canceled` · `expired` | the ledger row of the report, corrected to the real cost at the batch rate |
+
+### What phase 3 sends and reads (the weekly report, 22.11.2026)
+
+SDK `@anthropic-ai/sdk@1.5.0`, checked against its `.d.ts` (`resources/messages/batches.d.ts`), not yet against a live batch.
+
+- **Create:** `client.messages.batches.create({ requests: [{ custom_id, params }] })` → `POST /v1/messages/batches`. One request per batch. `custom_id` is the ledger row's id (a uuid, within `^[a-zA-Z0-9_-]{1,64}$`), unique per submission, so a re-made report is never answered by an earlier batch's line. `params` is exactly the live request (`anthropicRequest`: `model`, `max_tokens`, the cached `system` block, the `messages`, adaptive `thinking`, `output_config.effort`), with **no `output_config.format`**. Read from the answer: `id` only, checked against `^[A-Za-z0-9_-]{1,100}$`.
+- **Status:** `client.messages.batches.retrieve(id)` → `GET /v1/messages/batches/{id}`. Read: `processing_status` (`in_progress`, `canceling`, `ended`; anything else is an unknown answer). `request_counts`, `created_at`, `ended_at`, `expires_at` and `results_url` are not used by our code (the SDK reads `results_url` itself).
+- **Results:** `client.messages.batches.results(id)` → the SDK retrieves the batch again and streams its `results_url` (`.jsonl`) as `MessageBatchIndividualResponse` lines. Read per line: `custom_id` (compared exactly with the ledger row's id; lines are in any order), `result.type` (`succeeded` → `result.message` goes through the same `anthropicAnswer` as a live answer; `errored` → `result.error.error.type` and `.message`, one scrubbed line for the ledger; `canceled`, `expired`). At most 50 lines are read.
+- **Price:** the batch price is half of the live price (`BATCH_MULTIPLIER` 0.5, stacking with the long-prompt rule); the ledger row is reserved at half the live worst case and corrected from the real `usage` at half the live price. `usage.service_tier` is not read.
+- **Not used:** `cancel`, `list`, `delete` (a waiting batch is read, not cancelled, in this phase), the `user_profile_id` and `workspace_id` headers.
+- **Traps:** results come in any order (found by `custom_id`); a batch ends within 24 hours or its requests `expire`; results are kept 29 days (we read them within hours and save the text ourselves); a `results()` call on a batch that is not ended throws (we ask the status first); a batch costs nothing for `errored`, `canceled` or `expired` lines, but our ledger keeps the reserved worst case for them (the owner's rule: the safe side).
 
 ## Fields we deliberately don't use
 
@@ -182,7 +193,7 @@ Phase 1 is the `claude` function (`supabase/claude-src/`, joined into `supabase/
 
 - **`thinking: { type: "disabled" }`** (SDK type `ThinkingConfigDisabled`, `@anthropic-ai/sdk@1.5.0`: `{ type: 'disabled' }`, no other field, so no `display`) is sent instead of the adaptive object only when the Test bench asks for thinking off (`ModelRequest.thinking: 'off'`). The request keeps `output_config.effort`. That Haiku 5.5 accepts disabled thinking together with `effort` low, medium and high is **not confirmed by a live call**; the Test bench's "Compare thinking" is the way to check. With thinking off the answer has no `thinking` block and `thinking_tokens` is 0.
 - **`count_tokens` with the Test bench's request** carries `model`, `system`, `messages`, `thinking` and `output_config` (never `max_tokens`), exactly as `buildRequest` builds a run's request; it answers `input_tokens` only.
-- **Device jobs** (`kobo_ask`, `phone_brief`, `phone_ask`) and `coach_assessment` send nothing new to Anthropic: one user message of tagged text, the cached instructions, adaptive thinking, low effort, no tools. `timeLimitMs` per job (Kobo 20 s, phone 18 s) goes to the SDK as the per-request `timeout` like every limit.
+- **Device jobs** (`kobo_ask`, `phone_ask`) and `coach_assessment` send nothing new to Anthropic: one user message of tagged text, the cached instructions, adaptive thinking, low effort, no tools. `timeLimitMs` per job (Kobo 20 s, phone 18 s) goes to the SDK as the per-request `timeout` like every limit.
 
 ## Not confirmed by a live call yet
 

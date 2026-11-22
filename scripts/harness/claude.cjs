@@ -126,10 +126,23 @@ const PHASE_2A_JOBS = [
 PHASE_2A_JOBS.push(
   phase2a('coach_assessment', "The PT coach's daily assessment", 'In Training → Coach, "Assess" writes a short assessment of today from the figures and verdicts the app worked out by itself.', 2500),
   phase2a('kobo_ask', 'A question about a passage, from the Kobo', 'On the Kobo, "Ask Lasci\'s AI" explains a selected passage.', 1000, ['kobo'], 20000),
-  phase2a('phone_brief', "The phone's morning brief", "The iPhone shortcut's morning brief.", 800, ['phone'], 18000),
   phase2a('phone_ask', 'A question from the phone', "The iPhone shortcut's free question.", 800, ['phone'], 18000),
   phase2a('test_bench', 'Test bench: any question', 'Developer → AI → Test bench sends any question with the model, effort and thinking you pick.', 2000),
 )
+// Phase 3: the weekly report, a batch job for the schedule and the app.
+const WEEKLY_REPORT_JOB = {
+  ...phase2a('weekly_report', 'The weekly report', "On Monday at 05:00 the function works out the week that just ended with code (training, health, food, tasks and time) and queues one request at half price; the model's short written report is saved, shown as a card on Home during the next week and announced with a push notification at 07:00.", 3000, ['schedule', 'app']),
+  mode: 'batch', version: '2026-11-22.2', answerSchema: null,
+  defaults: { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 },
+  sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
+}
+PHASE_2A_JOBS.push(WEEKLY_REPORT_JOB)
+const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
+const REPORT_FACTS = {
+  training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
+  food: { has_data: true, avg_kcal_on_logged_days: 1933, target_kcal: 2200 }, tasks: { has_data: true, done: 3 },
+  sent_text: '<week>09.11.2026 to 15.11.2026</week>\n<training>\nSessions: 3 (the week before: 0.3 a week on average; change: +2.7, +900 %)\nSession 10.11.2026: Push A, 3 working sets, 1 055 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 10 000 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nNO DATA THIS WEEK\n</food>\n<tasks>\nTasks done: 3 (work 2, personal 1)\n</tasks>',
+}
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
   recipe_macros: { calories: 310, protein_g: 11, carbs_g: 52, fat_g: 6, sugar_g: 4 },
@@ -368,7 +381,7 @@ function about(configured) {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
       longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, models: PRICES,
     },
-    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE],
+    jobs: [ITEM_FILL, ...PHASE_2A_JOBS, DIAGNOSE].map(j => ({ mode: 'live', ...j })),
     steps: DESCRIBE_STEPS,
     parts: DESCRIBE_PARTS,
     safetyRules: DESCRIBE_SAFETY_RULES,
@@ -491,6 +504,40 @@ function claudeMock(opts = {}) {
       ;(store.tables.ai_calls ??= []).push(callRow({ user_id: store.ownerId, job: 'test_bench', instructions_version: '2026-11-22.1', model: MODELS.some(m => m.id === body.input.model) ? body.input.model : 'claude-haiku-5-5', stop_reason: 'count_tokens', duration_ms: 240 }))
       return { ok: true, input_tokens: 180 + Math.ceil(text.length / 4), model: MODELS.some(m => m.id === body.input.model) ? body.input.model : 'claude-haiku-5-5', effort: ['low', 'medium', 'high'].includes(body.input.effort) ? body.input.effort : 'low', thinking: body.input.thinking === 'off' ? 'off' : 'adaptive' }
     }
+    // Phase 3: "Make this week's report now" queues one batch (the row waits at its worst case, as the function holds it),
+    // and "Check now" reads it back as ready at the batch price. Like the function: the master and the job's switch stop it.
+    if (body?.action === 'report_make' || body?.action === 'report_check') {
+      const reports = (store.tables.ai_reports ??= [])
+      const calls0 = (store.tables.ai_calls ??= [])
+      if (body.action === 'report_check') {
+        const waiting = reports.filter(r => r.status === 'queued')
+        for (const r of waiting) {
+          Object.assign(r, { status: 'ready', content: REPORT_TEXT, ready_at: new Date().toISOString(), pushed_at: new Date().toISOString() })
+          const call = calls0.find(c => c.id === r.call_id)
+          if (call) Object.assign(call, { outcome: 'ok', stop_reason: 'end_turn', served_model: 'claude-haiku-5-5', input_tokens: 900, output_tokens: 400, cost_usd: costOf('claude-haiku-5-5', { input_tokens: 900, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 400 }) / 2 })
+        }
+        return { ok: true, checked: waiting.length, ready: waiting.length, failed: 0, waiting: 0 }
+      }
+      if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
+      if (opts.stop) return { ok: false, reason: opts.stop, message: STOP_MESSAGE[opts.stop] ?? 'The report could not be queued.' }
+      // Like the function (owner-critic, 22.11.2026): last week's real report missing or failed → the button makes that one
+      // again (made_by schedule); ready → a test copy of it on Monday and Tuesday, the week so far later. Never the real row.
+      const today0 = osloDay(new Date()), dow = new Date(`${today0}T12:00:00Z`).getUTCDay()
+      const thisMonday = addDays(today0, -((dow + 6) % 7)), lastMonday = addDays(thisMonday, -7)
+      const real = reports.find(r => r.week_start === lastMonday && r.made_by === 'schedule')
+      if (real?.status === 'queued') return { ok: true, queued: false, skipped: 'already_queued', week_start: lastMonday }
+      const kind = !real || real.status !== 'ready' ? 'redo' : (dow === 1 || dow === 2 ? 'copy' : 'so_far')
+      const monday = kind === 'so_far' ? thisMonday : lastMonday
+      const madeBy = kind === 'redo' ? 'schedule' : 'app'
+      if (reports.some(r => r.week_start === monday && r.made_by === madeBy && r.status === 'queued')) return { ok: true, queued: false, skipped: 'already_queued', week_start: monday }
+      const call = callRow({ user_id: store.ownerId, job: 'weekly_report', mode: 'batch', caller: 'app', outcome: 'pending', stop_reason: 'batch_queued', effort: 'medium', cost_usd: 0.001299, instructions_version: '2026-11-22.2' })
+      calls0.push(call)
+      const old = reports.findIndex(r => r.week_start === monday && r.made_by === madeBy)
+      if (old >= 0) reports.splice(old, 1)
+      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...REPORT_FACTS, kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
+      reports.push(row)
+      return { ok: true, queued: true, report_id: row.id, week_start: monday, kind }
+    }
     if (body?.action !== 'run') return { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify({ error: 'The action must be "describe", "run" or "diagnose"' }) }
 
     const now = new Date()
@@ -555,4 +602,4 @@ function claudeMock(opts = {}) {
   }
 }
 
-module.exports = { claudeMock, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
+module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
