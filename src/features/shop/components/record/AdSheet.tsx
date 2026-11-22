@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy, Sparkles } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, cx } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
@@ -11,6 +11,7 @@ import { categoryNamesOf, fillAd, templateFor, unknownFields, AD_FIELDS } from '
 import { adClipboardText, adFactsOf, adPriceOf, marketplaceLink, marketplacesOf } from '../../sellingModel'
 import { boughtOn, isMine } from '../../ownModel'
 import { MoneyEditor, Toggle } from './factKit'
+import { useImproveAd } from '../../../ai/claude/hooks/useAiFeatures'
 import { AddressLink } from './AddressLink'
 import type { ShopRecordModel } from './useShopRecord'
 import type { ResaleCondition, ShopListing } from '../../resaleTypes'
@@ -27,6 +28,8 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
   const { data: templates = [], isLoading } = useAdTemplates()
   const defaults = useAddResaleDefaults()
   const create = useCreateListing()
+  const improve = useImproveAd()
+  const [condNotes, setCondNotes] = useState('')
   const change = useChangeListing()
   const markets = useMemo(() => marketplacesOf(templates), [templates])
   const [market, setMarket] = useState<string | null | undefined>(listing ? listing.marketplace : undefined)
@@ -60,6 +63,17 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
     } catch {
       toast.error('Couldn\'t copy — select the text and copy it by hand')
     }
+  }
+
+  // "Improve": the text as it stands (the template's, or the owner's edit) rewritten with the owner's condition words, in the
+  // language they are in (Norwegian for FINN). It lands in the editable text and Undo brings back what was there.
+  async function improveIt() {
+    const before = { title, body }
+    try {
+      const better = await improve.mutateAsync({ title, template: body, notes: condNotes })
+      setEdited({ title, body: better })
+      toast.undo('Ad improved — read it before you copy it', () => setEdited(before))
+    } catch { /* the hook reports it */ }
   }
 
   function keep() {
@@ -132,6 +146,12 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
           <span className="field-label">Text</span>
           <textarea value={body} onChange={e => setEdited({ title, body: e.target.value })} rows={8} className="input resize-y" aria-label="The ad's text" />
         </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={condNotes} onChange={e => setCondNotes(e.target.value)} maxLength={1000} placeholder="Condition in your words: scratches, what is included…"
+            aria-label="Condition, in your words" className="input input-sm min-w-0 flex-1" />
+          <Button size="sm" icon={<Sparkles />} loading={improve.isPending} disabled={!condNotes.trim() || !body.trim()} onClick={() => { void improveIt() }}
+            title="Rewrite the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
+        </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}
           {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEdited(null)}>Fill in again</button>}

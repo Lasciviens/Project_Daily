@@ -16,6 +16,9 @@ import { MoneyEditor, Toggle } from '../record/factKit'
 import { CategoryPicker } from '../CategoryPicker'
 import { ChoiceChips, StoreNameField } from '../shopPickers'
 import { LeftToField } from './SellSheet'
+import { ReceiptPhoto } from '../purchase/ReceiptPhoto'
+import { useShopStores } from '../../hooks/useShopStores'
+import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
 
 /** The fields this sheet shares with the Wishlist's add (title, category, price, store, link, picture, facts): one draft, so the same autofill fills them. */
@@ -42,6 +45,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const link = useCreateShopLink({ report: false })
   const fill = useFillRatesNow()
   const suggested = useResolveCategory()
+  const { data: stores = [] } = useShopStores()
   const today = todayStr()
   const [had, setHad] = useState(hadInitially)
   const [draft, setDraft] = useState<ShopDraft>(EMPTY)
@@ -66,6 +70,17 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const money = how === 'sold' || how === 'traded_in' || how === 'other'
   const sources = items.filter(i => isPossession(i) && !i.accessory_of && i.disposal)
   const targets = items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i)))
+  // A read receipt fills what it found (title only into an empty field); the owner checks and edits every field.
+  const fromReceipt = useCallback((f: ReceiptFill) => {
+    update(d => ({
+      ...(f.title && !d.title.trim() ? { title: f.title } : {}),
+      ...(f.price !== undefined ? { price: f.price } : {}),
+      ...(f.currency ? { currency: f.currency as ShopCurrency } : {}),
+      ...(f.storeId ? { platform: stores.find(s => s.id === f.storeId)?.name ?? d.platform } : f.storeName ? { platform: f.storeName } : {}),
+      ...(f.note && !d.notes.includes(f.note) ? { notes: d.notes.trim() ? `${d.notes.trim()}\n${f.note}` : f.note } : {}),
+    }))
+    if (f.day) { setDay(f.day); setApprox(false) }
+  }, [update, stores])
   const valid = title.trim() && day && (!had || (left && left >= day))
 
   async function save() {
@@ -113,6 +128,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <input id="own-title" value={title} onChange={e => onChange({ title: e.target.value })} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
         <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
+        <ReceiptPhoto stores={stores} onFill={fromReceipt} />
         <div>
           <span className="field-label">Category</span>
           <div className="grid grid-cols-2 gap-2">

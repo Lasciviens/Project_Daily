@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { SegmentedControl } from '../../../shared/components/SegmentedControl'
 import { WindowChips } from '../../../shared/components/windowChips'
+import { PlaceIdeas } from './PlaceIdeas'
 import type { WishKind, WishPriority, WishStatus } from '../types'
 
 // Everything about a wish that is NOT capture. Split out of WishSheet so the
@@ -72,6 +73,10 @@ export function WishForm({ draft, onChange }: Props) {
       <Field label="Notes">
         <textarea value={draft.notes} onChange={e => onChange({ notes: e.target.value })} rows={3} className={`${FIELD} min-h-[88px] resize-y py-2`} />
       </Field>
+
+      {draft.kind === 'place' && (
+        <PlaceIdeas title={draft.title} city={draft.city} country={draft.country} notes={draft.notes} onNotes={notes => onChange({ notes })} />
+      )}
 
       <Field label="Link">
         <input

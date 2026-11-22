@@ -14,7 +14,10 @@ import { RequestFields } from '../components/RequestFields'
 import { ReviewMeter } from '../components/ReviewMeter'
 import { PageContextToggle } from '../components/PageContextToggle'
 import type { OutlineHandle } from '../components/OutlineEditor'
-import { pageOptionFor } from '../components/devRequestMeta'
+import { PAGE_OPTIONS, pageOptionFor } from '../components/devRequestMeta'
+import { useDraftDevRequest } from '../../ai/claude/hooks/useAiFeatures'
+import { outlineOf } from '../../ai/claude/featureRules'
+import { toast } from '../../../app/store'
 import { Button, IconButton, Skeleton, Truncate } from '../../../shared/ui'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 
@@ -59,6 +62,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const markDone = useMarkRequestDone()
   const editTailNote = useEditTailNote()
   const composerPrompt = useComposerPrompt()
+  const draftAi = useDraftDevRequest()
 
   const fields: DraftFields | null = target.kind === 'new' ? newDraft : (editDraft ?? seed)
   const parsed = useMemo(() => parseDescription(fields?.description ?? ''), [fields?.description])
@@ -112,8 +116,23 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
   const dirty = target.kind === 'new' ? !isDraftEmpty(newDraft) : !!editDraft
   const timeline = row ? [cardTimeline(row), row.prompted_at ? `Prompted ${formatDateTime(row.prompted_at)}` : ''].filter(Boolean).join(' · ') : ''
 
+  // ✨: what is written (or dictated) here → a title, page, category, priority and the outline's points, in English. It
+  // fills the fields for review; Undo puts the owner's own words back. The page comes only from the app's own list.
+  async function tidyUp() {
+    if (!fields || draftAi.isPending) return
+    const before = { title: fields.title, description: fields.description, page: fields.page, category: fields.category, priority: fields.priority }
+    const said = [fields.title.trim(), fields.description.trim()].filter(Boolean).join('\n\n')
+    try {
+      const d = await draftAi.mutateAsync({ text: said, pages: [...PAGE_OPTIONS, 'other'], currentPage: pageOptionFor(pathname) })
+      onChange({ title: d.title, description: outlineOf(d.points), page: d.page, category: d.category, priority: d.priority })
+      toast.undo('Request drafted — check it before you save', () => onChange(before))
+    } catch { /* the hook reports it */ }
+  }
+
   const tools = (
     <>
+      <Button size="sm" variant="ghost" icon={<Sparkles />} loading={draftAi.isPending} disabled={isDraftEmpty(fields)} onClick={() => { void tidyUp() }}
+        title="Turn what you wrote or dictated into a title, page, category, priority and points (English) — you check it, Undo brings your words back">Tidy up</Button>
       <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} title={`Point at something on the page: a link to it goes where the caret is${mouse ? ' (or Alt-click anything while this window is open)' : ''}`}>Pick on page</Button>
       {onQuote && (
         // mousedown would clear the page selection before the click reads it.

@@ -4,6 +4,8 @@ import { ModalShell } from '../../../shared/modals'
 import { Button, TonePill } from '../../../shared/ui'
 import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { useDescribeGuess, useLogGuess } from '../hooks/useQuickGuess'
+import { PhotoButton } from '../../ai/claude/components/PhotoButton'
+import { usePhotoGuess } from '../../ai/claude/hooks/useAiFeatures'
 import { draftProblem, EMPTY_DRAFT, KNOWN_GUESS_NOTE, type GuessDraft, type GuessEstimate } from '../quickGuess'
 import type { MealSlot } from '../types'
 import { DecimalInput } from './foodLogKit'
@@ -29,6 +31,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const textId = useId()
   const describe = useDescribeGuess()
   const log = useLogGuess()
+  const photo = usePhotoGuess()
   const [text, setText] = useState(initialText)
   const [draft, setDraft] = useState<GuessDraft | null>(null)
   const [assumed, setAssumed] = useState<string[]>([])
@@ -38,15 +41,26 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const slotName = SLOT_OPTIONS.find(o => o.id === slot)?.label.toLowerCase() ?? slot
   const set = <K extends keyof GuessDraft>(k: K, v: GuessDraft[K]) => { setDraft(d => (d ? { ...d, [k]: v } : d)); setProblem(null) }
 
+  function applyEstimate(e: GuessEstimate, fallbackName: string) {
+    setDraft({ ...EMPTY_DRAFT, name: e.title || fallbackName.slice(0, 60), portion: e.portion, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, sugar: e.sugar })
+    setAssumed(e.assumptions)
+    setFrom(e.from)
+  }
+
   async function estimate() {
     if (!text.trim()) { setProblem('Say what you had first'); return }
     setProblem(null)
     try {
-      const e = await describe.mutateAsync(text)
-      setDraft({ ...EMPTY_DRAFT, name: e.title || text.trim().slice(0, 60), portion: e.portion, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, sugar: e.sugar })
-      setAssumed(e.assumptions)
-      setFrom(e.from)
+      applyEstimate(await describe.mutateAsync(text), text.trim())
     } catch { /* the hook reports it (one toast, shown over this sheet) */ }
+  }
+
+  // "From a photo": the photo (and the words, if any) → the same draft, marked AI estimate; the photo is never kept.
+  async function fromPhoto(file: File) {
+    setProblem(null)
+    try {
+      applyEstimate(await photo.mutateAsync({ file, text }), text.trim() || 'Meal')
+    } catch { /* the hook reports it */ }
   }
 
   function submit() {
@@ -64,7 +78,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
     setSaving(true)
   }
 
-  const busy = describe.isPending || log.isPending
+  const busy = describe.isPending || log.isPending || photo.isPending
   return (
     <ModalShell
       onClose={onClose}
@@ -87,6 +101,9 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
         <div className="flex flex-col gap-1">
           <div className="flex items-end justify-between gap-2">
             <label htmlFor={textId} className="field-label mb-0">What did you have?</label>
+            <PhotoButton variant="ghost" className="-my-1.5 -mr-1.5" onFile={f => { void fromPhoto(f) }} loading={photo.isPending} disabled={describe.isPending || log.isPending}>
+              {draft ? 'New photo' : 'From a photo'}
+            </PhotoButton>
             {draft && (
               <button type="button" className={chipClass('quiet', '-my-1.5 -mr-1.5')} disabled={describe.isPending} aria-busy={describe.isPending || undefined}
                 onClick={() => { void estimate() }}>

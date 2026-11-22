@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -13,6 +13,8 @@ import { categoryPath } from '../../shopModel'
 import { boughtDayOf, complaintYearsOf, dateSource, factsOf, storeOfItem } from '../../purchaseModel'
 import { purchaseDeadlines } from '../../storeRules'
 import { DateFact, DeadlineWords } from './purchaseKit'
+import { ReceiptPhoto } from './ReceiptPhoto'
+import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import { ChoiceChip } from '../shopPickers'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
 import type { ShopItem, ShopStore } from '../../types'
@@ -71,6 +73,14 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
   const returnBy = returnOwn ?? dl?.returnBy?.day ?? null
   const complainBy = keepComplain && complainOwn ? complainOwn : dl?.complaintBy?.day ?? null
 
+  // A read receipt fills the store, the day and the receipt note (a printed warranty goes in the note); never the price.
+  const fromReceipt = useCallback((f: ReceiptFill) => {
+    if (f.storeId) setStorePick(f.storeId)
+    else if (f.storeName) { setStorePick(OTHER); setOtherName(f.storeName) }
+    if (f.day && f.day <= today) setDay(f.day)
+    if (f.note) setNote(n => (n.includes(f.note) ? n : n.trim() ? `${n.trim()}\n${f.note}` : f.note))
+  }, [today])
+
   const gone = !bought
   const valid = !!day && day <= today && (!arrived || channel !== 'online' || arrived >= day) && note.length <= NOTE_MAX
 
@@ -100,6 +110,7 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
       }>
       {gone ? <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p> : (
         <div className="flex flex-col gap-3">
+          <ReceiptPhoto stores={stores} onFill={fromReceipt} withTitle={false} />
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1.5" role="radiogroup" aria-label="How it was bought">
               <ChoiceChip on={channel === 'online'} onClick={() => setChannel('online')}>Online</ChoiceChip>
