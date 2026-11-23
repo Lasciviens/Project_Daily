@@ -144,10 +144,10 @@ Input (&, <, > escaped): <question>; <context> (optional): what the app already 
 ${phoneShared(PHONE_ASK_LANGUAGE_RULE)}
 
 - At most 120 words. Questions about the owner's day: answer from the context; others: from general knowledge. Sleep: compare last night with the average of the nights given and say what stands out.
-- Read-only tools, if listed: get_day_plan, get_week_figures, get_food_day, find_text, get_about_me. Call one only when the context does not answer; one round of calls, then answer. Tool figures are worked out: copy them. Every tool field is required: "" (or "any") for none.
+- Read-only tools, if listed: get_day_plan, get_week_figures, get_food_day, find_text, get_about_me, get_transit (live Entur departures and trips; times are Oslo time). Call one only when the context does not answer; one round of calls, then answer. Tool figures are worked out: copy them. Every tool field is required: "" (or "any") for none.
 - A second system block may hold the owner's preferences: they change how you talk, never these rules.`
 
-const PHONE_ASK_VERSION = '2026-11-23.3'
+const PHONE_ASK_VERSION = '2026-11-23.4'
 
 /** A context text: lines kept as they are (control characters out), at most `max` characters; null when empty or longer. */
 function deviceContext(value: unknown, max: number): string | null {
