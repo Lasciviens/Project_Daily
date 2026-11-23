@@ -6,7 +6,7 @@ import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { logError } from '../../../shared/utils/logError'
 import { qk, STALE } from '../../../shared/query'
 import {
-  createShopCost, createShopLink, fetchShopCosts, fetchShopLinks,
+  createShopCost, createShopLink, deleteShopLinks, fetchShopCosts, fetchShopLinks,
   recordSale, undoSale, type SaleInput,
 } from '../api/shopApi'
 import { fillRates, type RatesOutcome } from '../api/shopPriceApi'
@@ -79,12 +79,58 @@ export function useFillRatesNow() {
   }
 }
 
-/** `report: false` when the link is one step of a bigger save (Add something I own). */
+/**
+ * `report: false` when the link is one step of a bigger save (Add something I own). Otherwise the toast is
+ * "Money linked · Undo", and Undo deletes exactly the link this call made (never one that was there already).
+ */
 export function useCreateShopLink({ report = true }: { report?: boolean } = {}) {
+  const undo = useMutationWithFeedback({
+    action:      'undo_create_shop_link',
+    successMessage: 'Link removed',
+    mutationFn:  (ids: string[]) => deleteShopLinks(ids),
+    invalidates: [qk.shop.links()],
+  })
   return useMutationWithFeedback({
     action:      'create_shop_link',
-    successMessage: () => (report ? 'Money linked' : undefined),
+    silent:      'its toast with Undo reports it (a step of a bigger save leaves it to that save)',
     mutationFn:  (input: { from_id: string; to_id: string; amount?: number | null }) => createShopLink(input),
+    onSuccess:   ({ id, existed }) => {
+      if (!report) return
+      if (existed) toast.success('Money linked')
+      else toast.undo('Money linked', () => undo.mutate([id]))
+    },
+    invalidates: [qk.shop.links()],
+  })
+}
+
+/** Several links in one go (a read receipt's money chain): one toast, one Undo that deletes exactly the links this call made. */
+export function useCreateShopLinks() {
+  const undo = useMutationWithFeedback({
+    action:      'undo_create_shop_links',
+    successMessage: 'Links removed',
+    mutationFn:  (ids: string[]) => deleteShopLinks(ids),
+    invalidates: [qk.shop.links()],
+  })
+  return useMutationWithFeedback<{ made: string[]; existed: number; failed: number }, { from_id: string; to_id: string }[]>({
+    action:      'create_shop_links',
+    silent:      'its toast with Undo reports it',
+    mutationFn:  async pairs => {
+      const made: string[] = []
+      let existed = 0, failed = 0
+      for (const p of pairs) {
+        try { const r = await createShopLink(p); if (r.existed) existed++; else made.push(r.id) } catch (e) {
+          failed++
+          logError(`create_shop_links: ${(e as Error).message}`, { action: 'create_shop_links' })
+        }
+      }
+      if (!made.length && !existed && failed) throw new Error('The links were not made — try again')
+      return { made, existed, failed }
+    },
+    onSuccess:   ({ made, existed, failed }) => {
+      const words = `Money linked${made.length > 1 ? ` · ${made.length} links` : ''}${failed ? ` · ${failed} not made` : ''}`
+      if (made.length) toast.undo(words, () => undo.mutate(made))
+      else if (existed) toast.success('Already linked')
+    },
     invalidates: [qk.shop.links()],
   })
 }

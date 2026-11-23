@@ -43,8 +43,35 @@ export interface CreateState {
   /** The row it was saved as (a saved line shows ✓ and keeps its draft as it was). */
   savedId: string | null
   skipped: boolean
+  /** A sold line of a read receipt that matches none of your things: "I had it" with the day it left and what it sold for REQUIRED. */
+  needSale: boolean
   /** The draft as it started, to tell what was changed. */
   start: string
+}
+
+/** What a line of a read receipt starts with beyond its own facts. */
+export interface LinePreset {
+  /** A sold line that is none of your things: made as something you had, sold. */
+  had?: { amount?: number; currency?: ShopCurrency; day?: string; to?: string }
+  /** The thing already sold in the app whose money paid for this one. */
+  paidFrom?: string
+  /** The thing this sold-and-saved one's money went to (a bought line saved first). */
+  moneyTo?: string
+}
+
+/** Several drafts at once: the lines of a read receipt, each kept while the owner moves between them. */
+export interface CreateBatch {
+  fills: readonly ReceiptFill[]
+  /** Each line's name as the receipt printed it (the stepper's words before a line has its own name). */
+  labels: readonly string[]
+  /** Per line, what it starts with beyond the receipt (a sold line's "I had it", the money links). */
+  presets?: readonly (LinePreset | undefined)[]
+  /** Drafts as they were saved, to edit again after "Undo all from these receipts": they replace the starting drafts. */
+  restore?: readonly (CreateState | undefined)[]
+  /** A line was saved: its place, the row the database answered with, and the draft as it was saved. */
+  onSaved?: (index: number, row: ShopItem, state: CreateState) => void
+  /** The popup closed (every line saved or skipped, or the owner closed it). */
+  onClosed?: () => void
 }
 
 /** The kind of state the facts list by: to buy, a general wish, yours, or gone. */
@@ -79,7 +106,7 @@ export function blankState(spec: CreateSpec, categories: readonly ShopCategory[]
       draft.approx_dates = !!parent.approx_dates
     }
   }
-  const state: CreateState = { had: preset === 'had', general: preset === 'general', draft, facts: [], receipt: null, withOthers: false, paidFrom: '', moneyTo: '', savedId: null, skipped: false, start: '' }
+  const state: CreateState = { had: preset === 'had', general: preset === 'general', draft, facts: [], receipt: null, withOthers: false, paidFrom: '', moneyTo: '', savedId: null, skipped: false, needSale: false, start: '' }
   return { ...state, start: snapshot(state) }
 }
 
@@ -149,6 +176,42 @@ export function withShopPatch(spec: CreateSpec, s: CreateState, categories: read
   return { ...s, draft, facts: patch.facts ?? s.facts }
 }
 
+/**
+ * A preset on a line's draft. A sold line that is none of your things is something you HAD: it starts sold, with the
+ * receipt's day, amount and buyer, and needs both the day and the amount before it can be saved. Its receipt price is the
+ * SALE's, never what was paid, and its receipt day the day it left, never the day it was bought.
+ */
+export function applyPreset(s: CreateState, preset: LinePreset | undefined): CreateState {
+  if (!preset) return s
+  let next: CreateState = { ...s, paidFrom: preset.paidFrom ?? s.paidFrom, moneyTo: preset.moneyTo ?? s.moneyTo }
+  if (preset.had) {
+    const h = preset.had
+    const draft: RecordDraft = { ...next.draft, disposal: 'sold' }
+    if (h.day) draft.disposed_on = h.day
+    if (h.amount !== undefined && h.currency) { draft.sale_price = h.amount; draft.sale_currency = h.currency }
+    if (h.to) draft.sold_to = h.to
+    next = { ...next, had: true, needSale: true, draft }
+  }
+  return { ...next, start: snapshot(next) }
+}
+
+/**
+ * The fill of a sold line that becomes something you had. A sold receipt describes the SALE, not the purchase: its price, day,
+ * store (the buyer or marketplace), channel and warranty are never put on the thing as where, when or how it was bought, and
+ * the condition printed is what it was sold as. What stays is the name, brand, model and category.
+ */
+export const hadFill = (fill: ReceiptFill): ReceiptFill => ({
+  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined,
+})
+
+/**
+ * The two money links a saved thing may make: "Paid with money from" only to a thing in `sources` (yours, already sold) and "Money
+ * went to" only to one in `targets` (what the popup itself offers), whatever a preset or an old draft says. Never an id from anywhere else.
+ */
+export function linksAtSave(s: Pick<CreateState, 'paidFrom' | 'moneyTo'>, money: boolean, sources: ReadonlySet<string>, targets: ReadonlySet<string>): { from: string | null; to: string | null } {
+  return { from: s.paidFrom && sources.has(s.paidFrom) ? s.paidFrom : null, to: money && s.moneyTo && targets.has(s.moneyTo) ? s.moneyTo : null }
+}
+
 /** What a read receipt line gives a draft (the add sheet's path): facts with their source, the day and the note — never over what was typed. */
 export function withReceipt(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[], fill: ReceiptFill, nowIso: string): CreateState {
   const before = shopDraftOf(spec, s, categories)
@@ -184,11 +247,15 @@ export function missingFor(spec: CreateSpec, s: CreateState, today: string): str
   const kind = stateOf(spec, s.had, s.general)
   if (kind === 'mine' || kind === 'gone') {
     const day = s.draft.bought_day ?? ''
-    if (!day) return 'the day it was bought'
+    // A sold line of a read receipt names everything it still needs at once; any other draft names the first thing.
+    const all: string[] = []
+    if (!day) { if (!s.needSale || kind !== 'gone') return 'the day it was bought'; all.push('the day it was bought') }
     if (day > today) return 'a day that is not in the future'
     if (kind === 'gone') {
-      if (!v.disposed_on) return 'the day it left'
-      if (v.disposed_on < day) return 'a day it left that is not before it was bought'
+      if (!v.disposed_on) all.push('the day it left')
+      if (s.needSale && hasMoney(spec, s) && v.sale_price == null) all.push('what it sold for')
+      if (all.length) return all.length > 1 ? `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}` : all[0]
+      if ((v.disposed_on as string) < day) return 'a day it left that is not before it was bought'
     }
   }
   return null

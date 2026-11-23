@@ -21,8 +21,8 @@ import { STATE_PILL } from './useShopRecord'
 import { isNewCategory, newCategoryMissing, newPickOf, NEW_CATEGORY, type RecordDraftApi } from './useRecordDraft'
 import { useSaveCategory } from './useSaveCategory'
 import {
-  applyDraftPatch, baseItem, blankState, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
-  type CreateSpec, type CreateState,
+  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
+  type CreateBatch, type CreateSpec, type CreateState,
 } from './createDraft'
 import { middayIso } from '../../../media/watchedWhen'
 import type { ShopCategory, ShopCurrency, ShopItem } from '../../types'
@@ -30,15 +30,6 @@ import type { ShopCategory, ShopCurrency, ShopItem } from '../../types'
 /** The popup's name for what is being made, until it has a name of its own. */
 const LABEL: Record<CreateSpec['preset'], string> = {
   wish: 'Add to the wishlist', general: 'Add a wish', own: 'Add something I own', had: 'Add something I had', accessory: 'Add an accessory', model: 'Add a model',
-}
-
-/** Several drafts at once: the lines of a read receipt, each kept while the owner moves between them. */
-export interface CreateBatch {
-  fills: readonly ReceiptFill[]
-  /** Each line's name as the receipt printed it (the stepper's words before a line has its own name). */
-  labels: readonly string[]
-  /** A line was saved. */
-  onSaved?: (index: number) => void
 }
 
 /**
@@ -75,8 +66,15 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const count = batch ? batch.fills.length : 1
   // Seeded once: a background refetch never overwrites what is being typed.
   const [states, setStates] = useState<CreateState[]>(() => Array.from({ length: count }, (_, i) => {
+    const kept = batch?.restore?.[i]
+    // After "Undo all": the draft as it was saved, to edit again (nothing of it is saved now).
+    if (kept) return { ...kept, savedId: null, skipped: false }
     const blank = blankState(spec, categories, today)
-    return batch ? withReceipt(spec, blank, categories, batch.fills[i], new Date().toISOString()) : blank
+    if (!batch) return blank
+    const preset = batch.presets?.[i]
+    const had = applyPreset(blank, preset?.had ? { had: preset.had } : undefined)
+    const filled = withReceipt(spec, had, categories, preset?.had ? hadFill(batch.fills[i]) : batch.fills[i], new Date().toISOString())
+    return applyPreset(filled, preset ? { paidFrom: preset.paidFrom, moneyTo: preset.moneyTo } : undefined)
   }))
   const [index, setIndex] = useState(0)
   const [editing, setEditing] = useState<string | null>(null)
@@ -119,7 +117,9 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const named = v.title.trim()
   const pillKey = kind === 'buy' ? 'buy' : kind
   const pill = STATE_PILL[pillKey]
-  const subtitle = [batch ? `${named ? LABEL[spec.preset] : batch.labels[index]}` : named ? LABEL[spec.preset] : null,
+  // "Something I own" or "I had" follows this draft's own switch (a sold line of a receipt starts as "I had it").
+  const label = spec.preset === 'own' || spec.preset === 'had' ? (st.had ? LABEL.had : LABEL.own) : LABEL[spec.preset]
+  const subtitle = [batch ? `${named ? label : batch.labels[index]}` : named ? label : null,
     spec.parent && spec.preset !== 'wish' ? `${spec.preset === 'model' ? 'A model of' : 'Accessory of'} ${spec.parent.title}` : null,
     path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null].filter(Boolean).join(' · ') || undefined
   const missing = missingFor(spec, st, today)
@@ -131,11 +131,13 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     return null
   }
 
+  const finish = () => { batch?.onClosed?.(); onClose() }
+
   async function close(): Promise<boolean> {
     if (states.some(unsaved) && !(await modal.confirm({
       title: 'Discard your changes?', message: count > 1 ? 'Some lines are not saved yet.' : 'It is not saved yet.', confirmLabel: 'Discard', destructive: true,
     }))) return false
-    onClose()
+    finish()
     return true
   }
 
@@ -161,8 +163,10 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
       row = await create.mutateAsync({ quiet: quietSave(spec, another), note: madeCategory(s), input: inputOf(spec, s, categoryId, categories) })
     } catch { setSaving(false); return }
     try {
-      if (s.paidFrom) await link.mutateAsync({ from_id: s.paidFrom, to_id: row.id })
-      if (hasMoney(spec, s) && s.moneyTo) await link.mutateAsync({ from_id: row.id, to_id: s.moneyTo })
+      // Only to what the popup itself offers (a preset or an old draft may name a thing that is gone, sold again or not a target).
+      const ok = linksAtSave(s, hasMoney(spec, s), new Set(sources.map(x => x.id)), new Set(targets.map(x => x.id)))
+      if (ok.from) await link.mutateAsync({ from_id: ok.from, to_id: row.id })
+      if (ok.to) await link.mutateAsync({ from_id: row.id, to_id: ok.to })
     } catch { /* the link's own hook toasted it; the thing itself is saved */ }
     // The receipt's other lines as accessories of this thing (the owner ticked it): same store, same day, their own prices.
     if (s.withOthers && s.receipt && s.receipt.currency && s.receipt.others.length) {
@@ -178,7 +182,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     onSaved?.(row)
     if (row.url && row.list !== 'quick') check([row.id])
     if (currencyOf(row) !== 'NOK' || (s.had && s.draft.sale_currency && s.draft.sale_currency !== 'NOK')) fillRates()
-    batch?.onSaved?.(at)
+    batch?.onSaved?.(at, row, { ...s, savedId: row.id })
     setSaving(false)
     if (another) {
       setAdded(a => [...a, row.title])
@@ -189,14 +193,14 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     // Marked by function, so nothing else changed on any line meanwhile is lost; the next line is worked out from the latest drafts.
     setStates(all => all.map((x, i) => (i === at ? { ...x, savedId: row.id } : x)))
     const next = nextOpen(latest.current.map((x, i) => (i === at ? { ...x, savedId: row.id } : x)), at)
-    if (next === null) onClose(); else setIndex(next)
+    if (next === null) finish(); else setIndex(next)
   }
 
   function skip() {
     const at = index
     setStates(all => all.map((x, i) => (i === at ? { ...x, skipped: true } : x)))
     const next = nextOpen(latest.current.map((x, i) => (i === at ? { ...x, skipped: true } : x)), at)
-    if (next === null) onClose(); else setIndex(next)
+    if (next === null) finish(); else setIndex(next)
   }
 
   // One counter: "1 of 3" with the arrows (a saved line shows ✓); no second row of numbers.
@@ -210,7 +214,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     </div>
   )
 
-  const switches = (spec.preset === 'own' || spec.preset === 'had') ? (
+  const switches = (spec.preset === 'own' || spec.preset === 'had') && !st.needSale ? (
     <SegmentedControl<'own' | 'had'> size="sm" value={st.had ? 'had' : 'own'} onChange={x => patch(s => ({ ...s, had: x === 'had' }))}
       options={[{ value: 'own', label: 'I still have it' }, { value: 'had', label: 'I had it' }]} />
   ) : (spec.preset === 'wish' || spec.preset === 'general') ? (
@@ -251,7 +255,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   ) : null
 
   return (
-    <ModalShell onClose={close} title={named || (batch ? batch.labels[index] : LABEL[spec.preset])} subtitle={subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
+    <ModalShell onClose={close} title={named || (batch ? batch.labels[index] : label)} subtitle={subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
       headerActions={<TonePill tone={pill.tone} className="shrink-0 max-sm:hidden">{pill.label}</TonePill>}
       footer={footer}>
       <div ref={bodyRef} className="@container">
