@@ -13,14 +13,13 @@ import { TasksPanel } from '../components/TasksPanel'
 import { DailyHeroArt } from '../components/DailyHeroArt'
 import { CalendarDays } from 'lucide-react'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep, usePageStep } from '../../../shared/ui'
-import { sectionsWidthRem } from '../../../shared/ui/pageBoardRules'
+import { Button, Card, CardHeader, PageBoard, PageContainer, PageHeader, SegmentedControl, TonePill, type SegmentedOption, Truncate, useBoardStep } from '../../../shared/ui'
 import { useTasksByMonth } from '../../todo/hooks/useTodos'
 import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
 import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
-import { DAY_BOARD, DIARY_BOARD, MONTH_BOARD, TASKS_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
+import { DAY_BOARD, MONTH_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 import { DiaryView } from '../../diary/components/DiaryView'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +30,6 @@ import { DiaryView } from '../../diary/components/DiaryView'
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Mode = 'day' | 'week' | 'month' | 'tasks' | 'diary'
-const MODE_BOARD = { day: DAY_BOARD, week: WEEK_BOARD, month: MONTH_BOARD, tasks: TASKS_BOARD, diary: DIARY_BOARD } as const
 type Period = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month' | 'tasks' | 'diary' | 'other'
 
 const DESKTOP_PERIODS: SegmentedOption<Period>[] = [
@@ -88,11 +86,9 @@ export function DailyPage() {
 
   const diff = differenceInCalendarDays(viewDate, new Date())
   const { greeting, timeStr } = useGreeting()
-  // One header for every section: as wide as the widest section's board and with the same lines, so the date and
-  // the period switcher never move or resize between Today, Week, Tasks… (owner, 31.10.2026: "the layout should
-  // not move while navigating between sections" — it used to stop where each section's board stopped).
-  const { ref: pageRef, step } = usePageStep<HTMLDivElement>()
-  const headerRem = step == null ? null : sectionsWidthRem(Object.values(MODE_BOARD), step)
+  // One header for every section: the page's width and the same lines, so the date and the period switcher never move
+  // or resize between Today, Week, Tasks… (owner, 31.10.2026: "the layout should not move while navigating between
+  // sections"; 23.11.2026: and the same width as every page's header).
 
   // The diary pages through days like the day view.
   const dayLike = mode === 'day' || mode === 'diary'
@@ -105,8 +101,7 @@ export function DailyPage() {
 
   return (
     <PageContainer>
-      <div ref={pageRef} className="min-w-0">
-      <div style={headerRem ? { maxWidth: `${headerRem}rem` } : undefined}>
+      <div className="min-w-0">
       <PageHeader
         showTitle
         steady
@@ -136,7 +131,6 @@ export function DailyPage() {
           </>
         }
       />
-      </div>
 
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} onOpenTasks={() => setMode('tasks')} />}
       {mode === 'week' && <PickerSection kind="week" onDayClick={handleDayClick} selectedDate={viewDate} />}

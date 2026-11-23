@@ -35,7 +35,8 @@ export function DateNav({
   // The hit box always reaches 44px; `sm` keeps a narrower 36px width so
   // compact widget headers still fit their row.
   const btn = cx(
-    'grid min-h-[44px] place-items-center rounded-control text-fg-muted transition-colors duration-150',
+    'grid place-items-center rounded-control text-fg-muted transition-colors duration-150',
+    size === 'md' ? 'min-h-[36px] [@media(pointer:coarse)]:min-h-[44px]' : 'min-h-[44px]',
     'hover:bg-surface-hover hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent',
     size === 'md' ? 'min-w-[44px]' : 'min-w-[36px]',
   )

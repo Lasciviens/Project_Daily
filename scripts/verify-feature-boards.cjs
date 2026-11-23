@@ -111,9 +111,6 @@ check('workLayout: board follows the toggle, list ignores it (a hidden rail left
   check('1469 list view: the toolbar fits the main track on one line', B.columnWidthPx(W.laptop, B.resolveBoardLayout(Wk.WORK_LIST, 2), 0, 1) >= toolbar,
     `${B.columnWidthPx(W.laptop, B.resolveBoardLayout(Wk.WORK_LIST, 2), 0, 1)} vs ${toolbar}px`)
 }
-check('header cap: none on one track, 106rem for the list at 2450 (it stops at three tracks), 131rem for the board',
-  Wk.workHeaderCapRem('list', true, 1) === null && Wk.workHeaderCapRem('list', true, 4) === 106 && Wk.workHeaderCapRem('list', false, 4) === 106
-  && Wk.workHeaderCapRem('board', true, 4) === 131 && Wk.workHeaderCapRem('board', false, 4) === 131)
 
 console.log('Project detail')
 check('step 1: back, the header, then the plan and every block in one stack (no side track on a phone)', eq(P.PROJECT_BOARD[1], ['back', 'header', 'main']))
@@ -144,19 +141,6 @@ check('no side blocks: main takes every track (no empty side column)', [2, 3, 4]
     eq(P.dealByIndex(['a'], 3), [['a'], [], []]) && eq(P.dealByIndex(['a', 'b'], 0), [['a', 'b']]) && eq(P.dealByIndex(['a'], NaN), [['a']]))
 }
 
-console.log('Project list header')
-check('four cards at 2450: the header stops over the fourth card (91rem)', P.projectsHeaderCapRem(4, 2154 / 16) === 91)
-check('ten cards at 2450: over the fifth (the row holds five)', P.projectsHeaderCapRem(10, 2154 / 16) === 114)
-check('a tablet row that holds one card: over that card (22rem)', P.projectsHeaderCapRem(4, 652 / 16) === 22)
-check('cards filling the row exactly, or no cards: no cap', P.projectsHeaderCapRem(2, 45) === null && P.projectsHeaderCapRem(0, 100) === null && P.projectsHeaderCapRem(3, NaN) === null)
-{
-  // Owner, 03.11.2026: a tab switch never resizes the bar — it ran from one card's width (On hold) to the page's (Done).
-  const counts = { active: 2, on_hold: 1, completed: 0, archived: 5 }
-  check('the header plans for the most cards any status holds, whichever status is open (5 of 2 / 1 / 0 / 5)', P.projectsHeaderCards(counts, false) === 5)
-  check('so one cap for every status: 5 cards at 2450 → over the fifth (114rem); six while loading; none without projects',
-    P.projectsHeaderCapRem(P.projectsHeaderCards(counts, false), 2154 / 16) === 114 && P.projectsHeaderCards(counts, true) === 6
-    && P.projectsHeaderCards({ active: 0, on_hold: 0, completed: 0, archived: 0 }, false) === 0)
-}
 
 console.log('Developer · list + detail')
 check('phones and tablets: no pane (rows open in place)', !keys(D.LIST_DETAIL_BOARD, 1).includes('detail') && eq(D.LIST_DETAIL_BOARD[1], ['toolbar', 'list']))

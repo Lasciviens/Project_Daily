@@ -213,6 +213,33 @@ const RP_LINKS = [link('rp4', 'rp5'), link('rp5', 'rp6')]
   check('"if I sold it for 700": it cost me 300', soldNow.nodes[0].state === 'gone' && soldNow.nodes[0].result.nok === 300 && soldNow.net.nok === 300)
 }
 
+console.log('\n8b · What the things you keep cost you in total (the chain popup\'s closing line; owner, 23.11.2026)')
+{
+  const wording = (items, links, id) => {
+    const ch = C.chainFor(id, items, links, CTX)
+    const k = C.keptCost(ch)
+    return k && { k, text: C.keptWords(k, ch.nodes.filter(x => x.state !== 'wish' && x.state !== 'held').length) }
+  }
+  const sp = t => String(t).replace(/\s/g, ' ')
+  const lossy = wording(RP, RP_LINKS, 'rp6')
+  check('a loss: RP6 cost 4 889, and 1 138 was lost on the two before — 6 027 in total', lossy.k.things.map(x => x.title).join() === 'RP6' && lossy.k.paid.nok === 4889 && lossy.k.carried.nok === 1138 && lossy.k.total.nok === 6027)
+  check('…in words', sp(lossy.text) === 'You keep RP6 — it cost you 6 027 NOK in total (4 889 NOK paid + 1 138 NOK lost on the ones before).', sp(lossy.text))
+  const A = item({ id: 'ga', title: 'Tablet A', price: 4000, bought_at: at('2024-01-01'), disposal: 'sold', disposed_on: '2025-01-01', sale_price: 3250 })
+  const B = item({ id: 'gb', title: 'Tablet B', price: 4000, bought_at: at('2025-01-02') })
+  const loss = wording([A, B], [link('ga', 'gb')], 'gb')
+  check('the owner\'s own example: 4 000 paid + 750 lost on the one before = 4 750 in total', sp(loss.text) === 'You keep Tablet B — it cost you 4 750 NOK in total (4 000 NOK paid + 750 NOK lost on the one before).', sp(loss.text))
+  const gain = wording([{ ...A, sale_price: 4500 }, B], [link('ga', 'gb')], 'gb')
+  check('a gain on the earlier sale lowers the total: 4 000 paid − 500 made = 3 500', gain.k.total.nok === 3500 && sp(gain.text) === 'You keep Tablet B — it cost you 3 500 NOK in total (4 000 NOK paid − 500 NOK made on the one before).', sp(gain.text))
+  const way = wording([{ ...A, sale_price: 9000 }, B], [link('ga', 'gb')], 'gb')
+  check('a gain bigger than the price: "you are 1 000 NOK ahead", never a minus cost', sp(way.text) === 'You keep Tablet B — you are 1 000 NOK ahead (4 000 NOK paid − 5 000 NOK made on the one before).', sp(way.text))
+  const noPrice = wording([{ ...A, sale_price: null }, B], [link('ga', 'gb')], 'gb')
+  check('the sale amount missing: not counted, says why, no number', !O.complete(noPrice.k.total) && /not counted yet: 1 price missing/.test(noPrice.text) && !/\d{3}/.test(noPrice.text.replace(/Tablet/g, '')), noPrice.text)
+  const pend = wording([{ ...A, currency: 'TRY', price: 160000, fx_nok: null }, B], [link('ga', 'gb')], 'gb')
+  check('a rate not published yet: not counted, says why (never today\'s rate)', !O.complete(pend.k.total) && /exchange rates? pending/.test(pend.text), pend.text)
+  check('nothing kept: no line', wording([A, { ...B, disposal: 'sold', disposed_on: '2026-01-01', sale_price: 100 }], [link('ga', 'gb')], 'gb') === null)
+  check('one thing alone: no line (no earlier sale to count)', wording([B], [], 'gb') === null)
+}
+
 console.log('\n9 · Chains that split, join, plan and do not know')
 {
   const cam = [
@@ -390,45 +417,10 @@ console.log('\n11 · Deadlines and the Owned view')
   check('summary: 1 thing + 1 accessory, 2 gone, paid 4 889, worth 4 000 (1 valued)', sum.mine === 1 && sum.accessories === 1 && sum.gone === 2 && sum.paid.nok === 4889 && sum.worth.nok === 4000 && sum.valued === 1)
   const acc = O.accessoriesByItem(RP)
 
-  // Owned's rail sums what the list shows (owner, 14.10.2026: "updated based on the filters I have").
-  const view = (f) => {
-    const cards = O.ownedCards(RPc, cats, f)
-    const below = f.show === 'mine' ? O.ownedCards(RPc, cats, { ...f, show: 'gone' }).length : 0
-    return O.shownSummary(cards, acc, CTX, below)
-  }
-  const same = (a, b) => ['mine', 'accessories', 'gone', 'valued'].every(k => a[k] === b[k]) && a.paid.nok === b.paid.nok && a.worth.nok === b.worth.nok
-  const mineView = view(O.NO_OWNED_FILTERS)
-  check('rail, Mine, no filters: the same numbers as the whole collection', same(mineView, sum) && mineView.got.nok === 0)
-  const goneView = view({ ...O.NO_OWNED_FILTERS, show: 'gone' })
-  check('rail, Sold or gone: 2 things, paid 5 338 (RP4, RP5 + the 2 accessories sold with it), got back 4 200, nothing yours',
-    goneView.gone === 2 && goneView.mine === 0 && goneView.accessories === 0 && goneView.paid.nok === 1990 + 2800 + 199 + 349 && goneView.got.nok === 1400 + 2342 + 166 + 292 && goneView.valued === 0)
-  const allView = view({ ...O.NO_OWNED_FILTERS, show: 'all' })
-  check('rail, All: yours and gone together — paid 10 227 (the chain\'s own sum), worth 4 000, got 4 200',
-    allView.mine === 1 && allView.accessories === 1 && allView.gone === 2 && allView.paid.nok === 10227 && allView.worth.nok === 4000 && allView.got.nok === 4200)
-  const searched = view({ ...O.NO_OWNED_FILTERS, q: 'rp4' })
-  check('rail follows the search: nothing of yours matches, the one gone match is still counted', searched.mine === 0 && searched.accessories === 0 && searched.paid.nok === 0 && searched.gone === 1)
-  const resale = view({ ...O.NO_OWNED_FILTERS, resaleOnly: true })
-  check('rail follows "Bought to sell": none here, so all zero', resale.mine === 0 && resale.gone === 0 && resale.paid.nok === 0 && O.complete(resale.paid))
-  const otherCat = view({ ...O.NO_OWNED_FILTERS, show: 'all', category: 'none' })
-  check('rail follows the category: none without one', otherCat.mine + otherCat.gone + otherCat.accessories === 0)
-
-  // The summary line opens Stats on the same things (owner, 09.11.2026); the tab is not a filter.
+  // Owned has no summary line any more (owner, 23.11.2026): its own sums (shownSummary, statsScopeOf) were removed with it.
+  // Mine · Sold or gone · All is a tab, not a filter.
   check('Mine · Sold or gone · All is a tab, never counted as a filter', O.ownedFilterCount(O.NO_OWNED_FILTERS) === 0 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, show: 'gone' }) === 0
     && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, q: '  ' }) === 0 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, q: 'rp', category: 'el' }) === 2 && O.ownedFilterCount({ ...O.NO_OWNED_FILTERS, resaleOnly: true, chain: 'c' }) === 2)
-  const scopeFor = (f) => O.statsScopeOf(f, O.ownedCards(RPc, cats, f).map(x => x.id))
-  const allF = { ...O.NO_OWNED_FILTERS, show: 'all' }
-  check('nothing listed: nothing to open', O.statsScopeOf(O.NO_OWNED_FILTERS, []) === null)
-  check('All with no filter opens the whole collection (no pick)', S.scopeCount(scopeFor(allF)) === 0)
-  check('a category or a money chain is picked as itself; "no category" as Stats\' own key',
-    scopeFor({ ...allF, category: 'gc' }).categories.join() === 'gc' && scopeFor({ ...allF, category: 'gc' }).things.length === 0
-    && O.statsScopeOf({ ...allF, category: 'none' }, ['x']).categories.join() === S.NO_CATEGORY && O.statsScopeOf({ ...allF, chain: 'rp4' }, ['rp4']).chains.join() === 'rp4')
-  check('what Stats cannot pick (Mine, Sold or gone, a search, Bought to sell) picks the listed things', scopeFor(O.NO_OWNED_FILTERS).things.join() === 'rp6'
-    && scopeFor({ ...O.NO_OWNED_FILTERS, show: 'gone' }).things.join() === 'rp4,rp5' && scopeFor({ ...allF, q: 'rp5' }).things.join() === 'rp5'
-    && O.statsScopeOf({ ...allF, resaleOnly: true }, ['a']).things.join() === 'a')
-  const mineScoped = S.scopeItems(RPc, scopeFor(O.NO_OWNED_FILTERS), cats, [])
-  const statsOwn = O.ownedSummary(mineScoped, CTX)
-  check('…so Stats\' "You own" on them says what the Mine line says (the accessory rides along)', mineScoped.map(x => x.id).join() === 'rp6,sd'
-    && statsOwn.mine === mineView.mine && statsOwn.accessories === mineView.accessories && statsOwn.paid.nok === mineView.paid.nok && statsOwn.worth.nok === mineView.worth.nok)
   check('accessories by item (possessions only)', acc.get('rp5').map(x => x.id).join() === 'case,grip' && acc.get('rp6').map(x => x.id).join() === 'sd')
   const sorted = O.sortOwned([RP[0], RP[1], RP[4]], 'kept', CTX, TODAY, acc)
   check('sort by time kept', sorted.map(x => x.id).join() === 'rp5,rp4,rp6')

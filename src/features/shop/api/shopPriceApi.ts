@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import type { PriceRead } from '../priceRead'
-import { rateKey, type RatePair } from '../chainDraft'
+import { rateKey, type RatePair } from '../fx'
 
 // The `shop-price` edge function (migration 137): reads the price on a
 // product link (a Prisjakt product page or a shop's own page) and fills the

@@ -39,8 +39,7 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 // Settings (what the owner controls) · Learn (everything that explains it). Learn holds four more, in their own
 // switcher under the bar (`?learn=`): How it works, Prices, the Test bench (labelled "Bench" so five names fit a phone), Batches (the weekly report's queue, phase 3) and Suggestions (phase 4c). A new explanation goes into Learn,
 // never into a fifth tab. Every view has the list + detail tabs' tracks — two from the laptop, three from 1920, and
-// it stops there — so the page's header keeps one width whichever tab or view is open (AI_VIEW_BOARDS →
-// sectionsWidthRem). Calls is LIST_DETAIL_BOARD itself: the list, a call's detail in the pane.
+// it stops there. Calls is LIST_DETAIL_BOARD itself: the list, a call's detail in the pane.
 export const AI_VIEWS = ['overview', 'calls', 'settings', 'learn'] as const
 export type AiView = typeof AI_VIEWS[number]
 

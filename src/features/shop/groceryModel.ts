@@ -7,6 +7,8 @@
 // out after 14 days: every price comes in through `byChain`, which keeps only
 // what `isCurrent` takes. Pure — scripts/verify-shop-owned.cjs runs it.
 import { addDaysToIso, wallClockIn } from '../calendar/calendarEventRules'
+import { osloDay } from './oslo'
+export { osloDay }
 
 export interface GroceryStorePrice { code: string; name: string; price: number; checked: string | null }
 export interface GroceryPrice { ean: string; name: string; stores: GroceryStorePrice[] }
@@ -17,22 +19,6 @@ export const CURRENT_DAYS = 14
 
 /** Kassalapp's prices are Norway's, so their days are Oslo's, whatever zone the phone is in. */
 const PRICE_ZONE = 'Europe/Oslo'
-
-// Each check time is read once: a zone-aware read is slow, and a row's chip and
-// the basket read the same prices on every render.
-const checkDays = new Map<string, string | null>()
-
-/** The Oslo day (yyyy-mm-dd) of a check time, or null for a missing or unreadable one. */
-export function osloDay(at: string | null | undefined): string | null {
-  if (typeof at !== 'string' || !at) return null
-  let day = checkDays.get(at)
-  if (day === undefined) {
-    if (checkDays.size >= 1000) checkDays.clear()
-    day = wallClockIn(at, PRICE_ZONE)?.date ?? null
-    checkDays.set(at, day)
-  }
-  return day
-}
 
 /** Today on Oslo's calendar: the day `isCurrent` counts back from. */
 export function priceToday(now: Date = new Date()): string {

@@ -9,7 +9,7 @@ import { RowPicture } from '../tileKit'
 import type { ShopListing } from '../../resaleTypes'
 import type { ShopItem, ShopPriceWatch } from '../../types'
 
-interface Props {
+export interface OwnedRowProps {
   item: ShopItem
   /** The accessories bought for it: a line each under it. */
   accessories: readonly ShopItem[]
@@ -37,7 +37,7 @@ interface Props {
  * row is the same two lines, so a column of them reads like a list; the
  * accessories bought for it follow as one line each. A tap opens its record.
  */
-export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today, topId, icon, picked, onOpen }: Props) {
+export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today, topId, icon, picked, onOpen }: OwnedRowProps) {
   const selected = picked === item.id
   const facts = rowFacts(item, accessories, ctx, today, chain)
   const tag = rowTag(item, watch, today, listing)
@@ -47,10 +47,11 @@ export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today,
     <li>
       <button type="button" onClick={() => onOpen(item.id)} aria-current={selected || undefined}
         className={cx('flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors', selected ? 'bg-accent-50' : 'hover:bg-surface-hover')}>
-        <RowPicture src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} />
+        <RowPicture src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} left={item.disposal} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-baseline gap-2">
             <Truncate as="span" className="min-w-0 flex-1 text-body font-medium text-fg">{item.title}</Truncate>
+            {item.disposal && <span className="sr-only">{DISPOSAL_LABEL[item.disposal]}</span>}
             <span className={cx('shrink-0 whitespace-nowrap text-body tabular-nums', price.pending ? 'text-fg-muted' : 'font-semibold text-fg')}
               title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
               {price.text}

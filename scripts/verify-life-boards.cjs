@@ -52,6 +52,7 @@ const BOARDS = [
   ['Shop · Wishlist', Sh.WISHLIST_BOARD, Sh.WISHLIST_SECTIONS, true],
   ['Shop · Quick list', Sh.QUICK_BOARD, Sh.QUICK_SECTIONS, false],
   ['Shop · Owned', Sh.OWNED_BOARD, Sh.OWNED_SECTIONS, false],
+  ['Shop · Owned (record open)', Sh.OWNED_PANE_BOARD, Sh.OWNED_PANE_SECTIONS, false],
   ['Shop · Stats', Sh.STATS_BOARD, Sh.STATS_SECTIONS, false],
   ['Books · Send', Bk.BOOK_BOARD, Bk.BOOK_SECTIONS, false],
   ['Books · Library', Bk.LIBRARY_BOARD, Bk.LIBRARY_SECTIONS, false],
@@ -68,7 +69,7 @@ const BOARDS = [
 // Sections that live inside another card on a phone and become their own card on a wide page.
 const INSIDE_ON_PHONE = { 'Health · sleep': ['breathing'], 'Health · cardio': ['recovery'], 'Health · goal': ['goals', 'protein', 'energy'],
   // Owned's side pane: on a phone the record opens full screen instead (step A, 10.11.2026).
-  'Shop · Owned': ['pane'] }
+  'Shop · Owned (record open)': ['pane'] }
 
 console.log('every layout')
 for (const [name, board, sections] of BOARDS) {
@@ -108,18 +109,21 @@ check('Ingredients + Log + Wishes: their rail is sticky and first', [F.INGREDIEN
 check('Ingredients + Log + Wishes: the collection spans every other track', [F.INGREDIENT_BOARD, T.LOG_BOARD, Wi.WISH_BOARD].every(b =>
   [2, 3, 4].every(s => B.resolveBoardLayout(b, s).columns[1].span === s - 1)))
 check('Wishes: nothing sits above the rail (the intro line is in the header band)', [2, 3, 4].every(s => eq(B.resolveBoardLayout(Wi.WISH_BOARD, s).top, [])))
-check('Shop Owned: the summary line right above the things, first; Needs a look (in Coming up\'s place) in a sticky rail on the right, where a tapped row\'s record takes its place (owner, 14.10.2026 / 09.11.2026; the side pane, 10.11.2026)', [2, 3, 4].every(s => {
+check('Shop Owned: no rail and no summary line — the things take every track (Needs a look is the header\'s button; owner, 23.11.2026)', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(Sh.OWNED_BOARD, s)
-  const last = l.columns[l.columns.length - 1]
-  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['summary', 'groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['look', 'pane']) && last.sticky
+  return l.lead === 0 && eq(l.top, ['filters']) && l.columns.length === 1 && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s
 }))
-check('Shop Owned on a phone: Needs a look (one line) first, then the filters and the summary line right above the things', eq(Sh.OWNED_BOARD[1], ['look', 'filters', 'summary', 'groups']))
-check('Shop Wishlist: Owned\'s shape — the filters across the top, the tiles in every track but the last, Needs a look in a sticky rail on the right (owner, 14.10.2026)', [2, 3, 4].every(s => {
+check('Shop Owned with the record open (from 60rem): the things take every track but the last, the record is sticky in the last (the side pane, 10.11.2026)', [2, 3, 4].every(s => {
+  const l = B.resolveBoardLayout(Sh.OWNED_PANE_BOARD, s)
+  const last = l.columns[l.columns.length - 1]
+  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['pane']) && last.sticky
+}))
+check('Shop Owned on a phone: the filters, then the things — with or without the record (it opens full screen there)', eq(Sh.OWNED_BOARD[1], ['filters', 'groups']) && eq(Sh.OWNED_PANE_BOARD[1], ['filters', 'groups']))
+check('Shop Wishlist: the filters across the top, the tiles across every track (Needs a look left the rail for the header, owner 23.11.2026)', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(Sh.WISHLIST_BOARD, s)
-  const last = l.columns[l.columns.length - 1]
-  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['look']) && last.sticky
+  return l.lead === 0 && eq(l.top, ['filters']) && l.columns.length === 1 && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s
 }))
-check('Shop Wishlist on a phone: Needs a look (one line) first — the filters go away for an empty wishlist — then the filters and the tiles', eq(Sh.WISHLIST_BOARD[1], ['look', 'filters', 'groups']))
+check('Shop Wishlist on a phone: the filters (they go away for an empty wishlist), then the tiles', eq(Sh.WISHLIST_BOARD[1], ['filters', 'groups']))
 check('Health Overview: the six tiles lead in main at every wide step', [2, 3, 4].every(s => B.resolveBoardLayout(H.OVERVIEW_BOARD, s).columns[0].stack[0] === 'hero'))
 check('Health Overview at 2450: the tiles get main + one side (three across)', B.columnWidthPx(W.monitor, B.resolveBoardLayout(H.OVERVIEW_BOARD, 4), 0, 2) >= 64 * rem)
 check('Health Overview at 1469: tiles two across (main < 64rem)', B.columnWidthPx(W.laptop, B.resolveBoardLayout(H.OVERVIEW_BOARD, 2), 0, 1) < 64 * rem)

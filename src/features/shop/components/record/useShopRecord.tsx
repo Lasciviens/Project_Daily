@@ -1,3 +1,4 @@
+import type { RecordFact } from '../../shopSuggestions'
 import { useMemo, type ReactNode } from 'react'
 import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
@@ -10,13 +11,23 @@ import { useQuietCheck, useWatchMap } from '../../hooks/useShopPrices'
 import { useResolveCategory } from '../../hooks/useCategorySuggestions'
 import { categoryPath, listOf, planDefaults } from '../../shopModel'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
+import { formatDate } from '../../../../shared/utils/dateFormat'
 import { chainFor } from '../../chainModel'
 import { recordState } from './recordState'
 import { isNewCategory, NEW_CATEGORY, newCategoryMissing, newPickOf, patchOf, useRecordDraft } from './useRecordDraft'
-import type { ShopItem } from '../../types'
+import type { ShopDisposal, ShopItem } from '../../types'
 
 /** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone, the side pane). */
-export interface RecordAction { key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean }
+export interface RecordAction {
+  key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
+  /** An icon button: the label is its accessible name and its title (a hover says what it does). */
+  iconOnly?: boolean
+}
+
+/** What Undo takes back, in words, for the confirm. */
+const UNDO_WORD: Record<ShopDisposal, string> = {
+  sold: 'the sale', traded_in: 'the trade-in', given: 'giving it away', returned: 'the return', broken: 'what happened to it', lost: 'what happened to it', other: 'what happened to it',
+}
 
 const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
   buy: { label: 'To buy', tone: 'info' }, general: { label: 'A wish · any model', tone: 'info' }, mine: { label: 'Mine', tone: 'success' },
@@ -31,7 +42,7 @@ const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
  * (Save only when something changed; closing with changes asks first), and
  * its one row of actions.
  */
-export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onClose: () => void) {
+export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, onClose: () => void) {
   const modal = useEntityModal()
   const today = todayStr()
   const { data: items = [] } = useShopItems()
@@ -60,7 +71,8 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
     : undefined), [owned, item, accessories.length, links, items])
   const parent = item.accessory_of ? items.find(i => i.id === item.accessory_of) ?? null : item.option_for ? items.find(i => i.id === item.option_for) ?? null : null
   const pillKey = item.status === 'dropped' ? 'dropped' : item.status === 'fulfilled' ? 'fulfilled' : item.disposal === 'returned' ? 'returned' : item.status === 'bought' && item.kept === false ? 'notKept' : state
-  const pill = STATE_PILL[pillKey] ?? STATE_PILL.buy
+  // A thing that left wears its disposal word as a ribbon on its picture instead (owner, 23.11.2026: the pill blocked the title).
+  const pill = item.disposal ? null : STATE_PILL[pillKey] ?? STATE_PILL.buy
   const path = categoryPath(item.category_id, categories)
   const subtitle = [path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null, item.disposal ? DISPOSAL_LABEL[item.disposal] : null].filter(Boolean).join(' · ') || undefined
 
@@ -132,12 +144,22 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
     actions.push({ key: 'drop', label: 'Not any more', icon: <Ban />, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'mine') {
-    actions.push({ key: 'sell', label: 'Sell or give away', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
+    actions.push({ key: 'sell', label: 'Sell', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
     if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
     actions.push({ key: 'wrong', label: 'Something\'s wrong', icon: <TriangleAlert />, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
   if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy up info', icon: <Sparkles />, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
-  if (state === 'gone' || item.disposal === 'returned') actions.push({ key: 'undo', label: 'Undo: still mine', icon: <Undo2 />, onClick: () => undoSale.mutate(item.id) })
+  if (state === 'gone' || item.disposal === 'returned') {
+    // Asks first (owner, 23.11.2026): an icon is easy to hit by mistake, and the sale's money goes with it.
+    const what = item.disposal ? UNDO_WORD[item.disposal] : 'this'
+    actions.push({ key: 'undo', label: 'Undo: still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
+      void modal.confirm({
+        title: 'Still yours?',
+        message: `This takes back ${what}${item.disposed_on ? ` on ${formatDate(item.disposed_on)}` : ''}.`,
+        confirmLabel: 'Yes, still mine',
+      }).then(ok => { if (ok) undoSale.mutate(item.id) })
+    } })
+  }
   if (item.status === 'dropped') actions.push({ key: 'back', label: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 
   return {

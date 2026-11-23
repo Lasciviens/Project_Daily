@@ -81,8 +81,8 @@ export function TrainingPage() {
           </div>
           {/* A tab's own views follow the tabs (with Sync, their own row below the tabs on a narrow screen). */}
           <SteadySlot className="shrink-0" show={viewsShown} items={{
-            log: <SegmentedControl<LogView> size="xs" value={logView} onChange={setView} options={LOG_VIEWS} />,
-            library: <SegmentedControl<LibraryView> size="xs" value={libraryView} onChange={setView} options={LIBRARY_VIEWS} />,
+            log: <SegmentedControl<LogView> size="sm" value={logView} onChange={setView} options={LOG_VIEWS} />,
+            library: <SegmentedControl<LibraryView> size="sm" value={libraryView} onChange={setView} options={LIBRARY_VIEWS} />,
           }} />
           <div className="ml-auto shrink-0"><HevySyncButton /></div>
         </div>

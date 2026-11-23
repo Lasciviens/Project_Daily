@@ -9,7 +9,7 @@ import {
   createShopCost, createShopLink, fetchShopCosts, fetchShopLinks,
   recordSale, undoSale, type SaleInput,
 } from '../api/shopApi'
-import { fillRates } from '../api/shopPriceApi'
+import { fillRates, type RatesOutcome } from '../api/shopPriceApi'
 import { moneyCtx, ratesPending, type MoneyCtx } from '../ownModel'
 import { useShopRates } from './useShopRates'
 import { SHOP_ROWS } from './useShop'
@@ -53,6 +53,19 @@ export function useAutoFillRates(items: readonly ShopItem[], costs: readonly Sho
       .then(r => { if (r.filled > 0) for (const key of SHOP_ROWS) void qc.invalidateQueries({ queryKey: key }) })
       .catch((e: Error) => logError(`shop_fill_rates: ${e.message}`, { action: 'shop_fill_rates' }))
   }, [pending, qc])
+}
+
+/**
+ * "Fetch again" in a rate's editor: asks Norges Bank's rates now and keeps the answer (`needed`, `filled`, `pending`)
+ * for the editor to say — silent otherwise; a failed call is the function's own message as a toast.
+ */
+export function useFetchRatesAgain() {
+  return useMutationWithFeedback<RatesOutcome>({
+    action: 'shop_fetch_rates',
+    silent: 'the rate editor shows the answer in its own line',
+    mutationFn: () => { lastFill = Date.now(); return fillRates() },
+    invalidates: SHOP_ROWS,
+  })
 }
 
 /** Asks for the waiting rates now (after a save that needs one), without the 30-minute pause. */

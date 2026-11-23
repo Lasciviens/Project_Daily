@@ -32,6 +32,8 @@ interface Props {
   disabled?:   boolean
   /** A row of 32 px fields: the calendar button is 32 px too (default 44). */
   compact?:    boolean
+  /** Takes the focus as it mounts (a fact's editor opened from a list). */
+  autoFocus?:  boolean
 }
 
 function problem(check: SlotsCheck, min?: string, max?: string): string | undefined {
@@ -49,7 +51,7 @@ function problem(check: SlotsCheck, min?: string, max?: string): string | undefi
  * pasted. The value changes once the date is whole, real and inside min–max;
  * anything else shows red and is not saved.
  */
-export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel, disabled, compact }: Props) {
+export function DateInput({ value, onChange, className, placeholder, min, max, 'aria-label': ariaLabel, disabled, compact, autoFocus }: Props) {
   const coarse = useCoarsePointer()
   const inputRef = useRef<HTMLInputElement>(null)
   const caretRef = useRef<number | null>(null)
@@ -198,6 +200,7 @@ export function DateInput({ value, onChange, className, placeholder, min, max, '
             type="text"
             inputMode="numeric"
             autoComplete="off"
+            autoFocus={autoFocus}
             spellCheck={false}
             value={shown}
             onKeyDown={handleKeyDown}

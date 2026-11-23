@@ -8,7 +8,7 @@ import type { Tone } from '../../shared/ui/Tone'
 import { formatDate } from '../../shared/utils/dateFormat'
 import { formatMoney } from '../settings/subscriptionRules'
 import {
-  add, boughtOn, complete, costOf, daysBetween, DISPOSAL_LABEL, gotOf, minus, monthsBetween, paidOf, valueAgeDays, valueNowOf, VALUE_STALE_DAYS,
+  add, boughtOn, complete, costOf, daysBetween, gotOf, minus, monthsBetween, paidOf, valueAgeDays, valueNowOf, VALUE_STALE_DAYS,
   type MoneyCtx,
 } from './ownModel'
 import { currencyOf } from './shopModel'
@@ -55,7 +55,8 @@ export function returnWords(daysLeft: number, day: string): string {
  * row still has its deadline, so the tag stays.
  */
 export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string, listing?: ShopListing | null): RowTag | null {
-  if (i.disposal) return { text: DISPOSAL_LABEL[i.disposal], tone: 'neutral' }
+  // A thing that left says how on its picture (a banner or a corner badge), never as a tag.
+  if (i.disposal) return null
   if (i.return_by && i.return_by >= today) {
     const left = daysBetween(today, i.return_by)
     const now = watch?.status === 'ok' ? cleanPrice(i, watch) : null
@@ -146,4 +147,28 @@ export const ROW_GAP_REM = 1.5
 export function rowStacks(widthRem: number | null): number {
   if (widthRem == null || widthRem <= 0) return 1
   return Math.max(1, Math.floor((widthRem + ROW_GAP_REM) / (ROW_MIN_REM + ROW_GAP_REM)))
+}
+
+// ── The filter bar's one row ─────────────────────────────────────────────────
+// The bar above Owned's things is ONE line wherever it can be (owner, 23.11.2026): it measures its own width and
+// folds what does not fit behind Filters, as `fitActions` does for the record's buttons. Widths in rem.
+
+/** What each control of the bar takes (search at its smallest, the selects at their cap) and the gap between them. */
+export const FILTER_ROW = { search: 12, seg: 15.5, sort: 11.5, tools: 9.5, filters: 7.5, select: 12, check: 8.5, clear: 7.5, gap: 0.5, roomy: 38 } as const
+
+/**
+ * `full`: every control in one line. `line`: one line with the category, money chain and "Bought to sell" behind
+ * Filters. `roomy`: two rows (search, Mine · Sold or gone · All and the icons; then Sort and Filters) — a phone turned
+ * sideways. `narrow`: three rows (a phone). Unmeasured: `full`.
+ */
+export type FilterRowMode = 'full' | 'line' | 'roomy' | 'narrow'
+
+export function filterRowMode(widthRem: number | null, o: { chains: boolean; clear: boolean }): FilterRowMode {
+  if (widthRem == null || !(widthRem > 0)) return 'full'
+  const F = FILTER_ROW
+  const base = F.search + F.seg + F.sort + F.tools + 3 * F.gap
+  const extras = F.select + (o.chains ? F.select : 0) + F.check + (o.clear ? F.clear : 0) + (o.chains ? 4 : 3) * F.gap
+  if (widthRem >= base + extras + (o.clear ? F.gap : 0)) return 'full'
+  if (widthRem >= base + F.filters + (o.clear ? F.clear + F.gap : 0) + F.gap) return 'line'
+  return widthRem >= F.roomy ? 'roomy' : 'narrow'
 }

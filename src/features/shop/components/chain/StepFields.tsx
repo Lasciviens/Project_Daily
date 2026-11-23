@@ -38,7 +38,7 @@ export function NokLine({ amount, currency, day, typed, onTyped, loading, label 
           ? <>= {money(amount.nok)} <span className="text-fg-muted">· {typed != null ? 'your rate' : `Norges Bank's rate of ${formatDate(day)}`}</span></>
           : !day ? 'In NOK once the day is set'
           : loading ? 'Looking up Norges Bank\'s rate of that day…'
-          : 'NOK: rate pending — Norges Bank has no rate for that day yet'}
+          : 'NOK rate missing — Norges Bank\'s rate for that day hasn\'t come in'}
         {!typing && (
           <button type="button" onClick={() => setTyping(true)} className="ml-2 inline-flex items-center font-semibold text-accent-600 hover:underline [@media(pointer:coarse)]:min-h-[44px]">
             Type a rate

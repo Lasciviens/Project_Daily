@@ -177,7 +177,7 @@ console.log('A failed read is never learned as "nothing there"')
   check('every <KeepRoom> says whether this outcome is one to remember (remember=…)', noRemember.length === 0, noRemember.join(', '))
   check('every useRememberedFlag / useRememberedCount learns only when its read answered (an error term, or data present)', blindReady.length === 0, blindReady.join('; '))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
-  check('Projects passes `settled` to all three of its memories', (projects.match(/, settled[,)]/g) || []).length === 3)
+  check('Projects passes `settled` to both of its memories', (projects.match(/, settled[,)]/g) || []).length === 2)
 }
 
 console.log('Room only for what every outcome shows; the rest from the memory')
@@ -240,10 +240,9 @@ check('Shop and Wishes: the filters show while loading — Shop\'s only where th
 check('Shop: the tiles wait for their own reads and the default pictures, so nothing appears under a drawn tile',
   /const tilesLoading = isLoading \|\| watchQ\.isLoading \|\| stats\.loading \|\| !pictures\.ready/.test(wishlist))
 const owned = code('src/features/shop/components/owned/OwnedView.tsx')
-check('Shop Owned: the filter bar keeps its room while loading where it showed last time (the first visit keeps it — it arriving after the read moved the list 0.16 on a phone), the summary line keeps its own, Fold all keeps its place in the row, and the rows wait for the default pictures (step A)',
+check('Shop Owned: the filter bar keeps its room while loading where it showed last time (the first visit keeps it — it arriving after the read moved the list 0.16 on a phone), Fold all keeps its place in the row, and the rows wait for the default pictures (step A)',
   /const showFilters = useRememberedFlag\('shop:ownedFilters', anything, !isLoading && !itemsQ\.isError, true\)/.test(owned)
     && /filters: showFilters && \(/.test(owned)
-    && /<KeepRoom ids="shop:ownedSummary" loading=\{isLoading\} remember=\{!itemsQ\.isError\}/.test(owned)
     && /pending=\{isLoading && foldable\}/.test(owned)
     && /const listLoading = isLoading \|\| !pictures\.ready/.test(owned))
 const shopPage = code('src/features/shop/pages/ShopPage.tsx')

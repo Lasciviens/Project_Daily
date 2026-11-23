@@ -226,23 +226,20 @@ check('Tasks: 42rem main → 67 / 92 / 117rem', B.boardWidthRem(D.TASKS_BOARD, 2
 check('Day at step 4 is the full 131rem board', B.boardWidthRem(D.DAY_BOARD, 4) === B.BOARD_MAX_REM)
 check('a non-rem main cap gives no cap', B.boardWidthRem({ 1: ['a'], 2: { main: '50%', columns: [['a'], []] } }, 2) === null)
 
-console.log('sectionsWidthRem (a page header keeps one size across its sections)')
+console.log('page headers are the page\'s width (owner, 23.11.2026: one width on every page)')
 {
   const fs = require('fs'), path = require('path')
-  const modes = [D.DAY_BOARD, D.WEEK_BOARD, D.MONTH_BOARD, D.TASKS_BOARD, D.DIARY_BOARD]
-  check('the widest section decides: Personal at step 4 is the day board\'s 131rem', B.sectionsWidthRem(modes, 4) === B.BOARD_MAX_REM)
-  check('Personal: one width at every step whichever section is open', [1, 2, 3, 4].every(st => {
-    const w = B.sectionsWidthRem(modes, st)
-    return modes.every(m => w === null || w >= (B.boardWidthRem(m, st) ?? Infinity))
-  }))
-  check('one section taking the page width uncaps the header', B.sectionsWidthRem([D.WEEK_BOARD, { 1: ['a'] }], 2) === null)
   const code = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '')
   const daily = code('src/features/daily/pages/DailyPage.tsx')
-  check('Personal\'s header width comes from every section, never the open one (owner, 31.10.2026: "the layout should not move")',
-    /sectionsWidthRem\(Object\.values\(MODE_BOARD\)/.test(daily) && !/boardWidthRem\(MODE_BOARD\[mode\]/.test(daily))
+  check('Personal\'s header is the page\'s width on every section — the same as every page\'s (owner, 31.10.2026: "the layout should not move"; 23.11.2026: one width on every page)',
+    !/sectionsWidthRem|headerRem|maxWidth/.test(daily) && !/boardWidthRem\(MODE_BOARD\[mode\]/.test(daily))
   check('Personal\'s day line shows in every section (the header keeps its height)', /subtitle=\{<span[^>]*><DayLine\b/.test(daily))
   const settings = code('src/features/settings/pages/SettingsPage.tsx')
-  check('Settings\' header width comes from every tab', /sectionsWidthRem\(Object\.values\(BOARD\)/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
+  check('Settings\' header is the page\'s width on every tab', !/sectionsWidthRem|headerCap|maxWidth/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
+  const developer = code('src/features/developer/pages/DeveloperPage.tsx')
+  check('Developer\'s, Projects\' and Work\'s header band are the page\'s width too: no cap on any page\'s header (owner, 23.11.2026: "using the width same in every page")',
+    !/sectionsWidthRem|headerCap|maxWidth/.test(developer) && !/headerCap|projectsHeaderCapRem|max-w-\[var\(--header-cap\)\]/.test(code('src/features/projects/pages/ProjectsPage.tsx'))
+      && !/headerCap|workHeaderCapRem/.test(code('src/features/work/pages/WorkPage.tsx')))
 }
 
 console.log('early steps (a lowered main takes its next track as soon as it fits)')
@@ -256,8 +253,7 @@ console.log('early steps (a lowered main takes its next track as soon as it fits
   check('validate: early needs a main cap in rem', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, main: '60%', columns: [['a'], [], []] } }).some(p => /early needs a main cap in rem/.test(p)))
   check('validate: early on a 56rem main gains nothing (106rem > 100rem) and is refused', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, columns: [['a'], [], []] } }).some(p => /early starts no sooner/.test(p)))
   check('validate accepts an early step on a lowered main', B.validateBoardLayouts(lowered).length === 0)
-  check('no header cap over a board that may already be wider than the page\'s step says', B.boardWidthRem(lowered, 2) === null && B.boardWidthRem(lowered, 3) === 92
-    && B.sectionsWidthRem([lowered, D.WEEK_BOARD], 2) === null)
+  check('no header cap over a board that may already be wider than the page\'s step says', B.boardWidthRem(lowered, 2) === null && B.boardWidthRem(lowered, 3) === 92)
 }
 
 console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section switch never reshapes, moves or resizes the bar)')
@@ -279,14 +275,14 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   // same places in every section. A new one fails here until it is listed (and checked in a browser).
   const PAGES = {
     'src/features/books/pages/BooksPage.tsx': 'only the tabs',
-    'src/features/daily/pages/DailyPage.tsx': 'one cap for every section (sectionsWidthRem), a steady one-line title',
+    'src/features/daily/pages/DailyPage.tsx': 'the page\'s width on every section, a steady one-line title',
     'src/features/developer/pages/DeveloperPage.tsx': 'every tab is the same list + detail board',
     'src/features/football/pages/FootballPage.tsx': 'a filter: the same pills in every view',
     'src/features/health/pages/HealthPage.tsx': 'only the tabs (the range bar sits under the bar)',
     'src/features/media/pages/MediaPage.tsx': 'only the switch',
-    'src/features/projects/pages/ProjectsPage.tsx': 'one cap for every status (projectsHeaderCards), the counts on every status',
+    'src/features/projects/pages/ProjectsPage.tsx': 'the page\'s width on every status, the counts on every status',
     'src/features/recipes/pages/RecipesPage.tsx': 'each tab\'s controls in one SteadySlot',
-    'src/features/settings/pages/SettingsPage.tsx': 'one cap for every tab (sectionsWidthRem)',
+    'src/features/settings/pages/SettingsPage.tsx': 'the page\'s width on every tab',
     'src/features/shop/pages/ShopPage.tsx': 'Owned\'s own controls under the bar on a phone, in its row from a tablet',
     'src/features/training/pages/TrainingPage.tsx': 'the tabs\' own views in one SteadySlot after the tabs',
   }
@@ -330,12 +326,10 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   // Step B (10.11.2026): the bar's one ⋯ (Stores and rules; Owned's other ways in) is on every view, so it never reshapes it.
   check('Shop: on a phone Owned\'s Things | Stats sit under the bar, never in it; the bar\'s one ⋯ is on every view',
     !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)/.test(shop)
-      && /<\/>\}\s*\{moreMenu\}/.test(headerOf(shop)))
+      && /<ShopNeedsALook[^>]*\/>\s*\{moreMenu\}/.test(headerOf(shop)))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
   // While loading, the count is the one remembered from the last load (useRememberedCount, THEME.md §5).
-  check('Projects: the header stops over the most cards any status shows, and the open status keeps its count',
-    /const headerCards = useRememberedCount\('projects:cards', projectsHeaderCards\(statusTally\(projects, 'all'\)/.test(projects)
-      && /projectsHeaderCapRem\(headerCards, width\)/.test(projects) && !/shown\.length, width/.test(projects) && !/s !== status/.test(projects))
+  check('Projects: the open status keeps its count (a label that changed on a switch moved every tab)', !/s !== status/.test(projects))
   const slot = code('src/shared/ui/SteadySlot.tsx')
   check('SteadySlot: every item in one grid cell, the hidden ones invisible and inert (no focus, no screen reader)',
     /col-start-1 row-start-1/.test(slot) && /k !== show && 'invisible'/.test(slot) && /inert=\{k !== show\}/.test(slot))

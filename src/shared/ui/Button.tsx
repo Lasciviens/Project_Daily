@@ -44,11 +44,13 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Required: an icon-only control needs an accessible name. */
   label: string
   bordered?: boolean
+  /** `sm`: 36px (44 on touch), the height of a small button — for a bar of small controls. */
+  size?: 'md' | 'sm'
   children: ReactNode
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, bordered, className, children, type = 'button', ...rest },
+  { label, bordered, size = 'md', className, children, type = 'button', ...rest },
   ref,
 ) {
   return (
@@ -57,7 +59,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       type={type}
       aria-label={label}
       title={label}
-      className={cx(bordered ? 'icon-btn-bordered' : 'icon-btn', '[&_svg]:h-[18px] [&_svg]:w-[18px]', className)}
+      className={cx(bordered ? 'icon-btn-bordered' : 'icon-btn', size === 'sm' && 'h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', '[&_svg]:h-[18px] [&_svg]:w-[18px]', className)}
       {...rest}
     >
       {children}

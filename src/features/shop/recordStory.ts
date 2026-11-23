@@ -7,7 +7,7 @@
 import { formatMoney } from '../settings/subscriptionRules'
 import { DISPOSAL_LABEL, durationLabel, isMine } from './ownModel'
 import { currencyOf, localDay } from './shopModel'
-import type { Look, LookKind, LookTone } from './shopSuggestions'
+import type { Look, LookKind, LookTone, RecordFact } from './shopSuggestions'
 import type { ShopItem, ShopItemCost, ShopItemLink } from './types'
 
 export type StoryKind = 'wished' | 'model' | 'planned' | 'bought' | 'accessory' | 'cost' | 'value' | 'gone' | 'return' | 'complaint'
@@ -118,7 +118,7 @@ export function storyOf(item: ShopItem, { items, links, costs, today }: StoryInp
  * due. Claim only where Needs a look's own row has it — a price protection a checked rule decides
  * (`purchaseModel.protectionOf`), never Ask AI's or a price site's — so the record and the list never differ.
  */
-export type NudgeAction = 'bought' | 'value' | 'day' | 'claim' | null
+export type NudgeAction = 'bought' | 'value' | 'fix' | 'claim' | null
 
 export interface Nudge {
   key: string
@@ -130,6 +130,8 @@ export interface Nudge {
   /** Where the last fact's price was read ("at elkjop.no"). */
   where: string | null
   action: NudgeAction
+  /** For a 'fix' (a tidy-up reason) or an old estimate: the fact whose editor opens. */
+  fact?: RecordFact | null
 }
 
 /**
@@ -147,14 +149,14 @@ export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string):
     const action: NudgeAction = own.action === 'bought' ? 'bought' : own.action === 'value' ? 'value'
       : own.action === 'claim' && own.kind === 'cheaper_returnable' && own.claim ? 'claim' : null
     const facts = own.kind === 'old_value' && item.value_on ? [`Your "Could sell for" is ${durationLabel(item.value_on, today)} old`] : own.facts
-    return { key: own.key, kind: own.kind, tone: own.tone, facts, where: own.kind === 'old_value' ? null : own.where, action }
+    return { key: own.key, kind: own.kind, tone: own.tone, facts, where: own.kind === 'old_value' ? null : own.where, action, fact: action === 'value' ? 'value' : null }
   }
   const tidy = looks.find(l => l.kind === 'tidy_up')?.things.find(t => t.id === item.id)
   if (tidy) {
-    return { key: 'tidy_up', kind: 'tidy_up', tone: 'info', facts: ['To tidy up', ...tidy.facts], where: null, action: tidy.facts.includes('no purchase day') ? 'day' : null }
+    return { key: 'tidy_up', kind: 'tidy_up', tone: 'info', facts: ['To tidy up', ...tidy.facts], where: null, action: tidy.fact ? 'fix' : null, fact: tidy.fact ?? null }
   }
   if (isMine(item) && item.value_now == null && !item.accessory_of) {
-    return { key: 'no_value', kind: 'old_value', tone: 'info', facts: ['What could it sell for?', 'it gives the cost per month'], where: null, action: 'value' }
+    return { key: 'no_value', kind: 'old_value', tone: 'info', facts: ['What could it sell for?', 'it gives the cost per month'], where: null, action: 'value', fact: 'value' }
   }
   return null
 }

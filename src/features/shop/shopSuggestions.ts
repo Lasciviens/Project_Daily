@@ -21,8 +21,15 @@ export type LookTone = 'danger' | 'warn' | 'success' | 'info'
 /** The row's one action: open the thing, mark it bought, open it at its "Could sell for", list the things it counts, or claim money back. */
 export type LookAction = 'open' | 'bought' | 'value' | 'list' | 'claim'
 
-/** One of the things a counting row (tidy-up, a deal day) is about. */
-export interface LookThing { id: string; title: string; facts: string[] }
+/**
+ * The fact in a record that fixes a thing's problem (owner, 23.11.2026: "every error should show exactly where the
+ * error is when clicked"): its editor opens and takes the focus. `value` is "Could sell for", `bought` the purchase
+ * day, `rate` the rate of the purchase day, `saleRate` the rate of the sale day, `got` the money a sale brought back.
+ */
+export type RecordFact = 'value' | 'bought' | 'rate' | 'saleRate' | 'got'
+
+/** One of the things a counting row (tidy-up, a deal day) is about; `fact` is where its problem is fixed (tidy-up only). */
+export interface LookThing { id: string; title: string; facts: string[]; fact?: RecordFact }
 
 export interface Look {
   key: string
@@ -150,17 +157,44 @@ function wishPrice(i: ShopItem, watch: ShopPriceWatch | null | undefined): strin
   return i.price != null ? money(i.price, currencyOf(i)) : null
 }
 
-/** What a possession lacks for its numbers: its purchase day, a rate, the money a sale brought. */
-export function tidyReasons(i: ShopItem, today: string): { noDay: boolean; rate: boolean; noAmount: boolean } {
+/** What a possession lacks for its numbers: its purchase day, a rate (of the purchase day or of the sale day), the money a sale brought. */
+export function tidyReasons(i: ShopItem, today: string): { noDay: boolean; rate: boolean; buyRate: boolean; saleRate: boolean; noAmount: boolean } {
   const boughtDay = i.bought_at ? localDay(i.bought_at) : null
   const waited = (day: string | null | undefined) => !day || daysBetween(day, today) >= RATE_GRACE_DAYS
+  const buyRate = foreign(i.currency) && i.price != null && i.fx_nok === null && waited(boughtDay)
+  const saleRate = foreign(i.sale_currency) && i.sale_price != null && i.sale_fx_nok === null && waited(i.disposed_on)
   return {
     // Null, not absent: before migration 134 a row has no such column at all.
     noDay: i.bought_at === null,
-    rate: (foreign(i.currency) && i.price != null && i.fx_nok === null && waited(boughtDay))
-      || (foreign(i.sale_currency) && i.sale_price != null && i.sale_fx_nok === null && waited(i.disposed_on)),
+    rate: buyRate || saleRate,
+    buyRate,
+    saleRate,
     noAmount: !!i.disposal && PAID_BACK.includes(i.disposal) && i.sale_price == null,
   }
+}
+
+/** The words of each reason: what is missing and what to do (never "pending": that doesn't say what it asks of the owner). */
+export const TIDY_WORDS = {
+  noDay: 'purchase day missing — set it',
+  rate: 'NOK rate missing — type it',
+  noAmount: 'sale amount missing — type it',
+} as const
+
+/**
+ * Which fact of the record fixes the first thing a possession lacks (the purchase day, then the purchase rate, the
+ * sale rate, the sale amount); null when it lacks nothing. Pure, so every screen opens the same fact.
+ */
+export function factToFix(why: Pick<ReturnType<typeof tidyReasons>, 'noDay' | 'buyRate' | 'saleRate' | 'noAmount'>): RecordFact | null {
+  return why.noDay ? 'bought' : why.buyRate ? 'rate' : why.saleRate ? 'saleRate' : why.noAmount ? 'got' : null
+}
+
+/**
+ * The section of the record that holds a fact: Resale holds "Could sell for" (a thing still yours or gone) and how a
+ * thing left (sold or gone); every other fact — and how a returned thing left — is in Facts.
+ */
+export function sectionOfFact(fact: RecordFact, state: string): 'facts' | 'resale' {
+  if (fact === 'value') return state === 'mine' || state === 'gone' ? 'resale' : 'facts'
+  return state === 'gone' && (fact === 'got' || fact === 'saleRate') ? 'resale' : 'facts'
 }
 
 /** The inputs beside the rows: their last price reads, clean price figures, and the deal days ahead (dealsAhead). */
@@ -190,6 +224,7 @@ type Draft = Omit<Look, 'key' | 'title' | 'claim' | 'daysLeft' | 'order' | 'wher
 export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today: string): Look[] {
   const out: Look[] = []
   const tidy: LookThing[] = []
+  const signs = new Map<string, string>()
   const tally = { noDay: 0, rate: 0, noAmount: 0 }
   const watching: LookThing[] = []
   const push = ({ sign, ...l }: Draft, i: ShopItem) => out.push({
@@ -244,7 +279,10 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
 
     const why = tidyReasons(i, today)
     if (why.noDay || why.rate || why.noAmount) {
-      tidy.push({ id: i.id, title: i.title, facts: facts(why.noDay && 'no purchase day', why.rate && 'rate pending', why.noAmount && 'sale without an amount') })
+      // The words say what to do; Got it's signature keeps the old words, so a row put away stays away.
+      tidy.push({ id: i.id, title: i.title, fact: factToFix(why) ?? undefined,
+        facts: facts(why.noDay && TIDY_WORDS.noDay, why.rate && TIDY_WORDS.rate, why.noAmount && TIDY_WORDS.noAmount) })
+      signs.set(i.id, facts(why.noDay && 'no purchase day', why.rate && 'rate pending', why.noAmount && 'sale without an amount').join('+'))
       tally.noDay += Number(why.noDay); tally.rate += Number(why.rate); tally.noAmount += Number(why.noAmount)
     }
     if (!isMine(i)) continue
@@ -322,10 +360,10 @@ export function needsALook(items: readonly ShopItem[], inputs: LookInputs, today
       key: 'tidy_up', kind: 'tidy_up', tone: 'info', itemId: null, subject: null, action: 'list', claim: null, daysLeft: null, order: 0, where: null,
       snoozeTo: snoozeUntil(today),
       title: `${plural(tidy.length, 'thing')} to tidy up`, things: tidy,
-      signature: signalSignature('tidy_up', ...tidy.map(t => `${t.id}:${t.facts.join('+')}`).sort()),
+      signature: signalSignature('tidy_up', ...tidy.map(t => `${t.id}:${signs.get(t.id)}`).sort()),
       facts: facts(
         tally.noDay > 0 && `${tally.noDay} without a purchase day`,
-        tally.rate > 0 && plural(tally.rate, 'rate') + ' pending',
+        tally.rate > 0 && `${plural(tally.rate, 'NOK rate')} missing`,
         tally.noAmount > 0 && `${plural(tally.noAmount, 'sale')} without an amount`,
       ),
     })

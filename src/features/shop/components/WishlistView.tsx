@@ -28,7 +28,6 @@ import { ShopFilters } from './ShopFilters'
 import { GeneralWishTile } from './GeneralWishTile'
 import { WishTile } from './WishTile'
 import { PackedTiles, TILE_GRID, TileSkeleton } from './tileKit'
-import { ShopNeedsALook } from './ShopNeedsALook'
 import { WishlistSummaryLine } from './WishlistSummaryLine'
 import type { ShopCategory, ShopItem } from '../types'
 
@@ -214,10 +213,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       sections={{
         filters: showFilters && (
           <ShopFilters filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} collapsible={folded}
-            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} pending={tilesLoading} />} />
+            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} pending={tilesLoading} />} />
         ),
-        // In every outcome (loading, nothing, something): one line on a phone, the rail's card on a wide page.
-        look: <ShopNeedsALook items={items} isLoading={isLoading} quiet={!showFilters} />,
         groups: groupsSection,
       }}
     />

@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag } from 'lucide-react'
+import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag, Waypoints } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -13,6 +13,8 @@ import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
 import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
+import { ShopNeedsALook } from '../components/ShopNeedsALook'
+import type { RecordFact } from '../shopSuggestions'
 import { ShopHeroArt } from '../components/ShopHeroArt'
 import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
@@ -50,10 +52,9 @@ export function ShopPage() {
     return n
   })
   const isPhone = useBreakpoint() === 'phone'
-  // Stats' filter and period live here, so Owned's summary line can open Stats on its own things.
+  // Stats' filter and period live here, so they stay while the owner switches between Things and Stats.
   const [statsScope, setStatsScope] = useState<StatsScope>(WHOLE_COLLECTION)
   const [statsYear, setStatsYear] = useState<string | null | undefined>(undefined)
-  const openStats = (scope: StatsScope) => { setStatsScope(scope); setStatsYear(null); set('owned', 'stats') }
   useIdlePreload(OTHER_VIEWS)
   const modal = useEntityModal()
   const { data: items = [], isLoading: itemsLoading } = useShopItems()
@@ -61,6 +62,14 @@ export function ShopPage() {
   const { data: costs = [] } = useShopCosts()
   useAutoFillRates(items, costs)
   const isLoading = itemsLoading || catsLoading
+
+  // A thing opened from Needs a look (the header's sheet): Owned's Things decides between its side pane and a popup, every
+  // other place opens the popup.
+  const [lookOpen, setLookOpen] = useState<{ id: string; fact?: RecordFact; seq: number } | null>(null)
+  const openThing = (id: string, fact?: RecordFact) => {
+    if (view === 'owned' && ownedTab === 'things') setLookOpen(p => ({ id, fact, seq: (p?.seq ?? 0) + 1 }))
+    else modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
+  }
 
   const wishCount = items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for).length
   const quickCount = quickGroups(items, todayStr()).reduce((n, g) => n + g.items.length, 0)
@@ -88,7 +97,7 @@ export function ShopPage() {
   // there are any, and on Owned its other ways in where the row has no room for their buttons, and the insurance list.
   const moreMenu = (
     <Menu as="div">
-      <MenuButton className="icon-btn-bordered" aria-label="More in Shop" title="More in Shop">
+      <MenuButton className="icon-btn-bordered h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label="More in Shop" title="More in Shop">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
@@ -106,6 +115,7 @@ export function ShopPage() {
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
         </>}
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chains' })} className="menu-item"><Waypoints aria-hidden className="h-4 w-4" /> Money chains</button></MenuItem>
         {view === 'owned' && (
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
         )}
@@ -122,12 +132,14 @@ export function ShopPage() {
   return (
     <PageContainer>
       <PageHeader title="Shop" art={<ShopHeroArt />}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="min-w-0 flex-1 sm:flex-none">
             <SegmentedControl<View>
+              size={isPhone ? 'sm' : 'md'}
               value={view}
               onChange={v => set(v)}
               fullWidth={isPhone}
+              fit={isPhone}
               options={[
                 { value: 'wishlist', label: <>Wishlist{count(wishCount)}</> },
                 { value: 'quick', label: <>Quick list{count(quickCount)}</> },
@@ -136,16 +148,17 @@ export function ShopPage() {
             />
           </div>
           {view === 'owned' && !isPhone && ownedTabs(false)}
-          <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+          <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
             {view === 'owned' && !isPhone && <>
               {/* Owned's other ways in: buttons where the row has room, lines in the ⋯ menu where it has not. */}
               <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
-                <Button variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
-                <Button variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+                <Button size="sm" variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
+                <Button size="sm" variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
               </div>
             </>}
+            <ShopNeedsALook items={items} isLoading={isLoading} openThing={openThing} />
             {moreMenu}
-            <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
+            <Button size="sm" variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
             </Button>
           </div>
@@ -173,7 +186,7 @@ export function ShopPage() {
             )
             : (
               <Suspense fallback={<SkeletonTab />}>
-                <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+                <OwnedView items={items} categories={categories} isLoading={isLoading} open={lookOpen} onOpened={() => setLookOpen(null)} />
               </Suspense>
             )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}

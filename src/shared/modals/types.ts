@@ -17,6 +17,7 @@ import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../c
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
+import type { RecordFact } from '../../features/shop/shopSuggestions'
 import type { ReceiptFill, ReceiptRead } from '../../features/ai/claude/featureRules'
 import type { SaleDefaults } from '../../features/shop/receiptRead'
 import type { ShopItem } from '../../features/shop/types'
@@ -69,7 +70,7 @@ export type EntityModalRequest =
   | { kind: 'body-measurement'; date?: string }
   | { kind: 'wish'; id: string }
   /** A Shop item: open by `id` (a wishlist row as its record; `fact` opens that fact's editor — an old "Could sell for"'s "update it"), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
-  | { kind: 'shop-item'; id?: string; fact?: 'value'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
+  | { kind: 'shop-item'; id?: string; fact?: RecordFact; section?: 'money'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
   /** Sell or give away one of your things (with its accessories), and where the money goes. */
   /** `sale`: the amount, currency and day a read receipt gives (Read a receipt); `onSold` runs once the sale is saved. */
   | { kind: 'shop-sell'; id: string; sale?: SaleDefaults; onSold?: () => void }
@@ -92,6 +93,8 @@ export type EntityModalRequest =
   | { kind: 'shop-complaint'; id: string }
   /** Everything you own and its value, as a CSV file or a print. */
   | { kind: 'shop-insurance' }
+  /** Every money chain in one list (the Shop header's ⋯): a tap opens that chain's popup. */
+  | { kind: 'shop-chains' }
   /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
   /** `receipt`: the read receipt this wish was bought on (Read a receipt): it fills the sheet through the same path a receipt photo does. */
   | { kind: 'shop-just-bought'; id: string; receipt?: { fill: ReceiptFill; read: ReceiptRead } }

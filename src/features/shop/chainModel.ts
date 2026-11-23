@@ -22,6 +22,7 @@ import {
   type Amount, type MoneyCtx,
 } from './ownModel'
 import { nokPerUnit } from './fx'
+import { formatMoney } from '../settings/subscriptionRules'
 
 // ── Units ────────────────────────────────────────────────────────────────────
 
@@ -476,6 +477,66 @@ export function finalCostOf(chain: Chain, itemId: string): FinalCost | null {
     own: n.paid, carried: n.carried, total: n.basis, cashIn: n.cashIn, earlier: earlier.size,
     earlierMonths: chain.linear && first && n.bought && first < n.bought ? monthsBetween(first, n.bought) : null,
   }
+}
+
+/** What the things you keep in a chain cost you in total, once the chain's earlier sales are counted. */
+export interface KeptCost {
+  /** The things still yours, oldest first (a thing with its accessories is one). */
+  things: { id: string; title: string }[]
+  /** What they themselves cost (with their accessories and extra costs). */
+  paid: Amount
+  /** What the earlier things passed on to them: + lost on the earlier ones, − made (it lowers the total). */
+  carried: Amount
+  /** paid + carried: what they cost you in all. Never a guess — it is `complete` only when every amount is known. */
+  total: Amount
+}
+
+/**
+ * "You keep Tablet B — cost you 4 750 NOK in total (4 000 paid + 750 lost on the one before)" (owner, 23.11.2026:
+ * "the ones I keep — I should see how much that cost me in total; I might gain, while buying something new").
+ * The things still yours are the chain's held nodes; each one's route cost is its own price plus what the earlier
+ * sales passed on to it (a profit passes a negative, so a gain lowers the total). A missing price or a rate not
+ * published yet makes the total incomplete — the caller says it is not counted and why, never a number. Null when
+ * nothing in the chain is still yours, or the chain is one thing (no earlier sales to count).
+ */
+export function keptCost(chain: Chain): KeptCost | null {
+  const kept = chain.nodes.filter(n => n.state === 'held')
+  if (!kept.length || chain.nodes.filter(n => n.state !== 'wish').length < 2) return null
+  return {
+    things: kept.map(n => ({ id: n.id, title: n.item.title })),
+    paid: add(...kept.map(n => n.paid)),
+    carried: add(...kept.map(n => n.carried)),
+    total: add(...kept.map(n => n.basis)),
+  }
+}
+
+/** Why an amount is not a number: "1 price missing · 1 exchange rate pending". */
+function whyNot(a: Amount): string {
+  return [
+    a.missing > 0 && `${a.missing} price${a.missing === 1 ? '' : 's'} missing`,
+    a.pending > 0 && `${a.pending} exchange rate${a.pending === 1 ? '' : 's'} pending`,
+  ].filter(Boolean).join(' · ')
+}
+
+/**
+ * The chain popup's closing line, in words: "You keep Tablet B — cost you 4 750 NOK in total (4 000 NOK paid + 750 NOK
+ * lost on the one before)"; a gain on the earlier sales is taken off ("… (4 000 NOK paid − 500 NOK made on the one
+ * before)"); the total below 0 reads "you are 250 NOK ahead". With a price missing or a rate pending it says so and
+ * shows no number. `earlier`: how many things of the chain are not kept (the "one before" / "ones before").
+ */
+export function keptWords(k: KeptCost, earlier: number): string {
+  const names = k.things.map(t => t.title)
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+  if (!complete(k.total)) return `You keep ${list} — what ${names.length > 1 ? 'they' : 'it'} cost you in total is not counted yet: ${whyNot(k.total)}.`
+  const m = (n: number) => formatMoney(Math.round(Math.abs(n)), 'NOK')
+  const before = earlier === 1 ? 'the one before' : 'the ones before'
+  const carried = Math.round(k.carried.nok)
+  const how = carried > 0 ? `${m(k.paid.nok)} paid + ${m(carried)} lost on ${before}`
+    : carried < 0 ? `${m(k.paid.nok)} paid − ${m(carried)} made on ${before}` : `${m(k.paid.nok)} paid, nothing carried over`
+  const total = Math.round(k.total.nok)
+  return total < 0
+    ? `You keep ${list} — you are ${m(total)} ahead (${how}).`
+    : `You keep ${list} — ${names.length > 1 ? 'they' : 'it'} cost you ${m(total)} in total (${how}).`
 }
 
 export interface IfSold {

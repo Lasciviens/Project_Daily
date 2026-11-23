@@ -1,15 +1,17 @@
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
-import { Button, TonePill, cx } from '../../../../shared/ui'
+import { Button, IconButton, TonePill, cx } from '../../../../shared/ui'
+import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
-import { boughtOn, durationLabel } from '../../ownModel'
+import { boughtOn, DISPOSAL_LABEL, durationLabel } from '../../ownModel'
 import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
 import { ItemThumb } from '../shopKit'
 import { imageOf } from '../shopFormat'
+import { fitActions } from './recordActions'
 import { RecordFacts } from './RecordFacts'
 import { RecordStrip } from './RecordStrip'
 import { PriceCheckButton, RecordPriceWatch } from './RecordPriceWatch'
@@ -31,6 +33,7 @@ import { LookElsewhere } from '../purchase/LookElsewhere'
 import { useMarketSearches } from '../../hooks/useShopStores'
 import { useOpenRecord } from './recordOpen'
 import { newCategoryMissing } from './useRecordDraft'
+import { sectionOfFact, type RecordFact } from '../../shopSuggestions'
 import type { ShopRecordModel } from './useShopRecord'
 
 /**
@@ -42,7 +45,7 @@ import type { ShopRecordModel } from './useShopRecord'
  * wide popup the Story sits beside the sections. `pill`: where the state pill
  * shows in the body — on a phone, where the popup's header has no room.
  */
-export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact?: 'value'; pill: 'phone' | 'none' }) {
+export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money'; pill: 'phone' | 'none' }) {
   const { item, state, d, today, owned } = r
   const modal = useEntityModal()
   const openRecord = useOpenRecord()
@@ -55,7 +58,20 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const resale = state === 'mine' || state === 'gone'
   const { data: listings = [] } = useListings()
   const listing = resale ? openListingOf(listings, item.id) : null
-  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact === 'value' ? (resale ? 'resale' : 'facts') : null)
+  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : openSection ?? null)
+  // Opened at a fact from the Needs a look sheet: the sheet's close hands the focus back to the header's button while it
+  // fades; once that is done the fact's editor takes it (only from the page's body or that button — never from where
+  // the owner moved it).
+  useEffect(() => {
+    if (!openFact) return
+    const take = () => {
+      const now = document.activeElement
+      if (now && now !== document.body && !(now instanceof HTMLElement && now.hasAttribute('data-look-trigger'))) return
+      document.querySelector<HTMLElement>('[data-fact-open] input, [data-fact-open] select, [data-fact-open] textarea')?.focus({ preventScroll: true })
+    }
+    const timers = [450, 900].map(ms => window.setTimeout(take, ms))
+    return () => timers.forEach(window.clearTimeout)
+  }, [openFact])
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
   // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).
@@ -67,34 +83,43 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const edit = (fact: string, section: SectionId) => { sections.show(section); d.setEditing(fact) }
   const onNudge = () => {
     if (nudge?.action === 'bought') r.buy()
-    else if (nudge?.action === 'value') edit('value', resale ? 'resale' : 'facts')
-    else if (nudge?.action === 'day') edit('bought', 'facts')
+    else if (nudge?.action === 'value' || nudge?.action === 'fix') {
+      const fact = nudge.fact ?? 'value'
+      edit(fact, sectionOfFact(fact, state))
+    }
     else if (nudge?.action === 'claim') modal.open({ kind: 'shop-claim', id: item.id })
   }
 
-  const more = r.actions.filter(a => a.more)
+  // One line at every width: the buttons that fit in the room the row has, the rest behind ⋯ (recordActions.ts).
+  const { ref: actionsRef, width: actionsRoom } = useElementWidthRem<HTMLDivElement>()
+  const { shown, more } = fitActions(actionsRoom, r.actions)
   const actions = r.actions.length > 0 && (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {r.actions.map(a => (
-        <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick}
-          className={a.more ? 'hidden @[30rem]:inline-flex' : undefined}>
-          {a.label}
-        </Button>
-      ))}
-      {more.length > 0 && (
-        <Menu as="div" className="@[30rem]:hidden">
-          <MenuButton className="icon-btn icon-btn-bordered" aria-label="More actions" title="More actions">
-            <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
-          </MenuButton>
-          <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
-            {more.map(a => (
-              <MenuItem key={a.key}>
-                <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
-              </MenuItem>
-            ))}
-          </MenuItems>
-        </Menu>
-      )}
+    <div ref={actionsRef} className="min-w-0">
+      <div className="flex flex-nowrap items-center gap-1.5">
+        {shown.map(a => a.iconOnly
+          ? (
+            <IconButton key={a.key} bordered size="sm" label={a.label} onClick={a.onClick}>{a.icon}</IconButton>
+          )
+          : (
+            <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick} className="shrink-0">
+              {a.label}
+            </Button>
+          ))}
+        {more.length > 0 && (
+          <Menu as="div" className="shrink-0">
+            <MenuButton className="icon-btn icon-btn-bordered h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label="More actions" title="More actions">
+              <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
+            </MenuButton>
+            <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
+              {more.map(a => (
+                <MenuItem key={a.key}>
+                  <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
+                </MenuItem>
+              ))}
+            </MenuItems>
+          </Menu>
+        )}
+      </div>
     </div>
   )
 
@@ -140,12 +165,13 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     <div className="@container flex flex-col gap-3">
       <div className="flex items-start gap-3">
         {/* Only a real picture: an empty box took 80px beside the actions. */}
-        {picture && <ItemThumb src={picture} className="@[30rem]:h-20 @[30rem]:w-20" />}
+        {/* A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
+        {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's). */}
-          {(pill === 'phone' || (state === 'mine' && from)) && (
+          {((pill === 'phone' && r.pill) || (state === 'mine' && from)) && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
-              {pill === 'phone' && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
+              {pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
               {state === 'mine' && from && (
                 <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>
               )}

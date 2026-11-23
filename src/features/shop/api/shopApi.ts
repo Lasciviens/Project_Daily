@@ -1,8 +1,8 @@
 import { supabase } from '../../../integrations/supabase/client'
-import { parseNewOffers } from '../storeRows'
+import { parseNewOffers } from '../newOffers'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { defaultCurrencyFor } from '../shopModel'
-import { draftRows, type ChainDraft, type Copied } from '../chainDraft'
+import type { ChainDraft, Copied } from '../chainDraft'
 import type {
   ShopCategory, ShopItem, ShopItemCost, ShopItemLink, ShopPricePoint, ShopPriceWatch,
   CreateShopCategoryInput, CreateShopCostInput, CreateShopItemInput, ShopCurrency, ShopDisposal, UpdateShopItemInput,
@@ -198,6 +198,8 @@ export const newShopId = newUuid
  */
 export async function saveShopChain(draft: ChainDraft, base: Copied | null, today: string): Promise<void> {
   const user = await requireUser()
+  // The draft's maths is only for saving a chain: its own chunk, never in the Shop page's first download.
+  const { draftRows } = await import('../chainDraft')
   const rows = draftRows(draft, base, { mode: 'save', userId: user.id, nowIso: new Date().toISOString(), today, newId: newUuid })
   const { error } = await supabase.rpc('shop_restore_items', { p_snapshot: { items: rows.items, links: rows.links, costs: [], children: [] } })
   if (error) throw error

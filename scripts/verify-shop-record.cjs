@@ -47,8 +47,7 @@ const ctxOf = (costs = []) => O.moneyCtx(costs, null)
 console.log('a row\'s one tag')
 {
   const tag = (i, w) => R.rowTag(i, w ?? null, TODAY)
-  check('a thing gone wears how it left, neutral', eq(tag(mine({ disposal: 'sold', disposed_on: day(-3) })), { text: 'Sold', tone: 'neutral' }))
-  check('given away reads as such', tag(mine({ disposal: 'given', disposed_on: day(-3) })).text === 'Given away')
+  check('a thing gone wears no tag: how it left is its picture\'s banner or badge (owner, 23.11.2026)', tag(mine({ disposal: 'sold', disposed_on: day(-3) })) === null && tag(mine({ disposal: 'given', disposed_on: day(-3), return_by: day(5) })) === null)
   check('return today: danger', eq(tag(mine({ return_by: TODAY })), { text: 'Return today', tone: 'danger' }))
   check('return tomorrow: danger', eq(tag(mine({ return_by: day(1) })), { text: 'Return tomorrow', tone: 'danger' }))
   check('return in 3 days: warn', eq(tag(mine({ return_by: day(3) })), { text: 'Return in 3 days', tone: 'warn' }))
@@ -178,7 +177,7 @@ console.log('the nudge line')
   const looks = S.needsALook([phone, sofa, vac], { watches: new Map() }, TODAY)
   check('its own Needs-a-look row, the most urgent first', St.nudgeFor(phone, looks, TODAY).kind === 'return_closing' && St.nudgeFor(phone, looks, TODAY).tone === 'warn')
   check('… snoozed or put away: none (only the rows still shown are passed)', St.nudgeFor(phone, looks.filter(l => l.itemId !== 'ph'), TODAY) === null)
-  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks, TODAY); return x.kind === 'tidy_up' && x.action === 'day' && x.facts.includes('no purchase day') })())
+  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks, TODAY); return x.kind === 'tidy_up' && x.action === 'fix' && x.fact === 'bought' && x.facts.includes('purchase day missing — set it') })())
   check('still yours with no "Could sell for": the fact that gives its cost per month', St.nudgeFor(vac, looks, TODAY).action === 'value')
   check('an accessory, a thing gone or a wish with nothing due: no nudge', St.nudgeFor(mine({ accessory_of: 'ph' }), [], TODAY) === null
     && St.nudgeFor(mine({ disposal: 'sold', disposed_on: day(-2) }), [], TODAY) === null && St.nudgeFor(item({}), [], TODAY) === null)
@@ -205,6 +204,36 @@ console.log('the record\'s draft: "+ New category…" (made on Save, as the add 
   const row = item({ category_id: 'c1' })
   const p = D.patchOf(row, { category_id: top, new_top: 'Garden', new_sub: 'Tools', bought_day: undefined })
   check('the typed names are never sent as columns', eq(Object.keys(p), ['category_id']) && p.category_id === top, JSON.stringify(p))
+}
+
+console.log('the record\'s one row of actions')
+{
+  const { fitActions } = require('../src/features/shop/components/record/recordActions')
+  const mineActions = [{ key: 'sell', label: 'Sell' }, { key: 'acc', label: 'Accessory' }, { key: 'wrong', label: 'Something\'s wrong' }]
+  const keys = r => [r.shown.map(a => a.key), r.more.map(a => a.key)]
+  check('not measured yet: every action shows (nothing is dropped on a guess)', eq(keys(fitActions(null, mineActions)), [['sell', 'acc', 'wrong'], []]))
+  check('a wide row keeps every button', eq(keys(fitActions(40, mineActions)), [['sell', 'acc', 'wrong'], []]))
+  check('the side pane\'s row (≈ 16rem): the first buttons, the rest behind ⋯ — never a second line', (() => {
+    const r = fitActions(16, mineActions)
+    return r.more.length > 0 && r.shown[0].key === 'sell'
+  })())
+  check('a very narrow row still shows the primary action; the rest go behind ⋯', eq(keys(fitActions(3, mineActions)), [['sell'], ['acc', 'wrong']]))
+  check('an icon-only action (Undo: still mine) is one small button', eq(keys(fitActions(8, [{ key: 'undo', label: 'Undo: still mine', iconOnly: true }])), [['undo'], []]))
+  check('the actions keep their order', eq(keys(fitActions(12, mineActions)).flat(), ['sell', 'acc', 'wrong']))
+}
+
+console.log('Owned\'s filter bar: one line wherever it fits')
+{
+  const { filterRowMode, FILTER_ROW: F } = R
+  const none = { chains: false, clear: false }, chains = { chains: true, clear: false }
+  check('not measured yet: the whole bar (nothing is folded on a guess)', filterRowMode(null, chains) === 'full')
+  check('a monitor (93rem, a money chain present): every control in one line', filterRowMode(93, chains) === 'full')
+  check('the laptop (73rem) with a money chain: one line, the selects behind Filters', filterRowMode(73, chains) === 'line')
+  check('a wide bar without a money chain takes the category select inline sooner', filterRowMode(75, none) === 'full' && filterRowMode(75, chains) === 'line')
+  check('a phone sideways (52rem) takes two rows, a phone (23rem) three', filterRowMode(52, chains) === 'roomy' && filterRowMode(23, chains) === 'narrow')
+  check('a Clear filters button counts against the room', filterRowMode(72, none) === 'full' && filterRowMode(72, { chains: false, clear: true }) === 'line')
+  check('the modes never need more than the row has: full ≥ line ≥ roomy ≥ narrow as the width shrinks', [100, 90, 80, 70, 60, 55, 45, 38, 30, 20].map(w => filterRowMode(w, chains))
+    .every((m, i, all) => i === 0 || ['full', 'line', 'roomy', 'narrow'].indexOf(m) >= ['full', 'line', 'roomy', 'narrow'].indexOf(all[i - 1])) && F.roomy === 38)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

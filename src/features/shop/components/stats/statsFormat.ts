@@ -9,7 +9,7 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} $
 
 /** "Price missing", "Rate pending" — why an amount is not a number (short, for a row). */
 export function shortReason(a: Amount): string {
-  if (a.missing && a.pending) return 'Price missing · rate pending'
+  if (a.missing && a.pending) return 'Price missing · NOK rate missing'
   return a.missing ? 'Price missing' : 'Rate pending'
 }
 
