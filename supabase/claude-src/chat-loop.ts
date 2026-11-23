@@ -73,6 +73,7 @@ const STEP_LABELS: Record<string, string> = {
   get_health_trends: "Looking at the week's health figures",
   get_pt_verdicts: "Reading the coach's saved verdicts",
   note_shortcut: 'Noting an idea for the Suggestions list',
+  get_transit: 'Looking up live public transport',
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/

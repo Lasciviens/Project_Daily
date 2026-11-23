@@ -32,6 +32,7 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
   get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
   note_shortcut: { label: 'Note a suggestion', what: 'Writes one suggestion into Developer → AI → Learn → Suggestions when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
+  get_transit: { label: 'Bus and train times', what: "Looks up live public transport from Entur (open data): departures from a stop, or a trip from A to B. Your saved places (home, work) are sent to Entur only as a stop or a position." },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 
@@ -83,7 +84,7 @@ export function chatIntro(mode: ChatMode, tools: readonly string[]): { text: str
     has('get_food_day') && 'What have I eaten today against my targets?',
     has('find_text') && 'Find my tasks and notes about the dentist',
   ].filter(Boolean) as string[]
-  const can = [reads.length ? `read your ${list(reads)}` : '', writes.length ? `propose ${list(writes.map(w => w))} for you to confirm` : ''].filter(Boolean)
+  const can = [reads.length ? `read your ${list(reads)}` : '', has('get_transit') ? 'look up live bus and train times' : '', writes.length ? `propose ${list(writes.map(w => w))} for you to confirm` : ''].filter(Boolean)
   return {
     text: can.length ? `What can I look up for you? I can ${can.join(', and ')}.` : 'Every tool is switched off in Settings, so I can only answer from what you tell me.',
     suggestions: suggestions.slice(0, 4),
@@ -366,7 +367,7 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
-  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting a suggestion',
+  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting a suggestion', get_transit: 'Looking up bus and train times',
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {

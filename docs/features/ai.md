@@ -198,6 +198,18 @@ The owner's controls and the missing pieces. Written from scratch for Claude (th
 - **The coach chat in a new chat and the history:** "New chat" inside a coach chat starts a coach chat, the history tags coach chats, the setup line (kind, N tools, your instructions: names and words on a tap) shows before the first message and the empty chat's intro and suggestions are built from the tools that are on.
 - **Not built / not verified:** the first live run of the new tool set on Anthropic (use Diagnose: `count_tokens` does not compile a grammar, but these tools are not strict), a real iPhone (camera, microphone and its language choice, the keyboard), real photos of a meal, the coach chat on real training data.
 
+## Bus and train times: `get_transit` (23.11.2026, no migration)
+
+Owner (23.11.2026): "Ai cant use entur api. It should be able to run and see the results and tell me!"
+
+- **What it does.** A read tool for Ask AI and the phone's question: departures from a stop (now or from a time, optionally one kind of vehicle) and a trip from A to B (leave at or arrive by a time). A place is the owner's saved place by name ("home", "work", or any label saved in Settings → Places), a stop name, an address, or an exact `NSR:StopPlace:<digits>` / `NSR:Quay:<digits>` id the model got from an earlier result. The answer is a short prepared list (line, vehicle, platform, times in Oslo time, delay or cancellation, duration), not EnTur's raw answer. Details, endpoints and fields: `docs/integrations/entur.md`.
+- **Where.** `supabase/claude-src/transit-lookup.ts` (the fixed code), the tool's definition in `chat-tools.ts` (`get_transit`, last in `ALL_TOOL_ORDER`), the words in `chat-rules.ts` (`CHAT_VERSION` 2026-11-23.6, so an open chat asks for a new one), the step words in `chat-loop.ts` and the app's `chatRules.ts` (label "Bus and train times", Settings → Chat tools lists it like the others).
+- **Chat and phone.** Both. The phone is where "when is my bus?" is asked, and its tools are the chat's own reads switched by the same Settings, so it takes this one too (its instructions went to version 2026-11-23.4). The coach chat does not (training, not travel). Default On (a read of a public service); Off in Settings → Chat tools applies from the next message.
+- **No migration.** `ai_tool_settings.tool` accepts any name of the shape `^[a-z][a-z0-9_]{1,39}$` and its CHECK only restricts the write tools, so a new read tool needs no schema change.
+- **AI last.** The model only decides which question to ask; code calls EnTur, finds the place, checks and formats every field and works out every delay and duration.
+- **Tests.** `scripts/verify-claude-chat.cjs` §17 (fixtures from live answers in `scripts/fixtures/entur/`), the tool lists in `verify-claude-function`, `verify-ai-confirm`, `verify-ai-chat-ui`.
+- **Not verified:** a real chat on the deployed function (Diagnose should be run once after the merge, because `count_tokens` does not compile the tool grammar).
+
 ## Suggestions, phase 4c (23.11.2026, migration 199)
 
 "Minimise AI, maximise automation and tools" (the owner, 20.11.2026): the system only **recommends**, it never creates, switches on or changes anything. Design and threats: `docs/features/ai-plan.md` §5 and §8.
