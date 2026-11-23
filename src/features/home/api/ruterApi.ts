@@ -38,6 +38,8 @@ function firstText(strs?: RawMultilingualString[] | null): string | null {
   return (strs.find(s => s.language === 'en') ?? strs[0]).value
 }
 
+// Ask AI's bus and train tool reads the same field with the same pick (English first, else the first):
+// supabase/claude-src/transit-lookup.ts `lineNotices`. Change the rule in both places together.
 function mapSituations(raw?: RawSituation[] | null): Situation[] {
   return (raw ?? [])
     .map(s => ({ summary: firstText(s.summary), severity: s.severity ?? 'unknown' }))

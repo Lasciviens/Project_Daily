@@ -36,6 +36,8 @@ import { PHONE_ASK_JOB } from './job-device.ts'
 const PHONE_DEADLINE_MS = 19_000
 /** One tool may take this long: a slower one is an error result, not a hung answer. */
 const PHONE_TOOL_MS = 5_000
+/** One outside request of a tool (Entur) may take this long on the phone: two in a row still fit PHONE_TOOL_MS. */
+const PHONE_REQUEST_MS = 2_000
 
 const phoneTextOf = (content: readonly Block[]): string => content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('')
 
@@ -169,10 +171,12 @@ export async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunR
         const at = Date.now()
         const id = typeof call.id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(call.id) ? call.id : ''
         const name = typeof call.name === 'string' ? call.name : ''
+        const stopTool = new AbortController()
         const output: ToolOutput = index >= CHAT_LIMITS.phoneToolCalls
           ? { ok: false, message: `Too many tool calls (the most is ${CHAT_LIMITS.phoneToolCalls}): this one did not run. Answer with what you have.` }
-          : await phoneWithTimeout(runPhoneTool(name, call.input, toolNames, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs }),
+          : await phoneWithTimeout(runPhoneTool(name, call.input, toolNames, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs, signal: stopTool.signal, requestMs: PHONE_REQUEST_MS }),
             Math.min(PHONE_TOOL_MS, Math.max(1000, PHONE_DEADLINE_MS - (Date.now() - started) - 3000)), { ok: false, message: 'That tool took too long. Answer without it.' } as ToolOutput)
+        stopTool.abort()
         shapes.push({ name, ok: output.ok, ms: Date.now() - at })
         return output.ok
           ? { type: 'tool_result', tool_use_id: id, content: output.blocks && output.blocks.length ? output.blocks : output.text }

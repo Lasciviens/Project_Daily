@@ -6,6 +6,7 @@
 // Kept in step with the real function by hand: the events and rows are the contract's (src/features/ai/chat/chatRules.ts).
 //
 //   a message with "flowers" or "banana"  → two lookups' worth of steps and a proposal card
+//   a message with "train", "bus" or "departure" → a get_transit step and an answer with times (made-up: Jernbanetorget)
 //   a message with "dentist"              → a find_text step and an answer with two citations
 //   a message with "protein"              → a plain answer that also noted an idea (the quiet line under it: "This could be a widget")
 //   a message with "wall" or "long"       → the chat is full (the "start a new chat" wall)
@@ -40,6 +41,9 @@ function plan(text, store, mode) {
   if (mode === 'coach') {
     return { kind: 'coach', steps: ["Looking at the week's training"], tool_name: 'get_training_week', reply: 'This week you trained **3 times**: Push on Monday, Pull on Wednesday and Legs on Friday. Your last assessment (from 21.11.2026) said **technique day**, so keep Friday light.' }
   }
+  if (/\b(train|bus|metro|tram|departure|departures)\b/.test(lower)) {
+    return { kind: 'transit', steps: ['Looking up bus and train times'], tool_name: 'get_transit', reply: 'From Jernbanetorget the next departures are the **metro 3 to Mortensrud at 21:03** (platform 1, 4 min late) and the **bus 70 to Skullerud at 21:03** (platform N, 2 min late).' }
+  }
   if (/dentist|find|where/.test(lower)) {
     const task = tasks.find(t => /dentist|tannlege/i.test(String(t.title))) ?? tasks[0]
     const citations = [
@@ -62,7 +66,7 @@ function keepChat(store, body, p, text, costUsd, runId) {
     const coach = body.mode === 'coach'
     // The tools a new chat starts with: the owner's switches (ai_tool_settings), like the function; a write tool only ask or off.
     const off = new Set((t('ai_tool_settings') ?? []).filter(r => r.user_id === owner && r.mode === 'off').map(r => r.tool))
-    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food', 'note_shortcut']
+    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food', 'note_shortcut', 'get_transit']
     const words = String((store.tables.ai_settings ?? [])[0]?.chat_instructions ?? '')
     conversation = { id: randomUUID(), user_id: owner, created_at: now, updated_at: now, title: text.slice(0, 60), model: 'claude-haiku-5-5', effort: 'medium', thinking: 'adaptive', tools_hash: 'a'.repeat(64), system_hash: 'b'.repeat(64), tool_names: all.filter(n => !off.has(n)), mode: coach ? 'coach' : 'chat', owner_instructions: words, status: 'open', message_count: 0, last_prompt_tokens: 0, cost_usd: 0, deleted_at: null }
     t('ai_conversations').push(conversation)
@@ -74,7 +78,7 @@ function keepChat(store, body, p, text, costUsd, runId) {
     outcome: 'ok', stop_reason: 'end_turn', error: null, request_id: `req_harness_chat_${seq0}`, ...FAKE_TOKENS, long_prompt: false, cost_usd: costUsd, duration_ms: 2100,
     instructions_version: '2026-11-22.1', tools: [], request: null, response: null, thinking: null,
   })
-  const toolUse = p.kind === 'proposal' || p.kind === 'coach' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
+  const toolUse = p.kind === 'proposal' || p.kind === 'coach' || p.kind === 'transit' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
   t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 1, role: 'user', content: [...(Array.isArray(body.images) ? body.images.slice(0, 2).map(i => ({ type: 'image', source: { type: 'base64', media_type: i.media_type, data: i.data } })) : []), { type: 'text', text }], digest: 'c'.repeat(64), call_id: null, meta: {}, created_at: now })
   t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 2, role: 'assistant', content: [...toolUse, { type: 'text', text: p.reply }], digest: 'd'.repeat(64), call_id: callId,
     meta: { message_id: `msg_${seq0}`, cost_usd: costUsd, run_id: runId, ...(p.citations ? { citations: p.citations } : {}) }, created_at: now })
@@ -101,8 +105,8 @@ function chatAnswer(body, store, opts = {}) {
   const runId = randomUUID()
   const { conversation, card } = keepChat(store, body, p, text, costUsd, runId)
   const events = [{ event: 'start', conversation_id: conversation.id, is_new: conversation.message_count === 2 }]
-  const toolName = p.kind === 'find' ? 'find_text' : p.kind === 'proposal' || p.kind === 'coach' ? p.tool_name : 'tool'
-  const toolInput = p.kind === 'find' ? { query: 'dentist', kind: 'any' } : p.kind === 'proposal' ? { title: p.proposal.args.title } : {}
+  const toolName = p.kind === 'find' ? 'find_text' : p.kind === 'proposal' || p.kind === 'coach' || p.kind === 'transit' ? p.tool_name : 'tool'
+  const toolInput = p.kind === 'transit' ? { action: 'departures', from: 'Jernbanetorget' } : p.kind === 'find' ? { query: 'dentist', kind: 'any' } : p.kind === 'proposal' ? { title: p.proposal.args.title } : {}
   for (const label of p.steps ?? []) { events.push({ event: 'step', name: toolName, label }); events.push({ event: 'detail', name: toolName, input: toolInput, ok: true }) }
   const words = p.reply.split(/(?<= )/)
   for (const w of words) events.push({ event: 'text', t: w })
@@ -147,6 +151,7 @@ const CHAT_JOB_ABOUT = {
     ['ask_database', 'Reads (code prepares the answer). The last resort: one read-only SQL query.'], ['propose_add_task', 'Only PROPOSES a write: nothing is saved until you tap Confirm. A new task.'],
     ['propose_log_food', 'Only PROPOSES a write: nothing is saved until you tap Confirm. One food line.'],
     ['get_about_me', 'Reads (code prepares the answer). Your own saved notes about yourself.'],
+    ['get_transit', 'Reads Entur\'s open data. Live departures from a stop, or a trip from A to B.'],
   ].map(([name, what]) => ({ name, what })),
   features: ['Our own loop: read tools run side by side, at most 5 requests per answer', 'Writes are proposals only'], sourceFiles: ['supabase/claude-src/chat-loop.ts', 'supabase/claude-src/chat-tools.ts'],
 }

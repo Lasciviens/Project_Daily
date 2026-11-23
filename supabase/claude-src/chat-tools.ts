@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · Ask AI, the tools
 //
-//  Eight tools, each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
-//  it). Six read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
+//  Thirteen tools: eleven read (the coach's three, the note tool and get_transit among them; get_transit reads a public
+//  service and none of the owner's rows but their saved places) and two PROPOSE a write, each a reviewed, named,
+//  parameterised query (AI last: code prepares the answer, the model only reads it); nothing here writes to the owner's tables except `applyProposal`, which only
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:
@@ -26,6 +27,7 @@ import { dmy, factsText, osloDay, osloMidnight, osloWeek, osloWeekOf, sgn, shift
 import { readWeekFacts } from './week-data.ts'
 import { checkedIdea, SUGGEST_COMPLEXITY, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
 import type { AddResult } from './suggest-store.ts'
+import { transitLookup, TRANSIT_ACTIONS, TRANSIT_MODES, TRANSIT_TIME_MEANS } from './transit-lookup.ts'
 import { ALL_TOOL_ORDER, APP_SCREENS, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
 
 // ── Shapes ──────────────────────────────────────────────────────────────────
@@ -59,6 +61,10 @@ export interface ToolContext {
    * round's ledger row, the key made from the idea itself). Absent where there is no list (the phone): the tool then says so.
    */
   noteIdea?: (idea: CheckedIdea) => Promise<AddResult>
+  /** Cancels what a tool has started once its time is up (a tool that fetches stops with it). */
+  signal?: AbortSignal
+  /** A shorter time for each outside request than the tool's own default (the phone's). */
+  requestMs?: number
 }
 
 interface ToolDef {
@@ -611,9 +617,29 @@ const NOTE_SHORTCUT: ToolDef = {
   },
 }
 
+// ── Live public transport (Entur) ───────────────────────────────────────────
+
+const GET_TRANSIT: ToolDef = {
+  name: 'get_transit', kind: 'read',
+  description: "Live public transport in Norway from Entur: next departures from a stop, or trips from A to B, now or at a time. Places: the person's saved places by name (home, work), a stop name, or an address. Gives line, mode, platform, times (Oslo), delay or cancellation, duration. At most 8 departures or 3 trips.",
+  fields: {
+    action: { type: 'string', max: 10, enum: TRANSIT_ACTIONS, description: 'departures from one stop, or a trip from A to B.' },
+    from: { type: 'string', max: 80, description: 'The stop or place to leave from: "home", "work", a stop name, or an address. "" for departures: the person\'s default saved stop.' },
+    to: { type: 'string', max: 80, description: 'The destination for a trip, same kinds as from; "" for departures.' },
+    date: { type: 'string', max: 10, description: 'The day as YYYY-MM-DD, or "" for today.' },
+    time: { type: 'string', max: 5, description: 'HH:MM in Oslo time, or "" for now.' },
+    time_means: { type: 'string', max: 10, enum: TRANSIT_TIME_MEANS, description: 'For a trip: leave_at that time or arrive_by it. Use leave_at for departures.' },
+    mode: { type: 'string', max: 10, enum: TRANSIT_MODES, description: 'For departures: only this kind of vehicle, or "any".' },
+  },
+  async run(args, ctx) {
+    const answer = await transitLookup({ action: args.action as string, from: args.from as string, to: args.to as string, date: args.date as string, time: args.time as string, time_means: args.time_means as string, mode: args.mode as string }, { db: ctx.db, userId: ctx.userId, now: ctx.now, signal: ctx.signal, requestMs: ctx.requestMs })
+    return answer.ok ? { ok: true, text: cutResult(answer.text), rows: answer.rows } : fail(answer.message)
+  },
+}
+
 // ── The list, the permission wall and the run ───────────────────────────────
 
-const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT]
+const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT, GET_TRANSIT]
 const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(TOOL_DEFS.map(def => [def.name, def]))
 
 /** Every tool's definition, in the fixed order (the same set and order the permission wall names). */
@@ -678,9 +704,9 @@ export function describePhoneTools(): { name: string; what: string }[] {
 }
 
 /** The phone's tools in their fixed order (frozen: the set is code, never a setting). */
-export const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']
+export const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'get_transit']
 const PHONE_DEFS: ReadonlyMap<string, ToolDef> = new Map<string, ToolDef>([
-  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', FIND_TEXT], ['get_about_me', GET_ABOUT_ME],
+  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', FIND_TEXT], ['get_about_me', GET_ABOUT_ME], ['get_transit', GET_TRANSIT],
 ])
 
 /** The phone's tools the owner has not switched off, in the fixed order (the same switches as the chat's: `modes`). */
@@ -692,7 +718,7 @@ export function phoneChatTools(names: readonly string[]): ChatTool[] {
   return PHONE_TOOL_NAMES.filter(n => names.includes(n)).map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
 }
 
-/** Runs one of the phone's tools: a name outside the list it was given (the four-or-five reads the owner has on), bad arguments or a failing tool is an error result, never an exception. */
+/** Runs one of the phone's tools: a name outside the list it was given (the four-to-six reads the owner has on), bad arguments or a failing tool is an error result, never an exception. */
 export async function runPhoneTool(name: unknown, input: unknown, allowed: readonly string[], ctx: ToolContext): Promise<ToolOutput> {
   const def = typeof name === 'string' && allowed.includes(name) ? PHONE_DEFS.get(name) : undefined
   if (!def) return fail(`There is no tool called that. The tools are: ${allowed.join(', ')}.`)
