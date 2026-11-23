@@ -55,7 +55,7 @@ export function SegmentedControl<T extends string>({
             className={[
               'seg-btn flex items-center justify-center gap-1.5 whitespace-nowrap',
               size === 'sm' ? 'text-meta' : '',
-              fit ? 'px-2.5' : '',
+              fit ? 'px-2' : '',
               isActive ? '' : 'hover:text-fg',
             ].join(' ')}
           >

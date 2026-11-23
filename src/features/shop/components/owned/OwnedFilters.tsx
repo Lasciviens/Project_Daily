@@ -51,10 +51,10 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
   )
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className={cx('relative block min-w-0 flex-1 sm:max-w-md', collapsible ? 'basis-40' : 'basis-56', o.search)}>
+      <label className={cx('relative block min-w-0', collapsible ? 'flex-1 basis-40 sm:max-w-md' : 'flex-[0_1_16rem]', o.search)}>
         <span className="sr-only">Search your things</span>
         <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-        <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search your things" className="input input-sm pl-8" />
+        <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search things" className="input input-sm pl-8" />
       </label>
       <div className={cx('min-w-0', collapsible ? 'w-full' : 'w-auto', o.seg)}>
         <SegmentedControl<OwnedShow> size="xs" fullWidth={collapsible} value={filters.show} onChange={show => set({ show })}

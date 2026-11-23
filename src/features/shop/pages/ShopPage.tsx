@@ -130,9 +130,10 @@ export function ShopPage() {
   return (
     <PageContainer>
       <PageHeader title="Shop" art={<ShopHeroArt />}>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="min-w-0 flex-1 sm:flex-none">
             <SegmentedControl<View>
+              size={isPhone ? 'sm' : 'md'}
               value={view}
               onChange={v => set(v)}
               fullWidth={isPhone}
@@ -145,7 +146,7 @@ export function ShopPage() {
             />
           </div>
           {view === 'owned' && !isPhone && ownedTabs(false)}
-          <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+          <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
             {view === 'owned' && !isPhone && <>
               {/* Owned's other ways in: buttons where the row has room, lines in the ⋯ menu where it has not. */}
               <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
