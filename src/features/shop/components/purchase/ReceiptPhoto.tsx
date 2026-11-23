@@ -46,8 +46,8 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true }: {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <PhotoButton onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>
-        {!data && <span className="text-meta text-fg-muted">AI reads the photo; you check it</span>}
+        <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>
+        {!data && <span className="text-meta text-fg-muted">AI reads a photo or PDF; you check it</span>}
       </div>
       {data && fill && (
         <>

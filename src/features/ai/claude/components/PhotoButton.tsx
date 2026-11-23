@@ -11,7 +11,7 @@ function CameraAi() {
   return <span className="relative inline-flex"><Camera aria-hidden /><Sparkles aria-hidden className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" /></span>
 }
 
-export function PhotoButton({ children, onFile, loading, disabled, icon, variant = 'secondary', className, iconOnly }: {
+export function PhotoButton({ children, onFile, loading, disabled, icon, variant = 'secondary', className, iconOnly, accept = 'image/*' }: {
   children: ReactNode
   onFile: (file: File) => void
   loading?: boolean
@@ -21,6 +21,8 @@ export function PhotoButton({ children, onFile, loading, disabled, icon, variant
   className?: string
   /** Only the icon shows (the words stay as its label): for a crowded row. */
   iconOnly?: boolean
+  /** What the picker offers: photos by default; a receipt also takes a PDF. */
+  accept?: string
 }) {
   const input = useRef<HTMLInputElement>(null)
   return (
@@ -28,7 +30,7 @@ export function PhotoButton({ children, onFile, loading, disabled, icon, variant
       <input
         ref={input}
         type="file"
-        accept="image/*"
+        accept={accept}
         tabIndex={-1}
         aria-hidden
         className="sr-only"

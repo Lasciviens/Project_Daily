@@ -17,6 +17,9 @@ import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../c
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
+import type { ReceiptFill, ReceiptRead } from '../../features/ai/claude/featureRules'
+import type { SaleDefaults } from '../../features/shop/receiptRead'
+import type { ShopItem } from '../../features/shop/types'
 
 export type EntityModalRequest =
   // One item (migration 155): these four open the same Add sheet (plan-modal/
@@ -68,7 +71,8 @@ export type EntityModalRequest =
   /** A Shop item: open by `id` (a wishlist row as its record; `fact` opens that fact's editor — an old "Could sell for"'s "update it"), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
   | { kind: 'shop-item'; id?: string; fact?: 'value'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
   /** Sell or give away one of your things (with its accessories), and where the money goes. */
-  | { kind: 'shop-sell'; id: string }
+  /** `sale`: the amount, currency and day a read receipt gives (Read a receipt); `onSold` runs once the sale is saved. */
+  | { kind: 'shop-sell'; id: string; sale?: SaleDefaults; onSold?: () => void }
   /** A thing's money chain: what earlier sales passed on, and "Try other prices". */
   | { kind: 'shop-chain'; id: string }
   /** Quick-add accessories to one of your things (or to a wish). */
@@ -76,7 +80,12 @@ export type EntityModalRequest =
   /** Add a model to a general wish ("a tablet with a pen" → iPad Air). */
   | { kind: 'shop-model'; wishId: string }
   /** Add something you own (or had) from before the app, with ≈ dates. */
-  | { kind: 'shop-own'; had?: boolean }
+  /** `receipt`: one line of a read receipt (Read a receipt) as the sheet's starting values, through the same autofill facts a receipt photo uses; `onSaved` runs once the thing is saved. */
+  | { kind: 'shop-own'; had?: boolean; receipt?: ReceiptFill; onSaved?: (item: ShopItem) => void }
+  /** Tidy up info: AI suggests a cleaner name, brand, model and category; you review each field. `ids`: those things (one from its record's ⋯); left out: all your wishes and things. */
+  | { kind: 'shop-tidy'; ids?: string[] }
+  /** Read a receipt (a photo or a PDF): bought or sold, its product lines, each opening Add something I own or Sell with its values. */
+  | { kind: 'shop-receipt' }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
   /** Something's wrong with one of your things: the complaint right, the letter, repair or replace, money back. */
@@ -84,7 +93,8 @@ export type EntityModalRequest =
   /** Everything you own and its value, as a CSV file or a print. */
   | { kind: 'shop-insurance' }
   /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
-  | { kind: 'shop-just-bought'; id: string }
+  /** `receipt`: the read receipt this wish was bought on (Read a receipt): it fills the sheet through the same path a receipt photo does. */
+  | { kind: 'shop-just-bought'; id: string; receipt?: { fill: ReceiptFill; read: ReceiptRead } }
   /** Money to claim on a thing (price protection, cheaper while returnable): how, and "Got 500 back". */
   | { kind: 'shop-claim'; id: string }
   /** Shop's stores and marketplaces with their rules, and the deal days (a drawer; from the Shop header's ⋯). */

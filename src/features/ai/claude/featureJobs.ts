@@ -1,7 +1,7 @@
 import { runClaudeJob } from './claudeApi'
 import type { CallSummary } from './types'
 import {
-  errorContextForAi, readIdeas, readReceipt, readRequestDraft, scrubErrorForAi, type PhotoInput, type ReceiptRead, type RequestDraft,
+  errorContextForAi, readIdeas, readReceipt, readRequestDraft, scrubErrorForAi, type PdfInput, type PhotoInput, type ReceiptRead, type RequestDraft,
 } from './featureRules'
 
 /** What the call cost, from its ledger row, or null: shown after each result (featureRules.costNote). */
@@ -19,12 +19,21 @@ export async function describeGuessPhoto(photo: PhotoInput, text: string): Promi
   return { result, costUsd: costOf(call) }
 }
 
-/** Shop → "From a receipt": the photo → what is printed on it, checked again. Throws when nothing usable was read. */
-export async function readReceiptPhoto(photo: PhotoInput, today: string): Promise<ReceiptRead & { costUsd: number | null }> {
-  const { result, call } = await runClaudeJob<unknown>('receipt_read', { image: photo })
+/** What a receipt job reads: one photo or one PDF, never both. */
+export type ReceiptInput = { image: PhotoInput } | { document: PdfInput }
+
+/** Shop → "Read a receipt" / "From a receipt": a photo or a PDF → what is printed on it, checked again. Throws when nothing usable was read. */
+export async function readReceiptInput(input: ReceiptInput, today: string): Promise<ReceiptRead & { costUsd: number | null }> {
+  const { result, call } = await runClaudeJob<unknown>('receipt_read', input)
   const read = readReceipt(result, today)
-  if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo")
+  if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo or another PDF")
   return { ...read, costUsd: costOf(call) }
+}
+
+/** Shop → "Tidy up info": one thing's name, brand, model and category now, and the owner's own categories → a suggestion, read and checked by the caller (`readTidySuggestion`). */
+export async function tidyThing(input: Record<string, unknown>): Promise<{ result: unknown; costUsd: number | null }> {
+  const { result, call } = await runClaudeJob<unknown>('shop_tidy', input)
+  return { result, costUsd: costOf(call) }
 }
 
 /** Dev Requests ✨: dictated words → a request draft; the page is taken only from `pages` (the app's own list). */

@@ -1,8 +1,8 @@
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { readGuessEstimate, type GuessEstimate } from '../../../recipes/quickGuess'
-import { describeGuessPhoto, draftDevRequest, explainError, improveAd, placeIdeas, readReceiptPhoto, writeWeek, type ErrorExplanation } from '../featureJobs'
-import { shrinkPhoto } from '../photoShrink'
+import { describeGuessPhoto, draftDevRequest, explainError, improveAd, placeIdeas, readReceiptInput, writeWeek, type ErrorExplanation } from '../featureJobs'
+import { receiptInputOf, shrinkPhoto } from '../photoShrink'
 import type { ReceiptRead, RequestDraft } from '../featureRules'
 
 // One hook per AI feature of 22.11.2026 (docs/features/ai-plan.md). Each result only fills a form or shows a text for
@@ -24,13 +24,13 @@ export function usePhotoGuess() {
   })
 }
 
-/** Shop → "From a receipt". */
+/** Shop → "Read a receipt" and "From a receipt": a photo (shrunk here) or a PDF. */
 export function useReadReceipt() {
   return useMutationWithFeedback<ReceiptRead & { costUsd: number | null }, File>({
     action: 'read_receipt',
     silent: 'the receipt fills the form, which you check before saving',
     logPayload: false,
-    mutationFn: async file => readReceiptPhoto(await shrinkPhoto(file), todayStr()),
+    mutationFn: async file => readReceiptInput(await receiptInputOf(file), todayStr()),
   })
 }
 

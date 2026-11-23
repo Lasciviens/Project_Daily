@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
     if (new TextEncoder().encode(text).length > LIMITS.requestMaxBytes) {
       const job = action === 'run' ? findJob(ownValue(body, 'job')) : null
       // A chat message may carry up to two photos (chat-loop.ts checks each one and their count); nothing else may be this big.
-      if (!job?.acceptsImage && action !== 'chat') return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+      if (!job?.acceptsImage && !job?.acceptsDocument && action !== 'chat') return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
     }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.

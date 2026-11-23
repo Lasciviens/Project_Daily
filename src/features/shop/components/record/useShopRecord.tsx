@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, TriangleAlert, Undo2 } from 'lucide-react'
+import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -136,6 +136,7 @@ export function useShopRecord(item: ShopItem, openFact: 'value' | undefined, onC
     if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
     actions.push({ key: 'wrong', label: 'Something\'s wrong', icon: <TriangleAlert />, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
+  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy up info', icon: <Sparkles />, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
   if (state === 'gone' || item.disposal === 'returned') actions.push({ key: 'undo', label: 'Undo: still mine', icon: <Undo2 />, onClick: () => undoSale.mutate(item.id) })
   if (item.status === 'dropped') actions.push({ key: 'back', label: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 

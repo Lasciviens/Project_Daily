@@ -43,6 +43,8 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'shop-accessory': L('shop-accessory', () => shop().then(m => m.ShopAccessoryModal)),
   'shop-model':     L('shop-model', () => shop().then(m => m.ShopModelModal)),
   'shop-own':       L('shop-own', () => shop().then(m => m.ShopOwnModal)),
+  'shop-tidy':      L('shop-tidy', () => import('../../features/shop/modals/ShopTidyModal').then(m => m.ShopTidyModal)),
+  'shop-receipt':   L('shop-receipt', () => import('../../features/shop/modals/ShopReceiptModal').then(m => m.ShopReceiptModal)),
   'shop-chain-builder': L('shop-chain-builder', () => import('../../features/shop/modals/ShopChainBuilderModal').then(m => m.ShopChainBuilderModal)),
   'shop-complaint': L('shop-complaint', () => import('../../features/shop/modals/ShopOwningModals').then(m => m.ShopComplaintModal)),
   'shop-insurance': L('shop-insurance', () => import('../../features/shop/modals/ShopOwningModals').then(m => m.ShopInsuranceModal)),

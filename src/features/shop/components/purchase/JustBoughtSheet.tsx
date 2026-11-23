@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -30,7 +30,7 @@ const NOTE_MAX = 2000
  * unsure), an extra warranty and the receipt as a note. Until Arrived is tapped every count starts on the purchase
  * day. A date the owner sets is theirs, and the rules' date is still named beside it.
  */
-export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bought: boolean; onClose: () => void }) {
+export function JustBoughtSheet({ item, bought, receipt, onClose }: { item: ShopItem; bought: boolean; receipt?: { fill: ReceiptFill; read: ReceiptRead }; onClose: () => void }) {
   const today = todayStr()
   const { data: stores = [], isLoading: storesLoading } = useShopStores()
   const { data: rules = [] } = useStoreRules()
@@ -94,7 +94,16 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
       last.current.day = f.day
     }
     if (f.note) setNote(n => (n.includes(f.note) ? n : n.trim() ? `${n.trim()}\n${f.note}` : f.note))
+    // A receipt that says how it was bought sets it, once, only while it is not chosen.
+    if (read.channel) setChannel(c => c ?? read.channel as Channel)
   }, [today, boughtDay])
+  // Opened from Read a receipt: the same path a receipt photo takes, once.
+  const started = useRef(false)
+  useEffect(() => {
+    if (!receipt || started.current) return
+    started.current = true
+    fromReceipt(receipt.fill, receipt.read)
+  }, [receipt, fromReceipt])
   // The line that is this thing, and what was paid for it: the line's price; with no lines the receipt's total.
   const lineAt = rd?.read.items?.length ? matchLine(item.title, rd.fill.lines) : null
   const paid = !rd ? null : lineAt !== null ? rd.read.items?.[lineAt]?.price ?? null : rd.read.items?.length ? null : rd.read.total ?? null
@@ -133,7 +142,7 @@ export function JustBoughtSheet({ item, bought, onClose }: { item: ShopItem; bou
       }>
       {gone ? <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p> : (
         <div className="flex flex-col gap-3">
-          <ReceiptPhoto stores={stores} onFill={fromReceipt} pickLines={false} />
+          {!receipt && <ReceiptPhoto stores={stores} onFill={fromReceipt} pickLines={false} />}
           {rd && (
             <div className="flex flex-col gap-1.5">
               {paid != null && paidCur && (item.price !== paid || item.currency !== paidCur) && (
