@@ -46,6 +46,7 @@ export const MODAL_REGISTRY: { [K in ModalKind]: Entry<K> } = {
   'shop-chain-builder': L('shop-chain-builder', () => import('../../features/shop/modals/ShopChainBuilderModal').then(m => m.ShopChainBuilderModal)),
   'shop-complaint': L('shop-complaint', () => import('../../features/shop/modals/ShopOwningModals').then(m => m.ShopComplaintModal)),
   'shop-insurance': L('shop-insurance', () => import('../../features/shop/modals/ShopOwningModals').then(m => m.ShopInsuranceModal)),
+  'shop-chains':    L('shop-chains', () => import('../../features/shop/modals/ShopOwningModals').then(m => m.ShopChainsModal)),
   'shop-just-bought': L('shop-just-bought', () => shop().then(m => m.ShopJustBoughtModal)),
   'shop-claim':     L('shop-claim', () => shop().then(m => m.ShopClaimModal)),
   'shop-stores':    L('shop-stores', () => shop().then(m => m.ShopStoresModal)),

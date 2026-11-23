@@ -238,11 +238,15 @@ console.log('sectionsWidthRem (a page header keeps one size across its sections)
   check('one section taking the page width uncaps the header', B.sectionsWidthRem([D.WEEK_BOARD, { 1: ['a'] }], 2) === null)
   const code = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '')
   const daily = code('src/features/daily/pages/DailyPage.tsx')
-  check('Personal\'s header width comes from every section, never the open one (owner, 31.10.2026: "the layout should not move")',
-    /sectionsWidthRem\(Object\.values\(MODE_BOARD\)/.test(daily) && !/boardWidthRem\(MODE_BOARD\[mode\]/.test(daily))
+  check('Personal\'s header is the page\'s width on every section — the same as every page\'s (owner, 31.10.2026: "the layout should not move"; 23.11.2026: one width on every page)',
+    !/sectionsWidthRem|headerRem|maxWidth/.test(daily) && !/boardWidthRem\(MODE_BOARD\[mode\]/.test(daily))
   check('Personal\'s day line shows in every section (the header keeps its height)', /subtitle=\{<span[^>]*><DayLine\b/.test(daily))
   const settings = code('src/features/settings/pages/SettingsPage.tsx')
-  check('Settings\' header width comes from every tab', /sectionsWidthRem\(Object\.values\(BOARD\)/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
+  check('Settings\' header is the page\'s width on every tab', !/sectionsWidthRem|headerCap|maxWidth/.test(settings) && !/boardWidthRem\(BOARD\[tab\]/.test(settings))
+  const developer = code('src/features/developer/pages/DeveloperPage.tsx')
+  check('Developer\'s, Projects\' and Work\'s header band are the page\'s width too: no cap on any page\'s header (owner, 23.11.2026: "using the width same in every page")',
+    !/sectionsWidthRem|headerCap|maxWidth/.test(developer) && !/headerCap|projectsHeaderCapRem|max-w-\[var\(--header-cap\)\]/.test(code('src/features/projects/pages/ProjectsPage.tsx'))
+      && !/headerCap|workHeaderCapRem/.test(code('src/features/work/pages/WorkPage.tsx')))
 }
 
 console.log('early steps (a lowered main takes its next track as soon as it fits)')
@@ -330,12 +334,10 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   // Step B (10.11.2026): the bar's one ⋯ (Stores and rules; Owned's other ways in) is on every view, so it never reshapes it.
   check('Shop: on a phone Owned\'s Things | Stats sit under the bar, never in it; the bar\'s one ⋯ is on every view',
     !/ownedTabs\(true\)/.test(headerOf(shop)) && /<\/PageHeader>\s*\{view === 'owned' && isPhone && \([\s\S]*ownedTabs\(true\)/.test(shop)
-      && /<\/>\}\s*\{moreMenu\}/.test(headerOf(shop)))
+      && /<ShopNeedsALook[^>]*\/>\s*\{moreMenu\}/.test(headerOf(shop)))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
   // While loading, the count is the one remembered from the last load (useRememberedCount, THEME.md §5).
-  check('Projects: the header stops over the most cards any status shows, and the open status keeps its count',
-    /const headerCards = useRememberedCount\('projects:cards', projectsHeaderCards\(statusTally\(projects, 'all'\)/.test(projects)
-      && /projectsHeaderCapRem\(headerCards, width\)/.test(projects) && !/shown\.length, width/.test(projects) && !/s !== status/.test(projects))
+  check('Projects: the open status keeps its count (a label that changed on a switch moved every tab)', !/s !== status/.test(projects))
   const slot = code('src/shared/ui/SteadySlot.tsx')
   check('SteadySlot: every item in one grid cell, the hidden ones invisible and inert (no focus, no screen reader)',
     /col-start-1 row-start-1/.test(slot) && /k !== show && 'invisible'/.test(slot) && /inert=\{k !== show\}/.test(slot))

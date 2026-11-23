@@ -48,7 +48,7 @@ export function ChainsCard({ chains: all, period, onOpen, onNew }: { chains: Cha
   )
 }
 
-function ChainRow({ chain, colors, onOpen }: { chain: Chain; colors: [string, string]; onOpen: () => void }) {
+export function ChainRow({ chain, colors, onOpen }: { chain: Chain; colors: [string, string]; onOpen: () => void }) {
   const known = complete(chain.net)
   const profit = known && Math.round(chain.net.nok) < 0
   const tone = profit ? 'success' : undefined

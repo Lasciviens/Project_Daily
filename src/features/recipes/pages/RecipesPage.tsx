@@ -52,7 +52,7 @@ export function RecipesPage() {
   const addRecipe = () => modal.open({ kind: 'recipe' })
   // Logs into the VIEWED day, never a hardcoded today.
   const logFood = () => modal.open({ kind: 'food-log', date: foodDate })
-  const logButton = <Button variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
+  const logButton = <Button size="sm" variant="primary" icon={<UtensilsCrossed />} onClick={logFood}>Log food</Button>
 
   // Two rows on a phone: the tabs, then the day picker with the actions on
   // its right (owner, 06.10.2026 — fewer rows before the first meal). They
@@ -81,7 +81,7 @@ export function RecipesPage() {
             library: (
               <div className="flex items-center justify-end gap-2">
                 {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
-                <Button icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>
+                <Button size="sm" icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>
                 {logButton}
               </div>
             ),

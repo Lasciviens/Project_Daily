@@ -4,12 +4,10 @@ import { ErrorLogTab } from '../components/ErrorLogTab'
 import { ActivityLogTab } from '../components/ActivityLogTab'
 import { MemoryTab } from '../components/MemoryTab'
 import { DeveloperHeroArt } from '../components/DeveloperHeroArt'
-import { HERO_BAND_BLEED, PageContainer, PageHeader, SkeletonTab, cx, usePageStep } from '../../../shared/ui'
+import { HERO_BAND_BLEED, PageContainer, PageHeader, SkeletonTab, cx } from '../../../shared/ui'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
-import { sectionsWidthRem } from '../../../shared/ui/pageBoardRules'
-import { AI_VIEW_BOARDS, LIST_DETAIL_BOARD } from '../developerBoards'
 
 // The AI tab (the Claude layer's four views, Learn's three pages, with its chart) loads when opened, and in idle time once the page shows.
 const AiTab = lazyPart('developer-ai', () => import('../components/ai/AiTab').then(m => m.AiTab))
@@ -24,19 +22,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'ai',          label: 'AI' },
 ]
 
-/** Every board a tab lays out: the list + detail tabs' one, and the AI tab's views. */
-const BOARDS = [LIST_DETAIL_BOARD, ...AI_VIEW_BOARDS]
-
 export function DeveloperPage() {
   // ?tab= deep-links straight to one tab instead of always landing on Activity.
   const [params, setParams] = useSearchParams()
   const initial = TABS.some(t => t.id === params.get('tab')) ? params.get('tab') as Tab : 'activity'
   const [tab, setTab] = useState<Tab>(initial)
   useIdlePreload(OTHER_TABS)
-  // One header for every tab and every view of the AI tab: as wide as the widest board below it
-  // (pageBoardRules.sectionsWidthRem), so it never resizes on a switch (the boards stop at three tracks).
-  const { ref: widthRef, step } = usePageStep<HTMLDivElement>()
-  const headerCap = step == null ? null : sectionsWidthRem(BOARDS, step)
 
   function selectTab(next: Tab) {
     setTab(next)
@@ -54,9 +45,8 @@ export function DeveloperPage() {
 
   return (
     <PageContainer>
-      <div ref={widthRef}>
-        <div style={headerCap != null ? { maxWidth: `${headerCap}rem` } : undefined}>
-          <PageHeader
+      {/* The header band is the page's width, like every page's (THEME §6.3): it never resizes on a switch. */}
+      <PageHeader
             title="Developer"
             art={<DeveloperHeroArt />}
           >
@@ -67,9 +57,7 @@ export function DeveloperPage() {
                 </button>
               ))}
             </div>
-          </PageHeader>
-        </div>
-      </div>
+      </PageHeader>
 
       {tab === 'activity'    && <ActivityLogTab />}
       {tab === 'errors'      && <ErrorLogTab />}

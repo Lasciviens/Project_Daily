@@ -11,7 +11,7 @@ import type { ShopItem } from '../../types'
  * and the sections that open in place (RecordBody). Owned from 60rem opens
  * the same record in its side pane instead (RecordPane).
  */
-export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFact?: RecordFact; onClose: () => void }) {
+export function ShopRecord({ item, openFact, openSection, onClose }: { item: ShopItem; openFact?: RecordFact; openSection?: 'money'; onClose: () => void }) {
   const r = useShopRecord(item, openFact, onClose)
   return (
     <ModalShell
@@ -25,7 +25,7 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
       dismissible={!r.saving}
       footer={r.d.dirty ? <RecordFooter r={r} /> : undefined}
     >
-      <RecordBody r={r} openFact={openFact} pill="phone" />
+      <RecordBody r={r} openFact={openFact} openSection={openSection} pill="phone" />
     </ModalShell>
   )
 }

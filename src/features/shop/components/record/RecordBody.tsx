@@ -46,7 +46,7 @@ import type { ShopRecordModel } from './useShopRecord'
  * wide popup the Story sits beside the sections. `pill`: where the state pill
  * shows in the body — on a phone, where the popup's header has no room.
  */
-export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact?: RecordFact; pill: 'phone' | 'none' }) {
+export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money'; pill: 'phone' | 'none' }) {
   const { item, state, d, today, owned } = r
   const modal = useEntityModal()
   const openRecord = useOpenRecord()
@@ -59,7 +59,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const resale = state === 'mine' || state === 'gone'
   const { data: listings = [] } = useListings()
   const listing = resale ? openListingOf(listings, item.id) : null
-  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : null)
+  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : openSection ?? null)
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
   // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).

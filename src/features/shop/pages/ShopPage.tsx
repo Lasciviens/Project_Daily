@@ -97,7 +97,7 @@ export function ShopPage() {
   // there are any, and on Owned its other ways in where the row has no room for their buttons, and the insurance list.
   const moreMenu = (
     <Menu as="div">
-      <MenuButton className="icon-btn-bordered" aria-label="More in Shop" title="More in Shop">
+      <MenuButton className="icon-btn-bordered h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label="More in Shop" title="More in Shop">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
@@ -113,6 +113,7 @@ export function ShopPage() {
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
         </>}
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chains' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> Money chains</button></MenuItem>
         {view === 'owned' && (
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
         )}
@@ -135,6 +136,7 @@ export function ShopPage() {
               value={view}
               onChange={v => set(v)}
               fullWidth={isPhone}
+              fit={isPhone}
               options={[
                 { value: 'wishlist', label: <>Wishlist{count(wishCount)}</> },
                 { value: 'quick', label: <>Quick list{count(quickCount)}</> },
@@ -147,13 +149,13 @@ export function ShopPage() {
             {view === 'owned' && !isPhone && <>
               {/* Owned's other ways in: buttons where the row has room, lines in the ⋯ menu where it has not. */}
               <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
-                <Button variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
-                <Button variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
+                <Button size="sm" variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
+                <Button size="sm" variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
               </div>
             </>}
             <ShopNeedsALook items={items} isLoading={isLoading} openThing={openThing} />
             {moreMenu}
-            <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
+            <Button size="sm" variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
             </Button>
           </div>

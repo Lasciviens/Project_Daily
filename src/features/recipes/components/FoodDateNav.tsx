@@ -9,7 +9,7 @@ import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 // 402px phone (owner, 06.10.2026: fewer rows before the first meal).
 export function FoodDateNav({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
   const isToday = value === todayStr()
-  const arrow = 'grid h-11 w-9 place-items-center rounded-control text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg'
+  const arrow = 'grid h-9 w-9 place-items-center [@media(pointer:coarse)]:h-11 rounded-control text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg'
   return (
     <div className="flex items-center">
       <button type="button" aria-label="Previous day" className={arrow} onClick={() => onChange(shiftDateStr(value, -1))}>
@@ -19,7 +19,7 @@ export function FoodDateNav({ value, onChange }: { value: string; onChange: (iso
         {({ close }) => (
           <>
             <PopoverButton aria-label={`Pick a day (${formatDate(value)})`}
-              className="min-h-[44px] min-w-[7rem] rounded-control border border-line bg-surface px-3 text-ui font-semibold tabular-nums text-fg hover:border-line-strong">
+              className="min-h-[36px] min-w-[7rem] rounded-control border border-line bg-surface px-3 [@media(pointer:coarse)]:min-h-[44px] text-ui font-semibold tabular-nums text-fg hover:border-line-strong">
               {isToday ? 'Today' : formatDate(value)}
             </PopoverButton>
             <PopoverPanel anchor="bottom start" modal={false}

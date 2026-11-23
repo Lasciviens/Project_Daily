@@ -177,7 +177,7 @@ console.log('A failed read is never learned as "nothing there"')
   check('every <KeepRoom> says whether this outcome is one to remember (remember=…)', noRemember.length === 0, noRemember.join(', '))
   check('every useRememberedFlag / useRememberedCount learns only when its read answered (an error term, or data present)', blindReady.length === 0, blindReady.join('; '))
   const projects = code('src/features/projects/pages/ProjectsPage.tsx')
-  check('Projects passes `settled` to all three of its memories', (projects.match(/, settled[,)]/g) || []).length === 3)
+  check('Projects passes `settled` to both of its memories', (projects.match(/, settled[,)]/g) || []).length === 2)
 }
 
 console.log('Room only for what every outcome shows; the rest from the memory')

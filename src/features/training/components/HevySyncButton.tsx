@@ -23,6 +23,7 @@ export function HevySyncButton() {
       <IconButton
         label={incrementalSync.isPending ? 'Syncing Hevy…' : 'Sync Hevy'}
         bordered
+        size="sm"
         onClick={() => incrementalSync.mutate()}
         disabled={anyPending}
         className="disabled:opacity-50"
@@ -31,7 +32,7 @@ export function HevySyncButton() {
       </IconButton>
 
       <Popover className="relative">
-        <PopoverButton as={IconButton} label="Hevy sync settings" bordered>
+        <PopoverButton as={IconButton} label="Hevy sync settings" bordered size="sm">
           <Settings2 />
         </PopoverButton>
         <PopoverPanel anchor="bottom end" className="menu z-popover mt-2 flex w-72 flex-col gap-3 p-4">

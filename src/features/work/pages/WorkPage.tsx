@@ -17,7 +17,7 @@ import { countTasks, isFocusedOpen, isOverdueOn } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { STATUS_TONE } from '../../todo/taskTones'
 import type { Task, TaskStatus } from '../../todo/types'
-import { railToggleFrom, workHeaderCapRem, workLayout, type WorkSection } from '../workBoard'
+import { railToggleFrom, workLayout, type WorkSection } from '../workBoard'
 import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 
 /** The loading copy of the counts: "N done", "N active", "N overdue" pills' widths. */
@@ -91,12 +91,10 @@ export function WorkPage() {
   const cardActions = { onStatusChange: handleStatusChange, onDelete: handleDelete, onEdit: openEdit, onFocus: toggleFocus }
   // The command bar spans the page's content width, so it measures the same
   // step as the board below it: the rail toggle only exists in Board view
-  // where the rail sits beside the work, and the header stops where the
-  // board's last card does (workBoard.ts).
+  // where the rail sits beside the work. The header band is the page's width, like every page's.
   const { ref: barRef, step } = usePageStep<HTMLDivElement>()
   const toggleFrom = railToggleFrom(view)
   const canHideRail = toggleFrom != null && (step ?? 1) >= toggleFrom
-  const headerCap = step == null ? null : workHeaderCapRem(view, railOpen, step)
 
   const sections: Record<WorkSection, ReactNode> = {
     work: isLoading ? (
@@ -127,7 +125,6 @@ export function WorkPage() {
     <PageContainer className="pt-0 sm:pt-0">
       {/* Sticky command bar: stays put while the board scrolls in <main>. */}
       <div ref={barRef} className="sticky top-0 z-10 -mx-4 mb-4 bg-canvas/85 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-        <div style={headerCap != null ? { maxWidth: `${headerCap}rem` } : undefined}>
           <PageHeader
             className="mb-0 sm:mb-0"
             title="Work"
@@ -149,11 +146,12 @@ export function WorkPage() {
                     <TonePill tone="danger" className="tabular-nums"><AlertTriangle aria-hidden className="h-3 w-3" />{counts.overdue} overdue</TonePill>
                   )}
                 </span>}
-                <Button variant="primary" icon={<Plus />} onClick={openNew} className="ml-auto sm:ml-0">New task</Button>
+                <Button size="sm" variant="primary" icon={<Plus />} onClick={openNew} className="ml-auto sm:ml-0">New task</Button>
                 {canHideRail && (
                   <IconButton
                     label={railOpen ? 'Hide side panel' : 'Show side panel'}
                     bordered
+                    size="sm"
                     onClick={() => setRail(railOpen ? 'closed' : 'open')}
                   >
                     {railOpen ? <PanelRightClose /> : <PanelRightOpen />}
@@ -162,7 +160,6 @@ export function WorkPage() {
               </>
             }
           />
-        </div>
       </div>
 
       <PageBoard sections={sections} layout={workLayout(view, railOpen)} stackGap="gap-5" />

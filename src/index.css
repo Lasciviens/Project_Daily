@@ -387,7 +387,7 @@
        where surface-2 and canvas are the same colour. */
   }
   .pill-tab {
-    @apply inline-flex items-center gap-2.5 h-[34px] px-4 rounded-full text-body font-medium text-fg-2
+    @apply inline-flex items-center gap-2.5 h-9 px-4 rounded-full text-body font-medium text-fg-2
            whitespace-nowrap transition-colors duration-100 [@media(pointer:coarse)]:h-[44px];
   }
   .pill-tab.is-active, .pill-tab[aria-pressed='true'], .pill-tab[aria-selected='true'] {
@@ -411,11 +411,13 @@
 
   /* Segmented control (text tabs in a recessed track). */
   .seg {
-    @apply inline-grid grid-flow-col auto-cols-fr gap-1 rounded-row border border-line bg-surface-2 p-1;
+    @apply inline-grid grid-flow-col auto-cols-fr gap-1 rounded-row border border-line bg-surface-2 p-0.5;
   }
+  /* The whole control is 36px (44 on touch) — the height of a small button and of a page header's pill tab, so a
+     header's tabs and buttons are one height on every page (owner, 23.11.2026). */
   .seg-btn {
-    @apply min-h-[36px] rounded-[9px] px-3 text-body font-semibold text-fg-muted transition-colors duration-100
-           [@media(pointer:coarse)]:min-h-[44px];
+    @apply min-h-[30px] rounded-[9px] px-3 text-body font-semibold text-fg-muted transition-colors duration-100
+           [@media(pointer:coarse)]:min-h-[38px];
   }
   .seg-btn.is-active, .seg-btn[aria-selected='true'], .seg-btn[aria-pressed='true'], .seg-btn[aria-checked='true'] {
     @apply bg-surface text-fg;

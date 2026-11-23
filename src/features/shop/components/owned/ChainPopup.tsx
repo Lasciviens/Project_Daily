@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, RotateCcw } from 'lucide-react'
+import { Link2, Pencil, Plus, RotateCcw } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, IconButton, MetaLine, Truncate, cx, useChartColors } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
-import { chainFor, chainPath, type ChainNode, type ChainOverrides } from '../../chainModel'
+import { chainFor, chainPath, keptCost, keptWords, type ChainNode, type ChainOverrides } from '../../chainModel'
 import { ChainNameForm } from './ChainName'
 import { add, complete, DISPOSAL_LABEL, minus, negate, PAID_BACK, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
 import { AmountText } from '../shopKit'
@@ -16,8 +16,11 @@ import type { ShopItem, ShopItemLink } from '../../types'
  * A money chain, one compact line per thing (with its accessories): its days,
  * − what it cost, + what came back (or "still yours" and what it could sell
  * for), and the running result — what the chain has made (+) or cost you (−)
- * so far, so the last line is the header's answer. A profit is green (owner,
- * 09.11.2026). "Try other prices" turns every amount into an input and
+ * so far, so the last line is the header's answer. Money paid is red, money
+ * back green, and the running result green when ahead and red when behind
+ * (owner, 23.11.2026; a profit was green since 09.11.2026). The last line
+ * says which things you keep and what they cost you in total once the
+ * earlier sales are counted (`keptCost`). "Try other prices" turns every amount into an input and
  * replays the maths live; nothing is saved. The pencil beside the title
  * names the chain.
  */
@@ -39,8 +42,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
   const set = (nodeId: string, key: 'paidNok' | 'gotNok', v: number | null) =>
     setOver(o => { const n = { ...o, [nodeId]: { ...o[nodeId], [key]: v ?? undefined } }; if (n[nodeId].paidNok === undefined && n[nodeId].gotNok === undefined) delete n[nodeId]; return n })
   const profit = complete(chain.net) && Math.round(chain.net.nok) < 0
-  const last = things[things.length - 1]
-  const final = last && last.state === 'held' && chain.linear && things.length > 1 ? last : null
+  const kept = keptCost(chain)
   // The chain can go on from its last thing once that has left and its money went nowhere yet.
   const tail = real.nodes.filter(n => n.state !== 'wish').pop()
   const goOn = tail && tail.state === 'gone' && !real.edges.some(e => e.from === tail.id) ? tail : null
@@ -71,7 +73,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
             <p className="section-label">{profit ? 'Profit' : 'Net cost'}</p>
             <p className="text-kpi font-bold tabular-nums text-fg">
               {complete(chain.net)
-                ? <span data-tone={profit ? 'success' : undefined} className={cx(profit && 'tone-text')}>{money(Math.abs(chain.net.nok))}</span>
+                ? <span data-tone={profit ? 'success' : Math.round(chain.net.nok) > 0 ? 'danger' : undefined} className={cx(Math.round(chain.net.nok) !== 0 && 'tone-text')}>{money(Math.abs(chain.net.nok))}</span>
                 : <AmountText amount={chain.net} />}
               {delta != null && delta !== 0 && (
                 <span className={cx('ml-2 text-body font-semibold', delta < 0 ? 'text-success' : 'text-warn')}>
@@ -79,7 +81,10 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
                 </span>
               )}
             </p>
-            <p className="text-meta tabular-nums text-fg-muted">paid <AmountText amount={chain.paid} /> · got back <AmountText amount={chain.got} /></p>
+            <p className="text-meta tabular-nums text-fg-muted">
+              paid <span data-tone="danger" className="tone-text"><AmountText amount={chain.paid} /></span>
+              {' · '}got back <span data-tone="success" className="tone-text"><AmountText amount={chain.got} /></span>
+            </p>
           </div>
           <Button size="sm" variant={what ? 'primary' : 'secondary'} onClick={() => setWhat(w => !w)} className="ml-auto">{what ? 'Done trying' : 'Try other prices'}</Button>
         </div>
@@ -92,7 +97,14 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
         <ol aria-label="The things in the chain" className="-mx-1 flex flex-col divide-y divide-line">
           {things.map((n, i) => (
             <li key={n.id} className={cx('flex flex-col gap-1 px-1 py-2', n.projected && 'rounded-row bg-surface-2')}>
-              <ThingLine node={n} running={running[i]} onOpen={() => modal.open({ kind: 'shop-item', id: n.id })} ctx={ctx} />
+              <div className="flex items-start gap-1">
+                <div className="min-w-0 flex-1"><ThingLine node={n} running={running[i]} onOpen={() => modal.open({ kind: 'shop-item', id: n.id })} ctx={ctx} /></div>
+                {/* Where a money link is removed or changed: the thing's record, its Money section open. */}
+                <IconButton size="sm" label={`Money links of ${n.item.title}`} className="-my-1 shrink-0 text-fg-muted"
+                  onClick={() => modal.open({ kind: 'shop-item', id: n.id, section: 'money' })}>
+                  <Link2 aria-hidden />
+                </IconButton>
+              </div>
               <RunningBar running={running[i]} top={top} colors={[c.series[0], c.series[1]]} />
               {what && (
                 <div className="grid grid-cols-2 gap-2 text-meta">
@@ -109,9 +121,9 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
             </li>
           ))}
         </ol>
-        {final && complete(final.carried) && complete(final.paid) && (
-          <p className="text-body text-fg-2">
-            {final.item.title} alone {money(final.paid.nok)}; the {things.length - 1 === 1 ? 'one' : `${things.length - 1}`} before it {final.carried.nok >= 0 ? `cost you ${money(final.carried.nok)}` : `made ${money(-final.carried.nok)}`} in the end.
+        {kept && (
+          <p className="rounded-row bg-surface-2 px-3 py-2 text-body font-semibold text-fg">
+            {keptWords(kept, things.length - kept.things.length)}
           </p>
         )}
         {chain.flags.some(f => f.kind === 'over-allocated') && <p className="text-meta text-warn">The amounts on one sale's links add up to more than it brought — they were scaled down to fit.</p>}
@@ -131,9 +143,10 @@ function ThingLine({ node: n, running, ctx, onOpen }: { node: ChainNode; running
   const back = n.state === 'held'
     ? 'still yours'
     : n.got && (Math.round(n.got.nok) !== 0 || !complete(n.got) || PAID_BACK.includes(n.item.disposal ?? 'other'))
-      ? <AmountText amount={n.got} signed bare unknown="got back: unknown" />
+      ? <span data-tone="success" className="tone-text"><AmountText amount={n.got} signed bare unknown="got back: unknown" /></span>
       : DISPOSAL_LABEL[n.item.disposal ?? 'other'].toLowerCase()
   const ahead = complete(running) && Math.round(running.nok) > 0
+  const behind = complete(running) && Math.round(running.nok) < 0
   const accessories = n.accessories.length
   return (
     <button type="button" onClick={onOpen} className="flex w-full items-baseline gap-3 text-left">
@@ -143,12 +156,12 @@ function ThingLine({ node: n, running, ctx, onOpen }: { node: ChainNode; running
         </Truncate>
         <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted" items={[
           `${from} → ${n.left ? formatDate(n.left) : 'now'}`,
-          <AmountText key="p" amount={negate(n.paid)} bare unknown="price missing" />,
+          <span key="p" data-tone="danger" className="tone-text"><AmountText amount={negate(n.paid)} bare unknown="price missing" /></span>,
           back,
           value && <span key="v">could sell for <AmountText amount={value} bare /></span>,
         ]} />
       </span>
-      <span data-tone={ahead ? 'success' : undefined} className={cx('shrink-0 text-body font-semibold tabular-nums', ahead ? 'tone-text' : 'text-fg')}>
+      <span data-tone={ahead ? 'success' : behind ? 'danger' : undefined} className={cx('shrink-0 text-body font-semibold tabular-nums', ahead || behind ? 'tone-text' : 'text-fg')}>
         <AmountText amount={running} signed />
       </span>
     </button>

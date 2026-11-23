@@ -213,6 +213,33 @@ const RP_LINKS = [link('rp4', 'rp5'), link('rp5', 'rp6')]
   check('"if I sold it for 700": it cost me 300', soldNow.nodes[0].state === 'gone' && soldNow.nodes[0].result.nok === 300 && soldNow.net.nok === 300)
 }
 
+console.log('\n8b · What the things you keep cost you in total (the chain popup\'s closing line; owner, 23.11.2026)')
+{
+  const wording = (items, links, id) => {
+    const ch = C.chainFor(id, items, links, CTX)
+    const k = C.keptCost(ch)
+    return k && { k, text: C.keptWords(k, ch.nodes.filter(x => x.state !== 'wish' && x.state !== 'held').length) }
+  }
+  const sp = t => String(t).replace(/\s/g, ' ')
+  const lossy = wording(RP, RP_LINKS, 'rp6')
+  check('a loss: RP6 cost 4 889, and 1 138 was lost on the two before — 6 027 in total', lossy.k.things.map(x => x.title).join() === 'RP6' && lossy.k.paid.nok === 4889 && lossy.k.carried.nok === 1138 && lossy.k.total.nok === 6027)
+  check('…in words', sp(lossy.text) === 'You keep RP6 — it cost you 6 027 NOK in total (4 889 NOK paid + 1 138 NOK lost on the ones before).', sp(lossy.text))
+  const A = item({ id: 'ga', title: 'Tablet A', price: 4000, bought_at: at('2024-01-01'), disposal: 'sold', disposed_on: '2025-01-01', sale_price: 3250 })
+  const B = item({ id: 'gb', title: 'Tablet B', price: 4000, bought_at: at('2025-01-02') })
+  const loss = wording([A, B], [link('ga', 'gb')], 'gb')
+  check('the owner\'s own example: 4 000 paid + 750 lost on the one before = 4 750 in total', sp(loss.text) === 'You keep Tablet B — it cost you 4 750 NOK in total (4 000 NOK paid + 750 NOK lost on the one before).', sp(loss.text))
+  const gain = wording([{ ...A, sale_price: 4500 }, B], [link('ga', 'gb')], 'gb')
+  check('a gain on the earlier sale lowers the total: 4 000 paid − 500 made = 3 500', gain.k.total.nok === 3500 && sp(gain.text) === 'You keep Tablet B — it cost you 3 500 NOK in total (4 000 NOK paid − 500 NOK made on the one before).', sp(gain.text))
+  const way = wording([{ ...A, sale_price: 9000 }, B], [link('ga', 'gb')], 'gb')
+  check('a gain bigger than the price: "you are 1 000 NOK ahead", never a minus cost', sp(way.text) === 'You keep Tablet B — you are 1 000 NOK ahead (4 000 NOK paid − 5 000 NOK made on the one before).', sp(way.text))
+  const noPrice = wording([{ ...A, sale_price: null }, B], [link('ga', 'gb')], 'gb')
+  check('the sale amount missing: not counted, says why, no number', !O.complete(noPrice.k.total) && /not counted yet: 1 price missing/.test(noPrice.text) && !/\d{3}/.test(noPrice.text.replace(/Tablet/g, '')), noPrice.text)
+  const pend = wording([{ ...A, currency: 'TRY', price: 160000, fx_nok: null }, B], [link('ga', 'gb')], 'gb')
+  check('a rate not published yet: not counted, says why (never today\'s rate)', !O.complete(pend.k.total) && /exchange rates? pending/.test(pend.text), pend.text)
+  check('nothing kept: no line', wording([A, { ...B, disposal: 'sold', disposed_on: '2026-01-01', sale_price: 100 }], [link('ga', 'gb')], 'gb') === null)
+  check('one thing alone: no line (no earlier sale to count)', wording([B], [], 'gb') === null)
+}
+
 console.log('\n9 · Chains that split, join, plan and do not know')
 {
   const cam = [

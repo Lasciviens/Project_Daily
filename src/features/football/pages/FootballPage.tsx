@@ -84,11 +84,11 @@ export function FootballPage() {
       <PageHeader
         title="Football"
         art={<FootballHeroArt />}
-        actions={<Button variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
+        actions={<Button size="sm" variant="primary" icon={<Plus />} onClick={openFollow}>Follow</Button>}
       >
         {followsQ.isLoading && filterRoom && (
           <div aria-hidden className="flex gap-1">
-            {[0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-full" className="h-[34px] w-24 [@media(pointer:coarse)]:h-[44px]" />)}
+            {[0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-full" className="h-9 w-24 [@media(pointer:coarse)]:h-[44px]" />)}
           </div>
         )}
         {follows.length > 1 && (
