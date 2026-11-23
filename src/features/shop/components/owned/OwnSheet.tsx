@@ -86,7 +86,7 @@ export function OwnSheet({ had: hadInitially, items, categories, receipt: start,
   const fromReceipt = useCallback((f: ReceiptFill) => {
     setReceipt(f)
     update(d => {
-      const facts = mergeFacts(d.facts, 'receipt', receiptFacts(f, new Date().toISOString()))
+      const facts = mergeFacts(d.facts, 'receipt', receiptFacts(f, new Date().toISOString(), categories))
       const note = f.note && !d.notes.includes(f.note) ? { notes: d.notes.trim() ? `${d.notes.trim()}\n${f.note}` : f.note } : {}
       return { facts, ...fieldsAfter(d, d.facts, facts), ...note }
     })
@@ -96,7 +96,7 @@ export function OwnSheet({ had: hadInitially, items, categories, receipt: start,
       setApprox(a => (was || !day ? false : a))
       receiptDay.current = f.day
     }
-  }, [update, day])
+  }, [update, day, categories])
   // A line of a read receipt starts the sheet once, through the same facts a photo of a receipt gives (never over what is typed).
   const started = useRef(false)
   useEffect(() => {

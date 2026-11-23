@@ -159,6 +159,24 @@ const manyLines = { ...GOOD, items: [{ name: 'TV', price: 8990 }, { name: 'Cable
 const fFill = R.receiptFill(GOOD, STORES, null)
 const rFacts = RF.receiptFacts(fFill, '2026-11-11T10:00:00Z')
 check('receiptFacts: the name, the amount with its currency and the store, from "the receipt", the store exact when matched', same(rFacts.map(f => f.key), ['title', 'price', 'store']) && rFacts.every(f => f.source.label === 'the receipt' && f.source.origin === 'receipt' && f.on) && rFacts[2].confidence === 'exact' && rFacts[1].value.amount === 2990, rFacts)
+// The category the function chose from the owner's own list: only an id the app sent, the subcategory when one fits.
+{
+  const CATS = [{ id: 'c1', name: 'Electronics', parent_id: null }, { id: 'c2', name: 'Headphones', parent_id: 'c1' }, { id: 'c3', name: 'Orphan', parent_id: 'gone' }]
+  const line = { name: 'Demo Headphones X1', price: 2990, category_id: 'c2' }
+  const sent = new Set(['c1', 'c2'])
+  const read = R.readReceipt({ ...GOOD, items: [line, { name: 'Other', price: 5, category_id: 'zzz' }, { name: 'Third', price: 6, category_id: 42 }] }, TODAY, sent)
+  check('readReceipt: a category id is kept only when the app sent it; any other id or type is dropped', read.items[0].category_id === 'c2' && !('category_id' in read.items[1]) && !('category_id' in read.items[2]), read.items)
+  check('readReceipt: with no ids sent no category survives', !('category_id' in R.readReceipt({ ...GOOD, items: [line] }, TODAY).items[0]))
+  const fill = R.receiptFill(read, STORES, 0)
+  check('receiptFill carries the picked line\'s category id', fill.categoryId === 'c2', fill)
+  const cf = RF.receiptFacts(fill, 'x', CATS).find(f => f.key === 'category')
+  check('receiptFacts: the subcategory is a category fact to check, named "Top › Sub", from the receipt', cf && cf.value.topId === 'c1' && cf.value.subId === 'c2' && cf.value.name === 'Electronics › Headphones' && cf.confidence === 'check' && cf.source.label === 'the receipt', cf)
+  check('receiptFacts: a top category fits as the top alone', RF.receiptFacts({ ...fill, categoryId: 'c1' }, 'x', CATS).find(f => f.key === 'category').value.subId === '')
+  check('receiptFacts: an id that is not in the list now, or a sub whose top is gone, gives no category; no list gives none', ['zzz', 'c3'].every(id => !RF.receiptFacts({ ...fill, categoryId: id }, 'x', CATS).some(f => f.key === 'category')) && !RF.receiptFacts(fill, 'x').some(f => f.key === 'category'))
+  const TM = require('../src/features/shop/tidyModel')
+  const many = Array.from({ length: 300 }, (_, i) => ({ id: `id${i}`, name: `Name ${i}`, parent_id: null }))
+  check('tidyCategories: 100 for a tidy, up to 200 beside a receipt', TM.tidyCategories(many).length === 100 && TM.tidyCategories(many, 200).length === 200)
+}
 check('an unmatched store is a fact to check; no price without a currency', RF.receiptFacts(R.receiptFill({ ...GOOD, store: 'Kiosk' }, STORES, null), 'x').find(f => f.key === 'store').confidence === 'check' && !RF.receiptFacts(R.receiptFill({ ...GOOD, currency: undefined }, STORES, null), 'x').some(f => f.key === 'price'))
 const emptyDraft = { title: '', price: null, currency: 'NOK', image: null, platform: '', topId: '', subId: '' }
 const merged = AM.mergeFacts([], 'receipt', rFacts)

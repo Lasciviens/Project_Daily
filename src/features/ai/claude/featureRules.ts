@@ -71,7 +71,9 @@ export type ReceiptKind = 'bought' | 'sold' | 'unknown'
 export const RECEIPT_CONDITIONS = ['new', 'used', 'outlet', 'refurbished'] as const
 export type ReceiptCondition = typeof RECEIPT_CONDITIONS[number]
 /** One product line. `price` is the line total after discount, VAT included. The other keys exist only when the receipt gave them. */
-export interface ReceiptLine { name: string; price: number | null; /** The full product name as sold, from the print or found by a web search. */ product?: string; brand?: string; model?: string; quantity?: number; condition?: ReceiptCondition }
+export interface ReceiptLine { name: string; price: number | null; /** The full product name as sold, from the print or found by a web search. */ product?: string; brand?: string; model?: string; quantity?: number; condition?: ReceiptCondition
+  /** One of the categories the app sent (never anything else): the function mapped the model's number back to this id. */
+  category_id?: string }
 export interface ReceiptRead {
   /** Bought or sold; only present when the answer said so (absent reads as unknown). */
   kind?: ReceiptKind
@@ -116,7 +118,7 @@ export function realDay(v: unknown): string | null {
  * not after `today` and at most 5 years back, texts within their limits. A value that fails is dropped, never repaired.
  * Null when nothing is left.
  */
-export function readReceipt(raw: unknown, today: string): ReceiptRead | null {
+export function readReceipt(raw: unknown, today: string, categoryIds: ReadonlySet<string> = new Set()): ReceiptRead | null {
   if (!isObj(raw)) return null
   const out: ReceiptRead = {}
   if (raw.kind === 'bought' || raw.kind === 'sold' || raw.kind === 'unknown') out.kind = raw.kind
@@ -146,6 +148,8 @@ export function readReceipt(raw: unknown, today: string): ReceiptRead | null {
       if (typeof it.quantity === 'number' && Number.isInteger(it.quantity) && it.quantity >= 1 && it.quantity <= 99) entry.quantity = it.quantity
       const condition = RECEIPT_CONDITIONS.find(c => c === it.condition)
       if (condition) entry.condition = condition
+      // Only an id the app itself sent with the file: the answer is input, so an id of any other kind is dropped.
+      if (typeof it.category_id === 'string' && categoryIds.has(it.category_id)) entry.category_id = it.category_id
       lines.push(entry)
     }
   }
@@ -190,6 +194,8 @@ export function matchStore<S extends { id: string; name: string; hidden?: boolea
 /** What a receipt fills in a form. Every field is optional; the owner confirms them all. */
 export interface ReceiptFill {
   title?: string
+  /** The picked line's category, one of the owner's own (the id that was sent with the file). */
+  categoryId?: string
   /** The picked line's brand and model, and its condition as the app holds one (Outlet is not one: it goes in the note). */
   brand?: string
   model?: string
@@ -253,7 +259,7 @@ export function matchLine(itemTitle: string, lines: readonly string[]): number |
 }
 
 /**
- * The form fields a read receipt fills. `pick` is the item line the owner chose (a receipt of many lines is never
+ * The form fields a read receipt fills (a line's category too, when the function chose one of the owner's own). `pick` is the item line the owner chose (a receipt of many lines is never
  * guessed at): its price is the amount paid; a receipt of one line takes that line, and with no line the total is
  * the amount. An amount is only filled with a currency this app holds (never converted, never assumed).
  */
@@ -270,6 +276,7 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
   if (chosen) {
     fill.title = chosen.product ?? chosen.name
     if (chosen.brand) fill.brand = chosen.brand
+    if (chosen.category_id) fill.categoryId = chosen.category_id
     if (chosen.model) fill.model = chosen.model
     if (chosen.condition === 'new' || chosen.condition === 'used' || chosen.condition === 'refurbished') fill.condition = chosen.condition
   }

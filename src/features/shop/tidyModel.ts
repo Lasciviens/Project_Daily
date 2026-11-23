@@ -63,8 +63,8 @@ export function tidyScope(items: readonly ShopItem[]): ShopItem[] {
   return items.filter(i => listOf(i) === 'wishlist' && i.kind !== 'general' && i.status !== 'dropped')
 }
 
-/** The owner's own categories as the function takes them: "Top" and "Top / Sub", paths cut to 60, at most 100 (tops first): 100 two-byte-letter paths still leave room in the function's 16 KB body. */
-export function tidyCategories(categories: readonly ShopCategory[]): { id: string; path: string }[] {
+/** The owner's own categories as the function takes them (`max`: 100 for a tidy, 200 beside a receipt — its body has the room): "Top" and "Top / Sub", paths cut to 60, at most 100 (tops first): 100 two-byte-letter paths still leave room in the function's 16 KB body. */
+export function tidyCategories(categories: readonly ShopCategory[], max: number = TIDY_LIMITS.categories): { id: string; path: string }[] {
   const byId = new Map(categories.map(c => [c.id, c]))
   const cut = (s: string) => [...s.replace(/\s+/g, ' ').trim()].slice(0, TIDY_LIMITS.path).join('')
   const rows = categories.map(c => {
@@ -72,7 +72,7 @@ export function tidyCategories(categories: readonly ShopCategory[]): { id: strin
     return { id: c.id, path: cut(top ? `${top.name} / ${c.name}` : c.name), sub: !!top }
   }).filter(r => r.path)
   rows.sort((a, b) => Number(a.sub) - Number(b.sub) || a.path.localeCompare(b.path))
-  return rows.slice(0, TIDY_LIMITS.categories).map(({ id, path }) => ({ id, path }))
+  return rows.slice(0, max).map(({ id, path }) => ({ id, path }))
 }
 
 /** The job's input for one thing. The brand and model are sent as they are saved now. */

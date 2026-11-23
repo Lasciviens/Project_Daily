@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PhotoButton } from '../../../ai/claude/components/PhotoButton'
 import { useReadReceipt } from '../../../ai/claude/hooks/useAiFeatures'
 import { costNote, receiptFill, type ReceiptFill, type ReceiptRead } from '../../../ai/claude/featureRules'
 import { formatDate } from '../../../../shared/utils/dateFormat'
+import { RECEIPT_CATEGORIES_MAX } from '../../../ai/claude/featureJobs'
+import { useShopCategories } from '../../hooks/useShop'
+import { tidyCategories } from '../../tidyModel'
 import { ChoiceChip } from '../shopPickers'
 import type { ShopStore } from '../../types'
 
@@ -19,7 +22,9 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true }: {
   /** Offer the item lines to pick from (a form with a name and a price); Just bought has neither and matches by name itself. */
   pickLines?: boolean
 }) {
-  const read = useReadReceipt()
+  // The owner's own categories go with the file, so a line may come back with one of them.
+  const { data: cats } = useShopCategories()
+  const read = useReadReceipt(useMemo(() => tidyCategories(cats ?? [], RECEIPT_CATEGORIES_MAX), [cats]))
   const [data, setData] = useState<(ReceiptRead & { costUsd: number | null }) | null>(null)
   const [pick, setPick] = useState<number | 'total' | null>(null)
   const filled = useRef<string>('')

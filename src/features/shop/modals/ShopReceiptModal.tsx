@@ -8,7 +8,9 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { PhotoButton } from '../../ai/claude/components/PhotoButton'
 import { useReadReceipt } from '../../ai/claude/hooks/useAiFeatures'
 import { costNote, type ReceiptFill, type ReceiptLine, type ReceiptRead } from '../../ai/claude/featureRules'
-import { useBuyNow, useShopItems } from '../hooks/useShop'
+import { RECEIPT_CATEGORIES_MAX } from '../../ai/claude/featureJobs'
+import { useBuyNow, useShopCategories, useShopItems } from '../hooks/useShop'
+import { tidyCategories } from '../tidyModel'
 import { useShopStores } from '../hooks/useShopStores'
 import { isMine } from '../ownModel'
 import { addFillFor, lineFacts, saleFor, sideOf, thingForLine, wishForLine, type ReceiptSide } from '../receiptRead'
@@ -25,7 +27,8 @@ import type { ShopCurrency } from '../types'
  * saves on your tap only: this popup writes nothing but the wish's own "bought" (which has its Undo).
  */
 export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) {
-  const read = useReadReceipt()
+  const { data: categories = [] } = useShopCategories()
+  const read = useReadReceipt(useMemo(() => tidyCategories(categories, RECEIPT_CATEGORIES_MAX), [categories]))
   const modal = useEntityModal()
   const { data: stores = [] } = useShopStores()
   const { data: items = [] } = useShopItems()

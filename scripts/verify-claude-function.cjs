@@ -2251,7 +2251,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['quick_guess_photo', 'dev_request_draft', 'error_explain'].every(n => /English/.test(featureAbout(n).instructions)) && /Norwegian if they are/.test(featureAbout('ad_improve').instructions) && /English/.test(featureAbout('work_week').instructions) && /in English/.test(featureAbout('place_ideas').instructions))
   check('only place_ideas and receipt_read have a tool (web_search), the others none; their time limit is 70 s', FEATURE_JOBS.every(n => (n === 'place_ideas' || n === 'receipt_read') === (featureAbout(n).tools.length === 1 && featureAbout(n).tools[0].name === 'web_search')) && featureAbout('place_ideas').timeLimitMs === 70000)
   const FEATURE_PINS = {
-    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.2', '60801963c1fb86e1'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
+    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.3', 'afcd228aeef84711'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
     error_explain: ['2026-11-23.1', '12941d90a0aa1d67'], work_week: ['2026-11-23.1', 'b222a6ec6480baa5'], ad_improve: ['2026-11-23.1', '2ab44817ad4bee19'], place_ideas: ['2026-11-23.1', 'c3888ba2e4995828'],
   }
   for (const name of FEATURE_JOBS) {
@@ -2307,10 +2307,10 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('describe states the image body limit (1.5 MB) beside the 16 KB one', about.limits.requestMaxBytes === 16384 && about.limits.imageRequestMaxBytes === 1572864, about.limits)
 
   // ── receipt_read: a photo or a PDF, bought or sold, product lines, web search (today in the test is 11.11.2026, Oslo) ──
-  const LINE_GOOD = { name: 'Demo Headphones X1', product: 'Demo Headphones X1, black', brand: 'Demo', model: 'X1', price: 2990, quantity: 1, condition: 'new' }
+  const LINE_GOOD = { name: 'Demo Headphones X1', product: 'Demo Headphones X1, black', brand: 'Demo', model: 'X1', price: 2990, quantity: 1, condition: 'new', category_id: null }
   const RECEIPT_GOOD = { kind: 'bought', store: 'Demo Elektro', date: '2026-11-08', currency: 'NOK', total: 2990, items: [LINE_GOOD], warranty_months: 24, searched: false }
   const receiptOf = async (answer, input = SHOT()) => (await go(photoBody(input, 'receipt_read'), { network: pretendNetwork(modelText(asText(answer))) })).json
-  const nullLine = (name, over = {}) => ({ name, product: null, brand: null, model: null, price: null, quantity: null, condition: null, ...over })
+  const nullLine = (name, over = {}) => ({ name, product: null, brand: null, model: null, price: null, quantity: null, condition: null, category_id: null, ...over })
   r = await go(photoBody(SHOT(), 'receipt_read'), { network: pretendNetwork(modelText(JSON.stringify(RECEIPT_GOOD))) })
   b = sentBody(r)
   check('receipt_read: the request: the photo, then one fixed sentence; 2500 tokens; no enforced shape; ONE tool, web_search with at most 2 uses; the owner\'s store list is NOT sent',
@@ -2373,6 +2373,28 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   }
   x = await go(photoBody({ text: 'no photo' }, 'receipt_read'), { network: pretendNetwork(modelText('{}')) })
   check('receipt_read: neither a photo nor a PDF is bad_input, nothing sent', x.json?.reason === 'bad_input' && x.net.seen.length === 0)
+  // ── receipt_read with the owner's categories: numbers to the model, ids from code ──
+  const CATS = [{ id: 'cat-audio', path: 'Electronics' }, { id: 'cat-headphones', path: 'Electronics / Headphones' }, { id: 'bad id!', path: 'Left out' }, { id: 'cat-audio', path: 'Twice' }, { id: 'cat-x', path: '<b>Home & Garden</b>' }]
+  const withCats = async (answer, categories = CATS) => go(photoBody({ ...SHOT(), categories }, 'receipt_read'), { network: pretendNetwork(modelText(asText(answer))) })
+  r = await withCats({ ...RECEIPT_GOOD, items: [{ name: 'Demo Headphones X1', category: 2 }] })
+  b = sentBody(r)
+  const catText = b.messages[0].content.find(c => c.type === 'text').text
+  check('receipt_read categories: the model gets numbers and paths (escaped), never an id; a bad or repeated row is left out', catText === 'Read the photo.\n<categories>\n1 | Electronics\n2 | Electronics / Headphones\n3 | &lt;b&gt;Home &amp; Garden&lt;/b&gt;\n</categories>' && !/cat-|bad id/.test(catText), catText)
+  check('receipt_read categories: the number maps back to the id that was sent (2 = the subcategory)', r.json?.result?.items?.[0]?.category_id === 'cat-headphones', r.json)
+  for (const [label, n] of [['0', 0], ['a number past the list', 4], ['a text number', '2'], ['a fraction', 1.5], ['an id written by the model', 'cat-x']]) {
+    rj = (await withCats({ ...RECEIPT_GOOD, items: [{ name: 'Demo Headphones X1', category: n }] })).json
+    check(`receipt_read categories: ${label} is dropped, never an id from the model`, rj?.ok === true && rj.result.items[0].category_id === null, rj?.result?.items)
+  }
+  rj = (await withCats({ ...RECEIPT_GOOD, items: [{ name: 'Demo Headphones X1', category_id: 'cat-x', category: 9 }] })).json
+  check('receipt_read categories: a model-written category_id is never read', rj?.result?.items?.[0]?.category_id === null, rj?.result?.items)
+  rj = (await receiptOf({ ...RECEIPT_GOOD, items: [{ name: 'Demo Headphones X1', category: 1 }] }))
+  check('receipt_read categories: with no list sent a number maps to nothing and the fill still works', rj?.ok === true && rj.result.items[0].category_id === null && rj.result.store === 'Demo Elektro', rj)
+  x = await go(photoBody({ ...SHOT(), categories: 'Electronics' }, 'receipt_read'), { network: pretendNetwork(modelText('{}')) })
+  check('receipt_read categories: a list that is not a list is bad_input, nothing sent', x.json?.reason === 'bad_input' && x.net.seen.length === 0, x.json)
+  const manyCats = Array.from({ length: 250 }, (_, i) => ({ id: `cat-${i}`, path: `Category number ${i}` }))
+  x = await withCats({ ...RECEIPT_GOOD, items: [{ name: 'Demo Headphones X1', category: 200 }] }, manyCats)
+  const many = sentBody(x).messages[0].content.find(c => c.type === 'text').text
+  check('receipt_read categories: at most 200 rows go to the model; the 200th maps back, the 201st does not exist', many.split('\n').filter(l => /^\d+ \|/.test(l)).length === 200 && x.json?.result?.items?.[0]?.category_id === 'cat-199', many.slice(-60))
   check('receipt_read: the instructions tell the model the Norwegian labels and number forms, to skip shipping, pick-up and 0,01 lines, to take the order day, the kind, to search at most twice, and never to guess or assume a warranty',
     /Kvittering = receipt/.test(F.RECEIPT_READ_JOB.instructions) && /Frakt = shipping/.test(F.RECEIPT_READ_JOB.instructions) && /4490,-/.test(F.RECEIPT_READ_JOB.instructions) && /Pick-up Point/.test(F.RECEIPT_READ_JOB.instructions) && /0,01/.test(F.RECEIPT_READ_JOB.instructions)
     && /not a payment date/.test(F.RECEIPT_READ_JOB.instructions) && /"Outlet"/.test(F.RECEIPT_READ_JOB.instructions) && /kind: "bought"/.test(F.RECEIPT_READ_JOB.instructions) && /at most 2 searches/.test(F.RECEIPT_READ_JOB.instructions)
@@ -2403,6 +2425,12 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('receipt_read PDF: the reservation holds the COUNTED tokens (a quarter more, for the count is an estimate), repeated for each of the 3 rounds a 2-search call may take, at the one-hour write price', near(highReserve - lowReserve, 3 * (F.pdfTokensHeld(1500) - F.pdfTokensHeld(500)) * priceH.cacheWrite1hPerMTok / 1e6) && F.pdfTokensHeld(1500) === 1875, [lowReserve, highReserve])
   x = await go(photoBody(DOC(), 'receipt_read'), { network: pdfNet(32_000) })
   check('receipt_read PDF: exactly 32,000 prompt tokens is allowed', x.json?.ok === true && x.net.seen.length === 2, x.json)
+  {
+    // The worst body: 200 categories (ids of 64, paths of 60 two-byte letters) beside a PDF of the most the function takes must pass the 1.5 MB wall.
+    const worst = Array.from({ length: 200 }, (_, i) => ({ id: `${'a'.repeat(60)}${String(i).padStart(4, '0')}`, path: 'é'.repeat(60) }))
+    x = await go(photoBody({ document: { media_type: 'application/pdf', data: fakePdf(1_049_000) }, categories: worst }, 'receipt_read'), { network: pdfNet(2400) })
+    check('receipt_read categories: 200 of the longest rows beside a PDF at the 1.4 million character limit still pass the 1.5 MB body wall', x.json?.ok === true && JSON.stringify(photoBody({ document: { media_type: 'application/pdf', data: fakePdf(1_049_000) }, categories: worst }, 'receipt_read')).length < 1572864 - 1000, [x.status, x.json?.reason, x.json?.message])
+  }
   x = await go(photoBody(DOC(), 'receipt_read'), { network: pdfNet(32_001) })
   check('receipt_read PDF: over 32,000 prompt tokens is bad_input, only the free count was sent, nothing reserved, one ledger row for the refusal', x.json?.reason === 'bad_input' && /too long for a receipt/.test(x.json.message) && x.net.seen.length === 1 && x.world.reserves.length === 0 && x.world.calls.length === 1 && x.row.outcome === 'bad_input', x.json)
   x = await go(photoBody(DOC(), 'receipt_read'), { network: pdfNet(0, '', async () => answerWith(400, errorBody('invalid_request_error', 'Could not process PDF'))) })
