@@ -31,7 +31,7 @@
 //     `stripCredentials`; media is copied into Storage here or streamed by the
 //     signed `screenscraper-media` proxy.
 //  2. Every error string is scrubbed — failures land in app_error_logs, which
-//     ai-proxy can read.
+//     the owner reads in Developer → Errors.
 //  3. A redirect is followed at most once, by hand, and only to an https
 //     screenscraper.fr host (their credentials sit in the query string).
 //  4. The journal is written only here (migration 104 made it read-only for

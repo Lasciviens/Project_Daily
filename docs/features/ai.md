@@ -210,7 +210,7 @@ The owner's controls and the missing pieces. Written from scratch for Claude (th
 
 ## The old assistant (Gemini): history
 
-What follows describes the Gemini assistant that Ask AI replaced. `AIPanel.tsx`, `ConfirmCards.tsx` and `aiApi.ts` were deleted in phase 4a; `ai-proxy` was removed in phase 5 (23.11.2026: its folder is a 410 stub until the owner deletes the function; migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`). Read it only as history: the tools, tables and checks named below no longer exist.
+What follows describes the Gemini assistant that Ask AI replaced. `AIPanel.tsx`, `ConfirmCards.tsx` and `aiApi.ts` were deleted in phase 4a; `ai-proxy` was removed in phase 5 (23.11.2026: its folder is deleted and deploy.yml deletes the deployed function; migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`). Read it only as history: the tools, tables and checks named below no longer exist.
 
 ## Overview
 

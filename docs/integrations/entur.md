@@ -10,10 +10,10 @@ No key. Every request sends `ET-Client-Name: lasciviens-project-daily` (EnTur's 
 ## Endpoints we call
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
-| `GET https://api.entur.io/geocoder/v3/autocomplete?q=…&lang=no&limit=N&layers=stopPlace,address,street,poi,place&countries=no` | `ruterApi.searchStops` (limit 15), `ai-proxy` `geocodeCandidates` (the asked size) and `searchTransitStops` (8) | each stop search (the transit card, Settings → Places, and the Add sheet's Place — 186, 03.11.2026, the same query); the assistant's plan_trip and search_transit_stops | a 429 says "Rate limited — wait a moment and try again" |
-| `POST https://api.entur.io/journey-planner/v3/graphql` | `ruterApi` (`gql`), `ai-proxy` | departures, trips, nearest stops | — |
+| `GET https://api.entur.io/geocoder/v3/autocomplete?q=…&lang=no&limit=N&layers=stopPlace,address,street,poi,place&countries=no` | `ruterApi.searchStops` (limit 15) | each stop search (the transit card, Settings → Places, and the Add sheet's Place — 186, 03.11.2026, the same query) | a 429 says "Rate limited — wait a moment and try again" |
+| `POST https://api.entur.io/journey-planner/v3/graphql` | `ruterApi` (`gql`) | departures, trips, nearest stops | — |
 
-The query is built in one place, `geocoderQuery` in `src/features/home/api/enturGeocoder.ts`; its `<entur-geocoder>` block is copied verbatim into `ai-proxy` (`scripts/verify-entur-geocoder.cjs` compares them).
+The query is built in one place, `geocoderQuery` in `src/features/home/api/enturGeocoder.ts` (`scripts/verify-entur-geocoder.cjs` checks it).
 
 ## Fields we read and write
 | Field | Shape seen (26.10.2026) | Where it goes |
@@ -39,4 +39,4 @@ Nothing is written to EnTur. Saved stops (`user_transit_stops`) keep their `NSR:
 
 ## Log
 ### 26.10.2026 — geocoder v1 → v3
-v1/v2 deprecated on 12.06.2026 (no end date announced). Moved the browser's stop search and `ai-proxy`'s two searches to v3 through one pure block (`enturGeocoder.ts`, mirrored in `ai-proxy`), checked against live answers for a stop and an address. Saved stops are unaffected (same NSR ids).
+v1/v2 deprecated on 12.06.2026 (no end date announced). Moved the browser's stop search (and the old `ai-proxy`'s two searches, removed in AI phase 5) to v3 through one pure block (`enturGeocoder.ts`), checked against live answers for a stop and an address. Saved stops are unaffected (same NSR ids).

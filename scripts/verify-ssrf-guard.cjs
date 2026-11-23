@@ -181,8 +181,7 @@ async function dnsChecks() {
   const dnsBlock = (fn) => { const src = fnSource(fn), a = src.indexOf('// An IPv6 address as its eight'); return src.slice(a, src.indexOf('\n}\n', src.indexOf('async function resolvesToPrivate')) + 3) }
   check('the DNS check is one block, identical in news-article and shop-price',
     dnsBlock('news-article').length > 1000 && dnsBlock('shop-price') === dnsBlock('news-article'))
-  const ai = fnSource('ai-proxy')
-  check('ai-proxy (retired, answers 410) holds no fetch and no private-address code to drift', !/fetchUrl|isPrivateHost|resolvesToPrivate|responseSchema/.test(ai))
+  check('ai-proxy is gone: no function folder is left to carry a private-address copy that could drift', !fs.existsSync(path.join(__dirname, '..', 'supabase/functions/ai-proxy')))
 
   console.log('\nThe real fetchers refuse such names on every hop')
   for (const fn of ['news-article', 'shop-price']) {

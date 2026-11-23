@@ -1056,7 +1056,7 @@ use the reading data the tracker brings in.
 | **Streak heatmap and year in books** | GitHub-style 365-day heatmap, books finished per month, a year-end "Wrapped" page. Community precedent: HabitReads (streak freeze, badges), Reading Insights, KoShelf | M | Streaks follow §5's retroactive rule; never a stored counter |
 | **Reading sessions in the Daily agenda** | Reconstructed sessions (§4.3) show as done rows in `DayAgenda`, next to planned blocks | S–M | Additive only (`NEVER_HIDES`); never written into `time_blocks` |
 | **Reading vs sleep** | Health → Sleep shows "nights you read after 22:00" beside sleep onset, as two lanes on one axis, never a correlation score | M | Must follow the Health page's no-derived-metric rule and say "side by side, not cause and effect" (the `RecoveryLoadPanel` precedent) |
-| **Ask the AI about your reading** | `books`/`book_highlights` in `DB_CATALOG` (already settled, §4.2) plus `EMBED_SOURCES` for highlights, so "what did I highlight about habits?" works through `semantic_search` | S | Needs the `ai-proxy` redeploy that §4.2 already lists |
+| **Ask the AI about your reading** | *Retired in AI phase 5 (23.11.2026); history only: `DB_CATALOG`, `EMBED_SOURCES`, `semantic_search` and `ai-proxy` no longer exist. A future version is a reviewed tool in the `claude` function.* | S | — |
 
 ### 9.2 The Kobo as a calm display
 

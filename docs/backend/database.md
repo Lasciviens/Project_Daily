@@ -116,8 +116,8 @@ that number would collide with a deleted one in history.
     scenario bases (`hevy-full-api`, `day-targets-macros`) still set the old
     default privileges for the migrations they replay; a new base doesn't, so
     its scenarios meet what production does.
-    **`GRANT EXECUTE` on a new function IS required** (see `065`'s
-    `ai_semantic_search`).
+    **`GRANT EXECUTE` on a new function IS required** (a function with no
+    grant is not callable by `authenticated`).
     Deliberate exception, do not undo: `044` **revokes** `authenticated` access
     to `user_calendar_tokens` entirely and narrows `strava_tokens` to three
     non-secret columns. RLS limits rows; only grants limit **columns** — that is
@@ -138,8 +138,8 @@ that number would collide with a deleted one in history.
     `select public.owner_lock_disable();` (drops every `app_owner_lock` policy).
 13. **Token tables are service-role only.** A table holding a provider token
     or secret gets `REVOKE ALL ON … FROM anon, authenticated` in the migration
-    that creates it (044, 140), RLS on, no browser policy, and never enters
-    `ai-proxy`'s `DB_CATALOG`. The browser only ever sees derived status.
+    that creates it (044, 140), RLS on, no browser policy, and is never
+    readable by an assistant tool. The browser only ever sees derived status.
 14. **A trigger that inserts a row tied to a user** (audit, outbox, queue) must
     skip a user that no longer exists (`IF NOT EXISTS (SELECT 1 FROM auth.users
     WHERE id = …) THEN RETURN …`): deleting an account cascades into every
@@ -236,19 +236,6 @@ your migration.
 ## The assistant has no table catalogue (since AI phase 5, 23.11.2026)
 
 `ai-proxy`'s `DB_CATALOG` (a default-deny allow-list of tables) went with the Gemini assistant. The Claude assistant reads through fixed tools and `ask_database` (a read-only RPC that runs with the owner's own rights, `ai_run_read_query`) and writes only two confirmed proposals (a task, a food line). A new table needs nothing for the assistant; a new tool that reads or writes it is a reviewed code change (`docs/features/ai.md`).
-
-(History: the text below this paragraph used to name two lists beside the catalogue; they belonged to ai-proxy too.)
-
-Two lists beside it guard what the assistant may DO (security audit
-10.10.2026, `scripts/verify-ai-confirm.cjs`):
-- `NEEDS_CONFIRM` — tools that only become a Confirm card (today `db_delete`,
-  `update_hevy_routine`). A new tool that deletes, overwrites or writes to an
-  outside account goes here.
-- `AI_NO_WRITE` — columns the assistant may never set: anything that links a
-  row to an object in an outside account (a Google Calendar event or Task, a
-  Trakt note or list, an ES-DE or ScreenScraper entry, a login session),
-  because a background job then changes or deletes that object. A new such
-  column goes here.
 
 ---
 

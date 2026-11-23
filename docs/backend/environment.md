@@ -16,7 +16,7 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 | `VITE_OXR_APP_ID` | Client build — Open Exchange Rates (Currency widget) |
 | `VITE_VAPID_PUBLIC_KEY` | Client build (GitHub Actions **Variable**) — the VAPID **public** key the browser uses to subscribe to Web Push. Safe to expose. |
 | `ANTHROPIC_API_KEY` | Edge Function secret (Supabase → Project Settings → Edge Functions → Secrets) — the Anthropic API key; read only by the `claude` function (`Deno.env.get`), sent to Anthropic in the `Authorization` header, never in the app, a URL or a log, and listed in the function's `hideSecrets`. Without it `claude` answers "not configured". Setup: `docs/deploy-checklist.md`; details: `docs/integrations/anthropic.md`. |
-| `GEMINI_API_KEY` | **No code reads it any more** (AI phase 5, 23.11.2026; the retired `ai-proxy` stub reads no secret). The owner deletes it: Supabase → Edge Functions → Secrets (`docs/deploy-checklist.md`). |
+| `GEMINI_API_KEY` | **No code reads it any more** (AI phase 5, 23.11.2026; `ai-proxy` is deleted). The owner deletes it: Supabase → Project Settings → Edge Functions → Secrets (`docs/deploy-checklist.md`). |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Vault — server side of the unified Google OAuth (`calendar-oauth`/`calendar-token`) |
 | `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Vault — `strava-auth`/`strava-activities`, and `strava-disconnect` (Basic auth on Strava's `/oauth/revoke`) |
 | `HEVY_API_KEY` / `HEVY_WEBHOOK_SECRET` / `HEVY_USER_ID` | Vault — Hevy API + webhook auth; `HEVY_USER_ID` is the single-user id reused by every server-side path (health webhook, phone gateway, push cron) |

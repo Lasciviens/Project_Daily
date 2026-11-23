@@ -6,7 +6,7 @@
 //                  url, siteName, likelyTruncated }
 //
 // Safety: http/https only; localhost, private, link-local and numeric-encoded
-// hosts refused (the ai-proxy fetchUrl guard), and names that resolve to such an
+// hosts refused (the same guard `claude`'s page-fetch uses), and names that resolve to such an
 // address, re-checked on EVERY redirect hop
 // (redirects are followed manually, at most 5); 8 s timeout; the body is read
 // up to 3 MB and only text/html (or xhtml) is accepted. Nothing is stored.

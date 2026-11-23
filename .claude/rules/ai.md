@@ -1,6 +1,5 @@
 ---
 paths:
-  - "supabase/functions/ai-proxy/**"
   - "src/features/ai/**"
   - "supabase/claude-src/**"
   - "supabase/functions/claude/**"
@@ -76,7 +75,7 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 
 ## The old assistant (`ai-proxy`) is gone (phase 5, 23.11.2026)
 
-- Gemini is removed: the function is a 410 stub (`supabase/functions/ai-proxy/index.ts`, kept only because deploy never prunes; `verify-ai-proxy-retired`), migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`. No code names `GEMINI_API_KEY` or Google's generative API; keep it so.
+- Gemini is removed: the `ai-proxy` function folder is deleted (a folder would be deployed again by every merge) and `deploy.yml` deletes the deployed function in a step after "Edge functions" (deploy never prunes; `verify-ai-proxy-retired`). Migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`. No code names `GEMINI_API_KEY` or Google's generative API; keep it so.
 - `ai_run_read_query`'s security boundary is the database (185): a read-only RPC with exactly the caller's rights — SECURITY DEFINER owned by `authenticated`, so Postgres refuses a `role` change inside it — that only an app user may call, that refuses comments, quoted names, `;`, settings (`set_config`, `current_setting`, …), SQL-running built-ins (`*_to_xml*`, `ts_stat`, …), `pg_` names and system schemas, and that returns nothing when the query changed the role, the claims or a flag in its `watched` list (a changed `role` would make it the service role, which reads the token tables). Keep every part (`verify-db-read-query`). A new setting that database code reads joins `watched` in a migration that re-creates the function word for word but for the list, inside a block that keeps 185's where it may not replace it, then 185's wall again (189 did it for `app.shop_restored`). Enabling an extension: check its functions for any that run SQL text or change a setting, and add them to the list. Don't re-add the removed DML keyword regex.
 - Search by meaning does not exist: Ask AI's `find_text` is owner-scoped substring search. A similarity hit is never the value of anything current.
 - Still in the database, unused, left for the owner's OK to drop: `ai_pending_actions` (140; only ai-proxy wrote it — `scripts/deploy/run-migrations.mjs` uses it as a readiness probe, change that first), `ai_query_log`, `ai_usage_log` (history).

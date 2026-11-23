@@ -153,7 +153,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
   {
     id: 'anthropic', name: 'Claude API', provider: 'Anthropic', category: 'AI', official: true,
     docsUrl: 'https://platform.claude.com/docs',
-    purpose: 'The model behind the app\'s AI features, rebuilt on Claude one at a time. Today: ✨ on the item screen, the recipe editor, Food\'s quick guess, the PT coach\'s assessment, the Kobo\'s passage question, the phone\'s brief and question, and the Test bench. Ask AI (the chat, with photos and voice) and the Training coach chat run on it too.',
+    purpose: 'The model behind the app\'s AI features: ✨ on the item screen, the recipe editor, Food\'s quick guess, the PT coach\'s assessment, the Kobo\'s passage question, the phone\'s question, and the Test bench. Ask AI (the chat, with photos and voice) and the Training coach chat run on it too.',
     transports: ['edge'],
     connection: 'Only through the claude edge function: it checks who asks, the job\'s settings and the monthly budget, calls the Messages API and writes every call — tokens, cost, how it ended — to the ledger. The key never reaches the browser.',
     edgeFunctions: ['claude'], endpoints: ['api.anthropic.com'],

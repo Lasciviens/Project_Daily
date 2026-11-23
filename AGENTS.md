@@ -88,7 +88,7 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 
 - **Owner lock:** only ids in `public.app_allowed_users` use the app. A migration that creates a table ends with `select public.owner_lock_apply('public.<table>');` (`verify-owner-lock`).
 - An edge function with browser callers checks `auth.getUser` **and** its own `isAppUser(user.id)` copy; platform `verify_jwt` alone admits any project JWT. Only `news-proxy` is exempt.
-- Keys never travel in a URL when the API takes a header; otherwise fetch through `fetchHidingUrl`. `claude` scrubs outgoing errors with `hideSecrets` and `scrubErrorText` (`verify-secret-errors`).
+- Keys never travel in a URL when the API takes a header; otherwise fetch through `fetchHidingUrl`. `claude` scrubs outgoing errors with `hideSecrets` and `scrubErrorText` (`verify-secret-errors` for the network and key cases, `verify-claude-function` for the scrubber).
 - Never log a secret: a mutation whose input is a secret sets `logPayload: false`; `logError` redacts secret-looking keys.
 - A device, cron or webhook secret is checked in constant time (`sameSecret`: hash, then compare), never `===` (`verify-secret-compare`).
 - **The repo is public: no personal data in it** — no real email address, phone number, street address, name or real health numbers in code, tests, docs, commit messages or PR texts. Use made-up data (Ola Nordmann, example.com, Jernbanetorget). The account email a session sees is for commit credit only, never a contact field (`verify-no-personal-data`).
