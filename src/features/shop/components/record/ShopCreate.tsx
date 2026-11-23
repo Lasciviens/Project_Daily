@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, SkipForward } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
@@ -86,7 +86,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const st = states[index]
   // The latest drafts, for what runs after an await (an answer that lands while a save is out must not be overwritten).
   const latest = useRef(states)
-  latest.current = states
+  useLayoutEffect(() => { latest.current = states }, [states])
   const { ref: bodyRef, width: bodyWidth } = useElementWidthRem<HTMLDivElement>()
   const narrow = bodyWidth != null && bodyWidth < 46
   const kind = stateOf(spec, st.had, st.general)
