@@ -45,6 +45,8 @@ export interface FactCtx {
   today: string
   /** The things it can be an accessory of; absent = it cannot become one (it has accessories or money links). */
   parents?: readonly ShopItem[]
+  /** Whether an editor takes the focus as it opens: false where every editor is open at once (the create popup). */
+  focus: boolean
 }
 
 const quiet = (t: string) => <span className="text-fg-muted">{t}</span>
@@ -85,15 +87,15 @@ export function commonFacts(c: FactCtx, state: 'buy' | 'general' | 'owned'): Fac
         ? <a href={webUrl(v.url) as string} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline">{hostOf(v.url)} <ExternalLink aria-hidden className="h-3 w-3" /></a>
         : v.url,
       hint: !v.url ? undefined : 'A Prisjakt or shop link: its price is checked every morning, if the site lets apps read it.',
-      editor: <input type="url" inputMode="url" value={v.url ?? ''} onChange={e => set({ url: e.target.value.trim() || null })} placeholder="https://www.prisjakt.no/…" aria-label="Link" className="input" autoFocus /> },
+      editor: <input type="url" inputMode="url" value={v.url ?? ''} onChange={e => set({ url: e.target.value.trim() || null })} placeholder="https://www.prisjakt.no/…" aria-label="Link" className="input" autoFocus={c.focus} /> },
     { id: 'notes', label: 'Notes', filled: !!v.notes, chip: 'Notes', value: <span className="whitespace-pre-line">{v.notes}</span>,
-      editor: <textarea value={v.notes ?? ''} onChange={e => set({ notes: e.target.value || null })} rows={3} aria-label="Notes" className="input resize-y" autoFocus /> },
+      editor: <textarea value={v.notes ?? ''} onChange={e => set({ notes: e.target.value || null })} rows={3} aria-label="Notes" className="input resize-y" autoFocus={c.focus} /> },
     { id: 'picture', label: 'Picture', filled: !!v.image_url, chip: 'Picture link',
       value: v.image_url ? <span className="flex items-center gap-2">{thumb}<span className="min-w-0 break-all">{hostOf(v.image_url) ?? v.image_url}</span></span> : null,
       editor: (
         <div className="flex items-center gap-2">
           {thumb}
-          <input type="url" inputMode="url" value={v.image_url ?? ''} onChange={e => set({ image_url: e.target.value.trim() || null })} placeholder="https://…/image.jpg" aria-label="Picture link" className="input min-w-0 flex-1" autoFocus />
+          <input type="url" inputMode="url" value={v.image_url ?? ''} onChange={e => set({ image_url: e.target.value.trim() || null })} placeholder="https://…/image.jpg" aria-label="Picture link" className="input min-w-0 flex-1" autoFocus={c.focus} />
         </div>
       ) },
   ]
@@ -105,7 +107,7 @@ export function buyFacts(c: FactCtx): FactDef[] {
   const cur = currencyOf(v)
   return [
     { id: 'price', label: 'Price', filled: v.price != null, chip: 'Price', value: v.price != null ? <>{money(v.price, cur)}{v.price_source === 'ai_estimate' && quiet(' (estimate)')}</> : null,
-      editor: <MoneyEditor label="Price" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus /> },
+      editor: <MoneyEditor label="Price" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus={c.focus} /> },
     { id: 'priority', label: 'Priority', filled: true, value: { low: 'Low', medium: 'Medium', high: 'High' }[v.priority],
       editor: <SegmentedControl<ShopPriority> size="sm" value={v.priority} onChange={p => set({ priority: p })}
         options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }]} /> },
@@ -126,7 +128,7 @@ export function buyFacts(c: FactCtx): FactDef[] {
     }] : []),
     { id: 'target', label: 'Target price', filled: v.target_price != null, chip: 'Target price', value: v.target_price != null ? money(v.target_price, cur) : null,
       hint: 'The price watch says when the price is at or below it.',
-      editor: <DecimalInput value={v.target_price ?? null} onValue={t => set({ target_price: t })} aria-label="Target price" className="input w-[10rem] tabular-nums" autoFocus /> },
+      editor: <DecimalInput value={v.target_price ?? null} onValue={t => set({ target_price: t })} aria-label="Target price" className="input w-[10rem] tabular-nums" autoFocus={c.focus} /> },
     { id: 'errand', label: 'Next errand', filled: !!v.errand, value: null,
       toggle: { checked: !!v.errand, onChange: x => set({ errand: x }), text: 'Pick it up on the next errand' } },
   ]
@@ -141,7 +143,7 @@ export function generalFacts(c: FactCtx): FactDef[] {
       value: v.price_min != null && v.price_max != null ? moneyRange(v.price_min, v.price_max, cur) : `${v.price_min != null ? money(v.price_min, cur) : '…'}–${v.price_max != null ? money(v.price_max, cur) : '…'}`,
       editor: (
         <div className="flex max-w-sm items-center gap-2">
-          <DecimalInput value={v.price_min ?? null} onValue={x => set({ price_min: x })} aria-label="From" placeholder="From" className="input min-w-0 flex-1 tabular-nums" autoFocus />
+          <DecimalInput value={v.price_min ?? null} onValue={x => set({ price_min: x })} aria-label="From" placeholder="From" className="input min-w-0 flex-1 tabular-nums" autoFocus={c.focus} />
           <span className="text-fg-faint">–</span>
           <DecimalInput value={v.price_max ?? null} onValue={x => set({ price_max: x })} aria-label="To" placeholder="To" className="input min-w-0 flex-1 tabular-nums" />
           <select value={cur} onChange={e => set({ currency: e.target.value as ShopCurrency })} aria-label="Currency" className="select w-[6rem] shrink-0">
@@ -152,7 +154,7 @@ export function generalFacts(c: FactCtx): FactDef[] {
     { id: 'requirements', label: 'Must have', filled: !!v.requirements?.trim(), chip: 'Must-haves',
       value: <span className="whitespace-pre-line">{v.requirements}</span>,
       hint: 'Each line is a row in the models\' comparison.',
-      editor: <textarea value={v.requirements ?? ''} onChange={e => set({ requirements: e.target.value || null })} rows={4} placeholder={'Pen support\n11 inch or bigger'} aria-label="Must have" className="input resize-y" autoFocus /> },
+      editor: <textarea value={v.requirements ?? ''} onChange={e => set({ requirements: e.target.value || null })} rows={4} placeholder={'Pen support\n11 inch or bigger'} aria-label="Must have" className="input resize-y" autoFocus={c.focus} /> },
   ]
 }
 
@@ -167,19 +169,19 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
     ...(c.parents ? [{
       id: 'parent', label: 'Accessory of', filled: !!v.accessory_of, chip: 'Accessory of…', value: parent?.title ?? 'Another thing',
       hint: v.accessory_of ? 'It sits under that thing on Owned and in Stats, and goes with it in a chain.' : undefined,
-      editor: <select value={v.accessory_of ?? ''} onChange={e => set({ accessory_of: e.target.value || null })} aria-label="Accessory of" className="select max-w-sm" autoFocus>
+      editor: <select value={v.accessory_of ?? ''} onChange={e => set({ accessory_of: e.target.value || null })} aria-label="Accessory of" className="select max-w-sm" autoFocus={c.focus}>
         <option value="">Not an accessory</option>
         {c.parents.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
       </select>,
     }] : []),
     { id: 'bought', label: 'Bought on', filled: !!c.boughtDay, value: <>{v.approx_dates ? '≈ ' : ''}{formatDate(c.boughtDay)}{!gone && c.boughtDay ? quiet(` · ${durationLabel(c.boughtDay, today)} ago`) : ''}</>,
       editor: <>
-        <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" autoFocus />
+        <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
         <Toggle checked={!!v.approx_dates} onChange={x => set({ approx_dates: x })}>Roughly — from memory</Toggle>
       </> },
     { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.used ? quiet(' · used') : ''}</>,
       editor: <>
-        <MoneyEditor label="Paid" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus />
+        <MoneyEditor label="Paid" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus={c.focus} />
         <div className="flex flex-wrap gap-x-4">
           <Toggle checked={!!v.got_as_gift} onChange={x => set({ got_as_gift: x })}>A gift to me</Toggle>
           <Toggle checked={!!v.used} onChange={x => set({ used: x })}>Bought used</Toggle>
@@ -192,16 +194,16 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
       editor: <>
         {!(complete(paid) && v.fx_nok) && <RateFetch day={c.boughtDay} currency={cur} />}
         <p className="text-meta text-fg-muted">The rate you paid at (NOK for 1 {cur}), e.g. your card's — or leave it to Norges Bank's rate of the day.</p>
-        <DecimalInput value={v.fx_nok ?? null} onValue={r => set({ fx_nok: r, fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit" className="input w-[10rem] tabular-nums" autoFocus />
+        <DecimalInput value={v.fx_nok ?? null} onValue={r => set({ fx_nok: r, fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
       </> })
   }
   facts.push(
     { id: 'saved', label: 'Price before discount', filled: v.market_price != null, chip: 'Price before discount',
       value: <>{v.market_price != null && money(v.market_price, v.market_currency ?? cur)}{saved ? <span className="text-success"> · saved {money(saved.nok)}</span> : ''}</>,
       hint: 'The normal price at the time — a staff price or a sale shows what it saved.',
-      editor: <MoneyEditor label="Price before discount" amount={v.market_price ?? null} currency={v.market_currency ?? cur} onAmount={p => set({ market_price: p })} onCurrency={x => set({ market_currency: x })} autoFocus /> },
+      editor: <MoneyEditor label="Price before discount" amount={v.market_price ?? null} currency={v.market_currency ?? cur} onAmount={p => set({ market_price: p })} onCurrency={x => set({ market_currency: x })} autoFocus={c.focus} /> },
     { id: 'serial', label: 'Serial number', filled: !!v.serial, chip: 'Serial number', value: <span className="font-mono text-meta">{v.serial}</span>,
-      editor: <input value={v.serial ?? ''} onChange={e => set({ serial: e.target.value || null })} aria-label="Serial number" className="input max-w-sm font-mono" autoFocus /> },
+      editor: <input value={v.serial ?? ''} onChange={e => set({ serial: e.target.value || null })} aria-label="Serial number" className="input max-w-sm font-mono" autoFocus={c.focus} /> },
   )
   // The return and complaint days are the Purchase section's, from the store's rules and the law (Details edits them).
   if (!gone) {
@@ -209,7 +211,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
       { id: 'value', label: 'Could sell for', filled: v.value_now != null, chip: 'Could sell for',
         value: <>{v.value_now != null && money(v.value_now, v.value_currency ?? 'NOK')}{v.value_on ? quiet(` · ${formatDate(v.value_on)}`) : ''}</>,
         hint: 'Your own estimate (FINN, a trade-in offer). It is dated, so you can see when it gets old.',
-        editor: <MoneyEditor label="Could sell for" amount={v.value_now ?? null} currency={v.value_currency ?? 'NOK'} onAmount={p => set({ value_now: p })} onCurrency={x => set({ value_currency: x })} autoFocus /> },
+        editor: <MoneyEditor label="Could sell for" amount={v.value_now ?? null} currency={v.value_currency ?? 'NOK'} onAmount={p => set({ value_now: p })} onCurrency={x => set({ value_currency: x })} autoFocus={c.focus} /> },
     )
   }
   facts.push(
@@ -231,7 +233,7 @@ function saleRateFact(c: FactCtx): FactDef | null {
     editor: <>
       {!v.sale_fx_nok && <RateFetch day={v.disposed_on} currency={sc} />}
       <p className="text-meta text-fg-muted">The rate you got (NOK for 1 {sc}) — or leave it to Norges Bank's rate of the day.</p>
-      <DecimalInput value={v.sale_fx_nok ?? null} onValue={r => set({ sale_fx_nok: r, sale_fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit, sale" className="input w-[10rem] tabular-nums" autoFocus />
+      <DecimalInput value={v.sale_fx_nok ?? null} onValue={r => set({ sale_fx_nok: r, sale_fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit, sale" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
     </> }
 }
 
@@ -250,11 +252,11 @@ export function goneFacts(c: FactCtx): FactDef[] {
     { id: 'soldTo', label: to, filled: !!v.sold_to, chip: how === 'given' ? 'Given to' : 'Sold to', value: v.sold_to,
       // A gift goes to a person, not a store.
       editor: how === 'given'
-        ? <input value={v.sold_to ?? ''} onChange={e => set({ sold_to: e.target.value || null })} placeholder="A friend…" aria-label={to} className="input max-w-sm" autoFocus />
+        ? <input value={v.sold_to ?? ''} onChange={e => set({ sold_to: e.target.value || null })} placeholder="A friend…" aria-label={to} className="input max-w-sm" autoFocus={c.focus} />
         : <StoreNameField value={v.sold_to ?? ''} onChange={n => set({ sold_to: n || null })} kinds={WENT_TO} label={to} className="max-w-sm" /> },
     { id: 'got', label: 'Got back', filled: v.sale_price != null, chip: 'Money back', value: v.sale_price != null ? money(v.sale_price, sc) : null,
       hint: v.sale_group ? 'Its share of a sale together with other things.' : undefined,
-      editor: <MoneyEditor label="Got back" amount={v.sale_price ?? null} currency={sc} onAmount={p => set({ sale_price: p, ...(p != null && !v.sale_currency ? { sale_currency: sc } : {}) })} onCurrency={x => set({ sale_currency: x })} autoFocus /> },
+      editor: <MoneyEditor label="Got back" amount={v.sale_price ?? null} currency={sc} onAmount={p => set({ sale_price: p, ...(p != null && !v.sale_currency ? { sale_currency: sc } : {}) })} onCurrency={x => set({ sale_currency: x })} autoFocus={c.focus} /> },
     ...(saleRate ? [saleRate] : []),
   ]
 }
