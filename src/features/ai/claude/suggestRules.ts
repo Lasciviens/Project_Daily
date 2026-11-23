@@ -3,7 +3,9 @@
 // model, so it is read as plain text and never as markup or a link (the database checks the same). No imports:
 // scripts/verify-ai-suggestions-ui.cjs runs it through sucrase.
 
-export const SUGGESTION_KINDS = ['widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting'] as const
+// The eight kinds a model may name (the function's SUGGEST_KINDS), and `instruction_change` (migration 204): written only by the
+// function when the owner approves a learned note that won the weekly self-test (a change to a job's instructions is code: a PR).
+export const SUGGESTION_KINDS = ['widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting', 'instruction_change'] as const
 export type SuggestionKind = typeof SUGGESTION_KINDS[number]
 
 export const SUGGESTION_COMPLEXITY = ['small', 'medium', 'large'] as const
@@ -18,7 +20,7 @@ export type SuggestionState = typeof SUGGESTION_STATES[number]
 /** What an idea is, in two or three words (the pill on its card). */
 export const SUGGESTION_KIND_LABEL: Record<SuggestionKind, string> = {
   widget: 'Widget', chart: 'Chart', automation: 'Automation', notification: 'Notification', report: 'Report',
-  existing_feature: 'Existing feature', new_tool: 'New tool', cheaper_setting: 'Cheaper setting',
+  existing_feature: 'Existing feature', new_tool: 'New tool', cheaper_setting: 'Cheaper setting', instruction_change: 'Instruction change',
 }
 
 /** One sentence of what a kind means: shown once under the list, because the owner is learning the words. */
@@ -31,12 +33,14 @@ export const SUGGESTION_KIND_MEANING: Record<SuggestionKind, string> = {
   existing_feature: 'a screen the app already has for it',
   new_tool: 'one saved, reviewed question the assistant can use instead of writing its own',
   cheaper_setting: 'a smaller model, less effort or less text sent',
+  instruction_change: 'a learned note that won the weekly self-test, to be written into a job\'s instructions in a reviewed change',
 }
 
 /** The quiet line under an answer that noted an idea. */
 export const SUGGESTION_LINE: Record<SuggestionKind, string> = {
   widget: 'This could be a widget', chart: 'This could be a chart', automation: 'This could be an automation', notification: 'This could be a notification',
   report: 'This could be a report', existing_feature: 'The app may already show this', new_tool: 'This could be a saved query', cheaper_setting: 'This could be done cheaper',
+  instruction_change: 'A learned note could join the instructions',
 }
 
 export const SUGGESTION_STATE_LABEL: Record<SuggestionState, string> = { new: 'New', kept: 'Kept', dismissed: 'Dismissed', built: 'Built' }

@@ -54,6 +54,23 @@ export interface ItemFillState<S = unknown> {
   cancel: () => void
 }
 
+// The fill's fields in the learning layer's names (supabase/claude-src/learn-specs.ts, item_fill): what the owner kept.
+const LEARN_FILL_FIELDS: Readonly<Record<string, string>> = {
+  title: 'title', date: 'date', startTime: 'start_time', endTime: 'end_time', durationMinutes: 'duration_minutes', allDay: 'all_day',
+  repeat: 'repeat', place: 'place', travelMinutes: 'travel_minutes', showAs: 'show_as', notes: 'notes', deadlineDate: 'deadline_date',
+  deadlineTime: 'deadline_time', doFrom: 'do_from', priority: 'priority',
+}
+
+/** The kept fill as the learning layer reads it: plain values of the fields it reviews. */
+function learnedFill(fill: object): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {}
+  for (const [key, value] of Object.entries(fill)) {
+    const field = LEARN_FILL_FIELDS[key]
+    if (field && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')) out[field] = value
+  }
+  return out
+}
+
 export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }: {
   /** The screen is open, on this saved item (null: a new one) — a change ends the review, and an old Undo does nothing. */
   open: boolean
@@ -92,7 +109,27 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
     toast.success(said)
   }
 
-  const run = useMutationWithFeedback<(FillResult & { taken: S; startedIn: number }) | null, string>({
+  // The AI call of the fill on screen, and what it filled: Use these reports it as kept, Cancel as dismissed (Developer → AI →
+  // Learn). Fields the owner changes after Use these are not seen here (the item's own save does not report them).
+  const learned = useRef<{ callId: string; saved: Record<string, string | number | boolean> } | null>(null)
+  const learn = useMutationWithFeedback<number, { callId: string; saved: Record<string, string | number | boolean>; dismissed: boolean }>({
+    action: 'ai_learn_save',
+    silent: 'a background note for Developer → AI → Learn; Use these and Cancel say their own result',
+    logPayload: false,
+    mutationFn: async (report) => {
+      // Loaded only once ✨ was used, like the function's own client.
+      const { reportAiSave } = await import('../../../features/ai/claude/learnApi')
+      return reportAiSave(report)
+    },
+    invalidates: ['aiLearn'],
+  })
+  const reportLearned = (dismissed: boolean) => {
+    const it = learned.current
+    learned.current = null
+    if (it) learn.mutate({ ...it, dismissed })
+  }
+
+  const run = useMutationWithFeedback<(FillResult & { taken: S; startedIn: number; callId: string | null; learnFields: Record<string, string | number | boolean> }) | null, string>({
     action: 'fill_item_fields',
     silent: 'useItemFill says the result itself: "Filled … — check them" with its Undo, and the review bar',
     // The sentence may hold personal details; the error log is readable by the assistant.
@@ -104,11 +141,13 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       if (why) throw new Error(why)
       const startedIn = session.current
       let raw: unknown
+      let callId: string | null = null
       try {
         // The function's client loads only when ✨ is used (the item screen opens on every page).
         const { runClaudeJob } = await import('../../../features/ai/claude/claudeApi')
-        const { result } = await runClaudeJob<{ fill?: unknown } | null>('item_fill', { text: text.trim() })
+        const { result, call } = await runClaudeJob<{ fill?: unknown } | null>('item_fill', { text: text.trim() })
         raw = result && typeof result === 'object' ? result.fill : undefined
+        callId = call?.id ?? null
       } catch (e) {
         throw new Error(fillFailureText(e), { cause: e })
       }
@@ -119,12 +158,13 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       const fill = cleanItemFill(raw, { today: now.screen.today, sentence: text.trim() })
       const out = fillForm(now.form, fill, now.screen)
       if (!out.fields.length) throw new Error(FILL_NOTHING_READ)
-      return { ...out, taken: now.take(), startedIn }
+      return { ...out, taken: now.take(), startedIn, callId, learnFields: learnedFill(fill) }
     },
     onSuccess: (out) => {
       if (!out) return
       latest.current.fillInto(out.form)
       setBefore(() => out.taken)
+      learned.current = out.callId ? { callId: out.callId, saved: out.learnFields } : null
       setState({ step: 'review', fields: out.fields, rows: out.rows })
       toast.undo(`Filled ${fillWords(out.fields)} — check them`, () => putBack(out.taken, out.startedIn, 'Put back as it was'))
     },
@@ -147,10 +187,12 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       const startedIn = session.current
       setState(CLOSED)
       setBefore(null)
+      reportLearned(false)
       if (taken !== null) toast.undo('Filled fields kept', () => putBack(taken, startedIn, 'Put back as it was'))
     },
     cancel: () => {
       if (state.step !== 'review' || before === null) return
+      reportLearned(true)
       putBack(before, session.current, 'Put back as it was')
     },
   }

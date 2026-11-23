@@ -26,7 +26,7 @@ const J = JSON.stringify
 
 // ── §1 ──
 section('§1 hidden Unicode, plain text, keys')
-const zw = '​', rlo = '‮', tag = '󠁁', bom = '﻿', shy = '­', vs = '️'
+const zw = '\u200b', rlo = '\u202e', tag = '\u{e0041}', bom = '\ufeff', shy = '\u00ad', vs = '\ufe0f'
 check('zero-width, text-direction, tag, BOM, soft hyphen and variation selectors are all taken out', T.stripHidden(`Kv${zw}ikk${rlo} Lun${tag}sj${bom}${shy}${vs}`) === 'Kvikk Lunsj', T.stripHidden(`Kv${zw}ikk${rlo} Lun${tag}sj`))
 check('the strip repeats until the text is stable (NFKC can uncover more)', T.stripHidden('ﬁne') === 'fine' && T.holdsHidden(T.stripHidden(`a${zw}${zw}b`)) === false)
 check('control characters out, line breaks kept for the caller to decide', T.stripHidden('a\u0007b\nc') === 'ab\nc')

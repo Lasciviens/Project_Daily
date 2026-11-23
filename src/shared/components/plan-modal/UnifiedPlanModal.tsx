@@ -21,6 +21,12 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-23 · v27 · ✨ teaches the AI (owner: "The ai should keep learning"):
+//                    Use these reports the fill's call id and the fields kept,
+//                    Cancel reports it dismissed (useItemFill → learn_save; the
+//                    function compares them with its OWN copy of the answer).
+//                    Nothing else on the screen changes; the report loads only
+//                    once ✨ was used and never fails or delays the screen.
 //  2026-11-20 · v26 · ✨ asks the new `claude` function (its `item_fill` job, on
 //                    Claude Haiku) instead of the old Gemini itemFill action, which
 //                    is gone (AI rebuild, phase 1 — docs/features/ai-plan.md).

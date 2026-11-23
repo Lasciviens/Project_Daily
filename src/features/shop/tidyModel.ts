@@ -17,7 +17,7 @@ export const TIDY_LIMITS = { name: 120, word: 60, path: 60, categories: 100, sea
 export type TidyKey = 'name' | 'brand' | 'model' | 'category'
 
 /** What the function answers for one thing, after both checks. Each field is present only when it is a real suggestion. */
-export interface TidySuggestion { name?: string; brand?: string; model?: string; category_id?: string }
+export interface TidySuggestion { name?: string; brand?: string; model?: string; category_id?: string; /** The AI call it came from (the save reports it for learning). */ call_id?: string }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 // Zero-width and text-direction characters draw nothing and can hide a word from a check: out first.

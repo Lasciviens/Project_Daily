@@ -6,6 +6,7 @@ import { chipClass } from '../../../shared/components/plan-modal/fieldStyles'
 import { useDescribeGuess, useLogGuess } from '../hooks/useQuickGuess'
 import { PhotoButton } from '../../ai/claude/components/PhotoButton'
 import { usePhotoGuess } from '../../ai/claude/hooks/useAiFeatures'
+import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
 import { costNote } from '../../ai/claude/featureRules'
 import { draftProblem, EMPTY_DRAFT, KNOWN_GUESS_NOTE, type GuessDraft, type GuessEstimate } from '../quickGuess'
 import type { MealSlot } from '../types'
@@ -33,10 +34,13 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const describe = useDescribeGuess()
   const log = useLogGuess()
   const photo = usePhotoGuess()
+  const learn = useReportAiSave()
   const [text, setText] = useState(initialText)
   const [draft, setDraft] = useState<GuessDraft | null>(null)
   const [assumed, setAssumed] = useState<string[]>([])
   const [from, setFrom] = useState<GuessEstimate['from']>(undefined)
+  // The AI call the draft came from: the logged line is reported with it (Developer → AI → Learn), never when no AI was asked.
+  const [callId, setCallId] = useState<string | null>(null)
   // What the photo's AI call cost (empty after a described or remembered estimate).
   const [photoCost, setPhotoCost] = useState<number | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
@@ -48,6 +52,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
     setDraft({ ...EMPTY_DRAFT, name: e.title || fallbackName.slice(0, 60), portion: e.portion, kcal: e.kcal, protein: e.protein, carbs: e.carbs, fat: e.fat, sugar: e.sugar })
     setAssumed(e.assumptions)
     setFrom(e.from)
+    setCallId(e.callId ?? null)
   }
 
   async function estimate() {
@@ -73,10 +78,13 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
     if (!draft) { void estimate(); return }
     const p = draftProblem(draft)
     if (p) { setProblem(p); return }
-    log.mutate(
-      { date, slot, title: draft.name.trim(), kcal: draft.kcal ?? 0, protein: draft.protein ?? 0, carbs: draft.carbs ?? 0, fat: draft.fat ?? 0, sugar: draft.sugar ?? 0 },
-      { onSuccess: onClose },
-    )
+    const line = { date, slot, title: draft.name.trim(), kcal: draft.kcal ?? 0, protein: draft.protein ?? 0, carbs: draft.carbs ?? 0, fat: draft.fat ?? 0, sugar: draft.sugar ?? 0 }
+    log.mutate(line, {
+      onSuccess: () => {
+        if (callId) learn.mutate({ callId, saved: { title: line.title, portion: draft.portion.trim() || null, calories: line.kcal, protein_g: line.protein, carbs_g: line.carbs, fat_g: line.fat, sugar_g: line.sugar } })
+        onClose()
+      },
+    })
   }
 
   function saveAsPreset() {

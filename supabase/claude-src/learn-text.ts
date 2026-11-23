@@ -14,7 +14,7 @@
 
 // Zero-width and joiners, text direction, word joiners and invisible operators, the BOM, the soft hyphen, the Mongolian
 // vowel separator, the tag block (U+E0000–E007F: invisible ASCII lookalikes), variation selectors, interlinear annotation.
-const LEARN_HIDDEN = /[­؜ᅟᅠ឴឵᠋-᠏​-‏‪-‮⁠-⁯ㅤ︀-️﻿ﾠ￹-￻]|\udb40[\udc00-\udc7f]|\udb40[\udd00-\uddef]/g
+const LEARN_HIDDEN = /[\u00ad\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb]|\udb40[\udc00-\udc7f]|\udb40[\udd00-\uddef]/g
 // Control characters but tab and line breaks (a separate rule decides whether a line break may stay).
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
 const LEARN_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g

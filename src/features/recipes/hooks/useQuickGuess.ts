@@ -119,9 +119,10 @@ export function useDescribeGuess() {
       // AI last: the owner's own preset or earlier diary line with this name answers without the model.
       const known = matchKnownGuess(text, presets, recents)
       if (known) return known
-      const estimate = readGuessEstimate(await describeGuess(text))
+      const { result, callId } = await describeGuess(text)
+      const estimate = readGuessEstimate(result)
       if (!estimate) throw new Error("The AI didn't send an estimate — try again")
-      return estimate
+      return callId ? { ...estimate, callId } : estimate
     },
   })
 }

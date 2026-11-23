@@ -14,10 +14,11 @@ export const KEEP_MS = 7 * 24 * 60 * 60_000
  * - the AI ledger's rows (`ai-calls`): a call's text is what the owner asked and what came back;
  * - the weekly reports (`ai-reports`): the owner's own week, written out;
  * - the suggestions (`ai-suggestions`): ideas a model wrote from the owner's use of the assistant;
+ * - what the AI learned (`ai-learn`): the owner's corrections, saved answers and notes;
  * - live or one-off outside answers (departures, trips, a stop search, one news article).
  */
 export const NEVER_KEPT: ReadonlySet<string> = new Set([
-  'geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs', 'ai-calls', 'ai-chat', 'ai-reports', 'ai-suggestions',
+  'geolocation', 'nearby-stops', 'weather', 'signed-urls', 'icloud', 'audit-logs', 'error-logs', 'ai-calls', 'ai-chat', 'ai-reports', 'ai-suggestions', 'ai-learn',
   'departures', 'trip', 'trip-via', 'stopSearch', 'stop-directions', 'news-article',
 ])
 

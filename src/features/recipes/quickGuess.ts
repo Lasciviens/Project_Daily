@@ -445,6 +445,8 @@ export interface GuessEstimate extends GuessMacros {
   assumptions: string[]
   /** Set when no AI was asked: the description named one of the owner's presets or an earlier diary line. */
   from?: 'preset' | 'diary'
+  /** The AI call it came from (the logged line is reported with it, for learning). */
+  callId?: string
 }
 
 /** What the sheet says when code answered from the owner's own entries. */

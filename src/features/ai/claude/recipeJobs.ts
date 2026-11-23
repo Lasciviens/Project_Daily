@@ -14,10 +14,10 @@ const NOT_A_RECIPE = "That didn't read as a recipe — check the text and try ag
 export async function parseRecipeText(text: string): Promise<ParsedRecipe> {
   const pasted = text.trim()
   if (pasted.length > RECIPE_TEXT_MAX) throw new Error(`That recipe is longer than ${RECIPE_TEXT_MAX} characters — paste a shorter one`)
-  const { result } = await runClaudeJob<unknown>('recipe_from_text', { text: pasted })
+  const { result, call } = await runClaudeJob<unknown>('recipe_from_text', { text: pasted })
   const recipe = readParsedRecipe(result)
   if (!recipe) throw new Error(NOT_A_RECIPE)
-  return recipe
+  return call?.id ? { ...recipe, callId: call.id } : recipe
 }
 
 /**
@@ -51,8 +51,10 @@ export async function estimateRecipeMacros(
 }
 
 /** "Describe it" (Food → Quick guess): free text → the AI's estimate as one diary line. The caller checks it (readGuessEstimate). */
-export async function describeGuess(text: string): Promise<unknown> {
-  return (await runClaudeJob<unknown>('quick_guess', { text: text.trim().slice(0, 500) })).result
+export async function describeGuess(text: string): Promise<{ result: unknown; callId: string | null }> {
+  const { result, call } = await runClaudeJob<unknown>('quick_guess', { text: text.trim().slice(0, 500) })
+  // The call's id: when the line is logged, the save reports it so the function can compare it with its own copy.
+  return { result, callId: call?.id ?? null }
 }
 
 /** The preset a "Suggest options" call drafts for (one portion's values). */

@@ -6,6 +6,7 @@ import { mapRowsInCache, putRowsInCache } from '../../../shared/query/cachePatch
 import { ClaudeJobError } from '../../ai/claude/claudeApi'
 import { tidyThing } from '../../ai/claude/featureJobs'
 import { updateShopItem } from '../api/shopApi'
+import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
 import { readTidySuggestion, tidyCategories, tidyInputFor, tidyPatch, tidyUndoPatch, type TidyKey, type TidySuggestion } from '../tidyModel'
 import type { ShopCategory, ShopItem, UpdateShopItemInput } from '../types'
 
@@ -69,11 +70,12 @@ export function useTidyRun() {
         onStep(i, rows.length, row.title)
         for (let attempt = 1; ; attempt++) {
           try {
-            const { result, costUsd: cost } = await tidyThing(tidyInputFor(row, list, pathOf))
+            const { result, costUsd: cost, callId } = await tidyThing(tidyInputFor(row, list, pathOf))
             costUsd += cost ?? 0
             inARow = 0
             if (isObj(result) && result.searched === true) searched = true
             const s = readTidySuggestion(result, row, allowed)
+            if (s && callId) s.call_id = callId
             if (s) { suggestions.set(row.id, s); onSuggestion(row.id, s) }
           } catch (error) {
             if (error instanceof ClaudeJobError && HALTS.has(error.reason)) { halted = error.message }
@@ -110,6 +112,7 @@ interface Written { item: ShopItem; patch: UpdateShopItemInput; after: ShopItem 
  */
 export function useApplyTidy() {
   const qc = useQueryClient()
+  const learn = useReportAiSave()
   const undo = useMutationWithFeedback({
     action: 'undo_tidy_shop_things',
     successMessage: (_d: void, v: Written[]) => `Put back · ${v.length} ${v.length === 1 ? 'thing' : 'things'}`,
@@ -134,11 +137,21 @@ export function useApplyTidy() {
       }
       return { written, failed }
     },
-    onSuccess: ({ written, failed }) => {
+    onSuccess: ({ written, failed }, { entries }) => {
       // The rows the database answered with go straight into the cached lists, so an old name never shows until a refetch.
       if (written.length) putRowsInCache<ShopItem>(qc, qk.shop.items(), written.map(w => w.after))
       if (failed.length) toast.error(`${failed.length === 1 ? `“${failed[0]}” was` : `${failed.length} things were`} not saved — try again`)
       if (written.length) toast.undo(`${written.length} ${written.length === 1 ? 'thing' : 'things'} tidied`, () => undo.mutate(written))
+      // What the AI learns from: per thing, the fields saved and the ones left unticked (the function compares them with its own copy).
+      for (const w of written) {
+        const entry = entries.find(e => e.item.id === w.item.id)
+        const s = entry?.suggestion
+        if (!entry || !s?.call_id) continue
+        const field = (k: TidyKey) => (k === 'category' ? 'category_id' : k)
+        const offered = (['name', 'brand', 'model', 'category'] as TidyKey[]).filter(k => (k === 'category' ? s.category_id : s[k]) !== undefined)
+        const saved = Object.fromEntries(offered.filter(k => entry.keys.has(k)).map(k => [field(k), (k === 'category' ? s.category_id : s[k]) ?? null]))
+        learn.mutate({ callId: s.call_id, saved, unticked: offered.filter(k => !entry.keys.has(k)).map(field) })
+      }
     },
     invalidates: [qk.shop.items()],
   })

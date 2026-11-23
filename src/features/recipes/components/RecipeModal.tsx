@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Plus, Sparkles, X } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
@@ -6,6 +6,7 @@ import { Button, IconButton, SegmentedControl } from '../../../shared/ui'
 import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useRecipes'
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromLink, estimateRecipeMacros, type ParsedRecipe } from '../../ai/claude/recipeJobs'
+import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
 import { canComputeFromIngredients, cleanServingLabel, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -142,7 +143,13 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholePortions(servings), library) : null
 
+  // The AI call a pasted recipe came from: its save is reported with it (Developer → AI → Learn). A link read or a hand-made
+  // recipe has none.
+  const learnCall = useRef<string | null>(null)
+  const learn = useReportAiSave()
+
   function applyParsedRecipe(parsed: ParsedRecipe) {
+    learnCall.current = parsed.callId ?? null
     setTitle(parsed.title)
     setServings(String(Math.max(1, parsed.servings || 1)))
     setInstructions(parsed.instructions ?? '')
@@ -235,6 +242,12 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
     try {
       if (editMode && recipe) await update.mutateAsync({ id: recipe.id, input })
       else                    await create.mutateAsync(input)
+      if (learnCall.current) {
+        // The fields the AI filled, as saved (the ingredient lines in the learning layer's own "amount unit name; …" form).
+        const lines = input.ingredients.map(i => [i.quantity, i.unit, i.name.trim()].filter(x => x !== null && x !== undefined && x !== '').join(' ')).join('; ')
+        learn.mutate({ callId: learnCall.current, saved: { title: input.title.trim(), servings: input.servings, ingredients: lines.slice(0, 2000) } })
+        learnCall.current = null
+      }
       onClose()
     } catch { return }   // the hook already toasted + logged
   }
