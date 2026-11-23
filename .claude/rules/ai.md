@@ -9,7 +9,7 @@ paths:
 
 Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/anthropic.md`, `docs/features/ai.md`.
 
-## The Claude layer (`claude` function, migrations 194, 195, 196, 197 and 198)
+## The Claude layer (`claude` function, migrations 194, 195, 196, 197, 198 and 199)
 - AI last (AGENTS.md): before a job calls a model, check that fixed logic, a query, a tool or a scheduled job can't do it.
 - Edit the parts in `supabase/claude-src/`, then run `node scripts/build-claude-function.mjs`; never edit the generated `supabase/functions/claude/index.ts` (`--check` fails when it is stale).
 - Only the provider part imports the SDK or names an Anthropic field; only `main.ts` touches `Deno`, creates Supabase clients or logs — so another provider or loop is one new part.
@@ -61,6 +61,14 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - **The wall:** a prompt of 90 000 tokens is never sent (`CHAT_LIMITS.wallTokens`; the app's `CHAT_WALL_TOKENS` is the same number, `verify-ai-chat-ui` compares them).
 - **Reused security code, not AI setup:** `ai_run_read_query` (185/189) for `ask_database`, with the owner's token only.
 - Tests: `verify-claude-chat.cjs` (real SDK, fake network and database), `verify-db-ai-chat.mjs`, `verify-ai-chat-ui.cjs`, the Confirm checks in `verify-ai-confirm.cjs`.
+
+## Suggestions (phase 4c, migration 199: `suggest-*.ts`, `src/features/ai/claude/suggest*`)
+- **An idea only recommends.** Nothing in this system creates, switches on or changes anything; a suggestion is model-written input: plain text (a kind from the list, no `<`, `>`, control character or link, lengths held), shown as text, never a link, never a prompt, never acted on by code. A failing idea is dropped whole, never repaired (`checkedIdea`, `plainText`; the app's `readSuggestion` checks again).
+- **The key is ours.** One row per idea: `ideaKey` (kind + normalised title) or `patternKey` (the counted pattern), made by the function, never taken from the model; `ai_suggestion_add` is the only writer (dismissed never returns, 300 rows, 20 a day from answers). The browser may change only `state` (column grant + trigger + policy: keep all three; `verify-db-ai-suggestions`).
+- **`note_shortcut`** is a read-kind tool for the wall (not a write tool), three required fields, not strict, default On, once per answer (the loop's cap and the database's), never on the phone; the service-role write runs with the verified user id and this round's ledger row. The `done` event carries only its kind.
+- **The counting** (`ai_suggest_patterns`) is SECURITY INVOKER, service role only, shapes only: a tool or field name from the ledger is re-checked (plain lower-case words), a fingerprint has no control character and is cut at 300. Thresholds live in `SUGGEST_LIMITS` and the function's defaults: change both.
+- **`suggest_weekly`** is a batch job (`suggest-batch.ts`) like the report, but its pieces are its own: `ai_suggest_runs` (`batch_id`, `claimed_at` and `facts` server-only), the patterns it was shown stored with the run and the answer read against them, at most five ideas, a failure never touches the report. It reads counts and shapes and earlier idea titles: never a row of the owner's data. A new thing it may read needs the plan's §5 first.
+- Tests: `verify-claude-chat.cjs` §16, `verify-claude-function.cjs` §19, `verify-db-ai-suggestions.mjs`, `verify-ai-suggestions-ui.cjs`.
 
 ## The old assistant (`ai-proxy`, until phase 5; its app panel and chat api are gone since 4a)
 

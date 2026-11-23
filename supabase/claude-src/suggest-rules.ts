@@ -43,7 +43,7 @@ export interface CheckedIdea { kind: SuggestKind; title: string; why: string }
 
 // Control characters and the zero-width and text-direction ones: they draw nothing and can hide a word from a check.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
-const HIDDEN = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/
+const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
 const LINK = /https?:|www\.|\w\.(?:com|net|org|io|app|dev)\b|\/\//i
 
 /** A short plain text: a string of letters, digits and ordinary punctuation. No angle bracket, control character or link; null when it fails. Never cleaned up. */

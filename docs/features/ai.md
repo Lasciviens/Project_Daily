@@ -193,6 +193,16 @@ The owner's controls and the missing pieces. Written from scratch for Claude (th
 - **The coach chat in a new chat and the history:** "New chat" inside a coach chat starts a coach chat, the history tags coach chats, the setup line (kind, N tools, your instructions: names and words on a tap) shows before the first message and the empty chat's intro and suggestions are built from the tools that are on.
 - **Not built / not verified:** the first live run of the new tool set on Anthropic (use Diagnose: `count_tokens` does not compile a grammar, but these tools are not strict), a real iPhone (camera, microphone and its language choice, the keyboard), real photos of a meal, the coach chat on real training data.
 
+## Suggestions, phase 4c (23.11.2026, migration 199)
+
+"Minimise AI, maximise automation and tools" (the owner, 20.11.2026): the system only **recommends**, it never creates, switches on or changes anything. Design and threats: `docs/features/ai-plan.md` §5 and §8.
+
+- **Words.** A *suggestion* (the app calls it an idea) is a note that says "the app could show this without AI". A *pattern* is something the ledger shows more than twice in 30 days: the same tools in the same order, the same question shape, the same fallback query, a job that costs much, a job that sends much and gets little. A *fingerprint* is a query with its values taken out. *Dismissed* means gone for good: it stays as a row so it is never suggested again.
+- **Where:** Developer → AI → Learn → Ideas. Keep, Dismiss, Send to Dev Requests (a draft you review and save), Mark built (your own mark after a normal change), Bring back. "Look for ideas now" asks for the weekly look at once (half price, ready within about an hour).
+- **Three finders:** a database count over the ledger (no AI); `note_shortcut` inside an Ask AI answer (no extra call); `suggest_weekly` once a week in the batch queue (reads counts and shapes only, at most five ideas). All write through one database function that dedupes, refuses a dismissed idea and caps the list.
+- **Checks:** `suggest-rules.ts` (function) and `suggestRules.ts` (app) read an idea as plain text: a kind from the list, no angle bracket, control character or link, lengths held; a failing idea is dropped whole. `verify-claude-chat` (the tool), `verify-claude-function` §19 (the weekly batch), `verify-db-ai-suggestions` (the table) and `verify-ai-suggestions-ui` (the screen).
+- **Not verified:** a real weekly look on real ledger rows, the migration on production, the line under a stored answer.
+
 ## The old assistant (Gemini): history
 
 What follows describes the Gemini assistant that Ask AI replaced. `AIPanel.tsx`, `ConfirmCards.tsx` and `aiApi.ts` were deleted in phase 4a; `ai-proxy` itself stays until phase 5 (the coach chat, the phone's and the Kobo's old paths are gone, but its code and tables remain). Read it only as history.

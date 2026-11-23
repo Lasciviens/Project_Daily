@@ -1126,6 +1126,24 @@ function buildTables(now = new Date()) {
     reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions').replace('3380', '2410') }),
     reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
   ]
+  // The suggestions (migration 199): ideas for needing AI less, in each state, and the weekly look's last run.
+  const idea = (n, state, kind, title, why, times, tokens, cost, source, seenDays) => ({
+    id: `a1ca5600-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, kind, title, why, source, times_seen: times, tokens_each: tokens, cost_each_usd: cost,
+    first_call_id: batchCalls[0].id, dedupe_key: String(n).repeat(64).slice(0, 64), state, state_changed_at: state === 'new' ? null : at(-2, '09:00'),
+    created_at: at(-seenDays, '05:10'), updated_at: at(-seenDays, '05:10'), last_seen_at: at(-1, '05:10'),
+  })
+  tables.ai_suggestions = [
+    idea(1, 'new', 'widget', 'Show the protein of today on Home', 'The same two lookups (food of the day, then the week) were asked six times in 30 days, about $0.012 each time.', 6, 5200, 0.0123, 'weekly', 1),
+    idea(2, 'new', 'new_tool', 'A saved query for the protein of a day', 'The same free-form database question ran four times. One named, reviewed query would answer it with no model writing SQL.', 4, 3000, 0.004, 'weekly', 1),
+    idea(3, 'new', 'cheaper_setting', 'Try a lower effort for Ask AI', 'Ask AI cost $0.14 in 11 answers; most of them looked up one figure.', 11, 4000, 0.0127, 'weekly', 1),
+    idea(4, 'kept', 'chart', 'One graph for sleep and steps', 'Asked for three times from the chat; the app holds both series already.', 3, 2400, 0.0031, 'answer', 6),
+    idea(5, 'built', 'notification', 'Tell me when the week has no training planned', 'Asked every Sunday; a rule can send it with no AI.', 5, 1800, 0.002, 'answer', 20),
+    idea(6, 'dismissed', 'report', 'A daily food summary', 'Asked once a week.', 4, 2100, 0.0024, 'answer', 12),
+  ]
+  tables.ai_suggest_runs = [{
+    id: 'a1ca5700-0000-4000-8000-000000000001', user_id: owner, week_start: addDays(thisMonday, 0), made_by: 'schedule', status: 'done', failure: null, added: 3, patterns: 5, sent_text: '<patterns>\np1 | costly_job | chat | seen 11 times in 30 days</patterns>',
+    call_id: batchCalls[0].id, created_at: osloInstant(thisMonday, '05:00'), finished_at: osloInstant(thisMonday, '05:41'),
+  }]
   // Ask AI (migration 197): two stored chats, one with a proposal still waiting for the owner's tap.
   Object.assign(tables, require('./claude-chat.cjs').chatSeed(owner, (tables.tasks[0] ?? {}).id ?? '00000000-0000-4000-8000-0000000000aa', at))
   tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]

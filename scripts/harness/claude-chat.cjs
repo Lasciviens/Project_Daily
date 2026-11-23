@@ -7,6 +7,7 @@
 //
 //   a message with "flowers" or "banana"  → two lookups' worth of steps and a proposal card
 //   a message with "dentist"              → a find_text step and an answer with two citations
+//   a message with "protein"              → a plain answer that also noted an idea (the quiet line under it: "This could be a widget")
 //   a message with "wall" or "long"       → the chat is full (the "start a new chat" wall)
 //   a message with "refuse"               → a refusal after some streamed text (retract, then the error)
 //   anything else                         → a short plain answer
@@ -47,6 +48,7 @@ function plan(text, store, mode) {
     ]
     return { kind: 'find', citations, steps: ['Searching your tasks and diary'], reply: `I found a task about the dentist and a **diary line from 20.11.2026** that mentions walking past it.` }
   }
+  if (/protein/.test(lower)) return { kind: 'plain', suggestion: { kind: 'widget' }, reply: 'Today you are at **96 g** of protein, against a target of **140 g**.' }
   return { kind: 'plain', reply: 'Hello! I can look up your plan, your week, your food and your own notes, and propose a task or a food line for you to confirm.' }
 }
 
@@ -60,7 +62,7 @@ function keepChat(store, body, p, text, costUsd, runId) {
     const coach = body.mode === 'coach'
     // The tools a new chat starts with: the owner's switches (ai_tool_settings), like the function; a write tool only ask or off.
     const off = new Set((t('ai_tool_settings') ?? []).filter(r => r.user_id === owner && r.mode === 'off').map(r => r.tool))
-    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food']
+    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food', 'note_shortcut']
     const words = String((store.tables.ai_settings ?? [])[0]?.chat_instructions ?? '')
     conversation = { id: randomUUID(), user_id: owner, created_at: now, updated_at: now, title: text.slice(0, 60), model: 'claude-haiku-5-5', effort: 'medium', thinking: 'adaptive', tools_hash: 'a'.repeat(64), system_hash: 'b'.repeat(64), tool_names: all.filter(n => !off.has(n)), mode: coach ? 'coach' : 'chat', owner_instructions: words, status: 'open', message_count: 0, last_prompt_tokens: 0, cost_usd: 0, deleted_at: null }
     t('ai_conversations').push(conversation)
@@ -105,7 +107,7 @@ function chatAnswer(body, store, opts = {}) {
   const words = p.reply.split(/(?<= )/)
   for (const w of words) events.push({ event: 'text', t: w })
   if (card) events.push({ event: 'proposal', ...card })
-  events.push({ event: 'done', conversation_id: conversation.id, text: p.reply, citations: p.citations ?? [], proposals: card ? [card] : [], rounds: p.steps ? 2 : 1, cost_usd: costUsd, wall: false, run_id: runId, ending: 'complete', prompt_tokens: 3030, thinking: 'The question names a topic, so I looked it up with the search tool and read what it returned.' })
+  events.push({ event: 'done', conversation_id: conversation.id, text: p.reply, citations: p.citations ?? [], proposals: card ? [card] : [], rounds: p.steps ? 2 : 1, cost_usd: costUsd, wall: false, run_id: runId, ending: 'complete', prompt_tokens: 3030, suggestion: p.suggestion ?? null, thinking: 'The question names a topic, so I looked it up with the search tool and read what it returned.' })
   return stream(events)
 }
 

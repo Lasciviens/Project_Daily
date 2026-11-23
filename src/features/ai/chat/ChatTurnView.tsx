@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ChevronRight, FileText, ImageIcon, ListChecks, Loader2, X } from 'lucide-react'
+import { Check, ChevronRight, FileText, ImageIcon, Lightbulb, ListChecks, Loader2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../../app/store'
 import { DateInput } from '../../../shared/components/DateInput'
@@ -8,6 +8,7 @@ import { Button, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { formatUsd } from '../claude/ledgerRules'
+import { SUGGESTION_LINE, type SuggestionKind } from '../claude/suggestRules'
 import { boldParts, cardStateLabel, citationTarget, proposalFields, type ChatCard, type ChatCitation, type ChatStep, type ChatTurn } from './chatRules'
 
 // One turn of the chat: the person's message, or the answer with what it looked up (and the inputs it used), the rows it
@@ -129,6 +130,21 @@ function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: De
   )
 }
 
+/** The one quiet line under an answer that noted an idea: what it could be, and where to read it. Never the idea's own text. */
+function SuggestionLine({ kind }: { kind: string }) {
+  const navigate = useNavigate()
+  const closeAI = useUIStore(s => s.closeAI)
+  const line = SUGGESTION_LINE[kind as SuggestionKind]
+  if (!line) return null
+  const go = () => { closeAI(); navigate('/developer?tab=ai&view=learn&learn=suggestions') }
+  return (
+    <p className="flex items-center gap-1 px-1 text-micro text-fg-muted">
+      <Lightbulb aria-hidden className="h-3 w-3 shrink-0" />
+      <span className="min-w-0">{line} — <button type="button" onClick={go} className="font-medium text-accent-600 underline decoration-dotted underline-offset-2 [@media(hover:hover)]:hover:text-accent-700">see Suggestions</button></span>
+    </p>
+  )
+}
+
 function CostLine({ turn }: { turn: ChatTurn }) {
   const navigate = useNavigate()
   const closeAI = useUIStore(s => s.closeAI)
@@ -183,6 +199,7 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
             {reasoning && <p className="mt-1 whitespace-pre-wrap break-words rounded-control border border-line bg-surface-2 px-2.5 py-1.5 text-meta text-fg-2">{turn.thinking}</p>}
           </div>
         )}
+        {!turn.streaming && turn.suggestion && <SuggestionLine kind={turn.suggestion} />}
         {!turn.streaming && <CostLine turn={turn} />}
       </div>
     </div>

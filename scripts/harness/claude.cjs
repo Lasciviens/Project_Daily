@@ -160,6 +160,13 @@ const WEEKLY_REPORT_JOB = {
   sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
 }
 PHASE_2A_JOBS.push(WEEKLY_REPORT_JOB)
+// Phase 4c: the weekly suggestions, a batch job like the report.
+PHASE_2A_JOBS.push({
+  ...phase2a('suggest_weekly', 'The weekly suggestions', 'Once a week, in the batch queue at half price, one small model reads the repeats counted from the AI ledger (tool shapes, counts and costs, never your data) and proposes at most five ideas for needing AI less.', 2000),
+  mode: 'batch', version: '2026-11-23.1', answerSchema: null,
+  defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
+  sourceFiles: ['supabase/claude-src/job-suggest-weekly.ts', 'supabase/claude-src/suggest-rules.ts', 'supabase/claude-src/suggest-batch.ts', 'supabase/claude-src/suggest-store.ts'],
+})
 const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
 const REPORT_FACTS = {
   training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
@@ -413,6 +420,7 @@ const CHAT_TOOLS = [
   ['get_day_plan', 'read', ['chat', 'coach', 'phone']], ['get_week_figures', 'read', ['chat', 'phone']], ['get_food_day', 'read', ['chat', 'phone']], ['find_text', 'read', ['chat', 'phone']],
   ['get_about_me', 'read', ['chat', 'coach', 'phone']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
   ['get_training_week', 'read', ['coach']], ['get_health_trends', 'read', ['coach']], ['get_pt_verdicts', 'read', ['coach']],
+  ['note_shortcut', 'read', ['chat', 'coach']],
 ].map(([name, kind, chats]) => ({ name, kind, what: `The ${name} tool.`, defaultMode: kind === 'write' ? 'ask' : 'on', chats }))
 
 /** What `{ action: 'describe' }` answers, in the real function's own shape. */
@@ -557,6 +565,15 @@ function claudeMock(opts = {}) {
     }
     // Phase 3: "Make this week's report now" queues one batch (the row waits at its worst case, as the function holds it),
     // and "Check now" reads it back as ready at the batch price. Like the function: the master and the job's switch stop it.
+    // Phase 4c: "Look for ideas now" queues the weekly look (a run row, waiting); "Check now" reads it back as done with two new ideas.
+    if (body?.action === 'suggest_make') {
+      const runs = (store.tables.ai_suggest_runs ??= [])
+      if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
+      if (runs.some(r => r.status === 'queued')) return { ok: true, queued: false, skipped: 'already_queued', week_start: runs[0].week_start }
+      const today0 = osloDay(new Date()), dow = new Date(`${today0}T12:00:00Z`).getUTCDay()
+      runs.unshift({ id: randomUUID(), user_id: store.ownerId, week_start: addDays(today0, -((dow + 6) % 7)), made_by: 'app', status: 'queued', failure: null, added: 0, patterns: 4, sent_text: null, call_id: null, created_at: new Date().toISOString(), finished_at: null })
+      return { ok: true, queued: true, run_id: runs[0].id, week_start: runs[0].week_start }
+    }
     if (body?.action === 'report_make' || body?.action === 'report_check') {
       const reports = (store.tables.ai_reports ??= [])
       const calls0 = (store.tables.ai_calls ??= [])
@@ -567,7 +584,9 @@ function claudeMock(opts = {}) {
           const call = calls0.find(c => c.id === r.call_id)
           if (call) Object.assign(call, { outcome: 'ok', stop_reason: 'end_turn', served_model: 'claude-haiku-5-5', input_tokens: 900, output_tokens: 400, cost_usd: costOf('claude-haiku-5-5', { input_tokens: 900, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 400 }) / 2 })
         }
-        return { ok: true, checked: waiting.length, ready: waiting.length, failed: 0, waiting: 0 }
+        const runsQ = (store.tables.ai_suggest_runs ?? []).filter(r => r.status === 'queued')
+        for (const r of runsQ) Object.assign(r, { status: 'done', added: 0, finished_at: new Date().toISOString() })
+        return { ok: true, checked: waiting.length, ready: waiting.length, failed: 0, waiting: 0, suggestions: { ok: true, checked: runsQ.length, done: runsQ.length, failed: 0, waiting: 0 } }
       }
       if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
       if (opts.stop) return { ok: false, reason: opts.stop, message: STOP_MESSAGE[opts.stop] ?? 'The report could not be queued.' }
