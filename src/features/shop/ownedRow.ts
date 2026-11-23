@@ -149,6 +149,23 @@ export function rowStacks(widthRem: number | null): number {
   return Math.max(1, Math.floor((widthRem + ROW_GAP_REM) / (ROW_MIN_REM + ROW_GAP_REM)))
 }
 
+/**
+ * How a wide list uses its width (owner, 23.11.2026: "so much space on the right side"): with at least as many
+ * categories as columns, each category is a column stack of its own; with fewer (one big category), every category
+ * takes the whole width and its subcategories are dealt into the columns — never a few columns at the left of an
+ * empty screen.
+ */
+export function listShape(categories: number, stacks: number): 'categories' | 'subs' {
+  return stacks > 1 && categories < stacks ? 'subs' : 'categories'
+}
+
+/** How many columns a category's subcategories are dealt into: as many as there are room for, never more than there are subcategories. */
+export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
+
+/** The widest a subcategory's big-picture cards go (the card's own cap, 12rem, and the gap): its cards flow into one block this wide, then the next block sits beside it. */
+export const PICTURE_CARD_REM = 12
+export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * 0.5
+
 // ── The filter bar's one row ─────────────────────────────────────────────────
 // The bar above Owned's things is ONE line wherever it can be (owner, 23.11.2026): it measures its own width and
 // folds what does not fit behind Filters, as `fitActions` does for the record's buttons. Widths in rem.
