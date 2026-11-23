@@ -428,6 +428,8 @@
   /* Extra small (a sheet header's This day | All days): 28px, chip-round. */
   .seg-xs { @apply gap-0.5 rounded-full p-0.5; }
   .seg-xs .seg-btn { @apply min-h-[28px] rounded-full px-2.5 text-meta [@media(pointer:coarse)]:min-h-[28px]; }
+  /* `fit` (each segment as wide as its label): tighter sides at every size, the 28px row included. */
+  .seg-fit .seg-btn { @apply px-2; }
 
   /* Floating menus (Headless UI MenuItems / ListboxOptions). */
   .menu {

@@ -6,7 +6,7 @@ import { ReadFailed } from '../aiBits'
 
 /** A small count beside a name (what waits for the owner). Always the same room, so the count landing never moves the tabs. */
 export function Waiting({ n }: { n: number }) {
-  return <span aria-hidden={n <= 0} aria-label={n > 0 ? `${n} waiting` : undefined} className={`ml-1 inline-grid h-4 min-w-4 place-items-center rounded-full bg-accent-500 px-1 text-micro font-semibold leading-none text-on-accent${n > 0 ? '' : ' invisible'}`}>{n > 9 ? '9+' : Math.max(n, 0)}</span>
+  return <span aria-hidden={n <= 0} aria-label={n > 0 ? `${n} waiting` : undefined} className={`inline-grid h-4 min-w-4 place-items-center rounded-full bg-accent-500 px-1 text-micro font-semibold leading-none text-on-accent${n > 0 ? '' : ' invisible'}`}>{n > 9 ? '9+' : Math.max(n, 0)}</span>
 }
 
 export type PillTone = 'success' | 'accent' | 'neutral' | 'warn'

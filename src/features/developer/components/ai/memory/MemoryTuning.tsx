@@ -27,7 +27,7 @@ function SetupLine({ s, best }: { s: EvalSetup; best: boolean }) {
         <span className={`min-w-0 flex-1 ${best ? 'font-semibold text-fg' : ''}`}><Truncate lines={1}>{SETUP_LABEL(s.setup)}</Truncate></span>
         <Bar value={s.mean} /> <span className="w-10 shrink-0 text-right tabular-nums">{percent(s.mean)}</span>
       </p>
-      <p className="text-meta tabular-nums text-fg-muted">{count(s.tokens)} tokens a request{s.failed ? ` · ${s.failed} unusable` : ''}{s.reasons.length ? ` · not better: ${s.reasons.join('; ')}` : ''}</p>
+      <p className="text-meta tabular-nums text-fg-muted">{count(s.tokens)} tokens a request{s.failed ? ` · ${s.failed} unusable` : ''}{s.reasons.length ? ` · not chosen: ${s.reasons.join('; ')}` : ''}</p>
     </li>
   )
 }
