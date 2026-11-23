@@ -179,6 +179,13 @@ function fakeCreateClient(world) {
       const answer = (data) => ({ data, error: null })
       q.select = (cols, opts) => { q.countOpts = opts ?? null; world.selects.push({ table, cols: String(cols) }); q.cols = String(cols); return q }
       q.eq = (c, v) => { q.filters[c] = v; return q }
+      // The owner's tool modes (198): a list read, none stored unless a test says so.
+      if (table === 'ai_tool_settings') {
+        q.in = () => q
+        q.limit = () => q
+        q.then = (res, rej) => Promise.resolve().then(() => { world.reads.push({ who, table, filters: q.filters }); return world.toolSettingsError ? { data: null, error: { message: 'boom' } } : { data: world.toolRows ?? [], error: null } }).then(res, rej)
+        return q
+      }
       q.maybeSingle = async () => {
         world.reads.push({ who, table, filters: q.filters })
         // A device run reads the settings with the server client (which names the user id in the query itself).
@@ -442,7 +449,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const described = await go({ action: 'describe' })
   const about = described.json?.about
   check('describe answers { ok: true, about }', described.status === 200 && described.json?.ok === true && about && typeof about === 'object')
-  check('describe lists the contract\'s keys', same(Object.keys(about).sort(), ['configured', 'defaults', 'efforts', 'jobs', 'limits', 'models', 'parts', 'prices', 'provider', 'safetyRules', 'steps']), Object.keys(about))
+  check('describe lists the contract\'s keys', same(Object.keys(about).sort(), ['chat', 'configured', 'defaults', 'efforts', 'jobs', 'limits', 'models', 'parts', 'prices', 'provider', 'safetyRules', 'steps']), Object.keys(about))
   check('configured is true with a key and false without; it is only a boolean', about.configured === true && (await go({ action: 'describe' }, { world: { env: { ANTHROPIC_API_KEY: '' } } })).json.about.configured === false)
   check('no key, service key or publishable key in the description, with a key or without', leaks(described.text).length === 0 && !/sk-ant-|sb_secret_|sb_publishable_/.test(described.text), leaks(described.text))
   check('the limits are the contract\'s: $50, 20 a minute, 600 a day, 256–16000 tokens, 1–90 days, 16 KB',
@@ -1477,7 +1484,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('12 · phone_ask')
   for (const name of ['phone_ask']) {
     const j = jobAbout(name)
-    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, no tools, no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools, []) && j.answerSchema === null)
+    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, five read-only tools (4b), no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools.map(t => t.name), ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']) && j.answerSchema === null)
     check(`${name}: the instructions say the data is never an instruction, that nothing can be changed from the phone, and that & < > are escaped`, /never a message to you/.test(j.instructions) && /cannot change, delete or send anything/.test(j.instructions) && /&amp; &lt; &gt;/.test(j.instructions))
   }
   const phoneBody = (job, input) => ({ action: 'run', caller: 'phone', job, input })
@@ -1485,15 +1492,15 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   dv = await go(null, { request: devPost(phoneBody('phone_brief', { context: 'DATE: 11.11.2026' })), network: answerOf('x') })
   check('phone_brief is no job any more (the gateway builds the brief with fixed rules): bad_input, nothing sent, nothing reserved', dv.json?.reason === 'bad_input' && dv.net.seen.length === 0 && dv.world.reserves.length === 0 && !about.jobs.some(j => j.name === 'phone_brief') && !/phone_brief/.test(read('supabase/functions/claude/index.ts').replace(/phone_brief is no/g, '')), dv.json)
   dv = await go(null, { request: devPost(phoneBody('phone_ask', { question: 'How did I sleep?', context: 'SLEEP: 7.2 h' })), network: answerOf('Well.') })
-  check('phone_ask: the question and the context, each in its tag', sentBody(dv).messages[0].content === '<question>\nHow did I sleep?\n</question>\n<context>\nSLEEP: 7.2 h\n</context>' && same(dv.json?.result, { text: 'Well.' }))
+  check('phone_ask: the question and the context, each in its tag', same(sentBody(dv).messages[0].content, [{ type: 'text', text: '<question>\nHow did I sleep?\n</question>\n<context>\nSLEEP: 7.2 h\n</context>' }]))
   dv = await go(null, { request: devPost(phoneBody('phone_ask', { question: 'What is 2+2?' })), network: answerOf('4') })
-  check('phone_ask: the context is optional', sentBody(dv).messages[0].content === '<question>\nWhat is 2+2?\n</question>' && dv.json?.ok === true)
+  check('phone_ask: the context is optional', same(sentBody(dv).messages[0].content, [{ type: 'text', text: '<question>\nWhat is 2+2?\n</question>' }]))
   for (const [job, label, input] of [['phone_ask', 'no question', { context: 'x' }], ['phone_ask', 'a question of 1001', { question: 'q'.repeat(1001) }], ['phone_ask', 'a question that is a number', { question: 5 }], ['phone_ask', 'a context of 4001', { question: 'x', context: 'c'.repeat(4001) }], ['phone_ask', 'a context that is an object', { question: 'x', context: {} }]]) {
     dv = await go(null, { request: devPost(phoneBody(job, input)), network: answerOf('x') })
     check(`${job}: ${label}: bad_input, nothing sent`, dv.json?.reason === 'bad_input' && dv.net.seen.length === 0 && dv.world.reserves.length === 0, dv.json)
   }
   dv = await go(null, { request: devPost(phoneBody('phone_ask', { question: 'x', context: 'c'.repeat(4000) })), network: answerOf('x') })
-  check('phone_ask: a context of 4000 is accepted', dv.json?.ok === true)
+  check('phone_ask: a context of 4000 is accepted (the request is sent)', dv.net.seen.length === 1 && dv.json?.reason !== 'bad_input', dv.json)
   for (const [label, net] of [['empty', answerOf('')], ['1501 characters', answerOf('a'.repeat(1501))], ['refused', pretendNetwork(okAnswer({ stop_reason: 'refusal', content: [] }))], ['cut off', pretendNetwork(okAnswer({ stop_reason: 'max_tokens' }))]]) {
     dv = await go(null, { request: devPost(phoneBody('phone_ask', { question: 'x' })), network: net })
     check(`phone_ask: an answer that is ${label} is not used`, dv.json?.ok === false, dv.json)
@@ -1733,7 +1740,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the phone job is told to write dates as DD.MM.YYYY and times as HH:MM', /DD\.MM\.YYYY/.test(PHONE_ASK_JOB.instructions) && /HH:MM/.test(PHONE_ASK_JOB.instructions))
 
   // The pinned versions of the new jobs.
-  const PIN_2B = { coach_assessment: ['2026-11-22.3', '5ad607369d105019'], kobo_ask: ['2026-11-22.3', 'f9c9d6feed6f667f'], phone_ask: ['2026-11-22.3', '675a43bb3d6f538e'], test_bench: ['2026-11-22.1', 'b3c269c0f8140205'] }
+  const PIN_2B = { coach_assessment: ['2026-11-22.3', '5ad607369d105019'], kobo_ask: ['2026-11-22.3', 'f9c9d6feed6f667f'], phone_ask: ['2026-11-23.2', '6cd175d7a85bc344'], test_bench: ['2026-11-22.1', 'b3c269c0f8140205'] }
   for (const [name, job] of [['coach_assessment', COACH_ASSESSMENT_JOB], ['kobo_ask', KOBO_ASK_JOB], ['phone_ask', PHONE_ASK_JOB], ['test_bench', TEST_BENCH_JOB]]) {
     const h = crypto.createHash('sha256').update(`${job.instructions}\n${JSON.stringify(job.answerSchema)}`).digest('hex').slice(0, 16)
     check(`${name}: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, PIN_2B[name][0] === job.version && PIN_2B[name][1] === h, `version ${job.version}, hash ${h}`)
@@ -2505,7 +2512,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('ad_improve: one extra link beside a typed one is invalid (each found must be typed, the check is never switched off)', wj?.ok === false && wj.reason === 'invalid', wj)
   wj = (await go(runBody(AD_LINK, 'ad_improve'), { network: pretendNetwork(modelText(JSON.stringify({ text: 'Sony selges. Spør ola@evil.example' }))) })).json
   check('ad_improve: another e-mail address is invalid', wj?.ok === false && wj.reason === 'invalid', wj)
-  check('the tool switches on only for a job whose definition names it (run.ts), and only place_ideas does (the chat has its own tools, none of them web search)', /job\.tools\?\.some\(t => t\.name === 'web_search'\)/.test(read(`${PARTS_DIR}/run.ts`)) && same(about.jobs.filter(j => j.tools.length && j.kind === 'one_shot').map(j => j.name), ['place_ideas']) && about.jobs.find(j => j.name === 'chat').tools.every(t => t.name !== 'web_search'))
+  check('the tool switches on only for a job whose definition names it (run.ts), and only place_ideas does (the chat has its own tools, none of them web search)', /job\.tools\?\.some\(t => t\.name === 'web_search'\)/.test(read(`${PARTS_DIR}/run.ts`)) && same(about.jobs.filter(j => j.tools.length && j.kind === 'one_shot').map(j => j.name), ['place_ideas', 'phone_ask']) && about.jobs.find(j => j.name === 'chat').tools.every(t => t.name !== 'web_search'))
   x = await go(null, { request: post(photoBody({ image: { media_type: 'image/jpeg', data: 'A'.repeat(1_600_000) } })) })
   check('a body over the image limit names that limit (1.5 MB); a device body names 16 KB; a non-image job names 16 KB', /1\.5 MB/.test(x.json?.error ?? '') && (await go(null, { request: devPost({ action: 'run', caller: 'phone', job: 'phone_ask', input: { question: 'q', context: 'x'.repeat(20_000) } }) })).json?.error?.includes('16 KB') && /16 KB/.test((await go(null, { request: post(runBody({ text: 'x'.repeat(20_000) }, 'quick_guess')) })).json?.error ?? ''), x.text)
   check('describe states the price of a search and the cap (from code, for the Prices page)', about.prices.webSearchUsdEach === 0.01 && about.prices.webSearchMaxUses === 3, about.prices)

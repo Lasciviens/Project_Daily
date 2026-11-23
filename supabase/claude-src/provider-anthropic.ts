@@ -423,7 +423,8 @@ function anthropicChatBody(request: ChatRequest): Anthropic.Beta.Messages.Messag
       { type: 'text', text: request.system, cache_control: mark },
       ...(request.ownerInstructions ? [{ type: 'text' as const, text: request.ownerInstructions, cache_control: mark }] : []),
     ],
-    tools: request.tools.map((tool, i) => ({
+    // A chat the owner switched every tool off for has none: no tools field at all (and no tool_choice).
+    ...(request.tools.length ? { tools: request.tools.map((tool, i) => ({
       name: tool.name,
       description: tool.description,
       // Not strict (trap 16): a strict tool makes Anthropic compile a grammar on the first request with that tool set, which
@@ -431,8 +432,8 @@ function anthropicChatBody(request: ChatRequest): Anthropic.Beta.Messages.Messag
       // The schema stays small and flat: every property listed as required and nothing else allowed, as a hint to the model.
       input_schema: { type: 'object' as const, properties: tool.properties, required: Object.keys(tool.properties), additionalProperties: false },
       ...(i === last ? { cache_control: mark } : {}),
-    })),
-    ...(request.noTools ? { tool_choice: { type: 'none' as const } } : {}),
+    })) } : {}),
+    ...(request.noTools && request.tools.length ? { tool_choice: { type: 'none' as const } } : {}),
     messages: request.messages as unknown as Anthropic.Beta.Messages.BetaMessageParam[],
     thinking: request.thinking === 'off'
       ? { type: 'disabled' }

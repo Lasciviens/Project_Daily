@@ -85,13 +85,13 @@ const SIZE_OF: Record<RequestImage['mediaType'], (b: Uint8Array) => { width: num
  * bytes that are that kind of image, a size from its own header inside the limits. Anything else says why in one
  * plain sentence that never holds any of the input.
  */
-export function checkedImage(raw: unknown): CheckedImage {
+export function checkedImage(raw: unknown, maxChars: number = IMAGE_BASE64_MAX_CHARS): CheckedImage {
   const own = (key: string): unknown => (raw !== null && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, key) ? (raw as Record<string, unknown>)[key] : undefined)
   const mediaType = IMAGE_TYPES.find(t => t === own('media_type'))
   if (!mediaType) return { ok: false, problem: 'The photo must be a JPEG, PNG or WebP picture.' }
   const data = own('data')
   if (typeof data !== 'string' || data.length < 100) return { ok: false, problem: 'The photo is empty.' }
-  if (data.length > IMAGE_BASE64_MAX_CHARS) return { ok: false, problem: 'The photo is too large: take it smaller (at most about 1 MB).' }
+  if (data.length > maxChars) return { ok: false, problem: maxChars === IMAGE_BASE64_MAX_CHARS ? 'The photo is too large: take it smaller (at most about 1 MB).' : `The photo is too large: take it smaller (at most about ${Math.round(maxChars * 0.75 / 1000)} KB).` }
   if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return { ok: false, problem: 'The photo could not be read.' }
   let bytes: Uint8Array
   try {

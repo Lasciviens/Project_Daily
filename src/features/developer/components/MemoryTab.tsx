@@ -9,9 +9,8 @@ import { KIND_LABEL, KINDS } from './memoryMeta'
 import type { AiMemory } from '../../ai/api/memoryApi'
 import { DETAIL_PANE_FROM, LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../developerBoards'
 
-// Durable ai_memory rows (migration 064). The one place to see, correct or
-// delete what has been remembered, and the only path that ever writes a
-// `source: 'user'` row (chat's save_memory writes 'ai'). On a wide page the
+// Durable ai_memory rows (migration 064): the notes about the owner that Ask AI reads with its `get_about_me` tool
+// (it never writes them: the old chat's save_memory is gone). The one place to see, add, correct or delete them. On a wide page the
 // picked memory is edited in a pane beside the list (developerBoards.ts); on
 // phones a row opens the edit sheet.
 
@@ -134,7 +133,7 @@ export function MemoryTab() {
         icon={<Brain />}
         title={memories.length === 0 ? 'Nothing remembered yet' : 'No memories of this kind'}
         description={memories.length === 0
-          ? 'Durable facts and summaries the AI has been asked to remember. Ask it to remember something in chat, or add one above.'
+          ? 'Facts, preferences and summaries about you. Add one above: Ask AI reads them with its About me tool when an answer depends on who you are.'
           : undefined}
       />
     )
@@ -145,6 +144,7 @@ export function MemoryTab() {
   const sections: Record<ListDetailSection, ReactNode> = {
     toolbar: (
       <div className="flex flex-col gap-4">
+        <p className="text-meta text-fg-muted">These are the notes Ask AI reads about you, with its “About me” tool. It only reads them: you add, correct and delete them here. The tool can be switched off in Settings.</p>
         <QuickAdd />
         <div className="scroll-x -mx-4 flex gap-1 px-4 sm:mx-0 sm:px-0" role="tablist" aria-label="Filter by kind">
           <button type="button" role="tab" aria-selected={kindFilter === 'all'} onClick={() => { void changeKind('all') }} className="pill-tab">

@@ -222,6 +222,8 @@ export const qk = {
     usage: (from: string, to: string) => ['claude', 'usage', from, to] as const,
     settings: () => ['claude', 'settings'] as const,
     jobSettings: () => ['claude', 'job-settings'] as const,
+    toolSettings: () => ['claude', 'tool-settings'] as const,
+    chatInstructions: () => ['claude', 'chat-instructions'] as const,
   },
   /** The ledger's rows (ai_calls) and a call's text. Their own root: never kept on the device (persistRules.NEVER_KEPT). */
   aiCalls: {

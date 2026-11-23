@@ -45,7 +45,7 @@ const groups = {
   /** A weekly report was made or read back: the reports and the ledger (its cost) have new rows. */
   aiReports: [qk.aiReports.all, qk.aiCalls.all, qk.claude.usageAll],
   /** The owner changed an AI setting (the budget, the text log, a job). */
-  aiSettings: [qk.claude.settings(), qk.claude.jobSettings()],
+  aiSettings: [qk.claude.settings(), qk.claude.jobSettings(), qk.claude.toolSettings(), qk.claude.chatInstructions()],
   /** A save was undone (Developer → Activity): it can have changed any table,
    *  so every query refreshes (the empty key matches them all). */
   saveUndone: [[] as const],

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ChevronRight, FileText, ListChecks, Loader2, X } from 'lucide-react'
+import { Check, ChevronRight, FileText, ImageIcon, ListChecks, Loader2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../../app/store'
 import { DateInput } from '../../../shared/components/DateInput'
@@ -144,7 +144,11 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">
-        <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent">{turn.text}</p>
+        <div className="flex max-w-[85%] flex-col items-end gap-1">
+          {turn.photoUrls.length > 0 && <div className="flex gap-1.5">{turn.photoUrls.map((url, i) => <img key={i} src={url} alt={`Photo ${i + 1} of ${turn.photos}`} className="h-20 w-20 rounded-row border border-line object-cover" />)}</div>}
+          {turn.photos > 0 && turn.photoUrls.length < turn.photos && <span className="inline-flex items-center gap-1 text-meta text-fg-muted"><ImageIcon className="h-3.5 w-3.5" aria-hidden />{turn.photos === 1 ? '1 photo' : `${turn.photos} photos`}</span>}
+          <p className="whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent">{turn.text}</p>
+        </div>
       </div>
     )
   }

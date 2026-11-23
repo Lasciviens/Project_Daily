@@ -13,8 +13,8 @@ import {
 } from './prices.ts'
 import { DEFAULTS, EFFORTS, LIMITS, MODELS } from './guard.ts'
 import { JOB_LIST } from './jobs.ts'
-import { describeChatTools } from './chat-tools.ts'
-import { CHAT_JOB_NAME } from './chat-rules.ts'
+import { describeChatTools, describePhoneTools } from './chat-tools.ts'
+import { CHAT_JOB_NAME, CHAT_LIMITS } from './chat-rules.ts'
 
 /** The function's parts, in the order they are joined (scripts/build-claude-function.mjs has the same list). */
 const DESCRIBE_PARTS: Describe['parts'] = [
@@ -48,6 +48,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'chat store', file: 'supabase/claude-src/chat-store.ts', what: "The stored chats: conversations, messages (only ever added to, with a hash chain) and the proposals waiting for your Confirm." },
   { name: 'chat loop', file: 'supabase/claude-src/chat-loop.ts', what: "Ask AI's own loop: the walls, the stored history checked before it is replayed, each request reserved and ledgered, the tools run side by side, the citations checked, and your Confirm or Cancel of a proposal." },
+  { name: 'phone ask', file: 'supabase/claude-src/phone-ask.ts', what: "The phone's question with its read-only tools (the ones your Ask AI settings leave on): one round of tool calls, then the answer, never streamed, under 19 seconds, every round reserved and ledgered, nothing stored, no proposals." },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
   { name: 'batch', file: 'supabase/claude-src/batch.ts', what: 'The weekly report\'s two steps: queue one request at half price (Monday 05:00, so Sunday is complete), and read it back when it has ended (every 15 minutes while one is queued), correcting the ledger to the real cost; the push waits for 07:00 and goes once.' },
   { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
@@ -116,7 +117,7 @@ function describeJob(job: JobDefinition): Describe['jobs'][number] {
     answerSchema: job.answerSchema,
     tools: job.name === CHAT_JOB_NAME
       ? describeChatTools().map(t => ({ name: t.name, what: `${t.kind === 'read' ? 'Reads (code prepares the answer)' : 'Only PROPOSES a write: nothing is saved until you tap Confirm'}. ${t.what} Fields, all required: ${t.fields.join(', ')}.` }))
-      : (job.tools ?? []).map(t => ({ ...t })),
+      : job.name === 'phone_ask' ? describePhoneTools() : (job.tools ?? []).map(t => ({ ...t })),
     features: [
       'Prompt caching: the instructions are one cached block',
       ...(job.answerSchema ? [job.enforceAnswerSchema
@@ -157,6 +158,13 @@ export function describeFunction(configured: boolean, provider: ProviderInfo): D
     webSearchUsdEach: WEB_SEARCH_USD_EACH,
     webSearchMaxUses: WEB_SEARCH_MAX_USES,
       models: MODEL_PRICES.map(p => ({ ...p })),
+    },
+    chat: {
+      tools: describeChatTools().map(t => ({ name: t.name, kind: t.kind, what: t.what, defaultMode: t.defaultMode, chats: t.chats })),
+      limits: {
+        ownerInstructionsMax: CHAT_LIMITS.ownerInstructionsMax, imagesPerMessage: CHAT_LIMITS.imagesPerMessage, imagesPerChat: CHAT_LIMITS.imagesPerChat,
+        imageBase64Max: CHAT_LIMITS.imageBase64Max, photoLongSide: 1568,
+      },
     },
     jobs: JOB_LIST.map(describeJob),
     steps: DESCRIBE_STEPS,

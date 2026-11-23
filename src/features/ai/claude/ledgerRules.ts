@@ -264,6 +264,27 @@ function readJob(raw: unknown): DescribeJob | null {
   }
 }
 
+function readChat(raw: unknown): Describe['chat'] {
+  const c = rec(raw), l = rec(c.limits)
+  const tools = list(c.tools).map(rec).filter(t => typeof t.name === 'string' && /^[a-z][a-z0-9_]{1,39}$/.test(t.name as string) && (t.kind === 'read' || t.kind === 'write')).slice(0, 30).map(t => ({
+    name: text(t.name, 40), kind: t.kind as 'read' | 'write', what: text(t.what, 600),
+    defaultMode: (t.defaultMode === 'on' || t.defaultMode === 'ask' || t.defaultMode === 'off' ? t.defaultMode : t.kind === 'write' ? 'ask' : 'on') as 'on' | 'ask' | 'off',
+    chats: list(t.chats).filter((x): x is 'chat' | 'coach' | 'phone' => x === 'chat' || x === 'coach' || x === 'phone'),
+  }))
+  return { tools, limits: { ownerInstructionsMax: int(l.ownerInstructionsMax) || 1000, imagesPerMessage: int(l.imagesPerMessage) || 2, imagesPerChat: int(l.imagesPerChat) || 4, imageBase64Max: int(l.imageBase64Max) || 450_000, photoLongSide: int(l.photoLongSide) || 1280 } }
+}
+
+/** The mode each tool shows: what is stored when it is a mode the tool can have (a write tool is never `on`), else the tool's default. */
+export function chatToolModes(tools: readonly Describe['chat']['tools'][number][], rows: readonly { tool: string; mode: string }[]): Record<string, 'on' | 'ask' | 'off'> {
+  const out: Record<string, 'on' | 'ask' | 'off'> = {}
+  for (const t of tools) {
+    const stored = rows.find(r => r.tool === t.name)?.mode
+    const allowed = t.kind === 'write' ? ['ask', 'off'] : ['on', 'off']
+    out[t.name] = stored !== undefined && allowed.includes(stored) ? stored as 'on' | 'ask' | 'off' : t.defaultMode
+  }
+  return out
+}
+
 /** What the function says about itself, field by field: a missing or odd field becomes empty, never a crash. */
 export function readDescribe(raw: unknown): Describe {
   const a = rec(raw)
@@ -280,6 +301,7 @@ export function readDescribe(raw: unknown): Describe {
       benchTextMax: int(limits.benchTextMax) || 2000, deviceCallsPerDay: { kobo: int(rec(limits.deviceCallsPerDay).kobo), phone: int(rec(limits.deviceCallsPerDay).phone) },
     },
     defaults: { monthlyBudgetUsd: num(defaults.monthlyBudgetUsd), logText: flag(defaults.logText, true), logDays: int(defaults.logDays) },
+    chat: readChat(a.chat),
     prices: readPrices(a.prices),
     jobs: list(a.jobs).map(readJob).filter((j): j is DescribeJob => j !== null),
     steps: list(a.steps).map(rec).map(s => ({ title: text(s.title, 120), text: text(s.text, 800), part: text(s.part, 60) })).filter(s => s.title || s.text),

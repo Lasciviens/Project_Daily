@@ -25,7 +25,10 @@ export function ChatHistory({ items, loading, activeId, onOpen, onNew, onDelete 
         <li key={c.id} className={`flex items-center pr-2 transition-colors [@media(hover:hover)]:hover:bg-surface-hover ${c.id === activeId ? 'bg-accent-50' : ''}`}>
           <button type="button" onClick={() => onOpen(c.id)} aria-current={c.id === activeId ? 'true' : undefined}
             className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-4 py-2.5 text-left">
-            <Truncate as="span" className="w-full text-body font-medium text-fg">{c.title}</Truncate>
+            <span className="flex w-full min-w-0 items-center gap-1.5">
+              {c.mode === 'coach' && <span className="chip shrink-0">Coach</span>}
+              <Truncate as="span" className="min-w-0 text-body font-medium text-fg">{c.title}</Truncate>
+            </span>
             <MetaLine as="span" className="text-meta tabular-nums text-fg-muted" items={[formatDateTime(c.updatedAt), c.costUsd > 0 && formatUsd(c.costUsd), c.status !== 'open' && 'full']} />
           </button>
           <IconButton label={`Delete chat ${c.title}`} onClick={() => onDelete(c)}><Trash2 strokeWidth={1.9} aria-hidden /></IconButton>

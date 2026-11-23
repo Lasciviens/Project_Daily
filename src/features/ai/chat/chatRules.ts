@@ -7,6 +7,94 @@ export const CHAT_WALL_TOKENS = 90_000
 export const CHAT_WARN_TOKENS = 70_000
 /** The longest message the function takes. */
 export const CHAT_TEXT_MAX = 4000
+/** Photos: the function's limits (verify-ai-chat-ui compares them). A photo stays in the stored chat, so a chat holds few. */
+export const CHAT_IMAGES_PER_MESSAGE = 2
+export const CHAT_IMAGES_PER_CHAT = 4
+/** One shrunk photo as base64 text (the function refuses more); the bytes are ¾ of it. */
+export const CHAT_PHOTO_BASE64_MAX = 450_000
+export const CHAT_PHOTO_MAX_BYTES = Math.floor(CHAT_PHOTO_BASE64_MAX * 0.75) - 1000
+/** The owner's own instructions: the most characters (the database and the function say the same). */
+export const CHAT_INSTRUCTIONS_MAX = 1000
+
+export type ChatMode = 'chat' | 'coach'
+
+/** The tools in plain words, for the settings card and for "the tools in this chat". Names the app does not know show as they are. */
+export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
+  get_day_plan: { label: 'Day plan', what: "Reads a day's tasks and scheduled blocks." },
+  get_week_figures: { label: 'Week figures', what: "Reads a week's training, health, food and task figures." },
+  get_food_day: { label: 'Food day', what: "Reads one day's food and water against your targets." },
+  find_text: { label: 'Find text', what: 'Searches your tasks and diary lines by words.' },
+  get_about_me: { label: 'About me', what: 'Reads the notes you saved about yourself (Developer → Memory).' },
+  ask_database: { label: 'Ask the database', what: 'The last resort: one read-only database question when no other tool fits.' },
+  propose_add_task: { label: 'Propose a task', what: 'Proposes a new task. Nothing is saved until you tap Confirm.' },
+  propose_log_food: { label: 'Propose a food line', what: 'Proposes a food line. Nothing is saved until you tap Confirm.' },
+  get_training_week: { label: 'Training week', what: "Reads a week's sessions, sets, muscles and key lifts." },
+  get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
+  get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
+}
+export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
+
+/** A stored photo block's source as a data address for a small picture, or nothing when it is not a plain base64 JPEG, PNG or WebP. */
+export function photoUrlOf(source: unknown): string[] {
+  if (!isObject(source) || source.type !== 'base64' || typeof source.data !== 'string') return []
+  const type = source.media_type
+  if ((type !== 'image/jpeg' && type !== 'image/png' && type !== 'image/webp') || !/^[A-Za-z0-9+/]+={0,2}$/.test(source.data)) return []
+  return [`data:${type};base64,${source.data}`]
+}
+
+/** The voice languages the microphone offers: the device's own, or one of three. The tag is what the browser's recognizer takes. */
+export const VOICE_LANGUAGES = [
+  { id: 'auto', short: 'Auto', name: 'Device language', tag: null },
+  { id: 'nb', short: 'NO', name: 'Norwegian', tag: 'nb-NO' },
+  { id: 'en', short: 'EN', name: 'English', tag: 'en-GB' },
+  { id: 'tr', short: 'TR', name: 'Turkish', tag: 'tr-TR' },
+] as const
+export type VoiceLanguageId = (typeof VOICE_LANGUAGES)[number]['id']
+export const voiceLanguageOf = (id: unknown): VoiceLanguageId => VOICE_LANGUAGES.find(l => l.id === id)?.id ?? 'auto'
+export const voiceTagOf = (id: VoiceLanguageId): string | null => VOICE_LANGUAGES.find(l => l.id === id)?.tag ?? null
+
+/**
+ * What an empty chat says it can do and what it suggests, built from the tools that are ON in this chat: nothing is promised
+ * that a switched-off tool would break (no "propose a task" when that tool is off, no food question without the food tool).
+ */
+export function chatIntro(mode: ChatMode, tools: readonly string[]): { text: string; suggestions: string[] } {
+  const has = (n: string) => tools.includes(n)
+  const list = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`)
+  if (mode === 'coach') {
+    const reads = [has('get_training_week') && 'sessions', has('get_health_trends') && 'health figures', has('get_pt_verdicts') && 'the verdicts from your last assessment', has('get_day_plan') && 'what is planned'].filter(Boolean) as string[]
+    const suggestions = [
+      has('get_training_week') && 'How did my training go this week?',
+      has('get_pt_verdicts') && 'Am I recovered enough to train hard today?',
+      has('get_pt_verdicts') && 'What did the coach say last time, and is it still true?',
+      has('get_health_trends') && 'How is my sleep trending?',
+      has('get_day_plan') && 'What training is planned today?',
+    ].filter(Boolean) as string[]
+    return {
+      text: reads.length ? `Ask your coach about your training, recovery and sleep. It reads ${list(reads)}, and changes nothing.` : 'Every coach tool is switched off in Settings, so your coach can only answer from what you tell it.',
+      suggestions: suggestions.slice(0, 4),
+    }
+  }
+  const reads = [has('get_day_plan') && 'plan', has('get_week_figures') && 'week', has('get_food_day') && 'food', has('find_text') && 'tasks and diary', has('get_about_me') && 'notes about you', has('ask_database') && 'data (a database question as a last resort)'].filter(Boolean) as string[]
+  const writes = [has('propose_add_task') && 'a task', has('propose_log_food') && 'a food line'].filter(Boolean) as string[]
+  const suggestions = [
+    has('get_day_plan') && 'What is on my plan today?',
+    has('get_week_figures') && 'How is my week going so far?',
+    has('get_food_day') && 'What have I eaten today against my targets?',
+    has('find_text') && 'Find my tasks and notes about the dentist',
+  ].filter(Boolean) as string[]
+  const can = [reads.length ? `read your ${list(reads)}` : '', writes.length ? `propose ${list(writes.map(w => w))} for you to confirm` : ''].filter(Boolean)
+  return {
+    text: can.length ? `What can I look up for you? I can ${can.join(', and ')}.` : 'Every tool is switched off in Settings, so I can only answer from what you tell me.',
+    suggestions: suggestions.slice(0, 4),
+  }
+}
+
+/** The words in the box with what was just spoken added after them (one space between, nothing doubled). */
+export function joinSpoken(typed: string, spoken: string): string {
+  const said = spoken.replace(/\s+/g, ' ').trim()
+  if (!said) return typed
+  return (typed && !/\s$/.test(typed) ? `${typed} ` : typed) + said
+}
 
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
 
@@ -52,6 +140,10 @@ export interface ChatTurn {
   cutOff: boolean
   /** A lookup just happened: the next text starts a new paragraph. */
   pendingBreak?: boolean
+  /** How many photos went with this message (a person's turn). */
+  photos: number
+  /** The photos themselves as data addresses, to draw small pictures (a person's turn; read from the stored message or kept from the send). */
+  photoUrls: string[]
 }
 
 /** The only events the function sends. */
@@ -152,7 +244,7 @@ export function parseSse(buffer: string): { events: { name: string; data: unknow
 }
 
 export const newTurn = (key: string, role: ChatTurn['role'], text = ''): ChatTurn =>
-  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false })
+  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false, photos: 0, photoUrls: [] })
 
 /**
  * The answer's turn after one more event. Text from a later request of the same answer (after a lookup) starts a new
@@ -270,6 +362,7 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
+  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts",
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
@@ -288,7 +381,11 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
       const typed = typedText(m.content)
       if (typed === null) continue // the tool results of an answer in progress
       answer = null
-      turns.push(newTurn(`u${m.seq}`, 'user', typed))
+      const turn = newTurn(`u${m.seq}`, 'user', typed)
+      const images = Array.isArray(m.content) ? m.content.filter(isBlock).filter(b => b.type === 'image') : []
+      turn.photos = images.length
+      turn.photoUrls = images.slice(0, CHAT_IMAGES_PER_MESSAGE).flatMap(b => photoUrlOf(b.source))
+      turns.push(turn)
       continue
     }
     if (!Array.isArray(m.content)) continue

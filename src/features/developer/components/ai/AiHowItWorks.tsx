@@ -2,8 +2,9 @@ import type { ReactNode } from 'react'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import { ChevronDown, ExternalLink } from 'lucide-react'
 import { Card, CardHeader, MetaLine, PageBoard, Skeleton, TonePill, ToneDot } from '../../../../shared/ui'
-import { useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
-import { formatCount, formatUsd, modelNameOf, sourceUrl } from '../../../ai/claude/ledgerRules'
+import { useChatInstructions, useClaudeDescribe, useToolSettings } from '../../../ai/claude/hooks/useClaude'
+import { chatToolModes, formatCount, formatUsd, modelNameOf, sourceUrl } from '../../../ai/claude/ledgerRules'
+import { toolLabel } from '../../../ai/chat/chatRules'
 import type { Describe, DescribeJob } from '../../../ai/claude/types'
 import { AI_HOW_BOARD, type AiHowSection } from '../../developerBoards'
 import { AI_GLOSSARY } from './aiGlossary'
@@ -118,11 +119,51 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
  * these answer nothing today (docs/features/ai-plan.md §1 has the same table, with the removed parts).
  */
 const STILL_ON_GEMINI: readonly { what: string; phase: string }[] = [
-  { what: 'Ask AI’s photos and voice (dictation and hands-free chat): removed with the old panel on 22.11.2026 (the text chat, its tools and its Confirm cards run on Claude since phase 4a); the owner’s own instructions are new', phase: 'Removed, returns rebuilt on Claude in phase 4b' },
-  { what: 'The PT coach chat (Ask AI in coach mode): removed with the old panel on 22.11.2026', phase: 'Removed, returns rebuilt on Claude in phase 4b' },
   { what: 'Search by meaning: the saved-notes index and Developer’s old “Reindex AI search” button (hidden since 22.11.2026)', phase: 'Ask AI’s find_text tool already uses the database’s full-text search (phase 4a); the index is removed in phase 5' },
   { what: 'The GEMINI_API_KEY secret and the Gemini API entry in Settings', phase: 'Phase 5' },
 ]
+
+/**
+ * What a NEW Ask AI chat will start with: your own words (the second system block, after the fixed rules), the tools and
+ * their modes, and the limits of photos. A chat keeps what it started with. Read-only here: Settings changes it.
+ */
+function AskAiSetup({ about }: { about: Describe }) {
+  const tools = useToolSettings()
+  const words = useChatInstructions()
+  const modes = chatToolModes(about.chat.tools, tools.data ?? [])
+  const mode = { on: 'allowed', ask: 'ask first', off: 'off' } as const
+  const lim = about.chat.limits
+  return (
+    <Card>
+      <CardHeader variant="label" title="Ask AI: what a new chat starts with" />
+      <dl className="flex flex-col gap-2 text-meta text-fg-2">
+        <div>
+          <dt className="text-body font-semibold text-fg">Your instructions</dt>
+          <dd>{words.isError ? 'Could not be read.' : words.data ? <span className="whitespace-pre-wrap break-words">{words.data}</span> : 'None written. Settings → Your instructions.'}</dd>
+          <dd className="text-fg-muted">Every new chat starts with these words, and so does the phone’s answer. They are kept apart from the assistant’s fixed safety rules and from your messages, and they cannot change those rules.</dd>
+        </div>
+        <div>
+          <dt className="text-body font-semibold text-fg">Tools</dt>
+          <dd>{about.chat.tools.map(t => `${toolLabel(t.name)}: ${mode[modes[t.name]]}`).join(' · ')}</dd>
+          <dd className="text-fg-muted">Ask AI, the Training coach and the phone each use their own set of these. Off stops a tool at once; anything else you change reaches chats you start afterwards, and a chat shows the tools it started with.</dd>
+        </div>
+        <div>
+          <dt className="text-body font-semibold text-fg">Photos and voice</dt>
+          <dd>Up to {lim.imagesPerMessage} photos in a message and {lim.imagesPerChat} in a chat, each shrunk in the browser to at most {formatCount(lim.photoLongSide)} px. A photo is kept with its chat, so the chat can be continued as it was, and goes when the chat is deleted or its days run out. The first photo in a chat makes that answer a little dearer.</dd>
+          <dd>The microphone uses your browser’s own speech recognition and only fills the message box. Lasci’s Board never receives the sound; the browser’s maker may process it (on an iPhone, Apple).</dd>
+        </div>
+        <div>
+          <dt className="text-body font-semibold text-fg">The coach chat and the phone</dt>
+          <dd>Training → Coach → Chat with the coach opens Ask AI with the coach’s own instructions and read-only tools. The phone’s question uses the same read tools you leave on (and your instructions), one round at most, and cannot propose, write or take photos.</dd>
+        </div>
+        <div>
+          <dt className="text-body font-semibold text-fg">About me</dt>
+          <dd>The About me tool reads the notes in Developer → Memory. You edit them there; the chat never writes them.</dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
 
 function StillOnGemini() {
   return (
@@ -159,6 +200,7 @@ export function AiHowItWorks() {
   const wait = (h: string) => <Skeleton rounded="rounded-card" className={`${h} w-full`} />
   const sections: Record<AiHowSection, ReactNode> = {
     diagnose: <AiDiagnose />,
+    chat: d ? <AskAiSetup about={d} /> : wait('h-72'),
     gemini: <StillOnGemini />,
     status: d ? <StatusCard about={d} /> : wait('h-60'),
     steps: !d ? wait('h-96') : (

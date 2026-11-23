@@ -4,7 +4,7 @@ import { qk, STALE } from '../../../../shared/query'
 import { describeClaude, diagnoseClaude } from '../claudeApi'
 import { countBenchQuestion, runBenchQuestion, type BenchPick } from '../benchJobs'
 import { fetchCallMeta } from '../../chat/chatApi'
-import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, saveAiJobSettings, saveAiSettings } from '../ledgerApi'
+import { fetchAiCall, fetchAiCallsPage, fetchAiJobSettings, fetchAiSettings, fetchAiUsage, fetchChatInstructions, fetchToolSettings, saveAiJobSettings, saveAiSettings, saveChatInstructions, saveToolSettings, type ToolMode } from '../ledgerApi'
 import { osloMonthRange } from '../ledgerRules'
 import type { AiCallsFilter, AiJobSettings, AiSettings } from '../types'
 
@@ -53,6 +53,40 @@ export function useAiSettings() {
 
 export function useAiJobSettings() {
   return useQuery({ queryKey: qk.claude.jobSettings(), queryFn: fetchAiJobSettings, staleTime: STALE.default })
+}
+
+/** The tools the owner changed (none: every tool is at its default). */
+export function useToolSettings() {
+  return useQuery({ queryKey: qk.claude.toolSettings(), queryFn: fetchToolSettings, staleTime: STALE.default })
+}
+
+/** The owner's own words for Ask AI, as stored. */
+export function useChatInstructions() {
+  return useQuery({ queryKey: qk.claude.chatInstructions(), queryFn: fetchChatInstructions, staleTime: STALE.default })
+}
+
+export function useSaveToolSettings() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'save_ai_tool_settings',
+    successMessage: 'Chat tools saved',
+    mutationFn: (changes: { tool: string; mode: ToolMode }[]) => saveToolSettings(changes),
+    onSuccess: stored => {
+      qc.setQueryData<{ tool: string; mode: string }[]>(qk.claude.toolSettings(), rows => [...(rows ?? []).filter(r => !stored.some(s => s.tool === r.tool)), ...stored])
+    },
+    invalidates: ['aiSettings'],
+  })
+}
+
+export function useSaveChatInstructions() {
+  const qc = useQueryClient()
+  return useMutationWithFeedback({
+    action: 'save_ai_chat_instructions',
+    successMessage: 'Your instructions saved',
+    mutationFn: (text: string) => saveChatInstructions(text),
+    onSuccess: text => { qc.setQueryData(qk.claude.chatInstructions(), text) },
+    invalidates: ['aiSettings'],
+  })
 }
 
 export function useSaveAiSettings() {

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { invalidate, qk, STALE } from '../../../shared/query'
-import { ChatError, decideProposal, fetchConversationRows, fetchConversations, fetchProposalArgs, removeCreatedRow, setChatDeleted, streamChat } from './chatApi'
-import { applyChatEvent, newTurn, turnsFromStored, wallState, type CardState, type ChatEvent, type ChatTurn } from './chatRules'
+import { shrinkPhoto } from '../claude/photoShrink'
+import type { PhotoInput } from '../claude/featureRules'
+import { ChatError, decideProposal, fetchChatSetup, fetchConversationRows, fetchConversations, fetchProposalArgs, removeCreatedRow, setChatDeleted, streamChat, type ChatSetup } from './chatApi'
+import { applyChatEvent, CHAT_PHOTO_MAX_BYTES, newTurn, turnsFromStored, wallState, type CardState, type ChatEvent, type ChatMode, type ChatTurn } from './chatRules'
 
 // Ask AI's state: the chat on screen (its turns, streamed in as they are written), the list of chats, the owner's Confirm /
 // Cancel of a proposed write, and deleting a chat. The chat itself lives in the database (the function stores every message):
@@ -38,6 +40,21 @@ export function useUndoCreated() {
   })
 }
 
+/**
+ * A photo for the chat, shrunk in the browser (the same job as the receipt's and the quick guess's: `shrinkPhoto`, with a
+ * tighter byte limit because every photo stays in the stored chat). Nothing is sent here: the photo waits under the box
+ * until the owner sends the message, so the hook is silent; a failure is toasted by the primitive. `logPayload: false`
+ * keeps its bytes out of the error log.
+ */
+export function useChatPhoto() {
+  return useMutationWithFeedback<PhotoInput, File>({
+    action: 'ai_chat_photo',
+    silent: 'the photo shows under the message box, ready to send',
+    logPayload: false,
+    mutationFn: file => shrinkPhoto(file, { maxBytes: CHAT_PHOTO_MAX_BYTES }),
+  })
+}
+
 /** Deletes a chat (softly) or brings it back: the delete flow asks, reports "Chat deleted · Undo" and calls these. */
 export function useDeleteChat() {
   return useMutationWithFeedback<{ id: string; title: string }, string>({
@@ -61,13 +78,17 @@ export interface AskAi {
   busy: boolean
   wall: 'ok' | 'near' | 'full'
   lastText: string | null
+  /** The kind of the chat on screen (a new chat takes the kind given to `newChat`). */
+  mode: ChatMode
+  /** What the chat was started with (frozen), once the function has made it; null for a chat not started yet. */
+  setup: ChatSetup | null
   /** `wall`: the chat is full, nothing was sent or stored (the caller keeps the message in the box). */
-  send: (text: string) => Promise<'sent' | 'wall'>
+  send: (text: string, photos?: readonly PhotoInput[]) => Promise<'sent' | 'wall'>
   /** Asks the last question again in the same place (no second bubble). */
   retry: () => Promise<void>
   /** Takes the last question and its failed answer out of the chat and returns the question, to edit it. */
   editLast: () => string | null
-  newChat: () => void
+  newChat: (mode?: ChatMode) => void
   open: (id: string) => Promise<void>
   decide: (cardId: string, decision: 'confirm' | 'cancel', edits?: { title?: string; date?: string }) => Promise<void>
   undo: (cardId: string) => Promise<void>
@@ -83,6 +104,10 @@ export function useAskAi(): AskAi {
   const [busy, setBusy] = useState(false)
   const [wall, setWall] = useState<'ok' | 'near' | 'full'>('ok')
   const [lastText, setLastText] = useState<string | null>(null)
+  const [mode, setMode] = useState<ChatMode>('chat')
+  const [setup, setSetup] = useState<ChatSetup | null>(null)
+  const modeRef = useRef<ChatMode>('chat')
+  const photosRef = useRef<readonly PhotoInput[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const counter = useRef(0)
   const idRef = useRef<string | null>(null)
@@ -108,14 +133,20 @@ export function useAskAi(): AskAi {
   }, [])
 
   /** One answer into the turn `answerKey` (a new one, or the failed one tried again). Returns whether the chat was full. */
-  const run = useCallback(async (text: string, answerKey: string, userKey: string | null): Promise<'sent' | 'wall'> => {
+  const run = useCallback(async (text: string, answerKey: string, userKey: string | null, photos: readonly PhotoInput[]): Promise<'sent' | 'wall'> => {
     setBusy(true)
     let hitWall = false
     const abort = new AbortController()
     abortRef.current = abort
     try {
-      await streamChat({ conversationId: idRef.current, text }, event => {
-        if (event.event === 'start') { idRef.current = event.conversationId; setConversationId(event.conversationId); return }
+      await streamChat({ conversationId: idRef.current, text, images: photos, mode: modeRef.current }, event => {
+        if (event.event === 'start') {
+          idRef.current = event.conversationId
+          setConversationId(event.conversationId)
+          // A chat the function just made: what it was started with is read once, so the panel can say which tools it has.
+          if (event.isNew) void fetchChatSetup(event.conversationId).then(found => { if (idRef.current === event.conversationId) setSetup(found) }).catch(() => undefined)
+          return
+        }
         if (event.event === 'done') {
           idRef.current = event.conversationId
           setConversationId(event.conversationId)
@@ -144,14 +175,15 @@ export function useAskAi(): AskAi {
     return hitWall ? 'wall' : 'sent'
   }, [loadCard, patchAnswer, qc])
 
-  const send = useCallback(async (raw: string): Promise<'sent' | 'wall'> => {
+  const send = useCallback(async (raw: string, photos: readonly PhotoInput[] = []): Promise<'sent' | 'wall'> => {
     const text = raw.trim()
     if (!text || busy) return 'sent'
     setLastText(text)
+    photosRef.current = photos
     const answerKey = nextKey('a')
     const userKey = nextKey('u')
-    setTurns(list => [...list, newTurn(userKey, 'user', text), newTurn(answerKey, 'assistant')])
-    return run(text, answerKey, userKey)
+    setTurns(list => [...list, { ...newTurn(userKey, 'user', text), photos: photos.length, photoUrls: photos.map(p => `data:${p.media_type};base64,${p.data}`) }, newTurn(answerKey, 'assistant')])
+    return run(text, answerKey, userKey, photos)
   }, [busy, run])
 
   const retry = useCallback(async () => {
@@ -160,7 +192,7 @@ export function useAskAi(): AskAi {
     if (busy || !lastText || !last || last.role !== 'assistant') return
     // The failed answer is reset where it stands: no second bubble.
     setTurns(l => l.map(t => (t.key === last.key ? newTurn(last.key, 'assistant') : t)))
-    await run(lastText, last.key, null)
+    await run(lastText, last.key, null, photosRef.current)
   }, [busy, lastText, run])
 
   const editLast = useCallback((): string | null => {
@@ -174,9 +206,13 @@ export function useAskAi(): AskAi {
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
-  const newChat = useCallback(() => {
+  const newChat = useCallback((kind: ChatMode = 'chat') => {
     abortRef.current?.abort()
     idRef.current = null
+    modeRef.current = kind
+    setMode(kind)
+    setSetup(null)
+    photosRef.current = []
     setConversationId(null)
     setTurns([])
     setWall('ok')
@@ -188,6 +224,10 @@ export function useAskAi(): AskAi {
     const rows = await qc.fetchQuery({ queryKey: qk.aiChat.turns(id), queryFn: () => fetchConversationRows(id), staleTime: 0 })
     idRef.current = id
     setConversationId(id)
+    modeRef.current = rows.setup?.mode ?? 'chat'
+    setMode(modeRef.current)
+    setSetup(rows.setup)
+    photosRef.current = []
     setTurns(turnsFromStored(rows.messages, rows.proposals))
     setWall(wallState(rows.lastPromptTokens, rows.status))
     setLastText(null)
@@ -225,5 +265,5 @@ export function useAskAi(): AskAi {
     } catch { /* the mutation said why; the card stays */ }
   }, [patchCard, undoMutation])
 
-  return { turns, conversationId, busy, wall, lastText, send, retry, editLast, newChat, open, decide, undo, stop }
+  return { turns, conversationId, busy, wall, lastText, mode, setup, send, retry, editLast, newChat, open, decide, undo, stop }
 }
