@@ -468,6 +468,15 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 204 (the AI keeps learning): the browser changes only a state and never reads a server-only column; the
+      # function can never turn on a rule or an instruction-like lesson; one active version per lesson; the rollback, the
+      # quarantine, the case search, the source counts, the dismissed suggestion as a correction, the purge and the timers.
+      # 204 runs twice: the catalogue must not change.
+      - name: AI learning database scenarios
+        run: node scripts/verify-db-ai-learning.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 200 (Trakt matching): the owner's own picks only (nobody else reads or changes them), ids that are positive
       # integers in range, one TMDB title per Trakt item and one Trakt item per title, owner lock, audit. 200 runs twice:
       # the catalogue must not change.

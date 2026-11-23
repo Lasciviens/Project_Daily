@@ -283,32 +283,36 @@ create or replace function public.ai_learn_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
   v_owner boolean := (select auth.uid()) is not null;
+  -- The rows as JSON: one function serves five tables, so a column only some of them have is read by name here.
+  v_new   jsonb := to_jsonb(new);
+  v_old   jsonb := case when tg_op = 'UPDATE' then to_jsonb(old) else null end;
   -- Generated columns are left out too: a BEFORE trigger does not see their new values yet.
   v_keep  text[] := array['state', 'state_changed_at', 'updated_at', 'approved_at', 'search', 'needs_owner'];
+  v_on    boolean := v_new->>'state' = 'active' and (v_old is null or v_old->>'state' is distinct from 'active');
 begin
-  if tg_op = 'UPDATE' and v_owner then
-    if (to_jsonb(new) - v_keep) is distinct from (to_jsonb(old) - v_keep) then
+  if v_old is not null and v_owner then
+    if (v_new - v_keep) is distinct from (v_old - v_keep) then
       raise exception '%: only the state can be changed here', tg_table_name using errcode = '42501';
     end if;
   end if;
-  if tg_table_name = 'ai_rules' and new.state = 'active' and not v_owner
-     and (tg_op = 'INSERT' or old.state is distinct from 'active' or new.value is distinct from old.value or new.match_key is distinct from old.match_key) then
+  if tg_table_name = 'ai_rules' and not v_owner and v_new->>'state' = 'active'
+     and (v_on or v_new->>'value' is distinct from v_old->>'value' or v_new->>'match_key' is distinct from v_old->>'match_key') then
     raise exception 'ai_rules: only the owner turns a rule on' using errcode = '42501';
   end if;
-  if tg_table_name = 'ai_lessons' and new.state = 'active' and (new.kind <> 'fact' or new.trust <> 'high') and not v_owner
-     and (tg_op = 'INSERT' or old.state is distinct from 'active') then
+  if tg_table_name = 'ai_lessons' and not v_owner and v_on and (v_new->>'kind' <> 'fact' or v_new->>'trust' <> 'high') then
     raise exception 'ai_lessons: only the owner turns this lesson on' using errcode = '42501';
   end if;
-  if tg_op = 'UPDATE' then
+  if tg_table_name in ('ai_rules', 'ai_lessons') then
+    -- When it was turned on, and only by the owner's tap; a row that is not on has no approval.
+    new := jsonb_populate_record(new, jsonb_build_object('approved_at',
+      case when v_new->>'state' <> 'active' then null
+           when v_on and v_owner then to_jsonb(now())
+           when v_on then null
+           else v_old->'approved_at' end));
+  end if;
+  if v_old is not null then
     new.updated_at := now();
-    if new.state is distinct from old.state then
-      new.state_changed_at := now();
-      if (tg_table_name = 'ai_rules' or tg_table_name = 'ai_lessons') then
-        new.approved_at := case when new.state = 'active' and v_owner then now() when new.state = 'active' then old.approved_at else null end;
-      end if;
-    end if;
-  elsif tg_table_name in ('ai_rules', 'ai_lessons') then
-    new.approved_at := case when new.state = 'active' and v_owner then now() else null end;
+    if v_new->>'state' is distinct from v_old->>'state' then new.state_changed_at := now(); end if;
   end if;
   return new;
 end $$;
@@ -317,7 +321,7 @@ revoke all on function public.ai_learn_guard() from public, anon, authenticated;
 create or replace function public.ai_lessons_one_active() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if new.state = 'active' and (tg_op = 'INSERT' or old.state is distinct from 'active') then
+  if new.state = 'active' and (tg_op = 'INSERT' or (to_jsonb(old)->>'state') is distinct from 'active') then
     update public.ai_lessons l set state = 'retired'
      where l.user_id = new.user_id and l.lesson_key = new.lesson_key and l.id <> new.id and l.state = 'active';
   end if;
