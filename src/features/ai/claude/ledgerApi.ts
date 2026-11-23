@@ -12,6 +12,7 @@ import type { AiCallWithText, AiCallsFilter, AiCallsPage, AiJobSettings, AiSetti
 // write that needs them names the migration. Remove these fallbacks once 195 is live.
 
 const NOT_MIGRATED_194 = 'AI settings are not available yet — migration 194 (ai_ledger) has not been applied.'
+const NOT_MIGRATED_198 = 'This setting is not available yet — migration 198 (ai_chat_controls) has not been applied.'
 const NOT_MIGRATED_195 = 'This setting is not available yet — migration 195 (ai_controls) has not been applied.'
 
 interface PgError { code?: string; message?: string }
@@ -118,4 +119,46 @@ export async function saveAiJobSettings(input: AiJobSettings): Promise<AiJobSett
   }
   if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_194) : error
   return input
+}
+
+// ── Ask AI's controls (migration 198) ───────────────────────────────────────
+// Both are the owner's to write and INPUT to the function, which takes only the tools and modes it knows and cleans the
+// words. Before 198 runs: a read answers with the defaults, a write names the migration (remove the guards once 198 is live).
+
+export type ToolMode = 'on' | 'ask' | 'off'
+
+/** The owner's stored mode for each tool they changed; none before 198. */
+export async function fetchToolSettings(): Promise<{ tool: string; mode: string }[]> {
+  const { data, error } = await supabase.from('ai_tool_settings').select('tool, mode')
+  if (error) {
+    if (isMissing(error)) return []
+    throw error
+  }
+  return (Array.isArray(data) ? data : []).flatMap(r => (typeof r.tool === 'string' && typeof r.mode === 'string' ? [{ tool: r.tool, mode: r.mode }] : []))
+}
+
+/** Saves the modes that changed (one row per tool). A write tool is never sent as `on`: the screen does not offer it, and the database and the function both refuse it. */
+export async function saveToolSettings(changes: readonly { tool: string; mode: ToolMode }[]): Promise<{ tool: string; mode: string }[]> {
+  const user = await requireUser()
+  const { error } = await supabase.from('ai_tool_settings').upsert(changes.map(c => ({ user_id: user.id, tool: c.tool, mode: c.mode })), { onConflict: 'user_id,tool' })
+  if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_198) : error
+  return changes.map(c => ({ tool: c.tool, mode: c.mode }))
+}
+
+/** The owner's own words for Ask AI, as typed ('' with none, and before 198). */
+export async function fetchChatInstructions(): Promise<string> {
+  const { data, error } = await supabase.from('ai_settings').select('chat_instructions').maybeSingle()
+  if (error) {
+    if (isMissing(error) || isMissingColumn(error)) return ''
+    throw error
+  }
+  return typeof data?.chat_instructions === 'string' ? data.chat_instructions : ''
+}
+
+/** Saves the words exactly as typed. A row for the account is made when there is none (its other settings take their defaults). */
+export async function saveChatInstructions(text: string): Promise<string> {
+  const user = await requireUser()
+  const { error } = await supabase.from('ai_settings').upsert({ user_id: user.id, chat_instructions: text }, { onConflict: 'user_id' })
+  if (error) throw isMissing(error) || isMissingColumn(error) ? new Error(NOT_MIGRATED_198) : error
+  return text
 }

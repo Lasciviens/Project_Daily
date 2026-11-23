@@ -77,13 +77,13 @@ export const AI_OVERVIEW_BOARD: BoardLayouts<AiOverviewSection> = {
 // Settings: the total budget and the text log first (a rail on the left from
 // the laptop — they frame every job), the jobs in main, over the rest of the
 // board from 1920 (a card per job, more across as the width grows).
-export const AI_SETTINGS_SECTIONS = ['general', 'jobs'] as const
+export const AI_SETTINGS_SECTIONS = ['general', 'tools', 'words', 'jobs'] as const
 export type AiSettingsSection = typeof AI_SETTINGS_SECTIONS[number]
 
 export const AI_SETTINGS_BOARD: BoardLayouts<AiSettingsSection> = {
-  1: ['general', 'jobs'],
-  2: { lead: 1, columns: [['general'], ['jobs']] },
-  3: { lead: 1, columns: [['general'], { stack: ['jobs'], span: 2 }] },
+  1: ['general', 'tools', 'words', 'jobs'],
+  2: { lead: 1, columns: [['general', 'words'], ['tools', 'jobs']] },
+  3: { lead: 1, columns: [['general', 'words'], { stack: ['tools', 'jobs'], span: 2 }] },
 }
 
 // Prices: the table in main; the worked example and why it is read-only beside it.
@@ -100,13 +100,13 @@ export const AI_PRICES_BOARD: BoardLayouts<AiPricesSection> = {
 // the check of the connection (Diagnose is for when that path misbehaves, so it follows the path); what is still on
 // Gemini comes before the jobs. From the laptop the path, Diagnose and the jobs (the long reads) keep main, with
 // the key, Gemini's leftovers, the parts, the fixed rules and the glossary beside them.
-export const AI_HOW_SECTIONS = ['status', 'steps', 'diagnose', 'gemini', 'jobs', 'parts', 'rules', 'glossary'] as const
+export const AI_HOW_SECTIONS = ['status', 'steps', 'diagnose', 'chat', 'gemini', 'jobs', 'parts', 'rules', 'glossary'] as const
 export type AiHowSection = typeof AI_HOW_SECTIONS[number]
 
 export const AI_HOW_BOARD: BoardLayouts<AiHowSection> = {
-  1: ['status', 'steps', 'diagnose', 'gemini', 'jobs', 'parts', 'rules', 'glossary'],
-  2: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'gemini', 'parts', 'rules', 'glossary']] },
-  3: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'gemini', 'parts'], ['rules', 'glossary']] },
+  1: ['status', 'steps', 'diagnose', 'chat', 'gemini', 'jobs', 'parts', 'rules', 'glossary'],
+  2: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'gemini', 'parts', 'rules', 'glossary']] },
+  3: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'gemini', 'parts'], ['rules', 'glossary']] },
 }
 
 // Test bench: the question and its pick first, the answer beside it from the laptop (their own tracks from 1920).

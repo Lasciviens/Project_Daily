@@ -7,6 +7,39 @@ export const CHAT_WALL_TOKENS = 90_000
 export const CHAT_WARN_TOKENS = 70_000
 /** The longest message the function takes. */
 export const CHAT_TEXT_MAX = 4000
+/** Photos: the function's limits (verify-ai-chat-ui compares them). A photo stays in the stored chat, so a chat holds few. */
+export const CHAT_IMAGES_PER_MESSAGE = 2
+export const CHAT_IMAGES_PER_CHAT = 4
+/** One shrunk photo as base64 text (the function refuses more); the bytes are ¾ of it. */
+export const CHAT_PHOTO_BASE64_MAX = 450_000
+export const CHAT_PHOTO_MAX_BYTES = Math.floor(CHAT_PHOTO_BASE64_MAX * 0.75) - 1000
+/** The owner's own instructions: the most characters (the database and the function say the same). */
+export const CHAT_INSTRUCTIONS_MAX = 1000
+
+export type ChatMode = 'chat' | 'coach'
+
+/** The tools in plain words, for the settings card and for "the tools in this chat". Names the app does not know show as they are. */
+export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
+  get_day_plan: { label: 'Day plan', what: "Reads a day's tasks and scheduled blocks." },
+  get_week_figures: { label: 'Week figures', what: "Reads a week's training, health, food and task figures." },
+  get_food_day: { label: 'Food day', what: "Reads one day's food and water against your targets." },
+  find_text: { label: 'Find text', what: 'Searches your tasks and diary lines by words.' },
+  get_about_me: { label: 'About me', what: 'Reads the notes you saved about yourself (Developer → Memory).' },
+  ask_database: { label: 'Ask the database', what: 'The last resort: one read-only database question when no other tool fits.' },
+  propose_add_task: { label: 'Propose a task', what: 'Proposes a new task. Nothing is saved until you tap Confirm.' },
+  propose_log_food: { label: 'Propose a food line', what: 'Proposes a food line. Nothing is saved until you tap Confirm.' },
+  get_training_week: { label: 'Training week', what: "Reads a week's sessions, sets, muscles and key lifts." },
+  get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
+  get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
+}
+export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
+
+/** The words in the box with what was just spoken added after them (one space between, nothing doubled). */
+export function joinSpoken(typed: string, spoken: string): string {
+  const said = spoken.replace(/\s+/g, ' ').trim()
+  if (!said) return typed
+  return (typed && !/\s$/.test(typed) ? `${typed} ` : typed) + said
+}
 
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
 
@@ -52,6 +85,8 @@ export interface ChatTurn {
   cutOff: boolean
   /** A lookup just happened: the next text starts a new paragraph. */
   pendingBreak?: boolean
+  /** How many photos went with this message (a person's turn). */
+  photos: number
 }
 
 /** The only events the function sends. */
@@ -152,7 +187,7 @@ export function parseSse(buffer: string): { events: { name: string; data: unknow
 }
 
 export const newTurn = (key: string, role: ChatTurn['role'], text = ''): ChatTurn =>
-  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false })
+  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false, photos: 0 })
 
 /**
  * The answer's turn after one more event. Text from a later request of the same answer (after a lookup) starts a new
@@ -270,6 +305,7 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
+  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts",
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
@@ -288,7 +324,9 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
       const typed = typedText(m.content)
       if (typed === null) continue // the tool results of an answer in progress
       answer = null
-      turns.push(newTurn(`u${m.seq}`, 'user', typed))
+      const turn = newTurn(`u${m.seq}`, 'user', typed)
+      turn.photos = Array.isArray(m.content) ? m.content.filter(b => isBlock(b) && b.type === 'image').length : 0
+      turns.push(turn)
       continue
     }
     if (!Array.isArray(m.content)) continue

@@ -5,6 +5,8 @@ import { applyAccent, DEFAULT_ACCENT, resolveAccent, type AccentName } from '../
 interface UIState {
   isDevRequestsOpen: boolean
   isAIOpen:        boolean
+  // Training → Coach asks the panel for a coach chat: `n` counts the asks, so the panel starts one each time.
+  aiRequest:       { mode: 'coach'; n: number } | null
   isCommandBarOpen:boolean
   // Global chrome scroll cues (mobile hide-on-scroll header + scroll-depth
   // shadow), driven by <main>'s scroll.
@@ -14,6 +16,7 @@ interface UIState {
   closeDevRequests:  () => void
   toggleAI:      () => void
   openAI:        () => void
+  openCoachChat: () => void
   closeAI:       () => void
   openCommandBar:  () => void
   closeCommandBar: () => void
@@ -28,6 +31,7 @@ let lastChromeY = 0
 export const useUIStore = create<UIState>((set) => ({
   isDevRequestsOpen: false,
   isAIOpen:         false,
+  aiRequest:        null,
   isCommandBarOpen: false,
   chromeHidden:     false,
   chromeScrolled:   false,
@@ -35,6 +39,7 @@ export const useUIStore = create<UIState>((set) => ({
   closeDevRequests:  () => set({ isDevRequestsOpen: false }),
   toggleAI:      () => set(s => ({ isAIOpen: !s.isAIOpen, isDevRequestsOpen: false })),
   openAI:        () => set({ isAIOpen: true,  isDevRequestsOpen: false }),
+  openCoachChat: () => set(s => ({ isAIOpen: true, isDevRequestsOpen: false, aiRequest: { mode: 'coach', n: (s.aiRequest?.n ?? 0) + 1 } })),
   closeAI:       () => set({ isAIOpen: false }),
   openCommandBar:  () => set({ isCommandBarOpen: true }),
   closeCommandBar: () => set({ isCommandBarOpen: false }),

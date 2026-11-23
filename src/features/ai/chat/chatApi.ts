@@ -1,7 +1,7 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { isSessionRefusal, parseSse, readChatEvent, sendWithSession, type ChatEvent, type StoredMessageRow, type StoredProposalRow } from './chatRules'
+import { isSessionRefusal, parseSse, readChatEvent, sendWithSession, type ChatEvent, type ChatMode, type StoredMessageRow, type StoredProposalRow } from './chatRules'
 
 // The app's door to Ask AI (the `claude` function, job `chat`, migration 197). The answer streams in as server-sent
 // events, so it goes through `fetch` (supabase.functions.invoke cannot stream). The owner's sign-in token is the only
@@ -25,7 +25,7 @@ export class ChatError extends Error {
  * function refused before streaming (a bad sign-in, a body it will not read) throws a ChatError; an error inside the
  * stream arrives as an `error` event (the caller shows it).
  */
-export async function streamChat(input: { conversationId: string | null; text: string }, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<void> {
+export async function streamChat(input: { conversationId: string | null; text: string; images?: readonly { media_type: 'image/jpeg'; data: string }[]; mode?: ChatMode }, onEvent: (event: ChatEvent) => void, signal: AbortSignal): Promise<void> {
   // The token is read right before each request: getSession() refreshes an expired one, and a 401 gets one refresh and one retry.
   let res: Response | null
   try {
@@ -35,7 +35,7 @@ export async function streamChat(input: { conversationId: string | null; text: s
       send: token => fetch(`${SUPABASE_URL}/functions/v1/claude`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: SUPABASE_KEY },
-        body: JSON.stringify({ action: 'chat', stream: true, conversation_id: input.conversationId, text: input.text }),
+        body: JSON.stringify({ action: 'chat', stream: true, conversation_id: input.conversationId, text: input.text, ...(input.images?.length ? { images: input.images } : {}), ...(input.conversationId === null && input.mode === 'coach' ? { mode: 'coach' } : {}) }),
         signal,
       }),
     })
@@ -138,12 +138,27 @@ export async function fetchConversations(): Promise<ConversationListItem[]> {
     : [])
 }
 
+/** What a chat was started with (frozen by the function): its kind, its tools and whether the owner's own words were in it. */
+export interface ChatSetup { mode: ChatMode; toolNames: string[]; ownInstructions: boolean }
+
+const isMissingColumn = (e: PgError | null): boolean => !!e && (e.code === '42703' || e.code === 'PGRST204')
+
+/** The setup of one chat. Before migration 198 there is no kind and no frozen words: the everyday chat with no words of the owner's. */
+export async function fetchChatSetup(id: string): Promise<ChatSetup | null> {
+  let { data, error } = await supabase.from('ai_conversations').select('mode, tool_names, owner_instructions').eq('id', id).maybeSingle()
+  if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_conversations').select('tool_names').eq('id', id).maybeSingle() as unknown as { data: typeof data; error: typeof error })
+  if (error || !data) return null
+  const names = Array.isArray(data.tool_names) ? data.tool_names.filter((n: unknown): n is string => typeof n === 'string').slice(0, 20) : []
+  return { mode: data.mode === 'coach' ? 'coach' : 'chat', toolNames: names, ownInstructions: typeof data.owner_instructions === 'string' && data.owner_instructions !== '' }
+}
+
 /** A chat's stored messages and proposals, for drawing it. */
-export async function fetchConversationRows(id: string): Promise<{ messages: StoredMessageRow[]; proposals: StoredProposalRow[]; status: string; lastPromptTokens: number }> {
-  const [messages, proposals, conversation] = await Promise.all([
+export async function fetchConversationRows(id: string): Promise<{ messages: StoredMessageRow[]; proposals: StoredProposalRow[]; status: string; lastPromptTokens: number; setup: ChatSetup | null }> {
+  const [messages, proposals, conversation, setup] = await Promise.all([
     supabase.from('ai_messages').select('seq, role, content, meta').eq('conversation_id', id).order('seq', { ascending: true }).limit(600),
     supabase.from('ai_chat_proposals').select('id, tool_use_id, tool, summary, status, expires_at, args, result_id').eq('conversation_id', id).limit(100),
     supabase.from('ai_conversations').select('status, last_prompt_tokens').eq('id', id).maybeSingle(),
+    fetchChatSetup(id),
   ])
   for (const r of [messages, proposals, conversation]) if (r.error) throw r.error
   return {
@@ -151,6 +166,7 @@ export async function fetchConversationRows(id: string): Promise<{ messages: Sto
     proposals: (proposals.data ?? []) as StoredProposalRow[],
     status: String(conversation.data?.status ?? 'open'),
     lastPromptTokens: Number(conversation.data?.last_prompt_tokens) || 0,
+    setup,
   }
 }
 

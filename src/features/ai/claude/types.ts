@@ -95,6 +95,9 @@ export interface DescribeJob {
   sourceFiles: string[]
 }
 
+/** One chat tool as the function lists it for the settings screen: its kind, what it starts as, and which chats have it. */
+export interface DescribeChatTool { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach')[] }
+
 /** What the function says about itself (`{ action: 'describe' }`): its own lists, limits, prices and jobs. */
 export interface Describe {
   configured: boolean
@@ -103,6 +106,8 @@ export interface Describe {
   efforts: string[]
   limits: DescribeLimits
   defaults: { monthlyBudgetUsd: number; logText: boolean; logDays: number }
+  /** Ask AI: the tools and the limits of the owner's own words and photos (from the function: never a list of the app's own). */
+  chat: { tools: DescribeChatTool[]; limits: { ownerInstructionsMax: number; imagesPerMessage: number; imagesPerChat: number; imageBase64Max: number; photoLongSide: number } }
   prices: DescribePrices
   jobs: DescribeJob[]
   steps: { title: string; text: string; part: string }[]

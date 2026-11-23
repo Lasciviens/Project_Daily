@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { ChevronDown, Play, RefreshCw } from 'lucide-react'
+import { ChevronDown, MessageCircle, Play, RefreshCw } from 'lucide-react'
 import type { PTAssessmentRow } from '../api/ptCoachApi'
 import { usePtAssessments, useGeneratePtAssessment } from '../hooks/usePtCoach'
 import { Button, Card, PageBoard, SectionLabel, Truncate } from '../../../shared/ui'
+import { useUIStore } from '../../../app/store'
 import { COACH_BOARD } from '../trainingBoards'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ProfileSummaryCard } from './program/ProfileSummaryCard'
@@ -59,6 +60,7 @@ export function PTCoachTab() {
   const [localResult, setLocalResult] = useState<{ text: string; model: string | null } | null>(null)
   const { data: history = [] } = usePtAssessments()
   const generate = useGeneratePtAssessment()
+  const openCoachChat = useUIStore(s => s.openCoachChat)
 
   // Latest of today = the "current" assessment; everything else is history.
   const dbCurrent: PTAssessmentRow | undefined = history.find(a => a.date === today)
@@ -109,15 +111,18 @@ export function PTCoachTab() {
             />
           </div>
 
-          <Button
-            variant="primary"
-            className="self-start"
-            loading={generate.isPending}
-            icon={current ? <RefreshCw /> : <Play />}
-            onClick={run}
-          >
-            {generate.isPending ? 'Assessing…' : current ? 'Re-assess' : 'Assess'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              loading={generate.isPending}
+              icon={current ? <RefreshCw /> : <Play />}
+              onClick={run}
+            >
+              {generate.isPending ? 'Assessing…' : current ? 'Re-assess' : 'Assess'}
+            </Button>
+            {/* Ask AI in coach mode: the same chat, with the coach's own instructions and tools (it changes nothing). */}
+            <Button variant="secondary" icon={<MessageCircle />} onClick={openCoachChat}>Chat with the coach</Button>
+          </div>
 
           {current && (
             <div className="border-t border-line pt-3">

@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Card, PageBoard, SectionLabel, Skeleton, Switch } from '../../../../shared/ui'
 import { useRememberedCount } from '../../../../shared/hooks/useLayoutMemory'
-import { useAiJobSettings, useAiSettings, useClaudeDescribe, useSaveAiSettings } from '../../../ai/claude/hooks/useClaude'
+import { useAiJobSettings, useAiSettings, useChatInstructions, useClaudeDescribe, useSaveAiSettings, useToolSettings } from '../../../ai/claude/hooks/useClaude'
 import { formatUsd, jobSettingsOf, readIntInput, readSettings, readUsdInput } from '../../../ai/claude/ledgerRules'
 import type { AiSettings, Describe } from '../../../ai/claude/types'
 import { AI_SETTINGS_BOARD, type AiSettingsSection } from '../../developerBoards'
 import { AiJobSettingsCard } from './AiJobSettingsCard'
+import { ChatInstructionsCard, ChatToolsCard } from './AiChatControls'
 import { ReadFailed, Term } from './aiBits'
 
 // Developer → AI → Settings: the master switch, the total monthly budget, the text log, and each job's own settings. Every choice
@@ -91,6 +92,8 @@ export function AiSettingsView() {
   const about = useClaudeDescribe()
   const settings = useAiSettings()
   const jobSettings = useAiJobSettings()
+  const toolSettings = useToolSettings()
+  const instructions = useChatInstructions()
   const jobs = about.data?.jobs ?? []
   const jobsRoom = useRememberedCount('ai:settingsJobs', jobs.length, !about.isLoading && !about.isError, 1)
 
@@ -106,6 +109,16 @@ export function AiSettingsView() {
       : !about.data || !stored
         ? <Skeleton rounded="rounded-card" className="h-[26rem] w-full" />
         : <GeneralForm key={`${stored.monthly_budget_usd}|${stored.log_text}|${stored.log_days}|${stored.ai_enabled}`} stored={stored} about={about.data} />,
+    tools: toolSettings.isError
+      ? <ReadFailed what="your chat tool settings" error={toolSettings.error} onRetry={() => { void toolSettings.refetch() }} retrying={toolSettings.isFetching} />
+      : !about.data || !toolSettings.isSuccess
+        ? <Skeleton rounded="rounded-card" className="h-[30rem] w-full" />
+        : <ChatToolsCard key={JSON.stringify(toolSettings.data)} about={about.data} stored={toolSettings.data} />,
+    words: instructions.isError
+      ? <ReadFailed what="your instructions" error={instructions.error} onRetry={() => { void instructions.refetch() }} retrying={instructions.isFetching} />
+      : !about.data || !instructions.isSuccess
+        ? <Skeleton rounded="rounded-card" className="h-[14rem] w-full" />
+        : <ChatInstructionsCard key={instructions.data} about={about.data} stored={instructions.data} />,
     jobs: jobSettings.isError
       ? <ReadFailed what="the jobs’ settings" error={jobSettings.error} onRetry={() => { void jobSettings.refetch() }} retrying={jobSettings.isFetching} />
       : (
