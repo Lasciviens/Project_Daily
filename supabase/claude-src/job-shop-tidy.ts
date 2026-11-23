@@ -81,7 +81,7 @@ function readTidy(answerText: string, current: { name: string; brand: string; mo
 export const SHOP_TIDY_JOB: JobDefinition = {
   name: 'shop_tidy',
   title: 'Tidy up a thing\'s product info',
-  what: 'In Shop, "Tidy up info" (one thing) and "Tidy up product info" (all your things) suggests a cleaner name ("Brand Model variant, colour", in the store\'s own words), a brand, a model and one of your own categories for each thing. It may search the web (at most 2 searches, $0.01 each) to confirm the brand and model. It may also name the product's own page (only an address its search returned), which the app reads for a picture. It touches nothing else: no price or date. You review each field, before and after, and nothing is saved without your tap.',
+  what: 'In Shop, "Tidy up info" (one thing) and "Tidy up product info" (all your things) suggests a cleaner name ("Brand Model variant, colour", in the store\'s own words), a brand, a model and one of your own categories for each thing. It may search the web (at most 2 searches, $0.01 each) to confirm the brand and model. It may also name the product page (only addresses its search returned), which the app reads for a picture. It touches nothing else: no price or date. You review each field, before and after, and nothing is saved without your tap.',
   kind: 'one_shot',
   callers: ['app'],
   version: TIDY_VERSION,
