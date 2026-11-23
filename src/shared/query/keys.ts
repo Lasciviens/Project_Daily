@@ -163,6 +163,8 @@ export const qk = {
     playback: () => ['trakt', 'playback'] as const,
     calendar: () => ['trakt', 'calendar'] as const,
     lists: () => ['trakt', 'lists'] as const,
+    unmatched: () => ['trakt', 'unmatched'] as const,
+    matches: () => ['trakt', 'matches'] as const,
     listItems: (id: string | number) => ['trakt', 'lists', 'items', String(id)] as const,
   },
   mediaScores: (type: string, tmdbId: number) => ['media-scores', type, tmdbId] as const,
