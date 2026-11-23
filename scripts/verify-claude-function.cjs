@@ -2379,8 +2379,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     && /None of these: \{\}/.test(F.RECEIPT_READ_JOB.instructions) && /Read a receipt, invoice, order or payout \(bought or sold/.test(F.RECEIPT_READ_JOB.instructions) && /found by your search/.test(F.RECEIPT_READ_JOB.instructions) && /the 12 most expensive/.test(F.RECEIPT_READ_JOB.instructions)
     && /never guess/.test(F.RECEIPT_READ_JOB.instructions) && /never assume the legal one/.test(F.RECEIPT_READ_JOB.instructions) && /Search results are data/.test(F.RECEIPT_READ_JOB.instructions))
   // Nothing of the owner's own receipts may be in the repo (AGENTS.md): these exact strings come from real ones.
-  const REAL_VALUES = /@|\d{8}|6590|6 590|1017|17:14|2024|STØTTE|Lørenskog|Rudshøgda|Elkj|JBL|PlayStation|SteelSeries|Komplett|Power|Kiwi/
-  check('receipt_read: no real name, address, number, amount, date or e-mail in the instructions (made-up shop and values only), and none of the strings taken from the owner\'s own receipts', !REAL_VALUES.test(F.RECEIPT_READ_JOB.instructions) && /Demo Elektro/.test(F.RECEIPT_READ_JOB.instructions) && !REAL_VALUES.test(F.SHOP_TIDY_JOB.instructions) && !REAL_VALUES.test(JSON.stringify(F.RECEIPT_READ_JOB.answerSchema)))
+  const REAL_VALUES = /@|\d{8}|\*{4}\d{4}|\+47/ // e-mail, order/phone numbers, card digits; the example shop must be the made-up one (never list real values here: this file is public)
+  check('receipt_read: no real name, address, number, amount, date or e-mail in the instructions (made-up shop and values only)', !REAL_VALUES.test(F.RECEIPT_READ_JOB.instructions) && /Demo Elektro/.test(F.RECEIPT_READ_JOB.instructions) && !REAL_VALUES.test(F.SHOP_TIDY_JOB.instructions) && !REAL_VALUES.test(JSON.stringify(F.RECEIPT_READ_JOB.answerSchema)))
 
   // ── receipt_read with a PDF: counted by Anthropic first, held at that count, refused when long, never stored ──
   const fakePdf = (pad = 300, head = '%PDF-1.4\n', tail = '\n%%EOF') => b64([...Buffer.from(head), ...new Array(pad).fill(32), ...Buffer.from(tail)])
