@@ -360,11 +360,6 @@ function departureRows(calls: unknown, mode: string, day: string, now: Date): De
   return rows.sort((a, b) => a.at - b.at).slice(0, TRANSIT_LIMITS.departures)
 }
 
-/** The departure lines alone (the tests read these). */
-export function departureLines(calls: unknown, mode: string, day: string, now: Date): string[] {
-  return departureRows(calls, mode, day, now).map(r => r.text)
-}
-
 async function departures(place: Place, when: { at: Date; day: string; asked: boolean }, mode: string, now: Date, io: TransitIo): Promise<Success | Failure> {
   let stop = place
   let near = ''
