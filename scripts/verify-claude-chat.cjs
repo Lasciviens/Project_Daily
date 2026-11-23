@@ -50,7 +50,7 @@ const SDK_NAMES = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError
   'ContentTooLargeError', 'InternalServerError', 'NotFoundError', 'OverloadedError', 'PermissionDeniedError', 'RateLimitError', 'UnprocessableEntityError']
 const builtSource = fs.readFileSync(path.join(REPO, 'supabase/functions/claude/index.ts'), 'utf8')
 const builtCode = sucrase.transform(builtSource.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''), { transforms: ['typescript'] }).code
-const EXPOSED = ['checkedProposal', 'toolModes', 'toolsForNewChat', 'chatToolsNamed', 'allChatTools', 'runChatTool', 'canonicalJson', 'messageDigest', 'liveContextText', 'needsLiveContext', 'CHAT_LIMITS', 'CHAT_TOOL_ORDER', 'ALL_TOOL_ORDER', 'COACH_ONLY_TOOL_NAMES', 'promptChars', 'verdictLines', 'phoneToolNames', 'COACH_TOOL_ORDER', 'cleanOwnerInstructions', 'ownerInstructionsBlock', 'COACH_SYSTEM', 'systemFor', 'readChatControls', 'phoneChatTools', 'runPhoneTool', 'runPhoneAsk', 'KNOWN_TOOL_NAMES', 'READ_TOOL_NAMES', 'WRITE_TOOL_NAMES', 'cleanChatText', 'sqlFingerprint', 'figuresText', 'dataLine', 'realDay', 'CHAT_SYSTEM', 'TOOL_DEFAULTS', 'sha256Hex', 'describeFunction', 'chatToolKind']
+const EXPOSED = ['checkedProposal', 'toolModes', 'toolsForNewChat', 'chatToolsNamed', 'allChatTools', 'runChatTool', 'canonicalJson', 'messageDigest', 'liveContextText', 'needsLiveContext', 'CHAT_LIMITS', 'CHAT_TOOL_ORDER', 'ALL_TOOL_ORDER', 'COACH_ONLY_TOOL_NAMES', 'promptChars', 'verdictLines', 'phoneToolNames', 'COACH_TOOL_ORDER', 'cleanOwnerInstructions', 'ownerInstructionsBlock', 'COACH_SYSTEM', 'systemFor', 'readChatControls', 'phoneChatTools', 'runPhoneTool', 'runPhoneAsk', 'KNOWN_TOOL_NAMES', 'READ_TOOL_NAMES', 'WRITE_TOOL_NAMES', 'cleanChatText', 'sqlFingerprint', 'figuresText', 'dataLine', 'realDay', 'CHAT_SYSTEM', 'TOOL_DEFAULTS', 'sha256Hex', 'describeFunction', 'chatToolKind', 'checkedIdea', 'ideaKey', 'SUGGEST_LIMITS']
 const FIXED_NOW = new Date('2026-11-22T13:30:00Z') // Sunday 22.11.2026, 14:30 in Oslo
 class FixedDate extends Date { constructor(...a) { if (a.length) super(...a); else super(FixedDate.at) } }
 FixedDate.at = FIXED_NOW.getTime()
@@ -75,7 +75,7 @@ function makeWorld(over = {}) {
     allowed: new Set(over.allowed ?? [GUEST]),
     gate: over.gate ?? [GATE], account: over.account ?? null, jobRow: over.jobRow ?? null,
     tables: structuredClone(over.tables ?? {}),
-    ops: [], rpcs: [], reserves: [], events: [], logs: [], clients: [],
+    ops: [], rpcs: [], reserves: [], events: [], logs: [], clients: [], noted: [], noteAnswer: over.noteAnswer ?? 'added',
     findText: over.findText ?? [], findTextError: over.findTextError ?? null, sql: over.sql ?? (() => ({ data: [], error: null })),
     conflictOnMessage: over.conflictOnMessage ?? null, toolRows: over.toolRows ?? null, toolRowsError: over.toolRowsError ?? false,
   }
@@ -162,6 +162,8 @@ function fakeCreateClient(world) {
       }
     } else {
       client.rpc = async (name, args) => {
+        // The suggestions list: written only through the service-role function.
+        if (name === 'ai_suggestion_add') { world.noted.push(structuredClone(args)); return { data: world.noteAnswer, error: null } }
         if (name !== 'ai_reserve') throw new Error(`unexpected admin rpc ${name}`)
         world.reserves.push(structuredClone(args)); world.events.push('reserve')
         const calls = rowsOf(world, 'ai_calls')
@@ -274,9 +276,9 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   // ═══ 1 · the tools ═══════════════════════════════════════════════════════
   section('1 · the tools')
   const tools = allChatTools()
-  check('at most 12 tools in one chat: eight in the everyday chat, five in the coach chat, eleven the code knows (4b)', tools.length === 11 && tools.filter(t => probe.CHAT_TOOL_ORDER.includes(t.name)).length === 8 && probe.COACH_TOOL_ORDER.length === 5 && tools.length <= 12, tools.map(t => t.name))
-  check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.ALL_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.ALL_TOOL_ORDER].sort()) && same(probe.ALL_TOOL_ORDER.slice(0, 8), probe.CHAT_TOOL_ORDER), probe.KNOWN_TOOL_NAMES)
-  check('the coach chat has no write tool and no SQL tool', probe.COACH_TOOL_ORDER.every(n => probe.chatToolKind(n) === 'read' && n !== 'ask_database') && same(probe.COACH_TOOL_ORDER, ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts']))
+  check('at most 20 tools (Anthropic\'s strict limit): nine in the everyday chat (eight + the note tool), six in the coach chat, twelve the code knows (4c)', tools.length === 12 && tools.filter(t => probe.CHAT_TOOL_ORDER.includes(t.name)).length === 9 && probe.COACH_TOOL_ORDER.length === 6 && tools.length <= 20, tools.map(t => t.name))
+  check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.ALL_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.ALL_TOOL_ORDER].sort()) && same(probe.ALL_TOOL_ORDER.slice(0, 8), [...probe.READ_TOOL_NAMES, ...probe.WRITE_TOOL_NAMES]) && probe.ALL_TOOL_ORDER[probe.ALL_TOOL_ORDER.length - 1] === 'note_shortcut', probe.KNOWN_TOOL_NAMES)
+  check('the coach chat has no write tool and no SQL tool', probe.COACH_TOOL_ORDER.every(n => probe.chatToolKind(n) === 'read' && n !== 'ask_database') && same(probe.COACH_TOOL_ORDER, ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut']))
   check('six read tools and two write tools, and the write tools are the two proposals', same(probe.READ_TOOL_NAMES, ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database']) && same(probe.WRITE_TOOL_NAMES, ['propose_add_task', 'propose_log_food']) && probe.WRITE_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'write') && probe.READ_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'read'))
   const schemaText = JSON.stringify(tools)
   check('every field is described with a plain type and no limit, format, pattern, default, union or null (the schemas stay small and flat)', !/"(minimum|maximum|minLength|maxLength|format|pattern|default|anyOf|oneOf|allOf|nullable|minItems|maxItems)"/.test(schemaText) && !/"type":\[/.test(schemaText) && tools.every(t => Object.values(t.properties).every(p => ['string', 'number', 'integer'].includes(p.type))), schemaText.slice(0, 300))
@@ -323,7 +325,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   const m1 = probe.toolModes({ get_day_plan: 'off', propose_add_task: 'on', find_text: 'Off', bogus: 'on', propose_log_food: 'off', get_food_day: { x: 1 } })
   check('stored choices: a read tool may be off, a write tool is never "on" (it stays ask), a wrong word or an unknown tool is ignored', m1.get_day_plan === 'off' && m1.propose_add_task === 'ask' && m1.find_text === 'on' && m1.propose_log_food === 'off' && m1.get_food_day === 'on' && !('bogus' in m1), m1)
   check('defaults live in code: reads on, writes ask first', probe.READ_TOOL_NAMES.every(n => probe.TOOL_DEFAULTS[n] === 'on') && probe.WRITE_TOOL_NAMES.every(n => probe.TOOL_DEFAULTS[n] === 'ask'))
-  check('a new chat leaves off tools out, in the fixed order', same(probe.toolsForNewChat(m1), ['get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task']), probe.toolsForNewChat(m1))
+  check('a new chat leaves off tools out, in the fixed order', same(probe.toolsForNewChat(m1), ['get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'note_shortcut']), probe.toolsForNewChat(m1))
   out = await run(wChoice, 'get_day_plan', { date: '' }, probe.toolsForNewChat(m1), m1)
   check('an off tool is refused even when the model calls it', out.ok === false && /not available in this chat/.test(out.message), out)
   out = await run(wChoice, 'get_day_plan', { date: '' }, ['find_text'], modes)
@@ -399,7 +401,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   check('the user message is stored as sent (date block, then the words); its meta says when the date was given', same(stored[0].content, body0.messages[0].content) && typeof stored[0].meta.live_at === 'string')
   check('the answer is stored exactly as received: the thinking block WITH its signature, then the text', same(stored[1].content, [{ type: 'thinking', thinking: 'Short thought.', signature: 'sig-abc' }, { type: 'text', text: 'Hello.', citations: [] }].map(b => b.type === 'text' ? { ...stored[1].content[1] } : b)) && stored[1].content[0].signature === 'sig-abc' && stored[1].content[1].text === 'Hello.', stored[1].content)
   const rows = callsOf(w1)
-  check('one ledger row for the round: job chat, step 1, the run id of the answer, ok, real tokens and cost, tied to the answer message', rows.length === 1 && rows[0].job === 'chat' && rows[0].step === 1 && rows[0].run_id === final(first).run_id && rows[0].outcome === 'ok' && rows[0].input_tokens === 200 && rows[0].cache_read_tokens === 3000 && rows[0].output_tokens === 300 && rows[0].cost_usd > 0 && rows[0].cost_usd < 0.01 && rows[0].instructions_version === '2026-11-23.1' && stored[1].call_id === rows[0].id && rows[0].user_id === OWNER, rows[0])
+  check('one ledger row for the round: job chat, step 1, the run id of the answer, ok, real tokens and cost, tied to the answer message', rows.length === 1 && rows[0].job === 'chat' && rows[0].step === 1 && rows[0].run_id === final(first).run_id && rows[0].outcome === 'ok' && rows[0].input_tokens === 200 && rows[0].cache_read_tokens === 3000 && rows[0].output_tokens === 300 && rows[0].cost_usd > 0 && rows[0].cost_usd < 0.01 && rows[0].instructions_version === '2026-11-23.3' && stored[1].call_id === rows[0].id && rows[0].user_id === OWNER, rows[0])
   check('the text log (on by default) keeps the round\'s settings, never the key, and the thinking summary', rows[0].request?.conversation_id === conv.id && rows[0].request.user_text === 'Hello there' && rows[0].request.sent_to_provider?.betas?.length === 2 && rows[0].thinking === 'Short thought.' && leaks(JSON.stringify(rows), first.text, w1.logs).length === 0)
   check('the conversation row is updated: counters, the last prompt size and the cost', conv.last_prompt_tokens === 3200 && conv.cost_usd > 0)
   check('the ledger rows and messages were written by the service client only; the owner\'s client wrote nothing but reads', w1.ops.filter(o => o.who === 'user').every(o => o.mode === 'select') && w1.ops.filter(o => o.who === 'admin' && o.mode !== 'select').every(o => ['ai_conversations', 'ai_messages', 'ai_calls', 'ai_chat_proposals'].includes(o.table)))
@@ -963,7 +965,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   section('12 · describe, the date line, the walls\' words')
   const about = probe.describeFunction(true, { name: 'anthropic', sdk: 'x', apiVersion: 'y', endpoint: 'z' })
   const chatJob = about.jobs.find(j => j.name === 'chat')
-  check('Developer → AI describes the chat as a conversation job: app only, medium effort, Haiku, no answer shape, and lists its eleven tools (eight of the chat, three of the coach) with what each does', chatJob && chatJob.kind === 'conversation' && same(chatJob.callers, ['app']) && chatJob.defaults.effort === 'medium' && chatJob.defaults.model === 'claude-haiku-5-5' && chatJob.defaults.maxOutputTokens >= 6000 && chatJob.answerSchema === null && chatJob.tools.length === 11 && chatJob.tools.filter(t => /PROPOSES a write/.test(t.what)).length === 2 && chatJob.sourceFiles.every(f => fs.existsSync(path.join(REPO, f))), chatJob && chatJob.tools.map(t => t.name))
+  check('Developer → AI describes the chat as a conversation job: app only, medium effort, Haiku, no answer shape, and lists its twelve tools (nine of the chat, three of the coach) with what each does', chatJob && chatJob.kind === 'conversation' && same(chatJob.callers, ['app']) && chatJob.defaults.effort === 'medium' && chatJob.defaults.model === 'claude-haiku-5-5' && chatJob.defaults.maxOutputTokens >= 6000 && chatJob.answerSchema === null && chatJob.tools.length === 12 && chatJob.tools.filter(t => /PROPOSES a write/.test(t.what)).length === 2 && chatJob.sourceFiles.every(f => fs.existsSync(path.join(REPO, f))), chatJob && chatJob.tools.map(t => t.name))
   check('the description lists the new parts and the files exist', ['chat rules', 'chat tools', 'chat store', 'chat loop'].every(p => about.parts.some(x => x.name === p && fs.existsSync(path.join(REPO, x.file)))) && about.steps.some(s => s.part === 'chat loop'))
   check('liveContextText: Oslo date and time, weekday, ISO date, and says it comes from the app', probe.liveContextText(new Date('2026-07-01T10:05:00Z')) === '<live_context>Today is Wednesday 01.07.2026, 12:05 (Europe/Oslo). For tool fields today is 2026-07-01. This line comes from the app, not from the person.</live_context>')
   check('needsLiveContext: first message yes; same day within 2 hours no; two hours later yes; a new Oslo day yes (also just after midnight)', probe.needsLiveContext(null, FIXED_NOW) && !probe.needsLiveContext(new Date(FIXED_NOW.getTime() - 119 * 60_000).toISOString(), FIXED_NOW) && probe.needsLiveContext(new Date(FIXED_NOW.getTime() - 121 * 60_000).toISOString(), FIXED_NOW) && probe.needsLiveContext('2026-11-21T22:59:00Z', new Date('2026-11-21T23:01:00Z')) && probe.needsLiveContext('garbage', FIXED_NOW))
@@ -980,7 +982,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
     const net = pretend(textMsg('Hello.'))
     await chat({ conversation_id: null, text: 'Hello there' }, { network: net })
     const sentTools = net.seen[0].body.tools
-    check('no tool is sent as strict (a strict tool makes Anthropic compile a grammar, up to 180 s)', sentTools.length === 8 && sentTools.every(t => !('strict' in t)), sentTools.map(t => t.strict))
+    check('no tool is sent as strict (a strict tool makes Anthropic compile a grammar, up to 180 s)', sentTools.length === 9 && sentTools.every(t => !('strict' in t)), sentTools.map(t => t.strict))
     check('the schemas stay small and flat: every property listed as required, nothing else allowed, plain types only', sentTools.every(t => same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && Object.values(t.input_schema.properties).every(p => ['string', 'number', 'integer'].includes(p.type))))
     check('the last tool still carries the cache breakpoint', sentTools.at(-1).cache_control?.type === 'ephemeral' && sentTools.slice(0, -1).every(t => !('cache_control' in t)))
   }
@@ -1182,7 +1184,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   const mRows = probe.toolModes(rowsOff)
   check('stored rows: off is honoured, a write tool "on" stays ask, an unknown tool is ignored, the first row of a tool wins', mRows.get_day_plan === 'off' && mRows.propose_add_task === 'ask' && !('bogus' in mRows) && mRows.find_text === 'off')
   check('a row with a stored mode that is not a word, or a row that is not an object, changes nothing', same(probe.toolModes([{ tool: 'find_text', mode: 5 }, 'x', null, { mode: 'off' }]), probe.toolModes(null)))
-  check('a new coach chat gets only the coach set, minus what is off; a new chat of the everyday kind never gets a coach tool', same(probe.toolsForNewChat(probe.toolModes([{ tool: 'get_about_me', mode: 'off' }]), 'coach'), ['get_day_plan', 'get_training_week', 'get_health_trends', 'get_pt_verdicts']) && !probe.toolsForNewChat(probe.toolModes(null)).some(n => probe.COACH_ONLY_TOOL_NAMES.includes(n)))
+  check('a new coach chat gets only the coach set, minus what is off; a new chat of the everyday kind never gets a coach tool', same(probe.toolsForNewChat(probe.toolModes([{ tool: 'get_about_me', mode: 'off' }]), 'coach'), ['get_day_plan', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut']) && !probe.toolsForNewChat(probe.toolModes(null)).some(n => probe.COACH_ONLY_TOOL_NAMES.includes(n)))
 
   let c1 = await chat({ conversation_id: null, text: 'Hello' }, { world: { toolRows: rowsOff }, network: pretend(textMsg('Hi.')) })
   const conv1 = rowsOf(c1.world, 'ai_conversations')[0]
@@ -1343,6 +1345,73 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   const pAbout = await phoneRun({ question: 'Who am I?' }, { worldOver: { tables: { ai_memory: [{ user_id: OWNER, kind: 'fact', title: 'Likes mornings', content: 'Trains at 06:00', updated_at: '2026-11-20' }, { user_id: GUEST, kind: 'fact', title: 'Not mine', content: 'x', updated_at: '2026-11-20' }] } }, network: pretend(toolMsg([['toolu_a1', 'get_about_me', { kind: 'any' }]]), textMsg('You train early.')) })
   const aboutRes = pAbout.net.seen[1].body.messages[2].content[0]
   check('C1: the phone\'s About me reads the owner\'s own notes only, as data', /Likes mornings/.test(String(aboutRes.content)) && !/Not mine/.test(String(aboutRes.content)) && !aboutRes.is_error, aboutRes)
+
+  // ═══ 16 · phase 4c: note_shortcut ═══════════════════════════════════════
+  section('16 · phase 4c: note_shortcut')
+  {
+    const NOTE = { kind: 'widget', title: 'Show the day\'s intake on a graph', why: 'It was asked for the third time this week and the app already holds the series.', benefit: 'The answer would be on screen at once, with no waiting.', complexity: 'small' }
+    const noted = []
+    const w = makeWorld({ tables: {} })
+    const ctxN = (answer = 'added') => ({ ...ctxFor(w), noteIdea: async idea => { noted.push(idea); return answer } })
+    const bad = async (input) => { const before = noted.length; const out = await probe.runChatTool('note_shortcut', input, probe.CHAT_TOOL_ORDER, modes, ctxN()); return out.ok === false && noted.length === before }
+    check('note_shortcut: every input is checked and a bad one is an error result that records nothing (a kind outside the list, a missing or extra field, markup, a link, a new line, text too short or too long, a user id)',
+      await bad({ ...NOTE, kind: 'gadget' }) && await bad({ kind: 'widget', title: NOTE.title, why: NOTE.why }) && await bad({ ...NOTE, complexity: 'huge' }) && await bad({ ...NOTE, benefit: 'x' }) && await bad({ ...NOTE, benefit: 'See www.example.com' })
+      && await bad({ ...NOTE, title: 'Mark [[review {}]] it' }) && await bad({ ...NOTE, why: 'Has [one] bracket' }) && await bad({ ...NOTE, benefit: 'Opens evil.example at once' }) && await bad({ ...NOTE, why: 'He asked about 96 g of protein' }) && await bad({ ...NOTE, benefit: 'About 2300 kcal a day' })
+      && await bad({ ...NOTE, title: 'Right to left \u202e text' }) && await bad({ ...NOTE, why: 'Isolate \u2066 mark' }) && await bad({ ...NOTE, extra: 'x' }) && await bad({ ...NOTE, user_id: OWNER })
+      && await bad({ ...NOTE, title: 'Show <b>this</b>' }) && await bad({ ...NOTE, why: 'See https://example.com/export for it.' }) && await bad({ ...NOTE, why: 'Visit www.example.com now' })
+      && await bad({ ...NOTE, title: 'Two\nlines' }) && await bad({ ...NOTE, title: 'ab' }) && await bad({ ...NOTE, title: 'x'.repeat(121) }) && await bad({ ...NOTE, why: 'y'.repeat(401) })
+      && await bad({ ...NOTE, title: 3 }) && await bad(null) && await bad([]) && await bad({ ...NOTE, title: 'Zero​width hidden' }))
+    const ok1 = await probe.runChatTool('note_shortcut', { ...NOTE, kind: 'WIDGET' }, probe.CHAT_TOOL_ORDER, modes, ctxN())
+    check('note_shortcut: a good idea is recorded once (the kind matched ignoring case), says nothing was changed, and hands back only its kind', ok1.ok === true && noted.length === 1 && noted[0].kind === 'widget' && noted[0].title === NOTE.title && noted[0].benefit === NOTE.benefit && noted[0].complexity === 'small' && /Nothing was changed/.test(ok1.text) && same(ok1.noted, { kind: 'widget' }), ok1)
+    const none = await probe.runChatTool('note_shortcut', NOTE, probe.CHAT_TOOL_ORDER, modes, ctxFor(w))
+    check('note_shortcut: with no list to write to (no writer handed in) it records nothing and says so', none.ok === false && noted.length === 1)
+    const seen = await probe.runChatTool('note_shortcut', NOTE, probe.CHAT_TOOL_ORDER, modes, ctxN('dismissed'))
+    check('note_shortcut: a dismissed idea is "nothing new" and sets no note for the screen', seen.ok === true && !seen.noted && /Nothing new/.test(seen.text))
+    const known = await probe.runChatTool('note_shortcut', NOTE, probe.CHAT_TOOL_ORDER, modes, ctxN('seen'))
+    check('note_shortcut: an idea that is already in the list still shows its line under the question (the owner sees the suggestion every time it comes up)', known.ok === true && same(known.noted, { kind: 'widget' }))
+    const failed = await probe.runChatTool('note_shortcut', NOTE, probe.CHAT_TOOL_ORDER, modes, ctxN('error'))
+    check('note_shortcut: a failed write is an error result the model can carry on from, never an exception', failed.ok === false && /Carry on/.test(failed.message))
+    check('note_shortcut: the key is made by the function from the idea, not by the model: the same idea reworded in case and punctuation has the same key, another kind does not; it is a 64-character hash',
+      (await probe.ideaKey({ kind: 'widget', title: 'Show the protein of TODAY on Home!', why: 'a' })) === (await probe.ideaKey({ kind: 'widget', title: 'show the protein of today on home', why: 'b' }))
+      && (await probe.ideaKey({ kind: 'chart', title: 'show the protein of today on home', why: 'b' })) !== (await probe.ideaKey({ kind: 'widget', title: 'show the protein of today on home', why: 'b' }))
+      && /^[0-9a-f]{64}$/.test(await probe.ideaKey({ kind: 'widget', title: 'Anything at all', why: 'x y z' })))
+    check('note_shortcut: it is a read tool for the permission wall (not a write), default On, can be switched Off, has three required text fields and no optional one',
+      probe.chatToolKind('note_shortcut') === 'read' && probe.TOOL_DEFAULTS.note_shortcut === 'on' && probe.toolModes([{ tool: 'note_shortcut', mode: 'off' }]).note_shortcut === 'off' && probe.toolModes([{ tool: 'note_shortcut', mode: 'ask' }]).note_shortcut === 'on'
+      && !probe.WRITE_TOOL_NAMES.includes('note_shortcut') && same(Object.keys(probe.allChatTools().find(t => t.name === 'note_shortcut').properties), ['kind', 'title', 'why', 'benefit', 'complexity']))
+
+    // In a whole answer: two notes in one answer, the second never runs
+    const wc = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const nc = pretend(toolMsg([['toolu_N1', 'note_shortcut', NOTE], ['toolu_N2', 'note_shortcut', { ...NOTE, kind: 'chart', title: 'Another idea entirely' }]], { id: 'n1' }), textMsg('Here is your protein: 120 g.', { id: 'n2' }))
+    const rc = await chat({ conversation_id: null, text: 'How much protein today?' }, { world: wc, network: nc })
+    const resultsC = messagesOf(wc)[2].content
+    check('an answer that notes two ideas: the first is written, the second gets an error result and never runs; the answer still comes', final(rc).event === 'done' && wc.noted.length === 1 && resultsC.length === 2 && !resultsC[0].is_error && resultsC[1].is_error === true && /At most 1 idea/.test(String(resultsC[1].content)) && /protein/.test(final(rc).text), [wc.noted.length, resultsC])
+    const callsC = callsOf(wc)
+    check('the note is written by the service role with the verified user, the kind and plain text, a hash key made by the function, source "answer", and the ledger row of the round where it was first seen',
+      wc.noted[0].p_user_id === OWNER && wc.noted[0].p_kind === 'widget' && wc.noted[0].p_title === NOTE.title && wc.noted[0].p_why === NOTE.why && wc.noted[0].p_source === 'answer' && /^[0-9a-f]{64}$/.test(wc.noted[0].p_key) && wc.noted[0].p_times === 1 && wc.noted[0].p_tokens === 0 && wc.noted[0].p_benefit === NOTE.benefit && wc.noted[0].p_complexity === 'small' && callsC.some(c => c.id === wc.noted[0].p_call) && Object.keys(wc.noted[0]).length === 12, wc.noted[0])
+    check('the done event carries only the kind of the idea (never its text) for the quiet line under the answer', same(final(rc).suggestion, { kind: 'widget' }))
+    const lastAssistant = messagesOf(wc).filter(m => m.role === 'assistant').pop()
+    check('the kind is stored with the answer (the final assistant message), so a chat opened later shows the same line', same(lastAssistant.meta.suggestion, { kind: 'widget' }) && messagesOf(wc).filter(m => m.role === 'assistant').slice(0, -1).every(m => !m.meta.suggestion))
+    check('the cost it carries is the question\'s own run so far (not the chat\'s prompt): no tokens are stored for an answer\'s idea', wc.noted[0].p_cost > 0 && wc.noted[0].p_cost < 0.01 && wc.noted[0].p_tokens === 0)
+    check('the note tool never writes the owner\'s data: the only writes are the ledger and the chat tables (the suggestions list is written through its own function)', wc.ops.filter(o => o.mode !== 'select').every(o => o.table === 'ai_calls' || ['ai_conversations', 'ai_messages'].includes(o.table)) && wc.reserves.length >= 2)
+    const wd = makeWorld({ tables: { tasks: [], time_blocks: [] }, noteAnswer: 'dismissed' })
+    const rd = await chat({ conversation_id: null, text: 'Protein?' }, { world: wd, network: pretend(toolMsg([['toolu_N1', 'note_shortcut', NOTE]], { id: 'd1' }), textMsg('120 g.', { id: 'd2' })) })
+    check('a dismissed idea leaves no line under the answer', final(rd).event === 'done' && final(rd).suggestion === null && wd.noted.length === 1)
+    const wn = makeWorld({ tables: { tasks: [] }, toolRows: [{ tool: 'note_shortcut', mode: 'off' }] })
+    const rn = await chat({ conversation_id: null, text: 'Protein?' }, { world: wn, network: pretend(textMsg('120 g.', { id: 'o1' })) })
+    check('switched Off in the Ask AI settings, the tool is not offered to a new chat', final(rn).event === 'done' && !rn.net.seen[0].body.tools.some(t => t.name === 'note_shortcut'))
+    const wo = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const ro = await chat({ conversation_id: null, text: 'Protein?' }, { world: wo, network: pretend(toolMsg([['toolu_N1', 'note_shortcut', NOTE]], { id: 'p1' }), textMsg('120 g.', { id: 'p2' })) })
+    wo.toolRows = [{ tool: 'note_shortcut', mode: 'off' }]
+    const convO = rowsOf(wo, 'ai_conversations')[0]
+    const ro2 = await chat({ conversation_id: convO.id, text: 'Again?' }, { world: wo, network: pretend(toolMsg([['toolu_N3', 'note_shortcut', { ...NOTE, title: 'A different idea' }]], { id: 'p3' }), textMsg('Same.', { id: 'p4' })) })
+    check('switched Off in the middle of a chat, it is refused at once (the current setting is read each message)', final(ro).event === 'done' && final(ro2).event === 'done' && wo.noted.length === 1 && final(ro2).suggestion === null)
+    check('the coach chat has the note tool too', same(probe.toolsForNewChat(probe.toolModes(null), 'coach').slice(-1), ['note_shortcut']))
+    check('the instructions of both chats tell the model to use it only when obvious, at most once, and never to promise anything', /note_shortcut/.test(probe.CHAT_SYSTEM) && /OBVIOUS/.test(probe.CHAT_SYSTEM) && /at most once/i.test(probe.CHAT_SYSTEM) && /Never promise/.test(probe.CHAT_SYSTEM) && /note_shortcut/.test(probe.COACH_SYSTEM) && /OBVIOUS/.test(probe.COACH_SYSTEM))
+    const fpA = probe.sqlFingerprint("select sum(protein_g) as my_secret_total from food_log_entries where day = '2026-11-10' and quantity > 3d and fiber >= 1.5e3")
+    check('a query\'s fingerprint has no value or name the model chose: numbers glued to letters, exponents and the alias after AS are all taken out', /as \?/.test(fpA) && !/my_secret_total|2026|3d|1\.5e3/.test(fpA) && /where day = \?/.test(fpA), fpA)
+    check('the phone never gets it', !probe.phoneToolNames(modes).includes('note_shortcut'))
+  }
+
 
   finished = true
   console.log(`\n${ok} passed, ${bad} failed`)

@@ -320,7 +320,7 @@ console.log('\nthe cost of one call: each kind of token times its price')
 console.log('\nthe AI views: four, with Learn holding three')
 {
   const B = require('../src/features/developer/developerBoards')
-  check('four views under the bar', J(B.AI_VIEWS) === J(['overview', 'calls', 'settings', 'learn']) && J(B.AI_LEARN_VIEWS) === J(['how', 'prices', 'bench', 'batches']))
+  check('four views under the bar, and Learn has five pages', J(B.AI_VIEWS) === J(['overview', 'calls', 'settings', 'learn']) && J(B.AI_LEARN_VIEWS) === J(['how', 'prices', 'bench', 'batches', 'suggestions']))
   check('the four labels are short enough for a phone: none over 10 characters', B.AI_VIEWS.every(v => B.AI_VIEW_LABEL[v].length <= 10))
   check('an address names its view; anything else is the Overview', J(B.parseAiLocation(null, null)) === J({ view: 'overview', learn: 'how' }) && B.parseAiLocation('calls', null).view === 'calls' && B.parseAiLocation('nonsense', 'bench').view === 'overview' && B.parseAiLocation('constructor', null).view === 'overview')
   check('Learn names its page; an unknown page is How it works', J(B.parseAiLocation('learn', 'prices')) === J({ view: 'learn', learn: 'prices' }) && B.parseAiLocation('learn', 'x').learn === 'how' && B.parseAiLocation('learn', null).learn === 'how')

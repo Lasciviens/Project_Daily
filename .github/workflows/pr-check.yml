@@ -460,6 +460,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 199 (AI suggestions): the browser changes one column of an idea (state) and nothing else, writes no run and reads no
+      # batch id; only the service role calls the writer and the counting; a dismissed idea never comes back; the caps; the
+      # counting over the ledger; the check timer. 199 runs twice: the catalogue must not change.
+      - name: AI suggestions database scenarios
+        run: node scripts/verify-db-ai-suggestions.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each

@@ -7,6 +7,8 @@ import {
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { applyReorder } from '../devRequestRules'
+import { suggestionRefOf } from '../../ai/claude/suggestRules'
+import { useMarkSuggestionsBuilt } from '../../ai/claude/hooks/useSuggestions'
 import type { DevRequest, CreateDevRequestInput, DevRequestStatus } from '../types'
 
 const QK = qk.devRequests.all
@@ -43,7 +45,18 @@ export function useCreateDevRequest() {
   })
 }
 
+/** The suggestions the given requests came from (their description carries our own "Suggestion ref" line). */
+function useSuggestionsOf() {
+  const qc = useQueryClient()
+  return (ids: readonly string[]): string[] => {
+    const list = qc.getQueryData<DevRequest[]>(QK) ?? []
+    return [...new Set(list.filter(r => ids.includes(r.id)).map(r => suggestionRefOf(r.description)).filter((ref): ref is string => !!ref))]
+  }
+}
+
 export function useUpdateDevRequest() {
+  const built = useMarkSuggestionsBuilt()
+  const suggestionsOf = useSuggestionsOf()
   return useMutationWithFeedback({
     action:     'update_dev_request',
     successMessage: (_r, { patch }) => (Object.keys(patch).length === 1 && patch.status
@@ -51,6 +64,8 @@ export function useUpdateDevRequest() {
       : 'Request saved'),
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateDevRequest>[1] }) => updateDevRequest(id, patch),
     invalidates: [QK],
+    // A request that came from a suggestion and is now done makes that suggestion built.
+    onSuccess: (_r, { id, patch }) => { if (patch.status === 'done') { const refs = suggestionsOf([id]); if (refs.length) built.mutate(refs) } },
   })
 }
 
@@ -60,11 +75,14 @@ export function useDeleteDevRequests() {
 }
 
 export function useSetDevRequestsStatus() {
+  const built = useMarkSuggestionsBuilt()
+  const suggestionsOf = useSuggestionsOf()
   return useMutationWithFeedback({
     action:      'set_dev_requests_status',
     successMessage: (_r, { ids, status }) => `${ids.length} request${ids.length === 1 ? '' : 's'} ${status === 'done' ? 'done' : status === 'dismissed' ? 'dismissed' : 'updated'}`,
     mutationFn:  ({ ids, status }: { ids: string[]; status: DevRequestStatus }) => setDevRequestsStatus(ids, status),
     invalidates: [QK],
+    onSuccess:   (_r, { ids, status }) => { if (status === 'done') { const refs = suggestionsOf(ids); if (refs.length) built.mutate(refs) } },
   })
 }
 

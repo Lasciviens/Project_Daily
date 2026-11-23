@@ -242,6 +242,12 @@ export const qk = {
     runCalls: (runId: string) => ['ai-chat', 'run-calls', runId] as const,
   },
   /** The weekly reports (ai_reports, migration 196): their text is the owner's own week. Their own root: never kept on the device. */
+  /** The suggestions (ai_suggestions, migration 199): ideas for needing AI less, written by a model. Their own root: never kept on the device. */
+  aiSuggestions: {
+    all: ['ai-suggestions'] as const,
+    list: () => ['ai-suggestions', 'list'] as const,
+    runs: () => ['ai-suggestions', 'runs'] as const,
+  },
   aiReports: {
     all: ['ai-reports'] as const,
     list: () => ['ai-reports', 'list'] as const,

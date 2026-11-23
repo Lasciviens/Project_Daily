@@ -445,6 +445,13 @@ which door the write came through.
 
 ---
 
+## AI suggestions (migration 199) — `ai_suggestions`, `ai_suggest_runs`
+
+- `ai_suggestions`: one row per idea for needing AI less. **Written only by the service role** through `ai_suggestion_add` (SECURITY INVOKER, service role only: insert, or count one more sighting, or refuse: a dismissed key, 300 rows, 20 answer ideas a day). The browser reads its own rows and has exactly one write: `grant update (state)`, plus a before-update trigger (`ai_suggestions_guard`) that refuses a change to any other column from a signed-in caller and sets the timestamps, plus an owner-only update policy. No insert or delete grant. Texts are CHECKed as plain text (no `<`, `>`, control character or link). `unique (user_id, dedupe_key)`: the key is a sha-256 made by the function. Not audited on purpose: a toggle with its own Bring back, and an audited change would be offered to Activity's Undo (which would need `state_changed_at` in `app_undo_bookkeeping`). The texts go through `ai_suggestion_plain` (no bracket of either kind, no hidden character, no link, a length), also on every update, so the browser may execute it. `ai_suggestion_add` takes an advisory lock per account and dedupes by key, title and call.
+- `ai_suggest_patterns(user, days, min)`: the counting over `ai_calls` (shapes only), SECURITY INVOKER, service role only, `search_path = ''`.
+- `ai_suggest_runs`: the weekly batch's bookkeeping, like `ai_reports` (196): `batch_id`, `claimed_at` and `facts` are server-only (column-list select).
+- 199 re-creates the `lascis-ai-report-check` timer so it also runs while a suggestion batch is queued. `scripts/verify-db-ai-suggestions.mjs` checks all of this twice (with and without Supabase's old default grants).
+
 ## The AI ledger (migration 194) — `ai_calls`, `ai_settings`, `ai_job_settings`
 
 The `claude` edge function asks Anthropic's model on the owner's behalf
