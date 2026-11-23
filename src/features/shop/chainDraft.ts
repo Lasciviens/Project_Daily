@@ -191,8 +191,8 @@ export function draftProblems(draft: ChainDraft, today: string): StepProblem[] {
 
 // ── Rates ────────────────────────────────────────────────────────────────────
 
-export const rateKey = (currency: string, day: string): string => `${currency}|${day}`
-export interface RatePair { currency: ShopCurrency; day: string }
+import { rateKey, type RatePair } from './fx'
+export { rateKey, type RatePair }
 
 /** The (currency, day) pairs the draft needs Norges Bank's rate for (foreign, dated, not typed by hand). */
 export function ratePairs(draft: ChainDraft, base: Copied | null): RatePair[] {

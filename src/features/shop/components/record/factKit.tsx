@@ -27,7 +27,7 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
   return (
     // Open, the tint reaches past the row (-mx-2 px-2) so the label and the
     // Done tick stay where the label and the pen were.
-    <div ref={open ? intoView : undefined} className={cx('rounded-row', open && '-mx-2 bg-surface-2 px-2 py-2')}>
+    <div ref={open ? intoView : undefined} data-fact-open={open || undefined} className={cx('rounded-row', open && '-mx-2 bg-surface-2 px-2 py-2')}>
       <div className="flex items-start gap-2">
         <span className="w-[8.5rem] shrink-0 pt-[11px] text-meta text-fg-muted max-[380px]:w-[6.5rem]">{label}</span>
         {open ? (

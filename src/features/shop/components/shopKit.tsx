@@ -66,7 +66,7 @@ export function SortSelect<T extends string>({ value, labels, onChange, classNam
   className?: string
 }) {
   return (
-    <span className={cx('select input-sm relative flex items-center gap-1 pr-7 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
+    <span className={cx('select input-bar relative flex items-center gap-1 pr-7 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
       <span className="shrink-0 font-normal text-fg-muted">Sort:</span>
       <Truncate as="span" className="min-w-0">{labels[value]}</Truncate>
       <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />

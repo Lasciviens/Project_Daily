@@ -2,15 +2,15 @@ import { useMemo, useState } from 'react'
 import { Link2, Pencil, Plus, RotateCcw } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
-import { Button, IconButton, MetaLine, Truncate, cx, useChartColors } from '../../../../shared/ui'
+import { Button, IconButton, Truncate, cx } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { chainFor, chainPath, keptCost, keptWords, type ChainNode, type ChainOverrides } from '../../chainModel'
 import { ChainNameForm } from './ChainName'
-import { add, complete, DISPOSAL_LABEL, minus, negate, PAID_BACK, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
+import { add, complete, DISPOSAL_LABEL, minus, PAID_BACK, valueNowOf, ZERO, type Amount, type MoneyCtx } from '../../ownModel'
 import { AmountText } from '../shopKit'
 import { money } from '../shopFormat'
-import type { ShopItem, ShopItemLink } from '../../types'
+import type { ShopDisposal, ShopItem, ShopItemLink } from '../../types'
 
 /**
  * A money chain, one compact line per thing (with its accessories): its days,
@@ -26,7 +26,6 @@ import type { ShopItem, ShopItemLink } from '../../types'
  */
 export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; items: ShopItem[]; links: ShopItemLink[]; ctx: MoneyCtx; onClose: () => void }) {
   const modal = useEntityModal()
-  const c = useChartColors()
   const [what, setWhat] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [over, setOver] = useState<ChainOverrides>({})
@@ -105,7 +104,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
                   <Link2 aria-hidden />
                 </IconButton>
               </div>
-              <RunningBar running={running[i]} top={top} colors={[c.series[0], c.series[1]]} />
+              <RunningBar running={running[i]} top={top} />
               {what && (
                 <div className="grid grid-cols-2 gap-2 text-meta">
                   <label className="flex min-w-0 flex-col gap-0.5">
@@ -139,12 +138,18 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
  */
 function ThingLine({ node: n, running, ctx, onOpen }: { node: ChainNode; running: Amount; ctx: MoneyCtx; onOpen: () => void }) {
   const value = n.state === 'held' && !n.projected ? valueNowOf(n.item, ctx) : null
-  const from = n.bought ? `${n.item.approx_dates ? '≈ ' : ''}${formatDate(n.bought)}` : 'Bought'
+  const from = n.bought ? `${n.item.approx_dates ? '≈ ' : ''}${formatDate(n.bought)}` : 'Bought'
+  const how = n.item.disposal ?? 'other'
+  // Words with the colours: "paid 4 490" red, "sold for 1 200" green. Each part is one piece that never splits.
   const back = n.state === 'held'
-    ? 'still yours'
-    : n.got && (Math.round(n.got.nok) !== 0 || !complete(n.got) || PAID_BACK.includes(n.item.disposal ?? 'other'))
-      ? <span data-tone="success" className="tone-text"><AmountText amount={n.got} signed bare unknown="got back: unknown" /></span>
-      : DISPOSAL_LABEL[n.item.disposal ?? 'other'].toLowerCase()
+    ? <span key="b" className="whitespace-nowrap">still yours</span>
+    : n.got && (Math.round(n.got.nok) !== 0 || !complete(n.got) || PAID_BACK.includes(how))
+      ? (
+        <span key="b" data-tone="success" className="tone-text whitespace-nowrap">
+          {BACK_WORDS[how] ?? 'got back'} <AmountText amount={n.got} bare unknown="unknown" />
+        </span>
+      )
+      : <span key="b" className="whitespace-nowrap">{DISPOSAL_LABEL[how].toLowerCase()}</span>
   const ahead = complete(running) && Math.round(running.nok) > 0
   const behind = complete(running) && Math.round(running.nok) < 0
   const accessories = n.accessories.length
@@ -154,12 +159,13 @@ function ThingLine({ node: n, running, ctx, onOpen }: { node: ChainNode; running
         <Truncate as="span" className="block text-body font-semibold text-fg">
           {n.item.title}{accessories > 0 && <span className="font-normal text-fg-muted"> + {accessories} accessor{accessories === 1 ? 'y' : 'ies'}</span>}
         </Truncate>
-        <MetaLine as="span" className="block text-meta tabular-nums text-fg-muted" items={[
-          `${from} → ${n.left ? formatDate(n.left) : 'now'}`,
-          <span key="p" data-tone="danger" className="tone-text"><AmountText amount={negate(n.paid)} bare unknown="price missing" /></span>,
-          back,
-          value && <span key="v">could sell for <AmountText amount={value} bare /></span>,
-        ]} />
+        {/* Two lines on purpose, so nothing wraps alone: the days, then the money. */}
+        <span className="block text-meta tabular-nums text-fg-muted">{from} → {n.left ? formatDate(n.left) : 'now'}</span>
+        <span className="flex flex-wrap gap-x-2 text-meta tabular-nums text-fg-muted">
+          <span data-tone="danger" className="tone-text whitespace-nowrap">paid <AmountText amount={n.paid} bare unknown="price missing" /></span>
+          {back}
+          {value && <span className="whitespace-nowrap">could sell for <AmountText amount={value} bare /></span>}
+        </span>
       </span>
       <span data-tone={ahead ? 'success' : behind ? 'danger' : undefined} className={cx('shrink-0 text-body font-semibold tabular-nums', ahead || behind ? 'tone-text' : 'text-fg')}>
         <AmountText amount={running} signed />
@@ -168,12 +174,18 @@ function ThingLine({ node: n, running, ctx, onOpen }: { node: ChainNode; running
   )
 }
 
-/** How far ahead (+) or behind (−) the chain is after a thing, on one scale — in chart colours, never the accent. */
-function RunningBar({ running, top, colors }: { running: Amount; top: number; colors: [string, string] }) {
+/** What the money back is called: "sold for 1 200", "traded in for 800". */
+const BACK_WORDS: Partial<Record<ShopDisposal, string>> = { sold: 'sold for', traded_in: 'traded in for', returned: 'refunded' }
+
+/** How far ahead (+) or behind (−) the chain is after a thing, on one scale — in the same tones as the numbers: green ahead, red behind. */
+function RunningBar({ running, top }: { running: Amount; top: number }) {
   const n = complete(running) ? Math.round(running.nok) : 0
   return (
     <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-surface-2">
-      {n !== 0 && <span className="block h-full rounded-full" style={{ width: `${Math.max(2, Math.round((Math.abs(n) / top) * 100))}%`, background: n > 0 ? colors[1] : colors[0] }} />}
+      {n !== 0 && (
+        <span data-tone={n > 0 ? 'success' : 'danger'} className="block h-full rounded-full"
+          style={{ width: `${Math.max(2, Math.round((Math.abs(n) / top) * 100))}%`, background: 'rgb(var(--tone))' }} />
+      )}
     </span>
   )
 }

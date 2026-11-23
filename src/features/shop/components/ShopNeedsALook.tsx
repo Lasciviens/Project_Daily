@@ -1,10 +1,9 @@
-import type { RecordFact } from '../shopSuggestions'
 import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBuyNow } from '../hooks/useShop'
 import { useNeedsALook } from '../hooks/useNeedsALook'
 import { useClearSignalState, useDismissSignal, useSnoozeSignal } from '../hooks/useShopSignals'
-import type { Look } from '../shopSuggestions'
+import type { Look, RecordFact } from '../shopSuggestions'
 import { NeedsALookButton, type LookActions } from './NeedsALook'
 import type { ShopItem } from '../types'
 

@@ -104,7 +104,7 @@ function SubLists({ id, subs, row, layout }: { id: string; subs: readonly SubGro
 /** A subcategory's things: rows and lines in one card, big pictures as a grid of cards (W2: content-width columns). */
 function ThingsBox({ layout, children, className }: { layout: OwnedLayout; children: ReactNode; className?: string }) {
   return layout === 'pictures'
-    ? <ul className={cx('grid grid-cols-[repeat(auto-fill,minmax(9.5rem,12rem))] gap-2', className)}>{children}</ul>
+    ? <ul className={cx('grid grid-cols-2 gap-2 @[40rem]/page:grid-cols-[repeat(auto-fill,minmax(9.5rem,12rem))]', className)}>{children}</ul>
     : <ul className={cx('card divide-y divide-line overflow-hidden', className)}>{children}</ul>
 }
 

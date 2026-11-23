@@ -68,31 +68,3 @@ export function dealByIndex<T>(items: readonly T[], columns: number): T[][] {
   return out
 }
 
-// ── The project list ───────────────────────────────────────────────────────
-/** Project cards: auto-fill columns of 19–22rem with a 1rem gap (ProjectsPage). */
-export const PROJECT_CARD = { max: 22, gap: 1 } as const
-
-/**
- * How wide the list's header may get (rem) so New project ends over the last
- * card instead of past it: the cards the row actually holds (auto-fill counts
- * columns off the 22rem maximum) times 22rem, plus their gaps. Null when the
- * cards already fill the row (or there are none), i.e. no cap.
- */
-export function projectsHeaderCapRem(cards: number, widthRem: number): number | null {
-  if (!(cards > 0) || !(widthRem > 0)) return null
-  const fit = Math.max(1, Math.floor((widthRem + PROJECT_CARD.gap) / (PROJECT_CARD.max + PROJECT_CARD.gap)))
-  const used = Math.min(cards, fit)
-  const cap = used * PROJECT_CARD.max + (used - 1) * PROJECT_CARD.gap
-  return cap < widthRem ? cap : null
-}
-
-/**
- * The cards the list header plans for: the most any status holds across both
- * areas (`statusTally(projects, 'all')`), never the open status's or area's,
- * so the header — and the status switch in it — keeps one size and place on a
- * switch (owner, 03.11.2026: a tab switch never resizes the bar; it ran from
- * one card's width to the page's). Six while loading.
- */
-export function projectsHeaderCards(countsByStatus: Readonly<Record<string, number>>, loading: boolean): number {
-  return loading ? 6 : Math.max(0, ...Object.values(countsByStatus))
-}

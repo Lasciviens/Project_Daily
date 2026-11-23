@@ -9,8 +9,8 @@ import type { OwnedRowProps } from './OwnedRow'
 
 // Owned's other two ways to see the things (owner, 23.11.2026), beside the compact rows: "List" (one line each) and
 // "Big pictures" (a grid of cards). Every one opens the thing's record on a tap, shows its accessories, and says how
-// a thing left: the cards wear a corner ribbon with the word on the picture; the smaller pictures of a line are faded
-// and the word follows as the line's tag (a ribbon does not fit a 28px picture).
+// a thing left: the cards wear a banner with the word across the foot of the picture; a line's small picture wears an
+// icon badge in its corner (the word in its title and in the line's accessible name).
 
 /** An accessory's line under its thing: one line, a tap opens it. */
 function AccessoryLines({ accessories, picked, onOpen, together, inset }: {
@@ -44,8 +44,9 @@ export function OwnedLine({ item, accessories, watch, listing, today, topId, ico
     <li>
       <button type="button" onClick={() => onOpen(item.id)} aria-current={selected || undefined}
         className={cx('flex min-h-[36px] w-full items-center gap-2 px-3 py-1 text-left transition-colors', selected ? 'bg-accent-50' : 'hover:bg-surface-hover')}>
-        <RowPicture size="sm" src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} className={cx(item.disposal && 'opacity-60')} />
+        <RowPicture size="sm" src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} left={item.disposal} />
         <Truncate as="span" className="min-w-0 flex-1 text-body font-medium text-fg">{item.title}</Truncate>
+        {item.disposal && <span className="sr-only">{DISPOSAL_LABEL[item.disposal]}</span>}
         {tag && <TonePill tone={tag.tone} className="shrink-0 tabular-nums">{tag.text}</TonePill>}
         <span className={cx('shrink-0 whitespace-nowrap text-body tabular-nums', price.pending ? 'text-fg-muted' : 'font-semibold text-fg')}
           title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
@@ -75,7 +76,7 @@ export function OwnedCard({ item, accessories, watch, listing, today, topId, ico
             title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
             {price.text}
           </span>
-          {tag && !item.disposal && <TonePill tone={tag.tone} className="tabular-nums">{tag.text}</TonePill>}
+          {tag && <TonePill tone={tag.tone} className="tabular-nums">{tag.text}</TonePill>}
         </span>
       </button>
       <AccessoryLines accessories={accessories} picked={picked} onOpen={onOpen} together={together} inset="pl-3" />

@@ -4,7 +4,7 @@
 // let apps read its pages", "elkjop.no blocks apps with a browser check"); these add what to do about it.
 // Pure — verify-shop-price-read runs it.
 import { formatDate, formatTime } from '../../shared/utils/dateFormat'
-import { osloDay } from './groceryModel'
+import { osloDay } from './oslo'
 import { addDays } from './ownModel'
 import type { PriceCheckOutcome, PriceReadResult } from './api/shopPriceApi'
 import type { ShopItem, ShopPricePoint, ShopPriceWatch } from './types'

@@ -5,7 +5,7 @@ import type { ShopItem } from '../../types'
 
 /**
  * What was paid, as paid: "5 990 NOK", "8 999 TRY ≈ 4 840 NOK" (at that day's
- * rate), "8 999 TRY · rate pending", "Gift", "Price not set".
+ * rate), "8 999 TRY · NOK rate missing", "Gift", "Price not set".
  */
 export function PaidText({ item }: { item: ShopItem }) {
   if (item.got_as_gift && !item.price) return <>Gift</>
@@ -18,7 +18,7 @@ export function PaidText({ item }: { item: ShopItem }) {
       {money(item.price, c)}
       {complete(nok)
         ? <span className="text-fg-muted"> ≈ {money(nok.nok)}</span>
-        : <span className="text-fg-muted" title="Norges Bank publishes the day's rate after 16:00 on weekdays; it is filled in by itself"> · rate pending</span>}
+        : <span className="text-fg-muted" title="The NOK rate of the day isn't in yet: Norges Bank publishes it after 16:00 on weekdays. Open the thing to fetch it again or type it."> · NOK rate missing</span>}
     </>
   )
 }

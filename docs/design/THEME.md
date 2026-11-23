@@ -442,8 +442,8 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     the different widths: five pages capped their header to their boards — Developer, Settings and Personal
     to `sectionsWidthRem`, Projects to `projectsHeaderCapRem`, Work to `workHeaderCapRem` — while the others
     filled the container, so at 2450px the band was 1696px on Developer, 1088px on Projects and 2096px on
-    the rest. The caps are gone (`sectionsWidthRem`, `projectsHeaderCapRem`, `workHeaderCapRem` are no longer
-    used by any page; `boardWidthRem` stays for a board's own width): the band is always the container's
+    the rest. The caps and their helpers are gone (`sectionsWidthRem`, `projectsHeaderCapRem`, `workHeaderCapRem`;
+    `boardWidthRem` stays for a board's own width): the band is always the container's
     width, so it can never resize on a switch either. Heights: a header's tabs (`SegmentedControl` md/sm,
     `.pill-tab`), buttons (`Button size="sm"`), icon buttons (`IconButton size="sm"`) and date navigation
     are all **36px, 44px on touch** (`.seg-btn` 30px in a 3px-padded track; `.pill-tab` 36px) — checked at
@@ -478,10 +478,11 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   them (`max-h-[calc(100dvh-7rem)] overflow-y-auto`), spanning two tracks from 100rem. The picked row is
   `bg-accent-50` + `aria-current`. The pane falls back to the first listed row (`paneSelection`) and is
   never empty while the list isn't.
-  - **The pane in a rail's place** (Shop's Owned, `RecordPane`): where the sticky rail already holds a part
-    (Needs a look), a tapped row's detail takes that part's place in the same track — the list keeps its
-    tracks and its scroll, nothing reflows — and closing it (Back through `useHistoryDismiss`, ×, Esc)
-    brings the part back. No first-row fallback: it opens on a tap, and a change not saved asks before
+  - **The pane in the last track** (Shop's Owned, `RecordPane`): the things take every track (their board's
+    main track has no 56rem cap — the page's whole width, `WIDE`); a tapped row's detail takes the last 24rem
+    track, sticky — the list narrows to the other tracks and keeps its scroll — and closing it (Back through
+    `useHistoryDismiss`, ×, Esc) gives the track back to the list. (Before 23.11.2026 the pane took the place of
+    Needs a look's rail, so nothing reflowed; Needs a look is now the header's button.) No first-row fallback: it opens on a tap, and a change not saved asks before
     it closes or another row opens. The pane is a `card` as tall as the room it has on screen (its bottom
     1rem above the screen's while the page's top still shows above it; at most the sticky rail's room,
     `max-h-[calc(100dvh-7rem)]`), so its footer is never below the screen — its header (title, state, ×) and

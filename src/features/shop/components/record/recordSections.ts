@@ -73,7 +73,7 @@ export function resaleSummary(item: ShopItem, ctx: MoneyCtx, today: string, list
   const selling = listingTag(listing, today)
   if (selling && listing) return `${selling.text} · ${money(listing.prices[listing.prices.length - 1].price, listing.currency)}`
   const value = valueNowOf(item, ctx)
-  if (!value || !complete(value)) return item.value_now != null ? 'rate pending' : 'no estimate yet'
+  if (!value || !complete(value)) return item.value_now != null ? 'NOK rate missing' : 'no estimate yet'
   const age = valueAgeDays(item, today)
   return `≈ ${money(value.nok)}${age != null && age > VALUE_STALE_DAYS ? ' · old' : ''}`
 }

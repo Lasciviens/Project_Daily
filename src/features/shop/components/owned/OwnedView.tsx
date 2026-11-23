@@ -13,7 +13,6 @@ import { useShopLinks, useShopMoney } from '../../hooks/useShopMoney'
 import { useWatchMap } from '../../hooks/useShopPrices'
 import { useListings } from '../../hooks/useShopResale'
 import { openListingsByItem } from '../../sellingModel'
-import { useFoldedFilters } from '../../hooks/useFoldedFilters'
 import { useCategoryPictures } from '../../hooks/useCategoryPictures'
 import { groupByCategory } from '../../shopModel'
 import { FoldAll } from '../CategorySection'
@@ -90,7 +89,6 @@ export function OwnedView({ items, categories, isLoading, open, onOpened }: {
   const modal = useEntityModal()
   const itemsQ = useShopItems()
   const today = todayStr()
-  const folded = useFoldedFilters()
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
   const watches = useWatchMap()
@@ -197,7 +195,7 @@ export function OwnedView({ items, categories, isLoading, open, onOpened }: {
         ),
         filters: showFilters && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
-            collapsible={folded} layout={layout} onLayout={setLayout}
+            layout={layout} onLayout={setLayout}
             fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} pending={isLoading && foldable} />} />
         ),
         groups: <>

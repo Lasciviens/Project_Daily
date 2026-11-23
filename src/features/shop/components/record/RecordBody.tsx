@@ -1,5 +1,4 @@
-
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
 import { Button, IconButton, TonePill, cx } from '../../../../shared/ui'
@@ -60,6 +59,19 @@ export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordMo
   const { data: listings = [] } = useListings()
   const listing = resale ? openListingOf(listings, item.id) : null
   const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : openSection ?? null)
+  // Opened at a fact from the Needs a look sheet: the sheet's close hands the focus back to the header's button while it
+  // fades; once that is done the fact's editor takes it (only from the page's body or that button — never from where
+  // the owner moved it).
+  useEffect(() => {
+    if (!openFact) return
+    const take = () => {
+      const now = document.activeElement
+      if (now && now !== document.body && !(now instanceof HTMLElement && now.hasAttribute('data-look-trigger'))) return
+      document.querySelector<HTMLElement>('[data-fact-open] input, [data-fact-open] select, [data-fact-open] textarea')?.focus({ preventScroll: true })
+    }
+    const timers = [450, 900].map(ms => window.setTimeout(take, ms))
+    return () => timers.forEach(window.clearTimeout)
+  }, [openFact])
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
   // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).

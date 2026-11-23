@@ -7,6 +7,7 @@
 // things are worth NOW: "Could sell for", prices to buy, the price watch.
 // Pure — scripts/verify-shop-owned.cjs.
 
+import type { ShopCurrency } from './types'
 import type { UsdRates } from '../settings/subscriptionRules'
 
 export type { UsdRates }
@@ -25,3 +26,7 @@ export function nokPerUnit(currency: string, rates: UsdRates | null | undefined)
 export function roundRate(rate: number): number {
   return Number(rate.toPrecision(6))
 }
+
+/** A (currency, day) rate's key, and the pair itself (the chain builder asks Norges Bank for them). Here, not in chainDraft, so the price API needs no chain maths. */
+export const rateKey = (currency: string, day: string): string => `${currency}|${day}`
+export interface RatePair { currency: ShopCurrency; day: string }

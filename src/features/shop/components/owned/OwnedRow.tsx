@@ -47,10 +47,11 @@ export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today,
     <li>
       <button type="button" onClick={() => onOpen(item.id)} aria-current={selected || undefined}
         className={cx('flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors', selected ? 'bg-accent-50' : 'hover:bg-surface-hover')}>
-        <RowPicture src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} className={cx(item.disposal && 'opacity-60')} />
+        <RowPicture src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} left={item.disposal} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-baseline gap-2">
             <Truncate as="span" className="min-w-0 flex-1 text-body font-medium text-fg">{item.title}</Truncate>
+            {item.disposal && <span className="sr-only">{DISPOSAL_LABEL[item.disposal]}</span>}
             <span className={cx('shrink-0 whitespace-nowrap text-body tabular-nums', price.pending ? 'text-fg-muted' : 'font-semibold text-fg')}
               title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
               {price.text}

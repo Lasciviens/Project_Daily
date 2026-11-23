@@ -10,11 +10,18 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 export const WISHLIST_SECTIONS = ['filters', 'groups'] as const
 export type WishlistSection = typeof WISHLIST_SECTIONS[number]
 
+/**
+ * The things use the page's whole width (owner, 23.11.2026: the list stopped 200px short of the header at 1795): main
+ * has no 56rem cap here — the grid's main track takes what the page has, the side tracks stay 24rem, and the things
+ * span them all, so the row stacks / tiles fill the width.
+ */
+const WIDE = '200rem'
+
 export const WISHLIST_BOARD: BoardLayouts<WishlistSection> = {
   1: ['filters', 'groups'],
-  2: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }] },
-  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }] },
-  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 4 }] },
+  2: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 2 }] },
+  3: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 3 }] },
+  4: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 4 }] },
 }
 
 //   1  the add box first (capture is the point), the list — led by Buy
@@ -55,18 +62,18 @@ export type OwnedPaneSection = typeof OWNED_PANE_SECTIONS[number]
 
 export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
   1: ['filters', 'groups'],
-  2: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }] },
-  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }] },
-  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 4 }] },
+  2: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 2 }] },
+  3: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 3 }] },
+  4: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 4 }] },
 }
 
 const OWNED_RAIL = { stack: ['pane'], sticky: true } as const
 
 export const OWNED_PANE_BOARD: BoardLayouts<OwnedPaneSection> = {
   1: ['filters', 'groups'],
-  2: { top: ['filters'], columns: [['groups'], OWNED_RAIL] },
-  3: { top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, OWNED_RAIL] },
-  4: { top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, OWNED_RAIL] },
+  2: { main: WIDE, top: ['filters'], columns: [['groups'], OWNED_RAIL] },
+  3: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, OWNED_RAIL] },
+  4: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, OWNED_RAIL] },
 }
 
 //   Owned → Stats

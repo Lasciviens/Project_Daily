@@ -361,6 +361,8 @@
   /* A small field for a compact sheet's rows (32px on every pointer, like its chips). */
   .input-sm { @apply min-h-[32px] px-2.5 rounded-control [@media(pointer:coarse)]:min-h-[32px]; }
   textarea.input-sm { @apply py-1.5; }
+  /* A field in a bar of small controls (Shop's filter bars): 36px, 44 on touch — one height with a small button, an icon button and a segmented control. */
+  .input-bar { @apply min-h-[36px] px-2.5 rounded-control [@media(pointer:coarse)]:min-h-[44px]; }
   /* A tiny field inside a glance tile's screen (24px on every pointer; the Money tile's converter). */
   .input-xs { @apply min-h-[24px] px-2 rounded-control [@media(pointer:coarse)]:min-h-[24px]; }
   /* A field whose text is the content (a sheet's title): no box; focus shows as an accent underline. */
@@ -703,6 +705,8 @@ select:focus-visible,
 [data-tone='accent']  { --tone: var(--accent-500); --tone-soft: var(--accent-50); --tone-fg: var(--accent-500); }
 .tone-dot  { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: rgb(var(--tone, var(--neutral))); flex-shrink: 0; }
 .tone-text { color: rgb(var(--tone-fg, var(--neutral-fg))); }
+/* A small corner badge on a picture (how a thing left): the tone's soft fill and its ink. */
+.tone-badge { background: rgb(var(--tone-soft, var(--neutral-soft))); color: rgb(var(--tone-fg, var(--neutral-fg))); }
 .tone-pill {
   align-items: center; gap: 4px;
   padding: 1px 8px; border-radius: 999px;

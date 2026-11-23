@@ -12,6 +12,7 @@ import { PaidText } from '../owned/PaidText'
 import { ChoiceChips, StoreNameField } from '../shopPickers'
 import { RowPicture } from '../tileKit'
 import { MoneyEditor, Toggle } from './factKit'
+import { RateFetch } from './RateFetch'
 import { CategoryEditor } from './CategoryEditor'
 import { isNewCategory, NEW_CATEGORY, newPickOf, type RecordDraft } from './useRecordDraft'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem, ShopPriority, ShopReason, ShopRegion, ShopStoreKind } from '../../types'
@@ -187,8 +188,9 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
   ]
   if (cur !== 'NOK' && v.price != null) {
     facts.push({ id: 'rate', label: 'Exchange rate', filled: true,
-      value: complete(paid) && v.fx_nok ? <>1 {cur} = {v.fx_nok} NOK{quiet(v.fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(c.boughtDay)}`)}</> : quiet('Waiting for Norges Bank\'s rate of that day'),
+      value: complete(paid) && v.fx_nok ? <>1 {cur} = {v.fx_nok} NOK{quiet(v.fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(c.boughtDay)}`)}</> : quiet(`NOK rate missing — Norges Bank's rate for ${formatDate(c.boughtDay)} hasn't come in`),
       editor: <>
+        {!(complete(paid) && v.fx_nok) && <RateFetch day={c.boughtDay} currency={cur} />}
         <p className="text-meta text-fg-muted">The rate you paid at (NOK for 1 {cur}), e.g. your card's — or leave it to Norges Bank's rate of the day.</p>
         <DecimalInput value={v.fx_nok ?? null} onValue={r => set({ fx_nok: r, fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit" className="input w-[10rem] tabular-nums" autoFocus />
       </> })
@@ -225,8 +227,9 @@ function saleRateFact(c: FactCtx): FactDef | null {
   const sc = v.sale_currency ?? currencyOf(v)
   if (sc === 'NOK' || v.sale_price == null) return null
   return { id: 'saleRate', label: 'Sale rate', filled: true,
-    value: v.sale_fx_nok ? <>1 {sc} = {v.sale_fx_nok} NOK{quiet(v.sale_fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(v.disposed_on)}`)}</> : quiet('Waiting for Norges Bank\'s rate of that day'),
+    value: v.sale_fx_nok ? <>1 {sc} = {v.sale_fx_nok} NOK{quiet(v.sale_fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(v.disposed_on)}`)}</> : quiet(`NOK rate missing — Norges Bank's rate for ${formatDate(v.disposed_on)} hasn't come in`),
     editor: <>
+      {!v.sale_fx_nok && <RateFetch day={v.disposed_on} currency={sc} />}
       <p className="text-meta text-fg-muted">The rate you got (NOK for 1 {sc}) — or leave it to Norges Bank's rate of the day.</p>
       <DecimalInput value={v.sale_fx_nok ?? null} onValue={r => set({ sale_fx_nok: r, sale_fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit, sale" className="input w-[10rem] tabular-nums" autoFocus />
     </> }

@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Tag } from 'lucide-react'
+import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Tag, Waypoints } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -113,7 +113,7 @@ export function ShopPage() {
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
         </>}
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chains' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> Money chains</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chains' })} className="menu-item"><Waypoints aria-hidden className="h-4 w-4" /> Money chains</button></MenuItem>
         {view === 'owned' && (
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
         )}

@@ -20,7 +20,7 @@
 //
 // "Hide side panel" (Board view, only where the rail sits beside the work)
 // gives its track back to the board.
-import { boardWidthRem, type BoardLayouts, type PageStep } from '../../shared/ui/pageBoardRules'
+import { type BoardLayouts, type PageStep } from '../../shared/ui/pageBoardRules'
 
 export const WORK_SECTIONS = ['work', 'rail'] as const
 export type WorkSection = typeof WORK_SECTIONS[number]
@@ -54,13 +54,4 @@ export function railToggleFrom(view: WorkView): PageStep | null {
 export function workLayout(view: WorkView, railOpen: boolean): BoardLayouts<WorkSection> {
   if (view === 'list') return WORK_LIST
   return railOpen ? WORK_BOARD : WORK_BOARD_RAIL_HIDDEN
-}
-
-/**
- * The widest the page header may get (rem) so its right-hand controls end
- * where the board's last card ends — the list stops at three tracks, and New
- * task floated 25rem past the rail at 2450. Null: no cap (one track).
- */
-export function workHeaderCapRem(view: WorkView, railOpen: boolean, step: PageStep): number | null {
-  return boardWidthRem(workLayout(view, railOpen), step)
 }
