@@ -116,15 +116,15 @@ that number would collide with a deleted one in history.
     scenario bases (`hevy-full-api`, `day-targets-macros`) still set the old
     default privileges for the migrations they replay; a new base doesn't, so
     its scenarios meet what production does.
-    **`GRANT EXECUTE` on a new function IS required** (see `065`'s
-    `ai_semantic_search`).
+    **`GRANT EXECUTE` on a new function IS required** (a function with no
+    grant is not callable by `authenticated`).
     Deliberate exception, do not undo: `044` **revokes** `authenticated` access
     to `user_calendar_tokens` entirely and narrows `strava_tokens` to three
     non-secret columns. RLS limits rows; only grants limit **columns** — that is
     the whole reason that migration exists.
 11. **A drop is never a one-file change.** Before dropping a table or column,
     grep the repo for hardcoded name lists that reference it: `037`'s audit
-    attach array, `046`'s policy list, and `ai-proxy`'s `DB_CATALOG`. Already-applied
+    attach array, and `046`'s policy list. Already-applied
     migrations that name a since-dropped table stop being re-runnable (`037`
     names `recipe_meal_plans`, which `061` drops) — acceptable for applied
     history, never acceptable for the migration you are writing.
@@ -138,8 +138,8 @@ that number would collide with a deleted one in history.
     `select public.owner_lock_disable();` (drops every `app_owner_lock` policy).
 13. **Token tables are service-role only.** A table holding a provider token
     or secret gets `REVOKE ALL ON … FROM anon, authenticated` in the migration
-    that creates it (044, 140), RLS on, no browser policy, and never enters
-    `ai-proxy`'s `DB_CATALOG`. The browser only ever sees derived status.
+    that creates it (044, 140), RLS on, no browser policy, and is never
+    readable by an assistant tool. The browser only ever sees derived status.
 14. **A trigger that inserts a row tied to a user** (audit, outbox, queue) must
     skip a user that no longer exists (`IF NOT EXISTS (SELECT 1 FROM auth.users
     WHERE id = …) THEN RETURN …`): deleting an account cascades into every
@@ -205,7 +205,6 @@ CREATE POLICY "owner_delete" ON public.my_table FOR DELETE USING ((select auth.u
 - [ ] Grants on every new table: `service_role` select/insert/update/delete, `authenticated` what the app needs, never `anon` (`verify-table-grants`)?
 - [ ] `trg_audit` attached, or a stated reason why not?
 - [ ] Re-runnable end to end (`IF NOT EXISTS` / `DROP … IF EXISTS` everywhere)?
-- [ ] Does `ai-proxy`'s `DB_CATALOG` need the new table (and a redeploy)? See below.
 - [ ] Does the client need a column-missing fallback for the window before this is applied? See below.
 - [ ] Edge Functions needing server-side access use the service role (which bypasses RLS) — document that in the migration header if it applies.
 
@@ -234,27 +233,9 @@ your migration.
 
 ---
 
-## `ai-proxy` DB_CATALOG obligation
+## The assistant has no table catalogue (since AI phase 5, 23.11.2026)
 
-The Ask AI panel's generic CRUD layer (`db_query`/`db_insert`/`db_update`/
-`db_delete`) is a **default-deny allow-list** (`DB_CATALOG` in
-`supabase/functions/ai-proxy/index.ts`). A new user table is invisible to the
-assistant until it is added there, with a deliberate `access: 'rw' | 'ro'`
-decision — externally synced tables (`hevy_*`, `health_*`, `strava_activities`,
-`movies`, `tv_series`) are `'ro'`; token/secret tables are never listed at all.
-Changing the catalog means **redeploying `ai-proxy`**; say so in the PR's manual
-steps.
-
-Two lists beside it guard what the assistant may DO (security audit
-10.10.2026, `scripts/verify-ai-confirm.cjs`):
-- `NEEDS_CONFIRM` — tools that only become a Confirm card (today `db_delete`,
-  `update_hevy_routine`). A new tool that deletes, overwrites or writes to an
-  outside account goes here.
-- `AI_NO_WRITE` — columns the assistant may never set: anything that links a
-  row to an object in an outside account (a Google Calendar event or Task, a
-  Trakt note or list, an ES-DE or ScreenScraper entry, a login session),
-  because a background job then changes or deletes that object. A new such
-  column goes here.
+`ai-proxy`'s `DB_CATALOG` (a default-deny allow-list of tables) went with the Gemini assistant. The Claude assistant reads through fixed tools and `ask_database` (a read-only RPC that runs with the owner's own rights, `ai_run_read_query`) and writes only two confirmed proposals (a task, a food line). A new table needs nothing for the assistant; a new tool that reads or writes it is a reviewed code change (`docs/features/ai.md`).
 
 ---
 
@@ -666,7 +647,7 @@ Before proposing any new table:
 5. Are there enum-like values? → `text CHECK (col IN (...))` not `CREATE TYPE`.
 6. How is a row deleted? → through the one delete flow (`app_delete_rows` + Undo, migration 144; `docs/features/delete-undo.md`). Keep a record instead only when the product needs one (as `tasks` does with `cancelled`).
 7. Is it user-authored? → attach `trg_audit`. Bulk-synced or churny? → exempt, and say so in the header.
-8. Should the AI be able to read or write it? → add it to `ai-proxy`'s `DB_CATALOG` with an explicit `rw`/`ro`, and redeploy.
+8. Should the AI be able to read or write it? → a reviewed tool in the `claude` function (`.claude/rules/ai.md`); there is no catalogue to add it to.
 
 ---
 

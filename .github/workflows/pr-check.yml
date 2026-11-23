@@ -468,6 +468,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 201 (AI phase 5): ai_embeddings, ai_semantic_search(), 140's follow triggers and ai_reviews are
+      # dropped; ai_memory and the source tables stay and still change; a second run changes nothing.
+      - name: Gemini search drop database scenarios
+        run: node scripts/verify-db-drop-gemini-search.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each

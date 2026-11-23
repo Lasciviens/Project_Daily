@@ -61,8 +61,8 @@ then report what the owner would object to, ranked by how much it would annoy or
 - **Security rules (AGENTS.md → Security):** a new table's migration ends with
   `owner_lock_apply`; an edge function with browser callers checks `getUser` + `isAppUser`;
   keys in headers, never in URLs or logs (`logPayload: false` for a secret input); server-side
-  fetches of a supplied URL go through `isPrivateHost`; a destructive assistant tool goes into
-  `NEEDS_CONFIRM`, a link column into `AI_NO_WRITE`; token tables service-role only; OAuth
+  fetches of a supplied URL go through `isPrivateHost`; the assistant only proposes (a confirmed
+  proposal writes no link column); token tables service-role only; OAuth
   `state` checked; imports pinned to exact versions.
 - **Never change production directly.** No live-data writes, dashboard or secret changes; a
   step only the owner can do is written down exactly in `docs/deploy-checklist.md`.

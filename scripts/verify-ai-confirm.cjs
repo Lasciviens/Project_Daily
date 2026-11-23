@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 /*
- * Verification — the assistant's guardrails in ai-proxy (security audit
- * 10.10.2026). Loads the REAL ai-proxy handler under Node (TypeScript stripped
- * by sucrase) with a stubbed Deno, an in-memory database and a scripted Gemini
- * — no network, no live service:
- *   - a delete from the tool loop only becomes a Confirm card; the row goes only
- *     on Confirm, exactly the rows shown, once, for the same account;
- *   - Cancel deletes nothing; the phone (no button) cannot delete or confirm;
- *   - an account outside the allow-list gets 403;
- *   - the assistant cannot set link columns (google_calendar_event_id …),
- *     cannot pass off a memory as the user's, and play counts are capped;
- *   - it cannot write the retired tomorrow / this_week task sections;
- *   - the app's 'aiWrite' refresh reaches every table it can write.
+ * Verification — the assistant's guardrails (security audit 10.10.2026; rebuilt on the `claude` function in AI phase 4,
+ * the old ai-proxy checks were removed with it in phase 5). Static checks on the `claude` function's tool part and its
+ * migrations; the behaviour (a forged, another account's, an expired, a repeated Confirm) is in verify-claude-chat.cjs:
+ *   - the assistant never writes by itself: two inserts of a confirmed proposal, with the owner's own client;
+ *   - a confirmed proposal writes no column that links a row to an outside account (the latest app_undo_links);
+ *   - the browser reads its proposals and writes none; the phone's tools are reads;
+ *   - the app's 'aiWrite' refresh reaches every table a confirmed proposal writes.
  *
  *   Run:  node scripts/verify-ai-confirm.cjs
  */
@@ -20,91 +15,7 @@ const path = require('path')
 const sucrase = require('sucrase')
 const REPO = path.join(__dirname, '..')
 
-// Minimal PostgREST-like builder over in-memory tables. Records every op.
-function makeDb(tables, users, log) {
-  function builder(table) {
-    const st = { table, kind: 'select', filters: [], wantRows: false, single: false }
-    const b = {}
-    const match = (r) => st.filters.every(([op, c, v]) => {
-      if (op === 'eq') return r[c] === v
-      if (op === 'neq') return r[c] !== v && r[c] != null && String(r[c]) !== String(v)
-      if (op === 'in') return v.includes(r[c])
-      if (op === 'is') return v === null ? r[c] == null : r[c] === v
-      if (op === 'gte') return r[c] >= v
-      if (op === 'lte') return r[c] <= v
-      if (op === 'gt') return r[c] > v
-      if (op === 'lt') return r[c] < v
-      return true
-    })
-    for (const op of ['eq', 'neq', 'in', 'is', 'gte', 'lte', 'gt', 'lt']) b[op] = (c, v) => { st.filters.push([op, c, v]); return b }
-    for (const op of ['order', 'limit', 'range', 'or', 'not', 'ilike', 'contains']) b[op] = () => b
-    b.select = () => { if (st.kind !== 'select') st.wantRows = true; return b }
-    b.insert = (rows) => { st.kind = 'insert'; st.rows = Array.isArray(rows) ? rows : [rows]; return b }
-    b.upsert = (rows) => { st.kind = 'insert'; st.rows = Array.isArray(rows) ? rows : [rows]; return b }
-    b.update = (vals) => { st.kind = 'update'; st.vals = vals; return b }
-    b.delete = () => { st.kind = 'delete'; return b }
-    b.single = () => { st.single = true; return b }
-    b.maybeSingle = () => { st.single = true; return b }
-    const run = () => {
-      const t = (tables[table] ??= [])
-      let data
-      if (st.kind === 'select') data = t.filter(match)
-      else if (st.kind === 'insert') { data = st.rows.map((r, i) => ({ id: `${table}-new-${t.length + i + 1}`, ...r })); t.push(...data) }
-      else if (st.kind === 'update') { data = t.filter(match); for (const r of data) Object.assign(r, st.vals) }
-      else if (st.kind === 'delete') { data = t.filter(match); tables[table] = t.filter(r => !data.includes(r)) }
-      log.push({ table, kind: st.kind, filters: st.filters, rows: st.rows ?? null, vals: st.vals ?? null, affected: data.length })
-      if (st.single) data = data[0] ?? null
-      return { data, error: null }
-    }
-    b.then = (res, rej) => Promise.resolve().then(run).then(res, rej)
-    return b
-  }
-  return {
-    from: builder,
-    rpc: async (name, args) => { log.push({ rpc: name, args }); return { data: null, error: { message: 'stub rpc' } } },
-    auth: { getUser: async (tok) => ({ data: { user: users[tok] ? { id: users[tok] } : null }, error: null }) },
-  }
-}
-
-function load(fnName, { env, tables, users, log, fetchImpl }) {
-  const src = fs.readFileSync(`${REPO}/supabase/functions/${fnName}/index.ts`, 'utf8').replace(/^import .*createClient.*$/m, '')
-  const code = sucrase.transform(src, { transforms: ['typescript'] }).code
-  let handler
-  const Deno = { env: { get: (k) => env[k] }, serve: (f) => { handler = f } }
-  new Function('Deno', 'createClient', 'fetch', code)(Deno, () => makeDb(tables, users, log), fetchImpl)
-  return handler
-}
-
-const OWNER = 'owner-uuid', STRANGER = 'stranger-uuid'
-let script = []
-const gemini = (parts) => ({ candidates: [{ content: { role: 'model', parts } }], usageMetadata: {} })
-const fetchImpl = async (url) => {
-  if (String(url).includes('generativelanguage')) {
-    const next = script.shift() ?? gemini([{ text: 'ok' }])
-    return { ok: true, status: 200, json: async () => next, text: async () => JSON.stringify(next) }
-  }
-  throw new Error('unexpected fetch ' + url)
-}
-const tables = { tasks: [{ id: 't1', user_id: OWNER, title: 'Buy milk' }, { id: 't2', user_id: OWNER, title: 'Keep me' }], app_allowed_users: [] }
-const log = []
-const env = { GEMINI_API_KEY: 'k', HEVY_USER_ID: OWNER, PHONE_GATEWAY_SECRET: 'phone', SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a' }
-const handler = load('ai-proxy', { env, tables, users: { 'owner-jwt': OWNER, 'stranger-jwt': STRANGER }, log, fetchImpl })
-const call = async (body, headers) => { const r = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })); return { status: r.status, body: await r.json() } }
 let ok = 0, bad = 0; const check = (n, c, d) => { if (c) { ok++; console.log('  ✓', n) } else { bad++; console.log('  ✗', n, d ?? '') } }
-
-function checkLinkColumnsNoWrite() {
-  const migDir = `${REPO}/supabase/migrations`
-  const latest = fs.readdirSync(migDir).filter(f => /^\d+_.*\.sql$/.test(f)).sort()
-    .map(f => fs.readFileSync(`${migDir}/${f}`, 'utf8'))
-    .filter(t => /function public\.app_undo_links\(p_table text\)/.test(t)).pop() ?? ''
-  const body = latest.slice(latest.indexOf('function public.app_undo_links(p_table text)'))
-  const cols = [...new Set([...body.slice(0, body.indexOf('$$;')).matchAll(/'([a-z_]+)'/g)].map(m => m[1])
-    .filter(c => /_(id|area|href)$/.test(c) && !/^(tasks|time_blocks|schedule_blocks|user_[a-z_]+)$/.test(c)))]
-  const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
-  const re = new RegExp(src.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-  const open = cols.filter(c => !re.test(c))
-  check(`every outside link Undo knows (${cols.length}) is closed to the assistant (AI_NO_WRITE)`, cols.length >= 5 && !open.length, open.join(', '))
-}
 
 // The new assistant (claude function, migration 197): it never writes by itself. Static checks on its tool part and its
 // migration; the behaviour (a forged, another account's, an expired, a repeated Confirm) is in verify-claude-chat.cjs.
@@ -127,13 +38,12 @@ function checkClaudeConfirm() {
   check('a write tool can never be "on": its modes are ask and off only, and the model\'s tool run never calls applyProposal', /\['ask', 'off'\] : \['on', 'off'\]/.test(rules) && !/applyProposal/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))))
   check('applyProposal is called from one place only, the owner\'s Confirm (decideChatProposal), with the owner\'s own client', (loop.match(/applyProposal\(/g) || []).length === 1 && /applyProposal\(ctx\.userDb, ctx\.userId,/.test(loop))
   check('the browser can read its proposals and write none: one select policy, one select grant, no browser write', /grant select on public\.ai_chat_proposals to authenticated;/.test(mig) && !/grant [^;]*(insert|update|delete)[^;]* on public\.ai_chat_proposals to authenticated/.test(mig) && (mig.match(/create policy [^;]*on public\.ai_chat_proposals/g) || []).length === 1)
-  check('the proposals and chats are in no assistant catalogue: the old assistant\'s DB_CATALOG names none of the new tables', !/ai_chat_proposals|ai_conversations|ai_messages/.test(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')))
   // phase 4b: the owner's controls and the phone's tools
   const store = fs.readFileSync(`${REPO}/supabase/claude-src/chat-store.ts`, 'utf8').replace(/\/\/.*$/gm, '')
   const phone = fs.readFileSync(`${REPO}/supabase/claude-src/phone-ask.ts`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   const mig198 = fs.readFileSync(`${REPO}/supabase/migrations/198_ai_chat_controls.sql`, 'utf8').replace(/--.*$/gm, '')
   const phoneTools = tools.slice(tools.indexOf('export const PHONE_TOOL_NAMES'), tools.indexOf('export async function applyProposal'))
-  check('the settings rows are input read in one place (the store), never by a tool, and in no assistant catalogue', /ai_tool_settings/.test(store) && !/ai_tool_settings|chat_instructions/.test(tools) && !/ai_tool_settings|chat_instructions/.test(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')))
+  check('the settings rows are input read in one place (the store), never by a tool', /ai_tool_settings/.test(store) && !/ai_tool_settings|chat_instructions/.test(tools))
   check('the settings only ever narrow: a write tool is never "on" whatever a row says, and an unknown tool name is ignored (toolModes walks its own list)', /for \(const name of ALL_TOOL_ORDER\)/.test(rules) && /\['ask', 'off'\] : \['on', 'off'\]/.test(rules))
   check('the owner\'s words enter the prompt only as the second system block (escaped, framed), never in a message or a tool result', /ownerInstructionsBlock\(frozenInstructions\)/.test(loop) && loop.split('\n').filter(l => /ownerInstructions|frozenInstructions|ownerBlock/.test(l)).every(l => !/blocks\.push|type: 'text'|tool_result|messages\.push/.test(l)) && /escapeTagText\(text\)/.test(rules))
   check('the phone\'s tools are exactly five reads (the chat\'s own definitions), no write and no SQL tool, and the phone part touches no table but the ledger\'s', /PHONE_TOOL_NAMES: readonly string\[\] = \['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me'\]/.test(phoneTools) && !/propose_|ask_database|applyProposal/.test(phoneTools) && !/\.(insert|update|upsert|delete)\(/.test(phoneTools) && !/\.(insert|update|upsert|delete)\(|\.from\(/.test(phone))
@@ -142,7 +52,6 @@ function checkClaudeConfirm() {
   const sugRules = fs.readFileSync(`${REPO}/supabase/claude-src/suggest-rules.ts`, 'utf8')
   const sugStore = fs.readFileSync(`${REPO}/supabase/claude-src/suggest-store.ts`, 'utf8')
   const noteTool = tools.slice(tools.indexOf('const NOTE_SHORTCUT'), tools.indexOf('const TOOL_DEFS'))
-  check('the suggestions tables and functions are in no assistant catalogue (the old assistant\'s DB_CATALOG names none)', !/ai_suggestions|ai_suggest_runs|ai_suggest_patterns|ai_suggestion_add/.test(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')))
   check('note_shortcut is no write tool and touches no table: it only calls the writer it is handed (the loop builds it with the verified user), and refuses without one', /kind: 'read'/.test(noteTool) && !/\.from\(|\.rpc\(|ctx\.db|userId/.test(noteTool) && /ctx\.noteIdea/.test(noteTool) && !/note_shortcut/.test(tools.slice(tools.indexOf('export const PHONE_TOOL_NAMES'), tools.indexOf('export async function applyProposal'))))
   check('the idea\'s key is made by the function, never read from the model: ideaKey / patternKey are the only sources of a key, and the writer\'s only caller passes one of them', /export async function ideaKey/.test(sugRules) && /export async function patternKey/.test(sugRules) && (loop.match(/addSuggestion\(/g) || []).length === 1 && /await ideaKey\(idea\)/.test(loop) && /await patternKey\(pattern\)/.test(fs.readFileSync(`${REPO}/supabase/claude-src/suggest-batch.ts`, 'utf8')))
   check('the suggestions store writes ideas through the one database function and never the table directly', /rpc\('ai_suggestion_add'/.test(sugStore) && !/from\('ai_suggestions'\)\.(insert|update|upsert|delete)/.test(sugStore) && /patternsError|ai_suggest_patterns/.test(sugStore))
@@ -154,189 +63,23 @@ function checkAiWriteGroup() {
   const { INVALIDATION_GROUPS } = require(`${REPO}/src/shared/query/invalidate.ts`)
   const { qk } = require(`${REPO}/src/shared/query/keys.ts`)
   const { partialMatchKey } = require('@tanstack/query-core')
-  const d = '2026-10-28', w = '2026-10-26'
-  // One key (or more) a screen reads each writable table under.
+  const d = '2026-10-28'
+  // The tables a confirmed proposal writes (applyProposal: a task, a food log line) and the keys a screen reads them under.
   const SCREENS = {
-    tasks: [qk.tasks.day(d, d), qk.tasks.projects()], time_blocks: [qk.schedule.day(d)], training_skips: [qk.training.skips(w)],
-    recipes: [qk.recipes.all], recipe_ingredients: [qk.recipes.all], recipe_ingredient_library: [qk.ingredients.all],
-    food_log_entries: [qk.foodLog.day(d), qk.mealPlan.dayNutrition(d), qk.health.cutDiary(w, d), qk.supplements.facts(w, d)],
-    water_log_entries: [qk.water.day(d)], quick_guess_items: [qk.quickGuess.list()],
-    supplement_schedules: [qk.supplements.schedules()], supplement_dose_state: [qk.supplements.facts(w, d)],
-    shop_categories: [qk.shop.categories()], shop_items: [qk.shop.items()], shop_item_links: [qk.shop.links()], shop_item_costs: [qk.shop.costs()],
-    shop_store_rules: [qk.shop.storeRules()],
-    shop_ad_notes: [qk.shop.adNotes()], shop_trade_in_quotes: [qk.shop.tradeIns()], shop_listings: [qk.shop.listings()],
-    wish_items: [qk.wishes.all], books: [qk.books.library()], reading_settings: [qk.books.settings()],
-    user_movie_entries: [qk.media.userMovies(), qk.media.recent()], user_tv_entries: [qk.media.userTv()],
-    user_tv_episodes: [qk.media.watched('e1'), qk.media.nextEpisode('e1'), qk.media.recent()],
-    media_watches: [qk.media.userMovies(), qk.media.watched('e1')], movie_cinema_visits: [qk.media.cinemaVisits()],
-    projects: [qk.projects.list()], project_phases: [qk.projects.phases()],
-    project_blocks: [qk.projects.blocks('p1')], project_entries: [qk.projects.entries('p1'), qk.projects.openQuestions()],
-    sleep_night_confirmations: [qk.health.sleepConfirmations], athlete_profile: [qk.athlete.profile],
-    day_targets: [qk.dayTargets.all], athlete_limitations: [qk.athlete.limitations],
-    dev_requests: [qk.devRequests.all], ai_memory: [qk.memory.all],
-    // written by its own tools, not the catalogue
-    user_transit_stops: [qk.transit.stops()], user_transit_routes: [qk.transit.routes()],
+    tasks: [qk.tasks.day(d, d), qk.tasks.projects()],
+    food_log_entries: [qk.foodLog.day(d), qk.mealPlan.dayNutrition(d), qk.health.cutDiary('2026-10-26', d), qk.supplements.facts('2026-10-26', d)],
   }
-  const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
-  const rw = [...src.matchAll(/^ {2}([a-z_]+): \{\n {4}access: 'rw'/gm)].map(m => m[1])
-  check(`DB_CATALOG lists its rw tables (${rw.length})`, rw.length > 25, rw.length)
-  const unmapped = rw.filter(t => !SCREENS[t])
-  check('every rw table has a screen key here', !unmapped.length, unmapped.join(', '))
+  const tools = fs.readFileSync(`${REPO}/supabase/claude-src/chat-tools.ts`, 'utf8')
+  const apply = tools.slice(tools.indexOf('export async function applyProposal'))
+  const written = [...apply.matchAll(/'(tasks|food_log_entries)'/g)].map(m => m[1])
+  const unmapped = [...new Set(written)].filter(t => !SCREENS[t])
+  check(`every table a confirmed proposal writes (${[...new Set(written)].join(', ')}) has a screen key here`, written.length >= 1 && !unmapped.length, unmapped.join(', '))
   const roots = INVALIDATION_GROUPS.aiWrite
   const stale = Object.entries(SCREENS).flatMap(([t, keys]) => keys.filter(k => !roots.some(r => partialMatchKey(k, r))).map(k => `${t} ${JSON.stringify(k)}`))
   check("'aiWrite' refreshes every one of them", !stale.length, stale.join('; '))
 }
-;(async () => {
-  const web = { authorization: 'Bearer owner-jwt' }
-  const msg = [{ role: 'user', content: 'Delete my Buy milk task' }]
-  // 1. a delete becomes a proposal
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"title":"Buy milk"}' } } }])]
-  let r = await call({ messages: msg }, web)
-  const c = r.body.confirms?.[0]
-  check('model delete → Confirm card, nothing deleted', r.status === 200 && c && /Delete 1 task: "Buy milk"/.test(c.summary) && tables.tasks.length === 2, JSON.stringify(r.body))
-  // 2. cancel leaves it
-  // 3. confirm deletes exactly that row
-  r = await call({ confirmAction: { id: c.id, decision: 'confirm' } }, web)
-  check('Confirm deletes exactly the shown row', /^Done:/.test(r.body.text) && tables.tasks.length === 1 && tables.tasks[0].id === 't2', JSON.stringify(r.body))
-  r = await call({ confirmAction: { id: c.id, decision: 'confirm' } }, web)
-  check('a used confirmation cannot run twice', /expired or was already used/.test(r.body.text))
-  // 4. cancel path
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }])]
-  r = await call({ messages: msg }, web)
-  const c2 = r.body.confirms?.[0]
-  r = await call({ confirmAction: { id: c2.id, decision: 'cancel' } }, web)
-  check('Cancel deletes nothing', /Cancelled/.test(r.body.text) && tables.tasks.length === 1)
-  // 5. the phone's device secret no longer opens ai-proxy at all (AI phase 2c: phone-gateway calls `claude`)
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }])]
-  r = await call({ messages: msg, surface: 'general' }, { 'x-phone-secret': 'phone' })
-  check('the phone secret is refused (401): nothing runs, nothing deleted', r.status === 401 && tables.tasks.length === 1, JSON.stringify(r.body))
-  r = await call({ confirmAction: { id: c2.id, decision: 'confirm' } }, { 'x-phone-secret': 'phone' })
-  check('the phone secret cannot send a confirmation either', r.status === 401)
-  // 6. a confirmation belongs to its account
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'tasks', filters: '{"id":"t2"}' } } }])]
-  r = await call({ messages: msg }, web)
-  const c3 = r.body.confirms?.[0]
-  tables.app_allowed_users.push({ user_id: STRANGER })   // even an allowed second account
-  r = await call({ confirmAction: { id: c3.id, decision: 'confirm' } }, { authorization: 'Bearer stranger-jwt' })
-  check('another account cannot confirm it', /expired or was already used/.test(r.body.text) && tables.tasks.length === 1)
-  tables.app_allowed_users = []
-  // 7. stranger is refused outright
-  r = await call({ messages: msg }, { authorization: 'Bearer stranger-jwt' })
-  check('unlisted account → 403', r.status === 403)
-  // 8. column guard and memory label
-  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'time_blocks', values: '{"date":"2026-10-11","title":"x","google_calendar_event_id":"someone-elses"}' } } }]), gemini([{ text: 'done' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot set google_calendar_event_id', !(tables.time_blocks ?? []).length && r.body.steps?.some(s => s.includes('may not set google_calendar_event_id')), JSON.stringify(r.body.steps))
-  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'ai_memory', values: '{"title":"t","content":"c","kind":"fact","source":"user"}' } } }]), gemini([{ text: 'saved' }])]
-  r = await call({ messages: msg }, web)
-  check("AI-written memory is labelled 'ai' even when it claims 'user'", tables.ai_memory?.[0]?.source === 'ai', JSON.stringify(tables.ai_memory))
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'user_movie_entries', filters: '{"id":"m1"}', values: '{"repeat_count":10000}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI play count capped', r.body.steps?.some(s => s.includes('repeat_count must be')), JSON.stringify(r.body.steps))
-  // Shop's frozen NOK rates and a sale's Undo record are the database's own (187): a rate sent is kept as typed
-  // by hand, and a forged sale_undo would steer the user's next Undo.
-  tables.shop_item_costs = [{ id: 'c1', user_id: OWNER, item_id: 's1', label: 'Repair', amount: 100, currency: 'EUR', fx_nok: null }]
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_item_costs', filters: '{"id":"c1"}', values: '{"fx_nok":11.5,"fx_source":"norges_bank"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot set a Shop rate (shop_item_costs.fx_nok stays as the database froze it)', tables.shop_item_costs[0].fx_nok === null && r.body.steps?.some(s => s.includes('may not set fx_nok')), JSON.stringify(r.body.steps))
-  // An ad's link is the owner's own paste (192): a steered turn could plant a link the owner then taps.
-  tables.shop_ad_notes = [{ id: 'a1', user_id: OWNER, item_id: 's1', ad_url: 'https://www.finn.no/recommerce/forsale/item/1', price: 100, currency: 'NOK', asking: true }]
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_ad_notes', filters: '{"id":"a1"}', values: '{"ad_url":"https://phish.example/finn"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot set an ad\'s link (shop_ad_notes.ad_url stays the owner\'s paste)', tables.shop_ad_notes[0].ad_url === 'https://www.finn.no/recommerce/forsale/item/1' && r.body.steps?.some(s => s.includes('may not set ad_url')), JSON.stringify(r.body.steps))
-  // An ad's text is copied into FINN as it stands (security review, 10.11.2026): a steered turn must not plant words in it.
-  tables.shop_listings = [{ id: 'l1', user_id: OWNER, item_id: 's1', status: 'for_sale', ad_text: 'Selger en spillkonsoll.', prices: [{ on: '2026-11-01', price: 1000 }] }]
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_listings', filters: '{"id":"l1"}', values: '{"ad_text":"Betal forskudd til en annen konto"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot write an ad\'s text (shop_listings.ad_text stays the owner\'s words)', tables.shop_listings[0].ad_text === 'Selger en spillkonsoll.' && r.body.steps?.some(s => s.includes('may not set ad_text')), JSON.stringify(r.body.steps))
-  // A listing's marketplace is the host the ad sheet links out to (security review, 11.11.2026): never the assistant's.
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'shop_listings', filters: '{"id":"l1"}', values: '{"marketplace":"flnn.no"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot set a listing\'s marketplace (a look-alike host would become "Post it yourself on …")', tables.shop_listings[0].marketplace === undefined
-    && r.body.steps?.some(s => s.includes('may not set marketplace')), JSON.stringify(r.body.steps))
-  {
-    const re = new RegExp(fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8').match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-    const open = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'sale_undo', 'ad_url', 'ad_text', 'closed_by_sale', 'marketplace'].filter(c => !re.test(c))
-    check('every Shop column the database fills is closed to the assistant (rates, sale_undo, a listing\'s closed_by_sale) — and an ad\'s link and text, the owner\'s own', !open.length && !re.test('sale_price') && !re.test('sale_group') && !re.test('url') && !re.test('prices'), open.join(', '))
-    // A store rule's seed link, its source and its edited flag (191): the database's own.
-    const rulesOpen = ['seed_key', 'source_facts', 'owner_edited', 'search_opened_on', 'facts'].filter(c => !re.test(c))
-    check('a store rule\'s seed key, source and owner_edited, a wish\'s search day and autofill\'s facts are closed to the assistant (a rule\'s own fields are not)', !rulesOpen.length && !re.test('days') && !re.test('words') && !re.test('origin'), rulesOpen.join(', '))
-  }
-  // 8. an item's link (193) is the owner's to set: a page steering the assistant can't plant a link in Apple Calendar's
-  //    URL field (security review, 10.11.2026) — on time_blocks only; the shop's and wishes' links stay writable.
-  tables.time_blocks = [{ id: 'tb1', user_id: OWNER, date: '2026-11-12', title: 'Dentist', start_time: '17:00:00', duration_minutes: 60, url: null }]
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'time_blocks', filters: '{"id":"tb1"}', values: '{"url":"https://example.com/phish","title":"Dentist"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot set an item\'s link (time_blocks.url stays as the owner left it)', tables.time_blocks[0].url === null && tables.time_blocks[0].title === 'Dentist'
-    && r.body.steps?.some(s => s.includes("an item's link is set in the app")), JSON.stringify(r.body.steps))
-  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'time_blocks', values: '{"date":"2026-11-13","title":"New","url":"https://example.com/x"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('…nor make a new item with one', tables.time_blocks.length === 1 && r.body.steps?.some(s => s.includes("an item's link is set in the app")), JSON.stringify(r.body.steps))
-  {
-    const src = fs.readFileSync(`${REPO}/supabase/functions/ai-proxy/index.ts`, 'utf8')
-    const re = new RegExp(src.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-    check('the link rule is time_blocks\' alone (AI_NO_WRITE never takes url: shop and wish links stay writable)',
-      !re.test('url') && src.includes("if (table === 'time_blocks' && 'url' in row) return 'Not done: an item\\'s link is set in the app.'"))
-  }
-  // 8a. the retired Tomorrow / This week sections are never written (taskRules.sectionForDay)
-  const tasksBefore = JSON.stringify(tables.tasks)
-  script = [gemini([{ functionCall: { name: 'db_insert', args: { table: 'tasks', values: '{"title":"Call mum","section":"tomorrow","due_date":"2026-10-15"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot file a new task under the retired tomorrow', JSON.stringify(tables.tasks) === tasksBefore && r.body.steps?.some(s => s.includes('tomorrow is a retired task section')), JSON.stringify(r.body.steps))
-  script = [gemini([{ functionCall: { name: 'db_update', args: { table: 'tasks', filters: `{"id":"${tables.tasks[0].id}"}`, values: '{"section":"this_week"}' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('AI cannot move a task to the retired this_week', JSON.stringify(tables.tasks) === tasksBefore && r.body.steps?.some(s => s.includes('this_week is a retired task section')), JSON.stringify(r.body.steps))
-  // 8b. the card speaks plainly: table words and DD.MM.YYYY dates
-  tables.water_log_entries = [{ id: 'w1', user_id: OWNER, amount_ml: 250, date: '2026-10-11' }]
-  script = [gemini([{ functionCall: { name: 'db_delete', args: { table: 'water_log_entries', filters: '{"id":"w1"}' } } }])]
-  r = await call({ messages: msg }, web)
-  check('Confirm card: "Delete 1 water entry: "250 ml on 11.10.2026""', r.body.confirms?.[0]?.summary === 'Delete 1 water entry: "250 ml on 11.10.2026"', r.body.confirms?.[0]?.summary)
-  // 9. no embed inside a shared catalogue table (it could list other accounts' rows)
-  tables.user_movie_entries = [{ id: 'm1', user_id: OWNER, movie_id: 'mv1' }]
-  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'user_movie_entries', select: '*, movie:movies(title, peers:user_movie_entries(*))' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('embed inside movies is refused', r.body.steps?.some(s => s.includes('nothing may be embedded inside movies')), JSON.stringify(r.body.steps))
-  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'user_movie_entries', select: 'id, status, movie:movies(title, release_date)' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('a plain catalogue embed still works', r.body.steps?.some(s => s.startsWith('✓ db_query')), JSON.stringify(r.body.steps))
-  // 9b. a shared read-only table (no user_id) is read without the user filter — it only made the read fail —
-  //     while every user table keeps it, and nothing may be embedded in a shared one read whole (guardian, 10.11.2026).
-  tables.shop_site_policies = [{ id: 'sp1', host: 'finn.no', no_automated_reading: true }]
-  tables.fx_rates_nok = [{ day: '2026-11-09', currency: 'EUR', nok_per_unit: 11.7 }]
-  tables.shop_deal_days = [{ id: 'dd1', slug: 'black_friday', name: 'Black Friday', rule_kind: 'nth_weekday' }]
-  tables.shop_law_rules = [{ id: 'lr1', slug: 'cancel_distance_business', kind: 'cancel', days: 14 }]
-  tables.shop_items = [{ id: 's1', user_id: OWNER, title: 'Phone' }, { id: 's2', user_id: STRANGER, title: 'Not mine' }]
-  const selects = table => log.filter(l => l.table === table && l.kind === 'select')
-  const userFilter = l => l.filters.some(([op, c, v]) => op === 'eq' && c === 'user_id' && v === OWNER)
-  for (const table of ['shop_site_policies', 'fx_rates_nok', 'shop_deal_days', 'shop_law_rules']) {
-    const seen = selects(table).length
-    script = [gemini([{ functionCall: { name: 'db_query', args: { table } } }]), gemini([{ text: 'x' }])]
-    r = await call({ messages: msg }, web)
-    const q = selects(table).slice(seen)
-    check(`db_query on ${table} (shared, read-only) reads its rows without a user filter`, q.length === 1 && !userFilter(q[0]) && q[0].affected === 1
-      && r.body.steps?.some(s => s.startsWith('✓ db_query')), JSON.stringify([q, r.body.steps]))
-  }
-  {
-    const seen = selects('shop_items').length
-    script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_items' } } }]), gemini([{ text: 'x' }])]
-    r = await call({ messages: msg }, web)
-    const q = selects('shop_items').slice(seen)
-    check('…while a user table still gets the user filter: only the owner\'s rows', q.length === 1 && userFilter(q[0]) && q[0].affected === 1, JSON.stringify(q))
-  }
-  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_site_policies', select: '*, shop_items(*)' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('…and nothing may be embedded in a shared table read whole', r.body.steps?.some(s => s.includes('nothing may be embedded inside shop_site_policies')), JSON.stringify(r.body.steps))
-  script = [gemini([{ functionCall: { name: 'db_query', args: { table: 'shop_deal_days', select: '*, shop_signal_states(*)' } } }]), gemini([{ text: 'x' }])]
-  r = await call({ messages: msg }, web)
-  check('…shop_deal_days included (it could reach other accounts\' Needs-a-look rows)', r.body.steps?.some(s => s.includes('nothing may be embedded inside shop_deal_days')), JSON.stringify(r.body.steps))
-  // 10. after a turn AIPanel refreshes the 'aiWrite' group: it must reach a screen's key
-  // for every table the assistant may write. A new rw table fails here until mapped.
-  checkAiWriteGroup()
-  // 11. every column Undo treats as a link to an outside copy (the latest app_undo_links) is one the
-  //     assistant may not write — a forged link would steer a sync to someone else's data (30.10.2026)
-  checkLinkColumnsNoWrite()
-  // 12. Ask AI on Claude (phase 4a): the same promises for the `claude` function's proposals
-  checkClaudeConfirm()
-  console.log(`\n${ok} passed, ${bad} failed`)
-  process.exit(bad ? 1 : 0)
-})()
+
+checkClaudeConfirm()
+checkAiWriteGroup()
+console.log(`\n${ok} passed, ${bad} failed`)
+process.exit(bad ? 1 : 0)

@@ -453,8 +453,8 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 // metrics without asking.)
 
 // ── THE SLEEP CONTRACT (T36) ─────────────────────────────────────────────────
-// Every surface that reports a night (this page, ai-proxy's get_health_stats,
-// phone-gateway's sleep action) must agree on these five rules:
+// Every surface that reports a night (this page, the claude function's week
+// facts, phone-gateway's sleep action) must agree on these five rules:
 //   1. A night belongs to the day you WOKE UP (sleepNightKey).
 //   2. A night with any manual row uses ONLY its manual rows — a manual entry
 //      is a deliberate correction, never summed with or shadowed by the Watch.
@@ -466,7 +466,7 @@ export function extractSleepSessions(points: HealthMetric[], nightKey: string): 
 //      Awake is reported but never added to the total.
 //   5. No derived sleep metrics (score, efficiency) — measured values only.
 // scripts/verify-sleep-aggregate.cjs pins this file; verify-ai-sleep-merge.cjs
-// checks the edge copies (ai-proxy, phone-gateway) against it; all three
+// checks the edge copies (claude, phone-gateway) against it; all three
 // honour every rule, including the manual-entry rule.
 export function computeSleepSummary(points: HealthMetric[]): SleepSummary[] {
   const byDate = new Map<string, HealthMetric[]>()

@@ -35,7 +35,7 @@ The key `B.<base>.NOK.SP` names the series: `EXR` is the dataflow "Exchange rate
 | money back (a sale, a refund) | `disposed_on` | `shop_items.sale_fx_nok` + `sale_fx_source` | `shop_items_rules()` |
 | an extra cost | `spent_on` | `shop_item_costs.fx_nok` + `fx_source` | `shop_item_costs_rules()` |
 
-`fx_source` is `fixed` (NOK, rate 1), `norges_bank`, or `manual` (a rate typed by hand — kept, and never asked for). Read back by the browser for the chain builder (`fetchDayRates`: `day`, `currency`, `nok_per_unit`) and by the assistant (`DB_CATALOG`, read-only). Nothing is sent to Norges Bank but the query.
+`fx_source` is `fixed` (NOK, rate 1), `norges_bank`, or `manual` (a rate typed by hand — kept, and never asked for). Read back by the browser for the chain builder (`fetchDayRates`: `day`, `currency`, `nok_per_unit`) (the old assistant's read-only catalogue entry went in AI phase 5). Nothing is sent to Norges Bank but the query.
 
 ## A day without a rate
 

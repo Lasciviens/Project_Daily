@@ -1,5 +1,7 @@
 # AI layer — cost & capability reference (as shipped)
 
+> **Retired in AI phase 5 (23.11.2026); history only.** The Gemini assistant, `ai-proxy`, `aiApi.ts` and the tables named below (`ai_embeddings`, `ai_reviews`) are gone. Current: `docs/features/ai-plan.md`, `docs/features/ai.md`.
+
 > **Status: SHIPPED.** Written 21.07.2026, updated 13.10.2026; phases 1–4 are all live — client `aiApi.ts` plus
 > `ai-proxy`, with migrations `064` (`ai_usage_log`, `ai_query_log`, `ai_memory`, the `ai_run_read_query` RPC), `065`
 > (pgvector, `ai_embeddings`, `ai_semantic_search()`, `ai_reviews`) and `140` (`ai_pending_actions`, search copies

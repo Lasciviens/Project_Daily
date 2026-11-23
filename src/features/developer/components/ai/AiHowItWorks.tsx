@@ -14,7 +14,7 @@ import { AiDiagnose } from './AiDiagnose'
 // Developer → AI → Learn → How it works: what the `claude` function says about itself (`describe`) — whether its key
 // is set, the path of one request, its parts with their source files, every job with its fixed instructions
 // and answer shape, and the rules that are code — plus the page's own glossary, the check of the connection
-// (Diagnose) and what is still on Gemini. Nothing here can be changed.
+// (Diagnose). Nothing here can be changed.
 
 /** A source file as a link to its page on GitHub; a path that isn't a plain repo path stays text. */
 function SourceLink({ file }: { file: string }) {
@@ -114,16 +114,6 @@ function JobCard({ job, about }: { job: DescribeJob; about: Describe }) {
 }
 
 /**
- * What still runs on Google's Gemini, written by hand because it is exactly what the new function does not know about
- * (the app has to say it): each row, and the phase of the rebuild that moves it. Gemini has been off for months, so
- * these answer nothing today (docs/features/ai-plan.md §1 has the same table, with the removed parts).
- */
-const STILL_ON_GEMINI: readonly { what: string; phase: string }[] = [
-  { what: 'Search by meaning: the saved-notes index and Developer’s old “Reindex AI search” button (hidden since 22.11.2026)', phase: 'Ask AI’s find_text tool already uses the database’s full-text search (phase 4a); the index is removed in phase 5' },
-  { what: 'The GEMINI_API_KEY secret and the Gemini API entry in Settings', phase: 'Phase 5' },
-]
-
-/**
  * What a NEW Ask AI chat will start with: your own words (the second system block, after the fixed rules), the tools and
  * their modes, and the limits of photos. A chat keeps what it started with. Read-only here: Settings changes it.
  */
@@ -165,26 +155,6 @@ function AskAiSetup({ about }: { about: Describe }) {
   )
 }
 
-function StillOnGemini() {
-  return (
-    <Card>
-      <CardHeader variant="label" title="Still on Gemini" />
-      <p className="text-body text-fg-2">
-        Everything on this page is Claude. These parts of the app are not yet: they were never rebuilt, and Gemini is switched off, so they do not answer until their phase.
-      </p>
-      <ul className="mt-2 divide-y divide-line">
-        {STILL_ON_GEMINI.map(g => (
-          <li key={g.what} className="py-1.5 first:pt-0 last:pb-0">
-            <p className="text-body text-fg">{g.what}</p>
-            <p className="text-meta text-fg-muted">{g.phase}</p>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-meta text-fg-muted">Already moved to Claude: the item ✨, the recipe editor, Food’s quick guess, the PT assessment, the Kobo’s and the phone’s questions.</p>
-    </Card>
-  )
-}
-
 export function AiHowItWorks() {
   const about = useClaudeDescribe()
   // Diagnose does not need the description: it stays usable when the description could not be read.
@@ -201,7 +171,6 @@ export function AiHowItWorks() {
   const sections: Record<AiHowSection, ReactNode> = {
     diagnose: <AiDiagnose />,
     chat: d ? <AskAiSetup about={d} /> : wait('h-72'),
-    gemini: <StillOnGemini />,
     status: d ? <StatusCard about={d} /> : wait('h-60'),
     steps: !d ? wait('h-96') : (
       <Card>

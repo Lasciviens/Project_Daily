@@ -18,7 +18,7 @@
   seconds (change it in Vault + in the shortcuts).
 - Deterministic actions (log a supplement, read today's nutrition) run directly
   in the gateway — instant, free, no AI. AI actions (`ask`/`sleep`; `brief` is built by fixed rules, no AI) the
-  gateway forwards to `ai-proxy` (which now also accepts the same secret).
+  gateway forwards to the `claude` function (AI phase 2c; `ai-proxy` is gone).
 
 ---
 
@@ -34,7 +34,7 @@
    `supabase/config.toml`, so a CLI deploy applies it; on a Dashboard deploy,
    toggle **Enforce JWT Verification → OFF** for each):
    - **`phone-gateway`** (new)
-   - **`ai-proxy`** (redeploy — it gained the `x-phone-secret` auth branch)
+   - (`ai-proxy` is gone since AI phase 5; the gateway reaches `claude` itself)
 4. Done. Nothing on the phone expires after this.
 
 ### 0b · Phone values (used by every shortcut)
@@ -165,7 +165,7 @@ bottle sticker → **Run Shortcut → Su İç** → turn **OFF "Ask Before Runni
 | `sleep_stats` | `{}` | `{ok, last_night:{hours,in_bed_h,deep_h,core_h,rem_h,awake_h,start,end,sleeping_hr?,hrv_ms?,spo2_pct?,resp_rate?}, nights[]}` (overlap-merged, Oslo wake-day) | no |
 | `tasks_today` | `{}` | `{ok, date, tasks:[{title,priority,due_time}], schedule:[{time,title}]}` | no |
 | `import_body_composition` | see below | see below | no |
-| `ask` | `{q}` | `{ok, text}` | yes (→ ai-proxy, fast model) |
+| `ask` | `{q}` | `{ok, text}` | yes (→ `claude`, job `phone_ask`) |
 | `brief` | `{}` | `{ok, text, source: 'rules'}` | no (Home's fixed brief rules, built in the gateway; no AI, no cost) |
 | `sleep` | `{}` | `{ok, text}` | yes |
 
@@ -307,11 +307,11 @@ the same way, never as two rows).
   your login. It's scoped to your data (the gateway acts only as your user id).
 - **Revoke:** change `PHONE_GATEWAY_SECRET` in Vault (+ update the shortcuts/
   widget). Every old copy stops working instantly.
-- The `ai-proxy` change keeps the browser flow identical (it still validates a
+- (History: the old `ai-proxy` change kept the browser flow identical; it validated a
   real JWT via getUser); the secret is a second, additive path.
 
 ## Test checklist
-- [ ] `PHONE_GATEWAY_SECRET` set in Vault; `phone-gateway` deployed; `ai-proxy` redeployed (both verify_jwt off).
+- [ ] `PHONE_GATEWAY_SECRET` set in Vault; `phone-gateway` deployed (verify_jwt off).
 - [ ] Ex 1: tap NFC → supplement row appears in Food/Today.
 - [ ] Ex 2: "Hey Siri, AI'a Sor" speaks a real answer.
 - [ ] Ex 3: 07:00 automation (test via "Run") shows the brief.

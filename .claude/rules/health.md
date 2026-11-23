@@ -8,8 +8,8 @@ paths:
 Background: `docs/features/health.md`.
 
 - Apple Health (through Health Auto Export) is the only health source. Every point is stored as its own row; aggregation happens at query time per `METRIC_AGGREGATION`.
-- Summed metrics (steps, energy, exercise time) collapse to one reading per hour before summing — the export re-reports the same hour. Any new consumer of `health_metrics` sums needs the same collapse (the client's `healthAggregate.ts` and `ai-proxy` each have one).
-- The three sleep merges (client, `ai-proxy`, `phone-gateway`) follow one contract — change them together.
+- Summed metrics (steps, energy, exercise time) collapse to one reading per hour before summing — the export re-reports the same hour. Any new consumer of `health_metrics` sums needs the same collapse (the client's `healthAggregate.ts` and the `claude` function's `week-facts.ts` each have one).
+- The three sleep merges (client, `claude`'s `week-facts`, `phone-gateway`) follow one contract — change them together.
 - "Last night" is only the night filed under the selected day; never show an older night as last night.
 - A night the owner confirmed complete (`sleep_night_confirmations`, 164) is never flagged as incomplete and counts in the baseline — pass the confirmations to every `findIncompleteNights` caller.
 - One bodyweight series, scale first (`bodyweight.ts`); body fat and lean mass come only from the scale in use.

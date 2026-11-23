@@ -53,7 +53,6 @@ eq(/answer\.labels === null/.test(src('src/features/items/useItems.ts')), true,
 for (const f of ['src/features/todo/components/ToDoItem.tsx', 'src/features/work/components/WorkTaskCard.tsx', 'src/features/work/components/WorkListView.tsx']) {
   eq(/<TaskLabelPills\b/.test(src(f)), true, `${path.basename(f)} shows the labels as chips`)
 }
-eq(/labels\(text\[\]/.test(src('supabase/functions/ai-proxy/index.ts')), true, 'the assistant\'s catalogue names tasks.labels')
 const mig = src('supabase/migrations/180_task_labels.sql')
 eq(/before insert or update of labels on public\.tasks/.test(mig), true, 'every writer is cleaned by the database (a trigger, not app code)')
 

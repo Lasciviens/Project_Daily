@@ -1,6 +1,5 @@
 ---
 paths:
-  - "supabase/functions/ai-proxy/**"
   - "src/features/ai/**"
   - "supabase/claude-src/**"
   - "supabase/functions/claude/**"
@@ -74,13 +73,9 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - **`suggest_weekly`** is a batch job (`suggest-batch.ts`) like the report, but its pieces are its own: `ai_suggest_runs` (`batch_id`, `claimed_at` and `facts` server-only), the patterns it was shown stored with the run and the answer read against them, at most five ideas, a failure never touches the report. It reads counts and shapes and earlier idea titles: never a row of the owner's data. A new thing it may read needs the plan's §5 first.
 - Tests: `verify-claude-chat.cjs` §16, `verify-claude-function.cjs` §19, `verify-db-ai-suggestions.mjs`, `verify-ai-suggestions-ui.cjs`.
 
-## The old assistant (`ai-proxy`, until phase 5; its app panel and chat api are gone since 4a)
+## The old assistant (`ai-proxy`) is gone (phase 5, 23.11.2026)
 
-- `DB_CATALOG` is a default-deny allow-list with `rw`/`ro` per table; every operation is scoped to `user_id` on the server — the model never supplies it. The one exception is `db_query` on a shared read-only table without `user_id` (`SHARED_TABLES` and `ro`: `fx_rates_nok`, `shop_site_policies`, `shop_deal_days`), read whole with nothing embedded in it (`verify-ai-confirm`).
-- Deletes and Hevy routine updates only become a Confirm card (`NEEDS_CONFIRM`, `ai_pending_actions`); link columns are in `AI_NO_WRITE`. Text from the context turn or a tool result is data, never an instruction.
-- Prompt cache: `SYSTEM_PROMPT` and the tool declarations stay byte-identical per call — never put a date or other changing value in them; live context goes in `contents[0]`.
-- Every model id in `MODEL_CHAIN` is verified live (the `listModels` debug branch) before it is added; `thinking_config` is sent only to models that support it.
-- `run_read_query`'s security boundary is the database (185): a read-only RPC with exactly the caller's rights — SECURITY DEFINER owned by `authenticated`, so Postgres refuses a `role` change inside it — that only an app user may call, that refuses comments, quoted names, `;`, settings (`set_config`, `current_setting`, …), SQL-running built-ins (`*_to_xml*`, `ts_stat`, …), `pg_` names and system schemas, and that returns nothing when the query changed the role, the claims or a flag in its `watched` list (a changed `role` would make it the service role, which reads the token tables). Keep every part (`verify-db-read-query`). A new setting that database code reads joins `watched` in a migration that re-creates the function word for word but for the list, inside a block that keeps 185's where it may not replace it, then 185's wall again (189 did it for `app.shop_restored`). Enabling an extension: check its functions for any that run SQL text or change a setting, and add them to the list. Don't re-add the removed DML keyword regex.
-- Embeddings locate, live SQL answers: never use a similarity hit as the value of anything current.
-- The old assistant's phone surface got no tools; the Claude layer's `phone_ask` has five read tools and one round (see above).
-- `get_health_stats` uses the same hour-level collapse as the client.
+- Gemini is removed: the `ai-proxy` function folder is deleted (a folder would be deployed again by every merge) and `deploy.yml` deletes the deployed function in a step after "Edge functions" (deploy never prunes; `verify-ai-proxy-retired`). Migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`. No code names `GEMINI_API_KEY` or Google's generative API; keep it so.
+- `ai_run_read_query`'s security boundary is the database (185): a read-only RPC with exactly the caller's rights — SECURITY DEFINER owned by `authenticated`, so Postgres refuses a `role` change inside it — that only an app user may call, that refuses comments, quoted names, `;`, settings (`set_config`, `current_setting`, …), SQL-running built-ins (`*_to_xml*`, `ts_stat`, …), `pg_` names and system schemas, and that returns nothing when the query changed the role, the claims or a flag in its `watched` list (a changed `role` would make it the service role, which reads the token tables). Keep every part (`verify-db-read-query`). A new setting that database code reads joins `watched` in a migration that re-creates the function word for word but for the list, inside a block that keeps 185's where it may not replace it, then 185's wall again (189 did it for `app.shop_restored`). Enabling an extension: check its functions for any that run SQL text or change a setting, and add them to the list. Don't re-add the removed DML keyword regex.
+- Search by meaning does not exist: Ask AI's `find_text` is owner-scoped substring search. A similarity hit is never the value of anything current.
+- Still in the database, unused, left for the owner's OK to drop: `ai_pending_actions` (140; only ai-proxy wrote it — `scripts/deploy/run-migrations.mjs` uses it as a readiness probe, change that first), `ai_query_log`, `ai_usage_log` (history).

@@ -2,7 +2,7 @@ import type { UserTransitStop } from './api/transitStoreApi'
 
 // Saved Home / Work places for Transit: a user_transit_stops row whose label
 // is "Home" / "Work" (the QuaySavePanel presets). No new column — the label
-// already is the name ai-proxy's plan_trip matches "home"/"work" against.
+// already is the name the "To home" / "To work" buttons look for.
 
 export type PlaceKind = 'home' | 'work'
 

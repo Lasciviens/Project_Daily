@@ -51,7 +51,7 @@ While ESPN answers, each match list keeps the room of its last full answer on th
 - **Not stored, not server-side.** No edge function: ESPN answers any origin and needs no key, and keeping matches out of the database means nothing goes stale there.
 - **A tournament can't be subscribed** — a whole Champions League in the day is never wanted; plan its matches one by one.
 - **Unsubscribe and Unfollow take the subscription's coming matches out** (25.10.2026; until then they kept them — "those are the owner's tasks now"). Matches planned by hand stay: those were chosen one by one.
-- **The assistant reads the two tables, never writes them** (`DB_CATALOG`: `ro`): it can't reach ESPN, so it couldn't follow or plan correctly.
+- **The assistant reads the two tables, never writes them** (no assistant tool reads or writes them): it can't reach ESPN, so it couldn't follow or plan correctly.
 - **A favourite is a team, and several may be** (168, 26.10.2026): a tournament has no form or table place of its own to show. Starring keeps the Following list's order, so nothing jumps under a tap.
 
 ## Not tested against

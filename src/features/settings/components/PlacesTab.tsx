@@ -11,7 +11,7 @@ import { findPlace, PLACE_LABEL, type PlaceKind } from '../../home/transitPlaces
 import { PLACES_BOARD, type PlacesSection } from '../settingsBoards'
 
 // Settings → Places: the saved Home and Work places Transit's "To home" /
-// "To work" buttons (and ai-proxy's plan_trip) plan to. A place is a
+// "To work" buttons plan to. A place is a
 // user_transit_stops row labelled "Home" / "Work" — no new table.
 
 const ICON: Record<PlaceKind, typeof Home> = { home: Home, work: Briefcase }

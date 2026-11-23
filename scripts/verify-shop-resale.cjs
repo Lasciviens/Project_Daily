@@ -484,16 +484,8 @@ const ITEM = uid(500)
   const keys = read('src/shared/query/keys.ts')
   check('the value history sits under the items\' key (a value edit refreshes it); every resale list under one root that a delete or a sale refreshes',
     /valueHistory: \(\) => \['shop', 'items', 'value-history'\]/.test(keys) && /SHOP_ROWS = \[[^\]]*qk\.shop\.resale\(\)/.test(read('src/features/shop/hooks/useShop.ts')))
-  const ai = read('supabase/functions/ai-proxy/index.ts')
-  const access = t => ai.match(new RegExp(`\\n  ${t}: \\{\\n    access: '(rw|ro)'`))?.[1]
   check('the database\'s text bounds count every character and need one that is not a space (never char_length(btrim(…)))',
     !/char_length\(btrim\(/.test(sql.replace(/--.*$/gm, '')) && (sql.match(/ ~ '\\S'/g) || []).length === 6)
-  check('the assistant: ad notes, quotes and listings as the owner types them (rw); the value history, templates and checklists read only',
-    access('shop_ad_notes') === 'rw' && access('shop_trade_in_quotes') === 'rw' && access('shop_listings') === 'rw'
-    && access('shop_value_history') === 'ro' && access('shop_ad_templates') === 'ro' && access('shop_handover_checklists') === 'ro')
-  const noWrite = new RegExp(ai.match(/const AI_NO_WRITE = \/(.+)\/\n/)?.[1] ?? '$^')
-  check('…and never an ad\'s link, an ad\'s text, a marketplace or a listing\'s closed_by_sale (AI_NO_WRITE)', noWrite.test('ad_url') && noWrite.test('ad_text') && noWrite.test('marketplace')
-    && noWrite.test('closed_by_sale') && !noWrite.test('url'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

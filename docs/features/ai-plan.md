@@ -40,20 +40,20 @@ Words used below, once:
 
 ## 1. Every use of Gemini today
 
-**Where Gemini still is (22.11.2026):** only Ask AI and the PT coach chat (phase 4), the search by meaning (phase 4–5) and the leftovers named in phase 5. Developer → AI → Learn → How it works has a "Still on Gemini" card with the same list.
+**Where Gemini still is (23.11.2026): nowhere.** Phase 5 (built 23.11.2026) removed the last of it; the table below is the history of what was where and what became of it. The "Still on Gemini" card is gone from Developer → AI → How it works.
 
 ### Server (the Gemini key lives only here)
 
 | Where | What it does | Model today | Status (22.11.2026) |
 |---|---|---|---|
-| `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks | Still on Gemini until phase 4 (Gemini is off: it answers nothing) |
-| `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same | Still on Gemini until phase 4 |
+| `supabase/functions/ai-proxy` (4,211 lines) — chat | **Ask AI**: a conversation where the model calls 28 tools to read and write your data:<br>• generic database tools: `db_query`, `db_insert`, `db_update`, `db_delete`, `db_aggregate`, `describe_database`, `run_read_query`;<br>• special tools: transit, media, health, shop, Hevy routines, calendar, day summary;<br>• `semantic_search`, `save_memory`. | `gemini-3.5-flash`, then three fallbacks | **Removed in 4a** (Ask AI on `claude`); the function itself in phase 5 |
+| `ai-proxy` — surface `coach` | The **PT coach chat** (same loop, a training-focused prompt). | same | **Removed in 4b** (the coach mode of Ask AI) |
 | `ai-proxy` — surface `phone` | The phone's **brief** and **ask**: one answer, no tools. | `gemini-3.1-flash-lite` | **Removed in 2c:** `phone-gateway` calls `claude` (`phone_ask`) itself; its brief is built by fixed rules (no AI) since 22.11.2026 |
 | `ai-proxy` — `responseSchema` mode (removed in 2a) | One-shot JSON answers. Used by the recipe editor (read a recipe from text, estimate macros) and Food's quick guess ("describe it", suggest options). | chain | **Removed in 2a** |
 | `ai-proxy` — `fetchUrl` (removed in 2a) | Reads a recipe page server-side (with the SSRF guard), then parses it. | chain | **Removed in 2a** |
 | `ai-proxy` — `itemFill` | The item screen's **✨ fill from a sentence**. | `gemini-3.1-flash-lite` first | **Removed in phase 1** |
-| `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model | Still on Gemini until phase 4–5 (the old Reindex button is hidden since 22.11.2026) |
-| `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) | Stays until phase 4 (no AI call) |
+| `ai-proxy` — embeddings | **Search by meaning**: turns saved notes into numbers (`gemini-embedding-001`, 768 numbers each), and **Reindex AI search** on the Developer page. | embedding model | **Removed in phase 5** (search is full-text; the Reindex button went with it) |
+| `ai-proxy` — `confirmAction` | Runs or cancels a write the assistant proposed, after you tap Confirm. | none (no AI call) | **Removed in phase 5** (Confirm is `ai_chat_proposals` since 4a) |
 | `supabase/functions/kobo-sync` → `handleAsk` | A question about a book passage, asked from the Kobo. At most 100 a day; answers saved in `book_ai_notes`. | `gemini-3.1-flash-lite`, `gemini-2.5-flash` | **Removed in 2c:** the `kobo_ask` job |
 | `supabase/functions/phone-gateway` → `ask`, `brief` | Forwards the iPhone shortcut's questions to `ai-proxy`, surface `phone`. | via ai-proxy | **Moved in 2c:** the `phone_ask` job; `brief` is rule-based (`briefRules.ts` copy) since 22.11.2026 |
 
@@ -61,12 +61,12 @@ Words used below, once:
 
 | Screen | Function | File | Status (22.11.2026) |
 |---|---|---|---|
-| Ask AI panel: chat, photos, voice, Confirm / Cancel | `sendMessage`, `sendCoachMessage`, `settleAIAction` | `src/features/ai/components/AIPanel.tsx`, `src/features/ai/api/aiApi.ts` (695 lines) | Still on Gemini until phase 4 |
+| Ask AI panel: chat, photos, voice, Confirm / Cancel | `sendMessage`, `sendCoachMessage`, `settleAIAction` | `src/features/ai/components/AIPanel.tsx`, `src/features/ai/api/aiApi.ts` (695 lines) | **Removed in 4b** (the coach mode of Ask AI) |
 | Training → Coach: the PT assessment | `generatePTAssessment` → `invokeAI` | `src/features/training/api/ptCoachApi.ts`, `PTCoachTab.tsx` (shows the Gemini model name) | **Removed in 2b** (`coach_assessment`; the tab shows the saved model) |
 | Recipe editor: from text, from a link, macros | `parseRecipeText`, `parseRecipeFromUrl`, `estimateRecipeMacros` | `src/features/recipes/components/RecipeModal.tsx` | **Removed in 2a** |
 | Food → Quick guess | `describeGuess`, `suggestGuessOptions` | `src/features/recipes/hooks/useQuickGuess.ts` | **Removed in 2a** |
 | Item screen ✨ | `fillItemFields` | `src/shared/components/plan-modal/useItemFill.ts`, `src/features/items/itemFill.ts` | **Removed in phase 1** |
-| Developer → Reindex AI search | `reindexAiSearch` | `src/features/developer/pages/DeveloperPage.tsx` | Hidden since 22.11.2026; removed in phase 5 |
+| Developer → Reindex AI search | `reindexAiSearch` | `src/features/developer/pages/DeveloperPage.tsx` | **Removed in phase 5** |
 | Kobo passage question (the prompt) | `buildAskPrompt` | `src/features/books/koboDevice.ts` | **Removed in 2c** |
 | Settings → APIs and Subscriptions | the "Gemini API" entry and the `gemini` service | `src/features/settings/apiRegistry.ts`, `subscriptionRules.ts`, `SubscriptionBits.tsx` | **Removed in phase 1** |
 
@@ -75,21 +75,21 @@ Words used below, once:
 | Item | Migration | What it holds | Status (22.11.2026) |
 |---|---|---|---|
 | `ai_usage_log` | 064 | Tokens per chat answer. Has data for 22.07–25.08.2026. | Stays (history) |
-| `ai_query_log` | 064 | Every data read the assistant ran. | Stays until phase 4 |
-| `ai_memory` | 064 | Facts and preferences the assistant saved about you. | Stays until phase 4 |
-| `ai_run_read_query()` | 064 | The assistant's read-only SQL, run with your own rights. | Stays until phase 4 |
-| `ai_embeddings` (vector of 768) + `ai_semantic_search()` | 065 | Search by meaning. **Gemini-specific numbers.** | Phase 5 (dropping needs the owner's OK) |
-| `ai_reviews` | 065 | Unused, empty. | Phase 5 (OK needed) |
-| `ai_pending_actions` | 140 | Writes waiting for your Confirm. | Stays until phase 4 |
-| `ai_embeddings_follow_source` trigger | 140 | Drops a search copy when its row changes. | Phase 4 |
+| `ai_query_log` | 064 | Every data read the assistant ran. | Stays; unused now, a drop needs the owner's OK |
+| `ai_memory` | 064 | Facts and preferences the assistant saved about you. | Stays (the About me tool reads it) |
+| `ai_run_read_query()` | 064 | The assistant's read-only SQL, run with your own rights. | Stays: used by `ask_database` (185/189) |
+| `ai_embeddings` (vector of 768) + `ai_semantic_search()` | 065 | Search by meaning. **Gemini-specific numbers.** | **Dropped in phase 5** (migration 201, owner's OK 23.11.2026) |
+| `ai_reviews` | 065 | Unused, empty. | **Dropped in phase 5** (migration 201) |
+| `ai_pending_actions` | 140 | Writes waiting for your Confirm. | Stays; unused now (only `ai-proxy` wrote it), and `run-migrations.mjs` reads it as a readiness probe; a drop needs the owner's OK and a new probe |
+| `ai_embeddings_follow_source` trigger | 140 | Drops a search copy when its row changes. | **Dropped in phase 5** (migration 201) |
 | `book_ai_notes` | Kobo | Passage questions and answers. | Stays (answers saved by the Kobo, now English) |
 | `pt_assessments.model` | 051 | Which model wrote an assessment. | Stays (old rows say Gemini) |
-| `service_subscriptions` value `gemini` | 115 | Gemini as a listed service. | Phase 5 |
+| `service_subscriptions` value `gemini` | 115 | Gemini as a listed service. | Nothing in code uses it (free text, never a code value). **Not removed:** the owner's own row, if there is one, stays |
 
 ### Secrets, tests and docs
 
-- **Secret:** `GEMINI_API_KEY` (Supabase secret), mentioned in `.env.example` and `docs/backend/environment.md`.
-- **Harness:** the `ai-proxy` mock in `scripts/harness/functions.cjs`.
+- **Secret:** `GEMINI_API_KEY` (Supabase secret): no code reads it any more; `.env.example` no longer names it; the owner deletes the secret (`docs/deploy-checklist.md`).
+- **Harness:** the `ai-proxy` mock in `scripts/harness/functions.cjs` (removed in phase 5).
 - **Checks:** `verify-ai-confirm`, `verify-item-fill`, `verify-secret-errors`, `verify-ssrf-guard`, `verify-supabase-keys`.
 - **Docs:**
   - `docs/features/ai.md`, `docs/ai-cost-capability-analysis.md`;
@@ -175,7 +175,7 @@ Anthropic has no model that turns text into search numbers ("embeddings"). The r
 - **Postgres full-text search,** built into your database: no outside service, no cost, nothing to re-index by hand.
 - **Claude picks the search words,** including other words for the same thing.
 
-`ai_embeddings` and its numbers are removed in the last phase.
+`ai_embeddings` and its numbers were dropped in phase 5 (migration 201).
 
 ---
 
@@ -327,7 +327,7 @@ Gemini is off and stays off. Each phase deletes the Gemini code of what it rebui
 | 4b | **Built 23.11.2026 (migration 198):** per-tool settings (Developer → AI → Settings → Chat tools), the owner's own instructions (a second cached system block frozen per chat), photos in the chat (2 a message, 4 a chat, stored in the message and purged with the chat), the microphone (the browser's recognizer fills the box), the Training coach chat (Ask AI in coach mode: its own instructions and read-only tools), and the phone's question with four read-only tools. Details and the photo decision: `docs/features/ai.md`. **Not in 4b:** the remaining Gemini parts of `ai-proxy` (phase 5). | — |
 | 4c | **Built 23.11.2026 (migration 199):** the "AI last" suggestions of §8, steps A–C: `ai_suggestions` (one row per idea; the browser reads and changes only `state`), `ai_suggest_patterns` (the counting, no AI), the chat tool `note_shortcut`, the weekly Haiku batch `suggest_weekly` (Monday, after the report), and Developer → AI → Learn → Ideas. Nothing is built, switched on or changed by an idea. | — |
 | 4 (the plan, before it was split) | **Ask AI from scratch:**<br>• a new tool set: at most 20, sharp, strict, each with your permission;<br>• live context through system messages;<br>• context editing, task budgets, the Confirm flow, photos;<br>• coach chat, phone ask;<br>• search with the database's full-text search, and memory. | the rest of `ai-proxy` and `aiApi.ts` |
-| 5 | **The last of Gemini:**<br>• docs and checks;<br>• `GEMINI_API_KEY`;<br>• the tables `ai_embeddings` and `ai_reviews`.<br>Dropping a table needs your OK first. | everything left |
+| 5 | **Built 23.11.2026 (migration 201):** **The last of Gemini:**<br>• `ai-proxy`'s folder is deleted, and a step in `deploy.yml` deletes the deployed function (the deploy never prunes; re-runnable; `verify-ai-proxy-retired`); it is out of `config.toml`, the harness and Settings;<br>• the tables `ai_embeddings` and `ai_reviews`, `ai_semantic_search()` and 140's follow triggers dropped (owner's OK 23.11.2026; `verify-db-drop-gemini-search`);<br>• the "Still on Gemini" card, `GEMINI_API_KEY` in `.env.example` and the docs; the ai-proxy parts of `verify-ai-confirm`, `verify-secret-errors` (the `hideSecrets` protection stays on `claude`, steam, igdb, trakt), `verify-ai-sleep-merge` and `verify-ai-health-stats-dedup` (now also run `claude`'s own copies) were moved or removed, never weakened.<br>**Left for the owner's OK:** `ai_pending_actions`, `ai_query_log`. | everything left |
 | 6 | Optional, one at a time and measured: advisor, programmatic tool calling, tool search, web search. | — |
 
 Each phase gets tests, a guardian review, and a look on the phone layout before its PR.
@@ -346,7 +346,7 @@ Each phase gets tests, a guardian review, and a look on the phone layout before 
 
 1. Create an Anthropic API account at console.anthropic.com, add billing, and **set a monthly spend limit** there.
 2. Create an API key and add it in **Supabase → Project Settings → Edge Functions → Secrets** as `ANTHROPIC_API_KEY`. Never paste it in the chat.
-3. Delete `GEMINI_API_KEY` there whenever you like: nothing uses it.
+3. Delete `GEMINI_API_KEY` there (step list in `docs/deploy-checklist.md`): nothing uses it any more.
 
 ---
 

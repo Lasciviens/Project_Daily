@@ -38,7 +38,7 @@ the file one transaction). Migration rules: `AGENTS.md` and `.claude/rules/datab
   Supabase JWT (webhooks, cron, devices, `<img>` tags) must be in it, or Supabase rejects every call
   before the code runs. `scripts/verify-deploy-migrations.mjs` checks browser calls against it.
 - **Every variable and secret:** `docs/backend/environment.md`. The only AI key is
-  `GEMINI_API_KEY` (no Claude or OpenAI keys exist). The platform injects `SUPABASE_URL` and the
+  `ANTHROPIC_API_KEY` (the `claude` function; `GEMINI_API_KEY` is retired and unused). The platform injects `SUPABASE_URL` and the
   Supabase keys into every function; read the keys only through the `<supabase-keys>` block
   (`serviceKey()` / `publishableKey()`, copied verbatim; `scripts/verify-supabase-keys.cjs`).
 

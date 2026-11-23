@@ -187,7 +187,7 @@ export function taskGroups<T extends DayFields & Pick<Task, 'start_date'>>(tasks
  * other day — never the retired Tomorrow / This week. A dated task sits on its
  * due day by its date (onDay), whatever its section; and Backlog keeps a future
  * task out of today's server-side lists (`section.eq.today` in phone-gateway,
- * push-send, ai-proxy), exactly as Tomorrow / This week did.
+ * push-send), exactly as Tomorrow / This week did.
  */
 export function sectionForDay(day: string, today: string): LiveTaskSection {
   return day === today ? 'today' : 'backlog'
