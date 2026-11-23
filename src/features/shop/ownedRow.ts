@@ -149,6 +149,40 @@ export function rowStacks(widthRem: number | null): number {
   return Math.max(1, Math.floor((widthRem + ROW_GAP_REM) / (ROW_MIN_REM + ROW_GAP_REM)))
 }
 
+/** How many columns a category's subcategories are dealt into: as many as there are room for, never more than there are subcategories. */
+export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
+
+/** The widest a subcategory's big-picture cards go (the card's own cap, 12rem, and the gap): its cards flow into one block this wide at most. */
+export const PICTURE_CARD_REM = 12
+export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * 0.5
+/** The gap between two blocks of cards on a line, and between the cards in one. */
+export const PICTURE_BLOCK_GAP_REM = 1.5
+export const PICTURE_CARD_GAP_REM = 0.5
+
+/**
+ * How many card columns each subcategory's block gets, so a line of blocks uses the whole width (owner, 23.11.2026: a strip of
+ * 410px stayed empty at 1920): blocks are packed in order; a block that does not fit what is left of the line takes the
+ * columns that are left (two at least — its own cards then wrap into more rows) and a block that cannot even have two starts
+ * the next line. Never more columns than cards, never more than a line holds. Not measured yet: every block its full width.
+ */
+export function pictureColumns(cards: readonly number[], widthRem: number | null): number[] {
+  const cols = (rem: number) => Math.max(0, Math.floor((rem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))
+  if (widthRem == null || widthRem <= 0) return cards.map(n => Math.max(1, n))
+  const line = Math.max(1, cols(widthRem))
+  let used = 0
+  return cards.map(n => {
+    const want = Math.max(1, Math.min(n, line))
+    const free = widthRem - used - (used ? PICTURE_BLOCK_GAP_REM : 0)
+    const fit = cols(free)
+    if (used > 0 && fit < want) {
+      if (fit >= 2) { used = widthRem; return fit }
+      used = 0
+    }
+    used += (used ? PICTURE_BLOCK_GAP_REM : 0) + pictureBlockRem(want)
+    return want
+  })
+}
+
 // ── The filter bar's one row ─────────────────────────────────────────────────
 // The bar above Owned's things is ONE line wherever it can be (owner, 23.11.2026): it measures its own width and
 // folds what does not fit behind Filters, as `fitActions` does for the record's buttons. Widths in rem.

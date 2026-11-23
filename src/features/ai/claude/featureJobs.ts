@@ -19,13 +19,20 @@ export async function describeGuessPhoto(photo: PhotoInput, text: string): Promi
   return { result, costUsd: costOf(call) }
 }
 
+/** One of the owner's own categories as the function takes it ('Top' or 'Top / Sub'). The function numbers them; the model never sees an id. */
+export interface ReceiptCategory { id: string; path: string }
+/** The most categories that go with a receipt (the function's `RECEIPT_LIMITS.categories`). */
+export const RECEIPT_CATEGORIES_MAX = 200
+
 /** What a receipt job reads: one photo or one PDF, never both. */
 export type ReceiptInput = { image: PhotoInput } | { document: PdfInput }
 
 /** Shop → "Read a receipt" / "From a receipt": a photo or a PDF → what is printed on it, checked again. Throws when nothing usable was read. */
-export async function readReceiptInput(input: ReceiptInput, today: string): Promise<ReceiptRead & { costUsd: number | null }> {
-  const { result, call } = await runClaudeJob<unknown>('receipt_read', input)
-  const read = readReceipt(result, today)
+export async function readReceiptInput(input: ReceiptInput, today: string, categories: readonly ReceiptCategory[] = []): Promise<ReceiptRead & { costUsd: number | null }> {
+  // The owner's own categories go with the file, so a line may come back with one (by number, mapped to an id by the function).
+  const sent: ReceiptCategory[] = categories.slice(0, RECEIPT_CATEGORIES_MAX)
+  const { result, call } = await runClaudeJob<unknown>('receipt_read', sent.length ? { ...input, categories: sent } : input)
+  const read = readReceipt(result, today, new Set(sent.map(c => c.id)))
   if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo or another PDF")
   return { ...read, costUsd: costOf(call) }
 }

@@ -81,7 +81,7 @@ The Trakt card in Settings → Subscriptions has a **Titles to match** part (con
 
 ## Anthropic card (21.11.2026)
 
-Settings → Subscriptions has a read-only **Anthropic** card (the Claude layer's key is set on the server, so there is no Connect button). It says "Key set" or "Key not set" from the `claude` function's `describe` answer and links to Developer → AI. Gemini is out of the service lists (`apiRegistry.ts`, `subscriptionRules.ts`); a stored `gemini` subscription row shows the plain word "gemini" and keeps its data.
+Settings → Subscriptions has a read-only **Anthropic** card (the Claude layer's key is set on the server, so there is no Connect button). It says "Key set" or "Key not set" from the `claude` function's `describe` answer and links to Developer → AI. Gemini is out of the service lists (`apiRegistry.ts`, `subscriptionRules.ts`); a stored `gemini` subscription row (free text, never a code value) shows the plain word "gemini" and keeps its data: phase 5 did not delete it (the owner's own record of what he paid; delete it in Subscriptions if he wants).
 
 ## Open question: Connections vs Subscriptions (owner, 13.10.2026)
 

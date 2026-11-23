@@ -50,6 +50,23 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
   )
 }
 
+/**
+ * A fact with its editor always open (the create popup: nothing is "filled" yet, so every field is one to fill): the
+ * same label column and the same editor as `Fact` open, so a new thing and a record look alike.
+ */
+export function FactField({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="rounded-row">
+      {/* Narrow (a phone): the label sits above its editor, which then has the whole width (the two category selects were squeezed). */}
+      <div className="flex flex-col items-stretch gap-0.5 @[30rem]:flex-row @[30rem]:items-start @[30rem]:gap-2">
+        <span className="shrink-0 pt-1 text-meta text-fg-muted @[30rem]:w-[8.5rem] @[30rem]:pt-[11px]">{label}</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-2 py-1">{children}</div>
+      </div>
+      {hint && <p className="text-meta text-fg-muted @[30rem]:ml-[8.5rem] @[30rem]:pl-0.5">{hint}</p>}
+    </div>
+  )
+}
+
 /** The facts not filled yet, as "+" chips: a tap adds the fact and opens its editor. */
 export function FactChips({ chips }: { chips: { id: string; label: string; onAdd: () => void }[] }) {
   if (!chips.length) return null

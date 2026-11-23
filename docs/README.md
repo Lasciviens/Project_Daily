@@ -7,8 +7,7 @@ heading before you trust a file.
 **Where current truth lives:** the rules every AI follows → `AGENTS.md` (repo root;
 `CLAUDE.md` = `@AGENTS.md` + Claude-only notes, `.claude/rules/<area>.md` = the short rules
 Claude Code loads by itself when matching files are touched) · how each feature works →
-`features/` · the actual schema → `supabase/migrations/*.sql` (plus `ai-proxy`'s
-`DB_CATALOG` as the curated table-by-table reference) · the live backlog → the in-app
+`features/` · the actual schema → `supabase/migrations/*.sql` (the migrations are the table-by-table reference) · the live backlog → the in-app
 **Dev Requests** drawer (`dev_requests` table), not a markdown list · cross-AI task
 board → `codex-shortcuts.md`.
 
@@ -54,7 +53,7 @@ board → `codex-shortcuts.md`.
 
 | File | Purpose | Last verified |
 |---|---|---|
-| [ai-cost-capability-analysis.md](ai-cost-capability-analysis.md) | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, model routing, the Confirm card for deletes, security invariants, pricing snapshot. Read before any `ai-proxy`/`aiApi.ts` cost or capability work. | 13.10.2026 |
+| [ai-cost-capability-analysis.md](ai-cost-capability-analysis.md) | AI layer cost + capability reference as shipped: the prompt-caching contract, `db_aggregate`/`semantic_search`/`run_read_query` design, model routing, the Confirm card for deletes, security invariants, pricing snapshot. Retired in AI phase 5 (the Gemini assistant it describes is gone); history only. Current: `features/ai-plan.md`, `features/ai.md`. | 13.10.2026 |
 | [iphone-web-integration.md](iphone-web-integration.md) | Why the iPhone integration is shaped this way: the auth model, the options evaluated and rejected, and **the one home of the iOS platform limits** (no background execution, Web Push rules, no Web Share Target, the widget refresh budget). | 13.10.2026 |
 | [training/progress-engine/](training/progress-engine/README.md) | The Exercise Progress Engine (`src/features/training/progress-engine/`): algorithm, decision table + evidence-tier classification, data lineage/limitations, citations, changelog. Read before touching per-exercise progress-decision logic. | 07.10.2026 |
 | [training-health/research/](training-health/research) | The fact-checked research behind Training and Health (benchmarks, metric ranking, science). A `verify-*.json` correction wins over its `research-*.json`. | 27.09.2026 |

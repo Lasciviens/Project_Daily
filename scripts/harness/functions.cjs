@@ -41,10 +41,6 @@ const FUNCTIONS = {
   // The lookup (Nasjonalbiblioteket, Open Library) is outside: nothing found.
   'book-meta': () => ({ updated: [], source: null }),
 
-  // The old assistant (Ask AI, the coach, recipes, quick guess — until the AI rebuild's later phases). No
-  // GEMINI_API_KEY in the harness: every call answers as the real function does without it.
-  'ai-proxy': () => reply(503, { error: 'AI not configured — add GEMINI_API_KEY to Supabase Vault' }),
-
   // The Claude layer (Developer → AI, the item screen's ✨): the one function here that answers as if it were
   // set up — claude.cjs says why, and how a test makes it stop (`claudeMock({ stop: 'not_configured' })`).
   claude: claudeMock(),

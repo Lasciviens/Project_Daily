@@ -11,9 +11,12 @@ function CameraAi() {
   return <span className="relative inline-flex"><Camera aria-hidden /><Sparkles aria-hidden className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" /></span>
 }
 
-export function PhotoButton({ children, onFile, loading, disabled, icon, variant = 'secondary', className, iconOnly, accept = 'image/*' }: {
+export function PhotoButton({ children, onFile, onFiles, multiple, loading, disabled, icon, variant = 'secondary', className, iconOnly, accept = 'image/*' }: {
   children: ReactNode
-  onFile: (file: File) => void
+  onFile?: (file: File) => void
+  /** With `multiple`: every file picked at once, in the order the picker gave them. The caller limits and checks them. */
+  onFiles?: (files: File[]) => void
+  multiple?: boolean
   loading?: boolean
   disabled?: boolean
   icon?: ReactNode
@@ -31,14 +34,15 @@ export function PhotoButton({ children, onFile, loading, disabled, icon, variant
         ref={input}
         type="file"
         accept={accept}
+        multiple={multiple}
         tabIndex={-1}
         aria-hidden
         className="sr-only"
         onChange={e => {
-          const file = e.target.files?.[0]
+          const files = Array.from(e.target.files ?? [])
           // The same photo may be picked again right after (a retry), so the input is cleared.
           e.target.value = ''
-          if (file) onFile(file)
+          if (multiple && onFiles) { if (files.length) onFiles(files) } else if (files[0]) onFile?.(files[0])
         }}
       />
       {iconOnly ? (

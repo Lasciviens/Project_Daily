@@ -20,7 +20,9 @@ import type { TrainingPlanRef } from '../../features/training/api/trainingPlanAp
 import type { RecordFact } from '../../features/shop/shopSuggestions'
 import type { ReceiptFill, ReceiptRead } from '../../features/ai/claude/featureRules'
 import type { SaleDefaults } from '../../features/shop/receiptRead'
+import type { SoldDone } from '../../features/shop/components/owned/SellSheet'
 import type { ShopItem } from '../../features/shop/types'
+import type { CreateBatch } from '../../features/shop/components/record/createDraft'
 
 export type EntityModalRequest =
   // One item (migration 155): these four open the same Add sheet (plan-modal/
@@ -72,20 +74,19 @@ export type EntityModalRequest =
   /** A Shop item: open by `id` (a wishlist row as its record; `fact` opens that fact's editor — an old "Could sell for"'s "update it"), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
   | { kind: 'shop-item'; id?: string; fact?: RecordFact; section?: 'money'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
   /** Sell or give away one of your things (with its accessories), and where the money goes. */
-  /** `sale`: the amount, currency and day a read receipt gives (Read a receipt); `onSold` runs once the sale is saved. */
-  | { kind: 'shop-sell'; id: string; sale?: SaleDefaults; onSold?: () => void }
+  /** `sale`: the amount, currency, day and money target a read receipt gives; `onSold` runs once the sale is saved, with what it wrote. */
+  | { kind: 'shop-sell'; id: string; sale?: SaleDefaults; /** The money link the sale itself made (`to`: the thing the money went to), and the thing sold. */ onSold?: (done: SoldDone) => void }
   /** A thing's money chain: what earlier sales passed on, and "Try other prices". */
   | { kind: 'shop-chain'; id: string }
   /** Quick-add accessories to one of your things (or to a wish). */
   | { kind: 'shop-accessory'; itemId: string }
   /** Add a model to a general wish ("a tablet with a pen" → iPad Air). */
   | { kind: 'shop-model'; wishId: string }
-  /** Add something you own (or had) from before the app, with ≈ dates. */
-  /** `receipt`: one line of a read receipt (Read a receipt) as the sheet's starting values, through the same autofill facts a receipt photo uses; `onSaved` runs once the thing is saved. */
-  | { kind: 'shop-own'; had?: boolean; receipt?: ReceiptFill; onSaved?: (item: ShopItem) => void }
+  /** Add something you own (or had), with ≈ dates: the record's popup in create mode (`ShopCreate`). `batch`: the lines of the read receipts (several files), one draft each ("1 of 3") — a bought line, or a sold line that matches none of your things as "I had it" with the day it left and the amount required; each through the same autofill facts a receipt photo uses. `onSaved` runs once a thing is saved. */
+  | { kind: 'shop-own'; had?: boolean; /** The lines of a read receipt: one draft each in the one popup ("1 of 3"). */ batch?: CreateBatch; onSaved?: (item: ShopItem) => void }
   /** Tidy up info: AI suggests a cleaner name, brand, model and category; you review each field. `ids`: those things (one from its record's ⋯); left out: all your wishes and things. */
   | { kind: 'shop-tidy'; ids?: string[] }
-  /** Read a receipt (a photo or a PDF): bought or sold, its product lines, each opening Add something I own or Sell with its values. */
+  /** Read receipts (up to 5 photos or PDFs at once): one list of their lines, each Bought or Sold; the ticked Bought ones open the create popup together ("1 of 3"), a Sold one opens Sell with its values (or "I had it"), and the sold money can be linked to the bought things. */
   | { kind: 'shop-receipt' }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }

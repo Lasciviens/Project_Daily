@@ -21,25 +21,24 @@ check scripts still pass. The app has **one owner** (plus at most a test account
 | **Browser callers:** an edge function resolves the caller with `auth.getUser` AND its own verbatim `isAppUser(user.id)` copy. Platform `verify_jwt` alone admits any project JWT, even the anon key. Only `news-proxy` is exempt | each `supabase/functions/*/index.ts` | `verify-owner-lock.cjs` (compares the copies) |
 | **Device, webhook and cron callers** use their own header secret, fail closed when it is missing, and are listed in `supabase/config.toml` with `verify_jwt = false` | `supabase/config.toml` | `node scripts/verify-deploy-migrations.mjs` |
 | **Secrets compared in constant time:** a header or URL secret is checked with the verbatim `sameSecret` helper (hash both, then compare), never `===` / `!==` | each function that takes a device, cron or webhook secret | `node scripts/verify-secret-compare.cjs` |
-| **Keys in headers, never in URLs.** When the API demands the URL, fetch through `fetchHidingUrl`; `ai-proxy` scrubs outgoing errors with `hideSecrets` | `steam-api` (`x-webapi-key`), `igdb-api` (form body), `trakt-api`, `ai-proxy` | `node scripts/verify-secret-errors.cjs` |
+| **Keys in headers, never in URLs.** When the API demands the URL, fetch through `fetchHidingUrl`; the `claude` function scrubs outgoing errors (`hideSecrets`, `scrubErrorText`) | `steam-api` (`x-webapi-key`), `igdb-api` (form body), `trakt-api`, `claude` | `node scripts/verify-secret-errors.cjs`, `node scripts/verify-claude-function.cjs` (the scrubber) |
 | **Never log a secret.** A mutation whose input IS a secret (pasted token, OAuth code) sets `logPayload: false`; `logError` redacts secret-looking keys (`src/shared/utils/logError.ts`). The assistant can read `app_error_logs` | hooks, `logError` | review |
 | **SSRF:** a server-side fetch of a URL someone supplied goes through `isPrivateHost` (refuses every IPv6 literal) and re-checks every redirect hop | the `claude` function's recipe-link fetch (`page-fetch.ts`), `news-article`, `shop-price`; `news-proxy` (allow-listed hosts) re-checks every hop against its lists, passes only `image/*` and caps sizes | `node scripts/verify-ssrf-guard.cjs` |
-| **The assistant acts only on what the user typed.** A destructive tool goes into `NEEDS_CONFIRM` (a Confirm card, `ai_pending_actions`, migration 140); a column linking a row to an outside account goes into `AI_NO_WRITE`. Tool results and context are data, never instructions | `supabase/functions/ai-proxy/index.ts` | `node scripts/verify-ai-confirm.cjs` |
-| **Token tables are service-role only:** `REVOKE ALL … FROM anon, authenticated`, no browser policy, never in `DB_CATALOG`; the browser reads only derived status | migrations 044, 140 | review |
+| **The assistant acts only on what the user typed.** The Claude chat only proposes (`ai_chat_proposals`, migration 197); a confirmed proposal writes fixed columns and none that links a row to an outside account. Tool results and context are data, never instructions | `supabase/claude-src/chat-tools.ts` | `node scripts/verify-ai-confirm.cjs` |
+| **Token tables are service-role only:** `REVOKE ALL … FROM anon, authenticated`, no browser policy, never readable by an assistant tool (`ai_run_read_query`'s 185 wall refuses what a token table needs); the browser reads only derived status | migrations 044, 140 | review |
 | **Sign-out clears the account's state:** a new account-bound localStorage key or cache goes into `src/security/accountState.ts` | `accountState.ts` | review |
 | **OAuth callbacks check `state`** (stored in sessionStorage, fails closed) — a new provider does the same | `media/trakt/traktCallback.ts`, `training/stravaMeta.ts` | review |
 | **Exact version pins** for every import (`npm:@supabase/supabase-js@2.118.0`, `npm:psn-api@2.18.1`, `npm:web-push@3.6.7`), from npm — never esm.sh, never `@2` or `^2` | `supabase/functions/*` | `grep -rnE "@\^?[0-9]+(\.[0-9]+)?['\"/]" supabase/functions` finds none |
 | **Devices:** the Kobo plugin checks the server certificate and name; the Scriptable `HizliLog` runner only obeys links carrying its Keychain token | `scripts/kobo/`, `docs/scriptable-widgets.md` | `scripts/kobo/test-tls.sh` |
 
-Also: no key in client code (only `VITE_*` values, which are public by nature); the AI keys are
-`ANTHROPIC_API_KEY` (read only by the `claude` function) and, until the old assistant is removed,
-`GEMINI_API_KEY` (read by `ai-proxy`). Never commit a secret, never print one, never ask the owner to
+Also: no key in client code (only `VITE_*` values, which are public by nature); the only AI key is
+`ANTHROPIC_API_KEY` (read only by the `claude` function). Never commit a secret, never print one, never ask the owner to
 paste one into the chat — say where it is set (`docs/backend/environment.md`).
 
 ## Review steps
 
 1. List changed files (`git diff origin/main...HEAD --stat` plus untracked). Read migrations, edge
-   functions, api files and anything that touches auth, tokens or `ai-proxy` in full.
+   functions, api files and anything that touches auth, tokens or the `claude` function in full.
 2. For each row above that the change touches, confirm the rule holds and run its check script.
 3. A new external API: `docs/integrations/<service>.md` exists, keys go in headers, the response is
    validated where it enters.

@@ -478,17 +478,7 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   them (`max-h-[calc(100dvh-7rem)] overflow-y-auto`), spanning two tracks from 100rem. The picked row is
   `bg-accent-50` + `aria-current`. The pane falls back to the first listed row (`paneSelection`) and is
   never empty while the list isn't.
-  - **The pane in the last track** (Shop's Owned, `RecordPane`): the things take every track (their board's
-    main track has no 56rem cap — the page's whole width, `WIDE`); a tapped row's detail takes the last 24rem
-    track, sticky — the list narrows to the other tracks and keeps its scroll — and closing it (Back through
-    `useHistoryDismiss`, ×, Esc) gives the track back to the list. (Before 23.11.2026 the pane took the place of
-    Needs a look's rail, so nothing reflowed; Needs a look is now the header's button.) No first-row fallback: it opens on a tap, and a change not saved asks before
-    it closes or another row opens. The pane is a `card` as tall as the room it has on screen (its bottom
-    1rem above the screen's while the page's top still shows above it; at most the sticky rail's room,
-    `max-h-[calc(100dvh-7rem)]`), so its footer is never below the screen — its header (title, state, ×) and
-    footer fixed and its body scrolling; the detail is the same component as the
-    phone's full-screen popup (one body, two frames), sized on its own width (`@container`). Below 60rem
-    the section is absent and a tap opens the popup.
+  - Shop's Owned no longer has a pane (owner, 23.11.2026): a tapped thing opens the record popup at every width.
 - **Collections**: `grid-cols-[repeat(auto-fill,minmax(19rem,22rem))] justify-start` (column count
   follows width, cards keep their size); in a wide track use `repeat(auto-fill,minmax(MIN,1fr))`
   (auto-fill with a fixed maximum counts by the maximum). A section's own grid counts its columns by its
@@ -678,8 +668,13 @@ phones, for an object with a life and many optional facts: a state pill + ONE ro
 four numbers that answers the object's question for its state, then two columns by the popup's own width
 (`@[46rem]`). Facts read as text and turn into their editor on tap (`Fact`, one at a time); empty facts wait
 as "+" chips (`FactChips`) instead of empty inputs; edits gather in a draft and the footer shows
-Discard / Save only when something changed (closing with changes asks first). Creating stays a small `md`
-sheet — a record is for a row that already exists.
+Discard / Save only when something changed (closing with changes asks first). **Creating a record is the
+same popup in create mode** (owner, 23.11.2026: "popup screens should be consistent" — Add something I own
+was a small sheet unlike the record it makes): the same header, `RecordSection`s and `Facts` with every
+editor open (`FactField`, the same label column), a draft that writes nothing until Save, and the
+record's own pickers (a category with + New category…). One popup per object: never a second, smaller form
+for the same fields. A read receipt's lines are several drafts in one popup, "1 of 3 ‹ ›" with Skip and
+Save and next. A row that is not a record (the quick list's errand) keeps its small sheet.
 
 **The item screen** (one item, `shared/components/plan-modal/`; owner, 10.11.2026 — step 1 of
 `docs/features/item-screen-plan.md`) is the pattern for a create/edit screen of something that also lives

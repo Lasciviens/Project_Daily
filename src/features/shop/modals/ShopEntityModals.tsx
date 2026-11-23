@@ -3,9 +3,7 @@ import { EntityModalPending, useFirstLoaded } from '../../../shared/modals'
 import { useShopCategories, useShopItem, useShopItems } from '../hooks/useShop'
 import { useShopLinks, useShopMoney } from '../hooks/useShopMoney'
 import { SellSheet } from '../components/owned/SellSheet'
-import { AccessorySheet } from '../components/owned/AccessorySheet'
-import { ModelSheet } from '../components/owned/ModelSheet'
-import { OwnSheet } from '../components/owned/OwnSheet'
+import { ShopCreate } from '../components/record/ShopCreate'
 import { ChainPopup } from '../components/owned/ChainPopup'
 import type { ShopItem } from '../types'
 
@@ -38,19 +36,17 @@ export function ShopChainModal({ request, onClose }: EntityModalProps<'shop-chai
 export function ShopAccessoryModal({ request, onClose }: EntityModalProps<'shop-accessory'>) {
   const { query, item } = useRow(request.itemId)
   if (!item) return <EntityModalPending query={query} what="item" onClose={onClose} />
-  return <AccessorySheet parent={item} onClose={onClose} />
+  return <ShopCreate spec={{ preset: 'accessory', parent: item }} onClose={onClose} />
 }
 
 export function ShopModelModal({ request, onClose }: EntityModalProps<'shop-model'>) {
   const { query, item } = useRow(request.wishId)
   if (!item) return <EntityModalPending query={query} what="wish" onClose={onClose} />
-  return <ModelSheet wish={item} onClose={onClose} />
+  return <ShopCreate spec={{ preset: 'model', parent: item }} onClose={onClose} />
 }
 
 export function ShopOwnModal({ request, onClose }: EntityModalProps<'shop-own'>) {
-  const { data: items = [] } = useShopItems()
-  const { data: categories = [] } = useShopCategories()
-  return <OwnSheet had={!!request.had} items={items} categories={categories} receipt={request.receipt} onSaved={request.onSaved} onClose={onClose} />
+  return <ShopCreate spec={{ preset: request.had ? 'had' : 'own' }} batch={request.batch} onSaved={request.onSaved} onClose={onClose} />
 }
 
 // Just bought, Money to claim and the Stores drawer (migration 191) ride in this chunk: one chunk for the Shop's

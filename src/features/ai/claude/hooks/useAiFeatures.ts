@@ -1,7 +1,7 @@
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { readGuessEstimate, type GuessEstimate } from '../../../recipes/quickGuess'
-import { describeGuessPhoto, draftDevRequest, explainError, improveAd, placeIdeas, readReceiptInput, writeWeek, type ErrorExplanation } from '../featureJobs'
+import { describeGuessPhoto, draftDevRequest, explainError, improveAd, placeIdeas, readReceiptInput, writeWeek, type ErrorExplanation, type ReceiptCategory } from '../featureJobs'
 import { receiptInputOf, shrinkPhoto } from '../photoShrink'
 import type { ReceiptRead, RequestDraft } from '../featureRules'
 
@@ -25,12 +25,12 @@ export function usePhotoGuess() {
 }
 
 /** Shop → "Read a receipt" and "From a receipt": a photo (shrunk here) or a PDF. */
-export function useReadReceipt() {
+export function useReadReceipt(categories: readonly ReceiptCategory[] = []) {
   return useMutationWithFeedback<ReceiptRead & { costUsd: number | null }, File>({
     action: 'read_receipt',
     silent: 'the receipt fills the form, which you check before saving',
     logPayload: false,
-    mutationFn: async file => readReceiptInput(await receiptInputOf(file), todayStr()),
+    mutationFn: async file => readReceiptInput(await receiptInputOf(file), todayStr(), categories),
   })
 }
 

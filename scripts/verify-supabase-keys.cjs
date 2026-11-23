@@ -5,8 +5,8 @@
  *
  * 1. Every edge function that talks to the database carries the same
  *    <supabase-keys> block and reads keys only through it: no function reads
- *    SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY by itself (ai-proxy's
- *    hideSecrets list names the legacy one so its value stays hidden too).
+ *    SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY by itself (no exception
+ *    since ai-proxy, whose hideSecrets list named the legacy one, was removed).
  * 2. The block itself (TypeScript stripped by sucrase, a fake Deno.env): the
  *    new key from SUPABASE_SECRET_KEYS / SUPABASE_PUBLISHABLE_KEYS ("default"
  *    first, else the first one), else the legacy key, never a crash.
@@ -44,7 +44,7 @@ for (const f of users) {
   const b = block(sources[f])
   check(`${f}: the same <supabase-keys> block`, b === reference)
   const outside = code(sources[f].replace(b ?? '', '')).split('\n')
-    .filter(l => /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(l) && !l.includes("['GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'PHONE_GATEWAY_SECRET', 'GOOGLE_CLIENT_SECRET']"))
+    .filter(l => /SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(l))
   check(`${f}: no legacy key read outside it`, outside.length === 0, outside.map(l => l.trim()))
   const before = code(sources[f].slice(0, Math.max(0, sources[f].indexOf('// <supabase-keys>'))))
   check(`${f}: nothing uses a key before the block defines it`, sources[f].includes('// <supabase-keys>') && !/serviceKey\(\)|publishableKey\(\)/.test(before))

@@ -159,6 +159,24 @@ const manyLines = { ...GOOD, items: [{ name: 'TV', price: 8990 }, { name: 'Cable
 const fFill = R.receiptFill(GOOD, STORES, null)
 const rFacts = RF.receiptFacts(fFill, '2026-11-11T10:00:00Z')
 check('receiptFacts: the name, the amount with its currency and the store, from "the receipt", the store exact when matched', same(rFacts.map(f => f.key), ['title', 'price', 'store']) && rFacts.every(f => f.source.label === 'the receipt' && f.source.origin === 'receipt' && f.on) && rFacts[2].confidence === 'exact' && rFacts[1].value.amount === 2990, rFacts)
+// The category the function chose from the owner's own list: only an id the app sent, the subcategory when one fits.
+{
+  const CATS = [{ id: 'c1', name: 'Electronics', parent_id: null }, { id: 'c2', name: 'Headphones', parent_id: 'c1' }, { id: 'c3', name: 'Orphan', parent_id: 'gone' }]
+  const line = { name: 'Demo Headphones X1', price: 2990, category_id: 'c2' }
+  const sent = new Set(['c1', 'c2'])
+  const read = R.readReceipt({ ...GOOD, items: [line, { name: 'Other', price: 5, category_id: 'zzz' }, { name: 'Third', price: 6, category_id: 42 }] }, TODAY, sent)
+  check('readReceipt: a category id is kept only when the app sent it; any other id or type is dropped', read.items[0].category_id === 'c2' && !('category_id' in read.items[1]) && !('category_id' in read.items[2]), read.items)
+  check('readReceipt: with no ids sent no category survives', !('category_id' in R.readReceipt({ ...GOOD, items: [line] }, TODAY).items[0]))
+  const fill = R.receiptFill(read, STORES, 0)
+  check('receiptFill carries the picked line\'s category id', fill.categoryId === 'c2', fill)
+  const cf = RF.receiptFacts(fill, 'x', CATS).find(f => f.key === 'category')
+  check('receiptFacts: the subcategory is a category fact to check, named "Top › Sub", from the receipt', cf && cf.value.topId === 'c1' && cf.value.subId === 'c2' && cf.value.name === 'Electronics › Headphones' && cf.confidence === 'check' && cf.source.label === 'the receipt', cf)
+  check('receiptFacts: a top category fits as the top alone', RF.receiptFacts({ ...fill, categoryId: 'c1' }, 'x', CATS).find(f => f.key === 'category').value.subId === '')
+  check('receiptFacts: an id that is not in the list now, or a sub whose top is gone, gives no category; no list gives none', ['zzz', 'c3'].every(id => !RF.receiptFacts({ ...fill, categoryId: id }, 'x', CATS).some(f => f.key === 'category')) && !RF.receiptFacts(fill, 'x').some(f => f.key === 'category'))
+  const TM = require('../src/features/shop/tidyModel')
+  const many = Array.from({ length: 300 }, (_, i) => ({ id: `id${i}`, name: `Name ${i}`, parent_id: null }))
+  check('tidyCategories: 100 for a tidy, up to 200 beside a receipt', TM.tidyCategories(many).length === 100 && TM.tidyCategories(many, 200).length === 200)
+}
 check('an unmatched store is a fact to check; no price without a currency', RF.receiptFacts(R.receiptFill({ ...GOOD, store: 'Kiosk' }, STORES, null), 'x').find(f => f.key === 'store').confidence === 'check' && !RF.receiptFacts(R.receiptFill({ ...GOOD, currency: undefined }, STORES, null), 'x').some(f => f.key === 'price'))
 const emptyDraft = { title: '', price: null, currency: 'NOK', image: null, platform: '', topId: '', subId: '' }
 const merged = AM.mergeFacts([], 'receipt', rFacts)
@@ -229,6 +247,9 @@ check('a bought line that is one of your wishes is found by the same match: a wi
 check('the product name, brand and model help the match: a printed code finds the wish by its product name', RR.wishForLine({ name: 'DS-9', product: 'Demo Speaker Z9, black' }, THINGS2)?.id === 'w')
 const MARKETS = [{ id: 's1', name: 'Demo Marketplace', kind: 'marketplace' }, { id: 's2', name: 'Demo Hidden', hidden: true }]
 check('Sell\'s "Sold to" is the receipt\'s store when it is one of your own stores (never a name made from the print)', RR.saleFor({ ...DEMO, store: 'Demo Marketplace AS' }, LINE, MARKETS).to === 'Demo Marketplace' && !('to' in RR.saleFor({ ...DEMO, store: 'Some Stranger' }, LINE, MARKETS)) && !('to' in RR.saleFor({ ...DEMO, store: 'Demo Hidden' }, LINE, MARKETS)) && !('to' in RR.saleFor(DEMO, LINE)))
+check('saleFor never sets moneyTo itself: the money target is the app\'s own id (a bought line saved first), put on Sell by the popup and taken by the sheet only when it is one of the sheet\'s own choices', !('moneyTo' in RR.saleFor(DEMO, LINE, MARKETS)) && /moneyTo\?: string/.test(require('fs').readFileSync(require('path').join(__dirname, '../src/features/shop/receiptRead.ts'), 'utf8')) && /isMoneyTarget\(c, item\.id\)/.test(require('fs').readFileSync(require('path').join(__dirname, '../src/features/shop/components/owned/SellSheet.tsx'), 'utf8')))
+const SOLD_ITEMS = [{ id: 'a', title: 'Old Phone Z9 64GB', list: 'wishlist', kind: 'item', status: 'bought', disposal: 'sold' }, { id: 'b', title: 'Lamp', list: 'wishlist', kind: 'item', status: 'bought', disposal: null }]
+check('a sold line is matched to a thing already sold in the app only among sold things (never an accessory, never a returned one), and never to one still yours', RR.soldThingForLine({ name: 'OLD PHONE Z9 64GB', price: 1 }, SOLD_ITEMS)?.id === 'a' && RR.soldThingForLine({ name: 'Lamp', price: 1 }, SOLD_ITEMS) === null && RR.soldThingForLine({ name: 'Old Phone Z9 64GB', price: 1 }, [{ ...SOLD_ITEMS[0], accessory_of: 'x' }]) === null && RR.soldThingForLine({ name: 'Old Phone Z9 64GB', price: 1 }, [{ ...SOLD_ITEMS[0], disposal: 'returned' }]) === null)
 
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

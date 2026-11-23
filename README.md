@@ -21,7 +21,7 @@ into one place, with an AI assistant and an iPhone surface on top.
 | Books | A Kobo e-reader through a KOReader plugin: reading stats, Send to Kobo, device settings from the app |
 | Wishes | Things to do and places to go, each with a reminder period that is never a deadline |
 | Work · Projects | A work task board; projects with phases and items |
-| AI assistant | Gemini through the `ai-proxy` edge function, with allow-listed database tools; a delete runs only after a Confirm card |
+| AI assistant | Claude (Haiku) through the `claude` edge function: read tools, and every write is a proposal that runs only after your Confirm |
 | iPhone | `phone-gateway` (12 actions), 11 generated Apple Shortcuts, Scriptable widgets and a food logger, a morning Web Push |
 
 Also: Settings (places, appearance, connections and subscriptions, a list of

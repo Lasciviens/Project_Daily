@@ -116,6 +116,17 @@ console.log('a row\'s facts and price')
 console.log('column stacks of rows')
 check('a phone (23rem): one stack', R.rowStacks(23.1) === 1)
 check('before it is measured: one', R.rowStacks(null) === 1)
+check('a category\'s subcategories fill at most the columns there are, and never more than there are subcategories', R.subColumns(5, 4) === 4 && R.subColumns(2, 4) === 2 && R.subColumns(1, 4) === 1 && R.subColumns(0, 3) === 1)
+{
+  // Electronics 14 in 5 subcategories (4, 3, 2, 3, 2 cards) at 1920 (≈ 100rem of list) and 2450 (≈ 131rem): the lines are full, never a strip left.
+  const lineRem = (cols, n) => cols.slice(0, n).reduce((a, c, i) => a + R.pictureBlockRem(c) + (i ? 1.5 : 0), 0)
+  const at1920 = R.pictureColumns([4, 3, 2, 3, 2], 100)
+  check('big pictures at 1920: 4 + 3 cards share the first line (49.5 + 1.5 + 37 of 100rem: under one card left), and a block that cannot have two columns of what is left starts the next line', at1920.join() === '4,3,2,3,2' && lineRem(at1920, 2) <= 100 && 100 - lineRem(at1920, 2) < 12.5)
+  check('big pictures: a block shrinks into what is left of a line when two columns fit (3 + 3 cards at 63rem: the second takes the 2 columns left)', R.pictureColumns([3, 3], 63).join() === '3,2')
+  check('big pictures: never more columns than a block has cards or a line holds, and a block with no room for two starts the next line', R.pictureColumns([20], 30).every(c => c === 2) && R.pictureColumns([3, 1], 40)[1] === 1 && R.pictureColumns([3, 3], 38.5).join() === '3,3' && R.pictureColumns([1], 100)[0] === 1)
+  check('big pictures: not measured yet — every block its full width; the lines never hold more than the width', R.pictureColumns([4, 3], null).join() === '4,3' && [30, 41, 73, 100, 131].every(w => { const c = R.pictureColumns([4, 3, 2, 3, 2, 5, 1], w); return c.every(x => x >= 1) }))
+}
+check('big pictures: a subcategory\'s block is as wide as its cards at their cap (12rem and a 0.5rem gap)', R.pictureBlockRem(1) === 12 && R.pictureBlockRem(4) === 49.5 && R.pictureBlockRem(0) === 0)
 check('1469 main (48rem) and a phone sideways (52rem): two', R.rowStacks(48.3) === 2 && R.rowStacks(52.6) === 2)
 check('1920 (75rem): three; 2450 (106rem): four', R.rowStacks(75.5) === 3 && R.rowStacks(106) === 4)
 check('a stack is never narrower than 21rem', [23, 43, 44, 48, 66, 75, 90, 106, 131].every(w => {
@@ -213,7 +224,7 @@ console.log('the record\'s one row of actions')
   const keys = r => [r.shown.map(a => a.key), r.more.map(a => a.key)]
   check('not measured yet: every action shows (nothing is dropped on a guess)', eq(keys(fitActions(null, mineActions)), [['sell', 'acc', 'wrong'], []]))
   check('a wide row keeps every button', eq(keys(fitActions(40, mineActions)), [['sell', 'acc', 'wrong'], []]))
-  check('the side pane\'s row (≈ 16rem): the first buttons, the rest behind ⋯ — never a second line', (() => {
+  check('a narrow row (≈ 16rem, a phone): the first buttons, the rest behind ⋯ — never a second line', (() => {
     const r = fitActions(16, mineActions)
     return r.more.length > 0 && r.shown[0].key === 'sell'
   })())

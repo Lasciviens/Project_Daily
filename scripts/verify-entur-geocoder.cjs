@@ -8,8 +8,8 @@
  * 2. The parser on the live answers saved in scripts/fixtures/entur/: a stop
  *    keeps its NSR id, name, town and stop types; places that aren't stops
  *    keep their coordinates; anything odd is skipped, never thrown.
- * 3. ai-proxy carries the same <entur-geocoder> block, verbatim, and nothing
- *    calls the old v1 address any more.
+ * 3. Nothing calls the old v1 address any more (ai-proxy, which carried a
+ *    verbatim copy of the block, was removed in AI phase 5).
  *
  *   Run:  node scripts/verify-entur-geocoder.cjs
  */
@@ -73,18 +73,9 @@ console.log('\n3 · odd answers are skipped, never thrown')
   check('the county stands in for a missing town', out[1]?.locality === 'Oslo' && out[1]?.layer === 'street')
 }
 
-console.log('\n4 · ai-proxy carries the same block; v1 is gone')
+console.log('\n4 · v1 is gone')
 {
-  const block = (file) => {
-    const s = fs.readFileSync(path.join(ROOT, file), 'utf8')
-    const a = s.indexOf('// <entur-geocoder>')
-    const b = s.indexOf('// </entur-geocoder>')
-    return a >= 0 && b > a ? s.slice(a, b) : null
-  }
-  const src = block('src/features/home/api/enturGeocoder.ts')
-  check('ai-proxy carries the same <entur-geocoder> block', !!src && src === block('supabase/functions/ai-proxy/index.ts'),
-    'copy the <entur-geocoder> block from src/features/home/api/enturGeocoder.ts into ai-proxy')
-  const callers = ['src/features/home/api/ruterApi.ts', 'supabase/functions/ai-proxy/index.ts']
+  const callers = ['src/features/home/api/ruterApi.ts', 'src/features/home/api/enturGeocoder.ts']
   check('nobody calls geocoder v1 or sends v1 parameters', callers.every(f => !/geocoder\/v1|boundary\.country|'venue,address'/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))))
 }
 

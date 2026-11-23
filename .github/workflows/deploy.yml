@@ -198,6 +198,24 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      # AI phase 5 (23.11.2026): ai-proxy (the Gemini assistant) has no folder any more, and the step above never prunes,
+      # so its last deployed version is deleted here. Safe to re-run: it lists the deployed functions first and deletes
+      # only if ai-proxy is among them, so "already gone" is success; a failed list or a failed delete fails the step.
+      # Once it has run green on main this step can be removed in a later PR.
+      - name: Delete the retired ai-proxy function
+        if: steps.gate.outputs.backend == 'true' && env.DRY_RUN != 'true'
+        run: |
+          set -euo pipefail
+          deployed="$(supabase functions list --project-ref "$SUPABASE_PROJECT_REF")"
+          if printf '%s\n' "$deployed" | grep -Eq '(^|[^A-Za-z0-9_-])ai-proxy([^A-Za-z0-9_-]|$)'; then
+            supabase functions delete ai-proxy --project-ref "$SUPABASE_PROJECT_REF" --yes
+            echo "::notice::ai-proxy deleted from Supabase."
+          else
+            echo "ai-proxy is not deployed: nothing to delete."
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
   build-and-deploy:
     needs: backend
     if: needs.backend.outputs.web == 'true'

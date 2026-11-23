@@ -10,7 +10,7 @@
 //  00:30 on a Monday is Monday's. The rules mirror the app's own where it has one: working sets are every set that
 //  is not a warm-up; a muscle gets one credited set for a primary muscle and a half for a secondary one (the Muscles
 //  tab's convention); the night of sleep belongs to the day you woke up and is merged and summed by the sleep
-//  contract (healthAggregate.ts, hand-mirrored in ai-proxy and phone-gateway: this is the fourth copy, kept in step
+//  contract (healthAggregate.ts, hand-mirrored in phone-gateway: this is the third copy, kept in step
 //  by verify-ai-sleep-merge); steps and energy are collapsed per hour first (the Health tab's rule); a task counts as
 //  closed on the day of `completed_at`, never `updated_at`.
 //
@@ -369,7 +369,7 @@ export function sleepNights(rows: Row[]): { date: string; hours: number; deep: n
   return out.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-// The hour-level collapse of the Health tab, mirrored from ai-proxy's collapseDuplicateSumPoints.
+// The hour-level collapse of the Health tab, mirrored from healthAggregate's collapsedPoints (ai-proxy's copy was removed in phase 5).
 const SUM_METRICS = new Set(['step_count', 'active_energy'])
 const MINUTE_GRAIN_MIN_MINUTES = 7
 const isHourBoundary = (recordedAt: string) => recordedAt.slice(14, 19) === '00:00'

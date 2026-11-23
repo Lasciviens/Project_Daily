@@ -4,7 +4,7 @@
 //  delete means for the queued row, how long a failed row waits, and the loop
 //  over one batch (its I/O is passed in, so it runs the same in a test).
 //
-//  Why it exists: a block deleted on the server (ai-proxy's db_delete, the
+//  Why it exists: a block deleted on the server (a function's delete, the
 //  Hevy functions closing a planned-session task, the tasks → time_blocks
 //  cascade, migration 043's cleanup triggers) has no Google token at hand, so
 //  its event used to stay on the calendar forever. Migration 135's trigger

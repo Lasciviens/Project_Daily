@@ -22,7 +22,7 @@
 //
 //  CHANGELOG
 //  2026-11-20 · v26 · ✨ asks the new `claude` function (its `item_fill` job, on
-//                    Claude Haiku) instead of ai-proxy's itemFill action, which
+//                    Claude Haiku) instead of the old Gemini itemFill action, which
 //                    is gone (AI rebuild, phase 1 — docs/features/ai-plan.md).
 //                    The screen's side is unchanged: the answer still goes
 //                    through cleanItemFill here and only into rows the screen
@@ -33,7 +33,7 @@
 //                    (Developer → AI).
 //  2026-11-11 · v25 · The item screen, step 4: ✨ beside the title fills the
 //                    fields from one sentence (useItemFill, ItemFill.tsx,
-//                    itemFillForm.ts). ai-proxy's itemFill action answers with
+//                    itemFillForm.ts). the item fill answers with
 //                    checked values only (items/itemFill.cleanItemFill, run
 //                    again here); they go only into rows the screen shows for
 //                    this item, through the same helpers a tap uses. Nothing
@@ -302,9 +302,8 @@
 //                    sectionForDate / sectionForDay and the task create and
 //                    update inputs take LiveTaskSection (inbox | today |
 //                    backlog), so TypeScript refuses a caller passing
-//                    'tomorrow'; the assistant's db_insert / db_update refuse
-//                    it too (ai-proxy aiWriteProblem, its catalogue says
-//                    backlog). Daily's Add task already sent Backlog since v15
+//                    'tomorrow'; the old assistant's db_insert / db_update refused
+//                    it too (removed with ai-proxy, AI phase 5). Daily's Add task already sent Backlog since v15
 //                    (checked in a build); the pill still showed on every row
 //                    holding a retired section, and the assistant could still
 //                    write one.
@@ -513,7 +512,7 @@
 //                    (b) blockSourceTypeForTask no longer maps task
 //                    'tv_series' -> block 'tv_episode' — a context-free
 //                    fallback can't back up episode-specificity it has no
-//                    season/episode numbers for. ai-proxy's planMedia now
+//                    season/episode numbers for. the old assistant's planMedia (gone) once
 //                    stamps season_number/episode_number when the AI was
 //                    given a specific episode (mirrors EpisodesPanel's own
 //                    rule), so cleanup_block_on_episode_watched can match
@@ -608,8 +607,8 @@
 //                    have no home of their own in the UI, so choosing one only
 //                    made the task float like Backlog under a date-shaped name.
 //                    The TaskSection TYPE and planForm's 'today' default are
-//                    UNCHANGED — four server-side predicates filter on
-//                    section.eq.today (phone-gateway ×2, push-send, ai-proxy) and
+//                    UNCHANGED — three server-side predicates filter on
+//                    section.eq.today (phone-gateway ×2, push-send) and
 //                    legacy rows still hold both retired values.
 //  2026-07-04 · v5 · New `timeBlock` prop: Schedule-tab edit mode for a plain
 //                    time_block with no linked task (e.g. a planned training

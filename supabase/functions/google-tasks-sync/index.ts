@@ -720,7 +720,7 @@ async function pullTasks(token: string, userId: string, plan: GoogleTasksPullPla
 }
 
 // ── Calendar outbox (Google Calendar, migration 135) ────────────────────────
-// A time block deleted on the server — ai-proxy's db_delete, the Hevy
+// A time block deleted on the server — a function's delete, the Hevy
 // functions closing a planned-session task, the tasks → time_blocks ON
 // DELETE CASCADE, migration 043's cleanup triggers — has no Google token at
 // hand, so its linked Calendar event used to stay on the calendar forever.

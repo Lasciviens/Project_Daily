@@ -34,8 +34,20 @@ export function newCategoryMissing(draft: RecordDraft): 'top' | 'sub' | null {
   return null
 }
 
+/** What the facts need of a draft: the record's (`useRecordDraft`) and the create popup's (`useCreateDraft`) alike. */
+export interface RecordDraftApi {
+  draft: RecordDraft
+  value: <K extends keyof ShopItem>(k: K) => ShopItem[K]
+  boughtDay: string
+  set: (patch: RecordDraft) => void
+  dirty: boolean
+  discard: () => void
+  editing: string | null
+  setEditing: (id: string | null) => void
+}
+
 /** `open`: the fact whose editor shows first (an old "Could sell for"'s "update it"). */
-export function useRecordDraft(item: ShopItem, open: string | null = null) {
+export function useRecordDraft(item: ShopItem, open: string | null = null): RecordDraftApi {
   const [draft, setDraft] = useState<RecordDraft>({})
   const [editing, setEditing] = useState<string | null>(open)
   /** The value shown: the edit when there is one, else the row's. */

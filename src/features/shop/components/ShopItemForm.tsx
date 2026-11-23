@@ -35,7 +35,7 @@ function AutofillLoading() {
 }
 
 /** The link reader, barcode scan, facts and duplicate warning — the one autofill every Shop add screen shows. */
-export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[] }) {
+export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean }) {
   return (
     <Suspense fallback={<AutofillLoading />}>
       <AutofillPanel {...props} />

@@ -24,7 +24,7 @@ const MACROS = [
 
 /**
  * "Describe it": type what you had, the AI estimates it as one diary line
- * (ai-proxy, one shot), and you check the numbers — marked "AI estimate",
+ * (the `quick_guess` job on `claude`, one shot), and you check the numbers — marked "AI estimate",
  * with what it assumed — before you Log it or save it as a preset. The AI
  * never logs anything itself (review-first).
  */

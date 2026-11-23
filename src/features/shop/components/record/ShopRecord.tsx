@@ -8,8 +8,9 @@ import type { ShopItem } from '../../types'
 /**
  * A wishlist-side row as a record in a popup (xl; full screen on a phone):
  * its life as a story — the actions, the money strip, the nudge, the Story
- * and the sections that open in place (RecordBody). Owned from 60rem opens
- * the same record in its side pane instead (RecordPane).
+ * and the sections that open in place (RecordBody). Every screen opens this
+ * popup — Owned's rows, the lists, the chains, the links inside a record
+ * (owner, 23.11.2026: no side pane). `ShopCreate` is the same popup for a new one.
  */
 export function ShopRecord({ item, openFact, openSection, onClose }: { item: ShopItem; openFact?: RecordFact; openSection?: 'money'; onClose: () => void }) {
   const r = useShopRecord(item, openFact, onClose)
