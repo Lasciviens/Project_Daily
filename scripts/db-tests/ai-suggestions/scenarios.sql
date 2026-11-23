@@ -32,56 +32,87 @@ select public.t_ok((select array_agg(a.attname::text order by a.attname) from pg
 select public.t_ok(not has_any_column_privilege('authenticated', 'public.ai_suggest_runs', 'insert, update, references'), '199: the browser writes no run');
 select public.t_ok(not has_table_privilege('anon', 'public.ai_suggestions', 'select, update') and not has_any_column_privilege('anon', 'public.ai_suggestions', 'select, update, insert')
                    and not has_any_column_privilege('anon', 'public.ai_suggest_runs', 'select, insert, update'), '199: a signed-out caller has no right on either table');
-select public.t_ok(not has_function_privilege('authenticated', 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
-                   and not has_function_privilege('anon', 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
+select public.t_ok(not has_function_privilege('authenticated', 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
+                   and not has_function_privilege('anon', 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
                    and not has_function_privilege('authenticated', 'public.ai_suggest_patterns(uuid, integer, integer)', 'execute')
                    and not has_function_privilege('anon', 'public.ai_suggest_patterns(uuid, integer, integer)', 'execute')
-                   and has_function_privilege('service_role', 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
+                   and has_function_privilege('service_role', 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
                    and has_function_privilege('service_role', 'public.ai_suggest_patterns(uuid, integer, integer)', 'execute'),
   '199: only the service role may call the two functions');
-select public.t_ok(not (select prosecdef from pg_proc where oid = 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)'::regprocedure)
+select public.t_ok(not (select prosecdef from pg_proc where oid = 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)'::regprocedure)
                    and not (select prosecdef from pg_proc where oid = 'public.ai_suggest_patterns(uuid, integer, integer)'::regprocedure),
   '199: both functions are SECURITY INVOKER (no rights of their own)');
 select public.t_ok((select a.atthasdef from pg_attribute a where a.attrelid = 'public.ai_suggestions'::regclass and a.attname = 'user_id') = false,
   '199: user_id has no default (the function sets it from the account it verified)');
-select public.t_ok(exists (select 1 from pg_trigger where tgrelid = 'public.ai_suggestions'::regclass and tgname = 'trg_audit' and not tgisinternal),
-  '199: a change of state is audited');
+select public.t_ok(not exists (select 1 from pg_trigger where tgrelid = 'public.ai_suggestions'::regclass and tgname = 'trg_audit' and not tgisinternal),
+  '199: no audit trigger (Activity''s Undo is never offered a state change: the button has its own Bring back)');
 
 -- ─── 2. Writing ideas (the service role) ─────────────────────────────────────
 select set_config('test.uid', 'none', false);
 set role service_role;
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Show today''s protein on Home', 'It was asked for five times in a month.', 'answer', repeat('a', 64), 1, 3000, 0.0042, null) = 'added',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Show today''s protein on Home', 'It was asked for five times in a month.', 'A plain benefit line.', 'small', 'answer', repeat('a', 64), 1, 3000, 0.0042, null) = 'added',
   '199: a new idea is added');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Reworded title the same idea', 'Again.', 'answer', repeat('a', 64), 1, 3000, 0.0042, null) = 'seen',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Reworded title the same idea', 'Again.', 'A plain benefit line.', 'small', 'answer', repeat('a', 64), 1, 3000, 0.0042, null) = 'seen',
   '199: the same key is seen again');
 select public.t_ok((select times_seen = 2 and title = 'Show today''s protein on Home' and count(*) over () = 1 from public.ai_suggestions where dedupe_key = repeat('a', 64)),
   '199: the same key is a count, never a second row, and the first text stays');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000002', 'widget', 'Show today''s protein on Home', 'Other account.', 'answer', repeat('a', 64), 1, 0, 0, null) = 'added',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000002', 'widget', 'Show today''s protein on Home', 'Other account.', 'A plain benefit line.', 'small', 'answer', repeat('a', 64), 1, 0, 0, null) = 'added',
   '199: the same key in another account is its own idea');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'gadget', 'A thing', 'Because.', 'answer', repeat('b', 64), 1, 0, 0, null) = 'invalid',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'gadget', 'A thing', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('b', 64), 1, 0, 0, null) = 'invalid',
   '199: an unknown kind is refused');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Has <b>markup</b>', 'Because.', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A link idea', 'See https://example.com now', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A link idea', 'See WWW.example.com now', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', E'Two\nlines', 'Because.', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'ab', 'Because.', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', repeat('x', 121), 'Because.', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Has <b>markup</b>', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A link idea', 'See https://example.com now', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A link idea', 'See WWW.example.com now', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Two' || chr(10) || 'lines', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'ab', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', repeat('x', 121), 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
   '199: a title or text with markup, a link, a new line, or the wrong length is refused (plain text only)');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'Vi viser søvn og skritt i én graf', 'Ofte spurt om, æøå.', 'answer', repeat('d', 64), 1, 0, 0, null) = 'added',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'Vi viser søvn og skritt i én graf', 'Ofte spurt om, æøå.', 'A plain benefit line.', 'small', 'answer', repeat('d', 64), 1, 0, 0, null) = 'added',
   '199: letters like æ, ø and å pass');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A thing', 'Because.', 'answer', 'not-a-hash', 1, 0, 0, null) = 'invalid'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A thing', 'Because.', 'answer', repeat('e', 64), 1, 0, 0, '99999999-0000-4000-8000-000000000009') = 'invalid',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Mark [[review {"k":"1"}]] syntax', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Has [one] bracket pair.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Because.', 'Square ] bracket.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
+  '199: a square bracket in the title, the reason or the benefit is refused (Dev Requests reads [[…]] as marks)');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Zero' || chr(8203) || 'width title', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Right to left ' || chr(8238) || 'title', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Because.', 'Isolate ' || chr(8294) || 'mark.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Because.', 'Bom ' || chr(65279) || 'mark.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
+  '199: zero-width and text-direction characters are refused in every text');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Open evil.example now', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Go to a.bc then', 'A plain benefit line.', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
+  '199: anything that reads as a name.tld is refused as a link (not only http and www)');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Because.', 'A plain benefit line.', 'enormous', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A clean title', 'Because.', 'x', 'small', 'answer', repeat('c', 64), 1, 0, 0, null) = 'invalid',
+  '199: a size outside small, medium, large, or a benefit that is too short, is refused');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A thing', 'Because.', 'A plain benefit line.', 'small', 'answer', 'not-a-hash', 1, 0, 0, null) = 'invalid'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A thing', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('e', 64), 1, 0, 0, '99999999-0000-4000-8000-000000000009') = 'invalid',
   '199: a key that is not a 64-character hash, or a call that does not exist, is refused');
-select public.t_ok(public.t_err($q$select public.ai_suggestion_add(null, 'widget', 'A thing', 'Because.', 'answer', repeat('f', 64), 1, 0, 0, null)$q$) = '42501',
+select public.t_ok(public.t_err($q$select public.ai_suggestion_add(null, 'widget', 'A thing', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('f', 64), 1, 0, 0, null)$q$) = '42501',
   '199: no account, no write');
 select public.t_ok(public.t_err($q$update public.ai_suggestions set times_seen = 5 where dedupe_key = repeat('a', 64)$q$) is null, '199: the service role changes a count');
 select public.t_ok((select state_changed_at is null and state = 'new' from public.ai_suggestions where dedupe_key = repeat('a', 64) limit 1), '199: and leaves the state alone');
+
+-- A counted pattern has its 30-day count and is never added to itself; a note from an answer adds one; a pattern may absorb the idea of an answer.
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'One graph for sleep and steps', 'Asked three times.', 'A plain benefit line.', 'medium', 'weekly', repeat('7', 64), 6, 4000, 0.02, null) = 'added', '199: a counted pattern is added with its 30-day count');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'One graph for sleep and steps', 'Asked three times.', 'A plain benefit line.', 'medium', 'weekly', repeat('7', 64), 6, 4100, 0.03, null) = 'seen', '199: the next week sees it again');
+select public.t_ok((select times_seen = 6 and cost_each_usd = 0.03 and tokens_each = 4100 from public.ai_suggestions where dedupe_key = repeat('7', 64) and user_id = '00000000-0000-0000-0000-000000000001'),
+  '199: the same 30-day count is not added again (still 6), and the latest cost of one time is kept');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'One graph for sleep and steps', 'Asked three times.', 'A plain benefit line.', 'medium', 'weekly', repeat('7', 64), 9, 4100, 0.03, null) = 'seen', '199: a larger count is seen');
+select public.t_ok((select times_seen from public.ai_suggestions where dedupe_key = repeat('7', 64) and user_id = '00000000-0000-0000-0000-000000000001') = 9, '199: a larger count wins');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'One graph for sleep and steps', 'Asked again.', 'A plain benefit line.', 'medium', 'answer', repeat('8', 64), 1, 0, 0, null) = 'seen', '199: an answer noting the same idea is seen');
+select public.t_ok((select times_seen from public.ai_suggestions where dedupe_key = repeat('7', 64) and user_id = '00000000-0000-0000-0000-000000000001') = 10, '199: and adds one');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'ONE graph, for sleep and steps!', 'Asked again.', 'A plain benefit line.', 'small', 'answer', repeat('6', 64), 1, 0, 0, null) = 'seen',
+  '199: the same title in another kind and with other punctuation is the same idea (no duplicate row)');
+insert into public.ai_calls (id, user_id, run_id, step, job, caller, model, outcome) values ('99999999-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000001', gen_random_uuid(), 1, 'chat', 'app', 'claude-haiku-5-5', 'ok');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'Protein on Home, an answer''s own wording', 'Asked once.', 'A plain benefit line.', 'small', 'answer', repeat('5', 64), 1, 0, 0, '99999999-0000-4000-8000-000000000001') = 'added', '199: an answer''s idea is added with the call it was seen on');
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'widget', 'A counted pattern with another title', 'Seen 4 times.', 'A plain benefit line.', 'small', 'weekly', repeat('4', 64), 4, 2000, 0.01, '99999999-0000-4000-8000-000000000001') = 'seen', '199: a counted pattern finds the answer''s idea first seen on the same call');
+select public.t_ok((select count(*) from public.ai_suggestions where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'widget' and first_call_id = '99999999-0000-4000-8000-000000000001') = 1, '199: and absorbs it (still one row)');
 
 -- ─── 3. The owner changes the state, and nothing else ────────────────────────
 reset role;
 select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
 set role authenticated;
-select public.t_ok((select count(*) = 2 from public.ai_suggestions), '199: the owner reads their own ideas, not the other account''s');
+select public.t_ok((select count(*) = 4 and bool_and(user_id = '00000000-0000-0000-0000-000000000001') from public.ai_suggestions), '199: the owner reads their own ideas, not the other account''s');
 select public.t_ok(public.t_err($q$update public.ai_suggestions set state = 'kept' where dedupe_key = repeat('a', 64)$q$) is null, '199: the owner keeps an idea');
 select public.t_ok((select state = 'kept' and state_changed_at is not null from public.ai_suggestions where user_id = '00000000-0000-0000-0000-000000000001' and dedupe_key = repeat('a', 64)),
   '199: the time of the change follows');
@@ -92,7 +123,7 @@ select public.t_ok(public.t_err($q$update public.ai_suggestions set times_seen =
                    and public.t_err($q$update public.ai_suggestions set user_id = '00000000-0000-0000-0000-000000000002' where dedupe_key = repeat('a', 64)$q$) = '42501',
   '199: the browser cannot forge a count, a text, a saving, a key or an owner (permission denied)');
 select public.t_ok(public.t_err($q$update public.ai_suggestions set state = 'deleted' where dedupe_key = repeat('a', 64)$q$) = '23514', '199: an unknown state is refused');
-select public.t_ok(public.t_err($q$insert into public.ai_suggestions (user_id, kind, title, why, source, dedupe_key) values ('00000000-0000-0000-0000-000000000001', 'widget', 'Forged idea', 'Forged.', 'answer', repeat('7', 64))$q$) = '42501'
+select public.t_ok(public.t_err($q$insert into public.ai_suggestions (user_id, kind, title, why, benefit, complexity, source, dedupe_key) values ('00000000-0000-0000-0000-000000000001', 'widget', 'Forged idea', 'Forged.', 'Forged benefit.', 'small', 'answer', repeat('7', 64))$q$) = '42501'
                    and public.t_err($q$delete from public.ai_suggestions where dedupe_key = repeat('a', 64)$q$) = '42501',
   '199: the browser can neither add nor delete an idea');
 update public.ai_suggestions set state = 'dismissed' where user_id = '00000000-0000-0000-0000-000000000002';
@@ -103,8 +134,7 @@ select public.t_ok(public.t_err($q$update public.ai_suggestions set state = 'dis
 select public.t_ok(public.t_err($q$select * from public.ai_suggest_runs$q$) = '42501', '199: the browser has no table-wide read of the runs');
 select public.t_ok(public.t_err($q$select public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001')$q$) = '42501', '199: the browser cannot call the counting');
 reset role;
-select public.t_ok((select count(*) from public.audit_logs where table_name = 'ai_suggestions') >= 2, '199: the owner''s state changes are in the audit log');
-select public.t_ok(not exists (select 1 from public.audit_logs where table_name = 'ai_suggestions' and new_data ? 'times_seen'), '199: a counter bump is not audited');
+select public.t_ok(not exists (select 1 from public.audit_logs where table_name = 'ai_suggestions'), '199: nothing of the suggestions is in the audit log (so nothing for Undo to put back)');
 
 -- ─── 4. A signed-in account that is not let in, and a signed-out caller ──────
 select set_config('test.uid', '00000000-0000-0000-0000-000000000003', false);
@@ -118,23 +148,23 @@ reset role;
 -- ─── 5. Dismissed never comes back; the caps ─────────────────────────────────
 select set_config('test.uid', 'none', false);
 set role service_role;
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'Vi viser søvn og skritt i én graf', 'Ofte spurt om.', 'weekly', repeat('d', 64), 4, 0, 0, null) = 'dismissed',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000001', 'chart', 'Vi viser søvn og skritt i én graf', 'Ofte spurt om.', 'A plain benefit line.', 'small', 'weekly', repeat('d', 64), 4, 0, 0, null) = 'dismissed',
   '199: a dismissed idea is refused');
 select public.t_ok((select times_seen = 1 and state = 'dismissed' from public.ai_suggestions where dedupe_key = repeat('d', 64) and user_id = '00000000-0000-0000-0000-000000000001'),
   '199: a dismissed idea is never written again, not even as a count');
-insert into public.ai_suggestions (user_id, kind, title, why, source, dedupe_key)
-  select '00000000-0000-0000-0000-000000000004', 'widget', 'Idea number ' || g, 'Because.', 'answer', encode(sha256(g::text::bytea), 'hex') from generate_series(1, 19) g;
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'Idea twenty', 'Because.', 'answer', repeat('1', 64), 1, 0, 0, null) = 'added'
-                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'Idea twenty-one', 'Because.', 'answer', repeat('2', 64), 1, 0, 0, null) = 'limit',
+insert into public.ai_suggestions (user_id, kind, title, why, benefit, complexity, source, dedupe_key)
+  select '00000000-0000-0000-0000-000000000004', 'widget', 'Idea number ' || g, 'Because.', 'A benefit.', 'small', 'answer', encode(sha256(g::text::bytea), 'hex') from generate_series(1, 19) g;
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'Idea twenty', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('1', 64), 1, 0, 0, null) = 'added'
+                   and public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'Idea twenty-one', 'Because.', 'A plain benefit line.', 'small', 'answer', repeat('2', 64), 1, 0, 0, null) = 'limit',
   '199: at most 20 new ideas a day from answers (the 21st is refused)');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'A weekly idea', 'Because.', 'weekly', repeat('3', 64), 1, 0, 0, null) = 'added',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'A weekly idea', 'Because.', 'A plain benefit line.', 'small', 'weekly', repeat('3', 64), 1, 0, 0, null) = 'added',
   '199: the weekly job is not held by the answers'' daily cap');
 update public.ai_suggestions set created_at = now() - interval '3 days' where user_id = '00000000-0000-0000-0000-000000000004';
-insert into public.ai_suggestions (user_id, kind, title, why, source, dedupe_key)
-  select '00000000-0000-0000-0000-000000000004', 'widget', 'Old idea ' || g, 'Because.', 'weekly', encode(sha256(('o' || g)::bytea), 'hex') from generate_series(1, 300) g
+insert into public.ai_suggestions (user_id, kind, title, why, benefit, complexity, source, dedupe_key)
+  select '00000000-0000-0000-0000-000000000004', 'widget', 'Old idea ' || g, 'Because.', 'A benefit.', 'small', 'weekly', encode(sha256(('o' || g)::bytea), 'hex') from generate_series(1, 300) g
   on conflict do nothing;
 select public.t_ok((select count(*) from public.ai_suggestions where user_id = '00000000-0000-0000-0000-000000000004') >= 300, '199: the account is now at 300 ideas');
-select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'One too many', 'Because.', 'weekly', repeat('4', 64), 1, 0, 0, null) = 'full',
+select public.t_ok(public.ai_suggestion_add('00000000-0000-0000-0000-000000000004', 'widget', 'One too many', 'Because.', 'A plain benefit line.', 'small', 'weekly', repeat('4', 64), 1, 0, 0, null) = 'full',
   '199: at most 300 ideas in all');
 
 -- ─── 6. The runs ─────────────────────────────────────────────────────────────
@@ -170,8 +200,9 @@ select gen_random_uuid(), '00000000-0000-0000-0000-000000000001', gen_random_uui
        '[{"name":"get_day_plan","fields":["date"],"ok":true}]'::jsonb, now() - interval '45 days' from generate_series(1, 5);
 select public.t_ok((select count(*) = 1 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_kind = 'tool_sequence' and pattern_key = 'get_week_figures > get_food_day' and times = 4),
   '199: the same two tools in the same order in 4 answers are one tool_sequence of 4');
-select public.t_ok((select count(*) = 1 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_kind = 'question_shape' and pattern_key = 'get_week_figures(section+week) > get_food_day(date)' and times = 4 and avg_cost_usd = 0.02),
-  '199: the same tools with the same fields are a question_shape (a run''s cost is the sum of its rounds)');
+select public.t_ok(not exists (select 1 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_kind = 'question_shape'),
+  '199: the same calls seen as a sequence and as a shape are one pattern: the sequence stays');
+select public.t_ok((select avg_cost_usd = 0.02 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_kind = 'tool_sequence'), '199: a run''s cost is the sum of its rounds');
 select public.t_ok((select count(*) = 1 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_kind = 'database_fingerprint' and times = 3 and pattern_key = 'select sum(protein_g) from food_log_entries where day = ?'),
   '199: the same fallback query, values taken out, in 3 answers is a database_fingerprint');
 select public.t_ok(not exists (select 1 from public.ai_suggest_patterns('00000000-0000-0000-0000-000000000001') where pattern_key ~ '<|Bad|Name'), '199: a tool name the model made up is dropped');

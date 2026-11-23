@@ -24,7 +24,7 @@ import { ownValue } from './guard.ts'
 import { escapeTagText } from './answer-reader.ts'
 import { dmy, factsText, osloDay, osloMidnight, osloWeek, osloWeekOf, sgn, shiftDay, grp, type WeekFacts } from './week-facts.ts'
 import { readWeekFacts } from './week-data.ts'
-import { checkedIdea, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
+import { checkedIdea, SUGGEST_COMPLEXITY, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
 import type { AddResult } from './suggest-store.ts'
 import { ALL_TOOL_ORDER, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
 
@@ -352,7 +352,9 @@ export function sqlFingerprint(sql: string): string {
     .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, '?')
     .replace(/\b[eE]'(?:[^'\\]|\\[\s\S]|'')*'/g, '?')
     .replace(/'(?:[^']|'')*'/g, '?')
-    .replace(/\b\d+(?:\.\d+)?\b/g, '?')
+    .replace(/\b\d[\w.]*\b/g, '?')
+    // an alias after AS is a name the model chose: never part of the shape
+    .replace(/\bas\s+[A-Za-z_][\w]*/gi, 'as ?')
   // A quote or a dollar sign still there means a text this cleaning did not understand: no fingerprint at all.
   if (/['$\\]/.test(stripped)) return ''
   return stripped.replace(/\s+/g, ' ').trim().slice(0, SQL_FINGERPRINT_MAX)
@@ -587,22 +589,25 @@ async function knownFood(ctx: ToolContext, title: string): Promise<{ basis: 'pre
 
 const NOTE_SHORTCUT: ToolDef = {
   name: 'note_shortcut', kind: 'read',
-  description: "Records one idea in the person's own Suggestions list: something the app could show or do without AI (a widget, a chart, a report, an automation, a notification, a new saved query, an existing screen, a cheaper setting). It changes nothing in the app and nothing of theirs; the person reads the list later and decides. Use it only when it is obvious, at most once in an answer.",
+  description: "Records one suggestion in the person's own Suggestions list: something the app could show or do without AI (a widget, a chart, a report, an automation, a notification, a new saved query, an existing screen, a cheaper setting). It changes nothing in the app and nothing of theirs; the person reads the list later and decides. Use it only when it is obvious and the app does not already show it, at most once in an answer. Never put the person's own figures in it.",
   fields: {
     kind: { type: 'string', max: 20, enum: SUGGEST_KINDS, description: 'What the idea is: widget, chart, automation, notification, report, existing_feature, new_tool or cheaper_setting.' },
-    title: { type: 'string', max: 120, description: 'A few plain words naming what the app would show or do, in English. No links.' },
-    why: { type: 'string', max: 400, description: 'One or two plain sentences in English: what was asked and why the app could answer it without AI. No links.' },
+    title: { type: 'string', max: 120, description: 'A few plain words naming what the app would show or do, in English. No links, no brackets.' },
+    why: { type: 'string', max: 400, description: 'One or two plain sentences in English: the kind of question and why the app could answer it without AI. No links, no brackets, none of the person\'s own figures.' },
+    benefit: { type: 'string', max: 160, description: 'One plain line in English on what the person gains (for example: the answer would be on screen at once, with no waiting). No figures of theirs.' },
+    complexity: { type: 'string', max: 10, enum: SUGGEST_COMPLEXITY, description: 'How big the change would be: small, medium or large.' },
   },
   async run(args, ctx) {
     if (!ctx.noteIdea) return fail('Ideas cannot be recorded here.')
     // The same check every idea passes (suggest-rules.ts): plain text, a kind from the list, lengths held.
-    const checked = checkedIdea({ kind: args.kind, title: args.title, why: args.why })
+    const checked = checkedIdea({ kind: args.kind, title: args.title, why: args.why, benefit: args.benefit, complexity: args.complexity })
     if (!checked.ok) return fail(`${checked.message} Fix it and call note_shortcut again, or answer without it.`)
     const result = await ctx.noteIdea(checked.idea)
-    if (result === 'added') return { ok: true, text: "Noted in the person's Suggestions list. Nothing was changed in the app. Carry on with your answer; do not mention the note unless asked.", noted: { kind: checked.idea.kind } }
-    if (result === 'error') return fail('The idea could not be recorded just now. Carry on with your answer without it.')
-    // seen, dismissed, full, limit, invalid: nothing new, and nothing the person needs to hear about.
-    return { ok: true, text: 'Nothing new was recorded (it is already in the list, or the list does not take more now). Carry on with your answer.' }
+    // Added, or already in the list: the answer shows the line either way, so the owner sees the suggestion under the question every time.
+    if (result === 'added' || result === 'seen') return { ok: true, text: "Noted in the person's Suggestions list. Nothing was changed in the app. Carry on with your answer; do not mention the note unless asked.", noted: { kind: checked.idea.kind } }
+    if (result === 'error') return fail('The suggestion could not be recorded just now. Carry on with your answer without it.')
+    // dismissed, full, limit, invalid: nothing new, and nothing the person needs to hear about.
+    return { ok: true, text: 'Nothing new was recorded (the person set it aside, or the list does not take more now). Carry on with your answer.' }
   },
 }
 

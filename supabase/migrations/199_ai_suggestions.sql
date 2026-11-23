@@ -19,10 +19,13 @@
 --    · One row per (user_id, dedupe_key). The key is made by the function (a hash of the idea's kind and normalised
 --      title, or of the counted pattern): the same key is a count, never a second row, and a dismissed key is never
 --      written again.
---    · Audited (trg_audit) only when `state` is changed — the owner's own choice, shown in Developer → Activity. The
---      service role's counter bumps never touch `state`, so they are not logged.
+--    · The texts must be plain (ai_suggestion_plain): no angle or square bracket (Dev Requests reads [[…]] as marks), control or
+--      zero-width character, or anything that reads as a link. Each idea also has a one-line benefit and a size (small · medium · large).
+--    · Not audited: a toggle with its own "Bring back"; an audited change would be offered to Activity's Undo (see the note at the trigger).
 -- 2. ai_suggestion_add(…) — the one way a suggestion is written: insert, or count the sighting of an existing one, or
---    refuse (dismissed, 300 rows in all, 20 new ideas from answers in a day). SECURITY INVOKER (it needs no more rights
+--    refuse (dismissed, 300 rows in all, 20 new ideas from answers in a day). The same idea is found by key, by title or, for a counted
+--    pattern, as the answer idea it absorbs; one writer per account at a time (advisory lock); a counted pattern's 30-day count is never
+--    added to itself (the larger wins). SECURITY INVOKER (it needs no more rights
 --    than the service role has), service role only. The caps are here as well as in the function's code: a steered
 --    model, or a bug, cannot flood the table.
 -- 3. ai_suggest_patterns(…) — the counting, no AI: over the account's ledger of the last 30 days (`ai_calls`, only the
@@ -39,16 +42,37 @@
 --
 -- Safe to re-run. Changes no existing row. No BEGIN/COMMIT: the deploy runs it as one transaction.
 
--- ─── 1. The ideas ────────────────────────────────────────────────────────────
+-- ─── 1. Plain text ───────────────────────────────────────────────────────────
+-- What a model's text must be to be kept: a length, and none of: an angle bracket or a square bracket (the Dev Requests window
+-- reads [[…]] as marks), a backtick, a control character, a zero-width or text-direction character, or anything that reads as a link
+-- (a scheme, www, // or any name.tld). The last line behind the function's own check; also run again on every update, so the
+-- browser must be able to call it.
+create or replace function public.ai_suggestion_plain(p_text text, p_min integer, p_max integer) returns boolean
+language sql immutable set search_path = '' as $$
+  select p_text is not null
+     and char_length(p_text) between p_min and p_max
+     and p_text !~ '[][<>`[:cntrl:]]'
+     and p_text !~ ('[' || chr(8203) || '-' || chr(8207) || chr(8234) || '-' || chr(8238) || chr(8294) || '-' || chr(8297) || chr(65279) || ']')
+     and p_text !~* '(https?:|www\.|//)'
+     and p_text !~* '\m[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\M'
+$$;
+revoke all on function public.ai_suggestion_plain(text, integer, integer) from public, anon;
+grant execute on function public.ai_suggestion_plain(text, integer, integer) to authenticated, service_role;
+
+-- ─── 2. The ideas ────────────────────────────────────────────────────────────
 create table if not exists public.ai_suggestions (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references auth.users(id) on delete cascade,
   kind             text not null check (kind in ('widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting')),
-  -- Plain text: no angle brackets, no control character (a new line either), no link.
-  title            text not null check (char_length(title) between 3 and 120 and title !~ '[<>[:cntrl:]]' and title !~* '(https?:|www\.)'),
-  why              text not null check (char_length(why) between 3 and 400 and why !~ '[<>[:cntrl:]]' and why !~* '(https?:|www\.)'),
+  -- Plain text (see ai_suggestion_plain). The reason says what was asked or what repeats, with no personal figure; the benefit is one
+  -- plain line for the owner; the complexity is the model's own guess at the size of the change.
+  title            text not null check (public.ai_suggestion_plain(title, 3, 120)),
+  why              text not null check (public.ai_suggestion_plain(why, 3, 400)),
+  benefit          text not null check (public.ai_suggestion_plain(benefit, 3, 160)),
+  complexity       text not null check (complexity in ('small', 'medium', 'large')),
   source           text not null check (source in ('answer', 'weekly')),
-  -- The saving, worked out from the ledger: how many times it was seen, and what one time took.
+  -- The saving, worked out from the ledger: how many times it was seen (an answer's note counts one; a counted pattern counts its
+  -- 30 days, never added twice), and what one time took.
   times_seen       integer not null default 1 check (times_seen between 1 and 1000000),
   tokens_each      integer not null default 0 check (tokens_each between 0 and 10000000),
   cost_each_usd    numeric(12,6) not null default 0 check (cost_each_usd >= 0 and cost_each_usd < 1000000),
@@ -102,39 +126,61 @@ revoke all on function public.ai_suggestions_guard() from public, anon, authenti
 drop trigger if exists trg_ai_suggestions_guard on public.ai_suggestions;
 create trigger trg_ai_suggestions_guard before update on public.ai_suggestions
   for each row execute function public.ai_suggestions_guard();
+-- No audit trigger (a one-line reason, as the rules ask): the owner's Keep / Dismiss / Built is a toggle with its own "Bring back",
+-- and an audited change would be offered to Activity's Undo, which would have to know `state_changed_at` is bookkeeping
+-- (app_undo_bookkeeping) — a state a button already puts back needs no second way to.
 drop trigger if exists trg_audit on public.ai_suggestions;
-create trigger trg_audit after update of state on public.ai_suggestions
-  for each row execute function public.log_audit();
 
 comment on table public.ai_suggestions is
   'Ideas for needing AI less (widget, chart, automation, notification, report, existing feature, new tool, cheaper setting), written by the claude function only. Text written by a model: plain text, never acted on. The owner reads them and changes only `state`.';
 comment on column public.ai_suggestions.dedupe_key is 'Made by the function (sha-256 of the idea''s kind and normalised title, or of the counted pattern): one row per idea, and a dismissed one never comes back.';
-comment on column public.ai_suggestions.times_seen is 'How many times the idea was seen: the counting function''s count, or one per answer that noted it.';
-comment on column public.ai_suggestions.tokens_each is 'The tokens one time took (input + output), from the ledger.';
-comment on column public.ai_suggestions.cost_each_usd is 'What one time cost, from the ledger (frozen when the idea was written).';
+comment on column public.ai_suggestions.times_seen is 'How many times the idea was seen: one per answer that noted it, or the counting''s own 30-day count (the larger of the two, never added twice).';
+comment on column public.ai_suggestions.tokens_each is 'The tokens one time took (input + output), from the ledger. Not shown to the owner.';
+comment on column public.ai_suggestions.cost_each_usd is 'What one time cost, from the ledger (frozen when the idea was written; a counted pattern keeps its latest).';
 comment on column public.ai_suggestions.first_call_id is 'The ledger row the idea was first seen on.';
 
--- ─── 2. Writing an idea ──────────────────────────────────────────────────────
+-- ─── 3. Writing an idea ──────────────────────────────────────────────────────
+-- Insert, or count one more sighting of the same idea, or refuse. The same idea is found by its key, by its title (any kind: the
+-- words with the punctuation and letter case taken out), or — for a counted pattern — as an answer's idea of the same kind first
+-- seen on the same call (the pattern absorbs it). A dismissed idea is never written again.
 create or replace function public.ai_suggestion_add(
-  p_user_id uuid, p_kind text, p_title text, p_why text, p_source text, p_key text,
+  p_user_id uuid, p_kind text, p_title text, p_why text, p_benefit text, p_complexity text, p_source text, p_key text,
   p_times integer, p_tokens integer, p_cost numeric, p_call uuid
 ) returns text
 language plpgsql security invoker set search_path = '' as $$
 declare
+  v_id    uuid;
   v_state text;
   v_rows  integer;
+  v_norm  text := btrim(regexp_replace(lower(coalesce(p_title, '')), '[^[:alnum:]]+', ' ', 'g'));
 begin
   -- The service role only (no signed-in user); the grants below say the same.
   if p_user_id is null or (select auth.uid()) is not null then
     raise exception 'ai_suggestion_add: the service role only' using errcode = '42501';
   end if;
-  select s.state into v_state from public.ai_suggestions s where s.user_id = p_user_id and s.dedupe_key = p_key for update;
-  if found then
+  -- One writer at a time per account: two answers noting the same idea at the same moment make one row.
+  perform pg_advisory_xact_lock(hashtextextended(p_user_id::text, 0));
+  select s.id, s.state into v_id, v_state from public.ai_suggestions s
+   where s.user_id = p_user_id
+     and (s.dedupe_key = p_key or (v_norm <> '' and btrim(regexp_replace(lower(s.title), '[^[:alnum:]]+', ' ', 'g')) = v_norm))
+   order by (s.dedupe_key = p_key) desc limit 1 for update;
+  if not found and p_source = 'weekly' and p_call is not null then
+    select s.id, s.state into v_id, v_state from public.ai_suggestions s
+     where s.user_id = p_user_id and s.source = 'answer' and s.kind = p_kind and s.first_call_id = p_call and s.state <> 'dismissed'
+     order by s.created_at limit 1 for update;
+  end if;
+  if v_id is not null then
     -- A dismissed idea is never written again, not even as a count.
     if v_state = 'dismissed' then return 'dismissed'; end if;
-    update public.ai_suggestions s
-       set times_seen = least(s.times_seen + greatest(coalesce(p_times, 1), 1), 1000000), last_seen_at = now()
-     where s.user_id = p_user_id and s.dedupe_key = p_key;
+    if p_source = 'weekly' then
+      -- A counted pattern's count is a 30-day total: the larger wins, it is never added to itself week after week.
+      update public.ai_suggestions s
+         set times_seen = least(greatest(s.times_seen, greatest(coalesce(p_times, 1), 1)), 1000000), last_seen_at = now(),
+             tokens_each = greatest(coalesce(p_tokens, 0), 0), cost_each_usd = greatest(coalesce(p_cost, 0), 0)
+       where s.id = v_id;
+    else
+      update public.ai_suggestions s set times_seen = least(s.times_seen + 1, 1000000), last_seen_at = now() where s.id = v_id;
+    end if;
     return 'seen';
   end if;
   if (select count(*) from public.ai_suggestions s where s.user_id = p_user_id) >= 300 then return 'full'; end if;
@@ -142,18 +188,18 @@ begin
      and (select count(*) from public.ai_suggestions s where s.user_id = p_user_id and s.source = 'answer' and s.created_at > now() - interval '1 day') >= 20 then
     return 'limit';
   end if;
-  insert into public.ai_suggestions (user_id, kind, title, why, source, times_seen, tokens_each, cost_each_usd, first_call_id, dedupe_key)
-  values (p_user_id, p_kind, p_title, p_why, p_source, greatest(coalesce(p_times, 1), 1), greatest(coalesce(p_tokens, 0), 0), greatest(coalesce(p_cost, 0), 0), p_call, p_key)
+  insert into public.ai_suggestions (user_id, kind, title, why, benefit, complexity, source, times_seen, tokens_each, cost_each_usd, first_call_id, dedupe_key)
+  values (p_user_id, p_kind, p_title, p_why, p_benefit, p_complexity, p_source, greatest(coalesce(p_times, 1), 1), greatest(coalesce(p_tokens, 0), 0), greatest(coalesce(p_cost, 0), 0), p_call, p_key)
   on conflict (user_id, dedupe_key) do nothing;
   get diagnostics v_rows = row_count;
   return case when v_rows = 1 then 'added' else 'seen' end;
 exception when check_violation or foreign_key_violation or numeric_value_out_of_range then
   return 'invalid';
 end $$;
-revoke all on function public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid) from public, anon, authenticated;
-grant execute on function public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid) to service_role;
+revoke all on function public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid) from public, anon, authenticated;
+grant execute on function public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid) to service_role;
 
--- ─── 3. The counting, no AI ──────────────────────────────────────────────────
+-- ─── 4. The counting, no AI ──────────────────────────────────────────────────
 -- What it finds (thresholds: p_min_times, and the three constants below; the function's code asks again with its own):
 --   tool_sequence          the same tools called in the same order by ≥ p_min_times answers (2 to 8 tools);
 --   question_shape         the same tools with the same fields given (the fallback SQL tool left out) by ≥ p_min_times answers;
@@ -228,6 +274,8 @@ begin
       from calls c where c.outcome = 'ok' group by c.job
   )
   select g.k, g.pkey, g.n, g.avg_tok, g.avg_in, g.avg_out, g.avg_cost, g.sum_cost, g.first_id, g.last_at from grouped g where g.rank <= 10
+     -- The same calls seen as a sequence and as a shape are one pattern: the coarser one stays.
+     and not (g.k = 'question_shape' and exists (select 1 from grouped t where t.k = 'tool_sequence' and t.n = g.n and t.sum_cost = g.sum_cost))
   union all
   select 'costly_job', j.job, j.n, j.avg_tok, j.avg_in, j.avg_out, j.avg_cost, j.sum_cost, j.first_id, j.last_at
     from (select x.*, row_number() over (order by x.sum_cost desc) as rank from jobs x where x.n >= v_min and x.sum_cost >= 0.05) j where j.rank <= 3
@@ -238,7 +286,7 @@ end $$;
 revoke all on function public.ai_suggest_patterns(uuid, integer, integer) from public, anon, authenticated;
 grant execute on function public.ai_suggest_patterns(uuid, integer, integer) to service_role;
 
--- ─── 4. The weekly batch's bookkeeping ───────────────────────────────────────
+-- ─── 5. The weekly batch's bookkeeping ───────────────────────────────────────
 create table if not exists public.ai_suggest_runs (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references auth.users(id) on delete cascade,
@@ -280,7 +328,7 @@ comment on table public.ai_suggest_runs is
   'The weekly suggestion batch: one row per week and maker. Written only by the service role. batch_id and claimed_at are server-only.';
 comment on column public.ai_suggest_runs.batch_id is 'Anthropic''s batch id: a link to an outside service. Server-only: the browser can neither write nor read it.';
 
--- ─── 5. The check timer, made again ──────────────────────────────────────────
+-- ─── 6. The check timer, made again ──────────────────────────────────────────
 -- 196's `lascis-ai-report-check`, with one more reason to run: a suggestion batch is waiting. Same credential, same quiet
 -- when nothing waits.
 do $$
@@ -303,7 +351,8 @@ begin
     )
     where exists (select 1 from public.ai_reports r where r.status = 'queued')
        or exists (select 1 from public.ai_reports r where r.push_due and r.pushed_at is null)
-       or exists (select 1 from public.ai_suggest_runs r where r.status = 'queued');
+       -- (a run older than the 26 hours the check waits for is given up: another account's run, which this timer never reads, stops here)
+       or exists (select 1 from public.ai_suggest_runs r where r.status = 'queued' and r.created_at > now() - interval '27 hours');
   $cron$);
 end $$;
 
@@ -339,8 +388,8 @@ begin
      or has_any_column_privilege('anon', 'public.ai_suggest_runs', 'select, insert, update, references') then
     raise exception 'Migration 199 assertion failed: a signed-out caller reaches the suggestions';
   end if;
-  if has_function_privilege('authenticated', 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
-     or has_function_privilege('anon', 'public.ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
+  if has_function_privilege('authenticated', 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
+     or has_function_privilege('anon', 'public.ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'execute')
      or has_function_privilege('authenticated', 'public.ai_suggest_patterns(uuid, integer, integer)', 'execute')
      or has_function_privilege('anon', 'public.ai_suggest_patterns(uuid, integer, integer)', 'execute') then
     raise exception 'Migration 199 assertion failed: the browser can call the suggestion functions';

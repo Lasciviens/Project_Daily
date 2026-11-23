@@ -23,7 +23,7 @@ export async function addSuggestion(
 ): Promise<AddResult> {
   try {
     const { data, error } = await db.rpc('ai_suggestion_add', {
-      p_user_id: userId, p_kind: idea.kind, p_title: idea.title, p_why: idea.why, p_source: source, p_key: key,
+      p_user_id: userId, p_kind: idea.kind, p_title: idea.title, p_why: idea.why, p_benefit: idea.benefit, p_complexity: idea.complexity, p_source: source, p_key: key,
       p_times: Math.max(1, Math.floor(saving.times)), p_tokens: Math.max(0, Math.floor(saving.tokens)), p_cost: saving.cost,
       p_call: callId && SUGGEST_ROW_UUID.test(callId) ? callId : null,
     })

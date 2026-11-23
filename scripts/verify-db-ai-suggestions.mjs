@@ -50,12 +50,22 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
   if (polOf('ai_suggestions') !== 'select,update') problems.push(`ai_suggestions policies: ${polOf('ai_suggestions')} (expected select, update)`)
   if (polOf('ai_suggest_runs') !== 'select') problems.push(`ai_suggest_runs policies: ${polOf('ai_suggest_runs')} (expected select)`)
   if (!/create trigger trg_ai_suggestions_guard before update on public\.ai_suggestions/i.test(sql)) problems.push('no guard trigger refusing a change to any column but state')
-  if (!/create trigger trg_audit after update of state on public\.ai_suggestions/i.test(sql)) problems.push('no audit trigger on a change of state')
+  if (/create trigger trg_audit/i.test(sql)) problems.push('an audit trigger (a state change would be offered to Activity\'s Undo, which does not know state_changed_at: the toggle has its own Bring back)')
+  if (!/drop trigger if exists trg_audit on public\.ai_suggestions;/i.test(sql)) problems.push('no drop of a trg_audit left by an earlier run')
   if (!/constraint ai_suggestions_one_per_idea unique \(user_id, dedupe_key\)/i.test(sql)) problems.push('no unique (user_id, dedupe_key)')
   if (!/dedupe_key\s+text not null check \(dedupe_key ~ '\^\[0-9a-f\]\{64\}\$'\)/i.test(sql)) problems.push('dedupe_key is not held to a 64-character hash')
-  if (!/title !~ '\[<>\[:cntrl:\]\]'/.test(sql) || !/why !~ '\[<>\[:cntrl:\]\]'/.test(sql) || (sql.match(/!~\* '\(https\?:\|www\\\.\)'/g) || []).length < 2) problems.push('title and why are not held to plain text (no angle bracket, control character or link)')
+  for (const col of ['title, 3, 120', 'why, 3, 400', 'benefit, 3, 160']) {
+    if (!sql.includes(`check (public.ai_suggestion_plain(${col}))`)) problems.push(`${col.split(',')[0]} is not held to plain text by ai_suggestion_plain`)
+  }
+  const plainFn = /create or replace function public\.ai_suggestion_plain[\s\S]*?\$\$;/i.exec(sql)?.[0] ?? ''
+  if (!plainFn.includes("'[][<>`[:cntrl:]]'")) problems.push('ai_suggestion_plain does not refuse angle brackets, square brackets, backticks and control characters')
+  if (!/chr\(8203\)[\s\S]*chr\(8207\)[\s\S]*chr\(8234\)[\s\S]*chr\(8238\)[\s\S]*chr\(8294\)[\s\S]*chr\(8297\)[\s\S]*chr\(65279\)/.test(plainFn)) problems.push('ai_suggestion_plain does not refuse zero-width and text-direction characters')
+  if (!/\(https\?:\|www\\\.\|\/\/\)/.test(plainFn) || !/\\m\[a-z0-9-\]\+/.test(plainFn)) problems.push('ai_suggestion_plain does not refuse a link (a scheme, www, // or any name.tld)')
+  if (!/complexity\s+text not null check \(complexity in \('small', 'medium', 'large'\)\)/.test(sql)) problems.push('complexity is not held to small, medium, large')
+  if (!/pg_advisory_xact_lock\(hashtextextended\(p_user_id::text, 0\)\)/.test(sql)) problems.push('ai_suggestion_add takes no lock per account')
+  if (!/created_at > now\(\) - interval '27 hours'/.test(sql)) problems.push('the timer\'s suggestion test has no age limit')
   if (/security definer/i.test(sql)) problems.push('a SECURITY DEFINER function (the two functions are SECURITY INVOKER, service role only)')
-  for (const f of ['ai_suggestion_add(uuid, text, text, text, text, text, integer, integer, numeric, uuid)', 'ai_suggest_patterns(uuid, integer, integer)']) {
+  for (const f of ['ai_suggestion_add(uuid, text, text, text, text, text, text, text, integer, integer, numeric, uuid)', 'ai_suggest_patterns(uuid, integer, integer)']) {
     if (!stmts.includes(`revoke all on function public.${f} from public, anon, authenticated`)) problems.push(`no revoke on ${f}`)
     if (!stmts.includes(`grant execute on function public.${f} to service_role`)) problems.push(`no service-role execute on ${f}`)
   }
@@ -124,7 +134,7 @@ select coalesce(string_agg(x, E'\\n' order by x), '') from (
   select 'trigger ' || pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'public.ai_suggestions'::regclass and not tgisinternal
   union all
   select 'function ' || p.oid::regprocedure || ' ' || p.prosecdef || ' ' || coalesce(p.proconfig::text, '') || ' ' || coalesce(p.proacl::text, '')
-    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_suggestion_add', 'ai_suggest_patterns', 'ai_suggestions_guard')
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_suggestion_add', 'ai_suggest_patterns', 'ai_suggestions_guard', 'ai_suggestion_plain')
   union all
   select 'timer ' || jobname || ' ' || schedule || ' ' || command from cron.job where jobname = 'lascis-ai-report-check'
 ) t(x)`

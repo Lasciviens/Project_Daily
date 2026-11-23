@@ -472,6 +472,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       // The citations are checked BEFORE the answer is stored and kept with it, so a chat opened later shows the same links.
       finalCitations = await checkedCitations(ctx, answerMessages.flatMap(m => m.content), known)
       if (finalCitations.length) assistantMeta.citations = finalCitations
+      // The kind of suggestion this answer noted stays with the answer, so a chat opened later shows the same line.
+      if (suggestion) assistantMeta.suggestion = { kind: suggestion.kind }
       const wrote = await store('assistant', answer.content, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
@@ -513,7 +515,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
           runChatTool(name, call.input, toolNames, modes, {
             db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs,
             // The suggestions list is written by the service role, with the verified user id and a key made from the idea itself (the model never supplies one); the ledger row of this round is where it was first seen.
-            noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: lastPrompt, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
+            noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: 0, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
           }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )

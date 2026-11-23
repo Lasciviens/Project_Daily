@@ -20,7 +20,7 @@ export type SuggestKind = typeof SUGGEST_KINDS[number]
 
 /** The numbers that bound the system. The counting function in migration 199 asks with the same thresholds. */
 export const SUGGEST_LIMITS = {
-  titleMin: 3, titleMax: 120, whyMin: 3, whyMax: 400,
+  titleMin: 3, titleMax: 120, whyMin: 3, whyMax: 400, benefitMin: 3, benefitMax: 160,
   /** The ideas one answer may note (a second call gets an error result and never runs). */
   perAnswer: 1,
   /** The ideas one weekly run may write. */
@@ -36,15 +36,22 @@ export const SUGGEST_LIMITS = {
   bigInputTokens: 15_000, smallOutputTokens: 300, costlyJobUsd: 0.05,
 } as const
 
+/** The size of a change, the model's own guess: the owner reads it beside the benefit. */
+export const SUGGEST_COMPLEXITY = ['small', 'medium', 'large'] as const
+export type SuggestComplexity = typeof SUGGEST_COMPLEXITY[number]
+
 export const PATTERN_KINDS = ['tool_sequence', 'question_shape', 'database_fingerprint', 'costly_job', 'big_input_small_output'] as const
 export type PatternKind = typeof PATTERN_KINDS[number]
 
-export interface CheckedIdea { kind: SuggestKind; title: string; why: string }
+export interface CheckedIdea { kind: SuggestKind; title: string; why: string; benefit: string; complexity: SuggestComplexity }
 
 // Control characters and the zero-width and text-direction ones: they draw nothing and can hide a word from a check.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
 const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
-const LINK = /https?:|www\.|\w\.(?:com|net|org|io|app|dev)\b|\/\//i
+// Anything that reads as a link: a scheme, www, // or any name.tld (the same pattern as the app's LINKISH, featureRules.ts).
+const LINK = /https?:|www\.|\/\/|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
+// A personal figure (grams, calories, steps, heart rate…): the texts describe what repeats, never the owner's own numbers.
+const PERSONAL_FIGURE = /\d\s?(?:g|kg|mg|kcal|cal|steps|bpm|ml|lbs?|cm|km)\b/i
 
 /** A short plain text: a string of letters, digits and ordinary punctuation. No angle bracket, control character or link; null when it fails. Never cleaned up. */
 export function plainText(value: unknown, min: number, max: number): string | null {
@@ -52,7 +59,8 @@ export function plainText(value: unknown, min: number, max: number): string | nu
   const text = value.trim()
   const length = [...text].length
   if (length < min || length > max) return null
-  if (HIDDEN.test(text) || /[<>`]/.test(text) || LINK.test(text)) return null
+  // Square brackets too: the Dev Requests window reads [[…]] as marks.
+  if (HIDDEN.test(text) || /[<>`[\]]/.test(text) || LINK.test(text) || PERSONAL_FIGURE.test(text)) return null
   return text.replace(/ {2,}/g, ' ')
 }
 
@@ -63,10 +71,15 @@ export function checkedIdea(raw: unknown): { ok: true; idea: CheckedIdea } | { o
   const kind = typeof kindRaw === 'string' ? SUGGEST_KINDS.find(k => k === kindRaw.trim().toLowerCase()) : undefined
   if (!kind) return { ok: false, message: `The kind must be one of: ${SUGGEST_KINDS.join(', ')}.` }
   const title = plainText(answerValue(raw as Record<string, unknown>, 'title'), SUGGEST_LIMITS.titleMin, SUGGEST_LIMITS.titleMax)
-  if (!title) return { ok: false, message: `The title must be plain text of ${SUGGEST_LIMITS.titleMin} to ${SUGGEST_LIMITS.titleMax} characters, with no link, no angle brackets and no new line.` }
+  if (!title) return { ok: false, message: `The title must be plain text of ${SUGGEST_LIMITS.titleMin} to ${SUGGEST_LIMITS.titleMax} characters, with no link, no brackets and no new line.` }
   const why = plainText(answerValue(raw as Record<string, unknown>, 'why'), SUGGEST_LIMITS.whyMin, SUGGEST_LIMITS.whyMax)
-  if (!why) return { ok: false, message: `The reason must be plain text of ${SUGGEST_LIMITS.whyMin} to ${SUGGEST_LIMITS.whyMax} characters, with no link, no angle brackets and no new line.` }
-  return { ok: true, idea: { kind, title, why } }
+  if (!why) return { ok: false, message: `The reason must be plain text of ${SUGGEST_LIMITS.whyMin} to ${SUGGEST_LIMITS.whyMax} characters, with no link, no brackets, no new line and none of the person's own figures (grams, calories, steps).` }
+  const benefit = plainText(answerValue(raw as Record<string, unknown>, 'benefit'), SUGGEST_LIMITS.benefitMin, SUGGEST_LIMITS.benefitMax)
+  if (!benefit) return { ok: false, message: `The benefit must be one plain line of ${SUGGEST_LIMITS.benefitMin} to ${SUGGEST_LIMITS.benefitMax} characters about what the person gains, with no link, no brackets, no angle brackets and none of their own figures (grams, calories, steps).` }
+  const sizeRaw = answerValue(raw as Record<string, unknown>, 'complexity')
+  const complexity = typeof sizeRaw === 'string' ? SUGGEST_COMPLEXITY.find(c => c === sizeRaw.trim().toLowerCase()) : undefined
+  if (!complexity) return { ok: false, message: `The complexity must be one of: ${SUGGEST_COMPLEXITY.join(', ')}.` }
+  return { ok: true, idea: { kind, title, why, benefit, complexity } }
 }
 
 /** The key of an idea written in an answer: made here from its kind and its title with the words lower-cased and the punctuation gone, so a reworded copy of the same words is the same idea. */
