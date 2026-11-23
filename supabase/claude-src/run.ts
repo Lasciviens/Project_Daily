@@ -11,9 +11,10 @@
 
 import type {
   AnswerCheck, Caller, CountReply, EarlyStep, JobDefinition, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv,
-  PreparedRun, Provider, RequestImage, RunReply, TokenUsage,
+  PreparedRun, Provider, RequestDocument, RequestImage, RunReply, TokenUsage,
 } from './types.ts'
 import { costOf, WEB_SEARCH_MAX_USES, worstCostOf } from './prices.ts'
+import { PDF_PROMPT_TOKENS_MAX, pdfTokensHeld } from './image-rules.ts'
 import {
   callerDailyCap, checkedChoice, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, requestTimeoutMs, reservationBudgetProblem, settingsFor, trimForLog,
   trimText, TEXT_LOG_MAX_BYTES, type RunSettings,
@@ -163,8 +164,21 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     userText = early.userText
   }
 
+  // 4c · A PDF's real size is asked of the provider (count_tokens, free) before anything is reserved: the reservation
+  //      holds that count, never a guess from bytes, and a PDF over the cap is refused here. The count leaves out the
+  //      web search (the count endpoint takes no server tool), which the reservation adds on its own.
+  let documentTokens = 0
+  if (prepared.documents?.length && job.acceptsDocument) {
+    const counted = await countPrompt(ctx, ctx.provider, buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, COUNT_TIMEOUT_MS, { images: prepared.images, documents: prepared.documents }))
+    if (!counted.ok) return stop(counted.outcome, counted.message)
+    if (counted.tokens > PDF_PROMPT_TOKENS_MAX) {
+      return stop('bad_input', `That PDF is too long for a receipt (a receipt is one to three pages). Use a photo of the receipt or a shorter PDF.`)
+    }
+    documentTokens = pdfTokensHeld(counted.tokens)
+  }
+
   // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs, { images: prepared.images, webSearchMax: prepared.webSearchMax })
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs, { images: prepared.images, documents: prepared.documents, webSearchMax: prepared.webSearchMax })
 
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
@@ -172,7 +186,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // A photo adds its tokens (worked out from its own header); every search the call may run adds its fee and its results.
   const worstCost = worstCostOf(
     request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
-    'live', { imageTokens: prepared.imageTokens ?? 0, webSearches: request.webSearch?.maxUses ?? 0 },
+    'live', { imageTokens: (prepared.imageTokens ?? 0) + documentTokens, webSearches: request.webSearch?.maxUses ?? 0 },
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
@@ -234,6 +248,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
       answer_schema: request.answerSchema, thinking: request.thinking,
       // A photo is never kept in the log: only how many were sent and how big.
       ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
+      ...(request.documents?.length ? { documents: request.documents.map(d => ({ media_type: 'application/pdf', base64_chars: d.base64.length })) } : {}),
       ...(request.webSearch ? { web_search_max_uses: request.webSearch.maxUses } : {}),
       // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
       ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
@@ -260,10 +275,11 @@ export function gateScopeOf(ctx: RunContext): GateScope {
  */
 export function buildRequest(
   job: JobDefinition, settings: RunSettings, userText: string, thinking: 'adaptive' | 'off', timeoutOverride?: number,
-  extra: { images?: RequestImage[]; webSearchMax?: number } = {},
+  extra: { images?: RequestImage[]; documents?: RequestDocument[]; webSearchMax?: number } = {},
 ): ModelRequest {
   return {
     ...(extra.images?.length && job.acceptsImage ? { images: extra.images } : {}),
+    ...(extra.documents?.length && job.acceptsDocument ? { documents: extra.documents } : {}),
     // The tool only for a job whose definition names it (a job's prepare alone can never switch a tool on).
     ...(extra.webSearchMax && extra.webSearchMax > 0 && job.tools?.some(t => t.name === 'web_search') ? { webSearch: { maxUses: Math.min(Math.floor(extra.webSearchMax), WEB_SEARCH_MAX_USES) } } : {}),
     model: settings.model,
@@ -337,6 +353,22 @@ const COUNT_STOP_REASON = 'count_tokens'
 
 // The free count waits at most this long: it only reads the prompt, it writes no answer.
 const COUNT_TIMEOUT_MS = 20_000
+
+/**
+ * The provider's count of a request's prompt tokens (free). A request the provider refuses outright (a PDF it cannot
+ * read) is the owner's file, not a fault; any other failure stops the run with the provider's scrubbed sentence.
+ */
+async function countPrompt(ctx: RunContext, provider: Provider, request: ModelRequest): Promise<{ ok: true; tokens: number } | { ok: false; outcome: 'bad_input' | 'error'; message: string }> {
+  try {
+    const counted = await provider.countTokens(request)
+    if (counted.ok) return { ok: true, tokens: counted.inputTokens }
+    if (counted.kind === 'refused_request') return { ok: false, outcome: 'bad_input', message: 'That PDF could not be read. Try a photo of the receipt, or a PDF saved without a password.' }
+    return { ok: false, outcome: 'error', message: hideSecrets(counted.message, ctx.secrets) }
+  } catch (error) {
+    ctx.report(`the provider part threw: ${errorPlace(error)}`)
+    return { ok: false, outcome: 'error', message: 'The PDF could not be checked unexpectedly. Try again in a moment.' }
+  }
+}
 
 /** A job's step before the model. One that throws (it shouldn't) stops the run with a plain sentence. */
 async function runEarly(ctx: RunContext, early: (env: PageEnv) => Promise<EarlyStep>): Promise<EarlyStep> {

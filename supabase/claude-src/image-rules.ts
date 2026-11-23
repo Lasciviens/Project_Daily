@@ -15,7 +15,7 @@
 //  and added to the reservation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { RequestImage } from './types.ts'
+import type { RequestDocument, RequestImage } from './types.ts'
 
 export const IMAGE_TYPES: readonly RequestImage['mediaType'][] = ['image/jpeg', 'image/png', 'image/webp']
 /** The photo as base64 text: about 1 MB of image. The browser's 1280 px JPEG is usually 150–400 KB. */
@@ -107,4 +107,59 @@ export function checkedImage(raw: unknown, maxChars: number = IMAGE_BASE64_MAX_C
   if (!(width >= IMAGE_SIDE_MIN && height >= IMAGE_SIDE_MIN)) return { ok: false, problem: 'The photo is too small to read.' }
   if (Math.max(width, height) > IMAGE_LONG_SIDE_MAX) return { ok: false, problem: `The photo is too big: at most ${IMAGE_LONG_SIDE_MAX} pixels on its long side.` }
   return { ok: true, image: { mediaType, base64: data }, width, height, tokens: imageTokens(width, height) }
+}
+
+// ── PDFs (a receipt) ─────────────────────────────────────────────────────────
+//
+//  A PDF reaches a job only through `checkedPdf`: `{ media_type: 'application/pdf', data }`, base64 that decodes to
+//  bytes that begin `%PDF-`, at most about 1 MB (the body limit of a request with a photo), and not password
+//  protected. Nothing here reads the PDF's pages: no library, no parser. How long it is gets answered by the provider
+//  (count_tokens, run.ts), which also refuses a file it cannot read. A PDF is never stored: the ledger keeps its size.
+
+/** The PDF as base64 text: about 1 MB of file, which with the JSON around it stays inside the 1.5 MB body of a request that carries a photo. */
+export const PDF_BASE64_MAX_CHARS = 1_400_000
+/**
+ * The most prompt tokens a PDF job may have (the provider's own count of instructions, words and PDF together). A receipt
+ * is 1-3 pages; Anthropic counts each page as its extracted text (1,500-3,000 tokens) plus at most 1,568 for its image.
+ */
+export const PDF_PROMPT_TOKENS_MAX = 16_000
+/** What the reservation holds for a counted PDF prompt: the count is an estimate ("might differ by a small amount"), so a quarter more. */
+export function pdfTokensHeld(counted: number): number {
+  return Math.ceil(counted * 1.25)
+}
+
+export type CheckedPdf = { ok: true; document: RequestDocument; bytes: number } | { ok: false; problem: string }
+
+/** The PDF of a request's input, checked; anything else says why in one plain sentence that never holds any of the input. */
+export function checkedPdf(raw: unknown, maxChars: number = PDF_BASE64_MAX_CHARS): CheckedPdf {
+  const own = (key: string): unknown => (raw !== null && typeof raw === 'object' && Object.prototype.hasOwnProperty.call(raw, key) ? (raw as Record<string, unknown>)[key] : undefined)
+  if (own('media_type') !== 'application/pdf') return { ok: false, problem: 'The document must be a PDF.' }
+  const data = own('data')
+  if (typeof data !== 'string' || data.length < 100) return { ok: false, problem: 'The PDF is empty.' }
+  if (data.length > maxChars) return { ok: false, problem: `The PDF is too large: at most about ${Math.round(maxChars * 0.75 / 1000)} KB. A receipt is one to three pages.` }
+  if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return { ok: false, problem: 'The PDF could not be read.' }
+  let bytes: Uint8Array
+  try {
+    const binary = atob(data)
+    bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  } catch {
+    return { ok: false, problem: 'The PDF could not be read.' }
+  }
+  // The magic bytes: a file that is not a PDF is refused here, whatever its name or its type says.
+  if (ascii(bytes, 0, 5) !== '%PDF-') return { ok: false, problem: 'That file is not a PDF.' }
+  // A password-protected PDF holds an /Encrypt entry in its trailer; Anthropic cannot read one.
+  if (hasText(bytes, '/Encrypt')) return { ok: false, problem: 'That PDF is password protected: open it, then save or print a copy without the password.' }
+  return { ok: true, document: { base64: data }, bytes: bytes.length }
+}
+
+/** Whether the bytes hold the ASCII text anywhere (a plain scan: the trailer of a PDF may be anywhere in the file). */
+function hasText(bytes: Uint8Array, text: string): boolean {
+  const first = text.charCodeAt(0)
+  outer: for (let i = 0; i + text.length <= bytes.length; i++) {
+    if (bytes[i] !== first) continue
+    for (let j = 1; j < text.length; j++) if (bytes[i + j] !== text.charCodeAt(j)) continue outer
+    return true
+  }
+  return false
 }
