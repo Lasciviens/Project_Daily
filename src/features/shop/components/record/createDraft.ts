@@ -206,7 +206,7 @@ export function applyPreset(s: CreateState, preset: LinePreset | undefined): Cre
  * the condition printed is what it was sold as. What stays is the name, brand, model and category.
  */
 export const hadFill = (fill: ReceiptFill): ReceiptFill => ({
-  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined, before: undefined, costs: [],
+  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined, before: undefined, discount: undefined, discountReason: undefined, costs: [],
 })
 
 /**
@@ -244,6 +244,11 @@ export function withReceipt(spec: CreateSpec, s: CreateState, categories: readon
   // The receipt's extra costs: this pick's replace the earlier pick's (a cost the owner moved here from another draft stays).
   const mine = s.costs.filter(c => !c.id.startsWith('r:'))
   const costs = [...mine, ...(fill.costs ?? []).map((c, i) => ({ ...c, id: `r:${i}`, on: true }))]
+  // The discount is stored beside the paid price (never subtracted from it): the same "only into an empty field" rule as the normal price.
+  if (OWNS_KIND(spec, s)) {
+    if (fill.discount !== undefined && (draft.discount_amount == null || draft.discount_amount === s.receipt?.discount)) { draft.discount_amount = fill.discount; draft.discount_reason = fill.discountReason ?? 'other' }
+    else if (fill.discount === undefined && s.receipt?.discount !== undefined && draft.discount_amount === s.receipt.discount) { draft.discount_amount = null; draft.discount_reason = null }
+  }
   next = { ...next, draft, receipt: fill, costs }
   return next
 }
@@ -313,6 +318,7 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
     got_as_gift: !!v.got_as_gift, used: !!v.used, for_resale: !!v.for_resale, ...(v.kept === false ? { kept: false } : {}),
     ...(v.fx_nok != null && currencyOf(v) !== 'NOK' ? { fx_nok: v.fx_nok, fx_source: v.fx_source ?? 'manual' } : {}),
     ...(v.market_price != null ? { market_price: v.market_price, market_currency: v.market_currency ?? currencyOf(v) } : {}),
+    ...(v.discount_amount != null && v.discount_reason ? { discount_amount: v.discount_amount, discount_reason: v.discount_reason } : {}),
     ...(v.serial ? { serial: v.serial } : {}),
   }
   if (kind === 'mine' && v.value_now != null) {

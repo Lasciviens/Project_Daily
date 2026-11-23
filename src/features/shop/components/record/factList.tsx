@@ -4,7 +4,7 @@ import { SegmentedControl } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
-import { categoryPath, currencyOf, SHOP_CURRENCIES } from '../../shopModel'
+import { categoryPath, currencyOf, DISCOUNT_WORD, SHOP_CURRENCIES } from '../../shopModel'
 import { DISPOSAL_LABEL, durationLabel, paidOf, complete, savedOf } from '../../ownModel'
 import { initialsOf, tintOf } from '../../wishTile'
 import { hostOf, money, moneyRange, webUrl } from '../shopFormat'
@@ -181,7 +181,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
         <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
         <Toggle checked={!!v.approx_dates} onChange={x => set({ approx_dates: x })}>Roughly — from memory</Toggle>
       </> },
-    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.used ? quiet(' · used') : ''}</>,
+    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.market_price != null && v.price != null ? quiet(` · normal price ${money(v.market_price, v.market_currency ?? cur)}`) : ''}{v.discount_amount != null && v.discount_reason ? <span className="text-success"> · −{money(v.discount_amount, cur)} {DISCOUNT_WORD[v.discount_reason]}</span> : ''}{v.used ? quiet(' · used') : ''}</>,
       editor: <>
         <MoneyEditor label="Paid" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus={c.focus} />
         <div className="flex flex-wrap gap-x-4">

@@ -85,7 +85,8 @@ export interface ReceiptLine { name: string; price: number | null; /** The full 
 /** Why a discount was given, as the receipt says (else `other`). */
 export const DISCOUNT_REASONS = ['points', 'member', 'campaign', 'coupon', 'staff', 'other'] as const
 export type DiscountReason = typeof DISCOUNT_REASONS[number]
-const REASON_WORD: Record<DiscountReason, string> = { points: 'points discount', member: 'member discount', campaign: 'campaign discount', coupon: 'coupon discount', staff: 'staff discount', other: 'discount' }
+/** How a stored discount reads on screen: "member discount". */
+export const REASON_WORD: Record<DiscountReason, string> = { points: 'points discount', member: 'member discount', campaign: 'campaign discount', coupon: 'coupon discount', staff: 'staff discount', other: 'discount' }
 /** What a receipt's extra cost is. A discount is money off the whole receipt (written as a negative cost). */
 export const RECEIPT_COST_KINDS = ['shipping', 'fee', 'service', 'warranty', 'insurance', 'deposit', 'discount'] as const
 export type ReceiptCostKind = typeof RECEIPT_COST_KINDS[number]
@@ -276,6 +277,9 @@ export interface ReceiptFill {
   pageUrls?: string[]
   /** The product's normal price, when the receipt prints one (the record's "Price before discount" field; never worked out). */
   before?: number
+  /** What the receipt took off this line and why: stored on the thing (`discount_amount`, `discount_reason`, migration 203); the paid price stays the price. */
+  discount?: number
+  discountReason?: DiscountReason
   /** The receipt's extra costs this line carries (the dearest line by default; the owner moves them). Signed: a discount is negative. */
   costs: ReceiptCostFill[]
 }
@@ -343,6 +347,7 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     if (chosen.page_urls?.length) fill.pageUrls = chosen.page_urls
     // The normal price only when the receipt prints one; a discount is its own note, never a normal price worked out.
     if (chosen.before !== undefined) fill.before = chosen.before
+    if (chosen.discount !== undefined) { fill.discount = chosen.discount; fill.discountReason = chosen.discount_reason ?? 'other' }
     if (chosen.condition === 'new' || chosen.condition === 'used' || chosen.condition === 'refurbished') fill.condition = chosen.condition
   }
   const price = chosen ? chosen.price ?? undefined : lines.length <= 1 || pick === 'total' ? read.total : undefined
@@ -370,8 +375,6 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     parts.push(`${read.warranty_months} months warranty${until ? `, until ${dotDay(until)}` : ''}`)
   }
   if (chosen?.condition === 'outlet') parts.push('marked Outlet')
-  // Paid is the line's price; the normal price and the discount (with its reason) are said beside it, so nothing is counted twice.
-  if (chosen?.discount !== undefined && read.currency) parts.push(`${chosen.before !== undefined ? `normal price ${chosen.before} ${read.currency}, ` : ''}−${chosen.discount} ${read.currency} ${REASON_WORD[chosen.discount_reason ?? 'other']}`)
   if (chosen?.quantity && chosen.quantity > 1) parts.push(`${chosen.quantity} pieces on this line, the price is for all of them`)
   if (read.total !== undefined && chosen && chosen.price !== read.total) parts.push(`receipt total ${read.total}${read.currency ? ` ${read.currency}` : ''}`)
   if (parts.length) fill.note = `From the receipt: ${parts.join('; ')}.`

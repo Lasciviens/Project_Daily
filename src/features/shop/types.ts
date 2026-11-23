@@ -10,6 +10,8 @@ export type ShopPriceSource = 'manual' | 'ai_estimate'
 export type ShopSourceType  = 'manual' | 'ai'
 /** Which view a row lives on (migration 134): someday purchases or the short errand list. */
 export type ShopList        = 'wishlist' | 'quick'
+/** Why a discount was given (migration 203's CHECK). */
+export type ShopDiscountReason = 'points' | 'member' | 'campaign' | 'coupon' | 'staff' | 'other'
 export type ShopCurrency    = 'NOK' | 'TRY' | 'EUR' | 'USD'
 /** A normal item, or a general wish ("a tablet with a stylus, 5 000–8 000 NOK") whose models are rows of their own. */
 export type ShopKind        = 'item' | 'general'
@@ -79,6 +81,9 @@ export interface ShopItem {
   fx_source?:       ShopFxSource | null
   /** The market price when it was bought (Prisjakt's lowest / the shop's own), for "Saved". */
   market_price?:    number | null
+  /** What the receipt took off this thing and why (migration 203; the currency is the price's). `price` stays what was PAID, so no sum changes. */
+  discount_amount?: number | null
+  discount_reason?: ShopDiscountReason | null
   market_currency?: ShopCurrency | null
   used?:            boolean
   got_as_gift?:     boolean
@@ -516,6 +521,8 @@ export interface CreateShopItemInput {
   return_by?:     string | null
   warranty_until?: string | null
   market_price?:  number | null
+  discount_amount?: number | null
+  discount_reason?: ShopDiscountReason | null
   market_currency?: ShopCurrency | null
   errand?:        boolean
   wait_for_deal?: boolean

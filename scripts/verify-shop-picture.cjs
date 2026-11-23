@@ -29,8 +29,9 @@ const names = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError', '
 const source = fs.readFileSync(path.join(root, 'supabase/functions/claude/index.ts'), 'utf8')
 const code = sucrase.transform(source.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''), { transforms: ['typescript'] }).code
 const quiet = { error() {}, log() {}, warn() {}, info() {} }
-const { findJob } = new Function('Deno', 'createClient', 'fetch', 'console', ...names, `${code}\nreturn { findJob }`)({ env: { get: () => undefined }, serve() {}, errors: {} }, () => ({}), async () => { throw new Error('no network') }, quiet, ...names.map(n => SDK[n]))
+const { findJob, worstCostOf } = new Function('Deno', 'createClient', 'fetch', 'console', ...names, `${code}\nreturn { findJob, worstCostOf }`)({ env: { get: () => undefined }, serve() {}, errors: {} }, () => ({}), async () => { throw new Error('no network') }, quiet, ...names.map(n => SDK[n]))
 
+const F = { worstCostOf }
 const NOW = new Date('2026-11-23T10:00:00Z')
 const P1 = 'https://shop.example.com/demo-headphones-x1'
 const P2 = 'https://other.example.org/review/x1'
@@ -134,12 +135,48 @@ check('a discount on the whole receipt is a negative cost with its reason; shipp
 check('the paid sum stays exact: lines + costs = the receipt total', f0.price + f1.price + f0.costs.reduce((n, c) => n + c.amount, 0) === read.total, [f0.price, f1.price])
 check('the total is never given the costs (it already holds them)', ft.costs.length === 0)
 check('the normal price is only what the receipt printed; the paid price stays the price', f0.before === 3790 && f0.price === 3290 && f1.before === undefined)
-check('the discount is said beside the price with its reason, apart from the normal price', /normal price 3790 NOK, −500 NOK member discount/.test(f0.note), f0.note)
+check('the discount and its reason are their own fields on the fill (stored on the thing), apart from the normal price and the paid price; the note does not repeat them', f0.discount === 500 && f0.discountReason === 'member' && f0.before === 3790 && !/discount|normal price/.test(f0.note), f0)
 const only = R.readReceipt({ ...base, items: [{ name: 'A', price: 3290, discount: 500, discount_reason: 'coupon' }] }, TODAY)
 const fo = R.receiptFill(only, stores, 0)
-check('a discount with no printed normal price sets no normal price', fo.before === undefined && /−500 NOK coupon discount/.test(fo.note) && !/normal price/.test(fo.note), fo)
+check('a discount with no printed normal price sets no normal price (it is its own value)', fo.before === undefined && fo.discount === 500 && fo.discountReason === 'coupon', fo)
 const noCur = R.receiptFill(R.readReceipt({ kind: 'bought', total: 100, items: [{ name: 'A', price: 100 }], costs: [{ kind: 'fee', amount: 5 }] }, TODAY), stores, 0)
 check('costs without a currency this app holds are left out and said', noCur.costs.length === 0 && noCur.left.some(l => /extra costs/.test(l)), noCur)
+
+
+console.log('\nthe app: the draft stores the discount apart from the paid price')
+const CD = require('../src/features/shop/components/record/createDraft')
+const SPEC = { preset: 'own' }
+const blank = CD.blankState(SPEC, [], TODAY)
+const filled = CD.withReceipt(SPEC, blank, [], f0, '2026-11-23T10:00:00Z')
+const input = CD.inputOf(SPEC, filled, null, [])
+check('the draft holds the paid price, the normal price and the discount with its reason', filled.draft.price === 3290 && filled.draft.market_price === 3790 && filled.draft.discount_amount === 500 && filled.draft.discount_reason === 'member', filled.draft)
+check('what is saved: price 3290 (paid), market_price 3790, discount_amount 500 and its reason; the total of price is untouched', input.price === 3290 && input.market_price === 3790 && input.discount_amount === 500 && input.discount_reason === 'member', input)
+const again = CD.withReceipt(SPEC, filled, [], f1, '2026-11-23T10:01:00Z')
+check('a new pick of a line without a discount takes the earlier receipt\'s discount off (never over what was typed)', again.draft.discount_amount == null && again.draft.discount_reason == null && again.draft.market_price == null, again.draft)
+const typed = CD.withReceipt(SPEC, { ...filled, draft: { ...filled.draft, discount_amount: 77, discount_reason: 'staff' } }, [], f1, '2026-11-23T10:01:00Z')
+check('a discount the owner typed is kept', typed.draft.discount_amount === 77 && typed.draft.discount_reason === 'staff', typed.draft)
+const hadDraft = CD.withReceipt({ preset: 'had' }, CD.blankState({ preset: 'had' }, [], TODAY), [], CD.hadFill(f0), 'now')
+check('a sold line made as "something I had" carries no discount', hadDraft.draft.discount_amount == null, hadDraft.draft)
+
+console.log('\nthe app: which page is read first (the picture memory)')
+const src = (host, ok, fail, reason, state = 'on') => ({ host, ok_count: ok, fail_count: fail, last_reason: reason, state })
+const pages = [P1, P2, P3]
+let rk = P.rankPages(pages, [])
+check('no memory: the order the function gave', same(rk.read, pages) && rk.refused.length === 0, rk)
+rk = P.rankPages(pages, [src('maker.example.net', 4, 0, null), src('shop.example.com', 0, 2, 'not_allowed')])
+check('a host that gave pictures goes first, one that refused apps is left out and named, the rest keep their order', same(rk.read, [P3, P2]) && same(rk.refused, ['shop.example.com']), rk)
+rk = P.rankPages(pages, [src('maker.example.net', 1, 3, 'no_picture'), src('other.example.org', 5, 1, null)])
+check('a host that mostly failed goes last; the best host first', same(rk.read, [P2, P1, P3]), rk)
+rk = P.rankPages(pages, [src('shop.example.com', 0, 5, 'not_allowed', 'ignored')])
+check('a host the owner cleared counts as unknown again', same(rk.read, pages) && rk.refused.length === 0, rk)
+rk = P.rankPages(['https://WWW.Shop.Example.com/a', 'http://x.example.com/'], [src('shop.example.com', 0, 1, 'not_allowed')])
+check('hosts are matched without capitals or www; an http address has no host in the memory', same(rk.refused, ['shop.example.com']) && same(rk.read, ['http://x.example.com/']), rk)
+check('the ranking only orders: it never adds an address', P.rankPages([P1], [src('maker.example.net', 9, 0, null)]).read.every(u => [P1].includes(u)))
+
+console.log('\nthe function: the reservation stays under the long-prompt line')
+const fnCost = (tokens, text) => F.worstCostOf(receipt.defaults.model, receipt.instructions.length + text.length, receipt.defaults.maxOutputTokens, 'live', { imageTokens: tokens, webSearches: 2 })
+const photoPrompt = receipt.instructions.length + 'Read the photo.'.length + 1000 + 46 * 46
+check('a photo call without categories: three rounds of the prompt plus two searches stay below 100 000 tokens, so no long-prompt price (reserved cost below $0.06)', 3 * photoPrompt + 75_000 < 100_000 && fnCost(46 * 46, 'Read the photo.') < 0.06, [3 * photoPrompt + 75_000, fnCost(46 * 46, 'Read the photo.')])
 
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

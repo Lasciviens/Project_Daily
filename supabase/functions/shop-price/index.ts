@@ -1702,13 +1702,45 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
   return diff === 0
 }
 
+/** A host name for the picture memory: made here from a parsed https address (never a path or a query), lower case, no `www.`; null when it is no public host name. */
+function pictureHost(url: string): string | null {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '')
+    if (u.protocol !== 'https:' || host.length > 253 || /^\d+(\.\d+){3}$/.test(host)) return null
+    return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host) ? host : null
+  } catch { return null }
+}
+
+const PICTURE_JOB = 'shop_picture'
+/** At most this many hosts are remembered per owner: a hostile page cannot grow the table by naming hosts. */
+const PICTURE_HOSTS_MAX = 200
+
+/**
+ * How a picture read went on a host (the app asks `for: 'picture'`, a product page the AI's own search returned): one count in
+ * `ai_source_stats` through `ai_source_note` (service role only; migration 203). Only the app's ranking reads it, and it ORDERS
+ * candidates: it never makes an address. Best effort: a failure here never changes the read's answer.
+ */
+async function notePictureHost(supabase: SupabaseClient, userId: string, url: string, ok: boolean, reason: string): Promise<void> {
+  try {
+    const host = pictureHost(url)
+    if (!host) return
+    const { count } = await supabase.from('ai_source_stats').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('job', PICTURE_JOB)
+    if ((count ?? 0) >= PICTURE_HOSTS_MAX) {
+      const { data } = await supabase.from('ai_source_stats').select('id').eq('user_id', userId).eq('job', PICTURE_JOB).eq('host', host).maybeSingle()
+      if (!data) return
+    }
+    await supabase.rpc('ai_source_note', { p_user: userId, p_job: PICTURE_JOB, p_host: host, p_ok: ok, p_reason: reason })
+  } catch { /* the memory is a convenience */ }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
   const started = Date.now()
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
 
-  let body: { action?: string; url?: unknown; ids?: unknown; pairs?: unknown } = {}
+  let body: { action?: string; url?: unknown; ids?: unknown; pairs?: unknown; for?: unknown } = {}
   try { body = await req.json() } catch { /* empty */ }
 
   let userId: string
@@ -1735,12 +1767,15 @@ Deno.serve(async (req: Request) => {
     if (!url) return json({ error: 'url required' }, 400)
     try {
       const got = await readOnce(userId, url, await listedSites(supabase))
+      // A picture read (a product page the AI named) leaves a count for its host; a repeat from the last hour is not counted again.
+      if (body.for === 'picture' && !got.reused) await notePictureHost(supabase, userId, url, !!got.read.image, got.read.image ? 'ok' : got.read.status === 'blocked' ? 'blocked' : got.read.status === 'ok' || got.read.status === 'no_price' ? 'no_picture' : 'error')
       return json({ result: {
         ...got.read, at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}),
         ...(got.read.status !== 'ok' ? { reason: noPriceReason(got.read) } : {}),
       } })
     } catch (e) {
       if (e instanceof SiteRefused || e instanceof RobotsRefused) {
+        if (body.for === 'picture') await notePictureHost(supabase, userId, url, false, 'not_allowed')
         return json({ result: { ...notAllowedRead(url), site: e.site, refusal: e.refusal, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
       }
       return json({ error: e instanceof FetchError ? e.message : 'Couldn\'t read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)

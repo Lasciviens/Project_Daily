@@ -58,3 +58,34 @@ export function pictureFact(p: PagePicture, at: string): Fact | null {
   if (!p.image) return null
   return { key: 'image', value: p.image, source: { origin: 'page', label: `product page (${p.host ?? 'its site'})` }, confidence: 'check', on: true, at }
 }
+
+// ── which page to read first: the memory of which sites gave a picture ──────────
+
+/** A page's host as the picture memory keys it: lower case, no `www.`, https only (the function keys it the same way). */
+export function pictureHost(url: string): string | null {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '')
+    return u.protocol === 'https:' && host.includes('.') ? host : null
+  } catch { return null }
+}
+
+/** The part of a remembered host the ranking needs. */
+export interface RankSource { host: string; ok_count: number; fail_count: number; last_reason: string | null; state: 'on' | 'ignored' }
+
+/**
+ * The pages to try, in order, from what earlier reads taught (decided by code; the model is never asked to remember). A host
+ * that gave pictures before comes first (most first), an unknown host next, one that mostly failed last, and one that refused
+ * apps (terms or robots, never a picture) is left out. A host the owner cleared counts as unknown. It only ORDERS addresses
+ * that came from the call's own search: it never makes one.
+ */
+export function rankPages(urls: readonly string[], sources: readonly RankSource[]): { read: string[]; refused: string[] } {
+  const known = new Map(sources.filter(s => s.state === 'on').map(s => [s.host, s]))
+  const scored = urls.map((url, i) => {
+    const s = known.get(pictureHost(url) ?? '')
+    const rank = !s ? 1 : s.ok_count > 0 && s.ok_count >= s.fail_count ? 0 : s.ok_count === 0 && s.last_reason === 'not_allowed' ? 3 : s.fail_count > s.ok_count ? 2 : 1
+    return { url, i, rank, ok: s?.ok_count ?? 0 }
+  })
+  const by = (a: (typeof scored)[number], b: (typeof scored)[number]) => a.rank - b.rank || b.ok - a.ok || a.i - b.i
+  return { read: scored.filter(x => x.rank < 3).sort(by).map(x => x.url), refused: scored.filter(x => x.rank === 3).map(x => pictureHost(x.url) ?? '') }
+}

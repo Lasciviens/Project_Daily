@@ -63,9 +63,7 @@ export async function fetchShopItems(): Promise<ShopItem[]> {
 export async function createShopItem(input: CreateShopItemInput): Promise<ShopItem> {
   const user = await requireUser()
   const { title, price, region, ...rest } = input
-  const { data, error } = await supabase
-    .from('shop_items')
-    .insert({
+  const row = {
       ...rest,
       user_id:      user.id,
       category_id:  input.category_id ?? null,
@@ -81,9 +79,14 @@ export async function createShopItem(input: CreateShopItemInput): Promise<ShopIt
       source_type:  input.source_type ?? 'manual',
       list:         input.list ?? 'wishlist',
       currency:     price != null ? input.currency ?? defaultCurrencyFor(region) : input.currency ?? null,
-    })
-    .select()
-    .single()
+  }
+  let { data, error } = await supabase.from('shop_items').insert(row).select().single()
+  // A schema from before migration 203 has no discount columns: the thing is saved without them, once (removal: when 203 has run everywhere).
+  if (error && (error.code === 'PGRST204' || error.code === '42703') && 'discount_amount' in rest) {
+    const { discount_amount: _a, discount_reason: _r, ...without } = row
+    void _a; void _r
+    ;({ data, error } = await supabase.from('shop_items').insert(without).select().single())
+  }
   if (error && (error.code === 'PGRST204' || error.code === '42703') && COLUMNS_191.some(c => c in input)) throw new Error(NEEDS_191_ITEM)
   if (error) throw error
   return data as ShopItem
