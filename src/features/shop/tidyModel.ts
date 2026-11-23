@@ -25,6 +25,7 @@ export interface TidySuggestion {
   name?: string; brand?: string; model?: string; category_id?: string
   /** The product's pages to try for a picture (addresses the function's search returned, at most 3): read, never written. */
   page_urls?: string[]
+  page_named?: boolean
   /** The picture that page gave (https, checked), and the host it came from. */
   picture?: string; pictureHost?: string
   /** Why the page gave no picture, in the app's words. */
@@ -69,7 +70,7 @@ export function readTidySuggestion(raw: unknown, item: ShopItem, allowedIds: Rea
   if (typeof raw.category_id === 'string' && allowedIds.has(raw.category_id) && raw.category_id !== item.category_id) out.category_id = raw.category_id
   // A page is worth reading only for a thing with no picture of its own (a picture is never replaced silently).
   const pages = (Array.isArray(raw.page_urls) ? raw.page_urls : []).slice(0, 3).map(pageLink).filter((x): x is string => !!x)
-  if (pages.length && !item.image_url) out.page_urls = pages
+  if (pages.length && !item.image_url) { out.page_urls = pages; out.page_named = raw.page_named === true }
   return Object.keys(out).length ? out : null
 }
 

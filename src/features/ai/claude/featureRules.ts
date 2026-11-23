@@ -76,6 +76,8 @@ export interface ReceiptLine { name: string; price: number | null; /** The full 
   category_id?: string
   /** Pages to try for the product's picture, best first (at most 3, https, each ≤ 2 048): addresses the function's own web search returned. The app reads them through shop-price one after another; nothing else fetches or opens them. */
   page_urls?: string[]
+  /** True when the first page is the one the AI named for this product; false when the pages are search results the function picked (each must then show the same product). */
+  page_named?: boolean
   /**
    * What the receipt prints about money off this line, kept apart (owner, 23.11.2026): `before` = the product's normal price when the
    * receipt shows one, `discount` = the amount taken off with its `discount_reason`, `price` = what was paid (already after it).
@@ -175,7 +177,7 @@ export function readReceipt(raw: unknown, today: string, categoryIds: ReadonlySe
       if (brand) entry.brand = brand
       if (model) entry.model = model
       const pages = (Array.isArray(it.page_urls) ? it.page_urls : []).slice(0, 3).map(pageLink).filter((x): x is string => !!x)
-      if (pages.length) entry.page_urls = pages
+      if (pages.length) { entry.page_urls = pages; entry.page_named = it.page_named === true }
       // The same agreement the function checks: the old price above the paid one, the discount below the old price; else both go.
       const before = amount(it.before), discount = amount(it.discount)
       const agree = !(before !== null && price !== null && before <= price) && !(discount !== null && before !== null && discount >= before)
@@ -275,6 +277,7 @@ export interface ReceiptFill {
   left: string[]
   /** The line's product pages to try for a picture (links its own web search returned): read through shop-price, nothing else. */
   pageUrls?: string[]
+  pageNamed?: boolean
   /** The product's normal price, when the receipt prints one (the record's "Price before discount" field; never worked out). */
   before?: number
   /** What the receipt took off this line and why: stored on the thing (`discount_amount`, `discount_reason`, migration 203); the paid price stays the price. */
@@ -286,8 +289,14 @@ export interface ReceiptFill {
 /** One extra cost of a draft: what it is called, the signed amount (money off is negative) and its currency. */
 export interface ReceiptCostFill { kind: ReceiptCostKind; label: string; amount: number; currency: string }
 const COST_WORD: Record<ReceiptCostKind, string> = { shipping: 'Shipping', fee: 'Fee', service: 'Service', warranty: 'Extended warranty', insurance: 'Insurance', deposit: 'Deposit', discount: 'Discount' }
-/** The words of a receipt cost: its kind, and the printed name when it adds something ("Shipping · Frakt"). */
-export const costLabel = (c: ReceiptCost): string => (c.kind === 'discount' && c.reason && c.reason !== 'other' ? `Discount · ${c.reason}` : c.name && c.name.toLocaleLowerCase('nb') !== COST_WORD[c.kind].toLocaleLowerCase('nb') ? `${COST_WORD[c.kind]} · ${c.name}` : COST_WORD[c.kind]).slice(0, 80)
+/** The kinds whose printed name says more than the kind ("Utvidet garanti 3 år"): the name stays after the English word. Shipping, deposit and discount are the word alone. */
+const NAME_ADDS: readonly ReceiptCostKind[] = ['fee', 'service', 'warranty', 'insurance']
+/** The words a saved receipt cost carries, in English (saved data is English): the kind's word — a discount as "Points discount" / "Member discount" — and the printed name only when it adds something and is no repeat of the word. */
+export const costLabel = (c: ReceiptCost): string => {
+  if (c.kind === 'discount') { const w = REASON_WORD[c.reason ?? 'other']; return `${w[0].toUpperCase()}${w.slice(1)}` }
+  const word = COST_WORD[c.kind]
+  return (NAME_ADDS.includes(c.kind) && c.name && c.name.toLocaleLowerCase('nb') !== word.toLocaleLowerCase('nb') ? `${word} · ${c.name}` : word).slice(0, 80)
+}
 
 /** DD.MM.YYYY of a YYYY-MM-DD. */
 const dotDay = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`
@@ -344,7 +353,7 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     if (chosen.brand) fill.brand = chosen.brand
     if (chosen.category_id) fill.categoryId = chosen.category_id
     if (chosen.model) fill.model = chosen.model
-    if (chosen.page_urls?.length) fill.pageUrls = chosen.page_urls
+    if (chosen.page_urls?.length) { fill.pageUrls = chosen.page_urls; fill.pageNamed = chosen.page_named === true }
     // The normal price only when the receipt prints one; a discount is its own note, never a normal price worked out.
     if (chosen.before !== undefined) fill.before = chosen.before
     if (chosen.discount !== undefined) { fill.discount = chosen.discount; fill.discountReason = chosen.discount_reason ?? 'other' }

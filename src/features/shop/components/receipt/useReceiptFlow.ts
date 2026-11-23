@@ -197,14 +197,20 @@ export function useReceiptFlow(merged: readonly MergedLine[]) {
     return soldKey && b ? [pairKey(soldKey, b)] : []
   }
 
+  /** Every ticked bought line's fill with the receipt's costs on the dearest of each receipt (a wish counts: its Just bought gets them). */
+  function placedFills(): Map<string, ReceiptFill> {
+    const ks = boughtKeys.filter(k => !doneKeys.has(k) || !(info.get(k) as LineInfo).wish)
+    const at = (k: string) => (info.get(k) as LineInfo).m
+    const placed = placeCosts(ks.map(k => addFillFor(at(k).read, at(k).index, stores)), ks.map(k => at(k).read), ks.map(k => at(k).line.price), ks.map(() => true))
+    return new Map(ks.map((k, i) => [k, placed[i]]))
+  }
+
   function stepper(stepKeys: readonly string[], restore?: readonly (CreateState | undefined)[]) {
     if (!stepKeys.length) return
     const lineOf = (k: string) => (info.get(k) as LineInfo)
-    // The receipt's extra costs ride on the dearest bought line of each receipt (the owner moves them in the popup).
-    const fills: ReceiptFill[] = placeCosts(
-      stepKeys.map(k => addFillFor(lineOf(k).m.read, lineOf(k).m.index, stores)), stepKeys.map(k => lineOf(k).m.read),
-      stepKeys.map(k => lineOf(k).m.line.price), stepKeys.map(k => lineOf(k).side === 'bought'),
-    )
+    // The receipt's extra costs ride on the dearest bought line of each receipt, a wish's line included (the owner moves them in the popup).
+    const placed = placedFills()
+    const fills: ReceiptFill[] = stepKeys.map(k => placed.get(k) ?? addFillFor(lineOf(k).m.read, lineOf(k).m.index, stores))
     const presets: (LinePreset | undefined)[] = stepKeys.map(k => {
       const i = info.get(k) as LineInfo
       if (i.side === 'sold') {
@@ -259,7 +265,7 @@ export function useReceiptFlow(merged: readonly MergedLine[]) {
   function buyWish(k: string) {
     const i = info.get(k) as LineInfo
     if (!i.wish) return
-    buying.current = { key: k, fill: addFillFor(i.m.read, i.m.index, stores), read: i.m.read, row: i.wish }
+    buying.current = { key: k, fill: placedFills().get(k) ?? addFillFor(i.m.read, i.m.index, stores), read: i.m.read, row: i.wish }
     buyNow(i.wish)
   }
 

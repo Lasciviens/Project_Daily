@@ -80,13 +80,9 @@ export async function createShopItem(input: CreateShopItemInput): Promise<ShopIt
       list:         input.list ?? 'wishlist',
       currency:     price != null ? input.currency ?? defaultCurrencyFor(region) : input.currency ?? null,
   }
-  let { data, error } = await supabase.from('shop_items').insert(row).select().single()
-  // A schema from before migration 203 has no discount columns: the thing is saved without them, once (removal: when 203 has run everywhere).
-  if (error && (error.code === 'PGRST204' || error.code === '42703') && 'discount_amount' in rest) {
-    const { discount_amount: _a, discount_reason: _r, ...without } = row
-    void _a; void _r
-    ;({ data, error } = await supabase.from('shop_items').insert(without).select().single())
-  }
+  const { data, error } = await supabase.from('shop_items').insert(row).select().single()
+  // A schema from before migration 203 has no discount columns: said by name, never a quiet save without them.
+  if (error && (error.code === 'PGRST204' || error.code === '42703') && ('discount_amount' in rest || 'discount_reason' in rest)) throw new Error(NEEDS_203_ITEM)
   if (error && (error.code === 'PGRST204' || error.code === '42703') && COLUMNS_191.some(c => c in input)) throw new Error(NEEDS_191_ITEM)
   if (error) throw error
   return data as ShopItem
@@ -127,6 +123,7 @@ export async function fetchQuickRows(): Promise<ShopQuickRow[]> {
 /** The row as stored after the change (the database's rules fill the rest); one that isn't there is an error, never a silent no-op. */
 /** A purchase's own facts (migration 191): a write of one before 191 is applied says so by name. Remove once 191 ran everywhere. */
 const COLUMNS_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on', 'facts'] as const
+export const NEEDS_203_ITEM = 'Not saved — migration 203 is not applied (the receipt\'s discount)'
 export const NEEDS_191_ITEM = 'Not saved — migration 191 is not applied (how it was bought, Arrived, extra warranty, receipt, search opened, autofill\'s facts)'
 
 export async function updateShopItem(id: string, patch: UpdateShopItemInput): Promise<ShopItem> {
@@ -138,6 +135,7 @@ export async function updateShopItem(id: string, patch: UpdateShopItemInput): Pr
     .eq('user_id', user.id)
     .select()
   if (error && (error.code === 'PGRST204' || error.code === '42703') && COLUMNS_191.some(c => c in patch)) throw new Error(NEEDS_191_ITEM)
+  if (error && (error.code === 'PGRST204' || error.code === '42703') && ('discount_amount' in patch || 'discount_reason' in patch)) throw new Error(NEEDS_203_ITEM)
   if (error) throw error
   if (!data?.length) throw new Error('Not saved — this item is not there any more.')
   return data[0] as ShopItem

@@ -151,3 +151,24 @@ export function haltFor(reason: string | undefined, message: string): Halt {
 
 /** Two failed files in a row end the queue: a broken key or a down service would repeat for every file. */
 export const FAILS_IN_A_ROW = 2
+
+// ── do the lines and the costs add up to the receipt's total? ────────────────
+
+export interface ReceiptSums { lines: number; costs: number; sum: number; total: number; differs: boolean; doubled: boolean }
+
+/**
+ * The product lines plus the extra costs (a discount counts as minus) against the receipt's printed total, in the receipt's own
+ * numbers. Null when there is nothing to compare (no total, no lines, or a line with no price). `differs` from a whole unit
+ * (rounding is kept out); `doubled` when the sum is LOWER than the total by about one of the discounts — a discount counted twice
+ * (the line prices are already after it and it was taken off again).
+ */
+export function receiptSums(read: ReceiptRead): ReceiptSums | null {
+  const items = read.items ?? []
+  if (read.total === undefined || items.length === 0 || items.some(l => l.price == null)) return null
+  const lines = Math.round(items.reduce((n, l) => n + (l.price as number), 0) * 100) / 100
+  const costs = Math.round((read.costs ?? []).reduce((n, c) => n + (c.kind === 'discount' ? -c.amount : c.amount), 0) * 100) / 100
+  const sum = Math.round((lines + costs) * 100) / 100
+  const diff = Math.round((sum - read.total) * 100) / 100
+  const discounts = [...items.flatMap(l => (l.discount !== undefined ? [l.discount] : [])), ...(read.costs ?? []).filter(c => c.kind === 'discount').map(c => c.amount)]
+  return { lines, costs, sum, total: read.total, differs: Math.abs(diff) > 1, doubled: diff < -1 && discounts.some(d => Math.abs(Math.abs(diff) - d) <= 1) }
+}

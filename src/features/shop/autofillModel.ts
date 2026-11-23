@@ -9,13 +9,13 @@
 // "Find it" builds search links from each store's pattern (data, never a store name in code).
 import { ean13, modelInName, prisjaktProduct } from './productFacts'
 import type { ItemCondition, SpecRow } from './priceRead'
-import { fold, listOf, localDay, pickOf, SHOP_CURRENCIES } from './shopModel'
+import { DISCOUNT_WORD, fold, listOf, localDay, pickOf, SHOP_CURRENCIES } from './shopModel'
 import { money } from './components/shopFormat'
 import { formatDate } from '../../shared/utils/dateFormat'
 import type { PriceReadResult } from './api/shopPriceApi'
 import type { GroceryHit } from './groceryModel'
 import { hostOn, linkHost } from './storeRows'
-import type { ShopCategory, ShopCurrency, ShopItem, ShopStore } from './types'
+import type { ShopCategory, ShopCurrency, ShopDiscountReason, ShopItem, ShopStore } from './types'
 import { FORM_FACTS, factKept, fieldHolds } from './factsKept'
 
 // What the save keeps lives in its own small module (the add sheet's save needs only that; the rest loads with
@@ -36,6 +36,8 @@ export interface CategoryFact { topId: string; subId: string; name: string }
 export interface FactValues {
   title: string
   price: { amount: number; currency: ShopCurrency }
+  /** What the receipt took off (the paid price is already after it) and why: its own field, never subtracted. */
+  discount: { amount: number; reason: ShopDiscountReason }
   image: string
   store: string
   category: CategoryFact
@@ -53,10 +55,10 @@ export type FactKey = keyof FactValues
 export type Fact = { [K in FactKey]: { key: K; value: FactValues[K]; source: FactSource; confidence: Confidence; on: boolean; edited?: boolean; at: string } }[FactKey]
 
 /** The order the sheet lists them in. */
-export const FACT_ORDER: readonly FactKey[] = ['title', 'price', 'image', 'store', 'category', 'brand', 'model', 'ean', 'condition', 'returnDays', 'prisjaktId', 'specs']
+export const FACT_ORDER: readonly FactKey[] = ['title', 'price', 'discount', 'image', 'store', 'category', 'brand', 'model', 'ean', 'condition', 'returnDays', 'prisjaktId', 'specs']
 
 export const FACT_LABEL: Record<FactKey, string> = {
-  title: 'Name', price: 'Price', image: 'Picture', store: 'Store', category: 'Category', brand: 'Brand', model: 'Model',
+  title: 'Name', price: 'Price', discount: 'Discount', image: 'Picture', store: 'Store', category: 'Category', brand: 'Brand', model: 'Model',
   ean: 'EAN', condition: 'Condition', returnDays: 'Returns', prisjaktId: 'Prisjakt no.', specs: 'Specs',
 }
 
@@ -73,6 +75,7 @@ export function factText(f: Fact): string {
     case 'returnDays': return `${f.value} days`
     case 'specs': return f.value.length === 1 ? '1 row' : `${f.value.length} rows`
     case 'image': return 'A picture'
+    case 'discount': return `−${f.value.amount} ${DISCOUNT_WORD[f.value.reason]}`
     default: return f.value
   }
 }
@@ -88,6 +91,8 @@ export interface FactFields {
   platform: string
   topId: string
   subId: string
+  discountAmount?: number | null
+  discountReason?: ShopDiscountReason | null
 }
 
 function fieldEmpty(key: FactKey, d: FactFields): boolean {
@@ -95,6 +100,7 @@ function fieldEmpty(key: FactKey, d: FactFields): boolean {
     case 'title': return !d.title.trim()
     case 'price': return d.price == null
     case 'image': return !d.image
+    case 'discount': return d.discountAmount == null
     case 'store': return !d.platform.trim()
     case 'category': return !d.topId
     default: return true
@@ -107,6 +113,7 @@ function fieldsOf(f: Fact): Partial<FactFields> {
     case 'title': return { title: f.value }
     case 'price': return { price: f.value.amount, currency: f.value.currency }
     case 'image': return { image: f.value }
+    case 'discount': return { discountAmount: f.value.amount, discountReason: f.value.reason }
     case 'store': return { platform: f.value }
     case 'category': return { topId: f.value.topId, subId: f.value.subId }
     default: return {}
@@ -119,6 +126,7 @@ function clearedOf(key: FactKey): Partial<FactFields> {
     case 'title': return { title: '' }
     case 'price': return { price: null }
     case 'image': return { image: null }
+    case 'discount': return { discountAmount: null, discountReason: null }
     case 'store': return { platform: '' }
     case 'category': return { topId: '', subId: '' }
     default: return {}
@@ -173,7 +181,7 @@ export function toggleFact(facts: readonly Fact[], key: FactKey, d: FactFields):
 }
 
 /** The owner's own value for a fact without a field of its own: kept, its source "you". Empty text unticks it. */
-export function editFact(facts: readonly Fact[], key: Exclude<FactKey, 'title' | 'price' | 'image' | 'store' | 'category'>, text: string, at: string): Fact[] {
+export function editFact(facts: readonly Fact[], key: Exclude<FactKey, 'title' | 'price' | 'discount' | 'image' | 'store' | 'category'>, text: string, at: string): Fact[] {
   return facts.map(f => {
     if (f.key !== key) return f
     const value = parseEdit(f, text)

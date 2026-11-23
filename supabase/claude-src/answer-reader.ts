@@ -140,23 +140,34 @@ export function checkedPageLink(value: unknown, results: readonly string[] | und
 
 /**
  * The pages to try for a product's picture, best first: the one the model named (kept only when this call's search returned it),
- * then up to two more addresses from the same search results on other hosts. Code picks the extra ones from the search blocks, never
- * from the model's text; nothing is fetched here — the app reads them one after another through shop-price, which checks each
- * (site policies, robots.txt, address and redirect checks) and the picture must still match the product. None named: none.
+ * then up to two more addresses from the same search results on other hosts. When the model named none that is kept, the first
+ * three results on separate hosts are the candidates and `named` is false: the app then requires every one to show the same product
+ * (a search result is any page a search engine indexed, not a trusted one). Code picks them from the search blocks, never from the
+ * model's text; nothing is fetched here — the app reads them one after another through shop-price, which checks each (site
+ * policies, robots.txt, address and redirect checks).
  */
-export function pageCandidates(named: unknown, results: readonly string[] | undefined): string[] {
+export function pageCandidates(named: unknown, results: readonly string[] | undefined): { urls: string[]; named: boolean } {
   const first = checkedPageLink(named, results)
-  if (!first) return []
-  const hosts = new Set([new URL(first).hostname.toLowerCase()])
-  const out = [first]
-  for (const u of results ?? []) {
-    if (out.length >= 3) break
-    const ok = checkedPageLink(u, results)
-    if (!ok) continue
-    const host = new URL(ok).hostname.toLowerCase()
-    if (hosts.has(host)) continue
+  const hosts = new Set<string>()
+  const out: string[] = []
+  const take = (u: string) => {
+    const host = new URL(u).hostname.toLowerCase()
+    if (out.length >= 3 || hosts.has(host)) return
     hosts.add(host)
-    out.push(ok)
+    out.push(u)
+  }
+  if (first) take(first)
+  for (const u of results ?? []) { const ok = checkedPageLink(u, results); if (ok) take(ok) }
+  return { urls: out, named: !!first }
+}
+
+/** The sites that worked for this owner before (at most 3 host names, checked): lines for an escaped tag, none when nothing clean is sent. */
+export function preferredHostLines(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const h of raw) {
+    if (typeof h === 'string' && h.length <= 253 && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h) && !/^\d+(\.\d+){3}$/.test(h) && !out.includes(h)) out.push(h)
+    if (out.length >= 3) break
   }
   return out
 }

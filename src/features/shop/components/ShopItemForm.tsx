@@ -6,7 +6,7 @@ import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
 import { DecimalInput } from '../../recipes/components/foodLogKit'
 import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
 import type { Fact } from '../autofillModel'
-import type { ShopCategory, ShopCurrency, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
+import type { ShopCategory, ShopCurrency, ShopDiscountReason, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
 import type { DraftUpdate } from './autofill/AutofillPanel'
 import { CategoryPicker } from './CategoryPicker'
 import { MoneyEditor } from './record/factKit'
@@ -71,6 +71,9 @@ export interface ShopDraft {
   requirements: string
   reason: ShopReason | ''
   image: string | null
+  /** What the receipt took off (the create popup's Discount fact); the paid price is already after it. */
+  discountAmount?: number | null
+  discountReason?: ShopDiscountReason | null
   /** What the add sheet's autofill filled in, each with its source (autofillModel) — new one-product wishes only. */
   facts: Fact[]
 }

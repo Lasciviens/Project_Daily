@@ -7,7 +7,7 @@ import {
 /** A confidence word is a tone (THEME §2.4): exact the success tone, likely info, check the warning. */
 const CONFIDENCE_TONE: Record<Confidence, Tone> = { exact: 'success', likely: 'info', check: 'warn' }
 
-type EditableKey = Exclude<FactKey, 'title' | 'price' | 'image' | 'store' | 'category'>
+type EditableKey = Exclude<FactKey, 'title' | 'price' | 'discount' | 'image' | 'store' | 'category'>
 
 /**
  * The facts the inputs filled in, one line each: a tick (keep it or not), what it is, its value, where it came

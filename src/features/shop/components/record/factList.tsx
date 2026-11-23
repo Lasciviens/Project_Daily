@@ -15,7 +15,7 @@ import { MoneyEditor, Toggle } from './factKit'
 import { RateFetch } from './RateFetch'
 import { CategoryEditor } from './CategoryEditor'
 import { isNewCategory, NEW_CATEGORY, newPickOf, type RecordDraft } from './useRecordDraft'
-import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem, ShopPriority, ShopReason, ShopRegion, ShopStoreKind } from '../../types'
+import type { ShopCategory, ShopCurrency, ShopDiscountReason, ShopDisposal, ShopItem, ShopPriority, ShopReason, ShopRegion, ShopStoreKind } from '../../types'
 
 /** Where a thing went (sold to, traded in at, who offered it): a marketplace, a refurbisher or a shop. */
 export const WENT_TO: readonly ShopStoreKind[] = ['marketplace', 'refurbisher', 'shop']
@@ -181,9 +181,19 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
         <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
         <Toggle checked={!!v.approx_dates} onChange={x => set({ approx_dates: x })}>Roughly — from memory</Toggle>
       </> },
-    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.market_price != null && v.price != null ? quiet(` · normal price ${money(v.market_price, v.market_currency ?? cur)}`) : ''}{v.discount_amount != null && v.discount_reason ? <span className="text-success"> · −{money(v.discount_amount, cur)} {DISCOUNT_WORD[v.discount_reason]}</span> : ''}{v.used ? quiet(' · used') : ''}</>,
+    { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.discount_amount != null && v.discount_reason ? <span className="text-success"> · −{money(v.discount_amount, cur)} {DISCOUNT_WORD[v.discount_reason]}</span> : ''}{v.used ? quiet(' · used') : ''}</>,
       editor: <>
         <MoneyEditor label="Paid" amount={v.price} currency={cur} onAmount={p => set({ price: p })} onCurrency={x => set({ currency: x })} autoFocus={c.focus} />
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="fact-discount" className="text-meta font-medium text-fg-muted">Discount</label>
+          <DecimalInput id="fact-discount" value={v.discount_amount ?? null} onValue={a => set(a == null ? { discount_amount: null, discount_reason: null } : { discount_amount: a, discount_reason: v.discount_reason ?? 'other' })}
+            aria-label="Discount amount" className="input input-sm w-[7rem] tabular-nums" />
+          <select value={v.discount_reason ?? ''} disabled={v.discount_amount == null} aria-label="Why the discount" className="select input-sm w-auto min-w-0"
+            onChange={e => set({ discount_reason: (e.target.value || 'other') as ShopDiscountReason })}>
+            {(Object.keys(DISCOUNT_WORD) as ShopDiscountReason[]).map(r => <option key={r} value={r}>{DISCOUNT_WORD[r]}</option>)}
+          </select>
+          <span className="text-meta text-fg-muted">taken off what you paid: it changes no total</span>
+        </div>
         <div className="flex flex-wrap gap-x-4">
           <Toggle checked={!!v.got_as_gift} onChange={x => set({ got_as_gift: x })}>A gift to me</Toggle>
           <Toggle checked={!!v.used} onChange={x => set({ used: x })}>Bought used</Toggle>

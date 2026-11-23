@@ -10,11 +10,13 @@
 --  2. ai_source_stats: per owner, job and host, how often a page read worked. Used here as job 'shop_picture': `shop-price`'s
 --     `read` (asked `for: 'picture'`) notes the outcome through `ai_source_note` (service role only), the app ORDERS the
 --     candidates it reads by it and lists it under Stores and rules, where the owner can clear a host (state 'ignored', the one
---     column the browser may write, with its own Undo). It never makes an address: every candidate is an address the call's own
---     web search returned and every read goes through shop-price's guards. The table and function are written exactly as
---     migration 204 (the AI learning) writes them, create-if-not-exists, so whichever runs first leaves the same objects and the
---     other changes nothing. Not audited (a browser change is a `state` toggle with its own Undo; Activity's Undo does not know
---     the bookkeeping columns).
+--     column the browser may write, with its own Undo). A cleared host is never forgotten for good: the next read of it puts it
+--     back to 'on' and restarts its counts from that read. It never makes an address: every candidate is an address the call's
+--     own web search returned (a page some search engine indexed, not a trusted page) and every read goes through shop-price's
+--     guards. The AI-learning plan (docs/features/ai-plan.md) designs a table of the same name for the same job; it is not on
+--     main yet, so this migration creates it (create-if-not-exists) and whichever migration lands second must reuse these
+--     definitions, not make another. Not audited (a browser change is a `state` toggle with its own Undo; Activity's Undo does not
+--     know the bookkeeping columns).
 -- Safe to re-run. Changes no existing row. No BEGIN/COMMIT: the deploy runs it as one transaction.
 
 -- ─── 1. The discount ─────────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ begin
 end $$;
 
 -- A signed-in caller may change `state` and nothing else (the column grant says so; this keeps the bookkeeping): the day it
--- changed is stamped. 204 re-creates the same trigger function for its tables; whichever runs last leaves the same guard.
+-- changed is stamped.
 create or replace function public.ai_source_stats_state() returns trigger
 language plpgsql set search_path = '' as $$
 begin
@@ -110,10 +112,15 @@ begin
   values (p_user, p_job, lower(p_host), case when p_ok then 1 else 0 end, case when p_ok then 0 else 1 end,
           case when p_ok then now() end, case when p_ok then null else now() end, p_reason)
   on conflict (user_id, job, host) do update set
-    ok_count = least(public.ai_source_stats.ok_count + case when p_ok then 1 else 0 end, 100000000),
-    fail_count = least(public.ai_source_stats.fail_count + case when p_ok then 0 else 1 end, 100000000),
-    last_ok_at = case when p_ok then now() else public.ai_source_stats.last_ok_at end,
-    last_fail_at = case when p_ok then public.ai_source_stats.last_fail_at else now() end,
+    -- A cleared host (ignored) comes back on with this read as its first: counts restart, nothing old decides again.
+    ok_count = case when public.ai_source_stats.state = 'ignored' then case when p_ok then 1 else 0 end
+                    else least(public.ai_source_stats.ok_count + case when p_ok then 1 else 0 end, 100000000) end,
+    fail_count = case when public.ai_source_stats.state = 'ignored' then case when p_ok then 0 else 1 end
+                      else least(public.ai_source_stats.fail_count + case when p_ok then 0 else 1 end, 100000000) end,
+    last_ok_at = case when p_ok then now() when public.ai_source_stats.state = 'ignored' then null else public.ai_source_stats.last_ok_at end,
+    last_fail_at = case when not p_ok then now() when public.ai_source_stats.state = 'ignored' then null else public.ai_source_stats.last_fail_at end,
+    state_changed_at = case when public.ai_source_stats.state = 'ignored' then now() else public.ai_source_stats.state_changed_at end,
+    state = 'on',
     last_reason = p_reason, updated_at = now();
 end $$;
 revoke all on function public.ai_source_note(uuid, text, text, boolean, text) from public, anon, authenticated;

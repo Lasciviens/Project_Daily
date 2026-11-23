@@ -91,7 +91,7 @@ select t_ok(public.t_err($q$set local role authenticated; select public.ai_sourc
 set test.uid = 'none';
 select t_ok(bool_and(public.t_err(format($q$select public.ai_source_note('00000000-0000-0000-0000-000000000001', 'shop_picture', %L, true, 'ok')$q$, h)) like '23514%'),
   'M5 a host is a plain name only: a path, a query, an address with a user, a space or an underscore name is refused (23514)')
-  from unnest(array['maker.example.net/x', 'a.example.com?q=1', 'user@a.example.com', 'a b.example.com', 'under_score.example.com', 'localhost', 'https://a.example.com', repeat('a', 64) || '.example.com']) h;
+  from unnest(array['maker.example.net/x', 'a.example.com?q=1', 'user' || chr(64) || 'a.example.com', 'a b.example.com', 'under_score.example.com', 'localhost', 'https://a.example.com', repeat('a', 64) || '.example.com']) h;
 
 reset test.uid;
 
@@ -115,6 +115,26 @@ begin
 end $$;
 select t_ok(public.t_err($q$update public.ai_source_stats set state = 'gone' where host = 'shop.example.com'$q$) like '23514%', 'M6 a state is on or ignored, nothing else');
 reset role;
+
+-- ═══ M8. A cleared host is not forgotten for good ═════════════════════════════
+set role authenticated;
+update public.ai_source_stats set state = 'ignored' where host = 'maker.example.net' and user_id = '00000000-0000-0000-0000-000000000001';
+reset role;
+set role service_role;
+set test.uid = 'none';
+select public.ai_source_note('00000000-0000-0000-0000-000000000001', 'shop_picture', 'maker.example.net', false, 'blocked');
+reset test.uid;
+reset role;
+select t_ok((select state = 'on' and ok_count = 0 and fail_count = 1 and last_ok_at is null and last_reason = 'blocked' and state_changed_at is not null
+               from public.ai_source_stats where user_id = '00000000-0000-0000-0000-000000000001' and host = 'maker.example.net'),
+  'M8 the next read of a cleared host puts it back on and restarts its counts from that read (the old two good reads no longer decide)');
+set role service_role;
+set test.uid = 'none';
+select public.ai_source_note('00000000-0000-0000-0000-000000000001', 'shop_picture', 'maker.example.net', true, 'ok');
+reset test.uid;
+reset role;
+select t_ok((select ok_count = 1 and fail_count = 1 and last_ok_at is not null from public.ai_source_stats where user_id = '00000000-0000-0000-0000-000000000001' and host = 'maker.example.net'),
+  'M8 an ordinary read of a host that is on adds to its counts as before');
 
 -- ═══ M7. Another account cannot change this account's row; deleting an account takes its rows ═══
 set role authenticated;

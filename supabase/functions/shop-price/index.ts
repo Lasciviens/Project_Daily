@@ -1713,25 +1713,36 @@ function pictureHost(url: string): string | null {
 }
 
 const PICTURE_JOB = 'shop_picture'
-/** At most this many hosts are remembered per owner: a hostile page cannot grow the table by naming hosts. */
+/** At most this many hosts are remembered per owner (cleared ones included): past it the oldest by `updated_at` make room, so a hostile page cannot grow the table by naming hosts and learning never stops. */
 const PICTURE_HOSTS_MAX = 200
 
 /**
  * How a picture read went on a host (the app asks `for: 'picture'`, a product page the AI's own search returned): one count in
  * `ai_source_stats` through `ai_source_note` (service role only; migration 203). Only the app's ranking reads it, and it ORDERS
- * candidates: it never makes an address. Best effort: a failure here never changes the read's answer.
+ * candidates: it never makes an address. `url` is the host to credit: the page's own, after its redirects. Best effort: a failure
+ * here never changes the read's answer.
  */
 async function notePictureHost(supabase: SupabaseClient, userId: string, url: string, ok: boolean, reason: string): Promise<void> {
   try {
     const host = pictureHost(url)
     if (!host) return
-    const { count } = await supabase.from('ai_source_stats').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('job', PICTURE_JOB)
-    if ((count ?? 0) >= PICTURE_HOSTS_MAX) {
-      const { data } = await supabase.from('ai_source_stats').select('id').eq('user_id', userId).eq('job', PICTURE_JOB).eq('host', host).maybeSingle()
-      if (!data) return
+    const { data: rows } = await supabase.from('ai_source_stats').select('id, host').eq('user_id', userId).eq('job', PICTURE_JOB).order('updated_at', { ascending: true }).limit(PICTURE_HOSTS_MAX + 50)
+    const have = rows ?? []
+    if (have.length >= PICTURE_HOSTS_MAX && !have.some(r => r.host === host)) {
+      const drop = have.slice(0, have.length - PICTURE_HOSTS_MAX + 1).map(r => r.id)
+      await supabase.from('ai_source_stats').delete().eq('user_id', userId).eq('job', PICTURE_JOB).in('id', drop)
     }
     await supabase.rpc('ai_source_note', { p_user: userId, p_job: PICTURE_JOB, p_host: host, p_ok: ok, p_reason: reason })
   } catch { /* the memory is a convenience */ }
+}
+
+/** A picture address only when it is https on a public host (the page's own data is input: a private or local address is never given on). */
+function publicPicture(image: string | null): string | null {
+  if (!image) return null
+  try {
+    const u = new URL(image)
+    return u.protocol === 'https:' && !u.username && !u.password && !isPrivateHost(u.hostname) ? image : null
+  } catch { return null }
 }
 
 Deno.serve(async (req: Request) => {
@@ -1767,10 +1778,13 @@ Deno.serve(async (req: Request) => {
     if (!url) return json({ error: 'url required' }, 400)
     try {
       const got = await readOnce(userId, url, await listedSites(supabase))
-      // A picture read (a product page the AI named) leaves a count for its host; a repeat from the last hour is not counted again.
-      if (body.for === 'picture' && !got.reused) await notePictureHost(supabase, userId, url, !!got.read.image, got.read.image ? 'ok' : got.read.status === 'blocked' ? 'blocked' : got.read.status === 'ok' || got.read.status === 'no_price' ? 'no_picture' : 'error')
+      // A picture read (a product page the AI named): only a public https picture leaves, and the host AFTER redirects is credited
+      // (a repeat from the last hour is not counted again).
+      const asked = body.for === 'picture'
+      const image = asked ? publicPicture(got.read.image) : got.read.image
+      if (asked && !got.reused) await notePictureHost(supabase, userId, got.read.finalUrl ?? url, !!image, image ? 'ok' : got.read.status === 'blocked' ? 'blocked' : got.read.status === 'ok' || got.read.status === 'no_price' ? 'no_picture' : 'error')
       return json({ result: {
-        ...got.read, at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}),
+        ...got.read, ...(asked ? { image } : {}), at: new Date(got.at).toISOString(), ...(got.reused ? { reused: true } : {}),
         ...(got.read.status !== 'ok' ? { reason: noPriceReason(got.read) } : {}),
       } })
     } catch (e) {
@@ -1778,6 +1792,8 @@ Deno.serve(async (req: Request) => {
         if (body.for === 'picture') await notePictureHost(supabase, userId, url, false, 'not_allowed')
         return json({ result: { ...notAllowedRead(url), site: e.site, refusal: e.refusal, reason: e.message, at: new Date().toISOString(), finalUrl: url } })
       }
+      // An unreachable site is remembered too (a picture read only).
+      if (body.for === 'picture') await notePictureHost(supabase, userId, url, false, 'error')
       return json({ error: e instanceof FetchError ? e.message : 'Couldn\'t read the page', code: e instanceof FetchError ? e.code : 'upstream' }, 200)
     }
   }

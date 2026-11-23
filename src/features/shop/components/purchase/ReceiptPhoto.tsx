@@ -17,7 +17,7 @@ import type { ShopStore } from '../../types'
  * list, so nothing the owner typed is overwritten). A receipt with several lines asks which one was bought when the
  * caller needs a line (`pickLines`), never guesses. The photo is not kept.
  */
-export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false }: {
+export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false, onHandoff }: {
   stores: readonly ShopStore[]
   onFill: (fill: ReceiptFill, read: ReceiptRead) => void
   /** Offer the item lines to pick from (a form with a name and a price); Just bought has neither and matches by name itself. */
@@ -28,6 +28,8 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false
    * wish being bought is the one product) one file fills the sheet.
    */
   handoff?: boolean
+  /** Called after the files were handed over (the create popup closes itself when nothing was typed in it). */
+  onHandoff?: () => void
 }) {
   const modal = useEntityModal()
   // The owner's own categories go with the file only where a line's category is used (the create popup), so a line may come back with one.
@@ -60,7 +62,7 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         {handoff
-          ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => modal.open({ kind: 'shop-receipt', files: files.slice(0, 5) })}>From a receipt</PhotoButton>
+          ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => { modal.open({ kind: 'shop-receipt', files }); onHandoff?.() }}>From a receipt</PhotoButton>
           : <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>}
         {!data && <span className="text-meta text-fg-muted">{handoff ? 'AI reads up to 5 photos or PDFs; one draft per product' : 'AI reads a photo or PDF; you check it'}</span>}
       </div>

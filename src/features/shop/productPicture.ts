@@ -30,7 +30,7 @@ export function shownPicture(value: unknown): string | null {
   try { url = new URL(value) } catch { return null }
   const host = url.hostname.toLowerCase().replace(/\.+$/, '')
   if (url.protocol !== 'https:' || url.username || url.password) return null
-  if (!host.includes('.') || host.startsWith('[') || IPV4.test(host) || host === 'localhost' || host.endsWith('.local') || host.endsWith('.localhost') || host.endsWith('.internal')) return null
+  if (!host.includes('.') || host.startsWith('[') || IPV4.test(host) || host === 'localhost' || /\.(local|localhost|internal|lan|home|corp|intranet|localdomain|home\.arpa)$/.test(host)) return null
   return value
 }
 
@@ -88,4 +88,9 @@ export function rankPages(urls: readonly string[], sources: readonly RankSource[
   })
   const by = (a: (typeof scored)[number], b: (typeof scored)[number]) => a.rank - b.rank || b.ok - a.ok || a.i - b.i
   return { read: scored.filter(x => x.rank < 3).sort(by).map(x => x.url), refused: scored.filter(x => x.rank === 3).map(x => pictureHost(x.url) ?? '') }
+}
+
+/** The owner's best sites for the AI's search, as a hint: up to 3 hosts that gave pictures at least as often as they failed, most pictures first (none cleared). */
+export function preferredHosts(sources: readonly RankSource[]): string[] {
+  return sources.filter(s => s.state === 'on' && s.ok_count > 0 && s.ok_count >= s.fail_count).sort((a, b) => b.ok_count - a.ok_count).slice(0, 3).map(s => s.host)
 }

@@ -154,6 +154,7 @@ export function shopDraftOf(spec: CreateSpec, s: CreateState, categories: readon
     notes: v.notes ?? '', price: v.price, currency: currencyOf(v), platform: v.platform ?? '', url: v.url ?? '', priority: v.priority,
     region: v.region ?? '', plannedDate: v.planned_date ?? '', status: v.status, general: v.kind === 'general',
     priceMin: v.price_min ?? null, priceMax: v.price_max ?? null, requirements: v.requirements ?? '', reason: v.reason ?? '', image: v.image_url ?? null,
+    discountAmount: v.discount_amount ?? null, discountReason: v.discount_reason ?? null,
     facts: s.facts,
   }
 }
@@ -170,6 +171,8 @@ export function withShopPatch(spec: CreateSpec, s: CreateState, categories: read
   if ('platform' in patch) draft.platform = (patch.platform as string) || null
   if ('url' in patch) draft.url = (patch.url as string) || null
   if ('image' in patch) draft.image_url = (patch.image as string | null) || null
+  if ('discountAmount' in patch) draft.discount_amount = (patch.discountAmount as number | null) ?? null
+  if ('discountReason' in patch) draft.discount_reason = (patch.discountReason as ShopDraft['discountReason']) ?? null
   if ('region' in patch) draft.region = (patch.region as ShopDraft['region']) || null
   if ('priority' in patch) draft.priority = patch.priority as ShopDraft['priority']
   if ('topId' in patch || 'subId' in patch) {
@@ -244,11 +247,6 @@ export function withReceipt(spec: CreateSpec, s: CreateState, categories: readon
   // The receipt's extra costs: this pick's replace the earlier pick's (a cost the owner moved here from another draft stays).
   const mine = s.costs.filter(c => !c.id.startsWith('r:'))
   const costs = [...mine, ...(fill.costs ?? []).map((c, i) => ({ ...c, id: `r:${i}`, on: true }))]
-  // The discount is stored beside the paid price (never subtracted from it): the same "only into an empty field" rule as the normal price.
-  if (OWNS_KIND(spec, s)) {
-    if (fill.discount !== undefined && (draft.discount_amount == null || draft.discount_amount === s.receipt?.discount)) { draft.discount_amount = fill.discount; draft.discount_reason = fill.discountReason ?? 'other' }
-    else if (fill.discount === undefined && s.receipt?.discount !== undefined && draft.discount_amount === s.receipt.discount) { draft.discount_amount = null; draft.discount_reason = null }
-  }
   next = { ...next, draft, receipt: fill, costs }
   return next
 }
