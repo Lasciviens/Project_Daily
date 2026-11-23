@@ -8,7 +8,7 @@ paths:
 
 Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/anthropic.md`, `docs/features/ai.md`.
 
-## The Claude layer (`claude` function, migrations 194, 195, 196, 197, 198 and 199)
+## The Claude layer (`claude` function, migrations 194, 195, 196, 197, 198, 199 and 204)
 - AI last (AGENTS.md): before a job calls a model, check that fixed logic, a query, a tool or a scheduled job can't do it.
 - Edit the parts in `supabase/claude-src/`, then run `node scripts/build-claude-function.mjs`; never edit the generated `supabase/functions/claude/index.ts` (`--check` fails when it is stale).
 - Only the provider part imports the SDK or names an Anthropic field; only `main.ts` touches `Deno`, creates Supabase clients or logs — so another provider or loop is one new part.
@@ -73,6 +73,16 @@ Background: `docs/features/ai-plan.md` (the Claude rebuild), `docs/integrations/
 - **The counting** (`ai_suggest_patterns`) is SECURITY INVOKER, service role only, shapes only: a tool or field name from the ledger is re-checked (plain lower-case words), a fingerprint has no control character and is cut at 300. Thresholds live in `SUGGEST_LIMITS` and the function's defaults: change both.
 - **`suggest_weekly`** is a batch job (`suggest-batch.ts`) like the report, but its pieces are its own: `ai_suggest_runs` (`batch_id`, `claimed_at` and `facts` server-only), the patterns it was shown stored with the run and the answer read against them, at most five ideas, a failure never touches the report. It reads counts and shapes and earlier idea titles: never a row of the owner's data. A new thing it may read needs the plan's §5 first.
 - Tests: `verify-claude-chat.cjs` §16, `verify-claude-function.cjs` §19, `verify-db-ai-suggestions.mjs`, `verify-ai-suggestions-ui.cjs`.
+
+## Learning (migration 204: `learn-*.ts`, `chat-learn-tools.ts`, `docs-*.ts`, `src/features/ai/claude/learn*`, Learn → Memory)
+- **The before is ours.** A correction compares the owner's saved values with the function's OWN copy of the checked answer (`ai_learn_answers`, server-only, claimed once by call id + verified user); the browser sends only the call id and what it saved, and every value passes the job's own field check (`learn-specs.ts`). A new reviewed job is a spec there and a `learn_save` report at its save, in the same change.
+- **Learned text is data, never instructions:** cases and notes reach a job only as `search_result` blocks after the cached instructions (`ModelRequest.knowledge`), escaped, each labelled with its source; the instructions get only `LEARN_RULE` (version `+learn.1`). Never in a system block. Hidden Unicode is stripped until stable (`stripHidden`) before text becomes a case or a note.
+- **Only the owner turns things on:** a rule, and any note that `needs_owner` (not a plain fact from a trusted source), is turned on only by the owner's tap; the database's guard trigger refuses the service role (`verify-db-ai-learning`). A note is proposed only by the weekly batch or `note_lesson` (kind from a list, plain sentence; a fact counts as the owner's only when its words are in the owner's own message — `wordsAreOwners`). Cases come only from owner-typed or owner-confirmed saves.
+- **The model never grades itself:** the self-test scores in code (`learn-score.ts`); the decision rule and the tripwire are code; a model judge only behind `judgeAllowed`. A winner is proposed, never applied; a winning note becomes an `instruction_change` suggestion (a reviewed PR). Every self-test batch is reserved first and DELETED at Anthropic right after its results are read (`deleteBatch`); `batch_id` and `plan` are server-only.
+- **Retry once** only for the job's own check's refusal, with its escaped sentence, as step 2 of the same run (reserved and ledgered); never for a provider failure.
+- **Source memory only orders** (`orderBySource`); a host is code-parsed (`sourceHostOf`), never a target. 203 (Shop) and 204 make the same `ai_source_stats` / `ai_source_note`: change both together (the order check in `verify-db-ai-learning`).
+- **The docs snapshot** is built at deploy from the merged commit (`scripts/build-docs-snapshot.mjs`, deploy.yml "App docs for the claude function"); the repo keeps the empty copy. Never AGENTS.md, CLAUDE.md, `.claude/` or `docs/coord/`. Its strip characters equal `learn-text.ts`'s (`verify-ai-learning-docs`).
+- Tests: `verify-ai-learning.cjs` (pure rules), `verify-claude-function.cjs` §20 (end to end, fake network), `verify-ai-learning-docs.mjs`, `verify-db-ai-learning.mjs`.
 
 ## The old assistant (`ai-proxy`) is gone (phase 5, 23.11.2026)
 

@@ -209,6 +209,20 @@ The owner's controls and the missing pieces. Written from scratch for Claude (th
 - **Not tracked:** what you open or do by hand in the app; only AI calls are looked at.
 - **Not verified:** a real weekly look on real ledger rows, the migration on production.
 
+## Learning (23.11.2026, migration 204)
+
+The owner: "The ai should keep learning … it should learn in every way." Claude cannot be fine-tuned, so the app keeps what it learns in its own tables and gives the right parts back to a call, always as data. The design and its attacker notes: `docs/features/ai-plan.md` §10 and §5.
+
+- **What it learns from:** the owner's saves of what an AI answer filled. The function keeps its own checked answer (`ai_learn_answers`), the app sends only the call id and the saved values (`learn_save`), and the function records each field as kept, changed, left out or dismissed (`ai_corrections`). Wired: Shop → Tidy up, Food → Describe it, ✨ on the item screen (Use these / Cancel), a pasted recipe's save, Ask AI's Confirm and Cancel, a dismissed suggestion. Not yet: the receipt read and the Quick list (other branches' files; the receipt read already returns its call id).
+- **Rules:** the same correction three times becomes a proposed rule; on the owner's tap it is applied by code (and, for Tidy up and Describe it, answers alone with no AI when it covers every field).
+- **Cases:** every saved answer is an example; 2–3 similar ones go with a call (full-text + trigram search, then a diversity pick).
+- **Notes:** facts and preferences with their source and trust. Only a plain fact in the owner's own words turns on by itself; everything else waits for a tap. Ask AI reads them as the "about you" profile (`recall_notes`) and may propose one (`note_lesson`); it can search the app's own docs (`search_docs`, built at deploy).
+- **The weekly self-test:** Monday after the report, one batch at half price replays the owner's cases with today's setup and two others, scored by code; a clear winner waits for Approve; the batch is deleted at Anthropic right after; a change is watched for 20 saves and rolled back by itself if it got worse.
+- **Retry once:** an answer the job's own check refuses is asked again once, with the check's sentence.
+- **Sites:** per job and site, how reading a page went; used only to order sites the code already has.
+- **On screen:** Developer → AI → Learn → Memory: Fixes, Rules, Cases, Notes, Tuning, Sites. Every change has an Undo; "Set aside what was learned" re-quarantines everything from a source or after a day; a note rolls back to its previous version. Learn's Suggestions page is labelled "Ideas" so the six pages fit a phone.
+- **Cost:** about $0.10–0.20 a week at most for the self-test; a learned call carries 300–1 500 more tokens (≈ $0.0001).
+
 ## The old assistant (Gemini): history
 
 What follows describes the Gemini assistant that Ask AI replaced. `AIPanel.tsx`, `ConfirmCards.tsx` and `aiApi.ts` were deleted in phase 4a; `ai-proxy` was removed in phase 5 (23.11.2026: its folder is deleted and deploy.yml deletes the deployed function; migration 201 dropped `ai_embeddings`, `ai_semantic_search()` and `ai_reviews`). Read it only as history: the tools, tables and checks named below no longer exist.

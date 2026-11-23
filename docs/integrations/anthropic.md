@@ -268,6 +268,14 @@ Added for the AI features the owner picked (`docs/features/ai-plan.md` → secti
 
 `receipt_read` takes a photo or a PDF (one of them), bought or sold, product lines and may search the web. Facts: trap 30 (PDF) above and the image and web-search section. **What it sends:** the user message's content is `[document | image, text]` (`'Read the PDF.'` or `'Read the photo.'`) with the fixed cached instructions and `tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]`. **Before it:** for a PDF, `POST /v1/messages/count_tokens` with the same body but no tool and no answer limit (free); the run is stopped when the count fails, is missing or zero, or is over 32,000, and otherwise the reservation holds the counted tokens plus a quarter, repeated for each round a 2-search call may take, at the one-hour write price (`worstCostOf`'s `imageTokens`). **Read back:** nothing new (`text` blocks; `usage.server_tool_use.web_search_requests`). **Fields deliberately unused:** the `url` and `file` document sources and the Files API (a receipt is sent once, never stored), `citations` and `title` on the document, `cache_control` on it, `allowed_domains` / `blocked_domains` and `user_location` on the search (a store's site can be anywhere). **`shop_tidy` (23.11.2026) sends nothing new:** one user message of tagged text, the cached instructions, adaptive thinking, low effort, and the same `web_search_20250305` tool with `max_uses: 2`; it reads the same `text` blocks and `usage.server_tool_use.web_search_requests`. **Not confirmed by a live call yet:** that Haiku 5.5 answers a real receipt PDF as the docs describe, the real token count of a one-page receipt PDF, and the search loop's real cost on this job; Diagnose's real call is the way to see it. Checked 23.11.2026 against the pages above, fetched that day.
 
+## The learning layer (23.11.2026, migration 204)
+
+- **One-shot jobs:** learned knowledge (past cases, approved notes) goes in the user message as `search_result` blocks (`{type, source, title, content: [{type: 'text', text}]}`, SDK 1.5.0's `SearchResultBlockParam`, no `citations` config) before the live text, after the cached system block; the system block then gains one rule line (`LEARN_RULE`). The text log keeps the blocks; `sent_to_provider` lists their sources, titles and lengths. No new header or beta.
+- **Ask AI:** `search_docs` and `recall_notes` return `search_result` blocks inside a `tool_result` (as `get_about_me`'s results already did); a citation of them is never shown (only task and diary sources are, `SOURCE_PATTERN`).
+- **Batches:** the weekly self-test sends one batch of many requests (custom ids `<ledger row id>-<n>`, at most 64 characters), reads up to the plan's size of result lines (`batchResults(…, maxLines)`, at most 5000), then `DELETE /v1/messages/batches/{id}` (`client.messages.batches.delete`; Anthropic deletes an ended batch and its results; the answer is `{ id, type: 'message_batch_deleted' }`). A replay sends no web search.
+- **Retry once:** a second `POST /v1/messages` with the same request and our check's sentence appended (`<check_error>`).
+- Not confirmed live: a `search_result` block in a one-shot user message on Haiku 5.5, and the batch delete's answer shape (both typed against the SDK and tested with a fake network only).
+
 ## Not confirmed by a live call yet
 
 Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 22.11.2026 showed (above): the network and key work, and requests with adaptive thinking, an effort and the cache mark on the instructions were answered (a tiny answer, ✨ without an answer shape). Phase 1's tests (`scripts/verify-claude-function.cjs`) run the real SDK against a fake network, so they prove our code reads the shapes the docs and the SDK's types describe, not that Anthropic answers that way. No live call has yet confirmed:
@@ -287,6 +295,9 @@ Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 
 - that a call from `kobo-sync` / `phone-gateway` with the derived credential (HMAC of the service key, not the key) in `x-claude-server-key` reaches `claude` through the platform with `verify_jwt = false` (new and legacy key formats).
 
 ## Log
+
+### 23.11.2026: the learning layer (migration 204)
+Knowledge as `search_result` blocks in one-shot calls, two read tools that return them in Ask AI, a many-request batch with `maxLines`, the batch delete right after the results are read, and one retry on our own check's refusal. See "The learning layer".
 
 ### 23.11.2026: phase 4b (Ask AI controls)
 The owner's words as a second cached system block, photos as base64 image blocks stored in the message, a coach tool set, no `tools` field when all are off, and `phone_ask` with the owner's read tools (one round). No new endpoint, header or beta.
