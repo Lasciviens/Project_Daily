@@ -838,7 +838,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('null, undefined and short values in the list are skipped and nothing blows up', hideSecrets('abc', [null, undefined, '', 'ab']) === 'abc')
   check('text that is not text becomes text', hideSecrets(undefined, []) === '' && hideSecrets(5, []) === '5')
   check('an ordinary sentence is left as it is', hideSecrets('The AI is not set up yet.', [KEY, SERVICE]) === 'The AI is not set up yet.')
-  check('the function names no legacy Supabase key variable (only ai-proxy may)', !/SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(stripComments(builtSource.replace(/\/\/ <supabase-keys>[\s\S]*?\/\/ <\/supabase-keys>/, ''))))
+  check('the function names no legacy Supabase key variable', !/SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY/.test(stripComments(builtSource.replace(/\/\/ <supabase-keys>[\s\S]*?\/\/ <\/supabase-keys>/, ''))))
 
   section('7 · job names, the pinned version, the ledger\'s columns')
   for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'prototype', '', 'ITEM_FILL', 'item_fill ', 'item_fill\u0000', '../item_fill']) {

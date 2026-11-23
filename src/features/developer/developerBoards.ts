@@ -96,16 +96,16 @@ export const AI_PRICES_BOARD: BoardLayouts<AiPricesSection> = {
 }
 
 // How it works: whether the key is set comes first on a phone, then the path of one request and, right under it,
-// the check of the connection (Diagnose is for when that path misbehaves, so it follows the path); what is still on
-// Gemini comes before the jobs. From the laptop the path, Diagnose and the jobs (the long reads) keep main, with
-// the key, Gemini's leftovers, the parts, the fixed rules and the glossary beside them.
-export const AI_HOW_SECTIONS = ['status', 'steps', 'diagnose', 'chat', 'gemini', 'jobs', 'parts', 'rules', 'glossary'] as const
+// the check of the connection (Diagnose is for when that path misbehaves, so it follows the path); what a new chat
+// starts with comes before the jobs. From the laptop the path, Diagnose and the jobs (the long reads) keep main, with
+// the key, the chat's set-up, the parts, the fixed rules and the glossary beside them.
+export const AI_HOW_SECTIONS = ['status', 'steps', 'diagnose', 'chat', 'jobs', 'parts', 'rules', 'glossary'] as const
 export type AiHowSection = typeof AI_HOW_SECTIONS[number]
 
 export const AI_HOW_BOARD: BoardLayouts<AiHowSection> = {
-  1: ['status', 'steps', 'diagnose', 'chat', 'gemini', 'jobs', 'parts', 'rules', 'glossary'],
-  2: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'gemini', 'parts', 'rules', 'glossary']] },
-  3: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'gemini', 'parts'], ['rules', 'glossary']] },
+  1: ['status', 'steps', 'diagnose', 'chat', 'jobs', 'parts', 'rules', 'glossary'],
+  2: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'parts', 'rules', 'glossary']] },
+  3: { columns: [['steps', 'diagnose', 'jobs'], ['status', 'chat', 'parts'], ['rules', 'glossary']] },
 }
 
 // Test bench: the question and its pick first, the answer beside it from the laptop (their own tracks from 1920).

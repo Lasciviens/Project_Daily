@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /*
- * Verification — ai-proxy's computeSleepNights session merge.
+ * Verification — the edge functions' sleep session merge (first written for
+ * ai-proxy, removed in AI phase 5).
  *
- * ai-proxy is a self-contained Deno function and can't be require()'d (it
+ * phone-gateway is a self-contained Deno function and can't be require()'d (it
  * calls Deno.serve/Deno.env at module scope), so the logic below is a
  * hand-synced mirror of its copy — the same convention
- * scripts/verify-ai-health-stats-dedup.cjs already uses.
+ * scripts/verify-ai-health-stats-dedup.cjs already uses. The claude function's
+ * copy (supabase/claude-src/week-facts.ts) is a real module and is run directly.
  *
  * What makes this script worth more than a second set of assertions: it runs
  * the mirror and the REAL web-app implementation over the same fixtures and
@@ -18,6 +20,7 @@
 
 require('sucrase/register')
 const { computeSleepSummary } = require('../src/features/health/healthAggregate.ts')
+const { sleepNights: claudeNights } = require('../supabase/claude-src/week-facts.ts')
 
 let passed = 0
 const failures = []
@@ -28,8 +31,8 @@ function check(label, actual, expected) {
 const round = (n) => Math.round(n * 100) / 100
 
 // ─── The mirror: the edge functions' whole sleep pipeline ────────────────────
-// Keep in step with supabase/functions/ai-proxy/index.ts (summarizeSleepNights)
-// and supabase/functions/phone-gateway/index.ts (computeSleepNightsGw) by hand.
+// Keep in step with supabase/functions/phone-gateway/index.ts (computeSleepNightsGw)
+// and supabase/claude-src/week-facts.ts (sleepNights) by hand.
 // It mirrors the whole contract — wake-day night key, manual-wins, the
 // containment merge PER NIGHT, raw-stage sums — not just the merge: an earlier
 // version compared only the summed total and let a per-session (not per-night)
@@ -189,8 +192,11 @@ for (const [label, rows, expected] of cases) {
   // One row per NIGHT, never one per session — the defect the old version of
   // this script could not see.
   check(`rows     · ${label}`, [ai.length, web.length], [1, 1])
-  check(`ai-proxy · ${label}`, round(ai[0].hours), expected)
+  check(`mirror   · ${label}`, round(ai[0].hours), expected)
   check(`web app  · ${label}`, round(web[0].total), expected)
+  // The claude function's own copy (the real module): it must agree with the web app too.
+  const cl = claudeNights(rows)
+  check(`claude   · ${label}`, [cl.length, round(cl[0]?.hours)], [1, expected])
   // The point of this script: the two implementations must not drift apart.
   check(`AGREE    · ${label}`, round(ai[0].hours), round(web[0].total))
   check(`stages   · ${label}`,
@@ -246,11 +252,11 @@ for (const [label, rows, expected] of cases) {
   const fs = require('fs')
   const path = require('path')
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
-  const ai = read('supabase/functions/ai-proxy/index.ts')
+  const wf = read('supabase/claude-src/week-facts.ts')
   const gw = read('supabase/functions/phone-gateway/index.ts')
-  check('drift   · ai-proxy containment + 15-min remainder rule',
-    [ai.includes('const SLEEP_CONTAINMENT = 0.9'), ai.includes('const SLEEP_MIN_EXTRA_MS = 15 * 60_000'),
-     ai.includes('overlap / span >= SLEEP_CONTAINMENT || span - overlap < SLEEP_MIN_EXTRA_MS')], [true, true, true])
+  check('drift   · claude function (week-facts) containment + 15-min remainder rule',
+    [wf.includes('const SLEEP_CONTAINMENT = 0.9'), wf.includes('const SLEEP_MIN_EXTRA_MS = 15 * 60_000'),
+     wf.includes('overlap / span >= SLEEP_CONTAINMENT || span - overlap < SLEEP_MIN_EXTRA_MS')], [true, true, true])
   check('drift   · phone-gateway containment + 15-min remainder rule',
     [gw.includes('const CONTAINMENT = 0.9'), gw.includes('const MIN_EXTRA_MS = 15 * 60_000'),
      gw.includes('overlap / span >= CONTAINMENT || span - overlap < MIN_EXTRA_MS')], [true, true, true])
@@ -262,4 +268,4 @@ if (failures.length) {
   for (const f of failures) console.log(`  ✗ ${f}`)
   process.exit(1)
 }
-console.log('ai-proxy and healthAggregate agree on every sleep fixture.\n')
+console.log('The edge copies and healthAggregate agree on every sleep fixture.\n')

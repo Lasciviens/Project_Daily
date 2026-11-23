@@ -81,19 +81,19 @@ React 19 + TypeScript 6 + Vite 8 · react-router v7 with HashRouter (GitHub Page
 > - Anything the browser, the assistant, a sync or an outside service can write is **input**, even when our code wrote it. The target of a write or delete made with the owner's credentials (a URL, path, id, file name) is built from server-only data at the moment of use — never read back from such a table.
 > - Check data where it enters **and** where it becomes another format (iCalendar, SQL, HTML, a URL, a header): allow-lists, not escaping alone, plus a last-line guard that refuses what slipped through.
 > - Never `startsWith` on a URL or path as a security check: compare the exact value you built.
-> - A new link column goes into `AI_NO_WRITE` in the same change (`verify-ai-confirm` checks it against `app_undo_links`).
+> - A new link column is never one a confirmed Ask AI proposal writes (the fixed column lists in `applyProposal`; `verify-ai-confirm` checks them against `app_undo_links`). The old `AI_NO_WRITE` list went with `ai-proxy`.
 > - SECURITY DEFINER: `search_path = ''`, every query scoped to the row's own user, no grant to `authenticated` unless the caller is checked.
 > - "Switched off" is not "safe": dormant code is reviewed as if it were live.
 > - Before writing code that touches credentials, an outside service, a new table or column, or the assistant: write down what an attacker controlling each input could do, design that out, and run the `guardian` review before reporting.
 
 - **Owner lock:** only ids in `public.app_allowed_users` use the app. A migration that creates a table ends with `select public.owner_lock_apply('public.<table>');` (`verify-owner-lock`).
 - An edge function with browser callers checks `auth.getUser` **and** its own `isAppUser(user.id)` copy; platform `verify_jwt` alone admits any project JWT. Only `news-proxy` is exempt.
-- Keys never travel in a URL when the API takes a header; otherwise fetch through `fetchHidingUrl`. `ai-proxy` scrubs outgoing errors with `hideSecrets` (`verify-secret-errors`).
+- Keys never travel in a URL when the API takes a header; otherwise fetch through `fetchHidingUrl`. `claude` scrubs outgoing errors with `hideSecrets` and `scrubErrorText` (`verify-secret-errors`).
 - Never log a secret: a mutation whose input is a secret sets `logPayload: false`; `logError` redacts secret-looking keys.
 - A device, cron or webhook secret is checked in constant time (`sameSecret`: hash, then compare), never `===` (`verify-secret-compare`).
 - **The repo is public: no personal data in it** — no real email address, phone number, street address, name or real health numbers in code, tests, docs, commit messages or PR texts. Use made-up data (Ola Nordmann, example.com, Jernbanetorget). The account email a session sees is for commit credit only, never a contact field (`verify-no-personal-data`).
 - A server-side fetch of a URL someone supplied goes through `isPrivateHost` and re-checks every redirect (`verify-ssrf-guard`).
-- The assistant acts only on what the user typed: a new destructive tool goes into `NEEDS_CONFIRM`, a new column that links a row to an outside account goes into `AI_NO_WRITE` (`verify-ai-confirm`).
+- The assistant acts only on what the user typed: Ask AI only proposes; a write is a new `propose_*` tool whose confirmed columns never include one that links a row to an outside account (`verify-ai-confirm`).
 - Token tables are service-role only (`REVOKE ALL … FROM anon, authenticated`); the browser reads only derived status.
 - Sign-out clears what belongs to the account (`src/security/accountState.ts`); a new account-bound key or cache goes there too.
 - OAuth callbacks check `state`. Imports are pinned to exact versions, never `@2` or `^2`.

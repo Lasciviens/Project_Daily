@@ -813,7 +813,7 @@ async function askClaude(job: 'phone_ask', input: AnyRecord): Promise<AnyRecord>
 
 // Deterministic sleep nights, last 7 days. THIRD hand-mirrored copy of
 // healthAggregate.ts's SLEEP CONTRACT (the others: the web app's
-// computeSleepSummary and ai-proxy's summarizeSleepNights) — CHANGE ONE,
+// computeSleepSummary and the claude function's sleepNights) — CHANGE ONE,
 // CHANGE ALL THREE; scripts/verify-ai-sleep-merge.cjs checks the rules:
 //   1. A night belongs to the day you WOKE UP: sleepEnd's local date when it
 //      carries an offset, else the row's date.

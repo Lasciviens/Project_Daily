@@ -1,7 +1,6 @@
 // EnTur's place search (the geocoder), v3. Pure: the browser's stop search
-// (ruterApi.searchStops) and ai-proxy's trip planning both build the query and
-// read the answer with this block; ai-proxy carries a verbatim copy and
-// scripts/verify-entur-geocoder.cjs checks the two are identical.
+// (ruterApi.searchStops) builds the query and reads the answer with this block
+// (ai-proxy carried a verbatim copy until AI phase 5 removed it).
 //
 // v1/v2 are deprecated since 12.06.2026 (developer.entur.no → Geocoder →
 // "Migration from v2 to v3"). Shape verified live on 26.10.2026, saved in
@@ -65,6 +64,5 @@ function parseGeocoderPlaces(json: unknown): GeoPlace[] {
 }
 // </entur-geocoder>
 
-// The block has no `export` of its own: ai-proxy runs it as plain code.
 export { GEOCODER_V3, geocoderQuery, parseGeocoderPlaces }
 export type { GeoPlace }

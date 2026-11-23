@@ -120,7 +120,7 @@ function guardOf(fn, deno) {
 
 // The REAL handler, every outside call scripted: the caller is the owner, fetch answers from `pages`. shop-price
 // asks each page's robots.txt first (1c): an unscripted one answers 404 (no rules) and is counted apart, in `robotsAsked`.
-const OWNER_ENV = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a', HEVY_USER_ID: 'owner', GEMINI_API_KEY: 'g' }
+const OWNER_ENV = { SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 's', SUPABASE_ANON_KEY: 'a', HEVY_USER_ID: 'owner' }
 function realHandler(fn, pages, fetched, robotsAsked = []) {
   const src = fnSource(fn).replace(/^import .*createClient.*$/m, '').replace(/^export /gm, '')
   const code = transform(src, { transforms: ['typescript'] }).code
@@ -182,7 +182,7 @@ async function dnsChecks() {
   check('the DNS check is one block, identical in news-article and shop-price',
     dnsBlock('news-article').length > 1000 && dnsBlock('shop-price') === dnsBlock('news-article'))
   const ai = fnSource('ai-proxy')
-  check('ai-proxy no longer fetches a page (no fetchUrl, no private-address code left to drift)', !/fetchUrl|isPrivateHost|resolvesToPrivate|responseSchema/.test(ai))
+  check('ai-proxy (retired, answers 410) holds no fetch and no private-address code to drift', !/fetchUrl|isPrivateHost|resolvesToPrivate|responseSchema/.test(ai))
 
   console.log('\nThe real fetchers refuse such names on every hop')
   for (const fn of ['news-article', 'shop-price']) {

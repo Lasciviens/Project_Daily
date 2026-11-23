@@ -36,7 +36,6 @@ const nut = src('src/features/daily/api/dayNutritionApi.ts')
 eq(/UNIFIED_SELECT_181 = `\$\{UNIFIED_SELECT\}, eaten_time`/.test(nut) && /isMissingEatenTime\(uni\.error\)/.test(nut), true,
   'the day\'s food read takes the time, and a database without 181 reads without it')
 eq(/isMissingEatenTime\(error\)/.test(src('src/features/recipes/api/foodLogApi.ts')), true, 'a log or an edit on a database without 181 saves without the time')
-eq(/eaten_time\(time HH:MM/.test(src('supabase/functions/ai-proxy/index.ts')), true, 'the assistant\'s catalogue names eaten_time')
 
 // ── Portion options (A–Z since 03.11.2026; owner: "Portion name — sort by A-Z") ──
 const opts = A.portionWordOptions(['scoop', 'Muffin', '2 slices (60 g)', null, 'egg', 'muffin'], '')
