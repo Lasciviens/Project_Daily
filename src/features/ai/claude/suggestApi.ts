@@ -25,7 +25,19 @@ export async function fetchSuggestions(): Promise<AiSuggestion[]> {
     if (isMissing(error)) return []
     throw error
   }
-  return readSuggestions(data)
+  const list = readSuggestions(data)
+  // The answer each one came from: the ledger run of its first call (read in small groups: a long list of ids does not fit in an address).
+  const ids = [...new Set(list.map(s => s.first_call_id).filter((id): id is string => !!id))]
+  const runs = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += 40) {
+    const { data: calls, error: callsError } = await supabase.from('ai_calls').select('id, run_id').in('id', ids.slice(i, i + 40))
+    if (callsError) break // the cards simply have no link
+    for (const c of Array.isArray(calls) ? calls : []) {
+      const row = c as { id?: unknown; run_id?: unknown }
+      if (typeof row.id === 'string' && typeof row.run_id === 'string') runs.set(row.id, row.run_id)
+    }
+  }
+  return list.map(s => (s.first_call_id && runs.has(s.first_call_id) ? { ...s, run_id: runs.get(s.first_call_id) as string } : s))
 }
 
 /** The last few runs of the weekly look. */

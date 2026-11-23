@@ -1407,6 +1407,8 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
     check('switched Off in the middle of a chat, it is refused at once (the current setting is read each message)', final(ro).event === 'done' && final(ro2).event === 'done' && wo.noted.length === 1 && final(ro2).suggestion === null)
     check('the coach chat has the note tool too', same(probe.toolsForNewChat(probe.toolModes(null), 'coach').slice(-1), ['note_shortcut']))
     check('the instructions of both chats tell the model to use it only when obvious, at most once, and never to promise anything', /note_shortcut/.test(probe.CHAT_SYSTEM) && /OBVIOUS/.test(probe.CHAT_SYSTEM) && /at most once/i.test(probe.CHAT_SYSTEM) && /Never promise/.test(probe.CHAT_SYSTEM) && /note_shortcut/.test(probe.COACH_SYSTEM) && /OBVIOUS/.test(probe.COACH_SYSTEM))
+    const fpA = probe.sqlFingerprint("select sum(protein_g) as my_secret_total from food_log_entries where day = '2026-11-10' and quantity > 3d and fiber >= 1.5e3")
+    check('a query\'s fingerprint has no value or name the model chose: numbers glued to letters, exponents and the alias after AS are all taken out', /as \?/.test(fpA) && !/my_secret_total|2026|3d|1\.5e3/.test(fpA) && /where day = \?/.test(fpA), fpA)
     check('the phone never gets it', !probe.phoneToolNames(modes).includes('note_shortcut'))
   }
 

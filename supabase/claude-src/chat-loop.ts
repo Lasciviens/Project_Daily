@@ -473,7 +473,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       finalCitations = await checkedCitations(ctx, answerMessages.flatMap(m => m.content), known)
       if (finalCitations.length) assistantMeta.citations = finalCitations
       // The kind of suggestion this answer noted stays with the answer, so a chat opened later shows the same line.
-      if (suggestion) assistantMeta.suggestion = { kind: suggestion.kind }
+      const noted = suggestion as ChatSuggestionNote | null // set inside the tool step's closure: TypeScript cannot see it
+      if (noted) assistantMeta.suggestion = { kind: noted.kind }
       const wrote = await store('assistant', answer.content, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })

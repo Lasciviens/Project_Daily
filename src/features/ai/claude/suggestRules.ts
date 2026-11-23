@@ -6,6 +6,12 @@
 export const SUGGESTION_KINDS = ['widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting'] as const
 export type SuggestionKind = typeof SUGGESTION_KINDS[number]
 
+export const SUGGESTION_COMPLEXITY = ['small', 'medium', 'large'] as const
+export type SuggestionComplexity = typeof SUGGESTION_COMPLEXITY[number]
+
+/** What the size of a change is called on the card. */
+export const SUGGESTION_COMPLEXITY_LABEL: Record<SuggestionComplexity, string> = { small: 'Small change', medium: 'Medium change', large: 'Large change' }
+
 export const SUGGESTION_STATES = ['new', 'kept', 'dismissed', 'built'] as const
 export type SuggestionState = typeof SUGGESTION_STATES[number]
 
@@ -40,18 +46,23 @@ export interface AiSuggestion {
   kind: SuggestionKind
   title: string
   why: string
+  /** One plain line on what the owner gains (written by the model, checked like the rest). */
+  benefit: string
+  complexity: SuggestionComplexity
   source: 'answer' | 'weekly'
   times_seen: number
   tokens_each: number
   cost_each_usd: number
   first_call_id: string | null
+  /** The ledger run of that call (the answer it came from), found by the app; null for a weekly idea or when it is gone. */
+  run_id: string | null
   state: SuggestionState
   created_at: string
   last_seen_at: string
 }
 
 /** The columns the app asks for (the table's whole shape: the browser reads all of it and writes only `state`). */
-export const SUGGESTION_COLUMNS = 'id, kind, title, why, source, times_seen, tokens_each, cost_each_usd, first_call_id, state, created_at, last_seen_at'
+export const SUGGESTION_COLUMNS = 'id, kind, title, why, benefit, complexity, source, times_seen, tokens_each, cost_each_usd, first_call_id, state, created_at, last_seen_at'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {})
@@ -59,9 +70,13 @@ const count = (v: unknown, max: number): number => {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v
   return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.min(n, max) : 0
 }
-// A model's text is plain text: no angle bracket, control character, link or markup. A row that fails is not shown at all.
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
-const NOT_PLAIN = /[<>`\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]|https?:|www\./i
+// A model's text is plain text: no angle or square bracket (the Dev Requests window reads [[…]] as marks), backtick, control character,
+// zero-width or text-direction character, link (any name.tld) or figure of the owner's own (grams, calories, steps). A row that fails is
+// not shown at all. The database says the same (ai_suggestion_plain); this is the check on what it hands back.
+const HIDDEN_RANGES: readonly (readonly [number, number])[] = [[0, 31], [127, 159], [0x200b, 0x200f], [0x202a, 0x202e], [0x2066, 0x2069], [0xfeff, 0xfeff]]
+const hasHidden = (text: string): boolean => [...text].some(c => { const n = c.codePointAt(0) ?? 0; return HIDDEN_RANGES.some(([from, to]) => n >= from && n <= to) })
+const NOT_PLAIN = /[<>`[\]]|https?:|www\.|\/\/|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
+const PERSONAL_FIGURE = /\d\s?(?:g|kg|mg|kcal|cal|steps|bpm|ml|lbs?|cm|km)\b/i
 
 export function isSuggestionId(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value)
@@ -71,7 +86,7 @@ const plain = (v: unknown, min: number, max: number): string | null => {
   if (typeof v !== 'string') return null
   const text = v.trim()
   const n = [...text].length
-  return n >= min && n <= max && !NOT_PLAIN.test(text) ? text : null
+  return n >= min && n <= max && !hasHidden(text) && !NOT_PLAIN.test(text) && !PERSONAL_FIGURE.test(text) ? text : null
 }
 
 export function readSuggestion(raw: unknown): AiSuggestion | null {
@@ -80,11 +95,13 @@ export function readSuggestion(raw: unknown): AiSuggestion | null {
   const state = SUGGESTION_STATES.find(s => s === r.state)
   const title = plain(r.title, 3, 120)
   const why = plain(r.why, 3, 400)
-  if (!isSuggestionId(r.id) || !kind || !state || !title || !why) return null
+  const benefit = plain(r.benefit, 3, 160)
+  const complexity = SUGGESTION_COMPLEXITY.find(c => c === r.complexity)
+  if (!isSuggestionId(r.id) || !kind || !state || !title || !why || !benefit || !complexity) return null
   return {
-    id: r.id, kind, title, why, source: r.source === 'weekly' ? 'weekly' : 'answer',
+    id: r.id, kind, title, why, benefit, complexity, source: r.source === 'weekly' ? 'weekly' : 'answer',
     times_seen: Math.max(1, Math.floor(count(r.times_seen, 1_000_000))), tokens_each: Math.floor(count(r.tokens_each, 10_000_000)), cost_each_usd: count(r.cost_each_usd, 999_999),
-    first_call_id: isSuggestionId(r.first_call_id) ? r.first_call_id : null,
+    first_call_id: isSuggestionId(r.first_call_id) ? r.first_call_id : null, run_id: isSuggestionId(r.run_id) ? r.run_id : null,
     state, created_at: typeof r.created_at === 'string' ? r.created_at : '', last_seen_at: typeof r.last_seen_at === 'string' ? r.last_seen_at : '',
   }
 }
@@ -110,21 +127,32 @@ export function suggestionTotalUsd(s: Pick<AiSuggestion, 'times_seen' | 'cost_ea
   return s.times_seen * s.cost_each_usd
 }
 
-/** The saving as the owner reads it: how many times it was seen, what one time took, and what they cost in all. */
-export function savingWords(s: Pick<AiSuggestion, 'times_seen' | 'tokens_each' | 'cost_each_usd'>): string {
-  const seen = s.times_seen === 1 ? 'Seen once' : `Seen ${digits(s.times_seen)} times`
-  const each = s.tokens_each > 0 ? `about ${digits(s.tokens_each)} tokens, ${suggestionUsd(s.cost_each_usd)} each time` : `${suggestionUsd(s.cost_each_usd)} each time`
-  const total = s.times_seen > 1 ? ` · ${suggestionUsd(suggestionTotalUsd(s))} in all` : ''
-  return `${seen} · ${each}${total}`
+/**
+ * The benefit in one plain line. A counted pattern's count is a 30-day total, so its cost in all is a month's: "Would save about
+ * $0.05 a month". An idea noted in an answer has seen the question once or a few times, so it says what one asking cost. "No AI
+ * wait" is said for everything that takes the AI out (not for a cheaper setting, which keeps it). No tokens: only money and waiting.
+ */
+export function benefitLine(s: Pick<AiSuggestion, 'kind' | 'source' | 'times_seen' | 'cost_each_usd'>): string {
+  const money = s.source === 'weekly' ? `Would save about ${suggestionUsd(suggestionTotalUsd(s))} a month` : `Costs about ${suggestionUsd(s.cost_each_usd)} each time it is asked`
+  return s.kind === 'cheaper_setting' ? money : `${money} · no AI wait`
+}
+
+/** How often it came up, in words. */
+export function seenWords(s: Pick<AiSuggestion, 'times_seen'>): string {
+  return s.times_seen === 1 ? 'Seen once' : `Seen ${digits(s.times_seen)} times`
 }
 
 // ── The list ────────────────────────────────────────────────────────────────
 
 export interface SuggestionGroups { fresh: AiSuggestion[]; kept: AiSuggestion[]; built: AiSuggestion[]; dismissed: AiSuggestion[] }
 
-/** The ideas in four groups, each the biggest saving first, then the latest seen. A dismissed idea only sits at the bottom: it is never deleted (it is what stops it coming back). */
+const SIZE_WEIGHT: Record<SuggestionComplexity, number> = { small: 1, medium: 2, large: 4 }
+/** What an idea is worth against its size: the money it saves for each step of change (a small change counts once, a large one four times). */
+export const valueOf = (s: Pick<AiSuggestion, 'times_seen' | 'cost_each_usd' | 'complexity'>): number => suggestionTotalUsd(s) / SIZE_WEIGHT[s.complexity]
+
+/** The ideas in four groups, each the best benefit for its size first, then the latest seen. A dismissed idea only sits at the bottom: it is never deleted (it is what stops it coming back). */
 export function groupSuggestions(list: readonly AiSuggestion[]): SuggestionGroups {
-  const order = (a: AiSuggestion, b: AiSuggestion) => suggestionTotalUsd(b) - suggestionTotalUsd(a) || b.times_seen - a.times_seen || b.last_seen_at.localeCompare(a.last_seen_at)
+  const order = (a: AiSuggestion, b: AiSuggestion) => valueOf(b) - valueOf(a) || b.times_seen - a.times_seen || b.last_seen_at.localeCompare(a.last_seen_at)
   const of = (state: SuggestionState) => list.filter(s => s.state === state).sort(order)
   return { fresh: of('new'), kept: of('kept'), built: of('built'), dismissed: of('dismissed') }
 }
@@ -138,14 +166,25 @@ export function waitingCount(list: readonly AiSuggestion[]): number {
 
 export interface SuggestionDraft { title: string; points: string[]; category: 'feature'; priority: 'low' }
 
+/** The line that links a Dev Request back to its suggestion: when the request is marked done, the suggestion becomes built. */
+const REF = /^Suggestion ref: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/im
+export const suggestionRefOf = (description: string | null | undefined): string | null => REF.exec(description ?? '')?.[1] ?? null
+
 /**
- * The Dev Request draft an idea can become. The owner reviews and saves it themselves: nothing is created here, and the
- * draft says plainly that a model wrote the idea and that it has to be checked before anything is built.
+ * The Dev Request draft a suggestion can become. The owner reviews and saves it themselves: nothing is created here. Only the title,
+ * the kind, the size and the plain benefit go over (never the model's longer reason), the first line says a model wrote it, and
+ * the last line is our own link back (the suggestion's id). Every text was checked as plain text, so no `[[…]]` mark can be
+ * made; the window checks the finished text once more with its own parser.
  */
 export function draftFromSuggestion(s: AiSuggestion): SuggestionDraft {
   return {
     title: s.title,
-    points: [s.why, `${savingWords(s)}.`, `Idea from the AI Suggestions list (${SUGGESTION_KIND_LABEL[s.kind]}). Written by a model: check it against the app before building.`],
+    points: [
+      'Written by a model — check before saving.',
+      `${SUGGESTION_KIND_LABEL[s.kind]} · ${SUGGESTION_COMPLEXITY_LABEL[s.complexity].toLowerCase()}`,
+      s.benefit,
+      `Suggestion ref: ${s.id}`,
+    ],
     category: 'feature', priority: 'low',
   }
 }
@@ -154,11 +193,11 @@ export function draftFromSuggestion(s: AiSuggestion): SuggestionDraft {
 
 export function suggestMakeMessage(answer: unknown): { ok: boolean; message: string } {
   const a = rec(answer)
-  if (a.ok === true && a.queued === true) return { ok: true, message: 'Looking for ideas. It is ready within about an hour, at half price; the list updates when it is.' }
-  if (a.ok === true && a.skipped === 'already_queued') return { ok: false, message: 'A look for ideas is already waiting for its answer.' }
-  if (a.ok === true && a.skipped === 'nothing_repeats') return { ok: true, message: 'Nothing repeats often enough yet to be an idea. No AI call was made.' }
+  if (a.ok === true && a.queued === true) return { ok: true, message: 'Looking for suggestions. It is ready within about an hour, at half price; the list updates when it is.' }
+  if (a.ok === true && a.skipped === 'already_queued') return { ok: false, message: 'A look for suggestions is already waiting for its answer.' }
+  if (a.ok === true && a.skipped === 'nothing_repeats') return { ok: true, message: 'Nothing repeats often enough yet to be a suggestion. No AI call was made.' }
   if (a.ok === true) return { ok: false, message: 'Nothing was queued.' }
-  return { ok: false, message: typeof a.message === 'string' && a.message ? a.message.slice(0, 300) : 'The look for ideas could not be queued.' }
+  return { ok: false, message: typeof a.message === 'string' && a.message ? a.message.slice(0, 300) : 'The look for suggestions could not be queued.' }
 }
 
 /** The answer of a "Check now" for the suggestions' batch, when the function says anything about it. */
@@ -166,9 +205,9 @@ export function suggestCheckNote(answer: unknown): string | null {
   const s = rec(rec(answer).suggestions)
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   if (s.ok !== true) return null
-  if (n(s.done)) return 'The ideas are in.'
-  if (n(s.failed)) return 'The look for ideas ended without a usable answer.'
-  if (n(s.waiting)) return 'The look for ideas is still waiting for Anthropic.'
+  if (n(s.done)) return 'The suggestions are in.'
+  if (n(s.failed)) return 'The look for suggestions ended without a usable answer.'
+  if (n(s.waiting)) return 'The look for suggestions is still waiting for Anthropic.'
   return null
 }
 
@@ -203,10 +242,10 @@ export function readSuggestRuns(raw: unknown): AiSuggestRun[] {
 
 /** What the last run says, in one plain sentence. */
 export function runSentence(run: AiSuggestRun | null, formatDay: (iso: string) => string): string {
-  if (!run) return 'No look for ideas yet. The first is made on the coming Monday, or press the button.'
-  if (run.status === 'queued') return 'A look for ideas is waiting for Anthropic. It is checked every 15 minutes.'
+  if (!run) return 'No look for suggestions yet. The first is made on the coming Monday, or press the button.'
+  if (run.status === 'queued') return 'A look for suggestions is waiting for Anthropic. It is checked every 15 minutes.'
   const when = formatDay(run.finished_at ?? run.created_at)
   if (run.status === 'failed') return `The look on ${when} failed: ${run.failure ?? 'no reason was kept'}`
   if (run.patterns === 0) return `The look on ${when} found nothing that repeats often enough. No AI call was made.`
-  return `The look on ${when} read ${run.patterns} repeat${run.patterns === 1 ? '' : 's'} and added ${run.added} idea${run.added === 1 ? '' : 's'}.`
+  return `The look on ${when} read ${run.patterns} repeat${run.patterns === 1 ? '' : 's'} and added ${run.added} suggestion${run.added === 1 ? '' : 's'}.`
 }

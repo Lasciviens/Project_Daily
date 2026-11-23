@@ -31,7 +31,7 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_training_week: { label: 'Training week', what: "Reads a week's sessions, sets, muscles and key lifts." },
   get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
   get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
-  note_shortcut: { label: 'Note an idea', what: 'Writes one idea into Developer → AI → Learn → Ideas (the Suggestions) when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
+  note_shortcut: { label: 'Note a suggestion', what: 'Writes one suggestion into Developer → AI → Learn → Suggestions when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 
@@ -366,7 +366,7 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
-  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting an idea for the Suggestions list',
+  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting a suggestion',
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
@@ -411,6 +411,7 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
     if (typeof meta.run_id === 'string' && UUID.test(meta.run_id)) answer.runId = meta.run_id
     if (typeof meta.cost_usd === 'number' && Number.isFinite(meta.cost_usd)) answer.costUsd = (answer.costUsd ?? 0) + meta.cost_usd
     if (Array.isArray(meta.citations)) answer.citations = readCitations(meta.citations)
+    if (isObject(meta.suggestion) && typeof meta.suggestion.kind === 'string' && /^[a-z_]{3,20}$/.test(meta.suggestion.kind)) answer.suggestion = meta.suggestion.kind
     if (meta.ending === 'cut_off') answer.cutOff = true
   }
   return turns

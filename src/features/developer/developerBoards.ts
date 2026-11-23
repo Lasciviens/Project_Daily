@@ -37,7 +37,7 @@ export function paneSelection(ids: readonly string[], picked: string | null): st
 // ── AI: the Claude layer's views (Developer → AI, `?view=`) ────────────────
 // Four views under the page's bar, so the switcher fits a phone: Overview (what it cost) · Calls (every call) ·
 // Settings (what the owner controls) · Learn (everything that explains it). Learn holds four more, in their own
-// switcher under the bar (`?learn=`): How it works, Prices, the Test bench, Batches (the weekly report's queue, phase 3) and Ideas, the suggestions (phase 4c). A new explanation goes into Learn,
+// switcher under the bar (`?learn=`): How it works, Prices, the Test bench (labelled "Bench" so five names fit a phone), Batches (the weekly report's queue, phase 3) and Suggestions (phase 4c). A new explanation goes into Learn,
 // never into a fifth tab. Every view has the list + detail tabs' tracks — two from the laptop, three from 1920, and
 // it stops there — so the page's header keeps one width whichever tab or view is open (AI_VIEW_BOARDS →
 // sectionsWidthRem). Calls is LIST_DETAIL_BOARD itself: the list, a call's detail in the pane.
@@ -49,7 +49,7 @@ export const AI_VIEW_LABEL: Record<AiView, string> = { overview: 'Overview', cal
 export const AI_LEARN_VIEWS = ['how', 'prices', 'bench', 'batches', 'suggestions'] as const
 export type AiLearnView = typeof AI_LEARN_VIEWS[number]
 
-export const AI_LEARN_LABEL: Record<AiLearnView, string> = { how: 'How it works', prices: 'Prices', bench: 'Test bench', batches: 'Batches', suggestions: 'Ideas' }
+export const AI_LEARN_LABEL: Record<AiLearnView, string> = { how: 'About', prices: 'Prices', bench: 'Bench', batches: 'Batches', suggestions: 'Suggestions' }
 
 export interface AiLocation { view: AiView; learn: AiLearnView }
 
