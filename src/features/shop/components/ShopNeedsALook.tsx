@@ -1,3 +1,4 @@
+import type { RecordFact } from '../shopSuggestions'
 import { useEntityModal } from '../../../shared/modals'
 import { useBoardStep } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -22,7 +23,7 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
   items: readonly ShopItem[]
   isLoading: boolean
   quiet?: boolean
-  paneOpen?: (id: string, fact?: 'value') => void
+  paneOpen?: (id: string, fact?: RecordFact) => void
 }) {
   const modal = useEntityModal()
   const wide = useBoardStep() >= 2
@@ -33,12 +34,15 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
   const clear = useClearSignalState()
   const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind, subject: look.subject })
 
+  // A thing opens at its fact (a tidy-up's problem, an old estimate), in the pane on a wide Owned, else in a popup.
+  const openThing = (id: string, fact?: RecordFact) => {
+    if (paneOpen && wide) paneOpen(id, fact)
+    else modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
+  }
   const actions: LookActions = {
     onOpen: look => {
       if (!look.itemId) return
-      const fact = look.action === 'value' ? 'value' as const : undefined
-      if (paneOpen && wide) paneOpen(look.itemId, fact)
-      else modal.open(fact ? { kind: 'shop-item', id: look.itemId, fact } : { kind: 'shop-item', id: look.itemId })
+      openThing(look.itemId, look.action === 'value' ? 'value' : undefined)
     },
     onBought: look => {
       const item = items.find(i => i.id === look.itemId)
@@ -48,7 +52,7 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
     onSnooze: look => { if (look.snoozeTo) snooze.mutate({ ...at(look), until: look.snoozeTo }) },
     onGotIt: look => dismiss.mutate({ ...at(look), signature: look.signature }),
     onShowAgain: look => clear.mutate(at(look)),
-    onOpenThing: id => modal.open({ kind: 'shop-item', id }),
+    onOpenThing: (id, fact) => openThing(id, fact),
   }
   return <NeedsALook {...data} today={todayStr()} actions={actions} quiet={quiet} />
 }

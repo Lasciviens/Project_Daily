@@ -17,6 +17,7 @@ import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../c
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
+import type { RecordFact } from '../../features/shop/shopSuggestions'
 
 export type EntityModalRequest =
   // One item (migration 155): these four open the same Add sheet (plan-modal/
@@ -66,7 +67,7 @@ export type EntityModalRequest =
   | { kind: 'body-measurement'; date?: string }
   | { kind: 'wish'; id: string }
   /** A Shop item: open by `id` (a wishlist row as its record; `fact` opens that fact's editor — an old "Could sell for"'s "update it"), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
-  | { kind: 'shop-item'; id?: string; fact?: 'value'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
+  | { kind: 'shop-item'; id?: string; fact?: RecordFact; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
   /** Sell or give away one of your things (with its accessories), and where the money goes. */
   | { kind: 'shop-sell'; id: string }
   /** A thing's money chain: what earlier sales passed on, and "Try other prices". */

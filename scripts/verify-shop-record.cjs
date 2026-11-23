@@ -178,7 +178,7 @@ console.log('the nudge line')
   const looks = S.needsALook([phone, sofa, vac], { watches: new Map() }, TODAY)
   check('its own Needs-a-look row, the most urgent first', St.nudgeFor(phone, looks, TODAY).kind === 'return_closing' && St.nudgeFor(phone, looks, TODAY).tone === 'warn')
   check('… snoozed or put away: none (only the rows still shown are passed)', St.nudgeFor(phone, looks.filter(l => l.itemId !== 'ph'), TODAY) === null)
-  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks, TODAY); return x.kind === 'tidy_up' && x.action === 'day' && x.facts.includes('no purchase day') })())
+  check('the tidy-up row\'s words for it, with the purchase day to add', (() => { const x = St.nudgeFor(sofa, looks, TODAY); return x.kind === 'tidy_up' && x.action === 'fix' && x.fact === 'bought' && x.facts.includes('purchase day missing — set it') })())
   check('still yours with no "Could sell for": the fact that gives its cost per month', St.nudgeFor(vac, looks, TODAY).action === 'value')
   check('an accessory, a thing gone or a wish with nothing due: no nudge', St.nudgeFor(mine({ accessory_of: 'ph' }), [], TODAY) === null
     && St.nudgeFor(mine({ disposal: 'sold', disposed_on: day(-2) }), [], TODAY) === null && St.nudgeFor(item({}), [], TODAY) === null)
@@ -205,6 +205,22 @@ console.log('the record\'s draft: "+ New category…" (made on Save, as the add 
   const row = item({ category_id: 'c1' })
   const p = D.patchOf(row, { category_id: top, new_top: 'Garden', new_sub: 'Tools', bought_day: undefined })
   check('the typed names are never sent as columns', eq(Object.keys(p), ['category_id']) && p.category_id === top, JSON.stringify(p))
+}
+
+console.log('the record\'s one row of actions')
+{
+  const { fitActions } = require('../src/features/shop/components/record/recordActions')
+  const mineActions = [{ key: 'sell', label: 'Sell' }, { key: 'acc', label: 'Accessory' }, { key: 'wrong', label: 'Something\'s wrong' }]
+  const keys = r => [r.shown.map(a => a.key), r.more.map(a => a.key)]
+  check('not measured yet: every action shows (nothing is dropped on a guess)', eq(keys(fitActions(null, mineActions)), [['sell', 'acc', 'wrong'], []]))
+  check('a wide row keeps every button', eq(keys(fitActions(40, mineActions)), [['sell', 'acc', 'wrong'], []]))
+  check('the side pane\'s row (≈ 16rem): the first buttons, the rest behind ⋯ — never a second line', (() => {
+    const r = fitActions(16, mineActions)
+    return r.more.length > 0 && r.shown[0].key === 'sell'
+  })())
+  check('a very narrow row still shows the primary action; the rest go behind ⋯', eq(keys(fitActions(3, mineActions)), [['sell'], ['acc', 'wrong']]))
+  check('an icon-only action (Undo: still mine) is one small button', eq(keys(fitActions(8, [{ key: 'undo', label: 'Undo: still mine', iconOnly: true }])), [['undo'], []]))
+  check('the actions keep their order', eq(keys(fitActions(12, mineActions)).flat(), ['sell', 'acc', 'wrong']))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -1,3 +1,4 @@
+import type { RecordFact } from '../../shopSuggestions'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { TonePill } from '../../../../shared/ui'
 import { RecordBody, RecordFooter } from './RecordBody'
@@ -10,7 +11,7 @@ import type { ShopItem } from '../../types'
  * and the sections that open in place (RecordBody). Owned from 60rem opens
  * the same record in its side pane instead (RecordPane).
  */
-export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFact?: 'value'; onClose: () => void }) {
+export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFact?: RecordFact; onClose: () => void }) {
   const r = useShopRecord(item, openFact, onClose)
   return (
     <ModalShell

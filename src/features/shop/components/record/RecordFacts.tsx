@@ -8,7 +8,7 @@ import type { ShopCategory, ShopItem } from '../../types'
 
 /** The facts the record's Resale section holds (the rest are in Facts). */
 const RESALE_OWN = ['value', 'resale']
-const RESALE_GONE = ['how', 'left', 'soldTo', 'got']
+const RESALE_GONE = ['how', 'left', 'soldTo', 'got', 'saleRate']
 
 /**
  * The record's facts as text, tap to edit; the empty ones wait as "+" chips.
@@ -30,11 +30,13 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
   const v = { ...item, ...d.draft } as ShopItem & RecordDraft
   const ctx: FactCtx = { v, boughtDay: d.boughtDay, set: d.set, categories, today, parents }
   const owned = state === 'mine' || state === 'gone' || (state === 'other' && item.status === 'bought')
+  // A returned thing is "other", not "gone", yet it left with a sale's facts: they sit in Facts.
+  const left = state === 'gone' || (state === 'other' && !!item.disposal)
   const byId = new Map<string, FactDef>()
   for (const f of [
     ...commonFacts(ctx, state === 'general' ? 'general' : owned ? 'owned' : 'buy'),
     ...(state === 'general' ? generalFacts(ctx) : owned ? ownFacts(ctx, state === 'gone') : buyFacts(ctx)),
-    ...(state === 'gone' ? goneFacts(ctx) : []),
+    ...(left ? goneFacts(ctx) : []),
   ]) byId.set(f.id, f)
   const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter((f): f is FactDef => !!f)
   const bought = ['title', 'category', 'parent', 'bought', 'paid', 'rate', ...(state === 'mine' ? [] : ['store']), 'region', 'saved', 'serial', 'link', 'notes', 'picture', 'kept']
@@ -45,7 +47,7 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
       : !owned
         ? [{ title: null, facts: pick(['title', 'category', 'price', 'reason', 'priority', 'store', 'deal', 'buyOn', 'target', 'errand', 'region', 'link', 'notes', 'picture']) }]
         // A thing gone keeps "Bought to sell" with its purchase (Resale holds how it left).
-        : [{ title: null, facts: pick(state === 'gone' ? [...bought, 'resale'] : bought) }]
+        : [{ title: null, facts: pick(state === 'gone' ? [...bought, 'resale'] : state === 'other' && item.disposal ? [...bought, 'how', 'left', 'soldTo', 'got', 'saleRate'] : bought) }]
 
   return (
     <>

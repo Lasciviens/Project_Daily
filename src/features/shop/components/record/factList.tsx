@@ -173,7 +173,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
     }] : []),
     { id: 'bought', label: 'Bought on', filled: !!c.boughtDay, value: <>{v.approx_dates ? '≈ ' : ''}{formatDate(c.boughtDay)}{!gone && c.boughtDay ? quiet(` · ${durationLabel(c.boughtDay, today)} ago`) : ''}</>,
       editor: <>
-        <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
+        <DateInput value={c.boughtDay} onChange={d => d && set({ bought_day: d })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" autoFocus />
         <Toggle checked={!!v.approx_dates} onChange={x => set({ approx_dates: x })}>Roughly — from memory</Toggle>
       </> },
     { id: 'paid', label: 'Paid', filled: v.price != null || !!v.got_as_gift, chip: 'Price paid', value: <><PaidText item={v} />{v.used ? quiet(' · used') : ''}</>,
@@ -219,12 +219,26 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
   return facts
 }
 
+/** The rate of the day a thing left, typed (the database keeps it as the owner's own: `sale_fx_source` 'manual'). */
+function saleRateFact(c: FactCtx): FactDef | null {
+  const { v, set } = c
+  const sc = v.sale_currency ?? currencyOf(v)
+  if (sc === 'NOK' || v.sale_price == null) return null
+  return { id: 'saleRate', label: 'Sale rate', filled: true,
+    value: v.sale_fx_nok ? <>1 {sc} = {v.sale_fx_nok} NOK{quiet(v.sale_fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(v.disposed_on)}`)}</> : quiet('Waiting for Norges Bank\'s rate of that day'),
+    editor: <>
+      <p className="text-meta text-fg-muted">The rate you got (NOK for 1 {sc}) — or leave it to Norges Bank's rate of the day.</p>
+      <DecimalInput value={v.sale_fx_nok ?? null} onValue={r => set({ sale_fx_nok: r, sale_fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit, sale" className="input w-[10rem] tabular-nums" autoFocus />
+    </> }
+}
+
 /** How a thing left, and the money back. */
 export function goneFacts(c: FactCtx): FactDef[] {
   const { v, set } = c
   const sc = v.sale_currency ?? currencyOf(v)
   const how = v.disposal ?? 'other'
   const to = how === 'given' ? 'Given to' : how === 'traded_in' ? 'Traded in at' : 'To'
+  const saleRate = saleRateFact(c)
   return [
     { id: 'how', label: 'How it left', filled: true, value: DISPOSAL_LABEL[how],
       editor: <ChoiceChips<ShopDisposal> value={how} options={HOW_OPTIONS} onChange={d => set({ disposal: d })} label="How it left" /> },
@@ -238,5 +252,6 @@ export function goneFacts(c: FactCtx): FactDef[] {
     { id: 'got', label: 'Got back', filled: v.sale_price != null, chip: 'Money back', value: v.sale_price != null ? money(v.sale_price, sc) : null,
       hint: v.sale_group ? 'Its share of a sale together with other things.' : undefined,
       editor: <MoneyEditor label="Got back" amount={v.sale_price ?? null} currency={sc} onAmount={p => set({ sale_price: p, ...(p != null && !v.sale_currency ? { sale_currency: sc } : {}) })} onCurrency={x => set({ sale_currency: x })} autoFocus /> },
+    ...(saleRate ? [saleRate] : []),
   ]
 }

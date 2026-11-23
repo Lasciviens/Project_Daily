@@ -1,10 +1,13 @@
 import { Check } from 'lucide-react'
 import { MetaLine } from '../../../../shared/ui'
 import type { Nudge } from '../../recordStory'
+import type { RecordFact } from '../../shopSuggestions'
 import { LookIcon } from '../lookIcon'
 import { wrapLong } from '../lookFacts'
 
-const ACTION: Record<NonNullable<Nudge['action']>, string> = { bought: 'Bought', value: 'Add', day: 'Add the day', claim: 'Claim' }
+const ACTION: Record<NonNullable<Nudge['action']>, string> = { bought: 'Bought', value: 'Add', fix: 'Fix it', claim: 'Claim' }
+
+const FIX: Record<RecordFact, string> = { value: 'Add', bought: 'Add the day', rate: 'Type the rate', saleRate: 'Type the rate', got: 'Type the amount' }
 
 /**
  * The record's one nudge line (recordStory.nudgeFor): the most useful next
@@ -16,7 +19,7 @@ export function RecordNudge({ nudge, onAction }: { nudge: Nudge; onAction: () =>
   const facts = nudge.where && nudge.facts.length
     ? [...wrapLong(nudge.facts.slice(0, -1)), <span key="w">{nudge.facts[nudge.facts.length - 1]} <span className="whitespace-normal break-words">{nudge.where}</span></span>]
     : wrapLong(nudge.facts)
-  const label = nudge.action ? (nudge.action === 'value' && nudge.kind === 'old_value' && nudge.key !== 'no_value' ? 'Update' : ACTION[nudge.action]) : null
+  const label = nudge.action ? (nudge.action === 'fix' ? FIX[nudge.fact ?? 'bought'] : nudge.action === 'value' && nudge.kind === 'old_value' && nudge.key !== 'no_value' ? 'Update' : ACTION[nudge.action]) : null
   return (
     <div className="flex items-center gap-2.5 rounded-row border border-line bg-surface-2 px-3 py-1.5">
       <LookIcon look={nudge} small />

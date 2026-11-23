@@ -1,3 +1,4 @@
+import type { RecordFact } from '../../shopSuggestions'
 import { Suspense, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { PackagePlus } from 'lucide-react'
 import { Button, EmptyState, KeepRoom, PageBoard, Skeleton, useBoardStep } from '../../../../shared/ui'
@@ -35,7 +36,7 @@ const RecordPane = lazyPart('shop-record-pane', () => import('../record/RecordPa
 const PANE_PARTS = [RecordPane]
 
 /** What the side pane shows: a thing, opened at a fact (an old estimate), `seq` for each opening. */
-interface Picked { id: string; fact?: 'value'; seq: number }
+interface Picked { id: string; fact?: RecordFact; seq: number }
 
 /**
  * Focus the element that opened the pane — or, when it is gone (a Needs-a-look row: the list leaves the rail while
@@ -120,7 +121,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const listLoading = isLoading || !pictures.ready
 
   /** Open a thing in the side pane — asking first when the one open has unsaved changes. */
-  const pick = useCallback(async (id: string, fact?: 'value') => {
+  const pick = useCallback(async (id: string, fact?: RecordFact) => {
     if (dirty.current && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return
     dirty.current = false
     const from = document.activeElement

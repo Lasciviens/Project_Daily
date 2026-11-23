@@ -1,3 +1,4 @@
+import type { RecordFact } from '../shopSuggestions'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { EntityModalPending, useFirstLoaded } from '../../../shared/modals'
 import { useShopItem } from '../hooks/useShop'
@@ -15,7 +16,7 @@ export function ShopItemEntityModal({ request, onClose }: EntityModalProps<'shop
   return <ShopItemByIdModal id={request.id} fact={request.fact} onClose={onClose} />
 }
 
-function ShopItemByIdModal({ id, fact, onClose }: { id: string; fact?: 'value'; onClose: () => void }) {
+function ShopItemByIdModal({ id, fact, onClose }: { id: string; fact?: RecordFact; onClose: () => void }) {
   const query = useShopItem(id)
   const first = useFirstLoaded(query.data, query)
   const item = query.data ?? first

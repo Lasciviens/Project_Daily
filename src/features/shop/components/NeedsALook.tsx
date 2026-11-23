@@ -4,7 +4,7 @@ import { AlarmClock, ArrowUpRight, Check, ChevronDown, ChevronRight, MoreHorizon
 import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { lookLine, SNOOZE_DAYS, type Look, type LookThing } from '../shopSuggestions'
+import { lookLine, SNOOZE_DAYS, type Look, type LookThing, type RecordFact } from '../shopSuggestions'
 import { LookIcon } from './lookIcon'
 import { wrapLong } from './lookFacts'
 import { isShownLink } from '../storeRows'
@@ -30,7 +30,7 @@ export interface LookActions {
   onGotIt: (look: Look) => void
   onShowAgain: (look: Look) => void
   /** Open one of the things a counting row lists. */
-  onOpenThing: (id: string) => void
+  onOpenThing: (id: string, fact?: RecordFact) => void
 }
 
 /** Its state: still loading, a read that failed (one line with Try again — never an answer), or the rows and those put away. */
@@ -113,14 +113,14 @@ function LookRow({ look, today, actions, onList }: { look: Look; today: string; 
 }
 
 /** The things a counting row is about (tidy-up, a deal day): each opens its record. */
-function ThingsSheet({ look, onClose, onOpenThing }: { look: Look; onClose: () => void; onOpenThing: (id: string) => void }) {
+function ThingsSheet({ look, onClose, onOpenThing }: { look: Look; onClose: () => void; onOpenThing: (id: string, fact?: RecordFact) => void }) {
   return (
     <ModalShell open onClose={onClose} title={look.title} size="sm"
       subtitle={look.kind === 'deal_day' ? look.facts.slice(0, 2).join(' · ') : undefined}>
       <ul className="-mx-2 flex flex-col">
         {look.things.map((t: LookThing) => (
           <li key={t.id}>
-            <button type="button" onClick={() => onOpenThing(t.id)}
+            <button type="button" onClick={() => onOpenThing(t.id, t.fact)}
               className="flex min-h-[44px] w-full items-center gap-2 rounded-row px-2 py-1.5 text-left transition-colors hover:bg-surface-hover">
               <span className="min-w-0 flex-1">
                 <Truncate as="span" className="block text-body text-fg">{t.title}</Truncate>

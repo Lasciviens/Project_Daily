@@ -171,9 +171,24 @@ console.log('old wishes and tidy-up')
   const noSum = mine({ title: 'Monitor', disposal: 'sold', disposed_on: day(-40), sale_price: null })
   const tidy = looks([noDay, rate, fresh, noSum])
   check('one tidy-up row counts the things and says what each lacks', eq(kinds(tidy), ['tidy_up']) && tidy[0].title === '3 things to tidy up'
-    && eq(tidy[0].facts, ['1 without a purchase day', '1 rate pending', '1 sale without an amount']), JSON.stringify(tidy[0] && tidy[0].facts))
+    && eq(tidy[0].facts, ['1 without a purchase day', '1 NOK rate missing', '1 sale without an amount']), JSON.stringify(tidy[0] && tidy[0].facts))
   check('…and lists every one of them with its reason (Show), not only the first', tidy[0].action === 'list' && tidy[0].itemId === null
-    && eq(tidy[0].things.map(t => [t.title, t.facts.join()]), [['Chair', 'no purchase day'], ['Carpet', 'rate pending'], ['Monitor', 'sale without an amount']]))
+    && eq(tidy[0].things.map(t => [t.title, t.facts.join()]), [['Chair', 'purchase day missing — set it'], ['Carpet', 'NOK rate missing — type it'], ['Monitor', 'sale amount missing — type it']]))
+  check('each thing names the fact that fixes it: the purchase day, the rate, the sale amount',
+    eq(tidy[0].things.map(t => t.fact), ['bought', 'rate', 'got']))
+  const saleRate = mine({ title: 'Lens', disposal: 'sold', disposed_on: day(-20), sale_price: 300, sale_currency: 'EUR', sale_fx_nok: null })
+  check('a missing rate of the sale day opens the sale rate, not the purchase rate', looks([saleRate])[0].things[0].fact === 'saleRate')
+  check('factToFix: day first, then the purchase rate, the sale rate, the sale amount; nothing when nothing is lacking',
+    S.factToFix({ noDay: true, buyRate: true, saleRate: true, noAmount: true }) === 'bought'
+    && S.factToFix({ noDay: false, buyRate: true, saleRate: true, noAmount: true }) === 'rate'
+    && S.factToFix({ noDay: false, buyRate: false, saleRate: true, noAmount: true }) === 'saleRate'
+    && S.factToFix({ noDay: false, buyRate: false, saleRate: false, noAmount: true }) === 'got'
+    && S.factToFix({ noDay: false, buyRate: false, saleRate: false, noAmount: false }) === null)
+  check('sectionOfFact: an estimate and a sale\'s money are in Resale (a thing gone), the rest in Facts',
+    S.sectionOfFact('value', 'mine') === 'resale' && S.sectionOfFact('got', 'gone') === 'resale' && S.sectionOfFact('saleRate', 'gone') === 'resale'
+    && S.sectionOfFact('got', 'other') === 'facts' && S.sectionOfFact('rate', 'mine') === 'facts' && S.sectionOfFact('bought', 'gone') === 'facts')
+  check('the signature is still made from the old words: a row put away with Got it stays away after the words changed',
+    tidy[0].signature === require('../src/features/shop/signalStates').signalSignature('tidy_up', ...[[noDay, 'no purchase day'], [rate, 'rate pending'], [noSum, 'sale without an amount']].map(([t, w]) => `${t.id}:${w}`).sort()))
   check('a rate is pending only after three days (Norges Bank publishes after 16:00; the page fetches it)', looks([fresh]).length === 0)
   check('a column that is absent (before migration 134) is not "missing"', looks([mine({ bought_at: undefined })]).length === 0)
   check('a new thing to tidy up changes its signature (so Got it lets it back)', looks([noDay])[0].signature !== tidy[0].signature)

@@ -1,7 +1,9 @@
+
 import { useMemo, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
-import { Button, TonePill, cx } from '../../../../shared/ui'
+import { Button, IconButton, TonePill, cx } from '../../../../shared/ui'
+import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
@@ -10,6 +12,7 @@ import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
 import { ItemThumb } from '../shopKit'
 import { imageOf } from '../shopFormat'
+import { fitActions } from './recordActions'
 import { RecordFacts } from './RecordFacts'
 import { RecordStrip } from './RecordStrip'
 import { PriceCheckButton, RecordPriceWatch } from './RecordPriceWatch'
@@ -31,6 +34,7 @@ import { LookElsewhere } from '../purchase/LookElsewhere'
 import { useMarketSearches } from '../../hooks/useShopStores'
 import { useOpenRecord } from './recordOpen'
 import { newCategoryMissing } from './useRecordDraft'
+import { sectionOfFact, type RecordFact } from '../../shopSuggestions'
 import type { ShopRecordModel } from './useShopRecord'
 
 /**
@@ -42,7 +46,7 @@ import type { ShopRecordModel } from './useShopRecord'
  * wide popup the Story sits beside the sections. `pill`: where the state pill
  * shows in the body — on a phone, where the popup's header has no room.
  */
-export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact?: 'value'; pill: 'phone' | 'none' }) {
+export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact?: RecordFact; pill: 'phone' | 'none' }) {
   const { item, state, d, today, owned } = r
   const modal = useEntityModal()
   const openRecord = useOpenRecord()
@@ -55,7 +59,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const resale = state === 'mine' || state === 'gone'
   const { data: listings = [] } = useListings()
   const listing = resale ? openListingOf(listings, item.id) : null
-  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact === 'value' ? (resale ? 'resale' : 'facts') : null)
+  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : null)
   const picture = imageOf(item, watch)
   const from = boughtOn(item)
   // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).
@@ -67,34 +71,43 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
   const edit = (fact: string, section: SectionId) => { sections.show(section); d.setEditing(fact) }
   const onNudge = () => {
     if (nudge?.action === 'bought') r.buy()
-    else if (nudge?.action === 'value') edit('value', resale ? 'resale' : 'facts')
-    else if (nudge?.action === 'day') edit('bought', 'facts')
+    else if (nudge?.action === 'value' || nudge?.action === 'fix') {
+      const fact = nudge.fact ?? 'value'
+      edit(fact, sectionOfFact(fact, state))
+    }
     else if (nudge?.action === 'claim') modal.open({ kind: 'shop-claim', id: item.id })
   }
 
-  const more = r.actions.filter(a => a.more)
+  // One line at every width: the buttons that fit in the room the row has, the rest behind ⋯ (recordActions.ts).
+  const { ref: actionsRef, width: actionsRoom } = useElementWidthRem<HTMLDivElement>()
+  const { shown, more } = fitActions(actionsRoom, r.actions)
   const actions = r.actions.length > 0 && (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {r.actions.map(a => (
-        <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick}
-          className={a.more ? 'hidden @[30rem]:inline-flex' : undefined}>
-          {a.label}
-        </Button>
-      ))}
-      {more.length > 0 && (
-        <Menu as="div" className="@[30rem]:hidden">
-          <MenuButton className="icon-btn icon-btn-bordered" aria-label="More actions" title="More actions">
-            <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
-          </MenuButton>
-          <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
-            {more.map(a => (
-              <MenuItem key={a.key}>
-                <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
-              </MenuItem>
-            ))}
-          </MenuItems>
-        </Menu>
-      )}
+    <div ref={actionsRef} className="min-w-0">
+      <div className="flex flex-nowrap items-center gap-1.5">
+        {shown.map(a => a.iconOnly
+          ? (
+            <IconButton key={a.key} bordered label={a.label} onClick={a.onClick} className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">{a.icon}</IconButton>
+          )
+          : (
+            <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick} className="shrink-0">
+              {a.label}
+            </Button>
+          ))}
+        {more.length > 0 && (
+          <Menu as="div" className="shrink-0">
+            <MenuButton className="icon-btn icon-btn-bordered h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label="More actions" title="More actions">
+              <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
+            </MenuButton>
+            <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
+              {more.map(a => (
+                <MenuItem key={a.key}>
+                  <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
+                </MenuItem>
+              ))}
+            </MenuItems>
+          </Menu>
+        )}
+      </div>
     </div>
   )
 

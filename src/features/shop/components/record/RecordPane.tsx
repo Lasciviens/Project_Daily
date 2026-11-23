@@ -1,3 +1,4 @@
+import type { RecordFact } from '../../shopSuggestions'
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { X } from 'lucide-react'
 import { IconButton, TonePill, Truncate } from '../../../../shared/ui'
@@ -21,7 +22,7 @@ import type { ShopItem } from '../../types'
  */
 export function RecordPane({ id, fact, onClose, onOpen, onDirty }: {
   id: string
-  fact?: 'value'
+  fact?: RecordFact
   onClose: () => void
   onOpen: (id: string) => void
   /** Whether it holds unsaved changes: the list asks before it opens another thing. */
@@ -64,7 +65,7 @@ function useFitToScreen(ref: RefObject<HTMLElement | null>) {
   }, [ref])
 }
 
-function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: 'value'; onClose: () => void; onDirty: (dirty: boolean) => void }) {
+function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: RecordFact; onClose: () => void; onDirty: (dirty: boolean) => void }) {
   const r = useShopRecord(item, fact, onClose)
   const ref = useRef<HTMLElement>(null)
   useHistoryDismiss(true, () => { void r.close() }, !r.saving)
