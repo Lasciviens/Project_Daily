@@ -82,12 +82,13 @@ export function chatIntro(mode: ChatMode, tools: readonly string[]): { text: str
     has('get_day_plan') && 'What is on my plan today?',
     has('get_week_figures') && 'How is my week going so far?',
     has('get_food_day') && 'What have I eaten today against my targets?',
+    has('get_transit') && 'When is the next bus from home?',
     has('find_text') && 'Find my tasks and notes about the dentist',
   ].filter(Boolean) as string[]
   const can = [reads.length ? `read your ${list(reads)}` : '', has('get_transit') ? 'look up live bus and train times' : '', writes.length ? `propose ${list(writes.map(w => w))} for you to confirm` : ''].filter(Boolean)
   return {
-    text: can.length ? `What can I look up for you? I can ${can.join(', and ')}.` : 'Every tool is switched off in Settings, so I can only answer from what you tell me.',
-    suggestions: suggestions.slice(0, 4),
+    text: can.length ? `What can I look up for you? I can ${list(can)}.` : 'Every tool is switched off in Settings, so I can only answer from what you tell me.',
+    suggestions: suggestions.slice(0, 5),
   }
 }
 

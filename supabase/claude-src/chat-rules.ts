@@ -70,7 +70,7 @@ export const CHAT_LIMITS = {
 
 export const CHAT_JOB_NAME = 'chat'
 /** Changes whenever the instructions or a tool's words change; every ledger row of the chat carries it. */
-export const CHAT_VERSION = '2026-11-23.6'
+export const CHAT_VERSION = '2026-11-23.7'
 
 // ── The permission wall (the Settings screen for it comes in phase 4b) ──────
 

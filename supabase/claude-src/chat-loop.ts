@@ -73,7 +73,7 @@ const STEP_LABELS: Record<string, string> = {
   get_health_trends: "Looking at the week's health figures",
   get_pt_verdicts: "Reading the coach's saved verdicts",
   note_shortcut: 'Noting an idea for the Suggestions list',
-  get_transit: 'Looking up live public transport',
+  get_transit: 'Looking up bus and train times',
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
@@ -511,16 +511,18 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       const id = typeof call.id === 'string' && TOOL_USE_ID.test(call.id) ? call.id : ''
       const timedOut: ToolOutput = { ok: false, message: 'That tool took too long. Try again with a narrower question, or answer without it.' }
       const blocked = verdicts[index]
+      const stopTool = new AbortController()
       const output: ToolOutput = blocked
         ? { ok: false, message: blocked }
         : await withTimeout(
           runChatTool(name, call.input, toolNames, modes, {
-            db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs,
+            db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs, signal: stopTool.signal,
             // The suggestions list is written by the service role, with the verified user id and a key made from the idea itself (the model never supplies one); the ledger row of this round is where it was first seen.
             noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: 0, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
           }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )
+      stopTool.abort()
       let finalOutput = output
       let card: ProposalCard | null = null
       // Only a write tool can make a proposal.

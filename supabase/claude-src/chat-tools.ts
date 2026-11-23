@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · Ask AI, the tools
 //
-//  Thirteen tools (the last one, get_transit, reads a public service and none of the owner's rows but their saved places), each a reviewed, named, parameterised query (AI last: code prepares the answer, the model only reads
-//  it). Six read, two PROPOSE a write; nothing here writes to the owner's tables except `applyProposal`, which only
+//  Thirteen tools: eleven read (the coach's three, the note tool and get_transit among them; get_transit reads a public
+//  service and none of the owner's rows but their saved places) and two PROPOSE a write, each a reviewed, named,
+//  parameterised query (AI last: code prepares the answer, the model only reads it); nothing here writes to the owner's tables except `applyProposal`, which only
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:
@@ -60,6 +61,10 @@ export interface ToolContext {
    * round's ledger row, the key made from the idea itself). Absent where there is no list (the phone): the tool then says so.
    */
   noteIdea?: (idea: CheckedIdea) => Promise<AddResult>
+  /** Cancels what a tool has started once its time is up (a tool that fetches stops with it). */
+  signal?: AbortSignal
+  /** A shorter time for each outside request than the tool's own default (the phone's). */
+  requestMs?: number
 }
 
 interface ToolDef {
@@ -619,7 +624,7 @@ const GET_TRANSIT: ToolDef = {
   description: "Live public transport in Norway from Entur: next departures from a stop, or trips from A to B, now or at a time. Places: the person's saved places by name (home, work), a stop name, or an address. Gives line, mode, platform, times (Oslo), delay or cancellation, duration. At most 8 departures or 3 trips.",
   fields: {
     action: { type: 'string', max: 10, enum: TRANSIT_ACTIONS, description: 'departures from one stop, or a trip from A to B.' },
-    from: { type: 'string', max: 80, description: 'The stop or place to leave from: "home", "work", a stop name, or an address.' },
+    from: { type: 'string', max: 80, description: 'The stop or place to leave from: "home", "work", a stop name, or an address. "" for departures: the person\'s default saved stop.' },
     to: { type: 'string', max: 80, description: 'The destination for a trip, same kinds as from; "" for departures.' },
     date: { type: 'string', max: 10, description: 'The day as YYYY-MM-DD, or "" for today.' },
     time: { type: 'string', max: 5, description: 'HH:MM in Oslo time, or "" for now.' },
@@ -627,7 +632,7 @@ const GET_TRANSIT: ToolDef = {
     mode: { type: 'string', max: 10, enum: TRANSIT_MODES, description: 'For departures: only this kind of vehicle, or "any".' },
   },
   async run(args, ctx) {
-    const answer = await transitLookup({ action: args.action as string, from: args.from as string, to: args.to as string, date: args.date as string, time: args.time as string, time_means: args.time_means as string, mode: args.mode as string }, { db: ctx.db, userId: ctx.userId, now: ctx.now })
+    const answer = await transitLookup({ action: args.action as string, from: args.from as string, to: args.to as string, date: args.date as string, time: args.time as string, time_means: args.time_means as string, mode: args.mode as string }, { db: ctx.db, userId: ctx.userId, now: ctx.now, signal: ctx.signal, requestMs: ctx.requestMs })
     return answer.ok ? { ok: true, text: cutResult(answer.text), rows: answer.rows } : fail(answer.message)
   },
 }
