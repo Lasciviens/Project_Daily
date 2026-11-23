@@ -31,6 +31,7 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_training_week: { label: 'Training week', what: "Reads a week's sessions, sets, muscles and key lifts." },
   get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
   get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
+  note_shortcut: { label: 'Note a suggestion', what: 'Writes one suggestion into Developer → AI → Learn → Suggestions when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 
@@ -144,6 +145,8 @@ export interface ChatTurn {
   photos: number
   /** The photos themselves as data addresses, to draw small pictures (a person's turn; read from the stored message or kept from the send). */
   photoUrls: string[]
+  /** The kind of idea this answer noted for the Suggestions list (`widget`, `chart`…), or null. Only the kind: the idea's own text is shown in the list, never here. */
+  suggestion: string | null
 }
 
 /** The only events the function sends. */
@@ -154,7 +157,7 @@ export type ChatEvent =
   | { event: 'retract' }
   | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
   | { event: 'proposal'; card: ChatCard }
-  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; costUsd: number; wall: boolean; cutOff: boolean; promptTokens: number; runId: string | null; thinking: string }
+  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; costUsd: number; wall: boolean; cutOff: boolean; promptTokens: number; runId: string | null; thinking: string; suggestion: string | null }
   | { event: 'error'; reason: string; message: string; conversationId: string | null; costUsd: number; runId: string | null }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -211,6 +214,7 @@ export function readChatEvent(name: string, data: unknown): ChatEvent | null {
         costUsd: cost, wall: data.wall === true, cutOff: data.ending === 'cut_off',
         promptTokens: typeof data.prompt_tokens === 'number' && Number.isFinite(data.prompt_tokens) && data.prompt_tokens >= 0 ? data.prompt_tokens : 0,
         runId: typeof data.run_id === 'string' && UUID.test(data.run_id) ? data.run_id : null, thinking: str(data.thinking, 8000),
+        suggestion: isObject(data.suggestion) && typeof data.suggestion.kind === 'string' && /^[a-z_]{3,20}$/.test(data.suggestion.kind) ? data.suggestion.kind : null,
       }
     }
     case 'error':
@@ -244,7 +248,7 @@ export function parseSse(buffer: string): { events: { name: string; data: unknow
 }
 
 export const newTurn = (key: string, role: ChatTurn['role'], text = ''): ChatTurn =>
-  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false, photos: 0, photoUrls: [] })
+  ({ key, role, text, steps: [], citations: [], cards: [], costUsd: null, runId: null, thinking: '', errorReason: null, streaming: role === 'assistant', error: null, cutOff: false, photos: 0, photoUrls: [], suggestion: null })
 
 /**
  * The answer's turn after one more event. Text from a later request of the same answer (after a lookup) starts a new
@@ -271,7 +275,7 @@ export function applyChatEvent(turn: ChatTurn, event: ChatEvent): ChatTurn {
       return { ...turn, cards: turn.cards.some(c => c.id === event.card.id) ? turn.cards : [...turn.cards, event.card] }
     case 'done':
       return {
-        ...turn, text: event.text || turn.text, citations: event.citations, costUsd: event.costUsd, runId: event.runId, thinking: event.thinking,
+        ...turn, text: event.text || turn.text, citations: event.citations, costUsd: event.costUsd, runId: event.runId, thinking: event.thinking, suggestion: event.suggestion,
         // The cards already shown keep what has been read for them; a card the stream did not announce is added.
         cards: [...turn.cards, ...event.cards.filter(c => !turn.cards.some(x => x.id === c.id))],
         streaming: false, cutOff: event.cutOff, error: null, errorReason: null,
@@ -285,7 +289,7 @@ export function applyChatEvent(turn: ChatTurn, event: ChatEvent): ChatTurn {
 
 // ── What a step shows, and what a card shows ────────────────────────────────
 
-const INPUT_LABELS: Record<string, string> = { date: 'Date', week: 'Week', section: 'Part', query: 'Words', kind: 'Kind', sql: 'SQL', title: 'Title', note: 'Note', due_date: 'Due date', priority: 'Priority', meal: 'Meal' }
+const INPUT_LABELS: Record<string, string> = { date: 'Date', week: 'Week', section: 'Part', query: 'Words', kind: 'Kind', sql: 'SQL', title: 'Title', note: 'Note', due_date: 'Due date', priority: 'Priority', meal: 'Meal', why: 'Why' }
 
 /** "2026-11-24" as "24.11.2026"; anything else as it is. */
 export function dmy(value: string): string {
@@ -362,7 +366,7 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
-  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts",
+  get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting a suggestion',
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
@@ -407,6 +411,7 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
     if (typeof meta.run_id === 'string' && UUID.test(meta.run_id)) answer.runId = meta.run_id
     if (typeof meta.cost_usd === 'number' && Number.isFinite(meta.cost_usd)) answer.costUsd = (answer.costUsd ?? 0) + meta.cost_usd
     if (Array.isArray(meta.citations)) answer.citations = readCitations(meta.citations)
+    if (isObject(meta.suggestion) && typeof meta.suggestion.kind === 'string' && /^[a-z_]{3,20}$/.test(meta.suggestion.kind)) answer.suggestion = meta.suggestion.kind
     if (meta.ending === 'cut_off') answer.cutOff = true
   }
   return turns

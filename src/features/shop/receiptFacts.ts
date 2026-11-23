@@ -8,14 +8,22 @@ import type { ReceiptFill } from '../ai/claude/featureRules'
 import type { ShopCurrency } from './types'
 
 const SOURCE: FactSource = { origin: 'receipt', label: 'the receipt' }
+/** What a web search found: it says so, and the owner checks it. */
+const SEARCHED: FactSource = { origin: 'receipt', label: 'receipt + web search' }
 
 /** The name, the amount (with its currency) and the store of a read receipt, as autofill facts (all `on`). */
 export function receiptFacts(fill: ReceiptFill, at: string): Fact[] {
   const facts: Fact[] = []
-  if (fill.title) facts.push({ key: 'title', value: fill.title, source: SOURCE, confidence: 'likely', on: true, at })
+  const found = !!fill.searched
+  const source = found ? SEARCHED : SOURCE
+  if (fill.title) facts.push({ key: 'title', value: fill.title, source, confidence: found ? 'check' : 'likely', on: true, at })
   if (fill.price !== undefined && fill.currency) {
     facts.push({ key: 'price', value: { amount: fill.price, currency: fill.currency as ShopCurrency }, source: SOURCE, confidence: 'exact', on: true, at })
   }
+  // Printed: "likely", so it beats the title's own guess in the add sheet (an equal confidence loses). Found by a search: "check".
+  if (fill.brand) facts.push({ key: 'brand', value: fill.brand, source, confidence: found ? 'check' : 'likely', on: true, at })
+  if (fill.model) facts.push({ key: 'model', value: fill.model, source, confidence: found ? 'check' : 'likely', on: true, at })
+  if (fill.condition) facts.push({ key: 'condition', value: fill.condition, source: SOURCE, confidence: 'likely', on: true, at })
   if (fill.storeLabel) facts.push({ key: 'store', value: fill.storeLabel, source: SOURCE, confidence: fill.storeId ? 'exact' : 'check', on: true, at })
   return facts
 }

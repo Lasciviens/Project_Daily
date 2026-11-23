@@ -18,7 +18,7 @@ import { answerValue, checkedLine, checkedList, checkedNumber, isPlainObject } f
  * and is marked `language: 'source'`. Change this one sentence to change it for every recipe job (each job's version
  * then needs a new pin in scripts/verify-claude-function.cjs).
  */
-export const RECIPE_LANGUAGE_RULE = "Write the title, the ingredient names, the notes and the steps in English, translating them from whatever language the recipe is in: the recipe is saved, and everything the app saves is English. A name that is not meant to be translated (a brand, a place, the dish's own name such as \"Wiener Schnitzel\") stays as written. Translate faithfully, keep every amount and every step, and never add or drop anything."
+export const RECIPE_LANGUAGE_RULE = "Write title, ingredient names, notes and steps in English, translated faithfully from the recipe's language (keep every amount and step; add or drop nothing). Brand and dish names such as \"Wiener Schnitzel\" stay as written."
 
 /** The most a per-serving value may be, for a recipe and for a diary line alike (the app's own table limits). */
 export const NUTRITION_MAX = { calories: 5000, protein_g: 500, carbs_g: 1000, fat_g: 500, sugar_g: 1000 } as const

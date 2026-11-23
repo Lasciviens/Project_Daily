@@ -48,13 +48,20 @@ export interface ModelRequest {
   timeoutMs?: number
   /** Photos the model looks at (a quick guess, a receipt). Already checked by image-rules.ts; never stored anywhere. */
   images?: RequestImage[]
-  /** The provider's own web search, at most `maxUses` searches in this one call (a place's ideas). Absent: no tools at all. */
+  /** PDFs the model reads (a receipt). Already checked by image-rules.ts (`checkedPdf`); never stored anywhere. */
+  documents?: RequestDocument[]
+  /** The provider's own web search, at most `maxUses` searches in this one call (a place's ideas, a receipt's short lines). Absent: no tools at all. */
   webSearch?: { maxUses: number }
 }
 
 /** One photo as it travels: its type and its bytes as base64 (no `data:` prefix). Only these three types ever pass. */
 export interface RequestImage {
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
+  base64: string
+}
+
+/** One PDF as it travels: its bytes as base64 (no `data:` prefix). Only `application/pdf` ever passes. */
+export interface RequestDocument {
   base64: string
 }
 
@@ -318,6 +325,8 @@ export interface PreparedRun {
   userText: string
   /** Checked photos for the model to look at (only a job with `acceptsImage`). */
   images?: RequestImage[]
+  /** Checked PDFs for the model to read (only a job with `acceptsDocument`). Their real token count is asked of the provider before the reservation (run.ts). */
+  documents?: RequestDocument[]
   /** What the photos cost in prompt tokens (image-rules.ts), held in the reservation. */
   imageTokens?: number
   /** Let the model search the web, at most this many times in the call (only a job with `webSearchMax`). */
@@ -357,6 +366,8 @@ export interface JobDefinition {
   pickable?: boolean
   /** true: the request may carry one photo (image-rules.ts), so main.ts reads a body up to the image limit for it. */
   acceptsImage?: boolean
+  /** true: the request may carry one PDF instead of a photo (image-rules.ts `checkedPdf`); its tokens are counted by the provider before the reservation. */
+  acceptsDocument?: boolean
   instructions: string
   answerSchema: JsonSchema | null
   /**
@@ -368,7 +379,7 @@ export interface JobDefinition {
   enforceAnswerSchema: boolean
   /** Repo-relative paths of the files that define this job. */
   sourceFiles: readonly string[]
-  /** The tools the job lets the model use (only place_ideas: Anthropic's web search), for the Developer page. */
+  /** The tools the job lets the model use (place_ideas and receipt_read: Anthropic's web search), for the Developer page. */
   tools?: readonly { name: string; what: string }[]
   /** What else the Developer page says about this job (a step done by code before the model, say). */
   extraFeatures?: readonly string[]

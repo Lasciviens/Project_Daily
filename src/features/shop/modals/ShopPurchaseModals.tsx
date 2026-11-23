@@ -16,7 +16,7 @@ export function ShopJustBoughtModal({ request, onClose }: EntityModalProps<'shop
   const { query, item } = useRow(request.id)
   if (!item) return <EntityModalPending query={query} what="item" onClose={onClose} />
   // The form is seeded once; whether it is still bought follows the live row (Bought's Undo while it is open).
-  return <JustBoughtSheet item={item} bought={(query.data ?? item).status === 'bought'} onClose={onClose} />
+  return <JustBoughtSheet item={item} bought={(query.data ?? item).status === 'bought'} receipt={request.receipt} onClose={onClose} />
 }
 
 export function ShopClaimModal({ request, onClose }: EntityModalProps<'shop-claim'>) {

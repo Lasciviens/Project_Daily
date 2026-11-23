@@ -161,7 +161,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     secrets: ['ANTHROPIC_API_KEY'],
     direction: 'both', cadence: 'On each request — never runs by itself',
     usedIn: [{ label: 'Item screen ✨', path: '/daily' }, { label: 'Developer → AI', path: '/developer?tab=ai' }],
-    tables: ['ai_calls', 'ai_settings', 'ai_job_settings', 'ai_tool_settings'], migrations: ['194', '195', '198'],
+    tables: ['ai_calls', 'ai_settings', 'ai_job_settings', 'ai_tool_settings', 'ai_suggestions', 'ai_suggest_runs'], migrations: ['194', '195', '198', '199'],
     cost: 'paid', limits: 'Your own monthly budget stops every call when it is reached; the function also caps calls per minute and per day (Developer → AI → How it works).',
     caveats: ['The prices live in the function\'s code and are shown, read-only, on Developer → AI → Prices.', 'Set a monthly spend limit in Anthropic\'s Console too: it is the outer wall.'],
     since: '20.11.2026', sinceFrom: 'supabase/functions/claude/index.ts', hasIntegrationCard: true,

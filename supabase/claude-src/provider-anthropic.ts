@@ -282,9 +282,11 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
  * for a question about an image). A photo is an `image` block with a base64 source; the type is one of three.
  */
 function anthropicContent(request: ModelRequest): string | Anthropic.ContentBlockParam[] {
-  if (!request.images?.length) return request.userText
+  if (!request.images?.length && !request.documents?.length) return request.userText
   return [
-    ...request.images.map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),
+    // A PDF is a `document` block with a base64 source (the SDK's DocumentBlockParam); the one type is application/pdf.
+    ...(request.documents ?? []).map(doc => ({ type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: doc.base64 } })),
+    ...(request.images ?? []).map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),
     { type: 'text' as const, text: request.userText },
   ]
 }
@@ -302,6 +304,8 @@ function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParam
     messages: [{ role: 'user', content: `(the live text: ${request.userText.length} characters, shown above)` }],
     // A photo is never kept: only how many were sent and how big (in base64 characters).
     ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
+    // A PDF is never kept either: only how many were sent and how big.
+    ...(request.documents?.length ? { documents: request.documents.map(d => ({ media_type: 'application/pdf', base64_chars: d.base64.length })) } : {}),
     ...(body.tools ? { tools: body.tools } : {}),
     thinking: body.thinking,
     output_config: body.output_config,

@@ -18,6 +18,7 @@ import { ChoiceChips, StoreNameField } from '../shopPickers'
 import { PaidText } from './PaidText'
 import { SaleResult } from './SaleResult'
 import type { ShopCategory, ShopCurrency, ShopDisposal, ShopItem } from '../../types'
+import type { SaleDefaults } from '../../receiptRead'
 
 const HOW = (['sold', 'traded_in', 'given', 'returned', 'broken', 'lost', 'other'] as ShopDisposal[]).map(h => ({ value: h, label: DISPOSAL_LABEL[h] }))
 
@@ -44,16 +45,22 @@ export function LeftToField({ how, value, onChange }: { how: ShopDisposal; value
  * sale (the database); a thing handed over then shows its category's
  * hand-over checklist to tick through (step C).
  */
-export function SellSheet({ item, items, categories, ctx, onClose }: { item: ShopItem; items: ShopItem[]; categories: ShopCategory[]; ctx: MoneyCtx; onClose: () => void }) {
+export function SellSheet({ item, items, categories, ctx, sale: start, onSold, onClose }: {
+  item: ShopItem; items: ShopItem[]; categories: ShopCategory[]; ctx: MoneyCtx
+  /** What a read receipt gives (Read a receipt): the amount, currency and day to start from. Only a day inside the thing's own life is taken. */
+  sale?: SaleDefaults
+  onSold?: () => void
+  onClose: () => void
+}) {
   const sale = useRecordSale()
   const today = todayStr()
   const from = boughtOn(item) ?? undefined
   const accessories = useMemo(() => items.filter(a => a.accessory_of === item.id && isMine(a)), [items, item.id])
   const [how, setHow] = useState<ShopDisposal>('sold')
-  const [on, setOn] = useState(today)
-  const [to, setTo] = useState('')
-  const [got, setGot] = useState<number | null>(null)
-  const [currency, setCurrency] = useState<ShopCurrency>(item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
+  const [on, setOn] = useState(() => (start?.day && start.day <= today && (!from || start.day >= from) ? start.day : today))
+  const [to, setTo] = useState(start?.to ?? '')
+  const [got, setGot] = useState<number | null>(start?.amount ?? null)
+  const [currency, setCurrency] = useState<ShopCurrency>(start?.amount !== undefined && start.currency ? start.currency : item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
   // Your own "Could sell for", one tap away (it fills nothing by itself: never a made-up sale price).
   const estimate = item.value_now != null ? { amount: item.value_now, currency: (item.value_currency ?? 'NOK') as ShopCurrency } : null
   const { data: listings = [] } = useListings()
@@ -91,7 +98,7 @@ export function SellSheet({ item, items, categories, ctx, onClose }: { item: Sho
       },
     }, {
       // Handed over with a checklist for its category: tick through it here before closing.
-      onSuccess: () => (HANDED_OVER.includes(how) && checklistFor(checklists, categoryNamesOf(item.category_id, categories)) ? setHandover(true) : onClose()),
+      onSuccess: () => { onSold?.(); return (HANDED_OVER.includes(how) && checklistFor(checklists, categoryNamesOf(item.category_id, categories)) ? setHandover(true) : onClose()) },
     })
   }
 

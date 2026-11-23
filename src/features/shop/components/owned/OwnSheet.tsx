@@ -1,4 +1,4 @@
-import { useCallback, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { Button, SegmentedControl } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
@@ -40,7 +40,13 @@ const HOW = (['sold', 'traded_in', 'given', 'broken', 'lost', 'other'] as ShopDi
  * reader, barcode scan, facts with sources, picture and duplicate warning
  * (`ShopAutofill`), and the store picked from your Stores (`StoreNameField`).
  */
-export function OwnSheet({ had: hadInitially, items, categories, onClose }: { had: boolean; items: ShopItem[]; categories: ShopCategory[]; onClose: () => void }) {
+export function OwnSheet({ had: hadInitially, items, categories, receipt: start, onSaved, onClose }: {
+  had: boolean; items: ShopItem[]; categories: ShopCategory[]
+  /** One line of a read receipt (Read a receipt): it starts the sheet through the same path a receipt photo uses. */
+  receipt?: ReceiptFill
+  onSaved?: (item: ShopItem) => void
+  onClose: () => void
+}) {
   const id = useId()
   const create = useCreateShopItem()
   const check = useQuietCheck()
@@ -61,7 +67,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
   const [day, setDay] = useState('')
   const [approx, setApprox] = useState(true)
   const [gift, setGift] = useState(false)
-  const [used, setUsed] = useState(false)
+  const [used, setUsed] = useState(start?.condition === 'used')
   const [how, setHow] = useState<ShopDisposal>('sold')
   const [left, setLeft] = useState('')
   const [got, setGot] = useState<number | null>(null)
@@ -91,6 +97,13 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
       receiptDay.current = f.day
     }
   }, [update, day])
+  // A line of a read receipt starts the sheet once, through the same facts a photo of a receipt gives (never over what is typed).
+  const started = useRef(false)
+  useEffect(() => {
+    if (!start || started.current) return
+    started.current = true
+    fromReceipt(start)
+  }, [start, fromReceipt])
   const valid = title.trim() && day && (!had || (left && left >= day))
 
   async function save() {
@@ -128,6 +141,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
         }
       } catch { /* the hook toasted it; the thing itself is saved */ }
     }
+    onSaved?.(row)
     if (row.url) check([row.id])
     if (currency !== 'NOK' || (had && gotCurrency !== 'NOK')) fill()
     onClose()
@@ -149,7 +163,7 @@ export function OwnSheet({ had: hadInitially, items, categories, onClose }: { ha
           <input id="own-title" value={title} onChange={e => onChange({ title: e.target.value })} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
         <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
-        <ReceiptPhoto stores={stores} onFill={fromReceipt} />
+        {!start && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
         {receipt && receipt.others.length > 0 && receipt.currency && (
           <Toggle checked={withOthers} onChange={setWithOthers}>Add the other {receipt.others.length === 1 ? 'line' : `${receipt.others.length} lines`} as {receipt.others.length === 1 ? 'an accessory' : 'accessories'}</Toggle>
         )}

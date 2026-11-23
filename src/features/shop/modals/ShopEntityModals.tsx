@@ -23,7 +23,7 @@ export function ShopSellModal({ request, onClose }: EntityModalProps<'shop-sell'
   const { data: categories = [] } = useShopCategories()
   const { ctx } = useShopMoney()
   if (!item) return <EntityModalPending query={query} what="item" onClose={onClose} />
-  return <SellSheet item={item} items={items} categories={categories} ctx={ctx} onClose={onClose} />
+  return <SellSheet item={item} items={items} categories={categories} ctx={ctx} sale={request.sale} onSold={request.onSold} onClose={onClose} />
 }
 
 export function ShopChainModal({ request, onClose }: EntityModalProps<'shop-chain'>) {
@@ -50,7 +50,7 @@ export function ShopModelModal({ request, onClose }: EntityModalProps<'shop-mode
 export function ShopOwnModal({ request, onClose }: EntityModalProps<'shop-own'>) {
   const { data: items = [] } = useShopItems()
   const { data: categories = [] } = useShopCategories()
-  return <OwnSheet had={!!request.had} items={items} categories={categories} onClose={onClose} />
+  return <OwnSheet had={!!request.had} items={items} categories={categories} receipt={request.receipt} onSaved={request.onSaved} onClose={onClose} />
 }
 
 // Just bought, Money to claim and the Stores drawer (migration 191) ride in this chunk: one chunk for the Shop's

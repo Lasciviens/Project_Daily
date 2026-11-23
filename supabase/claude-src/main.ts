@@ -9,7 +9,8 @@
 //    { "action": "count", "input": { … } }          → run.ts (the Test bench's free token count)
 //    { "action": "diagnose", "part"?: "chat" }       → diagnose.ts (the four checks; or, with part "chat", the chat's own real request)
 //    { "action": "report_make" }                    → batch.ts (the weekly report: queue the batch)
-//    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
+//    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended; then suggest-batch.ts reads back the weekly suggestions' batch)
+//    { "action": "suggest_make" }                    → suggest-batch.ts (the app's "Look for ideas now": count the repeats and queue the weekly suggestions' batch; the Monday timer does it right after the report)
 //    { "action": "chat", "conversation_id", "text", "stream" } → chat-loop.ts (Ask AI: one answer; `stream: true` answers as
 //                                                       server-sent events with our own small events only, else one JSON)
 //    { "action": "chat_confirm", "proposal_id", "decision", "title"?, "date"? } → chat-loop.ts (the owner's tap on a proposed write, with the edits they made on the card)
@@ -41,6 +42,7 @@ import { runDiagnose, runDiagnoseChat } from './diagnose.ts'
 import { runPhoneAsk } from './phone-ask.ts'
 import { findJob } from './jobs.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
+import { checkSuggestRuns, makeWeeklySuggestions } from './suggest-batch.ts'
 import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
 import type { DnsLookup } from './types.ts'
 
@@ -208,7 +210,7 @@ Deno.serve(async (req) => {
     if (new TextEncoder().encode(text).length > LIMITS.requestMaxBytes) {
       const job = action === 'run' ? findJob(ownValue(body, 'job')) : null
       // A chat message may carry up to two photos (chat-loop.ts checks each one and their count); nothing else may be this big.
-      if (!job?.acceptsImage && action !== 'chat') return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+      if (!job?.acceptsImage && !job?.acceptsDocument && action !== 'chat') return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
     }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
@@ -225,7 +227,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'chat' && action !== 'chat_confirm' && action !== 'chat_delete' && action !== 'chat_restore') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "chat", "chat_confirm", "chat_delete" or "chat_restore"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'suggest_make' && action !== 'chat' && action !== 'chat_confirm' && action !== 'chat_delete' && action !== 'chat_restore') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "suggest_make", "chat", "chat_confirm", "chat_delete" or "chat_restore"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
@@ -279,8 +281,22 @@ Deno.serve(async (req) => {
       })
       return new Response(stream, { status: 200, headers: { ...headers, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } })
     }
-    if (action === 'report_make') return reply(200, await makeWeeklyReport(context))
-    if (action === 'report_check') return reply(200, await checkReports(context))
+    if (action === 'report_make') {
+      const made = await makeWeeklyReport(context)
+      // The weekly suggestions ride the report's timer (Monday morning). They are a watcher: a failure there is logged, never
+      // changes the report's answer and never stops the report.
+      if (schedule) {
+        try { await makeWeeklySuggestions(context) } catch (error) { console.error(`[claude] suggestions failed: ${errorPlace(error)}`) }
+      }
+      return reply(200, made)
+    }
+    if (action === 'suggest_make') return reply(200, await makeWeeklySuggestions(context))
+    if (action === 'report_check') {
+      const checked = await checkReports(context)
+      let suggestions: unknown = null
+      try { suggestions = await checkSuggestRuns(context) } catch (error) { console.error(`[claude] suggestions check failed: ${errorPlace(error)}`) }
+      return reply(200, { ...checked, suggestions })
+    }
     if (action === 'diagnose') return reply(200, ownValue(body, 'part') === 'chat' ? await runDiagnoseChat(context) : await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
     // The phone's question has its own tools (one round, read-only): phone-ask.ts. Every other job is a plain run.

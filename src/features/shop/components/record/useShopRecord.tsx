@@ -1,6 +1,6 @@
 import type { RecordFact } from '../../shopSuggestions'
 import { useMemo, type ReactNode } from 'react'
-import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, TriangleAlert, Undo2 } from 'lucide-react'
+import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -148,6 +148,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
     actions.push({ key: 'wrong', label: 'Something\'s wrong', icon: <TriangleAlert />, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
+  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy up info', icon: <Sparkles />, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
   if (state === 'gone' || item.disposal === 'returned') {
     // Asks first (owner, 23.11.2026): an icon is easy to hit by mistake, and the sale's money goes with it.
     const what = item.disposal ? UNDO_WORD[item.disposal] : 'this'

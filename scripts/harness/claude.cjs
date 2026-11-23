@@ -25,7 +25,7 @@ const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./c
 // features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
 // list, the week's counts) and its own answer check (`read`), so a screen is drawn from what really survives them — the model's
 // text is the one canned part. Built once, on the first run of one of those jobs.
-const REAL_CHECKED = new Set(['quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
+const REAL_CHECKED = new Set(['quick_guess_photo', 'receipt_read', 'shop_tidy', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
 let realJobs = null
 function realFindJob(name) {
   if (!realJobs) {
@@ -160,6 +160,13 @@ const WEEKLY_REPORT_JOB = {
   sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
 }
 PHASE_2A_JOBS.push(WEEKLY_REPORT_JOB)
+// Phase 4c: the weekly suggestions, a batch job like the report.
+PHASE_2A_JOBS.push({
+  ...phase2a('suggest_weekly', 'The weekly suggestions', 'Once a week, in the batch queue at half price, one small model reads the repeats counted from the AI ledger (tool shapes, counts and costs, never your data) and proposes at most five ideas for needing AI less.', 2000),
+  mode: 'batch', version: '2026-11-23.1', answerSchema: null,
+  defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
+  sourceFiles: ['supabase/claude-src/job-suggest-weekly.ts', 'supabase/claude-src/suggest-rules.ts', 'supabase/claude-src/suggest-batch.ts', 'supabase/claude-src/suggest-store.ts'],
+})
 const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
 const REPORT_FACTS = {
   training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
@@ -169,7 +176,8 @@ const REPORT_FACTS = {
 // The AI features of 22.11.2026: photos, Dev Requests, Work, Shop, Wishes.
 PHASE_2A_JOBS.push(
   phase2a('quick_guess_photo', 'Guess a meal from a photo', 'In Food → Quick guess, "From a photo" fills in one diary line.', 1500),
-  phase2a('receipt_read', 'Read a receipt photo', 'In Shop, "From a receipt" reads a photo of a receipt.', 1500),
+  phase2a('receipt_read', 'Read a receipt (photo or PDF)', 'In Shop, "Read a receipt" reads a photo or a PDF of a receipt.', 2500, ['app'], 70000),
+  phase2a('shop_tidy', "Tidy up a thing's product info", 'In Shop, "Tidy up info" suggests a cleaner name, brand, model and category.', 1500, ['app'], 70000),
   phase2a('dev_request_draft', 'Tidy up a Dev Request', 'In the Dev Requests composer, "Tidy up" drafts the fields from what you dictated.', 2000),
   phase2a('error_explain', 'Explain an error', 'In Developer → Errors, "Explain" says what an error means.', 2000),
   phase2a('work_week', 'Write my week (Work)', 'On Work, "Write my week" writes a status text.', 1500),
@@ -184,7 +192,16 @@ const PHASE_2A_RESULTS = {
 }
 PHASE_2A_RESULTS.recipe_from_link = PHASE_2A_RESULTS.recipe_from_text
 PHASE_2A_RESULTS.quick_guess_photo = { title: 'Pasta with meat sauce', portion: 'one full plate, about 400 g', calories: 650, protein_g: 28, carbs_g: 80, fat_g: 22, sugar_g: 9, assumptions: ['A full dinner plate.', 'Beef mince sauce.'] }
-PHASE_2A_RESULTS.receipt_read = { store: 'ELKJØP NORGE AS', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Sony WH-1000XM5', price: 2990 }, { name: 'USB-C cable 2 m', price: 199 }], warranty_months: 24 }
+PHASE_2A_RESULTS.receipt_read = { kind: 'bought', channel: 'online', store: '0420 Demo Elektro Majorstuen', date: '2026-11-08', currency: 'NOK', total: 4278, items: [{ name: 'DH-X1 BLK', product: 'Demo Headphones X1, black', brand: 'Demo', model: 'X1', price: 3290, quantity: 1, condition: 'new' }, { name: 'Bluetooth speaker', price: 899 }, { name: 'USB-C cable 2 m', price: 89, condition: 'outlet' }, { name: 'Frakt', price: 99 }], warranty_months: 24 }
+// A PDF of the same harness gets a sale (a payout for something in the seed's Owned list).
+// "Tidy up info": made-up answers by the name sent (the function's own check then holds them like a model's).
+const tidyAnswer = (input) => {
+  const name = String(input?.item?.name ?? '')
+  if (/laptop/i.test(name) && !/sleeve/i.test(name)) return { name: 'Demo Laptop 14, silver', brand: 'Demo', model: 'L14', category: 1 }
+  if (/robot vacuum/i.test(name)) return { name: 'Demo Robot Vacuum R5', brand: 'Demo', model: 'R5' }
+  return {}
+}
+const SOLD_RECEIPT = { kind: 'sold', store: 'Demo Marketplace', date: '2026-11-10', currency: 'NOK', total: 1500, items: [{ name: 'Robot vacuum', price: 1500, quantity: 1 }, { name: 'Garden hose 20 m', price: 300 }] }
 PHASE_2A_RESULTS.dev_request_draft = { title: 'Water card should be red', page: '/daily', category: 'improvement', priority: 'medium', points: ['Make the water card on Daily red.', 'Also in dark mode.'] }
 PHASE_2A_RESULTS.error_explain = { explanation: 'The app asked for a task that is no longer there, so it got null (nothing) and then tried to read its id. It is not a network problem: the server answered, with an empty result.', terms: [{ term: 'null', meaning: 'The value that means "nothing is here".' }, { term: 'HTTP 404', meaning: 'The server\'s way of saying "I found nothing at that address".' }], request: { title: 'Task detail fails on a deleted task', category: 'bug', priority: 'medium', points: ['Guard the null task before reading its id.', 'Show "This task was deleted" instead of failing.'] } }
 PHASE_2A_RESULTS.work_week = { text: 'I closed 1 Work task this week and finished 1 of my 3 goals; 9 are still open, 1 overdue.\nDone: the support inbox.\nOpen: the planning slides and the onboarding review; the overdue one needs a decision.' }
@@ -413,6 +430,7 @@ const CHAT_TOOLS = [
   ['get_day_plan', 'read', ['chat', 'coach', 'phone']], ['get_week_figures', 'read', ['chat', 'phone']], ['get_food_day', 'read', ['chat', 'phone']], ['find_text', 'read', ['chat', 'phone']],
   ['get_about_me', 'read', ['chat', 'coach', 'phone']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
   ['get_training_week', 'read', ['coach']], ['get_health_trends', 'read', ['coach']], ['get_pt_verdicts', 'read', ['coach']],
+  ['note_shortcut', 'read', ['chat', 'coach']],
 ].map(([name, kind, chats]) => ({ name, kind, what: `The ${name} tool.`, defaultMode: kind === 'write' ? 'ask' : 'on', chats }))
 
 /** What `{ action: 'describe' }` answers, in the real function's own shape. */
@@ -557,6 +575,15 @@ function claudeMock(opts = {}) {
     }
     // Phase 3: "Make this week's report now" queues one batch (the row waits at its worst case, as the function holds it),
     // and "Check now" reads it back as ready at the batch price. Like the function: the master and the job's switch stop it.
+    // Phase 4c: "Look for ideas now" queues the weekly look (a run row, waiting); "Check now" reads it back as done with two new ideas.
+    if (body?.action === 'suggest_make') {
+      const runs = (store.tables.ai_suggest_runs ??= [])
+      if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
+      if (runs.some(r => r.status === 'queued')) return { ok: true, queued: false, skipped: 'already_queued', week_start: runs[0].week_start }
+      const today0 = osloDay(new Date()), dow = new Date(`${today0}T12:00:00Z`).getUTCDay()
+      runs.unshift({ id: randomUUID(), user_id: store.ownerId, week_start: addDays(today0, -((dow + 6) % 7)), made_by: 'app', status: 'queued', failure: null, added: 0, patterns: 4, sent_text: null, call_id: null, created_at: new Date().toISOString(), finished_at: null })
+      return { ok: true, queued: true, run_id: runs[0].id, week_start: runs[0].week_start }
+    }
     if (body?.action === 'report_make' || body?.action === 'report_check') {
       const reports = (store.tables.ai_reports ??= [])
       const calls0 = (store.tables.ai_calls ??= [])
@@ -567,7 +594,9 @@ function claudeMock(opts = {}) {
           const call = calls0.find(c => c.id === r.call_id)
           if (call) Object.assign(call, { outcome: 'ok', stop_reason: 'end_turn', served_model: 'claude-haiku-5-5', input_tokens: 900, output_tokens: 400, cost_usd: costOf('claude-haiku-5-5', { input_tokens: 900, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 400 }) / 2 })
         }
-        return { ok: true, checked: waiting.length, ready: waiting.length, failed: 0, waiting: 0 }
+        const runsQ = (store.tables.ai_suggest_runs ?? []).filter(r => r.status === 'queued')
+        for (const r of runsQ) Object.assign(r, { status: 'done', added: 0, finished_at: new Date().toISOString() })
+        return { ok: true, checked: waiting.length, ready: waiting.length, failed: 0, waiting: 0, suggestions: { ok: true, checked: runsQ.length, done: runsQ.length, failed: 0, waiting: 0 } }
       }
       if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return { ok: false, reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }
       if (opts.stop) return { ok: false, reason: opts.stop, message: STOP_MESSAGE[opts.stop] ?? 'The report could not be queued.' }
@@ -629,14 +658,14 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = opts.results?.[other.name] ?? PHASE_2A_RESULTS[other.name]
+      let result = other.name === 'shop_tidy' ? tidyAnswer(body.input) : opts.results?.[other.name] ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
         const job = realFindJob(other.name)
         const prepared = job.prepare(body.input, now)
         if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
-        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : 0 })
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0 })
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }
