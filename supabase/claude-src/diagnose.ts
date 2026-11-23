@@ -14,13 +14,19 @@
 //
 //  The answer carries only our own sentences and numbers. A message goes out through hideSecrets, and no raw
 //  provider object is ever put in one.
+//
+//  A fifth check, the chat's own real request, is asked for apart (`part: 'chat'`, `runDiagnoseChat` at the end): its
+//  120 s limit and the four checks together would pass Supabase's 150 s.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { DiagnoseReply, DiagnoseStep, ModelFailure, ModelRequest, RunReply } from './types.ts'
-import { cutChars, errorPlace, hideSecrets, settingsFor } from './guard.ts'
-import { hasRecentCall, readSettingRows } from './ledger.ts'
+import type { ChatRequest, DiagnoseReply, DiagnoseStep, ModelFailure, ModelRequest, RunReply } from './types.ts'
+import { costOf, worstCostOf } from './prices.ts'
+import { cutChars, errorPlace, hideSecrets, LIMITS, reservationBudgetProblem, settingsFor, trimForLog, TEXT_LOG_MAX_BYTES } from './guard.ts'
+import { finishCall, hasRecentCall, hasRecentChatDiagnose, readSettingRows, reserveCall } from './ledger.ts'
 import { findJob } from './jobs.ts'
-import { runJob, type RunContext } from './run.ts'
+import { newRow, runJob, RUN_ERROR_MAX, RUN_MAY_BE_BILLED, RUN_NO_TOKENS, type RunContext } from './run.ts'
+import { CHAT_JOB, CHAT_LIMITS, CHAT_SYSTEM, CHAT_VERSION, liveContextText, toolModes, toolsForNewChat } from './chat-rules.ts'
+import { chatToolsNamed } from './chat-tools.ts'
 
 /** The made-up sentence every check uses: ✨'s own example. No personal data. */
 export const DIAGNOSE_SENTENCE = 'Dentist on Tuesday at 14:00 for an hour at Jernbanetorget, remind me a day before'
@@ -149,4 +155,96 @@ export async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
   })
 
   return { ok: true, steps }
+}
+
+// ── The chat's own request (a fifth check, asked for apart) ──────────────────
+
+/** The question of the chat check: made up, about nothing personal. */
+export const DIAGNOSE_CHAT_QUESTION = 'What is on my plan today?'
+/** The chat check waits this long for the whole round, the first event included. A call of its own: the four checks plus this would pass Supabase's 150 s. */
+export const DIAGNOSE_CHAT_MS = 120_000
+
+/**
+ * `{ action: 'diagnose', part: 'chat' }`: the chat's REAL first request (its real tools and instructions, the date line and
+ * a fixed question) sent once with a 120 s limit, to see how long Anthropic takes to start answering and to finish. A tool
+ * the model asks for is not run: asking for one is an answer. It is one real call, reserved against the budget and written to
+ * the ledger as a round of the job `chat` (its request text says it is Diagnose).
+ */
+export async function runDiagnoseChat(ctx: RunContext): Promise<DiagnoseReply> {
+  // The same one-a-minute pause as Diagnose, kept by the ledger: its rows are the chat's step 1 with `diagnose` in the request.
+  const since = new Date(ctx.now().getTime() - DIAGNOSE_PAUSE_MS).toISOString()
+  const recent = await hasRecentChatDiagnose(ctx.userDb, ctx.userId, since)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was tried. Try again in a moment.' }
+  if (recent) return { ok: false, reason: 'busy', message: 'The chat check already ran in the last minute. Wait a moment and run it again.' }
+  const provider = ctx.provider
+  const title = "The chat's real request"
+  if (!provider) return { ok: true, steps: [{ name: 'chat_request', title, ok: false, ms: 0, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }] }
+  const stored = await readSettingRows(ctx.userDb, ctx.userId, CHAT_JOB.name)
+  if (!stored) return { ok: false, reason: 'error', message: 'The AI settings could not be read, so nothing was tried. Try again in a moment.' }
+  const settings = settingsFor(CHAT_JOB, stored.account, stored.job)
+  const tools = chatToolsNamed(toolsForNewChat(toolModes(null)))
+  const now = ctx.now()
+  const request: ChatRequest = {
+    model: settings.model, maxOutputTokens: Math.max(CHAT_LIMITS.minOutputTokens, settings.maxOutputTokens), effort: settings.effort, thinking: settings.thinking,
+    system: CHAT_SYSTEM, ownerInstructions: '', tools, noTools: false,
+    messages: [{ role: 'user', content: [{ type: 'text', text: liveContextText(now) }, { type: 'text', text: DIAGNOSE_CHAT_QUESTION }] }],
+    previousMessageId: null, contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs: DIAGNOSE_CHAT_MS,
+  }
+  const step = (ok: boolean, ms: number, detail: string): DiagnoseReply => ({
+    ok: true, steps: [{ name: 'chat_request', title, ok, ms: Math.max(0, ms), detail: cutChars(hideSecrets(detail, ctx.secrets), DIAGNOSE_DETAIL_MAX) }],
+  })
+
+  const row = newRow(ctx, CHAT_JOB)
+  row.model = settings.model
+  row.effort = settings.effort
+  row.instructions_version = CHAT_VERSION
+  const worstCost = worstCostOf(settings.model, CHAT_SYSTEM.length + JSON.stringify(tools).length + 400, request.maxOutputTokens)
+  const reservation = await reserveCall(ctx.adminDb, {
+    userId: ctx.userId, job: CHAT_JOB.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: settings.model, effort: settings.effort,
+    instructionsVersion: CHAT_VERSION, worstCostUsd: worstCost, budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay, callerPerDay: LIMITS.callsPerDay,
+  })
+  if (!reservation) return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was tried. Try again in a moment.' }
+  if (reservation.kind === 'busy') return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute or ${LIMITS.callsPerDay} today. Wait a moment and run it again.` }
+  row.id = reservation.id
+  if (reservation.kind === 'budget') {
+    row.outcome = 'budget'
+    row.error = cutChars(reservationBudgetProblem(settings, CHAT_JOB.title), RUN_ERROR_MAX)
+    await finishCall(ctx.adminDb, row)
+    return step(false, 0, reservationBudgetProblem(settings, CHAT_JOB.title))
+  }
+
+  const t0 = Date.now()
+  let firstAt: number | null = null
+  const answer = await provider.chatRound(request, delta => { if (delta.kind === 'started' && firstAt === null) firstAt = Date.now() - t0 })
+    .catch((): ModelFailure => ({ ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }))
+  const ms = Date.now() - t0
+  row.duration_ms = ms
+  const usage = answer.ok ? answer.usage : RUN_NO_TOKENS
+  const price = costOf(usage, settings.model, row.mode)
+  row.input_tokens = usage.inputTokens
+  row.cache_read_tokens = usage.cacheReadTokens
+  row.cache_write_5m_tokens = usage.cacheWrite5mTokens
+  row.cache_write_1h_tokens = usage.cacheWrite1hTokens
+  row.output_tokens = usage.outputTokens
+  row.thinking_tokens = usage.thinkingTokens
+  row.long_prompt = price.longPrompt
+  row.request_id = answer.requestId
+  row.stop_reason = answer.ok ? answer.stopReason : null
+  row.served_model = answer.ok ? answer.servedModel : null
+  row.cost_usd = !answer.ok && RUN_MAY_BE_BILLED.includes(answer.kind) ? worstCost : price.costUsd
+  row.request = trimForLog({ diagnose: true, question: DIAGNOSE_CHAT_QUESTION, tools: tools.map(t => t.name) }, TEXT_LOG_MAX_BYTES)
+  const first = firstAt === null ? 'no event came' : `the first event came after ${diagnoseSecs(firstAt)} s`
+  if (!answer.ok) {
+    row.outcome = 'error'
+    row.error = cutChars(hideSecrets(answer.message, ctx.secrets), RUN_ERROR_MAX)
+    await finishCall(ctx.adminDb, row)
+    return step(false, ms, `The chat's request failed after ${diagnoseSecs(ms)} s (${first}): ${answer.message}${answer.detail ? ` Anthropic says: ${answer.detail}` : ''}`)
+  }
+  row.outcome = answer.ending === 'refused' ? 'refused' : 'ok'
+  await finishCall(ctx.adminDb, row)
+  const asked = answer.content.filter(b => b.type === 'tool_use').map(b => (typeof b.name === 'string' ? b.name : '?')).slice(0, 4)
+  const ended = answer.ending === 'tool_calls' ? `the model asked for ${asked.join(', ') || 'a tool'} (not run here)` : answer.ending === 'refused' ? 'the model declined' : 'the model answered in words'
+  const promptTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWrite5mTokens + usage.cacheWrite1hTokens
+  return step(true, ms, `The chat's request came back: ${first}, finished after ${diagnoseSecs(ms)} s; ${ended}; ${diagnoseTokens(promptTokens)} in, ${diagnoseTokens(usage.outputTokens)} out, cost ${diagnoseUsd(price.costUsd)}.`)
 }

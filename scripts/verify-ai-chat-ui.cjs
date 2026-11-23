@@ -127,5 +127,57 @@ console.log('\n5 · what a card shows, what a step shows (the review)')
   const noMin = ['AskAiPanel.tsx', 'ChatTurnView.tsx', 'ChatHistory.tsx'].filter(f => /min-h-\[44px\]/.test(fs.readFileSync(path.join(__dirname, '../src/features/ai/chat', f), 'utf8')))
   check('C8: no hand-made minimum height on the panel\'s buttons (the primitives keep touch targets comfortable)', noMin.length === 0, noMin)
 }
-console.log(`\n${ok} passed, ${bad} failed`)
-process.exit(bad ? 1 : 0)
+
+console.log('\n4 · the sign-in token of a request (bug seen live 22.11.2026: three 401s after a hang)')
+;(async () => {
+  const res = (status) => new Response(status === 200 ? 'ok' : 'no', { status })
+  const make = ({ current = ['t1'], refreshed = ['t2'], statuses = [200] } = {}) => {
+    const log = { current: 0, refreshed: 0, sent: [] }
+    return {
+      log,
+      deps: {
+        currentToken: async () => { log.current++; return current.length ? current.shift() : null },
+        refreshedToken: async () => { log.refreshed++; return refreshed.length ? refreshed.shift() : null },
+        send: async (token) => { log.sent.push(token); return res(statuses[Math.min(log.sent.length - 1, statuses.length - 1)]) },
+      },
+    }
+  }
+  let m = make()
+  let r = await R.sendWithSession(m.deps)
+  check('a good token is sent as it is: one read, one request, no refresh', r.status === 200 && m.log.current === 1 && m.log.sent.join() === 't1' && m.log.refreshed === 0)
+  m = make({ current: [null] })
+  check('no session at all: nothing is sent and the answer is null (the caller says "session error")', (await R.sendWithSession(m.deps)) === null && m.log.sent.length === 0 && m.log.refreshed === 0)
+  m = make({ statuses: [401, 200] })
+  r = await R.sendWithSession(m.deps)
+  check('a 401 refreshes ONCE and sends ONCE more with the new token', r.status === 200 && m.log.refreshed === 1 && m.log.sent.join() === 't1,t2')
+  m = make({ statuses: [401, 401] })
+  r = await R.sendWithSession(m.deps)
+  check('a second 401 is returned (no third request, no second refresh): the caller shows the session message', r.status === 401 && m.log.sent.length === 2 && m.log.refreshed === 1)
+  m = make({ statuses: [401], refreshed: [] })
+  r = await R.sendWithSession(m.deps)
+  check('a 401 whose refresh fails is returned after one request', r.status === 401 && m.log.sent.length === 1 && m.log.refreshed === 1)
+  m = make({ statuses: [403] })
+  r = await R.sendWithSession(m.deps)
+  check('a 403 or a 500 is not a reason to refresh', r.status === 403 && m.log.refreshed === 0 && m.log.sent.length === 1)
+  m = make({ statuses: [500] })
+  check('a 500 is returned as it is', (await R.sendWithSession(m.deps)).status === 500 && m.log.refreshed === 0)
+  // Every request reads the token anew: a token from an earlier request is never reused.
+  m = make({ current: ['a', 'b'] })
+  await R.sendWithSession(m.deps)
+  await R.sendWithSession(m.deps)
+  check('every request reads the current session again (a token read once and kept is what expired)', m.log.current === 2 && m.log.sent.join() === 'a,b')
+  const broken = make({ statuses: [401] })
+  broken.deps.send = async () => { throw new Error('network down') }
+  let threw = false
+  try { await R.sendWithSession(broken.deps) } catch { threw = true }
+  check('a network error is the caller\'s to handle (it propagates, nothing is retried)', threw)
+  check('isSessionRefusal: 401 and 403 only', R.isSessionRefusal(401) && R.isSessionRefusal(403) && !R.isSessionRefusal(200) && !R.isSessionRefusal(500))
+  const api = fs.readFileSync(path.join(__dirname, '../src/features/ai/chat/chatApi.ts'), 'utf8')
+  check('chatApi reads the session inside each request, refreshes with refreshSession, and never logs or stores the token', /sendWithSession\(/.test(api) && /auth\.getSession\(\)/.test(api) && /auth\.refreshSession\(\)/.test(api) && !/console\./.test(api) && !/localStorage|sessionStorage/.test(api))
+  const direct = []
+  const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const full = path.join(d, f.name); if (f.isDirectory()) walk(full); else if (/\.(ts|tsx)$/.test(f.name) && /functions\/v1\/claude/.test(fs.readFileSync(full, 'utf8'))) direct.push(path.relative(path.join(__dirname, '..'), full)) } }
+  walk(path.join(__dirname, '../src'))
+  check('the chat is the only manual fetch to the claude function; every other call goes through supabase.functions.invoke (which refreshes an expired token itself)', direct.join() === 'src/features/ai/chat/chatApi.ts', direct)
+  console.log(`\n${ok} passed, ${bad} failed`)
+  process.exit(bad ? 1 : 0)
+})()

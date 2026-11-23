@@ -7,7 +7,7 @@
  * @anthropic-ai/sdk from node_modules whose `fetch` is a fake that answers in Anthropic's own server-sent-event format.
  * Nothing touches the network. scripts/verify-claude-function.cjs holds the one-shot jobs; this file holds the chat:
  *
- *   1  the tools         no optional parameter anywhere, strict, flat, case-insensitive choices, the permission wall
+ *   1  the tools         no optional parameter anywhere, not strict, flat, case-insensitive choices, the permission wall
  *   2  the request       the exact body: cache layout, betas, thinking and its binding, effort, context editing, diagnostics
  *   3  the walls         who may chat, the switches, the rate caps and the budget, bad input: nothing sent
  *   4  an answer         the stream's events, what is stored, the ledger row, the frozen chat
@@ -20,6 +20,7 @@
  *   9  citations         only what a tool returned and only the owner's own rows
  *  10  hostile data      a task title with instructions, another account's rows, a huge result, the database tool
  *  11  streaming         a refusal after partial text, an error in the middle of the stream, one try only
+ *  14  deadline          malformed tool inputs, a request that never answers or answers late, Diagnose's chat step
  *
  *   Run:  node scripts/verify-claude-chat.cjs
  */
@@ -41,7 +42,8 @@ let finished = false
 process.on('exit', () => { if (!finished) { console.log('  ✗ the script ended before every check ran (an await never settled)'); process.exitCode = 1 } })
 global.fetch = () => { throw new Error('the real fetch was called: this script must never use the network') }
 const realSetTimeout = global.setTimeout
-global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100 && ms <= 120_000 ? 3 : ms, ...rest)
+// A limit of 100 s or more is the hard limit (the answer's 110 s, Diagnose's 120 s): 2 s here. The silence clock (30 s) is 40 ms; every other shorter clock (45 s, 20 s…) is 3 ms.
+global.setTimeout = (fn, ms, ...rest) => realSetTimeout(fn, ms >= 100_000 && ms <= 120_000 ? 2000 : ms === 30_000 ? 40 : ms >= 100 && ms < 100_000 ? 3 : ms, ...rest)
 
 // ─── Loading the generated function ──────────────────────────────────────────
 const SDK_NAMES = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError', 'APIError', 'AuthenticationError', 'BadRequestError',
@@ -63,7 +65,7 @@ const uuid = (n) => `aaaaaaaa-0000-4000-8000-${String(n).padStart(12, '0')}`
 
 // ─── A pretend database with real tables ─────────────────────────────────────
 const CHAT_TABLES = ['ai_conversations', 'ai_messages', 'ai_chat_proposals']
-const USER_READS = new Set(['quick_guess_items', 'recipes', 'ai_memory', 'tasks', 'time_blocks', 'food_log_entries', 'water_log_entries', 'day_targets', 'diary_entries', 'hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'ai_settings', 'ai_job_settings'])
+const USER_READS = new Set(['quick_guess_items', 'recipes', 'ai_memory', 'tasks', 'time_blocks', 'food_log_entries', 'water_log_entries', 'day_targets', 'diary_entries', 'hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'ai_settings', 'ai_job_settings', 'ai_calls'])
 const USER_WRITES = new Set(['tasks', 'food_log_entries'])
 const GATE = { month_cost: 0, job_month_cost: 0, calls_last_minute: 0, calls_today: 0 }
 
@@ -90,7 +92,7 @@ function fakeCreateClient(world) {
       const add = (fn) => { q.tests.push(fn); return q }
       if (who === 'user' && !USER_READS.has(table) && !USER_WRITES.has(table)) throw new Error(`user client must not touch ${table}`)
       q.select = (cols, o) => { if (q.mode === 'select') { q.countOpts = o ?? null } else q.returning = true; return q }
-      q.eq = (c, v) => { q.eqs = { ...(q.eqs ?? {}), [c]: v }; return add(r => r[c] === v) }
+      q.eq = (c, v) => { q.eqs = { ...(q.eqs ?? {}), [c]: v }; return add(r => (c.includes('->>') ? String(r[c.split('->>')[0]]?.[c.split('->>')[1]]) : r[c]) === v) }
       q.neq = (c, v) => add(r => r[c] !== v)
       q.lt = (c, v) => add(r => r[c] != null && r[c] < v)
       q.gte = (c, v) => add(r => r[c] != null && r[c] >= v)
@@ -165,7 +167,7 @@ function fakeCreateClient(world) {
         if (g.calls_last_minute >= args.p_per_minute || g.calls_today >= args.p_per_day) return { data: [{ call_id: null, reason: 'busy' }], error: null }
         const id = crypto.randomUUID()
         const over = Number(g.month_cost) + args.p_worst_cost > args.p_budget || Number(g.job_month_cost) + args.p_worst_cost > args.p_job_budget
-        calls.push({ id, user_id: args.p_user, run_id: crypto.randomUUID(), step: 1, job: args.p_job, caller: args.p_caller, mode: args.p_mode, provider: args.p_provider, model: args.p_model, effort: args.p_effort, instructions_version: args.p_instructions_version, tools: [], outcome: over ? 'budget' : 'pending', cost_usd: over ? 0 : args.p_worst_cost, request: null, response: null, thinking: null })
+        calls.push({ id, created_at: new Date(FixedDate.at).toISOString(), user_id: args.p_user, run_id: crypto.randomUUID(), step: 1, job: args.p_job, caller: args.p_caller, mode: args.p_mode, provider: args.p_provider, model: args.p_model, effort: args.p_effort, instructions_version: args.p_instructions_version, tools: [], outcome: over ? 'budget' : 'pending', cost_usd: over ? 0 : args.p_worst_cost, request: null, response: null, thinking: null })
         return { data: [{ call_id: id, reason: over ? 'budget' : null }], error: null }
       }
       client.auth = { getUser: async (token) => ({ data: { user: TOKENS[token] ? { id: TOKENS[token] } : null }, error: TOKENS[token] ? null : { message: 'bad token' } }) }
@@ -274,14 +276,14 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.CHAT_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.CHAT_TOOL_ORDER].sort()), probe.KNOWN_TOOL_NAMES)
   check('six read tools and two write tools, and the write tools are the two proposals', same(probe.READ_TOOL_NAMES, ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database']) && same(probe.WRITE_TOOL_NAMES, ['propose_add_task', 'propose_log_food']) && probe.WRITE_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'write') && probe.READ_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'read'))
   const schemaText = JSON.stringify(tools)
-  check('every field is described with a plain type and no limit, format, pattern, default, union or null (strict-tool grammar stays small)', !/"(minimum|maximum|minLength|maxLength|format|pattern|default|anyOf|oneOf|allOf|nullable|minItems|maxItems)"/.test(schemaText) && !/"type":\[/.test(schemaText) && tools.every(t => Object.values(t.properties).every(p => ['string', 'number', 'integer'].includes(p.type))), schemaText.slice(0, 300))
+  check('every field is described with a plain type and no limit, format, pattern, default, union or null (the schemas stay small and flat)', !/"(minimum|maximum|minLength|maxLength|format|pattern|default|anyOf|oneOf|allOf|nullable|minItems|maxItems)"/.test(schemaText) && !/"type":\[/.test(schemaText) && tools.every(t => Object.values(t.properties).every(p => ['string', 'number', 'integer'].includes(p.type))), schemaText.slice(0, 300))
   check('no tool has a nested object or a list (flat)', tools.every(t => Object.values(t.properties).every(p => !('properties' in p) && !('items' in p))))
   check('every tool has at least one field and a description', tools.every(t => Object.keys(t.properties).length >= 1 && t.description.length > 40))
   const net0 = pretend(textMsg('Hello.'))
   const first = await chat({ conversation_id: null, text: 'Hello there' }, { network: net0 })
   const body0 = net0.seen[0].body
-  check('in the request every tool is strict, every property is required, nothing else is allowed', body0.tools.every(t => t.strict === true && same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && t.input_schema.type === 'object'))
-  check('zero optional parameters across every strict schema (Anthropic allows 24 in all)', body0.tools.every(t => t.input_schema.required.length === Object.keys(t.input_schema.properties).length))
+  check('in the request no tool is strict; every property is listed as required and nothing else is allowed', body0.tools.every(t => !('strict' in t) && same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && t.input_schema.type === 'object'))
+  check('zero optional parameters across every schema (small and flat, as a hint)', body0.tools.every(t => t.input_schema.required.length === Object.keys(t.input_schema.properties).length))
   check('enum choices: the ones the code lists, including "any"/"" for not given', (() => {
     const find = body0.tools.find(t => t.name === 'find_text').input_schema.properties
     const prio = body0.tools.find(t => t.name === 'propose_add_task').input_schema.properties.priority
@@ -968,6 +970,201 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   const source = fs.readFileSync(path.join(REPO, 'supabase/functions/claude/index.ts'), 'utf8')
   check('the chat parts never read a user id from the request body', !/ownValue\((body|input), '(user_id|userId|user)'\)/.test(source))
   check('the model cannot reach the ledger or the settings: no tool names ai_calls, ai_settings, ai_job_settings or the chat tables, and the search function reads tasks and the diary only', (() => { const t = fs.readFileSync(path.join(REPO, 'supabase/claude-src/chat-tools.ts'), 'utf8').replace(/\/\/.*$/gm, ''); return !/ai_calls|ai_settings|ai_job_settings|ai_messages|ai_conversations|ai_chat_proposals|ai_reports/.test(t) })())
+
+  // ═══ 14 · not strict, a deadline, Diagnose's chat step ═══════════════════
+  section('14 · tools that are not strict, a deadline that always ends the round, the chat step of Diagnose')
+  {
+    const net = pretend(textMsg('Hello.'))
+    await chat({ conversation_id: null, text: 'Hello there' }, { network: net })
+    const sentTools = net.seen[0].body.tools
+    check('no tool is sent as strict (a strict tool makes Anthropic compile a grammar, up to 180 s)', sentTools.length === 8 && sentTools.every(t => !('strict' in t)), sentTools.map(t => t.strict))
+    check('the schemas stay small and flat: every property listed as required, nothing else allowed, plain types only', sentTools.every(t => same([...t.input_schema.required].sort(), Object.keys(t.input_schema.properties).sort()) && t.input_schema.additionalProperties === false && Object.values(t.input_schema.properties).every(p => ['string', 'number', 'integer'].includes(p.type))))
+    check('the last tool still carries the cache breakpoint', sentTools.at(-1).cache_control?.type === 'ephemeral' && sentTools.slice(0, -1).every(t => !('cache_control' in t)))
+  }
+
+  // Every tool's own check, with malformed input: an error result that says what to fix, never an exception, never a query.
+  {
+    const w = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const ctx = ctxFor(w)
+    const called = async (name, input) => { try { return await probe.runChatTool(name, input, probe.CHAT_TOOL_ORDER, modes, ctx) } catch (e) { return { threw: String(e) } } }
+    let bad = 0, total = 0
+    const expectRefused = async (label, name, input, pattern) => {
+      total++
+      const out = await called(name, input)
+      if (!(out.ok === false && typeof out.message === 'string' && out.message.length > 10 && (!pattern || pattern.test(out.message)))) { bad++; console.log('    ✗', label, JSON.stringify(out).slice(0, 200)) }
+    }
+    const before = w.ops.length
+    for (const t of tools) {
+      const fields = Object.entries(t.properties)
+      const valid = Object.fromEntries(fields.map(([k, p]) => [k, p.type === 'string' ? (p.enum ? p.enum[0] : 'x') : 1]))
+      for (const [label, input] of [['null', null], ['undefined', undefined], ['an array', []], ['a string', 'date'], ['a number', 5], ['true', true]]) await expectRefused(`${t.name}: input is ${label}`, t.name, input, /must be an object/)
+      await expectRefused(`${t.name}: an extra field`, t.name, { ...valid, user_id: GUEST }, /Unknown field "user_id"/)
+      await expectRefused(`${t.name}: __proto__ as a field`, t.name, JSON.parse('{"__proto__": {"x": 1}}'), /Unknown field "__proto__"/)
+      await expectRefused(`${t.name}: constructor as a field`, t.name, { ...valid, constructor: 'x' }, /Unknown field "constructor"/)
+      await expectRefused(`${t.name}: no fields at all`, t.name, {}, /is missing/)
+      for (const [k, p] of fields) {
+        const { [k]: _gone, ...rest } = valid
+        await expectRefused(`${t.name}.${k}: missing`, t.name, rest, new RegExp(`"${k}" is missing`))
+        await expectRefused(`${t.name}.${k}: null`, t.name, { ...valid, [k]: null }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: an object`, t.name, { ...valid, [k]: { a: 1 } }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: a list`, t.name, { ...valid, [k]: ['x'] }, new RegExp(`"${k}" must be`))
+        await expectRefused(`${t.name}.${k}: true`, t.name, { ...valid, [k]: true }, new RegExp(`"${k}" must be`))
+        if (p.type === 'string') {
+          await expectRefused(`${t.name}.${k}: a number for text`, t.name, { ...valid, [k]: 7 }, new RegExp(`"${k}" must be text`))
+          await expectRefused(`${t.name}.${k}: far too long`, t.name, { ...valid, [k]: 'x'.repeat(5000) }, new RegExp(`"${k}" is longer than`))
+          if (p.enum) {
+            await expectRefused(`${t.name}.${k}: not a choice`, t.name, { ...valid, [k]: 'bogus' }, /must be one of/)
+            await expectRefused(`${t.name}.${k}: a choice with something added`, t.name, { ...valid, [k]: `${p.enum[0]} x` }, /must be one of|longer than/)
+            await expectRefused(`${t.name}.${k}: an empty choice`, t.name, { ...valid, [k]: '' }, p.enum.includes('') ? undefined : /must be one of/)
+            // letter case is ignored: an upper-case spelling is never refused as "not a choice"
+            total++
+            const shout = await (async () => { try { return await probe.runChatTool(t.name, { ...valid, [k]: p.enum[0].toUpperCase() }, probe.CHAT_TOOL_ORDER, modes, ctxFor(makeWorld({ tables: { tasks: [], time_blocks: [] } }))) } catch (e) { return { threw: String(e) } } })()
+            if (shout.threw || (shout.ok === false && /must be one of/.test(shout.message))) { bad++; console.log('    ✗', `${t.name}.${k}: upper case refused`, JSON.stringify(shout).slice(0, 200)) }
+          }
+        } else {
+          await expectRefused(`${t.name}.${k}: text for a number`, t.name, { ...valid, [k]: '5' }, new RegExp(`"${k}" must be a number`))
+          for (const [label, v] of [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['a huge number', 1e12], ['a negative number', -1e12]]) await expectRefused(`${t.name}.${k}: ${label}`, t.name, { ...valid, [k]: v }, /must be (a number|between)/)
+          if (p.type === 'integer') await expectRefused(`${t.name}.${k}: a fraction`, t.name, { ...valid, [k]: 1.5 }, /whole number/)
+        }
+      }
+    }
+    check(`malformed input to each of the 8 tools (${total} cases: wrong shape, extra and missing fields, wrong types, enums, lengths, numbers): always an error result that says what to fix`, bad === 0 && total > 200, { bad, total })
+    check('a refused input never reaches the database', w.ops.length === before, w.ops.slice(before).map(o => o.table))
+    check('an unknown tool, an empty name, a name with odd characters: an error result', (await Promise.all(['', ' ', 'get_day_plan ', 'GET_DAY_PLAN', 'a'.repeat(500), 'constructor', 'toString'].map(n => called(n, {})))).every(o => o.ok === false))
+  }
+
+  // The deadline. The fake clock of this script turns every timer between 0.1 s and 120 s into 3 ms, so a request that
+  // never answers (or answers late) meets the code's own clocks at once; what is checked is what happens then.
+  {
+    check('the chat\'s clocks: 45 s to a first event, 30 s of silence once streaming, 110 s in all, all under the 150 s wall of Supabase', LIM.firstEventMs === 45_000 && LIM.idleMs === 30_000 && !('roundTimeoutMs' in LIM) && LIM.answerDeadlineMs === 110_000 && LIM.answerDeadlineMs < 150_000)
+    const TOO_SLOW = 'No answer — Anthropic took too long. Try again.'
+    const never = () => new Promise(() => {})
+    const silentBody = () => new Response(new ReadableStream({ start() {} }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const encoder = new TextEncoder()
+    const stallAfter = (first) => () => new Response(new ReadableStream({ start(c) { c.enqueue(encoder.encode(first)) } }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const late = () => new Response(new ReadableStream({ start(c) { realSetTimeout(() => { try { c.enqueue(encoder.encode(sse(textMsg('Too late.')))); c.close() } catch { /* cut already */ } }, 60) } }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const cases = [
+      ['a request that never answers (no response at all)', never],
+      ['a stream that opens and then says nothing (what hung live)', silentBody],
+      ['a stream that only pings', stallAfter('event: ping\ndata: {"type":"ping"}\n\n')],
+      ['an answer that comes too late', late],
+      ['text that starts and then stalls', stallAfter(sse({ blocks: [{ type: 'text', pieces: ['Half of an ans'], text: '' }] }).split('event: content_block_stop')[0])],
+    ]
+    for (const [label, step] of cases) {
+      const w = makeWorld()
+      const started = Date.now()
+      const res = await chat({ conversation_id: null, text: 'add a task for tomorrow' }, { world: w, network: pretend(step) })
+      const evs = res.events.map(e => e.event)
+      const rows = callsOf(w)
+      check(`${label}: the app gets the clear error and the stream ends`, final(res).event === 'error' && final(res).reason === 'timeout' && final(res).message === TOO_SLOW && Date.now() - started < 5000, final(res))
+      check(`${label}: any text that streamed is retracted, and nothing of the round is stored (only the question)`, (!evs.includes('text') || evs.includes('retract')) && messagesOf(w).length === 1 && messagesOf(w)[0].role === 'user' && !evs.includes('done'))
+      check(`${label}: the round's ledger row is finished as an error with the worst case held, never left in flight, and nothing is retried`, rows.length === 1 && rows[0].outcome === 'error' && rows[0].cost_usd > 0 && rows.every(r => r.outcome !== 'pending') && res.net.seen.length === 1, rows.map(r => [r.outcome, r.cost_usd]))
+      check(`${label}: no secret in what the app or the ledger holds`, leaks(res.text, JSON.stringify(rows), w.logs).length === 0)
+    }
+    // A long answer that keeps streaming is not cut by the silence clock; a stream that never ends is cut by the hard limit.
+    const drip = (chunks, gapMs, endless = false) => () => new Response(new ReadableStream({
+      start(c) {
+        let i = 0
+        const until = Date.now() + 4000
+        const tick = () => {
+          try {
+            if (Date.now() > until) { c.close(); return }
+            if (i < chunks.length) { c.enqueue(encoder.encode(chunks[i++])); realSetTimeout(tick, gapMs) } else if (endless) { c.enqueue(encoder.encode('event: content_block_delta\ndata: ' + JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '.' } }) + '\n\n')); realSetTimeout(tick, gapMs) } else c.close()
+          } catch { /* cut already */ }
+        }
+        tick()
+      },
+    }), { status: 200, headers: { 'content-type': 'text/event-stream', 'request-id': 'req_slow' } })
+    const pieces = Array.from({ length: 60 }, (_, n) => `word${n} `)
+    const wLong = makeWorld()
+    const longRes = await chat({ conversation_id: null, text: 'write a long answer' }, { world: wLong, network: pretend(drip(sse(textMsg('x', { blocks: [{ type: 'text', pieces, text: '' }] })).split('\n\n').filter(Boolean).map(e => `${e}\n\n`), 5)) })
+    check('a long answer that keeps streaming past the silence limit (about 400 ms here against 40 ms) is not cut and finishes', final(longRes).event === 'done' && final(longRes).text.includes('word59') && callsOf(wLong)[0].outcome === 'ok', final(longRes))
+    const wEnd = makeWorld()
+    const startedEnd = Date.now()
+    const endRes = await chat({ conversation_id: null, text: 'never stop' }, { world: wEnd, network: pretend(drip([sse({ blocks: [{ type: 'text', pieces: ['go '], text: '' }] }).split('event: content_block_stop')[0]], 5, true)) })
+    check('a stream that never stops but keeps sending is cut by the hard limit of the answer: the clear error, the row finished with the worst case, text retracted', final(endRes).reason === 'timeout' && final(endRes).message === TOO_SLOW && Date.now() - startedEnd >= 1500 && endRes.events.some(e => e.event === 'retract') && callsOf(wEnd)[0].outcome === 'error' && callsOf(wEnd)[0].cost_usd > 0 && messagesOf(wEnd).length === 1, final(endRes))
+    // A chat that is going well is not cut: a fast answer is untouched by the clocks.
+    const wOk = makeWorld()
+    const okRes = await chat({ conversation_id: null, text: 'a quick one' }, { world: wOk, network: pretend(textMsg('Quick.')) })
+    check('a fast answer is still an answer', final(okRes).event === 'done' && callsOf(wOk)[0].outcome === 'ok')
+    // A second round that stalls: the first round and its tool results stay stored, the stalled round stores nothing.
+    const w2 = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const r2 = await chat({ conversation_id: null, text: 'what is on today' }, { world: w2, network: pretend(toolMsg([['toolu_S1', 'get_day_plan', { date: '' }]]), silentBody) })
+    check('a stall in the second round: the first round and its results stay, the second stores nothing, both rows are finished', final(r2).reason === 'timeout' && messagesOf(w2).map(m => m.role).join() === 'user,assistant,user' && callsOf(w2).length === 2 && callsOf(w2).map(r => r.outcome).join() === 'ok,error' && callsOf(w2).every(r => r.outcome !== 'pending'), callsOf(w2).map(r => r.outcome))
+  }
+
+  // Diagnose's chat step: the chat's real first request, with its real tools, timed.
+  {
+    const w = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const net = pretend(toolMsg([['toolu_D1', 'get_day_plan', { date: '' }]]))
+    net.world = w
+    const fn = load(w, net.impl)
+    const res = await fn.handler(post({ action: 'diagnose', part: 'chat' }))
+    const body = await res.json()
+    const sent = net.seen[0]?.body
+    const step = body.steps?.[0]
+    check('Diagnose part "chat": one step, named chat_request, passed, with the time to the first event and the total', res.status === 200 && body.ok === true && body.steps.length === 1 && step.name === 'chat_request' && step.ok === true && /first event came after \d+\.\d s, finished after \d+\.\d s/.test(step.detail) && /asked for get_day_plan \(not run here\)/.test(step.detail), body)
+    check('it sends the chat\'s real request: its tools (8, not strict), its fixed instructions, the date line, the made-up question, and a 120 s round', sent && same(sent.tools.map(t => t.name), probe.CHAT_TOOL_ORDER) && sent.tools.every(t => !('strict' in t)) && sent.system[0].text === probe.CHAT_SYSTEM && sent.messages.length === 1 && sent.messages[0].content.length === 2 && /Today is/.test(sent.messages[0].content[0].text) && sent.messages[0].content[1].text === 'What is on my plan today?' && /context-management/.test(net.seen[0].headers['anthropic-beta'] ?? '') && net.seen.length === 1, sent && Object.keys(sent))
+    check('the tool the model asked for is not run (no read of the owner\'s tasks) and nothing is stored in a chat', !w.ops.some(o => o.table === 'tasks' || o.table === 'time_blocks') && rowsOf(w, 'ai_messages').length === 0 && rowsOf(w, 'ai_conversations').length === 0)
+    const rows = callsOf(w)
+    check('it is one real call in the ledger, job chat, step 1, finished, with its tokens, cost and the word "diagnose" in its request', rows.length === 1 && rows[0].job === 'chat' && rows[0].step === 1 && rows[0].outcome === 'ok' && rows[0].cost_usd > 0 && rows[0].input_tokens + rows[0].cache_read_tokens > 0 && rows[0].request?.diagnose === true && rows[0].request?.question === 'What is on my plan today?', rows[0])
+    check('the answer carries no secret', leaks(JSON.stringify(body), JSON.stringify(rows)).length === 0)
+
+    const wSlow = makeWorld()
+    const netSlow = pretend(() => new Promise(() => {}))
+    netSlow.world = wSlow
+    const slow = await load(wSlow, netSlow.impl).handler(post({ action: 'diagnose', part: 'chat' }))
+    const slowBody = await slow.json()
+    check('a chat request that never answers is a failed step with the plain sentence, the row is finished (worst case held), nothing hangs', slowBody.ok === true && slowBody.steps[0].ok === false && /took too long/.test(slowBody.steps[0].detail) && callsOf(wSlow).length === 1 && callsOf(wSlow)[0].outcome === 'error' && callsOf(wSlow)[0].cost_usd > 0, slowBody)
+
+    const wNoKey = makeWorld({ env: { ANTHROPIC_API_KEY: '' } })
+    const noKey = await (await load(wNoKey, async () => { throw new Error('no network') }).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('without a key the step fails with a sentence and nothing is sent', noKey.ok === true && noKey.steps[0].ok === false && /no Anthropic key/.test(noKey.steps[0].detail) && callsOf(wNoKey).length === 0)
+
+    const wBudget = makeWorld({ gate: [{ ...GATE, month_cost: 999 }], account: { monthly_budget_usd: 1 } })
+    const netB = pretend(textMsg('x'))
+    netB.world = wBudget
+    const over = await (await load(wBudget, netB.impl).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a budget that is used up refuses the chat step before anything is sent', netB.seen.length === 0 && (over.ok === false || over.steps?.[0]?.ok === false), over)
+
+    // The one-a-minute pause: the ledger row the first run left is the clock.
+    const again = await (await fn.handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a second chat check inside a minute is refused as busy, nothing is sent', again.ok === false && again.reason === 'busy' && net.seen.length === 1 && callsOf(w).length === 1, again)
+    const wLater = makeWorld({ tables: { ai_calls: [{ id: 'old', user_id: OWNER, job: 'chat', step: 1, request: { diagnose: true }, created_at: new Date(FIXED_NOW.getTime() - 120_000).toISOString() }, { id: 'real', user_id: OWNER, job: 'chat', step: 1, request: { user_text: 'hi' }, created_at: new Date(FIXED_NOW.getTime() - 5_000).toISOString() }] } })
+    const netL = pretend(toolMsg([['toolu_D2', 'get_day_plan', { date: '' }]]))
+    netL.world = wLater
+    const later = await (await load(wLater, netL.impl).handler(post({ action: 'diagnose', part: 'chat' }))).json()
+    check('a chat check from two minutes ago, and a real chat answer from five seconds ago, do not block it', later.ok === true && later.steps[0].ok === true && netL.seen.length === 1, later)
+
+    const guest = await load(makeWorld({ allowed: [GUEST] }), net.impl).handler(post({ action: 'diagnose', part: 'chat' }, 'nobody'))
+    check('a caller who is not signed in cannot start it', guest.status === 401)
+  }
+
+  // A sign-in check that cannot be made is not an invalid token.
+  {
+    const w = makeWorld()
+    const net = pretend(textMsg('x'))
+    net.world = w
+    const fn = load(w, net.impl)
+    const failWith = (error, thrown = false) => { const f = fakeCreateClient(w); return (u, k, o) => { const c = f(u, k, o); if (!o?.global?.headers) c.auth = { getUser: async () => { if (thrown) throw error; return { data: { user: null }, error } } }; return c } }
+    const attempt = async (error, thrown) => {
+      const world = makeWorld()
+      const n = pretend(textMsg('x'))
+      n.world = world
+      const Deno = { env: { get: (k) => world.env[k] }, serve: (f) => { world.h = f }, errors: {} }
+      new Function('Deno', 'createClient', 'fetch', 'Date', 'console', ...SDK_NAMES, `${builtCode}\nreturn {}`)(Deno, failWith(error, thrown), n.impl, FixedDate, { error() {}, log() {} }, ...SDK_NAMES.map(x => SDK[x]))
+      const res = await world.h(post({ action: 'chat', text: 'hi', stream: true }))
+      return { status: res.status, body: await res.json(), seen: n.seen.length }
+    }
+    for (const [label, error, thrown] of [['a retryable fetch error', { name: 'AuthRetryableFetchError', message: 'fetch failed', status: 0 }, false], ['a 500 from the auth server', { name: 'AuthApiError', message: 'down', status: 500 }, false], ['a 503', { name: 'AuthApiError', message: 'down', status: 503 }, false], ['an exception', new Error('socket hang up'), true]]) {
+      const a = await attempt(error, thrown)
+      check(`${label} while checking the token: 503 "Sign-in could not be checked — try again.", nothing sent to Anthropic`, a.status === 503 && a.body.error === 'Sign-in could not be checked — try again.' && a.seen === 0, a)
+    }
+    for (const [label, error] of [['a bad token (401)', { name: 'AuthApiError', message: 'invalid JWT', status: 401 }], ['a missing session', { name: 'AuthSessionMissingError', message: 'Auth session missing!', status: 400 }]]) {
+      const a = await attempt(error, false)
+      check(`${label}: still 401 "Invalid token" (the app refreshes once)`, a.status === 401 && a.body.error === 'Invalid token', a)
+    }
+  }
 
   finished = true
   console.log(`\n${ok} passed, ${bad} failed`)

@@ -335,3 +335,34 @@ export function cardStateLabel(state: CardState): string {
 export function boldParts(text: string): { text: string; bold: boolean }[] {
   return text.split(/(\*\*[^*\n]+?\*\*)/g).filter(Boolean).map(part => (/^\*\*[^*\n]+\*\*$/.test(part) ? { text: part.slice(2, -2), bold: true } : { text: part, bold: false }))
 }
+
+// ── The sign-in token of a request ───────────────────────────────────────────
+
+/** What a request to the function needs from the sign-in, so the logic below is pure and a test can fake it. */
+export interface SessionDeps {
+  /** The current access token right now (the client refreshes an expired one before it answers), or null when signed out. */
+  currentToken: () => Promise<string | null>
+  /** Asks for a new token with the refresh token, or null when that fails. */
+  refreshedToken: () => Promise<string | null>
+  /** The request itself, with the token it should carry. */
+  send: (token: string) => Promise<Response>
+}
+
+/**
+ * Sends one request with a token read just now (never one kept from earlier: it may have expired while the panel was
+ * open). A 401 means the function did not accept the token, so it is refreshed ONCE and the request is sent ONCE more;
+ * only a second refusal (or no refresh) is the caller's "session" message. The token is never logged or stored here.
+ * `null` is "no session at all".
+ */
+export async function sendWithSession(deps: SessionDeps): Promise<Response | null> {
+  const token = await deps.currentToken()
+  if (!token) return null
+  const first = await deps.send(token)
+  if (first.status !== 401) return first
+  const fresh = await deps.refreshedToken()
+  if (!fresh) return first
+  return deps.send(fresh)
+}
+
+/** True when a response means "sign in again" and nothing else can help (a second 401 or a 403). */
+export const isSessionRefusal = (status: number): boolean => status === 401 || status === 403

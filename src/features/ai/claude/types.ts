@@ -27,8 +27,8 @@ export interface CallSummary {
   served_model: string | null
 }
 
-/** The four checks of Diagnose, in the order the function runs them. */
-export const DIAGNOSE_STEP_NAMES = ['network_key', 'request_shape', 'tiny_answer', 'fill_request'] as const
+/** The checks of Diagnose, in the order they run: the function's four, then the chat's own request (a call of its own). */
+export const DIAGNOSE_STEP_NAMES = ['network_key', 'request_shape', 'tiny_answer', 'fill_request', 'chat_request'] as const
 export type DiagnoseStepName = typeof DIAGNOSE_STEP_NAMES[number]
 
 /** One check: `detail` is the function's own sentence (secrets already taken out), `ms` how long it took. */

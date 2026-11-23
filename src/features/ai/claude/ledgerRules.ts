@@ -194,8 +194,21 @@ const SLOW_FILL_FACTOR = 3
 // ✨'s own limit in the function: a request that takes longer fails there.
 const FILL_LIMIT_MS = 30_000
 
-/** One plain sentence about where the trouble is, worked out from the four steps. */
+/** The chat's request is slow when it takes longer than this: the function stops a chat round at 60 s, and the first event at 45 s. */
+const CHAT_SLOW_MS = 30_000
+
+/** One plain sentence about where the trouble is, worked out from the steps: the four checks, then the chat's own request. */
 export function diagnoseVerdict(steps: readonly DiagnoseStep[]): DiagnoseVerdict {
+  const base = diagnoseBaseVerdict(steps)
+  const chat = steps.find(s => s.name === 'chat_request')
+  if (!chat) return base
+  // The step's own sentence already says what happened and when (or that it did not run): it is not worded a second time.
+  if (!chat.ok) return { tone: 'danger', text: `${base.text} ${chat.detail}` }
+  if (chat.ms >= CHAT_SLOW_MS) return { tone: base.tone === 'success' ? 'warn' : base.tone, text: `${base.text} The chat’s own request took ${stepSeconds(chat.ms)}, which is slow.` }
+  return { ...base, text: `${base.text} The chat’s own request took ${stepSeconds(chat.ms)}.` }
+}
+
+function diagnoseBaseVerdict(steps: readonly DiagnoseStep[]): DiagnoseVerdict {
   const by = (name: DiagnoseStep['name']) => steps.find(s => s.name === name)
   const net = by('network_key'), shape = by('request_shape'), tiny = by('tiny_answer'), fill = by('fill_request')
   if (!net) return { tone: 'neutral', text: 'Diagnose gave no result for the network check.' }
@@ -307,6 +320,27 @@ export const OUTCOME_META: Record<CallOutcome, OutcomeMeta> = {
   not_configured: { label: 'No key', tone: 'neutral', what: 'ANTHROPIC_API_KEY is not set on the server, so nothing was sent.' },
   bad_input: { label: 'Bad input', tone: 'neutral', what: 'The request was refused before anything was sent.' },
   pending: { label: 'In flight', tone: 'info', what: 'The call was reserved against the budget and has no result yet. If it never gets one (a crash), the reserved worst case stays counted.' },
+}
+
+/** A call reserved longer ago than this has no live request behind it: Supabase stops a function at 150 s. */
+export const PENDING_STOPPED_AFTER_MS = 150_000
+
+/** The Calls filter's own choice for a reserved row that was stopped (the outcome stored is still `pending`). */
+export const STOPPED_FILTER = 'stopped'
+
+/** A call that is "In flight" and older than the function can live is not in flight: it was stopped with no answer. */
+export function isStoppedPending(call: { outcome: unknown; created_at: unknown }, now: number = Date.now()): boolean {
+  if (call.outcome !== 'pending' || typeof call.created_at !== 'string') return false
+  const at = Date.parse(call.created_at)
+  return Number.isFinite(at) && now - at > PENDING_STOPPED_AFTER_MS
+}
+
+/** The word, tone and meaning of a call's outcome, with a stale "In flight" shown as stopped (computed from its age, never stored). */
+export function callOutcomeMeta(call: { outcome: unknown; created_at: unknown }, now: number = Date.now()): OutcomeMeta & { known: boolean } {
+  if (isStoppedPending(call, now)) {
+    return { label: 'Stopped', tone: 'warn', what: 'No answer — stopped (held at worst case). The call was reserved against the budget but never got a result: the function was stopped before Anthropic answered. Its worst case stays counted, because Anthropic may still have billed it.', known: true }
+  }
+  return outcomeMeta(call.outcome)
 }
 
 /** An outcome's word and tone; one this version doesn't know shows its own word, grey. */

@@ -7,7 +7,7 @@
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
 //    { "action": "count", "input": { … } }          → run.ts (the Test bench's free token count)
-//    { "action": "diagnose" }                       → diagnose.ts
+//    { "action": "diagnose", "part"?: "chat" }       → diagnose.ts (the four checks; or, with part "chat", the chat's own real request)
 //    { "action": "report_make" }                    → batch.ts (the weekly report: queue the batch)
 //    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
 //    { "action": "chat", "conversation_id", "text", "stream" } → chat-loop.ts (Ask AI: one answer; `stream: true` answers as
@@ -37,7 +37,7 @@ import { ANTHROPIC_INFO, anthropicProvider } from './provider-anthropic.ts'
 import { describeFunction } from './describe.ts'
 import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret, SCHEDULE_ACTIONS } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
-import { runDiagnose } from './diagnose.ts'
+import { runDiagnose, runDiagnoseChat } from './diagnose.ts'
 import { findJob } from './jobs.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
 import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
@@ -175,7 +175,20 @@ Deno.serve(async (req) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
     } else {
       if (!authHeader) return reply(401, { error: 'Missing authorization header' })
-      const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+      let user: { id: string } | null = null
+      let authError: { name?: string; status?: number } | null = null
+      try {
+        const checked = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+        user = checked.data?.user ?? null
+        authError = checked.error
+      } catch {
+        authError = { name: 'AuthRetryableFetchError' }
+      }
+      // A token the auth server refused is a 401 (the app refreshes it once). A check that could not be made at all (the
+      // auth server down, the network) says nothing about the token: a 503 the app shows as it is, with no refresh.
+      if (authError && (authError.name === 'AuthRetryableFetchError' || authError.status === 0 || (typeof authError.status === 'number' && authError.status >= 500))) {
+        return reply(503, { error: 'Sign-in could not be checked — try again.' })
+      }
       if (authError || !user) return reply(401, { error: 'Invalid token' })
       if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
       userId = user.id
@@ -266,7 +279,7 @@ Deno.serve(async (req) => {
     }
     if (action === 'report_make') return reply(200, await makeWeeklyReport(context))
     if (action === 'report_check') return reply(200, await checkReports(context))
-    if (action === 'diagnose') return reply(200, await runDiagnose(context))
+    if (action === 'diagnose') return reply(200, ownValue(body, 'part') === 'chat' ? await runDiagnoseChat(context) : await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
     const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)

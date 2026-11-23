@@ -227,13 +227,18 @@ interface ChatRequest {
   previousMessageId: string | null
   /** When the provider clears old tool results from a long prompt (tokens). */
   contextEditing: { triggerTokens: number; keepToolUses: number; clearAtLeastTokens: number }
+  /** The hard limit of the whole round, from sending to the last stream event: a stream still open then is cut, however well it is going. */
   timeoutMs: number
+  /** A round that has shown no stream event at all (a ping does not count) after this long is cut: Anthropic may be compiling something. */
+  firstEventTimeoutMs?: number
+  /** Once events flow, a round that then shows none for this long is cut. Every event starts this clock again, so a long answer that keeps streaming is never cut by it. */
+  idleTimeoutMs?: number
   /** Stops the request when the app goes away. */
   signal?: AbortSignal
 }
 
-/** What the provider tells the chat while an answer arrives. Only these two, never a raw provider event. */
-type ChatDelta = { kind: 'text'; text: string } | { kind: 'tool'; name: string }
+/** What the provider tells the chat while an answer arrives. Only these, never a raw provider event (`started`: the first stream event, once). */
+type ChatDelta = { kind: 'text'; text: string } | { kind: 'tool'; name: string } | { kind: 'started' }
 
 /** Why the provider's prompt cache could not be reused (a short word and the tokens that missed), or null. */
 interface CacheMiss {
@@ -428,7 +433,7 @@ type ReportCheckReply =
 
 /** One check of Diagnose, as the app shows it. `detail` is one plain sentence with numbers, already scrubbed. */
 interface DiagnoseStep {
-  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request'
+  name: 'network_key' | 'request_shape' | 'tiny_answer' | 'fill_request' | 'chat_request'
   title: string
   ok: boolean
   /** How long the step took, in milliseconds. */
@@ -1713,6 +1718,9 @@ const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
 
+/** What the person reads when a chat round was cut for taking too long. */
+const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'No answer — Anthropic took too long. Try again.'
+
 const ANTHROPIC_SPEND_LIMIT_START = 'You have reached your specified API usage limits'
 const ANTHROPIC_SPEND_LIMIT_MESSAGE = "Your monthly spend limit in Anthropic's Console is reached, so Anthropic refused the request. Raise it in the Console (Settings → Limits) or wait for the new month."
 
@@ -1831,17 +1839,49 @@ function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fetch']): 
       const timeout = anthropicTimeout(request.timeoutMs)
       const body = anthropicChatBody(request)
       const sent = anthropicChatSent(request, body, timeout)
+      // The SDK's own timeout covers only the wait for the response headers: a stream that opens and then says nothing
+      // would wait for ever (seen live, 22.11.2026). So the round has its own two clocks, and a signal of its own.
+      const controller = new AbortController()
+      let stoppedBy: 'first_event' | 'idle' | 'round' | null = null
+      const stop = (why: 'first_event' | 'idle' | 'round') => { if (!stoppedBy) { stoppedBy = why; controller.abort() } }
+      const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('round stopped')), { once: true }))
+      aborted.catch(() => {})
+      const outer = request.signal
+      const onOuterAbort = () => controller.abort()
+      if (outer) { if (outer.aborted) controller.abort(); else outer.addEventListener('abort', onOuterAbort, { once: true }) }
+      const roundTimer = setTimeout(() => stop('round'), timeout)
+      // One silence clock: the first-event limit until the first event, then the idle limit, started again by every event.
+      let quiet: ReturnType<typeof setTimeout> | undefined = typeof request.firstEventTimeoutMs === 'number' ? setTimeout(() => stop('first_event'), request.firstEventTimeoutMs) : undefined
+      let began = false
       try {
-        const stream = client.beta.messages.stream(body, { timeout, ...(request.signal ? { signal: request.signal } : {}) })
+        const stream = client.beta.messages.stream(body, { timeout, signal: controller.signal })
         stream.on('text', piece => { if (piece) onDelta({ kind: 'text', text: piece }) })
         stream.on('streamEvent', event => {
+          if ((event.type as string) === 'ping') return
+          if (!began) { began = true; onDelta({ kind: 'started' }) }
+          if (quiet) clearTimeout(quiet)
+          quiet = typeof request.idleTimeoutMs === 'number' ? setTimeout(() => stop('idle'), request.idleTimeoutMs) : undefined
           if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') onDelta({ kind: 'tool', name: anthropicCut(event.content_block.name, 60) })
         })
-        const message = await stream.finalMessage()
+        const finished = stream.finalMessage()
+        finished.catch(() => {})
+        const message = await Promise.race([finished, aborted])
         return { ...anthropicChatAnswer(message), sent }
       } catch (error) {
+        // Stopped by one of the two clocks: a timeout, whatever error the cut stream raised (the bill is unknown).
+        if (stoppedBy) {
+          return {
+            ok: false, kind: 'timeout', status: null, requestId: null, sent,
+            detail: stoppedBy === 'first_event' ? 'no first stream event in time' : stoppedBy === 'idle' ? 'the stream went silent' : 'the round took too long',
+            message: ANTHROPIC_CHAT_TIMEOUT_MESSAGE,
+          }
+        }
         // A failure in the middle of a stream (an error event, a dropped connection, the app going away) lands here too.
         return { ...anthropicFailure(error, apiKey, timeout), sent }
+      } finally {
+        clearTimeout(roundTimer)
+        if (quiet) clearTimeout(quiet)
+        outer?.removeEventListener('abort', onOuterAbort)
       }
     },
     // Free: the chat's prompt tokens, counted with the same body (context editing included) but for the answer limit.
@@ -2051,8 +2091,9 @@ function anthropicChatBody(request: ChatRequest): Anthropic.Beta.Messages.Messag
     tools: request.tools.map((tool, i) => ({
       name: tool.name,
       description: tool.description,
-      // Strict: the model's input always matches. Every property is required and nothing else is allowed.
-      strict: true,
+      // Not strict (trap 16): a strict tool makes Anthropic compile a grammar on the first request with that tool set, which
+      // can take up to 180 s, longer than an edge function lives. Our own check (chat-tools.ts) holds every input instead.
+      // The schema stays small and flat: every property listed as required and nothing else allowed, as a hint to the model.
       input_schema: { type: 'object' as const, properties: tool.properties, required: Object.keys(tool.properties), additionalProperties: false },
       ...(i === last ? { cache_control: mark } : {}),
     })),
@@ -2256,6 +2297,16 @@ async function readSettingRow(
 async function hasRecentCall(userDb: Db, userId: string, job: string, sinceIso: string): Promise<boolean | null> {
   try {
     const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', job).gte('created_at', sinceIso).limit(1)
+    return error || !Array.isArray(data) ? null : data.length > 0
+  } catch {
+    return null
+  }
+}
+
+/** Whether the chat check of Diagnose ran since `sinceIso`: its rows are job `chat` with `diagnose` set in the request. Null when it can't be read. */
+async function hasRecentChatDiagnose(userDb: Db, userId: string, sinceIso: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', 'chat').eq('request->>diagnose', 'true').gte('created_at', sinceIso).limit(1)
     return error || !Array.isArray(data) ? null : data.length > 0
   } catch {
     return null
@@ -5698,10 +5749,12 @@ const CHAT_LIMITS = {
   databaseRows: 40,
   /** A tool that takes longer than this is an error result, not a hung answer. */
   toolTimeoutMs: 12_000,
-  /** One request to the model waits at most this long. */
-  roundTimeoutMs: 60_000,
-  /** The whole answer (every round and tool) stops starting new rounds after this long. */
-  answerDeadlineMs: 105_000,
+  /** Once a request's stream has started, it is cut after this long with no event (every event starts the clock again). */
+  idleMs: 30_000,
+  /** A request that has shown no stream event at all after this long is cut (a compile or a stall, never an answer). */
+  firstEventMs: 45_000,
+  /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it, even one that is still streaming. */
+  answerDeadlineMs: 110_000,
   /** A proposal waits this long for its Confirm. */
   proposalHours: 24,
   /** The oldest live context is repeated after this many minutes (or on a new day). */
@@ -5851,7 +5904,8 @@ const CHAT_JOB: JobDefinition = {
     'Context editing: old tool results are cleared from a long prompt (from 40 000 tokens, the last 4 kept)',
     'Cache diagnostics: why a cache miss happened is kept with the answer',
     'The thinking check is strict: a chat whose history changed is refused, never sent',
-    'Strict tools with no optional field, so the model\'s tool calls always match their definitions',
+    'Small flat tools with no optional field; our own check holds every value the model sends (not strict, so Anthropic compiles no grammar)',
+    'A deadline: no first stream event in 45 s, a stream silent for 30 s, or an answer over 110 s is stopped, never left running',
     'Citations: what find_text finds is cited, and each citation is checked to be your own row before it is shown',
     'A wall at 90 000 prompt tokens: the chat asks you to start a new one',
     'Writes are proposals only: a card in the app, a Confirm tap, and then the app\'s own rights write the row',
@@ -5871,8 +5925,9 @@ const CHAT_JOB: JobDefinition = {
 //  runs after the owner's Confirm.
 //
 //  The rules every tool keeps:
-//    · Strict and flat, with NO optional parameter (Anthropic compiles every optional field into the grammar, and the
-//      limit is 24 across the whole request): every field is required, "" (or "any") means "not given".
+//    · Small, flat, with NO optional parameter, and NOT strict (a strict tool makes Anthropic compile a grammar on the
+//      first request, up to 180 s, longer than an edge function lives): every field is required, "" (or "any") means
+//      "not given", and `checkedArgs` holds what the model really sends.
 //    · The model's values are input. Our own code checks every one, ignoring letter case in a choice, and an error
 //      comes back as a result that says what to try (`is_error`), never as an exception.
 //    · Every query names the verified user id and runs with the OWNER'S rights (the database client that carries the
@@ -7776,10 +7831,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   blocks.push({ type: 'text', text })
   const newMessage: ChatMessage = { role: 'user', content: blocks }
   const wire: ChatMessage[] = [...asChatMessages(history), newMessage]
-  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number): ChatRequest => ({
+  const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, clocks?: { firstEventTimeoutMs: number; idleTimeoutMs: number }): ChatRequest => ({
     model, maxOutputTokens, effort, thinking, system: CHAT_SYSTEM, ownerInstructions, tools, noTools, messages,
     previousMessageId: typeof history.filter(m => m.role === 'assistant').pop()?.meta.message_id === 'string' ? history.filter(m => m.role === 'assistant').pop()?.meta.message_id as string : null,
-    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, signal,
+    contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(clocks ?? {}), signal,
   })
 
   // The wall: the last prompt's size plus the new words is an estimate; near the line the provider counts it exactly (free).
@@ -7831,7 +7886,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, Math.min(CHAT_LIMITS.roundTimeoutMs, remaining))
+    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.
@@ -7888,7 +7943,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     const roundStarted = Date.now()
     const answer = await provider.chatRound(request, delta => {
       if (delta.kind === 'text') { streamed = true; emit({ event: 'text', t: delta.text }) }
-      else emit({ event: 'step', name: delta.name, label: STEP_LABELS[delta.name] ?? 'Working on it' })
+      else if (delta.kind === 'tool') emit({ event: 'step', name: delta.name, label: STEP_LABELS[delta.name] ?? 'Working on it' })
     }).catch((): ModelFailure => ({ ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }))
     row.duration_ms = Math.max(0, Date.now() - roundStarted)
 
@@ -7927,7 +7982,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       row.error = cutChars(hideSecrets(settings.logText ? `${answer.message}${answer.detail ? ` — ${answer.detail}` : ''}` : answer.message, ctx.secrets), RUN_ERROR_MAX)
       logRound()
       await finishCall(ctx.adminDb, row)
-      return fail('error', answer.message)
+      // A round that was cut for taking too long: stopped, its row finished as an error (the worst case stays held, the
+      // bill is unknown), nothing of it stored, and the person told plainly.
+      return fail(answer.kind === 'timeout' ? 'timeout' : 'error', answer.message)
     }
     if (answer.ending === 'refused') {
       row.outcome = 'refused'
@@ -8164,6 +8221,9 @@ async function setChatDeleted(ctx: RunContext, input: unknown, deleted: boolean)
 //
 //  The answer carries only our own sentences and numbers. A message goes out through hideSecrets, and no raw
 //  provider object is ever put in one.
+//
+//  A fifth check, the chat's own real request, is asked for apart (`part: 'chat'`, `runDiagnoseChat` at the end): its
+//  120 s limit and the four checks together would pass Supabase's 150 s.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The made-up sentence every check uses: ✨'s own example. No personal data. */
@@ -8293,6 +8353,98 @@ async function runDiagnose(ctx: RunContext): Promise<DiagnoseReply> {
   })
 
   return { ok: true, steps }
+}
+
+// ── The chat's own request (a fifth check, asked for apart) ──────────────────
+
+/** The question of the chat check: made up, about nothing personal. */
+const DIAGNOSE_CHAT_QUESTION = 'What is on my plan today?'
+/** The chat check waits this long for the whole round, the first event included. A call of its own: the four checks plus this would pass Supabase's 150 s. */
+const DIAGNOSE_CHAT_MS = 120_000
+
+/**
+ * `{ action: 'diagnose', part: 'chat' }`: the chat's REAL first request (its real tools and instructions, the date line and
+ * a fixed question) sent once with a 120 s limit, to see how long Anthropic takes to start answering and to finish. A tool
+ * the model asks for is not run: asking for one is an answer. It is one real call, reserved against the budget and written to
+ * the ledger as a round of the job `chat` (its request text says it is Diagnose).
+ */
+async function runDiagnoseChat(ctx: RunContext): Promise<DiagnoseReply> {
+  // The same one-a-minute pause as Diagnose, kept by the ledger: its rows are the chat's step 1 with `diagnose` in the request.
+  const since = new Date(ctx.now().getTime() - DIAGNOSE_PAUSE_MS).toISOString()
+  const recent = await hasRecentChatDiagnose(ctx.userDb, ctx.userId, since)
+  if (recent === null) return { ok: false, reason: 'error', message: 'The AI usage could not be read, so nothing was tried. Try again in a moment.' }
+  if (recent) return { ok: false, reason: 'busy', message: 'The chat check already ran in the last minute. Wait a moment and run it again.' }
+  const provider = ctx.provider
+  const title = "The chat's real request"
+  if (!provider) return { ok: true, steps: [{ name: 'chat_request', title, ok: false, ms: 0, detail: 'The server has no Anthropic key (ANTHROPIC_API_KEY is not set), so nothing was tried.' }] }
+  const stored = await readSettingRows(ctx.userDb, ctx.userId, CHAT_JOB.name)
+  if (!stored) return { ok: false, reason: 'error', message: 'The AI settings could not be read, so nothing was tried. Try again in a moment.' }
+  const settings = settingsFor(CHAT_JOB, stored.account, stored.job)
+  const tools = chatToolsNamed(toolsForNewChat(toolModes(null)))
+  const now = ctx.now()
+  const request: ChatRequest = {
+    model: settings.model, maxOutputTokens: Math.max(CHAT_LIMITS.minOutputTokens, settings.maxOutputTokens), effort: settings.effort, thinking: settings.thinking,
+    system: CHAT_SYSTEM, ownerInstructions: '', tools, noTools: false,
+    messages: [{ role: 'user', content: [{ type: 'text', text: liveContextText(now) }, { type: 'text', text: DIAGNOSE_CHAT_QUESTION }] }],
+    previousMessageId: null, contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs: DIAGNOSE_CHAT_MS,
+  }
+  const step = (ok: boolean, ms: number, detail: string): DiagnoseReply => ({
+    ok: true, steps: [{ name: 'chat_request', title, ok, ms: Math.max(0, ms), detail: cutChars(hideSecrets(detail, ctx.secrets), DIAGNOSE_DETAIL_MAX) }],
+  })
+
+  const row = newRow(ctx, CHAT_JOB)
+  row.model = settings.model
+  row.effort = settings.effort
+  row.instructions_version = CHAT_VERSION
+  const worstCost = worstCostOf(settings.model, CHAT_SYSTEM.length + JSON.stringify(tools).length + 400, request.maxOutputTokens)
+  const reservation = await reserveCall(ctx.adminDb, {
+    userId: ctx.userId, job: CHAT_JOB.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: settings.model, effort: settings.effort,
+    instructionsVersion: CHAT_VERSION, worstCostUsd: worstCost, budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
+    perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay, callerPerDay: LIMITS.callsPerDay,
+  })
+  if (!reservation) return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was tried. Try again in a moment.' }
+  if (reservation.kind === 'busy') return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute or ${LIMITS.callsPerDay} today. Wait a moment and run it again.` }
+  row.id = reservation.id
+  if (reservation.kind === 'budget') {
+    row.outcome = 'budget'
+    row.error = cutChars(reservationBudgetProblem(settings, CHAT_JOB.title), RUN_ERROR_MAX)
+    await finishCall(ctx.adminDb, row)
+    return step(false, 0, reservationBudgetProblem(settings, CHAT_JOB.title))
+  }
+
+  const t0 = Date.now()
+  let firstAt: number | null = null
+  const answer = await provider.chatRound(request, delta => { if (delta.kind === 'started' && firstAt === null) firstAt = Date.now() - t0 })
+    .catch((): ModelFailure => ({ ok: false, kind: 'unknown', status: null, message: 'The AI call failed unexpectedly.', detail: '', requestId: null, sent: null }))
+  const ms = Date.now() - t0
+  row.duration_ms = ms
+  const usage = answer.ok ? answer.usage : RUN_NO_TOKENS
+  const price = costOf(usage, settings.model, row.mode)
+  row.input_tokens = usage.inputTokens
+  row.cache_read_tokens = usage.cacheReadTokens
+  row.cache_write_5m_tokens = usage.cacheWrite5mTokens
+  row.cache_write_1h_tokens = usage.cacheWrite1hTokens
+  row.output_tokens = usage.outputTokens
+  row.thinking_tokens = usage.thinkingTokens
+  row.long_prompt = price.longPrompt
+  row.request_id = answer.requestId
+  row.stop_reason = answer.ok ? answer.stopReason : null
+  row.served_model = answer.ok ? answer.servedModel : null
+  row.cost_usd = !answer.ok && RUN_MAY_BE_BILLED.includes(answer.kind) ? worstCost : price.costUsd
+  row.request = trimForLog({ diagnose: true, question: DIAGNOSE_CHAT_QUESTION, tools: tools.map(t => t.name) }, TEXT_LOG_MAX_BYTES)
+  const first = firstAt === null ? 'no event came' : `the first event came after ${diagnoseSecs(firstAt)} s`
+  if (!answer.ok) {
+    row.outcome = 'error'
+    row.error = cutChars(hideSecrets(answer.message, ctx.secrets), RUN_ERROR_MAX)
+    await finishCall(ctx.adminDb, row)
+    return step(false, ms, `The chat's request failed after ${diagnoseSecs(ms)} s (${first}): ${answer.message}${answer.detail ? ` Anthropic says: ${answer.detail}` : ''}`)
+  }
+  row.outcome = answer.ending === 'refused' ? 'refused' : 'ok'
+  await finishCall(ctx.adminDb, row)
+  const asked = answer.content.filter(b => b.type === 'tool_use').map(b => (typeof b.name === 'string' ? b.name : '?')).slice(0, 4)
+  const ended = answer.ending === 'tool_calls' ? `the model asked for ${asked.join(', ') || 'a tool'} (not run here)` : answer.ending === 'refused' ? 'the model declined' : 'the model answered in words'
+  const promptTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWrite5mTokens + usage.cacheWrite1hTokens
+  return step(true, ms, `The chat's request came back: ${first}, finished after ${diagnoseSecs(ms)} s; ${ended}; ${diagnoseTokens(promptTokens)} in, ${diagnoseTokens(usage.outputTokens)} out, cost ${diagnoseUsd(price.costUsd)}.`)
 }
 
 // ═══ supabase/claude-src/describe.ts ═══
@@ -8464,7 +8616,7 @@ function describeFunction(configured: boolean, provider: ProviderInfo): Describe
 //    { "action": "describe" }                       → describe.ts
 //    { "action": "run", "job": "…", "input": { … } } → run.ts
 //    { "action": "count", "input": { … } }          → run.ts (the Test bench's free token count)
-//    { "action": "diagnose" }                       → diagnose.ts
+//    { "action": "diagnose", "part"?: "chat" }       → diagnose.ts (the four checks; or, with part "chat", the chat's own real request)
 //    { "action": "report_make" }                    → batch.ts (the weekly report: queue the batch)
 //    { "action": "report_check" }                   → batch.ts (read back a queued report when its batch has ended)
 //    { "action": "chat", "conversation_id", "text", "stream" } → chat-loop.ts (Ask AI: one answer; `stream: true` answers as
@@ -8621,7 +8773,20 @@ Deno.serve(async (req) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return reply(503, { error: 'Server not configured (HEVY_USER_ID)' })
     } else {
       if (!authHeader) return reply(401, { error: 'Missing authorization header' })
-      const { data: { user }, error: authError } = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+      let user: { id: string } | null = null
+      let authError: { name?: string; status?: number } | null = null
+      try {
+        const checked = await adminDb.auth.getUser(authHeader.replace('Bearer ', ''))
+        user = checked.data?.user ?? null
+        authError = checked.error
+      } catch {
+        authError = { name: 'AuthRetryableFetchError' }
+      }
+      // A token the auth server refused is a 401 (the app refreshes it once). A check that could not be made at all (the
+      // auth server down, the network) says nothing about the token: a 503 the app shows as it is, with no refresh.
+      if (authError && (authError.name === 'AuthRetryableFetchError' || authError.status === 0 || (typeof authError.status === 'number' && authError.status >= 500))) {
+        return reply(503, { error: 'Sign-in could not be checked — try again.' })
+      }
       if (authError || !user) return reply(401, { error: 'Invalid token' })
       if (!(await isAppUser(user.id))) return reply(403, { error: 'forbidden' })
       userId = user.id
@@ -8712,7 +8877,7 @@ Deno.serve(async (req) => {
     }
     if (action === 'report_make') return reply(200, await makeWeeklyReport(context))
     if (action === 'report_check') return reply(200, await checkReports(context))
-    if (action === 'diagnose') return reply(200, await runDiagnose(context))
+    if (action === 'diagnose') return reply(200, ownValue(body, 'part') === 'chat' ? await runDiagnoseChat(context) : await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
     const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)

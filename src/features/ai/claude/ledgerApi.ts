@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { readCallWithText, readCalls, readJobSettings, readUsageRows } from './ledgerRules'
+import { PENDING_STOPPED_AFTER_MS, STOPPED_FILTER, readCallWithText, readCalls, readJobSettings, readUsageRows } from './ledgerRules'
 import type { AiCallWithText, AiCallsFilter, AiCallsPage, AiJobSettings, AiSettings, AiUsageRow } from './types'
 
 // The ledger and the owner's AI settings (migration 194). `ai_calls` is written only by the `claude` function
@@ -43,7 +43,11 @@ export async function fetchAiCallsPage(filter: AiCallsFilter, page: number): Pro
   const from = Math.max(0, page) * CALLS_PAGE_SIZE
   let q = supabase.from('ai_calls').select(CALL_COLUMNS, { count: 'exact' })
   if (filter.job) q = q.eq('job', filter.job)
-  if (filter.outcome) q = q.eq('outcome', filter.outcome)
+  // "In flight" is a reserved row still young enough to be running; "Stopped" is one older than the function can live.
+  const cutoff = new Date(Date.now() - PENDING_STOPPED_AFTER_MS).toISOString()
+  if (filter.outcome === STOPPED_FILTER) q = q.eq('outcome', 'pending').lt('created_at', cutoff)
+  else if (filter.outcome === 'pending') q = q.eq('outcome', 'pending').gte('created_at', cutoff)
+  else if (filter.outcome) q = q.eq('outcome', filter.outcome)
   if (filter.runId) q = q.eq('run_id', filter.runId)
   const { data, error, count } = await q.order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, from + CALLS_PAGE_SIZE - 1)
   if (error) {

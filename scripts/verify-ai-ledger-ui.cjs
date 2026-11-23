@@ -226,6 +226,22 @@ console.log('\nDiagnose: the answer as it enters')
   check('no fourth step: says ✨\'s own request was not tried, neutral', x.tone === 'neutral' && /was not tried/.test(x.text), J(x))
   check('stepSeconds: one decimal under 10 s, whole seconds above', R.stepSeconds(412).replace(/\u00a0/g, ' ') === '0.4 s' && R.stepSeconds(48250).replace(/\u00a0/g, ' ') === '48 s')
   check('no steps at all: a sentence, not a crash', R.diagnoseVerdict([]).text.length > 10)
+  {
+    const chatStep = (ok, ms, detail = 'The chat.') => ({ name: 'chat_request', title: 'The chat’s real request', ok, ms, detail })
+    const base = [step('network_key', true, 400, 'x'), step('request_shape', true, 380, 'x'), step('tiny_answer', true, 1200, 'x'), step('fill_request', true, 2400, 'x')]
+    const plain = R.diagnoseVerdict(base)
+    const withChat = (c) => { const r = R.diagnoseVerdict([...base, c]); return { ...r, text: r.text.replace(/ /g, ' ') } }
+    let r = withChat(chatStep(true, 4200))
+    check('the chat step is a known step name and is kept when read', R.readDiagnoseAnswer({ ok: true, steps: [{ name: 'chat_request', ok: true, ms: 4200, detail: 'd' }] }).steps?.[0]?.name === 'chat_request')
+    check('a chat step that passed fast adds its time and keeps the tone', r.tone === plain.tone && r.text.startsWith(plain.text.replace(/\u00a0/g, ' ')) && r.text.includes('chat’s own request took 4.2 s'), r)
+    r = withChat(chatStep(true, 52000))
+    check('a chat step that took 52 s turns a good verdict into a warning that says it is slow', r.tone === 'warn' && r.text.includes('took 52 s, which is slow'), r)
+    r = withChat(chatStep(false, 120000, 'The chat’s request failed after 120 s: Anthropic took too long.'))
+    check('a chat step that failed is danger and carries its own sentence once, not worded twice', r.tone === 'danger' && r.text.endsWith('The chat’s request failed after 120 s: Anthropic took too long.') && !/failed after 120 s.*failed after/.test(r.text), r)
+    r = withChat(chatStep(false, 0, 'The chat check already ran in the last minute.'))
+    check('a refusal that never ran (busy, budget) says its sentence and no "after 0 s"', r.tone === 'danger' && r.text.endsWith('The chat check already ran in the last minute.') && !/0 s/.test(r.text), r)
+    check('without a chat step the verdict is the old one, word for word', R.diagnoseVerdict(base).text === plain.text)
+  }
   check('every verdict is one line of plain text: no newline', [v(net(false)), v(net(true), shape(false)), v(net(true), shape(true), tiny(true), fill(true, 50000))].every(r => !/\n/.test(r.text)))
 }
 
@@ -259,6 +275,14 @@ console.log('\nmigration 195: the times and held calls in ai_usage, the two sett
   check('no stored row means every default, thinking null', R.jobSettingsOf([], 'x').thinking === null)
   check('the master switch reads false only when it is false: a missing column or odd value is on', R.readSettings({ monthly_budget_usd: 5, ai_enabled: false }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === false && R.readSettings({ monthly_budget_usd: 5 }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === true && R.readSettings({ ai_enabled: 'no' }, { monthlyBudgetUsd: 5, logText: true, logDays: 30 }).ai_enabled === true)
   check('a call still pending has its own word, "In flight", and is not unknown', R.outcomeMeta('pending').known === true && R.outcomeMeta('pending').label === 'In flight')
+  const at = (ms) => new Date(Date.UTC(2026, 10, 22, 22, 0, 0) - ms).toISOString()
+  const NOW = Date.UTC(2026, 10, 22, 22, 0, 0)
+  check('a pending row younger than the function can live stays "In flight"', R.callOutcomeMeta({ outcome: 'pending', created_at: at(60_000) }, NOW).label === 'In flight' && R.callOutcomeMeta({ outcome: 'pending', created_at: at(150_000) }, NOW).label === 'In flight')
+  const stopped = R.callOutcomeMeta({ outcome: 'pending', created_at: at(151_000) }, NOW)
+  check('a pending row older than that reads just "Stopped" (its detail says no answer, held at worst case), warn, known', stopped.label === 'Stopped' && /No answer/.test(stopped.what) && stopped.tone === 'warn' && stopped.known === true && /worst case stays counted/.test(stopped.what))
+  check('only a pending row is ever relabelled (an old answered or failed row is unchanged), and a bad date is left alone', R.callOutcomeMeta({ outcome: 'ok', created_at: at(9e9) }, NOW).label === 'Answered' && R.callOutcomeMeta({ outcome: 'error', created_at: at(9e9) }, NOW).label === 'Failed' && R.callOutcomeMeta({ outcome: 'pending', created_at: 'soon' }, NOW).label === 'In flight' && R.callOutcomeMeta({ outcome: 'pending', created_at: null }, NOW).label === 'In flight')
+  check('the Calls filter splits young pending ("In flight") from old ("Stopped"): one constant, and the query uses the same cutoff', R.STOPPED_FILTER === 'stopped' && /STOPPED_FILTER/.test(require('fs').readFileSync(require('path').join(__dirname, '../src/features/ai/claude/ledgerApi.ts'), 'utf8')) && /PENDING_STOPPED_AFTER_MS/.test(require('fs').readFileSync(require('path').join(__dirname, '../src/features/ai/claude/ledgerApi.ts'), 'utf8')))
+  check('the stopped row still counts as held at worst case in the totals (the rule is unchanged)', R.heldAtWorstCase({ outcome: 'pending', cost_usd: 0.0048, input_tokens: 0, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 0 }) === true)
 }
 
 console.log('\nthe cost of one call: each kind of token times its price')

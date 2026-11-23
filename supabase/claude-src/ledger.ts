@@ -138,6 +138,16 @@ export async function hasRecentCall(userDb: Db, userId: string, job: string, sin
   }
 }
 
+/** Whether the chat check of Diagnose ran since `sinceIso`: its rows are job `chat` with `diagnose` set in the request. Null when it can't be read. */
+export async function hasRecentChatDiagnose(userDb: Db, userId: string, sinceIso: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await userDb.from('ai_calls').select('id').eq('user_id', userId).eq('job', 'chat').eq('request->>diagnose', 'true').gte('created_at', sinceIso).limit(1)
+    return error || !Array.isArray(data) ? null : data.length > 0
+  } catch {
+    return null
+  }
+}
+
 /**
  * How many rows of `job` with this stop reason the account has since `sinceIso` (read with the owner's own client, so
  * row level security shows only their rows). Null when it can't be read: the caller then does nothing.

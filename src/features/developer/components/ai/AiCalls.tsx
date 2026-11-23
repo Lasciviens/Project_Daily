@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ReceiptText, RefreshCw } from 'lucide-react'
 import { Button, EmptyState, IconButton, PageBoard, Skeleton } from '../../../../shared/ui'
 import { useAiCalls, useClaudeDescribe } from '../../../ai/claude/hooks/useClaude'
 import { CALLS_PAGE_SIZE } from '../../../ai/claude/ledgerApi'
-import { OUTCOME_META, formatCount } from '../../../ai/claude/ledgerRules'
+import { OUTCOME_META, STOPPED_FILTER, formatCount } from '../../../ai/claude/ledgerRules'
 import { CALL_OUTCOMES, type AiCallsFilter } from '../../../ai/claude/types'
 import { LIST_DETAIL_BOARD, paneSelection, type ListDetailSection } from '../../developerBoards'
 import { AiCallDetail } from './AiCallDetail'
@@ -70,6 +70,7 @@ export function AiCalls() {
         <select value={filter.outcome} onChange={e => change({ outcome: e.target.value })} aria-label="Outcome" className="select w-auto min-w-0 max-w-[10rem] flex-1">
           <option value="">All outcomes</option>
           {CALL_OUTCOMES.map(o => <option key={o} value={o}>{OUTCOME_META[o].label}</option>)}
+          <option value={STOPPED_FILTER}>Stopped</option>
         </select>
         {filter.runId && <div className="basis-full"><Button size="sm" onClick={clearRun}>One answer · Show all</Button></div>}
         <IconButton label="Refresh" className="ml-auto" onClick={() => { void refetch() }} disabled={isFetching}>

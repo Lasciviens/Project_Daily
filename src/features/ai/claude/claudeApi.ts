@@ -24,7 +24,7 @@ async function notAnswered(error: unknown): Promise<ClaudeJobError> {
   const status = (error as { context?: { status?: number } })?.context?.status
   if (status === 401 || status === 403) return new ClaudeJobError('error', 'Session error — refresh the page and sign in again.')
   const body = await parseFunctionErrorBody(error)
-  const said = typeof body?.message === 'string' ? body.message.trim().slice(0, 300) : ''
+  const said = typeof body?.message === 'string' ? body.message.trim().slice(0, 300) : status === 503 && typeof body?.error === 'string' ? body.error.trim().slice(0, 300) : ''
   return new ClaudeJobError('error', said || 'The AI function didn\'t answer — try again in a moment.')
 }
 
@@ -51,7 +51,7 @@ export async function describeClaude(): Promise<Describe> {
 
 /**
  * Diagnose: the function's four checks of ✨'s road to Anthropic (the network and key, the request's shape, a tiny
- * answer, ✨'s own request with a 90 s limit). It can take up to two minutes. A Diagnose that did not run (one was
+ * answer, ✨'s own request with a 90 s limit), then a fifth, the chat's own real request (120 s). It can take up to four minutes. A Diagnose that did not run (one was
  * run in the last minute, the usage could not be read) throws a ClaudeJobError with the function's sentence.
  */
 export async function diagnoseClaude(): Promise<DiagnoseStep[]> {
@@ -59,7 +59,13 @@ export async function diagnoseClaude(): Promise<DiagnoseStep[]> {
   if (error) throw await notAnswered(error)
   const answer = readDiagnoseAnswer(data)
   if (!answer.ok) throw new ClaudeJobError(answer.reason, answer.message)
-  return answer.steps
+  // The chat's own request is a call of its own (120 s: with the four checks it would pass the function's wall clock).
+  // When it cannot run (busy, no usage), that is shown as a failed fifth check, never as a failed Diagnose.
+  const chat = await supabase.functions.invoke('claude', { body: { action: 'diagnose', part: 'chat' } })
+  const chatSteps = chat.error ? null : readDiagnoseAnswer(chat.data)
+  if (chatSteps?.ok) return [...answer.steps, ...chatSteps.steps]
+  const why = chat.error ? (await notAnswered(chat.error)).message : chatSteps && !chatSteps.ok ? chatSteps.message : 'The chat check gave no result.'
+  return [...answer.steps, { name: 'chat_request', title: 'The chat’s real request', ok: false, ms: 0, detail: why }]
 }
 
 /** The Test bench's "what will this cost": the prompt tokens of the question as it would be sent. Free: nothing is written. */
