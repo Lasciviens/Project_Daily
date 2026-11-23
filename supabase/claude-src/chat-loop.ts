@@ -27,13 +27,15 @@ import {
 import { finishCall, readGate, readSettingRows, reserveCall, type CallRow } from './ledger.ts'
 import { gateScopeOf, newRow, RUN_ERROR_MAX, RUN_MAY_BE_BILLED, RUN_NO_TOKENS, type RunContext } from './run.ts'
 import { osloDay } from './week-facts.ts'
+import { checkedImage } from './image-rules.ts'
 import {
-  canonicalJson, CHAT_JOB, CHAT_LIMITS, CHAT_SYSTEM, CHAT_VERSION, holdsNul, liveContextText, messageDigest, needsLiveContext, sha256Hex, toolModes, toolsForNewChat,
+  canonicalJson, CHAT_JOB, CHAT_LIMITS, CHAT_VERSION, holdsNul, liveContextText, messageDigest, needsLiveContext, ownerInstructionsBlock, cleanOwnerInstructions, sha256Hex, systemFor,
+  toolsForNewChat, type ChatMode,
 } from './chat-rules.ts'
 import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
-  readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
+  readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
 } from './chat-store.ts'
 
 /** The only events the app ever gets from a chat: our own small ones. */
@@ -63,6 +65,9 @@ const STEP_LABELS: Record<string, string> = {
   ask_database: 'Asking the database',
   propose_add_task: 'Preparing a task for you to confirm',
   propose_log_food: 'Preparing a food line for you to confirm',
+  get_training_week: "Looking at the week's training",
+  get_health_trends: "Looking at the week's health figures",
+  get_pt_verdicts: "Reading the coach's saved verdicts",
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
@@ -134,9 +139,16 @@ async function withTimeout<T>(run: Promise<T>, ms: number, onTimeout: T): Promis
 }
 
 /** What the system and the tools of a chat are, hashed: a chat is continued only with the very same ones. */
-async function chatHashes(tools: readonly ChatTool[], ownerInstructions: string): Promise<{ tools: string; system: string }> {
-  return { tools: await sha256Hex(canonicalJson(tools)), system: await sha256Hex(`${CHAT_SYSTEM}\n---\n${ownerInstructions}`) }
+async function chatHashes(tools: readonly ChatTool[], system: string, ownerBlock: string): Promise<{ tools: string; system: string }> {
+  return { tools: await sha256Hex(canonicalJson(tools)), system: await sha256Hex(`${system}\n---\n${ownerBlock}`) }
 }
+
+/** The photos of a message list: image blocks. */
+const imageBlocksOf = (messages: readonly { content: Block[] }[]): number => messages.reduce((n, m) => n + m.content.filter(b => b.type === 'image').length, 0)
+
+/** The prompt's size in characters with each photo's base64 left out (a photo costs tokens by its pixels, never by its text): the reservation adds the photos' worst case itself. */
+const promptChars = (messages: readonly ChatMessage[]): number =>
+  JSON.stringify(messages, (key, value) => (key === 'data' && typeof value === 'string' && value.length > 1000 ? '' : value)).length
 
 /** Runs one answer. `emit` gets the events as they happen (the stream); the return value is the final one. */
 export async function runChat(ctx: RunContext, input: unknown, emit: (event: ChatEvent) => void, signal?: AbortSignal): Promise<ChatResult> {
@@ -162,6 +174,19 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   if (text === null) return errorEvent('bad_input', `Write a message of 1 to ${CHAT_LIMITS.textMax} characters.`)
   const askedId = ownValue(input, 'conversation_id')
   if (askedId !== null && askedId !== undefined && !isUuid(askedId)) return errorEvent('bad_input', 'That is not a chat this app knows.')
+  // A new chat is the everyday one or the Training coach's; a chat that exists keeps the kind it started as.
+  const askedMode = ownValue(input, 'mode')
+  if (askedMode !== undefined && askedMode !== null && askedMode !== 'chat' && askedMode !== 'coach') return errorEvent('bad_input', 'That kind of chat does not exist.')
+  // Photos: each is checked from its own bytes (type, header, size) like every photo; the count is checked again against the whole chat below.
+  const rawImages = ownValue(input, 'images')
+  if (rawImages !== undefined && rawImages !== null && !Array.isArray(rawImages)) return errorEvent('bad_input', 'The photos must be a list.')
+  if (Array.isArray(rawImages) && rawImages.length > CHAT_LIMITS.imagesPerMessage) return errorEvent('bad_input', `At most ${CHAT_LIMITS.imagesPerMessage} photos in one message.`)
+  const newImages: { block: Block; tokens: number }[] = []
+  for (const raw of Array.isArray(rawImages) ? rawImages : []) {
+    const checked = checkedImage(raw, CHAT_LIMITS.imageBase64Max)
+    if (!checked.ok) return errorEvent('bad_input', checked.problem)
+    newImages.push({ block: { type: 'image', source: { type: 'base64', media_type: checked.image.mediaType, data: checked.image.base64 } }, tokens: Math.min(checked.tokens, CHAT_LIMITS.imageTokensWorst) })
+  }
 
   const stored = await readSettingRows(ctx.userDb, ctx.userId, job.name)
   if (!stored) return errorEvent('error', 'Your AI settings could not be read, so nothing was sent. Try again in a moment.')
@@ -171,8 +196,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const provider = ctx.provider
   if (!provider) return errorEvent('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
-  // 2 · The chat.
-  const modes = toolModes(null)
+  // 2 · The chat. What the owner chose (each tool's mode, their own instructions) is read now, as input: the modes are the
+  //     wall for every round, the instructions are copied into a NEW chat only.
+  const controls = await readChatControls(ctx.userDb, ctx.userId)
+  if (!controls) return errorEvent('error', 'Your Ask AI settings could not be read, so nothing was sent. Try again in a moment.')
+  const modes = controls.modes
   let conversation: ConversationRow | null = null
   let history: StoredMessage[] = []
   if (typeof askedId === 'string') {
@@ -191,12 +219,16 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     }
     history = messages
   }
-  const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes)
+  const chatMode: ChatMode = conversation ? conversation.mode : askedMode === 'coach' ? 'coach' : 'chat'
+  const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes, chatMode)
   // A chat that names a tool this code no longer has cannot be replayed with the same tool list.
   if (conversation && toolNames.some(n => !KNOWN_TOOL_NAMES.includes(n))) return errorEvent('stale', 'This chat was started before an update changed the assistant. Start a new chat.', conversation.id)
   const tools = chatToolsNamed(toolNames)
-  const ownerInstructions = ''
-  const hashes = await chatHashes(tools, ownerInstructions)
+  // The owner's instructions are frozen into the chat when it starts (a second, cached system block); later changes reach new chats only.
+  const frozenInstructions = conversation ? cleanOwnerInstructions(conversation.owner_instructions) : controls.instructions
+  const ownerInstructions = ownerInstructionsBlock(frozenInstructions)
+  const system = systemFor(chatMode)
+  const hashes = await chatHashes(tools, system, ownerInstructions)
   if (conversation && (conversation.tools_hash !== hashes.tools || conversation.system_hash !== hashes.system)) {
     return errorEvent('stale', 'This chat was started before an update changed the assistant. Start a new chat.', conversation.id)
   }
@@ -204,6 +236,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const effort = conversation ? conversation.effort : settings.effort
   const thinking = conversation ? conversation.thinking : settings.thinking
   const maxOutputTokens = Math.max(CHAT_LIMITS.minOutputTokens, settings.maxOutputTokens)
+  if (newImages.length && imageBlocksOf(history) + newImages.length > CHAT_LIMITS.imagesPerChat) {
+    return errorEvent('bad_input', `A chat holds at most ${CHAT_LIMITS.imagesPerChat} photos (each stays in the chat). Start a new chat to send more.`, conversation?.id)
+  }
   const conversationId = conversation ? conversation.id : ctx.newId()
 
   // The new message: results of an interrupted tool call first (when the last answer never got its results), then the
@@ -228,18 +263,20 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       blocks.push({ type: 'text', text: `<app_updates>${decided.map(p => `The proposal to ${p.tool === 'add_task' ? 'add a task' : 'log a food line'} was ${p.status === 'confirmed' ? 'confirmed by the person and saved' : p.status === 'cancelled' ? 'cancelled by the person (not saved)' : 'confirmed, but saving it failed (not saved)'}.`).join(' ')} This note comes from the app, not from the person.</app_updates>` })
     }
   }
+  // Photos come before the words (Anthropic's advice), each its own block; the person's words are the last block.
+  for (const image of newImages) blocks.push(image.block)
   blocks.push({ type: 'text', text })
   const newMessage: ChatMessage = { role: 'user', content: blocks }
   const wire: ChatMessage[] = [...asChatMessages(history), newMessage]
   const baseRequest = (messages: ChatMessage[], noTools: boolean, timeoutMs: number, clocks?: { firstEventTimeoutMs: number; idleTimeoutMs: number }): ChatRequest => ({
-    model, maxOutputTokens, effort, thinking, system: CHAT_SYSTEM, ownerInstructions, tools, noTools, messages,
+    model, maxOutputTokens, effort, thinking, system, ownerInstructions, tools, noTools, messages,
     previousMessageId: typeof history.filter(m => m.role === 'assistant').pop()?.meta.message_id === 'string' ? history.filter(m => m.role === 'assistant').pop()?.meta.message_id as string : null,
     contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs, ...(clocks ?? {}), signal,
   })
 
   // The wall: the last prompt's size plus the new words is an estimate; near the line the provider counts it exactly (free).
   if (conversation) {
-    let estimate = conversation.last_prompt_tokens + Math.ceil(text.length / 3) + 200
+    let estimate = conversation.last_prompt_tokens + Math.ceil(text.length / 3) + 200 + newImages.reduce((n, i) => n + i.tokens, 0)
     if (estimate >= CHAT_LIMITS.preciseCountFromTokens) {
       const counted = await provider.countChat(baseRequest(wire, false, 20_000))
       if (counted.ok) estimate = counted.inputTokens
@@ -295,7 +332,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     row.step = round
     row.model = model
     row.effort = effort
-    const worstCost = worstCostOf(model, CHAT_SYSTEM.length + JSON.stringify(tools).length + JSON.stringify(messages).length, maxOutputTokens)
+    const worstCost = worstCostOf(model, system.length + ownerInstructions.length + JSON.stringify(tools).length + promptChars(messages), maxOutputTokens, 'live', { imageTokens: imageBlocksOf(messages) * CHAT_LIMITS.imageTokensWorst })
     const reservation = await reserveCall(ctx.adminDb, {
       userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model, effort, instructionsVersion: CHAT_VERSION,
       worstCostUsd: worstCost, budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
@@ -321,7 +358,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       if (!conversation) {
         const problem = await createConversation(ctx.adminDb, {
           id: conversationId, user_id: ctx.userId, title: cutChars(text.replace(/\s+/g, ' '), 60), model, effort, thinking,
-          tools_hash: hashes.tools, system_hash: hashes.system, tool_names: toolNames,
+          tools_hash: hashes.tools, system_hash: hashes.system, tool_names: toolNames, mode: chatMode, owner_instructions: frozenInstructions,
         })
         if (problem) {
           row.outcome = 'error'; row.error = 'The chat could not be started.'
@@ -367,8 +404,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       row.tools = toolsRunThisRound
       if (!settings.logText) return
       row.request = trimForLog({
-        conversation_id: conversationId, round, instructions_version: CHAT_VERSION, model, effort, thinking, tools: toolNames,
-        ...(round === 1 ? { user_text: text } : {}), ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
+        conversation_id: conversationId, round, instructions_version: CHAT_VERSION, mode: chatMode, model, effort, thinking, tools: toolNames,
+        ...(round === 1 ? { user_text: text, ...(newImages.length ? { photos: newImages.length } : {}) } : {}), ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
       }, TEXT_LOG_MAX_BYTES)
       if (answer.ok) {
         row.response = trimForLog({ text: textOf(answer.content), ending: answer.ending, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
@@ -567,8 +604,10 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     ...(editedTitle !== undefined ? { title: editedTitle } : {}),
     ...(editedDate !== undefined ? (proposal.tool === 'add_task' ? { due_date: editedDate === '' ? null : editedDate } : { date: editedDate }) : {}),
   }
-  // The tool must still be "ask first": a tool the owner has since switched off writes nothing (the setting itself arrives in 4b).
-  if (toolModes(null)[proposal.tool === 'add_task' ? 'propose_add_task' : 'propose_log_food'] !== 'ask') {
+  // The tool must still be "ask first": a tool the owner has since switched off writes nothing (the setting is read now, not when the chat began).
+  const controls = await readChatControls(ctx.userDb, ctx.userId)
+  if (!controls) return { ok: false, reason: 'error', message: 'Your Ask AI settings could not be read, so nothing was saved. Try again in a moment.' }
+  if (controls.modes[proposal.tool === 'add_task' ? 'propose_add_task' : 'propose_log_food'] !== 'ask') {
     await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
     return { ok: false, reason: 'off', message: 'That kind of change is switched off for Ask AI, so nothing was saved.' }
   }

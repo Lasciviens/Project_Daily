@@ -12,7 +12,7 @@
 import type { Block, ChatMessage } from './types.ts'
 import type { Db } from './ledger.ts'
 import { ownValue } from './guard.ts'
-import { messageDigest } from './chat-rules.ts'
+import { cleanOwnerInstructions, messageDigest, toolModes, type ChatMode, type ToolMode } from './chat-rules.ts'
 
 export interface ConversationRow {
   id: string
@@ -30,6 +30,10 @@ export interface ConversationRow {
   cost_usd: number
   /** Set when the owner deleted the chat (the Undo window): such a chat is treated as not there. */
   deleted_at: string | null
+  /** Which kind of chat it was started as (frozen): its instructions and tool set follow from it. */
+  mode: ChatMode
+  /** The owner's own instructions as they were when the chat started (frozen, cleaned). */
+  owner_instructions: string
 }
 
 export interface StoredMessage {
@@ -63,7 +67,7 @@ const MAX_MESSAGES = 600
 
 export const isUuid = (value: unknown): value is string => typeof value === 'string' && STORE_UUID.test(value)
 
-const CONVERSATION_COLUMNS = 'id, user_id, title, model, effort, thinking, tools_hash, system_hash, tool_names, status, message_count, last_prompt_tokens, cost_usd, deleted_at'
+const CONVERSATION_COLUMNS = 'id, user_id, title, model, effort, thinking, tools_hash, system_hash, tool_names, status, message_count, last_prompt_tokens, cost_usd, deleted_at, mode, owner_instructions'
 
 function conversationOf(row: unknown): ConversationRow | null {
   const effort = ownValue(row, 'effort')
@@ -77,6 +81,10 @@ function conversationOf(row: unknown): ConversationRow | null {
   if (thinking !== 'adaptive' && thinking !== 'off') return null
   if (status !== 'open' && status !== 'full' && status !== 'closed') return null
   if (!Array.isArray(names) || names.some(n => typeof n !== 'string')) return null
+  const mode = ownValue(row, 'mode')
+  if (mode !== 'chat' && mode !== 'coach') return null
+  const frozen = ownValue(row, 'owner_instructions')
+  if (typeof frozen !== 'string') return null
   const num = (v: unknown) => (typeof v === 'number' ? v : Number(v))
   return {
     id, user_id: userId, title: typeof ownValue(row, 'title') === 'string' ? ownValue(row, 'title') as string : null,
@@ -85,6 +93,7 @@ function conversationOf(row: unknown): ConversationRow | null {
     tool_names: names as string[], status, message_count: num(ownValue(row, 'message_count')) || 0,
     last_prompt_tokens: num(ownValue(row, 'last_prompt_tokens')) || 0, cost_usd: num(ownValue(row, 'cost_usd')) || 0,
     deleted_at: typeof ownValue(row, 'deleted_at') === 'string' ? ownValue(row, 'deleted_at') as string : null,
+    mode, owner_instructions: frozen,
   }
 }
 
@@ -267,5 +276,29 @@ export async function ownRowTitle(db: Db, userId: string, kind: 'task' | 'diary'
     const { data, error } = await db.from('diary_entries').select('day').eq('id', id).eq('user_id', userId).maybeSingle()
     const day = ownValue(data, 'day')
     return error || typeof day !== 'string' ? null : { title: 'Diary', day }
+  } catch { return null }
+}
+
+// ── What the owner chose (migration 198) ────────────────────────────────────
+
+const PG_MISSING = new Set(['42P01', 'PGRST205', '42703', 'PGRST204'])
+
+/**
+ * The owner's own controls for a NEW chat: each tool's mode (after the code's checks: `toolModes`) and the instructions
+ * (cleaned, cut). Both are written by the browser, so both are input. A database that has not run 198 yet has neither:
+ * the defaults apply (remove the fallback once 198 has run everywhere). Null when they could not be read: nothing is sent.
+ */
+export async function readChatControls(db: Db, userId: string): Promise<{ modes: Record<string, ToolMode>; instructions: string } | null> {
+  try {
+    const [tools, account] = await Promise.all([
+      db.from('ai_tool_settings').select('tool, mode').eq('user_id', userId).limit(50),
+      db.from('ai_settings').select('chat_instructions').eq('user_id', userId).maybeSingle(),
+    ])
+    if (tools.error && !PG_MISSING.has(String(tools.error.code))) return null
+    if (account.error && !PG_MISSING.has(String(account.error.code))) return null
+    return {
+      modes: toolModes(tools.error ? null : tools.data),
+      instructions: account.error ? '' : cleanOwnerInstructions(ownValue(account.data, 'chat_instructions')),
+    }
   } catch { return null }
 }

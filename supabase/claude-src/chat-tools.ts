@@ -24,7 +24,7 @@ import { ownValue } from './guard.ts'
 import { escapeTagText } from './answer-reader.ts'
 import { dmy, factsText, osloDay, osloMidnight, osloWeek, osloWeekOf, sgn, shiftDay, grp, type WeekFacts } from './week-facts.ts'
 import { readWeekFacts } from './week-data.ts'
-import { CHAT_LIMITS, CHAT_TOOL_ORDER, type ToolMode } from './chat-rules.ts'
+import { ALL_TOOL_ORDER, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
 
 // ── Shapes ──────────────────────────────────────────────────────────────────
 
@@ -338,6 +338,51 @@ const ASK_DATABASE: ToolDef = {
   },
 }
 
+// ── The coach's tools (read only; the Training coach chat) ──────────────────
+
+const WEEK_ARG: Field = { type: 'string', max: 10, enum: ['this', 'last'], description: '"this" week (not over yet) or "last" week (complete).' }
+
+async function weekFiguresFor(args: Args, ctx: ToolContext, section: 'training' | 'health'): Promise<ToolOutput> {
+  const current = osloWeekOf(ctx.now)
+  const week = args.week === 'last' ? osloWeek(shiftDay(current.start, -7)) : current
+  const facts = await readWeekFacts(ctx.db, ctx.userId, week, args.week !== 'last')
+  return { ok: true, text: cutResult(figuresText(facts, section)) }
+}
+
+const GET_TRAINING_WEEK: ToolDef = {
+  name: 'get_training_week', kind: 'read',
+  description: "The training of one Oslo week (Monday to Sunday): every session with its working sets and volume, the muscles trained (credited hard sets), and the key lifts with how their top set compares with the best before. Each is compared with the average of the four weeks before, differences already worked out.",
+  fields: { week: WEEK_ARG },
+  async run(args, ctx) { return weekFiguresFor(args, ctx, 'training') },
+}
+
+const GET_HEALTH_TRENDS: ToolDef = {
+  name: 'get_health_trends', kind: 'read',
+  description: "The health figures of one Oslo week: sleep (nights, average), steps, active energy, resting heart rate and weight, each compared with the week before, differences already worked out.",
+  fields: { week: WEEK_ARG },
+  async run(args, ctx) { return weekFiguresFor(args, ctx, 'health') },
+}
+
+const GET_PT_VERDICTS: ToolDef = {
+  name: 'get_pt_verdicts', kind: 'read',
+  description: "The verdict lines the app's own coaching rules decided on the days the person last asked for an assessment (up to 3, newest first): recovery gate, overreach and deload cue, the one lift to focus on, muscles below their minimum volume, imbalance flags, missed sessions. They are final decisions made by code and are only as fresh as their date.",
+  fields: {},
+  async run(_args, ctx) {
+    const { data, error } = await ctx.db.from('pt_assessments').select('date, feeling, snapshot').eq('user_id', ctx.userId).order('created_at', { ascending: false }).limit(3)
+    if (error) return fail(READ_PROBLEM)
+    const rows = (data ?? []) as Record<string, unknown>[]
+    if (!rows.length) return { ok: true, text: 'No assessment has been made yet. The person can open Training, then Coach, and tap Assess to get fresh verdicts.', rows: 0 }
+    const out: string[] = []
+    for (const r of rows) {
+      const day = typeof r.date === 'string' && realDay(r.date) ? dmy(r.date) : 'unknown date'
+      // The snapshot is "<verdicts>\n\n<figures>": only the verdict block (the part code decided) is handed over.
+      const verdicts = String(r.snapshot ?? '').split('\n\n')[0].split('\n').slice(0, 8).map(l => dataLine(l, 300)).filter(Boolean)
+      out.push(`Assessment of ${day} (the person felt: ${dataLine(r.feeling, 20)}):\n${verdicts.map(l => `- ${l}`).join('\n')}`)
+    }
+    return { ok: true, text: cutResult(`Saved verdicts (data, newest first):\n${out.join('\n')}`), rows: rows.length }
+  },
+}
+
 // ── The write tools: proposals only ─────────────────────────────────────────
 
 const CHAT_PRIORITIES = ['any', 'low', 'medium', 'high'] as const
@@ -468,12 +513,12 @@ async function knownFood(ctx: ToolContext, title: string): Promise<{ basis: 'pre
 
 // ── The list, the permission wall and the run ───────────────────────────────
 
-const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD]
+const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS]
 const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(TOOL_DEFS.map(def => [def.name, def]))
 
 /** Every tool's definition, in the fixed order (the same set and order the permission wall names). */
 export function allChatTools(): ChatTool[] {
-  return CHAT_TOOL_ORDER.map(name => chatToolOf(TOOLS_BY_NAME.get(name) as ToolDef))
+  return ALL_TOOL_ORDER.map(name => chatToolOf(TOOLS_BY_NAME.get(name) as ToolDef))
 }
 
 /** The definitions of the named tools in the fixed order: a chat's frozen list. */
@@ -482,10 +527,14 @@ export function chatToolsNamed(names: readonly string[]): ChatTool[] {
 }
 
 /** What the Developer page shows for every tool: its words, its fields, what it may touch. */
-export function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[] }[] {
-  return CHAT_TOOL_ORDER.map(name => {
+export function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[]; defaultMode: ToolMode; chats: ('chat' | 'coach')[] }[] {
+  return ALL_TOOL_ORDER.map(name => {
     const def = TOOLS_BY_NAME.get(name) as ToolDef
-    return { name, what: def.description, kind: def.kind, fields: Object.entries(def.fields).map(([k, f]) => `${k} (${f.type}${f.type === 'string' && f.enum ? `: ${f.enum.join(' | ')}` : ''})`) }
+    return {
+      name, what: def.description, kind: def.kind, defaultMode: TOOL_DEFAULTS[name],
+      chats: ([...(CHAT_TOOL_ORDER.includes(name) ? ['chat'] : []), ...(COACH_TOOL_ORDER.includes(name) ? ['coach'] : [])] as ('chat' | 'coach')[]),
+      fields: Object.entries(def.fields).map(([k, f]) => `${k} (${f.type}${f.type === 'string' && f.enum ? `: ${f.enum.join(' | ')}` : ''})`),
+    }
   })
 }
 
@@ -519,6 +568,62 @@ export async function runChatTool(
 /** The tools' kind (read or write), for the permission wall's "ask first". */
 export function chatToolKind(name: string): 'read' | 'write' | null {
   return TOOLS_BY_NAME.get(name)?.kind ?? null
+}
+
+// ── The phone's tools (phone_ask: a small read-only set, no proposals, no database tool) ──────────────
+
+/** The phone's `find_text`: the same job as the chat's, but it runs as the server (no owner token, so no search function): a plain substring match on the person's own tasks and diary, each query naming the verified user. No citations. */
+const PHONE_FIND_TEXT: ToolDef = {
+  name: 'find_text', kind: 'read',
+  description: "Finds the person's own tasks and diary lines that contain the given words (part of a title or a line). Returns at most 5 of each.",
+  fields: { query: { type: 'string', max: 100, description: 'The word or words to look for, as the person would have written them.' } },
+  async run(args, ctx) {
+    const query = args.query as string
+    if (query === '') return fail('Give the words to look for in "query".')
+    const like = `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+    const [tasks, diary] = await Promise.all([
+      ctx.db.from('tasks').select('title, due_date, status').eq('user_id', ctx.userId).ilike('title', like).order('created_at', { ascending: false }).limit(5),
+      ctx.db.from('diary_entries').select('day, body').eq('user_id', ctx.userId).ilike('body', like).order('day', { ascending: false }).limit(5),
+    ])
+    if (tasks.error || diary.error) return fail(READ_PROBLEM)
+    const t = (tasks.data ?? []) as Record<string, unknown>[]
+    const d = (diary.data ?? []) as Record<string, unknown>[]
+    if (!t.length && !d.length) return { ok: true, text: 'Nothing matched. Try other words or a shorter word.', rows: 0 }
+    const day = (v: unknown) => (typeof v === 'string' && realDay(v) ? dmy(v) : 'no date')
+    const lines = [
+      ...t.map(r => `- task (${dataLine(r.status, 20)}, ${day(r.due_date)}): ${dataLine(r.title, 100)}`),
+      ...d.map(r => `- diary ${day(r.day)}: ${dataLine(r.body, 200)}`),
+    ]
+    return { ok: true, text: cutResult(`Matches (data):\n${lines.join('\n')}`), rows: t.length + d.length }
+  },
+}
+
+/** What the Developer page shows about the phone's tools. */
+export function describePhoneTools(): { name: string; what: string }[] {
+  return PHONE_TOOL_NAMES.map(name => ({ name, what: `Reads (read only, one round). ${(PHONE_DEFS.get(name) as ToolDef).description}` }))
+}
+
+/** The phone's tools in their fixed order (frozen: the set is code, never a setting). */
+export const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text']
+const PHONE_DEFS: ReadonlyMap<string, ToolDef> = new Map<string, ToolDef>([
+  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', PHONE_FIND_TEXT],
+])
+
+export function phoneChatTools(): ChatTool[] {
+  return PHONE_TOOL_NAMES.map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
+}
+
+/** Runs one of the phone's tools: a name outside its four, bad arguments or a failing tool is an error result, never an exception. */
+export async function runPhoneTool(name: unknown, input: unknown, ctx: ToolContext): Promise<ToolOutput> {
+  const def = typeof name === 'string' ? PHONE_DEFS.get(name) : undefined
+  if (!def) return fail(`There is no tool called that. The tools are: ${PHONE_TOOL_NAMES.join(', ')}.`)
+  const args = checkedArgs(def, input)
+  if (!args.ok) return fail(args.message)
+  try {
+    return await def.run(args.args, ctx)
+  } catch {
+    return fail('That tool failed unexpectedly. Answer without it.')
+  }
 }
 
 // ── Making a confirmed proposal real ────────────────────────────────────────

@@ -38,6 +38,7 @@ import { describeFunction } from './describe.ts'
 import { claudeDeviceCredential, claudeScheduleCredential, deviceCaller, errorPlace, LIMITS, ownValue, parseObject, readCapped, sameSecret, SCHEDULE_ACTIONS } from './guard.ts'
 import { countJob, runJob, type RunContext } from './run.ts'
 import { runDiagnose, runDiagnoseChat } from './diagnose.ts'
+import { runPhoneAsk } from './phone-ask.ts'
 import { findJob } from './jobs.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
 import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
@@ -206,7 +207,8 @@ Deno.serve(async (req) => {
     const action = ownValue(body, 'action')
     if (new TextEncoder().encode(text).length > LIMITS.requestMaxBytes) {
       const job = action === 'run' ? findJob(ownValue(body, 'job')) : null
-      if (!job?.acceptsImage) return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
+      // A chat message may carry up to two photos (chat-loop.ts checks each one and their count); nothing else may be this big.
+      if (!job?.acceptsImage && action !== 'chat') return reply(400, { error: `The request is larger than ${LIMITS.requestMaxBytes / 1024} KB` })
     }
 
     // A device may only run a job, as the one device it is. `describe`, `count` and `diagnose` are the app's.
@@ -281,7 +283,10 @@ Deno.serve(async (req) => {
     if (action === 'report_check') return reply(200, await checkReports(context))
     if (action === 'diagnose') return reply(200, ownValue(body, 'part') === 'chat' ? await runDiagnoseChat(context) : await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))
-    const answer = await runJob(context, jobName as string, ownValue(body, 'input'))
+    // The phone's question has its own tools (one round, read-only): phone-ask.ts. Every other job is a plain run.
+    const answer = jobName === 'phone_ask' && caller === 'phone'
+      ? await runPhoneAsk(context, ownValue(body, 'input'))
+      : await runJob(context, jobName as string, ownValue(body, 'input'))
     return reply(200, answer)
   } catch (error) {
     console.error(`[claude] unexpected error: ${errorPlace(error)}`)
