@@ -27,6 +27,10 @@ import { readWeekFacts } from './week-data.ts'
 import { checkedIdea, SUGGEST_COMPLEXITY, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
 import type { AddResult } from './suggest-store.ts'
 import { ALL_TOOL_ORDER, APP_SCREENS, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
+import {
+  checkedNote, NOTE_LESSON_DESCRIPTION, noteResultText, recallNotesOutput, RECALL_NOTES_DESCRIPTION, SEARCH_DOCS_DESCRIPTION, searchDocsOutput,
+  type NoteResult, type ProfileNote,
+} from './chat-learn-tools.ts'
 
 // ── Shapes ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +63,10 @@ export interface ToolContext {
    * round's ledger row, the key made from the idea itself). Absent where there is no list (the phone): the tool then says so.
    */
   noteIdea?: (idea: CheckedIdea) => Promise<AddResult>
+  /** Proposes one note about the person (chat-learn-tools.ts; the loop builds it with the person's own words of this message). Absent: the tool says so. */
+  noteLesson?: (kind: 'fact' | 'preference', text: string) => Promise<NoteResult>
+  /** The person's active notes for the chat (the loop reads them with the service role, naming the verified user). */
+  readNotes?: () => Promise<ProfileNote[] | null>
 }
 
 interface ToolDef {
@@ -611,9 +619,36 @@ const NOTE_SHORTCUT: ToolDef = {
   },
 }
 
+// ── The learning tools (chat-learn-tools.ts) ────────────────────────────────
+
+const SEARCH_DOCS: ToolDef = {
+  name: 'search_docs', kind: 'read', description: SEARCH_DOCS_DESCRIPTION,
+  fields: { query: { type: 'string', max: 200, description: 'A few plain words: the screen or feature to look up.' } },
+  async run(args) { return searchDocsOutput(args.query) },
+}
+const RECALL_NOTES: ToolDef = {
+  name: 'recall_notes', kind: 'read', description: RECALL_NOTES_DESCRIPTION,
+  fields: { about: { type: 'string', max: 60, description: 'What the notes should be about, in a word or two; "" for all.' } },
+  async run(_args, ctx) { return recallNotesOutput(ctx.readNotes ? await ctx.readNotes() : null) },
+}
+const NOTE_LESSON: ToolDef = {
+  name: 'note_lesson', kind: 'read', description: NOTE_LESSON_DESCRIPTION,
+  fields: {
+    kind: { type: 'string', max: 12, enum: ['fact', 'preference'], description: 'fact (something about the person) or preference (how they like things).' },
+    text: { type: 'string', max: 200, description: 'One plain sentence in English, from the person\'s own words in this message. No links, no brackets.' },
+  },
+  async run(args, ctx) {
+    if (!ctx.noteLesson) return fail('Notes cannot be recorded here.')
+    const checked = checkedNote(args.kind, args.text)
+    if (!checked.ok) return fail(`${checked.message} Fix it and call note_lesson again, or answer without it.`)
+    const result = await ctx.noteLesson(checked.kind, checked.text)
+    return result === 'error' ? fail(noteResultText(result)) : { ok: true, text: noteResultText(result) }
+  },
+}
+
 // ── The list, the permission wall and the run ───────────────────────────────
 
-const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT]
+const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT, SEARCH_DOCS, RECALL_NOTES, NOTE_LESSON]
 const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(TOOL_DEFS.map(def => [def.name, def]))
 
 /** Every tool's definition, in the fixed order (the same set and order the permission wall names). */

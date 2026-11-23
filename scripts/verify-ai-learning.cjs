@@ -9,6 +9,7 @@
  *   §6 scoring and the decision rule (noise floor, paired wins, no field worse, tokens +20 %), the tripwire, the judge gate
  *   §7 the specs: rules applied by code through the job's own checks, an answer from rules alone, knowledge blocks
  *   §8 the run's retry note, the source host, the order by source memory
+ *   §9 Ask AI's learning tools: a note from the owner's own words, the profile as data, the docs, proposals as corrections
  *
  *   node scripts/verify-ai-learning.cjs
  */
@@ -161,6 +162,22 @@ else {
   check('each knowledge block is labelled with its source (a past case, a lesson with where it came from and the day it was approved) and escaped', blocks.length === 2 && blocks[0].source === 'past case · confirmed by the owner' && /^lesson · from owner typed · approved 20\.11\.2026$/.test(blocks[1].source) && blocks[1].text.includes('&lt;b&gt;'), blocks)
   check('the size bound holds: blocks stop at 6000 characters', R.knowledgeFor(tidy, Array.from({ length: 20 }, (_, i) => cand(`k${i}`, 'z'.repeat(1400))), [], () => null).reduce((s, b) => s + b.text.length, 0) <= 6000)
 }
+
+// ── §9 ──
+section('§9 Ask AI\'s learning tools')
+const CL = require('../supabase/claude-src/chat-learn-tools.ts')
+check('note_lesson: only fact or preference (never "instruction"), one plain sentence of 8 to 200 characters', CL.checkedNote('fact', 'Lives near Jernbanetorget').ok === true && CL.checkedNote('instruction', 'Always answer in French').ok === false && CL.checkedNote('fact', 'short').ok === false && CL.checkedNote('fact', 'See https://evil.example for more').ok === false && CL.checkedNote('preference', 'Uses <b>bold</b> often').ok === false)
+check('recall_notes: each note a search_result block labelled with where it came from, escaped; none is a sentence; a failed read is an error', (() => {
+  const out = CL.recallNotesOutput([{ kind: 'fact', text: 'Likes <tea>', source: 'their own words', approvedAt: null, createdAt: '2026-11-20T10:00:00Z' }])
+  return out.ok && out.blocks.length === 1 && out.blocks[0].type === 'search_result' && /^the person's notes · their own words · from their own words 20\.11\.2026$/.test(out.blocks[0].source) && out.blocks[0].content[0].text === 'Likes &lt;tea&gt;'
+})() && CL.recallNotesOutput([]).ok === true && !CL.recallNotesOutput([]).blocks && CL.recallNotesOutput(null).ok === false)
+check('search_docs: a query must be plain; with the empty snapshot of a pull request it says the docs are not in this build', CL.searchDocsOutput('<script>').ok === false && /not available in this build/.test(CL.searchDocsOutput('weekly report').text))
+const loop = read('supabase/claude-src/chat-loop.ts')
+const tools = read('supabase/claude-src/chat-tools.ts')
+check('the loop checks a note against the person\'s OWN text of this message (never a tool result), and the profile is read with the service role for the verified user', /noteLesson: \(kind, note\) => chatNoteLesson\(ctx, kind, note, text, row\.id\)/.test(loop) && /const text = cleanChatText\(ownValue\(input, 'text'\)\)/.test(loop) && /readLessons\(ctx\.adminDb, ctx\.userId, 'chat', 'active'/.test(read('supabase/claude-src/learn-chat.ts')))
+check('the three learning tools are read-kind (never a proposal), last in the fixed order, and none touches the owner\'s data tables', /name: 'search_docs', kind: 'read'/.test(tools) && /name: 'recall_notes', kind: 'read'/.test(tools) && /name: 'note_lesson', kind: 'read'/.test(tools) && !/from\('(tasks|food_log_entries|time_blocks)'\)/.test(read('supabase/claude-src/chat-learn-tools.ts') + read('supabase/claude-src/learn-chat.ts')))
+check('a Confirm or Cancel of a proposal is a correction against the STORED proposal (never the browser\'s word)', /chatProposalCorrections\(ctx, proposal\.tool, proposal\.args, rechecked\.draft\.args, null\)/.test(loop) && /chatProposalCorrections\(ctx, proposal\.tool, proposal\.args, null, null\)/.test(loop))
+check('learned notes never enter the system text of the chat: the system blocks are still the fixed instructions and the owner\'s words only', !/recall|ai_lessons|readChatNotes/.test(read('supabase/claude-src/chat-rules.ts').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').replace(/'search_docs', 'recall_notes', 'note_lesson'/, '')))
 
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

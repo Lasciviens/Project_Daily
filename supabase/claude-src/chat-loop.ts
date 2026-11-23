@@ -35,6 +35,7 @@ import {
 import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
 import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
+import { chatNoteLesson, chatProposalCorrections, readChatNotes } from './learn-chat.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
   readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
@@ -517,6 +518,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
             db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs,
             // The suggestions list is written by the service role, with the verified user id and a key made from the idea itself (the model never supplies one); the ledger row of this round is where it was first seen.
             noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: 0, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
+            // A note about the person, checked against THEIR words of this message (learn-chat.ts); the profile, as data.
+            noteLesson: (kind, note) => chatNoteLesson(ctx, kind, note, text, row.id),
+            readNotes: () => readChatNotes(ctx),
           }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )
@@ -613,6 +617,8 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   }
   if (decision === 'cancel') {
     const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
+    // The owner's Cancel is a correction of the model's proposal (learn-chat.ts: the before is the stored args, never the browser's).
+    if (won) await chatProposalCorrections(ctx, proposal.tool, proposal.args, null, null)
     return won ? { ok: true, status: 'cancelled', summary: proposal.summary, result_id: null, tool: proposal.tool } : { ok: false, reason: 'already_decided', message: 'That proposal was already decided.' }
   }
   // The owner may edit the title and the date on the card; the edited values go through the same check as the proposal did.
@@ -650,6 +656,8 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     return { ok: false, reason: 'failed', message: written.message }
   }
   await setProposalResult(ctx.adminDb, ctx.userId, id, written.id)
+  // What the owner kept or changed on the card (title, date), against the stored proposal.
+  await chatProposalCorrections(ctx, proposal.tool, proposal.args, rechecked.draft.args, null)
   return { ok: true, status: 'confirmed', summary: rechecked.draft.summary, result_id: written.id, tool: proposal.tool, date: proposal.tool === 'log_food' ? String(rechecked.draft.args.date) : null }
 }
 

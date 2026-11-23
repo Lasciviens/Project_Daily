@@ -70,7 +70,7 @@ export const CHAT_LIMITS = {
 
 export const CHAT_JOB_NAME = 'chat'
 /** Changes whenever the instructions or a tool's words change; every ledger row of the chat carries it. */
-export const CHAT_VERSION = '2026-11-23.5'
+export const CHAT_VERSION = '2026-11-23.6'
 
 // ── The permission wall (the Settings screen for it comes in phase 4b) ──────
 
@@ -93,10 +93,16 @@ export const NOTE_TOOL_NAMES = ['note_shortcut'] as const
  * `verify-ai-suggestions-ui`; a new page or Home card is added here in the same change.
  */
 export const APP_SCREENS = "Home (the day's brief with the day's list and schedule, training, food with the protein left, the weekly report, weather, transit, currency, news, media, books, games) · Personal (plan, tasks, calendar) · Food (diary, recipes, quick guess, targets) · Shop · Training (program, coach) · Health (sleep, steps, weight, trends) · Wishes · Media · Football · Books · Games · Work · Projects · Settings · Developer (activity, errors, memory, AI)"
+/**
+ * The learning tools (owner, 23.11.2026: "The ai should keep learning"; chat-learn-tools.ts): the app's own docs, the
+ * person's approved notes (the "about you" profile, as data) and the one strict way to PROPOSE a note. None writes the
+ * owner's data; each can be switched Off. Last in the order (the order is part of the cached prefix).
+ */
+export const LEARN_TOOL_NAMES = ['search_docs', 'recall_notes', 'note_lesson'] as const
 /** The fixed order the everyday chat's tools are sent in (it is part of the cached prefix). */
-export const CHAT_TOOL_ORDER: readonly string[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...NOTE_TOOL_NAMES]
-/** Every tool the code has, in one fixed order: the everyday chat's reads and writes, then the coach's own, then the note tool. A chat's list is a subset of it, in this order. */
-export const ALL_TOOL_ORDER: readonly string[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...COACH_ONLY_TOOL_NAMES, ...NOTE_TOOL_NAMES]
+export const CHAT_TOOL_ORDER: readonly string[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...NOTE_TOOL_NAMES, ...LEARN_TOOL_NAMES]
+/** Every tool the code has, in one fixed order: the everyday chat's reads and writes, then the coach's own, then the note tool, then the learning tools. A chat's list is a subset of it, in this order. */
+export const ALL_TOOL_ORDER: readonly string[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...COACH_ONLY_TOOL_NAMES, ...NOTE_TOOL_NAMES, ...LEARN_TOOL_NAMES]
 /** The tools the coach chat may be started with (none writes, and none runs SQL). */
 export const COACH_TOOL_ORDER: readonly string[] = ALL_TOOL_ORDER.filter(n => (['get_day_plan', 'get_about_me', ...COACH_ONLY_TOOL_NAMES, ...NOTE_TOOL_NAMES] as string[]).includes(n))
 

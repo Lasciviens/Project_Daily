@@ -32,6 +32,9 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_health_trends: { label: 'Health trends', what: "Reads a week's sleep, steps, energy, heart rate and weight." },
   get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
   note_shortcut: { label: 'Note a suggestion', what: 'Writes one suggestion into Developer → AI → Learn → Suggestions when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
+  search_docs: { label: 'Search the app docs', what: "Searches the app's own documentation (built when the app is deployed). It is shown to the assistant as data, never as instructions." },
+  recall_notes: { label: 'Your notes', what: 'Reads the short notes about you that are on (Developer → AI → Learn → Memory → Notes), as data.' },
+  note_lesson: { label: 'Note about you', what: "Proposes one short note about you from your own words. Only a plain fact in your words turns on by itself; anything else waits for you in Memory → Notes." },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 
