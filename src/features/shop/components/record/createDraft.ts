@@ -195,8 +195,22 @@ export function applyPreset(s: CreateState, preset: LinePreset | undefined): Cre
   return { ...next, start: snapshot(next) }
 }
 
-/** The fill of a sold line that becomes something you had: no price and no day of its own (they are the sale's), the rest as printed. */
-export const hadFill = (fill: ReceiptFill): ReceiptFill => ({ ...fill, price: undefined, day: undefined })
+/**
+ * The fill of a sold line that becomes something you had. A sold receipt describes the SALE, not the purchase: its price, day,
+ * store (the buyer or marketplace), channel and warranty are never put on the thing as where, when or how it was bought, and
+ * the condition printed is what it was sold as. What stays is the name, brand, model and category.
+ */
+export const hadFill = (fill: ReceiptFill): ReceiptFill => ({
+  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined,
+})
+
+/**
+ * The two money links a saved thing may make: "Paid with money from" only to a thing in `sources` (yours, already sold) and "Money
+ * went to" only to one in `targets` (what the popup itself offers), whatever a preset or an old draft says. Never an id from anywhere else.
+ */
+export function linksAtSave(s: Pick<CreateState, 'paidFrom' | 'moneyTo'>, money: boolean, sources: ReadonlySet<string>, targets: ReadonlySet<string>): { from: string | null; to: string | null } {
+  return { from: s.paidFrom && sources.has(s.paidFrom) ? s.paidFrom : null, to: money && s.moneyTo && targets.has(s.moneyTo) ? s.moneyTo : null }
+}
 
 /** What a read receipt line gives a draft (the add sheet's path): facts with their source, the day and the note — never over what was typed. */
 export function withReceipt(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[], fill: ReceiptFill, nowIso: string): CreateState {

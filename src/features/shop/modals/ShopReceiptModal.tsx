@@ -34,7 +34,8 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
   const busy = queue.running || flow.undoing
   const anyRead = queue.rows.some(r => r.status === 'done')
   const noCurrency = queue.rows.some(r => r.read && !(r.read.currency && SHOP_CURRENCIES.includes(r.read.currency as (typeof SHOP_CURRENCIES)[number])))
-  const linking = flow.soldKeys.length > 0
+  // "Save and link" only where there is a bought line for the money to go to.
+  const linking = flow.soldKeys.length > 0 && flow.boughtKeys.length > 0
   const label = linking ? 'Save and link' : 'Next'
 
   return (
@@ -54,12 +55,13 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
           </div>
         )}
         {queue.note && <p className="text-meta text-warn">{queue.note}</p>}
-        <ReceiptFiles rows={queue.rows} dupes={queue.dupes} running={queue.running} onRetry={queue.retry} />
+        <ReceiptFiles rows={queue.rows} dupes={queue.dupes} running={queue.running} onRetry={queue.retry} onDrop={queue.drop} worstOf={queue.worstOf} />
         {queue.waiting > 0 && !queue.running && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <Button variant="primary" onClick={() => queue.start()} disabled={queue.estimate == null}>Read {queue.waiting} {queue.waiting === 1 ? 'file' : 'files'}</Button>
+            {/* One file may be read without the estimate; several files need it, so the owner sees the most they could cost first. */}
+            <Button variant="primary" onClick={() => queue.start()} disabled={queue.estimate == null && queue.waiting > 1}>Read {queue.waiting} {queue.waiting === 1 ? 'file' : 'files'}</Button>
             <span className="text-meta text-fg-muted">
-              {queue.estimate != null ? `Up to ≈ $${queue.estimate.toFixed(2)} in all; usually far less.` : queue.estimateFailed ? "The cost couldn't be worked out — try again later." : 'Working out the cost…'}
+              {queue.estimate != null ? `Up to ≈ $${queue.estimate.toFixed(2)} in all; usually far less.` : queue.estimateFailed ? (queue.waiting > 1 ? "The cost couldn't be worked out — try again later." : "The most it could cost couldn't be worked out.") : 'Working out the cost…'}
             </span>
           </div>
         )}

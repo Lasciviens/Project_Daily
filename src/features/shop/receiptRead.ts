@@ -6,7 +6,7 @@
 import { foldName, matchLine, matchStore, receiptFill, type ReceiptFill, type ReceiptLine, type ReceiptRead } from '../ai/claude/featureRules'
 import { isMine, isPossession } from './ownModel'
 import { listOf, SHOP_CURRENCIES } from './shopModel'
-import type { ShopCurrency, ShopItem, ShopStore } from './types'
+import type { ShopCurrency, ShopDisposal, ShopItem, ShopStore } from './types'
 
 export type ReceiptSide = 'bought' | 'sold'
 
@@ -29,6 +29,8 @@ export interface SaleDefaults {
   to?: string
   /** The thing the money went to (a bought line of a read receipt, saved first): Sell's "Money goes to" starts on it, only when the sheet itself lists it. */
   moneyTo?: string
+  /** How it left, when the owner already chose (Sell again after "Undo all from these receipts"). */
+  how?: ShopDisposal
 }
 
 export function saleFor(read: ReceiptRead, line: ReceiptLine, stores: readonly { id: string; name: string; hidden?: boolean; kind?: string }[] = []): SaleDefaults {

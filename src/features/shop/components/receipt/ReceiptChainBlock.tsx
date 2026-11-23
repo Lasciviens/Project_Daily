@@ -22,12 +22,16 @@ export function ReceiptChainBlock({ merged, flow }: { merged: readonly MergedLin
             <li key={s}>
               <p className="text-meta font-medium text-fg"><Truncate>{label(s)}</Truncate></p>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {flow.boughtKeys.map(b => (
-                  <label key={b} className="inline-flex min-h-[32px] max-w-full cursor-pointer items-center gap-1.5 rounded-row border border-line bg-surface-2 px-2 text-meta text-fg-2">
-                    <input type="checkbox" checked={ticked.has(b)} onChange={() => flow.toggleTarget(s, b)} aria-label={`${label(s)} paid for ${label(b)}`} className="h-4 w-4 shrink-0 accent-accent-500" />
-                    <span className="min-w-0 max-w-[14rem]"><Truncate>{label(b)}</Truncate></span>
-                  </label>
-                ))}
+                {flow.boughtKeys.map(b => {
+                  // A link that is already made shows ticked and cannot be unticked here: its own toast's Undo takes it back.
+                  const made = flow.pairLinked(s, b)
+                  return (
+                    <label key={b} className={`inline-flex min-h-[32px] max-w-full items-center gap-1.5 rounded-row border border-line bg-surface-2 px-2 text-meta text-fg-2 ${made ? 'opacity-80' : 'cursor-pointer'}`}>
+                      <input type="checkbox" checked={made || ticked.has(b)} disabled={made} onChange={() => flow.toggleTarget(s, b)} aria-label={`${label(s)} paid for ${label(b)}${made ? ' (linked)' : ''}`} className="h-4 w-4 shrink-0 accent-accent-500" />
+                      <span className="min-w-0 max-w-[14rem]"><Truncate>{label(b)}</Truncate></span>
+                    </label>
+                  )
+                })}
               </div>
             </li>
           )

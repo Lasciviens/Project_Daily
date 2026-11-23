@@ -6,12 +6,14 @@ type Flow = ReturnType<typeof useReceiptFlow>
 
 /** What these receipts have written so far, with "Open the chain" and "Undo all from these receipts" (takes back only what this popup wrote). */
 export function ReceiptSession({ flow, onChain }: { flow: Flow; onChain: (id: string) => void }) {
-  const w = flow.written
-  if (w.created.length + w.sales.length + w.links.length === 0) return null
+  const w = flow.live
+  const wishes = Object.keys(w.wishes).length
+  if (w.created.length + w.sales.length + w.links.length + wishes === 0) return null
   const parts = [
     w.created.length ? `${w.created.length} added` : null,
+    wishes ? `${wishes} bought` : null,
     w.sales.length ? `${w.sales.length} sold` : null,
-    flow.written.pairs.length || w.links.length ? `${Math.max(w.pairs.length, w.links.length)} money ${Math.max(w.pairs.length, w.links.length) === 1 ? 'link' : 'links'}` : null,
+    flow.linkedCount ? `${flow.linkedCount} money ${flow.linkedCount === 1 ? 'link' : 'links'}` : null,
   ].filter(Boolean).join(' · ')
   return (
     <section aria-label="Saved from these receipts" className="rounded-row border border-line bg-surface-2 p-3">

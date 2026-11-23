@@ -118,7 +118,10 @@ export function useCreateShopLinks() {
       const made: string[] = []
       let existed = 0, failed = 0
       for (const p of pairs) {
-        try { const r = await createShopLink(p); if (r.existed) existed++; else made.push(r.id) } catch { failed++ }
+        try { const r = await createShopLink(p); if (r.existed) existed++; else made.push(r.id) } catch (e) {
+          failed++
+          logError(`create_shop_links: ${(e as Error).message}`, { action: 'create_shop_links' })
+        }
       }
       if (!made.length && !existed && failed) throw new Error('The links were not made — try again')
       return { made, existed, failed }

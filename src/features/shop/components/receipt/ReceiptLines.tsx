@@ -26,7 +26,8 @@ export function ReceiptLines({ files, merged, flow }: { files: readonly FileRow[
     <div className="flex flex-col gap-3">
       {groups.map(({ file, lines }) => {
         const read = file.read as NonNullable<FileRow['read']>
-        const head = [file.name, read.store, read.date ? formatDate(read.date) : null].filter(Boolean).join(' · ')
+        // The file's name is on its own row above: this heading says what the receipt is.
+        const head = [read.store, read.date ? formatDate(read.date) : null].filter(Boolean).join(' · ') || file.name
         const cost = [read.searched ? 'searched' : null, costNote(read.costUsd)].filter(Boolean).join(' · ')
         return (
           <section key={file.id} aria-label={file.name}>
@@ -34,6 +35,7 @@ export function ReceiptLines({ files, merged, flow }: { files: readonly FileRow[
               <span className="min-w-0 flex-1"><Truncate>{head}</Truncate></span>
               {cost && <span className="shrink-0 font-normal tabular-nums">{cost}</span>}
             </h3>
+            {lines.some(l => l.duplicate) && <p className="mb-1 text-meta text-fg-muted">The same receipt as an earlier file: its lines start unticked.</p>}
             {lines.length === 0
               ? <p className="text-body text-fg-muted">No product lines were read.</p>
               : <ul className="flex flex-col gap-1.5">{lines.map(m => <LineRow key={m.key} m={m} flow={flow} />)}</ul>}
@@ -51,14 +53,11 @@ function LineRow({ m, flow }: { m: MergedLine; flow: Flow }) {
   const name = m.line.product ?? m.line.name
   const price = m.line.price !== null ? amount(m.line.price, m.read.currency) : 'no price printed'
   const facts = [lineFacts(m.line), i.wish ? 'on your wishlist' : ''].filter(Boolean).join(' · ')
-  // A wish has its own Bought button; every other line has a tick (a repeat of an earlier file starts unticked).
-  const tick = !i.wish
+  // Every line has a tick (a repeat of an earlier file starts unticked); a wish also has its own Bought button.
   return (
-    <li className={`rounded-row border border-line bg-surface-2 px-3 py-2 ${i.included || i.wish ? '' : 'opacity-70'}`}>
+    <li className={`rounded-row border border-line bg-surface-2 px-3 py-2 ${i.included ? '' : 'opacity-70'}`}>
       <div className="flex items-center gap-2">
-        {tick && (
-          <input type="checkbox" checked={i.included} disabled={done} aria-label={`Include “${name}”`} onChange={e => flow.setIncluded(m.key, e.target.checked)} className="h-[18px] w-[18px] shrink-0 accent-accent-500" />
-        )}
+        <input type="checkbox" checked={i.included} disabled={done} aria-label={`Include “${name}”`} onChange={e => flow.setIncluded(m.key, e.target.checked)} className="h-[18px] w-[18px] shrink-0 accent-accent-500" />
         <span className="min-w-0 flex-1 text-body font-medium"><Truncate>{name}</Truncate></span>
         <span className="shrink-0 text-meta tabular-nums text-fg-muted">{price}</span>
       </div>
@@ -68,7 +67,7 @@ function LineRow({ m, flow }: { m: MergedLine; flow: Flow }) {
         {done
           ? <span className="inline-flex shrink-0 items-center gap-1 text-meta font-medium text-success"><Check aria-hidden className="h-3.5 w-3.5" />{i.side === 'sold' ? 'Done' : i.wish ? 'Bought' : 'Added'}</span>
           : i.side === 'bought' && i.wish
-            ? <Button size="sm" variant="primary" className="shrink-0" onClick={() => flow.buyWish(m.key)}>Bought</Button>
+            ? <Button size="sm" variant="primary" className="shrink-0" disabled={!i.included} onClick={() => flow.buyWish(m.key)}>Bought</Button>
             : i.side === 'sold' && i.included && i.way === 'owned'
               ? <Button size="sm" className="shrink-0" onClick={() => flow.openSale(m.key)}>Sell</Button>
               : i.side === 'sold' && i.included && i.way === 'had'

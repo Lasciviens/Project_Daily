@@ -73,25 +73,33 @@ export function useReceiptFiles() {
     })
   }
 
-  const kindsWaiting = rows.filter(r => r.status === 'waiting' || r.status === 'stopped').map(r => r.kind)
-  const kindsKey = kindsWaiting.join(',')
-  /** The most the waiting files could cost, from the job's own prices and what is really sent with them. */
-  const estimate = useMemo(() => {
+  /** The most the given kinds of file could cost, from the job's own prices and what is really sent with them. */
+  const worst = useCallback((kinds: readonly FileKind[]): number | null => {
     const about = describe.data
     const job = about?.jobs.find(j => j.name === 'receipt_read')
     const price = about?.prices.models.find(m => m.model === job?.defaults.model)
-    if (!about || !job || !price || !kindsKey) return null
+    if (!about || !job || !price || !kinds.length) return null
     return queueWorstCost(
       { webSearchUsdEach: about.prices.webSearchUsdEach, longPromptOverTokens: about.prices.longPromptOverTokens, longPromptMultiplier: about.prices.longPromptMultiplier, model: price },
-      { instructionsChars: job.instructions.length, maxOutputTokens: job.defaults.maxOutputTokens }, kindsKey.split(',') as FileKind[], categoriesChars(sent.map(c => c.path)),
+      { instructionsChars: job.instructions.length, maxOutputTokens: job.defaults.maxOutputTokens }, kinds, categoriesChars(sent.map(c => c.path)),
     )
-  }, [describe.data, kindsKey, sent])
+  }, [describe.data, sent])
+  const waitingKinds = rows.filter(r => r.status === 'waiting' || r.status === 'stopped').map(r => r.kind)
+  const kindsKey = waitingKinds.join(',')
+  const estimate = useMemo(() => worst(kindsKey ? (kindsKey.split(',') as FileKind[]) : []), [worst, kindsKey])
+
+  /** A file the owner does not want read: off the list (and out of memory), never sent. */
+  function drop(id: number) {
+    if (run.isPending) return
+    files.current.delete(id)
+    setRows(all => all.filter(r => r.id !== id))
+  }
 
   const reads = useMemo(() => rows.map(r => r.read), [rows])
   const dupes = useMemo(() => duplicatesOf(reads), [reads])
   return {
-    rows, dupes, add, start, stop: () => control.current?.abort(), retry: (id: number) => start([id]),
+    rows, dupes, add, start, drop, stop: () => control.current?.abort(), retry: (id: number) => start([id]), worstOf: (kind: FileKind) => worst([kind]),
     running: run.isPending, progress, result, note, estimate, estimateFailed: describe.isError,
-    waiting: kindsWaiting.length,
+    waiting: waitingKinds.length,
   }
 }

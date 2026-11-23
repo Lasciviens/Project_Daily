@@ -21,7 +21,7 @@ import { STATE_PILL } from './useShopRecord'
 import { isNewCategory, newCategoryMissing, newPickOf, NEW_CATEGORY, type RecordDraftApi } from './useRecordDraft'
 import { useSaveCategory } from './useSaveCategory'
 import {
-  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
+  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
   type CreateBatch, type CreateSpec, type CreateState,
 } from './createDraft'
 import { middayIso } from '../../../media/watchedWhen'
@@ -117,7 +117,9 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const named = v.title.trim()
   const pillKey = kind === 'buy' ? 'buy' : kind
   const pill = STATE_PILL[pillKey]
-  const subtitle = [batch ? `${named ? LABEL[spec.preset] : batch.labels[index]}` : named ? LABEL[spec.preset] : null,
+  // "Something I own" or "I had" follows this draft's own switch (a sold line of a receipt starts as "I had it").
+  const label = spec.preset === 'own' || spec.preset === 'had' ? (st.had ? LABEL.had : LABEL.own) : LABEL[spec.preset]
+  const subtitle = [batch ? `${named ? label : batch.labels[index]}` : named ? label : null,
     spec.parent && spec.preset !== 'wish' ? `${spec.preset === 'model' ? 'A model of' : 'Accessory of'} ${spec.parent.title}` : null,
     path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null].filter(Boolean).join(' · ') || undefined
   const missing = missingFor(spec, st, today)
@@ -161,8 +163,10 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
       row = await create.mutateAsync({ quiet: quietSave(spec, another), note: madeCategory(s), input: inputOf(spec, s, categoryId, categories) })
     } catch { setSaving(false); return }
     try {
-      if (s.paidFrom) await link.mutateAsync({ from_id: s.paidFrom, to_id: row.id })
-      if (hasMoney(spec, s) && s.moneyTo) await link.mutateAsync({ from_id: row.id, to_id: s.moneyTo })
+      // Only to what the popup itself offers (a preset or an old draft may name a thing that is gone, sold again or not a target).
+      const ok = linksAtSave(s, hasMoney(spec, s), new Set(sources.map(x => x.id)), new Set(targets.map(x => x.id)))
+      if (ok.from) await link.mutateAsync({ from_id: ok.from, to_id: row.id })
+      if (ok.to) await link.mutateAsync({ from_id: row.id, to_id: ok.to })
     } catch { /* the link's own hook toasted it; the thing itself is saved */ }
     // The receipt's other lines as accessories of this thing (the owner ticked it): same store, same day, their own prices.
     if (s.withOthers && s.receipt && s.receipt.currency && s.receipt.others.length) {
@@ -251,7 +255,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   ) : null
 
   return (
-    <ModalShell onClose={close} title={named || (batch ? batch.labels[index] : LABEL[spec.preset])} subtitle={subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
+    <ModalShell onClose={close} title={named || (batch ? batch.labels[index] : label)} subtitle={subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
       headerActions={<TonePill tone={pill.tone} className="shrink-0 max-sm:hidden">{pill.label}</TonePill>}
       footer={footer}>
       <div ref={bodyRef} className="@container">
