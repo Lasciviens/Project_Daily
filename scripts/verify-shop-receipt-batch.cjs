@@ -66,7 +66,7 @@ console.log('\nthe worst-case cost')
 const prices = { webSearchUsdEach: 0.01, longPromptOverTokens: 200_000, longPromptMultiplier: 5, model: { cacheWrite1hPerMTok: 0.2, outputPerMTok: 0.5 } }
 const job = { instructionsChars: JOB.instructions.length, maxOutputTokens: JOB.defaults.maxOutputTokens }
 const haiku = F.MODEL_PRICES.find(p => p.model === JOB.defaults.model)
-const real = { webSearchUsdEach: 0.01, longPromptOverTokens: 200_000, longPromptMultiplier: 5, model: haiku }
+const real = { webSearchUsdEach: 0.01, longPromptOverTokens: 100_000, longPromptMultiplier: 5, model: haiku }
 const described = F.describeFunction ? null : null
 void described
 // What the function reserves for a photo: the largest the browser sends (1280 × 1280 → 46 × 46 tokens) and for a PDF at its most.

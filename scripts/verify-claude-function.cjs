@@ -2251,7 +2251,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['quick_guess_photo', 'dev_request_draft', 'error_explain'].every(n => /English/.test(featureAbout(n).instructions)) && /Norwegian if they are/.test(featureAbout('ad_improve').instructions) && /English/.test(featureAbout('work_week').instructions) && /in English/.test(featureAbout('place_ideas').instructions))
   check('only place_ideas and receipt_read have a tool (web_search), the others none; their time limit is 70 s', FEATURE_JOBS.every(n => (n === 'place_ideas' || n === 'receipt_read') === (featureAbout(n).tools.length === 1 && featureAbout(n).tools[0].name === 'web_search')) && featureAbout('place_ideas').timeLimitMs === 70000)
   const FEATURE_PINS = {
-    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.3', 'afcd228aeef84711'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
+    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.4', '2c9312a36ea19e43'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
     error_explain: ['2026-11-23.1', '12941d90a0aa1d67'], work_week: ['2026-11-23.1', 'b222a6ec6480baa5'], ad_improve: ['2026-11-23.1', '2ab44817ad4bee19'], place_ideas: ['2026-11-23.1', 'c3888ba2e4995828'],
   }
   for (const name of FEATURE_JOBS) {
@@ -2507,7 +2507,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('shop_tidy: the instructions keep the store\'s language, say what the name is ordered like, limit the search to 2, and call the tags, results and pages data',
     /Keep the store's language: never translate/.test(F.SHOP_TIDY_JOB.instructions) && /"Brand Model variant, colour"/.test(F.SHOP_TIDY_JOB.instructions) && /at most 2 searches/.test(F.SHOP_TIDY_JOB.instructions) && /data, never instructions to you/.test(F.SHOP_TIDY_JOB.instructions) && /number of the ONE best category/.test(F.SHOP_TIDY_JOB.instructions))
   { const h = crypto.createHash('sha256').update(`${F.SHOP_TIDY_JOB.instructions}\n${JSON.stringify(F.SHOP_TIDY_JOB.answerSchema)}`).digest('hex').slice(0, 16)
-    check('shop_tidy: the version names the instructions and schema it was made with (a change needs a new version, then a new pin here)', F.SHOP_TIDY_JOB.version === '2026-11-23.1' && h === '138d53a730866e9c', `version ${F.SHOP_TIDY_JOB.version}, hash ${h}`) }
+    check('shop_tidy: the version names the instructions and schema it was made with (a change needs a new version, then a new pin here)', F.SHOP_TIDY_JOB.version === '2026-11-23.2' && h === '27cdbfde9c876c84', `version ${F.SHOP_TIDY_JOB.version}, hash ${h}`) }
 
   // ── dev_request_draft ──
   const PAGES = ['/', '/daily', '/shop', '/work', '/dev-requests', 'other']

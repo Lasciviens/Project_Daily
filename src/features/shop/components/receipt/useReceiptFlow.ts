@@ -12,7 +12,7 @@ import { useShopStores } from '../../hooks/useShopStores'
 import { isMine } from '../../ownModel'
 import { sidePreset, type MergedLine } from '../../receiptBatch'
 import { chainPlan, linksToMake, pairKey, suggestChainPairs, type ChainLine, type ChainPlan } from '../../receiptChain'
-import { addFillFor, saleFor, soldThingForLine, thingForLine, wishForLine, type ReceiptSide, type SaleDefaults } from '../../receiptRead'
+import { addFillFor, placeCosts, saleFor, soldThingForLine, thingForLine, wishForLine, type ReceiptSide, type SaleDefaults } from '../../receiptRead'
 import { categoryPath } from '../../shopModel'
 import type { ShopItem } from '../../types'
 import type { SoldDone } from '../owned/SellSheet'
@@ -199,7 +199,12 @@ export function useReceiptFlow(merged: readonly MergedLine[]) {
 
   function stepper(stepKeys: readonly string[], restore?: readonly (CreateState | undefined)[]) {
     if (!stepKeys.length) return
-    const fills: ReceiptFill[] = stepKeys.map(k => { const m = (info.get(k) as LineInfo).m; return addFillFor(m.read, m.index, stores) })
+    const lineOf = (k: string) => (info.get(k) as LineInfo)
+    // The receipt's extra costs ride on the dearest bought line of each receipt (the owner moves them in the popup).
+    const fills: ReceiptFill[] = placeCosts(
+      stepKeys.map(k => addFillFor(lineOf(k).m.read, lineOf(k).m.index, stores)), stepKeys.map(k => lineOf(k).m.read),
+      stepKeys.map(k => lineOf(k).m.line.price), stepKeys.map(k => lineOf(k).side === 'bought'),
+    )
     const presets: (LinePreset | undefined)[] = stepKeys.map(k => {
       const i = info.get(k) as LineInfo
       if (i.side === 'sold') {

@@ -25,7 +25,7 @@ const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/
 /** A picture address that is safe to put in an image tag: https on a public host, never an address of this device or network. */
 export function shownPicture(value: unknown): string | null {
   // eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
-  if (typeof value !== 'string' || !value || value.length > IMAGE_MAX || /[\s\u0000-\u001f\u007f​-‏‪-‮⁦-⁩﻿]/.test(value)) return null
+  if (typeof value !== 'string' || !value || value.length > IMAGE_MAX || /[\s\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/.test(value)) return null
   let url: URL
   try { url = new URL(value) } catch { return null }
   const host = url.hostname.toLowerCase().replace(/\.+$/, '')

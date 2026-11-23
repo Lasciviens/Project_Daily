@@ -243,7 +243,7 @@ export function withReceipt(spec: CreateSpec, s: CreateState, categories: readon
   else if (fill.before === undefined && wasBefore !== undefined && draft.market_price === wasBefore) { draft.market_price = null; draft.market_currency = undefined }
   // The receipt's extra costs: this pick's replace the earlier pick's (a cost the owner moved here from another draft stays).
   const mine = s.costs.filter(c => !c.id.startsWith('r:'))
-  const costs = [...mine, ...fill.costs.map((c, i) => ({ ...c, id: `r:${i}`, on: true }))]
+  const costs = [...mine, ...(fill.costs ?? []).map((c, i) => ({ ...c, id: `r:${i}`, on: true }))]
   next = { ...next, draft, receipt: fill, costs }
   return next
 }

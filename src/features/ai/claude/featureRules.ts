@@ -351,11 +351,10 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     else if (read.currency) left.push(`The receipt is in ${read.currency}, which this app doesn't hold (NOK, TRY, EUR, USD): the amount is left out.`)
     else left.push('The receipt shows no clear currency: the amount is left out.')
   } else if (lines.length > 1 && pick == null) left.push('Several lines: pick the one you bought to fill its name and price.')
-  // The receipt's extra costs ride on the dearest line (the first when equal), or on the one thing a single-line or total receipt is.
+  // The receipt's extra costs go with a picked LINE (never a total: the total already holds them). Which draft carries them is the
+  // caller's choice (`placeCosts`: the dearest bought line of the receipt); a lone line carries them.
   if (read.costs?.length) {
-    const dearest = lines.reduce((best, l, i) => ((l.price ?? -1) > (lines[best].price ?? -1) ? i : best), 0)
-    // (Never on a total: the total already holds them.)
-    if (chosenAt !== null && chosenAt === dearest) {
+    if (chosenAt !== null) {
       if (read.currency && RECEIPT_CURRENCIES.includes(read.currency)) {
         fill.costs = read.costs.map(c => ({ kind: c.kind, label: costLabel(c), amount: c.kind === 'discount' ? -c.amount : c.amount, currency: read.currency as string }))
       } else left.push('The receipt\'s extra costs are left out: no clear currency this app holds.')
