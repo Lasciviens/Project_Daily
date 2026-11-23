@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Receipt, Tag } from 'lucide-react'
+import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
@@ -93,6 +93,7 @@ export function ShopPage() {
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Read a receipt</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up product info</button></MenuItem>
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores and rules</button></MenuItem>
         {suggestKnown && (suggested.count ?? 0) > 0 && (
           <MenuItem disabled={suggested.busy}>

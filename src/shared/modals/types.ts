@@ -82,6 +82,8 @@ export type EntityModalRequest =
   /** Add something you own (or had) from before the app, with ≈ dates. */
   /** `receipt`: one line of a read receipt (Read a receipt) as the sheet's starting values, through the same autofill facts a receipt photo uses; `onSaved` runs once the thing is saved. */
   | { kind: 'shop-own'; had?: boolean; receipt?: ReceiptFill; onSaved?: (item: ShopItem) => void }
+  /** Tidy up info: AI suggests a cleaner name, brand, model and category; you review each field. `ids`: those things (one from its record's ⋯); left out: all your wishes and things. */
+  | { kind: 'shop-tidy'; ids?: string[] }
   /** Read a receipt (a photo or a PDF): bought or sold, its product lines, each opening Add something I own or Sell with its values. */
   | { kind: 'shop-receipt' }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */

@@ -30,6 +30,12 @@ export async function readReceiptInput(input: ReceiptInput, today: string): Prom
   return { ...read, costUsd: costOf(call) }
 }
 
+/** Shop → "Tidy up info": one thing's name, brand, model and category now, and the owner's own categories → a suggestion, read and checked by the caller (`readTidySuggestion`). */
+export async function tidyThing(input: Record<string, unknown>): Promise<{ result: unknown; costUsd: number | null }> {
+  const { result, call } = await runClaudeJob<unknown>('shop_tidy', input)
+  return { result, costUsd: costOf(call) }
+}
+
 /** Dev Requests ✨: dictated words → a request draft; the page is taken only from `pages` (the app's own list). */
 export async function draftDevRequest(text: string, pages: readonly string[], currentPage: string): Promise<RequestDraft & { costUsd: number | null }> {
   const { result, call } = await runClaudeJob<unknown>('dev_request_draft', { text: text.trim().slice(0, 4000), pages, current_page: currentPage })
