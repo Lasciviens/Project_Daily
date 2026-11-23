@@ -17,7 +17,7 @@ import { recordState } from './recordState'
 import { isNewCategory, NEW_CATEGORY, newCategoryMissing, newPickOf, patchOf, useRecordDraft } from './useRecordDraft'
 import type { ShopDisposal, ShopItem } from '../../types'
 
-/** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone, the side pane). */
+/** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone). */
 export interface RecordAction {
   key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
   /** An icon button: the label is its accessible name and its title (a hover says what it does). */
@@ -36,8 +36,7 @@ const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
 }
 
 /**
- * A record's state and behaviour, the same in the popup (phones, the
- * Wishlist) and in Owned's side pane: the live row's neighbours (its chain,
+ * A record's state and behaviour, the popup's: the live row's neighbours (its chain,
  * accessories, models, the things it can belong to), the draft of its facts
  * (Save only when something changed; closing with changes asks first), and
  * its one row of actions.

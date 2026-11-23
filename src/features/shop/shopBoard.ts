@@ -50,30 +50,16 @@ export const QUICK_BOARD: BoardLayouts<QuickSection> = {
 //   (owner, 23.11.2026: a pointless extra line) and no rail: Needs a look is a
 //   button in the Shop page's header, so the things take every track.
 //   1  the filters, the things.
-//   2+ the things across the whole board. A tapped row's record opens beside
-//      the list from 60rem (`pane`, step A, 10.11.2026) — only then the board
-//      is OWNED_PANE_BOARD: the things take every track but the last, the pane
-//      is sticky in the last one; Back, x or Esc close it and the things take
-//      the room back. A phone has no pane: its record opens full screen.
+//   2+ the things across the whole board. A tapped row's record opens in the popup at every width (owner,
+//      23.11.2026: one popup everywhere; the side pane is gone).
 export const OWNED_SECTIONS = ['filters', 'groups'] as const
 export type OwnedSection = typeof OWNED_SECTIONS[number]
-export const OWNED_PANE_SECTIONS = ['filters', 'pane', 'groups'] as const
-export type OwnedPaneSection = typeof OWNED_PANE_SECTIONS[number]
 
 export const OWNED_BOARD: BoardLayouts<OwnedSection> = {
   1: ['filters', 'groups'],
   2: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 2 }] },
   3: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 3 }] },
   4: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 4 }] },
-}
-
-const OWNED_RAIL = { stack: ['pane'], sticky: true } as const
-
-export const OWNED_PANE_BOARD: BoardLayouts<OwnedPaneSection> = {
-  1: ['filters', 'groups'],
-  2: { main: WIDE, top: ['filters'], columns: [['groups'], OWNED_RAIL] },
-  3: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 2 }, OWNED_RAIL] },
-  4: { main: WIDE, top: ['filters'], columns: [{ stack: ['groups'], span: 3 }, OWNED_RAIL] },
 }
 
 //   Owned → Stats

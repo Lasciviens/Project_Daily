@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronDown } from 'lucide-react'
-import { Skeleton, Truncate, cx, useBoardStep } from '../../../../shared/ui'
+import { Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../../projects/projectBoard'
 import { rowStacks } from '../../ownedRow'
@@ -24,8 +24,6 @@ export interface RowContext {
   categories: readonly ShopCategory[]
   /** A category path's default picture (useCategoryPictures), once its chunk is in. */
   pictureFor: ((top: string, sub: string | null) => LucideIcon | null) | null
-  /** The thing open in the side pane. */
-  picked: string | null
   /** Each thing's open listing (its "For sale · 12 days" tag). */
   listings: ReadonlyMap<string, ShopListing>
 }
@@ -38,8 +36,7 @@ const STACK_CAP = 'max-w-[40rem]'
  * (Fold all), each subcategory named once above its own card of rows, the
  * accessories under their thing. A wide list deals its categories into
  * column stacks by its own width (`rowStacks`: one on a phone, two at 1469,
- * four at 2450). A row opens its record in the side pane from 60rem (`pane`),
- * in a popup below.
+ * four at 2450). A row opens its record in the popup.
  */
 export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }: {
   groups: readonly CategoryGroup[]
@@ -47,14 +44,12 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }:
   layout: OwnedLayout
   collapsed: ReadonlySet<string>
   onToggle: (key: string) => void
-  onOpen: (id: string, pane: boolean) => void
+  onOpen: (id: string) => void
 }) {
-  const pane = useBoardStep() >= 2
   const { ref, width } = useElementWidthRem()
   // Never more stacks than categories; each at most a content row wide, so a short list leaves the room at its end.
   const stacks = dealByIndex([...groups], Math.min(rowStacks(width), Math.max(1, groups.length)))
-  const open = (id: string) => onOpen(id, pane)
-  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={open} layout={layout} />
+  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={onOpen} layout={layout} />
   const section = (group: CategoryGroup) => (
     <CategorySection key={group.key} group={group} collapsed={collapsed.has(group.key)} onToggle={() => onToggle(group.key)} card={row}
       body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} />} />
@@ -82,7 +77,7 @@ function OwnedThing({ item, rows, onOpen, layout }: { item: ShopItem; rows: RowC
     <Thing item={item} accessories={rows.acc.get(item.id) ?? []} chain={rows.chainOf(item.id)} watch={rows.watches.get(item.id) ?? null}
       listing={rows.listings.get(item.id) ?? null}
       ctx={rows.ctx} today={rows.today} topId={path.topId} icon={path.topId && rows.pictureFor ? rows.pictureFor(path.topName, path.subName) : null}
-      picked={rows.picked} onOpen={onOpen} />
+      onOpen={onOpen} />
   )
 }
 
@@ -109,9 +104,8 @@ function ThingsBox({ layout, children, className }: { layout: OwnedLayout; child
 }
 
 /** The things sold or gone, folded under Mine: the same rows in one card. */
-export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string, pane: boolean) => void; layout: OwnedLayout }) {
+export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string) => void; layout: OwnedLayout }) {
   const [show, setShow] = useState(false)
-  const pane = useBoardStep() >= 2
   if (!gone.length) return null
   return (
     <section className={layout === 'pictures' ? undefined : STACK_CAP}>
@@ -120,7 +114,7 @@ export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopIt
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', show && 'rotate-180')} />
         Sold or gone <span className="count-badge">{gone.length}</span>
       </button>
-      {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={id => onOpen(id, pane)} layout={layout} />)}</ThingsBox>}
+      {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={onOpen} layout={layout} />)}</ThingsBox>}
     </section>
   )
 }

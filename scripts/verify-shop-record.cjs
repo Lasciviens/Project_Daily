@@ -213,7 +213,7 @@ console.log('the record\'s one row of actions')
   const keys = r => [r.shown.map(a => a.key), r.more.map(a => a.key)]
   check('not measured yet: every action shows (nothing is dropped on a guess)', eq(keys(fitActions(null, mineActions)), [['sell', 'acc', 'wrong'], []]))
   check('a wide row keeps every button', eq(keys(fitActions(40, mineActions)), [['sell', 'acc', 'wrong'], []]))
-  check('the side pane\'s row (≈ 16rem): the first buttons, the rest behind ⋯ — never a second line', (() => {
+  check('a narrow row (≈ 16rem, a phone): the first buttons, the rest behind ⋯ — never a second line', (() => {
     const r = fitActions(16, mineActions)
     return r.more.length > 0 && r.shown[0].key === 'sell'
   })())
