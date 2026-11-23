@@ -148,7 +148,11 @@ const imageBlocksOf = (messages: readonly { content: Block[] }[]): number => mes
 
 /** The prompt's size in characters with each photo's base64 left out (a photo costs tokens by its pixels, never by its text): the reservation adds the photos' worst case itself. */
 const promptChars = (messages: readonly ChatMessage[]): number =>
-  JSON.stringify(messages, (key, value) => (key === 'data' && typeof value === 'string' && value.length > 1000 ? '' : value)).length
+  // Only the `data` of a photo's source ({ type: 'base64', media_type, data }) is left out: a `data` anywhere else (a tool result, the owner's words) still counts.
+  JSON.stringify(messages, function (this: unknown, key, value) {
+    const parent = this as Record<string, unknown> | null
+    return key === 'data' && typeof value === 'string' && parent !== null && parent.type === 'base64' && typeof parent.media_type === 'string' ? '' : value
+  }).length
 
 /** Runs one answer. `emit` gets the events as they happen (the stream); the return value is the final one. */
 export async function runChat(ctx: RunContext, input: unknown, emit: (event: ChatEvent) => void, signal?: AbortSignal): Promise<ChatResult> {

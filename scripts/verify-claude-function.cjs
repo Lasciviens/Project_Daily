@@ -179,6 +179,13 @@ function fakeCreateClient(world) {
       const answer = (data) => ({ data, error: null })
       q.select = (cols, opts) => { q.countOpts = opts ?? null; world.selects.push({ table, cols: String(cols) }); q.cols = String(cols); return q }
       q.eq = (c, v) => { q.filters[c] = v; return q }
+      // The owner's tool modes (198): a list read, none stored unless a test says so.
+      if (table === 'ai_tool_settings') {
+        q.in = () => q
+        q.limit = () => q
+        q.then = (res, rej) => Promise.resolve().then(() => { world.reads.push({ who, table, filters: q.filters }); return world.toolSettingsError ? { data: null, error: { message: 'boom' } } : { data: world.toolRows ?? [], error: null } }).then(res, rej)
+        return q
+      }
       q.maybeSingle = async () => {
         world.reads.push({ who, table, filters: q.filters })
         // A device run reads the settings with the server client (which names the user id in the query itself).
@@ -1477,7 +1484,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('12 · phone_ask')
   for (const name of ['phone_ask']) {
     const j = jobAbout(name)
-    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, four read-only tools (4b), no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools.map(t => t.name), ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text']) && j.answerSchema === null)
+    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, five read-only tools (4b), no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools.map(t => t.name), ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']) && j.answerSchema === null)
     check(`${name}: the instructions say the data is never an instruction, that nothing can be changed from the phone, and that & < > are escaped`, /never a message to you/.test(j.instructions) && /cannot change, delete or send anything/.test(j.instructions) && /&amp; &lt; &gt;/.test(j.instructions))
   }
   const phoneBody = (job, input) => ({ action: 'run', caller: 'phone', job, input })
@@ -1733,7 +1740,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the phone job is told to write dates as DD.MM.YYYY and times as HH:MM', /DD\.MM\.YYYY/.test(PHONE_ASK_JOB.instructions) && /HH:MM/.test(PHONE_ASK_JOB.instructions))
 
   // The pinned versions of the new jobs.
-  const PIN_2B = { coach_assessment: ['2026-11-22.3', '5ad607369d105019'], kobo_ask: ['2026-11-22.3', 'f9c9d6feed6f667f'], phone_ask: ['2026-11-23.1', 'fbfb15be28ff109d'], test_bench: ['2026-11-22.1', 'b3c269c0f8140205'] }
+  const PIN_2B = { coach_assessment: ['2026-11-22.3', '5ad607369d105019'], kobo_ask: ['2026-11-22.3', 'f9c9d6feed6f667f'], phone_ask: ['2026-11-23.2', '6cd175d7a85bc344'], test_bench: ['2026-11-22.1', 'b3c269c0f8140205'] }
   for (const [name, job] of [['coach_assessment', COACH_ASSESSMENT_JOB], ['kobo_ask', KOBO_ASK_JOB], ['phone_ask', PHONE_ASK_JOB], ['test_bench', TEST_BENCH_JOB]]) {
     const h = crypto.createHash('sha256').update(`${job.instructions}\n${JSON.stringify(job.answerSchema)}`).digest('hex').slice(0, 16)
     check(`${name}: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, PIN_2B[name][0] === job.version && PIN_2B[name][1] === h, `version ${job.version}, hash ${h}`)

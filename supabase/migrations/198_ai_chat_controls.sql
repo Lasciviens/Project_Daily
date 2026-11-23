@@ -4,8 +4,8 @@
 -- 1. ai_tool_settings — one row per account and chat tool: `on` (a read tool the assistant may use), `ask` (a write tool:
 --    it may only PROPOSE, the owner taps Confirm) or `off` (not offered to a new chat, refused if it is called anyway).
 --    The owner's to write, so every row is INPUT to the `claude` function: a name that is not one of its tools is
---    ignored, and a mode the tool cannot have (a write tool `on`) falls back to the code's default. This CHECK only bounds
---    the shape. Settings apply to chats started after the change: a chat's tools are frozen when it starts (the
+--    ignored, and a mode the tool cannot have falls back to the code's default. The CHECKs bound the shape and refuse a
+--    write tool set to `on` (the function's code refuses it too). Settings apply to chats started after the change: a chat's tools are frozen when it starts (the
 --    prompt cache and Anthropic's check of thinking blocks both need the very same tool list on every request).
 -- 2. ai_settings.chat_instructions — the owner's own words for the assistant ("answer in short sentences", "I train in
 --    the mornings"), at most 1000 characters, saved as typed. The function freezes a copy into each NEW chat
@@ -25,7 +25,9 @@ create table if not exists public.ai_tool_settings (
   mode       text not null check (mode in ('on', 'ask', 'off')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  primary key (user_id, tool)
+  primary key (user_id, tool),
+  -- A write tool (one that only PROPOSES) can be ask or off, never on: refused here as well as in the function's code.
+  constraint ai_tool_settings_write_never_on check (not (tool in ('propose_add_task', 'propose_log_food') and mode = 'on'))
 );
 alter table public.ai_tool_settings enable row level security;
 do $$ begin

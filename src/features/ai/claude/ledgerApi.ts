@@ -137,7 +137,7 @@ export async function fetchToolSettings(): Promise<{ tool: string; mode: string 
   return (Array.isArray(data) ? data : []).flatMap(r => (typeof r.tool === 'string' && typeof r.mode === 'string' ? [{ tool: r.tool, mode: r.mode }] : []))
 }
 
-/** Saves the modes that changed (one row per tool). A write tool is never sent as `on`: the screen does not offer it, and the database and the function both refuse it. */
+/** Saves the modes that changed (one row per tool). A write tool is never sent as `on`: the screen does not offer it, the database refuses it (198's check) and the function's code ignores it. */
 export async function saveToolSettings(changes: readonly { tool: string; mode: ToolMode }[]): Promise<{ tool: string; mode: string }[]> {
   const user = await requireUser()
   const { error } = await supabase.from('ai_tool_settings').upsert(changes.map(c => ({ user_id: user.id, tool: c.tool, mode: c.mode })), { onConflict: 'user_id,tool' })

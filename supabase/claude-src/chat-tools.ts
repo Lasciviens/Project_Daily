@@ -269,6 +269,39 @@ const GET_FOOD_DAY: ToolDef = {
 /** Where a citation points: `lasci:task:<id>` or `lasci:diary:<id>`. The id is the row's own. */
 export const SOURCE_PATTERN = /^lasci:(task|diary):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/
 
+type FoundRows = { data: unknown; error: { code?: string; message?: string } | null }
+
+/** `find_text` for a caller with no owner token: the same rows as `ai_find_text` returns (kind, id, title, snippet, day), found by a substring match, each query naming the verified user. */
+async function serverFindText(ctx: ToolContext, query: string, kind: string): Promise<FoundRows> {
+  const like = `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+  const limit = CHAT_LIMITS.searchResults
+  const reads: PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>[] = []
+  if (kind === 'any' || kind === 'task') {
+    reads.push(ctx.db.from('tasks').select('id, title, description, due_date').eq('user_id', ctx.userId).ilike('title', like).order('created_at', { ascending: false }).limit(limit))
+    reads.push(ctx.db.from('tasks').select('id, title, description, due_date').eq('user_id', ctx.userId).ilike('description', like).order('created_at', { ascending: false }).limit(limit))
+  }
+  if (kind === 'any' || kind === 'diary') {
+    reads.push(ctx.db.from('diary_entries').select('id, day, body').eq('user_id', ctx.userId).ilike('body', like).order('day', { ascending: false }).limit(limit))
+  }
+  const answers = await Promise.all(reads)
+  const failed = answers.find(a => a.error)
+  if (failed) return { data: null, error: failed.error }
+  const seen = new Set<string>()
+  const rows: Record<string, unknown>[] = []
+  for (const a of answers) {
+    for (const r of Array.isArray(a.data) ? a.data as Record<string, unknown>[] : []) {
+      const isDiary = typeof r.body === 'string'
+      const key = `${isDiary ? 'diary' : 'task'}:${String(r.id)}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push(isDiary
+        ? { kind: 'diary', id: r.id, title: `Diary ${typeof r.day === 'string' && realDay(r.day) ? dmy(r.day) : ''}`.trim(), snippet: String(r.body).slice(0, 300), day: r.day }
+        : { kind: 'task', id: r.id, title: r.title, snippet: String(r.description ?? '').slice(0, 300), day: r.due_date })
+    }
+  }
+  return { data: rows.slice(0, limit), error: null }
+}
+
 const FIND_TEXT: ToolDef = {
   name: 'find_text', kind: 'read',
   description: "Finds the person's own tasks and diary lines by words (full-text search, plus a match on part of a title). Returns at most 5, each citable. Use it for 'where did I write…', 'did I add a task about…', 'what did I note on…'.",
@@ -278,7 +311,13 @@ const FIND_TEXT: ToolDef = {
   },
   async run(args, ctx) {
     if (args.query === '') return fail('Give the words to look for in "query".')
-    const { data, error } = await ctx.db.rpc('ai_find_text', { p_query: args.query, p_kind: args.kind, p_limit: CHAT_LIMITS.searchResults })
+    // The app searches with the database function (full-text search with the owner's token). The phone has no token (the server
+    // client has no `auth.uid()`), so it asks the same question as the server: the owner's own rows, named by the verified id, a
+    // plain substring match on the title, the note and the diary line, the same result shape. No ranking: the newest first.
+    const found = ctx.readAs === 'owner'
+      ? await ctx.db.rpc('ai_find_text', { p_query: args.query, p_kind: args.kind, p_limit: CHAT_LIMITS.searchResults })
+      : await serverFindText(ctx, args.query as string, args.kind as string)
+    const { data, error } = found
     if (error) return fail(error.code === '42883' || error.code === 'PGRST202' ? 'Search is not available yet (a database update is missing).' : READ_PROBLEM)
     const blocks: Block[] = []
     for (const r of Array.isArray(data) ? data as Record<string, unknown>[] : []) {
@@ -363,21 +402,47 @@ const GET_HEALTH_TRENDS: ToolDef = {
   async run(args, ctx) { return weekFiguresFor(args, ctx, 'health') },
 }
 
+/**
+ * The verdict lines of a saved assessment, in the shapes the coaching rules write them (coachFacts.ts `formatPtVerdicts`) and
+ * nothing else. `pt_assessments.snapshot` is written by the BROWSER (a stolen session could put any text there), so a line is
+ * kept only when it starts with one of the six labels, its value is a short plain line of letters, digits and the punctuation
+ * the rules use (no angle brackets, no markup, no new lines), and a RECOVERY line names one of the four gates. Whatever
+ * else is in the snapshot (the figures, a forged paragraph) is never handed over. Why not recompute them here: the verdicts
+ * need the progress engine and a dozen browser reads (coachData.ts), which have no copy in this function.
+ */
+const VERDICT_LABELS = ['RECOVERY', 'OVERREACH', 'PRIORITY', 'BELOW MINIMUM VOLUME', 'IMBALANCE', 'MISSED'] as const
+const VERDICT_VALUE = /^[\p{L}\p{N} ,.:;()[\]/'"&#·—%+\-_]{1,300}$/u
+const RECOVERY_GATES = ['rest_day', 'technique_day', 'normal', 'no_sleep_data']
+const SAVED_FEELINGS = ['undertrained', 'normal', 'tired', 'very tired']
+export function verdictLines(snapshot: unknown): string[] {
+  const out: string[] = []
+  for (const line of String(snapshot ?? '').split('\n\n')[0].split('\n').slice(0, 8)) {
+    const label = VERDICT_LABELS.find(l => line.startsWith(`${l}: `))
+    if (!label) continue
+    const value = line.slice(label.length + 2)
+    if (!VERDICT_VALUE.test(value)) continue
+    if (label === 'RECOVERY' && !RECOVERY_GATES.includes(value.split(' ')[0])) continue
+    if (!out.some(l => l.startsWith(`${label}: `))) out.push(`${label}: ${dataLine(value, 300)}`)
+  }
+  return out
+}
+
 const GET_PT_VERDICTS: ToolDef = {
   name: 'get_pt_verdicts', kind: 'read',
-  description: "The verdict lines the app's own coaching rules decided on the days the person last asked for an assessment (up to 3, newest first): recovery gate, overreach and deload cue, the one lift to focus on, muscles below their minimum volume, imbalance flags, missed sessions. They are final decisions made by code and are only as fresh as their date.",
+  description: "The verdict lines the app's own coaching rules (code, not a model) wrote on the days the person last asked for an assessment (up to 3, newest first), with how they felt and their note: recovery gate, overreach and deload cue, the one lift to focus on, muscles below their minimum volume, imbalance flags, missed sessions. They are only as fresh as their date.",
   fields: {},
   async run(_args, ctx) {
-    const { data, error } = await ctx.db.from('pt_assessments').select('date, feeling, snapshot').eq('user_id', ctx.userId).order('created_at', { ascending: false }).limit(3)
+    const { data, error } = await ctx.db.from('pt_assessments').select('date, feeling, note, snapshot').eq('user_id', ctx.userId).order('created_at', { ascending: false }).limit(3)
     if (error) return fail(READ_PROBLEM)
     const rows = (data ?? []) as Record<string, unknown>[]
     if (!rows.length) return { ok: true, text: 'No assessment has been made yet. The person can open Training, then Coach, and tap Assess to get fresh verdicts.', rows: 0 }
     const out: string[] = []
     for (const r of rows) {
       const day = typeof r.date === 'string' && realDay(r.date) ? dmy(r.date) : 'unknown date'
-      // The snapshot is "<verdicts>\n\n<figures>": only the verdict block (the part code decided) is handed over.
-      const verdicts = String(r.snapshot ?? '').split('\n\n')[0].split('\n').slice(0, 8).map(l => dataLine(l, 300)).filter(Boolean)
-      out.push(`Assessment of ${day} (the person felt: ${dataLine(r.feeling, 20)}):\n${verdicts.map(l => `- ${l}`).join('\n')}`)
+      const feeling = SAVED_FEELINGS.includes(String(r.feeling)) ? String(r.feeling) : 'not said'
+      const verdicts = verdictLines(r.snapshot)
+      const note = typeof r.note === 'string' && r.note.trim() ? ` Their note (data): ${dataLine(r.note, 150)}` : ''
+      out.push(`Assessment of ${day} (the person felt: ${feeling}).${note}\n${verdicts.length ? verdicts.map(l => `- ${l}`).join('\n') : '- (no verdict lines)'}`)
     }
     return { ok: true, text: cutResult(`Saved verdicts (data, newest first):\n${out.join('\n')}`), rows: rows.length }
   },
@@ -527,12 +592,12 @@ export function chatToolsNamed(names: readonly string[]): ChatTool[] {
 }
 
 /** What the Developer page shows for every tool: its words, its fields, what it may touch. */
-export function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[]; defaultMode: ToolMode; chats: ('chat' | 'coach')[] }[] {
+export function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[]; defaultMode: ToolMode; chats: ('chat' | 'coach' | 'phone')[] }[] {
   return ALL_TOOL_ORDER.map(name => {
     const def = TOOLS_BY_NAME.get(name) as ToolDef
     return {
       name, what: def.description, kind: def.kind, defaultMode: TOOL_DEFAULTS[name],
-      chats: ([...(CHAT_TOOL_ORDER.includes(name) ? ['chat'] : []), ...(COACH_TOOL_ORDER.includes(name) ? ['coach'] : [])] as ('chat' | 'coach')[]),
+      chats: ([...(CHAT_TOOL_ORDER.includes(name) ? ['chat'] : []), ...(COACH_TOOL_ORDER.includes(name) ? ['coach'] : []), ...(PHONE_TOOL_NAMES.includes(name) ? ['phone'] : [])] as ('chat' | 'coach' | 'phone')[]),
       fields: Object.entries(def.fields).map(([k, f]) => `${k} (${f.type}${f.type === 'string' && f.enum ? `: ${f.enum.join(' | ')}` : ''})`),
     }
   })
@@ -572,51 +637,30 @@ export function chatToolKind(name: string): 'read' | 'write' | null {
 
 // ── The phone's tools (phone_ask: a small read-only set, no proposals, no database tool) ──────────────
 
-/** The phone's `find_text`: the same job as the chat's, but it runs as the server (no owner token, so no search function): a plain substring match on the person's own tasks and diary, each query naming the verified user. No citations. */
-const PHONE_FIND_TEXT: ToolDef = {
-  name: 'find_text', kind: 'read',
-  description: "Finds the person's own tasks and diary lines that contain the given words (part of a title or a line). Returns at most 5 of each.",
-  fields: { query: { type: 'string', max: 100, description: 'The word or words to look for, as the person would have written them.' } },
-  async run(args, ctx) {
-    const query = args.query as string
-    if (query === '') return fail('Give the words to look for in "query".')
-    const like = `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
-    const [tasks, diary] = await Promise.all([
-      ctx.db.from('tasks').select('title, due_date, status').eq('user_id', ctx.userId).ilike('title', like).order('created_at', { ascending: false }).limit(5),
-      ctx.db.from('diary_entries').select('day, body').eq('user_id', ctx.userId).ilike('body', like).order('day', { ascending: false }).limit(5),
-    ])
-    if (tasks.error || diary.error) return fail(READ_PROBLEM)
-    const t = (tasks.data ?? []) as Record<string, unknown>[]
-    const d = (diary.data ?? []) as Record<string, unknown>[]
-    if (!t.length && !d.length) return { ok: true, text: 'Nothing matched. Try other words or a shorter word.', rows: 0 }
-    const day = (v: unknown) => (typeof v === 'string' && realDay(v) ? dmy(v) : 'no date')
-    const lines = [
-      ...t.map(r => `- task (${dataLine(r.status, 20)}, ${day(r.due_date)}): ${dataLine(r.title, 100)}`),
-      ...d.map(r => `- diary ${day(r.day)}: ${dataLine(r.body, 200)}`),
-    ]
-    return { ok: true, text: cutResult(`Matches (data):\n${lines.join('\n')}`), rows: t.length + d.length }
-  },
-}
-
 /** What the Developer page shows about the phone's tools. */
 export function describePhoneTools(): { name: string; what: string }[] {
-  return PHONE_TOOL_NAMES.map(name => ({ name, what: `Reads (read only, one round). ${(PHONE_DEFS.get(name) as ToolDef).description}` }))
+  return PHONE_TOOL_NAMES.map(name => ({ name, what: `Reads (read only, one round; only the ones your Ask AI settings leave on). ${(PHONE_DEFS.get(name) as ToolDef).description}` }))
 }
 
 /** The phone's tools in their fixed order (frozen: the set is code, never a setting). */
-export const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text']
+export const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']
 const PHONE_DEFS: ReadonlyMap<string, ToolDef> = new Map<string, ToolDef>([
-  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', PHONE_FIND_TEXT],
+  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', FIND_TEXT], ['get_about_me', GET_ABOUT_ME],
 ])
 
-export function phoneChatTools(): ChatTool[] {
-  return PHONE_TOOL_NAMES.map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
+/** The phone's tools the owner has not switched off, in the fixed order (the same switches as the chat's: `modes`). */
+export function phoneToolNames(modes: Record<string, ToolMode>): string[] {
+  return PHONE_TOOL_NAMES.filter(name => modes[name] !== 'off')
 }
 
-/** Runs one of the phone's tools: a name outside its four, bad arguments or a failing tool is an error result, never an exception. */
-export async function runPhoneTool(name: unknown, input: unknown, ctx: ToolContext): Promise<ToolOutput> {
-  const def = typeof name === 'string' ? PHONE_DEFS.get(name) : undefined
-  if (!def) return fail(`There is no tool called that. The tools are: ${PHONE_TOOL_NAMES.join(', ')}.`)
+export function phoneChatTools(names: readonly string[]): ChatTool[] {
+  return PHONE_TOOL_NAMES.filter(n => names.includes(n)).map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
+}
+
+/** Runs one of the phone's tools: a name outside the list it was given (the four-or-five reads the owner has on), bad arguments or a failing tool is an error result, never an exception. */
+export async function runPhoneTool(name: unknown, input: unknown, allowed: readonly string[], ctx: ToolContext): Promise<ToolOutput> {
+  const def = typeof name === 'string' && allowed.includes(name) ? PHONE_DEFS.get(name) : undefined
+  if (!def) return fail(`There is no tool called that. The tools are: ${allowed.join(', ')}.`)
   const args = checkedArgs(def, input)
   if (!args.ok) return fail(args.message)
   try {

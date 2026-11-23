@@ -12,7 +12,7 @@
 import type { Block, ChatMessage } from './types.ts'
 import type { Db } from './ledger.ts'
 import { ownValue } from './guard.ts'
-import { cleanOwnerInstructions, messageDigest, toolModes, type ChatMode, type ToolMode } from './chat-rules.ts'
+import { ALL_TOOL_ORDER, cleanOwnerInstructions, messageDigest, toolModes, type ChatMode, type ToolMode } from './chat-rules.ts'
 
 export interface ConversationRow {
   id: string
@@ -284,20 +284,24 @@ export async function ownRowTitle(db: Db, userId: string, kind: 'task' | 'diary'
 const PG_MISSING = new Set(['42P01', 'PGRST205', '42703', 'PGRST204'])
 
 /**
- * The owner's own controls for a NEW chat: each tool's mode (after the code's checks: `toolModes`) and the instructions
- * (cleaned, cut). Both are written by the browser, so both are input. A database that has not run 198 yet has neither:
- * the defaults apply (remove the fallback once 198 has run everywhere). Null when they could not be read: nothing is sent.
+ * The owner's own controls: each tool's mode (after the code's checks: `toolModes`) and the instructions (cleaned, cut).
+ * Both are written by the browser, so both are input.
+ * - The tool rows: ANY error reading them means "could not read": nothing is sent. There is no fallback to the defaults
+ *   (a tool the owner switched off must never come back because a read failed; migration 198 deploys before the function).
+ *   Only the code's own tool names are asked for.
+ * - The instructions: a database without the column has none (remove that fallback once 198 has run everywhere).
+ * Null when they could not be read.
  */
 export async function readChatControls(db: Db, userId: string): Promise<{ modes: Record<string, ToolMode>; instructions: string } | null> {
   try {
     const [tools, account] = await Promise.all([
-      db.from('ai_tool_settings').select('tool, mode').eq('user_id', userId).limit(50),
+      db.from('ai_tool_settings').select('tool, mode').eq('user_id', userId).in('tool', [...ALL_TOOL_ORDER]).limit(50),
       db.from('ai_settings').select('chat_instructions').eq('user_id', userId).maybeSingle(),
     ])
-    if (tools.error && !PG_MISSING.has(String(tools.error.code))) return null
+    if (tools.error || !Array.isArray(tools.data)) return null
     if (account.error && !PG_MISSING.has(String(account.error.code))) return null
     return {
-      modes: toolModes(tools.error ? null : tools.data),
+      modes: toolModes(tools.data),
       instructions: account.error ? '' : cleanOwnerInstructions(ownValue(account.data, 'chat_instructions')),
     }
   } catch { return null }

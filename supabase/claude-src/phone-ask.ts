@@ -5,8 +5,10 @@
 //  over. Now the model may also read, through four tools of its own (the day's plan, a week's figures, a day's food, a
 //  words search), when the context does not already answer. The limits that keep it a phone answer:
 //
-//    · a small FROZEN, read-only set (`phoneChatTools`: code, never a setting; no proposals, no database tool, nothing
-//      that writes) — the device path may not even name another tool;
+//    · a small read-only set (`phoneChatTools`: day plan, week figures, food day, find text, About me; no proposals, no
+//      database tool, nothing that writes) that FOLLOWS THE OWNER'S CONTROLS like the chat does: a tool switched off in
+//      Settings is not offered, and the owner's own instructions go in as the same second system block. The code decides
+//      which tools exist at all; the settings can only take some away. The device path may not name another tool;
 //    · at most two requests: the first may call tools, the second may not (an answer always ends in words), and at most
 //      four tool calls run, side by side, each with a short time limit;
 //    · low effort, thinking off, not streamed to the phone, and under 19 seconds in all (the gateway gives up at 22);
@@ -25,8 +27,9 @@ import {
 } from './guard.ts'
 import { finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow } from './ledger.ts'
 import { gateScopeOf, newRow, RUN_ERROR_MAX, RUN_MAY_BE_BILLED, RUN_NO_TOKENS, type RunContext } from './run.ts'
-import { CHAT_LIMITS } from './chat-rules.ts'
-import { phoneChatTools, runPhoneTool, type ToolOutput } from './chat-tools.ts'
+import { CHAT_LIMITS, ownerInstructionsBlock } from './chat-rules.ts'
+import { phoneChatTools, phoneToolNames, runPhoneTool, type ToolOutput } from './chat-tools.ts'
+import { readChatControls } from './chat-store.ts'
 import { PHONE_ASK_JOB } from './job-device.ts'
 
 /** The whole question, tools included, is over after this long: the gateway gives up at 22 s. */
@@ -76,17 +79,23 @@ export async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunR
   const provider = ctx.provider
   if (!provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
+  // 1b · The owner's controls, read as input (any failure reading the tool rows: nothing is sent): the tools that are on, and their words.
+  const controls = await readChatControls(ctx.userDb, ctx.userId)
+  if (!controls) return stop('error', 'Your Ask AI settings could not be read, so nothing was sent. Try again in a moment.')
+  const toolNames = phoneToolNames(controls.modes)
+  const ownerInstructions = ownerInstructionsBlock(controls.instructions)
+
   // 2 · The rounds: the first may call a tool, the second may not.
-  const tools = phoneChatTools()
+  const tools = phoneChatTools(toolNames)
   const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'text', text: prepared.userText }] }]
   let lastRow: CallRow = base
   for (let round = 1; round <= CHAT_LIMITS.phoneRounds; round++) {
     const remaining = PHONE_DEADLINE_MS - (Date.now() - started)
     if (remaining < 3000) return { ok: false, reason: 'error', message: 'That took too long for the phone. Try again in a moment.', call: summaryOf(lastRow) }
-    const noTools = round === CHAT_LIMITS.phoneRounds
+    const noTools = round === CHAT_LIMITS.phoneRounds || tools.length === 0
     const request: ChatRequest = {
       model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, thinking: 'off',
-      system: job.instructions, ownerInstructions: '', tools, noTools, messages, previousMessageId: null,
+      system: job.instructions, ownerInstructions, tools, noTools, messages, previousMessageId: null,
       contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs: remaining,
       firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining),
     }
@@ -96,7 +105,7 @@ export async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunR
     row.model = settings.model
     row.effort = settings.effort
     lastRow = row
-    const worstCost = worstCostOf(settings.model, job.instructions.length + JSON.stringify(tools).length + JSON.stringify(messages).length, settings.maxOutputTokens)
+    const worstCost = worstCostOf(settings.model, job.instructions.length + ownerInstructions.length + JSON.stringify(tools).length + JSON.stringify(messages).length, settings.maxOutputTokens)
     const reservation = await reserveCall(ctx.adminDb, {
       userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: settings.model, effort: settings.effort,
       instructionsVersion: job.version, worstCostUsd: worstCost, budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
@@ -162,7 +171,7 @@ export async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunR
         const name = typeof call.name === 'string' ? call.name : ''
         const output: ToolOutput = index >= CHAT_LIMITS.phoneToolCalls
           ? { ok: false, message: `Too many tool calls (the most is ${CHAT_LIMITS.phoneToolCalls}): this one did not run. Answer with what you have.` }
-          : await phoneWithTimeout(runPhoneTool(name, call.input, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs }),
+          : await phoneWithTimeout(runPhoneTool(name, call.input, toolNames, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs }),
             Math.min(PHONE_TOOL_MS, Math.max(1000, PHONE_DEADLINE_MS - (Date.now() - started) - 3000)), { ok: false, message: 'That tool took too long. Answer without it.' } as ToolOutput)
         shapes.push({ name, ok: output.ok, ms: Date.now() - at })
         return output.ok

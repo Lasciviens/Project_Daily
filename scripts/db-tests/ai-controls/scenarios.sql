@@ -35,7 +35,7 @@ update public.ai_tool_settings set mode = 'on' where tool = 'get_day_plan';
 select public.t_ok((select mode from public.ai_tool_settings where tool = 'get_day_plan') = 'on', '198: the owner changes their own mode back');
 select public.t_ok(public.t_err($q$delete from public.ai_tool_settings$q$) = '42501', '198: the browser cannot delete a tool row');
 reset role;
--- the database only bounds the SHAPE: a write tool stored as "on" is accepted here and ignored by the function (its code: a write tool is never on)
+select public.t_ok(public.t_err($q$insert into public.ai_tool_settings (user_id, tool, mode) values ('00000000-0000-0000-0000-000000000001', 'propose_log_food', 'on')$q$) = '23514', '198: a write tool can never be stored as on (23514); the function''s code refuses it too');
 insert into public.ai_tool_settings (user_id, tool, mode) values ('00000000-0000-0000-0000-000000000002', 'find_text', 'off');
 select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
 set role authenticated;

@@ -39,6 +39,7 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
   const policies = [...sql.matchAll(/create policy "[^"]+" on public\.(\w+)\s+for (\w+) to authenticated/gi)].map(m => `${m[1]}:${m[2].toLowerCase()}`)
   if (policies.join() !== 'ai_tool_settings:select,ai_tool_settings:insert,ai_tool_settings:update') problems.push(`policies ${policies.join(', ')}`)
   if (!/mode\s+text not null check \(mode in \('on', 'ask', 'off'\)\)/i.test(sql)) problems.push('the mode is not bounded to on, ask, off')
+  if (!/constraint ai_tool_settings_write_never_on check \(not \(tool in \('propose_add_task', 'propose_log_food'\) and mode = 'on'\)\)/i.test(sql)) problems.push('a write tool can be stored as on')
   if (!/create trigger trg_audit after insert or update or delete on public\.ai_tool_settings/i.test(sql)) problems.push('no audit trigger on ai_tool_settings (the owner\'s own choices)')
   if (!/chat_instructions text not null default ''\s*check \(char_length\(chat_instructions\) <= 1000\)/i.test(sql)) problems.push('chat_instructions is not bounded to 1000 characters')
   if (!/owner_instructions text not null default ''\s*check \(char_length\(owner_instructions\) <= 1000\)/i.test(sql)) problems.push('owner_instructions is not bounded to 1000 characters')

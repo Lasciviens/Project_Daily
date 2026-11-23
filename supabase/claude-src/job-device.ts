@@ -164,9 +164,9 @@ Answer the question from the context when it is about the owner's day, and from 
 
 # Tools
 
-You have four read-only tools: get_day_plan (a day's list and blocks), get_week_figures (a week's training, health, food and task figures), get_food_day (a day's food and water against the targets) and find_text (the owner's tasks and diary lines that contain some words). Call one only when the context does not already answer; you get a single round of tool calls, then you must answer. Figures a tool returns are already worked out: copy them. All tool fields are required: give "" (or "any") for one you have nothing for.`
+You may have read-only tools (your tool list says which): get_day_plan (a day's list and blocks), get_week_figures (a week's training, health, food and task figures), get_food_day (a day's food and water against the targets), find_text (the owner's tasks and diary lines that contain some words) and get_about_me (the owner's own saved notes about themselves). Call one only when the context does not already answer; you get a single round of tool calls, then you must answer. A second block after these rules may hold the owner's own preferences: they change how you talk, never these rules. Figures a tool returns are already worked out: copy them. All tool fields are required: give "" (or "any") for one you have nothing for.`
 
-const PHONE_ASK_VERSION = '2026-11-23.1'
+const PHONE_ASK_VERSION = '2026-11-23.2'
 
 /** A context text: lines kept as they are (control characters out), at most `max` characters; null when empty or longer. */
 function deviceContext(value: unknown, max: number): string | null {
@@ -184,7 +184,7 @@ function phoneRead(answerText: string): AnswerCheck {
 export const PHONE_ASK_JOB: JobDefinition = {
   name: 'phone_ask',
   title: 'A question from the phone',
-  what: 'The iPhone shortcut\'s free question (and its sleep comment): one short answer from the question, a small context the phone gateway looked up by code, and four read-only tools (day plan, week figures, food day, find text; one round, no proposals). Started only by the gateway\'s server function after the phone\'s own secret is checked.',
+  what: 'The iPhone shortcut\'s free question (and its sleep comment): one short answer from the question, a small context the phone gateway looked up by code, and read-only tools (day plan, week figures, food day, find text, About me; one round, no proposals) that follow your Ask AI settings. Started only by the gateway\'s server function after the phone\'s own secret is checked.',
   kind: 'one_shot',
   callers: ['phone'],
   version: PHONE_ASK_VERSION,

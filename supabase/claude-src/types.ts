@@ -465,7 +465,7 @@ export interface Describe {
   defaults: { monthlyBudgetUsd: number; logText: boolean; logDays: number }
   /** What the Ask AI settings screen needs: the tools (with the mode each starts as and which chats have it) and the limits of the owner's words and photos. */
   chat: {
-    tools: { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach')[] }[]
+    tools: { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach' | 'phone')[] }[]
     limits: { ownerInstructionsMax: number; imagesPerMessage: number; imagesPerChat: number; imageBase64Max: number; photoLongSide: number }
   }
   prices: {

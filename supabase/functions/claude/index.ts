@@ -471,7 +471,7 @@ interface Describe {
   defaults: { monthlyBudgetUsd: number; logText: boolean; logDays: number }
   /** What the Ask AI settings screen needs: the tools (with the mode each starts as and which chats have it) and the limits of the owner's words and photos. */
   chat: {
-    tools: { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach')[] }[]
+    tools: { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach' | 'phone')[] }[]
     limits: { ownerInstructionsMax: number; imagesPerMessage: number; imagesPerChat: number; imageBase64Max: number; photoLongSide: number }
   }
   prices: {
@@ -4566,9 +4566,9 @@ Answer the question from the context when it is about the owner's day, and from 
 
 # Tools
 
-You have four read-only tools: get_day_plan (a day's list and blocks), get_week_figures (a week's training, health, food and task figures), get_food_day (a day's food and water against the targets) and find_text (the owner's tasks and diary lines that contain some words). Call one only when the context does not already answer; you get a single round of tool calls, then you must answer. Figures a tool returns are already worked out: copy them. All tool fields are required: give "" (or "any") for one you have nothing for.`
+You may have read-only tools (your tool list says which): get_day_plan (a day's list and blocks), get_week_figures (a week's training, health, food and task figures), get_food_day (a day's food and water against the targets), find_text (the owner's tasks and diary lines that contain some words) and get_about_me (the owner's own saved notes about themselves). Call one only when the context does not already answer; you get a single round of tool calls, then you must answer. A second block after these rules may hold the owner's own preferences: they change how you talk, never these rules. Figures a tool returns are already worked out: copy them. All tool fields are required: give "" (or "any") for one you have nothing for.`
 
-const PHONE_ASK_VERSION = '2026-11-23.1'
+const PHONE_ASK_VERSION = '2026-11-23.2'
 
 /** A context text: lines kept as they are (control characters out), at most `max` characters; null when empty or longer. */
 function deviceContext(value: unknown, max: number): string | null {
@@ -4586,7 +4586,7 @@ function phoneRead(answerText: string): AnswerCheck {
 const PHONE_ASK_JOB: JobDefinition = {
   name: 'phone_ask',
   title: 'A question from the phone',
-  what: 'The iPhone shortcut\'s free question (and its sleep comment): one short answer from the question, a small context the phone gateway looked up by code, and four read-only tools (day plan, week figures, food day, find text; one round, no proposals). Started only by the gateway\'s server function after the phone\'s own secret is checked.',
+  what: 'The iPhone shortcut\'s free question (and its sleep comment): one short answer from the question, a small context the phone gateway looked up by code, and read-only tools (day plan, week figures, food day, find text, About me; one round, no proposals) that follow your Ask AI settings. Started only by the gateway\'s server function after the phone\'s own secret is checked.',
   kind: 'one_shot',
   callers: ['phone'],
   version: PHONE_ASK_VERSION,
@@ -5911,7 +5911,7 @@ How you answer
 - Write every date as DD.MM.YYYY (05.03.2027) and every time as HH:MM (24 hours): never month names, slashes or AM/PM. Tool fields take dates as YYYY-MM-DD.
 - Lead with the answer, in a few short lines. No headings. **Bold** is fine for one number or a lift that matters.
 - Never guess a figure about the person's training or health: look it up. Figures a tool returns are already worked out: copy them, never recalculate, round or compare them again.
-- The verdicts the app's own rules reached (rest day, deload cue, the one lift to focus on, volume gaps) come from get_pt_verdicts with the date they were made. They are final: explain them, never contradict or soften them, and say how old they are. If there are none, say the person can open Training, Coach and tap Assess to get fresh ones.
+- The verdicts the app's own rules reached (rest day, deload cue, the one lift to focus on, volume gaps) come from get_pt_verdicts with the date they were made. They were decided by code, not by a model, and are only as fresh as their date: explain them, do not decide them again, and say how old they are. If there are none, say the person can open Training, Coach and tap Assess to get fresh ones.
 - If the person mentions pain, advise caution and a professional; never diagnose.
 - If a tool finds nothing or fails, say so in one sentence and offer what you can try instead.
 
@@ -6289,6 +6289,39 @@ const GET_FOOD_DAY: ToolDef = {
 /** Where a citation points: `lasci:task:<id>` or `lasci:diary:<id>`. The id is the row's own. */
 const SOURCE_PATTERN = /^lasci:(task|diary):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/
 
+type FoundRows = { data: unknown; error: { code?: string; message?: string } | null }
+
+/** `find_text` for a caller with no owner token: the same rows as `ai_find_text` returns (kind, id, title, snippet, day), found by a substring match, each query naming the verified user. */
+async function serverFindText(ctx: ToolContext, query: string, kind: string): Promise<FoundRows> {
+  const like = `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
+  const limit = CHAT_LIMITS.searchResults
+  const reads: PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>[] = []
+  if (kind === 'any' || kind === 'task') {
+    reads.push(ctx.db.from('tasks').select('id, title, description, due_date').eq('user_id', ctx.userId).ilike('title', like).order('created_at', { ascending: false }).limit(limit))
+    reads.push(ctx.db.from('tasks').select('id, title, description, due_date').eq('user_id', ctx.userId).ilike('description', like).order('created_at', { ascending: false }).limit(limit))
+  }
+  if (kind === 'any' || kind === 'diary') {
+    reads.push(ctx.db.from('diary_entries').select('id, day, body').eq('user_id', ctx.userId).ilike('body', like).order('day', { ascending: false }).limit(limit))
+  }
+  const answers = await Promise.all(reads)
+  const failed = answers.find(a => a.error)
+  if (failed) return { data: null, error: failed.error }
+  const seen = new Set<string>()
+  const rows: Record<string, unknown>[] = []
+  for (const a of answers) {
+    for (const r of Array.isArray(a.data) ? a.data as Record<string, unknown>[] : []) {
+      const isDiary = typeof r.body === 'string'
+      const key = `${isDiary ? 'diary' : 'task'}:${String(r.id)}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push(isDiary
+        ? { kind: 'diary', id: r.id, title: `Diary ${typeof r.day === 'string' && realDay(r.day) ? dmy(r.day) : ''}`.trim(), snippet: String(r.body).slice(0, 300), day: r.day }
+        : { kind: 'task', id: r.id, title: r.title, snippet: String(r.description ?? '').slice(0, 300), day: r.due_date })
+    }
+  }
+  return { data: rows.slice(0, limit), error: null }
+}
+
 const FIND_TEXT: ToolDef = {
   name: 'find_text', kind: 'read',
   description: "Finds the person's own tasks and diary lines by words (full-text search, plus a match on part of a title). Returns at most 5, each citable. Use it for 'where did I write…', 'did I add a task about…', 'what did I note on…'.",
@@ -6298,7 +6331,13 @@ const FIND_TEXT: ToolDef = {
   },
   async run(args, ctx) {
     if (args.query === '') return fail('Give the words to look for in "query".')
-    const { data, error } = await ctx.db.rpc('ai_find_text', { p_query: args.query, p_kind: args.kind, p_limit: CHAT_LIMITS.searchResults })
+    // The app searches with the database function (full-text search with the owner's token). The phone has no token (the server
+    // client has no `auth.uid()`), so it asks the same question as the server: the owner's own rows, named by the verified id, a
+    // plain substring match on the title, the note and the diary line, the same result shape. No ranking: the newest first.
+    const found = ctx.readAs === 'owner'
+      ? await ctx.db.rpc('ai_find_text', { p_query: args.query, p_kind: args.kind, p_limit: CHAT_LIMITS.searchResults })
+      : await serverFindText(ctx, args.query as string, args.kind as string)
+    const { data, error } = found
     if (error) return fail(error.code === '42883' || error.code === 'PGRST202' ? 'Search is not available yet (a database update is missing).' : READ_PROBLEM)
     const blocks: Block[] = []
     for (const r of Array.isArray(data) ? data as Record<string, unknown>[] : []) {
@@ -6383,21 +6422,47 @@ const GET_HEALTH_TRENDS: ToolDef = {
   async run(args, ctx) { return weekFiguresFor(args, ctx, 'health') },
 }
 
+/**
+ * The verdict lines of a saved assessment, in the shapes the coaching rules write them (coachFacts.ts `formatPtVerdicts`) and
+ * nothing else. `pt_assessments.snapshot` is written by the BROWSER (a stolen session could put any text there), so a line is
+ * kept only when it starts with one of the six labels, its value is a short plain line of letters, digits and the punctuation
+ * the rules use (no angle brackets, no markup, no new lines), and a RECOVERY line names one of the four gates. Whatever
+ * else is in the snapshot (the figures, a forged paragraph) is never handed over. Why not recompute them here: the verdicts
+ * need the progress engine and a dozen browser reads (coachData.ts), which have no copy in this function.
+ */
+const VERDICT_LABELS = ['RECOVERY', 'OVERREACH', 'PRIORITY', 'BELOW MINIMUM VOLUME', 'IMBALANCE', 'MISSED'] as const
+const VERDICT_VALUE = /^[\p{L}\p{N} ,.:;()[\]/'"&#·—%+\-_]{1,300}$/u
+const RECOVERY_GATES = ['rest_day', 'technique_day', 'normal', 'no_sleep_data']
+const SAVED_FEELINGS = ['undertrained', 'normal', 'tired', 'very tired']
+function verdictLines(snapshot: unknown): string[] {
+  const out: string[] = []
+  for (const line of String(snapshot ?? '').split('\n\n')[0].split('\n').slice(0, 8)) {
+    const label = VERDICT_LABELS.find(l => line.startsWith(`${l}: `))
+    if (!label) continue
+    const value = line.slice(label.length + 2)
+    if (!VERDICT_VALUE.test(value)) continue
+    if (label === 'RECOVERY' && !RECOVERY_GATES.includes(value.split(' ')[0])) continue
+    if (!out.some(l => l.startsWith(`${label}: `))) out.push(`${label}: ${dataLine(value, 300)}`)
+  }
+  return out
+}
+
 const GET_PT_VERDICTS: ToolDef = {
   name: 'get_pt_verdicts', kind: 'read',
-  description: "The verdict lines the app's own coaching rules decided on the days the person last asked for an assessment (up to 3, newest first): recovery gate, overreach and deload cue, the one lift to focus on, muscles below their minimum volume, imbalance flags, missed sessions. They are final decisions made by code and are only as fresh as their date.",
+  description: "The verdict lines the app's own coaching rules (code, not a model) wrote on the days the person last asked for an assessment (up to 3, newest first), with how they felt and their note: recovery gate, overreach and deload cue, the one lift to focus on, muscles below their minimum volume, imbalance flags, missed sessions. They are only as fresh as their date.",
   fields: {},
   async run(_args, ctx) {
-    const { data, error } = await ctx.db.from('pt_assessments').select('date, feeling, snapshot').eq('user_id', ctx.userId).order('created_at', { ascending: false }).limit(3)
+    const { data, error } = await ctx.db.from('pt_assessments').select('date, feeling, note, snapshot').eq('user_id', ctx.userId).order('created_at', { ascending: false }).limit(3)
     if (error) return fail(READ_PROBLEM)
     const rows = (data ?? []) as Record<string, unknown>[]
     if (!rows.length) return { ok: true, text: 'No assessment has been made yet. The person can open Training, then Coach, and tap Assess to get fresh verdicts.', rows: 0 }
     const out: string[] = []
     for (const r of rows) {
       const day = typeof r.date === 'string' && realDay(r.date) ? dmy(r.date) : 'unknown date'
-      // The snapshot is "<verdicts>\n\n<figures>": only the verdict block (the part code decided) is handed over.
-      const verdicts = String(r.snapshot ?? '').split('\n\n')[0].split('\n').slice(0, 8).map(l => dataLine(l, 300)).filter(Boolean)
-      out.push(`Assessment of ${day} (the person felt: ${dataLine(r.feeling, 20)}):\n${verdicts.map(l => `- ${l}`).join('\n')}`)
+      const feeling = SAVED_FEELINGS.includes(String(r.feeling)) ? String(r.feeling) : 'not said'
+      const verdicts = verdictLines(r.snapshot)
+      const note = typeof r.note === 'string' && r.note.trim() ? ` Their note (data): ${dataLine(r.note, 150)}` : ''
+      out.push(`Assessment of ${day} (the person felt: ${feeling}).${note}\n${verdicts.length ? verdicts.map(l => `- ${l}`).join('\n') : '- (no verdict lines)'}`)
     }
     return { ok: true, text: cutResult(`Saved verdicts (data, newest first):\n${out.join('\n')}`), rows: rows.length }
   },
@@ -6547,12 +6612,12 @@ function chatToolsNamed(names: readonly string[]): ChatTool[] {
 }
 
 /** What the Developer page shows for every tool: its words, its fields, what it may touch. */
-function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[]; defaultMode: ToolMode; chats: ('chat' | 'coach')[] }[] {
+function describeChatTools(): { name: string; what: string; kind: 'read' | 'write'; fields: string[]; defaultMode: ToolMode; chats: ('chat' | 'coach' | 'phone')[] }[] {
   return ALL_TOOL_ORDER.map(name => {
     const def = TOOLS_BY_NAME.get(name) as ToolDef
     return {
       name, what: def.description, kind: def.kind, defaultMode: TOOL_DEFAULTS[name],
-      chats: ([...(CHAT_TOOL_ORDER.includes(name) ? ['chat'] : []), ...(COACH_TOOL_ORDER.includes(name) ? ['coach'] : [])] as ('chat' | 'coach')[]),
+      chats: ([...(CHAT_TOOL_ORDER.includes(name) ? ['chat'] : []), ...(COACH_TOOL_ORDER.includes(name) ? ['coach'] : []), ...(PHONE_TOOL_NAMES.includes(name) ? ['phone'] : [])] as ('chat' | 'coach' | 'phone')[]),
       fields: Object.entries(def.fields).map(([k, f]) => `${k} (${f.type}${f.type === 'string' && f.enum ? `: ${f.enum.join(' | ')}` : ''})`),
     }
   })
@@ -6592,51 +6657,30 @@ function chatToolKind(name: string): 'read' | 'write' | null {
 
 // ── The phone's tools (phone_ask: a small read-only set, no proposals, no database tool) ──────────────
 
-/** The phone's `find_text`: the same job as the chat's, but it runs as the server (no owner token, so no search function): a plain substring match on the person's own tasks and diary, each query naming the verified user. No citations. */
-const PHONE_FIND_TEXT: ToolDef = {
-  name: 'find_text', kind: 'read',
-  description: "Finds the person's own tasks and diary lines that contain the given words (part of a title or a line). Returns at most 5 of each.",
-  fields: { query: { type: 'string', max: 100, description: 'The word or words to look for, as the person would have written them.' } },
-  async run(args, ctx) {
-    const query = args.query as string
-    if (query === '') return fail('Give the words to look for in "query".')
-    const like = `%${query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`
-    const [tasks, diary] = await Promise.all([
-      ctx.db.from('tasks').select('title, due_date, status').eq('user_id', ctx.userId).ilike('title', like).order('created_at', { ascending: false }).limit(5),
-      ctx.db.from('diary_entries').select('day, body').eq('user_id', ctx.userId).ilike('body', like).order('day', { ascending: false }).limit(5),
-    ])
-    if (tasks.error || diary.error) return fail(READ_PROBLEM)
-    const t = (tasks.data ?? []) as Record<string, unknown>[]
-    const d = (diary.data ?? []) as Record<string, unknown>[]
-    if (!t.length && !d.length) return { ok: true, text: 'Nothing matched. Try other words or a shorter word.', rows: 0 }
-    const day = (v: unknown) => (typeof v === 'string' && realDay(v) ? dmy(v) : 'no date')
-    const lines = [
-      ...t.map(r => `- task (${dataLine(r.status, 20)}, ${day(r.due_date)}): ${dataLine(r.title, 100)}`),
-      ...d.map(r => `- diary ${day(r.day)}: ${dataLine(r.body, 200)}`),
-    ]
-    return { ok: true, text: cutResult(`Matches (data):\n${lines.join('\n')}`), rows: t.length + d.length }
-  },
-}
-
 /** What the Developer page shows about the phone's tools. */
 function describePhoneTools(): { name: string; what: string }[] {
-  return PHONE_TOOL_NAMES.map(name => ({ name, what: `Reads (read only, one round). ${(PHONE_DEFS.get(name) as ToolDef).description}` }))
+  return PHONE_TOOL_NAMES.map(name => ({ name, what: `Reads (read only, one round; only the ones your Ask AI settings leave on). ${(PHONE_DEFS.get(name) as ToolDef).description}` }))
 }
 
 /** The phone's tools in their fixed order (frozen: the set is code, never a setting). */
-const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text']
+const PHONE_TOOL_NAMES: readonly string[] = ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']
 const PHONE_DEFS: ReadonlyMap<string, ToolDef> = new Map<string, ToolDef>([
-  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', PHONE_FIND_TEXT],
+  ['get_day_plan', GET_DAY_PLAN], ['get_week_figures', GET_WEEK_FIGURES], ['get_food_day', GET_FOOD_DAY], ['find_text', FIND_TEXT], ['get_about_me', GET_ABOUT_ME],
 ])
 
-function phoneChatTools(): ChatTool[] {
-  return PHONE_TOOL_NAMES.map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
+/** The phone's tools the owner has not switched off, in the fixed order (the same switches as the chat's: `modes`). */
+function phoneToolNames(modes: Record<string, ToolMode>): string[] {
+  return PHONE_TOOL_NAMES.filter(name => modes[name] !== 'off')
 }
 
-/** Runs one of the phone's tools: a name outside its four, bad arguments or a failing tool is an error result, never an exception. */
-async function runPhoneTool(name: unknown, input: unknown, ctx: ToolContext): Promise<ToolOutput> {
-  const def = typeof name === 'string' ? PHONE_DEFS.get(name) : undefined
-  if (!def) return fail(`There is no tool called that. The tools are: ${PHONE_TOOL_NAMES.join(', ')}.`)
+function phoneChatTools(names: readonly string[]): ChatTool[] {
+  return PHONE_TOOL_NAMES.filter(n => names.includes(n)).map(name => chatToolOf(PHONE_DEFS.get(name) as ToolDef))
+}
+
+/** Runs one of the phone's tools: a name outside the list it was given (the four-or-five reads the owner has on), bad arguments or a failing tool is an error result, never an exception. */
+async function runPhoneTool(name: unknown, input: unknown, allowed: readonly string[], ctx: ToolContext): Promise<ToolOutput> {
+  const def = typeof name === 'string' && allowed.includes(name) ? PHONE_DEFS.get(name) : undefined
+  if (!def) return fail(`There is no tool called that. The tools are: ${allowed.join(', ')}.`)
   const args = checkedArgs(def, input)
   if (!args.ok) return fail(args.message)
   try {
@@ -7842,20 +7886,24 @@ async function ownRowTitle(db: Db, userId: string, kind: 'task' | 'diary', id: s
 const PG_MISSING = new Set(['42P01', 'PGRST205', '42703', 'PGRST204'])
 
 /**
- * The owner's own controls for a NEW chat: each tool's mode (after the code's checks: `toolModes`) and the instructions
- * (cleaned, cut). Both are written by the browser, so both are input. A database that has not run 198 yet has neither:
- * the defaults apply (remove the fallback once 198 has run everywhere). Null when they could not be read: nothing is sent.
+ * The owner's own controls: each tool's mode (after the code's checks: `toolModes`) and the instructions (cleaned, cut).
+ * Both are written by the browser, so both are input.
+ * - The tool rows: ANY error reading them means "could not read": nothing is sent. There is no fallback to the defaults
+ *   (a tool the owner switched off must never come back because a read failed; migration 198 deploys before the function).
+ *   Only the code's own tool names are asked for.
+ * - The instructions: a database without the column has none (remove that fallback once 198 has run everywhere).
+ * Null when they could not be read.
  */
 async function readChatControls(db: Db, userId: string): Promise<{ modes: Record<string, ToolMode>; instructions: string } | null> {
   try {
     const [tools, account] = await Promise.all([
-      db.from('ai_tool_settings').select('tool, mode').eq('user_id', userId).limit(50),
+      db.from('ai_tool_settings').select('tool, mode').eq('user_id', userId).in('tool', [...ALL_TOOL_ORDER]).limit(50),
       db.from('ai_settings').select('chat_instructions').eq('user_id', userId).maybeSingle(),
     ])
-    if (tools.error && !PG_MISSING.has(String(tools.error.code))) return null
+    if (tools.error || !Array.isArray(tools.data)) return null
     if (account.error && !PG_MISSING.has(String(account.error.code))) return null
     return {
-      modes: toolModes(tools.error ? null : tools.data),
+      modes: toolModes(tools.data),
       instructions: account.error ? '' : cleanOwnerInstructions(ownValue(account.data, 'chat_instructions')),
     }
   } catch { return null }
@@ -7993,7 +8041,11 @@ const imageBlocksOf = (messages: readonly { content: Block[] }[]): number => mes
 
 /** The prompt's size in characters with each photo's base64 left out (a photo costs tokens by its pixels, never by its text): the reservation adds the photos' worst case itself. */
 const promptChars = (messages: readonly ChatMessage[]): number =>
-  JSON.stringify(messages, (key, value) => (key === 'data' && typeof value === 'string' && value.length > 1000 ? '' : value)).length
+  // Only the `data` of a photo's source ({ type: 'base64', media_type, data }) is left out: a `data` anywhere else (a tool result, the owner's words) still counts.
+  JSON.stringify(messages, function (this: unknown, key, value) {
+    const parent = this as Record<string, unknown> | null
+    return key === 'data' && typeof value === 'string' && parent !== null && parent.type === 'base64' && typeof parent.media_type === 'string' ? '' : value
+  }).length
 
 /** Runs one answer. `emit` gets the events as they happen (the stream); the return value is the final one. */
 async function runChat(ctx: RunContext, input: unknown, emit: (event: ChatEvent) => void, signal?: AbortSignal): Promise<ChatResult> {
@@ -8496,8 +8548,10 @@ async function setChatDeleted(ctx: RunContext, input: unknown, deleted: boolean)
 //  over. Now the model may also read, through four tools of its own (the day's plan, a week's figures, a day's food, a
 //  words search), when the context does not already answer. The limits that keep it a phone answer:
 //
-//    · a small FROZEN, read-only set (`phoneChatTools`: code, never a setting; no proposals, no database tool, nothing
-//      that writes) — the device path may not even name another tool;
+//    · a small read-only set (`phoneChatTools`: day plan, week figures, food day, find text, About me; no proposals, no
+//      database tool, nothing that writes) that FOLLOWS THE OWNER'S CONTROLS like the chat does: a tool switched off in
+//      Settings is not offered, and the owner's own instructions go in as the same second system block. The code decides
+//      which tools exist at all; the settings can only take some away. The device path may not name another tool;
 //    · at most two requests: the first may call tools, the second may not (an answer always ends in words), and at most
 //      four tool calls run, side by side, each with a short time limit;
 //    · low effort, thinking off, not streamed to the phone, and under 19 seconds in all (the gateway gives up at 22);
@@ -8556,17 +8610,23 @@ async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunReply> {
   const provider = ctx.provider
   if (!provider) return stop('not_configured', 'AI is not set up yet: the server has no API key for it.')
 
+  // 1b · The owner's controls, read as input (any failure reading the tool rows: nothing is sent): the tools that are on, and their words.
+  const controls = await readChatControls(ctx.userDb, ctx.userId)
+  if (!controls) return stop('error', 'Your Ask AI settings could not be read, so nothing was sent. Try again in a moment.')
+  const toolNames = phoneToolNames(controls.modes)
+  const ownerInstructions = ownerInstructionsBlock(controls.instructions)
+
   // 2 · The rounds: the first may call a tool, the second may not.
-  const tools = phoneChatTools()
+  const tools = phoneChatTools(toolNames)
   const messages: ChatMessage[] = [{ role: 'user', content: [{ type: 'text', text: prepared.userText }] }]
   let lastRow: CallRow = base
   for (let round = 1; round <= CHAT_LIMITS.phoneRounds; round++) {
     const remaining = PHONE_DEADLINE_MS - (Date.now() - started)
     if (remaining < 3000) return { ok: false, reason: 'error', message: 'That took too long for the phone. Try again in a moment.', call: summaryOf(lastRow) }
-    const noTools = round === CHAT_LIMITS.phoneRounds
+    const noTools = round === CHAT_LIMITS.phoneRounds || tools.length === 0
     const request: ChatRequest = {
       model: settings.model, maxOutputTokens: settings.maxOutputTokens, effort: settings.effort, thinking: 'off',
-      system: job.instructions, ownerInstructions: '', tools, noTools, messages, previousMessageId: null,
+      system: job.instructions, ownerInstructions, tools, noTools, messages, previousMessageId: null,
       contextEditing: { ...CHAT_LIMITS.contextEditing }, timeoutMs: remaining,
       firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining),
     }
@@ -8576,7 +8636,7 @@ async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunReply> {
     row.model = settings.model
     row.effort = settings.effort
     lastRow = row
-    const worstCost = worstCostOf(settings.model, job.instructions.length + JSON.stringify(tools).length + JSON.stringify(messages).length, settings.maxOutputTokens)
+    const worstCost = worstCostOf(settings.model, job.instructions.length + ownerInstructions.length + JSON.stringify(tools).length + JSON.stringify(messages).length, settings.maxOutputTokens)
     const reservation = await reserveCall(ctx.adminDb, {
       userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: settings.model, effort: settings.effort,
       instructionsVersion: job.version, worstCostUsd: worstCost, budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
@@ -8642,7 +8702,7 @@ async function runPhoneAsk(ctx: RunContext, input: unknown): Promise<RunReply> {
         const name = typeof call.name === 'string' ? call.name : ''
         const output: ToolOutput = index >= CHAT_LIMITS.phoneToolCalls
           ? { ok: false, message: `Too many tool calls (the most is ${CHAT_LIMITS.phoneToolCalls}): this one did not run. Answer with what you have.` }
-          : await phoneWithTimeout(runPhoneTool(name, call.input, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs }),
+          : await phoneWithTimeout(runPhoneTool(name, call.input, toolNames, { db: ctx.userDb, userId: ctx.userId, now: ctx.now(), readAs: ctx.readAs }),
             Math.min(PHONE_TOOL_MS, Math.max(1000, PHONE_DEADLINE_MS - (Date.now() - started) - 3000)), { ok: false, message: 'That tool took too long. Answer without it.' } as ToolOutput)
         shapes.push({ name, ok: output.ok, ms: Date.now() - at })
         return output.ok
@@ -8959,7 +9019,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'jobs', file: 'supabase/claude-src/jobs.ts', what: 'The fixed list of jobs, looked up by name.' },
   { name: 'chat store', file: 'supabase/claude-src/chat-store.ts', what: "The stored chats: conversations, messages (only ever added to, with a hash chain) and the proposals waiting for your Confirm." },
   { name: 'chat loop', file: 'supabase/claude-src/chat-loop.ts', what: "Ask AI's own loop: the walls, the stored history checked before it is replayed, each request reserved and ledgered, the tools run side by side, the citations checked, and your Confirm or Cancel of a proposal." },
-  { name: 'phone ask', file: 'supabase/claude-src/phone-ask.ts', what: "The phone's question with its four read-only tools: one round of tool calls, then the answer, never streamed, under 19 seconds, every round reserved and ledgered, nothing stored, no proposals." },
+  { name: 'phone ask', file: 'supabase/claude-src/phone-ask.ts', what: "The phone's question with its read-only tools (the ones your Ask AI settings leave on): one round of tool calls, then the answer, never streamed, under 19 seconds, every round reserved and ledgered, nothing stored, no proposals." },
   { name: 'run', file: 'supabase/claude-src/run.ts', what: 'One request from start to finish, in the order of the steps on this page.' },
   { name: 'batch', file: 'supabase/claude-src/batch.ts', what: 'The weekly report\'s two steps: queue one request at half price (Monday 05:00, so Sunday is complete), and read it back when it has ended (every 15 minutes while one is queued), correcting the ledger to the real cost; the push waits for 07:00 and goes once.' },
   { name: 'diagnose', file: 'supabase/claude-src/diagnose.ts', what: 'The Diagnose button\'s four checks: the network and key, the shape of ✨\'s request, a tiny answer, and ✨\'s own request with a longer time limit.' },
