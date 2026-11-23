@@ -187,6 +187,18 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
 
+      # The app's own docs as Ask AI's knowledge (search_docs): an allow-list of
+      # docs/features and docs/integrations from THIS merged commit, hidden
+      # characters and HTML comments stripped, the commit and a hash stamped,
+      # then the claude function joined again with it (the repo keeps an empty
+      # copy, so a docs change never rebuilds the function in a pull request).
+      # Plain file work: no secret, no network.
+      - name: App docs for the claude function
+        if: steps.gate.outputs.backend == 'true' && env.DRY_RUN != 'true'
+        run: |
+          node scripts/build-docs-snapshot.mjs --write --commit "${{ steps.gate.outputs.sha }}"
+          node scripts/build-claude-function.mjs
+
       # Every function under supabase/functions, bundled by Supabase (--use-api,
       # no Docker). JWT verification per function comes from supabase/config.toml.
       # Never --prune: a function that exists only on Supabase is left alone.

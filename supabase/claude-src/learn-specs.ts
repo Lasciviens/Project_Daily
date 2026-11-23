@@ -79,7 +79,8 @@ export function checkedField(kind: FieldKind, value: unknown, input: Record<stri
   if (value === null || value === undefined || value === '') return ''
   switch (kind.kind) {
     case 'line': {
-      const t = storedValue(value, kind.max)
+      // Never cut: a value longer than the job allows is not one the job could have answered.
+      const t = storedValue(value, 100_000)
       return t !== null && [...t].length <= kind.max && !/https?:|www\./i.test(t) ? t : null
     }
     case 'int':

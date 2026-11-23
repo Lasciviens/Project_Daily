@@ -23,7 +23,7 @@ export interface CaseCandidate {
   relevance?: number
 }
 
-export const PICK_LIMITS = { kMax: 5, floor: 0.12, lambda: 0.7, candidates: 30 } as const
+export const PICK_LIMITS = { kMax: 5, floor: 0.12, lambda: 0.5, candidates: 30 } as const
 
 /** pg_trgm's trigrams of a text: lower case, each word (letters and digits) padded "  word ". */
 export function trigramsOf(text: string): Set<string> {

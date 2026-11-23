@@ -138,7 +138,8 @@ export function sourceHostOf(link: unknown): string | null {
   if (typeof link !== 'string' || link.length > 2000) return null
   try {
     const host = new URL(link).hostname.toLowerCase().replace(/^www\./, '')
-    return host.length <= 253 && SOURCE_HOST.test(host) ? host : null
+    // A name with a real top-level name (never a bare address like 10.0.0.1).
+    return host.length <= 253 && SOURCE_HOST.test(host) && /\.[a-z]{2,63}$/.test(host) ? host : null
   } catch {
     return null
   }

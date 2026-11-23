@@ -1950,7 +1950,7 @@ interface CaseCandidate {
   relevance?: number
 }
 
-const PICK_LIMITS = { kMax: 5, floor: 0.12, lambda: 0.7, candidates: 30 } as const
+const PICK_LIMITS = { kMax: 5, floor: 0.12, lambda: 0.5, candidates: 30 } as const
 
 /** pg_trgm's trigrams of a text: lower case, each word (letters and digits) padded "  word ". */
 function trigramsOf(text: string): Set<string> {
@@ -2032,7 +2032,7 @@ function scoreKey(value: string): string {
   const t = value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim()
   // A number in any form ("12", "12.0", "12,0") is the same number.
   const n = Number(t.replace(',', '.'))
-  return t !== '' && Number.isFinite(n) ? String(n) : t.replace(/[^\p{L}\p{N} ]+/gu, '').trim()
+  return t !== '' && Number.isFinite(n) ? String(n) : t.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function wordsOfScore(value: string): Set<string> {
@@ -2249,7 +2249,8 @@ function checkedField(kind: FieldKind, value: unknown, input: Record<string, unk
   if (value === null || value === undefined || value === '') return ''
   switch (kind.kind) {
     case 'line': {
-      const t = storedValue(value, kind.max)
+      // Never cut: a value longer than the job allows is not one the job could have answered.
+      const t = storedValue(value, 100_000)
       return t !== null && [...t].length <= kind.max && !/https?:|www\./i.test(t) ? t : null
     }
     case 'int':
@@ -8793,7 +8794,8 @@ function sourceHostOf(link: unknown): string | null {
   if (typeof link !== 'string' || link.length > 2000) return null
   try {
     const host = new URL(link).hostname.toLowerCase().replace(/^www\./, '')
-    return host.length <= 253 && SOURCE_HOST.test(host) ? host : null
+    // A name with a real top-level name (never a bare address like 10.0.0.1).
+    return host.length <= 253 && SOURCE_HOST.test(host) && /\.[a-z]{2,63}$/.test(host) ? host : null
   } catch {
     return null
   }

@@ -23,7 +23,7 @@ function scoreKey(value: string): string {
   const t = value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim()
   // A number in any form ("12", "12.0", "12,0") is the same number.
   const n = Number(t.replace(',', '.'))
-  return t !== '' && Number.isFinite(n) ? String(n) : t.replace(/[^\p{L}\p{N} ]+/gu, '').trim()
+  return t !== '' && Number.isFinite(n) ? String(n) : t.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function wordsOfScore(value: string): Set<string> {
