@@ -15,8 +15,11 @@ interface Props {
   open: boolean
   /** What was already typed in the quick-add field. */
   initialText: string
-  /** The store the quick-add field keeps for the next item. */
+  /** The store and "No rush" the quick-add card holds: they go with every row, as with its own Add. */
   store: string
+  noRush: boolean
+  /** Runs after a successful Add (the card clears its field). */
+  onAdded?: () => void
   onClose: () => void
 }
 
@@ -30,15 +33,18 @@ type Source = { kind: 'code' } | { kind: 'ai'; costUsd: number | null }
  * separate items"). Write or paste, tap, review every item (all ticked, name and amount editable), "Add N". Code splits a
  * text that already has commas or lines; only the rest is sent to the AI, with its worst-case cost on the button and its
  * real cost after. Nothing is written until Add, which is the quick list's own batch add: titles already on the list are
- * left out and one Undo takes the whole batch off.
+ * left out and named, and one Undo takes the whole batch off.
  */
-export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
+export function QuickAiSheet({ open, initialText, store, noRush, onAdded, onClose }: Props) {
   const describe = useClaudeDescribe()
   const parse = useQuickParse()
   const add = useAddBatchToQuickList()
   const [text, setText] = useState(initialText)
   const [rows, setRows] = useState<QuickReviewRow[] | null>(null)
+  /** The rows as code made them: "Check spelling with AI" starts over, so it waits until nothing was changed by hand. */
+  const [base, setBase] = useState<QuickReviewRow[] | null>(null)
   const [source, setSource] = useState<Source | null>(null)
+  const [dropped, setDropped] = useState(0)
   const [said, setSaid] = useState('')
 
   const problem = text.trim() ? quickTextProblem(text) : null
@@ -63,6 +69,8 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
       onSuccess: r => {
         setSource({ kind: 'ai', costUsd: r.costUsd })
         setRows(quickReviewRows(r.items))
+        setBase(null)
+        setDropped(r.dropped)
         if (r.items.length === 0) setSaid('No items found in that text.')
       },
     })
@@ -70,21 +78,34 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
 
   function go() {
     if (!plan || problem) return
-    if (plan.kind === 'code') { setSource({ kind: 'code' }); setRows(quickReviewRows(plan.items)); setSaid(''); return }
+    if (plan.kind === 'code') {
+      const made = quickReviewRows(plan.items)
+      setSource({ kind: 'code' }); setRows(made); setBase(made); setDropped(0); setSaid('')
+      return
+    }
     if (plan.kind === 'ai') sortWithAi()
   }
 
-  const ticked = rows ? quickReviewInputs(rows, store) : []
+  const ticked = rows ? quickReviewInputs(rows, store, noRush) : []
   const change = (key: number, patch: Partial<QuickReviewRow>) => setRows(rs => rs && rs.map(r => (r.key === key ? { ...r, ...patch } : r)))
+  const touched = !!rows && !!base && rows.some((r, i) => !r.on || r.name !== base[i]?.name || r.amount !== base[i]?.amount)
   function save() {
     if (!ticked.length) return
-    add.mutate({ inputs: ticked, what: 'from your text' }, { onSuccess: onClose })
+    add.mutate({ inputs: ticked, what: 'from your text' }, { onSuccess: () => { onAdded?.(); onClose() } })
   }
 
   const busy = parse.isPending || add.isPending
   const costKnown = worst !== null
 
   const writing = rows === null
+  // One line under the field: only what the button does not already say (its price is on it).
+  const hint = problem ? null
+    : !plan ? 'Write or paste it as it comes. Your own words and language stay as they are.'
+    : plan.kind === 'code' ? `Splits on its own — no AI, no cost. ${plan.items.length} ${plan.items.length === 1 ? 'item' : 'items'}.`
+    : plan.kind === 'toomany' ? `That is more than ${QUICK_LIMITS.items} items — add them in two rounds.`
+    : plan.kind === 'empty' ? 'Nothing to add in that text.'
+    : costKnown ? null
+    : describe.isError ? 'The cost could not be worked out — try again later.' : 'Working out the cost…'
   return (
     <ModalShell open={open} onClose={onClose} title="Sort out a list" size="sm" dismissible={!busy}
       footer={
@@ -99,7 +120,7 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
             </>
           ) : (
             <>
-              <Button onClick={() => { setRows(null); setSource(null) }} disabled={busy}>Edit text</Button>
+              <Button onClick={() => { setRows(null); setSource(null); setBase(null) }} disabled={busy}>Edit text</Button>
               <Button variant="primary" className="ml-auto" onClick={save} loading={add.isPending} disabled={ticked.length === 0}>
                 Add {ticked.length}
               </Button>
@@ -110,17 +131,11 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
       {writing ? (
         <div className="flex flex-col gap-2">
           <label htmlFor="quick-ai-text" className="field-label">What do you need?</label>
-          <textarea id="quick-ai-text" value={text} onChange={e => setText(e.target.value)} rows={5} maxLength={QUICK_LIMITS.text}
+          <textarea id="quick-ai-text" value={text} onChange={e => setText(e.target.value)} rows={3} maxLength={QUICK_LIMITS.text}
             autoFocus placeholder="melk brød 2x egg, tomatoes and some cheese for pizza" className="input resize-y" />
-          <p role="status" className="text-meta text-fg-muted">
-            {problem ? <span className="text-danger">{problem}</span>
-              : !plan ? 'Write or paste it as it comes. Your own words and language stay as they are.'
-              : plan.kind === 'code' ? `Splits on its own — no AI, no cost. ${plan.items.length} ${plan.items.length === 1 ? 'item' : 'items'}.`
-              : plan.kind === 'toomany' ? `That is more than ${QUICK_LIMITS.items} items — add them in two rounds.`
-              : plan.kind === 'empty' ? 'Nothing to add in that text.'
-              : costKnown ? `AI reads it: ${upTo(worst)}, usually far less.`
-              : describe.isError ? 'The cost could not be worked out — try again later.' : 'Working out the cost…'}
-          </p>
+          {(problem || hint) && (
+            <p role="status" className="text-meta text-fg-muted">{problem ? <span className="text-danger">{problem}</span> : hint}</p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -128,7 +143,7 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
             {source?.kind === 'ai'
               ? `Sorted by AI${source.costUsd !== null ? ` · ${costNote(source.costUsd)}` : ''}`
               : 'Split by the app, no AI'}
-            {rows.length > 0 && ' · untick what you do not want'}
+            {dropped > 0 && ` · ${dropped} left out (not your words)`}
           </p>
           {said && <p className="text-body text-fg-muted">{said}</p>}
           {rows.length > 0 && (
@@ -146,11 +161,11 @@ export function QuickAiSheet({ open, initialText, store, onClose }: Props) {
             </ul>
           )}
           {source?.kind === 'code' && rows.length > 0 && (
-            <div className="flex flex-col items-start gap-1 pt-1">
-              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown}>
+            <div className="pt-1">
+              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown || touched}
+                title={touched ? 'You changed the list: the AI would start over. Put it back, or add first.' : 'The app kept your words as typed; the AI also fixes obvious typos.'}>
                 {costKnown ? `Check spelling with AI · ${upTo(worst)}` : 'Check spelling with AI'}
               </Button>
-              <p className="text-meta text-fg-muted">The app kept your words as typed; AI also fixes obvious typos.</p>
             </div>
           )}
         </div>

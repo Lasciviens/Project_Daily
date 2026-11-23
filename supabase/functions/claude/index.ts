@@ -4367,7 +4367,7 @@ const SHOP_TIDY_JOB: JobDefinition = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // <quick-list-shared>
-// One copy here, one in src/features/shop/quickParseRules.ts: edit both (scripts/verify-quick-list-ai.cjs compares the text).
+// Copied in supabase/claude-src/job-quick-list.ts and src/features/shop/quickParseRules.ts: edit both (scripts/verify-quick-list-ai.cjs compares the text).
 // The text is the owner's own words, and may be pasted from a hostile page: it is data, checked on the way in and again
 // on the way out. The answer can only be items whose words the text already holds.
 const QUICK_LIMITS = { text: 1000, items: 30, name: 60, unit: 10, quantity: 999 } as const
@@ -4375,18 +4375,28 @@ const QUICK_LIMITS = { text: 1000, items: 30, name: 60, unit: 10, quantity: 999 
 /** One thing to buy: a name, and a quantity (and its unit) only when the text wrote one. */
 interface QuickItem { name: string; quantity?: number; unit?: string }
 
-// Control characters other than tab and line breaks, and the zero-width and text-direction ones: they draw nothing and can hide a link.
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is looked for
-const QUICK_HIDDEN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
-/** A web address in a text that must be plain words; a name that trips it is refused, the safe side. */
-const QUICK_LINKISH = /https?:|:\/\/|www\.|mailto:|\b[a-z0-9-]+\.[a-z]{2,}\b/i
+// Control and invisible characters, the set of itemFill.ts's FILL_NOT_TEXT but for the tab and the line breaks (a list
+// has them): C0 and C1 controls, soft hyphen, combining grapheme joiner, Arabic letter mark, filler and Hangul fillers,
+// Mongolian free variation selectors, zero-width and direction marks, line and paragraph separators, the invisible
+// operators (U+2060 to U+206F), variation selectors, the byte order mark, tag characters and lone surrogates. They draw
+// nothing and can hide a link or a word. The zero-width joiner and the emoji selectors stay (an emoji is built from them).
+// eslint-disable-next-line no-control-regex, no-misleading-character-class -- control and combining characters, alone, are exactly what is refused
+const QUICK_HIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B\u200C\u200E\u200F\u2028-\u202E\u2060-\u206F\u3164\uFE00-\uFE0D\uFEFF\uFFA0\uFFF9-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]|\p{Cs}/gu
+/** A web or mail address: a scheme, "www.", an @-address, or a name that ends in a real top-level domain ("tine.no"; "Dr.Oetker" is no address). */
+const QUICK_LINKISH = /https?:|:\/\/|www\.|mailto:|\S@\S|\b[\p{L}\p{N}-]+\.(?:com|net|org|no|se|dk|io|co|app|dev|info|biz|xyz)\b/iu
+
+/** True when a text holds an address, also written in full-width letters or split by an invisible character. */
+function quickLinkish(text: string): boolean {
+  const plain = text.normalize('NFKC').replace(QUICK_HIDDEN, '').replace(/\u200D/g, '')
+  return QUICK_LINKISH.test(plain)
+}
 
 /** Why a text cannot be sorted (the owner's sentence), or null. */
 function quickTextProblem(text: unknown): string | null {
   if (typeof text !== 'string' || !text.trim()) return 'Write what you need first.'
   if ([...text.trim()].length > QUICK_LIMITS.text) return `Keep the text to ${QUICK_LIMITS.text} characters.`
-  if (QUICK_HIDDEN.test(text)) return 'The text has hidden characters. Retype it as plain text.'
-  if (QUICK_LINKISH.test(text)) return 'The text has a link in it. Take links out first; only plain words are sorted.'
+  if (text.search(QUICK_HIDDEN) >= 0) return 'The text has hidden characters. Retype it as plain text.'
+  if (quickLinkish(text)) return 'The text has a link in it. Take links out first; only plain words are sorted.'
   return null
 }
 
@@ -4414,9 +4424,14 @@ function quickNear(a: string, b: string): boolean {
   return quickDistance(a, b, allowed) <= allowed
 }
 
-/** True when every word of the name is a word of the text (typos allowed, neighbours run together allowed), or the name as one run is a run of the text's words: nothing in the name is new. */
+/** True when every word of the name is a word of the text (typos allowed, neighbours run together allowed), or the name as one run is a run of the text's words, and every number and single letter in it is the text's own: nothing in the name is new. */
 function quickGrounded(name: string, textTokens: readonly string[]): boolean {
-  const words = quickTokens(name).filter(w => /\p{L}/u.test(w) && w.length >= 2)
+  const nameTokens = quickTokens(name)
+  // A single letter or a number cannot be "nearly" a word of the text: it is one of the text's own tokens, or the name is refused.
+  if (nameTokens.some(w => /^\p{L}$/u.test(w) && !textTokens.includes(w))) return false
+  const known = textTokens.filter(t => /^\d/.test(t)).map(t => Number(t.replace(',', '.')))
+  if (nameTokens.some(w => /^\d/.test(w) && !known.includes(Number(w.replace(',', '.'))))) return false
+  const words = nameTokens.filter(w => /\p{L}/u.test(w) && w.length >= 2)
   if (!words.length) return false
   const letters = textTokens.filter(t => /\p{L}/u.test(t))
   const spans: string[] = []
@@ -4429,16 +4444,25 @@ function quickGrounded(name: string, textTokens: readonly string[]): boolean {
   return spans.some(s => quickNear(joined, s))
 }
 
-/** A name for the list: one plain line of at most 60 characters, no link, no angle brackets; null when it is none. */
+/** What a name may hold: letters, marks, numbers, spaces and . , ' & ( ) % / + -; anything else drops the item. */
+const QUICK_NAME_CHARS = /^[\p{L}\p{M}\p{N}\s.,'&()%/+-]+$/u
+
+/** A name for the list: one plain line of at most 60 characters of QUICK_NAME_CHARS, no address; null when it is none. */
 function quickName(value: unknown): string | null {
   if (typeof value !== 'string') return null
-  const text = value.replace(new RegExp(QUICK_HIDDEN.source, 'g'), '').replace(/\s+/g, ' ').trim()
-  if (!text || [...text].length > QUICK_LIMITS.name || /[<>]/.test(text) || QUICK_LINKISH.test(text)) return null
+  const text = value.replace(QUICK_HIDDEN, '').replace(/\s+/g, ' ').trim()
+  if (!text || [...text].length > QUICK_LIMITS.name || !QUICK_NAME_CHARS.test(text) || quickLinkish(text)) return null
   return text
 }
 
 const quickOwn = (from: unknown, key: string): unknown =>
   from !== null && typeof from === 'object' && Object.prototype.hasOwnProperty.call(from, key) ? (from as Record<string, unknown>)[key] : undefined
+
+/** How many rows of an answer `readQuickItems` chooses from (at most 30): what it can leave out. */
+function quickRowCount(raw: unknown): number {
+  const list = quickOwn(raw, 'items')
+  return Array.isArray(list) ? Math.min(list.length, QUICK_LIMITS.items) : 0
+}
 
 /**
  * The items of a model's answer, each checked: a name that the text does not hold is dropped (nothing is invented), a
@@ -4509,11 +4533,13 @@ ${JSON.stringify(QUICK_ANSWER_SCHEMA)}`
 
 const QUICK_VERSION = '2026-11-23.1'
 
-/** The model's items for the text, checked: only what `readQuickItems` lets through can leave. */
+/** The model's items for the text, checked: only what `readQuickItems` lets through can leave, with how many rows it left out. */
 function readQuickList(answerText: string, text: string): AnswerCheck {
   const answer = readAnswerObject(answerText)
   if (!answer.ok) return answer
-  return { ok: true, result: { items: readQuickItems(answer.value, text) } }
+  const items = readQuickItems(answer.value, text)
+  // `dropped`: the rows the checks left out (not the text's words, a link, a repeat), so the screen can say so.
+  return { ok: true, result: { items, dropped: Math.max(0, quickRowCount(answer.value) - items.length) } }
 }
 
 const QUICK_LIST_PARSE_JOB: JobDefinition = {
