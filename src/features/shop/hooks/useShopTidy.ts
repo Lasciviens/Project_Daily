@@ -142,16 +142,18 @@ export function useApplyTidy() {
       if (written.length) putRowsInCache<ShopItem>(qc, qk.shop.items(), written.map(w => w.after))
       if (failed.length) toast.error(`${failed.length === 1 ? `“${failed[0]}” was` : `${failed.length} things were`} not saved — try again`)
       if (written.length) toast.undo(`${written.length} ${written.length === 1 ? 'thing' : 'things'} tidied`, () => undo.mutate(written))
-      // What the AI learns from: per thing, the fields saved and the ones left unticked (the function compares them with its own copy).
-      for (const w of written) {
+      // What the AI learns from: per thing, the fields saved and the ones left unticked (the function compares them with its own
+      // copy). "Tidy up all" sends every thing in ONE report.
+      const field = (k: TidyKey) => (k === 'category' ? 'category_id' : k)
+      const reports = written.flatMap(w => {
         const entry = entries.find(e => e.item.id === w.item.id)
         const s = entry?.suggestion
-        if (!entry || !s?.call_id) continue
-        const field = (k: TidyKey) => (k === 'category' ? 'category_id' : k)
+        if (!entry || !s?.call_id) return []
         const offered = (['name', 'brand', 'model', 'category'] as TidyKey[]).filter(k => (k === 'category' ? s.category_id : s[k]) !== undefined)
         const saved = Object.fromEntries(offered.filter(k => entry.keys.has(k)).map(k => [field(k), (k === 'category' ? s.category_id : s[k]) ?? null]))
-        learn.mutate({ callId: s.call_id, saved, unticked: offered.filter(k => !entry.keys.has(k)).map(field) })
-      }
+        return [{ callId: s.call_id, saved, unticked: offered.filter(k => !entry.keys.has(k)).map(field) }]
+      })
+      if (reports.length) learn.mutate(reports)
     },
     invalidates: [qk.shop.items()],
   })

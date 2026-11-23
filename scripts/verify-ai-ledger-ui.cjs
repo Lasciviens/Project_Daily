@@ -320,13 +320,13 @@ console.log('\nthe cost of one call: each kind of token times its price')
 console.log('\nthe AI views: four, with Learn holding three')
 {
   const B = require('../src/features/developer/developerBoards')
-  check('four views under the bar, and Learn has six pages (Memory: what the AI learned, migration 204)', J(B.AI_VIEWS) === J(['overview', 'calls', 'settings', 'learn']) && J(B.AI_LEARN_VIEWS) === J(['how', 'prices', 'bench', 'batches', 'suggestions', 'memory']))
-  check('the four labels are short enough for a phone: none over 10 characters', B.AI_VIEWS.every(v => B.AI_VIEW_LABEL[v].length <= 10))
+  check('five views under the bar (Learned: what the AI learned, migration 204, is its own), and Learn has five pages', J(B.AI_VIEWS) === J(['overview', 'calls', 'settings', 'learn', 'learned']) && J(B.AI_LEARN_VIEWS) === J(['how', 'prices', 'bench', 'batches', 'suggestions']))
+  check('the five labels are short enough for a phone: none over 10 characters', B.AI_VIEWS.every(v => B.AI_VIEW_LABEL[v].length <= 10))
   check('an address names its view; anything else is the Overview', J(B.parseAiLocation(null, null)) === J({ view: 'overview', learn: 'how' }) && B.parseAiLocation('calls', null).view === 'calls' && B.parseAiLocation('nonsense', 'bench').view === 'overview' && B.parseAiLocation('constructor', null).view === 'overview')
   check('Learn names its page; an unknown page is How it works', J(B.parseAiLocation('learn', 'prices')) === J({ view: 'learn', learn: 'prices' }) && B.parseAiLocation('learn', 'x').learn === 'how' && B.parseAiLocation('learn', null).learn === 'how')
   check('the older links ?view=how, ?view=prices and ?view=bench, and the new ?learn=batches, land on their page inside Learn', ['how', 'prices', 'bench'].every(v => J(B.parseAiLocation(v, null)) === J({ view: 'learn', learn: v })) && J(B.parseAiLocation('learn', 'batches')) === J({ view: 'learn', learn: 'batches' }))
   check('the page board of How it works puts Diagnose right after the path of a request, then what a new Ask AI chat starts with before the jobs, and no card for Gemini (it is gone)', J(B.AI_HOW_BOARD[1]) === J(['status', 'steps', 'diagnose', 'chat', 'jobs', 'parts', 'rules', 'glossary']) && J(B.AI_HOW_SECTIONS) === J(B.AI_HOW_BOARD[1]))
-  check('every board is still counted for the page header\'s one width', B.AI_VIEW_BOARDS.length === 6)
+  check('every board is still counted for the page header\'s one width (Learned\'s too)', B.AI_VIEW_BOARDS.length === 7 && B.AI_VIEW_BOARDS.includes(B.AI_LEARNED_BOARD))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

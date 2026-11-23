@@ -8,13 +8,16 @@ export type LearnView = typeof LEARN_VIEWS[number]
 export const LEARN_VIEW_LABEL: Record<LearnView, string> = { corrections: 'Fixes', rules: 'Rules', cases: 'Cases', lessons: 'Notes', tuning: 'Tuning', sources: 'Sites' }
 /** One line under each view's switcher: what it is, for an owner learning the words. */
 export const LEARN_VIEW_MEANING: Record<LearnView, string> = {
-  corrections: 'Corrections: each AI-filled field you saved — kept, changed or left out. Ignore one to stop it counting toward a rule.',
-  rules: 'Rules: the same correction made three times becomes a rule code applies with no AI. It waits for your tap.',
-  cases: 'Cases: answers you saved, sent with similar calls as examples (as data). Each expires after a year.',
-  lessons: 'Notes: short facts and preferences. Only a plain fact from your own words turns on by itself; everything else waits for you.',
-  tuning: 'Tuning: once a week your cases are sent again with other setups and scored by code. A clear winner waits for your Approve.',
-  sources: 'Sites: how reading a page went per site. Used only to put sites that read well first; never a link it follows by itself.',
+  corrections: 'Fixes: each AI-filled field you saved — kept, changed or left out. Ignore one to stop it counting toward a rule.',
+  rules: 'Rules: the same fix made three times becomes a rule that code applies with no AI. It waits for your tap.',
+  cases: 'Cases: answers you saved, sent with similar calls as examples (as data, never as instructions). Each expires after a year.',
+  lessons: 'Notes: short facts and preferences. Only a plain fact in your own typed words turns on by itself; everything else waits for you.',
+  tuning: 'Tuning: once a week your saved cases are sent again with other setups and scored by code. A clear winner waits for your Approve. With only a few cases nothing can win yet — that can take weeks.',
+  sources: 'Sites: how reading a page went per site. Used only to put sites that read well first; never a link the app follows by itself.',
 }
+
+/** Where the learning comes from today (shown in the empty states, so they say only what is true). */
+export const LEARN_WIRED = 'Shop → Tidy up, Food → Describe it (words or a photo), a preset\'s Suggest options, ✨ on the item screen, a recipe pasted or read from a link, a recipe\'s Estimate, a Dev Request\'s Tidy up, and Ask AI\'s Confirm and Cancel. Not yet: a receipt read and the Quick list.'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -57,7 +60,7 @@ export function readCorrection(raw: unknown): AiCorrection | null {
 // ── Rules ──
 export const RULE_STATES = ['proposed', 'active', 'removed'] as const
 export type RuleState = typeof RULE_STATES[number]
-export const RULE_STATE_LABEL: Record<RuleState, string> = { proposed: 'Waiting', active: 'On', removed: 'Removed' }
+export const RULE_STATE_LABEL: Record<RuleState, string> = { proposed: 'Waiting', active: 'On', removed: 'Off' }
 export const RULE_COLUMNS = 'id, job, field, match_key, value, evidence, source_correction_id, state, uses, last_used_at, approved_at, created_at'
 export interface AiRule { id: string; job: string; field: string; match_key: string; value: string; evidence: number; source_correction_id: string | null; state: RuleState; uses: number; last_used_at: string; approved_at: string; created_at: string }
 export function readRule(raw: unknown): AiRule | null {
@@ -75,7 +78,7 @@ export function readRule(raw: unknown): AiRule | null {
 // ── Cases ──
 export const CASE_STATES = ['active', 'quarantined', 'removed'] as const
 export type CaseState = typeof CASE_STATES[number]
-export const CASE_STATE_LABEL: Record<CaseState, string> = { active: 'In use', quarantined: 'Quarantined', removed: 'Removed' }
+export const CASE_STATE_LABEL: Record<CaseState, string> = { active: 'In use', quarantined: 'Set aside', removed: 'Off' }
 // Never `input` (the function's own copy for the weekly replay: the browser's grant leaves it out).
 export const CASE_COLUMNS = 'id, job, call_id, input_text, output, diffs, source_kind, split, state, expires_at, created_at'
 export interface AiCase { id: string; job: string; call_id: string | null; input_text: string; output: [string, string][]; changed: number; source_kind: 'owner_typed' | 'owner_confirmed'; split: 'train' | 'test' | 'sealed'; state: CaseState; expires_at: string; created_at: string }
@@ -96,11 +99,19 @@ export function readCase(raw: unknown): AiCase | null {
 // ── Lessons ──
 export const LESSON_STATES = ['pending', 'active', 'retired'] as const
 export type LessonState = typeof LESSON_STATES[number]
-export const LESSON_STATE_LABEL: Record<LessonState, string> = { pending: 'Waiting', active: 'On', retired: 'Retired' }
+export const LESSON_STATE_LABEL: Record<LessonState, string> = { pending: 'Waiting', active: 'On', retired: 'Off' }
 export const LESSON_KINDS = ['fact', 'preference', 'instruction'] as const
 export type LessonKind = typeof LESSON_KINDS[number]
 export const LESSON_SOURCES = ['owner_typed', 'owner_data', 'weekly_batch', 'chat_tool', 'repo_doc', 'web'] as const
 export type LessonSource = typeof LESSON_SOURCES[number]
+/** What can be set aside together: a note's source, or a case's (typed by you, or read text you only confirmed by saving). */
+export const SET_ASIDE_SOURCES = ['weekly_batch', 'chat_tool', 'owner_typed', 'owner_confirmed', 'owner_data', 'repo_doc', 'web', 'save'] as const
+export type SetAsideSource = typeof SET_ASIDE_SOURCES[number]
+export const SET_ASIDE_LABEL: Record<SetAsideSource, string> = {
+  weekly_batch: 'notes from the weekly self-test', chat_tool: 'notes from Ask AI', owner_typed: 'your typed notes and cases', owner_confirmed: 'cases whose input was read text',
+  owner_data: 'notes from your data', repo_doc: 'notes from the app\'s docs', web: 'notes from a web page', save: 'rules from your fixes',
+}
+
 export const LESSON_SOURCE_LABEL: Record<LessonSource, string> = {
   owner_typed: 'your own words', owner_data: 'your data', weekly_batch: 'the weekly self-test', chat_tool: 'Ask AI', repo_doc: 'the app\'s docs', web: 'a web page',
 }
@@ -207,6 +218,20 @@ export function readSource(raw: unknown): AiSource | null {
     id: raw.id, job, host: raw.host, ok: whole(raw.ok_count, 1e8), fail: whole(raw.fail_count, 1e8), last_ok_at: when(raw.last_ok_at), last_fail_at: when(raw.last_fail_at),
     last_reason: text(raw.last_reason, 40), state: raw.state === 'ignored' ? 'ignored' : 'on', updated_at: when(raw.updated_at),
   }
+}
+
+/** What waits for the owner in Learned: rules to turn on, notes to decide, and self-test winners to approve (the badges). */
+export function learnWaiting(rules: readonly AiRule[], lessons: readonly AiLesson[], runs: readonly EvalRun[]): { rules: number; lessons: number; tuning: number; total: number } {
+  const r = rules.filter(x => x.state === 'proposed').length
+  const l = latestLessons(lessons).filter(x => x.lesson.state === 'pending').length
+  const t = runs.filter(x => x.status === 'done').slice(0, 1).flatMap(x => x.jobs).filter(j => j.decision === 'proposed').length
+  return { rules: r, lessons: l, tuning: t, total: r + l + t }
+}
+
+/** What a "Set aside" moved, as the database answers it (for the Undo, which puts each back). */
+export interface MovedRow { t: 'lessons' | 'cases' | 'rules'; id: string; was: 'active' }
+export function readMoved(raw: unknown): MovedRow[] {
+  return (Array.isArray(raw) ? raw : []).flatMap(m => (isObj(m) && (m.t === 'lessons' || m.t === 'cases' || m.t === 'rules') && typeof m.id === 'string' && UUID.test(m.id) ? [{ t: m.t, id: m.id, was: 'active' as const }] : []))
 }
 
 export const readList = <T>(rows: unknown, read: (r: unknown) => T | null): T[] => (Array.isArray(rows) ? rows.map(read).filter((x): x is T => x !== null) : [])

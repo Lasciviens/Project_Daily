@@ -6,6 +6,7 @@ import { SkeletonTab } from '../../../../shared/components/Skeleton'
 import { AI_LEARN_LABEL, AI_LEARN_VIEWS, AI_VIEWS, AI_VIEW_LABEL, parseAiLocation, type AiLearnView, type AiView } from '../../developerBoards'
 import { useSuggestions } from '../../../ai/claude/hooks/useSuggestions'
 import { waitingCount } from '../../../ai/claude/suggestRules'
+import { useLearnWaiting } from '../../../ai/claude/hooks/useLearn'
 import { AiBatches } from './AiBatches'
 import { AiCalls } from './AiCalls'
 import { AiHowItWorks } from './AiHowItWorks'
@@ -15,11 +16,11 @@ import { AiSuggestions } from './AiSuggestions'
 import { AiSettingsView } from './AiSettingsView'
 import { AiTestBench } from './AiTestBench'
 
-// Memory (what the AI learned, migration 204) loads only when it is opened.
-const AiMemory = lazy(() => import('./memory/AiMemory').then(m => ({ default: m.AiMemory })))
+// Learned (what the AI learned, migration 204) loads only when it is opened.
+const AiLearned = lazy(() => import('./memory/AiLearned').then(m => ({ default: m.AiLearned })))
 
 // Developer → AI: the Claude layer in four views — what it cost (Overview), every call (Calls), what the owner
-// controls (Settings) and everything that explains it (Learn: How it works, Prices, Bench, Batches, Suggestions, Memory). The view lives in
+// controls (Settings), everything that explains it (Learn: How it works, Prices, Bench, Batches, Suggestions) and what it learned (Learned). The view lives in
 // `?view=` and Learn's page in `?learn=`; they are switched under the page's bar (which keeps its shape on every
 // tab: THEME.md §6.3), and Learn's own switcher sits under it, only inside Learn. Each view sits in its own
 // ErrorBoundary: what the function and the ledger answer is read field by field (ledgerRules), and a shape nobody
@@ -36,13 +37,16 @@ export function AiTab() {
   const { view, learn } = parseAiLocation(params.get('view'), params.get('learn'))
   // Suggestions waiting for a decision: a count beside Learn and beside Suggestions. A failed read shows no count (the badge only adds).
   const waiting = waitingCount(useSuggestions().data ?? [])
-  const options = AI_VIEWS.map(v => ({ value: v, label: v === 'learn' ? <>{AI_VIEW_LABEL[v]}<Waiting n={waiting} /></> : AI_VIEW_LABEL[v] }))
+  // What the AI learned that waits for the owner (rules to turn on, notes to decide, a self-test winner): a count beside Learned.
+  const learned = useLearnWaiting().total
+  const options = AI_VIEWS.map(v => ({ value: v, label: v === 'learn' ? <>{AI_VIEW_LABEL[v]}<Waiting n={waiting} /></> : v === 'learned' ? <>{AI_VIEW_LABEL[v]}<Waiting n={learned} /></> : AI_VIEW_LABEL[v] }))
   const learnOptions = AI_LEARN_VIEWS.map(v => ({ value: v, label: v === 'suggestions' ? <>{AI_LEARN_LABEL[v]}<Waiting n={waiting} /></> : AI_LEARN_LABEL[v] }))
   const go = (next: AiView, nextLearn: AiLearnView) => {
     setParams(p => {
       const n = new URLSearchParams(p)
       if (next === 'overview') n.delete('view'); else n.set('view', next)
       if (next === 'learn' && nextLearn !== 'how') n.set('learn', nextLearn); else n.delete('learn')
+      if (next !== 'learned') n.delete('mem')
       return n
     }, { replace: true })
   }
@@ -66,7 +70,7 @@ export function AiTab() {
         {view === 'learn' && learn === 'bench' && <AiTestBench />}
         {view === 'learn' && learn === 'batches' && <AiBatches />}
         {view === 'learn' && learn === 'suggestions' && <AiSuggestions />}
-        {view === 'learn' && learn === 'memory' && <Suspense fallback={<SkeletonTab />}><AiMemory /></Suspense>}
+        {view === 'learned' && <Suspense fallback={<SkeletonTab />}><AiLearned /></Suspense>}
       </ErrorBoundary>
     </>
   )

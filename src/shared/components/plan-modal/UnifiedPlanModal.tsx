@@ -22,8 +22,10 @@
 //
 //  CHANGELOG
 //  2026-11-23 · v27 · ✨ teaches the AI (owner: "The ai should keep learning"):
-//                    Use these reports the fill's call id and the fields kept,
-//                    Cancel reports it dismissed (useItemFill → learn_save; the
+//                    Use these keeps the fill's call id; the item's own save
+//                    (Add, or an edit's autosave) then reports the values it
+//                    was saved with; Cancel reports it dismissed; Undo or never
+//                    saving reports nothing (useItemFill → learn_save; the
 //                    function compares them with its OWN copy of the answer).
 //                    Nothing else on the screen changes; the report loads only
 //                    once ✨ was used and never fails or delays the screen.
@@ -989,6 +991,8 @@ export function UnifiedPlanModal({
       setMadeBlockId(saved.blockId ?? null)
     }
     savedDay.current = input.date
+    // ✨: a kept fill is reported with the values it was saved with (useItemFill; nothing when no fill was kept).
+    fill.reportSaved(f)
     onSaved?.(resultOf(input, saved, base))
     return 'saved'
   }
@@ -1007,6 +1011,7 @@ export function UnifiedPlanModal({
       // The extras (category, colour, window, the slot's own source) ride along
       // until the contract names them (contract changes, BRIEF).
       const saved = await save.mutateAsync(input as ItemInput)
+      fill.reportSaved(form)
       onSaved?.(resultOf(input, saved, item))
       onClose()
     } catch {

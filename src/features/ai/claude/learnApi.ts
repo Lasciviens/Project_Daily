@@ -4,8 +4,8 @@ import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
 import { ClaudeJobError } from './claudeApi'
 import {
   CASE_COLUMNS, checkedSaveReport, CORRECTION_COLUMNS, EVAL_COLUMNS, JOB_LEARNING_COLUMNS, LESSON_COLUMNS, readCase, readCorrection, readEvalRun, readJobLearning,
-  readLesson, readList, readRule, readSource, RULE_COLUMNS, SOURCE_COLUMNS,
-  type AiCase, type AiCorrection, type AiLesson, type AiRule, type AiSource, type CaseState, type EvalRun, type JobLearning, type LessonState, type RuleState, type SaveReport,
+  readLesson, readList, readMoved, readRule, readSource, RULE_COLUMNS, SOURCE_COLUMNS,
+  type AiCase, type AiCorrection, type AiLesson, type AiRule, type AiSource, type CaseState, type EvalRun, type JobLearning, type LessonState, type MovedRow, type RuleState, type SaveReport,
 } from './learnRules'
 
 // What the AI learned (migration 204). The tables are written by the `claude` function; the browser reads its own rows and may
@@ -51,18 +51,30 @@ export async function setLearnState(table: StateTable, id: string, state: LearnS
   return was
 }
 
-/** Re-quarantine everything from one source, or everything after a day: lessons wait again, cases are set aside, rules go back to waiting. */
-export async function quarantineLearning(source: string | null, after: string | null): Promise<number> {
+/** Set aside everything from one source, or everything after a day: notes wait again, cases are set aside, rules wait again. Answers what moved (for the Undo). */
+export async function quarantineLearning(source: string | null, after: string | null): Promise<MovedRow[]> {
   const { data, error } = await supabase.rpc('ai_learn_quarantine', { p_source: source, p_after: after })
   if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_204) : error
-  return typeof data === 'number' ? data : 0
+  return readMoved(data)
 }
 
-/** One-click rollback of a lesson to its previous version. */
-export async function rollbackLesson(lessonKey: string): Promise<boolean> {
+/** The Undo of a Set aside: each moved row back to what it was (the owner's own rights; turning on is the owner's). */
+export async function restoreMoved(rows: readonly MovedRow[]): Promise<number> {
+  const table = { lessons: 'ai_lessons', cases: 'ai_cases', rules: 'ai_rules' } as const
+  let n = 0
+  for (const r of rows) { await setLearnState(table[r.t], r.id, r.was); n += 1 }
+  return n
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** One-click rollback of a note to the previous version that was once on. Answers the two ids (for the Undo, which rolls forward), or null. */
+export async function rollbackLesson(lessonKey: string): Promise<{ retired: string; activated: string } | null> {
   const { data, error } = await supabase.rpc('ai_lesson_rollback', { p_lesson_key: lessonKey })
   if (error) throw isMissing(error) ? new Error(NOT_MIGRATED_204) : error
-  return data === 'rolled_back'
+  const d = data as { result?: unknown; retired?: unknown; activated?: unknown } | null
+  return d?.result === 'rolled_back' && typeof d.retired === 'string' && UUID_RE.test(d.retired) && typeof d.activated === 'string' && UUID_RE.test(d.activated)
+    ? { retired: d.retired, activated: d.activated } : null
 }
 
 async function callFunction(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -78,20 +90,24 @@ async function callFunction(body: Record<string, unknown>): Promise<Record<strin
 
 const said = (data: Record<string, unknown>, fallback: string): string => (typeof data.message === 'string' ? data.message.slice(0, 300) : fallback)
 
-/** The owner saved what an AI answer filled: the call id and the saved values only (the function compares them with its own copy). */
-export async function reportAiSave(report: SaveReport): Promise<number> {
-  const checked = checkedSaveReport(report)
-  if (!checked) return 0
-  const data = await callFunction({ action: 'learn_save', call_id: checked.callId, saved: checked.saved, unticked: checked.unticked, dismissed: checked.dismissed })
+/** The owner saved what an AI answer filled: the call id and the saved values only (the function compares them with its own copy). Several saves go as one request. */
+export async function reportAiSave(report: SaveReport | readonly SaveReport[]): Promise<number> {
+  const list = (Array.isArray(report) ? report : [report]).map(checkedSaveReport).filter((r): r is SaveReport => r !== null).slice(0, 50)
+  if (!list.length) return 0
+  const one = (r: SaveReport) => ({ call_id: r.callId, saved: r.saved, unticked: r.unticked, dismissed: r.dismissed })
+  const data = await callFunction(list.length === 1 ? { action: 'learn_save', ...one(list[0]) } : { action: 'learn_save', reports: list.map(one) })
   if (data.ok !== true) throw new Error(said(data, 'The save could not be noted for learning.'))
   return typeof data.recorded === 'number' ? data.recorded : 0
 }
 
-/** Approve, reject or roll back a job's setup in Tuning. Answers the function's own sentence. */
-export async function decideTuning(input: { runId?: string; job: string; decision: 'approve' | 'reject' | 'roll_back' }): Promise<string> {
+export type TuningDecision = 'approve' | 'reject' | 'roll_back' | 'reopen'
+
+/** Approve, reject, roll back, or undo a decision (reopen) in Tuning. Answers the function's own sentence and, for an Approve, the tested notes to turn on. */
+export async function decideTuning(input: { runId?: string; job: string; decision: TuningDecision }): Promise<{ message: string; lessonIds: string[] }> {
   const data = await callFunction({ action: 'learn_decide', run_id: input.runId, job: input.job, decision: input.decision })
   if (data.ok !== true) throw new Error(said(data, 'The decision could not be saved.'))
-  return said(data, 'Saved')
+  const ids = Array.isArray(data.lesson_ids) ? data.lesson_ids.filter((x): x is string => typeof x === 'string' && UUID_RE.test(x)).slice(0, 20) : []
+  return { message: said(data, 'Saved'), lessonIds: ids }
 }
 
 /** "Run the self-test now": the function builds the test and queues one batch. Answers what happened, in words. */

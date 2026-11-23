@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Sparkles, X } from 'lucide-react'
 import { toast } from '../../../app/store'
 import { ModalShell } from '../../../shared/modals/ModalShell'
@@ -7,6 +7,8 @@ import { useCreateRecipe, useDeleteRecipe, useUpdateRecipe } from '../hooks/useR
 import { useIngredientLibrary, useCreateIngredientLibraryItem } from '../hooks/useIngredientLibrary'
 import { parseRecipeText, parseRecipeFromLink, estimateRecipeMacros, type ParsedRecipe } from '../../ai/claude/recipeJobs'
 import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
+import { forgetLearnCall, takeLearnCall } from '../../ai/claude/learnCalls'
+import type { SaveReport } from '../../ai/claude/learnRules'
 import { canComputeFromIngredients, cleanServingLabel, sumMacros } from '../api/recipesApi'
 import { MacroWarningBadge } from './MacroWarningBadge'
 import { checkMacroConsistency } from '../macroSanity'
@@ -147,6 +149,8 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
   // recipe has none.
   const learnCall = useRef<string | null>(null)
   const learn = useReportAiSave()
+  // A recipe opened afresh: an Estimate made for another one is never reported with this save.
+  useEffect(() => { forgetLearnCall('recipe_macros') }, [])
 
   function applyParsedRecipe(parsed: ParsedRecipe) {
     learnCall.current = parsed.callId ?? null
@@ -242,12 +246,21 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
     try {
       if (editMode && recipe) await update.mutateAsync({ id: recipe.id, input })
       else                    await create.mutateAsync(input)
+      const reports: SaveReport[] = []
       if (learnCall.current) {
         // The fields the AI filled, as saved (the ingredient lines in the learning layer's own "amount unit name; …" form).
         const lines = input.ingredients.map(i => [i.quantity, i.unit, i.name.trim()].filter(x => x !== null && x !== undefined && x !== '').join(' ')).join('; ')
-        learn.mutate({ callId: learnCall.current, saved: { title: input.title.trim(), servings: input.servings, ingredients: lines.slice(0, 2000) } })
+        reports.push({ callId: learnCall.current, saved: { title: input.title.trim(), servings: input.servings, ingredients: lines.slice(0, 2000) } })
         learnCall.current = null
       }
+      // An Estimate of this recipe: kept when the values are saved by hand ("manual"), left when the owner chose another way.
+      const macroCall = takeLearnCall('recipe_macros')
+      if (macroCall) {
+        reports.push(input.macro_mode === 'manual'
+          ? { callId: macroCall, saved: { calories: input.calories, protein_g: input.protein_g, carbs_g: input.carbs_g, fat_g: input.fat_g, sugar_g: input.sugar_g } }
+          : { callId: macroCall, saved: {}, dismissed: true })
+      }
+      if (reports.length) learn.mutate(reports)
       onClose()
     } catch { return }   // the hook already toasted + logged
   }

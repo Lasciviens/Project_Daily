@@ -8,6 +8,8 @@ import { toast } from '../../../app/store'
 import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
 import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/claude/recipeJobs'
+import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
+import { optionGroupsLine, takeLearnCall } from '../../ai/claude/learnCalls'
 import {
   DEFAULT_GUESSES, itemToPreset, matchKnownGuess, parseGuessOptions, readGuessEstimate, recentGuesses,
   type GuessEstimate, type GuessMacros, type GuessOptionGroup, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,
@@ -73,11 +75,15 @@ export function useLogGuess() {
 /** Adds a preset (no id) or saves one; the stored row goes straight into the list. */
 export function useSaveQuickGuess() {
   const qc = useQueryClient()
+  const learn = useReportAiSave()
   return useMutationWithFeedback({
     action: 'save_quick_guess',
     successMessage: (item: QuickGuessItem, v: { id?: string }) => (v.id ? `Saved ${item.name}` : `Added ${item.name}`),
     mutationFn: ({ id, input }: { id?: string; input: QuickGuessInput }) => (id ? updateQuickGuessItem(id, input) : createQuickGuessItem(input)),
     onSuccess: (item, v) => {
+      // Suggested options kept or changed: the saved groups go with the call that suggested them (Developer → AI → Learned).
+      const optionsCall = takeLearnCall('quick_guess_options')
+      if (optionsCall) learn.mutate({ callId: optionsCall, saved: { groups: optionGroupsLine(v.input.options ?? []).slice(0, 2000) || null } })
       if (v.id) putRowsInCache(qc, qk.quickGuess.all, [item])
       else qc.setQueryData<QuickGuessItem[] | null>(qk.quickGuess.list(), old => (old ? [...old, item] : old))
     },

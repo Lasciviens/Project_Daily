@@ -1,10 +1,10 @@
 import { Check, FlaskConical, History, X } from 'lucide-react'
 import { Button, Truncate } from '../../../../../shared/ui'
-import { useDecideTuning, useLearnEvalRuns, useLearnJobs, useRunSelfTestNow, useSetLearnState } from '../../../../ai/claude/hooks/useLearn'
+import { useDecideTuning, useLearnEvalRuns, useLearnJobs, useRunSelfTestNow } from '../../../../ai/claude/hooks/useLearn'
 import { jobWords, percent, SETUP_LABEL, STRATEGY_LABEL, type EvalJob, type EvalRun, type EvalSetup, type JobLearning } from '../../../../ai/claude/learnRules'
 import { formatUsd } from '../../../../ai/claude/ledgerRules'
 import { ReadState, StatePill } from './memoryBits'
-import { day } from './memoryDay'
+import { count, day } from './memoryDay'
 
 // Tuning: the weekly self-test. Once a week (Monday, after the report) the owner's own confirmed cases are sent again in one
 // batch at half price, with today's setup and up to two other setups, twice each, and code scores every answer against what
@@ -27,20 +27,16 @@ function SetupLine({ s, best }: { s: EvalSetup; best: boolean }) {
         <span className={`min-w-0 flex-1 ${best ? 'font-semibold text-fg' : ''}`}><Truncate lines={1}>{SETUP_LABEL(s.setup)}</Truncate></span>
         <Bar value={s.mean} /> <span className="w-10 shrink-0 text-right tabular-nums">{percent(s.mean)}</span>
       </p>
-      <p className="text-meta tabular-nums text-fg-muted">{s.tokens.toLocaleString('en-US').replace(/,/g, ' ')} tokens a request{s.failed ? ` · ${s.failed} unusable` : ''}{s.reasons.length ? ` · not better: ${s.reasons.join('; ')}` : ''}</p>
+      <p className="text-meta tabular-nums text-fg-muted">{count(s.tokens)} tokens a request{s.failed ? ` · ${s.failed} unusable` : ''}{s.reasons.length ? ` · not better: ${s.reasons.join('; ')}` : ''}</p>
     </li>
   )
 }
 
 function JobResult({ run, j, state }: { run: EvalRun; j: EvalJob; state: JobLearning | undefined }) {
   const decide = useDecideTuning()
-  const set = useSetLearnState()
-  const busy = decide.isPending || set.isPending
-  async function approve() {
-    // A winning set of notes: the owner's own tap turns each one on (the database allows only the owner); then the setup.
-    for (const id of j.winner?.lessonIds ?? []) await set.mutateAsync({ table: 'ai_lessons', id, state: 'active', said: 'Note turned on' })
-    decide.mutate({ runId: run.id, job: j.job, decision: 'approve' })
-  }
+  const busy = decide.isPending
+  // Approve: the function decides first, then the notes it tested are turned on with your own rights — one toast with Undo.
+  const approve = () => decide.mutate({ runId: run.id, job: j.job, decision: 'approve' })
   return (
     <li className="flex flex-col gap-1.5 px-3 py-2.5">
       <div className="flex items-start gap-2">
@@ -60,7 +56,7 @@ function JobResult({ run, j, state }: { run: EvalRun; j: EvalJob; state: JobLear
         <>
           <p className="text-meta text-fg-2">Proposed: {SETUP_LABEL(j.winner.setup)}{j.winner.lessons.length ? ` — turns on: ${j.winner.lessons.join(' · ')}` : ''}</p>
           <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" variant="primary" icon={<Check />} loading={busy} onClick={() => { void approve() }}>Approve</Button>
+            <Button size="sm" variant="primary" icon={<Check />} loading={busy} onClick={approve}>Approve</Button>
             <Button size="sm" variant="ghost" icon={<X />} disabled={busy} onClick={() => decide.mutate({ runId: run.id, job: j.job, decision: 'reject' })}>Reject</Button>
           </div>
         </>
@@ -114,7 +110,7 @@ export function MemoryTuning() {
         <div><Button size="sm" icon={<FlaskConical />} loading={make.isPending} disabled={waiting} onClick={() => make.mutate()}>Run the self-test now</Button></div>
       </section>
       <Champions jobs={jobs.data ?? []} />
-      <ReadState query={runs} what="the self-tests" count={list.length} empty="No self-test yet. It needs a few saved cases of a job (4 in its test share) and new fixes since the last one." />
+      <ReadState query={runs} what="the self-tests" count={list.length} empty="No self-test yet. A job needs 4 saved cases in its test share and new fixes since the last run — with only a few cases that can take weeks, and nothing can win until then." />
       {latest && latest.status === 'done' && latest.jobs.length > 0 && (
         <section aria-label="The latest self-test" className="flex flex-col gap-1.5">
           <h3 className="field-label px-1">Latest · {day(latest.created_at)}</h3>

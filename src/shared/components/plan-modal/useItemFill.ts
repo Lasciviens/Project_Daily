@@ -52,6 +52,20 @@ export interface ItemFillState<S = unknown> {
   submit: (text: string) => void
   accept: () => void
   cancel: () => void
+  /**
+   * The item was saved (Add, or an edit's autosave): after "Use these", the fields ✨ filled are reported with the values
+   * the item was SAVED with, so the AI learns from what was kept and what was changed (critic 1). Never before a save.
+   */
+  reportSaved: (form: PlanForm) => void
+}
+
+/** The saved form's value of each field ✨ fills, in the learning layer's names (a field with no plain value is left out). */
+function savedFields(form: PlanForm): Record<string, string | number | boolean | null> {
+  return {
+    title: form.title.trim() || null, date: form.date, start_time: form.time, duration_minutes: form.duration, place: form.place?.name ?? null,
+    notes: form.notes.trim() || null, priority: form.priority, show_as: form.showAs, travel_minutes: form.travelMinutes,
+    deadline_date: form.deadlineDate || null, deadline_time: form.deadlineTime || null, do_from: form.startDate || null,
+  }
 }
 
 // The fill's fields in the learning layer's names (supabase/claude-src/learn-specs.ts, item_fill): what the owner kept.
@@ -89,6 +103,9 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
   // A new opening or another item: the review ends (its fields went with the old form).
   const [seen, setSeen] = useState({ open, item })
   const session = useRef(0)
+  // ✨'s learning (below): the fill on screen, and a kept fill waiting for the item's own save.
+  const learned = useRef<{ callId: string; saved: Record<string, string | number | boolean> } | null>(null)
+  const kept = useRef<{ callId: string; fields: string[] } | null>(null)
   if (seen.open !== open || seen.item !== item) {
     setSeen({ open, item })
     setState(CLOSED)
@@ -96,7 +113,12 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
   }
   const latest = useRef({ open, item, form, screen, take, put, fillInto })
   useLayoutEffect(() => {
-    if (latest.current.open !== open || latest.current.item !== item) session.current += 1
+    if (latest.current.open !== open || latest.current.item !== item) {
+      session.current += 1
+      // Another opening or another item: a fill kept on the old one is never reported with this one's save.
+      learned.current = null
+      kept.current = null
+    }
     latest.current = { open, item, form, screen, take, put, fillInto }
   })
 
@@ -106,15 +128,18 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
     latest.current.put(taken)
     setState(CLOSED)
     setBefore(null)
+    // Put back as it was: nothing of this fill is learned from (no case), whatever is saved next.
+    learned.current = null
+    kept.current = null
     toast.success(said)
   }
 
-  // The AI call of the fill on screen, and what it filled: Use these reports it as kept, Cancel as dismissed (Developer → AI →
-  // Learn). Fields the owner changes after Use these are not seen here (the item's own save does not report them).
-  const learned = useRef<{ callId: string; saved: Record<string, string | number | boolean> } | null>(null)
-  const learn = useMutationWithFeedback<number, { callId: string; saved: Record<string, string | number | boolean>; dismissed: boolean }>({
+  // The AI call of the fill on screen and what it filled. Cancel reports it dismissed at once; "Use these" keeps only the call
+  // id and the fields, and the item's OWN save reports the values it was saved with (`reportSaved`). Undo, or never saving,
+  // reports nothing: no case is made of a fill the owner did not keep (Developer → AI → Learned).
+  const learn = useMutationWithFeedback<number, { callId: string; saved: Record<string, string | number | boolean | null>; dismissed: boolean }>({
     action: 'ai_learn_save',
-    silent: 'a background note for Developer → AI → Learn; Use these and Cancel say their own result',
+    silent: 'a background note for Developer → AI → Learned; the item\'s save and Cancel say their own result',
     logPayload: false,
     mutationFn: async (report) => {
       // Loaded only once ✨ was used, like the function's own client.
@@ -123,10 +148,24 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
     },
     invalidates: ['aiLearn'],
   })
-  const reportLearned = (dismissed: boolean) => {
+  const reportDismissed = () => {
     const it = learned.current
     learned.current = null
-    if (it) learn.mutate({ ...it, dismissed })
+    kept.current = null
+    if (it) learn.mutate({ ...it, dismissed: true })
+  }
+  const keepForSave = () => {
+    const it = learned.current
+    learned.current = null
+    kept.current = it ? { callId: it.callId, fields: Object.keys(it.saved) } : null
+  }
+  const reportSaved = (form: PlanForm) => {
+    const it = kept.current
+    if (!it) return
+    kept.current = null
+    const all = savedFields(form)
+    const saved = Object.fromEntries(it.fields.filter(f => f in all).map(f => [f, all[f]]))
+    if (Object.keys(saved).length) learn.mutate({ callId: it.callId, saved, dismissed: false })
   }
 
   const run = useMutationWithFeedback<(FillResult & { taken: S; startedIn: number; callId: string | null; learnFields: Record<string, string | number | boolean> }) | null, string>({
@@ -187,12 +226,13 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       const startedIn = session.current
       setState(CLOSED)
       setBefore(null)
-      reportLearned(false)
+      keepForSave()
       if (taken !== null) toast.undo('Filled fields kept', () => putBack(taken, startedIn, 'Put back as it was'))
     },
+    reportSaved,
     cancel: () => {
       if (state.step !== 'review' || before === null) return
-      reportLearned(true)
+      reportDismissed()
       putBack(before, session.current, 'Put back as it was')
     },
   }
