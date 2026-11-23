@@ -109,6 +109,8 @@ function makeWorld(over = {}) {
     // The suggestions' counting and writer (migration 199): what the counting answers, and what the writer answered and was asked.
     patterns: over.patterns ?? [], patternsError: over.patternsError ?? false, addAnswer: over.addAnswer ?? 'added', added: [],
     tables: structuredClone(over.tables ?? {}), tableLog: [], tableErrors: over.tableErrors ?? {},
+    // An update of a generic table that fails (a test's own rule over the table and the values written), or none.
+    failUpdate: over.failUpdate ?? null,
     reserveRaw: over.reserveRaw, // a forged answer of ai_reserve: { data, error }
     dnsAnswers: over.dnsAnswers ?? {}, dns: [],
     calls: structuredClone(over.seedCalls ?? []), selects: [], clients: [], rpcs: [], reserves: [], updates: [], events: [], reads: [], logs: [],
@@ -171,6 +173,7 @@ function genericQuery(world, table, who) {
       return { error: null }
     }
     if (q.mode === 'update') {
+      if (world.failUpdate && world.failUpdate(table, q.values)) return { data: null, error: { message: 'boom' } }
       const hit = matching()
       for (const r of hit) Object.assign(r, structuredClone(q.values))
       return { data: q.returning ? structuredClone(hit) : null, error: null }
@@ -2130,6 +2133,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   q = await queuedWorld(); q.net.state.status = 'in_progress'
   ck = await checkAt(q, MAKE_AT + 27 * 3600_000)
   check('a batch still not ended after 26 hours is given up: the report fails ("did not end within a day"), the worst case stays, one failure push', ck.json?.failed === 1 && /did not end/.test(q.world.tables.ai_reports[0].failure) && q.world.calls[0].stop_reason === 'batch_expired' && near(q.world.calls[0].cost_usd, q.reserved) && q.net.state.pushes.length === 1)
+  check('…and its batch is let go of on that error path too: cancelled at Anthropic, deleted once it ended, the report row says when', q.net.state.cancelled === 1 && q.net.state.deleted === 1 && typeof q.world.tables.ai_reports[0].batch_deleted_at === 'string', [q.net.state.cancelled, q.net.state.deleted])
   q = await queuedWorld(); q.world.tables.ai_reports[0].batch_id = null
   ck = await checkAt(q, MAKE_AT + 10 * 60_000)
   check('a report with no batch id yet (a make still at work) waits for 30 minutes…', ck.json?.waiting === 1 && q.world.tables.ai_reports[0].status === 'queued')
@@ -2851,6 +2855,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     check('a batch still in progress: nothing is written, the claim is given back, the ledger row stays at its worst case', ck.json?.suggestions?.waiting === 1 && stuck.world.tables.ai_suggest_runs[0].status === 'queued' && stuck.world.tables.ai_suggest_runs[0].claimed_at === null && stuck.world.calls[0].outcome === 'pending' && near(stuck.world.calls[0].cost_usd, stuck.reserved))
     ck = await checkRun(stuck, MAKE_AT + 3 * 86_400_000 + 27 * 3600_000)
     check('after 26 hours it is given up: failed, the worst case stays in the ledger', ck.json?.suggestions?.failed === 1 && stuck.world.tables.ai_suggest_runs[0].status === 'failed' && /did not end/.test(stuck.world.tables.ai_suggest_runs[0].failure) && near(stuck.world.calls[0].cost_usd, stuck.reserved))
+    check('…and its batch is let go of on that error path too: cancelled at Anthropic, deleted once it ended, the run row says when', stuck.net.state.cancelled === 1 && stuck.net.state.deleted === 1 && typeof stuck.world.tables.ai_suggest_runs[0].batch_deleted_at === 'string', [stuck.net.state.cancelled, stuck.net.state.deleted])
+    const lost = await queuedRun({ world: { failUpdate: (t, v) => t === 'ai_suggest_runs' && typeof v.batch_id === 'string' } })
+    check('a suggestions batch whose id could not be saved is cancelled at once and deleted (nobody could find it again); the run fails and says so', lost.net.state.cancelled === 1 && lost.net.state.deleted === 1 && lost.world.tables.ai_suggest_runs[0].status === 'failed' && /cancelled at Anthropic/.test(lost.world.tables.ai_suggest_runs[0].failure) && lost.world.calls[0].stop_reason === 'batch_cancelled', [lost.net.state, lost.world.tables.ai_suggest_runs[0]])
     const twice = await queuedRun(); twice.net.state.status = 'ended'; twice.net.state.lines = (id) => [okLine(id, answerOf(GOOD))]
     const [c1, c2] = await Promise.all([checkRun(twice), checkRun(twice)])
     check('two checks at the same moment: one owns the run (one set of ideas, one ledger correction)', [c1.json.suggestions.checked, c2.json.suggestions.checked].sort().join() === '0,1' && twice.world.added.length === 3 && twice.world.calls.length === 1, [c1.json, c2.json])
@@ -3007,6 +3014,22 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
       return { back, net }
     })()
     check('the weekly report\'s batch is deleted at Anthropic right after its result was read, and the report row says when', rq.net.state.deleted >= 1 && typeof rq.back.world.tables.ai_reports[0].batch_deleted_at === 'string', [rq.net.state.deleted, rq.back.world.tables.ai_reports[0].status])
+    // A report batch whose id could not be saved: nobody could find it again, so it is cancelled and deleted at once.
+    const lostNet = batchNet()
+    const lost = await go(null, { request: schedReq({ action: 'report_make' }), world: wkWorld({ failUpdate: (t, v) => t === 'ai_reports' && typeof v.batch_id === 'string' }), network: lostNet, at: MAKE_AT })
+    check('a weekly report batch whose id could not be saved is cancelled at once and deleted; the report fails and says so, the ledger row says cancelled', lost.json?.ok === false && lostNet.state.cancelled === 1 && lostNet.state.deleted === 1 && lost.world.tables.ai_reports[0].status === 'failed' && /cancelled at Anthropic/.test(lost.world.tables.ai_reports[0].failure) && lost.world.calls[0].stop_reason === 'batch_cancelled', [lost.json, lostNet.state.cancelled, lostNet.state.deleted])
+    // A finished report that could not be saved: never "waiting" (its batch is already deleted, a second read finds nothing).
+    const unsaved = await (async () => {
+      const net = batchNet()
+      const made = await go(null, { request: schedReq({ action: 'report_make' }), world: wkWorld(), network: net, at: MAKE_AT })
+      net.state.status = 'ended'
+      net.state.reportId = made.world.tables.ai_reports[0].call_id
+      net.state.lines = (id) => [okLine(id)]
+      made.world.failUpdate = (t, v) => t === 'ai_reports' && v.status === 'ready'
+      const back = await go(null, { request: schedReq({ action: 'report_check' }), world: made.world, network: net, at: MAKE_AT + 3600_000 })
+      return { back, net }
+    })()
+    check('a finished report that could not be saved is failed with a plain sentence, never left waiting for a batch that is gone', unsaved.back.json?.failed === 1 && unsaved.back.world.tables.ai_reports[0].status === 'failed' && /could not be saved/.test(unsaved.back.world.tables.ai_reports[0].failure) && unsaved.net.state.deleted === 1, [unsaved.back.json, unsaved.back.world.tables.ai_reports[0].status])
     // Tidy up all: one request carries every save.
     const TIDY_IN = { item: { name: 'SONY WH1000XM5 HODETELEFON SVART', brand: '', model: '', category: '' }, categories: [{ id: 'c_audio', path: 'Electronics / Audio' }] }
     const lw = makeWorld({ tables: { ai_learn_answers: [], ai_corrections: [], ai_rules: [], ai_cases: [], ai_lessons: [], ai_job_learning: [] } })

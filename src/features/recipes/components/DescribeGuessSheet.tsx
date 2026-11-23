@@ -39,7 +39,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
   const [draft, setDraft] = useState<GuessDraft | null>(null)
   const [assumed, setAssumed] = useState<string[]>([])
   const [from, setFrom] = useState<GuessEstimate['from']>(undefined)
-  // The AI call the draft came from: the logged line is reported with it (Developer → AI → Learn), never when no AI was asked.
+  // The AI call the draft came from: the logged line is reported with it (Developer → AI → Learned), never when no AI was asked.
   const [callId, setCallId] = useState<string | null>(null)
   // What the photo's AI call cost (empty after a described or remembered estimate).
   const [photoCost, setPhotoCost] = useState<number | null>(null)

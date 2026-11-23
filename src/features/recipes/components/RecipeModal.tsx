@@ -145,8 +145,8 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
 
   const preview = macroMode === 'from_ingredients' ? previewMacros(ingredients, wholePortions(servings), library) : null
 
-  // The AI call a pasted recipe came from: its save is reported with it (Developer → AI → Learn). A link read or a hand-made
-  // recipe has none.
+  // The AI call a pasted recipe, or a link the model read, came from: its save is reported with it (Developer → AI → Learned).
+  // A page read by code alone, or a hand-made recipe, has none.
   const learnCall = useRef<string | null>(null)
   const learn = useReportAiSave()
   // A recipe opened afresh: an Estimate made for another one is never reported with this save.
