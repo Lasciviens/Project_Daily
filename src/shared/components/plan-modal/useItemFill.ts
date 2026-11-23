@@ -141,7 +141,7 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
       if (why) throw new Error(why)
       const startedIn = session.current
       let raw: unknown
-      let callId: string | null = null
+      let callId: string | null
       try {
         // The function's client loads only when ✨ is used (the item screen opens on every page).
         const { runClaudeJob } = await import('../../../features/ai/claude/claudeApi')
