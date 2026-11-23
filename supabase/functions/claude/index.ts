@@ -5806,7 +5806,6 @@ const ALL_TOOL_ORDER: readonly string[] = [...CHAT_TOOL_ORDER, ...COACH_ONLY_TOO
 const COACH_TOOL_ORDER: readonly string[] = ALL_TOOL_ORDER.filter(n => (['get_day_plan', 'get_about_me', ...COACH_ONLY_TOOL_NAMES] as string[]).includes(n))
 
 type ChatMode = 'chat' | 'coach'
-const CHAT_MODES: readonly ChatMode[] = ['chat', 'coach']
 
 /** What each tool is while the owner has chosen nothing: reads are on, writes ask first. Defaults live in code. */
 const TOOL_DEFAULTS: Readonly<Record<string, ToolMode>> = Object.fromEntries([
