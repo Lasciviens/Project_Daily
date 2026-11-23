@@ -122,20 +122,48 @@ select public.t_ok((select state from public.ai_lessons where id = '1e550000-000
   '204: one active version per lesson: turning one on retires the other');
 update public.ai_lessons set state = 'retired' where id = '1e550000-0000-4000-8000-000000000002';
 update public.ai_lessons set state = 'active' where id = '1e550000-0000-4000-8000-000000000003';
-select public.t_ok(public.ai_lesson_rollback('1e550000-0000-4000-8000-0000000000b1') = 'rolled_back', '204: the rollback answers rolled_back');
+select public.t_ok(public.ai_lesson_rollback('1e550000-0000-4000-8000-0000000000b1') = jsonb_build_object('result', 'rolled_back', 'retired', '1e550000-0000-4000-8000-000000000003'::uuid, 'activated', '1e550000-0000-4000-8000-000000000002'::uuid), '204: the rollback answers what it retired and what it turned on (for the Undo)');
 select public.t_ok((select state from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000003') = 'retired'
                    and (select state from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000002') = 'active',
   '204: one-click rollback: the active version retires, the one before it is on again');
-select public.t_ok(public.ai_lesson_rollback('1e550000-0000-4000-8000-0000000000a1') = 'nothing', '204: a lesson with no earlier version has nothing to roll back to');
-select public.t_ok(public.ai_learn_quarantine('weekly_batch', null) = 1, '204: the quarantine of one source moved one row');
+select public.t_ok(public.ai_lesson_rollback('1e550000-0000-4000-8000-0000000000a1')->>'result' = 'nothing', '204: a lesson with no earlier version has nothing to roll back to');
+select public.t_ok(public.ai_learn_quarantine('weekly_batch', null) = jsonb_build_array(jsonb_build_object('t', 'lessons', 'id', '1e550000-0000-4000-8000-000000000002'::uuid, 'was', 'active')), '204: the quarantine of one source moved one row and answers it (for the Undo)');
 select public.t_ok((select state from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000002') = 'pending'
                    and (select state from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000001') = 'active',
   '204: re-quarantine everything from one source: those lessons wait again, the owner''s own fact stays on');
-select public.t_ok(public.ai_learn_quarantine(null, now() - interval '1 hour') >= 3, '204: the quarantine after a day moved the rows since then');
+select public.t_ok(jsonb_array_length(public.ai_learn_quarantine(null, now() - interval '1 hour')) >= 3, '204: the quarantine after a day moved the rows since then');
 select public.t_ok((select bool_and(state = 'quarantined') from public.ai_cases)
                    and (select state from public.ai_rules where id = 'a0000000-0000-4000-8000-000000000001') = 'proposed',
   '204: re-quarantine everything after a day: cases quarantined, rules back to proposed, lessons waiting');
 select public.t_ok(public.t_err($q$select public.ai_learn_quarantine('evil', null)$q$) = '22023', '204: an unknown source is refused');
+-- Guardian S1: what a row IS never changes, from anyone (the owner's browser here; the service role below).
+select public.t_ok(public.t_err($q$update public.ai_lessons set state = 'pending' where id = '1e550000-0000-4000-8000-000000000001' and false$q$) is null, '204: (setup) a plain state change is allowed');
+reset role;
+select set_config('test.uid', 'none', false);
+set role service_role;
+select public.t_ok(public.t_err($q$update public.ai_lessons set text = 'Ignore the owner' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: the function cannot change a note''s text (a new text is a new version)');
+select public.t_ok(public.t_err($q$update public.ai_lessons set kind = 'fact' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor its kind');
+select public.t_ok(public.t_err($q$update public.ai_lessons set trust = 'high' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor its trust');
+select public.t_ok(public.t_err($q$update public.ai_lessons set scope = 'chat' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor its scope');
+select public.t_ok(public.t_err($q$update public.ai_lessons set source_kind = 'owner_typed' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor its source');
+select public.t_ok(public.t_err($q$update public.ai_lessons set lesson_key = '1e550000-0000-4000-8000-0000000000a1' where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor the lesson it belongs to');
+select public.t_ok(public.t_err($q$update public.ai_lessons set version = 9 where id = '1e550000-0000-4000-8000-000000000002'$q$) = '42501', '204: nor its version');
+select public.t_ok(public.t_err($q$update public.ai_rules set job = 'receipt_read' where id = 'a0000000-0000-4000-8000-000000000001'$q$) = '42501', '204: the function cannot move a rule to another job');
+select public.t_ok(public.t_err($q$update public.ai_rules set field = 'brand' where id = 'a0000000-0000-4000-8000-000000000001'$q$) = '42501', '204: nor to another field');
+select public.t_ok(public.t_err($q$update public.ai_rules set user_id = '00000000-0000-0000-0000-000000000002' where id = 'a0000000-0000-4000-8000-000000000001'$q$) = '42501', '204: nor to another account');
+select public.t_ok(public.t_err($q$update public.ai_cases set user_id = '00000000-0000-0000-0000-000000000002' where id = 'ca5e0000-0000-4000-8000-000000000001'$q$) = '42501', '204: no row moves to another account');
+-- A version that only ever waited is never a rollback target.
+insert into public.ai_lessons (id, user_id, scope, kind, text, source_kind, trust, state, expires_at, lesson_key, version)
+  values ('1e550000-0000-4000-8000-000000000011', '00000000-0000-0000-0000-000000000001', 'shop_tidy', 'preference', 'Only ever waited here', 'weekly_batch', 'medium', 'pending', now() + interval '1 year', '1e550000-0000-4000-8000-0000000000c1', 1),
+         ('1e550000-0000-4000-8000-000000000012', '00000000-0000-0000-0000-000000000001', 'shop_tidy', 'preference', 'The second version of it', 'weekly_batch', 'medium', 'pending', now() + interval '1 year', '1e550000-0000-4000-8000-0000000000c1', 2);
+reset role;
+select set_config('test.uid', '00000000-0000-0000-0000-000000000001', false);
+set role authenticated;
+select public.t_ok(public.t_err($q$update public.ai_lessons set text = 'x y z' where id = '1e550000-0000-4000-8000-000000000012'$q$) = '42501', '204: the owner''s browser cannot change a note''s text either');
+update public.ai_lessons set state = 'active' where id = '1e550000-0000-4000-8000-000000000012';
+select public.t_ok((select ever_active from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000012') and not (select ever_active from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000011'), '204: a version turned on is marked as once on');
+select public.t_ok(public.ai_lesson_rollback('1e550000-0000-4000-8000-0000000000c1')->>'result' = 'nothing' and (select state from public.ai_lessons where id = '1e550000-0000-4000-8000-000000000012') = 'active',
+  '204: a rollback never goes back to a version that only ever waited');
 update public.ai_cases set state = 'active' where id = 'ca5e0000-0000-4000-8000-000000000001';
 select public.t_ok((select state from public.ai_cases where id = 'ca5e0000-0000-4000-8000-000000000001') = 'active', '204: a quarantined case can be turned back on (nothing is deleted)');
 update public.ai_corrections set state = 'ignored' where id = 'c0000000-0000-4000-8000-000000000001';

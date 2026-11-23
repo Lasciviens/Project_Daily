@@ -36,6 +36,7 @@ import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOO
 import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
 import { chatNoteLesson, chatProposalCorrections, readChatNotes } from './learn-chat.ts'
+import { NOTE_LESSONS_PER_ANSWER } from './chat-learn-tools.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
   readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
@@ -74,6 +75,8 @@ const STEP_LABELS: Record<string, string> = {
   get_health_trends: "Looking at the week's health figures",
   get_pt_verdicts: "Reading the coach's saved verdicts",
   note_shortcut: 'Noting an idea for the Suggestions list',
+  search_docs: "Looking in the app's own documentation",
+  note_lesson: 'Noting something about you, for you to check',
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
@@ -303,6 +306,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const proposals: ChatProposalCard[] = []
   let suggestion: ChatSuggestionNote | null = null
   let notesTried = 0
+  let lessonsTried = 0
   const answerMessages: { content: Block[] }[] = []
   let seq = history.length
   let previousDigest: string | null = last ? last.digest : null
@@ -502,6 +506,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       if (call.name === 'note_shortcut') {
         if (notesTried >= SUGGEST_LIMITS.perAnswer) return `At most ${SUGGEST_LIMITS.perAnswer} idea can be noted in one answer: this one did not run. Carry on with your answer.`
         notesTried += 1
+      }
+      // One note about the person in an answer: decided here, before the calls run side by side, so two at once cannot both pass.
+      if (call.name === 'note_lesson') {
+        if (lessonsTried >= NOTE_LESSONS_PER_ANSWER) return `At most ${NOTE_LESSONS_PER_ANSWER} note about the person in one answer: this one did not run. Carry on with your answer.`
+        lessonsTried += 1
       }
       return null
     })

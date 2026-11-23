@@ -18,7 +18,7 @@ import { costOf, worstCostOf } from './prices.ts'
 import { callerDailyCap, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText, TEXT_LOG_MAX_BYTES } from './guard.ts'
 import { readGate, readSettingRows, reserveCall, writeCall, type CallRow } from './ledger.ts'
 import { buildRequest, gateScopeOf, type RunContext } from './run.ts'
-import { answerProblem, BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, MAY_BE_BILLED } from './batch.ts'
+import { answerProblem, letGoOfBatch, BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, MAY_BE_BILLED } from './batch.ts'
 import { patchCall } from './report-store.ts'
 import { osloWeekOf, scheduledReportWeek } from './week-facts.ts'
 import { SUGGEST_WEEKLY_JOB } from './job-suggest-weekly.ts'
@@ -206,6 +206,10 @@ async function checkOneRun(ctx: RunContext, run: RunRow): Promise<'done' | 'fail
   if (status.status !== 'ended') return tooOld ? giveUp('The batch did not end within a day.', 'batch_expired') : 'waiting'
   const results = await provider.batchResults(run.batch_id, BATCH_REQUEST_MS)
   if (!results.ok) return tooOld ? giveUp('The results could not be read for more than a day.', 'batch_unreachable') : 'waiting'
+  // Read: the batch is deleted at Anthropic now (owner: "delete right after"); the run row says when (server-only column).
+  const gone = await letGoOfBatch(ctx, run.batch_id, true)
+  if (gone.batch_deleted_at) await patchRun(ctx.adminDb, ctx.userId, run.id, { batch_deleted_at: gone.batch_deleted_at }, false, run.created_at)
+  else ctx.report(`the suggestions' batch was not deleted: ${gone.batch_delete_note ?? 'no reason'}`)
   const line = results.lines.find(l => l.customId === run.call_id)
   if (!line || !run.call_id) return giveUp('The batch ended without a result for this run.', 'batch_no_result')
   if (line.kind !== 'succeeded') {

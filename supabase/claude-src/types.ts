@@ -197,6 +197,8 @@ export interface Provider {
   batchResults(batchId: string, timeoutMs: number, maxLines?: number): Promise<BatchResults | ModelFailure>
   /** Deletes an ended batch and its results at the provider (the owner: "delete right after"). */
   deleteBatch(batchId: string, timeoutMs: number): Promise<{ ok: true } | ModelFailure>
+  /** Cancels a batch that has not ended (it can be deleted once it has). */
+  cancelBatch(batchId: string, timeoutMs: number): Promise<{ ok: true } | ModelFailure>
   /** One round of a chat, streamed: `onDelta` gets our own small events while the answer arrives (see ChatRequest). */
   chatRound(request: ChatRequest, onDelta: (delta: ChatDelta) => void): Promise<ChatAnswer | ModelFailure>
   /** Counts the prompt tokens of a chat request exactly as `chatRound` would send it. Free. */

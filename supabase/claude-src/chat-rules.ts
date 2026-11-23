@@ -95,10 +95,10 @@ export const NOTE_TOOL_NAMES = ['note_shortcut'] as const
 export const APP_SCREENS = "Home (the day's brief with the day's list and schedule, training, food with the protein left, the weekly report, weather, transit, currency, news, media, books, games) · Personal (plan, tasks, calendar) · Food (diary, recipes, quick guess, targets) · Shop · Training (program, coach) · Health (sleep, steps, weight, trends) · Wishes · Media · Football · Books · Games · Work · Projects · Settings · Developer (activity, errors, memory, AI)"
 /**
  * The learning tools (owner, 23.11.2026: "The ai should keep learning"; chat-learn-tools.ts): the app's own docs, the
- * person's approved notes (the "about you" profile, as data) and the one strict way to PROPOSE a note. None writes the
+ * one strict way to PROPOSE a note (the "about you" profile is `get_about_me`, which also returns the person's notes that are on). None writes the
  * owner's data; each can be switched Off. Last in the order (the order is part of the cached prefix).
  */
-export const LEARN_TOOL_NAMES = ['search_docs', 'recall_notes', 'note_lesson'] as const
+export const LEARN_TOOL_NAMES = ['search_docs', 'note_lesson'] as const
 /** The fixed order the everyday chat's tools are sent in (it is part of the cached prefix). */
 export const CHAT_TOOL_ORDER: readonly string[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES, ...NOTE_TOOL_NAMES, ...LEARN_TOOL_NAMES]
 /** Every tool the code has, in one fixed order: the everyday chat's reads and writes, then the coach's own, then the note tool, then the learning tools. A chat's list is a subset of it, in this order. */

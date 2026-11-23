@@ -179,6 +179,16 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
         return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
     },
+    // POST /v1/messages/batches/{id}/cancel: the batch stops (results so far are kept until it is deleted).
+    async cancelBatch(batchId, timeoutMs): Promise<{ ok: true } | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const batch = await client.messages.batches.cancel(batchId, {}, { timeout })
+        return batch?.id === batchId ? { ok: true } : { ...anthropicOddAnswer(), sent: null }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
     // One round of a chat, streamed: the SDK's own `messages.stream()` accumulates the events, `finalMessage()` is the
     // answer. Only our two small deltas leave this part (text pieces, "a tool is being called"), never a raw event.
     async chatRound(request: ChatRequest, onDelta: (delta: ChatDelta) => void): Promise<ChatAnswer | ModelFailure> {

@@ -12,18 +12,20 @@
 //  No imports: the verify scripts run this file as it is.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Zero-width and joiners, text direction, word joiners and invisible operators, the BOM, the soft hyphen, the Mongolian
-// vowel separator, the tag block (U+E0000–E007F: invisible ASCII lookalikes), variation selectors, interlinear annotation.
-const LEARN_HIDDEN = /[\u00ad\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb]|\udb40[\udc00-\udc7f]|\udb40[\udd00-\uddef]/g
-// Control characters but tab and line breaks (a separate rule decides whether a line break may stay).
+// Every format character (\p{Cf}: zero-width and joiners, text direction, word joiners, invisible operators, the BOM, the
+// soft hyphen, the tag block U+E0000–E007F of invisible ASCII lookalikes, …), lone surrogates, private-use characters, and
+// the invisible ones Unicode does not call format: variation selectors, the Hangul fillers, the Khmer inherent vowels, the
+// Mongolian free variation selectors. The same pattern as build-docs-snapshot.mjs's DOCS_HIDDEN (verify-ai-learning-docs).
+const LEARN_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
+// Control characters, line breaks and tabs among them: learned text is one line, the caller collapses spaces.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
-const LEARN_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
+const LEARN_CONTROL = /[\p{Cc}]/gu
 
 /** The text with every hidden character and control character removed, normalised (NFKC), repeated until stable. */
 export function stripHidden(text: string): string {
   let now = typeof text === 'string' ? text : ''
   for (let i = 0; i < 10; i++) {
-    const next = now.normalize('NFKC').replace(LEARN_HIDDEN, '').replace(LEARN_CONTROL, '')
+    const next = now.normalize('NFKC').replace(LEARN_HIDDEN, '').replace(LEARN_CONTROL, ' ')
     if (next === now) return next
     now = next
   }
@@ -121,11 +123,23 @@ export function lessonStart(kind: LessonKind, source: LessonSource, text: string
   return { state: active ? 'active' : 'pending', trust }
 }
 
-/** Whether every word of the note (3+ letters) is in the owner's own text: the check behind `verifiedInOwnerWords`. */
-export function wordsAreOwners(note: string, ownerText: string): boolean {
-  const words = (normKey(note) ?? '').split(' ').filter(w => w.length >= 3)
-  const own = new Set((normKey(ownerText) ?? '').split(' '))
-  return words.length > 0 && words.every(w => own.has(w))
+/** The longest message that still reads as typed by the owner (guardian B1): a pasted page is longer, or has more lines. */
+export const TYPED_LIMITS = { chars: 300, lines: 2 } as const
+
+/**
+ * Whether a note is the owner's own words (guardian B1): the message reads as typed (at most 300 characters and 2 lines),
+ * and the cleaned note's WHOLE word list, every word however short, is one unbroken run of words in the cleaned message.
+ * So "95 kg" is not "80 kg", "no meat" is not "meat", and a fact lifted out of a pasted page never counts as the owner's.
+ */
+export function factInOwnersWords(note: string, ownerText: string): boolean {
+  if (typeof ownerText !== 'string' || [...ownerText].length > TYPED_LIMITS.chars || ownerText.split(/\r\n|\r|\n/).length > TYPED_LIMITS.lines) return false
+  const words = (normKey(note) ?? '').split(' ').filter(Boolean)
+  const own = (normKey(ownerText) ?? '').split(' ').filter(Boolean)
+  if (!words.length || words.length > own.length) return false
+  for (let i = 0; i + words.length <= own.length; i++) {
+    if (words.every((w, j) => own[i + j] === w)) return true
+  }
+  return false
 }
 
 /** FNV-1a, 32 bits: a stable number from a text (the same in every runtime). */

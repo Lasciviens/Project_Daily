@@ -28,7 +28,7 @@ export type LearnSaveReply =
   | { ok: true; recorded: number; rules_proposed: number; case_kept: boolean; tripwire: 'none' | 'watch' | 'keep' | 'roll_back' }
   | { ok: false; message: string }
 
-const SAVE_LIMITS = { fields: 200, valueChars: 2000 } as const
+const SAVE_LIMITS = { fields: 200, valueChars: 2000, reports: 50 } as const
 
 /**
  * `{ action: 'learn_save', call_id, saved: { field: value }, unticked: [field], dismissed: boolean }` from the app.
@@ -37,6 +37,22 @@ const SAVE_LIMITS = { fields: 200, valueChars: 2000 } as const
  */
 export async function reportSave(ctx: RunContext, body: Record<string, unknown>): Promise<LearnSaveReply> {
   if (ctx.caller !== 'app') return { ok: false, message: 'Only the app reports a save.' }
+  // Several saves in one request (Shop's "Tidy up all" saves many things with one tap): each is checked and claimed alone.
+  const many = ownValue(body, 'reports')
+  if (many !== undefined) {
+    if (!Array.isArray(many) || many.length > SAVE_LIMITS.reports) return { ok: false, message: `At most ${SAVE_LIMITS.reports} saves in one report.` }
+    const total = { recorded: 0, rules_proposed: 0, case_kept: false, tripwire: 'none' as 'none' | 'watch' | 'keep' | 'roll_back' }
+    for (const one of many) {
+      if (!isLearnObj(one) || one.reports !== undefined) continue
+      const r = await reportSave(ctx, one)
+      if (!r.ok) continue
+      total.recorded += r.recorded
+      total.rules_proposed += r.rules_proposed
+      total.case_kept = total.case_kept || r.case_kept
+      if (r.tripwire !== 'none') total.tripwire = r.tripwire
+    }
+    return { ok: true, ...total }
+  }
   const callId = ownValue(body, 'call_id')
   if (typeof callId !== 'string' || !LEARN_UUID.test(callId)) return { ok: false, message: 'The save named no AI call.' }
   const savedRaw = ownValue(body, 'saved')
@@ -108,13 +124,14 @@ async function countTripwire(ctx: RunContext, spec: LearnSpec, corrected: boolea
     })
     return 'keep'
   }
+  // The same rollback as the owner's button: the previous examples, and the notes this win turned on retired.
+  await rollJobBack(ctx, spec.job, 'tripwire')
   await writeJobLearning(ctx.adminDb, ctx.userId, spec.job, {
-    example_strategy: state.previousStrategy ?? 'mmr', examples_k: state.previousK ?? 3, previous_strategy: state.strategy, previous_k: state.k,
-    tripwire_saves: saves, tripwire_corrected: fixed, tripwire_left: 0, changed_at: now,
-    last_event: `Rolled back by itself: ${fixed} of ${saves} saves needed corrections, more than before`, last_event_at: now,
+    tripwire_saves: saves, tripwire_corrected: fixed, tripwire_left: 0,
+    last_event: `Rolled back by itself: ${fixed} of ${saves} saves needed fixes, more than before`, last_event_at: now,
   })
   try {
-    await ctx.push?.({ title: 'AI learning rolled back', body: `A change for ${spec.job.replace(/_/g, ' ')} made more corrections, so the earlier setup is back.`, url: '#/developer?tab=ai&view=learn&learn=memory' })
+    await ctx.push?.({ title: 'AI learning rolled back', body: `A change for ${spec.job.replace(/_/g, ' ')} made more corrections, so the earlier setup is back.`, url: '#/developer?tab=ai&view=learned&mem=tuning' })
   } catch { /* the Learn view shows it too */ }
   return 'roll_back'
 }
@@ -137,69 +154,105 @@ async function liveCorrectionRate(ctx: RunContext, job: string, sinceIso: string
 
 // ── The owner's tuning decisions ──────────────────────────────────────────────
 
-export type LearnDecideReply = { ok: true; message: string } | { ok: false; message: string }
+export type LearnDecideReply = { ok: true; message: string; lesson_ids?: string[] } | { ok: false; message: string }
+
+const STRATEGY_WORDS: Record<string, string> = { none: 'no examples', knn: 'the most similar examples', mmr: 'similar but varied examples' }
 
 /**
- * `{ action: 'learn_decide', run_id, job, decision: 'approve' | 'reject' | 'roll_back' }` — the owner's tap in Tuning.
- * Approve makes the run's winning example setup the job's champion (the old one is kept for a rollback) and starts the
- * tripwire; a winning set of lessons is turned on by the owner's own tap in the app (row level security), and here
- * becomes a suggested change to the job's instructions (`instruction_change`, a reviewed PR). Roll back swaps back.
+ * Rolls a job back to its previous setup: the example strategy swaps back, and the notes the last approved win turned on
+ * (and only those) are retired. Answers what actually changed, in words.
+ */
+async function rollJobBack(ctx: RunContext, job: string, by: 'owner' | 'undo' | 'tripwire'): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  const state = await readJobLearning(ctx.adminDb, ctx.userId, job)
+  if (!state) return { ok: false, message: 'The setup could not be read. Try again in a moment.' }
+  if (!state.previousStrategy && !state.approvedLessons.length) return { ok: false, message: 'There is no earlier setup to go back to.' }
+  const now = ctx.now().toISOString()
+  let retired = 0
+  for (const id of state.approvedLessons) {
+    // Turning a note off is allowed to the function (only turning one ON is the owner's): only the ones this win turned on.
+    const { data } = await ctx.adminDb.from('ai_lessons').update({ state: 'retired' }).eq('id', id).eq('user_id', ctx.userId).eq('state', 'active').select('id')
+    if (Array.isArray(data) && data.length) retired += 1
+  }
+  const swap = state.previousStrategy
+    ? { example_strategy: state.previousStrategy, examples_k: state.previousK ?? 3, previous_strategy: state.strategy, previous_k: state.k }
+    : {}
+  const said = `${state.previousStrategy ? `${STRATEGY_WORDS[state.previousStrategy] ?? state.previousStrategy} again` : 'the examples stay as they were'}${retired ? ` · ${retired} ${retired === 1 ? 'note' : 'notes'} off` : ''}`
+  const ok = await writeJobLearning(ctx.adminDb, ctx.userId, job, {
+    ...swap, approved_lessons: [], tripwire_left: 0, changed_at: now,
+    last_event: `Rolled back by ${by === 'undo' ? 'Undo' : by === 'tripwire' ? 'itself' : 'the owner'}: ${said}`, last_event_at: now,
+  })
+  return ok ? { ok: true, message: `Rolled back: ${said}` } : { ok: false, message: 'The rollback could not be saved. Try again in a moment.' }
+}
+
+/**
+ * `{ action: 'learn_decide', run_id, job, decision: 'approve' | 'reject' | 'roll_back' | 'reopen' }` — the owner's tap in
+ * Tuning. Approve makes the run's winning example setup the job's champion (the old one kept for a rollback), starts the
+ * tripwire, and records the notes it TESTED (from the run, never the notes waiting now) as the ones this win turns on; the
+ * app turns them on with the owner's own rights right after, and each becomes an `instruction_change` suggestion (a
+ * reviewed PR). Roll back swaps back and retires exactly those notes. Reopen is the Undo of Approve or Reject.
  */
 export async function decideTuning(ctx: RunContext, body: Record<string, unknown>): Promise<LearnDecideReply> {
   if (ctx.caller !== 'app') return { ok: false, message: 'Only the app decides.' }
   const job = ownValue(body, 'job')
   const decision = ownValue(body, 'decision')
   if (typeof job !== 'string' || !learnSpecOf(job)) return { ok: false, message: 'That job learns nothing this way.' }
-  if (decision !== 'approve' && decision !== 'reject' && decision !== 'roll_back') return { ok: false, message: 'Approve, reject or roll back.' }
+  if (decision !== 'approve' && decision !== 'reject' && decision !== 'roll_back' && decision !== 'reopen') return { ok: false, message: 'Approve, reject, roll back or undo.' }
+  if (decision === 'roll_back') return rollJobBack(ctx, job, 'owner')
   const now = ctx.now().toISOString()
-  if (decision === 'roll_back') {
-    const state = await readJobLearning(ctx.adminDb, ctx.userId, job)
-    if (!state) return { ok: false, message: 'The setup could not be read. Try again in a moment.' }
-    if (!state.previousStrategy) return { ok: false, message: 'There is no earlier setup to go back to.' }
-    const ok = await writeJobLearning(ctx.adminDb, ctx.userId, job, {
-      example_strategy: state.previousStrategy, examples_k: state.previousK ?? 3, previous_strategy: state.strategy, previous_k: state.k,
-      tripwire_left: 0, changed_at: now, last_event: 'Rolled back by the owner', last_event_at: now,
-    })
-    return ok ? { ok: true, message: 'Rolled back to the earlier setup' } : { ok: false, message: 'The rollback could not be saved. Try again in a moment.' }
-  }
   const runId = ownValue(body, 'run_id')
   if (typeof runId !== 'string' || !LEARN_UUID.test(runId)) return { ok: false, message: 'The decision named no self-test.' }
   const { data, error } = await ctx.adminDb.from('ai_eval_runs').select('id, result, decision_state').eq('id', runId).eq('user_id', ctx.userId).maybeSingle()
   if (error || !isLearnObj(data) || !isLearnObj(data.result)) return { ok: false, message: 'That self-test could not be read.' }
   const jobs = Array.isArray(data.result.jobs) ? data.result.jobs : []
   const entry = jobs.find(j => isLearnObj(j) && j.job === job) as Record<string, unknown> | undefined
-  if (!entry || entry.decision !== 'proposed' || !isLearnObj(entry.winner)) return { ok: false, message: 'There is nothing waiting for a decision on that job.' }
+  if (!entry || !isLearnObj(entry.winner)) return { ok: false, message: 'There is nothing to decide on that job.' }
   const winner = entry.winner
-  entry.decision = decision === 'approve' ? 'approved' : 'rejected'
-  entry.decided_at = now
-  if (decision === 'approve') {
-    const strategy = winner.strategy === 'knn' || winner.strategy === 'mmr' || winner.strategy === 'none' ? winner.strategy : null
-    const k = typeof winner.k === 'number' && Number.isInteger(winner.k) && winner.k >= 0 && winner.k <= 5 ? winner.k : null
-    const state = await readJobLearning(ctx.adminDb, ctx.userId, job)
-    if (!state || !strategy || k === null) return { ok: false, message: 'The winning setup could not be read.' }
-    const baseline = await liveCorrectionRate(ctx, job, new Date(ctx.now().getTime() - 30 * 86_400_000).toISOString())
-    const ok = await writeJobLearning(ctx.adminDb, ctx.userId, job, {
-      example_strategy: strategy, examples_k: k, previous_strategy: state.strategy, previous_k: state.k, changed_by_run: runId, changed_at: now,
-      tripwire_left: SCORE_LIMITS.tripwireCalls, tripwire_baseline: Math.round(baseline * 10000) / 10000, tripwire_saves: 0, tripwire_corrected: 0,
-      last_event: `Approved by the owner: ${strategy === 'none' ? 'no examples' : `${k} examples by ${strategy}`}`, last_event_at: now,
-    })
-    if (!ok) return { ok: false, message: 'The new setup could not be saved. Try again in a moment.' }
-    // A winning set of lessons: each becomes a suggested change to the job's instructions (code, a reviewed PR).
-    for (const text of (Array.isArray(winner.lessons) ? winner.lessons : []).slice(0, 3)) {
-      const lesson = plainLine(text, 300, 3)
-      if (!lesson) continue
-      const idea: CheckedIdea = {
-        kind: 'instruction_change' as CheckedIdea['kind'], title: `Add a learned note to ${job.replace(/_/g, ' ')}`.slice(0, 120),
-        why: `It won the weekly self-test. The note: ${lesson}`.slice(0, 400), benefit: 'The note would become part of the job\'s reviewed instructions.', complexity: 'small',
+  let message: string
+  let lessonIds: string[] = []
+  if (decision === 'reopen') {
+    if (entry.decision === 'approved') {
+      const back = await rollJobBack(ctx, job, 'undo')
+      if (!back.ok) return back
+    } else if (entry.decision !== 'rejected') return { ok: false, message: 'There is nothing to undo on that job.' }
+    entry.decision = 'proposed'
+    message = 'Put back: waiting for your decision again'
+  } else {
+    if (entry.decision !== 'proposed') return { ok: false, message: 'There is nothing waiting for a decision on that job.' }
+    entry.decision = decision === 'approve' ? 'approved' : 'rejected'
+    entry.decided_at = now
+    message = 'Rejected: the setup stays as it is'
+    if (decision === 'approve') {
+      const strategy = winner.strategy === 'knn' || winner.strategy === 'mmr' || winner.strategy === 'none' ? winner.strategy : null
+      const k = typeof winner.k === 'number' && Number.isInteger(winner.k) && winner.k >= 0 && winner.k <= 5 ? winner.k : null
+      const state = await readJobLearning(ctx.adminDb, ctx.userId, job)
+      if (!state || !strategy || k === null) return { ok: false, message: 'The winning setup could not be read.' }
+      lessonIds = (Array.isArray(winner.lesson_ids) ? winner.lesson_ids : []).filter((x): x is string => typeof x === 'string' && LEARN_UUID.test(x)).slice(0, 20)
+      const baseline = await liveCorrectionRate(ctx, job, new Date(ctx.now().getTime() - 30 * 86_400_000).toISOString())
+      const ok = await writeJobLearning(ctx.adminDb, ctx.userId, job, {
+        example_strategy: strategy, examples_k: k, previous_strategy: state.strategy, previous_k: state.k, changed_by_run: runId, changed_at: now,
+        approved_lessons: lessonIds,
+        tripwire_left: SCORE_LIMITS.tripwireCalls, tripwire_baseline: Math.round(baseline * 10000) / 10000, tripwire_saves: 0, tripwire_corrected: 0,
+        last_event: `Approved by the owner: ${strategy === 'none' ? 'no examples' : `${k} examples, ${STRATEGY_WORDS[strategy] ?? strategy}`}${lessonIds.length ? ` and ${lessonIds.length} ${lessonIds.length === 1 ? 'note' : 'notes'}` : ''}`, last_event_at: now,
+      })
+      if (!ok) return { ok: false, message: 'The new setup could not be saved. Try again in a moment.' }
+      // Each winning note becomes a suggested change to the job's instructions (code, a reviewed PR).
+      for (const text of (Array.isArray(winner.lessons) ? winner.lessons : []).slice(0, 3)) {
+        const lesson = plainLine(text, 300, 3)
+        if (!lesson) continue
+        const idea: CheckedIdea = {
+          kind: 'instruction_change' as CheckedIdea['kind'], title: `Add a learned note to ${job.replace(/_/g, ' ')}`.slice(0, 120),
+          why: `It won the weekly self-test. The note: ${lesson}`.slice(0, 400), benefit: 'The note would become part of the job\'s reviewed instructions.', complexity: 'small',
+        }
+        const key = await sha256Hex(`instruction_change\n${job}\n${lesson.toLowerCase()}`)
+        const added = await addSuggestion(ctx.adminDb, ctx.userId, idea, key, 'weekly', { times: 1, tokens: 0, cost: 0 }, null)
+        if (added === 'error' || added === 'invalid') ctx.report('a suggested instruction change could not be written')
       }
-      const key = await sha256Hex(`instruction_change\n${job}\n${lesson.toLowerCase()}`)
-      const added = await addSuggestion(ctx.adminDb, ctx.userId, idea, key, 'weekly', { times: 1, tokens: 0, cost: 0 }, null)
-      if (added === 'error' || added === 'invalid') ctx.report('a suggested instruction change could not be written')
+      message = 'Approved: the new setup is in use, watched for 20 saves'
     }
   }
   const stillOpen = jobs.some(j => isLearnObj(j) && j.decision === 'proposed')
-  const { error: e } = await ctx.adminDb.from('ai_eval_runs').update({ result: data.result, decision_state: stillOpen ? 'proposed' : decision === 'approve' ? 'approved' : 'rejected' })
+  const { error: e } = await ctx.adminDb.from('ai_eval_runs').update({ result: data.result, decision_state: stillOpen ? 'proposed' : decision === 'reject' ? 'rejected' : 'approved' })
     .eq('id', runId).eq('user_id', ctx.userId)
   if (e) return { ok: false, message: 'The decision could not be saved. Try again in a moment.' }
-  return { ok: true, message: decision === 'approve' ? 'Approved: the new setup is in use, watched for 20 saves' : 'Rejected: the setup stays as it is' }
+  return { ok: true, message, ...(lessonIds.length ? { lesson_ids: lessonIds } : {}) }
 }

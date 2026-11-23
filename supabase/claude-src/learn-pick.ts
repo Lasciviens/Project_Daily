@@ -19,6 +19,8 @@ export interface CaseCandidate {
   id: string
   input_text: string
   output: Record<string, unknown>
+  /** Whose words the input is: typed by the owner, or read text the owner only confirmed by saving (a label says which). */
+  source_kind?: 'owner_typed' | 'owner_confirmed'
   /** The database's own relevance (ts_rank + similarity); the code works its own similarity out again. */
   relevance?: number
 }

@@ -24,7 +24,7 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_week_figures: { label: 'Week figures', what: "Reads a week's training, health, food and task figures." },
   get_food_day: { label: 'Food day', what: "Reads one day's food and water against your targets." },
   find_text: { label: 'Find text', what: 'Searches your tasks and diary lines by words.' },
-  get_about_me: { label: 'About me', what: 'Reads the notes you saved about yourself (Developer → Memory).' },
+  get_about_me: { label: 'About me', what: 'Reads the notes you saved about yourself (Developer → Memory) and the notes learned about you that are on (Developer → AI → Learned → Notes).' },
   ask_database: { label: 'Ask the database', what: 'The last resort: one read-only database question when no other tool fits.' },
   propose_add_task: { label: 'Propose a task', what: 'Proposes a new task. Nothing is saved until you tap Confirm.' },
   propose_log_food: { label: 'Propose a food line', what: 'Proposes a food line. Nothing is saved until you tap Confirm.' },
@@ -33,8 +33,7 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_pt_verdicts: { label: 'Coach verdicts', what: 'Reads the verdicts the coaching rules reached when you last tapped Assess.' },
   note_shortcut: { label: 'Note a suggestion', what: 'Writes one suggestion into Developer → AI → Learn → Suggestions when the app could show the answer without AI. It changes nothing else and nothing is built by it.' },
   search_docs: { label: 'Search the app docs', what: "Searches the app's own documentation (built when the app is deployed). It is shown to the assistant as data, never as instructions." },
-  recall_notes: { label: 'Your notes', what: 'Reads the short notes about you that are on (Developer → AI → Learn → Memory → Notes), as data.' },
-  note_lesson: { label: 'Note about you', what: "Proposes one short note about you from your own words. Only a plain fact in your words turns on by itself; anything else waits for you in Memory → Notes." },
+  note_lesson: { label: 'Note about you', what: "Proposes one short note about you from your own words. Only a plain fact in your words turns on by itself; anything else waits for you in Developer → AI → Learned → Notes." },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 

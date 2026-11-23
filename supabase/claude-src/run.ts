@@ -23,7 +23,7 @@ import {
   countRecentCalls, finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db, type GateScope,
 } from './ledger.ts'
 import { findJob } from './jobs.ts'
-import { LEARN_RULE, LEARN_VERSION_SUFFIX, learnAfter, learnBefore, noteSourceRead } from './learn-run.ts'
+import { LEARN_RULE, LEARN_VERSION_SUFFIX, learnAfter, learnBefore, noteSourceRead, passesJobCheck } from './learn-run.ts'
 
 /** A notification: fixed words built by code, and where a tap opens (a hash route inside the app). */
 export interface PushMessage {
@@ -97,6 +97,7 @@ export function newRow(ctx: RunContext, job: JobDefinition | null | undefined): 
 }
 
 export async function runJob(ctx: RunContext, jobName: unknown, input: unknown): Promise<RunReply> {
+  const runStarted = Date.now()
   const job = findJob(jobName)
   const row = newRow(ctx, job)
   /** Ends the run before the model is called: a ledger row with no tokens, and the reason for the app. */
@@ -173,6 +174,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   //       finished zero-cost row (provider `rules`), and the reply says `source: 'rules'`. Otherwise owner-confirmed past
   //       cases and approved lessons go with the call as data.
   const learn = await learnBefore(ctx, job, input)
+  // The rules' answer goes through the job's own answer check too (guardian S3); one that fails asks the model instead.
+  if (learn?.ruleAnswer && !passesJobCheck(learn.spec, learn.input, learn.ruleAnswer, prepared.read.bind(prepared))) learn.ruleAnswer = null
   if (learn?.ruleAnswer) {
     row.outcome = 'ok'
     row.provider = RUN_RULES_PROVIDER
@@ -180,7 +183,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     row.effort = null
     row.cost_usd = 0
     await record(ctx, row)
-    const result = await learnAfter(ctx, learn, learn.ruleAnswer, row.id, true)
+    const result = await learnAfter(ctx, learn, learn.ruleAnswer, row.id, true, prepared.read.bind(prepared))
     return { ok: true, job: job.name, result, source: 'rules', call: summaryOf(row) }
   }
 
@@ -209,7 +212,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // 8b · Retry ONCE when our own check refused the answer, sending the check's exact sentence (never asking the model
   //      to grade itself). A second ledger row (same run, step 2), reserved like any call; when it cannot be reserved
   //      (a cap, the budget), the first refusal stands.
-  if (!attempt.verdict.ok && attempt.verdict.outcome === 'invalid' && attempt.verdict.problem) {
+  if (!attempt.verdict.ok && attempt.verdict.outcome === 'invalid' && attempt.verdict.problem && Date.now() - runStarted + (request.timeoutMs ?? requestTimeoutMs(settings.maxOutputTokens)) < RETRY_WITHIN_MS) {
     const again = newRow(ctx, job)
     again.run_id = row.run_id
     again.step = 2
@@ -225,15 +228,25 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   // 9 · The reply. A message leaves only through hideSecrets. A checked answer first gets the owner's active rules
   //     (code), and the AI's own values are kept for the owner's save (learn-run.ts).
   if (verdict.ok) {
-    const result = learn ? await learnAfter(ctx, learn, verdict.result, last.id, true) : verdict.result
+    const result = learn ? await learnAfter(ctx, learn, verdict.result, last.id, true, prepared.read.bind(prepared)) : verdict.result
     return { ok: true, job: job.name, result, call: summaryOf(last) }
   }
   return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(last) }
 }
 
-/** The line a retry adds to the live text: our own check's sentence, escaped (it may quote a piece of the answer). */
+/** A retry happens only when the time used so far plus the next request's own limit stays under this (critic 12: Supabase's wall is 150 s). */
+export const RETRY_WITHIN_MS = 140_000
+
+/**
+ * Our checks' sentences, as code writes them: lower-case words, numbers, commas, brackets and the names of fields. A
+ * problem that is anything else (it might quote the model's own text back) is sent as the one fixed sentence below.
+ */
+const FIXED_CHECK = /^[a-z][a-z0-9 ,;:()%.'_/-]{0,200}$/
+const FIXED_CHECK_FALLBACK = 'the answer did not pass the app\'s check of its shape and values'
+
+/** The line a retry adds to the live text: our own check's fixed sentence (never the model's words echoed back). */
 export function retryNote(problem: string): string {
-  const said = problem.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 300)
+  const said = FIXED_CHECK.test(problem) && !/["“”<>`]/.test(problem) ? problem : FIXED_CHECK_FALLBACK
   return `\n\n<check_error>${said}</check_error>\nYour previous answer failed this check of the app. Answer again in the same shape, fixing only that.`
 }
 

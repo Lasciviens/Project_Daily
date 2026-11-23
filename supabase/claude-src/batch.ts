@@ -268,6 +268,10 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
 
   const results = await provider.batchResults(report.batch_id, BATCH_REQUEST_MS)
   if (!results.ok) return tooOld ? giveUp('The results could not be read for more than a day.', 'batch_unreachable') : 'waiting'
+  // Read: the batch is deleted at Anthropic now (owner: "delete right after"); the report row says when (server-only column).
+  const gone = await letGoOfBatch(ctx, report.batch_id, true)
+  if (gone.batch_deleted_at) await patchReport(ctx.adminDb, ctx.userId, report.id, { batch_deleted_at: gone.batch_deleted_at }, false, report.created_at)
+  else ctx.report(`the weekly report's batch was not deleted: ${gone.batch_delete_note ?? 'no reason'}`)
   // Lines come in any order: the one that is ours is found by its custom_id, compared exactly. Others are ignored.
   const line = results.lines.find(l => l.customId === report.call_id)
   if (!line || !report.call_id) return giveUp('The batch ended without a result for this report.', 'batch_no_result')
@@ -307,6 +311,42 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
     return 'waiting'
   }
   return 'ready'
+}
+
+/** How long a cancelled batch is waited for before it can be deleted (it ends within seconds), and how often it is asked. */
+const LET_GO_WAITS = 3
+const LET_GO_WAIT_MS = 2_000
+
+/**
+ * "Delete right after" (owner, 23.11.2026): a batch is deleted at Anthropic as soon as the function is done with it — after
+ * its results were read, and on every error path. One that has not ended is cancelled first and deleted once it has (a few
+ * short waits). Answers when it was deleted, or a short sentence of why not (never a secret). Never throws.
+ */
+export async function letGoOfBatch(ctx: RunContext, batchId: string | null, ended = false): Promise<{ batch_deleted_at: string | null; batch_delete_note: string | null }> {
+  const provider = ctx.provider
+  if (!batchId || !provider) return { batch_deleted_at: null, batch_delete_note: 'No batch to delete.' }
+  try {
+    if (!ended) {
+      const status = await provider.batchStatus(batchId, BATCH_STATUS_MS)
+      if (status.ok && status.status !== 'ended') {
+        const cancelled = await provider.cancelBatch(batchId, BATCH_STATUS_MS)
+        if (!cancelled.ok) return { batch_deleted_at: null, batch_delete_note: cutChars(`Not cancelled: ${hideSecrets(cancelled.message, ctx.secrets)}`, 300) }
+        let over = false
+        for (let i = 0; i < LET_GO_WAITS && !over; i++) {
+          await new Promise(resolve => setTimeout(resolve, LET_GO_WAIT_MS))
+          const again = await provider.batchStatus(batchId, BATCH_STATUS_MS)
+          over = again.ok && again.status === 'ended'
+        }
+        if (!over) return { batch_deleted_at: null, batch_delete_note: 'Cancelled at Anthropic; it had not ended yet, so it could not be deleted.' }
+      }
+    }
+    const deleted = await provider.deleteBatch(batchId, BATCH_STATUS_MS)
+    return deleted.ok
+      ? { batch_deleted_at: ctx.now().toISOString(), batch_delete_note: null }
+      : { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${hideSecrets(deleted.message, ctx.secrets)}`, 300) }
+  } catch (error) {
+    return { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${errorPlace(error)}`, 300) }
+  }
 }
 
 /** Why a model's answer is no report, or null. */

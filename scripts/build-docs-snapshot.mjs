@@ -40,14 +40,20 @@ export const DOCS_ALLOW = [
 const NEVER = /(^|\/)(AGENTS\.md|CLAUDE\.md)$|(^|\/)\.claude\/|^docs\/coord\//
 
 // The same characters as learn-text.ts's LEARN_HIDDEN and LEARN_CONTROL (verify-ai-learning-docs compares them).
-export const DOCS_HIDDEN = /[\u00ad\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb]|\udb40[\udc00-\udc7f]|\udb40[\udd00-\uddef]/g
+export const DOCS_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
 export const DOCS_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 
+// What a reader of the rendered page never sees, so a model must not either: HTML comments, Markdown's reference lines
+// (`[//]: # (…)`, `[label]: target`, the comment idiom among them) and raw HTML tags (their words stay, the tags go).
+const DOCS_COMMENT = /<!--[\s\S]*?(-->|$)/g
+const DOCS_REFERENCE = /^[ \t]{0,3}\[[^\]\n]*\]:[^\n]*$/gm
+const DOCS_TAG = /<\/?[A-Za-z][A-Za-z0-9-]*(\s[^<>]*)?\/?>/g
+
 export function cleanDocText(text) {
-  let now = text.replace(/<!--[\s\S]*?(-->|$)/g, '')
+  let now = text
   for (let i = 0; i < 10; i++) {
-    const next = now.normalize('NFKC').replace(DOCS_HIDDEN, '').replace(DOCS_CONTROL, '').replace(/<!--[\s\S]*?(-->|$)/g, '')
+    const next = now.normalize('NFKC').replace(DOCS_HIDDEN, '').replace(DOCS_CONTROL, '').replace(DOCS_COMMENT, '').replace(DOCS_REFERENCE, '').replace(DOCS_TAG, '')
     if (next === now) return next
     now = next
   }

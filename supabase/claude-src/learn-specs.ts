@@ -53,6 +53,17 @@ export interface LearnSpec {
   answerFromRules?(input: Record<string, unknown>, rules: readonly LearnRule[]): Record<string, unknown> | null
   /** The saved values in words, for an example: "field: value · …". */
   outputText(output: Record<string, string>, input: Record<string, unknown> | null): string
+  /**
+   * A result written back in the model's own answer shape, so the job's own answer check can read it again (guardian S3:
+   * a rule's change must pass the same check as the model's). Absent: the job takes no rule.
+   */
+  answerText?(result: Record<string, unknown>, input: Record<string, unknown>): string | null
+}
+
+/** The 1-based number of a category id in the list the call was sent (how the model names it), or undefined. */
+function categoryNumber(input: Record<string, unknown> | null, id: unknown): number | undefined {
+  const at = typeof id === 'string' ? sentCategoryIds(input).indexOf(id) : -1
+  return at >= 0 ? at + 1 : undefined
 }
 
 /** A plain object (not a list, not null). */
@@ -156,6 +167,7 @@ const SHOP_TIDY_SPEC: LearnSpec = {
     return { ...result, searched: false }
   },
   outputText: (output, input) => joined(output, (f, v) => (f === 'category_id' ? `category: ${categoryPath(input, v)}` : `${f}: ${v}`)),
+  answerText: (result, input) => JSON.stringify({ name: result.name, brand: result.brand, model: result.model, category: categoryNumber(input, result.category_id) }),
 }
 
 // ── receipt_read ─────────────────────────────────────────────────────────────
@@ -211,6 +223,12 @@ const RECEIPT_SPEC: LearnSpec = {
     }
     return [output.store ? `store: ${output.store}` : '', ...lines].filter(Boolean).join(' · ')
   },
+  answerText: (result, input) => JSON.stringify({
+    kind: result.kind, channel: result.channel, store: result.store, date: result.date, currency: result.currency, total: result.total, warranty_months: result.warranty_months,
+    items: (Array.isArray(result.items) ? result.items : []).filter(isLearnObj).map(row => ({
+      name: row.name, product: row.product, brand: row.brand, model: row.model, price: row.price, quantity: row.quantity, condition: row.condition, category: categoryNumber(input, row.category_id),
+    })),
+  }),
 }
 
 // ── quick_guess ──────────────────────────────────────────────────────────────
@@ -245,6 +263,7 @@ const QUICK_GUESS_SPEC: LearnSpec = {
     return { ...result, assumptions: ['From your own earlier corrections'] }
   },
   outputText: output => joined(output),
+  answerText: result => JSON.stringify(result),
 }
 
 // ── item_fill (✨) ────────────────────────────────────────────────────────────
@@ -285,6 +304,7 @@ const ITEM_FILL_SPEC: LearnSpec = {
     return true
   },
   outputText: output => joined(output),
+  answerText: result => JSON.stringify(fillOf(result)),
 }
 
 // ── recipe_from_text ─────────────────────────────────────────────────────────
@@ -313,7 +333,100 @@ const RECIPE_SPEC: LearnSpec = {
   outputText: output => joined(output),
 }
 
-export const LEARN_SPECS: ReadonlyMap<string, LearnSpec> = new Map([SHOP_TIDY_SPEC, RECEIPT_SPEC, QUICK_GUESS_SPEC, ITEM_FILL_SPEC, RECIPE_SPEC].map(s => [s.job, s]))
+// ── The other reviewed jobs (critic 13: "learn in every way") ─────────────────
+// Each fills a form the owner reviews and saves; each learns the same way (the save against the function's own copy). A job
+// whose input is a photo or a page is never replayed (neither is kept), and its case is only what the owner saved.
+
+const QUICK_GUESS_PHOTO_SPEC: LearnSpec = {
+  ...QUICK_GUESS_SPEC,
+  job: 'quick_guess_photo',
+  // The photo is read by the model and never kept: the case is the owner's words beside it, or the saved title.
+  trust: 'owner_confirmed',
+  replayable: false,
+  ruleFields: [],
+  caseText: (input, saved) => storedValue(learnStr(input?.text) || saved.title || '', 500),
+  matchKey: (input, _field, ai) => normKey(learnStr(input?.text) || ai.title || ''),
+  setRule: () => false,
+  answerFromRules: undefined,
+}
+
+const RECIPE_LINK_SPEC: LearnSpec = {
+  ...RECIPE_SPEC,
+  job: 'recipe_from_link',
+  // A page is never kept or fetched again for a replay; the case is the recipe the owner saved (only when a model read it).
+  replayable: false,
+  caseText: (_input, saved) => storedValue(saved.title ?? '', 300),
+  matchKey: (_input, _field, ai) => normKey(ai.title ?? ''),
+}
+
+const NUTRITION_FIELDS: Record<string, FieldKind> = Object.fromEntries(NUTRITION_KEYS.map(k => [k, { kind: 'number', min: 0, max: NUTRITION_MAX[k] } as FieldKind]))
+const learnIngredientLine = (rows: unknown): string => (Array.isArray(rows) ? rows : []).filter(isLearnObj)
+  .map(r => [r.quantity, r.unit, r.name].filter(x => x !== undefined && x !== null && x !== '').join(' ')).filter(Boolean).join('; ')
+
+const RECIPE_MACROS_SPEC: LearnSpec = {
+  job: 'recipe_macros',
+  // The ingredients may come from a pasted recipe: confirmed by the owner's save, not typed.
+  trust: 'owner_confirmed',
+  replayable: true,
+  fields: NUTRITION_FIELDS,
+  freeFields: [],
+  ruleFields: [],
+  values: result => flatValues(result, NUTRITION_FIELDS),
+  caseText: input => storedValue(`${input?.servings ?? 1} servings: ${learnIngredientLine(input?.ingredients)}`, 1000),
+  matchKey: input => normKey(learnIngredientLine(input?.ingredients).slice(0, 200)),
+  setRule: () => false,
+  outputText: output => joined(output),
+  answerText: result => JSON.stringify(result),
+}
+
+/** A preset's option groups as one line ("Size: small, large | Sauce: ketchup"): the app writes the saved groups the same way. */
+export function optionGroupsLine(groups: unknown): string {
+  return (Array.isArray(groups) ? groups : []).filter(isLearnObj).map(g => `${learnStr(g.name)}: ${(Array.isArray(g.choices) ? g.choices : []).filter(isLearnObj).map(c => learnStr(c.name)).filter(Boolean).join(', ')}`).join(' | ')
+}
+
+const OPTIONS_FIELDS = { groups: { kind: 'line', max: 2000 } } as const
+const QUICK_GUESS_OPTIONS_SPEC: LearnSpec = {
+  job: 'quick_guess_options',
+  trust: 'owner_typed',
+  replayable: true,
+  fields: OPTIONS_FIELDS,
+  freeFields: ['groups'],
+  ruleFields: [],
+  values: (result): Record<string, string> => { const line = storedValue(optionGroupsLine(result.groups), 2000); return line ? { groups: line } : {} },
+  caseText: input => storedValue(learnStr(input?.name), 60),
+  matchKey: input => normKey(learnStr(input?.name)),
+  setRule: () => false,
+  outputText: output => joined(output),
+  answerText: result => JSON.stringify({ groups: result.groups }),
+}
+
+const DRAFT_FIELDS = {
+  title: { kind: 'line', max: 200 }, page: { kind: 'line', max: 80 }, category: { kind: 'line', max: 20 }, priority: { kind: 'line', max: 20 }, points: { kind: 'line', max: 2000 },
+} as const
+const DEV_REQUEST_DRAFT_SPEC: LearnSpec = {
+  job: 'dev_request_draft',
+  trust: 'owner_typed',
+  replayable: true,
+  fields: DRAFT_FIELDS,
+  freeFields: ['title', 'points'],
+  ruleFields: [],
+  values(result) {
+    const out = flatValues(result, { title: DRAFT_FIELDS.title, page: DRAFT_FIELDS.page, category: DRAFT_FIELDS.category, priority: DRAFT_FIELDS.priority })
+    const points = storedValue(Array.isArray(result.points) ? result.points.filter(p => typeof p === 'string').join('; ') : '', 2000)
+    if (points) out.points = points
+    return out
+  },
+  caseText: input => storedValue(learnStr(input?.text), 600),
+  matchKey: input => normKey(learnStr(input?.text).slice(0, 200)),
+  setRule: () => false,
+  outputText: output => joined(output),
+  answerText: result => JSON.stringify(result),
+}
+
+export const LEARN_SPECS: ReadonlyMap<string, LearnSpec> = new Map([
+  SHOP_TIDY_SPEC, RECEIPT_SPEC, QUICK_GUESS_SPEC, ITEM_FILL_SPEC, RECIPE_SPEC,
+  QUICK_GUESS_PHOTO_SPEC, RECIPE_LINK_SPEC, RECIPE_MACROS_SPEC, QUICK_GUESS_OPTIONS_SPEC, DEV_REQUEST_DRAFT_SPEC,
+].map(s => [s.job, s]))
 
 /** The spec of a reviewed job, or null (a job nobody reviews field by field learns nothing this way). */
 export function learnSpecOf(job: string): LearnSpec | null {

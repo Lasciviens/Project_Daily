@@ -168,6 +168,8 @@ create table if not exists public.ai_lessons (
   version          integer not null default 1 check (version between 1 and 10000),
   supersedes       uuid references public.ai_lessons(id) on delete set null,
   approved_at      timestamptz,
+  -- Set by the guard when this version is turned on; a rollback only ever goes back to such a version.
+  ever_active      boolean not null default false,
   expires_at       timestamptz not null,
   state_changed_at timestamptz,
   created_at       timestamptz not null default now(),
@@ -192,6 +194,8 @@ create table if not exists public.ai_job_learning (
   previous_k         integer check (previous_k is null or previous_k between 0 and 5),
   changed_by_run     uuid,
   changed_at         timestamptz,
+  -- The notes the last approved win turned on (a rollback retires exactly these).
+  approved_lessons   uuid[] not null default '{}' check (cardinality(approved_lessons) <= 20),
   tripwire_left      integer not null default 0 check (tripwire_left between 0 and 100),
   tripwire_baseline  numeric(6,4) check (tripwire_baseline is null or tripwire_baseline between 0 and 1),
   tripwire_saves     integer not null default 0 check (tripwire_saves between 0 and 1000),
@@ -286,18 +290,35 @@ end $$;
 create or replace function public.ai_learn_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
-  v_owner boolean := (select auth.uid()) is not null;
+  -- Who writes, by the role the statement runs as (never by what a row or a setting claims): `authenticated` is the
+  -- owner's browser (and the owner's own SECURITY INVOKER functions); anything else (the function's service role, the
+  -- dismissed-suggestion trigger) is not the owner.
+  v_owner boolean := current_user = 'authenticated';
   -- The rows as JSON: one function serves five tables, so a column only some of them have is read by name here.
   v_new   jsonb := to_jsonb(new);
   v_old   jsonb := case when tg_op = 'UPDATE' then to_jsonb(old) else null end;
   -- Generated columns are left out too: a BEFORE trigger does not see their new values yet.
-  v_keep  text[] := array['state', 'state_changed_at', 'updated_at', 'approved_at', 'search', 'needs_owner'];
+  v_keep  text[] := array['state', 'state_changed_at', 'updated_at', 'approved_at', 'ever_active', 'search', 'needs_owner'];
   v_on    boolean := v_new->>'state' = 'active' and (v_old is null or v_old->>'state' is distinct from 'active');
+  v_fixed text[];
+  v_col   text;
 begin
   if v_old is not null and v_owner then
     if (v_new - v_keep) is distinct from (v_old - v_keep) then
       raise exception '%: only the state can be changed here', tg_table_name using errcode = '42501';
     end if;
+  end if;
+  -- What a row IS never changes, whoever writes (guardian S1): a new text, kind or source is a new version (a new row).
+  if v_old is not null then
+    v_fixed := case tg_table_name
+      when 'ai_lessons' then array['user_id', 'text', 'kind', 'trust', 'scope', 'source_kind', 'lesson_key', 'version']
+      when 'ai_rules' then array['user_id', 'job', 'field']
+      else array['user_id'] end;
+    foreach v_col in array v_fixed loop
+      if v_new->v_col is distinct from v_old->v_col then
+        raise exception '%: % never changes (a new one is a new row)', tg_table_name, v_col using errcode = '42501';
+      end if;
+    end loop;
   end if;
   if tg_table_name = 'ai_rules' and not v_owner and v_new->>'state' = 'active'
      and (v_on or v_new->>'value' is distinct from v_old->>'value' or v_new->>'match_key' is distinct from v_old->>'match_key') then
@@ -307,12 +328,14 @@ begin
     raise exception 'ai_lessons: only the owner turns this lesson on' using errcode = '42501';
   end if;
   if tg_table_name in ('ai_rules', 'ai_lessons') then
-    -- When it was turned on, and only by the owner's tap; a row that is not on has no approval.
+    -- When the owner last turned it on (only the owner's tap sets it; it stays when the row goes off again).
     new := jsonb_populate_record(new, jsonb_build_object('approved_at',
-      case when v_new->>'state' <> 'active' then null
-           when v_on and v_owner then to_jsonb(now())
-           when v_on then null
-           else v_old->'approved_at' end));
+      case when v_on and v_owner then to_jsonb(now()) when v_old is null then null else v_old->'approved_at' end));
+  end if;
+  if tg_table_name = 'ai_lessons' then
+    -- A version that was ever on (by the owner's tap, or a plain fact in the owner's own words): only such a version is
+    -- one a rollback may go back to.
+    new := jsonb_populate_record(new, jsonb_build_object('ever_active', v_on or coalesce((v_old->>'ever_active')::boolean, false)));
   end if;
   if v_old is not null then
     new.updated_at := now();
@@ -353,6 +376,11 @@ alter table public.ai_suggestions drop constraint if exists ai_suggestions_kind_
 alter table public.ai_suggestions add constraint ai_suggestions_kind_check
   check (kind in ('widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting', 'instruction_change'));
 
+-- ─── 8c. "Delete right after" for the other two batches too (the weekly report, the weekly suggestions) ──────────
+-- The day the function deleted the batch at Anthropic. Server-only: the browser's column grants (196, 199) leave it out.
+alter table public.ai_reports add column if not exists batch_deleted_at timestamptz;
+alter table public.ai_suggest_runs add column if not exists batch_deleted_at timestamptz;
+
 -- ─── 9. Functions ────────────────────────────────────────────────────────────
 -- The owner-confirmed cases most like a text: full-text search plus trigram similarity, for the function's example pick
 -- (which then adds an MMR-style diversity step in code). Service role only; SECURITY INVOKER; every row is the named
@@ -363,9 +391,9 @@ begin
   select n.nspname into v_schema from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm';
   execute format($fn$
     create or replace function public.ai_case_candidates(p_user uuid, p_job text, p_query text, p_limit integer)
-    returns table (id uuid, input_text text, output jsonb, split text, relevance real)
+    returns table (id uuid, input_text text, output jsonb, split text, source_kind text, relevance real)
     language sql stable security invoker set search_path = '' as $body$
-      select c.id, c.input_text, c.output, c.split,
+      select c.id, c.input_text, c.output, c.split, c.source_kind,
              (coalesce(pg_catalog.ts_rank(c.search, q.q), 0) + %1$I.similarity(c.input_text, left(coalesce(p_query, ''), 2000)))::real as relevance
         from public.ai_cases c,
              (select pg_catalog.websearch_to_tsquery('pg_catalog.simple', left(coalesce(p_query, ''), 2000)) as q) q
@@ -399,41 +427,54 @@ end $$;
 revoke all on function public.ai_source_note(uuid, text, text, boolean, text) from public, anon, authenticated;
 grant execute on function public.ai_source_note(uuid, text, text, boolean, text) to service_role;
 
--- "Re-quarantine everything from source X / after day Y": active lessons go back to pending, active cases to quarantined,
+-- "Re-quarantine everything from source X / after day Y": active lessons go back to pending, active cases are set aside,
 -- active rules back to proposed. The owner's own tap (SECURITY INVOKER: row level security and the state grant decide);
--- nothing is deleted, every row can be turned on again. Answers how many rows moved.
+-- nothing is deleted. Answers what moved, `[{"t": "lessons" | "cases" | "rules", "id", "was"}]`, so the Undo can put each back.
+drop function if exists public.ai_learn_quarantine(text, timestamptz);
 create or replace function public.ai_learn_quarantine(p_source text, p_after timestamptz)
-returns integer language plpgsql security invoker set search_path = '' as $$
+returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare
   v_user uuid := (select auth.uid());
   v_from timestamptz := coalesce(p_after, '-infinity'::timestamptz);
-  v_n integer := 0;
-  v_m integer;
+  v_out  jsonb := '[]'::jsonb;
+  v_part jsonb;
 begin
   if v_user is null then raise exception 'ai_learn_quarantine: the owner only' using errcode = '42501'; end if;
   if p_source is not null and p_source not in ('owner_typed', 'owner_data', 'weekly_batch', 'chat_tool', 'repo_doc', 'web', 'owner_confirmed', 'save') then
     raise exception 'ai_learn_quarantine: unknown source' using errcode = '22023';
   end if;
-  update public.ai_lessons l set state = 'pending'
-   where l.user_id = v_user and l.state = 'active' and l.created_at >= v_from and (p_source is null or l.source_kind = p_source);
-  get diagnostics v_m = row_count; v_n := v_n + v_m;
-  update public.ai_cases c set state = 'quarantined'
-   where c.user_id = v_user and c.state = 'active' and c.created_at >= v_from and (p_source is null or c.source_kind = p_source);
-  get diagnostics v_m = row_count; v_n := v_n + v_m;
+  with moved as (
+    update public.ai_lessons l set state = 'pending'
+     where l.user_id = v_user and l.state = 'active' and l.created_at >= v_from and (p_source is null or l.source_kind = p_source)
+    returning l.id)
+  select coalesce(jsonb_agg(jsonb_build_object('t', 'lessons', 'id', id, 'was', 'active')), '[]'::jsonb) into v_part from moved;
+  v_out := v_out || v_part;
+  with moved as (
+    update public.ai_cases c set state = 'quarantined'
+     where c.user_id = v_user and c.state = 'active' and c.created_at >= v_from and (p_source is null or c.source_kind = p_source)
+    returning c.id)
+  select coalesce(jsonb_agg(jsonb_build_object('t', 'cases', 'id', id, 'was', 'active')), '[]'::jsonb) into v_part from moved;
+  v_out := v_out || v_part;
   if p_source is null or p_source = 'save' then
-    update public.ai_rules r set state = 'proposed'
-     where r.user_id = v_user and r.state = 'active' and r.created_at >= v_from;
-    get diagnostics v_m = row_count; v_n := v_n + v_m;
+    with moved as (
+      update public.ai_rules r set state = 'proposed'
+       where r.user_id = v_user and r.state = 'active' and r.created_at >= v_from
+      returning r.id)
+    select coalesce(jsonb_agg(jsonb_build_object('t', 'rules', 'id', id, 'was', 'active')), '[]'::jsonb) into v_part from moved;
+    v_out := v_out || v_part;
   end if;
-  return v_n;
+  return v_out;
 end $$;
 revoke all on function public.ai_learn_quarantine(text, timestamptz) from public, anon;
 grant execute on function public.ai_learn_quarantine(text, timestamptz) to authenticated;
 
--- One-click rollback of a lesson to its previous version: the active version is retired and the newest older one is
--- turned on again. The owner's own tap (SECURITY INVOKER). Answers 'rolled_back', or 'nothing' when there is no older one.
+-- One-click rollback of a lesson to its previous version: the active version is retired and the newest older version that
+-- was once ON (approved, or a plain fact in the owner's own words: `ever_active`) is turned on again — never a version that
+-- only ever waited. The owner's own tap (SECURITY INVOKER). Answers `{"result": "rolled_back", "retired": id, "activated": id}`
+-- (the Undo turns `retired` on again, which retires `activated`), or `{"result": "nothing"}`.
+drop function if exists public.ai_lesson_rollback(uuid);
 create or replace function public.ai_lesson_rollback(p_lesson_key uuid)
-returns text language plpgsql security invoker set search_path = '' as $$
+returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare
   v_user uuid := (select auth.uid());
   v_now  public.ai_lessons%rowtype;
@@ -441,14 +482,15 @@ declare
 begin
   if v_user is null then raise exception 'ai_lesson_rollback: the owner only' using errcode = '42501'; end if;
   select * into v_now from public.ai_lessons l
-   where l.user_id = v_user and l.lesson_key = p_lesson_key order by (l.state = 'active') desc, l.version desc limit 1;
-  if not found then return 'nothing'; end if;
+   where l.user_id = v_user and l.lesson_key = p_lesson_key and l.state = 'active' order by l.version desc limit 1;
+  if not found then return jsonb_build_object('result', 'nothing'); end if;
   select l.id into v_prev from public.ai_lessons l
-   where l.user_id = v_user and l.lesson_key = p_lesson_key and l.version < v_now.version order by l.version desc limit 1;
-  if v_prev is null then return 'nothing'; end if;
+   where l.user_id = v_user and l.lesson_key = p_lesson_key and l.version < v_now.version and l.ever_active
+   order by l.version desc limit 1;
+  if v_prev is null then return jsonb_build_object('result', 'nothing'); end if;
   update public.ai_lessons l set state = 'retired' where l.id = v_now.id and l.user_id = v_user;
   update public.ai_lessons l set state = 'active' where l.id = v_prev and l.user_id = v_user;
-  return 'rolled_back';
+  return jsonb_build_object('result', 'rolled_back', 'retired', v_now.id, 'activated', v_prev);
 end $$;
 revoke all on function public.ai_lesson_rollback(uuid) from public, anon;
 grant execute on function public.ai_lesson_rollback(uuid) to authenticated;

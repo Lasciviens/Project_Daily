@@ -100,8 +100,8 @@ export function decideChallenger(champion: SetupScore, challenger: SetupScore, r
   }
   const reasons: string[] = []
   if (ids.length === 0) reasons.push('no case was answered by both')
-  if (!(b - a > floor)) reasons.push(`the test mean ${pct(b)} does not beat ${pct(a)} by more than the noise floor ${pct(floor)}`)
-  if (!(pairedWins > pairedLosses)) reasons.push(`it won ${pairedWins} cases and lost ${pairedLosses}`)
+  if (!(b - a > floor)) reasons.push(`not clearly better yet (needs more than ${points(floor)} points on ${ids.length * Math.max(1, Math.floor(reps))} tries; it was ${points(b - a)})`)
+  if (!(pairedWins > pairedLosses)) reasons.push(`better on ${pairedWins} cases, worse on ${pairedLosses}`)
   const worse = Object.keys(champion.perField).filter(f => f in challenger.perField && champion.perField[f] - challenger.perField[f] > floor)
   if (worse.length) reasons.push(`worse on ${worse.slice(0, 5).join(', ')}`)
   if (champion.tokensPerRequest > 0 && challenger.tokensPerRequest > champion.tokensPerRequest * SCORE_LIMITS.tokenGrowthMax) {
@@ -111,7 +111,8 @@ export function decideChallenger(champion: SetupScore, challenger: SetupScore, r
 }
 
 const round = (n: number) => Math.round(n * 10000) / 10000
-const pct = (n: number) => `${Math.round(n * 1000) / 10} %`
+/** A difference of two shares in points of a hundred ("35 points"; a negative one says "−3"). */
+const points = (n: number) => `${n < 0 ? '−' : ''}${Math.round(Math.abs(n) * 100)}`
 
 /** A whole setup's score from its replayed lines: each case's mean over its repeats; each field's mean over every answer. */
 export function setupScore(setup: string, lines: readonly { caseId: string; score: { mean: number; fields: Record<string, number> } | null; tokens: number }[]): SetupScore {

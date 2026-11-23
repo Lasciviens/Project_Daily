@@ -13,7 +13,7 @@
 //  Nothing here ever fails an answer: a failed read means "nothing learned", a failed write is said in the server log.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { JobDefinition, KnowledgeBlock } from './types.ts'
+import type { AnswerCheck, AnswerDetails, JobDefinition, KnowledgeBlock } from './types.ts'
 import type { Db } from './ledger.ts'
 import { dmy, osloDay } from './week-facts.ts'
 import { learnEscape, stripHidden } from './learn-text.ts'
@@ -50,8 +50,21 @@ export interface LearnPrep {
   ruleAnswer: Record<string, unknown> | null
 }
 
-/** The knowledge blocks of a call: the picked cases, then the lessons, inside the size bound (the first ones win). */
-export function knowledgeFor(spec: LearnSpec, cases: readonly CaseCandidate[], lessons: readonly LessonRow[], inputOf: (c: CaseCandidate) => Record<string, unknown> | null): KnowledgeBlock[] {
+/** A case's label: whose words its input is (guardian: a pasted or read input is "not confirmed", only the answer is the owner's). */
+export function caseSource(c: CaseCandidate): string {
+  return c.source_kind === 'owner_typed' ? 'past case · typed by the owner, answer saved by the owner' : 'past case · answer saved by the owner; its input is read text, not confirmed'
+}
+
+/** A note's label: approved by the owner's tap, on by itself (a plain fact in the owner's own words), or on trial (the self-test only). */
+export function lessonSource(l: LessonRow, trial: boolean): string {
+  const from = `from ${l.source_kind.replace('_', ' ')}`
+  if (trial) return `note on trial · ${from} · not approved by the owner (self-test only)`
+  if (l.approved_at) return `note · ${from} · approved by the owner ${dmy(osloDay(new Date(l.approved_at)))}`
+  return `note · ${from} · on by itself (a plain fact in the owner's own words)`
+}
+
+/** The knowledge blocks of a call: the picked cases, then the notes, inside the size bound (the first ones win). `trial`: note ids on trial. */
+export function knowledgeFor(spec: LearnSpec, cases: readonly CaseCandidate[], lessons: readonly LessonRow[], inputOf: (c: CaseCandidate) => Record<string, unknown> | null, trial: ReadonlySet<string> = new Set()): KnowledgeBlock[] {
   const out: KnowledgeBlock[] = []
   let room: number = LEARN_LIMITS.knowledgeChars
   cases.forEach((c, i) => {
@@ -60,16 +73,30 @@ export function knowledgeFor(spec: LearnSpec, cases: readonly CaseCandidate[], l
     const text = exampleBody(spec, stripHidden(c.input_text), output, inputOf(c)).slice(0, LEARN_LIMITS.caseChars)
     if (text.length > room) return
     room -= text.length
-    out.push({ source: 'past case · confirmed by the owner', title: `Past case ${i + 1}`, text })
+    out.push({ source: caseSource(c), title: `Past case ${i + 1}`, text })
   })
   for (const l of lessons.slice(0, LEARN_LIMITS.lessonsPerCall)) {
-    const text = `<lesson kind="${l.kind}">${learnEscape(stripHidden(l.text))}</lesson>`
+    const text = `<note kind="${l.kind}">${learnEscape(stripHidden(l.text))}</note>`
     if (text.length > room) break
     room -= text.length
-    const when = l.approved_at ? ` · approved ${dmy(osloDay(new Date(l.approved_at)))}` : ''
-    out.push({ source: `lesson · from ${l.source_kind.replace('_', ' ')}${when}`, title: 'A note the owner approved', text })
+    out.push({ source: lessonSource(l, trial.has(l.id)), title: 'A note about this task', text })
   }
   return out
+}
+
+/**
+ * Whether a result code built (the owner's rules, alone or on top of the model's answer) still passes the job's OWN answer
+ * check (guardian S3): it is written back in the model's answer shape and read by the same `read` the model's answer went
+ * through. A job whose spec cannot write that shape never takes a rule.
+ */
+export function passesJobCheck(spec: LearnSpec, input: Record<string, unknown>, result: Record<string, unknown>, read: (text: string, details: AnswerDetails) => AnswerCheck): boolean {
+  const text = spec.answerText ? spec.answerText(result, input) : null
+  if (text === null) return false
+  try {
+    return read(text, { thinking: '', servedModel: null, webSearches: 0 }).ok
+  } catch {
+    return false
+  }
 }
 
 /** What a run gets from what was learned, or null (no spec, or nothing could be read: the call goes on as always). */
@@ -105,12 +132,19 @@ export async function learnBefore(ctx: LearnEnv, job: JobDefinition, input: unkn
   }
 }
 
-/** After a checked answer: the owner's active rules applied by code, and the AI's own values kept for the save. */
-export async function learnAfter(ctx: LearnEnv, prep: LearnPrep, result: Record<string, unknown>, callId: string, kept: boolean): Promise<Record<string, unknown>> {
+/**
+ * After a checked answer: the owner's active rules applied by code — kept only when the result still passes the job's own
+ * answer check, else dropped whole (guardian S3) — and the AI's own values kept for the save.
+ */
+export async function learnAfter(ctx: LearnEnv, prep: LearnPrep, result: Record<string, unknown>, callId: string, kept: boolean, read: ((text: string, details: AnswerDetails) => AnswerCheck) | null): Promise<Record<string, unknown>> {
   let out = result
   let applied: string[] = []
   try {
-    if (prep.rules.length) ({ result: out, applied } = applyRules(prep.spec, result, prep.input, prep.rules))
+    if (prep.rules.length && read) {
+      const ruled = applyRules(prep.spec, result, prep.input, prep.rules)
+      if (ruled.applied.length && passesJobCheck(prep.spec, prep.input, ruled.result, read)) ({ result: out, applied } = ruled)
+      else if (ruled.applied.length) ctx.report('the owner\'s rules were not applied: the result would not pass the job\'s own check')
+    }
     if (applied.length) await noteRuleUses(ctx.adminDb, ctx.userId, applied, ctx.now().toISOString())
     if (kept && LEARN_UUID.test(callId)) {
       const saved = await saveLearnAnswer(ctx.adminDb, {

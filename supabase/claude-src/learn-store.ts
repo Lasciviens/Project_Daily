@@ -25,9 +25,11 @@ export interface JobLearning {
   tripwireBaseline: number | null
   tripwireSaves: number
   tripwireCorrected: number
+  /** The notes the last approved win turned on (a rollback retires exactly these). */
+  approvedLessons: string[]
 }
 
-export const DEFAULT_LEARNING: JobLearning = { strategy: 'mmr', k: 3, previousStrategy: null, previousK: null, tripwireLeft: 0, tripwireBaseline: null, tripwireSaves: 0, tripwireCorrected: 0 }
+export const DEFAULT_LEARNING: JobLearning = { strategy: 'mmr', k: 3, previousStrategy: null, previousK: null, tripwireLeft: 0, tripwireBaseline: null, tripwireSaves: 0, tripwireCorrected: 0, approvedLessons: [] }
 
 const strategyOf = (v: unknown): ExampleStrategy | null => (EXAMPLE_STRATEGIES as readonly unknown[]).includes(v) ? v as ExampleStrategy : null
 const kOf = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= PICK_LIMITS.kMax ? v : null)
@@ -37,7 +39,7 @@ const countOf = (v: unknown, max: number): number => (typeof v === 'number' && N
 export async function readJobLearning(db: Db, userId: string, job: string): Promise<JobLearning | null> {
   try {
     const { data, error } = await db.from('ai_job_learning')
-      .select('example_strategy, examples_k, previous_strategy, previous_k, tripwire_left, tripwire_baseline, tripwire_saves, tripwire_corrected')
+      .select('example_strategy, examples_k, previous_strategy, previous_k, tripwire_left, tripwire_baseline, tripwire_saves, tripwire_corrected, approved_lessons')
       .eq('user_id', userId).eq('job', job).maybeSingle()
     if (error) return null
     if (!isLearnObj(data)) return { ...DEFAULT_LEARNING }
@@ -51,6 +53,7 @@ export async function readJobLearning(db: Db, userId: string, job: string): Prom
       tripwireBaseline: data.tripwire_baseline !== null && Number.isFinite(baseline) && baseline >= 0 && baseline <= 1 ? baseline : null,
       tripwireSaves: countOf(data.tripwire_saves, 1000),
       tripwireCorrected: countOf(data.tripwire_corrected, 1000),
+      approvedLessons: Array.isArray(data.approved_lessons) ? data.approved_lessons.filter((x): x is string => typeof x === 'string' && LEARN_UUID.test(x)).slice(0, 20) : [],
     }
   } catch {
     return null
@@ -96,7 +99,7 @@ export async function readCaseCandidates(db: Db, userId: string, job: string, qu
     const { data, error } = await db.rpc('ai_case_candidates', { p_user: userId, p_job: job, p_query: query.slice(0, 2000), p_limit: limit })
     if (error || !Array.isArray(data)) return null
     return data.flatMap(r => (isLearnObj(r) && typeof r.id === 'string' && LEARN_UUID.test(r.id) && typeof r.input_text === 'string' && isLearnObj(r.output)
-      ? [{ id: r.id, input_text: r.input_text.slice(0, 2000), output: r.output, relevance: Number(r.relevance) || 0 }] : []))
+      ? [{ id: r.id, input_text: r.input_text.slice(0, 2000), output: r.output, source_kind: r.source_kind === 'owner_typed' ? 'owner_typed' as const : 'owner_confirmed' as const, relevance: Number(r.relevance) || 0 }] : []))
   } catch {
     return null
   }

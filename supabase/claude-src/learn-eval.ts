@@ -22,7 +22,7 @@ import { callerDailyCap, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProbl
 import { answerValue, checkedList, readAnswerObject } from './answer-reader.ts'
 import { readGate, readSettingRows, reserveCall, writeCall, type CallRow } from './ledger.ts'
 import { buildRequest, gateScopeOf, type RunContext } from './run.ts'
-import { BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, MAY_BE_BILLED } from './batch.ts'
+import { BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, letGoOfBatch, MAY_BE_BILLED } from './batch.ts'
 import { patchCall } from './report-store.ts'
 import { osloWeekOf, scheduledReportWeek } from './week-facts.ts'
 import { findJob } from './jobs.ts'
@@ -184,7 +184,10 @@ export async function makeWeeklyEval(ctx: RunContext): Promise<EvalMakeReply> {
     requests.push(...reqs)
     plan.push({ i: plan.length, kind: 'reflect', job: spec.job })
     requests.push(reflect)
-    summary.push({ job: spec.job, test_cases: built.kind === 'ok' ? built.cases : 0, setups: built.kind === 'ok' ? built.setups : [], reps: EVAL_LIMITS.reps, new_corrections: fresh.length, ...(built.kind === 'skip' ? { replay: built.why } : {}) })
+    summary.push({
+      job: spec.job, test_cases: built.kind === 'ok' ? built.cases : 0, setups: built.kind === 'ok' ? built.setups : [], reps: EVAL_LIMITS.reps, new_corrections: fresh.length,
+      ...(built.kind === 'ok' ? { trial_lessons: built.trial, strategies: built.strategies } : {}), ...(built.kind === 'skip' ? { replay: built.why } : {}),
+    })
   }
   for (const r of requests) worst += worstCostOf(r.model, r.instructions.length + r.userText.length + (r.knowledge ?? []).reduce((s, k) => s + k.text.length + k.source.length + k.title.length, 0), r.maxOutputTokens, 'batch')
 
@@ -232,14 +235,20 @@ export async function makeWeeklyEval(ctx: RunContext): Promise<EvalMakeReply> {
     return { ok: false, reason: 'failed', message }
   }
   const { error: idError } = await ctx.adminDb.from('ai_eval_runs').update({ batch_id: submitted.batchId }).eq('id', runId).eq('user_id', ctx.userId)
-  if (idError) ctx.report('the self-test batch was queued but its id could not be saved: it will be given up after 26 hours')
+  if (idError) {
+    // A batch nobody can find again is cancelled at once and never read (guardian S2); the run says why.
+    const gone = await letGoOfBatch(ctx, submitted.batchId)
+    await fail(`The batch's id could not be saved, so it was cancelled at Anthropic. ${gone.batch_delete_note ?? ''}`.trim())
+    await patchCall(ctx.adminDb, ctx.userId, callId, { outcome: 'error', stop_reason: 'batch_cancelled', error: 'The batch id could not be saved.' })
+    return { ok: false, reason: 'failed', message: 'The self-test could not be saved after it was queued, so it was cancelled. Try again in a moment.' }
+  }
   await patchCall(ctx.adminDb, ctx.userId, callId, { stop_reason: 'batch_queued', duration_ms: 0, tools: [{ name: 'self_test', requests: requests.length }] })
   return { ok: true, queued: true, run_id: runId, requests: requests.length }
 }
 
 /** One job's replays: every test case × setup × repeat, each request built exactly as a live run of the job would be. */
 async function buildJobTest(ctx: RunContext, spec: LearnSpec, target: JobDefinition, settings: RunSettings, offset: number): Promise<
-  | { kind: 'ok'; entries: PlanEntry[]; requests: ModelRequest[]; cases: number; setups: string[] }
+  | { kind: 'ok'; entries: PlanEntry[]; requests: ModelRequest[]; cases: number; setups: string[]; trial: { id: string; text: string }[]; strategies: Record<string, { strategy: ExampleStrategy; k: number }> }
   | { kind: 'skip'; why: string }
   | { kind: 'error'; message: string }
 > {
@@ -263,7 +272,8 @@ async function buildJobTest(ctx: RunContext, spec: LearnSpec, target: JobDefinit
     if ('problem' in prepared || prepared.early || prepared.images?.length || prepared.documents?.length) continue
     for (const setup of setups) {
       const picked = pickExamples(c.input_text, pool, setup.strategy, setup.k, { exclude: new Set([c.id]) })
-      const knowledge = knowledgeFor(spec, picked, setup.lessons, x => inputs.get(x.id) ?? null)
+      // The waiting notes are labelled as on trial (never "approved"): the model reads that they are the self-test's only.
+      const knowledge = knowledgeFor(spec, picked, setup.lessons, x => inputs.get(x.id) ?? null, new Set(setup.pendingLessons.map(l => l.id)))
       // No web search in a replay: the answer must come from the setup, not from a page found that day.
       const request = buildRequest(target, settings, prepared.userText, settings.thinking, undefined, { knowledge })
       for (let rep = 1; rep <= EVAL_LIMITS.reps; rep++) {
@@ -272,12 +282,14 @@ async function buildJobTest(ctx: RunContext, spec: LearnSpec, target: JobDefinit
       }
     }
   }
-  return { kind: 'ok', entries, requests, cases: test.length, setups: setups.map(s => s.name) }
+  // The notes this run tests, by id, kept with the run: an Approve turns on exactly these, never a note added later (critic 2).
+  const trial = setups.flatMap(s => s.pendingLessons).map(l => ({ id: l.id, text: l.text }))
+  return { kind: 'ok', entries, requests, cases: test.length, setups: setups.map(s => s.name), trial, strategies: Object.fromEntries(setups.map(s => [s.name, { strategy: s.strategy, k: s.k }])) }
 }
 
 // ── Step 2: check ───────────────────────────────────────────────────────────
 
-interface EvalRun { id: string; call_id: string | null; batch_id: string | null; plan: PlanEntry[]; created_at: string }
+interface EvalRun { id: string; call_id: string | null; batch_id: string | null; plan: PlanEntry[]; jobs: Record<string, unknown>[]; created_at: string }
 
 function planOf(value: unknown): PlanEntry[] {
   if (!Array.isArray(value)) return []
@@ -298,12 +310,12 @@ export async function checkEvalRuns(ctx: RunContext): Promise<EvalCheckReply> {
   if (!count) return { ok: true, checked: 0, done: 0, failed: 0, waiting: 0 }
   // A claim older than the claim time is a check that died: released.
   await ctx.adminDb.from('ai_eval_runs').update({ claimed_at: null }).eq('user_id', ctx.userId).eq('status', 'queued').lt('claimed_at', new Date(now.getTime() - CLAIM_MS).toISOString())
-  const { data, error } = await ctx.adminDb.from('ai_eval_runs').select('id, call_id, batch_id, plan, created_at').eq('user_id', ctx.userId).eq('status', 'queued').is('claimed_at', null).limit(5)
+  const { data, error } = await ctx.adminDb.from('ai_eval_runs').select('id, call_id, batch_id, plan, jobs, created_at').eq('user_id', ctx.userId).eq('status', 'queued').is('claimed_at', null).limit(5)
   if (error || !Array.isArray(data)) return { ok: false, message: 'The self-tests could not be read. Try again in a moment.' }
   const tally = { checked: 0, done: 0, failed: 0, waiting: 0 }
   for (const raw of data) {
     if (!isLearnObj(raw) || typeof raw.id !== 'string') continue
-    const run: EvalRun = { id: raw.id, call_id: typeof raw.call_id === 'string' ? raw.call_id : null, batch_id: typeof raw.batch_id === 'string' ? raw.batch_id : null, plan: planOf(raw.plan), created_at: String(raw.created_at) }
+    const run: EvalRun = { id: raw.id, call_id: typeof raw.call_id === 'string' ? raw.call_id : null, batch_id: typeof raw.batch_id === 'string' ? raw.batch_id : null, plan: planOf(raw.plan), jobs: Array.isArray(raw.jobs) ? raw.jobs.filter(isLearnObj) : [], created_at: String(raw.created_at) }
     // A claim: one check at a time per run, tied to the run it read (created_at).
     const claim = await ctx.adminDb.from('ai_eval_runs').update({ claimed_at: now.toISOString() }).eq('id', run.id).eq('user_id', ctx.userId).eq('status', 'queued').is('claimed_at', null).eq('created_at', run.created_at).select('id')
     if (claim.error || !Array.isArray(claim.data) || !claim.data.length) continue
@@ -322,23 +334,15 @@ export async function checkEvalRuns(ctx: RunContext): Promise<EvalCheckReply> {
 }
 
 async function endEval(ctx: RunContext, run: EvalRun, message: string, stopReason: string): Promise<'failed'> {
+  // Delete right after, on an error path too: cancelled first when it has not ended (guardian S2).
+  const gone = await letGoOfBatch(ctx, run.batch_id)
   if (run.call_id) {
     const problem = await patchCall(ctx.adminDb, ctx.userId, run.call_id, { outcome: 'error', stop_reason: stopReason, error: cutChars(message, FAILURE_MAX) })
     if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
   }
-  await ctx.adminDb.from('ai_eval_runs').update({ status: 'failed', failure: cutChars(message, FAILURE_MAX), finished_at: ctx.now().toISOString(), claimed_at: null }).eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
+  const { error } = await ctx.adminDb.from('ai_eval_runs').update({ status: 'failed', failure: cutChars(message, FAILURE_MAX), finished_at: ctx.now().toISOString(), claimed_at: null, ...(run.batch_id ? gone : {}) }).eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
+  if (error) ctx.report('a failed self-test could not be saved as failed')
   return 'failed'
-}
-
-/** Deletes the batch at Anthropic right after its results were read; the run row says when, or why it could not. */
-async function deleteEvalBatch(ctx: RunContext, run: EvalRun): Promise<{ batch_deleted_at: string | null; batch_delete_note: string | null }> {
-  if (!run.batch_id || !ctx.provider) return { batch_deleted_at: null, batch_delete_note: 'No batch to delete.' }
-  try {
-    const deleted = await ctx.provider.deleteBatch(run.batch_id, BATCH_STATUS_MS)
-    return deleted.ok ? { batch_deleted_at: ctx.now().toISOString(), batch_delete_note: null } : { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${hideSecrets(deleted.message, ctx.secrets)}`, 300) }
-  } catch (e) {
-    return { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${errorPlace(e)}`, 300) }
-  }
 }
 
 async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'failed' | 'waiting'> {
@@ -404,14 +408,14 @@ async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'fa
     const champion = scores.find(s => s.setup === 'champion')
     const decisions: { setup: SetupScore; decision: Decision }[] = champion ? scores.filter(s => s !== champion).map(s => ({ setup: s, decision: decideChallenger(champion, s, 2) })) : []
     const best = decisions.filter(d => d.decision.wins).sort((a, b) => b.decision.challenger - a.decision.challenger)[0]
-    const state = await readJobLearning(ctx.adminDb, ctx.userId, job)
-    const pending = best?.setup.setup === 'with_new_notes' ? (await readLessons(ctx.adminDb, ctx.userId, job, 'pending')) ?? [] : []
-    const other: ExampleStrategy = state?.strategy === 'mmr' ? 'knn' : 'mmr'
-    const winner = best ? {
-      setup: best.setup.setup,
-      strategy: best.setup.setup === 'champion' ? state?.strategy : best.setup.setup.startsWith('examples_') ? other : state?.strategy,
-      k: state?.k || 3,
-      lessons: pending.map(l => l.text), lesson_ids: pending.map(l => l.id),
+    // The winner as it was TESTED (the run's own summary), never as the tables are now: a note added since is not part of it.
+    const summary = run.jobs.find(j => j.job === job) ?? {}
+    const tried = (Array.isArray(summary.trial_lessons) ? summary.trial_lessons : []).filter(isLearnObj)
+      .filter(l => typeof l.id === 'string' && LEARN_UUID.test(l.id) && typeof l.text === 'string') as { id: string; text: string }[]
+    const used = isLearnObj(summary.strategies) && best ? summary.strategies[best.setup.setup] : null
+    const winner = best && isLearnObj(used) ? {
+      setup: best.setup.setup, strategy: used.strategy, k: used.k,
+      lessons: best.setup.setup === 'with_new_notes' ? tried.map(l => l.text) : [], lesson_ids: best.setup.setup === 'with_new_notes' ? tried.map(l => l.id) : [],
     } : null
     jobs.push({
       job, champion: champion ?? null,
@@ -421,7 +425,7 @@ async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'fa
   }
   for (const [job, n] of Object.entries(notesAdded)) if (!lines.has(job)) jobs.push({ job, decision: 'none', notes_added: n })
 
-  const deleted = await deleteEvalBatch(ctx, run)
+  const deleted = await letGoOfBatch(ctx, run.batch_id, true)
   const problem = await patchCall(ctx.adminDb, ctx.userId, run.call_id, {
     outcome: 'ok', error: null, stop_reason: 'batch_ended', cost_usd: Math.round(cost * 1_000_000) / 1_000_000,
     input_tokens: usage.input, cache_read_tokens: usage.cacheRead, output_tokens: usage.output, duration_ms: Number.isFinite(age) ? Math.max(0, Math.round(age)) : 0,
@@ -432,7 +436,13 @@ async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'fa
     status: 'done', result: { jobs, cost_usd: Math.round(cost * 1_000_000) / 1_000_000 }, decision_state: proposed ? 'proposed' : 'none',
     finished_at: ctx.now().toISOString(), claimed_at: null, plan: [], ...deleted,
   }).eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
-  if (error) { ctx.report('a finished self-test could not be saved'); return 'waiting' }
+  if (error) {
+    // Never "waiting": the batch is already deleted, a second read would find nothing. A smaller write says what happened.
+    ctx.report('a finished self-test could not be saved')
+    await ctx.adminDb.from('ai_eval_runs').update({ status: 'failed', failure: 'The scores could not be saved.', finished_at: ctx.now().toISOString(), claimed_at: null, plan: [], ...deleted })
+      .eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
+    return 'failed'
+  }
   return 'done'
 }
 

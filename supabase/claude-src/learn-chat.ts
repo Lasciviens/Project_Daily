@@ -2,7 +2,7 @@
 //  The `claude` function · learning in Ask AI
 //
 //  · chatNoteLesson — `note_lesson`'s write: the note's words are checked against the person's OWN text of this message
-//    (`wordsAreOwners`, never a tool result or a page). A plain fact in their words turns on at once; anything else waits
+//    (`factInOwnersWords`: a typed message, the note one unbroken run of its words; never a tool result or a page). A plain fact in their words turns on at once; anything else waits
 //    for their tap (and the database refuses the function turning it on). The same note is never added twice.
 //  · readChatNotes — the "about you" profile: the person's active chat notes (facts and preferences), service role,
 //    named by the verified user, for `recall_notes` (delivered as data blocks, never in the instructions).
@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RunContext } from './run.ts'
-import { LESSON_DAYS, lessonStart, normKey, storedValue, wordsAreOwners, type LessonKind } from './learn-text.ts'
+import { LESSON_DAYS, lessonStart, normKey, storedValue, factInOwnersWords, type LessonKind } from './learn-text.ts'
 import { insertCorrections, insertLesson, lessonExists, readLessons } from './learn-store.ts'
 import type { CorrectionRow } from './learn-diff.ts'
 import type { NoteResult, ProfileNote } from './chat-learn-tools.ts'
@@ -22,7 +22,7 @@ export const CHAT_NOTES_PER_DAY = 20
 
 export async function chatNoteLesson(ctx: RunContext, kind: LessonKind, text: string, ownerText: string, callId: string): Promise<NoteResult> {
   try {
-    const start = lessonStart(kind, 'chat_tool', text, wordsAreOwners(text, ownerText))
+    const start = lessonStart(kind, 'chat_tool', text, factInOwnersWords(text, ownerText))
     // A flood bound (a steered answer calling the tool again and again): 20 notes from Ask AI a day.
     const since = new Date(ctx.now().getTime() - 86_400_000).toISOString()
     const { count, error } = await ctx.adminDb.from('ai_lessons').select('id', { count: 'exact', head: true }).eq('user_id', ctx.userId).eq('source_kind', 'chat_tool').gte('created_at', since)
