@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { voiceLanguageOf, type VoiceLanguageId } from './chatRules'
 
 // Voice for Ask AI, written fresh (the owner's rule, 20.11.2026): the browser's own speech recognition turns speech into
 // words, and the words fill the message box for the owner to read, change and send. The app never records, keeps or
@@ -43,14 +44,15 @@ export function speechProblem(code: string | undefined): string | null {
 
 /**
  * `onText(spoken)` gets everything said in the current listening (it grows while the person talks, and the last call is
- * the final text). The device's language is the recognizer's language.
+ * the final text). `tag` is the recognizer's language (null: the device's language).
  */
-export function useSpeechInput(onText: (spoken: string) => void): { supported: boolean; listening: boolean; problem: string | null; toggle: () => void; stop: () => void } {
+export function useSpeechInput(onText: (spoken: string) => void, tag: string | null = null): { supported: boolean; listening: boolean; problem: string | null; toggle: () => void; stop: () => void } {
   const [listening, setListening] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const ref = useRef<Recognition | null>(null)
   const textRef = useRef(onText)
-  useEffect(() => { textRef.current = onText }, [onText])
+  const tagRef = useRef(tag)
+  useEffect(() => { textRef.current = onText; tagRef.current = tag }, [onText, tag])
   const supported = recognitionCtor() !== null
 
   const stop = useCallback(() => { ref.current?.stop() }, [])
@@ -62,7 +64,7 @@ export function useSpeechInput(onText: (spoken: string) => void): { supported: b
     const Ctor = recognitionCtor()
     if (!Ctor) return
     const rec = new Ctor()
-    rec.lang = (typeof navigator !== 'undefined' && navigator.language) || 'en-US'
+    rec.lang = tagRef.current ?? ((typeof navigator !== 'undefined' && navigator.language) || 'en-US')
     rec.continuous = false
     rec.interimResults = true
     rec.maxAlternatives = 1
@@ -79,4 +81,18 @@ export function useSpeechInput(onText: (spoken: string) => void): { supported: b
   }, [])
 
   return { supported, listening, problem, toggle, stop }
+}
+
+const VOICE_LANGUAGE_KEY = 'lasci-ai-voice-language'
+
+/** The voice language the owner picked, kept on this device only (a convenience: storage may be blocked, then it is the device's own). */
+export function useVoiceLanguage(): [VoiceLanguageId, (id: VoiceLanguageId) => void] {
+  const [id, setId] = useState<VoiceLanguageId>(() => {
+    try { return voiceLanguageOf(localStorage.getItem(VOICE_LANGUAGE_KEY)) } catch { return 'auto' }
+  })
+  const set = useCallback((next: VoiceLanguageId) => {
+    setId(next)
+    try { localStorage.setItem(VOICE_LANGUAGE_KEY, next) } catch { /* storage may be blocked: the choice lasts until the page closes */ }
+  }, [])
+  return [id, set]
 }

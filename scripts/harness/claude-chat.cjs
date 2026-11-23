@@ -17,7 +17,7 @@ const sse = (events) => events.map(e => `event: ${e.event}\ndata: ${JSON.stringi
 const FAKE_TOKENS = { input_tokens: 420, cache_read_tokens: 2610, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 230, thinking_tokens: 60 }
 
 /** The answer for one message: the events, and the messages a stored chat would hold. */
-function plan(text, store) {
+function plan(text, store, mode) {
   const lower = text.toLowerCase()
   const tasks = store.tables.tasks ?? []
   const diaryDay = '2026-11-20'
@@ -34,6 +34,10 @@ function plan(text, store) {
       reply: food ? 'I have prepared a banana for your snack. It is saved only after you tap Confirm.' : 'I have prepared a task to buy flowers for Tuesday. It is saved only after you tap Confirm.',
       tool_name: food ? 'propose_log_food' : 'propose_add_task',
     }
+  }
+  // The coach chat (4b): its own tools and its own words.
+  if (mode === 'coach') {
+    return { kind: 'coach', steps: ["Looking at the week's training"], tool_name: 'get_training_week', reply: 'This week you trained **3 times**: Push on Monday, Pull on Wednesday and Legs on Friday. Your last assessment (from 21.11.2026) said **technique day**, so keep Friday light.' }
   }
   if (/dentist|find|where/.test(lower)) {
     const task = tasks.find(t => /dentist|tannlege/i.test(String(t.title))) ?? tasks[0]
@@ -53,7 +57,12 @@ function keepChat(store, body, p, text, costUsd, runId) {
   let conversation = t('ai_conversations').find(c => c.id === body.conversation_id && c.user_id === owner)
   const now = new Date().toISOString()
   if (!conversation) {
-    conversation = { id: randomUUID(), user_id: owner, created_at: now, updated_at: now, title: text.slice(0, 60), model: 'claude-haiku-5-5', effort: 'medium', thinking: 'adaptive', tools_hash: 'a'.repeat(64), system_hash: 'b'.repeat(64), tool_names: ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'ask_database', 'propose_add_task', 'propose_log_food'], status: 'open', message_count: 0, last_prompt_tokens: 0, cost_usd: 0, deleted_at: null }
+    const coach = body.mode === 'coach'
+    // The tools a new chat starts with: the owner's switches (ai_tool_settings), like the function; a write tool only ask or off.
+    const off = new Set((t('ai_tool_settings') ?? []).filter(r => r.user_id === owner && r.mode === 'off').map(r => r.tool))
+    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food']
+    const words = String((store.tables.ai_settings ?? [])[0]?.chat_instructions ?? '')
+    conversation = { id: randomUUID(), user_id: owner, created_at: now, updated_at: now, title: text.slice(0, 60), model: 'claude-haiku-5-5', effort: 'medium', thinking: 'adaptive', tools_hash: 'a'.repeat(64), system_hash: 'b'.repeat(64), tool_names: all.filter(n => !off.has(n)), mode: coach ? 'coach' : 'chat', owner_instructions: words, status: 'open', message_count: 0, last_prompt_tokens: 0, cost_usd: 0, deleted_at: null }
     t('ai_conversations').push(conversation)
   }
   const seq0 = conversation.message_count
@@ -63,8 +72,8 @@ function keepChat(store, body, p, text, costUsd, runId) {
     outcome: 'ok', stop_reason: 'end_turn', error: null, request_id: `req_harness_chat_${seq0}`, ...FAKE_TOKENS, long_prompt: false, cost_usd: costUsd, duration_ms: 2100,
     instructions_version: '2026-11-22.1', tools: [], request: null, response: null, thinking: null,
   })
-  const toolUse = p.kind === 'proposal' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
-  t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 1, role: 'user', content: [{ type: 'text', text }], digest: 'c'.repeat(64), call_id: null, meta: {}, created_at: now })
+  const toolUse = p.kind === 'proposal' || p.kind === 'coach' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
+  t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 1, role: 'user', content: [...(Array.isArray(body.images) ? body.images.slice(0, 2).map(i => ({ type: 'image', source: { type: 'base64', media_type: i.media_type, data: i.data } })) : []), { type: 'text', text }], digest: 'c'.repeat(64), call_id: null, meta: {}, created_at: now })
   t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 2, role: 'assistant', content: [...toolUse, { type: 'text', text: p.reply }], digest: 'd'.repeat(64), call_id: callId,
     meta: { message_id: `msg_${seq0}`, cost_usd: costUsd, run_id: runId, ...(p.citations ? { citations: p.citations } : {}) }, created_at: now })
   let card = null
@@ -82,14 +91,15 @@ function chatAnswer(body, store, opts = {}) {
   if ((store.tables.ai_settings ?? [])[0]?.ai_enabled === false) return stream([{ event: 'error', reason: 'off', message: 'All AI is switched off in Developer → AI → Settings.' }])
   const text = typeof body.text === 'string' ? body.text.trim() : ''
   if (!text) return stream([{ event: 'error', reason: 'bad_input', message: 'Write a message of 1 to 4000 characters.' }])
-  const p = plan(text, store)
+  const known = (store.tables.ai_conversations ?? []).find(c => c.id === body.conversation_id && c.user_id === store.ownerId)
+  const p = plan(text, store, known ? known.mode : body.mode === 'coach' ? 'coach' : 'chat')
   if (p.kind === 'wall') return stream([{ event: 'error', reason: 'wall', message: 'This chat is full. Start a new chat: it keeps working at its best when it is short.', conversation_id: body.conversation_id ?? undefined }])
   if (p.kind === 'refuse') return stream([{ event: 'start', conversation_id: randomUUID(), is_new: true }, { event: 'text', t: 'Let me think about ' }, { event: 'retract' }, { event: 'error', reason: 'declined', message: 'The model declined to answer this one. Try asking it in other words.', cost_usd: 0.0013, run_id: randomUUID() }])
   const costUsd = p.kind === 'plain' ? 0.0004 : 0.0021
   const runId = randomUUID()
   const { conversation, card } = keepChat(store, body, p, text, costUsd, runId)
   const events = [{ event: 'start', conversation_id: conversation.id, is_new: conversation.message_count === 2 }]
-  const toolName = p.kind === 'find' ? 'find_text' : p.kind === 'proposal' ? p.tool_name : 'tool'
+  const toolName = p.kind === 'find' ? 'find_text' : p.kind === 'proposal' || p.kind === 'coach' ? p.tool_name : 'tool'
   const toolInput = p.kind === 'find' ? { query: 'dentist', kind: 'any' } : p.kind === 'proposal' ? { title: p.proposal.args.title } : {}
   for (const label of p.steps ?? []) { events.push({ event: 'step', name: toolName, label }); events.push({ event: 'detail', name: toolName, input: toolInput, ok: true }) }
   const words = p.reply.split(/(?<= )/)

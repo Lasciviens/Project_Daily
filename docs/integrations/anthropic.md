@@ -284,7 +284,7 @@ Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 
 ## Log
 
 ### 23.11.2026: phase 4b (Ask AI controls)
-The owner's words as a second cached system block, photos as base64 image blocks stored in the message, a coach tool set, no `tools` field when all are off, and `phone_ask` with four read tools (one round). No new endpoint, header or beta.
+The owner's words as a second cached system block, photos as base64 image blocks stored in the message, a coach tool set, no `tools` field when all are off, and `phone_ask` with the owner's read tools (one round). No new endpoint, header or beta.
 
 ### 22.11.2026: the chat's tools are not strict, and a deadline
 Live, the first chat request hung until Supabase's wall clock (trap 29). Dropped `strict` from the chat's tools (trap 16), added the first-event and round clocks, and Diagnose's fifth step (the chat's real first request, 120 s, a call of its own because the four checks plus it would pass 150 s). Reading `message_start` timing and a first Diagnose chat step on the real account is the owner's next check.

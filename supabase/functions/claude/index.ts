@@ -8545,7 +8545,7 @@ async function setChatDeleted(ctx: RunContext, input: unknown, deleted: boolean)
 //  The `claude` function · the phone's question with tools (phase 4b)
 //
 //  `phone_ask` used to be one model call with no tools: the gateway looked a small context up by code and handed it
-//  over. Now the model may also read, through four tools of its own (the day's plan, a week's figures, a day's food, a
+//  over. Now the model may also read, through tools of its own (the day's plan, a week's figures, a day's food, a
 //  words search), when the context does not already answer. The limits that keep it a phone answer:
 //
 //    · a small read-only set (`phoneChatTools`: day plan, week figures, food day, find text, About me; no proposals, no

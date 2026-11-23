@@ -269,7 +269,7 @@ function readChat(raw: unknown): Describe['chat'] {
   const tools = list(c.tools).map(rec).filter(t => typeof t.name === 'string' && /^[a-z][a-z0-9_]{1,39}$/.test(t.name as string) && (t.kind === 'read' || t.kind === 'write')).slice(0, 30).map(t => ({
     name: text(t.name, 40), kind: t.kind as 'read' | 'write', what: text(t.what, 600),
     defaultMode: (t.defaultMode === 'on' || t.defaultMode === 'ask' || t.defaultMode === 'off' ? t.defaultMode : t.kind === 'write' ? 'ask' : 'on') as 'on' | 'ask' | 'off',
-    chats: list(t.chats).filter((x): x is 'chat' | 'coach' => x === 'chat' || x === 'coach'),
+    chats: list(t.chats).filter((x): x is 'chat' | 'coach' | 'phone' => x === 'chat' || x === 'coach' || x === 'phone'),
   }))
   return { tools, limits: { ownerInstructionsMax: int(l.ownerInstructionsMax) || 1000, imagesPerMessage: int(l.imagesPerMessage) || 2, imagesPerChat: int(l.imagesPerChat) || 4, imageBase64Max: int(l.imageBase64Max) || 450_000, photoLongSide: int(l.photoLongSide) || 1280 } }
 }

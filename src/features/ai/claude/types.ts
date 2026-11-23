@@ -96,7 +96,7 @@ export interface DescribeJob {
 }
 
 /** One chat tool as the function lists it for the settings screen: its kind, what it starts as, and which chats have it. */
-export interface DescribeChatTool { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach')[] }
+export interface DescribeChatTool { name: string; kind: 'read' | 'write'; what: string; defaultMode: 'on' | 'ask' | 'off'; chats: ('chat' | 'coach' | 'phone')[] }
 
 /** What the function says about itself (`{ action: 'describe' }`): its own lists, limits, prices and jobs. */
 export interface Describe {

@@ -121,25 +121,27 @@ export async function setChatDeleted(id: string, deleted: boolean): Promise<{ id
   return { id, title: typeof data.title === 'string' ? data.title : 'Chat' }
 }
 
-export interface ConversationListItem { id: string; title: string; updatedAt: string; status: string; lastPromptTokens: number; costUsd: number }
+export interface ConversationListItem { id: string; title: string; updatedAt: string; status: string; lastPromptTokens: number; costUsd: number; mode: ChatMode }
 
 interface PgError { code?: string; message?: string }
 const isMissing = (e: PgError | null): boolean => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table/i.test(e.message ?? ''))
 
 /** The owner's chats, newest first. Before migration 197 runs the list is empty. */
 export async function fetchConversations(): Promise<ConversationListItem[]> {
-  const { data, error } = await supabase.from('ai_conversations').select('id, title, updated_at, status, last_prompt_tokens, cost_usd').is('deleted_at', null).order('updated_at', { ascending: false }).limit(50)
+  let { data, error } = await supabase.from('ai_conversations').select('id, title, updated_at, status, last_prompt_tokens, cost_usd, mode').is('deleted_at', null).order('updated_at', { ascending: false }).limit(50)
+  // Before migration 198 there is no kind: every chat is the everyday one.
+  if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_conversations').select('id, title, updated_at, status, last_prompt_tokens, cost_usd').is('deleted_at', null).order('updated_at', { ascending: false }).limit(50) as unknown as { data: typeof data; error: typeof error })
   if (error) {
     if (isMissing(error)) return []
     throw error
   }
   return (Array.isArray(data) ? data : []).flatMap(r => typeof r.id === 'string'
-    ? [{ id: r.id as string, title: typeof r.title === 'string' && r.title ? r.title : 'Chat', updatedAt: String(r.updated_at ?? ''), status: String(r.status ?? 'open'), lastPromptTokens: Number(r.last_prompt_tokens) || 0, costUsd: Number(r.cost_usd) || 0 }]
+    ? [{ id: r.id as string, title: typeof r.title === 'string' && r.title ? r.title : 'Chat', updatedAt: String(r.updated_at ?? ''), status: String(r.status ?? 'open'), lastPromptTokens: Number(r.last_prompt_tokens) || 0, costUsd: Number(r.cost_usd) || 0, mode: (r as { mode?: unknown }).mode === 'coach' ? 'coach' as const : 'chat' as const }]
     : [])
 }
 
 /** What a chat was started with (frozen by the function): its kind, its tools and whether the owner's own words were in it. */
-export interface ChatSetup { mode: ChatMode; toolNames: string[]; ownInstructions: boolean }
+export interface ChatSetup { mode: ChatMode; toolNames: string[]; ownerInstructions: string }
 
 const isMissingColumn = (e: PgError | null): boolean => !!e && (e.code === '42703' || e.code === 'PGRST204')
 
@@ -149,7 +151,7 @@ export async function fetchChatSetup(id: string): Promise<ChatSetup | null> {
   if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_conversations').select('tool_names').eq('id', id).maybeSingle() as unknown as { data: typeof data; error: typeof error })
   if (error || !data) return null
   const names = Array.isArray(data.tool_names) ? data.tool_names.filter((n: unknown): n is string => typeof n === 'string').slice(0, 20) : []
-  return { mode: data.mode === 'coach' ? 'coach' : 'chat', toolNames: names, ownInstructions: typeof data.owner_instructions === 'string' && data.owner_instructions !== '' }
+  return { mode: data.mode === 'coach' ? 'coach' : 'chat', toolNames: names, ownerInstructions: typeof data.owner_instructions === 'string' ? data.owner_instructions.slice(0, 1000) : '' }
 }
 
 /** A chat's stored messages and proposals, for drawing it. */

@@ -77,11 +77,11 @@ export const AI_OVERVIEW_BOARD: BoardLayouts<AiOverviewSection> = {
 // Settings: the total budget and the text log first (a rail on the left from
 // the laptop — they frame every job), the jobs in main, over the rest of the
 // board from 1920 (a card per job, more across as the width grows).
-export const AI_SETTINGS_SECTIONS = ['general', 'tools', 'words', 'jobs'] as const
+export const AI_SETTINGS_SECTIONS = ['general', 'words', 'tools', 'jobs'] as const
 export type AiSettingsSection = typeof AI_SETTINGS_SECTIONS[number]
 
 export const AI_SETTINGS_BOARD: BoardLayouts<AiSettingsSection> = {
-  1: ['general', 'tools', 'words', 'jobs'],
+  1: ['general', 'words', 'tools', 'jobs'],
   2: { lead: 1, columns: [['general', 'words'], ['tools', 'jobs']] },
   3: { lead: 1, columns: [['general', 'words'], { stack: ['tools', 'jobs'], span: 2 }] },
 }

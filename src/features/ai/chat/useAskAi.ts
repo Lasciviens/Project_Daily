@@ -182,7 +182,7 @@ export function useAskAi(): AskAi {
     photosRef.current = photos
     const answerKey = nextKey('a')
     const userKey = nextKey('u')
-    setTurns(list => [...list, { ...newTurn(userKey, 'user', text), photos: photos.length }, newTurn(answerKey, 'assistant')])
+    setTurns(list => [...list, { ...newTurn(userKey, 'user', text), photos: photos.length, photoUrls: photos.map(p => `data:${p.media_type};base64,${p.data}`) }, newTurn(answerKey, 'assistant')])
     return run(text, answerKey, userKey, photos)
   }, [busy, run])
 

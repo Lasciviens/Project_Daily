@@ -140,21 +140,21 @@ function AskAiSetup({ about }: { about: Describe }) {
         <div>
           <dt className="text-body font-semibold text-fg">Your instructions</dt>
           <dd>{words.isError ? 'Could not be read.' : words.data ? <span className="whitespace-pre-wrap break-words">{words.data}</span> : 'None written. Settings → Your instructions.'}</dd>
-          <dd className="text-fg-muted">Sent as a second block after the fixed rules, in every new chat, never in a message or a tool result, and never able to change the rules.</dd>
+          <dd className="text-fg-muted">Every new chat starts with these words, and so does the phone’s answer. They are kept apart from the assistant’s fixed safety rules and from your messages, and they cannot change those rules.</dd>
         </div>
         <div>
           <dt className="text-body font-semibold text-fg">Tools</dt>
           <dd>{about.chat.tools.map(t => `${toolLabel(t.name)}: ${mode[modes[t.name]]}`).join(' · ')}</dd>
-          <dd className="text-fg-muted">The everyday chat and the Training coach chat each use their own set of these. Settings applies to new chats; a chat shows the set it started with.</dd>
+          <dd className="text-fg-muted">Ask AI, the Training coach and the phone each use their own set of these. Off stops a tool at once; anything else you change reaches chats you start afterwards, and a chat shows the tools it started with.</dd>
         </div>
         <div>
           <dt className="text-body font-semibold text-fg">Photos and voice</dt>
-          <dd>Up to {lim.imagesPerMessage} photos in a message and {lim.imagesPerChat} in a chat, each shrunk in the browser to at most {formatCount(lim.photoLongSide)} px. A photo stays in its chat (the saved history is replayed exactly) and goes with the chat when it is deleted or its days pass. The first photo makes that answer a little dearer.</dd>
+          <dd>Up to {lim.imagesPerMessage} photos in a message and {lim.imagesPerChat} in a chat, each shrunk in the browser to at most {formatCount(lim.photoLongSide)} px. A photo is kept with its chat, so the chat can be continued as it was, and goes when the chat is deleted or its days run out. The first photo in a chat makes that answer a little dearer.</dd>
           <dd>The microphone uses your browser’s own speech recognition and only fills the message box. Lasci’s Board never receives the sound; the browser’s maker may process it (on an iPhone, Apple).</dd>
         </div>
         <div>
           <dt className="text-body font-semibold text-fg">The coach chat and the phone</dt>
-          <dd>Training → Coach → Chat with the coach opens Ask AI with the coach’s own instructions and read-only tools. The phone’s question has four read-only tools and one round of them, and cannot propose anything.</dd>
+          <dd>Training → Coach → Chat with the coach opens Ask AI with the coach’s own instructions and read-only tools. The phone’s question uses the same read tools you leave on (and your instructions), one round at most, and cannot propose, write or take photos.</dd>
         </div>
         <div>
           <dt className="text-body font-semibold text-fg">About me</dt>

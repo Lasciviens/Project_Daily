@@ -61,6 +61,8 @@ export function PTCoachTab() {
   const { data: history = [] } = usePtAssessments()
   const generate = useGeneratePtAssessment()
   const openCoachChat = useUIStore(s => s.openCoachChat)
+  // The coach chat reads the verdicts saved at the last assessment, so the date they come from is shown by its button.
+  const lastAssessed = history[0]?.date ?? null
 
   // Latest of today = the "current" assessment; everything else is history.
   const dbCurrent: PTAssessmentRow | undefined = history.find(a => a.date === today)
@@ -122,6 +124,7 @@ export function PTCoachTab() {
             </Button>
             {/* Ask AI in coach mode: the same chat, with the coach's own instructions and tools (it changes nothing). */}
             <Button variant="secondary" icon={<MessageCircle />} onClick={openCoachChat}>Chat with the coach</Button>
+            {lastAssessed && <span className="text-meta text-fg-muted">Last assessed {formatDate(lastAssessed)}</span>}
           </div>
 
           {current && (
