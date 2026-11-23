@@ -24,7 +24,7 @@ function ToolRow({ tool, mode, onChange }: { tool: DescribeChatTool; mode: ToolM
         <p className="text-meta text-fg-faint">Used by: {tool.chats.map(c => USED_BY[c]).filter(Boolean).join(', ')}</p>
       </div>
       {tool.kind === 'write' ? (
-        <select value={mode} onChange={e => onChange(e.target.value === 'off' ? 'off' : 'ask')} aria-label={`${label}: mode`} className="select w-28 shrink-0">
+        <select value={mode} onChange={e => onChange(e.target.value === 'off' ? 'off' : 'ask')} aria-label={`${label}: mode`} className="select w-36 shrink-0">
           <option value="ask">Ask first</option>
           <option value="off">Off</option>
         </select>

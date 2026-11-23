@@ -162,9 +162,6 @@ export function AskAIPanel() {
             <PhotoStrip photos={photos} onRemove={i => setPhotos(list => list.filter((_, at) => at !== i))} firstInChat={photosInChat === 0} days={keptDays} />
             {speech.problem && <p role="alert" data-tone="warn" className="tone-text mb-1.5 text-meta">{speech.problem}</p>}
             <div className="flex items-end gap-2">
-              <AttachPhoto onFile={f => { void photo.mutateAsync(f).then(p => setPhotos(list => (list.length < CHAT_IMAGES_PER_MESSAGE ? [...list, p] : list)), () => undefined) }}
-                loading={photo.isPending} disabled={photoRoom <= 0 || chat.busy || chat.wall === 'full'} why={photoWhy} />
-              {speech.supported && <MicButton listening={speech.listening} language={voiceLanguage} onLanguage={setVoiceLanguage} disabled={chat.busy || chat.wall === 'full'} onToggle={() => { if (!speech.listening) typedBeforeSpeech.current = input; speech.toggle() }} />}
               <textarea
                 ref={boxRef}
                 data-autofocus
@@ -176,7 +173,6 @@ export function AskAIPanel() {
                 rows={1}
                 disabled={chat.wall === 'full'}
                 className="input max-h-32 flex-1 resize-none py-2.5 disabled:opacity-50"
-                onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px` }}
               />
               {chat.busy ? (
                 <button type="button" onClick={chat.stop} aria-label="Stop" className="btn-secondary h-11 w-11 shrink-0 !px-0"><Square className="h-[16px] w-[16px]" aria-hidden /></button>
@@ -185,6 +181,12 @@ export function AskAIPanel() {
                   <SendHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
                 </button>
               )}
+            </div>
+            {/* Photo and voice sit under the box, so the words keep the full width on a phone. */}
+            <div className="mt-1 flex items-center gap-1">
+              <AttachPhoto onFile={f => { void photo.mutateAsync(f).then(p => setPhotos(list => (list.length < CHAT_IMAGES_PER_MESSAGE ? [...list, p] : list)), () => undefined) }}
+                loading={photo.isPending} disabled={photoRoom <= 0 || chat.busy || chat.wall === 'full'} why={photoWhy} />
+              {speech.supported && <MicButton listening={speech.listening} language={voiceLanguage} onLanguage={setVoiceLanguage} disabled={chat.busy || chat.wall === 'full'} onToggle={() => { if (!speech.listening) typedBeforeSpeech.current = input; speech.toggle() }} />}
             </div>
             <p className="mt-1.5 hidden text-micro text-fg-faint md:block">Enter to send · Shift+Enter for a new line</p>
           </div>

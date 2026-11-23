@@ -45,7 +45,7 @@ export function MicButton({ listening, onToggle, disabled, language, onLanguage 
         {listening ? <Square aria-hidden /> : <Mic aria-hidden />}
       </IconButton>
       <select value={language} onChange={e => onLanguage(voiceLanguageOf(e.target.value))} disabled={listening} aria-label="Voice language" title="Voice language"
-        className="select !h-8 !w-[3.9rem] !px-1.5 !py-0 text-meta">
+        className="select !h-8 !w-[4.75rem] !px-2 !py-0 text-meta">
         {VOICE_LANGUAGES.map(l => <option key={l.id} value={l.id}>{l.short}</option>)}
       </select>
     </span>

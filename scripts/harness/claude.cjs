@@ -410,8 +410,8 @@ const DESCRIBE_SAFETY_RULES = [
 
 /** The chat tools `describe` lists for the Settings screen (phase 4b): name, kind, what it starts as, and which chats have it. */
 const CHAT_TOOLS = [
-  ['get_day_plan', 'read', ['chat', 'coach']], ['get_week_figures', 'read', ['chat']], ['get_food_day', 'read', ['chat']], ['find_text', 'read', ['chat']],
-  ['get_about_me', 'read', ['chat', 'coach']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
+  ['get_day_plan', 'read', ['chat', 'coach', 'phone']], ['get_week_figures', 'read', ['chat', 'phone']], ['get_food_day', 'read', ['chat', 'phone']], ['find_text', 'read', ['chat', 'phone']],
+  ['get_about_me', 'read', ['chat', 'coach', 'phone']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
   ['get_training_week', 'read', ['coach']], ['get_health_trends', 'read', ['coach']], ['get_pt_verdicts', 'read', ['coach']],
 ].map(([name, kind, chats]) => ({ name, kind, what: `The ${name} tool.`, defaultMode: kind === 'write' ? 'ask' : 'on', chats }))
 
