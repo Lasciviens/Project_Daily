@@ -21,6 +21,7 @@
 --                         tripwire that watches the calls after a change. Server-only writes.
 --  7. ai_eval_runs      — the weekly self-test (Message Batches): `batch_id`, `plan` and `claimed_at` are server-only.
 --  8. ai_source_stats   — per job and host, how often a page read worked. Only ever ORDERS candidates; never a target.
+--  8b. ai_suggestions (199) takes one more kind, `instruction_change`: a lesson that won becomes a suggested code change.
 --  9. Functions: ai_case_candidates (service role), ai_source_note (service role), ai_learn_quarantine and
 --     ai_lesson_rollback (the owner, SECURITY INVOKER), ai_learn_purge (daily timer), and a trigger that records a
 --     dismissed suggestion (ai_suggestions, 199) as a correction.
@@ -336,6 +337,13 @@ end $$;
 drop trigger if exists trg_ai_lessons_one_active on public.ai_lessons;
 create trigger trg_ai_lessons_one_active before insert or update of state on public.ai_lessons
   for each row execute function public.ai_lessons_one_active();
+
+-- ─── 8b. A proposed change to a job's instructions is a suggestion (instructions are code: a reviewed PR) ──────
+-- 199's kinds, plus one: `instruction_change` (written only by the function when the owner approves a lesson that won the
+-- weekly self-test; its text names the job and the lesson). Still plain text, still only a row the owner reads.
+alter table public.ai_suggestions drop constraint if exists ai_suggestions_kind_check;
+alter table public.ai_suggestions add constraint ai_suggestions_kind_check
+  check (kind in ('widget', 'chart', 'automation', 'notification', 'report', 'existing_feature', 'new_tool', 'cheaper_setting', 'instruction_change'));
 
 -- ─── 9. Functions ────────────────────────────────────────────────────────────
 -- The owner-confirmed cases most like a text: full-text search plus trigram similarity, for the function's example pick

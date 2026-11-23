@@ -11,7 +11,7 @@
 
 import type {
   AnswerCheck, Caller, CountReply, EarlyStep, JobDefinition, ModelAnswer, ModelFailure, ModelRequest, Outcome, PageEnv,
-  PreparedRun, Provider, RequestDocument, RequestImage, RunReply, TokenUsage,
+  KnowledgeBlock, PreparedRun, Provider, RequestDocument, RequestImage, RunReply, TokenUsage,
 } from './types.ts'
 import { costOf, WEB_SEARCH_MAX_USES, worstCostOf } from './prices.ts'
 import { PDF_PROMPT_TOKENS_MAX, pdfTokensHeld } from './image-rules.ts'
@@ -23,6 +23,7 @@ import {
   countRecentCalls, finishCall, readGate, readSettingRows, reserveCall, summaryOf, writeCall, type CallRow, type Db, type GateScope,
 } from './ledger.ts'
 import { findJob } from './jobs.ts'
+import { LEARN_RULE, LEARN_VERSION_SUFFIX, learnAfter, learnBefore, noteSourceRead } from './learn-run.ts'
 
 /** A notification: fixed words built by code, and where a tap opens (a hash route inside the app). */
 export interface PushMessage {
@@ -71,6 +72,8 @@ const RUN_UNKNOWN_JOB = 'unknown'
 const RUN_NO_MODEL = 'none'
 // The provider column of a row for work code did alone (no model asked).
 const RUN_PAGE_PROVIDER = 'page'
+// The provider column of a row the owner's own rules answered (learn-run.ts): no model asked.
+const RUN_RULES_PROVIDER = 'rules'
 export const RUN_ERROR_MAX = 500
 // A call that failed in one of these ways may still have been billed (the request may have reached the model), so
 // its row keeps the reserved worst-case cost. A refusal at the door (a bad key, a bad request, a spend limit, a 429)
@@ -148,6 +151,8 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
   if (prepared.early) {
     const earlyStarted = Date.now()
     const early = await runEarly(ctx, prepared.early.bind(prepared))
+    // Source memory: how the page of this host read (a count per host; never a target, learn-run.ts).
+    await noteSourceRead(ctx, job.name, input, early.kind === 'answer' ? 'read_by_code' : early.kind === 'model' ? 'text_to_model' : 'failed')
     if (early.kind === 'stop') return stop(early.outcome, early.message)
     if (early.kind === 'answer') {
       row.outcome = 'ok'
@@ -164,6 +169,21 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     userText = early.userText
   }
 
+  // 4b2 · What the app learned (learn-run.ts). The owner's active rules may answer alone: no model, no reservation, a
+  //       finished zero-cost row (provider `rules`), and the reply says `source: 'rules'`. Otherwise owner-confirmed past
+  //       cases and approved lessons go with the call as data.
+  const learn = await learnBefore(ctx, job, input)
+  if (learn?.ruleAnswer) {
+    row.outcome = 'ok'
+    row.provider = RUN_RULES_PROVIDER
+    row.model = RUN_NO_MODEL
+    row.effort = null
+    row.cost_usd = 0
+    await record(ctx, row)
+    const result = await learnAfter(ctx, learn, learn.ruleAnswer, row.id, true)
+    return { ok: true, job: job.name, result, source: 'rules', call: summaryOf(row) }
+  }
+
   // 4c · A PDF's real size is asked of the provider (count_tokens, free) before anything is reserved: the reservation
   //      holds that count, never a guess from bytes, and a PDF over the cap is refused here. The count leaves out the
   //      web search (the count endpoint takes no server tool), which the reservation adds on its own.
@@ -177,43 +197,87 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     documentTokens = pdfTokensHeld(counted.tokens)
   }
 
-  // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes.
-  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs, { images: prepared.images, documents: prepared.documents, webSearchMax: prepared.webSearchMax })
+  // 5 · The request: the fixed instructions first (the provider caches them), then the part that changes. What the app
+  //     learned (past cases, approved lessons) goes after the cache mark as data (`search_result` blocks).
+  const knowledge = learn?.knowledge ?? []
+  if (knowledge.length) row.instructions_version = `${job.version}${LEARN_VERSION_SUFFIX}`
+  const request = buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, ctx.timeoutMs, { images: prepared.images, documents: prepared.documents, webSearchMax: prepared.webSearchMax, knowledge })
 
+  // 6–8 · Reserve, send, read, ledger (one attempt).
+  let attempt = await sendOnce(ctx, ctx.provider, job, settings, prepared, request, row, documentTokens)
+  if (attempt.kind === 'stopped') return attempt.reply
+  // 8b · Retry ONCE when our own check refused the answer, sending the check's exact sentence (never asking the model
+  //      to grade itself). A second ledger row (same run, step 2), reserved like any call; when it cannot be reserved
+  //      (a cap, the budget), the first refusal stands.
+  if (!attempt.verdict.ok && attempt.verdict.outcome === 'invalid' && attempt.verdict.problem) {
+    const again = newRow(ctx, job)
+    again.run_id = row.run_id
+    again.step = 2
+    again.model = row.model
+    again.effort = row.effort
+    again.instructions_version = row.instructions_version
+    const retried: ModelRequest = { ...request, userText: `${request.userText}${retryNote(attempt.verdict.problem)}` }
+    const second = await sendOnce(ctx, ctx.provider, job, settings, prepared, retried, again, documentTokens)
+    if (second.kind === 'sent') attempt = second
+  }
+  const { verdict, row: last } = attempt
+
+  // 9 · The reply. A message leaves only through hideSecrets. A checked answer first gets the owner's active rules
+  //     (code), and the AI's own values are kept for the owner's save (learn-run.ts).
+  if (verdict.ok) {
+    const result = learn ? await learnAfter(ctx, learn, verdict.result, last.id, true) : verdict.result
+    return { ok: true, job: job.name, result, call: summaryOf(last) }
+  }
+  return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(last) }
+}
+
+/** The line a retry adds to the live text: our own check's sentence, escaped (it may quote a piece of the answer). */
+export function retryNote(problem: string): string {
+  const said = problem.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 300)
+  return `\n\n<check_error>${said}</check_error>\nYour previous answer failed this check of the app. Answer again in the same shape, fixing only that.`
+}
+
+type Attempt =
+  | { kind: 'stopped'; reply: RunReply }
+  | { kind: 'sent'; verdict: Verdict; row: CallRow }
+
+/** Steps 6–8 for one request: the reservation, the call, the job's check, the ledger row. */
+async function sendOnce(
+  ctx: RunContext, provider: Provider, job: JobDefinition, settings: RunSettings, prepared: PreparedRun, request: ModelRequest, row: CallRow, documentTokens: number,
+): Promise<Attempt> {
   // 6 · The reservation: the most this call could cost is held against the budget BEFORE it is sent, in one step
   //     under a lock in the database. Requests that arrive at the same moment each hold their own share, so none
   //     can slip past the wall, and a call whose bill is unknown (a timeout) stays charged at that worst case.
-  // A photo adds its tokens (worked out from its own header); every search the call may run adds its fee and its results.
+  // A photo adds its tokens (worked out from its own header); every search the call may run adds its fee and its results;
+  // learned knowledge adds its text.
+  const knowledgeChars = (request.knowledge ?? []).reduce((n, k) => n + k.text.length + k.source.length + k.title.length, 0)
   const worstCost = worstCostOf(
-    request.model, request.instructions.length + request.userText.length + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
+    request.model, request.instructions.length + request.userText.length + knowledgeChars + (request.answerSchema ? JSON.stringify(request.answerSchema).length : 0), request.maxOutputTokens,
     'live', { imageTokens: (prepared.imageTokens ?? 0) + documentTokens, webSearches: request.webSearch?.maxUses ?? 0 },
   )
   const reservation = await reserveCall(ctx.adminDb, {
     userId: ctx.userId, job: job.name, caller: ctx.caller, mode: row.mode, provider: ctx.providerName, model: request.model,
-    effort: request.effort, instructionsVersion: job.version, worstCostUsd: worstCost,
+    effort: request.effort, instructionsVersion: row.instructions_version ?? job.version, worstCostUsd: worstCost,
     budgetUsd: settings.monthlyBudgetUsd, jobBudgetUsd: settings.jobBudgetUsd,
     perMinute: LIMITS.callsPerMinute, perDay: LIMITS.callsPerDay, callerPerDay: callerDailyCap(ctx.caller),
   })
   if (!reservation) {
     ctx.report('the budget could not be reserved, so nothing was sent')
-    return { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' }
+    return { kind: 'stopped', reply: { ok: false, reason: 'error', message: 'The AI budget could not be checked, so nothing was sent. Try again in a moment.' } }
   }
   if (reservation.kind === 'busy') {
-    return { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, ${LIMITS.callsPerDay} today, or ${callerDailyCap(ctx.caller)} in 24 hours from ${ctx.caller === 'app' ? 'the app' : 'this device'}. Wait a moment and try again.` }
+    return { kind: 'stopped', reply: { ok: false, reason: 'busy', message: `That is more than ${LIMITS.callsPerMinute} AI calls in a minute, ${LIMITS.callsPerDay} today, or ${callerDailyCap(ctx.caller)} in 24 hours from ${ctx.caller === 'app' ? 'the app' : 'this device'}. Wait a moment and try again.` } }
   }
   // From here the database holds a row for this call: it is finished by id, never written a second time.
   row.id = reservation.id
   if (reservation.kind === 'budget') {
     row.outcome = 'budget'
     row.error = cutChars(reservationBudgetProblem(settings, job.title), RUN_ERROR_MAX)
-    return { ok: false, reason: 'budget', message: reservationBudgetProblem(settings, job.title), call: summaryOf(row) }
+    return { kind: 'stopped', reply: { ok: false, reason: 'budget', message: reservationBudgetProblem(settings, job.title), call: summaryOf(row) } }
   }
   const started = Date.now()
-  const answer = await send(ctx, ctx.provider, request)
+  const answer = await send(ctx, provider, request)
   row.duration_ms = Math.max(0, Date.now() - started)
-  // One step is the whole run in phase 1. Phase 4 puts the tool loop here: while the answer asks for a tool,
-  // run the tool as the owner, add its result to the conversation and send again. Each round gets its own
-  // ledger row with this run_id and the next step number.
 
   // 7 · Reading the answer: how it ended first, then the job's own check of what it says.
   const verdict = judge(answer, prepared, settings.maxOutputTokens)
@@ -244,12 +308,14 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     // The text log, only while the owner keeps it on: what was sent, and what came back.
     row.request = trimForLog({
       model: request.model, effort: request.effort, max_output_tokens: request.maxOutputTokens,
-      instructions_version: job.version, instructions: request.instructions, user_text: request.userText,
+      instructions_version: row.instructions_version, instructions: request.instructions, user_text: request.userText,
       answer_schema: request.answerSchema, thinking: request.thinking,
       // A photo is never kept in the log: only how many were sent and how big.
       ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
       ...(request.documents?.length ? { documents: request.documents.map(d => ({ media_type: 'application/pdf', base64_chars: d.base64.length })) } : {}),
       ...(request.webSearch ? { web_search_max_uses: request.webSearch.maxUses } : {}),
+      // What the app learned and sent with it (past cases, approved lessons), as sent.
+      ...(request.knowledge?.length ? { search_results: request.knowledge } : {}),
       // The request as the provider part built it (the cache mark, the thinking setting, the time limit …).
       ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
     }, TEXT_LOG_MAX_BYTES)
@@ -259,10 +325,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     }
   }
   await finish(ctx, row)
-
-  // 9 · The reply. A message leaves only through hideSecrets.
-  if (verdict.ok) return { ok: true, job: job.name, result: verdict.result, call: summaryOf(row) }
-  return { ok: false, reason: verdict.outcome, message: hideSecrets(verdict.message, ctx.secrets), call: summaryOf(row) }
+  return { kind: 'sent', verdict, row }
 }
 
 export function gateScopeOf(ctx: RunContext): GateScope {
@@ -275,7 +338,7 @@ export function gateScopeOf(ctx: RunContext): GateScope {
  */
 export function buildRequest(
   job: JobDefinition, settings: RunSettings, userText: string, thinking: 'adaptive' | 'off', timeoutOverride?: number,
-  extra: { images?: RequestImage[]; documents?: RequestDocument[]; webSearchMax?: number } = {},
+  extra: { images?: RequestImage[]; documents?: RequestDocument[]; webSearchMax?: number; knowledge?: KnowledgeBlock[] } = {},
 ): ModelRequest {
   return {
     ...(extra.images?.length && job.acceptsImage ? { images: extra.images } : {}),
@@ -285,7 +348,9 @@ export function buildRequest(
     model: settings.model,
     maxOutputTokens: settings.maxOutputTokens,
     effort: settings.effort,
-    instructions: job.instructions,
+    // Learned knowledge comes with one rule line that says it is data (the cached prefix then has this second form).
+    instructions: extra.knowledge?.length ? `${job.instructions}${LEARN_RULE}` : job.instructions,
+    ...(extra.knowledge?.length ? { knowledge: extra.knowledge } : {}),
     userText,
     answerSchema: job.enforceAnswerSchema ? job.answerSchema : null,
     thinking,
@@ -397,7 +462,7 @@ type Verdict =
   | { ok: true; result: Record<string, unknown> }
   // `message` is for the app: one plain sentence. `logLine` is for the ledger: the message, with the
   // provider's own explanation when there is one.
-  | { ok: false; outcome: Exclude<Outcome, 'ok'>; message: string; logLine: string }
+  | { ok: false; outcome: Exclude<Outcome, 'ok'>; message: string; logLine: string; problem?: string }
 
 /** Only a complete answer that passes the job's own check gives a result. */
 function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOutputTokens: number): Verdict {
@@ -416,7 +481,8 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
     check = { ok: false, problem: 'its check failed' }
   }
   // A failed check is never repaired: the answer is thrown away and the owner is told.
-  return check.ok ? { ok: true, result: check.result } : failed('invalid', `The model's answer could not be used: ${check.problem}.`)
+  if (check.ok) return { ok: true, result: check.result }
+  return { ...failed('invalid', `The model's answer could not be used: ${check.problem}.`), problem: check.problem } as Verdict
 }
 
 /**

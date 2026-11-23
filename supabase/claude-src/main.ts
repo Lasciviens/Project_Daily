@@ -15,6 +15,11 @@
 //                                                       server-sent events with our own small events only, else one JSON)
 //    { "action": "chat_confirm", "proposal_id", "decision", "title"?, "date"? } → chat-loop.ts (the owner's tap on a proposed write, with the edits they made on the card)
 //    { "action": "chat_delete" | "chat_restore", "conversation_id" } → chat-loop.ts (delete a chat softly, and its Undo)
+//    { "action": "learn_save", "call_id", "saved", "unticked", "dismissed" } → learn-save.ts (the owner saved what an AI
+//                                                       answer filled: corrections against our OWN stored values)
+//    { "action": "learn_decide", "run_id", "job", "decision" } → learn-save.ts (the owner's tap in Learn → Memory → Tuning)
+//    { "action": "learn_eval_make" }                → learn-eval.ts (Tuning's "Run the self-test now"; the Monday timer
+//                                                       does it after the report and the suggestions; report_check reads it back)
 //  Two kinds of caller, told apart before anything is read:
 //    · the app: `Authorization: Bearer <the owner's sign-in token>`, checked with getUser and the owner list;
 //    · a device function (kobo-sync, phone-gateway), which has already checked its own device secret: the header
@@ -43,6 +48,8 @@ import { runPhoneAsk } from './phone-ask.ts'
 import { findJob } from './jobs.ts'
 import { checkReports, makeWeeklyReport } from './batch.ts'
 import { checkSuggestRuns, makeWeeklySuggestions } from './suggest-batch.ts'
+import { decideTuning, reportSave } from './learn-save.ts'
+import { checkEvalRuns, makeWeeklyEval } from './learn-eval.ts'
 import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
 import type { DnsLookup } from './types.ts'
 
@@ -227,7 +234,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'describe') return reply(200, { ok: true, about: describeFunction(apiKey !== '', ANTHROPIC_INFO) })
-    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'suggest_make' && action !== 'chat' && action !== 'chat_confirm' && action !== 'chat_delete' && action !== 'chat_restore') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "suggest_make", "chat", "chat_confirm", "chat_delete" or "chat_restore"' })
+    if (action !== 'run' && action !== 'diagnose' && action !== 'count' && action !== 'report_make' && action !== 'report_check' && action !== 'suggest_make' && action !== 'chat' && action !== 'chat_confirm' && action !== 'chat_delete' && action !== 'chat_restore' && action !== 'learn_save' && action !== 'learn_decide' && action !== 'learn_eval_make') return reply(400, { error: 'The action must be "describe", "run", "count", "diagnose", "report_make", "report_check", "suggest_make", "chat", "chat_confirm", "chat_delete", "chat_restore", "learn_save", "learn_decide" or "learn_eval_make"' })
     const jobName = ownValue(body, 'job')
     if (action === 'run' && typeof jobName !== 'string') return reply(400, { error: 'A run needs the name of its job' })
 
@@ -253,6 +260,9 @@ Deno.serve(async (req) => {
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),
     }
+    if (action === 'learn_save') return reply(200, await reportSave(context, body))
+    if (action === 'learn_decide') return reply(200, await decideTuning(context, body))
+    if (action === 'learn_eval_make') return reply(200, await makeWeeklyEval(context))
     if (action === 'chat_confirm') return reply(200, await decideChatProposal(context, body))
     if (action === 'chat_delete' || action === 'chat_restore') return reply(200, await setChatDeleted(context, body, action === 'chat_delete'))
     if (action === 'chat') {
@@ -287,6 +297,8 @@ Deno.serve(async (req) => {
       // changes the report's answer and never stops the report.
       if (schedule) {
         try { await makeWeeklySuggestions(context) } catch (error) { console.error(`[claude] suggestions failed: ${errorPlace(error)}`) }
+        // The weekly self-test rides the same timer, after the suggestions; it is a watcher too (never stops the report).
+        try { await makeWeeklyEval(context) } catch (error) { console.error(`[claude] self-test failed: ${errorPlace(error)}`) }
       }
       return reply(200, made)
     }
@@ -295,7 +307,9 @@ Deno.serve(async (req) => {
       const checked = await checkReports(context)
       let suggestions: unknown = null
       try { suggestions = await checkSuggestRuns(context) } catch (error) { console.error(`[claude] suggestions check failed: ${errorPlace(error)}`) }
-      return reply(200, { ...checked, suggestions })
+      let selfTest: unknown = null
+      try { selfTest = await checkEvalRuns(context) } catch (error) { console.error(`[claude] self-test check failed: ${errorPlace(error)}`) }
+      return reply(200, { ...checked, suggestions, self_test: selfTest })
     }
     if (action === 'diagnose') return reply(200, ownValue(body, 'part') === 'chat' ? await runDiagnoseChat(context) : await runDiagnose(context))
     if (action === 'count') return reply(200, await countJob(context, 'test_bench', ownValue(body, 'input')))

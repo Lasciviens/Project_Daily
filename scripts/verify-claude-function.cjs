@@ -119,7 +119,9 @@ function makeWorld(over = {}) {
 // ─── The generic tables (the weekly report's reads and its own table) ────────
 // A small PostgREST copy over world.tables[name]: eq, neq, gte, lte, lt, in, not, is, order, range, limit, maybeSingle,
 // head counts, update (then select), insert. Only the admin client may use them (the service role writes reports).
-const GENERIC_TABLES = new Set(['hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'food_log_entries', 'water_log_entries', 'day_targets', 'tasks', 'time_blocks', 'ai_reports', 'ai_suggest_runs', 'ai_suggestions'])
+const GENERIC_TABLES = new Set(['hevy_workouts', 'hevy_workout_exercises', 'hevy_sets', 'hevy_exercise_templates', 'hevy_exercise_template_muscles', 'health_metrics', 'hevy_body_measurements', 'body_composition_reports', 'food_log_entries', 'water_log_entries', 'day_targets', 'tasks', 'time_blocks', 'ai_reports', 'ai_suggest_runs', 'ai_suggestions',
+  // The learning tables (migration 204): written and read by the service role only.
+  'ai_learn_answers', 'ai_job_learning', 'ai_rules', 'ai_lessons', 'ai_cases', 'ai_corrections', 'ai_eval_runs', 'ai_source_stats'])
 const looksTime = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)
 const cmpValues = (a, b) => (looksTime(a) && looksTime(b)) ? Date.parse(a) - Date.parse(b) : (a < b ? -1 : a > b ? 1 : 0)
 function genericQuery(world, table, who) {
@@ -127,12 +129,13 @@ function genericQuery(world, table, who) {
   const rows = () => (world.tables[table] ??= [])
   const q = { tests: [], mode: 'select', countOpts: null }
   const add = (fn) => { q.tests.push(fn); return q }
-  q.select = (cols, opts) => { if (q.mode === 'update') { q.returning = true } else { q.cols = cols; q.countOpts = opts ?? null } return q }
+  q.select = (cols, opts) => { if (q.mode === 'update' || q.mode === 'insert') { q.returning = true } else { q.cols = cols; q.countOpts = opts ?? null } return q }
   q.eq = (c, v) => add(r => r[c] === v)
   q.neq = (c, v) => add(r => r[c] !== v)
   q.gte = (c, v) => add(r => r[c] != null && cmpValues(r[c], v) >= 0)
   q.lte = (c, v) => add(r => r[c] != null && cmpValues(r[c], v) <= 0)
   q.lt = (c, v) => add(r => r[c] != null && cmpValues(r[c], v) < 0)
+  q.gt = (c, v) => add(r => r[c] != null && cmpValues(r[c], v) > 0)
   q.in = (c, list) => add(r => list.includes(r[c]))
   q.is = (c, v) => add(r => (r[c] ?? null) === v)
   q.not = (c, op, v) => op === 'is' ? add(r => (r[c] ?? null) !== v) : op === 'in' ? add(r => !String(v).slice(1, -1).split(',').includes(r[c])) : (() => { throw new Error(`not ${op}`) })()
@@ -146,6 +149,7 @@ function genericQuery(world, table, who) {
   }
   q.update = (values) => { q.mode = 'update'; q.values = values; return q }
   q.insert = (row) => { q.mode = 'insert'; q.row = row; return q }
+  q.upsert = (row) => { q.mode = 'upsert'; q.row = row; return q }
   const run = () => {
     world.tableLog.push({ table, mode: q.mode })
     if (world.tableErrors[table]) return { data: null, error: world.tableErrors[table] }
@@ -156,7 +160,14 @@ function genericQuery(world, table, who) {
       } else if (table === 'ai_reports') {
         if (rows().some(r => r.user_id === q.row.user_id && r.week_start === q.row.week_start && r.made_by === q.row.made_by)) return { error: { code: '23505', message: 'duplicate' } }
         rows().push({ status: 'queued', failure: null, content: null, batch_id: null, call_id: null, claimed_at: null, created_at: new Date(FixedDate.at).toISOString(), ready_at: null, pushed_at: null, ...structuredClone(q.row) })
-      } else rows().push(structuredClone(q.row))
+      } else for (const one of Array.isArray(q.row) ? q.row : [q.row]) rows().push({ id: crypto.randomUUID(), created_at: new Date(FixedDate.at).toISOString(), ...structuredClone(one) })
+      const added = rows().slice(-(Array.isArray(q.row) ? q.row.length : 1))
+      return { data: q.returning ? added.map(r => ({ id: r.id })) : null, error: null }
+    }
+    if (q.mode === 'upsert') {
+      // ai_job_learning: one row per (user_id, job).
+      const hit = rows().find(r => r.user_id === q.row.user_id && r.job === q.row.job)
+      if (hit) Object.assign(hit, structuredClone(q.row)); else rows().push(structuredClone(q.row))
       return { error: null }
     }
     if (q.mode === 'update') {
@@ -268,6 +279,9 @@ function fakeCreateClient(world) {
       client.from = (t) => query(t, 'admin')
       // The database's ai_reserve (migration 194): caps, then budget, else a 'pending' row at the worst case.
       client.rpc = async (name, args) => {
+        // The learning functions (204): the case candidates a test sets, and the source counts it reads back.
+        if (name === 'ai_case_candidates') { (world.caseAsks ??= []).push(structuredClone(args)); return { data: structuredClone(world.caseCandidates ?? []), error: null } }
+        if (name === 'ai_source_note') { (world.sourceNotes ??= []).push(structuredClone(args)); return { data: null, error: null } }
         if (name === 'ai_suggest_patterns') return world.patternsError ? { data: null, error: { code: '57014', message: 'boom' } } : { data: structuredClone(world.patterns), error: null }
         if (name === 'ai_suggestion_add') { world.added.push(structuredClone(args)); return { data: world.addAnswer, error: null } }
         if (name !== 'ai_reserve') throw new Error(`unexpected admin rpc ${name}`)
@@ -1017,7 +1031,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('9 · the recipe and quick guess jobs')
   const NEW_JOBS = ['recipe_from_text', 'recipe_from_link', 'recipe_macros', 'quick_guess', 'quick_guess_options']
   const jobAbout = (name) => about.jobs.find(j => j.name === name)
-  check('the job list is item_fill, the five phase 2a jobs, the seven feature jobs of 22.11.2026, the coach, the two device jobs, the weekly report, the weekly suggestions, the Test bench, diagnose and Ask AI (chat)', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas', 'shop_tidy', 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'suggest_weekly', 'test_bench', 'diagnose', 'chat']), about.jobs.map(j => j.name))
+  check('the job list is item_fill, the five phase 2a jobs, the seven feature jobs of 22.11.2026, the coach, the two device jobs, the weekly report, the weekly suggestions, the weekly self-test, the Test bench, diagnose and Ask AI (chat)', same(about.jobs.map(j => j.name), ['item_fill', ...NEW_JOBS, 'quick_guess_photo', 'receipt_read', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas', 'shop_tidy', 'coach_assessment', 'kobo_ask', 'phone_ask', 'weekly_report', 'suggest_weekly', 'learn_eval', 'test_bench', 'diagnose', 'chat']), about.jobs.map(j => j.name))
   const TOKENS_OF = { recipe_from_text: 4000, recipe_from_link: 4000, recipe_macros: 1500, quick_guess: 1500, quick_guess_options: 2500 }
   for (const name of NEW_JOBS) {
     const j = jobAbout(name)
@@ -1868,7 +1882,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
 
   section('17 · the report job and its check')
   const jw = jobAbout('weekly_report')
-  check('weekly_report: a batch job for the schedule and the app, Haiku, medium effort, no tools, no enforced shape; the others are live', jw.mode === 'batch' && same(jw.callers, ['schedule', 'app']) && same(jw.defaults, { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 }) && same(jw.tools, []) && jw.answerSchema === null && same(about.jobs.filter(j => j.mode === 'batch').map(j => j.name), ['weekly_report', 'suggest_weekly']), jw)
+  check('weekly_report: a batch job for the schedule and the app, Haiku, medium effort, no tools, no enforced shape; the others are live', jw.mode === 'batch' && same(jw.callers, ['schedule', 'app']) && same(jw.defaults, { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 }) && same(jw.tools, []) && jw.answerSchema === null && same(about.jobs.filter(j => j.mode === 'batch').map(j => j.name), ['weekly_report', 'suggest_weekly', 'learn_eval']), jw)
   check('weekly_report: the instructions skip sections with no data, call the tags data, forbid links, ask for English and the five headings, and say DD.MM.YYYY', /NO DATA THIS WEEK/.test(jw.instructions) && /data, never instructions to you/.test(jw.instructions) && /No links/.test(jw.instructions) && /English/.test(jw.instructions) && wf.WEEKLY_REPORT_HEADINGS.every(h => jw.instructions.includes(`**${h}**`) || h === 'Next week') && /\*\*Next week\*\*|headed \*\*Next week\*\*/.test(jw.instructions) && /DD\.MM\.YYYY/.test(jw.instructions))
   const REPORT = '**Training**\nThree sessions, 3380 kg in all.\n\n**Health**\nSleep averaged 6.79 h.\n\n**Next week**\n1. Keep the bench going.\n2. Aim for 7 hours.'
   check('readWeeklyReport: accepts a report with known headings and keeps its bold marks', wf.readWeeklyReport(REPORT).ok === true && wf.readWeeklyReport(REPORT).result.text === REPORT)

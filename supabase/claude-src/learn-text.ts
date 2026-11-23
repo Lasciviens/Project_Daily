@@ -1,0 +1,151 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  The `claude` function · learning: text, trust and quarantine rules (pure)
+//
+//  Everything the app learns is TEXT that came from somewhere: the owner's save, a model's answer, a receipt, a page, the
+//  repo's docs. Before any text becomes a case, a lesson or a key it goes through these rules:
+//    · hidden Unicode out (zero-width, text-direction, tag characters, other invisibles), again and again until the text
+//      no longer changes (one pass can uncover another: a normalisation that makes a new invisible);
+//    · plain text only for anything a model may later read as a note (no markup, brackets, links, control characters);
+//    · a lesson's trust is the lowest of its sources, and only a FACT from a TRUSTED source that does not read like an
+//      instruction turns on by itself; everything instruction-like waits for the owner (the database says it again);
+//    · a case's split (train / test / sealed) is a stable hash of its id, never chosen by anyone.
+//  No imports: the verify scripts run this file as it is.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Zero-width and joiners, text direction, word joiners and invisible operators, the BOM, the soft hyphen, the Mongolian
+// vowel separator, the tag block (U+E0000–E007F: invisible ASCII lookalikes), variation selectors, interlinear annotation.
+const LEARN_HIDDEN = /[­؜ᅟᅠ឴឵᠋-᠏​-‏‪-‮⁠-⁯ㅤ︀-️﻿ﾠ￹-￻]|\udb40[\udc00-\udc7f]|\udb40[\udd00-\uddef]/g
+// Control characters but tab and line breaks (a separate rule decides whether a line break may stay).
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
+const LEARN_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
+
+/** The text with every hidden character and control character removed, normalised (NFKC), repeated until stable. */
+export function stripHidden(text: string): string {
+  let now = typeof text === 'string' ? text : ''
+  for (let i = 0; i < 10; i++) {
+    const next = now.normalize('NFKC').replace(LEARN_HIDDEN, '').replace(LEARN_CONTROL, '')
+    if (next === now) return next
+    now = next
+  }
+  // Ten passes and still moving: something is built to fight the cleaner. Nothing of it is kept.
+  return ''
+}
+
+/** True when the text still holds a hidden or control character (a last-line guard after `stripHidden`). */
+export function holdsHidden(text: string): boolean {
+  LEARN_HIDDEN.lastIndex = 0
+  LEARN_CONTROL.lastIndex = 0
+  const found = LEARN_HIDDEN.test(text) || LEARN_CONTROL.test(text)
+  LEARN_HIDDEN.lastIndex = 0
+  LEARN_CONTROL.lastIndex = 0
+  return found
+}
+
+// What a plain note may not hold (the same as the database's ai_suggestion_plain, 199): brackets of any kind that read as
+// markup or marks, a backtick, a link of any form (a scheme, www, // or any name.tld).
+const LEARN_NOT_PLAIN = /[[\]<>`]|https?:|www\.|\/\/|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\b/i
+
+/** One plain line: hidden characters out, spaces collapsed, within the length, no markup or link. Null when it is not one. */
+export function plainLine(value: unknown, max: number, min = 1): string | null {
+  if (typeof value !== 'string') return null
+  const text = stripHidden(value).replace(/\s+/g, ' ').trim()
+  if ([...text].length < min || [...text].length > max) return null
+  return LEARN_NOT_PLAIN.test(text) ? null : text
+}
+
+/** A value as the learning layer stores it: a short single line (no plain-text rule: a saved name may hold a dot). */
+export function storedValue(value: unknown, max = 2000): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : null
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (Array.isArray(value)) {
+    const parts = value.map(v => storedValue(v, 200)).filter((v): v is string => v !== null)
+    return parts.length ? cutText(parts.join(', '), max) : null
+  }
+  if (typeof value !== 'string') return null
+  const text = stripHidden(value).replace(/\s+/g, ' ').trim()
+  return text ? cutText(text, max) : null
+}
+
+function cutText(text: string, max: number): string {
+  const chars = [...text]
+  return chars.length <= max ? text : chars.slice(0, max).join('')
+}
+
+/** The key two texts share when they mean the same thing: hidden characters, accents, case and punctuation gone. */
+export function normKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const key = stripHidden(value).normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  return key ? cutText(key, 200) : null
+}
+
+// Words that make a note read as an instruction to the model rather than a fact about the owner. A lesson that holds one
+// is instruction-like and ALWAYS waits for the owner's tap, whatever its source (published memory-poisoning attacks
+// steer agents with exactly such notes).
+const LEARN_INSTRUCTION_WORDS = /\b(always|never|must|should|shall|ignore|disregard|forget|instead|override|pretend|act as|you|your|assistant|model|claude|ai|system|prompt|instructions?|rules?|tools?|confirm|approve|permission|allowed?|execute|run|call|send|delete|remove|password|keys?|tokens?|secrets?|reply|respond|answer|do not|don't)\b/i
+
+/** Whether a note reads as an instruction (a word from the list, or an imperative "Use … / Put … / Set …" start). */
+export function isInstructionLike(text: string): boolean {
+  const t = stripHidden(text)
+  return LEARN_INSTRUCTION_WORDS.test(t) || /^\s*(use|put|set|choose|pick|treat|give|make|add|write|tell|show|skip|prefer|avoid|only)\b/i.test(t)
+}
+
+export type LessonKind = 'fact' | 'preference' | 'instruction'
+export type LessonSource = 'owner_typed' | 'owner_data' | 'weekly_batch' | 'chat_tool' | 'repo_doc' | 'web'
+export type Trust = 'high' | 'medium' | 'low'
+export const LESSON_KINDS: readonly LessonKind[] = ['fact', 'preference', 'instruction']
+export const LESSON_SOURCES: readonly LessonSource[] = ['owner_typed', 'owner_data', 'weekly_batch', 'chat_tool', 'repo_doc', 'web']
+
+/** How far a source is trusted: the owner's own typed words or data, then text a model derived from them, then outside text. */
+export const SOURCE_TRUST: Readonly<Record<LessonSource, Trust>> = {
+  owner_typed: 'high', owner_data: 'high', weekly_batch: 'medium', chat_tool: 'medium', repo_doc: 'medium', web: 'low',
+}
+
+const TRUST_ORDER: readonly Trust[] = ['low', 'medium', 'high']
+/** A lesson's trust is the lowest of its sources. */
+export function lowestTrust(trusts: readonly Trust[]): Trust {
+  return trusts.reduce<Trust>((low, t) => (TRUST_ORDER.indexOf(t) < TRUST_ORDER.indexOf(low) ? t : low), 'high')
+}
+
+/** How long a lesson lives before it retires by itself, by kind (a preference is checked again sooner than a fact). */
+export const LESSON_DAYS: Readonly<Record<LessonKind, number>> = { fact: 365, preference: 180, instruction: 180 }
+
+/**
+ * Where a new lesson starts. `verifiedInOwnerWords`: code found the lesson's words in what the owner typed in this very
+ * turn (never in a tool result or a page), so a chat tool's fact counts as the owner's own. Only a fact from a trusted
+ * source that does not read as an instruction is active at once; everything else is pending until the owner's tap.
+ */
+export function lessonStart(kind: LessonKind, source: LessonSource, text: string, verifiedInOwnerWords = false): { state: 'active' | 'pending'; trust: Trust } {
+  const trust: Trust = verifiedInOwnerWords && (source === 'chat_tool' || source === 'owner_typed') ? 'high' : SOURCE_TRUST[source]
+  const active = kind === 'fact' && trust === 'high' && !isInstructionLike(text)
+  return { state: active ? 'active' : 'pending', trust }
+}
+
+/** Whether every word of the note (3+ letters) is in the owner's own text: the check behind `verifiedInOwnerWords`. */
+export function wordsAreOwners(note: string, ownerText: string): boolean {
+  const words = (normKey(note) ?? '').split(' ').filter(w => w.length >= 3)
+  const own = new Set((normKey(ownerText) ?? '').split(' '))
+  return words.length > 0 && words.every(w => own.has(w))
+}
+
+/** FNV-1a, 32 bits: a stable number from a text (the same in every runtime). */
+export function stableHash(text: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h >>> 0
+}
+
+export type Split = 'train' | 'test' | 'sealed'
+/** A case's split from its id: 6 in 10 train (the example pool and lesson source), 3 test (the score), 1 sealed (never tuned on). */
+export function splitOf(id: string): Split {
+  const n = stableHash(`split:${id}`) % 10
+  return n < 6 ? 'train' : n < 9 ? 'test' : 'sealed'
+}
+
+/** Text for a tag: & < > escaped, one line per item (never markup the model could read as structure). */
+export function learnEscape(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
