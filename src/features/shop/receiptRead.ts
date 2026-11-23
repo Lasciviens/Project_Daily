@@ -4,7 +4,7 @@
 // what the owner types); a sold line is matched to one of the owner's things (never a new thing) and opens Sell with the
 // amount and the day. Nothing is saved here: both sheets save, and only on the owner's tap. Pure: scripts/verify-ai-features.cjs.
 import { foldName, matchLine, matchStore, receiptFill, type ReceiptFill, type ReceiptLine, type ReceiptRead } from '../ai/claude/featureRules'
-import { isMine } from './ownModel'
+import { isMine, isPossession } from './ownModel'
 import { listOf, SHOP_CURRENCIES } from './shopModel'
 import type { ShopCurrency, ShopItem, ShopStore } from './types'
 
@@ -23,7 +23,13 @@ export function addFillFor(read: ReceiptRead, index: number, stores: readonly { 
 }
 
 /** What Sell starts from: the line's price and the receipt's day. Each is left out unless it is usable. */
-export interface SaleDefaults { amount?: number; currency?: ShopCurrency; day?: string; /** The buyer or marketplace, when the receipt's store is one of your own stores. */ to?: string }
+export interface SaleDefaults {
+  amount?: number; currency?: ShopCurrency; day?: string
+  /** The buyer or marketplace, when the receipt's store is one of your own stores. */
+  to?: string
+  /** The thing the money went to (a bought line of a read receipt, saved first): Sell's "Money goes to" starts on it, only when the sheet itself lists it. */
+  moneyTo?: string
+}
 
 export function saleFor(read: ReceiptRead, line: ReceiptLine, stores: readonly { id: string; name: string; hidden?: boolean; kind?: string }[] = []): SaleDefaults {
   const out: SaleDefaults = {}
@@ -76,6 +82,11 @@ function strongShare(a: string, b: string): boolean {
 /** The owner's own thing a sold line is: only things still the owner's, never an accessory. */
 export function thingForLine(line: ReceiptLine, things: readonly ShopItem[]): ShopItem | null {
   return matchIn(line, things.filter(t => isMine(t) && !t.accessory_of))
+}
+
+/** An owner's thing that is already sold in the app, never an accessory: a sold line that is one of these needs no sale, only a link. */
+export function soldThingForLine(line: ReceiptLine, things: readonly ShopItem[]): ShopItem | null {
+  return matchIn(line, things.filter(t => isPossession(t) && !!t.disposal && t.disposal !== 'returned' && !t.accessory_of))
 }
 
 /** The wish a bought line is (a thing still to buy: its row becomes bought, Just bought opens), by the same match. */

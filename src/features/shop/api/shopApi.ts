@@ -249,11 +249,25 @@ export async function fetchShopLinks(): Promise<ShopItemLink[]> {
   return rows.map(l => ({ ...l, amount: l.amount == null ? null : Number(l.amount) }))
 }
 
-export async function createShopLink(input: { from_id: string; to_id: string; amount?: number | null }): Promise<void> {
-  const { error } = await supabase.from('shop_item_links').upsert(
+/**
+ * Links one thing's money to another. Answers with the link's id and whether it was there already, so an Undo takes back only
+ * a link THIS call made (an upsert over an old link must never be deleted by an Undo).
+ */
+export async function createShopLink(input: { from_id: string; to_id: string; amount?: number | null }): Promise<{ id: string; existed: boolean }> {
+  const before = await supabase.from('shop_item_links').select('id').eq('from_id', input.from_id).eq('to_id', input.to_id).maybeSingle()
+  if (before.error) throw before.error
+  const { data, error } = await supabase.from('shop_item_links').upsert(
     { from_id: input.from_id, to_id: input.to_id, amount: input.amount ?? null },
     { onConflict: 'from_id,to_id' },
-  )
+  ).select('id').single()
+  if (error) throw error
+  return { id: String((data as { id: string }).id), existed: !!before.data }
+}
+
+/** Takes back exactly these links (the Undo of "Money linked"): by their own ids, under the caller's row level security. */
+export async function deleteShopLinks(ids: readonly string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await supabase.from('shop_item_links').delete().in('id', [...ids])
   if (error) throw error
 }
 

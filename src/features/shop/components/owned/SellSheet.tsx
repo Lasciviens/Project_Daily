@@ -37,6 +37,9 @@ export function LeftToField({ how, value, onChange }: { how: ShopDisposal; value
   )
 }
 
+/** Where a sale's money may go: another thing to buy, or one of yours (never an accessory). */
+const isMoneyTarget = (c: ShopItem, sellingId: string): boolean => listOf(c) === 'wishlist' && c.id !== sellingId && !c.accessory_of && (c.status === 'wishlist' || (c.status === 'bought' && isMine(c)))
+
 /**
  * Sell or give away one of your things — with the accessories you tick (the
  * money is split by what each cost), the rest staying yours or moving to
@@ -49,7 +52,7 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
   item: ShopItem; items: ShopItem[]; categories: ShopCategory[]; ctx: MoneyCtx
   /** What a read receipt gives (Read a receipt): the amount, currency and day to start from. Only a day inside the thing's own life is taken. */
   sale?: SaleDefaults
-  onSold?: () => void
+  onSold?: (done: { id: string; to: string | null }) => void
   onClose: () => void
 }) {
   const sale = useRecordSale()
@@ -70,7 +73,8 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
   const [handover, setHandover] = useState(false)
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(accessories.map(a => a.id)))
   const [moveTo, setMoveTo] = useState<Record<string, string>>({})
-  const [target, setTarget] = useState('')
+  // A receipt's money target is taken only when it is one of this sheet's own choices (a thing to buy, or one of yours): never an id from anywhere else.
+  const [target, setTarget] = useState(() => (start?.moneyTo && items.some(c => c.id === start.moneyTo && isMoneyTarget(c, item.id)) ? start.moneyTo : ''))
   const [targetAmount, setTargetAmount] = useState<number | null>(null)
   const money = PAID_BACK.includes(how) || how === 'other'
   const sold = [item, ...accessories.filter(a => ticked.has(a.id))]
@@ -78,7 +82,7 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
   const cat = categoryPath(item.category_id, categories).topId
   // Where the money can go: things to buy first (same category first), then general wishes and recent things.
   const targets = useMemo(() => items
-    .filter(c => listOf(c) === 'wishlist' && c.id !== item.id && !c.accessory_of && (c.status === 'wishlist' || (c.status === 'bought' && isMine(c))))
+    .filter(c => isMoneyTarget(c, item.id))
     .sort((a, b) => Number(b.status === 'wishlist') - Number(a.status === 'wishlist')
       || Number(categoryPath(b.category_id, categories).topId === cat) - Number(categoryPath(a.category_id, categories).topId === cat)
       || a.title.localeCompare(b.title)), [items, item.id, categories, cat])
@@ -98,7 +102,7 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
       },
     }, {
       // Handed over with a checklist for its category: tick through it here before closing.
-      onSuccess: () => { onSold?.(); return (HANDED_OVER.includes(how) && checklistFor(checklists, categoryNamesOf(item.category_id, categories)) ? setHandover(true) : onClose()) },
+      onSuccess: () => { onSold?.({ id: item.id, to: money && target ? target : null }); return (HANDED_OVER.includes(how) && checklistFor(checklists, categoryNamesOf(item.category_id, categories)) ? setHandover(true) : onClose()) },
     })
   }
 

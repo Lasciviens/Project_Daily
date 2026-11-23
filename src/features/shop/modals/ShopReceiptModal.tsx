@@ -1,176 +1,83 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { useEntityModal } from '../../../shared/modals'
 import { ModalShell } from '../../../shared/modals/ModalShell'
-import { Button, SegmentedControl, Truncate } from '../../../shared/ui'
-import { formatDate } from '../../../shared/utils/dateFormat'
+import { Button, Truncate } from '../../../shared/ui'
 import { PhotoButton } from '../../ai/claude/components/PhotoButton'
-import { useReadReceipt } from '../../ai/claude/hooks/useAiFeatures'
-import { costNote, type ReceiptFill, type ReceiptLine, type ReceiptRead } from '../../ai/claude/featureRules'
-import { RECEIPT_CATEGORIES_MAX } from '../../ai/claude/featureJobs'
-import { useBuyNow, useShopCategories, useShopItems } from '../hooks/useShop'
-import { tidyCategories } from '../tidyModel'
-import { useShopStores } from '../hooks/useShopStores'
-import { isMine } from '../ownModel'
-import { addFillFor, lineFacts, saleFor, sideOf, thingForLine, wishForLine, type ReceiptSide } from '../receiptRead'
 import { SHOP_CURRENCIES } from '../shopModel'
-import { money } from '../components/shopFormat'
-import type { ShopCurrency } from '../types'
+import { mergedLines, RECEIPT_FILES_MAX } from '../receiptBatch'
+import { ReceiptChainBlock } from '../components/receipt/ReceiptChainBlock'
+import { ReceiptFiles } from '../components/receipt/ReceiptFiles'
+import { ReceiptLines } from '../components/receipt/ReceiptLines'
+import { ReceiptSession } from '../components/receipt/ReceiptSession'
+import { useReceiptFiles } from '../components/receipt/useReceiptFiles'
+import { useReceiptFlow } from '../components/receipt/useReceiptFlow'
+
+const ACCEPT = 'image/*,application/pdf'
 
 /**
  * Read a receipt (owner, 23.11.2026: "read from receipt, either to sell or save a purchase — a physical receipt and a
- * digital one, a PDF"): one photo or PDF, read by the model in one call (and never kept), then its product lines.
- * Bought: a line that is one of your wishes says **Bought** (the wish becomes bought and Just bought opens with the
- * receipt's values); any other line has a tick and **Next** opens them as drafts in one popup ("1 of 3", each saved on its own or skipped). Sold: each line is
- * matched to one of your things (you can change it) and Sell opens with the amount, the day and the buyer. Every sheet
- * saves on your tap only: this popup writes nothing but the wish's own "bought" (which has its Undo).
+ * digital one, a PDF"; "add option to add multiple pdf reading … sold, purchased and … a money chain of them"): up to 5
+ * photos or PDFs at once, each read by the model in its own call, one after another (never kept), then ONE list of their
+ * lines — each Bought or Sold. Bought lines open the create popup together ("1 of 3"); a Sold line that is one of your things
+ * opens Sell, one that is none opens as "Something I had" (the day and the amount it sold for required); the sold lines'
+ * money can be linked to the bought ones. This popup writes nothing itself: every save is its own popup with its own toast
+ * and Undo, and "Undo all from these receipts" takes back only what they wrote.
  */
 export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) {
-  const { data: categories = [] } = useShopCategories()
-  const read = useReadReceipt(useMemo(() => tidyCategories(categories, RECEIPT_CATEGORIES_MAX), [categories]))
   const modal = useEntityModal()
-  const { data: stores = [] } = useShopStores()
-  const { data: items = [] } = useShopItems()
-  const [data, setData] = useState<(ReceiptRead & { costUsd: number | null }) | null>(null)
-  const [side, setSide] = useState<ReceiptSide>('bought')
-  const [done, setDone] = useState<ReadonlySet<string>>(new Set())
-  const [picked, setPicked] = useState<Record<number, string>>({})
-  // Which Bought lines go on to the item popup (each one a draft there): all of them until the owner unticks one.
-  const [unticked, setUnticked] = useState<ReadonlySet<number>>(new Set())
-  const mark = (key: string) => setDone(d => new Set(d).add(key))
-
-  // A wish bought here goes through the one "Bought" every screen uses: today, the row's own price, store and currency, Undo,
-  // then Just bought opens at once with the receipt's values.
-  const buying = useRef<{ key: string; receipt: { fill: ReceiptFill; read: ReceiptRead } } | null>(null)
-  const buyNow = useBuyNow(id => {
-    const b = buying.current
-    if (!b) return
-    mark(b.key)
-    modal.open({ kind: 'shop-just-bought', id, receipt: b.receipt })
-  }, { thenDetails: true })
-
-  const things = useMemo(() => items.filter(t => isMine(t) && !t.accessory_of).sort((a, b) => a.title.localeCompare(b.title)), [items])
-  const lines = useMemo(() => data?.items ?? [], [data])
-  // The matches by code, once for this receipt: the owner's pick wins.
-  const matched = useMemo(() => lines.map(l => thingForLine(l, items)?.id ?? ''), [lines, items])
-  const wishes = useMemo(() => lines.map(l => wishForLine(l, items)), [lines, items])
-
-  async function onFile(file: File) {
-    try {
-      const r = await read.mutateAsync(file)
-      setData(r)
-      setSide(sideOf(r))
-      setDone(new Set())
-      setPicked({})
-      setUnticked(new Set())
-    } catch { /* the hook reports it, in its own words */ }
-  }
-
-  const amount = (n: number | null | undefined, currency: string | undefined) => {
-    if (n == null) return ''
-    return currency && SHOP_CURRENCIES.includes(currency as ShopCurrency) ? money(n, currency as ShopCurrency) : `${n}${currency ? ` ${currency}` : ''}`
-  }
-  const currencyOk = !!data?.currency && SHOP_CURRENCIES.includes(data.currency as ShopCurrency)
-
-  function lineRow(line: ReceiptLine, i: number) {
-    const key = `${side}:${i}`
-    const facts = lineFacts(line)
-    const price = line.price !== null ? amount(line.price, data?.currency) : 'no price printed'
-    // A pick that is no longer one of your things (sold or deleted since) is never used.
-    const chosen = [picked[i], matched[i]].find(id => id && things.some(t => t.id === id)) ?? ''
-    const wish = side === 'bought' ? wishes[i] : null
-    return (
-      <li key={i} className={`flex gap-2 rounded-row border border-line bg-surface-2 p-3 ${side === 'bought' ? 'items-center' : 'flex-col sm:flex-row sm:items-center'}`}>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-baseline gap-2 text-body font-medium">
-            <span className="min-w-0 flex-1"><Truncate>{line.product ?? line.name}</Truncate></span>
-            {side === 'sold' && <span className="shrink-0 text-meta font-normal tabular-nums text-fg-muted">{price}</span>}
-          </p>
-          <p className="text-meta text-fg-muted tabular-nums">{[facts, side === 'bought' ? price : '', wish ? 'on your wishlist' : ''].filter(Boolean).join(' · ')}</p>
-        </div>
-        {side === 'bought' ? (
-          done.has(key)
-            ? <span className="shrink-0 text-meta font-medium text-success">✓ {wish ? 'Bought' : 'Added'}</span>
-            : wish
-              ? <Button size="sm" variant="primary" className="shrink-0" onClick={() => {
-                if (!data) return
-                buying.current = { key, receipt: { fill: addFillFor(data, i, stores), read: data } }
-                buyNow(wish)
-              }}>Bought</Button>
-              : <label className="flex min-h-[44px] shrink-0 items-center gap-2 text-meta text-fg-muted">
-                <input type="checkbox" checked={!unticked.has(i)} aria-label={`Add “${line.product ?? line.name}”`}
-                  onChange={e => setUnticked(u => { const n = new Set(u); if (e.target.checked) n.delete(i); else n.add(i); return n })}
-                  className="h-[18px] w-[18px] shrink-0 accent-accent-500" />
-                Add
-              </label>
-        ) : (
-          <div className="flex items-center gap-2">
-            <select aria-label={`Which of your things is “${line.name}”`} value={chosen} onChange={e => setPicked(p => ({ ...p, [i]: e.target.value }))} className="select min-w-0 flex-1 sm:w-52 sm:flex-none">
-              <option value="">Pick one of your things</option>
-              {things.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-            </select>
-            {done.has(key)
-              ? <span className="shrink-0 text-meta font-medium text-success">✓ Sold</span>
-              : <Button size="sm" disabled={!chosen} className="shrink-0"
-                onClick={() => data && chosen && modal.open({ kind: 'shop-sell', id: chosen, sale: saleFor(data, line, stores), onSold: () => mark(key) })}>Sell</Button>}
-          </div>
-        )}
-      </li>
-    )
-  }
-
-  // Next: every ticked line that is not yet added and is not one of your wishes (those go through Bought), as drafts in one popup.
-  const addable = side === 'bought' ? lines.map((_, i) => i).filter(i => !wishes[i] && !done.has(`bought:${i}`) && !unticked.has(i)) : []
-  function next() {
-    if (!data || !addable.length) return
-    modal.open({
-      kind: 'shop-own',
-      batch: {
-        fills: addable.map(i => addFillFor(data, i, stores)),
-        labels: addable.map(i => lines[i].product ?? lines[i].name),
-        onSaved: n => mark(`bought:${addable[n]}`),
-      },
-    })
-  }
-
-  // The cost goes last, so the line fits one row on a phone.
-  const summary = data ? [
-    data.store, data.date ? formatDate(data.date) : null, data.total !== undefined ? amount(data.total, data.currency) : null,
-    data.searched ? 'searched the web' : null, costNote(data.costUsd) || null,
-  ].filter(Boolean).join(' · ') : ''
+  const queue = useReceiptFiles()
+  const fileReads = useMemo(() => queue.rows.map((r, i) => ({ id: r.id, read: r.status === 'done' ? r.read : null, duplicateOf: queue.dupes[i] })), [queue.rows, queue.dupes])
+  const merged = useMemo(() => mergedLines(fileReads), [fileReads])
+  const flow = useReceiptFlow(merged)
+  const busy = queue.running || flow.undoing
+  const anyRead = queue.rows.some(r => r.status === 'done')
+  const noCurrency = queue.rows.some(r => r.read && !(r.read.currency && SHOP_CURRENCIES.includes(r.read.currency as (typeof SHOP_CURRENCIES)[number])))
+  const linking = flow.soldKeys.length > 0
+  const label = linking ? 'Save and link' : 'Next'
 
   return (
-    <ModalShell onClose={onClose} title="Read a receipt" size="md" dismissible={!read.isPending}
+    <ModalShell onClose={onClose} title="Read receipts" size="md" dismissible={!busy}
       footer={
         <div className="flex items-center gap-2">
-          {data && <PhotoButton accept="image/*,application/pdf" variant="ghost" onFile={f => { void onFile(f) }} loading={read.isPending}>Another receipt</PhotoButton>}
-          <Button onClick={onClose} className="ml-auto" disabled={read.isPending}>Close</Button>
-          {data && side === 'bought' && addable.length > 0 && <Button variant="primary" onClick={next} disabled={read.isPending}>Next{addable.length > 1 ? ` · ${addable.length}` : ''}</Button>}
+          {queue.rows.length > 0 && <PhotoButton iconOnly accept={ACCEPT} multiple onFiles={queue.add} disabled={busy}>Another receipt</PhotoButton>}
+          <Button onClick={onClose} className="ml-auto" disabled={busy}>Close</Button>
+          {anyRead && flow.pending > 0 && <Button variant="primary" onClick={flow.go} disabled={busy}>{label} · {flow.pending}</Button>}
         </div>
       }>
       <div className="flex flex-col gap-3">
-        {!data && !read.isPending && (
+        {queue.rows.length === 0 && (
           <div className="flex flex-col items-start gap-2">
-            <p className="text-body text-fg-muted">Pick a photo of a receipt or a PDF (a till slip, an invoice, an order, a payout). AI reads it and lists what was bought or sold; you then add each line yourself. The file is not kept.</p>
-            <PhotoButton accept="image/*,application/pdf" variant="primary" onFile={f => { void onFile(f) }}>Choose a photo or PDF</PhotoButton>
+            <p className="text-body text-fg-muted">Pick up to {RECEIPT_FILES_MAX} photos or PDFs of receipts (a till slip, an invoice, an order, a payout). AI reads each one and lists what was bought or sold; you then add each line yourself. The files are not kept.</p>
+            <PhotoButton accept={ACCEPT} multiple variant="primary" onFiles={queue.add}>Choose photos or PDFs</PhotoButton>
           </div>
         )}
-        {read.isPending && (
-          <p role="status" className="flex items-center gap-2 text-body text-fg-muted">
-            <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> Reading the receipt… a long PDF can take up to a minute.
-          </p>
+        {queue.note && <p className="text-meta text-warn">{queue.note}</p>}
+        <ReceiptFiles rows={queue.rows} dupes={queue.dupes} running={queue.running} onRetry={queue.retry} />
+        {queue.waiting > 0 && !queue.running && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Button variant="primary" onClick={() => queue.start()} disabled={queue.estimate == null}>Read {queue.waiting} {queue.waiting === 1 ? 'file' : 'files'}</Button>
+            <span className="text-meta text-fg-muted">
+              {queue.estimate != null ? `Up to ≈ $${queue.estimate.toFixed(2)} in all; usually far less.` : queue.estimateFailed ? "The cost couldn't be worked out — try again later." : 'Working out the cost…'}
+            </span>
+          </div>
         )}
-        {data && !read.isPending && (
+        {queue.running && (
+          <div role="status" className="flex items-center gap-2 text-body text-fg-muted">
+            <Loader2 aria-hidden className="h-4 w-4 shrink-0 animate-spin" />
+            <span className="min-w-0 flex-1"><Truncate>{queue.progress ? `${queue.progress.done + 1} of ${queue.progress.total} · reading…` : 'Starting…'}</Truncate></span>
+            <Button size="sm" onClick={queue.stop}>Stop</Button>
+          </div>
+        )}
+        {queue.result?.halted && <p role="status" className="text-meta text-warn">{queue.result.halted}</p>}
+        {anyRead && (
           <>
-            <p className="text-meta text-fg-muted"><span className="text-fg-muted">AI read: </span>{summary || 'nothing clear'}</p>
-            <SegmentedControl<ReceiptSide> size="sm" value={side} onChange={setSide}
-              options={[{ value: 'bought', label: 'Bought' }, { value: 'sold', label: 'Sold' }]} />
-            {!currencyOk && <p className="text-meta text-warn">No clear currency this app holds (NOK, TRY, EUR, USD): amounts are left out of the sheets.</p>}
-            {lines.length === 0
-              ? <p className="text-body text-fg-muted">No product lines were read. Try another photo or PDF.</p>
-              : <ul className="flex flex-col gap-2">{lines.map(lineRow)}</ul>}
-            {side === 'sold' && lines.length > 0 && things.length === 0 && <p className="text-meta text-fg-muted">You have no things in Owned to sell yet.</p>}
+            {noCurrency && <p className="text-meta text-warn">A receipt has no clear currency this app holds (NOK, TRY, EUR, USD): its amounts are left out of the sheets.</p>}
+            <ReceiptLines files={queue.rows} merged={merged} flow={flow} />
+            <ReceiptChainBlock merged={merged} flow={flow} />
+            <ReceiptSession flow={flow} onChain={id => modal.open({ kind: 'shop-chain', id })} />
+            {flow.wishesLeft > 0 && flow.pending === 0 && <p className="text-meta text-fg-muted">A line on your wishlist has its own Bought button.</p>}
           </>
         )}
       </div>
