@@ -172,7 +172,7 @@ export async function runJob(ctx: RunContext, jobName: unknown, input: unknown):
     const counted = await countPrompt(ctx, ctx.provider, buildRequest(job, settings, userText, choice.thinking ?? settings.thinking, COUNT_TIMEOUT_MS, { images: prepared.images, documents: prepared.documents }))
     if (!counted.ok) return stop(counted.outcome, counted.message)
     if (counted.tokens > PDF_PROMPT_TOKENS_MAX) {
-      return stop('bad_input', `That PDF is too long for a receipt (a receipt is one to three pages). Use a photo of the receipt or a shorter PDF.`)
+      return stop('bad_input', `That PDF is too long for a receipt. Use a photo of the receipt or a shorter PDF.`)
     }
     documentTokens = pdfTokensHeld(counted.tokens)
   }
@@ -361,7 +361,9 @@ const COUNT_TIMEOUT_MS = 20_000
 async function countPrompt(ctx: RunContext, provider: Provider, request: ModelRequest): Promise<{ ok: true; tokens: number } | { ok: false; outcome: 'bad_input' | 'error'; message: string }> {
   try {
     const counted = await provider.countTokens(request)
-    if (counted.ok) return { ok: true, tokens: counted.inputTokens }
+    // Fail closed: a count that is missing or zero says nothing about the PDF, so nothing is reserved on it.
+    if (counted.ok && counted.inputTokens > 0) return { ok: true, tokens: counted.inputTokens }
+    if (counted.ok) return { ok: false, outcome: 'error', message: 'The PDF could not be checked: Anthropic gave no token count for it. Try again, or use a photo.' }
     if (counted.kind === 'refused_request') return { ok: false, outcome: 'bad_input', message: 'That PDF could not be read. Try a photo of the receipt, or a PDF saved without a password.' }
     return { ok: false, outcome: 'error', message: hideSecrets(counted.message, ctx.secrets) }
   } catch (error) {

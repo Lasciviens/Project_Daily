@@ -17,7 +17,7 @@ import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../c
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
-import type { ReceiptFill } from '../../features/ai/claude/featureRules'
+import type { ReceiptFill, ReceiptRead } from '../../features/ai/claude/featureRules'
 import type { SaleDefaults } from '../../features/shop/receiptRead'
 import type { ShopItem } from '../../features/shop/types'
 
@@ -93,7 +93,8 @@ export type EntityModalRequest =
   /** Everything you own and its value, as a CSV file or a print. */
   | { kind: 'shop-insurance' }
   /** Just bought: online or in a shop, the store, Arrived, return by and complain by with their reasons, the receipt note. */
-  | { kind: 'shop-just-bought'; id: string }
+  /** `receipt`: the read receipt this wish was bought on (Read a receipt): it fills the sheet through the same path a receipt photo does. */
+  | { kind: 'shop-just-bought'; id: string; receipt?: { fill: ReceiptFill; read: ReceiptRead } }
   /** Money to claim on a thing (price protection, cheaper while returnable): how, and "Got 500 back". */
   | { kind: 'shop-claim'; id: string }
   /** Shop's stores and marketplaces with their rules, and the deal days (a drawer; from the Shop header's ⋯). */

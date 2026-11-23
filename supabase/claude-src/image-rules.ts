@@ -120,9 +120,11 @@ export function checkedImage(raw: unknown, maxChars: number = IMAGE_BASE64_MAX_C
 export const PDF_BASE64_MAX_CHARS = 1_400_000
 /**
  * The most prompt tokens a PDF job may have (the provider's own count of instructions, words and PDF together). A receipt
- * is 1-3 pages; Anthropic counts each page as its extracted text (1,500-3,000 tokens) plus at most 1,568 for its image.
+ * is 1-4 pages (an invoice with a terms page reaches 16,000); Anthropic counts each page as its extracted text (1,500-3,000 tokens)
+ * plus at most 1,568 for its image. The most it can hold in the reservation is about $0.22 (32,000 × 1.25 over three rounds plus the search results,
+ * at the long-prompt price).
  */
-export const PDF_PROMPT_TOKENS_MAX = 16_000
+export const PDF_PROMPT_TOKENS_MAX = 32_000
 /** What the reservation holds for a counted PDF prompt: the count is an estimate ("might differ by a small amount"), so a quarter more. */
 export function pdfTokensHeld(counted: number): number {
   return Math.ceil(counted * 1.25)

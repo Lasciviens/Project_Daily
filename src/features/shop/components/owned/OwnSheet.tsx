@@ -163,7 +163,7 @@ export function OwnSheet({ had: hadInitially, items, categories, receipt: start,
           <input id="own-title" value={title} onChange={e => onChange({ title: e.target.value })} placeholder="PlayStation 4 Pro, iPhone 12…" autoFocus className="input" />
         </div>
         <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
-        <ReceiptPhoto stores={stores} onFill={fromReceipt} />
+        {!start && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
         {receipt && receipt.others.length > 0 && receipt.currency && (
           <Toggle checked={withOthers} onChange={setWithOthers}>Add the other {receipt.others.length === 1 ? 'line' : `${receipt.others.length} lines`} as {receipt.others.length === 1 ? 'an accessory' : 'accessories'}</Toggle>
         )}

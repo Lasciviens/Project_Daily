@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk } from '../../../shared/query'
-import { mapRowsInCache } from '../../../shared/query/cachePatch'
+import { mapRowsInCache, putRowsInCache } from '../../../shared/query/cachePatch'
 import { ClaudeJobError } from '../../ai/claude/claudeApi'
 import { tidyThing } from '../../ai/claude/featureJobs'
 import { updateShopItem } from '../api/shopApi'
@@ -10,6 +10,8 @@ import { readTidySuggestion, tidyCategories, tidyInputFor, tidyPatch, tidyUndoPa
 import type { ShopCategory, ShopItem, UpdateShopItemInput } from '../types'
 
 // "Tidy up info" (tidyModel.ts): one call per thing, one at a time, then ONE save for every ticked field with ONE Undo.
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** A pause the owner's Stop cuts short. */
 const wait = (ms: number, signal: AbortSignal) => new Promise<void>(resolve => {
@@ -33,6 +35,8 @@ export interface TidyRunResult {
   halted: string | null
   /** What the calls cost in all, from their own ledger rows. */
   costUsd: number
+  /** At least one call searched the web. */
+  searched: boolean
 }
 
 export interface TidyRunInput {
@@ -56,7 +60,9 @@ export function useTidyRun() {
       const list = tidyCategories(categories)
       const allowed = new Set(list.map(c => c.id))
       const suggestions = new Map<string, TidySuggestion>()
-      let failed = 0, costUsd = 0, stopped = false, halted: string | null = null
+      let failed = 0, costUsd = 0, stopped = false, searched = false, halted: string | null = null
+      // Two failures in a row end the run with the error's own sentence (a broken key or a down service would repeat it for every thing).
+      let inARow = 0
       for (let i = 0; i < rows.length && !stopped && !halted; i++) {
         if (signal.aborted) { stopped = true; break }
         const row = rows[i]
@@ -65,6 +71,8 @@ export function useTidyRun() {
           try {
             const { result, costUsd: cost } = await tidyThing(tidyInputFor(row, list, pathOf))
             costUsd += cost ?? 0
+            inARow = 0
+            if (isObj(result) && result.searched === true) searched = true
             const s = readTidySuggestion(result, row, allowed)
             if (s) { suggestions.set(row.id, s); onSuggestion(row.id, s) }
           } catch (error) {
@@ -72,14 +80,18 @@ export function useTidyRun() {
             else if (error instanceof ClaudeJobError && error.reason === 'busy') {
               if (attempt < BUSY_TRIES) { await wait(BUSY_WAIT_MS, signal); if (!signal.aborted) continue }
               if (signal.aborted) stopped = true; else halted = error.message
-            } else failed++
+            } else {
+              failed++
+              inARow++
+              if (inARow >= 2) halted = error instanceof Error ? error.message : 'Two calls in a row failed.'
+            }
           }
           break
         }
       }
       // A run that ended before it read anything is an error to say; one that read some is a result with its reason.
       if (halted && suggestions.size === 0 && failed === 0) throw new Error(halted)
-      return { suggestions, failed, stopped, halted, costUsd }
+      return { suggestions, failed, stopped, halted, costUsd, searched }
     },
   })
 }
@@ -89,7 +101,7 @@ export interface TidyApplyInput {
   entries: { item: ShopItem; suggestion: TidySuggestion; keys: ReadonlySet<TidyKey> }[]
 }
 
-interface Written { item: ShopItem; patch: UpdateShopItemInput }
+interface Written { item: ShopItem; patch: UpdateShopItemInput; after: ShopItem }
 
 /**
  * Saves the ticked fields through the Shop's own update (`updateShopItem`: the title and category columns and the facts, never
@@ -118,11 +130,13 @@ export function useApplyTidy() {
       for (const { item, suggestion, keys } of entries) {
         const patch = tidyPatch(item, suggestion, keys)
         if (Object.keys(patch).length === 0) continue
-        try { await updateShopItem(item.id, patch); written.push({ item, patch }) } catch { failed.push(item.title) }
+        try { const after = await updateShopItem(item.id, patch); written.push({ item, patch, after }) } catch { failed.push(item.title) }
       }
       return { written, failed }
     },
     onSuccess: ({ written, failed }) => {
+      // The rows the database answered with go straight into the cached lists, so an old name never shows until a refetch.
+      if (written.length) putRowsInCache<ShopItem>(qc, qk.shop.items(), written.map(w => w.after))
       if (failed.length) toast.error(`${failed.length === 1 ? `“${failed[0]}” was` : `${failed.length} things were`} not saved — try again`)
       if (written.length) toast.undo(`${written.length} ${written.length === 1 ? 'thing' : 'things'} tidied`, () => undo.mutate(written))
     },

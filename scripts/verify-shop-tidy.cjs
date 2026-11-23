@@ -28,10 +28,13 @@ const pathOf = id => (id === 'c-hp' ? 'Electronics / Headphones' : id === 'c-hom
 
 console.log('\nwhat is sent')
 check('categories are the owner\'s own: tops first, then "Top / Sub", a blank name left out, each with its id', same(list, [{ id: 'c-el', path: 'Electronics' }, { id: 'c-home', path: 'Home' }, { id: 'c-hp', path: 'Electronics / Headphones' }]), list)
-check('at most 120 categories, a path cut at 60 characters', T.tidyCategories(Array.from({ length: 200 }, (_, i) => ({ id: `c${i}`, name: `Cat ${i}`, parent_id: null }))).length === 120 && [...T.tidyCategories([{ id: 'x', name: 'N'.repeat(100), parent_id: null }])[0].path].length === 60)
+check('at most 100 categories, a path cut at 60 characters', T.tidyCategories(Array.from({ length: 200 }, (_, i) => ({ id: `c${i}`, name: `Cat ${i}`, parent_id: null }))).length === 100 && [...T.tidyCategories([{ id: 'x', name: 'N'.repeat(100), parent_id: null }])[0].path].length === 60)
 const input = T.tidyInputFor(item({ facts: { brand: { value: 'Sony', source: 'you', confidence: 'exact' } } }), list, pathOf)
 check('the input is the thing\'s name (spaces squeezed), brand, model and category now, and the category list', input.item.name === 'SONY wh-1000xm5 trådløse hodetelefoner NYHET' && input.item.brand === 'Sony' && input.item.model === '' && input.item.category === 'Home' && input.categories === list, input)
 check('only a thing\'s name, brand, model and category are in the input: no link, picture, price or date', same(Object.keys(input.item).sort(), ['brand', 'category', 'model', 'name']) && same(Object.keys(input).sort(), ['categories', 'item']))
+
+const longInput = T.tidyInputFor(item({ title: 'T'.repeat(300), facts: { brand: { value: 'B'.repeat(90), source: 'x', confidence: 'check' }, model: { value: 'M'.repeat(90), source: 'x', confidence: 'check' } } }), list, () => 'P'.repeat(90))
+check('what is sent is cut to the function\'s limits: the name 200, the brand, the model and the category path 60', [...longInput.item.name].length === 200 && [...longInput.item.brand].length === 60 && [...longInput.item.model].length === 60 && [...longInput.item.category].length === 60, longInput.item)
 
 console.log('\nthe second check')
 const good = { name: 'Sony WH-1000XM5 trådløse hodetelefoner', brand: 'Sony', model: 'WH-1000XM5', category_id: 'c-hp' }

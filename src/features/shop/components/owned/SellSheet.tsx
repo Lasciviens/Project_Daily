@@ -58,7 +58,7 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
   const accessories = useMemo(() => items.filter(a => a.accessory_of === item.id && isMine(a)), [items, item.id])
   const [how, setHow] = useState<ShopDisposal>('sold')
   const [on, setOn] = useState(() => (start?.day && start.day <= today && (!from || start.day >= from) ? start.day : today))
-  const [to, setTo] = useState('')
+  const [to, setTo] = useState(start?.to ?? '')
   const [got, setGot] = useState<number | null>(start?.amount ?? null)
   const [currency, setCurrency] = useState<ShopCurrency>(start?.amount !== undefined && start.currency ? start.currency : item.region === 'TR' ? 'TRY' : defaultCurrencyFor(null))
   // Your own "Could sell for", one tap away (it fills nothing by itself: never a made-up sale price).

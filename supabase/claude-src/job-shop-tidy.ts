@@ -21,7 +21,7 @@ import type { AnswerCheck, JobDefinition, JsonSchema } from './types.ts'
 import { ownValue } from './guard.ts'
 import { answerValue, checkedLine, checkedList, checkedNumber, escapeTagText, readAnswerObject } from './answer-reader.ts'
 
-export const TIDY_LIMITS = { inputName: 200, inputWord: 60, name: 120, word: 60, categories: 120, path: 60, id: 64, searches: 2 } as const
+export const TIDY_LIMITS = { inputName: 200, inputWord: 60, name: 120, word: 60, categories: 100, path: 60, id: 64, searches: 2 } as const
 
 const TIDY_ANSWER_SCHEMA: JsonSchema = {
   type: 'object',
@@ -54,7 +54,7 @@ function wordsOf(text: string): Set<string> {
 const TIDY_LINKISH = /https?:|www\.|\b[a-z0-9-]+\.[a-z]{2,}\b|\//i
 
 /** The model's tidy for one thing, checked. Only name, brand, model and a category id from `ids` can leave. */
-function readTidy(answerText: string, current: { name: string; brand: string; model: string }, ids: readonly string[]): AnswerCheck {
+function readTidy(answerText: string, current: { name: string; brand: string; model: string }, ids: readonly string[], searches: number): AnswerCheck {
   const answer = readAnswerObject(answerText)
   if (!answer.ok) return answer
   const raw = answer.value
@@ -69,7 +69,8 @@ function readTidy(answerText: string, current: { name: string; brand: string; mo
   if (model && !TIDY_LINKISH.test(model) && model !== current.model) result.model = model
   const number = checkedNumber(answerValue(raw, 'category'), 1, ids.length)
   if (number !== null && Number.isInteger(number)) result.category_id = ids[number - 1]
-  return { ok: true, result }
+  // Whether a search really ran is the call's own count, never the model's word.
+  return { ok: true, result: { ...result, searched: searches > 0 } }
 }
 
 export const SHOP_TIDY_JOB: JobDefinition = {
@@ -120,7 +121,7 @@ export const SHOP_TIDY_JOB: JobDefinition = {
     return {
       userText: `<item>\nname: ${escapeTagText(name)}\nbrand: ${none(brand)}\nmodel: ${none(model)}\ncategory: ${none(category)}\n</item>\n<categories>\n${lines.length ? lines.join('\n') : 'none'}\n</categories>`,
       webSearchMax: TIDY_LIMITS.searches,
-      read: (answerText: string) => readTidy(answerText, { name, brand, model }, ids),
+      read: (answerText: string, details: { webSearches: number }) => readTidy(answerText, { name, brand, model }, ids, details.webSearches),
     }
   },
 }

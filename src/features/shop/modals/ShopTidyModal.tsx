@@ -32,6 +32,9 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
   const [result, setResult] = useState<TidyRunResult | null>(null)
   const [off, setOff] = useState<ReadonlySet<string>>(new Set())
 
+  // Leaving the popup ends the run: no more calls are made (and paid) for a screen that is gone.
+  useEffect(() => () => control.current?.abort(), [])
+
   const rows = useMemo(() => {
     const ids = request.ids ? new Set(request.ids) : null
     return ids ? items.filter(i => ids.has(i.id)) : tidyScope(items)
@@ -100,7 +103,8 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
       const keys = new Set(r.changes.filter(c => !off.has(`${r.item.id}:${c.key}`)).map(c => c.key as TidyKey))
       return item && keys.size ? [{ item, suggestion: r.suggestion, keys }] : []
     })
-    apply.mutate({ entries }, { onSuccess: () => onClose() })
+    // A save that wrote nothing keeps the popup open: its own error is on screen, and the review is still there to try again.
+    apply.mutate({ entries }, { onSuccess: r => { if (r.written.length) onClose() } })
   }
 
   const nothing = result && reviewed.length === 0
@@ -120,11 +124,9 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
       <div className="flex flex-col gap-3">
         {!single && !running && !result && (
           <div className="flex flex-col items-start gap-2">
-            <p className="text-body text-fg-muted">
-              AI looks at {rows.length} {rows.length === 1 ? 'thing' : 'things'} (wishes and things you own), one at a time, and suggests a cleaner name (“Brand Model variant, colour”, in the store’s own words), the brand, the model and one of your own categories. It may search the web to confirm a brand and model. It never touches a link, picture, price or date. You review every change, and nothing is saved without your tap.
-            </p>
+            <p className="text-body text-fg-muted">AI suggests a cleaner name, brand, model and category for {rows.length} {rows.length === 1 ? 'thing' : 'things'}, in the store’s words. You tick what to keep.</p>
             {estimate
-              ? <p className="text-meta text-fg-muted">Worst case up to ≈ ${estimate.total < 1 ? estimate.total.toFixed(3) : estimate.total.toFixed(2)} for {rows.length} {rows.length === 1 ? 'thing' : 'things'} (up to ≈ ${estimate.each.toFixed(3)} each). What it really costs is usually a small part of that, and it is shown after.</p>
+              ? <p className="text-meta text-fg-muted">Up to ≈ ${estimate.total.toFixed(2)} (≈ ${estimate.each.toFixed(2)} each); usually far less.</p>
               : <p className="text-meta text-fg-muted">{describe.isError ? "The cost couldn't be worked out — try again later." : 'Working out the cost…'}</p>}
             <Button variant="primary" onClick={start} disabled={!estimate || rows.length === 0}>Start</Button>
             {rows.length === 0 && !isLoading && <p className="text-meta text-fg-muted">Nothing to tidy yet.</p>}
@@ -143,12 +145,11 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
               reviewed.length ? `${reviewed.length} ${reviewed.length === 1 ? 'thing has' : 'things have'} suggestions` : null,
               rows.length - reviewed.length - result.failed > 0 ? `${rows.length - reviewed.length - result.failed} had nothing to change` : null,
               result.failed ? `${result.failed} could not be read` : null,
-              result.stopped ? 'stopped' : null, costLine,
+              result.stopped ? 'stopped' : null, result.searched ? 'searched the web' : null, costLine,
             ].filter(Boolean).join(' · ')}
           </p>
         )}
         {result?.halted && <p className="text-meta text-warn">{result.halted}</p>}
-        {run.isError && !running && <p className="text-meta text-warn">{run.error instanceof Error ? run.error.message : 'Nothing was read.'}</p>}
         {nothing && !running && <p className="text-body text-fg-muted">{single ? 'Nothing to tidy — it looks fine as it is.' : 'Nothing to change.'}</p>}
         {reviewed.length > 0 && !running && (
           <ul className="flex flex-col gap-2">

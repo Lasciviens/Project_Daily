@@ -90,14 +90,14 @@ Input (&, <, > escaped): <request> = what the owner said, any language; <pages> 
 Rules (title and points in English, translated; names of things stay as said):
 - title: what it is about, at most 80 characters, short phrase, no "Request:", no full stop.
 - page: one path from <pages>, copied exactly; "other" when it is about the whole app or none fits. A page the owner names wins; <current_page> only when the request is clearly about it.
-- category: bug | feature | improvement | integration | longterm | question | other.
+- category: bug (broken or wrong) | feature (something new) | improvement (something that exists, better) | integration (connect another service) | longterm (a big idea for much later) | question (the owner asks something) | other.
 - priority: low | medium | high | urgent. Medium by default; high when it breaks something used daily; urgent only when the owner says so.
 - points: at most 10 separate points in a sensible order, each a plain sentence under 250 characters that stands alone. Keep every wish, add none, merge none, drop none, repeat none. Keep exact wording the owner meant (a button name, a number).
 
 Answer with one JSON object, no other text. Schema:
 ${JSON.stringify(DRAFT_ANSWER_SCHEMA)}`
 
-const DEV_REQUEST_DRAFT_VERSION = '2026-11-23.1'
+const DEV_REQUEST_DRAFT_VERSION = '2026-11-23.2'
 
 /** The pages the app sends, each checked: a path of lower-case words, or "other". Null when there is none usable. */
 function checkedPages(value: unknown): string[] | null {

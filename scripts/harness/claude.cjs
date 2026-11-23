@@ -192,7 +192,7 @@ const PHASE_2A_RESULTS = {
 }
 PHASE_2A_RESULTS.recipe_from_link = PHASE_2A_RESULTS.recipe_from_text
 PHASE_2A_RESULTS.quick_guess_photo = { title: 'Pasta with meat sauce', portion: 'one full plate, about 400 g', calories: 650, protein_g: 28, carbs_g: 80, fat_g: 22, sugar_g: 9, assumptions: ['A full dinner plate.', 'Beef mince sauce.'] }
-PHASE_2A_RESULTS.receipt_read = { kind: 'bought', store: 'Demo Elektro Majorstuen', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Demo Headphones X1 black', brand: 'Demo', model: 'X1', price: 2990, quantity: 1, condition: 'new' }, { name: 'USB-C cable 2 m', price: 199, condition: 'outlet' }, { name: 'Frakt', price: 99 }], warranty_months: 24 }
+PHASE_2A_RESULTS.receipt_read = { kind: 'bought', channel: 'online', store: '0420 Demo Elektro Majorstuen', date: '2026-11-08', currency: 'NOK', total: 4278, items: [{ name: 'DH-X1 BLK', product: 'Demo Headphones X1, black', brand: 'Demo', model: 'X1', price: 3290, quantity: 1, condition: 'new' }, { name: 'Bluetooth speaker', price: 899 }, { name: 'USB-C cable 2 m', price: 89, condition: 'outlet' }, { name: 'Frakt', price: 99 }], warranty_months: 24 }
 // A PDF of the same harness gets a sale (a payout for something in the seed's Owned list).
 // "Tidy up info": made-up answers by the name sent (the function's own check then holds them like a model's).
 const tidyAnswer = (input) => {
@@ -665,7 +665,7 @@ function claudeMock(opts = {}) {
         const job = realFindJob(other.name)
         const prepared = job.prepare(body.input, now)
         if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
-        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : 0 })
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0 })
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }

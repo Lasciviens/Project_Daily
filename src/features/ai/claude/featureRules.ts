@@ -54,7 +54,7 @@ export const PDF_MAX_BYTES = 1_000_000
  * as it is in the function.
  */
 export function pdfFromBytes(bytes: Uint8Array): PdfInput {
-  if (bytes.length > PDF_MAX_BYTES) throw new Error('That PDF is too large (at most 1 MB) — a receipt is one to three pages')
+  if (bytes.length > PDF_MAX_BYTES) throw new Error('That PDF is too large (at most 1 MB) — a receipt is one to four pages')
   if (bytes.length < 8 || String.fromCharCode(...bytes.slice(0, 5)) !== '%PDF-') throw new Error("That file isn't a PDF")
   let text = ''
   for (let i = 0; i < bytes.length; i += 32_768) text += String.fromCharCode(...bytes.subarray(i, i + 32_768))
@@ -71,10 +71,14 @@ export type ReceiptKind = 'bought' | 'sold' | 'unknown'
 export const RECEIPT_CONDITIONS = ['new', 'used', 'outlet', 'refurbished'] as const
 export type ReceiptCondition = typeof RECEIPT_CONDITIONS[number]
 /** One product line. `price` is the line total after discount, VAT included. The other keys exist only when the receipt gave them. */
-export interface ReceiptLine { name: string; price: number | null; brand?: string; model?: string; quantity?: number; condition?: ReceiptCondition }
+export interface ReceiptLine { name: string; price: number | null; /** The full product name as sold, from the print or found by a web search. */ product?: string; brand?: string; model?: string; quantity?: number; condition?: ReceiptCondition }
 export interface ReceiptRead {
   /** Bought or sold; only present when the answer said so (absent reads as unknown). */
   kind?: ReceiptKind
+  /** How it was bought, when the receipt says: a web order or in a store. */
+  channel?: 'online' | 'in_store'
+  /** The function really ran a web search for this read (its own count, not the model's word). */
+  searched?: boolean
   store?: string
   /** YYYY-MM-DD */
   date?: string
@@ -93,7 +97,9 @@ const line = (v: unknown, max: number): string | null => {
 }
 /** A shipping or pick-up line, a bag, a deposit, a fee: never a product (the function drops them too). */
 const NOT_A_PRODUCT = /^(pick-?up point|frakt|shipping|delivery|levering|fraktkostnad|bæreposer?|plastpose|pant|gebyr|fee)\b/i
-const word = (v: unknown): string | null => { const t = line(v, 60); return t && !/https?:|www\.|\//i.test(t) ? t : null }
+/** A link, "www.", a leading slash or "//": a slash inside a model ("16/512 GB") is fine. */
+const LINKLIKE = /https?:|www\.|^\/|\/\//i
+const word = (v: unknown, max = 60): string | null => { const t = line(v, max); return t && !LINKLIKE.test(t) ? t : null }
 const amount = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0.01 && v <= AMOUNT_MAX ? Math.round(v * 100) / 100 : null)
 
 /** A real calendar day YYYY-MM-DD, or null. */
@@ -114,35 +120,42 @@ export function readReceipt(raw: unknown, today: string): ReceiptRead | null {
   if (!isObj(raw)) return null
   const out: ReceiptRead = {}
   if (raw.kind === 'bought' || raw.kind === 'sold' || raw.kind === 'unknown') out.kind = raw.kind
-  const store = line(raw.store, 80)
+  if (raw.channel === 'online' || raw.channel === 'in_store') out.channel = raw.channel
+  if (raw.searched === true) out.searched = true
+  // A store number in front of the name is not part of it (so the match to your own stores works).
+  const store = line(raw.store, 80)?.replace(/^\d{2,6}\s+/, '') || null
   if (store && !/https?:|www\.|\//i.test(store)) out.store = store
   const date = realDay(raw.date)
   if (date && date <= today && date >= `${Number(today.slice(0, 4)) - 5}${today.slice(4)}`) out.date = date
   if (typeof raw.currency === 'string' && /^[A-Z]{3}$/.test(raw.currency)) out.currency = raw.currency
   const total = amount(raw.total)
   if (total !== null) out.total = total
-  const items: ReceiptLine[] = []
+  const lines: ReceiptLine[] = []
   if (Array.isArray(raw.items)) {
-    for (const it of raw.items.slice(0, 30)) {
+    for (const it of raw.items.slice(0, 40)) {
       if (!isObj(it)) continue
       const name = line(it.name, 120)
-      if (!name || NOT_A_PRODUCT.test(name) || items.length >= 12) continue
+      if (!name || NOT_A_PRODUCT.test(name)) continue
       const price = amount(it.price)
       if (price === 0.01) continue
       const entry: ReceiptLine = { name, price }
-      const brand = word(it.brand), model = word(it.model)
+      const product = word(it.product, 120), brand = word(it.brand), model = word(it.model)
+      if (product) entry.product = product
       if (brand) entry.brand = brand
       if (model) entry.model = model
       if (typeof it.quantity === 'number' && Number.isInteger(it.quantity) && it.quantity >= 1 && it.quantity <= 99) entry.quantity = it.quantity
       const condition = RECEIPT_CONDITIONS.find(c => c === it.condition)
       if (condition) entry.condition = condition
-      items.push(entry)
+      lines.push(entry)
     }
   }
+  // More than 12: the 12 with the highest prices (a line with no price last), in the order they were printed.
+  const keep = lines.length > 12 ? new Set(lines.map((_, i) => i).sort((a, b) => (lines[b].price ?? -1) - (lines[a].price ?? -1) || a - b).slice(0, 12)) : null
+  const items = keep ? lines.filter((_, i) => keep.has(i)) : lines
   if (items.length) out.items = items
   if (typeof raw.warranty_months === 'number' && Number.isInteger(raw.warranty_months) && raw.warranty_months >= 1 && raw.warranty_months <= 120) out.warranty_months = raw.warranty_months
   // A kind alone is no receipt.
-  return Object.keys(out).some(k => k !== 'kind') ? out : null
+  return Object.keys(out).some(k => k !== 'kind' && k !== 'channel' && k !== 'searched') ? out : null
 }
 
 /** A name with case, accents, spaces and punctuation gone: "Elkjøp Norge AS" and "ELKJOP" meet. */
@@ -189,6 +202,10 @@ export interface ReceiptFill {
   storeName: string | null
   /** The store as a form shows it: the matched store's own name, else the printed one. */
   storeLabel: string | null
+  /** The read searched the web: what it found (the product, brand and model) is a fact to check. */
+  searched?: boolean
+  /** A web order or a store, when the receipt says. */
+  channel?: 'online' | 'in_store'
   /** A line for the receipt note: what was read and could not go in a field (a warranty, a total that differs). */
   note: string
   /** The day a printed warranty ends (the purchase day plus its months), YYYY-MM-DD. */
@@ -251,7 +268,7 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     note: '', left, lines: lines.map(l => l.name), others: chosen ? lines.filter((_, i) => i !== chosenAt) : [],
   }
   if (chosen) {
-    fill.title = chosen.name
+    fill.title = chosen.product ?? chosen.name
     if (chosen.brand) fill.brand = chosen.brand
     if (chosen.model) fill.model = chosen.model
     if (chosen.condition === 'new' || chosen.condition === 'used' || chosen.condition === 'refurbished') fill.condition = chosen.condition
@@ -263,6 +280,8 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     else left.push('The receipt shows no clear currency: the amount is left out.')
   } else if (lines.length > 1 && pick == null) left.push('Several lines: pick the one you bought to fill its name and price.')
   if (read.date) fill.day = read.date
+  if (read.searched) fill.searched = true
+  if (read.channel) fill.channel = read.channel
   const parts: string[] = []
   if (read.warranty_months) {
     const until = read.date ? addMonthsToDay(read.date, read.warranty_months) : null

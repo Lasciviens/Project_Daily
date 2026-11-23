@@ -33,14 +33,14 @@ Rules:
 - "today", "tonight", "tomorrow" count from <now>. A bare weekday = first such day in the list. "Next week" = the week from next Monday. Day and month without a year = next time it comes. Unclear day: leave out.
 - title: what it is, few words, no day/time/place/reminder. Leave out when the sentence only changes details.
 - date; startTime; endTime (only with startTime; earlier than start = next day); durationMinutes (1-1440, when a length is given, never with endTime); allDay true only when the whole day and no start time.
-- repeat: daily | weekdays (Mon-Fri) | weekly | monthly | every (with repeatEvery 1-99 and repeatUnit). repeatDays: 0 Sunday ... 6 Saturday, for weekly or every-in-weeks. repeatUntil (day) or repeatCount (1-999), never both.
+- repeat: daily | weekdays (Mon-Fri) | weekly | monthly | every (with repeatEvery 1-99 and repeatUnit): "every other week" = every, repeatEvery 2, repeatUnit week. repeatDays: 0 Sunday ... 6 Saturday, for weekly or every-in-weeks: "every Monday and Thursday" = weekly, repeatDays [1,4]. repeatUntil (day) or repeatCount (1-999), never both.
 - place: the owner's words. travelMinutes and alerts (minutes before start, one or two different: a day before = 1440, at start = 0): only values the schema allows, else leave out.
 - showAs: busy | free, only when said.
 - notes: a worthwhile detail that fits no other field. Never a summary.
 - deadlineDate/deadlineTime: for "by Friday". A deadline is not the day it happens. doFrom: first day of a period that ends at deadlineDate.
 - priority: low | medium | high, only when said ("urgent" = high).`
 
-const ITEM_FILL_VERSION = '2026-11-23.1'
+const ITEM_FILL_VERSION = '2026-11-23.2'
 
 const ITEM_FILL_DAY = { type: 'string', description: 'A day as YYYY-MM-DD' }
 const ITEM_FILL_CLOCK = { type: 'string', description: 'A time as HH:MM, 24-hour' }

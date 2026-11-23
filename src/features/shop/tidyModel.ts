@@ -12,7 +12,7 @@ import { listOf } from './shopModel'
 import type { ShopCategory, ShopFact, ShopItem, ShopItemFacts, UpdateShopItemInput } from './types'
 
 export const TIDY_SOURCE = 'Tidy up (AI)'
-export const TIDY_LIMITS = { name: 120, word: 60, path: 60, categories: 120, searches: 2, factText: 120 } as const
+export const TIDY_LIMITS = { name: 120, word: 60, path: 60, categories: 100, searches: 2, factText: 120 } as const
 
 export type TidyKey = 'name' | 'brand' | 'model' | 'category'
 
@@ -63,7 +63,7 @@ export function tidyScope(items: readonly ShopItem[]): ShopItem[] {
   return items.filter(i => listOf(i) === 'wishlist' && i.kind !== 'general' && i.status !== 'dropped')
 }
 
-/** The owner's own categories as the function takes them: "Top" and "Top / Sub", paths cut to 60, at most 120 (tops first). */
+/** The owner's own categories as the function takes them: "Top" and "Top / Sub", paths cut to 60, at most 100 (tops first): 100 two-byte-letter paths still leave room in the function's 16 KB body. */
 export function tidyCategories(categories: readonly ShopCategory[]): { id: string; path: string }[] {
   const byId = new Map(categories.map(c => [c.id, c]))
   const cut = (s: string) => [...s.replace(/\s+/g, ' ').trim()].slice(0, TIDY_LIMITS.path).join('')
@@ -78,7 +78,9 @@ export function tidyCategories(categories: readonly ShopCategory[]): { id: strin
 /** The job's input for one thing. The brand and model are sent as they are saved now. */
 export function tidyInputFor(item: ShopItem, categories: readonly { id: string; path: string }[], pathOfCategory: (id: string | null) => string): Record<string, unknown> {
   const now = currentOf(item)
-  return { item: { name: now.name.slice(0, 200), brand: now.brand, model: now.model, category: pathOfCategory(item.category_id) }, categories }
+  // What is sent stays inside the function's limits (it refuses a longer value): the name 200, the rest 60.
+  const cut = (s: string, n: number) => [...s].slice(0, n).join('')
+  return { item: { name: cut(now.name, 200), brand: cut(now.brand, TIDY_LIMITS.word), model: cut(now.model, TIDY_LIMITS.word), category: cut(pathOfCategory(item.category_id), TIDY_LIMITS.path) }, categories }
 }
 
 /** One field of the review: what is there, and what is suggested. */

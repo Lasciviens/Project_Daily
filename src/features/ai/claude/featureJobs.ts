@@ -26,7 +26,7 @@ export type ReceiptInput = { image: PhotoInput } | { document: PdfInput }
 export async function readReceiptInput(input: ReceiptInput, today: string): Promise<ReceiptRead & { costUsd: number | null }> {
   const { result, call } = await runClaudeJob<unknown>('receipt_read', input)
   const read = readReceipt(result, today)
-  if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo")
+  if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo or another PDF")
   return { ...read, costUsd: costOf(call) }
 }
 
