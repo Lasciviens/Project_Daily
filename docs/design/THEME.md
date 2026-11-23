@@ -437,11 +437,21 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
     header cap over it.
   - A `sticky` column pins only while it fits the scroll area (`StickyStack` in `PageBoard.tsx`
     re-checks on resize); a taller one scrolls with the page.
-  - `boardWidthRem(layouts, step)` gives a board's widest width at a step. A page header above a
-    board that stops short of the container (e.g. a 40rem main track) caps itself to it, so its
-    right-hand controls line up with the last card. **A page whose sections (tabs) lay out different
-    boards keeps ONE header size for all of them** — `sectionsWidthRem(boards, step)`, the widest — and
-    the same lines in every section, so the header and its tabs never move or resize on a switch (owner,
+  - **Every page's header band is the page's own width, and its controls are one size** (owner, 23.11.2026:
+    "Every page should have same size! … all same aligned. Using the width same in every page"). Root cause of
+    the different widths: five pages capped their header to their boards — Developer, Settings and Personal
+    to `sectionsWidthRem`, Projects to `projectsHeaderCapRem`, Work to `workHeaderCapRem` — while the others
+    filled the container, so at 2450px the band was 1696px on Developer, 1088px on Projects and 2096px on
+    the rest. The caps are gone (`sectionsWidthRem`, `projectsHeaderCapRem`, `workHeaderCapRem` are no longer
+    used by any page; `boardWidthRem` stays for a board's own width): the band is always the container's
+    width, so it can never resize on a switch either. Heights: a header's tabs (`SegmentedControl` md/sm,
+    `.pill-tab`), buttons (`Button size="sm"`), icon buttons (`IconButton size="sm"`) and date navigation
+    are all **36px, 44px on touch** (`.seg-btn` 30px in a 3px-padded track; `.pill-tab` 36px) — checked at
+    402, 874 (sideways), 1469 and 2450 on every page with a header switch. A tab bar looks like a recessed
+    segmented control (a few tabs) or accent pills in a scrolling row (many), both flush left at the band's
+    padding. (Before: segmented tabs were 46px, pill tabs 34px, header buttons 44px.)
+  - `boardWidthRem(layouts, step)` gives a board's widest width at a step. **A page whose sections (tabs) lay out different
+    boards has ONE header** — the page's width — and the same lines in every section, so the header and its tabs never move or resize on a switch (owner,
     31.10.2026: "the layout should not move while navigating between sections"; Personal and Settings).
     When the header's text changes with the section or the day (Personal's date and day line), give it
     `PageHeader steady` and a one-line subtitle (`<Truncate>`): its title column takes a fixed share of the
@@ -569,7 +579,7 @@ cards. Pages use `PageBoard` (`src/shared/ui/PageBoard.tsx`, rules in `pageBoard
   - A section that can be empty goes in the last track, so an empty track is only ever at the far right. A card whose content is bounded (≤ 2 metrics, a few short rows) never spans; the window stops early with empty trailing tracks, documented in its board file (Cardio, Coach, Goal at 2450).
   - A band (`top`/`bottom`) spans only the tracks its own step declares, so a full-width band is declared at every step. Never put a collection in a `bottom` band under a much taller column (it starts after the tallest column ends); give it a column.
   - A section that is its host card's block on a phone is **absent** from step 1; the host decides with `keysAt(layout, useBoardStep())` (Health Sleep breathing, Cardio recovery, the Goal blocks).
-  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header above a board that stops short caps itself to `boardWidthRem(layout, step)` — with tabs, to `sectionsWidthRem` (one size for every tab); `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
+  - A `sticky` column pins only while it fits the scroll area (`StickyStack` re-checks on resize). A page header is the page's width, never capped to its board (23.11.2026, §6.3); `useElementWidthRem` (`src/shared/hooks/useElementWidth.ts`) measures a component's own width in rem.
   - **Cards that must line up across tracks go in `rows`.** Independent column stacks line up only when their heights happen to match. A row is one grid row on the board's tracks (its cells' spans cover every track): each cell stretches to the row's tallest and grows its last section, content top-aligned, so the row's cards share one top and one bottom whatever their content — the grid does it, nothing is measured. A section that holds its own grid (Home's `pair`, the week | the tasks) passes the height on with `h-full`. A step has `columns` or `rows`, never both; a row cell is never `sticky`. A band that must line up with the tracks lays its own grid on `boardTemplate(tracks, main)` (Home's split laptop board: brief | transit, then week | tasks | weather as rows; the glance row under them on the same tracks).
   - Layouts live in `homeBoard.ts`, `dailyBoards.ts`, `foodBoards.ts`, `wishesBoard.ts`, `healthBoards.ts`, `trainingBoards.ts`, `mediaBoard.ts`, `workBoard.ts`, `projectBoard.ts`, `developerBoards.ts`, checked by `scripts/verify-page-board.cjs` (Home, Daily), `verify-life-boards.cjs` (Food, Wishes, Health, Training) and `verify-feature-boards.cjs` (Media, Work, Projects, Developer).
 - **No density setting.** A Comfortable/Compact/Dense toggle was tried and rejected — don't reintroduce it.
