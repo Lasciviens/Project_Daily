@@ -58,6 +58,8 @@ export interface TraktStatus {
   syncing?: boolean
   /** Trakt's whole history has been read since migration 149 (or the last connect): placeholders no longer wait for its dates. */
   historyLinked?: boolean
+  /** TMDB's read token is set on the function (false = new titles and show states stop; the card says so). */
+  tmdbToken?: boolean
   notConfigured?: boolean
 }
 

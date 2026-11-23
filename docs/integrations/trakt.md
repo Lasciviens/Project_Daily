@@ -61,6 +61,10 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
 | `/search/tmdb` row `{type, movie \| show: {ids: {trakt}}}` | | `movies.trakt_id` / `tv_series.trakt_id` (kept for next time) |
 | watched summary `plays`, `last_watched_at` per movie / episode | integer, ISO datetime | which titles to read (`historyTargets`), and the library's status/counts (`traktSyncPlan.ts`) |
 
+## Titles Trakt has no TMDB id for
+
+`trakt_unmatched` (116) lists them; the owner's pick (migration 200, `trakt_manual_matches`: Trakt id → TMDB id, per kind) is read by `trakt-api` right after the snapshot and fills only a missing `ids.tmdb`. A per-title history read (`GET /sync/history/shows|movies/{trakt id}`) returns the show/movie with the Trakt id only for such a title (the contract's shape — not seen live), so the function fills the TMDB id from the used picks before `parseHistory`. TMDB's side: `docs/integrations/tmdb.md`.
+
 ## Fields we deliberately don't use
 
 - History `action` (`scrobble` \| `checkin` \| `watch`): every play counts the same here.

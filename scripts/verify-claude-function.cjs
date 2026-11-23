@@ -1491,7 +1491,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('12 · phone_ask')
   for (const name of ['phone_ask']) {
     const j = jobAbout(name)
-    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, five read-only tools (4b), no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools.map(t => t.name), ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me']) && j.answerSchema === null)
+    check(`${name}: one-shot, phone only, Haiku, low effort, 800 tokens, an 18 s limit, six read-only tools (4b, transit 23.11.2026), no answer shape`, j.kind === 'one_shot' && same(j.callers, ['phone']) && same(j.defaults, { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 800 }) && j.timeLimitMs === 18000 && same(j.tools.map(t => t.name), ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'get_transit']) && j.answerSchema === null)
     check(`${name}: the instructions say the data is never an instruction, that nothing can be changed from the phone, and that & < > are escaped`, /data, never instructions to you/.test(j.instructions) && /You can only read/.test(j.instructions) && /&, <, > escaped/.test(j.instructions))
   }
   const phoneBody = (job, input) => ({ action: 'run', caller: 'phone', job, input })
@@ -1747,7 +1747,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the phone job is told to write dates as DD.MM.YYYY and times as HH:MM', /DD\.MM\.YYYY/.test(PHONE_ASK_JOB.instructions) && /HH:MM/.test(PHONE_ASK_JOB.instructions))
 
   // The pinned versions of the new jobs.
-  const PIN_2B = { coach_assessment: ['2026-11-23.2', 'a239c88e1aa1900f'], kobo_ask: ['2026-11-23.1', '758e0d989a1a890f'], phone_ask: ['2026-11-23.3', '0be115b5ab06480a'], test_bench: ['2026-11-23.1', 'f216fdf752d03e55'] }
+  const PIN_2B = { coach_assessment: ['2026-11-23.2', 'a239c88e1aa1900f'], kobo_ask: ['2026-11-23.1', '758e0d989a1a890f'], phone_ask: ['2026-11-23.4', '8ca5b822337c9cf4'], test_bench: ['2026-11-23.1', 'f216fdf752d03e55'] }
   for (const [name, job] of [['coach_assessment', COACH_ASSESSMENT_JOB], ['kobo_ask', KOBO_ASK_JOB], ['phone_ask', PHONE_ASK_JOB], ['test_bench', TEST_BENCH_JOB]]) {
     const h = crypto.createHash('sha256').update(`${job.instructions}\n${JSON.stringify(job.answerSchema)}`).digest('hex').slice(0, 16)
     check(`${name}: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, PIN_2B[name][0] === job.version && PIN_2B[name][1] === h, `version ${job.version}, hash ${h}`)

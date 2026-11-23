@@ -437,7 +437,7 @@ const CHAT_TOOLS = [
   ['get_day_plan', 'read', ['chat', 'coach', 'phone']], ['get_week_figures', 'read', ['chat', 'phone']], ['get_food_day', 'read', ['chat', 'phone']], ['find_text', 'read', ['chat', 'phone']],
   ['get_about_me', 'read', ['chat', 'coach', 'phone']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
   ['get_training_week', 'read', ['coach']], ['get_health_trends', 'read', ['coach']], ['get_pt_verdicts', 'read', ['coach']],
-  ['note_shortcut', 'read', ['chat', 'coach']],
+  ['note_shortcut', 'read', ['chat', 'coach']], ['get_transit', 'read', ['chat', 'phone']],
 ].map(([name, kind, chats]) => ({ name, kind, what: `The ${name} tool.`, defaultMode: kind === 'write' ? 'ask' : 'on', chats }))
 
 /** What `{ action: 'describe' }` answers, in the real function's own shape. */

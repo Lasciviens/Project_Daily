@@ -10,7 +10,7 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 |---|---|
 | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_URL` | GitHub **environment `production`** secrets (main only; not Vault, never repository secrets) — the automatic deploy: a personal access token (`sbp_…`) for `supabase functions deploy`, and the Session pooler connection string for the migrations. `docs/deploy-setup.md`. |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Client build — main Supabase. The publishable key (`sb_publishable_…`, public by design) replaces the legacy `VITE_SUPABASE_ANON_KEY`, which stays the fallback until the legacy keys are switched off (see Supabase API keys below). A repository secret or variable; the deploy accepts either. |
-| `VITE_TMDB_API_KEY` | Client build — TMDB (client-safe) |
+| `VITE_TMDB_READ_TOKEN` | Client build — TMDB's v4 "API Read Access Token", sent as a Bearer header (read-only, but part of the public bundle). Replaced `VITE_TMDB_API_KEY` (a v3 key in the URL) on 23.11.2026; the old secret can be deleted once this one works (`docs/deploy-checklist.md`). |
 | `VITE_GOOGLE_CLIENT_ID` | Client build — Google OAuth (Calendar + Tasks + Health consent) |
 | `VITE_STRAVA_CLIENT_ID` | Client build — Strava OAuth start |
 | `VITE_OXR_APP_ID` | Client build — Open Exchange Rates (Currency widget) |
@@ -31,7 +31,7 @@ Client vars are baked at build time by `.github/workflows/deploy.yml`; everythin
 | `ESDE_SYNC_SECRET` | Edge Function environment secrets (ES-DE exception to Vault storage) — the RP6 handheld's own device secret (`x-esde-secret`), read by `esde-sync`, `esde-media-sync`, and `esde-content-sync`. Deliberately separate from `PHONE_GATEWAY_SECRET` so revoking the handheld never revokes the iPhone's Shortcuts. Revoke = rotate this value. |
 | `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` | Vault — the Trakt app's OAuth pair, read by `trakt-api`. The secret never reaches the browser. |
 | `TRAKT_SYNC_SECRET` | Edge Function secrets **and** Vault — the Trakt cron's auth (`x-sync-secret`); the cron reads it from Vault, `trakt-api` from its env. |
-| `TMDB_API_KEY` | Edge Function secrets — the same TMDB v3 key as `VITE_TMDB_API_KEY`; `trakt-api` needs it to add titles that come from Trakt and to tell Completed from Watching. |
+| `TMDB_READ_TOKEN` | Edge Function secrets — TMDB's v4 "API Read Access Token" (a long `eyJ…` token with two dots, not the 32-character key; any other shape reads as not set), sent as `Authorization: Bearer`; `trakt-api` needs it to add titles that come from Trakt, to tell Completed from Watching and for Follows. Without it those calls stop with a plain message. Replaced `TMDB_API_KEY` on 23.11.2026. |
 | `MDBLIST_API_KEY` | Edge Function secrets — read by `trakt-api` for Rotten Tomatoes / Metacritic / IMDb / Letterboxd scores by TMDB id. |
 | `KOBO_OPDS_TOKEN` | Edge Function secrets **and** Vault — the Send to Kobo catalogue token (in the OPDS path KOReader uses; the sweep cron sends it as `x-kobo-token`). Revoke = rotate it and re-enter the catalogue address on the Kobo. |
 | `KOBO_SYNC_SECRET` | Edge Function secrets — the Kobo plugin's device secret (`x-kobo-secret` on `/sync`, `/inbox`, `/deliveries/<id>/ack`, `/applied`, `/cover`, `/capture`, `/ask`), stored on the Kobo in `settings/lascisboard.lua` by `scripts/kobo/set-plugin-secret.lua` over SSH. Separate from `KOBO_OPDS_TOKEN` so rotating one never breaks the other. |
