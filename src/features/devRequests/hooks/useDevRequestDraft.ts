@@ -5,7 +5,7 @@ import { draftFromRow, isDraftEmpty, sameFields, topSortOrder, type DraftFields 
 import { useCreateDevRequest, useDevRequests, useMarkDevRequestsPrompted, useUpdateDevRequest } from './useDevRequests'
 import type { DevRequest, DevRequestStatus } from '../types'
 import { toast } from '../../../app/store'
-import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
+import { useReportAiSave } from '../../ai/claude/hooks/useReportAiSave'
 import { takeLearnCall } from '../../ai/claude/learnCalls'
 
 const toRow = (f: DraftFields) => ({

@@ -40,9 +40,7 @@ export const DOCS_ALLOW = [
 const NEVER = /(^|\/)(AGENTS\.md|CLAUDE\.md)$|(^|\/)\.claude\/|^docs\/coord\//
 
 // The same characters as learn-text.ts's LEARN_HIDDEN and LEARN_CONTROL (verify-ai-learning-docs compares them).
-// eslint-disable-next-line no-misleading-character-class -- variation selectors and the like are exactly what is taken out
 export const DOCS_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
 export const DOCS_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 
 // What a reader of the rendered page never sees, so a model must not either: HTML comments, Markdown's reference lines

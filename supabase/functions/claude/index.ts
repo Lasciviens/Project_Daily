@@ -1795,7 +1795,6 @@ function recipeFromPage(html: string): RecipeFields | null {
 // eslint-disable-next-line no-misleading-character-class -- variation selectors and the like are exactly what is taken out
 const LEARN_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
 // Control characters, line breaks and tabs among them: learned text is one line, the caller collapses spaces.
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
 const LEARN_CONTROL = /[\p{Cc}]/gu
 
 /** The text with every hidden character and control character removed, normalised (NFKC), repeated until stable. */

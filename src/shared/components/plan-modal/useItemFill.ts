@@ -143,7 +143,7 @@ export function useItemFill<S>({ open, item, form, screen, take, put, fillInto }
     logPayload: false,
     mutationFn: async (report) => {
       // Loaded only once ✨ was used, like the function's own client.
-      const { reportAiSave } = await import('../../../features/ai/claude/learnApi')
+      const { reportAiSave } = await import('../../../features/ai/claude/learnSave')
       return reportAiSave(report)
     },
     invalidates: ['aiLearn'],

@@ -8,7 +8,7 @@ import { toast } from '../../../app/store'
 import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
 import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../../ai/claude/recipeJobs'
-import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
+import { useReportAiSave } from '../../ai/claude/hooks/useReportAiSave'
 import { optionGroupsLine, takeLearnCall } from '../../ai/claude/learnCalls'
 import {
   DEFAULT_GUESSES, itemToPreset, matchKnownGuess, parseGuessOptions, readGuessEstimate, recentGuesses,

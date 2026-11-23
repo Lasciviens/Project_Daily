@@ -31,7 +31,8 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/home/pages/HomePage.tsx': 555,             // [527]
   'src/features/daily/pages/DailyPage.tsx': 540,           // [512]
   'src/features/games/test-game/TestGamePage.tsx': 525,    // [499] Games
-  'src/features/settings/pages/SettingsPage.tsx': 520,     // [495]
+  'src/features/settings/pages/SettingsPage.tsx': 523,     // [495] main was at 520 on 23.11.2026; +3 that day: Food → a preset's Suggest options
+                                                           // reports its save for AI learning (the call's id and a hook; the report itself loads at the save)
   'src/features/recipes/pages/RecipesPage.tsx': 505,       // [479] Food
   'src/features/training/pages/TrainingPage.tsx': 450,     // [424]
   'src/features/health/pages/HealthPage.tsx': 435,         // [413]

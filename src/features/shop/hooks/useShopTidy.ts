@@ -6,7 +6,7 @@ import { mapRowsInCache, putRowsInCache } from '../../../shared/query/cachePatch
 import { ClaudeJobError } from '../../ai/claude/claudeApi'
 import { tidyThing } from '../../ai/claude/featureJobs'
 import { updateShopItem } from '../api/shopApi'
-import { useReportAiSave } from '../../ai/claude/hooks/useLearn'
+import { useReportAiSave } from '../../ai/claude/hooks/useReportAiSave'
 import { readTidySuggestion, tidyCategories, tidyInputFor, tidyPatch, tidyUndoPatch, type TidyKey, type TidySuggestion } from '../tidyModel'
 import type { ShopCategory, ShopItem, UpdateShopItemInput } from '../types'
 

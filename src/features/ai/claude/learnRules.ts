@@ -239,18 +239,5 @@ export const readList = <T>(rows: unknown, read: (r: unknown) => T | null): T[] 
 /** A share as a whole percent ("83 %"). */
 export const percent = (n: number): string => `${Math.round(Math.max(0, Math.min(1, n)) * 100)} %`
 
-// ── The owner's save (what the browser reports) ──
-
-export interface SaveReport { callId: string; saved: Record<string, string | number | boolean | null>; unticked?: string[]; dismissed?: boolean }
-
-/** A save report checked before it leaves: a uuid call id, at most 200 plain fields, short values. Null when there is nothing to send. */
-export function checkedSaveReport(r: SaveReport | null | undefined): SaveReport | null {
-  if (!r || typeof r.callId !== 'string' || !UUID.test(r.callId)) return null
-  const saved: SaveReport['saved'] = {}
-  for (const [k, v] of Object.entries(r.saved ?? {}).slice(0, 200)) {
-    if (!/^[a-z_]{1,40}(\.[0-9]{1,3}\.[a-z_]{1,40})?$/.test(k)) continue
-    if (typeof v === 'string' ? v.length <= 2000 : v === null || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) saved[k] = v
-  }
-  const unticked = (r.unticked ?? []).filter(f => /^[a-z_]{1,40}(\.[0-9]{1,3}\.[a-z_]{1,40})?$/.test(f)).slice(0, 200)
-  return { callId: r.callId, saved, unticked, dismissed: r.dismissed === true }
-}
+// The owner's save (what the browser reports) lives in learnSave.ts: a form that reports a save loads only that.
+export type { SaveReport } from './learnSave'

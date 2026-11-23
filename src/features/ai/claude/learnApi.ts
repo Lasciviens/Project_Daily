@@ -1,11 +1,10 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { parseFunctionErrorBody } from '../../../shared/utils/functionError'
-import { ClaudeJobError } from './claudeApi'
+import { callLearnFunction as callFunction, learnSaid as said } from './learnSave'
 import {
-  CASE_COLUMNS, checkedSaveReport, CORRECTION_COLUMNS, EVAL_COLUMNS, JOB_LEARNING_COLUMNS, LESSON_COLUMNS, readCase, readCorrection, readEvalRun, readJobLearning,
+  CASE_COLUMNS, CORRECTION_COLUMNS, EVAL_COLUMNS, JOB_LEARNING_COLUMNS, LESSON_COLUMNS, readCase, readCorrection, readEvalRun, readJobLearning,
   readLesson, readList, readMoved, readRule, readSource, RULE_COLUMNS, SOURCE_COLUMNS,
-  type AiCase, type AiCorrection, type AiLesson, type AiRule, type AiSource, type CaseState, type EvalRun, type JobLearning, type LessonState, type MovedRow, type RuleState, type SaveReport,
+  type AiCase, type AiCorrection, type AiLesson, type AiRule, type AiSource, type CaseState, type EvalRun, type JobLearning, type LessonState, type MovedRow, type RuleState,
 } from './learnRules'
 
 // What the AI learned (migration 204). The tables are written by the `claude` function; the browser reads its own rows and may
@@ -77,28 +76,6 @@ export async function rollbackLesson(lessonKey: string): Promise<{ retired: stri
     ? { retired: d.retired, activated: d.activated } : null
 }
 
-async function callFunction(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.functions.invoke('claude', { body })
-  if (error) {
-    const status = (error as { context?: { status?: number } })?.context?.status
-    if (status === 401 || status === 403) throw new ClaudeJobError('error', 'Session error — refresh the page and sign in again.')
-    const said = await parseFunctionErrorBody(error)
-    throw new ClaudeJobError('error', (typeof said?.message === 'string' && said.message.trim().slice(0, 300)) || 'The AI function didn’t answer — try again in a moment.')
-  }
-  return data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}
-}
-
-const said = (data: Record<string, unknown>, fallback: string): string => (typeof data.message === 'string' ? data.message.slice(0, 300) : fallback)
-
-/** The owner saved what an AI answer filled: the call id and the saved values only (the function compares them with its own copy). Several saves go as one request. */
-export async function reportAiSave(report: SaveReport | readonly SaveReport[]): Promise<number> {
-  const list = (Array.isArray(report) ? report : [report]).map(checkedSaveReport).filter((r): r is SaveReport => r !== null).slice(0, 50)
-  if (!list.length) return 0
-  const one = (r: SaveReport) => ({ call_id: r.callId, saved: r.saved, unticked: r.unticked, dismissed: r.dismissed })
-  const data = await callFunction(list.length === 1 ? { action: 'learn_save', ...one(list[0]) } : { action: 'learn_save', reports: list.map(one) })
-  if (data.ok !== true) throw new Error(said(data, 'The save could not be noted for learning.'))
-  return typeof data.recorded === 'number' ? data.recorded : 0
-}
 
 export type TuningDecision = 'approve' | 'reject' | 'roll_back' | 'reopen'
 

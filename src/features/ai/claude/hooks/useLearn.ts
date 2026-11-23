@@ -3,10 +3,10 @@ import { toast } from '../../../../app/store'
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../../shared/query'
 import {
-  decideTuning, fetchCases, fetchCorrections, fetchEvalRuns, fetchJobLearning, fetchLessons, fetchRules, fetchSources, quarantineLearning, reportAiSave,
+  decideTuning, fetchCases, fetchCorrections, fetchEvalRuns, fetchJobLearning, fetchLessons, fetchRules, fetchSources, quarantineLearning,
   restoreMoved, rollbackLesson, runSelfTestNow, setLearnState, type LearnState, type TuningDecision,
 } from '../learnApi'
-import { learnWaiting, type MovedRow, type SaveReport } from '../learnRules'
+import { learnWaiting, type MovedRow } from '../learnRules'
 
 // Developer → AI → Learned: the reads and the owner's actions. One action = one hook. Every change says what happened with
 // an Undo that puts it back (a state, a Set aside, a note's rollback, a Tuning decision).
@@ -123,22 +123,6 @@ export function useRunSelfTestNow() {
     action: 'ai_learn_eval_make',
     successMessage: (message: string) => message,
     mutationFn: () => runSelfTestNow(),
-    invalidates: ['aiLearn'],
-  })
-}
-
-/**
- * After the owner saved what an AI answer filled: the call id and the saved values go to the function, which compares them
- * with its own copy of the answer. A background note: the save itself reports, and a failure here never touches it.
- * Several saves (Tidy up all) go as one report.
- */
-export function useReportAiSave() {
-  return useMutationWithFeedback({
-    action: 'ai_learn_save',
-    silent: 'a background note for Developer → AI → Learned; the save itself reports its result',
-    // Saved values are the owner's data (a title, a place): never in the error log.
-    logPayload: false,
-    mutationFn: (report: SaveReport | readonly SaveReport[]) => reportAiSave(report),
     invalidates: ['aiLearn'],
   })
 }
