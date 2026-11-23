@@ -17,6 +17,8 @@ import { forgetKeptAnswers } from '../shared/query/persist'
 const IGDB_BATCH_KEY = 'lasci.igdbBatch'
 const AUTO_SYNC_PREFIX = 'lasci.games.autoSync.'
 const SHOP_HANDOVER_TICKS_KEY = 'lasci.shop.handover'
+// Kept here as text too (useOwnedLayout's OWNED_LAYOUT_KEY): the shell never loads the Shop's code.
+const SHOP_OWNED_VIEW_KEY = 'lasci.shop.ownedView'
 
 const PUSH_LOOKUP_MS = 3000
 
@@ -76,6 +78,8 @@ export async function clearAccountState(): Promise<void> {
   try { forgetLayouts() } catch { /* */ }
   // Shop: the hand-over steps ticked for this account's things (useShopSelling's HANDOVER_TICKS_KEY).
   try { localStorage.removeItem(SHOP_HANDOVER_TICKS_KEY) } catch { /* */ }
+  // Shop: how Owned shows its things (rows, list, big pictures).
+  try { localStorage.removeItem(SHOP_OWNED_VIEW_KEY) } catch { /* */ }
   // Games: the IGDB review list (this account's games) and the daily auto-sync marks.
   try { localStorage.removeItem(IGDB_BATCH_KEY) } catch { /* */ }
   try {

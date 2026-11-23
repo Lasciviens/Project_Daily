@@ -26,6 +26,8 @@ export interface ModalShellProps {
   /** Renders the standard sticky header with a 44px close button. */
   title?: ReactNode
   subtitle?: ReactNode
+  /** The whole title and subtitle, wrapped onto as many lines as they need — never cut (a record: a long product name). */
+  wrapTitle?: boolean
   /** Extra header controls, left of the close button. */
   headerActions?: ReactNode
   /** Replaces the header (artwork, a photo). The close button floats over it. */
@@ -58,7 +60,7 @@ export interface ModalShellProps {
  * a nested modal always stacks above the one that opened it.
  */
 export function ModalShell({
-  open = true, onClose, title, subtitle, headerActions, hero, footer,
+  open = true, onClose, title, subtitle, wrapTitle, headerActions, hero, footer,
   size = 'md', mobile = 'sheet', dismissible = true, layer = 'modal',
   bodyClassName, panelClassName, ariaLabel, compact = false, grouped = false, children,
 }: ModalShellProps) {
@@ -112,15 +114,15 @@ export function ModalShell({
             <header
               {...(full ? {} : handleProps)}
               className={cx(
-                'flex shrink-0 items-center gap-3 px-4 sm:px-5',
+                'flex shrink-0 gap-3 px-4 sm:px-5', wrapTitle ? 'items-start' : 'items-center',
                 compact ? 'pb-1 sm:pt-3' : 'border-b border-line py-2.5',
                 full && (compact ? 'pt-[calc(0.25rem+env(safe-area-inset-top))]' : 'pt-[calc(0.625rem+env(safe-area-inset-top))] sm:pt-2.5'),
               )}
             >
               <div className="min-w-0 flex-1">
                 {/* User data (a recipe, a game): cut at the box, the rest on tap / hover. */}
-                <DialogTitle className={cx('min-w-0 font-semibold text-fg', compact ? 'text-lead' : 'text-title')}><Truncate>{title}</Truncate></DialogTitle>
-                {subtitle != null && <Truncate as="p" className="text-meta text-fg-muted">{subtitle}</Truncate>}
+                <DialogTitle className={cx('min-w-0 font-semibold text-fg', compact ? 'text-lead' : 'text-title', wrapTitle && 'break-words')}>{wrapTitle ? title : <Truncate>{title}</Truncate>}</DialogTitle>
+                {subtitle != null && (wrapTitle ? <p className="break-words text-meta text-fg-muted">{subtitle}</p> : <Truncate as="p" className="text-meta text-fg-muted">{subtitle}</Truncate>)}
               </div>
               {headerActions}
               {closeBtn}

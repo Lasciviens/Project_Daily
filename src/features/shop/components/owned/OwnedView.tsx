@@ -1,7 +1,8 @@
 import type { RecordFact } from '../../shopSuggestions'
-import { Suspense, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PackagePlus } from 'lucide-react'
-import { Button, EmptyState, KeepRoom, PageBoard, Skeleton, useBoardStep } from '../../../../shared/ui'
+import { Button, EmptyState, PageBoard, useBoardStep } from '../../../../shared/ui'
+import type { BoardLayouts } from '../../../../shared/ui/pageBoardRules'
 import { useEntityModal } from '../../../../shared/modals'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { useIdlePreload } from '../../../../shared/hooks/useIdlePreload'
@@ -18,17 +19,15 @@ import { groupByCategory } from '../../shopModel'
 import { FoldAll } from '../CategorySection'
 import { useCollapsedGroups } from '../../hooks/useCollapsedGroups'
 import {
-  accessoriesByItem, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, shownSummary, sortOwned, statsScopeOf,
+  accessoriesByItem, NO_OWNED_FILTERS, ownedCards, ownedFilterCount, sortOwned,
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
-import { OWNED_BOARD } from '../../shopBoard'
-import { OwnedSummaryLine } from './OwnedRail'
-import { ShopNeedsALook } from '../ShopNeedsALook'
+import { OWNED_BOARD, OWNED_PANE_BOARD, type OwnedPaneSection } from '../../shopBoard'
+import { useOwnedLayout } from '../../hooks/useOwnedLayout'
 import { OwnedFiltersCard } from './OwnedFilters'
 import { GoneFold, OwnedList, OwnedListSkeleton, type RowContext } from './OwnedList'
 import { RecordPaneSkeleton } from './paneSkeleton'
-import type { StatsScope } from '../../statsModel'
 import type { ShopCategory, ShopItem } from '../../types'
 
 // The record beside the list from 60rem: loaded when a row is first tapped, and in idle time once the list shows.
@@ -54,22 +53,39 @@ function returnFocus(back: { el: HTMLElement; key: string | null }, frames = 60)
   })
 }
 
-/** Needs a look in the rail — out of the way while the record has the rail (from 60rem); a phone always keeps its line. */
-function RailLook({ paneOpen, children }: { paneOpen: boolean; children: ReactNode }) {
-  return useBoardStep() >= 2 && paneOpen ? null : <>{children}</>
+/**
+ * A thing opened from Needs a look's sheet (the Shop's header): on a wide board in the side pane, else in a popup. It
+ * lives inside the board, where the board's step is known; it opens once and tells the page it has.
+ */
+function LookRequest({ request, onPick, onDone }: {
+  request: { id: string; fact?: RecordFact; seq: number } | null
+  onPick: (id: string, fact?: RecordFact) => void
+  onDone: () => void
+}) {
+  const modal = useEntityModal()
+  const wide = useBoardStep() >= 2
+  useEffect(() => {
+    if (!request) return
+    if (wide) onPick(request.id, request.fact)
+    else modal.open(request.fact ? { kind: 'shop-item', id: request.id, fact: request.fact } : { kind: 'shop-item', id: request.id })
+    onDone()
+    // One opening per request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.seq])
+  return null
 }
 
 /**
  * Owned → Things: what you have (by category, as compact rows) and what you
- * had, with Needs a look beside them (its return windows and complaint
- * rights took Coming up's place); a summary line above the list opens Stats
- * on the same things. From a board width of 60rem a tapped row's record
- * opens in the rail's place (the side pane); a phone opens it full screen.
+ * had, as rows, one line each, or big pictures (the device remembers which).
+ * From a board width of 60rem a tapped row's record opens beside the list (the
+ * side pane, which takes the last track); a phone opens it full screen.
  */
-export function OwnedView({ items, categories, isLoading, onStats }: {
+export function OwnedView({ items, categories, isLoading, open, onOpened }: {
   items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean
-  /** Open Stats narrowed to these things. */
-  onStats: (scope: StatsScope) => void
+  /** A thing asked for from Needs a look's sheet. */
+  open: { id: string; fact?: RecordFact; seq: number } | null
+  onOpened: () => void
 }) {
   const modal = useEntityModal()
   const itemsQ = useShopItems()
@@ -83,6 +99,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
   const pictures = useCategoryPictures()
   const [filters, setFilters] = useState<OwnedFilters>(NO_OWNED_FILTERS)
   const [sort, setSort] = useState<OwnedSort>('recent')
+  const [layout, setLayout] = useOwnedLayout()
   const [picked, setPicked] = useState<Picked | null>(null)
   const dirty = useRef(false)
   // The row (or Needs-a-look row) that opened the pane: the focus goes back to it when the pane closes.
@@ -105,10 +122,7 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
     () => (filters.show === 'mine' ? sortOwned(ownedCards(items, categories, { ...filters, show: 'gone' }, inChain), 'recent', ctx, today, acc) : []),
     [items, categories, filters, inChain, ctx, today, acc],
   )
-  // The summary follows what the list shows: the filters and Mine · Sold or gone · All.
-  const summary = useMemo(() => shownSummary(shown, acc, ctx, gone.length), [shown, acc, ctx, gone.length])
   const filtered = ownedFilterCount(filters) > 0
-  const scope = useMemo(() => statsScopeOf(filters, shown.map(i => i.id)), [filters, shown])
   const fold = useCollapsedGroups('owned')
   const anything = useMemo(() => ownedCards(items, categories, { ...NO_OWNED_FILTERS, show: 'all' }).length > 0, [items, categories])
 
@@ -164,27 +178,18 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
           </p>
         )
         : <p className="text-body text-fg-muted">{filters.show === 'gone' ? 'Nothing sold or gone yet.' : 'Nothing is yours right now.'}</p>)}
-      <OwnedList groups={groups} rows={rows} collapsed={fold.collapsed} onToggle={fold.toggle} onOpen={openThing} />
-      <GoneFold gone={gone} rows={rows} onOpen={openThing} />
+      <OwnedList groups={groups} rows={rows} collapsed={fold.collapsed} onToggle={fold.toggle} onOpen={openThing} layout={layout} />
+      <GoneFold gone={gone} rows={rows} onOpen={openThing} layout={layout} />
     </div>
   )
 
+  // The things take every track; with the record open they leave the last one to it (the pane is sticky there).
+  const board = (picked ? OWNED_PANE_BOARD : OWNED_BOARD) as BoardLayouts<OwnedPaneSection>
   return (
     <PageBoard
-      layout={OWNED_BOARD}
+      layout={board}
       stackGap="gap-4"
       sections={{
-        // Room for one line while it loads (or what it took last time); nothing shown, nothing to sum.
-        summary: (
-          <KeepRoom ids="shop:ownedSummary" loading={isLoading} remember={!itemsQ.isError} skeleton={<Skeleton className="h-4 w-72 max-w-full" />}>
-            {anything && shown.length > 0 && (
-              <OwnedSummaryLine summary={summary} show={filters.show} filtered={filtered}
-                onStats={scope ? () => onStats(scope) : undefined} onShowGone={() => setFilters(f => ({ ...f, show: 'gone' }))} />
-            )}
-          </KeepRoom>
-        ),
-        // The Shop's one Needs a look, on every tab (its tidy-up counts things gone too); its rows open in the pane.
-        look: <RailLook paneOpen={!!picked}><ShopNeedsALook items={items} isLoading={isLoading} paneOpen={(id, fact) => void pick(id, fact)} /></RailLook>,
         pane: picked && (
           <Suspense fallback={<RecordPaneSkeleton />}>
             <RecordPane key={picked.seq} id={picked.id} fact={picked.fact} onClose={closePane} onOpen={id => void pick(id)} onDirty={onDirty} />
@@ -192,10 +197,13 @@ export function OwnedView({ items, categories, isLoading, onStats }: {
         ),
         filters: showFilters && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
-            collapsible={folded}
-            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} compact={folded} pending={isLoading && foldable} />} />
+            collapsible={folded} layout={layout} onLayout={setLayout}
+            fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} pending={isLoading && foldable} />} />
         ),
-        groups: list,
+        groups: <>
+          <LookRequest request={open} onPick={(id, fact) => void pick(id, fact)} onDone={onOpened} />
+          {list}
+        </>,
       }}
     />
   )

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
-import { cx } from '../../../shared/ui'
+import { Button, cx } from '../../../shared/ui'
 import { filtersActive, NO_FILTERS, SORT_LABEL, type ShopSort, type WishlistFilters } from '../shopModel'
 import { SortSelect } from './shopKit'
 import type { ShopCategory } from '../types'
@@ -29,22 +29,22 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
   const picked = Number(filters.category !== 'all') + Number(filters.region !== 'all') + Number(filters.priority !== 'all')
   const showSelects = !collapsible || (open ?? picked > 0)
 
-  const select = cx('select', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')
+  const select = cx('select input-sm', collapsible ? 'w-full' : 'w-auto max-w-[16rem]')
 
   // Folded on a wide bar (a phone sideways), the search shares the row with Sort and Filters.
   return (
     <div className="@container flex flex-wrap items-center gap-2">
       <label className={cx('relative block', collapsible ? 'w-full @[36rem]:w-auto @[36rem]:min-w-0 @[36rem]:max-w-md @[36rem]:flex-[2]' : 'min-w-[14rem] max-w-md flex-1')}>
         <span className="sr-only">Search the wishlist</span>
-        <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-        <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search the wishlist" className="input pl-9" />
+        <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
+        <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search the wishlist" className="input input-sm pl-8" />
       </label>
       <SortSelect value={sort} labels={SORT_LABEL} onChange={onSort} className={collapsible ? 'min-w-0 flex-1' : 'w-auto'} />
       {collapsible && (
-        <button type="button" aria-expanded={showSelects} onClick={() => setOpen(!showSelects)}
-          className={cx('btn-secondary min-w-0 flex-1 justify-center gap-1.5', picked > 0 && 'text-accent-600')}>
-          <SlidersHorizontal aria-hidden className="h-4 w-4" /> Filters{picked > 0 ? ` · ${picked}` : ''}
-        </button>
+        <Button size="sm" aria-expanded={showSelects} onClick={() => setOpen(!showSelects)} icon={<SlidersHorizontal />}
+          className={cx('min-w-0 flex-1 justify-center gap-1.5', picked > 0 && 'text-accent-600')}>
+          Filters{picked > 0 ? ` · ${picked}` : ''}
+        </Button>
       )}
       {collapsible && fold}
       {showSelects && (
@@ -74,11 +74,11 @@ export function ShopFilters({ filters, onChange, sort, onSort, categories, colla
       )}
       {filtersActive(filters) && (
         <button type="button" onClick={() => onChange(NO_FILTERS)}
-          className="flex min-h-[44px] w-fit items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
+          className="flex min-h-[32px] w-fit items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
           <X aria-hidden className="h-4 w-4" /> Clear filters
         </button>
       )}
-      {!collapsible && <span className="ml-2">{fold}</span>}
+      {!collapsible && fold && <span className="ml-auto">{fold}</span>}
     </div>
   )
 }

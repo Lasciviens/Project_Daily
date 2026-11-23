@@ -3,6 +3,7 @@ import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { ChevronDown, ExternalLink, Package } from 'lucide-react'
 import { Truncate, cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
+import { DisposalRibbon } from './DisposalRibbon'
 import { amountReason, hostOf, money, num, pendingWords, webUrl } from './shopFormat'
 
 // Shop's shared display pieces: an Amount that is never shown as a number
@@ -65,7 +66,7 @@ export function SortSelect<T extends string>({ value, labels, onChange, classNam
   className?: string
 }) {
   return (
-    <span className={cx('select relative flex items-center gap-1 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
+    <span className={cx('select input-sm relative flex items-center gap-1 pr-7 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
       <span className="shrink-0 font-normal text-fg-muted">Sort:</span>
       <Truncate as="span" className="min-w-0">{labels[value]}</Truncate>
       <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
@@ -78,11 +79,12 @@ export function SortSelect<T extends string>({ value, labels, onChange, classNam
 }
 
 /** A square picture with a quiet placeholder; a picture that fails to load falls back too. */
-export function ItemThumb({ src, size = 'md', className }: { src: string | null; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+export function ItemThumb({ src, size = 'md', className, ribbon }: { src: string | null; size?: 'sm' | 'md' | 'lg'; className?: string; ribbon?: string | null }) {
   const [failed, setFailed] = useState(false)
   const box = size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-20 w-20' : 'h-12 w-12'
   return (
-    <span className={cx('grid shrink-0 place-items-center overflow-hidden rounded-row border border-line bg-surface-2', box, className)}>
+    <span className={cx('relative grid shrink-0 place-items-center overflow-hidden rounded-row border border-line bg-surface-2', box, className)}>
+      {ribbon && <DisposalRibbon label={ribbon} />}
       {src && !failed
         ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-contain" />
         : <Package aria-hidden className={cx('text-fg-faint', size === 'lg' ? 'h-7 w-7' : 'h-4 w-4')} />}

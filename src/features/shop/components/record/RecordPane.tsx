@@ -1,7 +1,7 @@
 import type { RecordFact } from '../../shopSuggestions'
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { X } from 'lucide-react'
-import { IconButton, TonePill, Truncate } from '../../../../shared/ui'
+import { IconButton, TonePill } from '../../../../shared/ui'
 import { useHistoryDismiss } from '../../../../shared/hooks/useHistoryDismiss'
 import { useShopItem } from '../../hooks/useShop'
 import { PANE_HEIGHT, RecordPaneSkeleton } from '../owned/paneSkeleton'
@@ -82,12 +82,13 @@ function PaneRecord({ item, fact, onClose, onDirty }: { item: ShopItem; fact?: R
   return (
     <section ref={ref} tabIndex={-1} aria-label={item.title} onKeyDown={onKeyDown} data-record-pane
       className={`card flex ${PANE_HEIGHT} flex-col overflow-hidden outline-none`}>
-      <header className="flex shrink-0 items-center gap-2 border-b border-line py-2 pl-4 pr-2">
-        <div className="min-w-0 flex-1">
-          <Truncate as="h2" className="text-lead font-semibold text-fg">{item.title}</Truncate>
-          {r.subtitle && <Truncate as="p" className="text-meta text-fg-muted">{r.subtitle}</Truncate>}
+      <header className="flex shrink-0 items-start gap-2 border-b border-line py-2 pl-4 pr-2">
+        {/* The whole title and category, wrapped: the header has the room (owner, 23.11.2026). */}
+        <div className="min-w-0 flex-1 pt-1">
+          <h2 className="break-words text-lead font-semibold text-fg">{item.title}</h2>
+          {r.subtitle && <p className="break-words text-meta text-fg-muted">{r.subtitle}</p>}
         </div>
-        <TonePill tone={r.pill.tone} className="shrink-0">{r.pill.label}</TonePill>
+        {r.pill && <TonePill tone={r.pill.tone} className="mt-1.5 shrink-0">{r.pill.label}</TonePill>}
         <IconButton label="Close" onClick={() => { void r.close() }}><X aria-hidden /></IconButton>
       </header>
       <div className="scroll-y min-h-0 flex-1 overflow-y-auto px-4 py-3">

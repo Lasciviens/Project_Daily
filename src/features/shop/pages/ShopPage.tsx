@@ -13,6 +13,8 @@ import { useAutoFillRates, useShopCosts } from '../hooks/useShopMoney'
 import { listOf, quickGroups } from '../shopModel'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { WishlistView } from '../components/WishlistView'
+import { ShopNeedsALook } from '../components/ShopNeedsALook'
+import type { RecordFact } from '../shopSuggestions'
 import { ShopHeroArt } from '../components/ShopHeroArt'
 import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
@@ -50,10 +52,9 @@ export function ShopPage() {
     return n
   })
   const isPhone = useBreakpoint() === 'phone'
-  // Stats' filter and period live here, so Owned's summary line can open Stats on its own things.
+  // Stats' filter and period live here, so they stay while the owner switches between Things and Stats.
   const [statsScope, setStatsScope] = useState<StatsScope>(WHOLE_COLLECTION)
   const [statsYear, setStatsYear] = useState<string | null | undefined>(undefined)
-  const openStats = (scope: StatsScope) => { setStatsScope(scope); setStatsYear(null); set('owned', 'stats') }
   useIdlePreload(OTHER_VIEWS)
   const modal = useEntityModal()
   const { data: items = [], isLoading: itemsLoading } = useShopItems()
@@ -61,6 +62,14 @@ export function ShopPage() {
   const { data: costs = [] } = useShopCosts()
   useAutoFillRates(items, costs)
   const isLoading = itemsLoading || catsLoading
+
+  // A thing opened from Needs a look (the header's sheet): Owned's Things decides between its side pane and a popup, every
+  // other place opens the popup.
+  const [lookOpen, setLookOpen] = useState<{ id: string; fact?: RecordFact; seq: number } | null>(null)
+  const openThing = (id: string, fact?: RecordFact) => {
+    if (view === 'owned' && ownedTab === 'things') setLookOpen(p => ({ id, fact, seq: (p?.seq ?? 0) + 1 }))
+    else modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
+  }
 
   const wishCount = items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for).length
   const quickCount = quickGroups(items, todayStr()).reduce((n, g) => n + g.items.length, 0)
@@ -142,6 +151,7 @@ export function ShopPage() {
                 <Button variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
               </div>
             </>}
+            <ShopNeedsALook items={items} isLoading={isLoading} openThing={openThing} />
             {moreMenu}
             <Button variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
               <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
@@ -171,7 +181,7 @@ export function ShopPage() {
             )
             : (
               <Suspense fallback={<SkeletonTab />}>
-                <OwnedView items={items} categories={categories} isLoading={isLoading} onStats={openStats} />
+                <OwnedView items={items} categories={categories} isLoading={isLoading} open={lookOpen} onOpened={() => setLookOpen(null)} />
               </Suspense>
             )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}

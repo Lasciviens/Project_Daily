@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { AlarmClock, ArrowUpRight, Check, ChevronDown, ChevronRight, MoreHorizontal, Undo2 } from 'lucide-react'
-import { Card, CardHeader, KeepRoom, MetaLine, Skeleton, Truncate, cx, useBoardStep } from '../../../shared/ui'
+import { AlarmClock, ArrowUpRight, Check, ChevronDown, ChevronRight, Eye, MoreHorizontal, Undo2 } from 'lucide-react'
+import { MetaLine, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { lookLine, SNOOZE_DAYS, type Look, type LookThing, type RecordFact } from '../shopSuggestions'
@@ -10,15 +10,12 @@ import { wrapLong } from './lookFacts'
 import { isShownLink } from '../storeRows'
 import { addDays } from '../ownModel'
 
-// "Needs a look": on a wide page a card in the right rail (owner, 14.10.2026:
-// where Coming up sat), on a phone one line that opens every row in a sheet
-// (owner, 09.11.2026: the phone's first screen is the things themselves).
-// Each row has its one action, and Snooze (a week, or until the day before
-// its deadline) · Got it behind ⋯.
+// "Needs a look": one button in the Shop page's header that opens every row in a
+// sheet (owner, 23.11.2026; it was a card in a right rail, and on a phone one line
+// above the things). Each row has its one action, and Snooze (a week, or until
+// the day before its deadline) · Got it behind ⋯.
 
 const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show', claim: 'Claim' }
-/** The rail shows this many rows, then "N more". */
-const SHOWN = 3
 
 export interface LookActions {
   /** Open the thing (an old "Could sell for": at that fact). */
@@ -184,7 +181,52 @@ function LookList({ looks, hidden, limit, today, actions }: { looks: readonly Lo
   )
 }
 
-/** The rows' loading copy, at their geometry. */
+const NOTHING = 'Nothing needs a look right now.'
+
+/**
+ * Needs a look's one button in the Shop page's header (owner, 23.11.2026: it left the rail, whose room goes to the
+ * things): an icon with the count as a badge laid over its corner — the button never changes size, so the bar never
+ * reshapes while the rows load or their number changes (THEME §6.3). A tap opens every row in a sheet.
+ */
+export function NeedsALookButton({ looks, hidden, loading, failed, onRetry, today, actions }: LookState & { actions: LookActions }) {
+  const [open, setOpen] = useState(false)
+  const line = lookLine(looks)
+  const label = loading ? 'Needs a look' : failed ? 'Needs a look: couldn\'t load' : looks.length ? `Needs a look: ${line.words}${line.claim ? ` · ${line.claim}` : ''}` : 'Needs a look: nothing right now'
+  // A row's action closes the sheet first (it opens a record or a sheet of its own); Snooze and Got it keep it open.
+  const closing = (fn: (look: Look) => void) => (look: Look) => { setOpen(false); fn(look) }
+  const inSheet: LookActions = {
+    ...actions,
+    onOpen: closing(actions.onOpen),
+    onBought: closing(actions.onBought),
+    onClaim: closing(actions.onClaim),
+    onOpenThing: (id, fact) => { setOpen(false); actions.onOpenThing(id, fact) },
+  }
+  return (
+    <>
+      <button type="button" aria-haspopup="dialog" aria-label={label} title={label} onClick={() => setOpen(true)}
+        className={cx('icon-btn-bordered relative h-9 w-9 shrink-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', !loading && !failed && looks.length > 0 && 'text-fg')}>
+        <Eye aria-hidden className="h-[18px] w-[18px]" />
+        {!loading && !failed && looks.length > 0 && (
+          <span aria-hidden className="count-badge absolute -right-1.5 -top-1.5 min-w-[1.25rem] justify-center tabular-nums shadow-card">{looks.length}</span>
+        )}
+        {!loading && failed && <span aria-hidden data-tone="warn" className="tone-dot absolute -right-0.5 -top-0.5" />}
+      </button>
+      <ModalShell open={open} onClose={() => setOpen(false)} title="Needs a look"
+        subtitle={failed ? undefined : looks.length ? `${looks.length} to look at${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
+        {loading
+          ? <div aria-busy="true"><LookSkeleton rows={3} /></div>
+          : failed
+            ? <p className="py-1"><LookFailed onRetry={onRetry} /></p>
+            : <>
+              {!looks.length && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
+              <LookList looks={looks} hidden={hidden} today={today} actions={inSheet} />
+            </>}
+      </ModalShell>
+    </>
+  )
+}
+
+/** The sheet's loading copy at its rows' geometry. */
 function LookSkeleton({ rows }: { rows: number }) {
   return (
     <ul aria-hidden className="flex flex-col">
@@ -196,71 +238,4 @@ function LookSkeleton({ rows }: { rows: number }) {
       ))}
     </ul>
   )
-}
-
-const NOTHING = 'Nothing needs a look right now.'
-
-/** The rail's card: three rows, then "N more"; its room is kept while it loads. */
-export function NeedsALookPanel({ looks, hidden, loading, failed, onRetry, today, actions }: LookState & { actions: LookActions }) {
-  return (
-    <Card>
-      <CardHeader title="Needs a look" variant="label" className="mb-1"
-        action={!loading && !failed && looks.length > 0 ? <span className="count-badge">{looks.length}</span> : undefined} />
-      <KeepRoom ids="shop:look" loading={loading} remember={!failed} skeleton={<LookSkeleton rows={SHOWN} />}>
-        {failed
-          ? <p className="py-1"><LookFailed onRetry={onRetry} /></p>
-          : <>
-            {!looks.length && <p className="py-1 text-body text-fg-muted">{NOTHING}</p>}
-            <LookList looks={looks} hidden={hidden} limit={SHOWN} today={today} actions={actions} />
-          </>}
-      </KeepRoom>
-    </Card>
-  )
-}
-
-/**
- * The phone's one line — "9 need a look · 500 NOK to claim ›" — in the most
- * urgent row's tone; it opens every row in a sheet. One line in every outcome,
- * loading included, so nothing under it moves — but none at all on a page
- * with nothing on it (`quiet`: an empty wishlist), where "Nothing needs a
- * look" would only be a filler line.
- */
-export function NeedsALookLine({ looks, hidden, loading, failed, onRetry, today, actions, quiet = false }: LookState & { actions: LookActions; quiet?: boolean }) {
-  const [open, setOpen] = useState(false)
-  if (quiet && !failed && (loading || (!looks.length && !hidden.length))) return null
-  if (loading) return <Skeleton rounded="rounded-row" className="h-11 w-full" />
-  if (failed) return <p className="flex h-11 items-center rounded-row border border-line bg-surface px-3"><LookFailed onRetry={onRetry} /></p>
-  const line = lookLine(looks)
-  if (!line.count && !hidden.length) {
-    return (
-      <p className="flex h-11 items-center gap-2 rounded-row border border-line bg-surface px-3 text-body text-fg-muted">
-        <Check aria-hidden className="h-4 w-4 shrink-0" /> {line.words}
-      </p>
-    )
-  }
-  const words = line.claim ? `${line.words} · ${line.claim}` : line.words
-  return (
-    <>
-      <button type="button" aria-haspopup="dialog" onClick={() => setOpen(true)}
-        className={cx('flex h-11 w-full items-center gap-2.5 rounded-row border border-line bg-surface px-3 text-left', line.count > 0 && 'shadow-card')}>
-        {looks.length > 0
-          ? <LookIcon look={looks[0]} small />
-          : <Check aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />}
-        <Truncate as="span" fullText={words} className={cx('min-w-0 flex-1 text-body tabular-nums', line.count ? 'text-fg-2' : 'text-fg-muted')}>
-          <span className={cx(line.count > 0 && 'font-semibold text-fg')}>{line.words}</span>{line.claim && ` · ${line.claim}`}
-        </Truncate>
-        <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
-      </button>
-      <ModalShell open={open} onClose={() => setOpen(false)} title="Needs a look"
-        subtitle={looks.length ? `${looks.length} to look at${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
-        {!looks.length && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
-        <LookList looks={looks} hidden={hidden} today={today} actions={actions} />
-      </ModalShell>
-    </>
-  )
-}
-
-/** The line on a phone (one stack), the rail's card on a wide page. */
-export function NeedsALook({ quiet, ...props }: LookState & { actions: LookActions; quiet?: boolean }) {
-  return useBoardStep() === 1 ? <NeedsALookLine {...props} quiet={quiet} /> : <NeedsALookPanel {...props} />
 }

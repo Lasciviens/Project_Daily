@@ -71,7 +71,8 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     : undefined), [owned, item, accessories.length, links, items])
   const parent = item.accessory_of ? items.find(i => i.id === item.accessory_of) ?? null : item.option_for ? items.find(i => i.id === item.option_for) ?? null : null
   const pillKey = item.status === 'dropped' ? 'dropped' : item.status === 'fulfilled' ? 'fulfilled' : item.disposal === 'returned' ? 'returned' : item.status === 'bought' && item.kept === false ? 'notKept' : state
-  const pill = STATE_PILL[pillKey] ?? STATE_PILL.buy
+  // A thing that left wears its disposal word as a ribbon on its picture instead (owner, 23.11.2026: the pill blocked the title).
+  const pill = item.disposal ? null : STATE_PILL[pillKey] ?? STATE_PILL.buy
   const path = categoryPath(item.category_id, categories)
   const subtitle = [path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null, item.disposal ? DISPOSAL_LABEL[item.disposal] : null].filter(Boolean).join(' · ') || undefined
 

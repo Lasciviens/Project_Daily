@@ -7,7 +7,7 @@ import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
-import { boughtOn, durationLabel } from '../../ownModel'
+import { boughtOn, DISPOSAL_LABEL, durationLabel } from '../../ownModel'
 import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
 import { ItemThumb } from '../shopKit'
@@ -86,7 +86,7 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
       <div className="flex flex-nowrap items-center gap-1.5">
         {shown.map(a => a.iconOnly
           ? (
-            <IconButton key={a.key} bordered label={a.label} onClick={a.onClick} className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">{a.icon}</IconButton>
+            <IconButton key={a.key} bordered size="sm" label={a.label} onClick={a.onClick}>{a.icon}</IconButton>
           )
           : (
             <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick} className="shrink-0">
@@ -153,12 +153,13 @@ export function RecordBody({ r, openFact, pill }: { r: ShopRecordModel; openFact
     <div className="@container flex flex-col gap-3">
       <div className="flex items-start gap-3">
         {/* Only a real picture: an empty box took 80px beside the actions. */}
-        {picture && <ItemThumb src={picture} className="@[30rem]:h-20 @[30rem]:w-20" />}
+        {/* A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
+        {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's). */}
-          {(pill === 'phone' || (state === 'mine' && from)) && (
+          {((pill === 'phone' && r.pill) || (state === 'mine' && from)) && (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
-              {pill === 'phone' && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
+              {pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
               {state === 'mine' && from && (
                 <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>
               )}

@@ -18,7 +18,8 @@ export function ShopRecord({ item, openFact, onClose }: { item: ShopItem; openFa
       onClose={() => { void r.close() }}
       title={item.title}
       subtitle={r.subtitle}
-      headerActions={<TonePill tone={r.pill.tone} className="shrink-0 max-sm:hidden">{r.pill.label}</TonePill>}
+      wrapTitle
+      headerActions={r.pill && <TonePill tone={r.pill.tone} className="shrink-0 max-sm:hidden">{r.pill.label}</TonePill>}
       size="xl"
       mobile="fullscreen"
       dismissible={!r.saving}

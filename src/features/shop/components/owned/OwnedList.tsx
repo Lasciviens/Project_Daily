@@ -9,6 +9,8 @@ import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
 import { OwnedRow } from './OwnedRow'
+import { OwnedCard, OwnedLine } from './OwnedViews'
+import type { OwnedLayout } from '../../hooks/useOwnedLayout'
 import type { ShopListing } from '../../resaleTypes'
 import type { ShopCategory, ShopItem, ShopPriceWatch } from '../../types'
 
@@ -39,9 +41,10 @@ const STACK_CAP = 'max-w-[40rem]'
  * four at 2450). A row opens its record in the side pane from 60rem (`pane`),
  * in a popup below.
  */
-export function OwnedList({ groups, rows, collapsed, onToggle, onOpen }: {
+export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }: {
   groups: readonly CategoryGroup[]
   rows: RowContext
+  layout: OwnedLayout
   collapsed: ReadonlySet<string>
   onToggle: (key: string) => void
   onOpen: (id: string, pane: boolean) => void
@@ -51,11 +54,13 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen }: {
   // Never more stacks than categories; each at most a content row wide, so a short list leaves the room at its end.
   const stacks = dealByIndex([...groups], Math.min(rowStacks(width), Math.max(1, groups.length)))
   const open = (id: string) => onOpen(id, pane)
-  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={open} />
+  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={open} layout={layout} />
   const section = (group: CategoryGroup) => (
     <CategorySection key={group.key} group={group} collapsed={collapsed.has(group.key)} onToggle={() => onToggle(group.key)} card={row}
-      body={id => <SubLists id={id} subs={group.subs} row={row} />} />
+      body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} />} />
   )
+  // Big pictures are a collection: the categories stack in the list's whole width, each one a grid of cards (THEME W2).
+  if (layout === 'pictures') return <div ref={ref} className="flex min-w-0 flex-col gap-4">{groups.map(section)}</div>
   return (
     <div ref={ref} className="min-w-0">
       {stacks.length <= 1 ? (
@@ -70,10 +75,11 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen }: {
 }
 
 /** One thing's row with its own picture and chain. */
-function OwnedThing({ item, rows, onOpen }: { item: ShopItem; rows: RowContext; onOpen: (id: string) => void }) {
+function OwnedThing({ item, rows, onOpen, layout }: { item: ShopItem; rows: RowContext; onOpen: (id: string) => void; layout: OwnedLayout }) {
   const path = categoryPath(item.category_id, rows.categories)
+  const Thing = layout === 'pictures' ? OwnedCard : layout === 'lines' ? OwnedLine : OwnedRow
   return (
-    <OwnedRow item={item} accessories={rows.acc.get(item.id) ?? []} chain={rows.chainOf(item.id)} watch={rows.watches.get(item.id) ?? null}
+    <Thing item={item} accessories={rows.acc.get(item.id) ?? []} chain={rows.chainOf(item.id)} watch={rows.watches.get(item.id) ?? null}
       listing={rows.listings.get(item.id) ?? null}
       ctx={rows.ctx} today={rows.today} topId={path.topId} icon={path.topId && rows.pictureFor ? rows.pictureFor(path.topName, path.subName) : null}
       picked={rows.picked} onOpen={onOpen} />
@@ -81,33 +87,40 @@ function OwnedThing({ item, rows, onOpen }: { item: ShopItem; rows: RowContext; 
 }
 
 /** A category's rows: each subcategory named once, above its own card. */
-function SubLists({ id, subs, row }: { id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode }) {
+function SubLists({ id, subs, row, layout }: { id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout }) {
   const labelled = subs.some(s => s.title)
   return (
     <div id={id} className="flex flex-col gap-1.5">
       {subs.map(sub => (
         <div key={sub.key} className="flex flex-col gap-1">
           {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
-          <ul className="card divide-y divide-line overflow-hidden">{sub.items.map(row)}</ul>
+          <ThingsBox layout={layout}>{sub.items.map(row)}</ThingsBox>
         </div>
       ))}
     </div>
   )
 }
 
+/** A subcategory's things: rows and lines in one card, big pictures as a grid of cards (W2: content-width columns). */
+function ThingsBox({ layout, children, className }: { layout: OwnedLayout; children: ReactNode; className?: string }) {
+  return layout === 'pictures'
+    ? <ul className={cx('grid grid-cols-[repeat(auto-fill,minmax(9.5rem,12rem))] gap-2', className)}>{children}</ul>
+    : <ul className={cx('card divide-y divide-line overflow-hidden', className)}>{children}</ul>
+}
+
 /** The things sold or gone, folded under Mine: the same rows in one card. */
-export function GoneFold({ gone, rows, onOpen }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string, pane: boolean) => void }) {
+export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string, pane: boolean) => void; layout: OwnedLayout }) {
   const [show, setShow] = useState(false)
   const pane = useBoardStep() >= 2
   if (!gone.length) return null
   return (
-    <section className={STACK_CAP}>
+    <section className={layout === 'pictures' ? undefined : STACK_CAP}>
       <button type="button" aria-expanded={show} onClick={() => setShow(s => !s)}
         className="flex min-h-[44px] items-center gap-1.5 text-body font-semibold text-fg-muted transition-colors hover:text-fg-2">
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', show && 'rotate-180')} />
         Sold or gone <span className="count-badge">{gone.length}</span>
       </button>
-      {show && <ul className="card mt-1 divide-y divide-line overflow-hidden">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={id => onOpen(id, pane)} />)}</ul>}
+      {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={id => onOpen(id, pane)} layout={layout} />)}</ThingsBox>}
     </section>
   )
 }

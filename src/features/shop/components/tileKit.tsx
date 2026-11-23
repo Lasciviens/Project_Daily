@@ -4,6 +4,7 @@ import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { BELT, packGroups, spanPosition, tileColumns, type BeltKind, type PriceSpan } from '../wishTile'
 import { money, num } from './shopFormat'
+import { DisposalRibbon } from './DisposalRibbon'
 import type { ShopItem } from '../types'
 
 // The Wishlist's picture tiles (THEME.md §6.3 "Picture tiles"): the grid, the
@@ -117,8 +118,12 @@ export function PictureWell({ srcs, icon: Icon, initials, tint, belt, corner }: 
  * default picture on its tint, else the initials; a photo that fails to load
  * falls back the same way.
  */
-export function RowPicture({ src, icon: Icon, initials, tint, className }: {
+export function RowPicture({ src, icon: Icon, initials, tint, className, ribbon, size = 'md' }: {
   src: string | null
+  /** How the thing left ("Sold", "Given away"): a corner ribbon, on a picture big enough to read it. */
+  ribbon?: string | null
+  /** `md` 40px (a row), `sm` 28px (a list line), `fill` the width it is given, square (a big picture). */
+  size?: 'sm' | 'md' | 'fill'
   icon?: LucideIcon | null
   initials: string
   tint: number
@@ -128,12 +133,13 @@ export function RowPicture({ src, icon: Icon, initials, tint, className }: {
   const photo = src && src !== failed ? src : null
   return (
     <span aria-hidden data-tint={photo ? undefined : tint}
-      className={cx('relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-row', photo ? 'bg-well' : Icon ? 'tint-well' : 'tint-fill', className)}>
+      className={cx('relative grid shrink-0 place-items-center overflow-hidden rounded-row', size === 'fill' ? 'aspect-square w-full' : size === 'sm' ? 'h-7 w-7' : 'h-10 w-10', photo ? 'bg-well' : Icon ? 'tint-well' : 'tint-fill', className)}>
+      {ribbon && <DisposalRibbon label={ribbon} />}
       {photo
         ? <img src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(photo)} className="h-full w-full object-contain p-[8%] mix-blend-multiply" />
         : Icon
-          ? <Icon strokeWidth={1.75} className="tint-ink h-5 w-5 opacity-80" />
-          : <span className="tint-ink text-micro font-bold tracking-[0.04em]">{initials}</span>}
+          ? <Icon strokeWidth={1.75} className={cx('tint-ink opacity-80', size === 'fill' ? 'h-10 w-10' : size === 'sm' ? 'h-4 w-4' : 'h-5 w-5')} />
+          : <span className={cx('tint-ink font-bold tracking-[0.04em]', size === 'fill' ? 'text-title' : 'text-micro')}>{initials}</span>}
     </span>
   )
 }

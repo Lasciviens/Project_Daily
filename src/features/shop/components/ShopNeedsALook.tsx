@@ -1,32 +1,25 @@
 import type { RecordFact } from '../shopSuggestions'
 import { useEntityModal } from '../../../shared/modals'
-import { useBoardStep } from '../../../shared/ui'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useBuyNow } from '../hooks/useShop'
 import { useNeedsALook } from '../hooks/useNeedsALook'
 import { useClearSignalState, useDismissSignal, useSnoozeSignal } from '../hooks/useShopSignals'
 import type { Look } from '../shopSuggestions'
-import { NeedsALook, type LookActions } from './NeedsALook'
+import { NeedsALookButton, type LookActions } from './NeedsALook'
 import type { ShopItem } from '../types'
 
 /**
- * Needs a look with its actions wired, the same on the Wishlist and on Owned
- * (where it took Coming up's place, so a deadline is never listed twice): a
- * row opens its thing (an old estimate at that fact), Bought buys in one tap,
- * Snooze hides it for a week (or until the day before its deadline) and Got
- * it until what it says changes — each with its own toast and Undo. `quiet`:
- * a phone shows no "Nothing needs a look" line (an empty wishlist).
- * `paneOpen`: on a wide board a row opens its record there (Owned's side
- * pane) instead of in a popup.
+ * Needs a look's header button with its actions wired, the same on every Shop view (owner, 23.11.2026): a row opens
+ * its thing (an old estimate or a tidy-up's problem at that fact — `openThing` decides where: Owned's side pane on a
+ * wide board, else a popup), Bought buys in one tap, Snooze hides it for a week (or until the day before its
+ * deadline) and Got it until what it says changes — each with its own toast and Undo.
  */
-export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
+export function ShopNeedsALook({ items, isLoading, openThing }: {
   items: readonly ShopItem[]
   isLoading: boolean
-  quiet?: boolean
-  paneOpen?: (id: string, fact?: RecordFact) => void
+  openThing: (id: string, fact?: RecordFact) => void
 }) {
   const modal = useEntityModal()
-  const wide = useBoardStep() >= 2
   const data = useNeedsALook(items, isLoading)
   const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   const snooze = useSnoozeSignal()
@@ -34,15 +27,9 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
   const clear = useClearSignalState()
   const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind, subject: look.subject })
 
-  // A thing opens at its fact (a tidy-up's problem, an old estimate), in the pane on a wide Owned, else in a popup.
-  const openThing = (id: string, fact?: RecordFact) => {
-    if (paneOpen && wide) paneOpen(id, fact)
-    else modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
-  }
   const actions: LookActions = {
     onOpen: look => {
-      if (!look.itemId) return
-      openThing(look.itemId, look.action === 'value' ? 'value' : undefined)
+      if (look.itemId) openThing(look.itemId, look.action === 'value' ? 'value' : undefined)
     },
     onBought: look => {
       const item = items.find(i => i.id === look.itemId)
@@ -54,5 +41,5 @@ export function ShopNeedsALook({ items, isLoading, quiet = false, paneOpen }: {
     onShowAgain: look => clear.mutate(at(look)),
     onOpenThing: (id, fact) => openThing(id, fact),
   }
-  return <NeedsALook {...data} today={todayStr()} actions={actions} quiet={quiet} />
+  return <NeedsALookButton {...data} today={todayStr()} actions={actions} />
 }
