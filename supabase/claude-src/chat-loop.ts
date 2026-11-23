@@ -33,6 +33,8 @@ import {
   toolsForNewChat, type ChatMode,
 } from './chat-rules.ts'
 import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
+import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
+import { addSuggestion } from './suggest-store.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
   readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
@@ -47,12 +49,14 @@ export type ChatEvent =
   /** The tool call as the code understood it (checked inputs), after it ran: shown on its step. */
   | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
   | { event: 'proposal'; id: string; tool: string; summary: string; expires_at: string }
-  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off'; prompt_tokens: number; thinking: string }
+  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off'; prompt_tokens: number; thinking: string; suggestion: ChatSuggestionNote | null }
   | { event: 'error'; reason: ChatReason; message: string; conversation_id?: string; cost_usd?: number; run_id?: string }
 
 export type ChatReason = 'bad_input' | 'busy' | 'off' | 'not_configured' | 'budget' | 'wall' | 'stale' | 'changed' | 'not_found' | 'declined' | 'timeout' | 'conflict' | 'error'
 
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
+/** An idea this answer recorded in the Suggestions list: only its kind (the text is shown in the list, never here). */
+export interface ChatSuggestionNote { kind: SuggestKind }
 export interface ChatProposalCard { id: string; tool: string; summary: string; expires_at: string }
 
 export type ChatResult = Extract<ChatEvent, { event: 'done' }> | Extract<ChatEvent, { event: 'error' }>
@@ -68,6 +72,7 @@ const STEP_LABELS: Record<string, string> = {
   get_training_week: "Looking at the week's training",
   get_health_trends: "Looking at the week's health figures",
   get_pt_verdicts: "Reading the coach's saved verdicts",
+  note_shortcut: 'Noting an idea for the Suggestions list',
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
@@ -295,6 +300,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const runId = ctx.newId()
   const toolsRun: ToolShape[] = []
   const proposals: ChatProposalCard[] = []
+  let suggestion: ChatSuggestionNote | null = null
+  let notesTried = 0
   const answerMessages: { content: Block[] }[] = []
   let seq = history.length
   let previousDigest: string | null = last ? last.digest : null
@@ -487,6 +494,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         if (writesLeft <= 0) return `At most ${CHAT_LIMITS.maxProposalsPerAnswer} proposals in one answer: this one did not run. Tell the person what is left to propose and let them ask again.`
         writesLeft -= 1
       }
+      // One idea in an answer: a second note_shortcut gets an error result and never runs (the database caps them too).
+      if (call.name === 'note_shortcut') {
+        if (notesTried >= SUGGEST_LIMITS.perAnswer) return `At most ${SUGGEST_LIMITS.perAnswer} idea can be noted in one answer: this one did not run. Carry on with your answer.`
+        notesTried += 1
+      }
       return null
     })
     const results = await Promise.all(toolCalls.map(async (call, index): Promise<{ block: Block; shape: ToolShape; proposal: ProposalCard | null }> => {
@@ -498,7 +510,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       const output: ToolOutput = blocked
         ? { ok: false, message: blocked }
         : await withTimeout(
-          runChatTool(name, call.input, toolNames, modes, { db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs }),
+          runChatTool(name, call.input, toolNames, modes, {
+            db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs,
+            // The suggestions list is written by the service role, with the verified user id and a key made from the idea itself (the model never supplies one); the ledger row of this round is where it was first seen.
+            noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: lastPrompt, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
+          }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )
       let finalOutput = output
@@ -509,6 +525,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         if (made) card = made
         else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }
       }
+      if (output.ok && output.noted && !suggestion) suggestion = { kind: output.noted.kind }
       if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
       const block = resultBlock(id, finalOutput)
       const bytes = JSON.stringify(block).length
@@ -549,7 +566,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   return {
     event: 'done', conversation_id: conversationId, text: endedWith.text, citations, proposals, rounds: answerMessages.length,
     cost_usd: Math.round(costTotal * 1_000_000) / 1_000_000, wall, run_id: runId, ending: endedWith.ending,
-    prompt_tokens: lastPrompt, thinking: thinkingSummary,
+    prompt_tokens: lastPrompt, thinking: thinkingSummary, suggestion,
   }
 }
 

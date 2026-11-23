@@ -43,7 +43,7 @@ const PARTS = [
   'types.ts', 'prices.ts', 'guard.ts', 'image-rules.ts', 'answer-reader.ts', 'page-fetch.ts', 'recipe-rules.ts', 'recipe-page.ts',
   'provider-anthropic.ts', 'ledger.ts',
   RULES,
-  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-photo.ts', 'job-dev-drafts.ts', 'job-text-features.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'chat-rules.ts', 'chat-tools.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'run.ts', 'batch.ts', 'chat-store.ts', 'chat-loop.ts', 'phone-ask.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
+  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-photo.ts', 'job-dev-drafts.ts', 'job-text-features.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'chat-rules.ts', 'suggest-rules.ts', 'suggest-store.ts', 'chat-tools.ts', 'job-suggest-weekly.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'run.ts', 'batch.ts', 'suggest-batch.ts', 'chat-store.ts', 'chat-loop.ts', 'phone-ask.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
 ]
 
 function stop(message) {

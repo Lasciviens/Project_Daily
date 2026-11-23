@@ -24,6 +24,8 @@ import { ownValue } from './guard.ts'
 import { escapeTagText } from './answer-reader.ts'
 import { dmy, factsText, osloDay, osloMidnight, osloWeek, osloWeekOf, sgn, shiftDay, grp, type WeekFacts } from './week-facts.ts'
 import { readWeekFacts } from './week-data.ts'
+import { checkedIdea, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
+import type { AddResult } from './suggest-store.ts'
 import { ALL_TOOL_ORDER, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
 
 // ── Shapes ──────────────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ export interface ProposalDraft {
 }
 
 export type ToolOutput =
-  | { ok: true; text: string; blocks?: Block[]; proposal?: ProposalDraft; rows?: number; fingerprint?: string; inputs?: Record<string, string | number> }
+  | { ok: true; text: string; blocks?: Block[]; proposal?: ProposalDraft; rows?: number; fingerprint?: string; inputs?: Record<string, string | number>; noted?: { kind: SuggestKind } }
   | { ok: false; message: string; inputs?: Record<string, string | number> }
 
 /** What a tool may use: the owner-rights database client, the verified user id, and the clock. */
@@ -52,6 +54,11 @@ export interface ToolContext {
   now: Date
   /** `owner`: the db client carries the owner's token. `server`: it is the service client (tools that need the owner's rights refuse). */
   readAs: 'owner' | 'server'
+  /**
+   * Records one idea in the suggestions list (the loop builds it: the service-role client, the verified user id, this
+   * round's ledger row, the key made from the idea itself). Absent where there is no list (the phone): the tool then says so.
+   */
+  noteIdea?: (idea: CheckedIdea) => Promise<AddResult>
 }
 
 interface ToolDef {
@@ -576,9 +583,32 @@ async function knownFood(ctx: ToolContext, title: string): Promise<{ basis: 'pre
   } catch { return null }
 }
 
+// ── The suggestions tool (phase 4c) ─────────────────────────────────────────
+
+const NOTE_SHORTCUT: ToolDef = {
+  name: 'note_shortcut', kind: 'read',
+  description: "Records one idea in the person's own Suggestions list: something the app could show or do without AI (a widget, a chart, a report, an automation, a notification, a new saved query, an existing screen, a cheaper setting). It changes nothing in the app and nothing of theirs; the person reads the list later and decides. Use it only when it is obvious, at most once in an answer.",
+  fields: {
+    kind: { type: 'string', max: 20, enum: SUGGEST_KINDS, description: 'What the idea is: widget, chart, automation, notification, report, existing_feature, new_tool or cheaper_setting.' },
+    title: { type: 'string', max: 120, description: 'A few plain words naming what the app would show or do, in English. No links.' },
+    why: { type: 'string', max: 400, description: 'One or two plain sentences in English: what was asked and why the app could answer it without AI. No links.' },
+  },
+  async run(args, ctx) {
+    if (!ctx.noteIdea) return fail('Ideas cannot be recorded here.')
+    // The same check every idea passes (suggest-rules.ts): plain text, a kind from the list, lengths held.
+    const checked = checkedIdea({ kind: args.kind, title: args.title, why: args.why })
+    if (!checked.ok) return fail(`${checked.message} Fix it and call note_shortcut again, or answer without it.`)
+    const result = await ctx.noteIdea(checked.idea)
+    if (result === 'added') return { ok: true, text: "Noted in the person's Suggestions list. Nothing was changed in the app. Carry on with your answer; do not mention the note unless asked.", noted: { kind: checked.idea.kind } }
+    if (result === 'error') return fail('The idea could not be recorded just now. Carry on with your answer without it.')
+    // seen, dismissed, full, limit, invalid: nothing new, and nothing the person needs to hear about.
+    return { ok: true, text: 'Nothing new was recorded (it is already in the list, or the list does not take more now). Carry on with your answer.' }
+  },
+}
+
 // ── The list, the permission wall and the run ───────────────────────────────
 
-const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS]
+const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT]
 const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(TOOL_DEFS.map(def => [def.name, def]))
 
 /** Every tool's definition, in the fixed order (the same set and order the permission wall names). */

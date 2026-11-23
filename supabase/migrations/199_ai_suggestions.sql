@@ -33,8 +33,8 @@
 --    rights, and it refuses a signed-in caller. Names read from the ledger are checked again (a tool name or field name
 --    is written by the model's own call, so it is input): only plain lower-case words are kept.
 -- 4. ai_suggest_runs — the weekly Haiku batch's bookkeeping, one row per (account, week, maker), like ai_reports (196):
---    written only by the service role; `batch_id` and `claimed_at` are server-only (the function asks Anthropic about
---    whatever batch id it reads here, so the browser can neither write nor read it).
+--    written only by the service role; `batch_id`, `claimed_at` and `facts` are server-only (the function asks Anthropic about
+--    whatever batch id it reads here, so the browser can neither write nor read it; `facts` is what the answer is read against).
 -- 5. The check timer (196's `lascis-ai-report-check`) is made again so that it also runs while a suggestion batch waits.
 --
 -- Safe to re-run. Changes no existing row. No BEGIN/COMMIT: the deploy runs it as one transaction.
@@ -187,7 +187,7 @@ begin
            (select string_agg(f, '+' order by f)
               from jsonb_array_elements_text(case when jsonb_typeof(t.e -> 'fields') = 'array' then t.e -> 'fields' else '[]'::jsonb end) f
              where f ~ '^[a-z][a-z0-9_]{1,39}$') as fields,
-           case when char_length(t.e ->> 'fingerprint') between 1 and 300 and (t.e ->> 'fingerprint') !~ '[<>[:cntrl:]]' then t.e ->> 'fingerprint' end as fp
+           case when char_length(t.e ->> 'fingerprint') between 1 and 300 and (t.e ->> 'fingerprint') !~ '[[:cntrl:]]' then t.e ->> 'fingerprint' end as fp
       from calls c
      cross join lateral jsonb_array_elements(c.tools) with ordinality as t(e, ord)
      where c.job = 'chat' and jsonb_typeof(t.e) = 'object'
@@ -251,6 +251,8 @@ create table if not exists public.ai_suggest_runs (
   patterns    integer not null default 0 check (patterns between 0 and 100),
   -- Exactly what the model read: counts, costs and shapes, never a row of the owner's data.
   sent_text   text check (sent_text is null or char_length(sent_text) <= 20000),
+  -- The counted patterns the model was shown, as the function checked them (server-only: the answer is read against them).
+  facts       jsonb not null default '{}'::jsonb check (jsonb_typeof(facts) = 'object' and octet_length(facts::text) <= 65536),
   -- Anthropic's batch: server-only (see the header).
   batch_id    text check (batch_id is null or batch_id ~ '^[A-Za-z0-9_-]{1,100}$'),
   call_id     uuid references public.ai_calls(id) on delete set null,
@@ -327,6 +329,7 @@ begin
   end if;
   if has_column_privilege('authenticated', 'public.ai_suggest_runs', 'batch_id', 'select')
      or has_column_privilege('authenticated', 'public.ai_suggest_runs', 'claimed_at', 'select')
+     or has_column_privilege('authenticated', 'public.ai_suggest_runs', 'facts', 'select')
      or has_table_privilege('authenticated', 'public.ai_suggest_runs', 'select') then
     raise exception 'Migration 199 assertion failed: the browser can read a server-only column of ai_suggest_runs';
   end if;

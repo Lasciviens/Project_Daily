@@ -22,7 +22,7 @@
 //  nothing it says is ever used as an id, an address or a target. The batch id comes only from the report row.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ModelAnswer, ReportCheckReply, ReportMakeReply } from './types.ts'
+import type { JobDefinition, ModelAnswer, ReportCheckReply, ReportMakeReply } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import {
   callerDailyCap, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText, TEXT_LOG_MAX_BYTES,
@@ -37,27 +37,27 @@ import {
   type ReportRow,
 } from './report-store.ts'
 
-const BATCH_REQUEST_MS = 30_000
-const BATCH_STATUS_MS = 20_000
+export const BATCH_REQUEST_MS = 30_000
+export const BATCH_STATUS_MS = 20_000
 // Anthropic ends a batch at 24 hours at the latest (what is not done expires). Past 26 hours the report is given up.
-const BATCH_GIVE_UP_MS = 26 * 3_600_000
+export const BATCH_GIVE_UP_MS = 26 * 3_600_000
 // A report row with no batch id this old never got its batch registered.
-const BATCH_NO_ID_MS = 30 * 60_000
+export const BATCH_NO_ID_MS = 30 * 60_000
 // A check that died keeps its claim this long.
-const CLAIM_MS = 10 * 60_000
-const FAILURE_MAX = 300
+export const CLAIM_MS = 10 * 60_000
+export const FAILURE_MAX = 300
 // A failure that may have been billed (the request may have reached Anthropic) stays at the reserved worst case.
-const MAY_BE_BILLED = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
+export const MAY_BE_BILLED = ['network', 'timeout', 'overloaded', 'provider_fault', 'unknown']
 
 const PUSH_FAILED_BODY = "This week's report could not be made. Developer → AI → Learn → Batches says why."
 
 /** A ledger row for this job, with every column at "nothing happened yet" (the reservation writes the real one). */
-function ledgerRow(ctx: RunContext, model: string): CallRow {
+export function ledgerRow(ctx: RunContext, model: string, job: JobDefinition = WEEKLY_REPORT_JOB): CallRow {
   return {
-    id: ctx.newId(), user_id: ctx.userId, run_id: ctx.newId(), step: 1, job: WEEKLY_REPORT_JOB.name, caller: ctx.caller, mode: 'batch',
+    id: ctx.newId(), user_id: ctx.userId, run_id: ctx.newId(), step: 1, job: job.name, caller: ctx.caller, mode: 'batch',
     provider: ctx.providerName, model, served_model: null, effort: null, outcome: 'error', stop_reason: null, error: null, request_id: null,
     input_tokens: 0, cache_read_tokens: 0, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 0, thinking_tokens: 0,
-    long_prompt: false, cost_usd: 0, duration_ms: 0, instructions_version: WEEKLY_REPORT_JOB.version, tools: [], request: null, response: null, thinking: null,
+    long_prompt: false, cost_usd: 0, duration_ms: 0, instructions_version: job.version, tools: [], request: null, response: null, thinking: null,
   }
 }
 
@@ -310,7 +310,7 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
 }
 
 /** Why a model's answer is no report, or null. */
-function answerProblem(answer: ModelAnswer): string | null {
+export function answerProblem(answer: ModelAnswer): string | null {
   if (answer.ending === 'refused') return 'The model declined to write this report.'
   if (answer.ending === 'cut_off') return 'The report was cut off at its length limit.'
   if (answer.ending !== 'complete') return `The model stopped in a way this app does not handle yet (${answer.stopReason}).`
