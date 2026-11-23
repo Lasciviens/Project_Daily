@@ -468,6 +468,13 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 200 (Trakt matching): the owner's own picks only (nobody else reads or changes them), ids that are positive
+      # integers in range, one TMDB title per Trakt item and one Trakt item per title, owner lock, audit. 200 runs twice:
+      # the catalogue must not change.
+      - name: Trakt manual matches database scenarios
+        run: node scripts/verify-db-trakt-manual-matches.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
       # Migration 201 (AI phase 5): ai_embeddings, ai_semantic_search(), 140's follow triggers and ai_reviews are
       # dropped; ai_memory and the source tables stay and still change; a second run changes nothing.
       - name: Gemini search drop database scenarios

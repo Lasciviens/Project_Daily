@@ -272,7 +272,7 @@ jobs:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
+          VITE_TMDB_READ_TOKEN:       ${{ secrets.VITE_TMDB_READ_TOKEN }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
@@ -289,12 +289,15 @@ jobs:
           esac
           if [ -n "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then echo "::notice::The website uses the publishable key."
           else echo "::warning::The website still uses the legacy anon key."; fi
-          for v in VITE_TMDB_API_KEY VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
+          # TMDB's read token (23.11.2026): without it every TMDB call in the website stops, and there is no fallback to a key in a URL —
+          # refuse the build so the site that is live now stays live until the secret is set (docs/deploy-checklist.md, "TMDB read token").
+          [ -n "$VITE_TMDB_READ_TOKEN" ] || fatal="$fatal VITE_TMDB_READ_TOKEN(TMDB API Read Access Token — see docs/deploy-checklist.md)"
+          for v in VITE_GOOGLE_CLIENT_ID VITE_STRAVA_CLIENT_ID \
                    VITE_OXR_APP_ID VITE_VAPID_PUBLIC_KEY; do
             [ -n "${!v}" ] || echo "::warning::$v is empty — the feature that uses it will be dead in this deploy."
           done
           if [ -n "$fatal" ]; then
-            echo "::error::Missing required secret(s):$fatal — the deployed app would white-screen on load."
+            echo "::error::Missing required secret(s):$fatal — the website was not built, so the live site stays as it is."
             exit 1
           fi
 
@@ -307,7 +310,7 @@ jobs:
           VITE_SUPABASE_URL:          ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_SUPABASE_ANON_KEY:     ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_TMDB_API_KEY:          ${{ secrets.VITE_TMDB_API_KEY }}
+          VITE_TMDB_READ_TOKEN:       ${{ secrets.VITE_TMDB_READ_TOKEN }}
           VITE_GOOGLE_CLIENT_ID:      ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_STRAVA_CLIENT_ID:      ${{ secrets.VITE_STRAVA_CLIENT_ID }}
           VITE_OXR_APP_ID:            ${{ secrets.VITE_OXR_APP_ID }}
