@@ -11,7 +11,7 @@
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-ai-learning.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -74,6 +74,25 @@ const statementsOf = text => noComments(text).split(';').map(s => s.trim().repla
   if (!/ai_eval_runs r where r\.status = 'queued' and r\.created_at > now\(\) - interval '27 hours'/.test(sql)) problems.push('the check timer does not wait for a self-test (with an age limit)')
   if (!/if to_regclass\('cron\.job'\) is null then\s+raise notice [^;]+;\s+return;\s+end if;/.test(sql)) problems.push('the timers have no guard for a database without pg_cron')
   if (problems.length) fail(`migration 204 has ${problems.join('; ')}`)
+}
+
+// Migration 203 (the Shop receipt branch) makes the same source memory (ai_source_stats, ai_source_note) as 204's section 8,
+// with `if not exists` and the same definitions, so the order the two run in must not matter. Its section is kept as a copy
+// (scripts/db-tests/ai-learning/source-memory-203.sql) until 203 is on this branch; from then the real file is read and the
+// copy must equal it.
+const SECTION_START = '-- ─── 2. Source memory'
+const SECTION_END = "select public.owner_lock_apply('public.ai_source_stats');"
+const FIXTURE = join(root, 'scripts/db-tests/ai-learning/source-memory-203.sql')
+const real203 = readdirSync(join(root, 'supabase/migrations')).find(f => /^203_.*\.sql$/.test(f))
+const sectionOf = text => { const a = text.indexOf(SECTION_START), b = text.indexOf(SECTION_END); return a >= 0 && b > a ? text.slice(a, b + SECTION_END.length) : null }
+{
+  const copy = sectionOf(readFileSync(FIXTURE, 'utf8'))
+  if (!copy) fail('the copy of 203\'s source memory has lost its markers')
+  if (real203) {
+    const live = sectionOf(readFileSync(mig(real203), 'utf8'))
+    if (live === null) fail(`${real203} no longer holds its source-memory section between the markers: check the order test`)
+    else if (live !== copy) fail(`the copy of 203's source memory differs from ${real203}: update scripts/db-tests/ai-learning/source-memory-203.sql`)
+  }
 }
 
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
@@ -167,4 +186,48 @@ for (const s of suites) {
   if (code) break
 }
 if (code) process.exit(code)
+
+// 203 then 204, and 204 then 203: the same source memory either way, and the scenarios pass on both.
+const SOURCE_FINGERPRINT = `
+select coalesce(string_agg(x, E'\\n' order by x), '') from (
+  select 'column ' || a.attnum || ' ' || a.attname || ' ' || format_type(a.atttypid, a.atttypmod) || ' ' || a.attnotnull || ' ' || coalesce(pg_get_expr(d.adbin, d.adrelid), '')
+    from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum where a.attrelid = 'public.ai_source_stats'::regclass and a.attnum > 0 and not a.attisdropped
+  union all select 'constraint ' || conname || ' ' || pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.ai_source_stats'::regclass
+  union all select 'policy ' || policyname || ' ' || cmd || ' ' || roles::text || ' ' || coalesce(qual, '') || ' ' || coalesce(with_check, '') from pg_policies where schemaname = 'public' and tablename = 'ai_source_stats'
+  union all select 'grant ' || a.grantee::regrole || ' ' || a.privilege_type from pg_class c, aclexplode(c.relacl) a where c.oid = 'public.ai_source_stats'::regclass
+  union all select 'colgrant ' || at.attname || ' ' || a.grantee::regrole || ' ' || a.privilege_type from pg_attribute at, aclexplode(at.attacl) a where at.attrelid = 'public.ai_source_stats'::regclass and at.attacl is not null
+  union all select 'trigger ' || pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'public.ai_source_stats'::regclass and not tgisinternal
+  union all select 'function ' || p.oid::regprocedure || ' ' || p.prosecdef || ' ' || coalesce(p.proconfig::text, '') || ' ' || coalesce(p.proacl::text, '') || ' ' || md5(p.prosrc)
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname in ('ai_source_note', 'ai_source_stats_state')
+) t(x)`
+const orders = [
+  { key: '203 then 204', db: `t204c_${process.pid}`, files: [FIXTURE, mig(FILE)] },
+  { key: '204 then 203', db: `t204d_${process.pid}`, files: [mig(FILE), FIXTURE] },
+]
+const prints = {}
+for (const o of orders) {
+  psql(url, ['-c', `create database ${o.db}`])
+  try {
+    const target = withDb(url, o.db)
+    step(`${o.key}: ledger base`, () => psqlRetry(target, ['-f', join(root, 'scripts/db-tests/ai-ledger/base.sql')]))
+    step(`${o.key}: base`, () => psqlRetry(target, ['-f', join(root, 'scripts/db-tests/ai-reports/base.sql')]))
+    for (const f of BEFORE) step(`${o.key}: ${f}`, () => psql(target, ['-f', mig(f)]))
+    for (const f of o.files) step(`${o.key}: ${f.split('/').pop()}`, () => psql(target, ['-f', f]))
+    prints[o.key] = psql(target, ['-At', '-c', SOURCE_FINGERPRINT])
+    done[o.key] = step(`${o.key}: scenarios`, () => runScenarios(target))
+  } catch (e) {
+    code = 1
+    if (e.stderr) console.error(e.stderr.toString())
+  } finally {
+    try { psql(url, ['-c', `drop database if exists ${o.db}`]) } catch { /* best effort */ }
+  }
+  if (code) process.exit(code)
+}
+if (prints['203 then 204'] !== prints['204 then 203'] || prints['203 then 204'].split('\n').length < 20) {
+  const a = new Set(prints['203 then 204'].split('\n')), b = new Set(prints['204 then 203'].split('\n'))
+  const diff = [...prints['204 then 203'].split('\n').filter(l => !a.has(l)).map(l => `+ ${l}`), ...prints['203 then 204'].split('\n').filter(l => !b.has(l)).map(l => `- ${l}`)]
+  console.error(`verify-db-ai-learning: 203 and 204 leave a different source memory depending on their order:\n${diff.slice(0, 12).join('\n')}`)
+  process.exit(1)
+}
+console.log(`verify-db-ai-learning: 203 (${real203 ? 'the real file' : 'its copy'}) and 204 leave the same source memory in either order; ${done['203 then 204']} and ${done['204 then 203']} scenarios passed`)
 console.log(`verify-db-ai-learning: 204 ran twice on two databases and left each as its first run did; ${done.old} scenarios passed with the old default grants and ${done.now} without them`)

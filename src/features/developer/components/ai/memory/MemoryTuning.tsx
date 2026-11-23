@@ -1,5 +1,5 @@
 import { Check, FlaskConical, History, X } from 'lucide-react'
-import { Button } from '../../../../../shared/ui'
+import { Button, Truncate } from '../../../../../shared/ui'
 import { useDecideTuning, useLearnEvalRuns, useLearnJobs, useRunSelfTestNow, useSetLearnState } from '../../../../ai/claude/hooks/useLearn'
 import { jobWords, percent, SETUP_LABEL, STRATEGY_LABEL, type EvalJob, type EvalRun, type EvalSetup, type JobLearning } from '../../../../ai/claude/learnRules'
 import { formatUsd } from '../../../../ai/claude/ledgerRules'
@@ -14,7 +14,7 @@ import { day } from './memoryDay'
 
 function Bar({ value }: { value: number }) {
   return (
-    <span aria-hidden className="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-surface-2 align-middle">
+    <span aria-hidden className="inline-block h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-2 align-middle">
       <span className="block h-full rounded-full bg-accent-500" style={{ width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%` }} />
     </span>
   )
@@ -24,11 +24,10 @@ function SetupLine({ s, best }: { s: EvalSetup; best: boolean }) {
   return (
     <li className="flex flex-col gap-0.5">
       <p className="flex items-center gap-2 text-meta text-fg-2">
-        <span className={best ? 'font-semibold text-fg' : ''}>{SETUP_LABEL(s.setup)}</span>
-        <Bar value={s.mean} /> <span className="tabular-nums">{percent(s.mean)}</span>
-        <span className="tabular-nums text-fg-muted">· {s.tokens.toLocaleString('en-US').replace(/,/g, ' ')} tokens{s.failed ? ` · ${s.failed} unusable` : ''}</span>
+        <span className={`min-w-0 flex-1 ${best ? 'font-semibold text-fg' : ''}`}><Truncate lines={1}>{SETUP_LABEL(s.setup)}</Truncate></span>
+        <Bar value={s.mean} /> <span className="w-10 shrink-0 text-right tabular-nums">{percent(s.mean)}</span>
       </p>
-      {s.reasons.length > 0 && <p className="text-meta text-fg-muted">Not better: {s.reasons.join('; ')}</p>}
+      <p className="text-meta tabular-nums text-fg-muted">{s.tokens.toLocaleString('en-US').replace(/,/g, ' ')} tokens a request{s.failed ? ` · ${s.failed} unusable` : ''}{s.reasons.length ? ` · not better: ${s.reasons.join('; ')}` : ''}</p>
     </li>
   )
 }

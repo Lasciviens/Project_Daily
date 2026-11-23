@@ -26,6 +26,12 @@ const when = (v: unknown): string => (typeof v === 'string' && !Number.isNaN(Dat
 const whole = (v: unknown, max: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(Math.floor(v), max)) : 0)
 const pick = <T extends string>(list: readonly T[], v: unknown): T | null => (list as readonly unknown[]).includes(v) ? v as T : null
 
+/** A field in words: "items.0.category_id" → "line 1 · category id". */
+export function fieldWords(field: string): string {
+  const row = /^items\.(\d+)\.(.+)$/.exec(field)
+  return row ? `line ${Number(row[1]) + 1} · ${row[2].replace(/_/g, ' ')}` : field.replace(/_/g, ' ')
+}
+
 /** A job's name in words ("shop_tidy" → "shop tidy"). */
 export const jobWords = (job: string): string => job.replace(/_/g, ' ')
 
@@ -96,7 +102,7 @@ export type LessonKind = typeof LESSON_KINDS[number]
 export const LESSON_SOURCES = ['owner_typed', 'owner_data', 'weekly_batch', 'chat_tool', 'repo_doc', 'web'] as const
 export type LessonSource = typeof LESSON_SOURCES[number]
 export const LESSON_SOURCE_LABEL: Record<LessonSource, string> = {
-  owner_typed: 'Your own words', owner_data: 'Your data', weekly_batch: 'The weekly self-test', chat_tool: 'Ask AI', repo_doc: 'The app\'s docs', web: 'A web page',
+  owner_typed: 'your own words', owner_data: 'your data', weekly_batch: 'the weekly self-test', chat_tool: 'Ask AI', repo_doc: 'the app\'s docs', web: 'a web page',
 }
 export const LESSON_COLUMNS = 'id, scope, kind, text, example_case_id, source_kind, source_ref, source_call_id, trust, needs_owner, state, lesson_key, version, supersedes, approved_at, expires_at, created_at'
 export interface AiLesson { id: string; scope: string; kind: LessonKind; text: string; source_kind: LessonSource; source_ref: string | null; trust: 'high' | 'medium' | 'low'; needs_owner: boolean; state: LessonState; lesson_key: string; version: number; approved_at: string; expires_at: string; created_at: string }

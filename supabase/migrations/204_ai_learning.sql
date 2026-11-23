@@ -237,6 +237,10 @@ grant select, insert, update, delete on public.ai_eval_runs to service_role;
 create index if not exists idx_ai_eval_runs_user on public.ai_eval_runs (user_id, created_at desc);
 
 -- ─── 8. Source memory ────────────────────────────────────────────────────────
+-- Migration 203 (Shop: picture memory, `shop-price` writes job 'shop_picture') makes the SAME table, policies, grants and
+-- ai_source_note with `if not exists` / `create or replace`, word for word: whichever of the two runs first makes them and
+-- the other changes nothing (203 adds its own state-stamp trigger; 204 adds its guard; both end up on the table in either
+-- order). verify-db-ai-learning applies them in both orders and compares. Change both together.
 create table if not exists public.ai_source_stats (
   id               uuid primary key default gen_random_uuid(),
   user_id          uuid not null references auth.users(id) on delete cascade,

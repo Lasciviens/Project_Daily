@@ -1,7 +1,7 @@
 import { Undo2, X } from 'lucide-react'
 import { Button, Truncate } from '../../../../../shared/ui'
 import { useLearnCorrections, useSetLearnState } from '../../../../ai/claude/hooks/useLearn'
-import { CORRECTION_KIND_LABEL, jobWords, type AiCorrection } from '../../../../ai/claude/learnRules'
+import { CORRECTION_KIND_LABEL, fieldWords, jobWords, type AiCorrection } from '../../../../ai/claude/learnRules'
 import { Group, ReadState, StatePill } from './memoryBits'
 import { day } from './memoryDay'
 
@@ -13,14 +13,11 @@ function Row({ c, onState, busy }: { c: AiCorrection; onState: (state: 'counted'
   return (
     <li className="flex flex-col gap-1 px-3 py-2">
       <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 break-words text-body text-fg"><span className="font-medium">{c.field.replace(/_/g, ' ')}</span> <span className="text-fg-muted">· {jobWords(c.job)}</span></p>
+        <p className="min-w-0 flex-1 break-words text-body text-fg"><span className="font-medium">{fieldWords(c.field)}</span> <span className="text-fg-muted">· {jobWords(c.job)}</span></p>
         <StatePill tone={tone}>{CORRECTION_KIND_LABEL[c.kind]}</StatePill>
       </div>
       {(c.ai_value !== null || c.saved_value !== null) && (
-        <p className="break-words text-meta text-fg-2">
-          <span className="text-fg-muted">AI:</span> <Truncate lines={1}>{c.ai_value ?? '—'}</Truncate>
-          {c.kind !== 'kept' && <> <span className="text-fg-muted">→ you:</span> <Truncate lines={1}>{c.saved_value ?? '(left out)'}</Truncate></>}
-        </p>
+        <Truncate as="p" lines={2} className="text-meta text-fg-2">{`AI: ${c.ai_value ?? '—'}${c.kind === 'kept' ? '' : ` → you: ${c.saved_value ?? '(left out)'}`}`}</Truncate>
       )}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-meta text-fg-muted">{day(c.created_at)}{c.source === 'suggestion' ? ' · a dismissed suggestion' : c.source === 'chat_proposal' ? ' · Ask AI' : ''}{c.state === 'ignored' ? ' · ignored' : ''}</span>

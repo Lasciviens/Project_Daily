@@ -48,7 +48,7 @@ export const AI_VIEW_LABEL: Record<AiView, string> = { overview: 'Overview', cal
 export const AI_LEARN_VIEWS = ['how', 'prices', 'bench', 'batches', 'suggestions', 'memory'] as const
 export type AiLearnView = typeof AI_LEARN_VIEWS[number]
 
-export const AI_LEARN_LABEL: Record<AiLearnView, string> = { how: 'About', prices: 'Prices', bench: 'Bench', batches: 'Batches', suggestions: 'Suggestions', memory: 'Memory' }
+export const AI_LEARN_LABEL: Record<AiLearnView, string> = { how: 'About', prices: 'Prices', bench: 'Bench', batches: 'Batches', suggestions: 'Ideas', memory: 'Memory' }
 
 export interface AiLocation { view: AiView; learn: AiLearnView }
 
