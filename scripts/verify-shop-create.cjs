@@ -110,7 +110,7 @@ console.log('the row a save writes')
   check('given away keeps no money back', !('sale_price' in C.inputOf({ preset: 'had' }, given, null, CATS)))
   const acc = C.blankState({ preset: 'accessory', parent: { id: 'p1', status: 'bought', category_id: 'c1', bought_at: '2026-10-01T10:00:00Z', currency: 'NOK', title: 'Console' } }, CATS, TODAY)
   i = C.inputOf({ preset: 'accessory', parent: { id: 'p1', status: 'bought', title: 'Console' } }, set({}, acc, { title: 'Case', price: 0 }), 'c1', CATS)
-  check('an accessory: belongs to its parent, bought on the parent\'s day', i.accessory_of === 'p1' && i.status === 'bought' && /^2026-10-01T/.test(i.bought_at) && i.price === 0 && C.quietSave({ preset: 'accessory' }) && !C.quietSave({ preset: 'own' }))
+  check('an accessory: belongs to its parent, bought on the parent\'s day; only "Add another" is quiet (a plain Save names it, with Undo)', i.accessory_of === 'p1' && i.status === 'bought' && /^2026-10-01T/.test(i.bought_at) && i.price === 0 && C.quietSave({ preset: 'accessory' }, true) && !C.quietSave({ preset: 'accessory' }, false) && !C.quietSave({ preset: 'own' }, true))
   const mdl = C.blankState({ preset: 'model', parent: { id: 'w1', status: 'wishlist', category_id: 'c1', region: 'NO', currency: 'NOK', title: 'Tablet' } }, CATS, TODAY)
   i = C.inputOf({ preset: 'model', parent: { id: 'w1', title: 'Tablet' } }, set({}, mdl, { title: 'Tab X', price: 3000 }), 'c1', CATS)
   check('a model: a wish of the general wish', i.option_for === 'w1' && i.status === undefined && i.price === 3000 && i.list === 'wishlist')
@@ -120,6 +120,36 @@ console.log('the row a save writes')
   check('the facts the owner kept go with their sources, the EAN in its own column', i.ean === '4006381333931' && i.facts?.brand?.value === 'Demo' && i.facts.brand.source === 'example.com')
   const unticked = { ...withFacts, facts: withFacts.facts.map(f => ({ ...f, on: false })) }
   check('an unticked fact is not saved', !('facts' in C.inputOf({ preset: 'wish' }, unticked, null, CATS)) && !('ean' in C.inputOf({ preset: 'wish' }, unticked, null, CATS)))
+}
+
+console.log('a wish may be "any model"; money, rates and the owner\'s own columns')
+{
+  const wishSpec = { preset: 'wish' }
+  check('the wish popup switches to "Any model that fits": a general wish with its range, no price, link or store', C.stateOf(wishSpec, false, true) === 'general' && C.stateOf(wishSpec, false, false) === 'buy' && C.stateOf({ preset: 'general' }, false, false) === 'general')
+  const g = { ...set(wishSpec, blank(wishSpec), { title: 'A tablet', price_min: 2000, price_max: 4000, url: 'https://example.com/x', platform: 'Demo Elektro', price: 5 }), general: true }
+  const gi = C.inputOf(wishSpec, g, null, CATS)
+  check('…saved as kind general, with nothing a general wish cannot hold', gi.kind === 'general' && gi.price_min === 2000 && gi.price === null && gi.url === null && gi.platform === null && C.isDirty({ ...blank(wishSpec), general: true }))
+  // The owner's own columns are never sent by a create unless the owner typed a rate (guardian, 23.11.2026).
+  const NEVER = ['fx_nok', 'fx_source', 'sale_fx_nok', 'sale_fx_source', 'owner_edited', 'source_facts']
+  const none = (i) => NEVER.every(k => !(k in i))
+  const ownSpec = { preset: 'own' }, hadSpec = { preset: 'had' }
+  const named = (spec, extra) => set(spec, blank(spec), { title: 'Thing', bought_day: '2026-11-01', disposed_on: '2026-11-05', ...extra })
+  check('a blank own and a blank had send none of the rate columns, owner_edited or source_facts', none(C.inputOf(ownSpec, named(ownSpec, {}), null, CATS)) && none(C.inputOf(hadSpec, named(hadSpec, {}), null, CATS)))
+  const fill = { title: 'Demo Headphones X1', price: 2990, currency: 'NOK', day: '2026-11-08', storeId: null, storeName: 'Demo Elektro', storeLabel: 'Demo Elektro', note: '', lines: [], others: [], left: [], categoryId: 'c2' }
+  const filled = C.withReceipt(ownSpec, blank(ownSpec), CATS, fill, 'x')
+  check('a receipt-filled draft sends none of them either', none(C.inputOf(ownSpec, filled, 'c2', CATS)) && C.inputOf(ownSpec, filled, 'c2', CATS).price === 2990)
+  const typed = named(ownSpec, { price: 100, currency: 'EUR', fx_nok: 11.5, fx_source: 'manual' })
+  check('a rate the owner typed goes as theirs ("manual"), and only for a currency that is not NOK', C.inputOf(ownSpec, typed, null, CATS).fx_source === 'manual' && none(C.inputOf(ownSpec, { ...typed, draft: { ...typed.draft, currency: 'NOK' } }, null, CATS)))
+  check('a changed currency takes the typed rate with it (the sale\'s too)', (() => {
+    const d = C.applyDraftPatch({ currency: 'EUR', fx_nok: 11.5, fx_source: 'manual', sale_currency: 'EUR', sale_fx_nok: 11, sale_fx_source: 'manual' }, { currency: 'USD' })
+    const e = C.applyDraftPatch({ currency: 'EUR', fx_nok: 11.5, fx_source: 'manual', sale_currency: 'EUR', sale_fx_nok: 11, sale_fx_source: 'manual' }, { sale_currency: 'TRY' })
+    const same = C.applyDraftPatch({ currency: 'EUR', fx_nok: 11.5, fx_source: 'manual' }, { currency: 'EUR' })
+    const typedNow = C.applyDraftPatch({ currency: 'EUR' }, { currency: 'USD', fx_nok: 10, fx_source: 'manual' })
+    return d.fx_nok === null && d.fx_source === null && d.sale_fx_nok === 11 && e.sale_fx_nok === null && e.fx_nok === 11.5 && same.fx_nok === 11.5 && typedNow.fx_nok === 10
+  })())
+  const left = (how) => ({ ...named(hadSpec, { disposal: how }), had: true })
+  check('"Money went to" and a sale price exist only when there is money: sold, traded in, other — never given, broken or lost', ['sold', 'traded_in', 'other'].every(h => C.hasMoney(hadSpec, left(h))) && ['given', 'broken', 'lost', 'returned'].every(h => !C.hasMoney(hadSpec, left(h))) && !C.hasMoney(ownSpec, blank(ownSpec)))
+  check('a thing that left without money sends no sale price or sale rate', none(C.inputOf(hadSpec, { ...left('given'), draft: { ...left('given').draft, sale_price: 40, sale_currency: 'EUR', sale_fx_nok: 11 } }, null, CATS)) && !('sale_price' in C.inputOf(hadSpec, { ...left('lost'), draft: { ...left('lost').draft, sale_price: 40 } }, null, CATS)))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

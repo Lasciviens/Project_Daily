@@ -57,11 +57,12 @@ export function Fact({ id, label, value, editing, onEdit, onDone, children, hint
 export function FactField({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
   return (
     <div className="rounded-row">
-      <div className="flex items-start gap-2">
-        <span className="w-[8.5rem] shrink-0 pt-[11px] text-meta text-fg-muted max-[380px]:w-[6.5rem]">{label}</span>
+      {/* Narrow (a phone): the label sits above its editor, which then has the whole width (the two category selects were squeezed). */}
+      <div className="flex flex-col items-stretch gap-0.5 @[30rem]:flex-row @[30rem]:items-start @[30rem]:gap-2">
+        <span className="shrink-0 pt-1 text-meta text-fg-muted @[30rem]:w-[8.5rem] @[30rem]:pt-[11px]">{label}</span>
         <div className="flex min-w-0 flex-1 flex-col gap-2 py-1">{children}</div>
       </div>
-      {hint && <p className="ml-[8.5rem] pl-0.5 text-meta text-fg-muted max-[380px]:ml-[6.5rem]">{hint}</p>}
+      {hint && <p className="text-meta text-fg-muted @[30rem]:ml-[8.5rem] @[30rem]:pl-0.5">{hint}</p>}
     </div>
   )
 }

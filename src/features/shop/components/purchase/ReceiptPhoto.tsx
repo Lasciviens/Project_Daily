@@ -22,9 +22,9 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true }: {
   /** Offer the item lines to pick from (a form with a name and a price); Just bought has neither and matches by name itself. */
   pickLines?: boolean
 }) {
-  // The owner's own categories go with the file, so a line may come back with one of them.
+  // The owner's own categories go with the file only where a line's category is used (the create popup), so a line may come back with one.
   const { data: cats } = useShopCategories()
-  const read = useReadReceipt(useMemo(() => tidyCategories(cats ?? [], RECEIPT_CATEGORIES_MAX), [cats]))
+  const read = useReadReceipt(useMemo(() => (pickLines ? tidyCategories(cats ?? [], RECEIPT_CATEGORIES_MAX) : []), [cats, pickLines]))
   const [data, setData] = useState<(ReceiptRead & { costUsd: number | null }) | null>(null)
   const [pick, setPick] = useState<number | 'total' | null>(null)
   const filled = useRef<string>('')

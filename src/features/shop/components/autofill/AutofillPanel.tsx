@@ -37,11 +37,13 @@ const TITLE_REST_MS = 500
  * anything else offers "Find it" with its digits; a title asks only the owner's own history. Possible duplicates
  * are named, never a block on Add.
  */
-export default function AutofillPanel({ draft, onChange, update, categories }: {
+export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   update: DraftUpdate
   categories: readonly ShopCategory[]
+  /** The "Filled in for you" list folds to one line (a narrow screen). */
+  collapsible?: boolean
 }) {
   const { data: items = [] } = useShopItems()
   const { data: storeRows } = useShopStores()
@@ -146,7 +148,7 @@ export default function AutofillPanel({ draft, onChange, update, categories }: {
       </div>
       {scan && scan.mine.length > 0 && <MaybeYours duplicates={scan.mine.slice(0, 1).map(item => ({ item, by: 'ean' }))} lead={ownedWords(scan.mine[0])} />}
       <MaybeYours duplicates={duplicates} />
-      <FactList facts={draft.facts} fields={draft}
+      <FactList facts={draft.facts} fields={draft} collapsible={collapsible}
         onToggle={key => update(d => { const t = toggleFact(d.facts, key, d); return { facts: t.facts, ...t.fields } })}
         onEdit={(key, text) => update(d => ({ facts: editFact(d.facts, key, text, new Date().toISOString()) }))} />
       <FindIt stores={stores} words={words} open={findOpen ?? !!failedScan} onOpen={setFindOpen} />

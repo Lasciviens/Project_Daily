@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, SkipForward } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
-import { Button, IconButton, SegmentedControl, Skeleton, TonePill, Truncate } from '../../../../shared/ui'
+import { Button, IconButton, SegmentedControl, Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
+import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import { useCreateShopItem, useShopCategories, useShopItems } from '../../hooks/useShop'
@@ -17,10 +18,10 @@ import { Toggle } from './factKit'
 import { RecordFacts } from './RecordFacts'
 import { RecordSection } from './RecordSection'
 import { STATE_PILL } from './useShopRecord'
-import { newCategoryMissing, type RecordDraftApi } from './useRecordDraft'
+import { isNewCategory, newCategoryMissing, newPickOf, NEW_CATEGORY, type RecordDraftApi } from './useRecordDraft'
 import { useSaveCategory } from './useSaveCategory'
 import {
-  baseItem, blankState, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
+  applyDraftPatch, baseItem, blankState, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
   type CreateSpec, type CreateState,
 } from './createDraft'
 import { middayIso } from '../../../media/watchedWhen'
@@ -83,7 +84,12 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const [open, setOpen] = useState({ facts: true, money: true })
   const [added, setAdded] = useState<string[]>([])
   const st = states[index]
-  const kind = stateOf(spec, st.had)
+  // The latest drafts, for what runs after an await (an answer that lands while a save is out must not be overwritten).
+  const latest = useRef(states)
+  latest.current = states
+  const { ref: bodyRef, width: bodyWidth } = useElementWidthRem<HTMLDivElement>()
+  const narrow = bodyWidth != null && bodyWidth < 46
+  const kind = stateOf(spec, st.had, st.general)
   const owns = kind === 'mine' || kind === 'gone'
   const v = viewOf(spec, st)
 
@@ -92,7 +98,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     draft: st.draft,
     value: k => viewOf(spec, st)[k],
     boughtDay: st.draft.bought_day ?? '',
-    set: p => patch(s => ({ ...s, draft: { ...s.draft, ...p } })),
+    set: p => patch(s => ({ ...s, draft: applyDraftPatch(s.draft, p) })),
     dirty: isDirty(st),
     discard: () => patch(s => ({ ...blankState(spec, categories, today), receipt: s.receipt })),
     editing, setEditing,
@@ -107,7 +113,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const parents = useMemo(() => (owns ? items.filter(c => isPossession(c) && !c.accessory_of).sort((a, b) => a.title.localeCompare(b.title)) : undefined), [owns, items])
   const sources = useMemo(() => items.filter(i => isPossession(i) && !i.accessory_of && i.disposal), [items])
   const targets = useMemo(() => items.filter(i => listOf(i) === 'wishlist' && !i.accessory_of && i.kind !== 'general' && (i.status === 'wishlist' || isPossession(i))), [items])
-  const money = kind === 'gone' && (v.disposal === 'sold' || v.disposal === 'traded_in' || v.disposal === 'other')
+  const money = hasMoney(spec, st)
 
   const path = categoryPath(v.category_id && !v.category_id.startsWith('new:') ? v.category_id : null, categories)
   const named = v.title.trim()
@@ -133,19 +139,30 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     return true
   }
 
+  /** The words of a category this save makes ("new category Photography › Cameras"), for the toast. */
+  const madeCategory = (s: CreateState): string | undefined => {
+    const id = s.draft.category_id
+    if (!isNewCategory(id)) return undefined
+    const p = newPickOf(id)
+    const top = p.topId === NEW_CATEGORY ? s.draft.new_top?.trim() : categoryPath(p.topId, categories).topName
+    const sub = (p.subId === NEW_CATEGORY || p.topId === NEW_CATEGORY) ? s.draft.new_sub?.trim() : ''
+    return top ? `new category ${[top, sub].filter(Boolean).join(' › ')}` : undefined
+  }
+
   async function save(another = false) {
     if (missing || saving || st.savedId) return
     const s = st
+    const at = index
     setSaving(true)
     let row: ShopItem
     try {
       // A suggested or new category is made now, with the save (the record's way).
       const categoryId = await saveCategory.resolve(s.draft.category_id, s.draft, categories)
-      row = await create.mutateAsync({ quiet: quietSave(spec), input: inputOf(spec, s, categoryId, categories) })
+      row = await create.mutateAsync({ quiet: quietSave(spec, another), note: madeCategory(s), input: inputOf(spec, s, categoryId, categories) })
     } catch { setSaving(false); return }
     try {
       if (s.paidFrom) await link.mutateAsync({ from_id: s.paidFrom, to_id: row.id })
-      if (s.had && s.moneyTo) await link.mutateAsync({ from_id: row.id, to_id: s.moneyTo })
+      if (hasMoney(spec, s) && s.moneyTo) await link.mutateAsync({ from_id: row.id, to_id: s.moneyTo })
     } catch { /* the link's own hook toasted it; the thing itself is saved */ }
     // The receipt's other lines as accessories of this thing (the owner ticked it): same store, same day, their own prices.
     if (s.withOthers && s.receipt && s.receipt.currency && s.receipt.others.length) {
@@ -161,42 +178,45 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     onSaved?.(row)
     if (row.url && row.list !== 'quick') check([row.id])
     if (currencyOf(row) !== 'NOK' || (s.had && s.draft.sale_currency && s.draft.sale_currency !== 'NOK')) fillRates()
+    batch?.onSaved?.(at)
     setSaving(false)
-    batch?.onSaved?.(index)
     if (another) {
       setAdded(a => [...a, row.title])
-      setStates(all => all.map((x, i) => (i === index ? blankState(spec, categories, today) : x)))
+      setStates(all => all.map((x, i) => (i === at ? blankState(spec, categories, today) : x)))
       setEditing(null)
       return
     }
-    const done = states.map((x, i) => (i === index ? { ...x, savedId: row.id } : x))
-    setStates(done)
-    const next = nextOpen(done, index)
+    // Marked by function, so nothing else changed on any line meanwhile is lost; the next line is worked out from the latest drafts.
+    setStates(all => all.map((x, i) => (i === at ? { ...x, savedId: row.id } : x)))
+    const next = nextOpen(latest.current.map((x, i) => (i === at ? { ...x, savedId: row.id } : x)), at)
     if (next === null) onClose(); else setIndex(next)
   }
 
   function skip() {
-    const done = states.map((x, i) => (i === index ? { ...x, skipped: true } : x))
-    setStates(done)
-    const next = nextOpen(done, index)
+    const at = index
+    setStates(all => all.map((x, i) => (i === at ? { ...x, skipped: true } : x)))
+    const next = nextOpen(latest.current.map((x, i) => (i === at ? { ...x, skipped: true } : x)), at)
     if (next === null) onClose(); else setIndex(next)
   }
 
+  // One counter: "1 of 3" with the arrows (a saved line shows ✓); no second row of numbers.
   const stepper = count > 1 && (
-    <div className="flex items-center gap-1.5">
-      <IconButton bordered size="sm" label="Previous line" onClick={() => setIndex((index - 1 + count) % count)}><ChevronLeft aria-hidden /></IconButton>
-      <span className="min-w-[4.5rem] text-center text-body font-medium tabular-nums text-fg">{index + 1} of {count}</span>
-      <IconButton bordered size="sm" label="Next line" onClick={() => setIndex((index + 1) % count)}><ChevronRight aria-hidden /></IconButton>
-      <span className="ml-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-meta text-fg-muted">
-        {states.map((x, i) => (
-          <button key={i} type="button" onClick={() => setIndex(i)} aria-label={`Line ${i + 1}${x.savedId ? ', saved' : x.skipped ? ', skipped' : ''}`}
-            className={`rounded-control px-1 tabular-nums ${i === index ? 'font-semibold text-fg' : ''} ${x.savedId ? 'text-success' : ''}`}>
-            {i + 1}{x.savedId ? ' ✓' : x.skipped ? ' –' : ''}
-          </button>
-        ))}
+    <div className="flex items-center gap-1">
+      <IconButton bordered size="sm" label="Previous line" disabled={saving} onClick={() => setIndex((index - 1 + count) % count)}><ChevronLeft aria-hidden /></IconButton>
+      <span className="min-w-[4.5rem] text-center text-body font-medium tabular-nums text-fg">
+        {index + 1} of {count}{st.savedId ? <span className="text-success"> ✓</span> : st.skipped ? <span className="text-fg-muted"> –</span> : null}
       </span>
+      <IconButton bordered size="sm" label="Next line" disabled={saving} onClick={() => setIndex((index + 1) % count)}><ChevronRight aria-hidden /></IconButton>
     </div>
   )
+
+  const switches = (spec.preset === 'own' || spec.preset === 'had') ? (
+    <SegmentedControl<'own' | 'had'> size="sm" value={st.had ? 'had' : 'own'} onChange={x => patch(s => ({ ...s, had: x === 'had' }))}
+      options={[{ value: 'own', label: 'I still have it' }, { value: 'had', label: 'I had it' }]} />
+  ) : (spec.preset === 'wish' || spec.preset === 'general') ? (
+    <SegmentedControl<'one' | 'any'> size="sm" value={st.general ? 'any' : 'one'} onChange={x => patch(s => ({ ...s, general: x === 'any' }))}
+      options={[{ value: 'one', label: 'One product' }, { value: 'any', label: 'Any model that fits' }]} />
+  ) : null
 
   const footer = (
     <div className="flex items-center gap-2">
@@ -214,54 +234,63 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     </div>
   )
 
+  // Something you own has tools beside its facts (a receipt photo, the receipt's other lines), so two columns from 46rem; a wish
+  // is one column with the link reader on top. Narrow, the facts come first (name and category on the first screen).
+  const twoColumns = owns
+  const showAutofill = (kind as string) !== 'general'
+  const side = showAutofill || (owns && !batch) ? (
+    <div className={cx('flex min-w-0 flex-col gap-3 order-2 @[46rem]:order-1')}>
+      {showAutofill && <ShopAutofill draft={view} onChange={onChange} update={update} categories={categories} collapsible={narrow} />}
+      {owns && !batch && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
+      {st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch && (
+        <Toggle checked={st.withOthers} onChange={x => patch(s => ({ ...s, withOthers: x }))}>
+          Add the other {st.receipt.others.length === 1 ? 'line' : `${st.receipt.others.length} lines`} as {st.receipt.others.length === 1 ? 'an accessory' : 'accessories'}
+        </Toggle>
+      )}
+    </div>
+  ) : null
+
   return (
     <ModalShell onClose={close} title={named || (batch ? batch.labels[index] : LABEL[spec.preset])} subtitle={subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
       headerActions={<TonePill tone={pill.tone} className="shrink-0 max-sm:hidden">{pill.label}</TonePill>}
       footer={footer}>
-      <div key={index} className="@container flex flex-col gap-3">
-        {stepper}
-        {(spec.preset === 'own' || spec.preset === 'had') && (
-          <SegmentedControl<'own' | 'had'> size="sm" value={st.had ? 'had' : 'own'} onChange={x => patch(s => ({ ...s, had: x === 'had' }))}
-            options={[{ value: 'own', label: 'I still have it' }, { value: 'had', label: 'I had it' }]} />
-        )}
-        <div className="grid items-start gap-3 @[46rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @[46rem]:gap-5">
-          <div className="flex min-w-0 flex-col gap-3">
-            {kind !== 'general' && <ShopAutofill draft={view} onChange={onChange} update={update} categories={categories} />}
-            {owns && !batch && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
-            {st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch && (
-              <Toggle checked={st.withOthers} onChange={x => patch(s => ({ ...s, withOthers: x }))}>
-                Add the other {st.receipt.others.length === 1 ? 'line' : `${st.receipt.others.length} lines`} as {st.receipt.others.length === 1 ? 'an accessory' : 'accessories'}
-              </Toggle>
-            )}
-          </div>
-          <div className="flex min-w-0 flex-col gap-2">
-            <RecordSection id="facts" title="Facts" open={open.facts} onToggle={() => setOpen(o => ({ ...o, facts: !o.facts }))} action={null}>
-              <RecordFacts item={baseItem(spec, st.had)} d={draftApi} state={kind} categories={categories} today={today} parents={parents}
-                create={{ without: kind === 'general' ? [] : ['link'] }} />
-            </RecordSection>
-            {owns && (sources.length > 0 || (kind === 'gone' && money && targets.length > 0)) && (
-              <RecordSection id="money" title="Money" open={open.money} onToggle={() => setOpen(o => ({ ...o, money: !o.money }))} action={null}>
-                {sources.length > 0 && (
-                  <div>
-                    <label htmlFor="create-from" className="field-label">Paid with money from <span className="font-normal text-fg-muted">(optional)</span></label>
-                    <select id="create-from" value={st.paidFrom} onChange={e => patch(s => ({ ...s, paidFrom: e.target.value }))} className="select">
-                      <option value="">Nothing I sold</option>
-                      {sources.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                    </select>
-                  </div>
+      <div ref={bodyRef} className="@container">
+        <div key={index} className="flex flex-col gap-3">
+          {(stepper || switches) && <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}</div>}
+          {/* Nothing is editable while a save is out: what it writes is what was on screen when it was tapped. */}
+          <fieldset disabled={saving} className="m-0 min-w-0 border-0 p-0">
+            <div className={cx('grid items-start gap-3', twoColumns ? '@[46rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @[46rem]:gap-5' : 'grid-cols-1')}>
+              {side}
+              <div className="order-1 flex min-w-0 flex-col gap-2 @[46rem]:order-2">
+                <RecordSection id="facts" title="Facts" open={open.facts} onToggle={() => setOpen(o => ({ ...o, facts: !o.facts }))} action={null}>
+                  <RecordFacts item={baseItem(spec, st.had, st.general)} d={draftApi} state={kind} categories={categories} today={today} parents={parents}
+                    create={{ without: kind === 'general' ? [] : ['link'] }} />
+                </RecordSection>
+                {owns && (sources.length > 0 || (money && targets.length > 0)) && (
+                  <RecordSection id="money" title="Money" open={open.money} onToggle={() => setOpen(o => ({ ...o, money: !o.money }))} action={null}>
+                    {sources.length > 0 && (
+                      <div>
+                        <label htmlFor="create-from" className="field-label">Paid with money from <span className="font-normal text-fg-muted">(optional)</span></label>
+                        <select id="create-from" value={st.paidFrom} onChange={e => patch(s => ({ ...s, paidFrom: e.target.value }))} className="select">
+                          <option value="">Nothing I sold</option>
+                          {sources.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    {money && targets.length > 0 && (
+                      <div>
+                        <label htmlFor="create-to" className="field-label">Money went to <span className="font-normal text-fg-muted">(optional)</span></label>
+                        <select id="create-to" value={st.moneyTo} onChange={e => patch(s => ({ ...s, moneyTo: e.target.value }))} className="select">
+                          <option value="">Nothing in particular</option>
+                          {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? ' (to buy)' : ''}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </RecordSection>
                 )}
-                {kind === 'gone' && money && targets.length > 0 && (
-                  <div>
-                    <label htmlFor="create-to" className="field-label">Money went to <span className="font-normal text-fg-muted">(optional)</span></label>
-                    <select id="create-to" value={st.moneyTo} onChange={e => patch(s => ({ ...s, moneyTo: e.target.value }))} className="select">
-                      <option value="">Nothing in particular</option>
-                      {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? ' (to buy)' : ''}</option>)}
-                    </select>
-                  </div>
-                )}
-              </RecordSection>
-            )}
-          </div>
+              </div>
+            </div>
+          </fieldset>
         </div>
       </div>
     </ModalShell>

@@ -14,17 +14,30 @@ type EditableKey = Exclude<FactKey, 'title' | 'price' | 'image' | 'store' | 'cat
  * from and how sure it is. A fact with a field of its own (name, price, picture, store, category) is edited in its
  * field — its row then says "you changed it"; the others are edited here (tap the value).
  */
-export function FactList({ facts, fields, onToggle, onEdit }: {
+export function FactList({ facts, fields, onToggle, onEdit, collapsible = false }: {
   facts: readonly Fact[]
   fields: FactFields
   onToggle: (key: FactKey) => void
   onEdit: (key: EditableKey, text: string) => void
+  /** On a narrow screen the list is one line, "Filled in: 7 · show" (the create popup puts the facts first there). */
+  collapsible?: boolean
 }) {
   const [editing, setEditing] = useState<EditableKey | null>(null)
+  const [open, setOpen] = useState(false)
   if (!facts.length) return null
+  if (collapsible && !open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} aria-expanded={false} data-testid="shop-facts"
+        className="flex min-h-[40px] items-center gap-1 rounded-row border border-line bg-surface-2 px-2.5 text-left text-meta text-fg-muted">
+        <span className="font-medium text-fg-2">Filled in: {facts.length}</span> · show
+      </button>
+    )
+  }
   return (
     <div className="rounded-row border border-line bg-surface-2 px-2.5 py-1.5" data-testid="shop-facts">
-      <p className="section-label py-1">Filled in for you · untick what's wrong</p>
+      {collapsible
+        ? <button type="button" onClick={() => setOpen(false)} aria-expanded className="section-label py-1 text-left">Filled in for you · untick what's wrong · hide</button>
+        : <p className="section-label py-1">Filled in for you · untick what's wrong</p>}
       <ul className="divide-y divide-line">
         {facts.map(f => (
           <FactRow key={f.key} fact={f} fields={fields} editing={editing === f.key}

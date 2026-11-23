@@ -47,6 +47,8 @@ export interface FactCtx {
   parents?: readonly ShopItem[]
   /** Whether an editor takes the focus as it opens: false where every editor is open at once (the create popup). */
   focus: boolean
+  /** A thing not yet saved: nothing to fetch a rate for (the database freezes it on Save), so no Fetch again. */
+  create?: boolean
 }
 
 const quiet = (t: string) => <span className="text-fg-muted">{t}</span>
@@ -192,7 +194,7 @@ export function ownFacts(c: FactCtx, gone: boolean): FactDef[] {
     facts.push({ id: 'rate', label: 'Exchange rate', filled: true,
       value: complete(paid) && v.fx_nok ? <>1 {cur} = {v.fx_nok} NOK{quiet(v.fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(c.boughtDay)}`)}</> : quiet(`NOK rate missing — Norges Bank's rate for ${formatDate(c.boughtDay)} hasn't come in`),
       editor: <>
-        {!(complete(paid) && v.fx_nok) && <RateFetch day={c.boughtDay} currency={cur} />}
+        {!c.create && !(complete(paid) && v.fx_nok) && <RateFetch day={c.boughtDay} currency={cur} />}
         <p className="text-meta text-fg-muted">The rate you paid at (NOK for 1 {cur}), e.g. your card's — or leave it to Norges Bank's rate of the day.</p>
         <DecimalInput value={v.fx_nok ?? null} onValue={r => set({ fx_nok: r, fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
       </> })
@@ -231,7 +233,7 @@ function saleRateFact(c: FactCtx): FactDef | null {
   return { id: 'saleRate', label: 'Sale rate', filled: true,
     value: v.sale_fx_nok ? <>1 {sc} = {v.sale_fx_nok} NOK{quiet(v.sale_fx_source === 'manual' ? ' · typed by you' : ` · Norges Bank, ${formatDate(v.disposed_on)}`)}</> : quiet(`NOK rate missing — Norges Bank's rate for ${formatDate(v.disposed_on)} hasn't come in`),
     editor: <>
-      {!v.sale_fx_nok && <RateFetch day={v.disposed_on} currency={sc} />}
+      {!c.create && !v.sale_fx_nok && <RateFetch day={v.disposed_on} currency={sc} />}
       <p className="text-meta text-fg-muted">The rate you got (NOK for 1 {sc}) — or leave it to Norges Bank's rate of the day.</p>
       <DecimalInput value={v.sale_fx_nok ?? null} onValue={r => set({ sale_fx_nok: r, sale_fx_source: r == null ? null : 'manual' })} aria-label="NOK per unit, sale" className="input w-[10rem] tabular-nums" autoFocus={c.focus} />
     </> }

@@ -2427,9 +2427,9 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('receipt_read PDF: exactly 32,000 prompt tokens is allowed', x.json?.ok === true && x.net.seen.length === 2, x.json)
   {
     // The worst body: 200 categories (ids of 64, paths of 60 two-byte letters) beside a PDF of the most the function takes must pass the 1.5 MB wall.
-    const worst = Array.from({ length: 200 }, (_, i) => ({ id: `${'a'.repeat(60)}${String(i).padStart(4, '0')}`, path: 'é'.repeat(60) }))
+    const worst = Array.from({ length: 200 }, (_, i) => ({ id: `${'a'.repeat(60)}${String(i).padStart(4, '0')}`, path: '\u{1F600}'.repeat(60) }))
     x = await go(photoBody({ document: { media_type: 'application/pdf', data: fakePdf(1_049_000) }, categories: worst }, 'receipt_read'), { network: pdfNet(2400) })
-    check('receipt_read categories: 200 of the longest rows beside a PDF at the 1.4 million character limit still pass the 1.5 MB body wall', x.json?.ok === true && JSON.stringify(photoBody({ document: { media_type: 'application/pdf', data: fakePdf(1_049_000) }, categories: worst }, 'receipt_read')).length < 1572864 - 1000, [x.status, x.json?.reason, x.json?.message])
+    check('receipt_read categories: 200 of the longest rows beside a PDF at the 1.4 million character limit still pass the 1.5 MB body wall', x.json?.ok === true && Buffer.byteLength(JSON.stringify(photoBody({ document: { media_type: 'application/pdf', data: fakePdf(1_049_000) }, categories: worst }, 'receipt_read'))) < 1572864 - 1000, [x.status, x.json?.reason, x.json?.message])
   }
   x = await go(photoBody(DOC(), 'receipt_read'), { network: pdfNet(32_001) })
   check('receipt_read PDF: over 32,000 prompt tokens is bad_input, only the free count was sent, nothing reserved, one ledger row for the refusal', x.json?.reason === 'bad_input' && /too long for a receipt/.test(x.json.message) && x.net.seen.length === 1 && x.world.reserves.length === 0 && x.world.calls.length === 1 && x.row.outcome === 'bad_input', x.json)

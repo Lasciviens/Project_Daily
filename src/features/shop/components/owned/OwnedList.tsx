@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../../projects/projectBoard'
-import { listShape, pictureBlockRem, rowStacks, subColumns } from '../../ownedRow'
+import { pictureBlockRem, pictureColumns, rowStacks, subColumns } from '../../ownedRow'
 import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel'
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
@@ -48,26 +48,23 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }:
 }) {
   const { ref, width } = useElementWidthRem()
   const columns = rowStacks(width)
-  const shape = listShape(groups.length, columns)
-  // Never more stacks than categories; each at most a content row wide, so a short list leaves the room at its end.
-  const stacks = dealByIndex([...groups], Math.min(columns, Math.max(1, groups.length)))
   const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={onOpen} layout={layout} />
-  const section = (group: CategoryGroup) => (
+  const section = (group: CategoryGroup, cols: number) => (
     <CategorySection key={group.key} group={group} collapsed={collapsed.has(group.key)} onToggle={() => onToggle(group.key)} card={row}
-      body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} columns={shape === 'subs' ? columns : 1} />} />
+      body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} columns={cols} widthRem={width} />} />
   )
-  // Big pictures and a list with fewer categories than columns: the categories use the list's whole width, each one's
-  // subcategories flowing across it (the pictures as blocks side by side, the rows dealt into columns of 21–40rem).
-  if (layout === 'pictures' || shape === 'subs') return <div ref={ref} className="flex min-w-0 flex-col gap-4">{groups.map(section)}</div>
+  // Big pictures: the categories stack in the list's whole width, each subcategory a block of cards (THEME W2).
+  if (layout === 'pictures') return <div ref={ref} className="flex min-w-0 flex-col gap-4">{groups.map(g => section(g, 1))}</div>
+  // Rows and lines: the categories are one grid of 21–40rem columns, each category as wide as its subcategories can fill and
+  // `dense`, so small categories pack side by side instead of each sitting alone in a nearly empty band (owner, 23.11.2026).
   return (
     <div ref={ref} className="min-w-0">
-      {stacks.length <= 1 ? (
-        <div className={cx('flex flex-col gap-4', STACK_CAP)}>{(stacks[0] ?? []).map(section)}</div>
-      ) : (
-        <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 40rem))` }}>
-          {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-4">{stack.map(section)}</div>)}
-        </div>
-      )}
+      <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 40rem))`, gridAutoFlow: 'row dense' }}>
+        {groups.map(g => {
+          const span = subColumns(g.subs.length, columns)
+          return <div key={g.key} className="min-w-0" style={{ gridColumn: `span ${span}` }}>{section(g, span)}</div>
+        })}
+      </div>
     </div>
   )
 }
@@ -86,23 +83,28 @@ function OwnedThing({ item, rows, onOpen, layout }: { item: ShopItem; rows: RowC
 
 /**
  * A category's rows: each subcategory named once, above its own card (or cards). Big pictures flow as blocks — each
- * subcategory's cards as many as fit, the next subcategory beside it while there is room; rows and lines are dealt
- * into `columns` stacks of 21–40rem when the list has room for more columns than categories (THEME W2).
+ * subcategory's cards as many as fit, the next block beside it, and a block that does not fit what is left of the line takes
+ * the columns that are left (`pictureColumns`), so no strip of the screen stays empty; rows and lines are dealt into
+ * `columns` stacks of 21–40rem.
  */
-function SubLists({ id, subs, row, layout, columns }: { id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout; columns: number }) {
+function SubLists({ id, subs, row, layout, columns, widthRem }: {
+  id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout; columns: number; widthRem: number | null
+}) {
   const labelled = subs.some(s => s.title)
-  const block = (sub: SubGroup) => (
-    <div key={sub.key} className="flex min-w-0 flex-col gap-1" style={layout === 'pictures' ? { width: `min(100%, ${pictureBlockRem(sub.items.length)}rem)` } : undefined}>
+  // Under 40rem the cards are two to a row (their own rule); above it the blocks are packed.
+  const packed = layout === 'pictures' && widthRem != null && widthRem >= 40 ? pictureColumns(subs.map(s => s.items.length), widthRem) : null
+  const block = (sub: SubGroup, i = 0) => (
+    <div key={sub.key} className="flex min-w-0 flex-col gap-1" style={packed ? { width: `${pictureBlockRem(packed[i])}rem`, maxWidth: '100%' } : undefined}>
       {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
       <ThingsBox layout={layout}>{sub.items.map(row)}</ThingsBox>
     </div>
   )
-  if (layout === 'pictures') return <div id={id} className="flex flex-wrap items-start gap-x-6 gap-y-3">{subs.map(block)}</div>
+  if (layout === 'pictures') return <div id={id} className="flex flex-wrap items-start gap-x-6 gap-y-3">{subs.map((sub, i) => block(sub, i))}</div>
   const stacks = dealByIndex([...subs], subColumns(subs.length, columns))
-  if (stacks.length <= 1) return <div id={id} className={cx('flex flex-col gap-1.5', STACK_CAP)}>{subs.map(block)}</div>
+  if (stacks.length <= 1) return <div id={id} className="flex flex-col gap-1.5">{subs.map(sub => block(sub))}</div>
   return (
-    <div id={id} className="grid items-start gap-x-6 gap-y-1.5" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 40rem))` }}>
-      {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-1.5">{stack.map(block)}</div>)}
+    <div id={id} className="grid items-start gap-x-6 gap-y-1.5" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 1fr))` }}>
+      {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-1.5">{stack.map(sub => block(sub))}</div>)}
     </div>
   )
 }

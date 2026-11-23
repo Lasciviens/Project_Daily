@@ -30,6 +30,8 @@ export interface CreateSpec {
 export interface CreateState {
   /** Something you own is made as "I still have it" or "I had it" (it switches in the popup). */
   had: boolean
+  /** A wish is made as "One product" or "Any model that fits" (it switches in the popup). */
+  general: boolean
   draft: RecordDraft
   facts: Fact[]
   /** A read receipt line that started it: its other lines can be added as accessories. */
@@ -46,14 +48,14 @@ export interface CreateState {
 }
 
 /** The kind of state the facts list by: to buy, a general wish, yours, or gone. */
-export function stateOf(spec: CreateSpec, had: boolean): 'buy' | 'general' | 'mine' | 'gone' {
-  if (spec.preset === 'general') return 'general'
+export function stateOf(spec: CreateSpec, had: boolean, general = false): 'buy' | 'general' | 'mine' | 'gone' {
+  if (spec.preset === 'general' || (spec.preset === 'wish' && general)) return 'general'
   if (spec.preset === 'wish' || spec.preset === 'model') return 'buy'
   if (spec.preset === 'accessory') return spec.parent && spec.parent.status !== 'bought' ? 'buy' : had ? 'gone' : 'mine'
   return had ? 'gone' : 'mine'
 }
 
-const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'paidFrom' | 'moneyTo' | 'withOthers'>) => JSON.stringify([s.draft, s.facts, s.had, s.paidFrom, s.moneyTo, s.withOthers])
+const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers])
 
 /** A blank draft for the preset, with what its place already knows (the parent's day, category and store). */
 export function blankState(spec: CreateSpec, categories: readonly ShopCategory[], today: string): CreateState {
@@ -77,13 +79,13 @@ export function blankState(spec: CreateSpec, categories: readonly ShopCategory[]
       draft.approx_dates = !!parent.approx_dates
     }
   }
-  const state: CreateState = { had: preset === 'had', draft, facts: [], receipt: null, withOthers: false, paidFrom: '', moneyTo: '', savedId: null, skipped: false, start: '' }
+  const state: CreateState = { had: preset === 'had', general: preset === 'general', draft, facts: [], receipt: null, withOthers: false, paidFrom: '', moneyTo: '', savedId: null, skipped: false, start: '' }
   return { ...state, start: snapshot(state) }
 }
 
 /** The row the record's facts start from: blank, but of the right kind. The draft is laid over it. */
-export function baseItem(spec: CreateSpec, had: boolean): ShopItem {
-  const kind = stateOf(spec, had)
+export function baseItem(spec: CreateSpec, had: boolean, general = false): ShopItem {
+  const kind = stateOf(spec, had, general)
   const owns = kind === 'mine' || kind === 'gone'
   return {
     id: '', user_id: '', category_id: null, title: '', notes: null, price: null, price_source: null, platform: null, url: null,
@@ -94,9 +96,20 @@ export function baseItem(spec: CreateSpec, had: boolean): ShopItem {
 }
 
 /** The thing as the facts see it: the base row with the draft on top. */
-export const viewOf = (spec: CreateSpec, s: CreateState): ShopItem & RecordDraft => ({ ...baseItem(spec, s.had), ...s.draft })
+export const viewOf = (spec: CreateSpec, s: CreateState): ShopItem & RecordDraft => ({ ...baseItem(spec, s.had, s.general), ...s.draft })
 
 export const isDirty = (s: CreateState): boolean => snapshot(s) !== s.start
+
+/**
+ * A change to the record's draft. A changed currency takes the typed rate with it (a rate is for one currency: "1 EUR =
+ * 11.5 NOK" is not "1 USD ="), the sale's as well — the database then freezes the rate of the day.
+ */
+export function applyDraftPatch(draft: RecordDraft, p: RecordDraft): RecordDraft {
+  const next: RecordDraft = { ...draft, ...p }
+  if ('currency' in p && p.currency !== draft.currency && !('fx_nok' in p)) { next.fx_nok = null; next.fx_source = null }
+  if ('sale_currency' in p && p.sale_currency !== draft.sale_currency && !('sale_fx_nok' in p)) { next.sale_fx_nok = null; next.sale_fx_source = null }
+  return next
+}
 
 // ── the autofill's draft ─────────────────────────────────────────────────────
 
@@ -121,7 +134,7 @@ export function withShopPatch(spec: CreateSpec, s: CreateState, categories: read
   if ('title' in patch) draft.title = patch.title as string
   if ('notes' in patch) draft.notes = (patch.notes as string) || null
   if ('price' in patch) draft.price = patch.price as number | null
-  if ('currency' in patch) draft.currency = patch.currency as ShopCurrency
+  if ('currency' in patch) Object.assign(draft, applyDraftPatch(draft, { currency: patch.currency as ShopCurrency }))
   if ('platform' in patch) draft.platform = (patch.platform as string) || null
   if ('url' in patch) draft.url = (patch.url as string) || null
   if ('image' in patch) draft.image_url = (patch.image as string | null) || null
@@ -152,16 +165,23 @@ export function withReceipt(spec: CreateSpec, s: CreateState, categories: readon
   return next
 }
 
-const OWNS_KIND = (spec: CreateSpec, s: CreateState) => { const k = stateOf(spec, s.had); return k === 'mine' || k === 'gone' }
+const OWNS_KIND = (spec: CreateSpec, s: CreateState) => { const k = stateOf(spec, s.had, s.general); return k === 'mine' || k === 'gone' }
 
 // ── what a save needs ────────────────────────────────────────────────────────
+
+/** Whether a thing that left brought money back (sold, traded in, other): "Money went to" and the sale's price only exist then. */
+export function hasMoney(spec: CreateSpec, s: CreateState): boolean {
+  if (stateOf(spec, s.had, s.general) !== 'gone') return false
+  const how = viewOf(spec, s).disposal ?? 'sold'
+  return how === 'sold' || how === 'traded_in' || how === 'other'
+}
 
 /** Why Save waits, in a few words, or null when it can go. */
 export function missingFor(spec: CreateSpec, s: CreateState, today: string): string | null {
   const v = viewOf(spec, s)
   if (!v.title.trim()) return 'a name'
   if (newCategoryMissing(v)) return 'the new category\'s name'
-  const kind = stateOf(spec, s.had)
+  const kind = stateOf(spec, s.had, s.general)
   if (kind === 'mine' || kind === 'gone') {
     const day = s.draft.bought_day ?? ''
     if (!day) return 'the day it was bought'
@@ -177,7 +197,7 @@ export function missingFor(spec: CreateSpec, s: CreateState, today: string): str
 /** The row to write, with the category already made (`categoryId`). The facts the owner kept go with their sources. */
 export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | null, categories: readonly ShopCategory[]): CreateShopItemInput {
   const v = viewOf(spec, s)
-  const kind = stateOf(spec, s.had)
+  const kind = stateOf(spec, s.had, s.general)
   const view = shopDraftOf(spec, s, categories)
   const kept = factsToSave(s.facts, view)
   const base: CreateShopItemInput = {
@@ -204,7 +224,7 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
     ...common, status: 'bought', bought_at: middayIso(s.draft.bought_day as string), approx_dates: !!v.approx_dates,
     price: v.got_as_gift && v.price == null ? 0 : v.price, currency: v.price != null || v.got_as_gift ? currencyOf(v) : null,
     got_as_gift: !!v.got_as_gift, used: !!v.used, for_resale: !!v.for_resale, ...(v.kept === false ? { kept: false } : {}),
-    ...(v.fx_nok != null ? { fx_nok: v.fx_nok, fx_source: v.fx_source ?? 'manual' } : {}),
+    ...(v.fx_nok != null && currencyOf(v) !== 'NOK' ? { fx_nok: v.fx_nok, fx_source: v.fx_source ?? 'manual' } : {}),
     ...(v.market_price != null ? { market_price: v.market_price, market_currency: v.market_currency ?? currencyOf(v) } : {}),
     ...(v.serial ? { serial: v.serial } : {}),
   }
@@ -215,15 +235,15 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
   }
   if (kind === 'gone') {
     const how = v.disposal ?? 'sold'
-    const money = how === 'sold' || how === 'traded_in' || how === 'other' || how === 'returned'
+    const money = how === 'sold' || how === 'traded_in' || how === 'other'
     Object.assign(out, {
       disposal: how, disposed_on: v.disposed_on, sold_to: v.sold_to?.trim() || null,
       ...(money && v.sale_price != null ? { sale_price: v.sale_price, sale_currency: v.sale_currency ?? currencyOf(v) } : {}),
-      ...(money && v.sale_price != null && v.sale_fx_nok != null ? { sale_fx_nok: v.sale_fx_nok, sale_fx_source: v.sale_fx_source ?? 'manual' } : {}),
+      ...(money && v.sale_price != null && v.sale_fx_nok != null && (v.sale_currency ?? currencyOf(v)) !== 'NOK' ? { sale_fx_nok: v.sale_fx_nok, sale_fx_source: v.sale_fx_source ?? 'manual' } : {}),
     })
   }
   return out
 }
 
-/** The kind of toast and Undo a save keeps from its old path: an accessory is quiet (its sheet says "Added: …"). */
-export const quietSave = (spec: CreateSpec): boolean => spec.preset === 'accessory'
+/** Only an accessory's "Add another" is quiet (the popup says "Added: …"); every plain Save names the thing, with Undo. */
+export const quietSave = (spec: CreateSpec, another: boolean): boolean => spec.preset === 'accessory' && another

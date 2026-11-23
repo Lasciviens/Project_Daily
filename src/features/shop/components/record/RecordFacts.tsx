@@ -33,7 +33,7 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
 }) {
   const [added, setAdded] = useState<Set<string>>(new Set())
   const v = { ...item, ...d.draft } as ShopItem & RecordDraft
-  const ctx: FactCtx = { v, boughtDay: d.boughtDay, set: d.set, categories, today, parents, focus: !create }
+  const ctx: FactCtx = { v, boughtDay: d.boughtDay, set: d.set, categories, today, parents, focus: !create, create: !!create }
   const owned = state === 'mine' || state === 'gone' || (state === 'other' && item.status === 'bought')
   // A returned thing is "other", not "gone", yet it left with a sale's facts: they sit in Facts.
   const left = state === 'gone' || (state === 'other' && !!item.disposal)
@@ -73,7 +73,7 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
         if (create) {
           return (
             <div key={i} className="flex flex-col gap-0.5">
-              {g.facts.filter(f => !f.toggle && f.editor).map(f => <FactField key={f.id} label={f.label} hint={f.hint}>{f.editor}</FactField>)}
+              {g.facts.filter(f => !f.toggle && f.editor).map(f => <FactField key={f.id} label={f.id === 'deal' ? 'Deal' : f.label} hint={f.hint}>{f.editor}</FactField>)}
               {g.facts.some(f => f.toggle) && (
                 <div className="flex flex-col pt-1">
                   {g.facts.filter(f => f.toggle).map(f => <Toggle key={f.id} checked={f.toggle?.checked ?? false} onChange={x => f.toggle?.onChange(x)}>{f.toggle?.text}</Toggle>)}
