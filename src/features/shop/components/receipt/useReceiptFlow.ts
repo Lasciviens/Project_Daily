@@ -71,13 +71,20 @@ export function useReceiptFlow(merged: readonly MergedLine[]) {
   const mine = useMemo(() => items.filter(t => isMine(t) && !t.accessory_of).sort((a, b) => a.title.localeCompare(b.title)), [items])
   const soldInApp = useMemo(() => items.filter(t => t.disposal && t.disposal !== 'returned' && t.status === 'bought' && !t.accessory_of).sort((a, b) => a.title.localeCompare(b.title)), [items])
 
+  // What is matched is only what was there when the popup opened: a thing this popup saves must never become the match of another line
+  // (a new "Something I had" would otherwise turn into "already sold in the app" the moment it is saved).
+  const ready = items.length > 0
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a snapshot of the things there when the popup opened, never refreshed
+  const known = useMemo(() => new Set(items.map(t => t.id)), [ready])
+  const pool = useMemo(() => items.filter(t => known.has(t.id)), [items, known])
+
   const info = useMemo(() => {
     const out = new Map<string, LineInfo>()
     for (const m of merged) {
       const side = sides[m.key] ?? sidePreset(m.read)
-      const wish = side === 'bought' ? wishForLine(m.line, items) : null
-      const auto = thingForLine(m.line, items)
-      const sold = auto ? null : soldThingForLine(m.line, items)
+      const wish = side === 'bought' ? wishForLine(m.line, pool) : null
+      const auto = thingForLine(m.line, pool)
+      const sold = auto ? null : soldThingForLine(m.line, pool)
       const pick = picked[m.key]
       let way: SoldWay = auto ? 'owned' : sold ? 'in-app' : 'had'
       let thingId = auto?.id ?? sold?.id ?? ''
@@ -86,11 +93,15 @@ export function useReceiptFlow(merged: readonly MergedLine[]) {
         else if (mine.some(t => t.id === pick)) { way = 'owned'; thingId = pick }
         else if (soldInApp.some(t => t.id === pick)) { way = 'in-app'; thingId = pick }
       }
+      // A line that has been written stays what it was: matching again after the sale (the thing is sold now) could pick another thing.
+      const sale = written.sales.find(x => x.key === m.key)
+      if (sale) { way = 'owned'; thingId = sale.id }
+      else if (written.created.some(x => x.key === m.key && x.had)) { way = 'had'; thingId = '' }
       const included = ticks[m.key] ?? !m.duplicate
       out.set(m.key, { m, side, included, wish, way, thingId, target: side === 'bought' && (!!wish || included) })
     }
     return out
-  }, [merged, sides, ticks, picked, items, mine, soldInApp])
+  }, [merged, sides, ticks, picked, pool, mine, soldInApp, written])
 
   const doneKeys = useMemo(() => new Set([...written.created.map(c => c.key), ...written.sales.map(s => s.key), ...Object.keys(written.wishes)]), [written])
   const keys = useMemo(() => merged.map(m => m.key), [merged])

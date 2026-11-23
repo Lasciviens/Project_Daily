@@ -78,7 +78,7 @@ function LineRow({ m, flow }: { m: MergedLine; flow: Flow }) {
       {i.side === 'sold' && !done && i.included && (
         <div className="mt-1">
           <select aria-label={`Which of your things is “${name}”`} value={i.way === 'had' ? '' : i.thingId} onChange={e => flow.setPick(m.key, e.target.value)} className="select w-full">
-            <option value="">Not one of my things — add it as something I had</option>
+            <option value="">Not mine — add as something I had</option>
             {flow.mine.length > 0 && <optgroup label="Mine">{flow.mine.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</optgroup>}
             {flow.soldInApp.length > 0 && <optgroup label="Already sold in the app">{flow.soldInApp.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</optgroup>}
           </select>

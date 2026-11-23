@@ -233,14 +233,14 @@ export function missingFor(spec: CreateSpec, s: CreateState, today: string): str
   const kind = stateOf(spec, s.had, s.general)
   if (kind === 'mine' || kind === 'gone') {
     const day = s.draft.bought_day ?? ''
-    if (!day) return 'the day it was bought'
+    // A sold line of a read receipt names everything it still needs at once; any other draft names the first thing.
+    const all: string[] = []
+    if (!day) { if (!s.needSale || kind !== 'gone') return 'the day it was bought'; all.push('the day it was bought') }
     if (day > today) return 'a day that is not in the future'
     if (kind === 'gone') {
-      const noDay = !v.disposed_on
-      const noAmount = s.needSale && hasMoney(spec, s) && v.sale_price == null
-      if (noDay && noAmount) return 'the day it left and what it sold for'
-      if (noDay) return 'the day it left'
-      if (noAmount) return 'what it sold for'
+      if (!v.disposed_on) all.push('the day it left')
+      if (s.needSale && hasMoney(spec, s) && v.sale_price == null) all.push('what it sold for')
+      if (all.length) return all.length > 1 ? `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}` : all[0]
       if ((v.disposed_on as string) < day) return 'a day it left that is not before it was bought'
     }
   }

@@ -145,6 +145,7 @@ check('the sold day and the amount are REQUIRED: both missing says both, one say
   && D.missingFor(spec, withBought(D.applyPreset(blank, { had: { day: '2026-11-10' } }), { title: 'Old phone' }), '2026-11-23') === 'what it sold for'
   && D.missingFor(spec, withBought(D.applyPreset(blank, { had: { amount: 5, currency: 'NOK' } }), { title: 'Old phone' }), '2026-11-23') === 'the day it left')
 check('with both filled (and a name and a bought day) Save can go', D.missingFor(spec, withBought(hadState, { title: 'Old phone' }), '2026-11-23') === null)
+check('with nothing filled it names all three at once, in plain words', D.missingFor(spec, { ...D.applyPreset(blank, { had: {} }), draft: { ...D.applyPreset(blank, { had: {} }).draft, title: 'Old phone' } }, '2026-11-23') === 'the day it was bought, the day it left and what it sold for')
 check('a sale before it was bought is still refused', D.missingFor(spec, withBought(hadState, { title: 'Old phone', bought_day: '2026-11-12' }), '2026-11-23') === 'a day it left that is not before it was bought')
 check('given away (no money) needs no amount', D.missingFor(spec, withBought(hadState, { title: 'Old phone', disposal: 'given_away', sale_price: undefined }), '2026-11-23') === null)
 check('an ordinary "I had it" (no receipt) still asks for no amount', D.missingFor({ preset: 'had' }, withBought(D.blankState({ preset: 'had' }, [], '2026-11-23'), { title: 'x', disposed_on: '2026-11-10' }), '2026-11-23') === null)
