@@ -25,7 +25,7 @@ const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./c
 // features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
 // list, the week's counts) and its own answer check (`read`), so a screen is drawn from what really survives them — the model's
 // text is the one canned part. Built once, on the first run of one of those jobs.
-const REAL_CHECKED = new Set(['quick_guess_photo', 'receipt_read', 'shop_tidy', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
+const REAL_CHECKED = new Set(['quick_list_parse', 'quick_guess_photo', 'receipt_read', 'shop_tidy', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
 let realJobs = null
 function realFindJob(name) {
   if (!realJobs) {
@@ -183,6 +183,7 @@ PHASE_2A_JOBS.push(
   phase2a('work_week', 'Write my week (Work)', 'On Work, "Write my week" writes a status text.', 1500),
   phase2a('ad_improve', 'Improve the ad text', 'In Shop, "Improve" rewrites the ad.', 2000),
   phase2a('place_ideas', 'Ideas for a place wish', 'In Wishes, "Ideas for this place".', 3000, ['app'], 70000),
+  phase2a('quick_list_parse', 'Sort out a quick list text', 'In Shop → Quick list, ✨ splits a typed or pasted text into separate items.', 1500),
 )
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
@@ -200,6 +201,12 @@ const tidyAnswer = (input) => {
   if (/laptop/i.test(name) && !/sleeve/i.test(name)) return { name: 'Demo Laptop 14, silver', brand: 'Demo', model: 'L14', category: 1 }
   if (/robot vacuum/i.test(name)) return { name: 'Demo Robot Vacuum R5', brand: 'Demo', model: 'R5' }
   return {}
+}
+// ✨ Sort out on the quick list: made-up answers for the typed text (the function's own check then holds them like a model's).
+const quickAnswer = (input) => {
+  const text = String(input?.text ?? '')
+  if (/tomatoes/i.test(text)) return { items: [{ name: 'Melk' }, { name: 'Brød' }, { name: 'Egg', quantity: 2, unit: 'x' }, { name: 'Tomatoes' }, { name: 'Cheese' }, { name: 'Butter' }] }
+  return { items: text.split(/\s+/).filter(Boolean).map(w => ({ name: w.charAt(0).toUpperCase() + w.slice(1) })) }
 }
 const SOLD_RECEIPT = { kind: 'sold', store: 'Demo Marketplace', date: '2026-11-10', currency: 'NOK', total: 1500, items: [{ name: 'Robot vacuum', price: 1500, quantity: 1 }, { name: 'Garden hose 20 m', price: 300 }] }
 PHASE_2A_RESULTS.dev_request_draft = { title: 'Water card should be red', page: '/daily', category: 'improvement', priority: 'medium', points: ['Make the water card on Daily red.', 'Also in dark mode.'] }
@@ -658,7 +665,7 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = other.name === 'shop_tidy' ? tidyAnswer(body.input) : opts.results?.[other.name] ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
+      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : opts.results?.[other.name] ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
