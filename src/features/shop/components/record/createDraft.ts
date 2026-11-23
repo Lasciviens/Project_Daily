@@ -186,7 +186,9 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
     ...(kept.ean ? { ean: kept.ean } : {}),
     ...(kept.facts ? { facts: kept.facts } : {}),
   }
-  if (spec.preset === 'accessory' && spec.parent) base.accessory_of = spec.parent.id
+  // The record's "Accessory of" fact may name another thing than the one it opened from.
+  const parentId = v.accessory_of ?? (spec.preset === 'accessory' ? spec.parent?.id : undefined)
+  if (parentId) base.accessory_of = parentId
   if (spec.preset === 'model' && spec.parent) base.option_for = spec.parent.id
   if (kind === 'general') {
     return { ...base, kind: 'general', price: null, currency: currencyOf(v), platform: null, url: null, planned_date: null, priority: v.priority,
