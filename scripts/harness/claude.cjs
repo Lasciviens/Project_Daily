@@ -408,6 +408,13 @@ const DESCRIBE_SAFETY_RULES = [
   "The ledger and the AI settings are never given to an assistant as data or as a tool."
 ]
 
+/** The chat tools `describe` lists for the Settings screen (phase 4b): name, kind, what it starts as, and which chats have it. */
+const CHAT_TOOLS = [
+  ['get_day_plan', 'read', ['chat', 'coach']], ['get_week_figures', 'read', ['chat']], ['get_food_day', 'read', ['chat']], ['find_text', 'read', ['chat']],
+  ['get_about_me', 'read', ['chat', 'coach']], ['ask_database', 'read', ['chat']], ['propose_add_task', 'write', ['chat']], ['propose_log_food', 'write', ['chat']],
+  ['get_training_week', 'read', ['coach']], ['get_health_trends', 'read', ['coach']], ['get_pt_verdicts', 'read', ['coach']],
+].map(([name, kind, chats]) => ({ name, kind, what: `The ${name} tool.`, defaultMode: kind === 'write' ? 'ask' : 'on', chats }))
+
 /** What `{ action: 'describe' }` answers, in the real function's own shape. */
 function about(configured) {
   return {
@@ -417,6 +424,7 @@ function about(configured) {
     efforts: ['low', 'medium', 'high'],
     limits: LIMITS,
     defaults: DEFAULTS,
+    chat: { tools: CHAT_TOOLS, limits: { ownerInstructionsMax: 1000, imagesPerMessage: 2, imagesPerChat: 4, imageBase64Max: 450000, photoLongSide: 1280 } },
     prices: {
       checkedOn: '2026-11-20', source: 'https://platform.claude.com/docs/en/about-claude/pricing',
       longPromptOverTokens: 100000, longPromptMultiplier: 5, batchMultiplier: 0.5, webSearchUsdEach: 0.01, webSearchMaxUses: 3, models: PRICES,

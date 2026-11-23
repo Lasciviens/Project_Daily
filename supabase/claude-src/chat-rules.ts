@@ -300,6 +300,9 @@ export const CHAT_JOB: JobDefinition = {
     'A wall at 90 000 prompt tokens: the chat asks you to start a new one',
     'Writes are proposals only: a card in the app, a Confirm tap, and then the app\'s own rights write the row',
     'Streaming: the answer reaches the app as it is written (our own small events only)',
+    'Your own controls: each tool Allowed / Ask first / Off (applies to new chats; Off also stops a running one), and your own instructions as a second cached block, frozen per chat',
+    'Photos: up to 2 a message and 4 a chat, checked from their own bytes, kept inside the chat (the replay must be exact) and removed with it',
+    'The Training coach chat: the same loop with the coach\'s own instructions and read-only tools (training week, health trends, the saved verdicts)',
   ],
   prepare() {
     return { problem: 'Ask AI is started from the chat, not as a one-shot job.' }

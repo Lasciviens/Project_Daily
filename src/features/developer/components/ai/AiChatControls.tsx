@@ -22,7 +22,7 @@ function ToolRow({ tool, mode, onChange }: { tool: DescribeChatTool; mode: ToolM
         <p className="text-body font-medium text-fg">{label}</p>
         <p className="text-meta text-fg-muted">{TOOL_LABELS[tool.name]?.what ?? tool.what}</p>
       </div>
-      <select value={mode} onChange={e => onChange(e.target.value as ToolMode)} aria-label={`${label}: mode`} className="select w-28 shrink-0">
+      <select value={mode} onChange={e => onChange(e.target.value as ToolMode)} aria-label={`${label}: mode`} className="select w-36 shrink-0">
         {choices.map(c => <option key={c} value={c}>{MODE_LABEL[c]}</option>)}
       </select>
     </li>
