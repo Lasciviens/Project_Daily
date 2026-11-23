@@ -9,7 +9,7 @@
 //    note_lesson   — the strict way a note is PROPOSED (the `note_shortcut` pattern): a kind from the list, one plain
 //                    sentence, code-checked; it only records a row. Only a plain fact whose words are the person's own in
 //                    THIS message turns on by itself; everything else waits for the person's tap in Developer → AI →
-//                    Learn → Memory → Notes (the database refuses the function turning such a note on). Never free text
+//                    Learned → Notes (the database refuses the function turning such a note on). Never free text
 //                    written straight into memory.
 //  The tools are read-kind for the permission wall (they change nothing of the person's data), can each be switched Off.
 // ─────────────────────────────────────────────────────────────────────────────

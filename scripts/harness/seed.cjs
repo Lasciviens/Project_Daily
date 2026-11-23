@@ -1176,11 +1176,11 @@ function buildTables(now = new Date()) {
   const setupScore = (setup, mean, tokens) => ({ setup, perCase: { a: mean, b: mean }, perField: { brand: mean, model: mean }, tokensPerRequest: tokens, answered: 8, failed: 0 })
   tables.ai_eval_runs = [{
     id: lid('1ea80000', 1), user_id: owner, week_start: addDays(thisMonday, 0), made_by: 'schedule', status: 'done', call_id: batchCalls[0].id, requests: 25,
-    jobs: [{ job: 'shop_tidy', test_cases: 4, setups: ['champion', 'examples_knn', 'with_new_notes'], reps: 2, new_corrections: 3 }, { job: 'receipt_read', test_cases: 0, replay: 'its input (a photo or a file) is never kept, so it cannot be sent again' }],
+    jobs: [{ job: 'shop_tidy', test_cases: 4, setups: ['champion', 'examples_knn', 'with_new_notes'], reps: 2, new_corrections: 3, trial_lessons: [{ id: lid('1ea70000', 1), text: 'Model numbers keep the maker\'s own hyphen, like WH-1000XM5' }], strategies: { champion: { strategy: 'mmr', k: 3 }, examples_knn: { strategy: 'knn', k: 3 }, with_new_notes: { strategy: 'mmr', k: 3 } } }, { job: 'receipt_read', test_cases: 0, replay: 'its input (a photo or a file) is never kept, so it cannot be sent again' }],
     result: { cost_usd: 0.0042, jobs: [{
       job: 'shop_tidy', decision: 'proposed', notes_added: 1, champion: setupScore('champion', 0.62, 1850),
       challengers: [
-        { ...setupScore('examples_knn', 0.66, 1880), decision: { wins: false, reasons: ['the test mean 66 % does not beat 62 % by more than the noise floor 35.4 %'] } },
+        { ...setupScore('examples_knn', 0.66, 1880), decision: { wins: false, reasons: ['not clearly better yet (needs more than 35 points on 8 tries; it was 4)'] } },
         { ...setupScore('with_new_notes', 0.94, 1990), decision: { wins: true, reasons: [] } },
       ],
       winner: { setup: 'with_new_notes', strategy: 'mmr', k: 3, lessons: ['Model numbers keep the maker\'s own hyphen, like WH-1000XM5'], lesson_ids: [lid('1ea70000', 1)] },
@@ -1191,7 +1191,7 @@ function buildTables(now = new Date()) {
     id: lid('1ea80000', 2), user_id: owner, week_start: addDays(thisMonday, -7), made_by: 'schedule', status: 'skipped', call_id: null, requests: 0, jobs: [], result: null,
     decision_state: 'none', batch_deleted_at: null, batch_delete_note: null, failure: null, created_at: osloInstant(addDays(thisMonday, -7), '05:01'), finished_at: null,
   }]
-  tables.ai_job_learning = [{ user_id: owner, job: 'shop_tidy', example_strategy: 'mmr', examples_k: 3, previous_strategy: null, previous_k: null, changed_at: null, tripwire_left: 0, tripwire_baseline: null, tripwire_saves: 0, tripwire_corrected: 0, last_event: null, last_event_at: null, created_at: at(-10, '05:00'), updated_at: at(-10, '05:00') }]
+  tables.ai_job_learning = [{ user_id: owner, job: 'shop_tidy', example_strategy: 'mmr', examples_k: 3, previous_strategy: null, previous_k: null, approved_lessons: [], changed_at: null, tripwire_left: 0, tripwire_baseline: null, tripwire_saves: 0, tripwire_corrected: 0, last_event: null, last_event_at: null, created_at: at(-10, '05:00'), updated_at: at(-10, '05:00') }]
   tables.ai_source_stats = [
     { id: lid('1ea90000', 1), user_id: owner, job: 'recipe_from_link', host: 'matprat.no', ok_count: 5, fail_count: 0, last_ok_at: at(-2, '17:00'), last_fail_at: null, last_reason: 'read_by_code', state: 'on', updated_at: at(-2, '17:00') },
     { id: lid('1ea90000', 2), user_id: owner, job: 'recipe_from_link', host: 'example-recipes.com', ok_count: 1, fail_count: 3, last_ok_at: at(-20, '17:00'), last_fail_at: at(-4, '17:00'), last_reason: 'failed', state: 'on', updated_at: at(-4, '17:00') },

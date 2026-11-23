@@ -16,6 +16,7 @@
 // soft hyphen, the tag block U+E0000–E007F of invisible ASCII lookalikes, …), lone surrogates, private-use characters, and
 // the invisible ones Unicode does not call format: variation selectors, the Hangul fillers, the Khmer inherent vowels, the
 // Mongolian free variation selectors. The same pattern as build-docs-snapshot.mjs's DOCS_HIDDEN (verify-ai-learning-docs).
+// eslint-disable-next-line no-misleading-character-class -- variation selectors and the like are exactly what is taken out
 const LEARN_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
 // Control characters, line breaks and tabs among them: learned text is one line, the caller collapses spaces.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
@@ -52,7 +53,7 @@ export function plainLine(value: unknown, max: number, min = 1): string | null {
   if (typeof value !== 'string') return null
   const text = stripHidden(value).replace(/\s+/g, ' ').trim()
   if ([...text].length < min || [...text].length > max) return null
-  return LEARN_NOT_PLAIN.test(text) ? null : text
+  return LEARN_NOT_PLAIN.test(text) || holdsHidden(text) ? null : text
 }
 
 /** A value as the learning layer stores it: a short single line (no plain-text rule: a saved name may hold a dot). */
@@ -118,7 +119,8 @@ export const LESSON_DAYS: Readonly<Record<LessonKind, number>> = { fact: 365, pr
  * source that does not read as an instruction is active at once; everything else is pending until the owner's tap.
  */
 export function lessonStart(kind: LessonKind, source: LessonSource, text: string, verifiedInOwnerWords = false): { state: 'active' | 'pending'; trust: Trust } {
-  const trust: Trust = verifiedInOwnerWords && (source === 'chat_tool' || source === 'owner_typed') ? 'high' : SOURCE_TRUST[source]
+  // A chat tool's note in the owner's own typed words counts as the owner's own; any other note keeps its source's trust.
+  const trust: Trust = lowestTrust([verifiedInOwnerWords && (source === 'chat_tool' || source === 'owner_typed') ? 'high' : SOURCE_TRUST[source]])
   const active = kind === 'fact' && trust === 'high' && !isInstructionLike(text)
   return { state: active ? 'active' : 'pending', trust }
 }

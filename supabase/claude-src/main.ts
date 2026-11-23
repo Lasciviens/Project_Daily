@@ -17,7 +17,7 @@
 //    { "action": "chat_delete" | "chat_restore", "conversation_id" } → chat-loop.ts (delete a chat softly, and its Undo)
 //    { "action": "learn_save", "call_id", "saved", "unticked", "dismissed" } → learn-save.ts (the owner saved what an AI
 //                                                       answer filled: corrections against our OWN stored values)
-//    { "action": "learn_decide", "run_id", "job", "decision" } → learn-save.ts (the owner's tap in Learn → Memory → Tuning)
+//    { "action": "learn_decide", "run_id", "job", "decision" } → learn-save.ts (the owner's tap in Developer → AI → Learned → Tuning)
 //    { "action": "learn_eval_make" }                → learn-eval.ts (Tuning's "Run the self-test now"; the Monday timer
 //                                                       does it after the report and the suggestions; report_check reads it back)
 //  Two kinds of caller, told apart before anything is read:

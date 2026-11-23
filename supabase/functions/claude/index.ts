@@ -1792,6 +1792,7 @@ function recipeFromPage(html: string): RecipeFields | null {
 // soft hyphen, the tag block U+E0000–E007F of invisible ASCII lookalikes, …), lone surrogates, private-use characters, and
 // the invisible ones Unicode does not call format: variation selectors, the Hangul fillers, the Khmer inherent vowels, the
 // Mongolian free variation selectors. The same pattern as build-docs-snapshot.mjs's DOCS_HIDDEN (verify-ai-learning-docs).
+// eslint-disable-next-line no-misleading-character-class -- variation selectors and the like are exactly what is taken out
 const LEARN_HIDDEN = /\p{Cf}|\p{Cs}|\p{Co}|[\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/gu
 // Control characters, line breaks and tabs among them: learned text is one line, the caller collapses spaces.
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is taken out
@@ -1828,7 +1829,7 @@ function plainLine(value: unknown, max: number, min = 1): string | null {
   if (typeof value !== 'string') return null
   const text = stripHidden(value).replace(/\s+/g, ' ').trim()
   if ([...text].length < min || [...text].length > max) return null
-  return LEARN_NOT_PLAIN.test(text) ? null : text
+  return LEARN_NOT_PLAIN.test(text) || holdsHidden(text) ? null : text
 }
 
 /** A value as the learning layer stores it: a short single line (no plain-text rule: a saved name may hold a dot). */
@@ -1894,7 +1895,8 @@ const LESSON_DAYS: Readonly<Record<LessonKind, number>> = { fact: 365, preferenc
  * source that does not read as an instruction is active at once; everything else is pending until the owner's tap.
  */
 function lessonStart(kind: LessonKind, source: LessonSource, text: string, verifiedInOwnerWords = false): { state: 'active' | 'pending'; trust: Trust } {
-  const trust: Trust = verifiedInOwnerWords && (source === 'chat_tool' || source === 'owner_typed') ? 'high' : SOURCE_TRUST[source]
+  // A chat tool's note in the owner's own typed words counts as the owner's own; any other note keeps its source's trust.
+  const trust: Trust = lowestTrust([verifiedInOwnerWords && (source === 'chat_tool' || source === 'owner_typed') ? 'high' : SOURCE_TRUST[source]])
   const active = kind === 'fact' && trust === 'high' && !isInstructionLike(text)
   return { state: active ? 'active' : 'pending', trust }
 }
@@ -3899,17 +3901,6 @@ async function noteSource(db: Db, userId: string, job: string, host: string, ok:
   try {
     await db.rpc('ai_source_note', { p_user: userId, p_job: job, p_host: host, p_ok: ok, p_reason: reason })
   } catch { /* a count only */ }
-}
-
-/** The hosts of a job the owner has not switched off, best first (code orders candidates with it; never a fetch target). */
-async function readSourceStats(db: Db, userId: string, job: string): Promise<{ host: string; ok: number; fail: number; lastOk: string | null }[] | null> {
-  try {
-    const { data, error } = await db.from('ai_source_stats').select('host, ok_count, fail_count, last_ok_at').eq('user_id', userId).eq('job', job).eq('state', 'on').limit(500)
-    if (error || !Array.isArray(data)) return null
-    return data.flatMap(r => (isLearnObj(r) && typeof r.host === 'string' ? [{ host: r.host, ok: countOf(r.ok_count, 1e8), fail: countOf(r.fail_count, 1e8), lastOk: typeof r.last_ok_at === 'string' ? r.last_ok_at : null }] : []))
-  } catch {
-    return null
-  }
 }
 
 // <item-fill-shared>
@@ -7852,7 +7843,7 @@ async function claimRun(db: Db, userId: string, id: string, createdAt: string, n
 //    note_lesson   — the strict way a note is PROPOSED (the `note_shortcut` pattern): a kind from the list, one plain
 //                    sentence, code-checked; it only records a row. Only a plain fact whose words are the person's own in
 //                    THIS message turns on by itself; everything else waits for the person's tap in Developer → AI →
-//                    Learn → Memory → Notes (the database refuses the function turning such a note on). Never free text
+//                    Learned → Notes (the database refuses the function turning such a note on). Never free text
 //                    written straight into memory.
 //  The tools are read-kind for the permission wall (they change nothing of the person's data), can each be switched Off.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8761,7 +8752,7 @@ Answer with one JSON object, no other text, every field required: {"notes": [{"k
 const LEARN_EVAL_JOB: JobDefinition = {
   name: 'learn_eval',
   title: 'The weekly self-test',
-  what: 'Once a week, in the batch queue at half price, your own confirmed cases are sent again with today\'s setup and with up to two other setups (other example picks, new notes waiting for you), twice each, and code scores each answer against what you saved. A setup that wins clearly is only proposed: you approve it in Developer → AI → Learn → Memory → Tuning, and the next 20 saves are watched. The batch is deleted at Anthropic right after its results are read.',
+  what: 'Once a week, in the batch queue at half price, your own confirmed cases are sent again with today\'s setup and with up to two other setups (other example picks, new notes waiting for you), twice each, and code scores each answer against what you saved. A setup that wins clearly is only proposed: you approve it in Developer → AI → Learned → Tuning, and the next 20 saves are watched. The batch is deleted at Anthropic right after its results are read.',
   kind: 'one_shot',
   mode: 'batch',
   callers: ['schedule', 'app'],
@@ -8780,7 +8771,7 @@ const LEARN_EVAL_JOB: JobDefinition = {
 
   // A batch job is never run live: its cases come from the database, which a run's input never carries.
   prepare() {
-    return { problem: 'The weekly self-test is made by the Monday timer, or by "Run the self-test now" in Developer → AI → Learn → Memory → Tuning.' }
+    return { problem: 'The weekly self-test is made by the Monday timer, or by "Run the self-test now" in Developer → AI → Learned → Tuning.' }
   },
 }
 
@@ -8999,13 +8990,19 @@ function knowledgeFor(spec: LearnSpec, cases: readonly CaseCandidate[], lessons:
 /**
  * Whether a result code built (the owner's rules, alone or on top of the model's answer) still passes the job's OWN answer
  * check (guardian S3): it is written back in the model's answer shape and read by the same `read` the model's answer went
- * through. A job whose spec cannot write that shape never takes a rule.
+ * through, and the check must keep every value unchanged. A job whose spec cannot write that shape never takes a rule.
  */
 function passesJobCheck(spec: LearnSpec, input: Record<string, unknown>, result: Record<string, unknown>, read: (text: string, details: AnswerDetails) => AnswerCheck): boolean {
   const text = spec.answerText ? spec.answerText(result, input) : null
   if (text === null) return false
   try {
-    return read(text, { thinking: '', servedModel: null, webSearches: 0 }).ok
+    const check = read(text, { thinking: '', servedModel: null, webSearches: 0 })
+    if (!check.ok) return false
+    // Passing is not enough: the check must keep every value as code set it (a check that silently drops or changes a
+    // field the rules set — a tidy name sharing no word with the thing's own — means the rule's value is refused).
+    const mine = spec.values(result)
+    const theirs = spec.values(check.result)
+    return Object.keys(mine).every(k => theirs[k] === mine[k])
   } catch {
     return false
   }
@@ -9101,13 +9098,6 @@ async function noteSourceRead(ctx: LearnEnv, job: string, input: unknown, outcom
   const host = sourceHostOf(input[field])
   if (!host) return
   await noteSource(ctx.adminDb, ctx.userId, job, host, outcome !== 'failed', outcome)
-}
-
-/** Candidate hosts, best first: more good reads and fewer failures first (a host never seen sits in the middle). */
-function orderBySource<T extends { host: string }>(candidates: readonly T[], stats: readonly { host: string; ok: number; fail: number }[]): T[] {
-  const by = new Map(stats.map(s => [s.host, s]))
-  const score = (h: string) => { const s = by.get(h); return s ? (s.ok + 1) / (s.ok + s.fail + 2) : 0.5 }
-  return [...candidates].sort((a, b) => score(b.host) - score(a.host))
 }
 
 // ═══ supabase/claude-src/run.ts ═══
@@ -9863,7 +9853,7 @@ async function decideTuning(ctx: RunContext, body: Record<string, unknown>): Pro
 //    (`factInOwnersWords`: a typed message, the note one unbroken run of its words; never a tool result or a page). A plain fact in their words turns on at once; anything else waits
 //    for their tap (and the database refuses the function turning it on). The same note is never added twice.
 //  · readChatNotes — the "about you" profile: the person's active chat notes (facts and preferences), service role,
-//    named by the verified user, for `recall_notes` (delivered as data blocks, never in the instructions).
+//    named by the verified user, for `get_about_me` (delivered as data blocks, never in the instructions).
 //  · chatProposalCorrections — the owner's Confirm or Cancel of a proposed write is a correction of the model's proposal:
 //    the before is the STORED proposal (`ai_chat_proposals.args`), the after what was written; never the browser's word.
 //  Each is best effort: a failure is said in the server log and never changes the chat's answer.
@@ -10975,7 +10965,9 @@ async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'fa
   if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
   const proposed = jobs.some(j => j.decision === 'proposed')
   const { error } = await ctx.adminDb.from('ai_eval_runs').update({
-    status: 'done', result: { jobs, cost_usd: Math.round(cost * 1_000_000) / 1_000_000 }, decision_state: proposed ? 'proposed' : 'none',
+    // Free text is scored by word overlap: a model judge may help only once it agreed with the owner's own decisions, and no
+    // such record exists yet (judgeAllowed(0, 0) is false), so the run says the judge was off.
+    status: 'done', result: { jobs, cost_usd: Math.round(cost * 1_000_000) / 1_000_000, judge: judgeAllowed(0, 0) ? 'on' : 'off' }, decision_state: proposed ? 'proposed' : 'none',
     finished_at: ctx.now().toISOString(), claimed_at: null, plan: [], ...deleted,
   }).eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
   if (error) {
@@ -12617,7 +12609,7 @@ function describeFunction(configured: boolean, provider: ProviderInfo): Describe
 //    { "action": "chat_delete" | "chat_restore", "conversation_id" } → chat-loop.ts (delete a chat softly, and its Undo)
 //    { "action": "learn_save", "call_id", "saved", "unticked", "dismissed" } → learn-save.ts (the owner saved what an AI
 //                                                       answer filled: corrections against our OWN stored values)
-//    { "action": "learn_decide", "run_id", "job", "decision" } → learn-save.ts (the owner's tap in Learn → Memory → Tuning)
+//    { "action": "learn_decide", "run_id", "job", "decision" } → learn-save.ts (the owner's tap in Developer → AI → Learned → Tuning)
 //    { "action": "learn_eval_make" }                → learn-eval.ts (Tuning's "Run the self-test now"; the Monday timer
 //                                                       does it after the report and the suggestions; report_check reads it back)
 //  Two kinds of caller, told apart before anything is read:

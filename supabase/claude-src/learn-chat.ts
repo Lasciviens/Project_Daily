@@ -5,7 +5,7 @@
 //    (`factInOwnersWords`: a typed message, the note one unbroken run of its words; never a tool result or a page). A plain fact in their words turns on at once; anything else waits
 //    for their tap (and the database refuses the function turning it on). The same note is never added twice.
 //  · readChatNotes — the "about you" profile: the person's active chat notes (facts and preferences), service role,
-//    named by the verified user, for `recall_notes` (delivered as data blocks, never in the instructions).
+//    named by the verified user, for `get_about_me` (delivered as data blocks, never in the instructions).
 //  · chatProposalCorrections — the owner's Confirm or Cancel of a proposed write is a correction of the model's proposal:
 //    the before is the STORED proposal (`ai_chat_proposals.args`), the after what was written; never the browser's word.
 //  Each is best effort: a failure is said in the server log and never changes the chat's answer.

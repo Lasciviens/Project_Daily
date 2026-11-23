@@ -283,14 +283,3 @@ export async function noteSource(db: Db, userId: string, job: string, host: stri
     await db.rpc('ai_source_note', { p_user: userId, p_job: job, p_host: host, p_ok: ok, p_reason: reason })
   } catch { /* a count only */ }
 }
-
-/** The hosts of a job the owner has not switched off, best first (code orders candidates with it; never a fetch target). */
-export async function readSourceStats(db: Db, userId: string, job: string): Promise<{ host: string; ok: number; fail: number; lastOk: string | null }[] | null> {
-  try {
-    const { data, error } = await db.from('ai_source_stats').select('host, ok_count, fail_count, last_ok_at').eq('user_id', userId).eq('job', job).eq('state', 'on').limit(500)
-    if (error || !Array.isArray(data)) return null
-    return data.flatMap(r => (isLearnObj(r) && typeof r.host === 'string' ? [{ host: r.host, ok: countOf(r.ok_count, 1e8), fail: countOf(r.fail_count, 1e8), lastOk: typeof r.last_ok_at === 'string' ? r.last_ok_at : null }] : []))
-  } catch {
-    return null
-  }
-}

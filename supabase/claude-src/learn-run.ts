@@ -87,13 +87,19 @@ export function knowledgeFor(spec: LearnSpec, cases: readonly CaseCandidate[], l
 /**
  * Whether a result code built (the owner's rules, alone or on top of the model's answer) still passes the job's OWN answer
  * check (guardian S3): it is written back in the model's answer shape and read by the same `read` the model's answer went
- * through. A job whose spec cannot write that shape never takes a rule.
+ * through, and the check must keep every value unchanged. A job whose spec cannot write that shape never takes a rule.
  */
 export function passesJobCheck(spec: LearnSpec, input: Record<string, unknown>, result: Record<string, unknown>, read: (text: string, details: AnswerDetails) => AnswerCheck): boolean {
   const text = spec.answerText ? spec.answerText(result, input) : null
   if (text === null) return false
   try {
-    return read(text, { thinking: '', servedModel: null, webSearches: 0 }).ok
+    const check = read(text, { thinking: '', servedModel: null, webSearches: 0 })
+    if (!check.ok) return false
+    // Passing is not enough: the check must keep every value as code set it (a check that silently drops or changes a
+    // field the rules set — a tidy name sharing no word with the thing's own — means the rule's value is refused).
+    const mine = spec.values(result)
+    const theirs = spec.values(check.result)
+    return Object.keys(mine).every(k => theirs[k] === mine[k])
   } catch {
     return false
   }
@@ -189,11 +195,4 @@ export async function noteSourceRead(ctx: LearnEnv, job: string, input: unknown,
   const host = sourceHostOf(input[field])
   if (!host) return
   await noteSource(ctx.adminDb, ctx.userId, job, host, outcome !== 'failed', outcome)
-}
-
-/** Candidate hosts, best first: more good reads and fewer failures first (a host never seen sits in the middle). */
-export function orderBySource<T extends { host: string }>(candidates: readonly T[], stats: readonly { host: string; ok: number; fail: number }[]): T[] {
-  const by = new Map(stats.map(s => [s.host, s]))
-  const score = (h: string) => { const s = by.get(h); return s ? (s.ok + 1) / (s.ok + s.fail + 2) : 0.5 }
-  return [...candidates].sort((a, b) => score(b.host) - score(a.host))
 }

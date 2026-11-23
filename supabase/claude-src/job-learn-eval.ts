@@ -28,7 +28,7 @@ Answer with one JSON object, no other text, every field required: {"notes": [{"k
 export const LEARN_EVAL_JOB: JobDefinition = {
   name: 'learn_eval',
   title: 'The weekly self-test',
-  what: 'Once a week, in the batch queue at half price, your own confirmed cases are sent again with today\'s setup and with up to two other setups (other example picks, new notes waiting for you), twice each, and code scores each answer against what you saved. A setup that wins clearly is only proposed: you approve it in Developer → AI → Learn → Memory → Tuning, and the next 20 saves are watched. The batch is deleted at Anthropic right after its results are read.',
+  what: 'Once a week, in the batch queue at half price, your own confirmed cases are sent again with today\'s setup and with up to two other setups (other example picks, new notes waiting for you), twice each, and code scores each answer against what you saved. A setup that wins clearly is only proposed: you approve it in Developer → AI → Learned → Tuning, and the next 20 saves are watched. The batch is deleted at Anthropic right after its results are read.',
   kind: 'one_shot',
   mode: 'batch',
   callers: ['schedule', 'app'],
@@ -47,6 +47,6 @@ export const LEARN_EVAL_JOB: JobDefinition = {
 
   // A batch job is never run live: its cases come from the database, which a run's input never carries.
   prepare() {
-    return { problem: 'The weekly self-test is made by the Monday timer, or by "Run the self-test now" in Developer → AI → Learn → Memory → Tuning.' }
+    return { problem: 'The weekly self-test is made by the Monday timer, or by "Run the self-test now" in Developer → AI → Learned → Tuning.' }
   },
 }

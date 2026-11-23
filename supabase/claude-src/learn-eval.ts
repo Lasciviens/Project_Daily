@@ -20,7 +20,7 @@ import type { JobDefinition, ModelAnswer, ModelRequest } from './types.ts'
 import { costOf, worstCostOf } from './prices.ts'
 import { callerDailyCap, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, type RunSettings } from './guard.ts'
 import { answerValue, checkedList, readAnswerObject } from './answer-reader.ts'
-import { readGate, readSettingRows, reserveCall, writeCall, type CallRow } from './ledger.ts'
+import { readGate, readSettingRows, reserveCall, writeCall } from './ledger.ts'
 import { buildRequest, gateScopeOf, type RunContext } from './run.ts'
 import { BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, letGoOfBatch, MAY_BE_BILLED } from './batch.ts'
 import { patchCall } from './report-store.ts'
@@ -29,7 +29,7 @@ import { findJob } from './jobs.ts'
 import { LEARN_EVAL_JOB } from './job-learn-eval.ts'
 import { isLearnObj, LEARN_SPECS, LEARN_UUID, type LearnSpec } from './learn-specs.ts'
 import { pickExamples, type CaseCandidate, type ExampleStrategy } from './learn-pick.ts'
-import { decideChallenger, scoreCase, setupScore, type Decision, type SetupScore } from './learn-score.ts'
+import { decideChallenger, judgeAllowed, scoreCase, setupScore, type Decision, type SetupScore } from './learn-score.ts'
 import { knowledgeFor } from './learn-run.ts'
 import { insertLesson, lessonExists, readJobLearning, readLessons, type LessonRow } from './learn-store.ts'
 import { learnEscape, LESSON_DAYS, lessonStart, plainLine, type LessonKind } from './learn-text.ts'
@@ -433,7 +433,9 @@ async function checkOneEval(ctx: RunContext, run: EvalRun): Promise<'done' | 'fa
   if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
   const proposed = jobs.some(j => j.decision === 'proposed')
   const { error } = await ctx.adminDb.from('ai_eval_runs').update({
-    status: 'done', result: { jobs, cost_usd: Math.round(cost * 1_000_000) / 1_000_000 }, decision_state: proposed ? 'proposed' : 'none',
+    // Free text is scored by word overlap: a model judge may help only once it agreed with the owner's own decisions, and no
+    // such record exists yet (judgeAllowed(0, 0) is false), so the run says the judge was off.
+    status: 'done', result: { jobs, cost_usd: Math.round(cost * 1_000_000) / 1_000_000, judge: judgeAllowed(0, 0) ? 'on' : 'off' }, decision_state: proposed ? 'proposed' : 'none',
     finished_at: ctx.now().toISOString(), claimed_at: null, plan: [], ...deleted,
   }).eq('id', run.id).eq('user_id', ctx.userId).eq('created_at', run.created_at)
   if (error) {
