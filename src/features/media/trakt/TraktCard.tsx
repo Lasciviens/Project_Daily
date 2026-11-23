@@ -8,6 +8,7 @@ import { entityModal } from '../../../shared/modals'
 import { ConnectionCard, type Status } from '../../developer/components/ConnectionCard'
 import { takePendingTrakt } from './traktCallback'
 import { useDisconnectTrakt, useFinishTraktConnect, useStartTraktConnect, useSyncTrakt, useTraktStatus } from './useTrakt'
+import { TraktMatchList } from './TraktMatchList'
 import { TraktPreviewSheet } from './TraktPreviewSheet'
 
 // Trakt on Settings → Subscriptions: connect, sync status + Sync now, the
@@ -70,6 +71,7 @@ export function TraktCard() {
             <Button size="sm" variant="secondary" className="w-fit" onClick={applyRemovals} disabled={sync.isPending}>Review and apply</Button>
           </div>
         )}
+        {s?.connected && <TraktMatchList />}
         {!s?.notConfigured && (
           <div className="flex flex-wrap gap-2">
             {s?.connected ? (

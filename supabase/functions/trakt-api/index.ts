@@ -29,7 +29,7 @@
 // `x-sync-secret: <TRAKT_SYNC_SECRET>`, which acts as HEVY_USER_ID and may only
 // run `sync`. The service-role client reads/writes `trakt_tokens` for that user
 // only; the Client Secret never leaves this function. New titles need
-// TMDB_API_KEY (the same key as the app's VITE_TMDB_API_KEY).
+// TMDB_READ_TOKEN (TMDB's v4 "API Read Access Token", sent as a Bearer header — never in a URL).
 //
 // Trakt facts this relies on (developer.trakt.tv guides and openapi.json,
 // checked 26.10.2026): access tokens last 7 days and are refreshed from the
@@ -1599,6 +1599,97 @@ function linkOnlyKeys(rows: { op: string; item_key: string }[], sent: Iterable<s
   return out
 }
 
+// ── traktManualMatch.ts ──
+// The owner's picks for Trakt items that have no TMDB id (migration 200). A row is INPUT — the browser can write the table —
+// so every value is checked here, and a pick only ever fills an id that Trakt did not give. Pure: the sync loads the rows,
+// these functions decide what to use (verify-trakt-manual-match).
+
+/** The biggest id the table's integer columns hold. */
+const MAX_ID = 2_147_483_647
+
+/** 'movie:123' — the kind and the TRAKT id. */
+const matchKey = (kind: string, traktId: number) => `${kind}:${traktId}`
+
+const goodId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0 && v <= MAX_ID
+
+/** The rows of trakt_manual_matches as a map (matchKey → TMDB id). A row that is not exactly a movie/show, a Trakt id and a TMDB id is dropped. */
+function parseManualMatches(rows: unknown): Map<string, number> {
+  const out = new Map<string, number>()
+  if (!Array.isArray(rows)) return out
+  for (const r of rows) {
+    if (typeof r !== 'object' || r === null) continue
+    const { kind, trakt_id, tmdb_id } = r as Record<string, unknown>
+    if ((kind !== 'movie' && kind !== 'show') || !goodId(trakt_id) || !goodId(tmdb_id)) continue
+    out.set(matchKey(kind, trakt_id), tmdb_id)
+  }
+  return out
+}
+
+function everyItem(snap: TraktSnapshot): TraktItem[] {
+  return [
+    ...snap.watchedMovies.map(x => x.item), ...snap.watchedShows.map(x => x.item), ...snap.watchlist.map(x => x.item),
+    ...snap.ratings.map(x => x.item), ...snap.favorites.map(x => x.item), ...snap.dropped.map(x => x.item), ...snap.playback.map(x => x.item),
+  ].filter((i): i is TraktItem => !!i)
+}
+
+interface ManualMatchResult {
+  /** The picks used (matchKey → TMDB id) — what a per-title history read fills in. */
+  used: Map<string, number>
+  /** Picks left alone: Trakt gives that TMDB id to another item, or two picks name one title. */
+  clashes: number
+}
+
+/**
+ * Fills `ids.tmdb` of the snapshot's items that have none. Never overrides an id Trakt gave; a pick whose TMDB id Trakt
+ * already gives to another item of the same kind (or that another pick also names) is not used — one library title never
+ * stands for two Trakt items.
+ */
+function applyManualMatches(snap: TraktSnapshot, matches: Map<string, number>): ManualMatchResult {
+  const used = new Map<string, number>()
+  if (!matches.size) return { used, clashes: 0 }
+  const items = everyItem(snap)
+  const taken = new Set<string>()
+  for (const i of items) if (i.ids.tmdb) taken.add(`${i.type}:${i.ids.tmdb}`)
+  let clashes = 0
+  const claimed = new Map<string, string>()
+  for (const i of items) {
+    if (i.ids.tmdb || !(i.ids.trakt > 0)) continue
+    const key = matchKey(i.type, i.ids.trakt)
+    const tmdb = matches.get(key)
+    if (tmdb === undefined) continue
+    const title = `${i.type}:${tmdb}`
+    const owner = claimed.get(title)
+    if (taken.has(title) || (owner !== undefined && owner !== key)) { if (!used.has(key)) clashes++; continue }
+    claimed.set(title, key)
+    used.set(key, tmdb)
+    i.ids.tmdb = tmdb
+  }
+  return { used, clashes }
+}
+
+/**
+ * A history read's rows with the TMDB id filled from the used picks where Trakt's row has none (a per-title read returns
+ * rows whose movie/show has the Trakt id only). The rows are copied, not changed.
+ */
+function fillHistoryIds(rows: unknown, used: Map<string, number>): unknown {
+  if (!used.size || !Array.isArray(rows)) return rows
+  return rows.map(r => {
+    if (typeof r !== 'object' || r === null) return r
+    const row = r as Record<string, unknown>
+    const kind = row.type === 'movie' ? 'movie' : row.type === 'episode' ? 'show' : null
+    const holder = kind === 'movie' ? row.movie : kind === 'show' ? row.show : null
+    if (!kind || typeof holder !== 'object' || holder === null) return r
+    const ids = (holder as Record<string, unknown>).ids
+    if (typeof ids !== 'object' || ids === null) return r
+    const have = (ids as Record<string, unknown>).tmdb
+    const trakt = (ids as Record<string, unknown>).trakt
+    if (have || typeof trakt !== 'number') return r
+    const tmdb = used.get(matchKey(kind, trakt))
+    if (tmdb === undefined) return r
+    return { ...row, [kind === 'movie' ? 'movie' : 'show']: { ...(holder as object), ids: { ...(ids as object), tmdb } } }
+  })
+}
+
 // ── followRules.ts ──
 // What's new in a follow (media_follows → media_follow_events): the one rule
 // for what counts as a NEW FILM, and which films still wait for the follow's
@@ -1739,11 +1830,16 @@ function followListPending(a: FollowListAttempt, stillNew: Set<number>): number[
 type Db = any // eslint-disable-line @typescript-eslint/no-explicit-any -- the helpers below take its query builders as loose records
 
 const TMDB = 'https://api.themoviedb.org/3'
-const TMDB_KEY = () => Deno.env.get('TMDB_API_KEY') ?? ''
+// TMDB's v4 read token (a JWT: three dot-separated parts), sent as `Authorization: Bearer` — never in the URL. Anything else
+// (a pasted v3 key, a stray space or line break) reads as "not set": the run stops with a plain message, nothing is guessed.
+const TMDB_TOKEN_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+const TMDB_TOKEN = () => { const t = (Deno.env.get('TMDB_READ_TOKEN') ?? '').trim(); return TMDB_TOKEN_SHAPE.test(t) ? t : '' }
+const TMDB_TOKEN_MISSING = 'TMDB_READ_TOKEN is not set on the trakt-api function, or is not a TMDB "API Read Access Token" (the long one, not the 32-character API key) — docs/deploy-checklist.md, "TMDB read token"'
+const tmdbHeaders = () => ({ authorization: `Bearer ${TMDB_TOKEN()}`, accept: 'application/json' })
 
 /** TMDB refused the key itself — every lookup would fail, so the run stops instead of guessing. */
 class TmdbKeyError extends Error {
-  constructor() { super('TMDB rejected TMDB_API_KEY on the trakt-api function (401) — put a valid TMDB v3 API key there') }
+  constructor(message = 'TMDB rejected TMDB_READ_TOKEN on the trakt-api function (401) — put a valid TMDB API Read Access Token there') { super(message) }
 }
 
 // A network failure's message quotes the request URL, and this URL carries a
@@ -1753,7 +1849,8 @@ async function fetchHidingUrl(url: string, init: RequestInit | undefined, what: 
 }
 
 async function tmdb(path: string): Promise<AnyRec> {
-  const res = await fetchHidingUrl(`${TMDB}${path}?api_key=${encodeURIComponent(TMDB_KEY())}&language=en-US`, undefined, 'TMDB')
+  if (!TMDB_TOKEN()) throw new TmdbKeyError(TMDB_TOKEN_MISSING)
+  const res = await fetchHidingUrl(`${TMDB}${path}?language=en-US`, { headers: tmdbHeaders() }, 'TMDB')
   if (res.status === 401) throw new TmdbKeyError()
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return await res.json()
@@ -1921,8 +2018,8 @@ async function loadLocalPlays(db: Db, userId: string, lib: LocalLibrary): Promis
 }
 
 /** Every page of a history read, parsed. */
-async function readHistory(path: string, token: string) {
-  return parseHistory(await getAll(path, token))
+async function readHistory(path: string, token: string, matches?: Map<string, number>) {
+  return parseHistory(fillHistoryIds(await getAll(path, token), matches ?? new Map()))
 }
 
 const WATCH_BATCH = 10
@@ -1943,7 +2040,7 @@ const WATCH_BATCH = 10
  * and linked only, so that remove can be told before it is dropped.
  */
 async function syncWatches(db: Db, userId: string, token: string, snap: TraktSnapshot, lib: LocalLibrary, pending: Set<string>,
-  opts: { full: boolean; force?: boolean; deadline: number; linkOnly?: Set<string> }) {
+  opts: { full: boolean; force?: boolean; deadline: number; linkOnly?: Set<string>; matches?: Map<string, number> }) {
   const { data: st, error: stError } = await db.from('trakt_sync_state').select('history_synced_at, history_cursor, history_force, history_held_back').eq('user_id', userId).maybeSingle()
   if (stError) throw stError
   const state = (st ?? {}) as AnyRec
@@ -2001,7 +2098,7 @@ async function syncWatches(db: Db, userId: string, token: string, snap: TraktSna
   // Movies of a whole-history read: their whole history at once (a few pages).
   const movieTitles = titles!.filter(t => t.kind === 'movie')
   if (result.wholeHistory && movieTitles.length > 1) {
-    const h = await readHistory('/sync/history/movies', token)
+    const h = await readHistory('/sync/history/movies', token, opts.matches)
     result.unreadable += h.unreadable
     const wanted = new Set(movieTitles.map(t => watchKey.movie(t.tmdb)))
     batchPlays.push(...h.plays.filter(p => wanted.has(p.key)))
@@ -2013,7 +2110,7 @@ async function syncWatches(db: Db, userId: string, token: string, snap: TraktSna
     if (result.wholeHistory && movieTitles.length > 1 && t.kind === 'movie') continue
     if (Date.now() > opts.deadline) { left++; continue }
     if (!(t.trakt > 0)) { result.noTraktId++; batch.push(t); continue }
-    const h = await readHistory(`/sync/history/${t.kind === 'movie' ? 'movies' : 'shows'}/${t.trakt}`, token)
+    const h = await readHistory(`/sync/history/${t.kind === 'movie' ? 'movies' : 'shows'}/${t.trakt}`, token, opts.matches)
     result.unreadable += h.unreadable
     batchPlays.push(...h.plays.filter(p => (t.kind === 'movie' ? p.key === watchKey.movie(t.tmdb) : p.kind === 'episode' && p.tmdbId === t.tmdb)))
     batch.push(t)
@@ -2099,7 +2196,7 @@ async function applyWatchPlan(db: Db, userId: string, local: Watches, plan: Watc
 async function showInfo(ids: number[]): Promise<{ info: Map<number, ShowInfo>; details: Map<number, AnyRec> }> {
   const info = new Map<number, ShowInfo>()
   const details = new Map<number, AnyRec>()
-  if (!TMDB_KEY()) return { info, details }
+  if (!TMDB_TOKEN()) return { info, details }
   await pool(ids, 5, async id => {
     try {
       const d = await tmdb(`/tv/${id}`)
@@ -2143,8 +2240,8 @@ async function catalogIds(db: Db, table: 'movies' | 'tv_series', ids: number[], 
     for (const r of data ?? []) map.set(Number(r.tmdb_id), String(r.id))
   }
   const missing = ids.filter(id => !map.has(id))
-  if (missing.length && !TMDB_KEY()) {
-    for (const id of missing) failed.set(id, 'TMDB_API_KEY is not set on the trakt-api function')
+  if (missing.length && !TMDB_TOKEN()) {
+    for (const id of missing) failed.set(id, 'TMDB_READ_TOKEN is not set on the trakt-api function')
     return { map, failed }
   }
   await pool(missing, 4, async id => {
@@ -2256,6 +2353,30 @@ async function applyWrites(db: Db, userId: string, local: Local, w: Writes, deta
     }
   }
   return { done, unadded }
+}
+
+// ── trakt_manual_matches (migration 200) ─────────────────────────────────────
+// The owner's pick of a TMDB title for a Trakt item with no TMDB id. A row is INPUT (the browser writes the table): the pure
+// rules in traktManualMatch.ts keep only a movie/show with two positive integers, fill only ids Trakt did not give, and skip
+// a pick that would put two Trakt items on one title. Only the integers are used — every address is built from them.
+// Table absent (this function deployed before migration 200): no picks. Any other failure stops the run — a run that
+// could not read the picks would treat a matched title as gone from Trakt.
+const MANUAL_MATCH_ROWS_MAX = 5000
+async function loadManualMatches(db: Db, userId: string): Promise<Map<string, number>> {
+  const rows: AnyRec[] = []
+  for (let from = 0; from < MANUAL_MATCH_ROWS_MAX; from += 1000) {
+    const { data, error } = await db.from('trakt_manual_matches').select('kind, trakt_id, tmdb_id').eq('user_id', userId).order('id').range(from, from + 999)
+    if (error) { if (['42P01', 'PGRST205'].includes(String(error.code))) return new Map(); throw error }
+    rows.push(...(data ?? []))
+    if (!data || data.length < 1000) break
+  }
+  return parseManualMatches(rows)
+}
+
+/** Reads the picks and fills the snapshot's missing TMDB ids; the returned map is what history reads fill in too. */
+async function applyPicks(db: Db, userId: string, snap: TraktSnapshot): Promise<Map<string, number>> {
+  const { used } = applyManualMatches(snap, await loadManualMatches(db, userId))
+  return used
 }
 
 // ── trakt_unmatched (migration 116) ──────────────────────────────────────────
@@ -3155,9 +3276,9 @@ async function readListItems(db: Db, token: string, id: unknown) {
 // YouTube trailer on a recent or upcoming title becomes a 'trailer' event.
 // The first check only records the baseline.
 async function tmdbQ(path: string, params: Record<string, string> = {}): Promise<AnyRec> {
-  const q = new URLSearchParams({ api_key: TMDB_KEY(), language: 'en-US', ...params })
-  // TMDB's v3 key only works in the URL, so a network error must not quote it.
-  const res = await fetchHidingUrl(`${TMDB}${path}?${q}`, undefined, 'TMDB')
+  if (!TMDB_TOKEN()) throw new TmdbKeyError(TMDB_TOKEN_MISSING)
+  const q = new URLSearchParams({ language: 'en-US', ...params })
+  const res = await fetchHidingUrl(`${TMDB}${path}?${q}`, { headers: tmdbHeaders() }, 'TMDB')
   if (res.status === 401) throw new TmdbKeyError()
   if (!res.ok) throw new Error(`TMDB ${res.status}: ${path}`)
   return await res.json()
@@ -3199,7 +3320,7 @@ async function trailerKeys(movieId: number): Promise<string[]> {
 }
 
 async function checkFollows(db: Db, userId: string, token: string | null, force: boolean) {
-  if (!TMDB_KEY()) return { skipped: 'no_tmdb_key' }
+  if (!TMDB_TOKEN()) return { skipped: 'no_tmdb_key' }
   const { data, error } = await db.from('media_follows').select('*').eq('user_id', userId)
   if (error) { if (['42P01', 'PGRST205'].includes(String(error.code))) return { skipped: 'no_table' }; throw error }
   const due = ((data ?? []) as AnyRec[])
@@ -3353,6 +3474,8 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const full = !!opts.full || change.reset
 
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
+  // The owner's picks for items Trakt has no TMDB id for (200): filled in before any plan reads the ids.
+  const matches = await applyPicks(db, userId, snap)
   const local = await loadLocal(db, userId)
   const pending = await pendingKeys(db, userId, drained.sentKeys)
   // A full sync (Sync now) re-checks Completed vs Watching for every show with
@@ -3368,7 +3491,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const unmatched = await recordUnmatched(db, userId, snap, unadded)
   // Every play with its own date (149) — after the entries exist; a failure is reported, the rest stands.
   const linkOnly = await removeOnlyKeys(db, userId, drained.sentKeys)
-  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full, force: opts.force, deadline: runStart + 100_000, linkOnly }).catch(e => {
+  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full, force: opts.force, deadline: runStart + 100_000, linkOnly, matches }).catch(e => {
     if (e instanceof TraktError && e.status === 401) throw e
     return { error: e instanceof Error ? e.message : String((e as AnyRec)?.message ?? e), heldBack: Number((state as AnyRec | null)?.history_held_back ?? 0) }
   })
@@ -3396,10 +3519,12 @@ async function runSync(db: Db, userId: string, token: string, username: string |
 async function runImport(db: Db, userId: string, token: string, username: string | null) {
   const runStart = Date.now()
   // Without TMDB the import can't add new titles or tell a finished show from one in progress.
-  if (!TMDB_KEY()) throw new Error('TMDB_API_KEY is not set on the trakt-api function (use the same TMDB key as the app)')
+  if (!TMDB_TOKEN()) throw new Error(TMDB_TOKEN_MISSING)
   const { data: state } = await db.from('trakt_sync_state').select('history_synced_at').eq('user_id', userId).maybeSingle()
   const drained = await drainOutbox(db, userId, token, Date.now() + 45_000, !!(state as AnyRec | null)?.history_synced_at)
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
+  // The owner's picks for items Trakt has no TMDB id for (200): filled in before any plan reads the ids.
+  const matches = await applyPicks(db, userId, snap)
   // With each watch's own date: the import sends the app-only ones at their dates.
   const local = await loadLocal(db, userId, true)
   const pending = await pendingKeys(db, userId, drained.sentKeys)
@@ -3414,7 +3539,7 @@ async function runImport(db: Db, userId: string, token: string, username: string
   const { done: applied, unadded } = await applyWrites(db, userId, local, plan, details)
   // Every play with its own date (149): the whole history, once the entries exist.
   // A failure here is reported; the next sync reads the history again (no stamp).
-  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full: true, deadline: runStart + 100_000, linkOnly: await removeOnlyKeys(db, userId, drained.sentKeys) }).catch(e => {
+  const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full: true, deadline: runStart + 100_000, linkOnly: await removeOnlyKeys(db, userId, drained.sentKeys), matches }).catch(e => {
     if (e instanceof TraktError && e.status === 401) throw e
     return { error: e instanceof Error ? e.message : String((e as AnyRec)?.message ?? e) }
   })
@@ -3624,6 +3749,8 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'snapshot') {
       const snap = await snapshot(accessToken, username)
+      // The picks are applied here too, so the preview counts what the sync will do.
+      await applyPicks(supabase, userId, snap as unknown as TraktSnapshot)
       // The preview's notes (the sync reads them only when they changed).
       const notes = await readTraktNotes(accessToken).catch(e => {
         snap.warnings.push(`Notes could not be read: ${noteFailureMessage(e)}.`)

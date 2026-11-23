@@ -34,7 +34,7 @@ mock answers as the database does for the allowed owner.
 
    ```sh
    VITE_SUPABASE_URL=https://mock.supabase.co VITE_SUPABASE_PUBLISHABLE_KEY=mock-publishable \
-   VITE_TMDB_API_KEY=mock VITE_GOOGLE_CLIENT_ID=mock-client.apps.googleusercontent.com \
+   VITE_TMDB_READ_TOKEN=mock.read.token VITE_GOOGLE_CLIENT_ID=mock-client.apps.googleusercontent.com \
    npx vite --port 5371 --strictPort --host 127.0.0.1
    ```
 

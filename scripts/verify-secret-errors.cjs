@@ -95,7 +95,7 @@ function load(fnName, { env, tables, users, log, fetchImpl }) {
 const failing = async (url) => { throw new TypeError(`error sending request for url (${url}): client error (Connect): dns error`) }
 const SECRETS = { GEMINI_API_KEY: 'GEMINI-SECRET-123456', STEAM_API_KEY: 'STEAM-SECRET-123456', STEAM_ID64: '76561190000000000',
   IGDB_CLIENT_ID: 'igdb-client-id', IGDB_CLIENT_SECRET: 'IGDB-SECRET-123456', MDBLIST_API_KEY: 'MDBLIST-SECRET-123456',
-  TMDB_API_KEY: 'TMDB-SECRET-123456', TRAKT_CLIENT_ID: 'tci', TRAKT_CLIENT_SECRET: 'TRAKT-SECRET-123456',
+  TMDB_READ_TOKEN: 'TMDB-READ.SECRET-123456.TOKEN', TRAKT_CLIENT_ID: 'tci', TRAKT_CLIENT_SECRET: 'TRAKT-SECRET-123456',
   ANTHROPIC_API_KEY: 'sk-ant-api03-FAKEKEY0123456789abcdef' }
 const env = { ...SECRETS, HEVY_USER_ID: 'owner', SUPABASE_URL: 'u', SUPABASE_SERVICE_ROLE_KEY: 'SERVICE-SECRET-123456', SUPABASE_ANON_KEY: 'a' }
 let ok = 0, bad = 0
@@ -114,7 +114,7 @@ process.on('exit', () => {
     ['steam-api', { action: 'profile' }],
     ['igdb-api', { action: 'search', query: 'Zelda' }],
     ['trakt-api', { action: 'ratings', mediaType: 'movie', tmdbId: 603 }],
-    // TMDB's v3 key travels in the URL; "Check now" on follows used a plain fetch (audit 28.10.2026).
+    // TMDB's read token travels in a header (never the URL); "Check now" on follows used a plain fetch (audit 28.10.2026).
     ['trakt-api', { action: 'follows_check' }, { media_follows: [{ id: 'f1', user_id: 'owner', kind: 'collection', tmdb_id: 10, known_ids: [], trailer_keys: [], last_checked_at: null }] }],
   ]
   for (const [fn, body, extra] of cases) {
@@ -123,6 +123,28 @@ process.on('exit', () => {
     const text = await res.text()
     const l = leaks(text)
     check(`${fn} ${body.action ?? 'chat'}: a network failure answers ${res.status} without any key`, l.length === 0, `leaked ${l.join(', ')} in ${text.slice(0, 200)}`)
+  }
+
+  // TMDB: the read token goes in the Authorization header and the URL carries no key; without a token (or with the old 32-character
+  // key pasted in its place) the call is refused with a plain message and nothing is sent.
+  {
+    const follow = [{ id: 'f1', user_id: 'owner', kind: 'collection', tmdb_id: 10, known_ids: [], trailer_keys: [], last_checked_at: null }]
+    const run = async (e) => {
+      const seen = []
+      const spy = async (url, init) => { seen.push({ url: String(url), init }); return new Response('{"results":[],"parts":[]}', { status: 200 }) }
+      const handler = load('trakt-api', { env: e, tables: { app_allowed_users: [], media_follows: structuredClone(follow) }, users: { 'owner-jwt': 'owner' }, log: [], fetchImpl: spy })
+      const res = await handler(new Request('http://x', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer owner-jwt' }, body: JSON.stringify({ action: 'follows_check' }) }))
+      return { seen, text: await res.text() }
+    }
+    const good = await run(env)
+    const tm = good.seen.filter(x => x.url.includes('themoviedb.org'))
+    check('trakt-api follows_check: TMDB is called', tm.length > 0)
+    check('trakt-api follows_check: the read token is a Bearer header', tm.every(x => (x.init?.headers?.authorization ?? '') === `Bearer ${env.TMDB_READ_TOKEN}`))
+    check('trakt-api follows_check: no key or token in a TMDB URL', tm.every(x => !/api_key|TMDB-READ/.test(x.url)))
+    for (const [label, value] of [['unset', undefined], ['the 32-character v3 key', '0123456789abcdef0123456789abcdef'], ['with a line break', 'a.b\n.c']]) {
+      const bad = await run({ ...env, TMDB_READ_TOKEN: value })
+      check(`trakt-api follows_check with the token ${label}: nothing is sent to TMDB`, bad.seen.filter(x => x.url.includes('themoviedb.org')).length === 0)
+    }
   }
 
   // The claude function: the real SDK, a pretend network. A network failure and an Anthropic error that quotes the

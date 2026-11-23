@@ -33,7 +33,7 @@
   are extra columns on that same row, each with a partial unique index, and Rotten Tomatoes
   attaches by TMDB id. Trakt sends every item with `ids: { trakt, slug, tmdb, imdb, tvdb }`:
   an item with a TMDB id is upserted on `tmdb_id`; an item with none, or whose TMDB lookup
-  failed, goes to `trakt_unmatched` with the reason — never a guessed row. A Trakt/IMDb/TVDB
+  failed, goes to `trakt_unmatched` with the reason — never a guessed row. The owner may pick the TMDB title for one (Settings → Subscriptions → Trakt → Titles to match, `trakt_manual_matches`, migration 200): the sync fills only a missing id from the pick, never one Trakt gave (`docs/features/media.md` → Trakt matching). A Trakt/IMDb/TVDB
   id that another row already holds is skipped, never forced. Episodes match on show +
   season + episode, the unique key of `user_tv_episodes`.
 - **Preview before the first write.** The first import is a dry run showing counts

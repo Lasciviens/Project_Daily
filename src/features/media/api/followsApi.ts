@@ -65,6 +65,6 @@ export async function checkFollowsNow(): Promise<{ checked: number; newTitles: n
   let data = res.data
   if (res.error) { const b = await parseFunctionErrorBody(res.error); if (!b?.error) throw res.error; data = b }
   if (data?.error) throw new Error(data.error)
-  if (data?.result?.skipped === 'no_tmdb_key') throw new Error('TMDB_API_KEY is not set on the trakt-api function')
+  if (data?.result?.skipped === 'no_tmdb_key') throw new Error('TMDB_READ_TOKEN is not set on the trakt-api function (docs/deploy-checklist.md, "TMDB read token")')
   return data.result
 }

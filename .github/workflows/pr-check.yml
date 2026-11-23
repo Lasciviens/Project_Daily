@@ -468,6 +468,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 200 (Trakt matching): the owner's own picks only (nobody else reads or changes them), ids that are positive
+      # integers in range, one TMDB title per Trakt item and one Trakt item per title, owner lock, audit. 200 runs twice:
+      # the catalogue must not change.
+      - name: Trakt manual matches database scenarios
+        run: node scripts/verify-db-trakt-manual-matches.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each
