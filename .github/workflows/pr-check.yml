@@ -452,6 +452,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 198 (Ask AI controls): the owner's own tool modes and words (own rows only, shape bounded), a chat's kind and
+      # frozen words that only the function writes, and a photo inside a stored message (1 MB cap, append-only, purged with
+      # its chat). 198 runs twice: the catalogue must not change.
+      - name: AI chat controls database scenarios
+        run: node scripts/verify-db-ai-controls.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the
   # build (measured 21–24 s against ~80 s). The step summary lists each

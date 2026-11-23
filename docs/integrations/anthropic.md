@@ -133,6 +133,15 @@ Checked against Anthropic's pages re-read on 22.11.2026 for this phase (saved in
 
 What it reads back: `content` blocks stored **exactly as received** (thinking with `signature`, `tool_use`, text with `citations`), `stop_reason` (`end_turn`, `tool_use`, `max_tokens`, `refusal`; anything else is an error), `stop_details`, `usage`, `diagnostics.cache_miss_reason`, `context_management.applied_edits[].cleared_tool_uses / cleared_input_tokens`, the message `id`. Streaming events are read by the SDK; only our own two small deltas (text pieces, a tool being called) leave the provider part.
 
+## What phase 4b sends and reads (Ask AI controls, 23.11.2026)
+
+Checked against the docs saved for phase 4 (`vision`, `prompt caching`, `preserved thinking`), not yet by a live call.
+
+- **The owner's own words** are a second `system` text block with its own `cache_control` after the fixed block (the layout was already built: at most 4 marks in all: the last tool, the fixed block, the words, the automatic one). Omitted when empty, so a chat without words sends exactly the 4a request.
+- **A photo** is a `{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }` block in the user turn, before the text (Anthropic's advice), stored and replayed unchanged: with `prefix_mismatch_behavior: "error"` a changed earlier message would make every later thinking block a 400, which is why a photo is never replaced by a stub. Tokens: roughly ⌈w/28⌉ × ⌈h/28⌉ (≤ 4 784 on Haiku 5.5); the first image in a conversation loses the messages cache for that request. No Files API.
+- **No tools at all** (every tool switched off): the request has no `tools` and no `tool_choice` (an empty `tools` list is not sent).
+- **The phone's question** uses the chat's `chatRound` with a tool list of four, thinking `disabled`, effort `low`, `tool_choice: none` on the second request; it sets no `diagnostics` previous id and keeps no conversation. The SDK streams internally; nothing is streamed to the phone.
+
 ## Fields we deliberately don't use
 
 | Field or feature | Why not |
@@ -273,6 +282,9 @@ Most of Anthropic's real behaviour is still unconfirmed. What the live calls of 
 - that a call from `kobo-sync` / `phone-gateway` with the derived credential (HMAC of the service key, not the key) in `x-claude-server-key` reaches `claude` through the platform with `verify_jwt = false` (new and legacy key formats).
 
 ## Log
+
+### 23.11.2026: phase 4b (Ask AI controls)
+The owner's words as a second cached system block, photos as base64 image blocks stored in the message, a coach tool set, no `tools` field when all are off, and `phone_ask` with four read tools (one round). No new endpoint, header or beta.
 
 ### 22.11.2026: the chat's tools are not strict, and a deadline
 Live, the first chat request hung until Supabase's wall clock (trap 29). Dropped `strict` from the chat's tools (trap 16), added the first-event and round clocks, and Diagnose's fifth step (the chat's real first request, 120 s, a call of its own because the four checks plus it would pass 150 s). Reading `message_start` timing and a first Diagnose chat step on the real account is the owner's next check.

@@ -26,7 +26,7 @@ const TABLE_LABEL: Record<string, string> = {
   scrape_decisions: 'Scrape decision', screenscraper_prefs: 'ScreenScraper setting',
   books: 'Book', book_deliveries: 'Kobo delivery', reading_settings: 'Reading setting',
   kobo_device_config: 'Kobo setting', kobo_sleep_images: 'Kobo sleep image',
-  ai_settings: 'AI setting', ai_job_settings: 'AI job setting',
+  ai_settings: 'AI setting', ai_job_settings: 'AI job setting', ai_tool_settings: 'AI chat tool setting',
 }
 /** A table not named above reads as its name, made singular ("media_follows" → "media follow"). */
 export function friendlyTable(t: string): string {

@@ -178,6 +178,35 @@ console.log('\n4 · the sign-in token of a request (bug seen live 22.11.2026: th
   const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const full = path.join(d, f.name); if (f.isDirectory()) walk(full); else if (/\.(ts|tsx)$/.test(f.name) && /functions\/v1\/claude/.test(fs.readFileSync(full, 'utf8'))) direct.push(path.relative(path.join(__dirname, '..'), full)) } }
   walk(path.join(__dirname, '../src'))
   check('the chat is the only manual fetch to the claude function; every other call goes through supabase.functions.invoke (which refreshes an expired token itself)', direct.join() === 'src/features/ai/chat/chatApi.ts', direct)
+  // ── 4b: photos, voice, the coach chat, the owner's controls ──
+  console.log('\n4b · photos, voice, coach, controls')
+  const fnRules = fs.readFileSync(path.join(__dirname, '../supabase/claude-src/chat-rules.ts'), 'utf8')
+  check('the app\'s photo and instruction limits are the function\'s (chat-rules.ts)', /imagesPerMessage: 2/.test(fnRules) && /imagesPerChat: 4/.test(fnRules) && /imageBase64Max: 450_000/.test(fnRules) && /ownerInstructionsMax: 1000/.test(fnRules)
+    && R.CHAT_IMAGES_PER_MESSAGE === 2 && R.CHAT_IMAGES_PER_CHAT === 4 && R.CHAT_PHOTO_BASE64_MAX === 450_000 && R.CHAT_INSTRUCTIONS_MAX === 1000)
+  check('a shrunk photo can never be longer than the function takes: the byte limit is under ¾ of the base64 limit', R.CHAT_PHOTO_MAX_BYTES * 4 / 3 < R.CHAT_PHOTO_BASE64_MAX && R.CHAT_PHOTO_MAX_BYTES > 100_000)
+  const tools = [...fnRules.matchAll(/'((?:get|propose|find|ask)_[a-z_]+)'/g)].map(m => m[1])
+  check('every tool the function has is named in plain words for the settings card and the setup line', [...new Set(tools)].every(t => R.TOOL_LABELS[t]?.label && R.TOOL_LABELS[t]?.what) && R.toolLabel('unknown_tool') === 'unknown_tool' && [...new Set(tools)].length === 11, [...new Set(tools)])
+  check('the step words cover the coach\'s tools too (a stored chat names them in plain words)', ['get_training_week', 'get_health_trends', 'get_pt_verdicts'].every(n => R.turnsFromStored([{ seq: 1, role: 'user', content: [{ type: 'text', text: 'q' }], meta: {} }, { seq: 2, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: n, input: {} }], meta: {} }], [])[1].steps[0].label !== 'Working on it'))
+  check('joinSpoken puts the spoken words after the typed ones with one space, and never doubles a space or loses the typed text', R.joinSpoken('Hello', 'world') === 'Hello world' && R.joinSpoken('Hello ', ' world  again ') === 'Hello world again' && R.joinSpoken('', 'hi') === 'hi' && R.joinSpoken('typed', '   ') === 'typed' && R.joinSpoken('a\n', 'b') === 'a\nb')
+  const stored = [
+    { seq: 1, role: 'user', content: [{ type: 'text', text: '<live_context>x</live_context>' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' } }, { type: 'text', text: 'What is this?' }], meta: {} },
+    { seq: 2, role: 'assistant', content: [{ type: 'text', text: 'A bike.' }], meta: {} },
+  ]
+  const turns = R.turnsFromStored(stored, [])
+  check('a stored message with photos is drawn as the words and a count of photos (the picture itself is not drawn again)', turns[0].text === 'What is this?' && turns[0].photos === 2 && turns[1].text === 'A bike.' && turns[1].photos === 0 && R.newTurn('x', 'user', 'hi').photos === 0, turns[0])
+  const src = (f) => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')
+  check('voice never sends sound: the recognizer is the browser\'s, only its text reaches the box, and nothing in the file records, uploads or fetches', !/MediaRecorder|getUserMedia|fetch\(|XMLHttpRequest|WebSocket|sendBeacon|supabase/.test(src('features/ai/chat/useSpeechInput.ts').replace(/\/\/.*$/gm, '')) && /webkitSpeechRecognition/.test(src('features/ai/chat/useSpeechInput.ts')))
+  check('voice: the button is drawn only where the browser has a recognizer, in the device\'s language', /speech\.supported &&/.test(src('features/ai/chat/AskAiPanel.tsx')) && /navigator\.language/.test(src('features/ai/chat/useSpeechInput.ts')))
+  check('the photo is shrunk by the shared shrinkPhoto (the same job as the receipt and the quick guess), inside a mutation with logPayload false', /shrinkPhoto\(file, \{ maxBytes: CHAT_PHOTO_MAX_BYTES \}\)/.test(src('features/ai/chat/useAskAi.ts')) && /logPayload: false/.test(src('features/ai/chat/useAskAi.ts').split('useChatPhoto')[1] ?? ''))
+  check('a chat\'s kind is sent only for a NEW chat (a chat keeps the kind it started with)', /input\.conversationId === null && input\.mode === 'coach'/.test(src('features/ai/chat/chatApi.ts')))
+  check('Training → Coach opens the coach chat through the store (one entry, one panel), and the coach never gets a second chat component', /openCoachChat/.test(src('features/training/components/PTCoachTab.tsx')) && /openCoachChat: \(\) =>/.test(src('app/store.ts')) && !fs.existsSync(path.join(__dirname, '../src/features/training/components/CoachChat.tsx')))
+  check('the settings cards offer a write tool only "Ask first" or "Off", a read tool only "Allowed" or "Off"', /tool\.kind === 'write' \? \['ask', 'off'\] : \['on', 'off'\]/.test(src('features/developer/components/ai/AiChatControls.tsx')))
+  check('the instructions are saved exactly as typed (no trim, no change) and are capped by the function\'s number', /saveChatInstructions\(text\)/.test(src('features/ai/claude/hooks/useClaude.ts')) && /chat_instructions: text/.test(src('features/ai/claude/ledgerApi.ts')) && /about\.chat\.limits\.ownerInstructionsMax/.test(src('features/developer/components/ai/AiChatControls.tsx')))
+  const L = require(path.join(__dirname, '../src/features/ai/claude/ledgerRules.ts'))
+  const defTools = [{ name: 'get_day_plan', kind: 'read', what: '', defaultMode: 'on', chats: ['chat'] }, { name: 'propose_add_task', kind: 'write', what: '', defaultMode: 'ask', chats: ['chat'] }]
+  check('chatToolModes: a stored mode the tool can have is shown, a write tool "on" is not (its default), a tool with no row is its default', same(L.chatToolModes(defTools, [{ tool: 'get_day_plan', mode: 'off' }, { tool: 'propose_add_task', mode: 'on' }]), { get_day_plan: 'off', propose_add_task: 'ask' }) && same(L.chatToolModes(defTools, []), { get_day_plan: 'on', propose_add_task: 'ask' }) && same(L.chatToolModes(defTools, [{ tool: 'get_day_plan', mode: 'bogus' }]), { get_day_plan: 'on', propose_add_task: 'ask' }))
+  const described = L.readDescribe({ chat: { tools: [{ name: 'get_day_plan', kind: 'read', what: 'x', defaultMode: 'on', chats: ['chat', 'coach', 'admin'] }, { name: 'Bad Name', kind: 'read' }, { name: 'x_y', kind: 'delete' }], limits: { ownerInstructionsMax: 1000 } } })
+  check('the function\'s list of chat tools is read field by field: a bad name, a bad kind and an unknown chat are dropped', described.chat.tools.length === 1 && same(described.chat.tools[0].chats, ['chat', 'coach']) && described.chat.limits.imagesPerChat === 4)
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()

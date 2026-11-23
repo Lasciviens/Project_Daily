@@ -972,7 +972,7 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   check('realDay accepts real days between 2000 and 2100 and nothing else', probe.realDay('2026-02-28') === '2026-02-28' && probe.realDay('2026-02-29') === null && probe.realDay('1999-12-31') === null && probe.realDay('2026-1-1') === null && probe.realDay(5) === null)
   const source = fs.readFileSync(path.join(REPO, 'supabase/functions/claude/index.ts'), 'utf8')
   check('the chat parts never read a user id from the request body', !/ownValue\((body|input), '(user_id|userId|user)'\)/.test(source))
-  check('the model cannot reach the ledger or the settings: no tool names ai_calls, ai_settings, ai_job_settings or the chat tables, and the search function reads tasks and the diary only', (() => { const t = fs.readFileSync(path.join(REPO, 'supabase/claude-src/chat-tools.ts'), 'utf8').replace(/\/\/.*$/gm, ''); return !/ai_calls|ai_settings|ai_job_settings|ai_messages|ai_conversations|ai_chat_proposals|ai_reports/.test(t) })())
+  check('the model cannot reach the ledger or the settings: no tool names ai_calls, ai_settings, ai_job_settings or the chat tables, and the search function reads tasks and the diary only', (() => { const t = fs.readFileSync(path.join(REPO, 'supabase/claude-src/chat-tools.ts'), 'utf8').replace(/\/\/.*$/gm, ''); return !/ai_calls|ai_settings|ai_job_settings|ai_tool_settings|ai_messages|ai_conversations|ai_chat_proposals|ai_reports/.test(t) })())
 
   // ═══ 14 · not strict, a deadline, Diagnose's chat step ═══════════════════
   section('14 · tools that are not strict, a deadline that always ends the round, the chat step of Diagnose')
