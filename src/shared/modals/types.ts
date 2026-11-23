@@ -87,7 +87,7 @@ export type EntityModalRequest =
   /** Tidy up info: AI suggests a cleaner name, brand, model and category; you review each field. `ids`: those things (one from its record's ⋯); left out: all your wishes and things. */
   | { kind: 'shop-tidy'; ids?: string[] }
   /** Read receipts (up to 5 photos or PDFs at once): one list of their lines, each Bought or Sold; the ticked Bought ones open the create popup together ("1 of 3"), a Sold one opens Sell with its values (or "I had it"), and the sold money can be linked to the bought things. */
-  | { kind: 'shop-receipt' }
+  | { kind: 'shop-receipt'; /** Files already picked (up to 5, kept in memory only): listed as waiting, the owner starts the read after the cost line. */ files?: File[] }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
   /** Something's wrong with one of your things: the complaint right, the letter, repair or replace, money back. */

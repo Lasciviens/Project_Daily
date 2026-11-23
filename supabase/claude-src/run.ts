@@ -411,7 +411,7 @@ function judge(answer: ModelAnswer | ModelFailure, prepared: PreparedRun, maxOut
   if (answer.ending !== 'complete') return failed('error', `The model stopped in a way this app does not handle yet (${answer.stopReason}).`)
   let check: AnswerCheck
   try {
-    check = prepared.read(answer.text, { thinking: answer.thinking, servedModel: answer.servedModel, webSearches: answer.webSearches })
+    check = prepared.read(answer.text, { thinking: answer.thinking, servedModel: answer.servedModel, webSearches: answer.webSearches, searchUrls: answer.searchUrls ?? [] })
   } catch {
     check = { ok: false, problem: 'its check failed' }
   }

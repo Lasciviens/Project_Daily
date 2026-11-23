@@ -26,7 +26,7 @@ export { FORM_FACTS, factKept, factsToSave, fieldHolds, type SavedFacts } from '
 export type Confidence = 'exact' | 'likely' | 'check'
 
 /** Which of the owner's inputs gave a fact: a new read of the same input replaces what it gave before. */
-export type FactOrigin = 'link' | 'scan' | 'title' | 'receipt'
+export type FactOrigin = 'link' | 'scan' | 'title' | 'receipt' | 'page'
 
 /** Where a fact came from, as the sheet says it ("elkjop.no", "Kassalapp", "your “Sony WH-1000XM4”", "you"). */
 export interface FactSource { origin: FactOrigin; label: string }

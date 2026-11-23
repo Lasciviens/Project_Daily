@@ -153,7 +153,7 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
         {nothing && !running && <p className="text-body text-fg-muted">{single ? 'Nothing to tidy — it looks fine as it is.' : 'Nothing to change.'}</p>}
         {reviewed.length > 0 && !running && (
           <ul className="flex flex-col gap-2">
-            {reviewed.map(({ item, changes }) => (
+            {reviewed.map(({ item, suggestion, changes }) => (
               <li key={item.id} className="flex flex-col gap-1 rounded-row border border-line bg-surface-2 p-3">
                 {!single && <p className="text-body font-medium"><Truncate>{item.title}</Truncate></p>}
                 {changes.map(c => {
@@ -169,9 +169,11 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
                         <ArrowRight aria-hidden className="mx-1 inline h-3 w-3 text-fg-muted" />
                         <span className="font-medium text-fg">{c.after}</span>
                       </span>
+                      {c.image && <img src={c.image} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-12 w-12 shrink-0 rounded-row bg-surface object-contain" />}
                     </label>
                   )
                 })}
+                {suggestion.pictureNote && <p className="text-meta text-fg-muted">{suggestion.pictureNote}</p>}
               </li>
             ))}
           </ul>

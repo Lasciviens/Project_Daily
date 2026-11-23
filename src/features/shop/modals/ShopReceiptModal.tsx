@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { useEntityModal } from '../../../shared/modals'
@@ -25,9 +25,17 @@ const ACCEPT = 'image/*,application/pdf'
  * money can be linked to the bought ones. This popup writes nothing itself: every save is its own popup with its own toast
  * and Undo, and "Undo all from these receipts" takes back only what they wrote.
  */
-export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) {
+export function ShopReceiptModal({ request, onClose }: EntityModalProps<'shop-receipt'>) {
   const modal = useEntityModal()
   const queue = useReceiptFiles()
+  // Files picked in the create popup's "From a receipt": listed once, here; the owner starts the read.
+  const handed = useRef(false)
+  useEffect(() => {
+    if (handed.current || !request.files?.length) return
+    handed.current = true
+    queue.add(request.files)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the popup opens
+  }, [])
   const fileReads = useMemo(() => queue.rows.map((r, i) => ({ id: r.id, read: r.status === 'done' ? r.read : null, duplicateOf: queue.dupes[i] })), [queue.rows, queue.dupes])
   const merged = useMemo(() => mergedLines(fileReads), [fileReads])
   const flow = useReceiptFlow(merged)
