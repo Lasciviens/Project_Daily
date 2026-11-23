@@ -37,11 +37,11 @@ import { sectionOfFact, type RecordFact } from '../../shopSuggestions'
 import type { ShopRecordModel } from './useShopRecord'
 
 /**
- * The record as a life story (step A, 10.11.2026), the same in the popup and
- * in Owned's side pane: what it is and its one row of actions, the money
+ * The record as a life story (step A, 10.11.2026) in the popup:
+ * what it is and its one row of actions, the money
  * strip, one nudge line (the most useful next step), its Story, then the
  * sections that open in place — Price · Resale · Facts · Money (a general
- * wish's Models first). Narrow (a phone, the pane) it is one column; in the
+ * wish's Models first). Narrow (a phone) it is one column; in the
  * wide popup the Story sits beside the sections. `pill`: where the state pill
  * shows in the body — on a phone, where the popup's header has no room.
  */

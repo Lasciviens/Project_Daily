@@ -20,7 +20,7 @@ import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
 
 // The Quick list (its grocery prices, Buy again and the scanner), Owned's Things
-// (its rows and the side pane's opener) and Stats (the only charts on the page)
+// (its rows) and Stats (the only charts on the page)
 // load when opened, and in idle time once the page shows: the Wishlist, the
 // default view, keeps the page's first download and carries only its own code.
 const QuickListView = lazyPart('shop-quick', () => import('../components/QuickListView').then(m => m.QuickListView))
@@ -63,13 +63,8 @@ export function ShopPage() {
   useAutoFillRates(items, costs)
   const isLoading = itemsLoading || catsLoading
 
-  // A thing opened from Needs a look (the header's sheet): Owned's Things decides between its side pane and a popup, every
-  // other place opens the popup.
-  const [lookOpen, setLookOpen] = useState<{ id: string; fact?: RecordFact; seq: number } | null>(null)
-  const openThing = (id: string, fact?: RecordFact) => {
-    if (view === 'owned' && ownedTab === 'things') setLookOpen(p => ({ id, fact, seq: (p?.seq ?? 0) + 1 }))
-    else modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
-  }
+  // A thing opened from Needs a look (the header's sheet) opens its popup, at the fact that needs fixing when it has one.
+  const openThing = (id: string, fact?: RecordFact) => modal.open(fact ? { kind: 'shop-item', id, fact } : { kind: 'shop-item', id })
 
   const wishCount = items.filter(i => listOf(i) === 'wishlist' && i.status === 'wishlist' && !i.option_for).length
   const quickCount = quickGroups(items, todayStr()).reduce((n, g) => n + g.items.length, 0)
@@ -186,7 +181,7 @@ export function ShopPage() {
             )
             : (
               <Suspense fallback={<SkeletonTab />}>
-                <OwnedView items={items} categories={categories} isLoading={isLoading} open={lookOpen} onOpened={() => setLookOpen(null)} />
+                <OwnedView items={items} categories={categories} isLoading={isLoading} />
               </Suspense>
             )
           : <WishlistView items={items} categories={categories} isLoading={isLoading} />}

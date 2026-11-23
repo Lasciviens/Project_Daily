@@ -9,8 +9,7 @@ import type { ShopItem } from '../types'
 
 /**
  * Needs a look's header button with its actions wired, the same on every Shop view (owner, 23.11.2026): a row opens
- * its thing (an old estimate or a tidy-up's problem at that fact — `openThing` decides where: Owned's side pane on a
- * wide board, else a popup), Bought buys in one tap, Snooze hides it for a week (or until the day before its
+ * its thing's popup (an old estimate or a tidy-up's problem at that fact), Bought buys in one tap, Snooze hides it for a week (or until the day before its
  * deadline) and Got it until what it says changes — each with its own toast and Undo.
  */
 export function ShopNeedsALook({ items, isLoading, openThing }: {

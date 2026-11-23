@@ -499,6 +499,8 @@ export interface CreateShopItemInput {
   image_url?:     string | null
   ean?:           string | null
   fx_nok?:        number | null
+  /** 'manual' with a typed `fx_nok` (the create popup's Exchange rate fact, as the record's). */
+  fx_source?:     ShopFxSource | null
   got_as_gift?:   boolean
   used?:          boolean
   approx_dates?:  boolean
@@ -507,6 +509,7 @@ export interface CreateShopItemInput {
   sale_price?:    number | null
   sale_currency?: ShopCurrency | null
   sale_fx_nok?:   number | null
+  sale_fx_source?: ShopFxSource | null
   sold_to?:       string | null
   kept?:          boolean
   for_resale?:    boolean
@@ -518,6 +521,11 @@ export interface CreateShopItemInput {
   wait_for_deal?: boolean
   target_price?:  number | null
   deal_note?:     string | null
+  // What the create popup's facts fill, as the record's edit does (the same columns).
+  serial?:          string | null
+  value_now?:       number | null
+  value_currency?:  ShopCurrency | null
+  value_on?:        string | null
   /** Autofill's facts with their sources (migration 191; factsKept.factsToSave). */
   facts?:         ShopItemFacts | null
 }

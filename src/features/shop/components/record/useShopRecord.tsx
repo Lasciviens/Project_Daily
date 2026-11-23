@@ -5,19 +5,19 @@ import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { toast } from '../../../../app/store'
-import { useBuyNow, useCreateShopCategory, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../../hooks/useShop'
+import { useBuyNow, useDeleteShopItems, useShopCategories, useShopItems, useUpdateShopItem } from '../../hooks/useShop'
 import { useFillRatesNow, useShopLinks, useShopMoney, useUndoSale } from '../../hooks/useShopMoney'
 import { useQuietCheck, useWatchMap } from '../../hooks/useShopPrices'
-import { useResolveCategory } from '../../hooks/useCategorySuggestions'
+import { useSaveCategory } from './useSaveCategory'
 import { categoryPath, listOf, planDefaults } from '../../shopModel'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { chainFor } from '../../chainModel'
 import { recordState } from './recordState'
-import { isNewCategory, NEW_CATEGORY, newCategoryMissing, newPickOf, patchOf, useRecordDraft } from './useRecordDraft'
+import { newCategoryMissing, patchOf, useRecordDraft } from './useRecordDraft'
 import type { ShopDisposal, ShopItem } from '../../types'
 
-/** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone, the side pane). */
+/** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone). */
 export interface RecordAction {
   key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
   /** An icon button: the label is its accessible name and its title (a hover says what it does). */
@@ -29,15 +29,14 @@ const UNDO_WORD: Record<ShopDisposal, string> = {
   sold: 'the sale', traded_in: 'the trade-in', given: 'giving it away', returned: 'the return', broken: 'what happened to it', lost: 'what happened to it', other: 'what happened to it',
 }
 
-const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
+export const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
   buy: { label: 'To buy', tone: 'info' }, general: { label: 'A wish · any model', tone: 'info' }, mine: { label: 'Mine', tone: 'success' },
   gone: { label: 'Sold or gone', tone: 'neutral' }, returned: { label: 'Returned', tone: 'neutral' }, dropped: { label: 'Not any more', tone: 'neutral' },
   fulfilled: { label: 'Fulfilled', tone: 'success' }, notKept: { label: 'Not mine to keep', tone: 'neutral' },
 }
 
 /**
- * A record's state and behaviour, the same in the popup (phones, the
- * Wishlist) and in Owned's side pane: the live row's neighbours (its chain,
+ * A record's state and behaviour, the popup's: the live row's neighbours (its chain,
  * accessories, models, the things it can belong to), the draft of its facts
  * (Save only when something changed; closing with changes asks first), and
  * its one row of actions.
@@ -51,8 +50,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   const { data: links = [] } = useShopLinks()
   const watches = useWatchMap()
   const update = useUpdateShopItem()
-  const suggested = useResolveCategory()
-  const createCategory = useCreateShopCategory()
+  const saveCategory = useSaveCategory()
   const check = useQuietCheck()
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
@@ -76,16 +74,6 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   const path = categoryPath(item.category_id, categories)
   const subtitle = [path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null, item.disposal ? DISPOSAL_LABEL[item.disposal] : null].filter(Boolean).join(' · ') || undefined
 
-  /** "+ New category…" in the record: the names typed are made now, with the save, as the add sheet makes them. */
-  async function makeNewCategory(id: string): Promise<string | null> {
-    const p = newPickOf(id)
-    let topId = p.topId
-    if (topId === NEW_CATEGORY) topId = (await createCategory.mutateAsync({ name: (d.draft.new_top ?? '').trim() })).id
-    const sub = d.draft.new_sub?.trim()
-    if (sub && (p.subId === NEW_CATEGORY || p.topId === NEW_CATEGORY)) return (await createCategory.mutateAsync({ name: sub, parent_id: topId })).id
-    return topId || null
-  }
-
   async function save(): Promise<boolean> {
     if (!d.dirty) return true
     // A new category waits for its name, as the add sheet's Save does.
@@ -93,8 +81,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     const patch = patchOf(item, d.draft)
     try {
       // A suggested or new category picked in the record is made now, with the save.
-      if (isNewCategory(patch.category_id)) patch.category_id = await makeNewCategory(patch.category_id)
-      else if (patch.category_id !== undefined) patch.category_id = await suggested.resolve(patch.category_id, categories)
+      if (patch.category_id !== undefined) patch.category_id = await saveCategory.resolve(patch.category_id, d.draft, categories)
       await update.mutateAsync({ id: item.id, patch, quiet: true })
     } catch { return false }
     // A changed link is checked once, like a new wish's (the check reuses the last hour's read).

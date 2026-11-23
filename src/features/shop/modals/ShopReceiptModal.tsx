@@ -8,7 +8,9 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { PhotoButton } from '../../ai/claude/components/PhotoButton'
 import { useReadReceipt } from '../../ai/claude/hooks/useAiFeatures'
 import { costNote, type ReceiptFill, type ReceiptLine, type ReceiptRead } from '../../ai/claude/featureRules'
-import { useBuyNow, useShopItems } from '../hooks/useShop'
+import { RECEIPT_CATEGORIES_MAX } from '../../ai/claude/featureJobs'
+import { useBuyNow, useShopCategories, useShopItems } from '../hooks/useShop'
+import { tidyCategories } from '../tidyModel'
 import { useShopStores } from '../hooks/useShopStores'
 import { isMine } from '../ownModel'
 import { addFillFor, lineFacts, saleFor, sideOf, thingForLine, wishForLine, type ReceiptSide } from '../receiptRead'
@@ -20,12 +22,13 @@ import type { ShopCurrency } from '../types'
  * Read a receipt (owner, 23.11.2026: "read from receipt, either to sell or save a purchase — a physical receipt and a
  * digital one, a PDF"): one photo or PDF, read by the model in one call (and never kept), then its product lines.
  * Bought: a line that is one of your wishes says **Bought** (the wish becomes bought and Just bought opens with the
- * receipt's values); any other line says **Add** (Add something I own with the line's values). Sold: each line is
+ * receipt's values); any other line has a tick and **Next** opens them as drafts in one popup ("1 of 3", each saved on its own or skipped). Sold: each line is
  * matched to one of your things (you can change it) and Sell opens with the amount, the day and the buyer. Every sheet
  * saves on your tap only: this popup writes nothing but the wish's own "bought" (which has its Undo).
  */
 export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) {
-  const read = useReadReceipt()
+  const { data: categories = [] } = useShopCategories()
+  const read = useReadReceipt(useMemo(() => tidyCategories(categories, RECEIPT_CATEGORIES_MAX), [categories]))
   const modal = useEntityModal()
   const { data: stores = [] } = useShopStores()
   const { data: items = [] } = useShopItems()
@@ -33,6 +36,8 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
   const [side, setSide] = useState<ReceiptSide>('bought')
   const [done, setDone] = useState<ReadonlySet<string>>(new Set())
   const [picked, setPicked] = useState<Record<number, string>>({})
+  // Which Bought lines go on to the item popup (each one a draft there): all of them until the owner unticks one.
+  const [unticked, setUnticked] = useState<ReadonlySet<number>>(new Set())
   const mark = (key: string) => setDone(d => new Set(d).add(key))
 
   // A wish bought here goes through the one "Bought" every screen uses: today, the row's own price, store and currency, Undo,
@@ -58,6 +63,7 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
       setSide(sideOf(r))
       setDone(new Set())
       setPicked({})
+      setUnticked(new Set())
     } catch { /* the hook reports it, in its own words */ }
   }
 
@@ -92,7 +98,12 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
                 buying.current = { key, receipt: { fill: addFillFor(data, i, stores), read: data } }
                 buyNow(wish)
               }}>Bought</Button>
-              : <Button size="sm" className="shrink-0" onClick={() => data && modal.open({ kind: 'shop-own', receipt: addFillFor(data, i, stores), onSaved: () => mark(key) })}>Add</Button>
+              : <label className="flex min-h-[44px] shrink-0 items-center gap-2 text-meta text-fg-muted">
+                <input type="checkbox" checked={!unticked.has(i)} aria-label={`Add “${line.product ?? line.name}”`}
+                  onChange={e => setUnticked(u => { const n = new Set(u); if (e.target.checked) n.delete(i); else n.add(i); return n })}
+                  className="h-[18px] w-[18px] shrink-0 accent-accent-500" />
+                Add
+              </label>
         ) : (
           <div className="flex items-center gap-2">
             <select aria-label={`Which of your things is “${line.name}”`} value={chosen} onChange={e => setPicked(p => ({ ...p, [i]: e.target.value }))} className="select min-w-0 flex-1 sm:w-52 sm:flex-none">
@@ -109,6 +120,20 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
     )
   }
 
+  // Next: every ticked line that is not yet added and is not one of your wishes (those go through Bought), as drafts in one popup.
+  const addable = side === 'bought' ? lines.map((_, i) => i).filter(i => !wishes[i] && !done.has(`bought:${i}`) && !unticked.has(i)) : []
+  function next() {
+    if (!data || !addable.length) return
+    modal.open({
+      kind: 'shop-own',
+      batch: {
+        fills: addable.map(i => addFillFor(data, i, stores)),
+        labels: addable.map(i => lines[i].product ?? lines[i].name),
+        onSaved: n => mark(`bought:${addable[n]}`),
+      },
+    })
+  }
+
   // The cost goes last, so the line fits one row on a phone.
   const summary = data ? [
     data.store, data.date ? formatDate(data.date) : null, data.total !== undefined ? amount(data.total, data.currency) : null,
@@ -121,6 +146,7 @@ export function ShopReceiptModal({ onClose }: EntityModalProps<'shop-receipt'>) 
         <div className="flex items-center gap-2">
           {data && <PhotoButton accept="image/*,application/pdf" variant="ghost" onFile={f => { void onFile(f) }} loading={read.isPending}>Another receipt</PhotoButton>}
           <Button onClick={onClose} className="ml-auto" disabled={read.isPending}>Close</Button>
+          {data && side === 'bought' && addable.length > 0 && <Button variant="primary" onClick={next} disabled={read.isPending}>Next{addable.length > 1 ? ` · ${addable.length}` : ''}</Button>}
         </div>
       }>
       <div className="flex flex-col gap-3">

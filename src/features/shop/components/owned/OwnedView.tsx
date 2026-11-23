@@ -1,13 +1,9 @@
-import type { RecordFact } from '../../shopSuggestions'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { PackagePlus } from 'lucide-react'
-import { Button, EmptyState, PageBoard, useBoardStep } from '../../../../shared/ui'
-import type { BoardLayouts } from '../../../../shared/ui/pageBoardRules'
+import { Button, EmptyState, PageBoard } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { todayStr } from '../../../../shared/utils/dateUtils'
-import { useIdlePreload } from '../../../../shared/hooks/useIdlePreload'
 import { useRememberedFlag } from '../../../../shared/hooks/useLayoutMemory'
-import { lazyPart } from '../../../../shared/utils/lazyPage'
 import { useShopItems } from '../../hooks/useShop'
 import { useShopLinks, useShopMoney } from '../../hooks/useShopMoney'
 import { useWatchMap } from '../../hooks/useShopPrices'
@@ -22,69 +18,20 @@ import {
   type OwnedFilters, type OwnedSort,
 } from '../../ownModel'
 import { chainIndex, chainsOf, chainTitle } from '../../chainModel'
-import { OWNED_BOARD, OWNED_PANE_BOARD, type OwnedPaneSection } from '../../shopBoard'
+import { OWNED_BOARD } from '../../shopBoard'
 import { useOwnedLayout } from '../../hooks/useOwnedLayout'
 import { OwnedFiltersCard } from './OwnedFilters'
 import { GoneFold, OwnedList, OwnedListSkeleton, type RowContext } from './OwnedList'
-import { RecordPaneSkeleton } from './paneSkeleton'
 import type { ShopCategory, ShopItem } from '../../types'
-
-// The record beside the list from 60rem: loaded when a row is first tapped, and in idle time once the list shows.
-const RecordPane = lazyPart('shop-record-pane', () => import('../record/RecordPane').then(m => m.RecordPane))
-const PANE_PARTS = [RecordPane]
-
-/** What the side pane shows: a thing, opened at a fact (an old estimate), `seq` for each opening. */
-interface Picked { id: string; fact?: RecordFact; seq: number }
-
-/**
- * Focus the element that opened the pane — or, when it is gone (a Needs-a-look row: the list leaves the rail while
- * the pane has it, and its rows come back as new elements, maybe after their reads), the one with its key, for
- * up to a second.
- */
-function returnFocus(back: { el: HTMLElement; key: string | null }, frames = 60) {
-  requestAnimationFrame(() => {
-    // The owner moved the focus on meanwhile: leave it there.
-    if (document.activeElement && document.activeElement !== document.body) return
-    const el = back.el.isConnected ? back.el
-      : back.key ? document.querySelector<HTMLElement>(`[data-return-focus="${CSS.escape(back.key)}"]`) : null
-    if (el) el.focus({ preventScroll: true })
-    else if (back.key && frames > 0) returnFocus(back, frames - 1)
-  })
-}
-
-/**
- * A thing opened from Needs a look's sheet (the Shop's header): on a wide board in the side pane, else in a popup. It
- * lives inside the board, where the board's step is known; it opens once and tells the page it has.
- */
-function LookRequest({ request, onPick, onDone }: {
-  request: { id: string; fact?: RecordFact; seq: number } | null
-  onPick: (id: string, fact?: RecordFact) => void
-  onDone: () => void
-}) {
-  const modal = useEntityModal()
-  const wide = useBoardStep() >= 2
-  useEffect(() => {
-    if (!request) return
-    if (wide) onPick(request.id, request.fact)
-    else modal.open(request.fact ? { kind: 'shop-item', id: request.id, fact: request.fact } : { kind: 'shop-item', id: request.id })
-    onDone()
-    // One opening per request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request?.seq])
-  return null
-}
 
 /**
  * Owned → Things: what you have (by category, as compact rows) and what you
  * had, as rows, one line each, or big pictures (the device remembers which).
- * From a board width of 60rem a tapped row's record opens beside the list (the
- * side pane, which takes the last track); a phone opens it full screen.
+ * A tapped row opens its record in the popup, at every width (owner, 23.11.2026:
+ * one popup everywhere, no side pane).
  */
-export function OwnedView({ items, categories, isLoading, open, onOpened }: {
+export function OwnedView({ items, categories, isLoading }: {
   items: ShopItem[]; categories: ShopCategory[]; isLoading: boolean
-  /** A thing asked for from Needs a look's sheet. */
-  open: { id: string; fact?: RecordFact; seq: number } | null
-  onOpened: () => void
 }) {
   const modal = useEntityModal()
   const itemsQ = useShopItems()
@@ -98,12 +45,6 @@ export function OwnedView({ items, categories, isLoading, open, onOpened }: {
   const [filters, setFilters] = useState<OwnedFilters>(NO_OWNED_FILTERS)
   const [sort, setSort] = useState<OwnedSort>('recent')
   const [layout, setLayout] = useOwnedLayout()
-  const [picked, setPicked] = useState<Picked | null>(null)
-  const dirty = useRef(false)
-  // The row (or Needs-a-look row) that opened the pane: the focus goes back to it when the pane closes.
-  const opener = useRef<{ el: HTMLElement; key: string | null } | null>(null)
-  const seq = useRef(0)
-  useIdlePreload(PANE_PARTS)
 
   const acc = useMemo(() => accessoriesByItem(items), [items])
   const allChains = useMemo(() => chainsOf(items, links, ctx), [items, links, ctx])
@@ -132,26 +73,10 @@ export function OwnedView({ items, categories, isLoading, open, onOpened }: {
   // The rows wait for the default pictures with their reads, so a picture never changes under a drawn row.
   const listLoading = isLoading || !pictures.ready
 
-  /** Open a thing in the side pane — asking first when the one open has unsaved changes. */
-  const pick = useCallback(async (id: string, fact?: RecordFact) => {
-    if (dirty.current && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return
-    dirty.current = false
-    const from = document.activeElement
-    if (from instanceof HTMLElement && !from.closest('[data-record-pane]')) opener.current = { el: from, key: from.dataset.returnFocus ?? null }
-    setPicked(p => (p && p.id === id && !fact ? p : { id, fact, seq: ++seq.current }))
-  }, [modal])
-  const openThing = (id: string, pane: boolean) => (pane ? void pick(id) : modal.open({ kind: 'shop-item', id }))
-  const closePane = useCallback(() => {
-    dirty.current = false
-    setPicked(null)
-    const back = opener.current
-    opener.current = null
-    if (back) returnFocus(back)
-  }, [])
-  const onDirty = useCallback((d: boolean) => { dirty.current = d }, [])
+  const openThing = (id: string) => modal.open({ kind: 'shop-item', id })
 
   const rows: RowContext = {
-    acc, ctx, today, categories, watches, listings, picked: picked?.id ?? null,
+    acc, ctx, today, categories, watches, listings,
     chainOf: id => {
       const c = chains.get(id)
       const linked = c ? c.nodes.filter(n => n.state !== 'wish').length : 0
@@ -181,27 +106,17 @@ export function OwnedView({ items, categories, isLoading, open, onOpened }: {
     </div>
   )
 
-  // The things take every track; with the record open they leave the last one to it (the pane is sticky there).
-  const board = (picked ? OWNED_PANE_BOARD : OWNED_BOARD) as BoardLayouts<OwnedPaneSection>
   return (
     <PageBoard
-      layout={board}
+      layout={OWNED_BOARD}
       stackGap="gap-4"
       sections={{
-        pane: picked && (
-          <Suspense fallback={<RecordPaneSkeleton />}>
-            <RecordPane key={picked.seq} id={picked.id} fact={picked.fact} onClose={closePane} onOpen={id => void pick(id)} onDirty={onDirty} />
-          </Suspense>
-        ),
         filters: showFilters && (
           <OwnedFiltersCard filters={filters} onChange={setFilters} sort={sort} onSort={setSort} categories={categories} chains={chainOptions}
             layout={layout} onLayout={setLayout}
             fold={<FoldAll keys={groups.map(g => g.key)} collapsed={fold.collapsed} onSet={fold.setAll} pending={isLoading && foldable} />} />
         ),
-        groups: <>
-          <LookRequest request={open} onPick={(id, fact) => void pick(id, fact)} onDone={onOpened} />
-          {list}
-        </>,
+        groups: list,
       }}
     />
   )

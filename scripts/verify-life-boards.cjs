@@ -52,7 +52,6 @@ const BOARDS = [
   ['Shop · Wishlist', Sh.WISHLIST_BOARD, Sh.WISHLIST_SECTIONS, true],
   ['Shop · Quick list', Sh.QUICK_BOARD, Sh.QUICK_SECTIONS, false],
   ['Shop · Owned', Sh.OWNED_BOARD, Sh.OWNED_SECTIONS, false],
-  ['Shop · Owned (record open)', Sh.OWNED_PANE_BOARD, Sh.OWNED_PANE_SECTIONS, false],
   ['Shop · Stats', Sh.STATS_BOARD, Sh.STATS_SECTIONS, false],
   ['Books · Send', Bk.BOOK_BOARD, Bk.BOOK_SECTIONS, false],
   ['Books · Library', Bk.LIBRARY_BOARD, Bk.LIBRARY_SECTIONS, false],
@@ -68,8 +67,7 @@ const BOARDS = [
 ]
 // Sections that live inside another card on a phone and become their own card on a wide page.
 const INSIDE_ON_PHONE = { 'Health · sleep': ['breathing'], 'Health · cardio': ['recovery'], 'Health · goal': ['goals', 'protein', 'energy'],
-  // Owned's side pane: on a phone the record opens full screen instead (step A, 10.11.2026).
-  'Shop · Owned (record open)': ['pane'] }
+}
 
 console.log('every layout')
 for (const [name, board, sections] of BOARDS) {
@@ -113,12 +111,7 @@ check('Shop Owned: no rail and no summary line — the things take every track (
   const l = B.resolveBoardLayout(Sh.OWNED_BOARD, s)
   return l.lead === 0 && eq(l.top, ['filters']) && l.columns.length === 1 && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s
 }))
-check('Shop Owned with the record open (from 60rem): the things take every track but the last, the record is sticky in the last (the side pane, 10.11.2026)', [2, 3, 4].every(s => {
-  const l = B.resolveBoardLayout(Sh.OWNED_PANE_BOARD, s)
-  const last = l.columns[l.columns.length - 1]
-  return l.lead === 0 && eq(l.top, ['filters']) && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s - 1 && eq(last.stack, ['pane']) && last.sticky
-}))
-check('Shop Owned on a phone: the filters, then the things — with or without the record (it opens full screen there)', eq(Sh.OWNED_BOARD[1], ['filters', 'groups']) && eq(Sh.OWNED_PANE_BOARD[1], ['filters', 'groups']))
+check('Shop Owned on a phone: the filters, then the things (a row opens its popup at every width)', eq(Sh.OWNED_BOARD[1], ['filters', 'groups']))
 check('Shop Wishlist: the filters across the top, the tiles across every track (Needs a look left the rail for the header, owner 23.11.2026)', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(Sh.WISHLIST_BOARD, s)
   return l.lead === 0 && eq(l.top, ['filters']) && l.columns.length === 1 && eq(l.columns[0].stack, ['groups']) && l.columns[0].span === s

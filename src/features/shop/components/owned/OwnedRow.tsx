@@ -24,8 +24,6 @@ export interface OwnedRowProps {
   topId: string | null
   /** Its category's default picture (useCategoryPictures). */
   icon: LucideIcon | null
-  /** The thing open in the side pane (marked as the one shown there). */
-  picked: string | null
   onOpen: (id: string) => void
 }
 
@@ -37,16 +35,15 @@ export interface OwnedRowProps {
  * row is the same two lines, so a column of them reads like a list; the
  * accessories bought for it follow as one line each. A tap opens its record.
  */
-export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today, topId, icon, picked, onOpen }: OwnedRowProps) {
-  const selected = picked === item.id
+export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today, topId, icon, onOpen }: OwnedRowProps) {
   const facts = rowFacts(item, accessories, ctx, today, chain)
   const tag = rowTag(item, watch, today, listing)
   const price = rowPrice(item)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   return (
     <li>
-      <button type="button" onClick={() => onOpen(item.id)} aria-current={selected || undefined}
-        className={cx('flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors', selected ? 'bg-accent-50' : 'hover:bg-surface-hover')}>
+      <button type="button" onClick={() => onOpen(item.id)}
+        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-hover">
         <RowPicture src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)} left={item.disposal} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-baseline gap-2">
@@ -72,8 +69,8 @@ export function OwnedRow({ item, accessories, chain, watch, listing, ctx, today,
         <ul className="pb-1">
           {accessories.map(a => (
             <li key={a.id}>
-              <button type="button" onClick={() => onOpen(a.id)} aria-current={picked === a.id || undefined}
-                className={cx('flex min-h-8 w-full items-center gap-1.5 py-1 pl-[3.25rem] pr-3 text-left text-meta transition-colors', picked === a.id ? 'bg-accent-50' : 'hover:bg-surface-hover')}>
+              <button type="button" onClick={() => onOpen(a.id)}
+                className="flex min-h-8 w-full items-center gap-1.5 py-1 pl-[3.25rem] pr-3 text-left text-meta transition-colors hover:bg-surface-hover">
                 <CornerDownRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
                 <Truncate as="span" className="min-w-0 flex-1 text-fg-2">{a.title}</Truncate>
                 {a.disposal && !together.includes(a) && <span className="shrink-0 text-fg-muted">{DISPOSAL_LABEL[a.disposal]}</span>}

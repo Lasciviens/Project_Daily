@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronDown } from 'lucide-react'
-import { Skeleton, Truncate, cx, useBoardStep } from '../../../../shared/ui'
+import { Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../../projects/projectBoard'
-import { rowStacks } from '../../ownedRow'
+import { pictureBlockRem, pictureColumns, rowStacks, subColumns } from '../../ownedRow'
 import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel'
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
@@ -24,8 +24,6 @@ export interface RowContext {
   categories: readonly ShopCategory[]
   /** A category path's default picture (useCategoryPictures), once its chunk is in. */
   pictureFor: ((top: string, sub: string | null) => LucideIcon | null) | null
-  /** The thing open in the side pane. */
-  picked: string | null
   /** Each thing's open listing (its "For sale · 12 days" tag). */
   listings: ReadonlyMap<string, ShopListing>
 }
@@ -38,8 +36,7 @@ const STACK_CAP = 'max-w-[40rem]'
  * (Fold all), each subcategory named once above its own card of rows, the
  * accessories under their thing. A wide list deals its categories into
  * column stacks by its own width (`rowStacks`: one on a phone, two at 1469,
- * four at 2450). A row opens its record in the side pane from 60rem (`pane`),
- * in a popup below.
+ * four at 2450). A row opens its record in the popup.
  */
 export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }: {
   groups: readonly CategoryGroup[]
@@ -47,29 +44,27 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }:
   layout: OwnedLayout
   collapsed: ReadonlySet<string>
   onToggle: (key: string) => void
-  onOpen: (id: string, pane: boolean) => void
+  onOpen: (id: string) => void
 }) {
-  const pane = useBoardStep() >= 2
   const { ref, width } = useElementWidthRem()
-  // Never more stacks than categories; each at most a content row wide, so a short list leaves the room at its end.
-  const stacks = dealByIndex([...groups], Math.min(rowStacks(width), Math.max(1, groups.length)))
-  const open = (id: string) => onOpen(id, pane)
-  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={open} layout={layout} />
-  const section = (group: CategoryGroup) => (
+  const columns = rowStacks(width)
+  const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={onOpen} layout={layout} />
+  const section = (group: CategoryGroup, cols: number) => (
     <CategorySection key={group.key} group={group} collapsed={collapsed.has(group.key)} onToggle={() => onToggle(group.key)} card={row}
-      body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} />} />
+      body={id => <SubLists id={id} subs={group.subs} row={row} layout={layout} columns={cols} widthRem={width} />} />
   )
-  // Big pictures are a collection: the categories stack in the list's whole width, each one a grid of cards (THEME W2).
-  if (layout === 'pictures') return <div ref={ref} className="flex min-w-0 flex-col gap-4">{groups.map(section)}</div>
+  // Big pictures: the categories stack in the list's whole width, each subcategory a block of cards (THEME W2).
+  if (layout === 'pictures') return <div ref={ref} className="flex min-w-0 flex-col gap-4">{groups.map(g => section(g, 1))}</div>
+  // Rows and lines: the categories are one grid of 21–40rem columns, each category as wide as its subcategories can fill and
+  // `dense`, so small categories pack side by side instead of each sitting alone in a nearly empty band (owner, 23.11.2026).
   return (
     <div ref={ref} className="min-w-0">
-      {stacks.length <= 1 ? (
-        <div className={cx('flex flex-col gap-4', STACK_CAP)}>{(stacks[0] ?? []).map(section)}</div>
-      ) : (
-        <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 40rem))` }}>
-          {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-4">{stack.map(section)}</div>)}
-        </div>
-      )}
+      <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 40rem))`, gridAutoFlow: 'row dense' }}>
+        {groups.map(g => {
+          const span = subColumns(g.subs.length, columns)
+          return <div key={g.key} className="min-w-0" style={{ gridColumn: `span ${span}` }}>{section(g, span)}</div>
+        })}
+      </div>
     </div>
   )
 }
@@ -82,21 +77,34 @@ function OwnedThing({ item, rows, onOpen, layout }: { item: ShopItem; rows: RowC
     <Thing item={item} accessories={rows.acc.get(item.id) ?? []} chain={rows.chainOf(item.id)} watch={rows.watches.get(item.id) ?? null}
       listing={rows.listings.get(item.id) ?? null}
       ctx={rows.ctx} today={rows.today} topId={path.topId} icon={path.topId && rows.pictureFor ? rows.pictureFor(path.topName, path.subName) : null}
-      picked={rows.picked} onOpen={onOpen} />
+      onOpen={onOpen} />
   )
 }
 
-/** A category's rows: each subcategory named once, above its own card. */
-function SubLists({ id, subs, row, layout }: { id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout }) {
+/**
+ * A category's rows: each subcategory named once, above its own card (or cards). Big pictures flow as blocks — each
+ * subcategory's cards as many as fit, the next block beside it, and a block that does not fit what is left of the line takes
+ * the columns that are left (`pictureColumns`), so no strip of the screen stays empty; rows and lines are dealt into
+ * `columns` stacks of 21–40rem.
+ */
+function SubLists({ id, subs, row, layout, columns, widthRem }: {
+  id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout; columns: number; widthRem: number | null
+}) {
   const labelled = subs.some(s => s.title)
+  // Under 40rem the cards are two to a row (their own rule); above it the blocks are packed.
+  const packed = layout === 'pictures' && widthRem != null && widthRem >= 40 ? pictureColumns(subs.map(s => s.items.length), widthRem) : null
+  const block = (sub: SubGroup, i = 0) => (
+    <div key={sub.key} className="flex min-w-0 flex-col gap-1" style={packed ? { width: `${pictureBlockRem(packed[i])}rem`, maxWidth: '100%' } : undefined}>
+      {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
+      <ThingsBox layout={layout}>{sub.items.map(row)}</ThingsBox>
+    </div>
+  )
+  if (layout === 'pictures') return <div id={id} className="flex flex-wrap items-start gap-x-6 gap-y-3">{subs.map((sub, i) => block(sub, i))}</div>
+  const stacks = dealByIndex([...subs], subColumns(subs.length, columns))
+  if (stacks.length <= 1) return <div id={id} className="flex flex-col gap-1.5">{subs.map(sub => block(sub))}</div>
   return (
-    <div id={id} className="flex flex-col gap-1.5">
-      {subs.map(sub => (
-        <div key={sub.key} className="flex flex-col gap-1">
-          {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
-          <ThingsBox layout={layout}>{sub.items.map(row)}</ThingsBox>
-        </div>
-      ))}
+    <div id={id} className="grid items-start gap-x-6 gap-y-1.5" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 1fr))` }}>
+      {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-1.5">{stack.map(sub => block(sub))}</div>)}
     </div>
   )
 }
@@ -109,9 +117,8 @@ function ThingsBox({ layout, children, className }: { layout: OwnedLayout; child
 }
 
 /** The things sold or gone, folded under Mine: the same rows in one card. */
-export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string, pane: boolean) => void; layout: OwnedLayout }) {
+export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string) => void; layout: OwnedLayout }) {
   const [show, setShow] = useState(false)
-  const pane = useBoardStep() >= 2
   if (!gone.length) return null
   return (
     <section className={layout === 'pictures' ? undefined : STACK_CAP}>
@@ -120,7 +127,7 @@ export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopIt
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', show && 'rotate-180')} />
         Sold or gone <span className="count-badge">{gone.length}</span>
       </button>
-      {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={id => onOpen(id, pane)} layout={layout} />)}</ThingsBox>}
+      {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={onOpen} layout={layout} />)}</ThingsBox>}
     </section>
   )
 }

@@ -1,6 +1,6 @@
 // The record's one row of actions never wraps (owner, 23.11.2026: "why didn't you make this one line?"). It used to be
 // `flex-wrap`, with only the `more` actions hidden below a fixed 30rem of the whole record — but the row shares the
-// record's width with the picture, so at the side pane's width (22rem) and on a phone "Sell or give away" +
+// record's width with the picture, so on a phone "Sell or give away" +
 // "Accessory" + ⋯ were wider than the row and the last one dropped to a second line. Now the row measures the room it
 // really has (`useElementWidthRem` on its own box) and `fitActions` says which buttons fit; the rest go behind ⋯.
 // Pure — scripts/verify-shop-record.cjs.

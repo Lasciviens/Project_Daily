@@ -5,14 +5,19 @@ import { useShopItem } from '../hooks/useShop'
 import { listOf } from '../shopModel'
 import { ShopItemSheet } from '../components/ShopItemSheet'
 import { ShopRecord } from '../components/record/ShopRecord'
+import { ShopCreate } from '../components/record/ShopCreate'
 
 /**
- * `shop-item`: add (no id, optional defaults) in the small sheet; open by id —
- * a quick-list errand in the same sheet, a wishlist-side row as its record
- * (live, so a sale or a new accessory shows at once).
+ * `shop-item`: add (no id, optional defaults) — a wish or a general wish in the record's own popup in create mode
+ * (`ShopCreate`), a quick-list errand in its small sheet; open by id — a quick-list errand in the same sheet, a
+ * wishlist-side row as its record (live, so a sale or a new accessory shows at once).
  */
 export function ShopItemEntityModal({ request, onClose }: EntityModalProps<'shop-item'>) {
-  if (!request.id) return <ShopItemSheet defaults={request.defaults} onClose={onClose} />
+  if (!request.id) {
+    const d = request.defaults
+    if (d?.list === 'quick') return <ShopItemSheet defaults={d} onClose={onClose} />
+    return <ShopCreate spec={{ preset: d?.general ? 'general' : 'wish', defaults: d }} onClose={onClose} />
+  }
   return <ShopItemByIdModal id={request.id} fact={request.fact} section={request.section} onClose={onClose} />
 }
 

@@ -80,12 +80,11 @@ export type EntityModalRequest =
   | { kind: 'shop-accessory'; itemId: string }
   /** Add a model to a general wish ("a tablet with a pen" → iPad Air). */
   | { kind: 'shop-model'; wishId: string }
-  /** Add something you own (or had) from before the app, with ≈ dates. */
-  /** `receipt`: one line of a read receipt (Read a receipt) as the sheet's starting values, through the same autofill facts a receipt photo uses; `onSaved` runs once the thing is saved. */
-  | { kind: 'shop-own'; had?: boolean; receipt?: ReceiptFill; onSaved?: (item: ShopItem) => void }
+  /** Add something you own (or had), with ≈ dates: the record's popup in create mode (`ShopCreate`). `batch`: the ticked lines of a read receipt, one draft each ("1 of 3"), each through the same autofill facts a receipt photo uses; `onSaved` runs once a thing is saved. */
+  | { kind: 'shop-own'; had?: boolean; /** The lines of a read receipt: one draft each in the one popup ("1 of 3"). */ batch?: { fills: ReceiptFill[]; labels: string[]; onSaved?: (index: number) => void }; onSaved?: (item: ShopItem) => void }
   /** Tidy up info: AI suggests a cleaner name, brand, model and category; you review each field. `ids`: those things (one from its record's ⋯); left out: all your wishes and things. */
   | { kind: 'shop-tidy'; ids?: string[] }
-  /** Read a receipt (a photo or a PDF): bought or sold, its product lines, each opening Add something I own or Sell with its values. */
+  /** Read a receipt (a photo or a PDF): bought or sold, its product lines: the ticked Bought ones open the create popup together ("1 of 3"), a Sold one opens Sell with its values. */
   | { kind: 'shop-receipt' }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }

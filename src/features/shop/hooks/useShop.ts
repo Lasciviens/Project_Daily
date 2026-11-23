@@ -77,17 +77,33 @@ export function useQuickToPickUp(date: string) {
   })
 }
 
-/** `quiet`: the quick list's own add box shows the row appear instead of a toast. */
+/**
+ * A new row, with its toast naming it and an Undo that deletes that row through the shop delete, as the quick list's
+ * one-tap add does ("Added to your things · Camera · Undo"; toasts with Undo never merge, so a receipt's lines each keep
+ * theirs). `quiet`: the caller reports it itself (an accessory's "Add another", a receipt's other lines).
+ * `note`: what else the save made ("new category Photography › Cameras").
+ */
 export function useCreateShopItem() {
+  const qc = useQueryClient()
+  const undo = useMutationWithFeedback({
+    action:         'undo_create_shop_item',
+    successMessage: (_d: unknown, row: ShopItem) => `Removed · ${row.title}`,
+    mutationFn:     async (row: ShopItem) => { await deleteShopItems([row.id]) },
+    onSuccess:      (_d, row) => removeRowsFromCache(qc, qk.shop.items(), new Set([row.id])),
+    invalidates:    SHOP_ROWS,
+  })
   return useMutationWithFeedback({
-    action:         'create_shop_item',
-    successMessage: (_d: ShopItem, { input, quiet }: { input: CreateShopItemInput; quiet?: boolean }) =>
-      quiet ? undefined
-        : input.status === 'bought' ? 'Added to your things'
+    action:      'create_shop_item',
+    silent:      'its toast with Undo reports it (or the caller does, with `quiet`)',
+    mutationFn:  ({ input }: { input: CreateShopItemInput; quiet?: boolean; note?: string }) => createShopItem(input),
+    onSuccess:   (row: ShopItem, { input, quiet, note }) => {
+      if (quiet) return
+      const what = input.status === 'bought' ? 'Added to your things'
         : input.option_for ? 'Model added'
-        : input.list === 'quick' ? 'Added to the quick list' : 'Added to the wishlist',
-    mutationFn:     ({ input }: { input: CreateShopItemInput; quiet?: boolean }) => createShopItem(input),
-    invalidates:    [qk.shop.items()],
+        : input.list === 'quick' ? 'Added to the quick list' : 'Added to the wishlist'
+      toast.undo(`${what} · ${row.title}${note ? ` · ${note}` : ''}`, () => undo.mutate(row))
+    },
+    invalidates: [qk.shop.items()],
   })
 }
 
