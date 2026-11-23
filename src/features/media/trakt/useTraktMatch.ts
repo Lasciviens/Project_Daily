@@ -36,7 +36,7 @@ function useUndoPick() {
       else await deleteRows('trakt_manual_matches', [saved.id])
     },
     onSuccess: () => toast.success('Match undone'),
-    invalidates: [qk.trakt.all],
+    invalidates: [qk.trakt.unmatched(), qk.trakt.matches()],
   })
 }
 
@@ -55,18 +55,18 @@ export function useSaveTraktMatch() {
       toast.doneWith(`Matched to ${v.pickTitle} — the next sync links it`, { label: 'Sync now', onClick: () => sync.mutate({ full: true }) },
         () => undo.mutate({ saved, previous: v.previous }))
     },
-    invalidates: [qk.trakt.all],
+    invalidates: [qk.trakt.unmatched(), qk.trakt.matches()],
   })
 }
 
 /** Removes a pick: asks first, then "Match removed · Undo". */
 export function useRemoveTraktMatch() {
-  const del = useRowsDelete({ table: 'trakt_manual_matches', action: 'remove_trakt_match', invalidates: [qk.trakt.all], cache: qk.trakt.matches() })
+  const del = useRowsDelete({ table: 'trakt_manual_matches', action: 'remove_trakt_match', invalidates: [qk.trakt.unmatched(), qk.trakt.matches()], cache: qk.trakt.matches() })
   return {
     busy: del.busy,
     remove: (m: ManualMatch, name: string) => del.run([m.id], {
       title: 'Remove this match?',
-      message: `${name} goes back to the list. Trakt's copy has no TMDB id, so the next sync can take the library title it linked out of your library again.`,
+      message: `${name} may leave your library at the next sync, because Trakt doesn't know it by that name. Your watches stay on Trakt.`,
       confirmLabel: 'Remove match',
       done: 'Match removed',
       restored: 'Match put back',

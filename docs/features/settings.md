@@ -77,7 +77,7 @@ One button does it all: with changes it saves them and then brings Apple Calenda
 
 ## Trakt: titles to match (23.11.2026)
 
-The Trakt card in Settings → Subscriptions has a **Titles to match** part (connected only; `TraktMatchList`): the Trakt titles with no TMDB id, each with **Pick match** (a title + year search, a short list with poster, year and overview, **Save match** — "Matched to X — the next sync links it · Sync now · Undo"), and **Matched by you** with **Change** and **Remove** (asks, then "Match removed · Undo"). The save is read by the next sync. This is data and a pick, not a connect or disconnect, so it fits the Connections rule. Details, security notes and the table: `docs/features/media.md` → Trakt matching.
+The Trakt card in Settings → Subscriptions has a **Titles to match** part (connected only; `TraktMatchList`): the Trakt titles with no TMDB id, each with **Pick match** (a title + year search, a short list with poster, year and overview, **Save match** — "Matched to X — the next sync links it · Sync now · Undo"), and **Matched by you** with **Change** and **Remove** (asks, then "Match removed · Undo"); each matched row says where it stands (Waiting for sync, Linked, or why the pick was not used) and that changes here don't go to Trakt for that title. The save is read by the next 30-minute sync (a fingerprint of the picks makes it pull). A warning line shows when the server has no TMDB read token. This is data and a pick, not a connect or disconnect, so it fits the Connections rule. Details, security notes and the table: `docs/features/media.md` → Trakt matching.
 
 ## Anthropic card (21.11.2026)
 

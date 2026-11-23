@@ -428,6 +428,8 @@ interface TraktStatus {
   syncing?: boolean
   /** Trakt's whole history has been read since migration 149 (or the last connect): placeholders no longer wait for its dates. */
   historyLinked?: boolean
+  /** TMDB's read token is set on the function (false = new titles and show states stop; the card says so). */
+  tmdbToken?: boolean
   notConfigured?: boolean
 }
 
@@ -1637,6 +1639,29 @@ interface ManualMatchResult {
   used: Map<string, number>
   /** Picks left alone: Trakt gives that TMDB id to another item, or two picks name one title. */
   clashes: number
+  /** Which picks (matchKey) were left alone — the unmatched list says why. */
+  clashKeys: Set<string>
+}
+
+/** Why a pick was not used, as `trakt_unmatched` and the screen say it. */
+const PICK_NOT_USED = 'Your pick was not used: that TMDB title is already linked to another Trakt item'
+
+/**
+ * A short fingerprint of the picks (the count and a hash of the sorted kind, Trakt id, TMDB id rows), kept in
+ * trakt_sync_state: a sync that finds it changed reads Trakt even when Trakt itself has nothing new, so a save, a change or a
+ * removal is linked at the next 30-minute run. Counts the rows, not only the used picks, so a delete changes it.
+ */
+function matchesFingerprint(matches: Map<string, number>): string {
+  const lines = [...matches].map(([k, v]) => `${k}:${v}`).sort()
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
+  for (const ch of lines.join('\n')) {
+    const c = ch.codePointAt(0)!
+    h1 = Math.imul(h1 ^ c, 2654435761)
+    h2 = Math.imul(h2 ^ c, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${lines.length}:${(h2 >>> 0).toString(16)}${(h1 >>> 0).toString(16)}`
 }
 
 /**
@@ -1646,7 +1671,8 @@ interface ManualMatchResult {
  */
 function applyManualMatches(snap: TraktSnapshot, matches: Map<string, number>): ManualMatchResult {
   const used = new Map<string, number>()
-  if (!matches.size) return { used, clashes: 0 }
+  const clashKeys = new Set<string>()
+  if (!matches.size) return { used, clashes: 0, clashKeys }
   const items = everyItem(snap)
   const taken = new Set<string>()
   for (const i of items) if (i.ids.tmdb) taken.add(`${i.type}:${i.ids.tmdb}`)
@@ -1659,12 +1685,12 @@ function applyManualMatches(snap: TraktSnapshot, matches: Map<string, number>): 
     if (tmdb === undefined) continue
     const title = `${i.type}:${tmdb}`
     const owner = claimed.get(title)
-    if (taken.has(title) || (owner !== undefined && owner !== key)) { if (!used.has(key)) clashes++; continue }
+    if (taken.has(title) || (owner !== undefined && owner !== key)) { if (!clashKeys.has(key)) { clashes++; clashKeys.add(key) } continue }
     claimed.set(title, key)
     used.set(key, tmdb)
     i.ids.tmdb = tmdb
   }
-  return { used, clashes }
+  return { used, clashes, clashKeys }
 }
 
 /**
@@ -2373,17 +2399,25 @@ async function loadManualMatches(db: Db, userId: string): Promise<Map<string, nu
   return parseManualMatches(rows)
 }
 
-/** Reads the picks and fills the snapshot's missing TMDB ids; the returned map is what history reads fill in too. */
-async function applyPicks(db: Db, userId: string, snap: TraktSnapshot): Promise<Map<string, number>> {
-  const { used } = applyManualMatches(snap, await loadManualMatches(db, userId))
-  return used
+/**
+ * The picks' fingerprint (matchesFingerprint) is kept in trakt_sync_state.matches_fingerprint (200): a run that finds it
+ * changed reads Trakt even when Trakt has nothing new. A database without the column (200 not applied) never pulls for it.
+ */
+async function storedPickFingerprint(db: Db, userId: string): Promise<{ supported: boolean; value: string }> {
+  const { data, error } = await db.from('trakt_sync_state').select('matches_fingerprint').eq('user_id', userId).maybeSingle()
+  if (error) { if (['42703', 'PGRST204'].includes(String(error.code))) return { supported: false, value: '' }; throw error }
+  return { supported: true, value: String((data as AnyRec | null)?.matches_fingerprint ?? '') || matchesFingerprint(new Map()) }
+}
+async function storePickFingerprint(db: Db, userId: string, fingerprint: string) {
+  const { error } = await db.from('trakt_sync_state').update({ matches_fingerprint: fingerprint }).eq('user_id', userId)
+  if (error && !['42703', 'PGRST204'].includes(String(error.code))) throw error
 }
 
 // ── trakt_unmatched (migration 116) ──────────────────────────────────────────
 // Trakt items this app could not take in: no TMDB id on Trakt (never guessed),
 // or a TMDB lookup that failed (retried every run). Rewritten on every run
 // that reads Trakt, so a title that comes in later leaves the list.
-async function recordUnmatched(db: Db, userId: string, snap: TraktSnapshot, unadded: Unadded[]): Promise<number> {
+async function recordUnmatched(db: Db, userId: string, snap: TraktSnapshot, unadded: Unadded[], clashKeys: Set<string> = new Set()): Promise<number> {
   const rows = new Map<string, AnyRec>()
   const add = (i: TraktItem | null, reason: string) => {
     if (!i || !i.ids.trakt) return
@@ -2393,7 +2427,7 @@ async function recordUnmatched(db: Db, userId: string, snap: TraktSnapshot, unad
     ...snap.watchedMovies.map(x => x.item), ...snap.watchedShows.map(x => x.item), ...snap.watchlist.map(x => x.item),
     ...snap.ratings.map(x => x.item), ...snap.favorites.map(x => x.item), ...snap.dropped.map(x => x.item), ...snap.playback.map(x => x.item),
   ]
-  for (const i of all) if (i && !i.ids.tmdb) add(i, 'No TMDB id on Trakt — pick the title by hand')
+  for (const i of all) if (i && !i.ids.tmdb) add(i, clashKeys.has(matchKey(i.type, i.ids.trakt)) ? PICK_NOT_USED : 'No TMDB id on Trakt — pick the title by hand')
   for (const u of unadded) add(u.item, `${u.reason} — retried on the next sync`)
   const { error: delError } = await db.from('trakt_unmatched').delete().eq('user_id', userId)
   if (delError) { if (['42P01', 'PGRST205'].includes(String(delError.code))) return 0; throw delError }
@@ -2517,7 +2551,7 @@ const WAIT_FOR_IDS_DAYS = 7
  * their plays, or a play at another second): they stay in the outbox; `gone`
  * ones have nothing left to remove.
  */
-async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyRec[], linked: boolean) {
+async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyRec[], linked: boolean, picks?: Map<string, number>) {
   const out = { ids: [] as number[], waiting: [] as AnyRec[], gone: [] as AnyRec[] }
   const byTitle = new Map<string, AnyRec[]>()
   for (const r of rows) {
@@ -2533,7 +2567,8 @@ async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyR
     const [type, tmdb] = title.split(':')
     const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb))
     if (!trakt) { out.waiting.push(...list); continue }
-    const { plays } = await readHistory(`/sync/history/${type === 'movie' ? 'movies' : 'shows'}/${trakt}`, token)
+    // The picks fill the TMDB id of a matched title's rows, so its play is found; the item_key filter below still decides which play.
+    const { plays } = await readHistory(`/sync/history/${type === 'movie' ? 'movies' : 'shows'}/${trakt}`, token, picks)
     for (const r of list) {
       const p = (r.payload ?? {}) as AnyRec
       const taken = new Set(out.ids)
@@ -2548,7 +2583,7 @@ async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyR
   return out
 }
 
-async function drainOutbox(db: Db, userId: string, token: string, deadline: number, linked: boolean) {
+async function drainOutbox(db: Db, userId: string, token: string, deadline: number, linked: boolean, picks?: Map<string, number>) {
   const out = { sent: 0, notFound: 0, failed: 0, left: 0, waitingForIds: 0, dropped: 0, error: null as string | null, notes: null as NoteDrain | null }
   const sentKeys: string[] = []
   // A watch added and removed (or re-dated, or deleted and put back) before
@@ -2586,7 +2621,7 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
     try {
       if (op === 'history_remove_play') {
         // One play per removed watch — by its Trakt id, or an exact match; never a guess.
-        const r = await playIdsToRemove(db, userId, token, batch, linked)
+        const r = await playIdsToRemove(db, userId, token, batch, linked, picks)
         const now = Date.now()
         const old = r.waiting.filter(x => now - Date.parse(String(x.created_at)) > WAIT_FOR_IDS_DAYS * 864e5)
         const still = r.waiting.filter(x => !old.includes(x))
@@ -3449,10 +3484,15 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const runStart = Date.now()
   const deadline = runStart + 90_000
   const { data: state } = await db.from('trakt_sync_state').select('last_activities, history_synced_at, history_cursor, history_held_back').eq('user_id', userId).maybeSingle()
+  // The owner's picks (200), read first: a play removal for a matched title needs them, and a changed set is a reason to pull.
+  const picks = await loadManualMatches(db, userId)
+  const fingerprint = matchesFingerprint(picks)
+  const storedFp = await storedPickFingerprint(db, userId)
+  const picksChanged = storedFp.supported && storedFp.value !== fingerprint
   // Until the watches have been linked to Trakt's plays once, a remove without
   // a play id waits (149): it must never be matched against placeholders.
   const linked = !!(state as AnyRec | null)?.history_synced_at
-  const drained = await drainOutbox(db, userId, token, deadline, linked)
+  const drained = await drainOutbox(db, userId, token, deadline, linked, picks)
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
   const prev = ((state as AnyRec | null)?.last_activities ?? null) as AnyRec | null
   // Never read per play yet (the first run after migration 149, or a new
@@ -3465,7 +3505,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   // Notes (136): compared in full when they changed on Trakt, on Sync now, or never yet.
   const ns = await notesState(db, userId)
   const notesDue = ns.ready && (!!opts.full || change.reset || !ns.syncedAt || notesActivity(prev) !== notesActivity(lastActivities))
-  if (!opts.full && !change.changed && !historyDue) {
+  if (!opts.full && !change.changed && !historyDue && !picksChanged) {
     const notes = notesDue ? await runNotes(db, userId, token, await pendingKeys(db, userId, drained.sentKeys), runStart) : null
     // Watch removals held back by an earlier read still wait for the owner.
     return { pulled: false, drained: summary(drained), heldBack: Number((state as AnyRec | null)?.history_held_back ?? 0), lastActivities, scores, follows, notes }
@@ -3475,7 +3515,8 @@ async function runSync(db: Db, userId: string, token: string, username: string |
 
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
   // The owner's picks for items Trakt has no TMDB id for (200): filled in before any plan reads the ids.
-  const matches = await applyPicks(db, userId, snap)
+  const manual = applyManualMatches(snap, picks)
+  const matches = manual.used
   const local = await loadLocal(db, userId)
   const pending = await pendingKeys(db, userId, drained.sentKeys)
   // A full sync (Sync now) re-checks Completed vs Watching for every show with
@@ -3488,7 +3529,7 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   if (!opts.force && removalsNeedConfirm(plan, local.lib)) { heldBack = removalCount(plan); plan = withoutRemovals(plan) }
   const { done: applied, unadded } = await applyWrites(db, userId, local, plan, details)
   await backfillIds(db, plan.ids)
-  const unmatched = await recordUnmatched(db, userId, snap, unadded)
+  const unmatched = await recordUnmatched(db, userId, snap, unadded, manual.clashKeys)
   // Every play with its own date (149) — after the entries exist; a failure is reported, the rest stands.
   const linkOnly = await removeOnlyKeys(db, userId, drained.sentKeys)
   const watches = await syncWatches(db, userId, token, snap, local.lib, pending, { full, force: opts.force, deadline: runStart + 100_000, linkOnly, matches }).catch(e => {
@@ -3501,6 +3542,8 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   // A title that just came in from Trakt may already have a note there.
   const added = plan.movies.some(m => !local.movieEntry.has(m.tmdbId)) || plan.shows.some(s => !local.showEntry.has(s.tmdbId))
   const notes = notesDue || (ns.ready && added) ? await runNotes(db, userId, token, pending, runStart) : null
+  // The pick set this run used: the next run pulls again only when it changes (200).
+  await storePickFingerprint(db, userId, fingerprint)
   return { pulled: true, drained: summary(drained), applied, watches, favorites, heldBack, kept: plan.kept.length, unmatched, lastActivities, scores, follows, notes }
 }
 
@@ -3521,10 +3564,12 @@ async function runImport(db: Db, userId: string, token: string, username: string
   // Without TMDB the import can't add new titles or tell a finished show from one in progress.
   if (!TMDB_TOKEN()) throw new Error(TMDB_TOKEN_MISSING)
   const { data: state } = await db.from('trakt_sync_state').select('history_synced_at').eq('user_id', userId).maybeSingle()
-  const drained = await drainOutbox(db, userId, token, Date.now() + 45_000, !!(state as AnyRec | null)?.history_synced_at)
+  const picks = await loadManualMatches(db, userId)
+  const drained = await drainOutbox(db, userId, token, Date.now() + 45_000, !!(state as AnyRec | null)?.history_synced_at, picks)
   const snap = await snapshot(token, username) as unknown as TraktSnapshot
   // The owner's picks for items Trakt has no TMDB id for (200): filled in before any plan reads the ids.
-  const matches = await applyPicks(db, userId, snap)
+  const manual = applyManualMatches(snap, picks)
+  const matches = manual.used
   // With each watch's own date: the import sends the app-only ones at their dates.
   const local = await loadLocal(db, userId, true)
   const pending = await pendingKeys(db, userId, drained.sentKeys)
@@ -3545,11 +3590,12 @@ async function runImport(db: Db, userId: string, token: string, username: string
   })
   const favoritesMarked = await markFavorites(db, userId, snap, pending)
   await backfillIds(db, plan.ids)
-  const unmatched = await recordUnmatched(db, userId, snap, unadded)
+  const unmatched = await recordUnmatched(db, userId, snap, unadded, manual.clashKeys)
   // Notes (136): the app's notes Trakt lacks go to Trakt, Trakt's come in —
   // after the library is written, so a note can land on a title just added.
   // A note refused (note limit) or not sent yet never fails the import.
   const notes = (await notesState(db, userId)).ready ? await runNotes(db, userId, token, pending, runStart) : null
+  await storePickFingerprint(db, userId, matchesFingerprint(picks))
   const lastActivities = (await get('/sync/last_activities', token)).data as AnyRec
   return {
     applied, sent, tally, unmatched, drained: summary(drained), watches,
@@ -3688,6 +3734,8 @@ Deno.serve(async (req: Request) => {
         syncing: !!st.sync_started_at && Date.now() - new Date(String(st.sync_started_at)).getTime() < 5 * 60_000,
         // Trakt's whole history has been read since 149 (or the last connect): placeholders no longer wait.
         historyLinked: !!st.history_synced_at,
+        // TMDB's read token is set and shaped right (never the token itself): the card warns when it is not.
+        tmdbToken: !!TMDB_TOKEN(),
       })
     }
 
@@ -3750,7 +3798,7 @@ Deno.serve(async (req: Request) => {
     if (action === 'snapshot') {
       const snap = await snapshot(accessToken, username)
       // The picks are applied here too, so the preview counts what the sync will do.
-      await applyPicks(supabase, userId, snap as unknown as TraktSnapshot)
+      applyManualMatches(snap as unknown as TraktSnapshot, await loadManualMatches(supabase, userId))
       // The preview's notes (the sync reads them only when they changed).
       const notes = await readTraktNotes(accessToken).catch(e => {
         snap.warnings.push(`Notes could not be read: ${noteFailureMessage(e)}.`)

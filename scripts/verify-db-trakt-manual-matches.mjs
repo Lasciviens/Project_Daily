@@ -32,6 +32,7 @@ const noComments = text => text.replace(/--.*$/gm, '')
   if (!stmts.includes('revoke all on public.trakt_manual_matches from anon, authenticated')) problems.push('no revoke from anon, authenticated')
   if (stmts.some(s => /^grant .* on (table )?public\.trakt_manual_matches to .*\banon\b/i.test(s))) problems.push('a grant to anon')
   if (!/create trigger trg_audit after insert or update or delete on public\.trakt_manual_matches/i.test(sql)) problems.push('no audit trigger')
+  if (!/alter table public\.trakt_sync_state add column if not exists matches_fingerprint text;/i.test(sql)) problems.push('no matches_fingerprint column on trakt_sync_state')
   if (/security definer/i.test(sql)) problems.push('a SECURITY DEFINER function (none is needed)')
   if (problems.length) fail(`migration 200 has ${problems.join('; ')}`)
 }
@@ -55,6 +56,7 @@ select coalesce(string_agg(x, E'\\n' order by x), '') from (
     from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
    where a.attrelid = 'public.trakt_manual_matches'::regclass and a.attnum > 0 and not a.attisdropped
   union all select 'constraint ' || conname || ' ' || pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.trakt_manual_matches'::regclass
+  union all select 'fingerprint column ' || format_type(a.atttypid, a.atttypmod) from pg_attribute a where a.attrelid = 'public.trakt_sync_state'::regclass and a.attname = 'matches_fingerprint'
   union all select 'trigger ' || tgname || ' ' || pg_get_triggerdef(oid) from pg_trigger where tgrelid = 'public.trakt_manual_matches'::regclass and not tgisinternal
 ) t(x)`
 const OLD_DEFAULTS = [
@@ -73,6 +75,8 @@ for (const s of suites) {
     const target = withDb(url, s.db)
     step(`${s.key}: base`, () => psql(target, ['-f', join(root, 'scripts/db-tests/ai-ledger/base.sql')]))
     if (s.before.length) step(`${s.key}: old default grants`, () => psql(target, s.before))
+    // 116's table, as far as 200 touches it (the real one is service-role only).
+    step(`${s.key}: trakt_sync_state`, () => psql(target, ['-c', 'create table public.trakt_sync_state (user_id uuid primary key references auth.users(id) on delete cascade, last_sync_at timestamptz); alter table public.trakt_sync_state enable row level security; revoke all on public.trakt_sync_state from anon, authenticated; grant select, insert, update, delete on public.trakt_sync_state to service_role']))
     step(`${s.key}: 200`, () => psql(target, ['-f', FILE]))
     const first = step(`${s.key}: fingerprint`, () => psql(target, ['-At', '-c', FINGERPRINT]))
     step(`${s.key}: 200 again`, () => psql(target, ['-f', FILE]))

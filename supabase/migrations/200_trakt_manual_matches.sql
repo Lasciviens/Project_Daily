@@ -12,6 +12,11 @@
 --   · The function ignores a row whose TMDB id Trakt itself already gives to another item, and never overrides an id Trakt gave.
 --   · A browser may add, change and delete its own rows; every row is the owner's own (policy + owner lock).
 --
+-- Also: trakt_sync_state.matches_fingerprint (the count and a hash of the picks the last sync used). trakt-api's timed run returns
+-- early while Trakt's last_activities is unchanged; a changed fingerprint (a save, a change or a removal) makes it read Trakt anyway, so
+-- a pick is linked by the next 30-minute run, not only by Sync now. Written only by the function (the table is service-role only);
+-- a sync clock, not content, and the table is not audited, so Undo never sees it.
+--
 -- Audited (the owner's own choice; Developer → Activity can undo a save). Has an `id` primary key so that Undo and
 -- app_delete_rows (144) can name a row. Safe to re-run. No BEGIN/COMMIT: the deploy runs it as one transaction.
 
@@ -49,3 +54,6 @@ comment on table public.trakt_manual_matches is
   'The owner''s pick of a TMDB title for a Trakt item that has no TMDB id (kind movie|show, Trakt id → TMDB id). Read by trakt-api after it reads Trakt; fills ids.tmdb of items that have none, never overrides one. Integers only; the sync builds every address from them.';
 
 select public.owner_lock_apply('public.trakt_manual_matches');
+
+alter table public.trakt_sync_state add column if not exists matches_fingerprint text;
+comment on column public.trakt_sync_state.matches_fingerprint is 'The count and a hash of trakt_manual_matches as the last pull used them (matchesFingerprint): a different value makes the next run read Trakt although Trakt has nothing new.';

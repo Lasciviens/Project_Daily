@@ -10,7 +10,7 @@
 require('sucrase/register')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
-const { parseManualMatches, applyManualMatches, fillHistoryIds, matchKey } = require('../src/features/media/trakt/traktManualMatch')
+const { parseManualMatches, applyManualMatches, fillHistoryIds, matchKey, matchesFingerprint, PICK_NOT_USED } = require('../src/features/media/trakt/traktManualMatch')
 
 let n = 0
 const ok = (actual, expected, msg) => { assert.deepStrictEqual(actual, expected, msg); n++ }
@@ -62,12 +62,15 @@ const snap = items => ({
   const other = item('movie', 30, 500)
   const r = applyManualMatches(snap([a, other]), new Map([['movie:10', 500]]))
   ok([a.ids.tmdb, r.used.size, r.clashes], [null, 0, 1], 'a pick for a title Trakt gives to another item is not used')
+  ok([...r.clashKeys], ['movie:10'], 'the refused pick is named, so the unmatched list can say why')
+  assert.ok(/not used/.test(PICK_NOT_USED)); n++
 }
 {
   // Two items picked onto one title (the unique key stops it in the table; the function stops it as well).
   const a = item('show', 1, null), b = item('show', 2, null)
   const r = applyManualMatches(snap([a, b]), new Map([['show:1', 700], ['show:2', 700]]))
   ok([a.ids.tmdb, b.ids.tmdb, r.clashes], [700, null, 1], 'two items cannot share one title: the first keeps it, the other is left unmatched')
+  ok([...r.clashKeys], ['show:2'], 'the second pick is the one named')
 }
 {
   const a = item('movie', 10, null)
@@ -76,6 +79,24 @@ const snap = items => ({
   const noTrakt = item('movie', 0, null)
   applyManualMatches(snap([noTrakt]), new Map([['movie:0', 5]]))
   ok(noTrakt.ids.tmdb, null, 'an item with no Trakt id is never matched')
+}
+
+// ── The fingerprint (a changed set of picks makes the timed sync read Trakt) ───
+{
+  const a = new Map([['movie:10', 500], ['show:10', 600]])
+  const same = new Map([['show:10', 600], ['movie:10', 500]])
+  ok(matchesFingerprint(a), matchesFingerprint(same), 'the order of the rows does not matter')
+  ok(matchesFingerprint(new Map()), matchesFingerprint(new Map()), 'no picks: always the same value')
+  const changes = [
+    new Map([['movie:10', 500]]),                                   // a delete
+    new Map([['movie:10', 501], ['show:10', 600]]),                 // a changed TMDB id
+    new Map([['movie:10', 500], ['show:10', 600], ['movie:11', 1]]), // an add
+    new Map([['movie:11', 500], ['show:10', 600]]),                 // another Trakt id
+  ]
+  for (const c of changes) assert.notStrictEqual(matchesFingerprint(c), matchesFingerprint(a))
+  n += changes.length
+  ok(/^\d+:[0-9a-f]+$/.test(matchesFingerprint(a)), true, 'a short count:hash string (kept in trakt_sync_state)')
+  ok(matchesFingerprint(new Map()).startsWith('0:'), true, 'the empty set starts with 0')
 }
 
 // ── A per-title history read ─────────────────────────────────────────────────
@@ -111,8 +132,15 @@ const snap = items => ({
   assert.ok(/'42P01', 'PGRST205'/.test(load) && /return new Map\(\)/.test(load), 'a missing table means no picks (the function may ship before migration 200)'); n++
   assert.ok(/throw error/.test(load), 'any other read failure stops the run (a title would look gone from Trakt)'); n++
   // Every sync path that reads Trakt applies the picks before any plan reads an id.
-  const calls = [...src.matchAll(/await applyPicks\(/g)].length
-  ok(calls, 3, 'runSync, runImport and the snapshot action apply the picks')
+  ok([...src.matchAll(/applyManualMatches\(snap(, picks| as unknown)/g)].length, 3, 'runSync, runImport and the snapshot action apply the picks')
+  const sync = src.slice(src.indexOf('async function runSync'), src.indexOf('async function runImport'))
+  assert.ok(/picksChanged = storedFp\.supported && storedFp\.value !== fingerprint/.test(sync), 'runSync compares the picks\' fingerprint with the stored one'); n++
+  assert.ok(/!opts\.full && !change\.changed && !historyDue && !picksChanged/.test(sync), 'a changed fingerprint stops runSync from returning early'); n++
+  assert.ok(/await storePickFingerprint\(db, userId, fingerprint\)\n\s+return \{ pulled: true/.test(sync), 'the fingerprint is stored only after a pull went through'); n++
+  assert.ok(/drainOutbox\(db, userId, token, deadline, linked, picks\)/.test(sync), 'the picks reach the outbox drain (a play removal of a matched title)'); n++
+  assert.ok(/recordUnmatched\(db, userId, snap, unadded, manual\.clashKeys\)/.test(sync), 'a refused pick is written to the unmatched list with its reason'); n++
+  assert.ok(/playIdsToRemove\(db, userId, token, batch, linked, picks\)/.test(src) && /\/\/ The picks fill the TMDB id of a matched title's rows/.test(src), 'a play removal reads the history with the picks'); n++
+  assert.ok(/stat[\s\S]*tmdbToken: !!TMDB_TOKEN\(\)/.test(src), 'status says whether the TMDB token is set'); n++
   ok([...src.matchAll(/matches\b[^\n]*\}\)\.catch/g)].length, 2, 'both history reads get the used picks')
 }
 

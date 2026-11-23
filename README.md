@@ -52,7 +52,7 @@ skipped without one.
 
 Put the client variables in `.env.local`; `.env.example` lists every variable
 the code reads, by name. `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (the legacy `VITE_SUPABASE_ANON_KEY` still works) are required;
-`VITE_TMDB_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_STRAVA_CLIENT_ID`,
+`VITE_TMDB_READ_TOKEN`, `VITE_GOOGLE_CLIENT_ID`, `VITE_STRAVA_CLIENT_ID`,
 `VITE_OXR_APP_ID` and `VITE_VAPID_PUBLIC_KEY` turn on their features. Every
 other key lives server-side only (Supabase Edge Function secrets and Vault):
 [`docs/backend/environment.md`](docs/backend/environment.md).

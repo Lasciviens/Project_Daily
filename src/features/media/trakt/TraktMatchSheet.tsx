@@ -14,7 +14,7 @@ import { useSaveTraktMatch } from './useTraktMatch'
 // Picks the TMDB title for one Trakt title that has no TMDB id (docs/features/media.md → Trakt matching): a title + year
 // search through TMDB, a short list with poster, year and overview, and Save. Everything TMDB sends is shown as text.
 
-export interface MatchTarget { kind: MatchKind; trakt_id: number; title: string; year: number | null; previous: ManualMatch | null }
+export interface MatchTarget { kind: MatchKind; trakt_id: number; title: string; year: number | null; previous: ManualMatch | null; /** The TMDB title the old pick points at (Change). */ previousName?: string }
 
 const nameOf = (r: TMDBSearchMovie | TMDBSearchTV) => ('title' in r ? r.title : r.name)
 const yearOf = (r: TMDBSearchMovie | TMDBSearchTV) => {
@@ -27,9 +27,11 @@ function Pick({ r, selected, onSelect }: { r: TMDBSearchMovie | TMDBSearchTV; se
   return (
     <button
       type="button" onClick={onSelect} aria-pressed={selected}
-      className={`flex min-h-[44px] w-full items-start gap-3 rounded-control border px-2 py-2 text-left ${selected ? 'border-accent bg-surface-2' : 'border-line'}`}
+      className={`flex w-full items-start gap-3 rounded-control border px-2 py-2 text-left ${selected ? 'border-accent bg-surface-2' : 'border-line'}`}
     >
-      <img src={posterUrl(r.poster_path, 'w92')} alt="" loading="lazy" className="h-16 w-11 shrink-0 rounded-control bg-surface-2 object-cover" />
+      {r.poster_path
+        ? <img src={posterUrl(r.poster_path, 'w92')} alt="" loading="lazy" className="h-16 w-11 shrink-0 rounded-control bg-surface-2 object-cover" />
+        : <span aria-hidden className="h-16 w-11 shrink-0 rounded-control bg-surface-2" />}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <Truncate className="text-ui font-semibold text-fg">{`${nameOf(r)}${year ? ` (${year})` : ''}`}</Truncate>
         {r.overview ? <Truncate lines={2} className="text-meta text-fg-2">{r.overview}</Truncate> : <span className="text-meta text-fg-muted">No description</span>}
@@ -54,8 +56,9 @@ function Body({ target, onClose }: { target: MatchTarget; onClose: () => void })
   const search = useSearchTitles(type, q)
   const save = useSaveTraktMatch()
   const results = useMemo(() => {
-    const all = (search.data?.pages ?? []).flatMap(p => p.results)
+    const all = (search.data?.pages ?? []).flatMap(p => (Array.isArray(p.results) ? p.results : []))
     // The year Trakt gave comes first; the rest keep TMDB's order.
+    if (target.year == null) return all
     return [...all].sort((a, b) => Number(yearOf(b) === target.year) - Number(yearOf(a) === target.year))
   }, [search.data, target.year])
   const shown = results.slice(0, 8)
@@ -71,6 +74,11 @@ function Body({ target, onClose }: { target: MatchTarget; onClose: () => void })
 
   return (
     <div className="flex flex-col gap-3">
+      {target.previous && target.previousName && (
+        <p className="rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="warn">
+          {target.previousName} may leave your library at the next sync, because Trakt doesn't know it by that name. Your watches stay on Trakt.
+        </p>
+      )}
       <div className="relative">
         <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
         <input autoFocus className="input pl-9" value={text} onChange={e => { setText(e.target.value); setSelected(null) }}

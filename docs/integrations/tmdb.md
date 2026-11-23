@@ -17,11 +17,15 @@ Media's feature description: `docs/features/media.md`; the Trakt sync that also 
   build time. A browser has no place to hide it, so it is in the public bundle: it is a read-only token, which is why it is "client-safe", and
   the header only stops it from leaking through URLs. The real fix for the bundle would be a TMDB proxy behind the owner's login (an edge
   function that holds the token) — a bigger change with its own plan, not done here.
-- **Function** (`trakt-api`: `tmdb()` and `tmdbQ()`): `TMDB_READ_TOKEN`, an Edge Function secret. Same token, set in its own place so each can
-  be rotated alone.
+- **Function** (`trakt-api`: `tmdb()` and `tmdbQ()`): `TMDB_READ_TOKEN`, an Edge Function secret.
+- **The two places hold ONE token** (TMDB gives an application a single read token). Rotating it means updating both
+  `VITE_TMDB_READ_TOKEN` (then a deploy) and `TMDB_READ_TOKEN`. TMDB ties the read token to the v3 API key: **do not make a new v3 key**,
+  it would cancel the token. The token is a JWT whose payload carries the TMDB account's object id (`sub`), and the public website bundle
+  carries it — one more reason to treat it as read-only and public, never as a secret.
 - **Fail closed:** a missing value, or one that is not shaped like the token (three dot-separated parts — the 32-character v3 key is not),
   stops the call before anything is sent, with a plain message naming the secret (`TMDB_READ_TOKEN is not set …` /
-  `VITE_TMDB_READ_TOKEN is not set …`). There is no fallback to the old key in the URL. `verify-secret-errors` checks the header, the empty
+  `VITE_TMDB_READ_TOKEN is not set …`). The Trakt card shows a warning line when the function reports `tmdbToken: false` (`status`), and
+  `deploy.yml` refuses to build the website while `VITE_TMDB_READ_TOKEN` is empty (the live site stays as it is). There is no fallback to the old key in the URL. `verify-secret-errors` checks the header, the empty
   URL and the refusals.
 - Where to get it and where to set it: `docs/deploy-checklist.md`, "TMDB read token".
 

@@ -59,3 +59,12 @@ select public.t_ok(public.t_err($q$delete from public.trakt_manual_matches where
 select public.t_ok((select count(*) = 1 from public.trakt_manual_matches), '200: one pick is left');
 reset role;
 select public.t_ok((select count(*) = 1 from public.audit_logs where table_name = 'trakt_manual_matches' and operation = 'DELETE'), '200: the removal is in the activity log, so Activity can undo it');
+
+-- 6 · the sync's fingerprint column
+select public.t_ok((select data_type = 'text' and is_nullable = 'YES' from information_schema.columns where table_schema = 'public' and table_name = 'trakt_sync_state' and column_name = 'matches_fingerprint'), '200: trakt_sync_state has a nullable text matches_fingerprint');
+insert into public.trakt_sync_state (user_id) values ('00000000-0000-0000-0000-000000000001');
+set role service_role;
+update public.trakt_sync_state set matches_fingerprint = '2:abc' where user_id = '00000000-0000-0000-0000-000000000001';
+reset role;
+select public.t_ok((select matches_fingerprint = '2:abc' from public.trakt_sync_state where user_id = '00000000-0000-0000-0000-000000000001'), '200: the function stores the fingerprint');
+select public.t_ok(not has_table_privilege('authenticated', 'public.trakt_sync_state', 'update') and not has_table_privilege('anon', 'public.trakt_sync_state', 'update'), '200: the browser cannot write the fingerprint (the table stays service-role only)');

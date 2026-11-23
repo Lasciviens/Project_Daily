@@ -71,6 +71,11 @@ export function TraktCard() {
             <Button size="sm" variant="secondary" className="w-fit" onClick={applyRemovals} disabled={sync.isPending}>Review and apply</Button>
           </div>
         )}
+        {s?.connected && s.tmdbToken === false && (
+          <p className="w-fit rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="warn">
+            TMDB's read token is not set on the server (TMDB_READ_TOKEN), so new titles and show states can't be looked up and the sync stops at them. The steps are in the deploy checklist.
+          </p>
+        )}
         {s?.connected && <TraktMatchList />}
         {!s?.notConfigured && (
           <div className="flex flex-wrap gap-2">

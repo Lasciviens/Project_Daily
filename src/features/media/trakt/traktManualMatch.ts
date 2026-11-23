@@ -37,6 +37,29 @@ export interface ManualMatchResult {
   used: Map<string, number>
   /** Picks left alone: Trakt gives that TMDB id to another item, or two picks name one title. */
   clashes: number
+  /** Which picks (matchKey) were left alone — the unmatched list says why. */
+  clashKeys: Set<string>
+}
+
+/** Why a pick was not used, as `trakt_unmatched` and the screen say it. */
+export const PICK_NOT_USED = 'Your pick was not used: that TMDB title is already linked to another Trakt item'
+
+/**
+ * A short fingerprint of the picks (the count and a hash of the sorted kind, Trakt id, TMDB id rows), kept in
+ * trakt_sync_state: a sync that finds it changed reads Trakt even when Trakt itself has nothing new, so a save, a change or a
+ * removal is linked at the next 30-minute run. Counts the rows, not only the used picks, so a delete changes it.
+ */
+export function matchesFingerprint(matches: Map<string, number>): string {
+  const lines = [...matches].map(([k, v]) => `${k}:${v}`).sort()
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
+  for (const ch of lines.join('\n')) {
+    const c = ch.codePointAt(0)!
+    h1 = Math.imul(h1 ^ c, 2654435761)
+    h2 = Math.imul(h2 ^ c, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return `${lines.length}:${(h2 >>> 0).toString(16)}${(h1 >>> 0).toString(16)}`
 }
 
 /**
@@ -46,7 +69,8 @@ export interface ManualMatchResult {
  */
 export function applyManualMatches(snap: TraktSnapshot, matches: Map<string, number>): ManualMatchResult {
   const used = new Map<string, number>()
-  if (!matches.size) return { used, clashes: 0 }
+  const clashKeys = new Set<string>()
+  if (!matches.size) return { used, clashes: 0, clashKeys }
   const items = everyItem(snap)
   const taken = new Set<string>()
   for (const i of items) if (i.ids.tmdb) taken.add(`${i.type}:${i.ids.tmdb}`)
@@ -59,12 +83,12 @@ export function applyManualMatches(snap: TraktSnapshot, matches: Map<string, num
     if (tmdb === undefined) continue
     const title = `${i.type}:${tmdb}`
     const owner = claimed.get(title)
-    if (taken.has(title) || (owner !== undefined && owner !== key)) { if (!used.has(key)) clashes++; continue }
+    if (taken.has(title) || (owner !== undefined && owner !== key)) { if (!clashKeys.has(key)) { clashes++; clashKeys.add(key) } continue }
     claimed.set(title, key)
     used.set(key, tmdb)
     i.ids.tmdb = tmdb
   }
-  return { used, clashes }
+  return { used, clashes, clashKeys }
 }
 
 /**
