@@ -16,6 +16,10 @@ export function receiptFacts(fill: ReceiptFill, at: string): Fact[] {
   if (fill.price !== undefined && fill.currency) {
     facts.push({ key: 'price', value: { amount: fill.price, currency: fill.currency as ShopCurrency }, source: SOURCE, confidence: 'exact', on: true, at })
   }
+  // Read from a name or a printed code, possibly after a web search: the owner checks both (the add sheet's list shows them as "check").
+  if (fill.brand) facts.push({ key: 'brand', value: fill.brand, source: SOURCE, confidence: 'check', on: true, at })
+  if (fill.model) facts.push({ key: 'model', value: fill.model, source: SOURCE, confidence: 'check', on: true, at })
+  if (fill.condition) facts.push({ key: 'condition', value: fill.condition, source: SOURCE, confidence: 'likely', on: true, at })
   if (fill.storeLabel) facts.push({ key: 'store', value: fill.storeLabel, source: SOURCE, confidence: fill.storeId ? 'exact' : 'check', on: true, at })
   return facts
 }

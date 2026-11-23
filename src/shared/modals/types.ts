@@ -17,6 +17,9 @@ import type { PlanDefaults, PlanModalConfig, PlanSource, PlanResult } from '../c
 import type { MealSlot } from '../../features/recipes/types'
 import type { MediaRef, MediaType } from '../../features/media/types'
 import type { TrainingPlanRef } from '../../features/training/api/trainingPlanApi'
+import type { ReceiptFill } from '../../features/ai/claude/featureRules'
+import type { SaleDefaults } from '../../features/shop/receiptRead'
+import type { ShopItem } from '../../features/shop/types'
 
 export type EntityModalRequest =
   // One item (migration 155): these four open the same Add sheet (plan-modal/
@@ -68,7 +71,8 @@ export type EntityModalRequest =
   /** A Shop item: open by `id` (a wishlist row as its record; `fact` opens that fact's editor — an old "Could sell for"'s "update it"), or add one (`defaults` picks the list, a title, a category, a store, a general wish). */
   | { kind: 'shop-item'; id?: string; fact?: 'value'; defaults?: { list?: 'wishlist' | 'quick'; title?: string; categoryId?: string; platform?: string; general?: boolean } }
   /** Sell or give away one of your things (with its accessories), and where the money goes. */
-  | { kind: 'shop-sell'; id: string }
+  /** `sale`: the amount, currency and day a read receipt gives (Read a receipt); `onSold` runs once the sale is saved. */
+  | { kind: 'shop-sell'; id: string; sale?: SaleDefaults; onSold?: () => void }
   /** A thing's money chain: what earlier sales passed on, and "Try other prices". */
   | { kind: 'shop-chain'; id: string }
   /** Quick-add accessories to one of your things (or to a wish). */
@@ -76,7 +80,10 @@ export type EntityModalRequest =
   /** Add a model to a general wish ("a tablet with a pen" → iPad Air). */
   | { kind: 'shop-model'; wishId: string }
   /** Add something you own (or had) from before the app, with ≈ dates. */
-  | { kind: 'shop-own'; had?: boolean }
+  /** `receipt`: one line of a read receipt (Read a receipt) as the sheet's starting values, through the same autofill facts a receipt photo uses; `onSaved` runs once the thing is saved. */
+  | { kind: 'shop-own'; had?: boolean; receipt?: ReceiptFill; onSaved?: (item: ShopItem) => void }
+  /** Read a receipt (a photo or a PDF): bought or sold, its product lines, each opening Add something I own or Sell with its values. */
+  | { kind: 'shop-receipt' }
   /** Build a money chain in one go (bought → sold → bought…); `fromId`: go on from that saved thing that left. */
   | { kind: 'shop-chain-builder'; fromId?: string }
   /** Something's wrong with one of your things: the complaint right, the letter, repair or replace, money back. */

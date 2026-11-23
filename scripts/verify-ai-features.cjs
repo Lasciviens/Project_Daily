@@ -51,9 +51,9 @@ for (const [label, patch, key] of [
   check(`${label}: dropped, never repaired; the rest stays`, r && !(key in r) && Object.keys(GOOD).filter(k => k !== key).every(k => k in r), r)
 }
 check('today and exactly 5 years back are allowed', R.readReceipt({ date: '2026-11-11' }, TODAY).date === '2026-11-11' && R.readReceipt({ date: '2021-11-11' }, TODAY).date === '2021-11-11')
-check('an amount rounds to cents; 8 lines at most; a line with no name is dropped; a bad line price is null', (() => {
+check('an amount rounds to cents; 12 lines at most; a line with no name is dropped; a bad line price is null', (() => {
   const r = R.readReceipt({ total: 1.005, items: [{ name: 'a', price: -1 }, { name: '' }, ...Array.from({ length: 20 }, (_, i) => ({ name: `i${i}` }))] }, TODAY)
-  return r.items.length === 8 && r.items[0].price === null && Math.abs(r.total - 1.005) <= 0.005
+  return r.items.length === 12 && r.items[0].price === null && Math.abs(r.total - 1.005) <= 0.005
 })())
 check('an answer with nothing usable, a list, null and text are null', [R.readReceipt({}, TODAY), R.readReceipt({ total: -1 }, TODAY), R.readReceipt([GOOD], TODAY), R.readReceipt(null, TODAY), R.readReceipt('x', TODAY)].every(v => v === null))
 check('unknown keys (a link, a note) never come through', !('url' in R.readReceipt({ ...GOOD, url: 'https://evil.example', note: 'x' }, TODAY)))
@@ -170,6 +170,37 @@ const second = AM.mergeFacts(merged, 'receipt', RF.receiptFacts(R.receiptFill(ma
 check('another line picked replaces what the receipt put there, and only that', (() => { const filled = { ...emptyDraft, ...patch }; const p2 = AM.fieldsAfter(filled, merged, second); return p2.title === 'Cable' && p2.price === 199 })())
 check('another line picked leaves a name the owner changed after the first fill alone', (() => { const filled = { ...emptyDraft, ...patch, title: 'Owner renamed' }; const p2 = AM.fieldsAfter(filled, merged, second); return !('title' in p2) && p2.price === 199 })())
 check('the receipt\'s other lines are the accessories on offer: the picked one is not among them, and none without a pick', same(R.receiptFill(manyLines, STORES, 1).others, [{ name: 'TV', price: 8990 }]) && R.receiptFill(GOOD, STORES, null).others.length === 0 && R.receiptFill(manyLines, STORES, null).others.length === 0)
+
+section('Read a receipt: kind, product lines, a PDF, and what the popup does with them')
+const RR = require('../src/features/shop/receiptRead')
+const LINE = { name: 'Demo Headphones X1', price: 2990, brand: 'Demo', model: 'X1', quantity: 1, condition: 'new' }
+const DEMO = { kind: 'bought', store: 'Demo Elektro', date: '2026-11-08', currency: 'NOK', total: 2990, items: [LINE] }
+check('a read with a kind, brand, model, quantity and condition comes through unchanged', same(R.readReceipt(DEMO, TODAY), DEMO))
+check('a kind of any other word is dropped; a kind alone is no receipt', !('kind' in R.readReceipt({ ...DEMO, kind: 'purchase' }, TODAY)) && R.readReceipt({ kind: 'sold' }, TODAY) === null)
+check('a null brand, model, quantity or condition leaves the key out (the function sends null)', same(R.readReceipt({ items: [{ name: 'A', price: 5, brand: null, model: null, quantity: null, condition: null }] }, TODAY).items, [{ name: 'A', price: 5 }]))
+check('shipping, pick-up, bag and 0,01 lines never come through; a link or path is no brand or model; a bad quantity or condition is dropped', same(R.readReceipt({ items: [{ name: 'Frakt', price: 99 }, { name: 'Pick-up Point Jernbanetorget' }, { name: 'Bæreposer', price: 5 }, { name: 'EKSTRA STØTTE', price: 0.01 }, { ...LINE, brand: 'https://evil.example', model: 'a/b', quantity: 2.5, condition: 'broken' }] }, TODAY).items, [{ name: 'Demo Headphones X1', price: 2990 }]))
+check('the kind sets the popup\'s first switch: sold is Sold, everything else (and none) is Bought', RR.sideOf({ kind: 'sold' }) === 'sold' && RR.sideOf({ kind: 'bought' }) === 'bought' && RR.sideOf({ kind: 'unknown' }) === 'bought' && RR.sideOf({}) === 'bought')
+const fillDemo = R.receiptFill(DEMO, STORES, 0)
+check('a picked line fills name, brand, model, condition, price, currency and day', fillDemo.title === LINE.name && fillDemo.brand === 'Demo' && fillDemo.model === 'X1' && fillDemo.condition === 'new' && fillDemo.price === 2990 && fillDemo.currency === 'NOK' && fillDemo.day === '2026-11-08', fillDemo)
+const demoFacts = RF.receiptFacts(fillDemo, 'x')
+check('brand and model are facts to check, the condition is likely, all from "the receipt"; nothing for a line without them', demoFacts.find(f => f.key === 'brand')?.confidence === 'check' && demoFacts.find(f => f.key === 'model')?.value === 'X1' && demoFacts.find(f => f.key === 'condition')?.value === 'new' && demoFacts.every(f => f.source.label === 'the receipt') && !RF.receiptFacts(R.receiptFill(GOOD, STORES, null), 'x').some(f => f.key === 'brand'))
+const outlet = R.receiptFill({ ...DEMO, items: [{ ...LINE, condition: 'outlet', quantity: 2 }] }, STORES, 0)
+check('an Outlet line has no condition fact (the app holds none for it) but says so in the note, with the pieces it covers', outlet.condition === undefined && /marked Outlet/.test(outlet.note) && /2 pieces on this line/.test(outlet.note), outlet)
+const addFill = RR.addFillFor({ ...DEMO, items: [LINE, { name: 'Cable', price: 199 }] }, 0, STORES)
+check('Add starts from the one line and offers no "other lines as accessories" (each line has its own Add)', addFill.title === LINE.name && addFill.others.length === 0)
+check('Sell starts from the line price and the receipt day; a currency the app lacks gives no amount; a line with no price gives none', same(RR.saleFor(DEMO, LINE), { amount: 2990, currency: 'NOK', day: '2026-11-08' }) && same(RR.saleFor({ ...DEMO, currency: 'SEK' }, LINE), { day: '2026-11-08' }) && same(RR.saleFor(DEMO, { name: 'x', price: null }), { day: '2026-11-08' }))
+const mine = (id, title, over = {}) => ({ id, title, list: 'wishlist', kind: 'item', status: 'bought', kept: true, disposal: null, accessory_of: null, ...over })
+const THINGS = [mine('a', 'Demo Headphones X1'), mine('b', 'Other Speaker Z9'), mine('c', 'Demo Headphones X1 case', { accessory_of: 'a' }), mine('d', 'Old Phone', { disposal: 'sold' })]
+check('a sold line finds your own thing by its name (folded), never an accessory, never one that already left', RR.thingForLine({ name: 'DEMO headphones x1' }, THINGS)?.id === 'a' && RR.thingForLine({ name: 'Old Phone' }, THINGS) === null && RR.thingForLine({ name: 'Demo Headphones X1 case' }, [THINGS[2]]) === null)
+check('a sold line finds it by brand and model together, or by a model-like word', RR.thingForLine({ name: 'HP', brand: 'Demo', model: 'Headphones X1' }, THINGS)?.id === 'a' && RR.thingForLine({ name: 'Demo wireless headphones X1 black' }, THINGS)?.id === 'a')
+check('two things that fit equally are not guessed between, and a stranger matches nothing', RR.thingForLine({ name: 'Demo Headphones X1' }, [mine('a', 'Demo Headphones X1'), mine('e', 'demo headphones x1')]) === null && RR.thingForLine({ name: 'Garden Hose 20 m' }, THINGS) === null)
+check('a line in words: brand, model, the condition and the pieces, and never the name twice', RR.lineFacts(LINE) === 'Demo · X1 · new' && RR.lineFacts({ ...LINE, condition: 'outlet', quantity: 3 }) === 'Demo · X1 · Outlet · ×3' && RR.lineFacts({ name: 'Demo', price: 1, brand: 'Demo' }) === '')
+const pdfBytes = (head, pad = 50, tail = '\n%%EOF') => new Uint8Array([...Buffer.from(head), ...new Array(pad).fill(32), ...Buffer.from(tail)])
+const pdfOk = R.pdfFromBytes(pdfBytes('%PDF-1.4\n'))
+check('a PDF is taken by its own first bytes and sent as base64 with its type', pdfOk.media_type === 'application/pdf' && Buffer.from(pdfOk.data, 'base64').subarray(0, 5).toString() === '%PDF-')
+const refusal = (fn) => { try { fn(); return 'accepted' } catch (e) { return e.message } }
+check('a file that is not a PDF (by its bytes), a password-protected one and a PDF over 1 MB are refused in words', /isn't a PDF/.test(refusal(() => R.pdfFromBytes(pdfBytes('%PNG-1.4\n')))) && /password protected/.test(refusal(() => R.pdfFromBytes(pdfBytes('%PDF-1.4\n', 50, '/Encrypt 5 0 R\n%%EOF')))) && /too large/.test(refusal(() => R.pdfFromBytes(pdfBytes('%PDF-1.4\n', 1_000_001)))) && /isn't a PDF/.test(refusal(() => R.pdfFromBytes(new Uint8Array(3)))))
+check('the PDF limit is the function\'s (1,000,000 bytes → 1.33 million base64 characters, under 1.4 million)', R.PDF_MAX_BYTES === 1_000_000 && Math.ceil(R.PDF_MAX_BYTES / 3) * 4 < 1_400_000)
 
 section('the cost line, the zero-width and link filters, the search in the breakdown')
 check('costNote: four decimals under a cent, three above; nothing when unknown', R.costNote(0.00031) === '≈ $0.0003' && R.costNote(0.0123) === '≈ $0.012' && R.costNote(null) === '' && R.costNote(-1) === '' && R.costNote(NaN) === '')

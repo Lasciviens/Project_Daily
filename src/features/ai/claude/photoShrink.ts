@@ -1,4 +1,5 @@
-import { fitWithin, photoFromDataUrl, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES, PHOTO_QUALITY, type PhotoInput } from './featureRules'
+import { fitWithin, pdfFromBytes, photoFromDataUrl, PHOTO_LONG_SIDE, PHOTO_MAX_BYTES, PHOTO_QUALITY, type PhotoInput } from './featureRules'
+import type { ReceiptInput } from './featureJobs'
 
 // A photo for an AI job is shrunk and re-encoded here, in the browser, before it is sent: at most 1280 px on the long
 // side, JPEG (85 %, lower while it is over 1 MB), so a request stays small and nothing else (EXIF, location) travels.
@@ -55,4 +56,13 @@ export async function shrinkPhoto(file: File, limits: { maxBytes?: number } = {}
   } finally {
     bmp.close()
   }
+}
+
+/** Whether a picked file is a PDF (its own type, or its name when the system gives none). */
+export const isPdfFile = (file: File): boolean => file.type === 'application/pdf' || (file.type === '' && /\.pdf$/i.test(file.name))
+
+/** A picked file as a receipt job's input: a PDF as it is (checked), a photo shrunk first. Nothing is kept. */
+export async function receiptInputOf(file: File): Promise<ReceiptInput> {
+  if (isPdfFile(file)) return { document: pdfFromBytes(new Uint8Array(await file.arrayBuffer())) }
+  return { image: await shrinkPhoto(file) }
 }

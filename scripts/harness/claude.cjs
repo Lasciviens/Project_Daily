@@ -176,7 +176,7 @@ const REPORT_FACTS = {
 // The AI features of 22.11.2026: photos, Dev Requests, Work, Shop, Wishes.
 PHASE_2A_JOBS.push(
   phase2a('quick_guess_photo', 'Guess a meal from a photo', 'In Food → Quick guess, "From a photo" fills in one diary line.', 1500),
-  phase2a('receipt_read', 'Read a receipt photo', 'In Shop, "From a receipt" reads a photo of a receipt.', 1500),
+  phase2a('receipt_read', 'Read a receipt (photo or PDF)', 'In Shop, "Read a receipt" reads a photo or a PDF of a receipt.', 2500, ['app'], 70000),
   phase2a('dev_request_draft', 'Tidy up a Dev Request', 'In the Dev Requests composer, "Tidy up" drafts the fields from what you dictated.', 2000),
   phase2a('error_explain', 'Explain an error', 'In Developer → Errors, "Explain" says what an error means.', 2000),
   phase2a('work_week', 'Write my week (Work)', 'On Work, "Write my week" writes a status text.', 1500),
@@ -191,7 +191,9 @@ const PHASE_2A_RESULTS = {
 }
 PHASE_2A_RESULTS.recipe_from_link = PHASE_2A_RESULTS.recipe_from_text
 PHASE_2A_RESULTS.quick_guess_photo = { title: 'Pasta with meat sauce', portion: 'one full plate, about 400 g', calories: 650, protein_g: 28, carbs_g: 80, fat_g: 22, sugar_g: 9, assumptions: ['A full dinner plate.', 'Beef mince sauce.'] }
-PHASE_2A_RESULTS.receipt_read = { store: 'ELKJØP NORGE AS', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Sony WH-1000XM5', price: 2990 }, { name: 'USB-C cable 2 m', price: 199 }], warranty_months: 24 }
+PHASE_2A_RESULTS.receipt_read = { kind: 'bought', store: 'Demo Elektro Majorstuen', date: '2026-11-08', currency: 'NOK', total: 3189, items: [{ name: 'Demo Headphones X1 black', brand: 'Demo', model: 'X1', price: 2990, quantity: 1, condition: 'new' }, { name: 'USB-C cable 2 m', price: 199, condition: 'outlet' }, { name: 'Frakt', price: 99 }], warranty_months: 24 }
+// A PDF of the same harness gets a sale (a payout for something in the seed's Owned list).
+const SOLD_RECEIPT = { kind: 'sold', store: 'Demo Marketplace', date: '2026-11-10', currency: 'NOK', total: 1500, items: [{ name: 'Robot vacuum', price: 1500, quantity: 1 }, { name: 'Garden hose 20 m', price: 300 }] }
 PHASE_2A_RESULTS.dev_request_draft = { title: 'Water card should be red', page: '/daily', category: 'improvement', priority: 'medium', points: ['Make the water card on Daily red.', 'Also in dark mode.'] }
 PHASE_2A_RESULTS.error_explain = { explanation: 'The app asked for a task that is no longer there, so it got null (nothing) and then tried to read its id. It is not a network problem: the server answered, with an empty result.', terms: [{ term: 'null', meaning: 'The value that means "nothing is here".' }, { term: 'HTTP 404', meaning: 'The server\'s way of saying "I found nothing at that address".' }], request: { title: 'Task detail fails on a deleted task', category: 'bug', priority: 'medium', points: ['Guard the null task before reading its id.', 'Show "This task was deleted" instead of failing.'] } }
 PHASE_2A_RESULTS.work_week = { text: 'I closed 1 Work task this week and finished 1 of my 3 goals; 9 are still open, 1 overdue.\nDone: the support inbox.\nOpen: the planning slides and the onboarding review; the overdue one needs a decision.' }
@@ -648,7 +650,7 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = opts.results?.[other.name] ?? PHASE_2A_RESULTS[other.name]
+      let result = opts.results?.[other.name] ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
