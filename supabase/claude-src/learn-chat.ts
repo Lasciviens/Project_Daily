@@ -17,9 +17,17 @@ import { insertCorrections, insertLesson, lessonExists, readLessons } from './le
 import type { CorrectionRow } from './learn-diff.ts'
 import type { NoteResult, ProfileNote } from './chat-learn-tools.ts'
 
+/** Notes Ask AI may propose in 24 hours (a flood bound, not a limit on what is learned: the owner's own facts are few). */
+export const CHAT_NOTES_PER_DAY = 20
+
 export async function chatNoteLesson(ctx: RunContext, kind: LessonKind, text: string, ownerText: string, callId: string): Promise<NoteResult> {
   try {
     const start = lessonStart(kind, 'chat_tool', text, wordsAreOwners(text, ownerText))
+    // A flood bound (a steered answer calling the tool again and again): 20 notes from Ask AI a day.
+    const since = new Date(ctx.now().getTime() - 86_400_000).toISOString()
+    const { count, error } = await ctx.adminDb.from('ai_lessons').select('id', { count: 'exact', head: true }).eq('user_id', ctx.userId).eq('source_kind', 'chat_tool').gte('created_at', since)
+    if (error || typeof count !== 'number') return 'error'
+    if (count >= CHAT_NOTES_PER_DAY) return 'limit'
     const exists = await lessonExists(ctx.adminDb, ctx.userId, 'chat', text)
     if (exists === null) return 'error'
     if (exists) return 'seen'

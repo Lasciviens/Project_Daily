@@ -7713,7 +7713,7 @@ async function claimRun(db: Db, userId: string, id: string, createdAt: string, n
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** What a proposed note became: on at once (a plain fact in the person's own words), waiting for the person, already there, or not saved. */
-type NoteResult = 'active' | 'pending' | 'seen' | 'error'
+type NoteResult = 'active' | 'pending' | 'seen' | 'limit' | 'error'
 
 /** A profile note as the tool reads it (the loop reads ai_lessons with the service role, naming the verified user). */
 interface ProfileNote { kind: LessonKind; text: string; source: string; approvedAt: string | null; createdAt: string }
@@ -7760,6 +7760,7 @@ function noteResultText(result: NoteResult): string {
   if (result === 'active') return 'Noted. Carry on with your answer; do not mention the note unless asked.'
   if (result === 'pending') return 'Noted for the person to approve. Carry on with your answer; do not mention it unless asked.'
   if (result === 'seen') return 'That note is already there. Carry on with your answer.'
+  if (result === 'limit') return 'No more notes can be recorded today. Carry on with your answer.'
   return 'The note could not be recorded just now. Carry on with your answer without it.'
 }
 
@@ -9618,9 +9619,17 @@ async function decideTuning(ctx: RunContext, body: Record<string, unknown>): Pro
 //  Each is best effort: a failure is said in the server log and never changes the chat's answer.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Notes Ask AI may propose in 24 hours (a flood bound, not a limit on what is learned: the owner's own facts are few). */
+const CHAT_NOTES_PER_DAY = 20
+
 async function chatNoteLesson(ctx: RunContext, kind: LessonKind, text: string, ownerText: string, callId: string): Promise<NoteResult> {
   try {
     const start = lessonStart(kind, 'chat_tool', text, wordsAreOwners(text, ownerText))
+    // A flood bound (a steered answer calling the tool again and again): 20 notes from Ask AI a day.
+    const since = new Date(ctx.now().getTime() - 86_400_000).toISOString()
+    const { count, error } = await ctx.adminDb.from('ai_lessons').select('id', { count: 'exact', head: true }).eq('user_id', ctx.userId).eq('source_kind', 'chat_tool').gte('created_at', since)
+    if (error || typeof count !== 'number') return 'error'
+    if (count >= CHAT_NOTES_PER_DAY) return 'limit'
     const exists = await lessonExists(ctx.adminDb, ctx.userId, 'chat', text)
     if (exists === null) return 'error'
     if (exists) return 'seen'

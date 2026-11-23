@@ -21,7 +21,7 @@ import { learnEscape, plainLine, stripHidden, type LessonKind } from './learn-te
 import { dmy, osloDay } from './week-facts.ts'
 
 /** What a proposed note became: on at once (a plain fact in the person's own words), waiting for the person, already there, or not saved. */
-export type NoteResult = 'active' | 'pending' | 'seen' | 'error'
+export type NoteResult = 'active' | 'pending' | 'seen' | 'limit' | 'error'
 
 /** A profile note as the tool reads it (the loop reads ai_lessons with the service role, naming the verified user). */
 export interface ProfileNote { kind: LessonKind; text: string; source: string; approvedAt: string | null; createdAt: string }
@@ -68,5 +68,6 @@ export function noteResultText(result: NoteResult): string {
   if (result === 'active') return 'Noted. Carry on with your answer; do not mention the note unless asked.'
   if (result === 'pending') return 'Noted for the person to approve. Carry on with your answer; do not mention it unless asked.'
   if (result === 'seen') return 'That note is already there. Carry on with your answer.'
+  if (result === 'limit') return 'No more notes can be recorded today. Carry on with your answer.'
   return 'The note could not be recorded just now. Carry on with your answer without it.'
 }
