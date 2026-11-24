@@ -102,7 +102,7 @@ function conversationOf(row: unknown): ConversationRow | null {
 export async function createConversation(admin: Db, row: Omit<ConversationRow, 'message_count' | 'last_prompt_tokens' | 'cost_usd' | 'status' | 'deleted_at'>): Promise<string | null> {
   try {
     const { error } = await admin.from('ai_conversations').insert({ ...row })
-    return error ? `database error ${error.code ?? 'without a code'}` : null
+    return error ? `database error ${error.code || 'without a code'}` : null
   } catch { return 'the database could not be reached' }
 }
 
