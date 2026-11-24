@@ -28,7 +28,7 @@ function AutofillLoading() {
 }
 
 /** The link reader, barcode scan, facts and duplicate warning — a part of the one body (RecordBody: adding, and a saved thing's Facts). */
-export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean; selfId?: string }) {
+export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean; selfId?: string; savedTitle?: string }) {
   return (
     <Suspense fallback={<AutofillLoading />}>
       <AutofillPanel {...props} />

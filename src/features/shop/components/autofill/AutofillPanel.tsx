@@ -37,7 +37,7 @@ const TITLE_REST_MS = 500
  * anything else offers "Find it" with its digits; a title asks only the owner's own history. Possible duplicates
  * are named, never a block on Add.
  */
-export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId }: {
+export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId, savedTitle }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   update: DraftUpdate
@@ -46,6 +46,8 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
   collapsible?: boolean
   /** A saved thing's own id (the open record): it is never its own duplicate, nor its own history. */
   selfId?: string
+  /** A saved thing's title as saved: its history is asked only once the owner changes it. */
+  savedTitle?: string
 }) {
   const { data: allItems = [] } = useShopItems()
   const items = useMemo(() => (selfId ? allItems.filter(i => i.id !== selfId) : allItems), [allItems, selfId])
@@ -70,12 +72,14 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
     })
   }, [update])
 
-  // The title's facts from the owner's own history, once typing rests.
+  // The title's facts from the owner's own history, once typing rests — on a saved thing only once its title was changed:
+  // opening a record never fills anything by itself (a record's Bought saves its draft first).
   const title = draft.title
   useEffect(() => {
+    if (selfId && title === savedTitle) return
     const t = window.setTimeout(() => addFacts('title', factsFromTitle(title, items, categories, new Date().toISOString())), TITLE_REST_MS)
     return () => window.clearTimeout(t)
-  }, [title, items, categories, addFacts])
+  }, [title, items, categories, addFacts, selfId, savedTitle])
 
   // A grocery found for the scanned barcode fills its name, brand and picture (Kassalapp).
   useEffect(() => {

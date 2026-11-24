@@ -406,7 +406,7 @@ function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
     const now = latest.current
     apply(change(recordShopDraft(now.item, now.draft, categories, now.facts)))
   }
-  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} />
+  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} />
 }
 
 /** Adding: the link reader, scan and "Filled in for you"; a receipt (handed to Read a receipt); the receipt's other lines. */

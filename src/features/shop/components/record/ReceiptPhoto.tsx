@@ -64,7 +64,7 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false
         {handoff
           ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => { modal.open({ kind: 'shop-receipt', files }); onHandoff?.() }} tip="Receipt — AI reads up to 5 photos or PDFs, one draft per product">Receipt</PhotoButton>
           : <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending} tip={data ? 'Another receipt' : 'Receipt — AI reads a photo or PDF; you check it'}>{data ? 'Another' : 'Receipt'}</PhotoButton>}
-        {!data && <span className="text-meta text-fg-muted">{handoff ? 'AI reads up to 5 photos or PDFs; one draft per product' : 'AI reads a photo or PDF; you check it'}</span>}
+        {/* What it does is the button's tip (short buttons, 24.11.2026): the row keeps room for what shares it. */}
       </div>
       {data && fill && (
         <>
