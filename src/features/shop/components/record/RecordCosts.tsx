@@ -101,7 +101,8 @@ export function RecordCosts({ itemId, costs = [], drafts, onDrafts, canAdd = tru
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Screen repair, shipping, AppleCare…" aria-label="What for" className="input" autoFocus />
           <MoneyEditor label="Amount" amount={amount} currency={currency} onAmount={setAmount} onCurrency={setCurrency} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <DateInput value={day} onChange={d => d && setDay(d)} aria-label="On" className="input w-[10rem] tabular-nums" />
+            {/* A draft cost takes the thing's own day when it is saved. */}
+            {itemId && <DateInput value={day} onChange={d => d && setDay(d)} aria-label="On" className="input w-[10rem] tabular-nums" />}
             <Toggle checked={back} onChange={setBack}>Money back (a rebate)</Toggle>
           </div>
           {back && (
