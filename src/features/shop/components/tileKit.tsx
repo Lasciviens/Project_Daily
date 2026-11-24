@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { BELT, packGroups, spanPosition, tileColumns, type BeltKind, type PriceSpan } from '../wishTile'
+import { BELT, TILE_GRID, packGroups, spanPosition, tileTrack, type BeltKind, type PriceSpan } from '../wishTile'
 import { money, num } from './shopFormat'
 import { DisposalBadge, DisposalRibbon } from './DisposalRibbon'
 import type { ShopDisposal, ShopItem } from '../types'
@@ -12,37 +12,29 @@ import type { ShopDisposal, ShopItem } from '../types'
 // bar and the loading copy.
 
 /**
- * Tiles flow into content-width columns (W2): two a row on a 375–402px phone,
- * more as the track widens — never wider tiles. 10rem is the most two columns
- * fit on the smallest phone (343px of content). One gap at every width, so
- * `tileColumns` counts the same columns as the grid.
- */
-export const TILE_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] items-stretch gap-2.5'
-
-/**
  * One category's tiles with its subcategories packed into shared rows
- * (`packGroups`), each named once above its own tiles. The column count is
- * auto-fill's, from the grid's own width (measured before the first paint);
- * until then, and without subcategories, the plain auto-fill grid.
+ * (`packGroups`), each named once above its own tiles. Every tile is one size
+ * (`tileTrack`): two equal columns on a `narrow` list (a phone), else fixed
+ * 12rem tracks, as many as the grid's own width holds (measured before the
+ * first paint); until then the CSS grid (`TILE_GRID`) with the same tracks.
  */
-export function PackedTiles({ id, subs, card }: {
+export function PackedTiles({ id, subs, card, narrow }: {
   id: string
   subs: readonly { key: string; title: string | null; items: readonly ShopItem[] }[]
   card: (item: ShopItem) => ReactNode
+  /** The whole list is under 40rem: two tiles to a row. */
+  narrow: boolean
 }) {
   const { ref, width } = useElementWidthRem()
   const labelled = subs.some(s => s.title)
-  const cols = width == null ? null : tileColumns(width)
-  if (!labelled || cols == null) {
-    return (
-      <div ref={ref} id={id} className={TILE_GRID}>
-        {subs.flatMap(sub => sub.items.map(item => <div key={item.id} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>))}
-      </div>
-    )
+  const track = width == null ? null : tileTrack(width, narrow)
+  const tile = (item: ShopItem, style?: CSSProperties) => <div key={item.id} style={style} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>
+  if (track == null) {
+    return <div ref={ref} id={id} className={TILE_GRID}>{subs.flatMap(sub => sub.items.map(item => tile(item)))}</div>
   }
   return (
-    <div ref={ref} id={id} className="grid items-stretch gap-2.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {packGroups(subs.map(s => s.items.length), cols).map(p => {
+    <div ref={ref} id={id} className="grid items-start gap-2.5" style={{ gridTemplateColumns: track.template }}>
+      {!labelled ? subs.flatMap(sub => sub.items.map(item => tile(item))) : packGroups(subs.map(s => s.items.length), track.cols).map(p => {
         const sub = subs[p.group]
         const at = { gridRow: p.line, gridColumn: `${p.col + 1} / span ${p.span}` }
         return p.label
@@ -51,7 +43,7 @@ export function PackedTiles({ id, subs, card }: {
               <Truncate as="p" className="section-label">{sub.title ?? 'Other'}</Truncate>
             </div>
           )
-          : <div key={sub.items[p.index].id} style={at} className="flex min-w-0 flex-col [&>*]:flex-1">{card(sub.items[p.index])}</div>
+          : tile(sub.items[p.index], at)
       })}
     </div>
   )
@@ -165,18 +157,41 @@ export function HistoryBar({ now, span }: { now: number; span: PriceSpan }) {
   )
 }
 
-/** A tile's loading copy: the well, two title lines, the price lines, the action row. */
+/** A tile's title: always two lines tall, cut by `Truncate` (a short one keeps the second line's room). */
+export const TILE_TITLE = 'mx-1.5 mt-2 h-10 text-body font-semibold text-fg'
+/** A tile's action row: one row of 36px controls (44 on touch), the same on every tile. */
+export const TILE_ACTIONS = 'flex items-center gap-1 border-t border-line pt-1'
+
+/**
+ * A tile's three lines under its title, each one line tall whatever it holds, so every tile is one height (owner,
+ * 24.11.2026): the price (with where it was read, cut at the end), the facts (a `MetaLine`, cut at the end), and one more
+ * — a note or the price history — that keeps its room when there is none. Cut text says the whole in its title.
+ */
+export function TileLines({ price, meta, extra }: { price: ReactNode; meta: ReactNode; extra?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
+      <span className="flex h-5 min-w-0 items-baseline gap-x-1 whitespace-nowrap text-meta text-fg-muted">{price}</span>
+      <span className="flex h-4 min-w-0 items-center text-meta tabular-nums text-fg-muted">{meta}</span>
+      <span className="flex h-4 min-w-0 items-center text-meta">{extra}</span>
+    </div>
+  )
+}
+
+/** A tile's loading copy at the tile's own fixed size: the well, the two-line title, the three lines, the action row. */
 export function TileSkeleton() {
   return (
     <div aria-hidden className="card flex flex-col p-1.5">
       <Skeleton rounded="rounded-row" className="aspect-[4/3] w-full" />
-      <span className="flex flex-col gap-1.5 px-1.5 pb-2 pt-2.5">
+      <span className="mx-1.5 mt-2 flex h-10 flex-col justify-center gap-1.5">
         <Skeleton className="h-3.5 w-11/12" />
         <Skeleton className="h-3.5 w-2/3" />
-        <Skeleton className="mt-1.5 h-4 w-3/5" />
-        <Skeleton className="h-3 w-1/2" />
       </span>
-      <span className="mt-auto border-t border-line pt-1"><Skeleton className="h-9 w-full" /></span>
+      <span className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
+        <span className="flex h-5 items-center"><Skeleton className="h-4 w-3/5" /></span>
+        <span className="flex h-4 items-center"><Skeleton className="h-3 w-1/2" /></span>
+        <span className="h-4" />
+      </span>
+      <span className={TILE_ACTIONS}><Skeleton className="h-9 w-full [@media(pointer:coarse)]:h-11" /></span>
     </div>
   )
 }

@@ -19,7 +19,7 @@ import {
   type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
-import { categoryColumns, factsOf, watchedWishIds } from '../wishTile'
+import { STACK_GAP_REM, TILE_GRID, TILE_NARROW_REM, categoryColumns, factsOf, stackRem, watchedWishIds } from '../wishTile'
 import type { Amount } from '../ownModel'
 import { CategorySection, FoldAll } from './CategorySection'
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
@@ -27,7 +27,7 @@ import { WISHLIST_BOARD } from '../shopBoard'
 import { ShopFilters } from './ShopFilters'
 import { GeneralWishTile } from './GeneralWishTile'
 import { WishTile } from './WishTile'
-import { PackedTiles, TILE_GRID, TileSkeleton } from './tileKit'
+import { PackedTiles, TileSkeleton } from './tileKit'
 import { WishlistSummaryLine } from './WishlistSummaryLine'
 import type { ShopCategory, ShopItem } from '../types'
 
@@ -136,14 +136,17 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     />
   )
 
-  // Wide lists deal the category sections into column stacks by their own width (W2).
+  // Wide lists deal the category sections into column stacks by their own width (W2), each stack exactly as wide as the
+  // whole tiles it holds, so every stack is as wide and its tiles fill it. Under 40rem the tiles are two to a row.
   const stacks = dealByIndex(groups, categoryColumns(listRem))
+  const narrow = listRem != null && listRem < TILE_NARROW_REM
+  const stackWidth = listRem != null && stacks.length > 1 ? stackRem(listRem, stacks.length) : null
   const section = (group: CategoryGroup) => {
     const t = totalsIn(group.items, 'NOK', rates, models, watches)
     return (
       <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
         aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={tile}
-        body={id => <PackedTiles id={id} subs={group.subs} card={tile} />} />
+        body={id => <PackedTiles id={id} subs={group.subs} card={tile} narrow={narrow} />} />
     )
   }
 
@@ -177,7 +180,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
         </p>
       )}
       {stacks.length === 1 ? stacks[0].map(section) : (
-        <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 1fr))` }}>
+        <div className="grid items-start gap-y-4"
+          style={{ columnGap: `${STACK_GAP_REM}rem`, gridTemplateColumns: `repeat(${stacks.length}, ${stackWidth == null ? 'minmax(0, 1fr)' : `${stackWidth}rem`})` }}>
           {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-4">{stack.map(section)}</div>)}
         </div>
       )}

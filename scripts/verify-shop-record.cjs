@@ -10,6 +10,7 @@ const R = require('../src/features/shop/ownedRow')
 const St = require('../src/features/shop/recordStory')
 const S = require('../src/features/shop/shopSuggestions')
 const O = require('../src/features/shop/ownModel')
+const W = require('../src/features/shop/wishTile')
 
 let passed = 0, failed = 0
 function check(name, cond, detail) {
@@ -169,8 +170,24 @@ console.log('big pictures: one card size on the whole page (owner, 24.11.2026: "
   const card = views.slice(views.indexOf('export function OwnedCard'), views.indexOf('function CardAccessories'))
   check('the card\'s height comes from fixed parts: the square picture, the name in two lines (h-10, cut by Truncate) and one 20px line for the price and tag',
     card.includes('size="fill"') && /<Truncate as="span" lines=\{2\} className="h-10 /.test(card) && card.includes('flex h-5 min-w-0 items-center') && !card.includes('flex-wrap') && !card.includes('mt-auto'))
+  const pill = views.slice(views.indexOf('function CardTagPill'), views.indexOf('function CardAccessories'))
   check('the tag is cut, never wrapped, and the accessories are a count on the picture (never lines that make one card taller)',
-    /<TonePill[^>]*min-w-0[^>]*><Truncate as="span">\{tag\.text\}<\/Truncate><\/TonePill>/.test(card) && !card.includes('AccessoryLines') && card.includes('<CardAccessories'))
+    card.includes('cardTag(item, watch, today, listing)') && card.includes('<CardTagPill') && /<TonePill[^>]*min-w-0/.test(pill) && pill.includes('<Truncate as="span">{tag.text}</Truncate>')
+    && !card.includes('AccessoryLines') && card.includes('<CardAccessories'))
+  check('the big pictures use the Wishlist tile\'s width, gap and grid (one constant for both)', R.PICTURE_CARD_REM === W.TILE_REM && R.PICTURE_CARD_GAP_REM === W.TILE_GAP_REM && R.PICTURE_GRID === W.TILE_GRID)
+}
+
+console.log('a card\'s tag: a date tag as an icon and its whole date (a 12rem card cut "Return by 03.01.2027")')
+{
+  const mine = p => item({ status: 'bought', bought_at: day(-100), price: 1000, ...p })
+  const ret = R.cardTag(mine({ return_by: day(40) }), null, TODAY)
+  check('a return window counted by its date: the return icon, the date whole (DD.MM.YYYY), the row\'s words kept for the title',
+    ret && ret.icon === 'return' && ret.short === '20.12.2026' && ret.text === 'Return by 20.12.2026' && eq(R.rowTag(mine({ return_by: day(40) }), null, TODAY), { text: ret.text, tone: ret.tone }))
+  const soon = R.cardTag(mine({ return_by: day(5) }), null, TODAY)
+  check('a return counted in days is short already: unchanged', soon && soon.text === 'Return in 5 days' && !soon.icon && !soon.short)
+  const comp = R.cardTag(mine({ warranty_until: day(30) }), null, TODAY)
+  check('the complaint right ending: the shield and its whole date', comp && comp.icon === 'complaint' && comp.short === '10.12.2026' && comp.text === 'Complaint until 10.12.2026')
+  check('no tag: none; every short form is a whole DD.MM.YYYY date', R.cardTag(mine({}), null, TODAY) === null && [ret, comp].every(t => /^\d{2}\.\d{2}\.\d{4}$/.test(t.short)))
 }
 
 console.log('the Story')

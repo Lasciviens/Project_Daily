@@ -1,8 +1,8 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { CornerDownRight } from 'lucide-react'
+import { CornerDownRight, ShieldCheck, Undo2 } from 'lucide-react'
 import { TonePill, Truncate, cx } from '../../../../shared/ui'
 import { DISPOSAL_LABEL } from '../../ownModel'
-import { rowPrice, rowTag } from '../../ownedRow'
+import { cardTag, rowPrice, rowTag, type CardTag } from '../../ownedRow'
 import { initialsOf, tintOf } from '../../wishTile'
 import { imageOf } from '../shopFormat'
 import { RowPicture } from '../tileKit'
@@ -67,7 +67,7 @@ export function OwnedLine({ item, accessories, watch, listing, today, topId, ico
  * them, so a thing with three of them is no taller than one with none.
  */
 export function OwnedCard({ item, accessories, watch, listing, today, topId, icon, onOpen }: OwnedRowProps) {
-  const tag = rowTag(item, watch, today, listing)
+  const tag = cardTag(item, watch, today, listing)
   const price = rowPrice(item)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   return (
@@ -82,11 +82,29 @@ export function OwnedCard({ item, accessories, watch, listing, today, topId, ico
             title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
             {price.text}
           </span>
-          {tag && <TonePill tone={tag.tone} className="min-w-0 tabular-nums"><Truncate as="span">{tag.text}</Truncate></TonePill>}
+          {tag && <CardTagPill tag={tag} />}
         </span>
       </button>
       {accessories.length > 0 && <CardAccessories accessories={accessories} together={together} onOpen={onOpen} />}
     </li>
+  )
+}
+
+/**
+ * A card's one tag, cut and never wrapped. A date tag fits a 12rem card as an icon and its whole date (`cardTag`): the
+ * words ("Return by 03.01.2027") are its title and what a screen reader reads.
+ */
+function CardTagPill({ tag }: { tag: CardTag }) {
+  const Icon = tag.icon === 'return' ? Undo2 : tag.icon === 'complaint' ? ShieldCheck : null
+  return (
+    <span title={tag.short ? tag.text : undefined} className="flex min-w-0">
+      <TonePill tone={tag.tone} className="min-w-0 tabular-nums">
+        {Icon && <Icon aria-hidden className="h-3 w-3 shrink-0" />}
+        {tag.short
+          ? <><span aria-hidden>{tag.short}</span><span className="sr-only">{tag.text}</span></>
+          : <Truncate as="span">{tag.text}</Truncate>}
+      </TonePill>
+    </span>
   )
 }
 

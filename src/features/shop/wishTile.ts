@@ -155,24 +155,54 @@ export function initialsOf(title: string): string {
 }
 
 /**
+ * Every picture tile in the Shop is one size — the Wishlist's tiles and Owned's big-picture cards alike (owner, 24.11.2026:
+ * "Every box should have the same exact size!"): from a 40rem list exactly `TILE_REM` wide, a fixed grid track (never
+ * `minmax` or `1fr`: those made tiles of different widths in grids of different widths), and below it two to a row, equal.
+ * The height is fixed by the tile's parts (`WishTile`, `GeneralWishTile`, `OwnedCard`). One gap everywhere.
+ */
+export const TILE_REM = 12
+export const TILE_GAP_REM = 0.625
+/** Below this list width the tiles are two to a row (a phone); from it they are `TILE_REM` wide. */
+export const TILE_NARROW_REM = 40
+/**
+ * The tile grid before it is measured (and the loading copy's): two equal columns on a phone, fixed 12rem tracks from a
+ * 40rem page, `gap-2.5` (`TILE_GAP_REM`). Literal for Tailwind; verify-shop-record checks it against the numbers above.
+ */
+export const TILE_GRID = 'grid grid-cols-2 items-start gap-2.5 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]'
+/** The gap between two stacks of categories. */
+export const STACK_GAP_REM = 1.5
+
+/** How wide `n` tiles are with the gaps between them. */
+export const tilesRem = (n: number): number => n * TILE_REM + Math.max(0, n - 1) * TILE_GAP_REM
+
+/** How many fixed tiles a row of `widthRem` takes (at least one). */
+export function tileColumns(widthRem: number): number {
+  return Math.max(1, Math.floor((widthRem + TILE_GAP_REM) / (TILE_REM + TILE_GAP_REM)))
+}
+
+/** A tile grid's columns and template: two equal columns on a narrow list, else as many fixed tracks as `widthRem` holds. */
+export function tileTrack(widthRem: number, narrow: boolean): { cols: number; template: string } {
+  if (narrow) return { cols: 2, template: 'repeat(2, minmax(0, 1fr))' }
+  const cols = tileColumns(widthRem)
+  return { cols, template: `repeat(${cols}, ${TILE_REM}rem)` }
+}
+
+/**
  * How many column stacks the category sections are dealt into, by the list's
  * own width in rem (W2: sections of different heights stack, never a row
- * grid). A stack keeps room for three 10rem tiles (31.5rem with their gaps)
- * and 1.5rem between stacks: one on a phone and a 1469 laptop, two at 1920,
- * three at 2450. Unmeasured: one.
+ * grid). A stack keeps room for three tiles (37.25rem with their gaps) and
+ * 1.5rem between stacks: one on a phone and a 1469 laptop, two at 1795 and
+ * 1920, three at 2450. Unmeasured: one.
  */
 export function categoryColumns(widthRem: number | null): number {
   if (widthRem == null || !Number.isFinite(widthRem)) return 1
-  return Math.max(1, Math.floor((widthRem + 1.5) / 33))
+  return Math.max(1, Math.floor((widthRem + STACK_GAP_REM) / (tilesRem(3) + STACK_GAP_REM)))
 }
 
-/** The tile grid's column width and gap, in rem (tileKit.TILE_GRID). */
-export const TILE_MIN_REM = 10
-export const TILE_GAP_REM = 0.625
-
-/** How many tiles a row of `widthRem` takes — auto-fill's own count for minmax(10rem, 1fr). */
-export function tileColumns(widthRem: number): number {
-  return Math.max(1, Math.floor((widthRem + TILE_GAP_REM) / (TILE_MIN_REM + TILE_GAP_REM)))
+/** One stack's width: the whole tiles its share of the list holds, so its tiles fill it and every stack is as wide. */
+export function stackRem(widthRem: number, stacks: number): number {
+  const share = (widthRem - (stacks - 1) * STACK_GAP_REM) / Math.max(1, stacks)
+  return tilesRem(tileColumns(share))
 }
 
 /** One placed piece of a packed category: a subcategory's label over its first tiles, or a tile. */

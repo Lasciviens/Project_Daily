@@ -12,7 +12,7 @@ import {
   type MoneyCtx,
 } from './ownModel'
 import { currencyOf } from './shopModel'
-import { cleanPrice } from './wishTile'
+import { cleanPrice, TILE_GAP_REM, TILE_GRID, TILE_NARROW_REM, TILE_REM, tilesRem } from './wishTile'
 import { listingTag } from './sellingModel'
 import type { ShopListing } from './resaleTypes'
 import type { ShopItem, ShopPriceWatch } from './types'
@@ -74,6 +74,24 @@ export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, to
   const age = valueAgeDays(i, today)
   if (i.value_now != null && age != null && age > VALUE_STALE_DAYS) return { text: 'Old estimate', tone: 'info' }
   return null
+}
+
+/** A tag as a big-picture card shows it: a date tag as an icon and its date (the whole words in its title and accessible name). */
+export interface CardTag extends RowTag { icon?: 'return' | 'complaint'; short?: string }
+
+/**
+ * The row's tag for a 12rem card, where "Return by 03.01.2027" and "Complaint until 24.12.2026" are cut (owner, 24.11.2026):
+ * a return window counted by its date shows the return icon and "03.01.2027", the complaint right the shield and its date —
+ * the date whole (every visible date is DD.MM.YYYY). Every other tag is short already and stays as it is.
+ */
+export function cardTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string, listing?: ShopListing | null): CardTag | null {
+  const tag = rowTag(i, watch, today, listing)
+  if (!tag) return null
+  if (i.return_by && tag.text === returnWords(daysBetween(today, i.return_by), i.return_by) && tag.text.startsWith('Return by ')) {
+    return { ...tag, icon: 'return', short: formatDate(i.return_by) }
+  }
+  if (i.warranty_until && tag.text === `Complaint until ${formatDate(i.warranty_until)}`) return { ...tag, icon: 'complaint', short: formatDate(i.warranty_until) }
+  return tag
 }
 
 /** How long, in a row's few letters: "12 days", "18 months", "3 years", "2½ years". */
@@ -153,26 +171,23 @@ export function rowStacks(widthRem: number | null): number {
 export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
 
 /**
- * Every big-picture card on the page is one size (owner, 24.11.2026: "Every box should have the same exact size!"): from a
- * list 40rem wide, exactly this wide — a fixed grid track, never `minmax` (a 9.5–12rem track made cards of different widths)
- * — and on a phone half the row. Its height is fixed by its parts (`OwnedCard`).
+ * Every big-picture card on the page is one size, the Wishlist's tile size (`wishTile.TILE_REM`; owner, 24.11.2026: "Every
+ * box should have the same exact size!"): from a list 40rem wide, exactly this wide — a fixed grid track, never `minmax` (a
+ * 9.5–12rem track made cards of different widths) — and on a phone half the row. Its height is fixed by its parts (`OwnedCard`).
  */
-export const PICTURE_CARD_REM = 12
+export const PICTURE_CARD_REM = TILE_REM
 /**
- * One gap between cards, inside a block and between blocks (the Wishlist's tiles' 2.5): the blocks then sit on one column
+ * One gap between cards, inside a block and between blocks (the Wishlist's tiles' gap): the blocks then sit on one column
  * grid, so the cards of every subcategory and category line up; the subcategory's label above its block tells them apart.
  */
-export const PICTURE_CARD_GAP_REM = 0.625
+export const PICTURE_CARD_GAP_REM = TILE_GAP_REM
 /** Below this list width the cards are two to a row (half the row each); from it they are `PICTURE_CARD_REM` wide. */
-export const PICTURE_PACK_MIN_REM = 40
-/**
- * The big pictures' grid — every subcategory's and the Gone fold's: two equal columns on a phone, fixed 12rem tracks from a
- * 40rem page, one 0.625rem gap (`gap-2.5`). Literal for Tailwind; verify-shop-record checks it against the numbers above.
- */
-export const PICTURE_GRID = 'grid grid-cols-2 gap-2.5 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]'
+export const PICTURE_PACK_MIN_REM = TILE_NARROW_REM
+/** The big pictures' grid — every subcategory's and the Gone fold's — is the tiles' grid (`wishTile.TILE_GRID`). */
+export const PICTURE_GRID = TILE_GRID
 /** A category's blocks side by side: the same gap across as between cards, so every block starts on the column grid. */
 export const PICTURE_BLOCKS = 'flex flex-wrap items-start gap-x-2.5 gap-y-3'
-export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * PICTURE_CARD_GAP_REM
+export const pictureBlockRem = tilesRem
 /** How many card columns a width holds. */
 export const pictureLineColumns = (widthRem: number): number =>
   Math.max(0, Math.floor((widthRem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))

@@ -293,9 +293,16 @@ console.log('the tile without a picture, and the width')
   check('initials: the first letter or digit of two words', T.initialsOf('Coffee grinder') === 'CG' && T.initialsOf('retroid pocket 6 pro') === 'RP' && T.initialsOf('Øl') === 'Ø' && T.initialsOf('  ') === '?')
   const tints = ['a', 'b', 'c', 'top-1', 'top-2', '5a5b0000-0000-4000-8000-000000000001'].map(T.tintOf)
   check('a tint is 1–5 for a category (stable), 6 without one', tints.every(t => t >= 1 && t <= 5) && T.tintOf('top-1') === T.tintOf('top-1') && T.tintOf(null) === 6)
-  check('tiles: two a row on a 375–402px phone, more as the track widens', T.tileColumns(343 / 16) === 2 && T.tileColumns(370 / 16) === 2 && T.tileColumns(773 / 16) === 4 && T.tileColumns(1) === 1)
-  check('category stacks: one on a phone and the 1469 laptop, two at 1920, three at 2450', T.categoryColumns(null) === 1 && T.categoryColumns(23) === 1
-    && T.categoryColumns(773 / 16) === 1 && T.categoryColumns(81) === 2 && T.categoryColumns(106) === 3)
+  check('tiles: two equal ones a row on a 375–402px phone (a narrow list), whatever the box', [343 / 16, 370 / 16, 23.1].every(w => eq(T.tileTrack(w, true), { cols: 2, template: 'repeat(2, minmax(0, 1fr))' })))
+  check('tiles: from a 40rem list, fixed 12rem tracks — more of them as the track widens, never wider tiles', T.tileColumns(48.3) === 3 && T.tileColumns(73) === 5 && T.tileColumns(1) === 1
+    && T.tileTrack(73, false).template === 'repeat(5, 12rem)' && T.tileTrack(37.25, false).cols === 3)
+  check('category stacks (three tiles each at least): one on a phone and the 1469 laptop (73rem), two at 1795 (93rem), three at 2450 (131rem)', T.categoryColumns(null) === 1 && T.categoryColumns(23) === 1
+    && T.categoryColumns(48.3) === 1 && T.categoryColumns(73) === 1 && T.categoryColumns(93.3) === 2 && T.categoryColumns(131) === 3)
+  const widths = [48.3, 73, 81, 93.3, 106, 131, 150]
+  check('a stack is exactly its whole tiles wide, every stack as wide, and the stacks fit the list', widths.every(w => {
+    const s = T.categoryColumns(w), r = T.stackRem(w, s)
+    return T.tilesRem(T.tileColumns(r)) === r && T.tileColumns(r) >= 3 && s * r + (s - 1) * T.STACK_GAP_REM <= w + 1e-9
+  }))
   const pack = T.packGroups([1, 3], 4)
   check('a small subcategory shares the row: two labels on line 1, four tiles on line 2', eq(pack.filter(p => p.label).map(p => [p.line, p.col, p.span]), [[1, 0, 1], [1, 1, 3]])
     && pack.filter(p => !p.label).every(p => p.line === 2))
@@ -306,6 +313,31 @@ console.log('the tile without a picture, and the width')
   check('a group longer than a row fills rows; the next may share its last row', eq(long.filter(p => p.label).map(p => [p.group, p.line, p.col]), [[0, 1, 0], [1, 4, 1]])
     && long.filter(p => !p.label).length === 6)
   check('every tile once, in order; empty groups skipped', eq(T.packGroups([2, 0, 2], 3).filter(p => !p.label).map(p => [p.group, p.index]), [[0, 0], [0, 1], [2, 0], [2, 1]]))
+}
+
+console.log('the tile: one size on the whole page (owner, 24.11.2026: "Every box should have the same exact size!")')
+{
+  const fs = require('fs'), path = require('path')
+  const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  check('the tile width is one constant (12rem) and the grid\'s tracks are exactly that — never minmax, 1fr or auto-fit',
+    T.TILE_REM === 12 && T.TILE_GRID.includes(`grid-cols-[repeat(auto-fill,${T.TILE_REM}rem)]`) && !/minmax|1fr|auto-fit/.test(T.TILE_GRID))
+  check('two equal columns on a phone, the switch at TILE_NARROW_REM, one gap equal to TILE_GAP_REM (Tailwind steps are 0.25rem)',
+    T.TILE_GRID.includes('grid-cols-2 ') && T.TILE_GRID.includes(`@[${T.TILE_NARROW_REM}rem]/page:`) && T.TILE_GRID.includes(` gap-${T.TILE_GAP_REM * 4} `))
+  const kit = src('src/features/shop/components/tileKit.tsx')
+  check('the packed grid takes its tracks from tileTrack (fixed 12rem, or two equal ones on a narrow list), its fallback is TILE_GRID',
+    kit.includes('gridTemplateColumns: track.template') && kit.includes('className={TILE_GRID}') && !kit.includes('minmax(0, 1fr)'))
+  check('a tile\'s parts are fixed: the title two lines tall (h-10, never min-h), three one-line lines (20, 16, 16px), one action row',
+    /TILE_TITLE = 'mx-1\.5 mt-2 h-10 /.test(kit) && !/TILE_TITLE = '[^']*min-h/.test(kit)
+    && /flex h-5 min-w-0 items-baseline gap-x-1 whitespace-nowrap/.test(kit) && (kit.match(/flex h-4 min-w-0 items-center/g) || []).length === 2)
+  for (const f of ['WishTile', 'GeneralWishTile']) {
+    const t = src(`src/features/shop/components/${f}.tsx`)
+    check(`${f}: built from the same fixed parts (TILE_TITLE, TileLines, TILE_ACTIONS) — nothing that wraps or grows`,
+      t.includes('lines={2} className={TILE_TITLE}') && t.includes('<TileLines') && t.includes('className={TILE_ACTIONS}')
+      && !/flex-wrap|break-words|mt-auto|min-h-10/.test(t))
+  }
+  check('the skeleton has the tile\'s own parts, so nothing moves when the tiles land', /export function TileSkeleton[\s\S]*h-10[\s\S]*h-5[\s\S]*h-4[\s\S]*h-4[\s\S]*TILE_ACTIONS/.test(kit))
+  const view = src('src/features/shop/components/WishlistView.tsx')
+  check('the list tells every grid whether it is narrow, and its stacks are whole tiles wide', view.includes('narrow={narrow}') && view.includes('stackRem(listRem, stacks.length)'))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
