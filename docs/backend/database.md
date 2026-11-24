@@ -581,6 +581,7 @@ Written only by the `claude` function (service role) with the user id it verifie
 - **`ai_find_text(query, kind, limit)`**: SECURITY **INVOKER** (the caller's rights, owner lock and row level security apply, `search_path = ''`), Postgres full-text (`simple`) over the caller's tasks and diary plus a title substring, at most 10 rows with 300-character snippets.
 - **Checks:** `scripts/verify-db-ai-chat.mjs` (static checks on 197, then 46 scenarios on two throwaway databases, one with the old default grants and one without; 197 runs twice and must leave the catalogue unchanged; step "AI chat database scenarios" in `pr-check.yml`).
 - **Client:** the app reads the tables through `chatApi.ts`; before 197 the list is empty (a missing-table guard). `qk.aiChat` is in `NEVER_KEPT` (never stored on the device).
+- **Migration 205 (Ask AI fixes, 24.11.2026)** widens three CHECKs and nothing else: `ai_chat_proposals.tool` also takes `update_food` (one of today's one-off food lines: its title and/or four figures) and `update_task` (one task's title); `status` also takes `replaced` (a newer proposal for the same thing took a pending one's place; it needs `decided_at` like every decided state and can never be confirmed); `ai_tool_settings_write_never_on` names the two new write tools. No grant, policy or table changes: the browser still writes no proposal. Checks: `scripts/verify-db-ai-chat-fixes.mjs` (205 runs twice and must change only its three CHECKs; 16 scenarios on two databases).
 
 ## Edge Function Rules
 
