@@ -351,7 +351,7 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
   const place = eventPlace(t.place)
   const location = place ? { location: placeText(place) } : {}
   const reminders = googleReminders(t.alerts, !startClock || !endClock)
-  const own = reminders ? { reminders } : {}
+  const own = { reminders }
   if (!startClock || !endClock) {
     return {
       first, horizon, from,

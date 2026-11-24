@@ -1068,17 +1068,20 @@ export function eventTransparency(showAs: unknown, timedWithLength: boolean): 'o
 /** Google's reminders (193; Events reference: `reminders.useDefault`, `overrides[]` of `{ method, minutes }`, minutes
  *  "between 0 and 40320", at most 5). */
 export interface EventReminders { useDefault: boolean; overrides: { method: 'popup'; minutes: number }[] }
-/** The calendar's own default — what an item with no alerts of its own has (and what an update puts back). */
-export const DEFAULT_REMINDERS: EventReminders = { useDefault: true, overrides: [] }
+/** No reminders at all — what an item with no alerts of its own gets, and what an update puts back (owner, 24.11.2026:
+ *  "Default alert on apple calendar should be none on everything": Google's events show in the iPhone's Calendar with
+ *  their reminders, and `useDefault: true` would give them the calendar's own default reminders). */
+export const NO_REMINDERS: EventReminders = { useDefault: false, overrides: [] }
 
 /**
- * An item's alerts as Google's reminders (193), or null when it has none of its own (the calendar's default, as before
- * 193). Timed: minutes before the start. All day: Google counts from the day's midnight and takes no minutes after it,
- * so 09:00 the day before is 900 and "on the day at 09:00" can't be said — it is left out (Apple has it).
+ * An item's alerts as Google's reminders (193); none of its own ("Default") is no reminders (NO_REMINDERS, a fresh
+ * copy), never the calendar's default. Timed: minutes before the start. All day: Google counts from the day's midnight
+ * and takes no minutes after it, so 09:00 the day before is 900 and "on the day at 09:00" can't be said — it is left
+ * out (Apple has it).
  */
-export function googleReminders(raw: unknown, allDay: boolean): EventReminders | null {
+export function googleReminders(raw: unknown, allDay: boolean): EventReminders {
   const alerts = eventAlerts(raw)
-  if (!alerts) return null
+  if (!alerts) return { ...NO_REMINDERS, overrides: [] }
   const minutes = alerts.map(m => (allDay ? allDayAlertDays(m) * 1440 - ALL_DAY_ALERT_MINUTE : m)).filter(m => m >= 0)
   return { useDefault: false, overrides: [...new Set(minutes)].map(m => ({ method: 'popup' as const, minutes: m })) }
 }
@@ -1124,7 +1127,7 @@ export interface BlockEventBody {
   transparency: 'opaque' | 'transparent'
   /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
   location?: string
-  /** The slot's own alerts (193), when it has them. A PATCH of the whole event sends none as the default (fullEventPatch). */
+  /** The slot's alerts (193): its own, or none at all (googleReminders). A PATCH of the whole event always sends them (fullEventPatch). */
   reminders?: EventReminders
 }
 
@@ -1133,7 +1136,7 @@ export interface BlockEventBody {
  * the next day — Google's end is exclusive) and Free; a time is a wall-clock
  * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
  * with a nominal end when it doesn't — unless Show As says (193). Its own
- * alerts are its reminders (193). null when the slot has no usable day.
+ * alerts are its reminders (193), none without any. null when the slot has no usable day.
  */
 export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
   if (!ISO_DAY.test(b.date ?? '')) return null
@@ -1142,7 +1145,7 @@ export function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: s
   const place = eventPlace(b.place)
   const location = place ? { location: placeText(place) } : {}
   const reminders = googleReminders(b.alerts, start === null)
-  const own = reminders ? { reminders } : {}
+  const own = { reminders }
   if (start === null) {
     return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: eventTransparency(b.show_as, false), ...location, ...own }
   }
@@ -1189,12 +1192,12 @@ export function withTimePatch<B extends { start: EventTime; end: EventTime }>(bo
  * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
  * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
  * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body. Its reminders too (193):
- * an item with no alerts of its own sends the calendar's default with no overrides (a PATCH replaces an array and
+ * an item with no alerts of its own sends no reminders at all (NO_REMINDERS; a PATCH replaces an array and
  * merges an object, so alerts taken off in the app leave Google too).
  */
 export function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string; reminders?: EventReminders }>(body: B): Omit<Omit<B, 'location' | 'reminders'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null; reminders: EventReminders } {
   const { location, reminders, ...rest } = body
-  return { ...withTimePatch(rest), location: location ?? null, reminders: reminders ?? { ...DEFAULT_REMINDERS, overrides: [] } }
+  return { ...withTimePatch(rest), location: location ?? null, reminders: reminders ?? { ...NO_REMINDERS, overrides: [] } }
 }
 
 /**

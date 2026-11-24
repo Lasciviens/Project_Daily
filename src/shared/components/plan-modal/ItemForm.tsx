@@ -98,7 +98,7 @@ interface Props {
  *  Google Calendar's own default there; nothing when it stays in the app). */
 const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> = {
   apple: "Its area's alert (Settings → Calendar)",
-  'google-calendar': "Google Calendar's own default",
+  'google-calendar': 'No alert (none of its own)',
 }
 
 export function ItemForm({
@@ -139,7 +139,7 @@ export function ItemForm({
             <TitleField id={titleId} value={typed} onChange={onTitle} autoFocus={creating}
               placeholder={creating ? 'e.g. Gym 17:30 1h every Mon Wed Fri' : 'Title'} />
             {fill?.button}
-            <FieldMark goes={goes('title')} className="mt-1.5" />
+            <FieldMark goes={goes('title')} row="Title" className="mt-1.5" />
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
@@ -148,7 +148,7 @@ export function ItemForm({
         {slotFields && (
           <Section title="Location">
             <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
-              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} /></>} />
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
@@ -193,11 +193,11 @@ export function ItemForm({
           <Section title="Details">
             {slotFields && (
               <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle}
-                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} /></>}
+                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} row="URL" /></>}
                 onChange={url => patch(withCalendarField(form, 'url', url))} />
             )}
             {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })}
-              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} className="mt-3" /></>} />}
+              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} row="Notes" className="mt-3" /></>} />}
           </Section>
         )}
 

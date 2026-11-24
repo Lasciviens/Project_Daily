@@ -31,7 +31,7 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/home/pages/HomePage.tsx': 555,             // [527]
   'src/features/daily/pages/DailyPage.tsx': 540,           // [512]
   'src/features/games/test-game/TestGamePage.tsx': 525,    // [499] Games
-  'src/features/settings/pages/SettingsPage.tsx': 523,     // [495] main was at 520 on 23.11.2026; +3 that day: Food → a preset's Suggest options
+  'src/features/settings/pages/SettingsPage.tsx': 524,     // [495] main was at 520 on 23.11.2026; +3 that day: Food → a preset's Suggest options; +1 on 24.11.2026: the item screen's card banners (523.1)
                                                            // reports its save for AI learning (the call's id and a hook; the report itself loads at the save)
   'src/features/recipes/pages/RecipesPage.tsx': 505,       // [479] Food
   'src/features/training/pages/TrainingPage.tsx': 450,     // [424]
@@ -43,7 +43,7 @@ const PAGE_KB = {                                          // the shell plus the
                                                            // Needs-a-look rows' hooks — are part of the Shop now; their models, writes and the
                                                            // autofill still load in their own chunks
   'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
-  'src/features/work/pages/WorkPage.tsx': 375,             // [355]
+  'src/features/work/pages/WorkPage.tsx': 376,             // [355] +1 on 24.11.2026: the item screen's card banners (375.1)
   'src/features/books/pages/BooksPage.tsx': 370,           // [350]
   'src/features/wishes/pages/WishesPage.tsx': 355,         // [337]
   'src/features/football/pages/FootballPage.tsx': 350,     // [331]

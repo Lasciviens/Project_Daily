@@ -106,6 +106,11 @@ console.log('\n== 4. Where each field goes (the marks) ==')
   check('no day: no calendar (Google Calendar needs one)', g('title', 'calendar', 'google', false) === 'app')
   check('Apple\'s notes off (link only / none): the notes don\'t go there', g('notes', 'calendar', 'apple', true, false) === 'app' && g('notes', 'calendar', 'apple', true, true) === 'apple')
   check('every destination has its words', Object.keys(R.FIELD_GOES_TEXT).length === 4)
+  // A card's banner (owner, 24.11.2026: "Use them as banner instead"): each place once, calendars first, the rows named.
+  const card = [{ goes: 'app', row: 'Priority' }, { goes: 'apple', row: 'Date' }, { goes: 'apple', row: 'Starts' }, { goes: 'apple', row: 'Starts' }, { goes: 'google-tasks', row: null }]
+  check('a card\'s banner draws each place once, the calendars first, the app last', same(R.cardMarkPlaces(card), ['apple', 'google-tasks', 'app']) && same(R.cardMarkPlaces([]), []))
+  check('…and says it in words, naming each row once (a row with no name: the place alone)',
+    R.cardMarksText(card) === 'Goes to Apple Calendar: Date, Starts · Goes to Google Tasks · Stays in the app: Priority' && R.cardMarksText([]) === '')
 }
 
 console.log('\n== 5. The Calendar row\'s red dot ==')
@@ -163,7 +168,16 @@ console.log('\n== 7. The screen keeps its data paths ==')
   const marks = src('src/shared/components/plan-modal/FieldMark.tsx')
   check('the marks are SVG files in the repo (Apple\'s, Google\'s) and the app\'s logo', /assets\/marks\/apple\.svg/.test(marks) && /assets\/marks\/google\.svg/.test(marks) && /logo\.svg/.test(marks)
     && fs.existsSync(path.join(__dirname, '../src/assets/marks/apple.svg')) && fs.existsSync(path.join(__dirname, '../src/assets/marks/google.svg')))
-  check('the Calendar row\'s mark always shows; the others follow the setting', /<FieldMark always goes=/.test(src('src/shared/components/plan-modal/OptionsSection.tsx')) && /if \(!on && !always && !refused\) return null/.test(marks))
+  check('the Calendar row\'s mark always shows, in its row; the others follow the setting and go to their card\'s banner',
+    /<FieldMark always goes=/.test(src('src/shared/components/plan-modal/OptionsSection.tsx'))
+    && /const toCard = !!register && !always && !refused/.test(marks) && /if \(toCard \|\| \(!on && !always && !refused\)\) return null/.test(marks))
+  const rows = src('src/shared/components/plan-modal/ItemRows.tsx')
+  check('every card draws its rows\' marks as one banner, tucked behind it (isolate, -z-10), adding no height', /<section className="relative isolate flex flex-col gap-1\.5">\s*<CardBanner marks=\{marks\} titled=\{!!title\} \/>/.test(rows)
+    && /mark-banner absolute right-3 -z-10/.test(marks) && /if \(!on \|\| !places\.length\) return null/.test(marks))
+  check('…a tap on the banner says where the rows go; its fade-in only under useMotion()', /onClick=\{e => show\(e\.currentTarget, text\)\}/.test(marks) && /motion && 'motion-pop-in'/.test(marks))
+  const css = src('src/index.css')
+  check('…its look is tokens only, light and dark (opacity, shadow)', (css.match(/--mark-banner-opacity:/g) || []).length === 2 && (css.match(/--mark-banner-shadow:/g) || []).length === 2
+    && /\.mark-banner \{ opacity: var\(--mark-banner-opacity\)/.test(css) && /drop-shadow\([^)]*var\(--mark-banner-shadow\)\)/.test(css))
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')
   check('Apple\'s headers, and no ✨ yet (step 4); no Invitees until they work', ['"Location"', '"Time"', '"Options"', '"Details"', '"Planning"'].every(h => form.includes(`title=${h}`))
     && !form.includes('title="Invitees"') && !/Sparkles/.test(form))

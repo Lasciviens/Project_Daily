@@ -12,23 +12,37 @@ import { Check, ChevronRight } from 'lucide-react'
 import { cx, Switch, Truncate } from '../../ui'
 import { useMotion } from '../../hooks/useMotion'
 import { FilledMark } from './FillMark'
+import { CardBanner, CardMarksScope } from './FieldMark'
+import { MarkRowContext, useCardMarks } from './cardMarks'
 
 /** A row's top hairline, inset like Apple's; the first row of a group has none. */
 export const LINE = 'relative before:absolute before:left-3.5 before:right-0 before:top-0 before:h-px before:bg-line first:before:content-none'
 const ROW = `${LINE} flex min-h-11 w-full items-center gap-2.5 px-3.5 text-lead`
 
+/** A group of rows. Its rows' marks (where each field goes) are one banner tucked behind its top-right
+ *  (FieldMark.CardBanner: `isolate` keeps it under the card and above the sheet). */
 export function Section({ title, children }: { title?: string; children: ReactNode }) {
+  const { marks, register } = useCardMarks()
   return (
-    <section className="flex flex-col gap-1.5">
-      {title && <h3 className="section-label px-3.5">{title}</h3>}
-      <div className="overflow-hidden rounded-row bg-surface">{children}</div>
+    <section className="relative isolate flex flex-col gap-1.5">
+      <CardBanner marks={marks} titled={!!title} />
+      {title && <h3 className="section-label self-start px-3.5">{title}</h3>}
+      <div className="overflow-hidden rounded-row bg-surface">
+        <CardMarksScope register={register}>{children}</CardMarksScope>
+      </div>
     </section>
   )
 }
 
-/** The label and its mark, left — and ✨'s mark while a fill of that row waits to be kept (FillMark). */
+/** The label and its mark, left — and ✨'s mark while a fill of that row waits to be kept (FillMark). The mark learns
+ *  its row's name (a card's banner words name the rows). */
 function Label({ children, mark, grow = true }: { children: ReactNode; mark?: ReactNode; grow?: boolean }) {
-  return <span className={cx('flex min-w-0 items-center gap-1.5 text-fg', grow ? 'flex-1' : 'shrink-0')}>{children}<FilledMark row={children} />{mark}</span>
+  return (
+    <span className={cx('flex min-w-0 items-center gap-1.5 text-fg', grow ? 'flex-1' : 'shrink-0')}>
+      {children}<FilledMark row={children} />
+      <MarkRowContext.Provider value={typeof children === 'string' ? children : null}>{mark}</MarkRowContext.Provider>
+    </span>
+  )
 }
 
 /** A row whose value is a control of its own (pills, a switch, a segmented choice). `wide`: the value takes the room

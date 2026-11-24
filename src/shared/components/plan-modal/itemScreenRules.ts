@@ -142,6 +142,26 @@ export const FIELD_GOES_TEXT: Record<FieldGoes, string> = {
   app: 'Stays in the app',
 }
 
+/** A card's banner (24.11.2026): the places in the order it draws them — the calendars first, the app last. */
+const PLACE_ORDER: readonly FieldGoes[] = ['apple', 'google-calendar', 'google-tasks', 'app']
+
+/** Each place a card's rows go, once, in PLACE_ORDER (its banner draws these). */
+export function cardMarkPlaces(marks: readonly { goes: FieldGoes }[]): FieldGoes[] {
+  return PLACE_ORDER.filter(g => marks.some(m => m.goes === g))
+}
+
+/**
+ * A card's banner in words (its title's tap): each place with the rows that go there, in row order, each row once —
+ * "Goes to Apple Calendar: Date, Starts · Stays in the app: Priority". A row with no name counts without one; '' for
+ * a card with no marks.
+ */
+export function cardMarksText(marks: readonly { goes: FieldGoes; row: string | null }[]): string {
+  return cardMarkPlaces(marks).map(g => {
+    const rows = [...new Set(marks.filter(m => m.goes === g && m.row).map(m => m.row as string))]
+    return rows.length ? `${FIELD_GOES_TEXT[g]}: ${rows.join(', ')}` : FIELD_GOES_TEXT[g]
+  }).join(' · ')
+}
+
 export interface GoesContext {
   /** Where the item saves to (the Calendar row's choice; 'none' when the device has no choice to show). */
   target: GoogleTarget

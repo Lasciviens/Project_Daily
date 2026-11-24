@@ -21,6 +21,16 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-24 · v28 · Marks as banners (owner: "those small images are a bit
+//                    ugly.. Use them as banner instead. And like a bit shadow"):
+//                    a card's rows report their marks to the card (Section),
+//                    which draws each place once, large, tucked behind its
+//                    top-right, faded with a soft shadow (FieldMark.CardBanner);
+//                    a tap on it names the rows (cardMarksText). The Calendar
+//                    row's own mark and red dot stay in the row. The Alert row's
+//                    "Default" on Google Calendar is now no alert (owner: "Default
+//                    alert on apple calendar should be none on everything" —
+//                    googleReminders sends none instead of the calendar's own).
 //  2026-11-23 · v27 · ✨ teaches the AI (owner: "The ai should keep learning"):
 //                    Use these keeps the fill's call id; the item's own save
 //                    (Add, or an edit's autosave) then reports the values it

@@ -202,6 +202,12 @@ console.log('\n== The read-back from the iPhone (icloud-calendar) ==')
     'two alerts, a link, Free and a travel time set on the iPhone come back, in the app\'s own terms')
   const hostile = mineEvent.ics.replace('TRIGGER:-PT10M', 'TRIGGER:-PT45M').replace(/URL;VALUE=URI:[^\r]*/, 'URL;VALUE=URI:http://example.com/x')
     .replace('TRANSP:OPAQUE', 'TRANSP:OPAQUE\r\nX-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT45M')
+  eq([X.alarmToken(['ACTION:DISPLAY', 'TRIGGER:-PT30M', 'X-APPLE-DEFAULT-ALARM:TRUE']), X.alarmToken(['X-APPLE-DEFAULT-ALARM;X-X=1:true', 'TRIGGER:-PT15M']),
+      X.alarmToken(['ACTION:NONE', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'X-APPLE-DEFAULT-ALARM:TRUE']), X.alarmToken(['ACTION:DISPLAY', 'TRIGGER:-PT30M', 'X-APPLE-DEFAULT-ALARM:FALSE'])],
+    [null, null, 'NONE', '-30'], "a default alert (X-APPLE-DEFAULT-ALARM:TRUE, the account's default iCloud or a device added) is nobody's choice: unreadable; a default 'none' is none")
+  const defaulted = mineEvent.ics.replace(/BEGIN:VALARM[\s\S]*?END:VALARM/, 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT30M\r\nX-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM')
+  eq(X.fieldsChangeOf(defaulted, uid, row, work10, look, true, appUrl), { showAs: 'busy' },
+    "an event that came back with iCloud's default alert: the item never takes it as an alert of its own (owner, 24.11.2026: none by default)")
   eq(X.fieldsChangeOf(hostile, uid, row, work10, look, true, appUrl), { showAs: 'busy' },
     'an alert off Apple\'s list, an http link, a travel time off the list: left out (never applied, never guessed)')
   const three = mineEvent.ics.replace('TRIGGER:-PT10M', 'TRIGGER:-PT5M\r\nEND:VALARM\r\nBEGIN:VALARM\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M')
