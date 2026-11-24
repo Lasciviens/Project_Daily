@@ -72,8 +72,13 @@ export function purchaseFormOf(item: ShopItem, ctx: Pick<PurchaseCtx, 'categorie
 
 const costKey = (c: { label: string; amount: number }) => c.label + c.amount
 
-/** Everything the editor shows, worked out from the row and the form (the deadlines with their reasons, the receipt's line). */
-export function purchaseView(item: ShopItem, f: PurchaseForm, ctx: PurchaseCtx) {
+/**
+ * Everything the editor shows, worked out from the row and the form (the deadlines with their reasons, the receipt's line).
+ * `saved`: the row as saved, when `item` carries the record's unsaved day or store (the in-place editor) — whether a stored
+ * return or complaint day was the rules' or the owner's own is judged on the day it was counted from, so a new day moves a
+ * rules' date with it and never turns it into an "own" date that stays behind (critic, 24.11.2026).
+ */
+export function purchaseView(item: ShopItem, f: PurchaseForm, ctx: PurchaseCtx, saved: ShopItem = item) {
   const { stores, rules, law, categories, today } = ctx
   const pickable = stores.filter(s => !s.hidden && s.kind !== 'price_site').sort((a, b) => a.name.localeCompare(b.name, 'en'))
   const first = storeOfItem(item, stores)
@@ -83,18 +88,19 @@ export function purchaseView(item: ShopItem, f: PurchaseForm, ctx: PurchaseCtx) 
   const boughtDay = boughtDayOf(item) ?? today
   const path = categoryPath(item.category_id, categories)
   const suggestedYears = complaintYears([path.topName ?? '', path.subName ?? ''], item.region)
-  const storedYears = complaintYearsOf(item)
+  const storedYears = complaintYearsOf(saved)
   // The deadlines as the form stands; a date the owner set before stays theirs (shown beside the rules' one).
   const draft = { ...item, bought_at: middayIso(f.day), bought_channel: f.channel, arrived_on: f.channel === 'online' ? f.arrived || null : null }
   // The years as chosen, else the row's own, else what the category suggests now.
   const years = f.complainSet ? f.years : storedYears ?? suggestedYears
   const facts = factsOf(draft, store, years)
   const dl: PurchaseDeadlines | null = facts ? purchaseDeadlines(facts, { store, rules, law }) : null
-  const firstFacts = factsOf(item, first)
-  const initial = firstFacts ? purchaseDeadlines(firstFacts, { store: first, rules, law }) : null
+  const savedStore = saved === item ? first : storeOfItem(saved, stores)
+  const firstFacts = factsOf(saved, savedStore)
+  const initial = firstFacts ? purchaseDeadlines(firstFacts, { store: savedStore, rules, law }) : null
   const returnOwn = f.ownReturn !== undefined ? f.ownReturn
-    : dateSource(item.return_by, initial?.returnBy?.day) === 'own' ? item.return_by ?? null : null
-  const complainOwn = storedYears == null && item.warranty_until ? item.warranty_until : null
+    : dateSource(saved.return_by, initial?.returnBy?.day) === 'own' ? saved.return_by ?? null : null
+  const complainOwn = storedYears == null && saved.warranty_until ? saved.warranty_until : null
   const returnBy = returnOwn ?? dl?.returnBy?.day ?? null
   // The line that is this thing, and what was paid for it: the line's price; with no lines the receipt's total.
   const rd = f.rd

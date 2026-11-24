@@ -16,7 +16,11 @@ import type { ShopItem } from '../../types'
  * row's day and never writes a store, so a Facts edit is never written back stale; while the owner has changed nothing, the
  * form follows the row (a save elsewhere re-seeds it).
  */
-export function usePurchaseEdit(item: ShopItem, receipt?: { fill: ReceiptFill; read: ReceiptRead }, { inPlace = false }: { inPlace?: boolean } = {}) {
+export function usePurchaseEdit(item: ShopItem, receipt?: { fill: ReceiptFill; read: ReceiptRead }, { inPlace = false, seen = item }: {
+  inPlace?: boolean
+  /** In place: the row with the record's unsaved day and store (`withDraftDayAndStore`) — the deadlines count from it. */
+  seen?: ShopItem
+} = {}) {
   const today = todayStr()
   const { data: stores = [], isLoading: storesLoading } = useShopStores()
   const { data: rules = [] } = useStoreRules()
@@ -43,10 +47,10 @@ export function usePurchaseEdit(item: ShopItem, receipt?: { fill: ReceiptFill; r
       setForm(next)
     }
   }
-  const used: PurchaseForm = inPlace ? inPlaceForm(form, item, today) : form
-  const view = purchaseView(item, used, ctx)
+  const used: PurchaseForm = inPlace ? inPlaceForm(form, seen, today) : form
+  const view = purchaseView(seen, used, ctx, item)
   function submit(onDone?: () => void) {
-    const w = purchaseWrite(item, used, view)
+    const w = purchaseWrite(seen, used, view)
     if (!w) return
     save.mutate({ id: item.id, patch: w.patch, done: w.done, costs: w.costs }, { onSuccess: () => onDone?.() })
   }

@@ -102,6 +102,14 @@ for (const [name, [item, changes, extra]] of Object.entries(S.boughtScenarios)) 
   const fromOld = P.purchaseWrite(old, f3, P.purchaseView(old, f3, S.ctx))
   check('in place: a day in the record\'s draft moves the deadlines with it (return by counts from 15.11, not 01.11), still without writing the day',
     fromNew.patch.return_by !== fromOld.patch.return_by && fromNew.patch.return_by > fromOld.patch.return_by && !('bought_at' in fromNew.patch), JSON.stringify([fromNew.patch.return_by, fromOld.patch.return_by]))
+  // The saved row's complaint day is the rules' own (counted from its old day): a new day moves it, never keeps it as "your own".
+  const fOld = P.purchaseFormOf(old, S.ctx)
+  const rulesDay = P.purchaseView(old, fOld, S.ctx).complainBy
+  const savedRow = { ...old, warranty_until: rulesDay }
+  const moved = P.withDraftDayAndStore(savedRow, { bought_day: '2026-11-15' })
+  const fNew = P.inPlaceForm(P.purchaseFormOf(savedRow, S.ctx), moved, S.ctx.today)
+  const after = P.purchaseView(moved, fNew, S.ctx, savedRow)
+  check('in place: a rules\' complaint day counted from the old day moves with a new day (never kept as "your own")', after.complainBy > rulesDay && !after.complainOwn, JSON.stringify([rulesDay, after.complainBy]))
   check('in place: a store in the record\'s draft is the store the deadlines count with', P.withDraftDayAndStore(old, { platform: 'Elkjøp' }).platform === 'Elkjøp' && P.withDraftDayAndStore(old, {}).platform === 'Power')
   check('in place: no purchase day → no day to count from (the editor says so and its Save waits)', P.withDraftDayAndStore(old, { bought_day: '' }).bought_at === null)
 }

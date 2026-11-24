@@ -32,6 +32,7 @@ import { RecordStory } from './RecordStory'
 import { RecordPurchase } from './RecordPurchase'
 import { PurchaseEditor } from './PurchaseEditor'
 import { withDraftDayAndStore } from './purchaseDraft'
+import { boughtDayOf } from '../../purchaseModel'
 import { usePurchaseEdit, type PurchaseEditModel } from './usePurchaseEdit'
 import { FindPicture } from './FindPicture'
 import { useSavePicture } from './useFindPicture'
@@ -375,7 +376,7 @@ const EMPTY_CTX = { costs: new Map() } as unknown as ShopRecordModel['ctx']
 function PurchaseInPlace({ r, onDone, onReceiptFacts }: { r: ShopRecordModel; onDone: () => void; onReceiptFacts: (fill: ReceiptFill) => void }) {
   const { item, d } = r
   const seen = useMemo(() => withDraftDayAndStore(item, d.draft), [item, d.draft])
-  const p = usePurchaseEdit(seen, undefined, { inPlace: true })
+  const p = usePurchaseEdit(item, undefined, { inPlace: true, seen })
   const { setPurchaseDirty } = r
   useEffect(() => { setPurchaseDirty(p.dirty) }, [p.dirty, setPurchaseDirty])
   const [busy, setBusy] = useState(false)
@@ -388,7 +389,7 @@ function PurchaseInPlace({ r, onDone, onReceiptFacts }: { r: ShopRecordModel; on
       p.submit(onDone)
     } finally { setBusy(false) }
   }
-  const day = boughtOn(seen)
+  const day = boughtDayOf(seen)
   const line = [day ? `Bought ${formatDate(day)}` : 'No purchase day yet', seen.platform].filter(Boolean).join(' · ')
   return (
     <fieldset disabled={p.saving || busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">

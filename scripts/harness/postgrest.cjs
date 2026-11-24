@@ -350,7 +350,16 @@ const ownerEdited = facts => (row, written) => {
   row.owner_edited = row.origin === 'owner' || (!!src && facts.some(k => !sameFact(row[k], src[k])))
   if (facts.some(k => k in written) && !('edited_at' in written)) row.edited_at = new Date().toISOString()
 }
-const DERIVED = { shop_store_rules: ownerEdited(RULE_FACTS), shop_stores: ownerEdited(STORE_FACTS) }
+/**
+ * 187's purchase day (`shop_items_rules` step b): stamped once when a row becomes bought and kept while bought (a write that
+ * clears it keeps the day); a row that leaves bought has none. So Bought in a flow gets its day as it does in the database.
+ */
+function boughtDay(row, patch) {
+  if (!('status' in patch) && !('bought_at' in patch)) return
+  if (row.status === 'bought') row.bought_at = row.bought_at ?? new Date().toISOString()
+  else row.bought_at = null
+}
+const DERIVED = { shop_store_rules: ownerEdited(RULE_FACTS), shop_stores: ownerEdited(STORE_FACTS), shop_items: boughtDay }
 
 class Store {
   /**
@@ -539,7 +548,9 @@ class Store {
   update(table, url, patch) {
     const rows = this.matching(table, url)
     for (const r of rows) {
+      const wasBought = r.status === 'bought' ? r.bought_at : null
       Object.assign(r, patch)
+      if (table === 'shop_items' && r.status === 'bought' && wasBought && r.bought_at == null) r.bought_at = wasBought
       DERIVED[table]?.(r, patch)
     }
     return rows
