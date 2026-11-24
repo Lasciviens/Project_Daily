@@ -45,9 +45,9 @@ export function useAddBatchToQuickList() {
       return { ...r, back }
     },
     onSuccess:   (r, { what }) => {
-      if (r.added.length === 0) { toast.info('Everything is already on the quick list'); return }
+      if (r.added.length === 0) { toast.info(`Everything is already on the quick list${r.skippedTitles.length ? `: ${r.skippedTitles.slice(0, 3).join(', ')}${r.skippedTitles.length > 3 ? '…' : ''}` : ''}`); return }
       qc.setQueryData<ShopItem[]>(qk.shop.items(), rows => (rows ? [...rows, ...r.added.filter(a => !rows.some(x => x.id === a.id))] : rows))
-      toast.undo(batchWords(r.added.length, r.skipped, what), () => undo.mutate({ rows: r.added, back: r.back }))
+      toast.undo(batchWords(r.added.length, r.skipped, what, r.skippedTitles), () => undo.mutate({ rows: r.added, back: r.back }))
     },
     // A prepare step may have made Groceries / Recipe Ingredients: the category list is read again.
     invalidates: [qk.shop.items(), qk.shop.quick(), qk.shop.categories()],
