@@ -6,6 +6,11 @@
 // Kept in step with the real function by hand: the events and rows are the contract's (src/features/ai/chat/chatRules.ts).
 //
 //   a message with "flowers" or "banana"  → two lookups' worth of steps and a proposal card
+//   a message with "lunch"                → three ESTIMATED food line cards (a salad bowl, 150 g cottage cheese, 20 g jam)
+//   a message with "database"             → two find_food steps and two cards from Kassalapp / Open Food Facts that
+//                                            REPLACE the pending estimated cottage cheese and jam (the 24.11.2026 lunch)
+//   a message with "english"              → a propose_update_food card for today's first one-off line with a title
+//                                            that is not English (Salatbolle → Salad bowl); Confirm changes the title
 //   a message with "train", "bus" or "departure" → a get_transit step and an answer with times (made-up: Jernbanetorget)
 //   a message with "dentist"              → a find_text step and an answer with two citations
 //   a message with "protein"              → a plain answer that also noted an idea (the quiet line under it: "This could be a widget")
@@ -19,8 +24,45 @@ const sse = (events) => events.map(e => `event: ${e.event}\ndata: ${JSON.stringi
 const FAKE_TOKENS = { input_tokens: 420, cache_read_tokens: 2610, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, output_tokens: 230, thinking_tokens: 60 }
 
 /** The answer for one message: the events, and the messages a stored chat would hold. */
+const today = () => new Date(Date.now() + 3_600_000).toISOString().slice(0, 10)
+const lunchCard = (title, values, extra = {}) => ({ tool: 'log_food', summary: `Log "${title}" as lunch on ${today().split('-').reverse().join('.')}: ${values.calories} kcal, protein ${values.protein_g} g, carbs ${values.carbs_g} g, fat ${values.fat_g} g${extra.basis && extra.basis !== 'estimate' ? ` (from ${extra.basis === 'kassalapp' ? 'Kassalapp' : 'Open Food Facts'}: ${extra.source_name}, ${extra.grams} g)` : ' (estimated)'}`, args: { title, meal: 'lunch', date: today(), ...values, basis: 'estimate', ...extra } })
+const letters = (t) => String(t ?? '').toLowerCase().replace(/[^a-zæøå]+/g, '')
+
 function plan(text, store, mode) {
   const lower = text.toLowerCase()
+  if (/\bdatabase\b/.test(lower)) {
+    return {
+      kind: 'proposal', steps: ["Looking up the food's values", "Looking up the food's values", 'Preparing a food line for you to confirm', 'Preparing a food line for you to confirm'], tool_name: 'find_food',
+      proposals: [
+        lunchCard('Cottage cheese 4.3%', { calories: 147, protein_g: 19.5, carbs_g: 3.9, fat_g: 6.5 }, { basis: 'kassalapp', food_ref: 'kassal:7038010009457', grams: 150, per100: { calories: 98, protein_g: 13, carbs_g: 2.6, fat_g: 4.3 }, source_name: 'Cottage Cheese 4,3%' }),
+        lunchCard('Strawberry jam', { calories: 31.8, protein_g: 0.1, carbs_g: 7.6, fat_g: 0 }, { basis: 'openfoodfacts', food_ref: 'off:5701234000017', grams: 20, per100: { calories: 159, protein_g: 0.4, carbs_g: 38, fat_g: 0.1 }, source_name: 'Strawberry jam' }),
+      ],
+      reply: 'From the databases: **150 g cottage cheese** is 147 kcal with **6.5 g fat** (Kassalapp), and **20 g jam** is 31.8 kcal (Open Food Facts). The new cards replace the estimated ones; each is saved only after you tap Confirm.',
+    }
+  }
+  if (/\blunch\b/.test(lower)) {
+    return {
+      kind: 'proposal', steps: ['Preparing a food line for you to confirm', 'Preparing a food line for you to confirm', 'Preparing a food line for you to confirm'], tool_name: 'propose_log_food',
+      proposals: [
+        lunchCard('Salad bowl', { calories: 350, protein_g: 12, carbs_g: 30, fat_g: 18 }),
+        lunchCard('Cottage cheese 4.3 %', { calories: 120, protein_g: 18, carbs_g: 4, fat_g: 6 }),
+        lunchCard('Strawberry jam', { calories: 50, protein_g: 0, carbs_g: 12, fat_g: 0 }),
+      ],
+      reply: 'I have prepared three lines for lunch with **estimated** figures: a salad bowl, 150 g cottage cheese and 20 g jam. Each is saved only after you tap Confirm.',
+    }
+  }
+  if (/\benglish\b/.test(lower)) {
+    const line = (store.tables.food_log_entries ?? []).find(l => l.user_id === store.ownerId && l.date === today() && l.status === 'eaten' && !l.library_ingredient_id && !l.recipe_id && typeof l.custom_title === 'string' && /[æøå]|bolle|syltetøy|ost\b/i.test(l.custom_title))
+    if (line) {
+      const before = { title: line.custom_title, calories: Number(line.calories) || 0, protein_g: Number(line.protein_g) || 0, carbs_g: Number(line.carbs_g) || 0, fat_g: Number(line.fat_g) || 0 }
+      const title = /salat/i.test(line.custom_title) ? 'Salad bowl' : 'Strawberry jam'
+      return {
+        kind: 'proposal', steps: ["Looking up the day's food", 'Preparing a change to a food line for you to confirm'], tool_name: 'propose_update_food',
+        proposals: [{ tool: 'update_food', summary: `Change today's ${line.meal_slot} line "${line.custom_title}": title to "${title}"`, args: { entry_id: line.id, date: today(), meal: line.meal_slot, before, changes: { title }, basis: 'estimate' } }],
+        reply: `I have prepared a change: the line **${line.custom_title}** gets the English title **${title}**. Nothing else changes, and it is saved only after you tap Confirm.`,
+      }
+    }
+  }
   const tasks = store.tables.tasks ?? []
   const diaryDay = '2026-11-20'
   if (/\b(wall|long)\b/.test(lower)) return { kind: 'wall' }
@@ -31,7 +73,7 @@ function plan(text, store, mode) {
       ? { tool: 'log_food', summary: 'Log "Banana" as snack: 90 kcal, protein 1 g, carbs 23 g, fat 0.3 g (your own saved preset)', args: { title: 'Banana', meal: 'snack', date: new Date().toISOString().slice(0, 10), calories: 90, protein_g: 1, carbs_g: 23, fat_g: 0.3, basis: 'preset' } }
       : { tool: 'add_task', summary: 'Add task "Buy flowers" due 25.11.2026', args: { title: 'Buy flowers', description: 'For Anna\'s birthday on Saturday', due_date: '2026-11-25', priority: 'medium' } }
     return {
-      kind: 'proposal', proposal,
+      kind: 'proposal', proposals: [proposal],
       steps: [food ? 'Preparing a food line for you to confirm' : 'Preparing a task for you to confirm'],
       reply: food ? 'I have prepared a banana for your snack. It is saved only after you tap Confirm.' : 'I have prepared a task to buy flowers for Tuesday. It is saved only after you tap Confirm.',
       tool_name: food ? 'propose_log_food' : 'propose_add_task',
@@ -66,7 +108,7 @@ function keepChat(store, body, p, text, costUsd, runId) {
     const coach = body.mode === 'coach'
     // The tools a new chat starts with: the owner's switches (ai_tool_settings), like the function; a write tool only ask or off.
     const off = new Set((t('ai_tool_settings') ?? []).filter(r => r.user_id === owner && r.mode === 'off').map(r => r.tool))
-    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food', 'note_shortcut', 'get_transit']
+    const all = coach ? ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut'] : ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database', 'propose_add_task', 'propose_log_food', 'note_shortcut', 'get_transit', 'search_docs', 'note_lesson', 'find_food', 'propose_update_food', 'propose_update_task']
     const words = String((store.tables.ai_settings ?? [])[0]?.chat_instructions ?? '')
     conversation = { id: randomUUID(), user_id: owner, created_at: now, updated_at: now, title: text.slice(0, 60), model: 'claude-haiku-5-5', effort: 'medium', thinking: 'adaptive', tools_hash: 'a'.repeat(64), system_hash: 'b'.repeat(64), tool_names: all.filter(n => !off.has(n)), mode: coach ? 'coach' : 'chat', owner_instructions: words, status: 'open', message_count: 0, last_prompt_tokens: 0, cost_usd: 0, deleted_at: null }
     t('ai_conversations').push(conversation)
@@ -78,17 +120,26 @@ function keepChat(store, body, p, text, costUsd, runId) {
     outcome: 'ok', stop_reason: 'end_turn', error: null, request_id: `req_harness_chat_${seq0}`, ...FAKE_TOKENS, long_prompt: false, cost_usd: costUsd, duration_ms: 2100,
     instructions_version: '2026-11-22.1', tools: [], request: null, response: null, thinking: null,
   })
-  const toolUse = p.kind === 'proposal' || p.kind === 'coach' || p.kind === 'transit' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
+  const toolUse = p.kind === 'proposal'
+    ? p.proposals.map((x, i) => ({ type: 'tool_use', id: `toolu_${seq0}_${i}`, name: { add_task: 'propose_add_task', log_food: 'propose_log_food', update_food: 'propose_update_food', update_task: 'propose_update_task' }[x.tool], input: {} }))
+    : p.kind === 'coach' || p.kind === 'transit' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: p.tool_name, input: {} }] : p.kind === 'find' ? [{ type: 'tool_use', id: `toolu_${seq0}`, name: 'find_text', input: {} }] : []
   t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 1, role: 'user', content: [...(Array.isArray(body.images) ? body.images.slice(0, 2).map(i => ({ type: 'image', source: { type: 'base64', media_type: i.media_type, data: i.data } })) : []), { type: 'text', text }], digest: 'c'.repeat(64), call_id: null, meta: {}, created_at: now })
   t('ai_messages').push({ id: randomUUID(), conversation_id: conversation.id, user_id: owner, seq: seq0 + 2, role: 'assistant', content: [...toolUse, { type: 'text', text: p.reply }], digest: 'd'.repeat(64), call_id: callId,
     meta: { message_id: `msg_${seq0}`, cost_usd: costUsd, run_id: runId, ...(p.citations ? { citations: p.citations } : {}) }, created_at: now })
-  let card = null
+  const cards = []
   if (p.kind === 'proposal') {
-    card = { id: randomUUID(), tool: p.proposal.tool, summary: p.proposal.summary, expires_at: new Date(Date.now() + 86_400_000).toISOString() }
-    t('ai_chat_proposals').push({ id: card.id, user_id: owner, conversation_id: conversation.id, tool_use_id: `toolu_${seq0}`, tool: p.proposal.tool, args: p.proposal.args, summary: card.summary, status: 'pending', created_at: now, expires_at: card.expires_at, decided_at: null, result_id: null })
+    p.proposals.forEach((x, i) => {
+      // One live card per thing (the function's proposalSubjects): a pending one about the same day, meal and food is replaced.
+      const subject = x.tool === 'log_food' ? `${x.args.date}|${x.args.meal}|${letters(x.args.title).replace(/[0-9]/g, '')}` : x.tool === 'update_food' ? x.args.entry_id : letters(x.args.title)
+      const older = t('ai_chat_proposals').filter(o => o.conversation_id === conversation.id && o.status === 'pending' && o.tool === x.tool && (o.tool === 'log_food' ? `${o.args.date}|${o.args.meal}|${letters(o.args.title)}` : o.tool === 'update_food' ? o.args.entry_id : letters(o.args.title)) === subject)
+      for (const o of older) Object.assign(o, { status: 'replaced', decided_at: now })
+      const card = { id: randomUUID(), tool: x.tool, summary: x.summary, expires_at: new Date(Date.now() + 86_400_000).toISOString(), replaces: older.map(o => o.id) }
+      t('ai_chat_proposals').push({ id: card.id, user_id: owner, conversation_id: conversation.id, tool_use_id: `toolu_${seq0}_${i}`, tool: x.tool, args: x.args, summary: card.summary, status: 'pending', created_at: now, expires_at: card.expires_at, decided_at: null, result_id: null })
+      cards.push(card)
+    })
   }
   Object.assign(conversation, { message_count: seq0 + 2, last_prompt_tokens: 3030, cost_usd: Number(conversation.cost_usd) + costUsd, updated_at: now })
-  return { conversation, card }
+  return { conversation, cards }
 }
 
 function chatAnswer(body, store, opts = {}) {
@@ -103,15 +154,20 @@ function chatAnswer(body, store, opts = {}) {
   if (p.kind === 'refuse') return stream([{ event: 'start', conversation_id: randomUUID(), is_new: true }, { event: 'text', t: 'Let me think about ' }, { event: 'retract' }, { event: 'error', reason: 'declined', message: 'The model declined to answer this one. Try asking it in other words.', cost_usd: 0.0013, run_id: randomUUID() }])
   const costUsd = p.kind === 'plain' ? 0.0004 : 0.0021
   const runId = randomUUID()
-  const { conversation, card } = keepChat(store, body, p, text, costUsd, runId)
+  const { conversation, cards } = keepChat(store, body, p, text, costUsd, runId)
   const events = [{ event: 'start', conversation_id: conversation.id, is_new: conversation.message_count === 2 }]
   const toolName = p.kind === 'find' ? 'find_text' : p.kind === 'proposal' || p.kind === 'coach' || p.kind === 'transit' ? p.tool_name : 'tool'
-  const toolInput = p.kind === 'transit' ? { action: 'departures', from: 'Jernbanetorget' } : p.kind === 'find' ? { query: 'dentist', kind: 'any' } : p.kind === 'proposal' ? { title: p.proposal.args.title } : {}
-  for (const label of p.steps ?? []) { events.push({ event: 'step', name: toolName, label }); events.push({ event: 'detail', name: toolName, input: toolInput, ok: true }) }
+  const toolInput = p.kind === 'transit' ? { action: 'departures', from: 'Jernbanetorget' } : p.kind === 'find' ? { query: 'dentist', kind: 'any' } : p.kind === 'proposal' ? { title: p.proposals[0].args.title } : {}
+  const foodWords = ['cottage cheese', 'strawberry jam']
+  ;(p.steps ?? []).forEach((label, i) => {
+    const name = /food's values/.test(label) ? 'find_food' : /change to a food line/.test(label) ? 'propose_update_food' : /day's food/.test(label) ? 'get_food_day' : /food line/.test(label) ? 'propose_log_food' : toolName
+    const input = name === 'find_food' ? { query: foodWords[i % 2] } : name === 'propose_log_food' && p.proposals[i % p.proposals.length] ? { title: p.proposals[i % p.proposals.length].args.title, ...(p.proposals[i % p.proposals.length].args.food_ref ? { food_ref: p.proposals[i % p.proposals.length].args.food_ref, grams: p.proposals[i % p.proposals.length].args.grams } : {}) } : name === 'get_food_day' ? {} : toolInput
+    events.push({ event: 'step', name, label }); events.push({ event: 'detail', name, input, ok: true })
+  })
   const words = p.reply.split(/(?<= )/)
   for (const w of words) events.push({ event: 'text', t: w })
-  if (card) events.push({ event: 'proposal', ...card })
-  events.push({ event: 'done', conversation_id: conversation.id, text: p.reply, citations: p.citations ?? [], proposals: card ? [card] : [], rounds: p.steps ? 2 : 1, cost_usd: costUsd, wall: false, run_id: runId, ending: 'complete', prompt_tokens: 3030, suggestion: p.suggestion ?? null, thinking: 'The question names a topic, so I looked it up with the search tool and read what it returned.' })
+  for (const card of cards) events.push({ event: 'proposal', ...card })
+  events.push({ event: 'done', conversation_id: conversation.id, text: p.reply, citations: p.citations ?? [], proposals: cards, replaced: cards.flatMap(c => c.replaces), rounds: p.steps ? 2 : 1, cost_usd: costUsd, wall: false, run_id: runId, ending: 'complete', prompt_tokens: 3030, suggestion: p.suggestion ?? null, thinking: 'The question names a topic, so I looked it up with the search tool and read what it returned.' })
   return stream(events)
 }
 
@@ -119,9 +175,18 @@ function confirmAnswer(body, store) {
   const owner = store.ownerId
   const proposal = (store.tables.ai_chat_proposals ?? []).find(x => x.id === body.proposal_id && x.user_id === owner)
   if (!proposal) return { ok: false, reason: 'not_found', message: 'That proposal was not found.' }
-  if (proposal.status !== 'pending') return { ok: false, reason: 'already_decided', message: `That proposal was already ${proposal.status}.` }
+  if (proposal.status !== 'pending') return { ok: false, reason: proposal.status === 'replaced' ? 'replaced' : 'already_decided', message: `That proposal was already ${proposal.status === 'replaced' ? 'replaced by a newer one' : proposal.status}.` }
   const now = new Date().toISOString()
   if (body.decision === 'cancel') { Object.assign(proposal, { status: 'cancelled', decided_at: now }); return { ok: true, status: 'cancelled', summary: proposal.summary, result_id: null, tool: proposal.tool } }
+  if (proposal.tool === 'update_food') {
+    // One update of the named columns of the owner's line (the function's applyChange).
+    const line = (store.tables.food_log_entries ?? []).find(l => l.id === proposal.args.entry_id && l.user_id === owner)
+    if (!line) return { ok: false, reason: 'failed', message: 'That food line can no longer be changed here. Nothing was changed.' }
+    const c = proposal.args.changes
+    Object.assign(line, { ...('title' in c ? { custom_title: c.title } : {}), ...Object.fromEntries(['calories', 'protein_g', 'carbs_g', 'fat_g'].filter(k => k in c).map(k => [k, c[k]])) })
+    Object.assign(proposal, { status: 'confirmed', decided_at: now, result_id: line.id })
+    return { ok: true, status: 'confirmed', summary: proposal.summary, result_id: line.id, tool: proposal.tool, date: proposal.args.date }
+  }
   const id = randomUUID()
   if (typeof body.title === 'string') proposal.args = { ...proposal.args, title: body.title.trim() }
   if (typeof body.date === 'string') proposal.args = { ...proposal.args, [proposal.tool === 'add_task' ? 'due_date' : 'date']: body.date === '' ? null : body.date }

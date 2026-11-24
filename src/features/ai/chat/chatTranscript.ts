@@ -64,7 +64,8 @@ function cardLines(turn: ChatTurn): string[] {
 /** One message as plain text: who, the words, then what an answer looked up, its cards and its error. */
 export function turnText(turn: ChatTurn): string {
   const lines: string[] = []
-  const words = plainChatText(turn.text)
+  // The answer's **bold** marks are how the screen draws it, not words: plain text drops them.
+  const words = plainChatText(turn.text).replace(/\*\*([^*\n]+)\*\*/g, '$1')
   if (turn.role === 'user') {
     lines.push(`You: ${words}${turn.photos ? ` [${turn.photos === 1 ? '1 photo' : `${turn.photos} photos`}]` : ''}`)
     return lines.join('\n')
@@ -79,7 +80,7 @@ export function turnText(turn: ChatTurn): string {
 
 /** The words of one message for its Copy button: what the person sees in the bubble, nothing else. */
 export function messageCopyText(turn: ChatTurn): string {
-  return capText(plainChatText(turn.text) || plainChatText(turn.error ?? ''), COPY_TEXT_MAX)
+  return capText(plainChatText(turn.text).replace(/\*\*([^*\n]+)\*\*/g, '$1') || plainChatText(turn.error ?? ''), COPY_TEXT_MAX)
 }
 
 /** The whole chat for Copy chat: every message as plain text, a blank line between them. */

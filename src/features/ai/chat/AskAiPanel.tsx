@@ -148,6 +148,9 @@ export function AskAIPanel() {
         </div>
       ) : (
         <>
+          {/* The chat and its "Newest" button share one box, so the button sits at the chat's own bottom edge — never over the
+              message box (sideways on a phone, the box is taller than the old fixed offset and the button covered Send). */}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div ref={setChatArea} onScroll={onScroll} className="scroll-y relative min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">
             {empty && chat.wall !== 'full' && (
               <div className="py-2">
@@ -171,12 +174,13 @@ export function AskAIPanel() {
             )}
           </div>
           {!atBottom && !empty && (
-            <button type="button" onClick={() => scrollToBottom('smooth')} aria-label="Jump to newest message"
-              className="absolute bottom-24 right-4 z-10 flex items-center gap-1 rounded-full border border-line-strong bg-surface px-3 py-2 text-meta font-semibold text-fg-2 shadow-float">
+            <button type="button" onClick={() => scrollToBottom('smooth')} aria-label="Jump to newest message" title="Jump to newest message"
+              className="absolute bottom-3 right-4 z-10 flex items-center gap-1 rounded-full border border-line-strong bg-surface px-3 py-2 text-meta font-semibold text-fg-2 shadow-float">
               <ArrowDown className="h-3.5 w-3.5" aria-hidden />Newest
             </button>
           )}
-          <div className="shrink-0 border-t border-line px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:pb-3">
+          </div>
+          <div className="shrink-0 border-t border-line px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:pb-3 [@media(max-height:500px)]:pb-[calc(0.5rem+env(safe-area-inset-bottom))] [@media(max-height:500px)]:pt-2">
             {chat.wall !== 'ok' && (
               <div data-tone="warn" className="tone-soft mb-2 flex items-center gap-2 rounded-row py-1.5 pl-3 pr-1.5 text-body">
                 <span className="tone-text min-w-0 flex-1 py-1">{chat.wall === 'full' ? 'This chat is full. Start a new chat to keep going.' : 'This chat is getting long. A new chat answers faster and cheaper.'}</span>
@@ -185,7 +189,9 @@ export function AskAIPanel() {
             )}
             <PhotoStrip photos={photos} onRemove={i => setPhotos(list => list.filter((_, at) => at !== i))} firstInChat={photosInChat === 0} days={keptDays} />
             {speech.problem && <p role="alert" data-tone="warn" className="tone-text mb-1.5 text-meta">{speech.problem}</p>}
-            <div className="flex items-end gap-2">
+            {/* A phone held sideways (a short screen): photo and voice sit beside the box, so the chat keeps its few lines. */}
+            <div className="flex flex-col [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:items-end [@media(max-height:500px)]:gap-1">
+            <div className="flex min-w-0 items-end gap-2 [@media(max-height:500px)]:flex-1">
               <textarea
                 ref={boxRef}
                 data-autofocus
@@ -207,12 +213,14 @@ export function AskAIPanel() {
               )}
             </div>
             {/* Photo and voice sit under the box, so the words keep the full width on a phone. */}
-            <div className="mt-1 flex items-center gap-1">
+            <div className="mt-1 flex items-center gap-1 [@media(max-height:500px)]:order-first [@media(max-height:500px)]:mt-0">
               <AttachPhoto onFile={f => { void photo.mutateAsync(f).then(p => setPhotos(list => (list.length < CHAT_IMAGES_PER_MESSAGE ? [...list, p] : list)), () => undefined) }}
                 loading={photo.isPending} disabled={photoRoom <= 0 || chat.busy || chat.wall === 'full'} why={photoWhy} />
               {speech.supported && <MicButton listening={speech.listening} language={voiceLanguage} onLanguage={setVoiceLanguage} disabled={chat.busy || chat.wall === 'full'} onToggle={() => { if (!speech.listening) typedBeforeSpeech.current = input; speech.toggle() }} />}
             </div>
-            <p className="mt-1.5 hidden text-micro text-fg-faint md:block">Enter to send · Shift+Enter for a new line</p>
+            </div>
+            {/* Only where Enter sends (a phone's Enter is a new line). */}
+            {!phone && <p className="mt-1.5 hidden text-micro text-fg-faint md:block">Enter to send · Shift+Enter for a new line</p>}
           </div>
         </>
       )}

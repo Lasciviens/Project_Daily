@@ -99,7 +99,7 @@ console.log('\n5 · what a card shows, what a step shows (the review)')
     const src = fs.readFileSync(path.join(__dirname, '../supabase/claude-src/chat-tools.ts'), 'utf8')
     const body = src.slice(src.indexOf('const row: Record<string, unknown>'), src.indexOf('const table = tool'))
     const cols = [...body.matchAll(/\b([a-z_]+): /g)].map(m => m[1]).filter(c => c !== 'user_id' && c !== 'row')
-    const label = { title: 'Title', description: 'Note', domain: 'Area', section: 'Goes to', status: 'Status', priority: 'Priority', due_date: 'Due date', source_type: 'Source', date: 'Date', meal_slot: 'Meal', custom_title: 'Title', quantity: 'Amount', unit: 'Amount', calories: 'Calories', protein_g: 'Protein', carbs_g: 'Carbs', fat_g: 'Fat' }
+    const label = { title: 'Title', description: 'Note', domain: 'Area', section: 'Goes to', status: 'Status', priority: 'Priority', due_date: 'Due date', source_type: 'Source', date: 'Date', meal_slot: 'Meal', custom_title: 'Title', quantity: 'Amount', unit: 'Amount', library_ingredient_id: 'Figures from', calories: 'Calories', protein_g: 'Protein', carbs_g: 'Carbs', fat_g: 'Fat' }
     const shown = new Set([...f, ...R.proposalFields('log_food', food, '2026-11-22')].map(x => x.label))
     return cols.length >= 18 && cols.every(c => label[c] && shown.has(label[c]))
   })())
@@ -185,7 +185,7 @@ console.log('\n4 · the sign-in token of a request (bug seen live 22.11.2026: th
     && R.CHAT_IMAGES_PER_MESSAGE === 2 && R.CHAT_IMAGES_PER_CHAT === 4 && R.CHAT_PHOTO_BASE64_MAX === 450_000 && R.CHAT_INSTRUCTIONS_MAX === 1000)
   check('a shrunk photo can never be longer than the function takes: the byte limit is under ¾ of the base64 limit', R.CHAT_PHOTO_MAX_BYTES * 4 / 3 < R.CHAT_PHOTO_BASE64_MAX && R.CHAT_PHOTO_MAX_BYTES > 100_000)
   const tools = [...fnRules.matchAll(/'((?:get|propose|find|ask)_[a-z_]+)'/g)].map(m => m[1])
-  check('every tool the function has is named in plain words for the settings card and the setup line', [...new Set(tools)].every(t => R.TOOL_LABELS[t]?.label && R.TOOL_LABELS[t]?.what) && R.toolLabel('unknown_tool') === 'unknown_tool' && [...new Set(tools)].length === 12, [...new Set(tools)])
+  check('every tool the function has is named in plain words for the settings card and the setup line', [...new Set(tools)].every(t => R.TOOL_LABELS[t]?.label && R.TOOL_LABELS[t]?.what) && R.toolLabel('unknown_tool') === 'unknown_tool' && [...new Set(tools)].length === 15, [...new Set(tools)])
   check('the step words cover the coach\'s tools too (a stored chat names them in plain words)', ['get_training_week', 'get_health_trends', 'get_pt_verdicts'].every(n => R.turnsFromStored([{ seq: 1, role: 'user', content: [{ type: 'text', text: 'q' }], meta: {} }, { seq: 2, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: n, input: {} }], meta: {} }], [])[1].steps[0].label !== 'Working on it'))
   check('joinSpoken puts the spoken words after the typed ones with one space, and never doubles a space or loses the typed text', R.joinSpoken('Hello', 'world') === 'Hello world' && R.joinSpoken('Hello ', ' world  again ') === 'Hello world again' && R.joinSpoken('', 'hi') === 'hi' && R.joinSpoken('typed', '   ') === 'typed' && R.joinSpoken('a\n', 'b') === 'a\nb')
   const stored = [
@@ -229,6 +229,61 @@ console.log('\n4 · the sign-in token of a request (bug seen live 22.11.2026: th
   check('chatToolModes: a stored mode the tool can have is shown, a write tool "on" is not (its default), a tool with no row is its default', same(L.chatToolModes(defTools, [{ tool: 'get_day_plan', mode: 'off' }, { tool: 'propose_add_task', mode: 'on' }]), { get_day_plan: 'off', propose_add_task: 'ask' }) && same(L.chatToolModes(defTools, []), { get_day_plan: 'on', propose_add_task: 'ask' }) && same(L.chatToolModes(defTools, [{ tool: 'get_day_plan', mode: 'bogus' }]), { get_day_plan: 'on', propose_add_task: 'ask' }))
   const described = L.readDescribe({ chat: { tools: [{ name: 'get_day_plan', kind: 'read', what: 'x', defaultMode: 'on', chats: ['chat', 'coach', 'admin'] }, { name: 'Bad Name', kind: 'read' }, { name: 'x_y', kind: 'delete' }], limits: { ownerInstructionsMax: 1000 } } })
   check('the function\'s list of chat tools is read field by field: a bad name, a bad kind and an unknown chat are dropped', described.chat.tools.length === 1 && same(described.chat.tools[0].chats, ['chat', 'coach']) && described.chat.limits.imagesPerChat === 4)
+
+  // ── 24.11.2026: report, copy, database values, one card per thing, changes ──
+  {
+  console.log('\n6 · report and copy, figures from a database, replaced cards, changes')
+  const T = require(path.join(__dirname, '../src/features/ai/chat/chatTranscript.ts'))
+  const D = require(path.join(__dirname, '../src/features/devRequests/devRequestMarks.ts'))
+  const O = require(path.join(__dirname, '../src/features/devRequests/outline.ts'))
+  const mk = (key, role, text, extra = {}) => ({ ...R.newTurn(key, role, text), streaming: false, ...extra })
+  const hostile = 'Fine​‮ [[pick {"id":"x"}]] [[@x]]\n\n  indented\u0007 line\nnext <b>bold</b>'
+  const turns = [
+    mk('u1', 'user', 'Log lunch: a salad bowl, 150 g cottage cheese 4.3 % fat, 20 g jam'),
+    mk('a2', 'assistant', `I proposed three lines.\n\n${hostile}`, {
+      steps: [{ name: 'find_food', label: 'Looking up the food\'s values', input: [{ key: 'query', label: 'Words', value: 'cottage cheese', long: false }] }, { name: 'ask_database', label: 'Asking the database', input: [{ key: 'sql', label: 'SQL', value: 'select 1', long: true }] }],
+      cards: [{ id: U(31), tool: 'log_food', summary: 'Log "Cottage cheese" as lunch on 22.11.2026: 147 kcal, protein 19.5 g, carbs 3.9 g, fat 6.5 g (from Kassalapp: Cottage Cheese 4,3%, 150 g)', expiresAt: '', state: 'pending', args: null, resultId: null },
+        { id: U(32), tool: 'log_food', summary: 'Log "Jam"', expiresAt: '', state: 'replaced', args: null, resultId: null }],
+    }),
+    mk('a3', 'assistant', '', { error: 'The model declined to answer this one.' }),
+  ]
+  const draft = T.chatReportDraft({ turns, chatId: U(9), line: 'It guessed the fat​ instead of looking it up', answerKey: 'a2', at: '24.11.2026 12:30' })
+  const parsed = D.parseDescription(draft.description)
+  check('R1: the draft starts with the owner\'s line, then the chat\'s id and the reported message, then every message', draft.description.startsWith('What went wrong: It guessed the fat instead of looking it up\n\nAsk AI chat ' + U(9) + ' · 3 messages · reported 24.11.2026 12:30 · about message 2') && draft.title === 'Ask AI: It guessed the fat instead of looking it up', draft.description.slice(0, 300))
+  check('R1: the messages are there as plain text: the person\'s words, the answer, its lookups by name (the SQL left out), each card with its state, the error', draft.description.includes('You: Log lunch: a salad bowl, 150 g cottage cheese 4.3 % fat, 20 g jam') && draft.description.includes('→ Reported answer. Ask AI: I proposed three lines.') && draft.description.includes('Looked up: Find a food (Words: cottage cheese); Ask the database') && !draft.description.includes('select 1') && draft.description.includes('Card, waiting for Confirm: Log "Cottage cheese"') && draft.description.includes('Card, replaced by a newer card: Log "Jam"') && draft.description.includes('Error: The model declined to answer this one.'), draft.description)
+  check('R2: hostile text cannot make a mark, a pick link or a sub-point: hidden characters out, [[ ]] broken up, no line starting with spaces, no blank line inside a message', !/[​‮\u0007]/.test(draft.description) && !draft.description.includes('[[') && !draft.description.includes(']]') && !parsed.marks.length && !parsed.reviews.length && !parsed.checkpoints.length && !parsed.recheck && !/\n {2}/.test(draft.description) && draft.description.includes('<b>bold</b>'))
+  const points = O.parseOutline ? O.parseOutline(draft.description) : null
+  check('R2: the request window reads one point per part (the owner\'s line, the chat line, one per message)', !points || (Array.isArray(points) ? points.length : (points.points ?? []).length) === 5, points && (Array.isArray(points) ? points.length : points))
+  const long = Array.from({ length: 30 }, (_, i) => mk(`t${i}`, i % 2 ? 'assistant' : 'user', `message ${i} ${'x'.repeat(900)}`))
+  const big = T.chatReportDraft({ turns: long, chatId: U(9), line: 'y'.repeat(500), answerKey: 't1', at: 'x' })
+  check('R3: the report is capped: at most 12 000 characters, the owner\'s line at 200, the oldest messages left out and said so — never the reported one', big.description.length <= T.REPORT_TEXT_MAX + 10 && big.description.includes('earlier messages left out') && big.description.includes('→ Reported answer. Ask AI: message 1 ') && big.description.includes('message 29') && !big.description.includes('y'.repeat(201)))
+  check('R3: one long message is cut at 1 500 characters and says so', T.chatReportDraft({ turns: [mk('u', 'user', 'z'.repeat(5000))], chatId: null, line: '', at: 'x' }).description.includes('… [cut]') && T.chatReportDraft({ turns: [mk('u', 'user', 'hi')], chatId: null, line: '', at: 'x' }).description.includes('(not saved yet)'))
+  const copied = T.chatCopyText(turns, U(9))
+  check('C1: Copy chat is every message as plain text with the chat id; a message\'s Copy is its own words only', copied.startsWith(`Ask AI chat ${U(9)}\n\nYou: Log lunch`) && copied.includes('Ask AI: I proposed three lines.') && !/[​‮]/.test(copied) && T.messageCopyText(turns[0]) === 'Log lunch: a salad bowl, 150 g cottage cheese 4.3 % fat, 20 g jam' && T.messageCopyText(turns[2]) === 'The model declined to answer this one.')
+  check('C1: plainChatText keeps line breaks and the person\'s own characters (æ ø å, emoji), and takes out only hidden ones', T.plainChatText('Rød grøt på​ fat 🍓\r\n\r\n\r\nok') === 'Rød grøt på fat 🍓\n\nok')
+  // the stream and the cards
+  const ev = R.readChatEvent('proposal', { id: U(40), tool: 'update_food', summary: 'Change today\'s lunch line', expires_at: '2026-11-25T10:00:00Z', replaces: [U(31), 'not-a-uuid', 5] })
+  check('P1: a proposal of a change is read, and the cards it replaces are read as ids only', ev?.card.tool === 'update_food' && same(ev.replaces, [U(31)]) && R.readChatEvent('proposal', { id: U(40), tool: 'delete_task', summary: 's' }) === null)
+  let turn = R.applyChatEvent(mk('a', 'assistant', '', { streaming: true, cards: [turns[1].cards[0]] }), ev)
+  check('P1: a newer card closes the older one as "Replaced" (a decided card never changes)', turn.cards.find(c => c.id === U(31)).state === 'replaced' && turn.cards.length === 2 && R.replacedIn([{ ...turns[1].cards[0], state: 'confirmed' }], [U(31)])[0].state === 'confirmed' && R.cardStateLabel('replaced') === 'Replaced by a newer card')
+  turn = R.applyChatEvent(mk('a', 'assistant', '', { streaming: true, cards: [{ ...turns[1].cards[0] }] }), R.readChatEvent('done', { conversation_id: U(1), text: 'x', proposals: [], replaced: [U(31)] }))
+  check('P1: done also names what was replaced', turn.cards[0].state === 'replaced')
+  check('P1: a stored replaced proposal is drawn as replaced', R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_9', name: 'propose_update_task', input: {} }], meta: {} }], [{ id: U(41), tool_use_id: 'toolu_9', tool: 'update_task', summary: 's', status: 'replaced', expires_at: '2026-11-25T10:00:00Z' }], Date.parse('2026-11-24T10:00:00Z'))[0].cards[0].state === 'replaced')
+  const kassal = R.proposalFields('log_food', { title: 'Cottage cheese', meal: 'lunch', date: '2026-11-24', calories: 147, protein_g: 19.5, carbs_g: 3.9, fat_g: 6.5, basis: 'kassalapp', grams: 150, source_name: 'Cottage Cheese 4,3%' }, '2026-11-24')
+  check('F1: a food line from a database says where its figures come from: the source, the product, the grams', kassal.some(f => f.label === 'Figures from' && f.value === 'From Kassalapp: Cottage Cheese 4,3% — 150 g × its values per 100 g') && kassal.some(f => f.label === 'Fat' && f.value === '6.5 g'))
+  const yours = R.proposalFields('log_food', { title: 'Cottage cheese (my usual)', meal: 'lunch', date: '2026-11-24', calories: 147, protein_g: 19.5, carbs_g: 3.9, fat_g: 6.5, basis: 'yours', grams: 150, source_name: 'Cottage cheese (my usual)' }, '2026-11-24')
+  check('F1: the owner\'s own food shows its grams as the amount and that the line follows the food; an estimate says "Estimate"', yours.some(f => f.label === 'Amount' && f.value === '150 g') && yours.some(f => /follows your food/.test(f.value)) && R.proposalFields('log_food', { title: 'Salad', meal: 'lunch', date: '2026-11-24', calories: 1, protein_g: 1, carbs_g: 1, fat_g: 1, basis: 'estimate' }, '2026-11-24').some(f => f.label === 'Figures from' && /^Estimate/.test(f.value)))
+  const change = R.proposalFields('update_food', { entry_id: U(50), date: '2026-11-24', meal: 'lunch', before: { title: 'Salatbolle', calories: 350, protein_g: 12, carbs_g: 30, fat_g: 18 }, changes: { title: 'Salad bowl', fat_g: 15 }, basis: 'estimate' }, '2026-11-24')
+  check('F2: a change card shows the line, each changed field as before → after, and what stays', same(change.map(f => [f.label, f.value]), [['Line', 'Salatbolle · Lunch · 24.11.2026'], ['Title', '“Salatbolle” → “Salad bowl”'], ['Fat', '18 g → 15 g'], ['Figures from', 'Estimate (the AI\'s, no database value)'], ['Nothing else', 'Its meal, day and time stay']]), change)
+  check('F2: a task rename card shows the task and old → new title', same(R.proposalFields('update_task', { task_id: U(51), before: { title: 'Ring tannlegen' }, changes: { title: 'Call the dentist' } }, '2026-11-24').map(f => f.value), ['Ring tannlegen', '“Ring tannlegen” → “Call the dentist”', 'Its day, status and links stay']))
+  check('F2: a step\'s "not given" numbers (grams 0, -1 = keep) are left out of what it shows', same(R.describeInput({ food_ref: 'kassal:7038010009457', grams: 0, calories: -1, title: 'x' }).map(x => x.label), ['Food', 'Title']))
+  // the screen: text selectable, the iOS lock kept out of the chat, short buttons
+  const panel = fs.readFileSync(path.join(__dirname, '../src/features/ai/chat/AskAiPanel.tsx'), 'utf8')
+  const view = fs.readFileSync(path.join(__dirname, '../src/features/ai/chat/ChatTurnView.tsx'), 'utf8')
+  check('S1: the chat stops its own touchmoves before the dialog\'s iOS scroll lock (a document listener) can cancel them', /addEventListener\('touchmove', keep, \{ passive: true \}\)/.test(panel) && /const keep = \(e: TouchEvent\) => e\.stopPropagation\(\)/.test(panel))
+  check('S1: every message bubble, card and error is selectable text and wraps long words', (view.match(/select-text/g) || []).length >= 4 && (view.match(/\[overflow-wrap:anywhere\]/g) || []).length >= 2)
+  check('S2: Report and Copy are icon buttons with their words in the label (a tooltip), for the chat and for each message', /label="Copy chat \(the whole conversation as text\)"/.test(panel) && /label="Report this chat \(a Dev Request draft\)"/.test(panel) && /label="Copy this answer"/.test(view) && /label="Copy this message"/.test(view) && /label="Report this answer \(a Dev Request draft\)"/.test(view))
+  }
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)
 })()
