@@ -132,6 +132,9 @@ console.log('big pictures: one card size on the whole page (owner, 24.11.2026: "
   const list = src('src/features/shop/components/owned/OwnedList.tsx')
   check('Big pictures and the Gone fold use the Wishlist\'s own layout (PictureBlocks: one size, packed lines, no holes) — no grid of their own',
     (list.match(/<PictureBlocks /g) || []).length === 2 && !/auto-fill|PICTURE_|9\.5rem/.test(list))
+  check('Big pictures pack their categories, and the Gone fold as one more, with PictureCategories (each handing its layout down)',
+    list.includes('<PictureCategories items={items}') && list.includes("{ key: 'gone', blocks: [gone.length] }") && list.includes('layout={tiles}')
+    && src('src/features/shop/components/owned/OwnedView.tsx').includes("{layout !== 'pictures' && <GoneFold"))
   check('Big pictures load as cards drawn from the card\'s own parts, never as rows', /if \(layout === 'pictures'\)[\s\S]*?<OwnedCardSkeleton/.test(list)
     && src('src/features/shop/components/owned/OwnedView.tsx').includes('<OwnedListSkeleton key="loading" layout={layout} />'))
   const views = src('src/features/shop/components/owned/OwnedViews.tsx')

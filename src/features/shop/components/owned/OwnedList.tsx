@@ -5,13 +5,13 @@ import { Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../../projects/projectBoard'
 import { rowStacks, subColumns } from '../../ownedRow'
-import { TILE_GRID } from '../../wishTile'
+import { TILE_GRID, type TileLayout } from '../../wishTile'
 import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel'
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
 import { OwnedRow } from './OwnedRow'
 import { OwnedCard, OwnedCardSkeleton, OwnedLine } from './OwnedViews'
-import { PictureBlocks } from '../tileKit'
+import { PictureBlocks, PictureCategories } from '../tileKit'
 import type { OwnedLayout } from '../../hooks/useOwnedLayout'
 import type { ShopListing } from '../../resaleTypes'
 import type { ShopCategory, ShopItem, ShopPriceWatch } from '../../types'
@@ -40,8 +40,10 @@ const STACK_CAP = 'max-w-[40rem]'
  * column stacks by its own width (`rowStacks`: one on a phone, two at 1469,
  * four at 2450). A row opens its record in the popup.
  */
-export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }: {
+export function OwnedList({ groups, gone, rows, collapsed, onToggle, onOpen, layout }: {
   groups: readonly CategoryGroup[]
+  /** The things sold or gone: in Big pictures their fold packs with the categories (elsewhere it follows the list). */
+  gone: readonly ShopItem[]
   rows: RowContext
   layout: OwnedLayout
   collapsed: ReadonlySet<string>
@@ -51,15 +53,21 @@ export function OwnedList({ groups, rows, collapsed, onToggle, onOpen, layout }:
   const { ref, width } = useElementWidthRem()
   const columns = rowStacks(width)
   const row = (item: ShopItem) => <OwnedThing key={item.id} item={item} rows={rows} onOpen={onOpen} layout={layout} />
-  const section = (group: CategoryGroup, cols: number) => (
+  const section = (group: CategoryGroup, cols: number, tiles?: TileLayout) => (
     <CategorySection key={group.key} group={group} collapsed={collapsed.has(group.key)} onToggle={() => onToggle(group.key)} card={row}
       body={id => layout === 'pictures'
-        ? <PictureBlocks id={id} subs={group.subs} card={row} />
+        ? <PictureBlocks id={id} subs={group.subs} card={row} layout={tiles} />
         : <SubLists id={id} subs={group.subs} row={row} columns={cols} />} />
   )
-  // Big pictures: the categories stack in the list's whole width, each subcategory a block of cards packed side by side — the
-  // Wishlist's own layout (`PictureBlocks`, THEME §6 picture tiles).
-  if (layout === 'pictures') return <div className="flex min-w-0 flex-col gap-4">{groups.map(g => section(g, 1))}</div>
+  // Big pictures: the Wishlist's own layout (THEME §6 picture tiles) — categories that fit in one row share a line, each
+  // subcategory a block of cards packed side by side; the Gone fold packs as one more.
+  if (layout === 'pictures') {
+    const items = [...groups.map(g => ({ key: g.key, blocks: g.subs.map(s => s.items.length) })), ...(gone.length ? [{ key: 'gone', blocks: [gone.length] }] : [])]
+    return (
+      <PictureCategories items={items}
+        render={(i, tiles) => i < groups.length ? section(groups[i], 1, tiles) : <GoneFold gone={gone} rows={rows} onOpen={onOpen} layout={layout} tiles={tiles} />} />
+    )
+  }
   // Rows and lines: the categories are one grid of 21–40rem columns, each category as wide as its subcategories can fill and
   // `dense`, so small categories pack side by side instead of each sitting alone in a nearly empty band (owner, 23.11.2026).
   return (
@@ -113,7 +121,11 @@ function ThingsBox({ children, className }: { children: ReactNode; className?: s
 }
 
 /** The things sold or gone, folded under Mine: the same rows in one card, or the same cards as Big pictures. */
-export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string) => void; layout: OwnedLayout }) {
+export function GoneFold({ gone, rows, onOpen, layout, tiles }: {
+  gone: readonly ShopItem[]; rows: RowContext; onOpen: (id: string) => void; layout: OwnedLayout
+  /** In Big pictures, the layout the packed list hands down. */
+  tiles?: TileLayout
+}) {
   const [show, setShow] = useState(false)
   if (!gone.length) return null
   const thing = (i: ShopItem) => <OwnedThing key={i.id} item={i} rows={rows} onOpen={onOpen} layout={layout} />
@@ -125,7 +137,7 @@ export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopIt
         Gone <span className="count-badge">{gone.length}</span>
       </button>
       {show && (layout === 'pictures'
-        ? <div className="mt-1"><PictureBlocks subs={[{ key: 'gone', title: null, items: gone }]} card={thing} /></div>
+        ? <div className="mt-1"><PictureBlocks subs={[{ key: 'gone', title: null, items: gone }]} card={thing} layout={tiles} /></div>
         : <ThingsBox className="mt-1">{gone.map(thing)}</ThingsBox>)}
     </section>
   )

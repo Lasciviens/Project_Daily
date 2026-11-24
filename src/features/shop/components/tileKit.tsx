@@ -2,7 +2,10 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { BELT, TILE_GAP_REM, TILE_GRID, TILE_LINE, TILE_LINES, TILE_REM, pictureColumns, spanPosition, tileBlocks, tilesRem, type BeltKind, type PriceSpan } from '../wishTile'
+import {
+  BELT, TILE_GAP_REM, TILE_GRID, TILE_LINE, TILE_LINES, TILE_NARROW_REM, TILE_REM, categoryLines, pictureColumns, pictureLines, spanPosition, tileBlocks, tileColumns,
+  tilesRem, type BeltKind, type PriceSpan, type TileLayout,
+} from '../wishTile'
 import { money, num } from './shopFormat'
 import { DisposalBadge, DisposalRibbon } from './DisposalRibbon'
 import type { ShopDisposal, ShopItem } from '../types'
@@ -18,20 +21,24 @@ import type { ShopDisposal, ShopItem } from '../types'
  * in lines by `pictureLines` from the list's own width (measured before the first paint): a block shares a line only when
  * all its tiles fit in what is left, so no line has a hole, and a small block fills the end of an earlier line (two
  * one-tile subcategories share a phone's row). Before the measure, every block takes the whole width with the CSS grid
- * (`TILE_GRID`).
+ * (`TILE_GRID`). Inside `PictureCategories` the list hands down the category's `layout` (its own columns).
  */
-export function PictureBlocks({ id, subs, card }: {
+export function PictureBlocks({ id, subs, card, layout }: {
   id?: string
   subs: readonly { key: string; title: string | null; items: readonly ShopItem[] }[]
   card: (item: ShopItem) => ReactNode
+  layout?: TileLayout
 }) {
   const { ref, width } = useElementWidthRem()
   const labelled = subs.some(s => s.title)
-  const plan = width == null ? null : tileBlocks(subs.map(s => s.items.length), width)
+  const counts = subs.map(s => s.items.length)
+  const plan = layout ? { ...layout, lines: pictureLines(counts, layout.line) } : width == null ? null : tileBlocks(counts, width)
   const block = (sub: (typeof subs)[number]) => {
     const cols = plan ? pictureColumns(sub.items.length, plan.line) : 1
+    // On a phone the columns share the box: `cols` of `line` equal columns and the gaps between them.
     const box: CSSProperties | undefined = plan == null ? undefined
-      : plan.narrow ? { width: cols >= 2 ? '100%' : `calc((100% - ${TILE_GAP_REM}rem) / 2)` } : { width: `${tilesRem(cols)}rem` }
+      : plan.narrow ? { width: cols >= plan.line ? '100%' : `calc((100% - ${plan.line - 1} * ${TILE_GAP_REM}rem) * ${cols / plan.line} + ${cols - 1} * ${TILE_GAP_REM}rem)` }
+        : { width: `${tilesRem(cols)}rem` }
     const grid: CSSProperties | undefined = plan == null ? undefined
       : { gridTemplateColumns: plan.narrow ? `repeat(${cols}, minmax(0, 1fr))` : `repeat(${cols}, ${TILE_REM}rem)` }
     return (
@@ -48,6 +55,37 @@ export function PictureBlocks({ id, subs, card }: {
       {plan == null
         ? subs.map(block)
         : plan.lines.map(line => <div key={subs[line[0]].key} data-line className={TILE_LINE}>{line.map(i => block(subs[i]))}</div>)}
+    </div>
+  )
+}
+
+/**
+ * The categories of a picture view, packed like their blocks one level up (`categoryLines`): a category whose tiles fit in
+ * one row is as wide as that row and shares a line with others that fit (first fit, each with its own header, total and
+ * fold), so a small category never leaves the rest of the width empty; a category that needs more rows has the whole
+ * width. From the list's own width, measured before the first paint; until then, one category under the other. `render`
+ * draws item `i` with the layout its `PictureBlocks` gets.
+ */
+export function PictureCategories({ items, render }: {
+  items: readonly { key: string; blocks: readonly number[] }[]
+  render: (i: number, layout: TileLayout | undefined) => ReactNode
+}) {
+  const { ref, width } = useElementWidthRem()
+  const narrow = width != null && width < TILE_NARROW_REM
+  const line = width == null ? 0 : narrow ? 2 : tileColumns(width)
+  const plan = width == null ? null : categoryLines(items.map(x => x.blocks), line)
+  return (
+    <div ref={ref} className="flex min-w-0 flex-col gap-4">
+      {plan == null ? items.map((x, i) => <div key={x.key}>{render(i, undefined)}</div>) : plan.lines.map(l => (
+        <div key={items[l[0]].key} data-cat-line className={TILE_LINE}>
+          {l.map(i => {
+            const cols = plan.cols[i]
+            const box: CSSProperties = cols == null || cols >= line ? { width: '100%' }
+              : narrow ? { width: `calc((100% - ${TILE_GAP_REM}rem) / 2)` } : { width: `${tilesRem(cols)}rem` }
+            return <div key={items[i].key} data-cat className="min-w-0 shrink-0" style={box}>{render(i, { narrow, line: cols ?? line })}</div>
+          })}
+        </div>
+      ))}
     </div>
   )
 }

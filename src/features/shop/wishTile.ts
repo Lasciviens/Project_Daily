@@ -207,6 +207,21 @@ export function pictureLines(cards: readonly number[], line: number): number[][]
   return lines.map(l => l.blocks)
 }
 
+/** A category's tile layout, handed down by the list that packs the categories: two equal columns or `line` fixed ones. */
+export interface TileLayout { narrow: boolean; line: number }
+
+/**
+ * The same packing one level up (owner-critic, 24.11.2026: a one-tile category took a whole line and left ~1300px empty):
+ * a category whose blocks fit in one row of `line` columns is as wide as that row (`cols`), and such categories share a
+ * line, first fit, when they fit in what is left of it — so a line of categories is one row of tiles each and has no hole;
+ * a category that needs more than one row (`cols` null) has the whole width, on a line of its own.
+ */
+export function categoryLines(blocks: readonly (readonly number[])[], line: number): { lines: number[][]; cols: (number | null)[] } {
+  const width = Math.max(1, Math.floor(line))
+  const cols = blocks.map(b => (pictureLines(b, width).length === 1 ? Math.min(width, b.reduce((s, n) => s + pictureColumns(n, width), 0)) : null))
+  return { lines: pictureLines(cols.map(c => c ?? width), width), cols }
+}
+
 /**
  * A category's blocks in a list `widthRem` wide: under 40rem (a phone) two equal columns — a block of one tile is half the
  * row, so two one-tile subcategories share a row — else fixed 12rem columns, as many as the width holds.

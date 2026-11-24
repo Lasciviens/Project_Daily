@@ -17,7 +17,7 @@ import {
   type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
-import { TILE_GRID, factsOf, watchedWishIds } from '../wishTile'
+import { TILE_GRID, factsOf, watchedWishIds, type TileLayout } from '../wishTile'
 import type { Amount } from '../ownModel'
 import { CategorySection, FoldAll } from './CategorySection'
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
@@ -25,7 +25,7 @@ import { WISHLIST_BOARD } from '../shopBoard'
 import { ShopFilters } from './ShopFilters'
 import { GeneralWishTile } from './GeneralWishTile'
 import { WishTile } from './WishTile'
-import { PictureBlocks, TileSkeleton } from './tileKit'
+import { PictureBlocks, PictureCategories, TileSkeleton } from './tileKit'
 import { WishlistSummaryLine } from './WishlistSummaryLine'
 import type { ShopCategory, ShopItem } from '../types'
 
@@ -133,14 +133,14 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     />
   )
 
-  // The categories stack in the list's whole width, each subcategory a block of tiles packed side by side — the same layout
-  // as Owned's big pictures (`PictureBlocks`), so no strip of the width stays empty.
-  const section = (group: CategoryGroup) => {
+  // Owned's Big pictures' own layout (`PictureCategories`, `PictureBlocks`): categories that fit in one row share a line,
+  // each subcategory a block of tiles packed side by side, so no strip of the width stays empty.
+  const section = (group: CategoryGroup, tiles?: TileLayout) => {
     const t = totalsIn(group.items, 'NOK', rates, models, watches)
     return (
       <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
         aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={tile}
-        body={id => <PictureBlocks id={id} subs={group.subs} card={tile} />} />
+        body={id => <PictureBlocks id={id} subs={group.subs} card={tile} layout={tiles} />} />
     )
   }
 
@@ -173,7 +173,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      {groups.map(section)}
+      <PictureCategories items={groups.map(g => ({ key: g.key, blocks: g.subs.map(s => s.items.length) }))} render={(i, tiles) => section(groups[i], tiles)} />
       {dropped.length > 0 && (
         <section>
           <button title="Dropped — not any more" type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}

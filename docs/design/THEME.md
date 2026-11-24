@@ -510,12 +510,14 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   the price history (its own line), the notes (two lines) — each cut by `Truncate`, an empty one keeping its room,
   and one action row (`TILE_ACTIONS`: the one-tap action + ⋯). The loading copy has the same parts. The tiles wait
   for their own reads and the default pictures' chunk, so nothing appears under a drawn tile (§5). **One layout for
-  every picture view** (`tileKit.PictureBlocks`): the sections (categories) at full width, each sub-group a block
-  named once above its own tiles, the blocks laid in lines from the list's own width (`wishTile.pictureLines`): a
-  block shares a line only when all its tiles fit in what is left (so a line has no hole under a shorter block),
-  each goes on the first line it fits (a small block fills the end of an earlier line; two one-tile groups share a
-  phone's row), and a block of a line's tiles or more has a line of its own. The gap between blocks is the tiles'
-  gap, so every tile sits on one column grid.
+  every picture view** (`tileKit.PictureCategories` around `PictureBlocks`): each sub-group a block named once above
+  its own tiles, the blocks laid in lines from the list's own width (`wishTile.pictureLines`): a block shares a line
+  only when all its tiles fit in what is left (so a line has no hole under a shorter block), each goes on the first
+  line it fits (a small block fills the end of an earlier line; two one-tile groups share a phone's row), and a block
+  of a line's tiles or more has a line of its own. The sections (categories) pack the same way one level up
+  (`categoryLines`): a section whose blocks fit in one row is as wide as that row and shares a line with others that
+  fit, each with its own header, total and fold (the header cuts the total first); a section that needs more rows
+  has the whole width. The gap between blocks and sections is the tiles' gap, so every tile sits on one column grid.
 - **Compact rows** (Shop's Owned): a collection read as a list — one row per thing, the same two lines every
   time (a 40px picture square — `RowPicture`, the tiles' well at a row's size — then the name and the number on
   the first line; the facts, cut at the end, and at most one `TonePill` on the second, which is always as tall as

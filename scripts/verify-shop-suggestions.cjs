@@ -313,6 +313,17 @@ console.log('the picture views\' one layout: blocks packed in lines (the Wishlis
   })))
   check('a phone: two one-tile subcategories share a row, even with a bigger one between them', eq(T.pictureLines([1, 3, 1], 2), [[0, 2], [1]]) && eq(T.pictureLines([1, 1], 2), [[0, 1]]))
   check('a block with a line\'s tiles or more takes a line of its own (its tiles wrap); nothing joins it', eq(T.pictureLines([7, 1], 7), [[0], [1]]) && eq(T.pictureLines([9, 1], 7), [[0], [1]]))
+  // One level up: whole categories (each its blocks' tile counts).
+  const cats = [[1], [2, 2, 2], [1, 2], [1, 1, 1], [4, 2, 1, 4, 2]]
+  const c7 = T.categoryLines(cats, 7)
+  check('categories that fit in one row share a line, first fit, each as wide as its row (the Wishlist at 1795: Clothing 1 + Electronics 6)',
+    eq(c7.cols, [1, 6, 3, 3, null]) && eq(c7.lines, [[0, 1], [2, 3], [4]]))
+  check('a category that needs more than one row has the whole width, on a line of its own', eq(T.categoryLines([[4, 2, 1, 4, 2], [1]], 5).lines, [[0], [1]]) && T.categoryLines([[4, 2, 1, 4, 2]], 5).cols[0] === null)
+  check('a phone: two one-tile categories share a row; a category of two tiles has the row', eq(T.categoryLines([[1], [2], [1]], 2).lines, [[0, 2], [1]]))
+  check('a shared line of categories is one row of tiles in each and never wider than the list', [2, 3, 5, 7, 10].every(line => {
+    const p = T.categoryLines(cats, line)
+    return p.lines.every(l => l.length === 1 || l.every(i => p.cols[i] != null && T.pictureLines(cats[i], p.cols[i]).length === 1) && l.reduce((s, i) => s + p.cols[i], 0) <= line)
+  }))
   check('a line of blocks is never wider than the list', [41, 48.3, 63, 73, 93.3, 131].every(w => {
     const p = T.tileBlocks([4, 2, 1, 4, 2, 3, 1], w)
     return p.lines.every(l => l.reduce((s, i, k) => s + T.tilesRem(T.pictureColumns([4, 2, 1, 4, 2, 3, 1][i], p.line)) + (k ? T.TILE_GAP_REM : 0), 0) <= w + 1e-9)
@@ -352,7 +363,9 @@ console.log('the tile: one size on the whole page (owner, 24.11.2026: "Every box
   check('a shop link is cut inside itself with an ellipsis, its ↗ kept (never clipped mid-letter)', /<Truncate as="span" className="min-w-0">\{label\}<\/Truncate><ExternalLink/.test(kitShop))
   check('the skeleton has the tile\'s own parts, so nothing moves when the tiles land', /export function TileSkeleton[\s\S]*h-10[\s\S]*h-5[\s\S]*h-4[\s\S]*h-4[\s\S]*h-8[\s\S]*TILE_ACTIONS/.test(kit))
   const view = src('src/features/shop/components/WishlistView.tsx')
-  check('the Wishlist lays its categories at full width with PictureBlocks — no stacks, no grid of its own', view.includes('<PictureBlocks ') && view.includes('{groups.map(section)}') && !/dealByIndex|categoryColumns|stackRem/.test(view))
+  check('the Wishlist packs its categories with PictureCategories and their blocks with PictureBlocks — no stacks, no grid of its own', view.includes('<PictureBlocks ') && view.includes('<PictureCategories ') && view.includes('layout={tiles}') && !/dealByIndex|categoryColumns|stackRem/.test(view))
+  const cat = src('src/features/shop/components/CategorySection.tsx')
+  check('a category one tile wide keeps its header on one line: the name and the total are cut, the total first', cat.includes("style={{ maxWidth: 'calc(100% - 4.5rem)' }}") && cat.includes('style={{ flexShrink: 100 }}') && cat.includes('<Truncate as="h2"'))
   check('the old paths are gone: no categoryColumns, stackRem, packGroups or tileTrack', ['categoryColumns', 'stackRem', 'packGroups', 'tileTrack', 'STACK_GAP_REM'].every(k => !(k in T)))
 }
 
