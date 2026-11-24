@@ -20,7 +20,7 @@ export function AddToListMenu({ type, tmdb, title }: { type: 'movie' | 'show'; t
   const queueId = findQueueList(lists.data)?.id
   // Into the Queue, a Completed film asks to start a rewatch first (the same check as "+ Queue", 207).
   async function add(listId: number) {
-    if (listId === queueId && !(await addCheck(item, title))) return
+    if (listId === queueId && !(await addCheck.check(item, title))) return
     change.mutate({ listId, items: [item] })
   }
 
@@ -28,8 +28,8 @@ export function AddToListMenu({ type, tmdb, title }: { type: 'movie' | 'show'; t
     <>
     {naming && <NewListDialog items={[item]} onClose={() => setNaming(false)} />}
     <Menu>
-      <MenuButton className="btn-ghost btn-sm" aria-label="Add to list" onClick={() => setOpen(true)}>
-        <ListPlus aria-hidden className="h-4 w-4" /> <span className="sm:hidden">List</span><span className="hidden sm:inline">Add to list</span>
+      <MenuButton className="btn-ghost btn-sm" aria-label="Add to list" disabled={addCheck.busy} aria-busy={addCheck.busy || undefined} onClick={() => setOpen(true)}>
+        {addCheck.busy ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" /> : <ListPlus aria-hidden className="h-4 w-4" />} <span className="sm:hidden">List</span><span className="hidden sm:inline">Add to list</span>
       </MenuButton>
       <MenuItems
         anchor={{ to: 'bottom start', gap: 6, padding: 12 }}

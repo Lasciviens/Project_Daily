@@ -4,6 +4,7 @@ import { Button, SegmentedControl } from '../../../shared/ui'
 import { useCreateTraktList } from '../trakt/useTraktExtras'
 import type { ListItemRef } from '../trakt/traktApi'
 import type { FollowKind } from '../api/followsApi'
+import { QUEUE_NAME_TAKEN, isQueueName } from '../trakt/traktQueue'
 import { AutoListPicker } from './AutoListPicker'
 
 type Mode = 'manual' | 'auto'
@@ -25,8 +26,10 @@ export function NewListDialog({ items, onClose, auto = false, traktConnected = t
   const [mode, setMode] = useState<Mode>(auto && !traktConnected ? 'auto' : 'manual')
   const [name, setName] = useState('')
   const create = useCreateTraktList()
+  // "Queue" is the Queue's own name: only "+ Queue" puts a title there (it asks about a watched film first, 207).
+  const queueName = isQueueName(name)
   const submit = async () => {
-    if (!name.trim()) return
+    if (!name.trim() || queueName) return
     try { await create.mutateAsync({ name: name.trim(), items }); onClose() } catch { /* toasted */ }
   }
   const manual = mode === 'manual'
@@ -39,7 +42,7 @@ export function NewListDialog({ items, onClose, auto = false, traktConnected = t
       subtitle={manual ? 'A private list on your Trakt account — you add the titles.' : traktConnected ? 'A private list on your Trakt account, filled with every film from one source on TMDB — new ones are added later.' : 'Every film from one source on TMDB. It is saved here and goes onto Trakt once Trakt is connected.'}
       footer={manual ? <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => { void submit() }} loading={create.isPending} disabled={!name.trim()}>Create</Button>
+        <Button variant="primary" onClick={() => { void submit() }} loading={create.isPending} disabled={!name.trim() || queueName}>Create</Button>
       </div> : undefined}
     >
       <div className="flex flex-col gap-3">
@@ -59,7 +62,9 @@ export function NewListDialog({ items, onClose, auto = false, traktConnected = t
               onKeyDown={e => { if (e.key === 'Enter') void submit() }}
               className="input w-full"
               placeholder="e.g. Marvel, Comfort shows"
+              aria-describedby={queueName ? 'new-list-queue' : undefined}
             />
+            {queueName && <p id="new-list-queue" data-tone="warn" className="tone-text mt-1 text-meta">{QUEUE_NAME_TAKEN}</p>}
           </div>
         ) : (
           <AutoListPicker onCreated={(k, id) => { onAutoCreated?.(k, id); onClose() }} />

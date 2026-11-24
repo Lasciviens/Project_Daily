@@ -194,7 +194,7 @@ plans in `src/features/media/trakt/` are GENERATED into the function by
 | `sync` | yes | outbox drain → mirror (only when `last_activities` moved; `full`/`force` flags) → notes comparison; refuses before the import |
 | `playback`, `playback_remove` | yes | Continue watching, and removing one paused item |
 | `calendar` | yes | my upcoming episodes |
-| `lists`, `list_items`, `list_create`, `list_delete`, `list_add`, `list_remove`, `list_reorder` | yes | personal lists, the Queue and follows' lists; `lists` flags the Queue (`queue`), `list_delete` never deletes it (207) |
+| `lists`, `list_items`, `list_create`, `list_delete`, `list_add`, `list_remove`, `list_reorder` | yes | personal lists, the Queue and follows' lists; `lists` flags the Queue (`queue`); `list_create` makes "Queue" only with `queue: true` (409 `queue_name` otherwise); `list_delete` takes a strict numeric id of one of the account's own lists (404) and never a marked Queue (403); `list_add` with `fill: true` (a ✦ rule) never into a marked Queue (207) |
 
 One sync at a time (`trakt_sync_state.sync_started_at`, stale after 5 minutes). The cron job
 `lascis-trakt-sync` runs at :07 and :37; an edit in the app triggers a silent sync 4 s later.

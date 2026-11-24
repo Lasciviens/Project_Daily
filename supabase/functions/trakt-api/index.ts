@@ -422,6 +422,8 @@ interface TraktStatus {
     kind: 'import' | 'sync'; at: string; heldBack?: number; drained?: { left: number; notFound: number }
     /** Notes (migration 136): `warning` says why some stay in the app only (e.g. Trakt's note limit); `left` wait for the next sync. */
     notes?: { warning?: string | null; error?: string | null; left?: number } | null
+    /** The Queue's sweep (207): Completed films it took out; a failure is in the last error. */
+    queue?: { removed?: number; error?: string } | null
   } | null
   /** Changes made here, waiting to be sent to Trakt. */
   pending: number
@@ -1861,6 +1863,15 @@ const QUEUE_LIST_NAME = 'Queue'
 
 const isQueueName = (name: string | null | undefined) =>
   (name ?? '').trim().toLowerCase() === QUEUE_LIST_NAME.toLowerCase()
+
+/** The name "Queue" belongs to the Queue: only "+ Queue" makes it; a new list or a ✦ rule by that name is refused (here and in trakt-api). */
+const QUEUE_NAME_TAKEN = 'The Queue already exists — use + Queue'
+
+/** A Trakt list id as the app sends it: a positive whole number, or its digits (≤ 15) — never a slug or anything else (list_delete, a rule's fill). */
+function strictListId(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,15}$/.test(v) ? Number(v) : NaN
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+}
 
 /**
  * Which of the account's lists is the Queue: the oldest one the database
@@ -3360,6 +3371,14 @@ async function readListItems(db: Db, token: string, id: unknown) {
 // change a row. It is never deleted (owner, 24.11.2026: "No deleting! Not from
 // trakt not from db not from app"); a film leaves it once it has been watched.
 const QUEUE_PROTECTED = 'The Queue can\'t be deleted — it is the list you watch from, here and on Trakt.'
+const QUEUE_NOT_FILLED = 'The Queue is never filled by a rule'
+
+/** Every Trakt list id ever marked as this account's Queue (207). Throws when they can't be read: callers refuse rather than guess. */
+async function markedQueueIds(db: Db, userId: string): Promise<Set<number>> {
+  const { data, error } = await db.from('trakt_queue_lists').select('trakt_list_id').eq('user_id', userId)
+  if (error) throw new Error(`The Queue's mark could not be read: ${error.message}`)
+  return new Set(((data ?? []) as AnyRec[]).map(r => Number(r.trakt_list_id)))
+}
 
 async function readMyLists(token: string) {
   return ((await get('/users/me/lists', token)).data as AnyRec[] ?? []).map(mapList)
@@ -3367,9 +3386,7 @@ async function readMyLists(token: string) {
 
 /** The account's Queue among `lists` and every list id ever marked as one; a "Queue" with no mark yet is marked now. Throws when the mark can't be read or written. */
 async function queueOf(db: Db, userId: string, lists: { id: number | null; name: string }[]) {
-  const { data, error } = await db.from('trakt_queue_lists').select('trakt_list_id').eq('user_id', userId)
-  if (error) throw new Error(`The Queue's mark could not be read: ${error.message}`)
-  const marked = new Set(((data ?? []) as AnyRec[]).map(r => Number(r.trakt_list_id)))
+  const marked = await markedQueueIds(db, userId)
   const pick = queueListOf(lists, marked)
   if (pick?.adopt) {
     const { error: e } = await db.from('trakt_queue_lists').upsert({ user_id: userId, trakt_list_id: pick.id }, { onConflict: 'user_id,trakt_list_id', ignoreDuplicates: true })
@@ -3461,6 +3478,8 @@ async function checkFollows(db: Db, userId: string, token: string | null, force:
     .sort((x, y) => String(x.last_checked_at ?? '').localeCompare(String(y.last_checked_at ?? '')))
   const out = { checked: 0, newTitles: 0, trailers: 0, cleared: 0, listAdded: 0, listWaiting: 0 }
   const today = new Date().toISOString().slice(0, 10)
+  // A rule linked to the Queue never fills it (207): its films are skipped, the rule's own check goes on.
+  const queueIds = due.length ? await markedQueueIds(db, userId) : new Set<number>()
   for (const f of due.slice(0, 15)) {
     const { titles, rawIds } = await followTitles(String(f.kind), Number(f.tmdb_id))
     const known = new Set<number>((f.known_ids as number[]) ?? [])
@@ -3506,7 +3525,7 @@ async function checkFollows(db: Db, userId: string, token: string | null, force:
         out.cleared += drop.length
       }
     }
-    const list = await fillFollowList(f, fresh, titles, token, today)
+    const list = await fillFollowList(f, fresh, titles, token, today, queueIds)
     const checkedAt = new Date().toISOString()
     // Every id TMDB listed, kept or not, so a film reclassified later is never "new".
     const fields: AnyRec = { known_ids: [...new Set([...known, ...rawIds])], trailer_keys: [...keys], last_checked_at: checkedAt }
@@ -3528,10 +3547,11 @@ async function checkFollows(db: Db, userId: string, token: string | null, force:
  * error, no Trakt sign-in at hand) leaves it in `pending` with the reason,
  * and the next check sends it again (followRules.ts).
  */
-async function fillFollowList(f: AnyRec, fresh: FollowTitle[], titles: FollowTitle[], token: string | null, today: string) {
+async function fillFollowList(f: AnyRec, fresh: FollowTitle[], titles: FollowTitle[], token: string | null, today: string, queueIds: ReadonlySet<number>) {
   const listId = Number(f.trakt_list_id) || null
   // Not on Trakt yet: "Put on Trakt" fills the whole list when it is made.
   if (!listId) return { added: 0, pending: [] as number[], error: null as string | null }
+  if (queueIds.has(listId)) return { added: 0, pending: [] as number[], error: QUEUE_NOT_FILLED }
   const before = Array.isArray(f.pending_list_ids) ? (f.pending_list_ids as unknown[]).map(Number) : []
   const ids = followListToSend(before, fresh.map(t => t.id), titles.length ? new Set(titles.map(t => t.id)) : null)
   if (!ids.length) return { added: 0, pending: [] as number[], error: null as string | null }
@@ -3933,7 +3953,9 @@ Deno.serve(async (req: Request) => {
     if (action === 'list_create') {
       const name = String(body.name ?? '').trim().slice(0, 100)
       if (!name) return json({ error: 'name required' }, 400)
-      // One Queue (207): asking for it again answers the one there is.
+      // The name "Queue" belongs to the Queue (207): only "+ Queue" (`queue: true`) makes it, and
+      // asking again answers the one there is. A list or a ✦ rule by that name is refused.
+      if (isQueueName(name) && body.queue !== true) return json({ error: QUEUE_NAME_TAKEN, code: 'queue_name' }, 409)
       if (isQueueName(name)) {
         const lists = await readMyLists(accessToken)
         const q = (await queueOf(supabase, userId, lists)).id
@@ -3954,9 +3976,12 @@ Deno.serve(async (req: Request) => {
     // Never the Queue (207): checked by its Trakt id against every mark, after a
     // "Queue" with no mark yet is marked; a failed read refuses (nothing deleted).
     if (action === 'list_delete') {
-      const listId = Number(body.listId)
-      if (!Number.isSafeInteger(listId) || listId <= 0) return json({ error: 'listId required' }, 400)
-      const q = await queueOf(supabase, userId, await readMyLists(accessToken))
+      const listId = strictListId(body.listId)
+      if (listId === null) return json({ error: 'listId required' }, 400)
+      const lists = await readMyLists(accessToken)
+      // Only one of the account's own lists, by the id Trakt gives it.
+      if (!lists.some(l => l.id === listId)) return json({ error: 'list not found', code: 'list_not_found' }, 404)
+      const q = await queueOf(supabase, userId, lists)
       if (listId === q.id || q.marked.has(listId)) return json({ error: QUEUE_PROTECTED, code: 'queue_protected' }, 403)
       await del(listPath(listId), accessToken)
       return json({ deleted: true })
@@ -3968,6 +3993,12 @@ Deno.serve(async (req: Request) => {
       if (!rank.length) return json({ error: 'rank required' }, 400)
       const res = await post(`${listPath(body.listId)}/items/reorder`, accessToken, { rank })
       return json({ updated: (res as AnyRec)?.updated ?? null, skipped: (res as AnyRec)?.skipped_ids ?? [] })
+    }
+    // A ✦ rule's fill (`fill: true`) never goes into the Queue (207).
+    if (action === 'list_add' && body.fill === true) {
+      const listId = strictListId(body.listId)
+      if (listId === null) return json({ error: 'listId required' }, 400)
+      if ((await markedQueueIds(supabase, userId)).has(listId)) return json({ error: QUEUE_NOT_FILLED, code: 'queue_protected' }, 403)
     }
     if (action === 'list_add' || action === 'list_remove') {
       const res = await post(`${listPath(body.listId)}/items${action === 'list_remove' ? '/remove' : ''}`, accessToken, listItemsBody(body.items))
@@ -4003,11 +4034,12 @@ Deno.serve(async (req: Request) => {
         const r = await runSync(db, userId, accessToken, username, { full: body.full, force: body.force })
         const notes = notesResult(r.drained.notes, r.notes)
         const watches = 'watches' in r ? r.watches : null
-        const result = { kind: 'sync', at: now, pulled: r.pulled, drained: r.drained, applied: r.applied ?? null, watches, heldBack: r.heldBack ?? 0, kept: r.kept ?? 0, unmatched: r.unmatched ?? null, notes }
+        const result = { kind: 'sync', at: now, pulled: r.pulled, drained: r.drained, applied: r.applied ?? null, watches, heldBack: r.heldBack ?? 0, kept: r.kept ?? 0, unmatched: r.unmatched ?? null, notes, queue: r.queue }
         const problems = [
           r.drained.error && `Sending to Trakt failed: ${r.drained.error}`,
           r.drained.dropped && `${r.drained.dropped} removed watch${r.drained.dropped === 1 ? '' : 'es'} could not be matched to one Trakt play in ${WAIT_FOR_IDS_DAYS} days and ${r.drained.dropped === 1 ? 'was' : 'were'} not removed there — Trakt may still have ${r.drained.dropped === 1 ? 'that play' : 'those plays'}`,
           watches?.error && `Watch dates: ${watches.error}`, notes?.error && `Notes: ${notes.error}`,
+          'error' in r.queue && `Queue: ${r.queue.error}`,
         ].filter(Boolean)
         await stamp(db, userId, {
           last_sync_at: now, ...(body.full ? { last_full_at: now } : {}), last_activities: r.lastActivities,

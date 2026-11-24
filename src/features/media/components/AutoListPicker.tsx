@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import { SegmentedControl, Skeleton, Truncate } from '../../../shared/ui'
 import type { FollowKind } from '../api/followsApi'
 import { useCreateAutoList } from '../hooks/useAutoLists'
+import { QUEUE_NAME_TAKEN, isQueueName } from '../trakt/traktQueue'
 import { useSourceSearch, type SourceKind } from '../hooks/useSmartLists'
 
 const KINDS: { value: SourceKind; label: string; hint: string; examples: string[] }[] = [
@@ -53,11 +54,12 @@ export function AutoListPicker({ onCreated }: { onCreated: (kind: FollowKind, tm
           <ul className="-mx-1 flex flex-col">
             {(results.data ?? []).map(r => (
               <li key={r.id}>
-                <button type="button" disabled={add.isPending} onClick={() => { void pick(r) }} className="row row-interactive w-full text-left">
+                {/* A ✦ list named "Queue" would take over the Queue (207): shown, not offered. */}
+                <button type="button" disabled={add.isPending || isQueueName(r.name)} onClick={() => { void pick(r) }} className="row row-interactive w-full text-left disabled:opacity-60">
                   <span className="min-w-0 flex-1">
                     <Truncate className="block text-body font-medium text-fg">{r.name}</Truncate>
                     <span className="block text-micro text-fg-muted">
-                      {kind === 'person' ? (r.known_for_department === 'Directing' ? 'Director' : r.known_for_department ?? 'Person') : kind === 'company' ? (r.origin_country || 'Studio') : meta.label}
+                      {isQueueName(r.name) ? QUEUE_NAME_TAKEN : kind === 'person' ? (r.known_for_department === 'Directing' ? 'Director' : r.known_for_department ?? 'Person') : kind === 'company' ? (r.origin_country || 'Studio') : meta.label}
                     </span>
                   </span>
                 </button>

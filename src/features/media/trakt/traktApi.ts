@@ -73,6 +73,8 @@ export interface TraktRunResult {
   sent?: number
   /** Notes (migration 136): sent to Trakt, taken from Trakt, refused by Trakt (e.g. its note limit). */
   notes?: { sent: number; fromTrakt: number; refused: number; left: number; warning: string | null; error: string | null } | null
+  /** The Queue's sweep (207): Completed films taken out, or why it failed (also in the last error). */
+  queue?: { removed: number } | { error: string }
 }
 
 /**
@@ -224,13 +226,20 @@ export const removeTraktPlayback = (id: number) => invoke<{ ok: true }>('playbac
 export const fetchTraktCalendar = () => invoke<{ items: TraktCalendarItem[] }>('calendar').then(r => r.items)
 export const fetchTraktLists = () => invoke<{ lists: TraktList[] }>('lists').then(r => r.lists)
 export const fetchTraktListItems = (listId: number) => invoke<{ items: TraktListItem[] }>('list_items', { listId }).then(r => r.items)
-export const createTraktList = (name: string, description?: string) => invoke<{ list: TraktList }>('list_create', { name, description }).then(r => r.list)
-/** Deletes a list on Trakt — never the Queue, which trakt-api flags; the function and the database refuse it too (207). */
-export async function deleteTraktList(listId: number) {
-  if ((await fetchTraktLists()).some(l => l.id === listId && l.queue)) throw new Error('The Queue can\'t be deleted')
-  return invoke<{ deleted: true }>('list_delete', { listId })
+/** `queue`: only "+ Queue" makes (or gets back) the Queue; any other list named "Queue" is refused (207). */
+export const createTraktList = (name: string, description?: string, opts: { queue?: boolean } = {}) =>
+  invoke<{ list: TraktList }>('list_create', { name, description, queue: opts.queue === true }).then(r => r.list)
+/**
+ * Deletes a list on Trakt — never the Queue: pass the list as the page has it
+ * and a flagged Queue is refused here; trakt-api and the database are the lock (207).
+ */
+export function deleteTraktList(list: Pick<TraktList, 'id' | 'queue'>) {
+  if (list.queue) return Promise.reject(new Error('The Queue can\'t be deleted'))
+  return invoke<{ deleted: true }>('list_delete', { listId: list.id })
 }
-export const addToTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_add', { listId, items })
+/** `fill`: a ✦ rule filling its list — trakt-api refuses it for the Queue (207). */
+export const addToTraktList = (listId: number, items: ListItemRef[], opts: { fill?: boolean } = {}) =>
+  invoke<{ notFound: number }>('list_add', { listId, items, ...(opts.fill ? { fill: true } : {}) })
 export const removeFromTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_remove', { listId, items })
 /** Every list item id of the list, in the new order. */
 export const reorderTraktList = (listId: number, rank: number[]) => invoke<{ updated: number | null; skipped: number[] }>('list_reorder', { listId, rank })

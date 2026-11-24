@@ -27,7 +27,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
       title: `Delete “${list.name}”?`,
       message: follow ? 'The list is deleted on Trakt and stops filling itself. The titles stay in your library.' : 'The list is deleted on Trakt too. The titles stay in your library.',
       confirmLabel: 'Delete list',
-      remove: () => (follow ? delAuto.mutateAsync({ follow, listId: list.id }) : delList.mutateAsync(list.id)),
+      remove: () => (follow ? delAuto.mutateAsync({ follow, list }) : delList.mutateAsync(list)),
       done: 'List deleted',
     })
     if (result === 'deleted' || result === 'gone') onGone()

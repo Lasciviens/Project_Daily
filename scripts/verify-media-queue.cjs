@@ -3,6 +3,11 @@
 require('sucrase/register')
 const Q = require('../src/features/media/queue/queueModel.ts')
 const T = require('../src/features/media/trakt/traktQueue.ts')
+const S = require('../src/features/media/trakt/traktAutoSyncRules.ts')
+const { readFileSync } = require('node:fs')
+const { join } = require('node:path')
+const read = f => readFileSync(join(__dirname, '..', f), 'utf8')
+const has = (text, re, label) => ok(re.test(text), true, label)
 let n = 0
 const ok = (a, e, label) => { const x = JSON.stringify(a), y = JSON.stringify(e); if (x !== y) { console.error(`FAIL ${label}\n  expected ${y}\n  actual   ${x}`); process.exit(1) } n++ }
 
@@ -32,4 +37,51 @@ ok(T.queueAddNeedsRewatch('movie', 'completed'), true, 'adding a Completed film 
 ok(T.queueAddNeedsRewatch('movie', 'watching'), false, 'a film being watched (or rewatched) is added as it is')
 ok(T.queueAddNeedsRewatch('movie', undefined), false, 'a film not in the library is added as it is')
 ok(T.queueAddNeedsRewatch('show', 'completed'), false, 'a series is added as it is (only films leave)')
+
+// Review 1 · the name "Queue" belongs to the Queue: New list and ✦ rules never make, reuse or fill it
+const api = read('supabase/functions/trakt-api/index.ts')
+ok(T.QUEUE_NAME_TAKEN, 'The Queue already exists — use + Queue', 'the line New list shows for the name')
+has(api, /if \(isQueueName\(name\) && body\.queue !== true\) return json\(\{ error: QUEUE_NAME_TAKEN, code: 'queue_name' \}, 409\)/, 'trakt-api: list_create refuses "Queue" unless it is "+ Queue" asking (409)')
+has(read('src/features/media/queue/useQueue.ts'), /createTraktList\(QUEUE_NAME, [^\n]*\{ queue: true \}\)/, '"+ Queue" is the one caller that asks for the Queue')
+has(read('src/features/media/trakt/useTraktExtras.ts'), /isQueueName\(name\) \? Promise\.reject\(new Error\(QUEUE_NAME_TAKEN\)\)/, 'New list\'s hook refuses the name')
+const dialog = read('src/features/media/components/NewListDialog.tsx')
+has(dialog, /disabled=\{!name\.trim\(\) \|\| queueName\}/, 'New list: Create is off for the name "Queue"')
+has(dialog, /\{queueName && <p[^>]*>\{QUEUE_NAME_TAKEN\}<\/p>\}/, 'New list: …and says why on one line')
+const auto = read('src/features/media/hooks/useAutoLists.ts')
+has(auto, /if \(isQueueName\(v\.name\)\) throw new Error\(QUEUE_NAME_TAKEN\)/, 'a ✦ rule named "Queue" is refused (every way in: picker, Follow, franchise, Put on Trakt)')
+has(auto, /addToTraktList\(listId, [^\n]*\{ fill: true \}\)/, 'a ✦ rule fills its list as a fill')
+has(read('src/features/media/components/AutoListPicker.tsx'), /disabled=\{add\.isPending \|\| isQueueName\(r\.name\)\}/, 'the ✦ picker does not offer a source named "Queue"')
+has(api, /if \(action === 'list_add' && body\.fill === true\) \{[\s\S]{0,300}markedQueueIds\(supabase, userId\)\)\.has\(listId\)\) return json\(\{ error: QUEUE_NOT_FILLED, code: 'queue_protected' \}, 403\)/, 'trakt-api: a fill into a marked Queue is refused (403)')
+has(api, /if \(queueIds\.has\(listId\)\) return \{ added: 0, pending: \[\] as number\[\], error: QUEUE_NOT_FILLED \}/, 'trakt-api: the daily follow check never fills a marked Queue')
+has(api, /const queueIds = due\.length \? await markedQueueIds\(db, userId\)/, '…reading the marks once per check (a failed read stops the check, never fills)')
+
+// Review 2 · a failed sweep is never silent
+has(api, /const result = \{ kind: 'sync',[^\n]*, queue: r\.queue \}/, 'the sync result carries the sweep')
+has(api, /'error' in r\.queue && `Queue: \$\{r\.queue\.error\}`/, 'a failed sweep goes into the last error (the Trakt card shows it)')
+ok((api.match(/const queue = await sweepQueue\(db, userId, token\)\.catch\(queueFailure\)/g) || []).length, 2, 'both ends of runSync sweep (nothing new on Trakt, and after a pull)')
+has(read('src/features/media/trakt/TraktCard.tsx'), /lastResult\?\.queue\?\.removed && `\$\{s\.lastResult\.queue\.removed\} watched left the Queue`/, 'the card says how many watched films left')
+
+// Review 5 · a quick sync that found another one running tries once more
+ok(S.syncRetryAfter({ busy: true }, 0), S.BUSY_RETRY_MS, 'busy: once more after 15 s')
+ok(S.BUSY_RETRY_MS, 15000, '…15 s')
+ok(S.syncRetryAfter({ busy: true }, 1), null, 'busy again on the retry: the cron takes it from there')
+ok(S.syncRetryAfter({ busy: false, pulled: true }, 0), null, 'a sync that ran: no retry')
+ok(S.syncRetryAfter(undefined, 0), null, 'no answer (it threw): no retry')
+has(read('src/features/media/trakt/traktAutoSync.ts'), /if \(again !== null && !timer\) scheduleTraktSync\(qc, again, attempt \+ 1\)/, 'the quick sync schedules the retry, unless a newer change already has one')
+
+// Review 6 · list_delete: a strict id, and only one of the account's own lists
+ok(T.strictListId(4242), 4242, 'a number')
+ok(T.strictListId('4242'), 4242, 'its digits')
+ok(T.strictListId('queue'), null, 'a slug is refused')
+ok(T.strictListId('42abc'), null, 'digits with more after them are refused')
+ok(T.strictListId(' 42'), null, 'spaces are refused')
+ok(T.strictListId('1e3'), null, 'an exponent is refused')
+ok(T.strictListId('0x10'), null, 'hex is refused')
+ok(T.strictListId(0), null, '0 is refused')
+ok(T.strictListId(-5), null, 'a negative id is refused')
+ok(T.strictListId(4.5), null, 'a fraction is refused')
+ok(T.strictListId('1234567890123456'), null, 'more than 15 digits is refused')
+ok(T.strictListId(null), null, 'nothing is refused')
+ok(T.strictListId([42]), null, 'an array is refused')
+has(api, /if \(action === 'list_delete'\) \{\s+const listId = strictListId\(body\.listId\)\s+if \(listId === null\) return json\(\{ error: 'listId required' \}, 400\)\s+const lists = await readMyLists\(accessToken\)[\s\S]{0,120}if \(!lists\.some\(l => l\.id === listId\)\) return json\(\{ error: 'list not found', code: 'list_not_found' \}, 404\)\s+const q = await queueOf\(supabase, userId, lists\)\s+if \(listId === q\.id \|\| q\.marked\.has\(listId\)\) return json\(\{ error: QUEUE_PROTECTED, code: 'queue_protected' \}, 403\)\s+await del\(listPath\(listId\), accessToken\)/, 'trakt-api: list_delete parses the id strictly, deletes only the account\'s own list (404), never a marked Queue (403)')
 console.log(`verify-media-queue: ${n} assertions passed`)

@@ -52,6 +52,8 @@ export interface TraktStatus {
     kind: 'import' | 'sync'; at: string; heldBack?: number; drained?: { left: number; notFound: number }
     /** Notes (migration 136): `warning` says why some stay in the app only (e.g. Trakt's note limit); `left` wait for the next sync. */
     notes?: { warning?: string | null; error?: string | null; left?: number } | null
+    /** The Queue's sweep (207): Completed films it took out; a failure is in the last error. */
+    queue?: { removed?: number; error?: string } | null
   } | null
   /** Changes made here, waiting to be sent to Trakt. */
   pending: number

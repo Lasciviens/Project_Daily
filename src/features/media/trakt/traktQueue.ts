@@ -11,6 +11,15 @@ export const QUEUE_LIST_NAME = 'Queue'
 export const isQueueName = (name: string | null | undefined) =>
   (name ?? '').trim().toLowerCase() === QUEUE_LIST_NAME.toLowerCase()
 
+/** The name "Queue" belongs to the Queue: only "+ Queue" makes it; a new list or a ✦ rule by that name is refused (here and in trakt-api). */
+export const QUEUE_NAME_TAKEN = 'The Queue already exists — use + Queue'
+
+/** A Trakt list id as the app sends it: a positive whole number, or its digits (≤ 15) — never a slug or anything else (list_delete, a rule's fill). */
+export function strictListId(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,15}$/.test(v) ? Number(v) : NaN
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+}
+
 /**
  * Which of the account's lists is the Queue: the oldest one the database
  * marks; with none marked, the oldest named "Queue" — `adopt` says it must be

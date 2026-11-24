@@ -13,11 +13,11 @@ export function QueueButton({ type, tmdb, title }: { type: 'movie' | 'show'; tmd
   const pos = queue.position(type, tmdb)
   async function toggleQueue() {
     // A Completed film asks to start a rewatch first: it would leave the Queue at the next sync (207).
-    if (!pos && !(await addCheck({ type, tmdb }, title))) return
+    if (!pos && !(await addCheck.check({ type, tmdb }, title))) return
     toggle.mutate({ item: { type, tmdb }, title, remove: !!pos })
   }
   return (
-    <Button size="sm" variant={pos ? 'primary' : 'ghost'} loading={toggle.isPending}
+    <Button size="sm" variant={pos ? 'primary' : 'ghost'} loading={toggle.isPending || addCheck.busy}
       title={pos ? 'Tap to take it out of the Queue' : 'Put it at the end of your Queue (a list on Trakt)'}
       aria-label={pos ? `In Queue, number ${pos}` : 'Add to Queue'}
       onClick={() => { void toggleQueue() }}>
