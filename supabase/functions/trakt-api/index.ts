@@ -1877,27 +1877,25 @@ function queueListOf<T extends { id: number | null; name: string }>(
   return named.length ? { id: named[0], adopt: true } : null
 }
 
-interface QueueMovieItem { tmdb: number | null; listedAt: string | null }
-/** A library film: its status, and when each of its watches was recorded here (`media_watches.created_at`). */
-interface QueueLibraryMovie { status: string; recordedAt: readonly string[] }
+interface QueueMovieItem { tmdb: number | null }
 
 /**
- * The films that leave the Queue: Completed in the library, with a watch
- * recorded since they were put in the Queue — however it came (marked in the
- * app, on Trakt, a scrobble). A Completed film queued again to rewatch
- * stays until that rewatch is recorded. Unknown dates keep the film.
+ * The films that leave the Queue (owner, 24.11.2026: "Completed movie should
+ * get out of the queue"): every film whose library status is Completed,
+ * whenever and however it was watched (the app, Trakt, a scrobble). A film
+ * being watched again is Watching (161), not Completed, so it stays until the
+ * rewatch ends; adding a Completed film asks to start a rewatch first
+ * (`useQueueAddCheck`). `status` maps a TMDB id to its library status.
  */
-function queueMoviesWatched(items: readonly QueueMovieItem[], library: ReadonlyMap<number, QueueLibraryMovie>): number[] {
+function queueMoviesCompleted(items: readonly QueueMovieItem[], status: ReadonlyMap<number, string>): number[] {
   const out = new Set<number>()
-  for (const i of items) {
-    if (!i.tmdb || !i.listedAt) continue
-    const listed = Date.parse(i.listedAt)
-    const lib = library.get(i.tmdb)
-    if (!Number.isFinite(listed) || lib?.status !== 'completed') continue
-    if (lib.recordedAt.some(t => Date.parse(t) >= listed)) out.add(i.tmdb)
-  }
+  for (const i of items) if (i.tmdb && status.get(i.tmdb) === 'completed') out.add(i.tmdb)
   return [...out]
 }
+
+/** Putting a title in the Queue asks to start a rewatch first: only a film the library has as Completed. */
+const queueAddNeedsRewatch = (type: 'movie' | 'show', status: string | null | undefined) =>
+  type === 'movie' && status === 'completed'
 
 /* eslint-enable @typescript-eslint/no-unused-vars */
 // </trakt-shared>
@@ -3382,30 +3380,23 @@ async function queueOf(db: Db, userId: string, lists: { id: number | null; name:
 }
 
 /**
- * Takes the films watched since they were queued out of the Queue (traktQueue.ts),
+ * Takes every film that is Completed in the library out of the Queue
+ * (traktQueue.ts, owner: "Completed movie should get out of the queue"),
  * through the same Trakt call as the app's own Remove. Every way a film is
- * watched (the app, Trakt, a scrobble) ends as a watch here, and every
- * sync runs this, so they all end the same way; the watch history is not touched.
+ * watched (the app, Trakt, a scrobble) ends here as Completed, and every sync
+ * runs this; the watch history is not touched. A rewatch is Watching (161), so it stays.
  */
 async function sweepQueue(db: Db, userId: string, token: string): Promise<{ removed: number }> {
   const { id } = await queueOf(db, userId, await readMyLists(token))
   if (!id) return { removed: 0 }
   const rows = await getAll(`${listPath(id)}/items/movie`, token)
-  const items = rows.map(r => ({ tmdb: tmdbOfItem(r, 'movie'), listedAt: (r.listed_at as string) ?? null }))
+  const items = rows.map(r => ({ tmdb: tmdbOfItem(r, 'movie') }))
   const ids = [...new Set(items.map(i => i.tmdb).filter((t): t is number => !!t))]
   if (!ids.length) return { removed: 0 }
-  const { data: entries, error } = await db.from('user_movie_entries').select('id, status, movie:movies!inner(tmdb_id)').eq('user_id', userId).in('movie.tmdb_id', ids)
+  const { data: entries, error } = await db.from('user_movie_entries').select('status, movie:movies!inner(tmdb_id)').eq('user_id', userId).in('movie.tmdb_id', ids)
   if (error) throw error
-  const completed = ((entries ?? []) as AnyRec[]).filter(e => e.status === 'completed')
-  if (!completed.length) return { removed: 0 }
-  const { data: watches, error: wErr } = await db.from('media_watches').select('movie_entry_id, created_at').eq('user_id', userId).eq('kind', 'movie').in('movie_entry_id', completed.map(e => e.id))
-  if (wErr) throw wErr
-  const library = new Map<number, QueueLibraryMovie>()
-  for (const e of completed) {
-    const recordedAt = ((watches ?? []) as AnyRec[]).filter(w => w.movie_entry_id === e.id).map(w => String(w.created_at))
-    library.set(Number((e.movie as AnyRec).tmdb_id), { status: String(e.status), recordedAt })
-  }
-  const done = queueMoviesWatched(items, library)
+  const status = new Map(((entries ?? []) as AnyRec[]).map(e => [Number((e.movie as AnyRec).tmdb_id), String(e.status)]))
+  const done = queueMoviesCompleted(items, status)
   if (!done.length) return { removed: 0 }
   await post(`${listPath(id)}/items/remove`, token, listItemsBody(done.map(tmdb => ({ type: 'movie', tmdb }))))
   return { removed: done.length }

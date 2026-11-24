@@ -146,7 +146,7 @@ reach Trakt and come back here through the normal history sync.
 - **The Queue** is a private Trakt list named "Queue"; its order is saved on Trakt with
   `list_reorder` (§12). It is known by its Trakt list id in `trakt_queue_lists` (207) and is never
   deleted: `list_delete` answers 403 `queue_protected` for it, and the database refuses to delete
-  or change a mark. Each sync ends by taking films watched since they were queued off the list
+  or change a mark. Each sync ends by taking every Completed film off the list
   (`sweepQueue`, `POST …/items/remove`); see `docs/features/media.md` → The Queue.
 - **Follows (migration `119`, 30.09.2026):** follow a franchise (TMDB collection), studio
   (company), director or actor from a movie's page (**Follow** menu), or a keyword through

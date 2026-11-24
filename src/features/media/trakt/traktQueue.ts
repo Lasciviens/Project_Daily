@@ -26,24 +26,22 @@ export function queueListOf<T extends { id: number | null; name: string }>(
   return named.length ? { id: named[0], adopt: true } : null
 }
 
-export interface QueueMovieItem { tmdb: number | null; listedAt: string | null }
-/** A library film: its status, and when each of its watches was recorded here (`media_watches.created_at`). */
-export interface QueueLibraryMovie { status: string; recordedAt: readonly string[] }
+export interface QueueMovieItem { tmdb: number | null }
 
 /**
- * The films that leave the Queue: Completed in the library, with a watch
- * recorded since they were put in the Queue — however it came (marked in the
- * app, on Trakt, a scrobble). A Completed film queued again to rewatch
- * stays until that rewatch is recorded. Unknown dates keep the film.
+ * The films that leave the Queue (owner, 24.11.2026: "Completed movie should
+ * get out of the queue"): every film whose library status is Completed,
+ * whenever and however it was watched (the app, Trakt, a scrobble). A film
+ * being watched again is Watching (161), not Completed, so it stays until the
+ * rewatch ends; adding a Completed film asks to start a rewatch first
+ * (`useQueueAddCheck`). `status` maps a TMDB id to its library status.
  */
-export function queueMoviesWatched(items: readonly QueueMovieItem[], library: ReadonlyMap<number, QueueLibraryMovie>): number[] {
+export function queueMoviesCompleted(items: readonly QueueMovieItem[], status: ReadonlyMap<number, string>): number[] {
   const out = new Set<number>()
-  for (const i of items) {
-    if (!i.tmdb || !i.listedAt) continue
-    const listed = Date.parse(i.listedAt)
-    const lib = library.get(i.tmdb)
-    if (!Number.isFinite(listed) || lib?.status !== 'completed') continue
-    if (lib.recordedAt.some(t => Date.parse(t) >= listed)) out.add(i.tmdb)
-  }
+  for (const i of items) if (i.tmdb && status.get(i.tmdb) === 'completed') out.add(i.tmdb)
   return [...out]
 }
+
+/** Putting a title in the Queue asks to start a rewatch first: only a film the library has as Completed. */
+export const queueAddNeedsRewatch = (type: 'movie' | 'show', status: string | null | undefined) =>
+  type === 'movie' && status === 'completed'
