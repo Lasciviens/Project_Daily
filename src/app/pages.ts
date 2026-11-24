@@ -37,7 +37,7 @@ const BY_PATH: Record<string, { preload: () => Promise<void> }> = {
 /**
  * Starts loading the code of the page in the address, at the very start — beside the shell's own code, not
  * after the shell has drawn (it used to be asked for only then: one more round trip before the page's first
- * read). `hash` is location.hash ("#/daily?tab=week").
+ * read). `hash` is location.hash ("#/daily?date=2026-11-24").
  */
 export function preloadOpenedPage(hash: string): void {
   const first = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? ''

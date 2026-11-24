@@ -270,7 +270,7 @@ export function dayRowCounts(taskCounts: { open: number; done: number }, repeats
   return { open: taskCounts.open + repeatsToDo, done: taskCounts.done }
 }
 
-// ── Repeats in the week strip, the week card and the month ──────────────────
+// ── Repeats in the week strip and the month ─────────────────────────────────
 
 /** How many days of repeating plans start on `day` and nobody acted on yet
  *  (a day acted on is its own task and counts as a task). `asTasks`: the

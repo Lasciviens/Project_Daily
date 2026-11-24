@@ -68,19 +68,23 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
 
   return (
     <Card>
-      <div className="mb-3 flex items-center justify-between gap-2">
+      {/* One line at every width: under 23rem of card (a 402px phone) the month is cut to three letters
+          ("Dec 2026"), the gaps tighten and the right side never shrinks. */}
+      <div className="@container/monthhead mb-3">
+      <div className="flex min-w-0 items-center justify-between gap-1 @[23rem]/monthhead:gap-2">
         <DateNav
-          label={formatMonthYear(viewDate)}
+          label={<MonthLabel date={viewDate} />}
           onPrev={() => setViewDate(p => subMonths(p, 1))}
           onNext={() => setViewDate(p => addMonths(p, 1))}
           onToday={() => setViewDate(new Date())}
           isToday={isSameMonth(viewDate, new Date())}
-          labelClassName="min-w-[120px] text-lead font-semibold text-fg"
+          labelClassName="whitespace-nowrap text-lead font-semibold text-fg @[23rem]/monthhead:min-w-[120px]"
         />
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {openCount > 0 && <TonePill tone="accent">{openCount} open</TonePill>}
           <CalendarFilter />
         </div>
+      </div>
       </div>
 
       <div className="mb-1 grid grid-cols-7">
@@ -128,5 +132,17 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
         })}
       </div>
     </Card>
+  )
+}
+
+/** "December 2026", or "Dec 2026" in a narrow card (the full name is still read aloud). */
+function MonthLabel({ date }: { date: Date }) {
+  const full = formatMonthYear(date)
+  const [month, year] = [full.slice(0, full.lastIndexOf(' ')), full.slice(full.lastIndexOf(' ') + 1)]
+  return (
+    <>
+      <span aria-hidden>{month.slice(0, 3)}<span className="hidden @[23rem]/monthhead:inline">{month.slice(3)}</span> {year}</span>
+      <span className="sr-only">{full}</span>
+    </>
   )
 }

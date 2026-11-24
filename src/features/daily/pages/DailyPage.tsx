@@ -77,11 +77,9 @@ export function DailyPage() {
   const diff = differenceInCalendarDays(viewDate, new Date())
   const { greeting, timeStr } = useGreeting()
   // One header for every section: the page's width and the same lines, so the date and the period switcher never move
-  // or resize between Today, Week, Tasks… (owner, 31.10.2026: "the layout should not move while navigating between
+  // or resize between Today, Month, Tasks… (owner, 31.10.2026: "the layout should not move while navigating between
   // sections"; 23.11.2026: and the same width as every page's header).
 
-  // The diary pages through days like the day view.
-  const dayLike = mode === 'day' || mode === 'diary'
   // The viewed date's line shows in every section (the date above it does too).
   const context = isToday(viewDate) ? `${greeting} · ${timeStr}`
     : isYesterday(viewDate) ? 'Yesterday'
@@ -106,7 +104,8 @@ export function DailyPage() {
             onPrev={() => { setViewDate(d => addDays(d, -1)); setMode(m => (m === 'diary' ? m : 'day')) }}
             onNext={() => { setViewDate(d => addDays(d,  1)); setMode(m => (m === 'diary' ? m : 'day')) }}
             onToday={() => { setViewDate(new Date()); setMode(m => (m === 'diary' ? m : 'day')) }}
-            isToday={dayLike && isToday(viewDate)}
+            // The date's own Today link: shown only off today, whichever view is open (never beside the Today segment).
+            isToday={isToday(viewDate)}
           />
         }
         subtitle={<span className="block pl-1 tabular-nums"><DayLine oneLine date={formatLocalDate(viewDate)} lead={context} /></span>}

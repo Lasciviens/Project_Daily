@@ -98,8 +98,8 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 // The real, still-remaining reason "reconnect + grant the new scope" alone
 // didn't bring subscribed calendars back: `selectedCalendarIds: null` means
-// two DIFFERENT things in two different places. the calendar filter's own UI
-// (`isCalSelected`) treats null as "every calendar is selected" — which is
+// two DIFFERENT things in two different places. The calendar filter's own UI
+// (`isSelected`, CalendarFilter.tsx) treats null as "every calendar is selected" — which is
 // why every checkbox shows green/checked with no explicit action taken.
 // But every fetch hook (this file) used to fall back to `selectedCalendarIds
 // ?? ['primary']` — treating the SAME null as "only primary". A user who

@@ -1,6 +1,6 @@
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { SlidersHorizontal } from 'lucide-react'
-import { IconButton } from '../../../shared/ui'
+import { IconButton, Truncate } from '../../../shared/ui'
 import { useCalendarStore } from '../../../app/store'
 import { useCalendarList } from '../hooks/useCalendar'
 
@@ -28,8 +28,9 @@ export function CalendarFilter() {
       <PopoverPanel anchor="bottom end" modal={false}
         className="z-popover flex max-w-[min(22rem,85vw)] flex-wrap gap-1.5 rounded-menu border border-line-strong bg-surface p-2 shadow-menu [--anchor-gap:6px] [--anchor-padding:8px]">
         {calList.map(cal => (
-          <button key={cal.id} type="button" aria-pressed={isSelected(cal.id)} onClick={() => toggle(cal.id)} className="pill-tab">
-            {cal.summary}
+          // A calendar's name is the owner's own text: cut at 14rem, the full name in its title.
+          <button key={cal.id} type="button" aria-pressed={isSelected(cal.id)} onClick={() => toggle(cal.id)} className="pill-tab min-w-0 max-w-[14rem]">
+            <Truncate>{cal.summary}</Truncate>
           </button>
         ))}
       </PopoverPanel>
