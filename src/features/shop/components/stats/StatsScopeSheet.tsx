@@ -30,7 +30,7 @@ export function StatsScopeSheet({ open, onClose, scope, options, onChange, match
       open={open} onClose={onClose} size="md" title="Filter Stats" subtitle="Every number on the screen follows"
       footer={
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => onChange(NO_SCOPE)} disabled={!active}>Clear filters</Button>
+          <Button variant="ghost" onClick={() => onChange(NO_SCOPE)} disabled={!active} tip="Clear filters">Clear</Button>
           <span aria-live="polite" className="ml-auto text-meta tabular-nums text-fg-muted">{active ? `${plural(matching, 'thing')} match` : `All ${plural(matching, 'thing')}`}</span>
           <Button variant="primary" onClick={onClose}>Done</Button>
         </div>

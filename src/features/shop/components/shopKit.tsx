@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { ChevronDown, ExternalLink, Package } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ExternalLink, Link2, Package, Plus } from 'lucide-react'
 import { Truncate, cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
 import { DisposalRibbon } from './DisposalRibbon'
@@ -59,6 +59,17 @@ export function SiteLink({ url, children, className }: { url: string | null | un
  * the native select lies invisible over it (the phone's own picker, the keys),
  * so the box keeps the row's text size — a visible select is 16px on touch.
  */
+/** "Link plus": a new money chain (lucide has no such icon — the link with a small plus at its corner). */
+export function LinkPlus() {
+  return (
+    <span aria-hidden className="relative inline-flex">
+      <Link2 className="h-[18px] w-[18px]" />
+      <Plus className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" strokeWidth={3} />
+    </span>
+  )
+}
+
+/** A sort as one short control: an icon and the order's own word; "Sort: …" in its title and accessible name. */
 export function SortSelect<T extends string>({ value, labels, onChange, className }: {
   value: T
   labels: Record<T, string>
@@ -66,8 +77,8 @@ export function SortSelect<T extends string>({ value, labels, onChange, classNam
   className?: string
 }) {
   return (
-    <span className={cx('select input-bar relative flex items-center gap-1 pr-7 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
-      <span className="shrink-0 font-normal text-fg-muted">Sort:</span>
+    <span title={`Sort: ${labels[value]}`} className={cx('select input-bar relative flex items-center gap-1.5 pr-7 has-[:focus-visible]:border-accent-500 has-[:focus-visible]:shadow-[0_0_0_3px_rgb(var(--accent-500)/0.18)]', className)}>
+      <ArrowUpDown aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
       <Truncate as="span" className="min-w-0">{labels[value]}</Truncate>
       <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
       <select aria-label="Sort" value={value} onChange={e => onChange(e.target.value as T)}

@@ -188,11 +188,11 @@ export function pictureColumns(cards: readonly number[], widthRem: number | null
 // folds what does not fit behind Filters, as `fitActions` does for the record's buttons. Widths in rem.
 
 /** What each control of the bar takes (search at its smallest, the selects at their cap) and the gap between them. */
-export const FILTER_ROW = { search: 12, seg: 15.5, sort: 11.5, tools: 9.5, filters: 7.5, select: 12, check: 8.5, clear: 7.5, gap: 0.5, roomy: 38 } as const
+export const FILTER_ROW = { search: 12, seg: 11.5, sort: 10.5, tools: 9.5, filters: 7.5, select: 12, check: 2.75, clear: 5, gap: 0.5, roomy: 38 } as const
 
 /**
- * `full`: every control in one line. `line`: one line with the category, money chain and "Bought to sell" behind
- * Filters. `roomy`: two rows (search, Mine · Sold or gone · All and the icons; then Sort and Filters) — a phone turned
+ * `full`: every control in one line. `line`: one line with the category, money chain and Bought to sell (an icon) behind
+ * Filters. `roomy`: two rows (search, Mine · Gone · All and the icons; then Sort and Filters) — a phone turned
  * sideways. `narrow`: three rows (a phone). Unmeasured: `full`.
  */
 export type FilterRowMode = 'full' | 'line' | 'roomy' | 'narrow'

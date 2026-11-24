@@ -120,7 +120,7 @@ export function QuickAiSheet({ open, initialText, store, noRush, onAdded, onClos
             </>
           ) : (
             <>
-              <Button onClick={() => { setRows(null); setSource(null); setBase(null) }} disabled={busy}>Edit text</Button>
+              <Button onClick={() => { setRows(null); setSource(null); setBase(null) }} disabled={busy} tip="Edit the text again">Edit text</Button>
               <Button variant="primary" className="ml-auto" onClick={save} loading={add.isPending} disabled={ticked.length === 0}>
                 Add {ticked.length}
               </Button>
@@ -162,9 +162,9 @@ export function QuickAiSheet({ open, initialText, store, noRush, onAdded, onClos
           )}
           {source?.kind === 'code' && rows.length > 0 && (
             <div className="pt-1">
-              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown || touched}
+              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown || touched} tip="Check spelling with AI"
                 title={touched ? 'You changed the list: the AI would start over. Put it back, or add first.' : 'The app kept your words as typed; the AI also fixes obvious typos.'}>
-                {costKnown ? `Check spelling with AI · ${upTo(worst)}` : 'Check spelling with AI'}
+                {costKnown ? `Spelling · ${upTo(worst)}` : 'Spelling'}
               </Button>
             </div>
           )}

@@ -163,7 +163,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   ) : all.length === 0 && dropped.length === 0 ? (
     <EmptyState bordered className="max-w-md" icon={<ShoppingBag />} title="Nothing on the wishlist yet"
       description="Things you want to buy someday — with a price, where to buy them and when."
-      action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })}>Add item</Button>} />
+      action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })} tip="Add to the wishlist">Add</Button>} />
   ) : (
     <div key="list" ref={listRef} className="flex flex-col gap-4">
       {all.length > 0 && (

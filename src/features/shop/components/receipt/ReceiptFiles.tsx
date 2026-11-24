@@ -63,7 +63,7 @@ export function ReceiptFiles({ rows, dupes, running, onRetry, onDrop, worstOf }:
         )
       })}
       {finished && read > 0 && (
-        <li><button type="button" onClick={() => setShown(false)} className="text-meta text-fg-muted underline">Fold the files</button></li>
+        <li><button type="button" onClick={() => setShown(false)} title="Fold the files" className="text-meta text-fg-muted underline">Fold</button></li>
       )}
     </ul>
   )

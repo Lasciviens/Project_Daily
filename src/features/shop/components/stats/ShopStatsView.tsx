@@ -85,7 +85,7 @@ export function ShopStatsView({ items: allItems, categories, isLoading, scope, o
       <EmptyState
         bordered icon={<ChartColumn />} title="Nothing bought yet"
         description="Mark a wish as bought, or add something you already own, to see where your money goes and what your things cost you to use."
-        action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-own' })}>Add something I own</Button>}
+        action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-own' })} tip="Add something I own">Add</Button>}
       />
     )
   }

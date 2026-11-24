@@ -101,11 +101,11 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
       footer={
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={onClose} variant="ghost">Close</Button>
-          <Button className="ml-auto" onClick={keep} disabled={!listing && !listable} loading={create.isPending || change.isPending}
-            title={!listing && !listable ? 'Add an asking price (below a billion, at most two decimals) to list it' : undefined}>
-            {listing ? 'Save to the listing' : 'Mark it listed'}
+          <Button className="ml-auto" onClick={keep} disabled={!listing && !listable} loading={create.isPending || change.isPending} aria-label={listing ? 'Save to the listing' : 'Mark it listed'}
+            title={!listing && !listable ? 'Add an asking price (below a billion, at most two decimals) to list it' : listing ? 'Save to the listing' : 'Mark it listed'}>
+            {listing ? 'Save' : 'Listed'}
           </Button>
-          <Button variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!body.trim()}>Copy the ad</Button>
+          <Button variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!body.trim()} tip="Copy the ad">Copy</Button>
         </div>
       }>
       <div className="flex flex-col gap-3">
@@ -146,7 +146,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         {isLoading ? null : !template ? (
           <div className="flex flex-wrap items-center gap-2 text-meta text-fg-muted">
             <span>No ad template{where ? ` for ${where}` : ''}.</span>
-            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending}>Put back the default texts</Button>
+            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending} tip="Put back the default texts">Defaults</Button>
           </div>
         ) : null}
         <label className="flex flex-col gap-1">
@@ -165,8 +165,8 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}
-          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()}>Fill in again</button>}
-          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)}>Edit the template</button>}
+          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()} title="Fill the ad in again">Refill</button>}
+          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)} title="Edit the template">Template</button>}
         </div>
         {filled && filled.unknown.length > 0 && <p className="text-meta text-warn">The template names {filled.unknown.map(f => `{${f}}`).join(', ')}, which the app doesn't fill.</p>}
         {template && editingTemplate && <TemplateEditor id={template.id} title={template.title} body={template.body} onDone={() => { setEditingTemplate(false); resetText() }} />}
@@ -196,7 +196,7 @@ function TemplateEditor({ id, title: t0, body: b0, onDone }: { id: string; title
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
         <Button size="sm" variant="primary" loading={save.isPending} disabled={!title.trim() || !body.trim()}
-          onClick={() => save.mutate({ id, patch: { title, body } }, { onSuccess: onDone })}>Save the template</Button>
+          onClick={() => save.mutate({ id, patch: { title, body } }, { onSuccess: onDone })} tip="Save the template">Save</Button>
       </div>
     </div>
   )

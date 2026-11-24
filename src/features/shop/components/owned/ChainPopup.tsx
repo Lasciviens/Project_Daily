@@ -58,8 +58,8 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
         <div className="flex items-center gap-2">
           {what && Object.keys(over).length > 0 && <Button variant="ghost" icon={<RotateCcw />} onClick={() => setOver({})}>Reset</Button>}
           {!what && goOn && (
-            <Button variant="ghost" icon={<Plus />} onClick={() => { onClose(); modal.open({ kind: 'shop-chain-builder', fromId: goOn.id }) }}>
-              Add what its money bought
+            <Button variant="ghost" icon={<Plus />} onClick={() => { onClose(); modal.open({ kind: 'shop-chain-builder', fromId: goOn.id }) }} tip="Add what its money bought">
+              Next
             </Button>
           )}
           <Button onClick={onClose} className="ml-auto">Close</Button>
@@ -85,7 +85,7 @@ export function ChainPopup({ id, items, links, ctx, onClose }: { id: string; ite
               {' · '}got back <span data-tone="success" className="tone-text"><AmountText amount={chain.got} /></span>
             </p>
           </div>
-          <Button size="sm" variant={what ? 'primary' : 'secondary'} onClick={() => setWhat(w => !w)} className="ml-auto">{what ? 'Done trying' : 'Try other prices'}</Button>
+          <Button size="sm" variant={what ? 'primary' : 'secondary'} onClick={() => setWhat(w => !w)} className="ml-auto" tip={what ? 'Done trying other prices' : 'Try other prices'}>{what ? 'Done' : 'What if'}</Button>
         </div>
         {what && <p className="text-meta text-fg-muted">Change any price — what you paid, or what you got (a thing still yours: what you would sell it for). Nothing is saved.</p>}
 

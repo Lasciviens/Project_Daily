@@ -165,7 +165,7 @@ export function ChainBuilder({ from, items, links, categories, ctx, onClose }: {
               })}
             </ol>
             <div>
-              <Button icon={<Plus />} onClick={d.add}>Add next thing</Button>
+              <Button icon={<Plus />} onClick={d.add} tip="Add the next thing">Next</Button>
               <p className="mt-1 text-meta text-fg-muted">Paid with the money from {steps[steps.length - 1]?.title.trim() || 'the last thing'} — you can change that.</p>
             </div>
           </div>
