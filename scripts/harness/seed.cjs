@@ -1144,6 +1144,58 @@ function buildTables(now = new Date()) {
     id: 'a1ca5700-0000-4000-8000-000000000001', user_id: owner, week_start: addDays(thisMonday, 0), made_by: 'schedule', status: 'done', failure: null, added: 3, patterns: 5, sent_text: '<patterns>\np1 | costly_job | chat | seen 11 times in 30 days</patterns>',
     call_id: batchCalls[0].id, created_at: osloInstant(thisMonday, '05:00'), finished_at: osloInstant(thisMonday, '05:41'),
   }]
+  // What the AI learned (migration 204): fixes, a rule waiting and one on, cases, notes, the last self-test, sites. Made-up data.
+  const lid = (prefix, n) => `${prefix}-0000-4000-8000-${String(n).padStart(12, '0')}`
+  const fix = (n, job, field, key, ai, saved, kind, days) => ({ id: lid('1ea40000', n), user_id: owner, job, call_id: batchCalls[0].id, field, match_key: key, ai_value: ai, saved_value: saved, kind, source: 'save', trust: 'owner', state: 'counted', created_at: at(-days, '18:10'), updated_at: at(-days, '18:10') })
+  tables.ai_corrections = [
+    fix(1, 'receipt_read', 'items.0.category_id', 'kvikk lunsj 3pk', 'cat-drinks', 'cat-snacks', 'edited', 1),
+    fix(2, 'receipt_read', 'items.0.product', 'kvikk lunsj 3pk', 'Kvikk Lunsj', 'Kvikk Lunsj 3-pack', 'edited', 1),
+    fix(3, 'shop_tidy', 'brand', 'sony wh1000xm5 hodetelefon svart', 'Sony', 'Sony', 'kept', 2),
+    fix(4, 'shop_tidy', 'model', 'sony wh1000xm5 hodetelefon svart', 'WH1000XM5', 'WH-1000XM5', 'edited', 2),
+    fix(5, 'quick_guess', 'calories', 'oatmeal with milk and blueberries', '320', '410', 'edited', 3),
+    fix(6, 'item_fill', 'place', 'dentist tuesday at 14 at jernbanetorget', 'Jernbanetorget', 'Jernbanetorget', 'kept', 4),
+  ]
+  const rule = (n, job, field, key, value, state, evidence, uses) => ({ id: lid('1ea50000', n), user_id: owner, job, field, match_key: key, value, evidence, source_correction_id: lid('1ea40000', 1), state, uses, last_used_at: uses ? at(-1, '12:00') : null, approved_at: state === 'active' ? at(-5, '20:00') : null, state_changed_at: null, created_at: at(-6, '20:00'), updated_at: at(-6, '20:00') })
+  tables.ai_rules = [
+    rule(1, 'receipt_read', 'category_id', 'kvikk lunsj 3pk', 'cat-snacks', 'proposed', 3, 0),
+    rule(2, 'shop_tidy', 'model', 'sony wh1000xm5 hodetelefon svart', 'WH-1000XM5', 'active', 4, 2),
+  ]
+  const kase = (n, job, input, output, split, state, days) => ({ id: lid('1ea60000', n), user_id: owner, job, call_id: batchCalls[0].id, input_text: input, output, diffs: [{ field: 'model' }], source_kind: job === 'quick_guess' ? 'owner_typed' : 'owner_confirmed', trust: 'owner', split, state, expires_at: at(360 - days, '18:10'), created_at: at(-days, '18:10'), updated_at: at(-days, '18:10') })
+  tables.ai_cases = [
+    kase(1, 'shop_tidy', 'SONY WH1000XM5 HODETELEFON SVART', { name: 'Sony WH-1000XM5, black', brand: 'Sony', model: 'WH-1000XM5' }, 'train', 'active', 2),
+    kase(2, 'quick_guess', 'Oatmeal with milk and blueberries', { title: 'Oatmeal with milk and blueberries', calories: '410', protein_g: '14' }, 'test', 'active', 3),
+    kase(3, 'shop_tidy', 'PHILIPS AIRFRYER XL HD9270', { name: 'Philips Airfryer XL HD9270', brand: 'Philips', model: 'HD9270' }, 'test', 'quarantined', 9),
+  ]
+  const note = (n, scope, kind, text, source, trust, state, version, key, days) => ({ id: lid('1ea70000', n), user_id: owner, scope, kind, text, example_case_id: null, source_kind: source, source_ref: null, source_call_id: null, trust, needs_owner: kind !== 'fact' || trust !== 'high', state, lesson_key: lid('1ea7a000', key), version, supersedes: null, approved_at: state === 'active' && kind !== 'fact' ? at(-days + 1, '09:00') : null, expires_at: at(180, '00:00'), state_changed_at: null, created_at: at(-days, '05:40'), updated_at: at(-days, '05:40') })
+  tables.ai_lessons = [
+    note(1, 'shop_tidy', 'preference', 'Model numbers keep the maker\'s own hyphen, like WH-1000XM5', 'weekly_batch', 'medium', 'pending', 1, 1, 1),
+    note(2, 'chat', 'fact', 'Lives near Jernbanetorget', 'owner_typed', 'high', 'active', 1, 2, 8),
+    note(3, 'receipt_read', 'preference', 'Chocolate bars from a grocery receipt are snacks', 'weekly_batch', 'medium', 'active', 2, 3, 3),
+    note(4, 'receipt_read', 'preference', 'Chocolate is a snack', 'weekly_batch', 'medium', 'retired', 1, 3, 10),
+  ]
+  const setupScore = (setup, mean, tokens) => ({ setup, perCase: { a: mean, b: mean }, perField: { brand: mean, model: mean }, tokensPerRequest: tokens, answered: 8, failed: 0 })
+  tables.ai_eval_runs = [{
+    id: lid('1ea80000', 1), user_id: owner, week_start: addDays(thisMonday, 0), made_by: 'schedule', status: 'done', call_id: batchCalls[0].id, requests: 25,
+    jobs: [{ job: 'shop_tidy', test_cases: 4, setups: ['champion', 'examples_knn', 'with_new_notes'], reps: 2, new_corrections: 3, trial_lessons: [{ id: lid('1ea70000', 1), text: 'Model numbers keep the maker\'s own hyphen, like WH-1000XM5' }], strategies: { champion: { strategy: 'mmr', k: 3 }, examples_knn: { strategy: 'knn', k: 3 }, with_new_notes: { strategy: 'mmr', k: 3 } } }, { job: 'receipt_read', test_cases: 0, replay: 'its input (a photo or a file) is never kept, so it cannot be sent again' }],
+    result: { cost_usd: 0.0042, jobs: [{
+      job: 'shop_tidy', decision: 'proposed', notes_added: 1, champion: setupScore('champion', 0.62, 1850),
+      challengers: [
+        { ...setupScore('examples_knn', 0.66, 1880), decision: { wins: false, reasons: ['not clearly better yet (needs more than 35 points on 8 tries; it was 4)'] } },
+        { ...setupScore('with_new_notes', 0.94, 1990), decision: { wins: true, reasons: [] } },
+      ],
+      winner: { setup: 'with_new_notes', strategy: 'mmr', k: 3, lessons: ['Model numbers keep the maker\'s own hyphen, like WH-1000XM5'], lesson_ids: [lid('1ea70000', 1)] },
+    }, { job: 'receipt_read', decision: 'none', notes_added: 1 }] },
+    decision_state: 'proposed', batch_deleted_at: osloInstant(thisMonday, '05:44'), batch_delete_note: null, failure: null,
+    created_at: osloInstant(thisMonday, '05:01'), finished_at: osloInstant(thisMonday, '05:44'),
+  }, {
+    id: lid('1ea80000', 2), user_id: owner, week_start: addDays(thisMonday, -7), made_by: 'schedule', status: 'skipped', call_id: null, requests: 0, jobs: [], result: null,
+    decision_state: 'none', batch_deleted_at: null, batch_delete_note: null, failure: null, created_at: osloInstant(addDays(thisMonday, -7), '05:01'), finished_at: null,
+  }]
+  tables.ai_job_learning = [{ user_id: owner, job: 'shop_tidy', example_strategy: 'mmr', examples_k: 3, previous_strategy: null, previous_k: null, approved_lessons: [], changed_at: null, tripwire_left: 0, tripwire_baseline: null, tripwire_saves: 0, tripwire_corrected: 0, last_event: null, last_event_at: null, created_at: at(-10, '05:00'), updated_at: at(-10, '05:00') }]
+  tables.ai_source_stats = [
+    { id: lid('1ea90000', 1), user_id: owner, job: 'recipe_from_link', host: 'matprat.no', ok_count: 5, fail_count: 0, last_ok_at: at(-2, '17:00'), last_fail_at: null, last_reason: 'read_by_code', state: 'on', updated_at: at(-2, '17:00') },
+    { id: lid('1ea90000', 2), user_id: owner, job: 'recipe_from_link', host: 'example-recipes.com', ok_count: 1, fail_count: 3, last_ok_at: at(-20, '17:00'), last_fail_at: at(-4, '17:00'), last_reason: 'failed', state: 'on', updated_at: at(-4, '17:00') },
+  ]
   // Ask AI (migration 197): two stored chats, one with a proposal still waiting for the owner's tap.
   Object.assign(tables, require('./claude-chat.cjs').chatSeed(owner, (tables.tasks[0] ?? {}).id ?? '00000000-0000-4000-8000-0000000000aa', at))
   tables.ai_settings = [{ user_id: owner, monthly_budget_usd: 5, log_text: true, log_days: 30, ai_enabled: true, updated_at: at(-9, '10:45') }]

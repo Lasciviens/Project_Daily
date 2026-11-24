@@ -1,4 +1,5 @@
 import { runClaudeJob } from './claudeApi'
+import { rememberLearnCall } from './learnCalls'
 import type { CallSummary } from './types'
 import {
   errorContextForAi, readIdeas, readReceipt, readRequestDraft, scrubErrorForAi, type PdfInput, type PhotoInput, type ReceiptRead, type RequestDraft,
@@ -12,11 +13,11 @@ const costOf = (call: CallSummary | undefined): number | null => (call && typeof
 // the function's (featureRules.ts). A stopped run throws a ClaudeJobError whose message is the function's own sentence.
 
 /** Food → Quick guess → "From a photo": the photo (and optional words) → the diary line, read by the caller (readGuessEstimate). */
-export async function describeGuessPhoto(photo: PhotoInput, text: string): Promise<{ result: unknown; costUsd: number | null }> {
+export async function describeGuessPhoto(photo: PhotoInput, text: string): Promise<{ result: unknown; costUsd: number | null; callId: string | null }> {
   const input: Record<string, unknown> = { image: photo }
   if (text.trim()) input.text = text.trim().slice(0, 500)
   const { result, call } = await runClaudeJob<unknown>('quick_guess_photo', input)
-  return { result, costUsd: costOf(call) }
+  return { result, costUsd: costOf(call), callId: call?.id ?? null }
 }
 
 /** One of the owner's own categories as the function takes it ('Top' or 'Top / Sub'). The function numbers them; the model never sees an id. */
@@ -28,7 +29,7 @@ export const RECEIPT_CATEGORIES_MAX = 200
 export type ReceiptInput = { image: PhotoInput } | { document: PdfInput }
 
 /** Shop → "Read a receipt" / "From a receipt": a photo or a PDF → what is printed on it, checked again. Throws when nothing usable was read. */
-export async function readReceiptInput(input: ReceiptInput, today: string, categories: readonly ReceiptCategory[] = [], preferredHosts: readonly string[] = []): Promise<ReceiptRead & { costUsd: number | null }> {
+export async function readReceiptInput(input: ReceiptInput, today: string, categories: readonly ReceiptCategory[] = [], preferredHosts: readonly string[] = []): Promise<ReceiptRead & { costUsd: number | null; callId: string | null }> {
   // The owner's own categories go with the file, so a line may come back with one (by number, mapped to an id by the function).
   const sent: ReceiptCategory[] = categories.slice(0, RECEIPT_CATEGORIES_MAX)
   // The sites that worked for this owner before (at most 3 host names): a hint for its search, as data.
@@ -36,18 +37,21 @@ export async function readReceiptInput(input: ReceiptInput, today: string, categ
   const { result, call } = await runClaudeJob<unknown>('receipt_read', { ...input, ...(sent.length ? { categories: sent } : {}), ...hint })
   const read = readReceipt(result, today, new Set(sent.map(c => c.id)))
   if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo or another PDF")
-  return { ...read, costUsd: costOf(call) }
+  return { ...read, costUsd: costOf(call), callId: call?.id ?? null }
 }
 
 /** Shop → "Tidy up info": one thing's name, brand, model and category now, and the owner's own categories → a suggestion, read and checked by the caller (`readTidySuggestion`). */
-export async function tidyThing(input: Record<string, unknown>): Promise<{ result: unknown; costUsd: number | null }> {
+export async function tidyThing(input: Record<string, unknown>): Promise<{ result: unknown; costUsd: number | null; callId: string | null }> {
   const { result, call } = await runClaudeJob<unknown>('shop_tidy', input)
-  return { result, costUsd: costOf(call) }
+  // The call's id: the save reports it, so the function can compare what was kept with its own copy of the answer.
+  return { result, costUsd: costOf(call), callId: call?.id ?? null }
 }
 
 /** Dev Requests ✨: dictated words → a request draft; the page is taken only from `pages` (the app's own list). */
 export async function draftDevRequest(text: string, pages: readonly string[], currentPage: string): Promise<RequestDraft & { costUsd: number | null }> {
   const { result, call } = await runClaudeJob<unknown>('dev_request_draft', { text: text.trim().slice(0, 4000), pages, current_page: currentPage })
+  // The composer's save reports this call with what was saved (Developer → AI → Learned).
+  rememberLearnCall('dev_request_draft', call?.id)
   const draft = readRequestDraft(result, pages)
   if (!draft) throw new Error("The AI didn't send a usable request — try again")
   return { ...draft, costUsd: costOf(call) }

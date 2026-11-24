@@ -252,6 +252,17 @@ export const qk = {
     list: () => ['ai-suggestions', 'list'] as const,
     runs: () => ['ai-suggestions', 'runs'] as const,
   },
+  /** What the AI learned (migration 204): corrections, rules, cases, notes, the self-test, sites. Their own root: never kept on the device. */
+  aiLearn: {
+    all: ['ai-learn'] as const,
+    corrections: () => ['ai-learn', 'corrections'] as const,
+    rules: () => ['ai-learn', 'rules'] as const,
+    cases: () => ['ai-learn', 'cases'] as const,
+    lessons: () => ['ai-learn', 'lessons'] as const,
+    evalRuns: () => ['ai-learn', 'eval-runs'] as const,
+    jobs: () => ['ai-learn', 'jobs'] as const,
+    sources: () => ['ai-learn', 'sources'] as const,
+  },
   aiReports: {
     all: ['ai-reports'] as const,
     list: () => ['ai-reports', 'list'] as const,

@@ -18,7 +18,7 @@ import { costOf, worstCostOf } from './prices.ts'
 import { callerDailyCap, cutChars, errorPlace, hideSecrets, LIMITS, rateCapProblem, reservationBudgetProblem, settingsFor, trimForLog, trimText, TEXT_LOG_MAX_BYTES } from './guard.ts'
 import { readGate, readSettingRows, reserveCall, writeCall, type CallRow } from './ledger.ts'
 import { buildRequest, gateScopeOf, type RunContext } from './run.ts'
-import { answerProblem, BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, MAY_BE_BILLED } from './batch.ts'
+import { answerProblem, letGoOfBatch, BATCH_GIVE_UP_MS, BATCH_NO_ID_MS, BATCH_REQUEST_MS, BATCH_STATUS_MS, CLAIM_MS, FAILURE_MAX, ledgerRow, MAY_BE_BILLED } from './batch.ts'
 import { patchCall } from './report-store.ts'
 import { osloWeekOf, scheduledReportWeek } from './week-facts.ts'
 import { SUGGEST_WEEKLY_JOB } from './job-suggest-weekly.ts'
@@ -144,7 +144,13 @@ export async function makeWeeklySuggestions(ctx: RunContext): Promise<SuggestMak
     return { ok: false, reason: 'failed', message }
   }
   if (!(await patchRun(ctx.adminDb, ctx.userId, runId, { batch_id: submitted.batchId }, true))) {
-    ctx.report('the suggestions batch was queued but its id could not be saved: the run will be given up after 26 hours (its worst case stays in the ledger)')
+    // A batch nobody can find again is cancelled at once and never read ("delete right after", guardian S2); the run says why.
+    ctx.report('the suggestions batch was queued but its id could not be saved, so it was cancelled at Anthropic')
+    const gone = await letGoOfBatch(ctx, submitted.batchId)
+    await fail(`The batch's id could not be saved, so it was cancelled at Anthropic. ${gone.batch_delete_note ?? ''}`.trim())
+    const problem = await patchCall(ctx.adminDb, ctx.userId, callId, { outcome: 'error', stop_reason: 'batch_cancelled', error: 'The batch id could not be saved.' })
+    if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
+    return { ok: false, reason: 'failed', message: 'The suggestions run could not be saved after it was queued, so it was cancelled. Try again in a moment.' }
   }
   const logPatch: Partial<CallRow> = {
     effort: request.effort, stop_reason: 'batch_queued', duration_ms: 0,
@@ -199,13 +205,25 @@ async function checkOneRun(ctx: RunContext, run: RunRow): Promise<'done' | 'fail
   if (!provider) return 'waiting'
   const age = ctx.now().getTime() - Date.parse(run.created_at)
   const tooOld = Number.isFinite(age) && age > BATCH_GIVE_UP_MS
-  const giveUp = async (message: string, stopReason: string): Promise<'failed'> => { await endSuggestRun(ctx, run, message, stopReason, true); return 'failed' }
+  // Whether the batch was already let go of (after its results were read): an error path lets go of it otherwise.
+  let released = false
+  const letGo = async (ended: boolean): Promise<void> => {
+    if (!run.batch_id || released) return
+    released = true
+    const gone = await letGoOfBatch(ctx, run.batch_id, ended)
+    if (gone.batch_deleted_at) await patchRun(ctx.adminDb, ctx.userId, run.id, { batch_deleted_at: gone.batch_deleted_at }, false, run.created_at)
+    else ctx.report(`the suggestions' batch was not deleted: ${gone.batch_delete_note ?? 'no reason'}`)
+  }
+  // Delete right after, on an error path too: cancelled first when it has not ended (guardian S2).
+  const giveUp = async (message: string, stopReason: string): Promise<'failed'> => { await letGo(false); await endSuggestRun(ctx, run, message, stopReason, true); return 'failed' }
   if (!run.batch_id) return age > BATCH_NO_ID_MS || tooOld ? giveUp('The batch was never registered, so there is nothing to read.', 'batch_not_registered') : 'waiting'
   const status = await provider.batchStatus(run.batch_id, BATCH_STATUS_MS)
   if (!status.ok) return tooOld ? giveUp('Anthropic could not be asked about the batch for more than a day.', 'batch_unreachable') : 'waiting'
   if (status.status !== 'ended') return tooOld ? giveUp('The batch did not end within a day.', 'batch_expired') : 'waiting'
   const results = await provider.batchResults(run.batch_id, BATCH_REQUEST_MS)
   if (!results.ok) return tooOld ? giveUp('The results could not be read for more than a day.', 'batch_unreachable') : 'waiting'
+  // Read: the batch is deleted at Anthropic now (owner: "delete right after"); the run row says when (server-only column).
+  await letGo(true)
   const line = results.lines.find(l => l.customId === run.call_id)
   if (!line || !run.call_id) return giveUp('The batch ended without a result for this run.', 'batch_no_result')
   if (line.kind !== 'succeeded') {
@@ -242,8 +260,10 @@ async function checkOneRun(ctx: RunContext, run: RunRow): Promise<'done' | 'fail
     else if (result === 'error') ctx.report('an idea could not be saved')
   }
   if (!(await patchRun(ctx.adminDb, ctx.userId, run.id, { status: 'done', added: Math.min(added, 5), failure: null, finished_at: ctx.now().toISOString(), claimed_at: null }, true, run.created_at))) {
+    // Never "waiting": the batch is already deleted, a second read would find nothing. A smaller write says what happened.
     ctx.report('a finished suggestion run could not be saved (it was made again meanwhile, or the write failed)')
-    return 'waiting'
+    await endSuggestRun(ctx, run, `The ideas were written (${added}) but the run could not be saved.`, null, false)
+    return 'failed'
   }
   return 'done'
 }

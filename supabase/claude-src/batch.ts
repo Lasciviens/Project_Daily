@@ -201,7 +201,14 @@ export async function makeWeeklyReport(ctx: RunContext): Promise<ReportMakeReply
     return { ok: false, reason: 'failed', message, report_id: reportId }
   }
   if (!(await patchReport(ctx.adminDb, ctx.userId, reportId, { batch_id: submitted.batchId }, true))) {
-    ctx.report('the batch was queued but its id could not be saved: the report will be given up after 26 hours (its worst case stays in the ledger)')
+    // A batch nobody can find again is cancelled at once and never read ("delete right after", guardian S2); the report says why.
+    ctx.report('the batch was queued but its id could not be saved, so it was cancelled at Anthropic')
+    const gone = await letGoOfBatch(ctx, submitted.batchId)
+    await fail(`The batch's id could not be saved, so it was cancelled at Anthropic. ${gone.batch_delete_note ?? ''}`.trim())
+    const problem = await patchCall(ctx.adminDb, ctx.userId, callId, { outcome: 'error', stop_reason: 'batch_cancelled', error: 'The batch id could not be saved.' })
+    if (problem) ctx.report(`a call could not be finished in the ledger (it stays at its reserved cost): ${problem}`)
+    if (pushDue) await patchReport(ctx.adminDb, ctx.userId, reportId, { push_due: true })
+    return { ok: false, reason: 'failed', message: 'The weekly report could not be saved after it was queued, so it was cancelled. Try again in a moment.', report_id: reportId }
   }
   // The text log of the reserved row, while the owner keeps it on. The row stays 'pending' (counted at its worst case).
   const logPatch: Partial<CallRow> = {
@@ -255,7 +262,18 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
   if (!provider) return 'waiting'
   const age = ctx.now().getTime() - Date.parse(report.created_at)
   const tooOld = Number.isFinite(age) && age > BATCH_GIVE_UP_MS
+  // Whether the batch was already let go of (after its results were read): an error path lets go of it otherwise.
+  let released = false
+  const letGo = async (ended: boolean): Promise<void> => {
+    if (!report.batch_id || released) return
+    released = true
+    const gone = await letGoOfBatch(ctx, report.batch_id, ended)
+    if (gone.batch_deleted_at) await patchReport(ctx.adminDb, ctx.userId, report.id, { batch_deleted_at: gone.batch_deleted_at }, false, report.created_at)
+    else ctx.report(`the weekly report's batch was not deleted: ${gone.batch_delete_note ?? 'no reason'}`)
+  }
   const giveUp = async (message: string, stopReason: string): Promise<'failed'> => {
+    // Delete right after, on an error path too: cancelled first when it has not ended (guardian S2).
+    await letGo(false)
     await endFailed(ctx, report, message, stopReason, true)
     return 'failed'
   }
@@ -268,6 +286,8 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
 
   const results = await provider.batchResults(report.batch_id, BATCH_REQUEST_MS)
   if (!results.ok) return tooOld ? giveUp('The results could not be read for more than a day.', 'batch_unreachable') : 'waiting'
+  // Read: the batch is deleted at Anthropic now (owner: "delete right after"); the report row says when (server-only column).
+  await letGo(true)
   // Lines come in any order: the one that is ours is found by its custom_id, compared exactly. Others are ignored.
   const line = results.lines.find(l => l.customId === report.call_id)
   if (!line || !report.call_id) return giveUp('The batch ended without a result for this report.', 'batch_no_result')
@@ -303,10 +323,48 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
   // The push is owed from now on (the real report of the owner's week only) and goes out from 07:00 (pushPending). The
   // write is tied to the report this check read: a report made again meanwhile has a new created_at and is not touched.
   if (!(await patchReport(ctx.adminDb, ctx.userId, report.id, { status: 'ready', content: text, failure: null, ready_at: ctx.now().toISOString(), claimed_at: null, push_due: report.made_by === 'schedule' && !!ctx.push }, true, report.created_at))) {
+    // Never "waiting": the batch is already deleted, a second read would find nothing. A smaller write says what happened.
     ctx.report('a finished report could not be saved (it was made again meanwhile, or the write failed)')
-    return 'waiting'
+    await endFailed(ctx, report, 'The report was written but could not be saved.', null, false)
+    return 'failed'
   }
   return 'ready'
+}
+
+/** How long a cancelled batch is waited for before it can be deleted (it ends within seconds), and how often it is asked. */
+const LET_GO_WAITS = 3
+const LET_GO_WAIT_MS = 2_000
+
+/**
+ * "Delete right after" (owner, 23.11.2026): a batch is deleted at Anthropic as soon as the function is done with it — after
+ * its results were read, and on every error path. One that has not ended is cancelled first and deleted once it has (a few
+ * short waits). Answers when it was deleted, or a short sentence of why not (never a secret). Never throws.
+ */
+export async function letGoOfBatch(ctx: RunContext, batchId: string | null, ended = false): Promise<{ batch_deleted_at: string | null; batch_delete_note: string | null }> {
+  const provider = ctx.provider
+  if (!batchId || !provider) return { batch_deleted_at: null, batch_delete_note: 'No batch to delete.' }
+  try {
+    if (!ended) {
+      const status = await provider.batchStatus(batchId, BATCH_STATUS_MS)
+      if (status.ok && status.status !== 'ended') {
+        const cancelled = await provider.cancelBatch(batchId, BATCH_STATUS_MS)
+        if (!cancelled.ok) return { batch_deleted_at: null, batch_delete_note: cutChars(`Not cancelled: ${hideSecrets(cancelled.message, ctx.secrets)}`, 300) }
+        let over = false
+        for (let i = 0; i < LET_GO_WAITS && !over; i++) {
+          await new Promise(resolve => setTimeout(resolve, LET_GO_WAIT_MS))
+          const again = await provider.batchStatus(batchId, BATCH_STATUS_MS)
+          over = again.ok && again.status === 'ended'
+        }
+        if (!over) return { batch_deleted_at: null, batch_delete_note: 'Cancelled at Anthropic; it had not ended yet, so it could not be deleted.' }
+      }
+    }
+    const deleted = await provider.deleteBatch(batchId, BATCH_STATUS_MS)
+    return deleted.ok
+      ? { batch_deleted_at: ctx.now().toISOString(), batch_delete_note: null }
+      : { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${hideSecrets(deleted.message, ctx.secrets)}`, 300) }
+  } catch (error) {
+    return { batch_deleted_at: null, batch_delete_note: cutChars(`Not deleted: ${errorPlace(error)}`, 300) }
+  }
 }
 
 /** Why a model's answer is no report, or null. */

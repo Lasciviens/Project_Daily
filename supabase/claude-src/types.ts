@@ -52,9 +52,21 @@ export interface ModelRequest {
   documents?: RequestDocument[]
   /** The provider's own web search, at most `maxUses` searches in this one call (a place's ideas, a receipt's short lines). Absent: no tools at all. */
   webSearch?: { maxUses: number }
+  /**
+   * What the app learned that fits this call (past cases the owner confirmed, approved lessons): data, each with its
+   * source label, sent after the cached instructions as `search_result` blocks before the live text. Never instructions.
+   */
+  knowledge?: KnowledgeBlock[]
 }
 
 /** One photo as it travels: its type and its bytes as base64 (no `data:` prefix). Only these three types ever pass. */
+/** One piece of learned knowledge for a call: where it came from (a label the model reads), a short title and its text. */
+export interface KnowledgeBlock {
+  source: string
+  title: string
+  text: string
+}
+
 export interface RequestImage {
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp'
   base64: string
@@ -183,7 +195,12 @@ export interface Provider {
   /** Asks how far a batch is. Free. */
   batchStatus(batchId: string, timeoutMs: number): Promise<BatchStatus | ModelFailure>
   /** Reads the results of an ended batch, in whatever order they come. Free. */
-  batchResults(batchId: string, timeoutMs: number): Promise<BatchResults | ModelFailure>
+  /** The results; `maxLines` raises the default cap for a batch of many requests (the weekly self-test). */
+  batchResults(batchId: string, timeoutMs: number, maxLines?: number): Promise<BatchResults | ModelFailure>
+  /** Deletes an ended batch and its results at the provider (the owner: "delete right after"). */
+  deleteBatch(batchId: string, timeoutMs: number): Promise<{ ok: true } | ModelFailure>
+  /** Cancels a batch that has not ended (it can be deleted once it has). */
+  cancelBatch(batchId: string, timeoutMs: number): Promise<{ ok: true } | ModelFailure>
   /** One round of a chat, streamed: `onDelta` gets our own small events while the answer arrives (see ChatRequest). */
   chatRound(request: ChatRequest, onDelta: (delta: ChatDelta) => void): Promise<ChatAnswer | ModelFailure>
   /** Counts the prompt tokens of a chat request exactly as `chatRound` would send it. Free. */
@@ -423,7 +440,7 @@ export type CountReply =
 /** The answer to `{ action: 'run' }`. */
 export type RunReply =
   // `source: 'page'`: code alone answered from the page itself. No model was asked; the `call` is a zero-cost row.
-  | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' }
+  | { ok: true; job: string; result: Record<string, unknown>; call?: CallSummary; source?: 'page' | 'rules' }
   | { ok: false; reason: Reason; message: string; call?: CallSummary }
 
 /**

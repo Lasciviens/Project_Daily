@@ -23,6 +23,8 @@ export type TidyKey = 'name' | 'brand' | 'model' | 'category' | 'picture'
 /** What the function answers for one thing, after both checks. Each field is present only when it is a real suggestion. */
 export interface TidySuggestion {
   name?: string; brand?: string; model?: string; category_id?: string
+  /** The AI call it came from (the save reports it for learning). */
+  call_id?: string
   /** The product's pages to try for a picture (addresses the function's search returned, at most 3): read, never written. */
   page_urls?: string[]
   page_named?: boolean

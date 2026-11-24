@@ -151,13 +151,14 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
       }
     },
     // GET /v1/messages/batches/{id}/results (the batch's own results_url): a .jsonl stream, lines in any order.
-    async batchResults(batchId, timeoutMs): Promise<BatchResults | ModelFailure> {
+    async batchResults(batchId, timeoutMs, maxLines): Promise<BatchResults | ModelFailure> {
+      const cap = Math.max(1, Math.min(Math.floor(maxLines ?? ANTHROPIC_BATCH_MAX_LINES), ANTHROPIC_BATCH_LINES_MAX))
       const timeout = anthropicTimeout(timeoutMs)
       try {
         const stream = await client.messages.batches.results(batchId, {}, { timeout })
         const lines: BatchLine[] = []
         for await (const line of stream) {
-          if (lines.length >= ANTHROPIC_BATCH_MAX_LINES) break
+          if (lines.length >= cap) break
           const customId = line.custom_id
           if (typeof customId !== 'string' || !customId) continue
           const result = line.result
@@ -167,6 +168,26 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
           } else if (result.type === 'canceled' || result.type === 'expired') lines.push({ customId, kind: result.type, detail: '' })
         }
         return { ok: true, lines }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
+    // DELETE /v1/messages/batches/{id}: the batch and its results are gone at Anthropic (an ended batch only).
+    async deleteBatch(batchId, timeoutMs): Promise<{ ok: true } | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const deleted = await client.messages.batches.delete(batchId, {}, { timeout })
+        return deleted?.id === batchId ? { ok: true } : { ...anthropicOddAnswer(), sent: null }
+      } catch (error) {
+        return { ...anthropicFailure(error, apiKey, timeout), sent: null }
+      }
+    },
+    // POST /v1/messages/batches/{id}/cancel: the batch stops (results so far are kept until it is deleted).
+    async cancelBatch(batchId, timeoutMs): Promise<{ ok: true } | ModelFailure> {
+      const timeout = anthropicTimeout(timeoutMs)
+      try {
+        const batch = await client.messages.batches.cancel(batchId, {}, { timeout })
+        return batch?.id === batchId ? { ok: true } : { ...anthropicOddAnswer(), sent: null }
       } catch (error) {
         return { ...anthropicFailure(error, apiKey, timeout), sent: null }
       }
@@ -243,6 +264,8 @@ export function anthropicProvider(apiKey: string, fetchWith?: ClientOptions['fet
 const ANTHROPIC_BATCH_ID = /^[A-Za-z0-9_-]{1,100}$/
 // We queue one request at a time, so a batch has one result line; a few more are read in case of a surprise.
 const ANTHROPIC_BATCH_MAX_LINES = 50
+// The weekly self-test sends one batch of many replays: its own cap, and never more than this.
+const ANTHROPIC_BATCH_LINES_MAX = 5000
 
 function anthropicOddAnswer(): Omit<ModelFailure, 'sent'> {
   return { ok: false, kind: 'unknown', status: null, message: ANTHROPIC_FAILURES.unknown, detail: 'an answer this code does not know', requestId: null }
@@ -285,8 +308,11 @@ function anthropicRequest(request: ModelRequest): Anthropic.MessageCreateParamsN
  * for a question about an image). A photo is an `image` block with a base64 source; the type is one of three.
  */
 function anthropicContent(request: ModelRequest): string | Anthropic.ContentBlockParam[] {
-  if (!request.images?.length && !request.documents?.length) return request.userText
+  if (!request.images?.length && !request.documents?.length && !request.knowledge?.length) return request.userText
   return [
+    // What the app learned (cases, lessons): `search_result` blocks, each with its own source label and title, before the
+    // live text. Data the model may use, never instructions (the job's rule line says so).
+    ...(request.knowledge ?? []).map(k => ({ type: 'search_result' as const, source: k.source, title: k.title, content: [{ type: 'text' as const, text: k.text }] })),
     // A PDF is a `document` block with a base64 source (the SDK's DocumentBlockParam); the one type is application/pdf.
     ...(request.documents ?? []).map(doc => ({ type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: doc.base64 } })),
     ...(request.images ?? []).map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),
@@ -309,6 +335,8 @@ function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParam
     ...(request.images?.length ? { images: request.images.map(i => ({ media_type: i.mediaType, base64_chars: i.base64.length })) } : {}),
     // A PDF is never kept either: only how many were sent and how big.
     ...(request.documents?.length ? { documents: request.documents.map(d => ({ media_type: 'application/pdf', base64_chars: d.base64.length })) } : {}),
+    // What the app learned and sent with it: the search_result blocks' sources and titles (their text is in the log's request).
+    ...(request.knowledge?.length ? { search_results: request.knowledge.map(k => ({ type: 'search_result', source: k.source, title: k.title, text_chars: k.text.length })) } : {}),
     ...(body.tools ? { tools: body.tools } : {}),
     thinking: body.thinking,
     output_config: body.output_config,

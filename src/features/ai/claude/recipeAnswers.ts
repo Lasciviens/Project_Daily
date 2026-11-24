@@ -25,6 +25,8 @@ export interface ParsedRecipe {
   macro_estimate: MacroEstimate | null
   /** false: the recipe was read from the page's own data, no AI was used. */
   usedAi: boolean
+  /** The AI call a pasted recipe came from (its save is reported with it, for learning). */
+  callId?: string
   /**
    * `english`: the model wrote it in English (everything saved is English). `source`: code read the page's own data
    * with no model, so the recipe keeps the page's language; an English rewrite would be an AI call, not built yet.

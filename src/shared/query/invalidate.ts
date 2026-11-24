@@ -44,7 +44,9 @@ const groups = {
   aiChat: [qk.aiChat.all, qk.aiCalls.all, qk.claude.usageAll, qk.aiSuggestions.all],
   /** A weekly report was made or read back: the reports and the ledger (its cost) have new rows. */
   aiReports: [qk.aiReports.all, qk.aiCalls.all, qk.claude.usageAll],
-  aiSuggestions: [qk.aiSuggestions.all],
+  aiSuggestions: [qk.aiSuggestions.all, qk.aiLearn.corrections()],
+  /** Something the AI learned changed (a state, a decision, a save noted, a self-test queued). */
+  aiLearn: [qk.aiLearn.all, qk.aiSuggestions.all, qk.aiCalls.all, qk.claude.usageAll],
   aiSuggestLook: [qk.aiSuggestions.all, qk.aiCalls.all, qk.claude.usageAll],
   /** The owner changed an AI setting (the budget, the text log, a job). */
   aiSettings: [qk.claude.settings(), qk.claude.jobSettings(), qk.claude.toolSettings(), qk.claude.chatInstructions()],

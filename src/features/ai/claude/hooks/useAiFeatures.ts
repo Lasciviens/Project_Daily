@@ -16,10 +16,10 @@ export function usePhotoGuess() {
     silent: 'the estimate fills the sheet, marked AI estimate, for review',
     logPayload: false,
     mutationFn: async ({ file, text }) => {
-      const { result, costUsd } = await describeGuessPhoto(await shrinkPhoto(file), text)
+      const { result, costUsd, callId } = await describeGuessPhoto(await shrinkPhoto(file), text)
       const estimate = readGuessEstimate(result)
       if (!estimate || !estimate.title) throw new Error("That didn't look like food — try another photo")
-      return { ...estimate, costUsd }
+      return { ...estimate, costUsd, ...(callId ? { callId } : {}) }
     },
   })
 }

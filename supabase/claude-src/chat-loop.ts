@@ -35,6 +35,8 @@ import {
 import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
 import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
+import { chatNoteLesson, chatProposalCorrections, readChatNotes } from './learn-chat.ts'
+import { NOTE_LESSONS_PER_ANSWER } from './chat-learn-tools.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
   readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
@@ -74,6 +76,8 @@ const STEP_LABELS: Record<string, string> = {
   get_pt_verdicts: "Reading the coach's saved verdicts",
   note_shortcut: 'Noting an idea for the Suggestions list',
   get_transit: 'Looking up bus and train times',
+  search_docs: "Looking in the app's own documentation",
+  note_lesson: 'Noting something about you, for you to check',
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
@@ -303,6 +307,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const proposals: ChatProposalCard[] = []
   let suggestion: ChatSuggestionNote | null = null
   let notesTried = 0
+  let lessonsTried = 0
   const answerMessages: { content: Block[] }[] = []
   let seq = history.length
   let previousDigest: string | null = last ? last.digest : null
@@ -503,6 +508,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         if (notesTried >= SUGGEST_LIMITS.perAnswer) return `At most ${SUGGEST_LIMITS.perAnswer} idea can be noted in one answer: this one did not run. Carry on with your answer.`
         notesTried += 1
       }
+      // One note about the person in an answer: decided here, before the calls run side by side, so two at once cannot both pass.
+      if (call.name === 'note_lesson') {
+        if (lessonsTried >= NOTE_LESSONS_PER_ANSWER) return `At most ${NOTE_LESSONS_PER_ANSWER} note about the person in one answer: this one did not run. Carry on with your answer.`
+        lessonsTried += 1
+      }
       return null
     })
     const results = await Promise.all(toolCalls.map(async (call, index): Promise<{ block: Block; shape: ToolShape; proposal: ProposalCard | null }> => {
@@ -519,6 +529,9 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
             db: ctx.userDb, userId: ctx.userId, now, readAs: ctx.readAs, signal: stopTool.signal,
             // The suggestions list is written by the service role, with the verified user id and a key made from the idea itself (the model never supplies one); the ledger row of this round is where it was first seen.
             noteIdea: async idea => addSuggestion(ctx.adminDb, ctx.userId, idea, await ideaKey(idea), 'answer', { times: 1, tokens: 0, cost: Math.round(costTotal * 1_000_000) / 1_000_000 }, row.id),
+            // A note about the person, checked against THEIR words of this message (learn-chat.ts); the profile, as data.
+            noteLesson: (kind, note) => chatNoteLesson(ctx, kind, note, text, row.id),
+            readNotes: () => readChatNotes(ctx),
           }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )
@@ -616,6 +629,8 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   }
   if (decision === 'cancel') {
     const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
+    // The owner's Cancel is a correction of the model's proposal (learn-chat.ts: the before is the stored args, never the browser's).
+    if (won) await chatProposalCorrections(ctx, proposal.tool, proposal.args, null, null)
     return won ? { ok: true, status: 'cancelled', summary: proposal.summary, result_id: null, tool: proposal.tool } : { ok: false, reason: 'already_decided', message: 'That proposal was already decided.' }
   }
   // The owner may edit the title and the date on the card; the edited values go through the same check as the proposal did.
@@ -653,6 +668,8 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     return { ok: false, reason: 'failed', message: written.message }
   }
   await setProposalResult(ctx.adminDb, ctx.userId, id, written.id)
+  // What the owner kept or changed on the card (title, date), against the stored proposal.
+  await chatProposalCorrections(ctx, proposal.tool, proposal.args, rechecked.draft.args, null)
   return { ok: true, status: 'confirmed', summary: rechecked.draft.summary, result_id: written.id, tool: proposal.tool, date: proposal.tool === 'log_food' ? String(rechecked.draft.args.date) : null }
 }
 

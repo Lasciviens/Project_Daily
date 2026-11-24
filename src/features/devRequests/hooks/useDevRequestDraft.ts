@@ -5,6 +5,8 @@ import { draftFromRow, isDraftEmpty, sameFields, topSortOrder, type DraftFields 
 import { useCreateDevRequest, useDevRequests, useMarkDevRequestsPrompted, useUpdateDevRequest } from './useDevRequests'
 import type { DevRequest, DevRequestStatus } from '../types'
 import { toast } from '../../../app/store'
+import { useReportAiSave } from '../../ai/claude/hooks/useReportAiSave'
+import { takeLearnCall } from '../../ai/claude/learnCalls'
 
 const toRow = (f: DraftFields) => ({
   title: f.title.trim(),
@@ -30,6 +32,7 @@ const KEPT_NEWER = 'Saved — what you typed after pressing save is still in the
  */
 export function useSaveDevRequestDraft() {
   const create = useCreateDevRequest()
+  const learn = useReportAiSave()
   const update = useUpdateDevRequest()
   const markPrompted = useMarkDevRequestsPrompted()
   const { data: requests = [] } = useDevRequests()
@@ -46,6 +49,12 @@ export function useSaveDevRequestDraft() {
       created = await create.mutateAsync({ ...row, sort_order: topSortOrder(requests) })
     } catch {
       return // toasted by the mutation; the draft stays
+    }
+    // A Tidy up of this request: what was saved goes with its call (Developer → AI → Learned).
+    const draftCall = takeLearnCall('dev_request_draft')
+    if (draftCall) {
+      const points = (draft.description ?? '').split('\n').map(l => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean).join('; ')
+      learn.mutate({ callId: draftCall, saved: { title: draft.title.trim(), page: draft.page ?? null, category: draft.category ?? null, priority: draft.priority ?? null, points: points.slice(0, 2000) || null } })
     }
     const s = useDevRequestDrafts.getState()
     // A prompt was built for this request before it was added (the window's

@@ -187,6 +187,26 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           DEPLOY_SHA: ${{ steps.gate.outputs.sha }}
 
+      # The app's own docs as Ask AI's knowledge (search_docs): an allow-list of
+      # docs/features and docs/integrations from THIS merged commit, hidden
+      # characters and HTML comments stripped, the commit and a hash stamped,
+      # then the claude function joined again with it (the repo keeps an empty
+      # copy, so a docs change never rebuilds the function in a pull request).
+      # Plain file work: no secret, no network. Runs on every deploy, a
+      # docs-only merge included. If the snapshot cannot be built, the empty
+      # copy goes out (search_docs then says the docs are not in this build)
+      # rather than stopping the deploy.
+      - name: App docs for the claude function
+        if: steps.gate.outputs.backend == 'true' && env.DRY_RUN != 'true'
+        env:
+          DOCS_SHA: ${{ steps.gate.outputs.sha }}
+        run: |
+          if ! node scripts/build-docs-snapshot.mjs --write --commit "$DOCS_SHA"; then
+            echo "::warning::The app docs snapshot could not be built; the claude function goes out with the empty copy."
+            node scripts/build-docs-snapshot.mjs --placeholder
+          fi
+          node scripts/build-claude-function.mjs
+
       # Every function under supabase/functions, bundled by Supabase (--use-api,
       # no Docker). JWT verification per function comes from supabase/config.toml.
       # Never --prune: a function that exists only on Supabase is left alone.

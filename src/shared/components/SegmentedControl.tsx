@@ -39,7 +39,7 @@ export function SegmentedControl<T extends string>({
       className={[
         'seg',
         size === 'xs' ? 'seg-xs' : '',
-        fit ? 'auto-cols-auto' : '',
+        fit ? 'seg-fit auto-cols-auto' : '',
         fullWidth ? 'w-full' : '',
       ].join(' ')}
     >
@@ -55,7 +55,6 @@ export function SegmentedControl<T extends string>({
             className={[
               'seg-btn flex items-center justify-center gap-1.5 whitespace-nowrap',
               size === 'sm' ? 'text-meta' : '',
-              fit ? 'px-2' : '',
               isActive ? '' : 'hover:text-fg',
             ].join(' ')}
           >
