@@ -2,7 +2,7 @@ import { Check } from 'lucide-react'
 import { Button, SegmentedControl, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { costNote } from '../../../ai/claude/featureRules'
-import type { MergedLine } from '../../receiptBatch'
+import { receiptSums, type MergedLine } from '../../receiptBatch'
 import { lineFacts, type ReceiptSide } from '../../receiptRead'
 import { SHOP_CURRENCIES } from '../../shopModel'
 import type { ShopCurrency } from '../../types'
@@ -29,12 +29,18 @@ export function ReceiptLines({ files, merged, flow }: { files: readonly FileRow[
         // The file's name is on its own row above: this heading says what the receipt is.
         const head = [read.store, read.date ? formatDate(read.date) : null].filter(Boolean).join(' · ') || file.name
         const cost = [read.searched ? 'searched' : null, costNote(read.costUsd)].filter(Boolean).join(' · ')
+        const sums = receiptSums(read)
         return (
           <section key={file.id} aria-label={file.name}>
             <h3 className="mb-1 flex items-baseline gap-2 text-meta font-medium text-fg-muted">
               <span className="min-w-0 flex-1"><Truncate>{head}</Truncate></span>
               {cost && <span className="shrink-0 font-normal tabular-nums">{cost}</span>}
             </h3>
+            {sums?.differs && (
+              <p className="mb-1 text-meta text-warn">
+                Lines and costs: {amount(sums.sum, read.currency)} · receipt total: {amount(sums.total, read.currency)}{sums.doubled ? ' — a discount may be counted twice' : ''}
+              </p>
+            )}
             {lines.some(l => l.duplicate) && <p className="mb-1 text-meta text-fg-muted">The same receipt as an earlier file: its lines start unticked.</p>}
             {lines.length === 0
               ? <p className="text-body text-fg-muted">No product lines were read.</p>

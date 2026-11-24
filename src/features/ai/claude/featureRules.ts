@@ -73,7 +73,26 @@ export type ReceiptCondition = typeof RECEIPT_CONDITIONS[number]
 /** One product line. `price` is the line total after discount, VAT included. The other keys exist only when the receipt gave them. */
 export interface ReceiptLine { name: string; price: number | null; /** The full product name as sold, from the print or found by a web search. */ product?: string; brand?: string; model?: string; quantity?: number; condition?: ReceiptCondition
   /** One of the categories the app sent (never anything else): the function mapped the model's number back to this id. */
-  category_id?: string }
+  category_id?: string
+  /** Pages to try for the product's picture, best first (at most 3, https, each ≤ 2 048): addresses the function's own web search returned. The app reads them through shop-price one after another; nothing else fetches or opens them. */
+  page_urls?: string[]
+  /** True when the first page is the one the AI named for this product; false when the pages are search results the function picked (each must then show the same product). */
+  page_named?: boolean
+  /**
+   * What the receipt prints about money off this line, kept apart (owner, 23.11.2026): `before` = the product's normal price when the
+   * receipt shows one, `discount` = the amount taken off with its `discount_reason`, `price` = what was paid (already after it).
+   * A discount is never worked out from a normal price: it may be an extra one (points, a card), and the normal price may be higher.
+   */
+  discount?: number; before?: number; discount_reason?: DiscountReason }
+/** Why a discount was given, as the receipt says (else `other`). */
+export const DISCOUNT_REASONS = ['points', 'member', 'campaign', 'coupon', 'staff', 'other'] as const
+export type DiscountReason = typeof DISCOUNT_REASONS[number]
+/** How a stored discount reads on screen: "member discount". */
+export const REASON_WORD: Record<DiscountReason, string> = { points: 'points discount', member: 'member discount', campaign: 'campaign discount', coupon: 'coupon discount', staff: 'staff discount', other: 'discount' }
+/** What a receipt's extra cost is. A discount is money off the whole receipt (written as a negative cost). */
+export const RECEIPT_COST_KINDS = ['shipping', 'fee', 'service', 'warranty', 'insurance', 'deposit', 'discount'] as const
+export type ReceiptCostKind = typeof RECEIPT_COST_KINDS[number]
+export interface ReceiptCost { kind: ReceiptCostKind; name?: string; amount: number; reason?: DiscountReason }
 export interface ReceiptRead {
   /** Bought or sold; only present when the answer said so (absent reads as unknown). */
   kind?: ReceiptKind
@@ -87,6 +106,8 @@ export interface ReceiptRead {
   currency?: string
   total?: number
   items?: ReceiptLine[]
+  /** The money lines that are not products (shipping, fees, services, an extended warranty, insurance, a deposit, a discount on the whole receipt). */
+  costs?: ReceiptCost[]
   warranty_months?: number
 }
 
@@ -103,6 +124,16 @@ const NOT_A_PRODUCT = /^(pick-?up point|frakt|shipping|delivery|levering|fraktko
 const LINKLIKE = /https?:|www\.|^\/|\/\//i
 const word = (v: unknown, max = 60): string | null => { const t = line(v, max); return t && !LINKLIKE.test(t) ? t : null }
 const amount = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0.01 && v <= AMOUNT_MAX ? Math.round(v * 100) / 100 : null)
+
+/**
+ * A product page link: https, at most 2 048 characters, no white space, control or invisible character, no user name,
+ * password or port. The function already kept only an address its own search returned; this is the app's second look.
+ */
+export function pageLink(v: unknown): string | null {
+  // eslint-disable-next-line no-control-regex -- control and invisible characters are exactly what is refused
+  if (typeof v !== 'string' || !v || v.length > 2048 || !/^https:\/\/[^\s\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]+$/.test(v)) return null
+  try { const u = new URL(v); return u.protocol === 'https:' && !u.username && !u.password && !u.port ? v : null } catch { return null }
+}
 
 /** A real calendar day YYYY-MM-DD, or null. */
 export function realDay(v: unknown): string | null {
@@ -145,6 +176,16 @@ export function readReceipt(raw: unknown, today: string, categoryIds: ReadonlySe
       if (product) entry.product = product
       if (brand) entry.brand = brand
       if (model) entry.model = model
+      const pages = (Array.isArray(it.page_urls) ? it.page_urls : []).slice(0, 3).map(pageLink).filter((x): x is string => !!x)
+      if (pages.length) { entry.page_urls = pages; entry.page_named = it.page_named === true }
+      // The same agreement the function checks: the old price above the paid one, the discount below the old price; else both go.
+      const before = amount(it.before), discount = amount(it.discount)
+      const agree = !(before !== null && price !== null && before <= price) && !(discount !== null && before !== null && discount >= before)
+      if (agree && before !== null) entry.before = before
+      if (agree && discount !== null) {
+        entry.discount = discount
+        entry.discount_reason = DISCOUNT_REASONS.find(r => r === it.discount_reason) ?? 'other'
+      }
       if (typeof it.quantity === 'number' && Number.isInteger(it.quantity) && it.quantity >= 1 && it.quantity <= 99) entry.quantity = it.quantity
       const condition = RECEIPT_CONDITIONS.find(c => c === it.condition)
       if (condition) entry.condition = condition
@@ -157,6 +198,19 @@ export function readReceipt(raw: unknown, today: string, categoryIds: ReadonlySe
   const keep = lines.length > 12 ? new Set(lines.map((_, i) => i).sort((a, b) => (lines[b].price ?? -1) - (lines[a].price ?? -1) || a - b).slice(0, 12)) : null
   const items = keep ? lines.filter((_, i) => keep.has(i)) : lines
   if (items.length) out.items = items
+  const costs: ReceiptCost[] = []
+  if (Array.isArray(raw.costs)) {
+    for (const c of raw.costs.slice(0, 40)) {
+      if (!isObj(c)) continue
+      const kind = RECEIPT_COST_KINDS.find(k => k === c.kind)
+      const amountOf = amount(c.amount)
+      if (!kind || amountOf === null || amountOf === 0.01) continue
+      const name = word(c.name, 60)
+      costs.push({ kind, ...(name ? { name } : {}), amount: amountOf, ...(kind === 'discount' ? { reason: DISCOUNT_REASONS.find(r => r === c.reason) ?? 'other' } : {}) })
+      if (costs.length >= 8) break
+    }
+  }
+  if (costs.length) out.costs = costs
   if (typeof raw.warranty_months === 'number' && Number.isInteger(raw.warranty_months) && raw.warranty_months >= 1 && raw.warranty_months <= 120) out.warranty_months = raw.warranty_months
   // A kind alone is no receipt.
   return Object.keys(out).some(k => k !== 'kind' && k !== 'channel' && k !== 'searched') ? out : null
@@ -221,6 +275,27 @@ export interface ReceiptFill {
   others: ReceiptLine[]
   /** Why a value was left out, in a sentence for the owner. */
   left: string[]
+  /** The line's product pages to try for a picture (links its own web search returned): read through shop-price, nothing else. */
+  pageUrls?: string[]
+  pageNamed?: boolean
+  /** The product's normal price, when the receipt prints one (the record's "Price before discount" field; never worked out). */
+  before?: number
+  /** What the receipt took off this line and why: stored on the thing (`discount_amount`, `discount_reason`, migration 203); the paid price stays the price. */
+  discount?: number
+  discountReason?: DiscountReason
+  /** The receipt's extra costs this line carries (the dearest line by default; the owner moves them). Signed: a discount is negative. */
+  costs: ReceiptCostFill[]
+}
+/** One extra cost of a draft: what it is called, the signed amount (money off is negative) and its currency. */
+export interface ReceiptCostFill { kind: ReceiptCostKind; label: string; amount: number; currency: string }
+const COST_WORD: Record<ReceiptCostKind, string> = { shipping: 'Shipping', fee: 'Fee', service: 'Service', warranty: 'Extended warranty', insurance: 'Insurance', deposit: 'Deposit', discount: 'Discount' }
+/** The kinds whose printed name says more than the kind ("Utvidet garanti 3 år"): the name stays after the English word. Shipping, deposit and discount are the word alone. */
+const NAME_ADDS: readonly ReceiptCostKind[] = ['fee', 'service', 'warranty', 'insurance']
+/** The words a saved receipt cost carries, in English (saved data is English): the kind's word — a discount as "Points discount" / "Member discount" — and the printed name only when it adds something and is no repeat of the word. */
+export const costLabel = (c: ReceiptCost): string => {
+  if (c.kind === 'discount') { const w = REASON_WORD[c.reason ?? 'other']; return `${w[0].toUpperCase()}${w.slice(1)}` }
+  const word = COST_WORD[c.kind]
+  return (NAME_ADDS.includes(c.kind) && c.name && c.name.toLocaleLowerCase('nb') !== word.toLocaleLowerCase('nb') ? `${word} · ${c.name}` : word).slice(0, 80)
 }
 
 /** DD.MM.YYYY of a YYYY-MM-DD. */
@@ -271,13 +346,17 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
   const store = matchStore(read.store, stores)
   const fill: ReceiptFill = {
     storeId: store ? store.id : null, storeName: store || !read.store ? null : read.store, storeLabel: store ? store.name : read.store ?? null,
-    note: '', left, lines: lines.map(l => l.name), others: chosen ? lines.filter((_, i) => i !== chosenAt) : [],
+    note: '', left, lines: lines.map(l => l.name), others: chosen ? lines.filter((_, i) => i !== chosenAt) : [], costs: [],
   }
   if (chosen) {
     fill.title = chosen.product ?? chosen.name
     if (chosen.brand) fill.brand = chosen.brand
     if (chosen.category_id) fill.categoryId = chosen.category_id
     if (chosen.model) fill.model = chosen.model
+    if (chosen.page_urls?.length) { fill.pageUrls = chosen.page_urls; fill.pageNamed = chosen.page_named === true }
+    // The normal price only when the receipt prints one; a discount is its own note, never a normal price worked out.
+    if (chosen.before !== undefined) fill.before = chosen.before
+    if (chosen.discount !== undefined) { fill.discount = chosen.discount; fill.discountReason = chosen.discount_reason ?? 'other' }
     if (chosen.condition === 'new' || chosen.condition === 'used' || chosen.condition === 'refurbished') fill.condition = chosen.condition
   }
   const price = chosen ? chosen.price ?? undefined : lines.length <= 1 || pick === 'total' ? read.total : undefined
@@ -286,6 +365,15 @@ export function receiptFill(read: ReceiptRead, stores: readonly { id: string; na
     else if (read.currency) left.push(`The receipt is in ${read.currency}, which this app doesn't hold (NOK, TRY, EUR, USD): the amount is left out.`)
     else left.push('The receipt shows no clear currency: the amount is left out.')
   } else if (lines.length > 1 && pick == null) left.push('Several lines: pick the one you bought to fill its name and price.')
+  // The receipt's extra costs go with a picked LINE (never a total: the total already holds them). Which draft carries them is the
+  // caller's choice (`placeCosts`: the dearest bought line of the receipt); a lone line carries them.
+  if (read.costs?.length) {
+    if (chosenAt !== null) {
+      if (read.currency && RECEIPT_CURRENCIES.includes(read.currency)) {
+        fill.costs = read.costs.map(c => ({ kind: c.kind, label: costLabel(c), amount: c.kind === 'discount' ? -c.amount : c.amount, currency: read.currency as string }))
+      } else left.push('The receipt\'s extra costs are left out: no clear currency this app holds.')
+    }
+  }
   if (read.date) fill.day = read.date
   if (read.searched) fill.searched = true
   if (read.channel) fill.channel = read.channel

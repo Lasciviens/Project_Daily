@@ -263,6 +263,35 @@ const BUGS = ['1', '2', '3a', '3b', '3c', '4', '5a', '5b', '6', '7a', '7b', '7c'
   if (problems.length) fail(`migration 191 has ${problems.join('; ')}`)
 }
 
+// Static, 203: a receipt's discount on shop_items and the picture memory (ai_source_stats, the same objects migration 204 writes).
+// One transaction; the new table has row level security, its policies, the owner lock and grants (the service role writes, the
+// app reads and changes `state` only, signed out nothing); every function runs as the caller with search_path '' and is revoked
+// from the app (the note is the service role's); no audit trigger on the memory (said in the header); the discount is a CHECK
+// and a trigger, and no existing row changes.
+{
+  const src = readFileSync(mig('203_shop_receipt_discount_picture_memory.sql'), 'utf8')
+  const sql = src.replace(/--.*$/gm, '')
+  const problems = []
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT')
+  if (/^(update|insert into|delete from) /im.test(sql)) problems.push('a top-level write (203 changes no row)')
+  if (/\bnet\.http_|vault\./i.test(sql)) problems.push('a call outside the database')
+  if (/security definer/i.test(sql)) problems.push('SECURITY DEFINER (every 203 function runs as the caller)')
+  if (!/create table if not exists public\.ai_source_stats[\s\S]*?\);\s*alter table public\.ai_source_stats enable row level security;/i.test(sql)) problems.push('ai_source_stats: row level security is not on right after the table')
+  if (!/select public\.owner_lock_apply\('public\.ai_source_stats'\);/.test(sql)) problems.push('ai_source_stats: no owner lock')
+  if (!/revoke all on public\.ai_source_stats from anon, authenticated;\s*grant select on public\.ai_source_stats to authenticated;\s*grant update \(state\) on public\.ai_source_stats to authenticated;\s*grant select, insert, update, delete on public\.ai_source_stats to service_role;/i.test(sql)) problems.push('ai_source_stats: grants are not (service role writes, the app reads and changes state only)')
+  if (/trg_audit/.test(sql)) problems.push('an audit trigger on the memory (its header says why there is none: a state toggle has its own Undo)')
+  if (!/user_id\s+uuid not null references auth\.users\(id\) on delete cascade/i.test(sql)) problems.push('ai_source_stats.user_id does not cascade')
+  const fns = [...sql.matchAll(/create or replace function public\.(\w+)\(([\s\S]*?)\)\s*returns[\s\S]*?end \$\$;/gi)]
+  if (fns.length !== 3) problems.push(`${fns.length} functions found, expected 3`)
+  for (const [body, name] of fns) {
+    if (!/set search_path = ''/.test(body)) problems.push(`${name} has no search_path ''`)
+    if (!new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon`).test(sql)) problems.push(`no revoke for ${name}`)
+  }
+  if (new RegExp('grant execute on function public\\.ai_source_note\\([^)]*\\) to [^;]*(anon|authenticated)').test(sql)) problems.push('ai_source_note is granted to the app')
+  if (!/check \(\s*\(discount_amount is null and discount_reason is null\)\s*or \(discount_amount is not null and discount_reason is not null\s*and discount_amount > 0 and discount_amount < 1000000000/i.test(sql)) problems.push('the discount CHECK is not "both or none, above zero, below a billion, a reason from the list"')
+  if (problems.length) fail(`migration 203 has ${problems.join('; ')}`)
+}
+
 // Static, 192: six tables, each the account's own (user_id with auth.uid() by default, the owner policy with
 // (select auth.uid()), row level security right after it, the owner lock at the end, audited, the app and the service
 // role granted, signed out nothing); the four about a thing cascade from shop_items; every function pinned, run as the
@@ -487,6 +516,10 @@ try {
   })
   scenarios('stores-reseed.sql')
   scenarios('resale.sql')
+  // 203 (the discount, the picture memory): applied twice over everything above, then its scenarios.
+  step('203', () => psql(n, ['-f', mig('203_shop_receipt_discount_picture_memory.sql')]))
+  step('203 again', () => psql(n, ['-f', mig('203_shop_receipt_discount_picture_memory.sql')]))
+  scenarios('receipt-memory.sql')
   const with192 = retryAnswers(n)
   const stillFailing = RETRY.filter(id => with192.get(id)?.answer !== 'ok')
   if (stillFailing.length) throw new Error(`with 192 these Undo cases still fail:\n${stillFailing.map(id => `  ${id}: ${with192.get(id)?.what ?? 'no answer'}`).join('\n')}`)
@@ -497,7 +530,7 @@ try {
   }
   summary = `${BUGS.length} bugs shown without 187 and fixed with it (applied twice), then 188, 190, 191 and 192 (twice each; 191 and 192 once more after signals.sql re-runs 190, and 191 with a later seed), ${passed} scenarios passed, `
     + `${RETRY_FIXED_BY_192.length} Undo cases failing before 192 pass with it (${RETRY.length - RETRY_FIXED_BY_192.length} passing on both), `
-    + `and 192's ad-link check agrees with the ${LINK_CASES.length} shared cases`
+    + `and 192's ad-link check agrees with the ${LINK_CASES.length} shared cases; 203 (the discount and the picture memory) applied twice with its scenarios`
 } catch (e) {
   code = 1
   console.error(`verify-db-shop-rules: ${e.message}`)

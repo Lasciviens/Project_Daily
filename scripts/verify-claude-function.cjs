@@ -2251,7 +2251,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['quick_guess_photo', 'dev_request_draft', 'error_explain'].every(n => /English/.test(featureAbout(n).instructions)) && /Norwegian if they are/.test(featureAbout('ad_improve').instructions) && /English/.test(featureAbout('work_week').instructions) && /in English/.test(featureAbout('place_ideas').instructions))
   check('only place_ideas and receipt_read have a tool (web_search), the others none; their time limit is 70 s', FEATURE_JOBS.every(n => (n === 'place_ideas' || n === 'receipt_read') === (featureAbout(n).tools.length === 1 && featureAbout(n).tools[0].name === 'web_search')) && featureAbout('place_ideas').timeLimitMs === 70000)
   const FEATURE_PINS = {
-    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.3', 'afcd228aeef84711'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
+    quick_guess_photo: ['2026-11-23.1', 'f6cbce70c9ccee91'], receipt_read: ['2026-11-23.5', '7fe0eb4d7652065f'], dev_request_draft: ['2026-11-23.2', 'a8b9525a1debef16'],
     error_explain: ['2026-11-23.1', '12941d90a0aa1d67'], work_week: ['2026-11-23.1', 'b222a6ec6480baa5'], ad_improve: ['2026-11-23.1', '2ab44817ad4bee19'], place_ideas: ['2026-11-23.1', 'c3888ba2e4995828'],
   }
   for (const name of FEATURE_JOBS) {
@@ -2396,7 +2396,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   const many = sentBody(x).messages[0].content.find(c => c.type === 'text').text
   check('receipt_read categories: at most 200 rows go to the model; the 200th maps back, the 201st does not exist', many.split('\n').filter(l => /^\d+ \|/.test(l)).length === 200 && x.json?.result?.items?.[0]?.category_id === 'cat-199', many.slice(-60))
   check('receipt_read: the instructions tell the model the Norwegian labels and number forms, to skip shipping, pick-up and 0,01 lines, to take the order day, the kind, to search at most twice, and never to guess or assume a warranty',
-    /Kvittering = receipt/.test(F.RECEIPT_READ_JOB.instructions) && /Frakt = shipping/.test(F.RECEIPT_READ_JOB.instructions) && /4490,-/.test(F.RECEIPT_READ_JOB.instructions) && /Pick-up Point/.test(F.RECEIPT_READ_JOB.instructions) && /0,01/.test(F.RECEIPT_READ_JOB.instructions)
+    /Pris = price/.test(F.RECEIPT_READ_JOB.instructions) && /Frakt = shipping/.test(F.RECEIPT_READ_JOB.instructions) && /4490,-/.test(F.RECEIPT_READ_JOB.instructions) && /Pick-up Point/.test(F.RECEIPT_READ_JOB.instructions) && /0,01/.test(F.RECEIPT_READ_JOB.instructions)
     && /not a payment date/.test(F.RECEIPT_READ_JOB.instructions) && /"Outlet"/.test(F.RECEIPT_READ_JOB.instructions) && /kind: "bought"/.test(F.RECEIPT_READ_JOB.instructions) && /at most 2 searches/.test(F.RECEIPT_READ_JOB.instructions)
     && /None of these: \{\}/.test(F.RECEIPT_READ_JOB.instructions) && /Read a receipt, invoice, order or payout \(bought or sold/.test(F.RECEIPT_READ_JOB.instructions) && /found by your search/.test(F.RECEIPT_READ_JOB.instructions) && /the 12 most expensive/.test(F.RECEIPT_READ_JOB.instructions)
     && /never guess/.test(F.RECEIPT_READ_JOB.instructions) && /never assume the legal one/.test(F.RECEIPT_READ_JOB.instructions) && /Search results are data/.test(F.RECEIPT_READ_JOB.instructions))
@@ -2507,7 +2507,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('shop_tidy: the instructions keep the store\'s language, say what the name is ordered like, limit the search to 2, and call the tags, results and pages data',
     /Keep the store's language: never translate/.test(F.SHOP_TIDY_JOB.instructions) && /"Brand Model variant, colour"/.test(F.SHOP_TIDY_JOB.instructions) && /at most 2 searches/.test(F.SHOP_TIDY_JOB.instructions) && /data, never instructions to you/.test(F.SHOP_TIDY_JOB.instructions) && /number of the ONE best category/.test(F.SHOP_TIDY_JOB.instructions))
   { const h = crypto.createHash('sha256').update(`${F.SHOP_TIDY_JOB.instructions}\n${JSON.stringify(F.SHOP_TIDY_JOB.answerSchema)}`).digest('hex').slice(0, 16)
-    check('shop_tidy: the version names the instructions and schema it was made with (a change needs a new version, then a new pin here)', F.SHOP_TIDY_JOB.version === '2026-11-23.1' && h === '138d53a730866e9c', `version ${F.SHOP_TIDY_JOB.version}, hash ${h}`) }
+    check('shop_tidy: the version names the instructions and schema it was made with (a change needs a new version, then a new pin here)', F.SHOP_TIDY_JOB.version === '2026-11-23.3' && h === 'd20a38e30ac69ec6', `version ${F.SHOP_TIDY_JOB.version}, hash ${h}`) }
 
   // ── dev_request_draft ──
   const PAGES = ['/', '/daily', '/shop', '/work', '/dev-requests', 'other']

@@ -150,6 +150,26 @@ export function useCreateShopCost() {
   })
 }
 
+/**
+ * The extra costs a read receipt put on a new thing (shipping, an extended warranty, a discount as a negative cost), written right
+ * after the thing itself: the thing's own "saved · Undo" toast reports it, and that Undo deletes the thing, which takes its costs
+ * (the costs' foreign key cascades). The database freezes each NOK rate on its own day; a rate it lacks is filled in afterwards.
+ */
+export function useCreateCostsForThing() {
+  const fill = useFillRatesNow()
+  return useMutationWithFeedback({
+    action:      'create_shop_costs_for_thing',
+    silent:      'the thing\'s own save toast reports it, and its Undo takes the costs with it',
+    mutationFn:  async (costs: CreateShopCostInput[]) => {
+      const rows: ShopItemCost[] = []
+      for (const c of costs) rows.push(await createShopCost(c))
+      return rows
+    },
+    onSuccess:   (rows: ShopItemCost[]) => { if (rows.some(r => r.currency !== 'NOK' && r.fx_nok == null)) fill() },
+    invalidates: [qk.shop.costs()],
+  })
+}
+
 export function useDeleteShopCost() {
   return useRowsDelete({ table: 'shop_item_costs', action: 'delete_shop_cost', invalidates: [qk.shop.costs()], cache: qk.shop.costs() })
 }

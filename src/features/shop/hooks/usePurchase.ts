@@ -4,13 +4,15 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { qk } from '../../../shared/query'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { formatMoney } from '../../settings/subscriptionRules'
+import { createShopCost } from '../api/shopApi'
 import { addRebate, removeCost, savePurchase, type PurchasePatch, type PurchaseWrite } from '../api/shopPurchaseApi'
-import type { ShopCurrency, ShopItemCost } from '../types'
+import { useFillRatesNow } from './useShopMoney'
+import type { CreateShopCostInput, ShopCurrency, ShopItemCost } from '../types'
 
 // Just bought, Arrived, a search noted on a wish, and money got back. Each write answers what was there before:
 // the toast's Undo writes it back exactly.
 
-type SaveVars = { id: string; patch: PurchasePatch; done: string }
+type SaveVars = { id: string; patch: PurchasePatch; done: string; /** A read receipt's extra costs for this thing, written right after it (and taken off again by its Undo). */ costs?: Omit<CreateShopCostInput, 'item_id'>[] }
 
 /** Write a purchase's facts back exactly — the Undo of a save; `done` is what it says. */
 function usePutPurchase() {
@@ -31,15 +33,26 @@ function usePutPurchase() {
 export function useSavePurchase() {
   const qc = useQueryClient()
   const put = usePutPurchase()
+  const fill = useFillRatesNow()
   return useMutationWithFeedback({
     action:      'save_shop_purchase',
     silent:      'its own toast reports it with Undo ("Purchase saved · Undo")',
-    mutationFn:  (v: SaveVars) => savePurchase(v.id, v.patch),
+    mutationFn:  async (v: SaveVars): Promise<PurchaseWrite> => {
+      const r = await savePurchase(v.id, v.patch)
+      const costIds: string[] = []
+      for (const c of v.costs ?? []) costIds.push((await createShopCost({ ...c, item_id: v.id })).id)
+      return { ...r, costIds }
+    },
     onSuccess:   (r: PurchaseWrite, v: SaveVars) => {
       putRowsInCache(qc, qk.shop.items(), [r.after])
-      toast.undo(v.done, () => put.mutate({ id: v.id, patch: r.before, done: 'Undone' }))
+      const n = r.costIds?.length ?? 0
+      if ((v.costs ?? []).some(c => c.currency && c.currency !== 'NOK')) fill()
+      toast.undo(n ? `${v.done} · ${n} extra ${n === 1 ? 'cost' : 'costs'}` : v.done, () => {
+        put.mutate({ id: v.id, patch: r.before, done: 'Undone' })
+        for (const id of r.costIds ?? []) void removeCost(id).then(() => qc.invalidateQueries({ queryKey: qk.shop.costs() }))
+      })
     },
-    invalidates: [qk.shop.items()],
+    invalidates: [qk.shop.items(), qk.shop.costs()],
   })
 }
 

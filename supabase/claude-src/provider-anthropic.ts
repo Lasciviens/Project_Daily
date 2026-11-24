@@ -52,6 +52,9 @@ const ANTHROPIC_RETRIES = 0
 const ANTHROPIC_DETAIL_MAX = 300
 // A count the provider reports is input too: it must fit the ledger's integer columns.
 const ANTHROPIC_COUNT_MAX = 2_000_000_000
+/** The search results kept from one answer: how many, and the longest address (a longer one is never a link a job may use). */
+const ANTHROPIC_SEARCH_URLS_MAX = 40
+const ANTHROPIC_SEARCH_URL_MAX = 2_048
 
 /** What the person reads when a chat round was cut for taking too long. */
 export const ANTHROPIC_CHAT_TIMEOUT_MESSAGE = 'No answer — Anthropic took too long. Try again.'
@@ -316,10 +319,17 @@ function anthropicSent(request: ModelRequest, body: Anthropic.MessageCreateParam
 function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | null }): Omit<ModelAnswer, 'sent'> {
   let text = ''
   const thoughts: string[] = []
+  const searchUrls: string[] = []
   // An answer is a list of blocks; one that thought first begins with thinking blocks. Read each by its type.
   for (const block of message.content) {
     if (block.type === 'text') text += block.text
     else if (block.type === 'thinking' && block.thinking) thoughts.push(block.thinking)
+    // What Anthropic's own search returned: `content` is a list of `web_search_result` (url, title, ...) or, on an error, one error object.
+    else if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+      for (const hit of block.content) {
+        if (hit.type === 'web_search_result' && typeof hit.url === 'string' && hit.url.length <= ANTHROPIC_SEARCH_URL_MAX && searchUrls.length < ANTHROPIC_SEARCH_URLS_MAX) searchUrls.push(hit.url)
+      }
+    }
   }
   return {
     ok: true,
@@ -332,6 +342,7 @@ function anthropicAnswer(message: Anthropic.Message & { _request_id?: string | n
     requestId: typeof message._request_id === 'string' ? anthropicCut(message._request_id, 120) : null,
     servedModel: typeof message.model === 'string' ? anthropicCut(message.model, 80) : null,
     webSearches: anthropicCount(message.usage?.server_tool_use?.web_search_requests),
+    searchUrls,
   }
 }
 

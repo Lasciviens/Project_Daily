@@ -20,6 +20,8 @@ export function receiptFacts(fill: ReceiptFill, at: string, categories: readonly
   if (fill.price !== undefined && fill.currency) {
     facts.push({ key: 'price', value: { amount: fill.price, currency: fill.currency as ShopCurrency }, source: SOURCE, confidence: 'exact', on: true, at })
   }
+  // What the receipt took off this line, with its reason: its own field, ticked, never subtracted from the paid price.
+  if (fill.discount !== undefined) facts.push({ key: 'discount', value: { amount: fill.discount, reason: fill.discountReason ?? 'other' }, source: SOURCE, confidence: 'exact', on: true, at })
   // Printed: "likely", so it beats the title's own guess in the add sheet (an equal confidence loses). Found by a search: "check".
   if (fill.brand) facts.push({ key: 'brand', value: fill.brand, source, confidence: found ? 'check' : 'likely', on: true, at })
   if (fill.model) facts.push({ key: 'model', value: fill.model, source, confidence: found ? 'check' : 'likely', on: true, at })

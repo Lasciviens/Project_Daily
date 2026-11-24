@@ -3,21 +3,34 @@
 // model lives here, pure (scripts/verify-shop-tidy.cjs):
 //   · what is sent: the thing's name, brand, model and category now, and the owner's OWN category list (numbered by the
 //     function: the model never sees an id);
-//   · the second check of the answer (the function checked it once): only name, brand, model and a category id that was
-//     sent can come through — never a link, picture, price or date, and a name must still share a word with the old one;
+//   · the second check of the answer (the function checked it once): only name, brand, model, a category id that was
+//     sent and the product's page link can come through — never a price or date, and a name must still share a word with the
+//     old one. The page link is an address the function's own web search returned; the app reads it through shop-price for a
+//     picture (`productPicture.ts`) and never opens it. A picture is offered only for a thing that has none, a tick like any field;
 //   · the fields to review, the write that saves the ticked ones, and the write that puts exactly the old values back;
 //   · the worst-case cost to show before "all things" is started.
 // The store's words are kept (no translation): an exception to "saved data is English", like the owner's own typed words.
+import { pageLink } from '../ai/claude/featureRules'
+import type { PagePicture } from './productPicture'
 import { listOf } from './shopModel'
 import type { ShopCategory, ShopFact, ShopItem, ShopItemFacts, UpdateShopItemInput } from './types'
 
 export const TIDY_SOURCE = 'Tidy up (AI)'
 export const TIDY_LIMITS = { name: 120, word: 60, path: 60, categories: 100, searches: 2, factText: 120 } as const
 
-export type TidyKey = 'name' | 'brand' | 'model' | 'category'
+export type TidyKey = 'name' | 'brand' | 'model' | 'category' | 'picture'
 
 /** What the function answers for one thing, after both checks. Each field is present only when it is a real suggestion. */
-export interface TidySuggestion { name?: string; brand?: string; model?: string; category_id?: string }
+export interface TidySuggestion {
+  name?: string; brand?: string; model?: string; category_id?: string
+  /** The product's pages to try for a picture (addresses the function's search returned, at most 3): read, never written. */
+  page_urls?: string[]
+  page_named?: boolean
+  /** The picture that page gave (https, checked), and the host it came from. */
+  picture?: string; pictureHost?: string
+  /** Why the page gave no picture, in the app's words. */
+  pictureNote?: string
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 // Zero-width and text-direction characters draw nothing and can hide a word from a check: out first.
@@ -55,6 +68,9 @@ export function readTidySuggestion(raw: unknown, item: ShopItem, allowedIds: Rea
   const model = oneLine(raw.model, TIDY_LIMITS.word)
   if (model && !LINKISH.test(model) && model !== now.model) out.model = model
   if (typeof raw.category_id === 'string' && allowedIds.has(raw.category_id) && raw.category_id !== item.category_id) out.category_id = raw.category_id
+  // A page is worth reading only for a thing with no picture of its own (a picture is never replaced silently).
+  const pages = (Array.isArray(raw.page_urls) ? raw.page_urls : []).slice(0, 3).map(pageLink).filter((x): x is string => !!x)
+  if (pages.length && !item.image_url) { out.page_urls = pages; out.page_named = raw.page_named === true }
   return Object.keys(out).length ? out : null
 }
 
@@ -84,9 +100,14 @@ export function tidyInputFor(item: ShopItem, categories: readonly { id: string; 
 }
 
 /** One field of the review: what is there, and what is suggested. */
-export interface TidyChange { key: TidyKey; label: string; before: string; after: string }
+export interface TidyChange { key: TidyKey; label: string; before: string; after: string; /** A picture to show beside the words. */ image?: string }
 
-const LABEL: Record<TidyKey, string> = { name: 'Name', brand: 'Brand', model: 'Model', category: 'Category' }
+const LABEL: Record<TidyKey, string> = { name: 'Name', brand: 'Brand', model: 'Model', category: 'Category', picture: 'Picture' }
+
+/** The picture a page gave, put on the suggestion (or the reason there is none). Nothing else of the suggestion changes. */
+export function withPagePicture(s: TidySuggestion, p: PagePicture): TidySuggestion {
+  return { ...s, ...(p.image ? { picture: p.image, pictureHost: p.host ?? undefined } : {}), ...(p.note ? { pictureNote: p.note } : {}) }
+}
 
 /**
  * The fields to review. A brand or model the owner typed themselves (source "you") is never replaced by a read, so it is
@@ -100,6 +121,7 @@ export function tidyChanges(item: ShopItem, s: TidySuggestion, pathOf: (id: stri
   if (s.brand && !mine('brand')) out.push({ key: 'brand', label: LABEL.brand, before: now.brand || '—', after: s.brand })
   if (s.model && !mine('model')) out.push({ key: 'model', label: LABEL.model, before: now.model || '—', after: s.model })
   if (s.category_id) out.push({ key: 'category', label: LABEL.category, before: pathOf(item.category_id), after: pathOf(s.category_id) })
+  if (s.picture && !item.image_url) out.push({ key: 'picture', label: LABEL.picture, before: 'none', after: `product page (${s.pictureHost ?? 'its site'})`, image: s.picture })
   return out
 }
 
@@ -108,12 +130,14 @@ const factOf = (value: string): ShopFact => ({ value, source: TIDY_SOURCE, confi
 /**
  * The write for the ticked fields: `title` and `category_id` are their columns, brand and model are facts
  * ({ value, source "Tidy up (AI)", confidence "check" }, added to the facts the thing has, never replacing another key).
- * Nothing else is ever in it: no link, picture, price or date.
+ * `image_url` only for the ticked picture (an address the shop-price read answered, https, checked). Nothing else is ever in it:
+ * no link, price or date.
  */
 export function tidyPatch(item: ShopItem, s: TidySuggestion, keys: ReadonlySet<TidyKey>): UpdateShopItemInput {
   const patch: UpdateShopItemInput = {}
   if (keys.has('name') && s.name) patch.title = s.name
   if (keys.has('category') && s.category_id) patch.category_id = s.category_id
+  if (keys.has('picture') && s.picture && !item.image_url) patch.image_url = s.picture
   const facts: ShopItemFacts = { ...(item.facts ?? {}) }
   let changed = false
   if (keys.has('brand') && s.brand) { facts.brand = factOf(s.brand); changed = true }
@@ -127,6 +151,7 @@ export function tidyUndoPatch(item: ShopItem, patch: UpdateShopItemInput): Updat
   const back: UpdateShopItemInput = {}
   if (patch.title !== undefined) back.title = item.title
   if (patch.category_id !== undefined) back.category_id = item.category_id
+  if (patch.image_url !== undefined) back.image_url = item.image_url ?? null
   if (patch.facts !== undefined) back.facts = item.facts ?? null
   return back
 }

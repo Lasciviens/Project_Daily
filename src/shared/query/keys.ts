@@ -116,6 +116,8 @@ export const qk = {
     storeRules: () => ['shop', 'store-rules'] as const,
     lawRules: () => ['shop', 'law-rules'] as const,
     sitePolicies: () => ['shop', 'site-policies'] as const,
+    /** Which sites gave a product's picture (migration 203): ranks the pages a receipt line offers, listed under Stores and rules. */
+    pictureSources: () => ['shop', 'picture-sources'] as const,
     /** The price figures of many things in one call (ids joined, sorted); the root refreshes every list of them. */
     priceStatsAll: ['shop', 'price-stats'] as const,
     priceStats: (ids: string) => ['shop', 'price-stats', ids] as const,

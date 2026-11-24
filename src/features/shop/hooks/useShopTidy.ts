@@ -6,7 +6,8 @@ import { mapRowsInCache, putRowsInCache } from '../../../shared/query/cachePatch
 import { ClaudeJobError } from '../../ai/claude/claudeApi'
 import { tidyThing } from '../../ai/claude/featureJobs'
 import { updateShopItem } from '../api/shopApi'
-import { readTidySuggestion, tidyCategories, tidyInputFor, tidyPatch, tidyUndoPatch, type TidyKey, type TidySuggestion } from '../tidyModel'
+import { readTidySuggestion, tidyCategories, tidyInputFor, tidyPatch, tidyUndoPatch, withPagePicture, type TidyKey, type TidySuggestion } from '../tidyModel'
+import { usePreferredHosts, useProductPicture } from './useProductPicture'
 import type { ShopCategory, ShopItem, UpdateShopItemInput } from '../types'
 
 // "Tidy up info" (tidyModel.ts): one call per thing, one at a time, then ONE save for every ticked field with ONE Undo.
@@ -52,6 +53,8 @@ export interface TidyRunInput {
 
 /** Reads each thing with the AI, one at a time. Every answer is checked again here; nothing is saved. */
 export function useTidyRun() {
+  const readPicture = useProductPicture()
+  const preferred = usePreferredHosts()
   return useMutationWithFeedback<TidyRunResult, TidyRunInput>({
     action: 'tidy_shop_things',
     silent: 'the review shows what was found; a stop is the function\'s own sentence there',
@@ -60,6 +63,7 @@ export function useTidyRun() {
       const list = tidyCategories(categories)
       const allowed = new Set(list.map(c => c.id))
       const suggestions = new Map<string, TidySuggestion>()
+      const hosts = await preferred()
       let failed = 0, costUsd = 0, stopped = false, searched = false, halted: string | null = null
       // Two failures in a row end the run with the error's own sentence (a broken key or a down service would repeat it for every thing).
       let inARow = 0
@@ -69,11 +73,14 @@ export function useTidyRun() {
         onStep(i, rows.length, row.title)
         for (let attempt = 1; ; attempt++) {
           try {
-            const { result, costUsd: cost } = await tidyThing(tidyInputFor(row, list, pathOf))
+            const { result, costUsd: cost } = await tidyThing({ ...tidyInputFor(row, list, pathOf), ...(hosts.length ? { preferred_hosts: hosts } : {}) })
             costUsd += cost ?? 0
             inARow = 0
             if (isObj(result) && result.searched === true) searched = true
-            const s = readTidySuggestion(result, row, allowed)
+            let s = readTidySuggestion(result, row, allowed)
+            // The product's page (a link the function's search returned) is read through shop-price for its picture; a site that
+            // does not let apps read it gives none and says so.
+            if (s?.page_urls?.length && !signal.aborted) s = withPagePicture(s, await readPicture(s.page_urls, row.title, s.page_named))
             if (s) { suggestions.set(row.id, s); onSuggestion(row.id, s) }
           } catch (error) {
             if (error instanceof ClaudeJobError && HALTS.has(error.reason)) { halted = error.message }
@@ -104,8 +111,8 @@ export interface TidyApplyInput {
 interface Written { item: ShopItem; patch: UpdateShopItemInput; after: ShopItem }
 
 /**
- * Saves the ticked fields through the Shop's own update (`updateShopItem`: the title and category columns and the facts, never
- * a link, picture, price or date). "N things tidied · Undo": one Undo writes back, for every thing and exactly the fields
+ * Saves the ticked fields through the Shop's own update (`updateShopItem`: the title, category and picture columns and the facts,
+ * never a link, price or date). "N things tidied · Undo": one Undo writes back, for every thing and exactly the fields
  * that were written, what was there before.
  */
 export function useApplyTidy() {

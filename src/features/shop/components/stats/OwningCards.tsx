@@ -100,8 +100,8 @@ export function WhyCard({ data, onOpen }: { data: StatsData; onOpen: (ids: strin
 /** Saved by watching: money back from claims and price matches recorded in the period. */
 export function SavedCard({ data, onOpen }: { data: StatsData; onOpen: (id: string) => void }) {
   const s = useMemo(() => savedIn(data.items, data.ctx, data.period), [data])
-  const counted = s.rows.filter(r => r.kind !== 'other')
-  const other = s.rows.filter(r => r.kind === 'other')
+  const counted = s.rows.filter(r => r.kind === 'claim' || r.kind === 'match')
+  const other = s.rows.filter(r => r.kind === 'other' || r.kind === 'discount')
   return (
     <StatsCard title="Saved by watching" subtitle={`Claims and price matches · ${when(data.period)}`}>
       {s.rows.length === 0
@@ -111,14 +111,15 @@ export function SavedCard({ data, onOpen }: { data: StatsData; onOpen: (id: stri
             <p className="text-kpi tabular-nums text-fg"><AmountText amount={s.saved} unknown={shortReason(s.saved)} /></p>
             <p className="text-meta text-fg-muted">
               {join([`claims ${complete(s.claims) ? num(s.claims.nok) : shortReason(s.claims)}`, `price matches ${complete(s.matches) ? num(s.matches.nok) : shortReason(s.matches)}`])}
-              {other.length > 0 && ` · other money back ${complete(s.other) ? num(s.other.nok) : shortReason(s.other)} (not counted)`}
+              {s.rows.some(r => r.kind === 'other') && ` · other money back ${complete(s.other) ? num(s.other.nok) : shortReason(s.other)} (not counted)`}
+              {s.rows.some(r => r.kind === 'discount') && ` · purchase discounts ${complete(s.discounts) ? num(s.discounts.nok) : shortReason(s.discounts)} (not counted)`}
             </p>
             <ul className="-mx-3 flex flex-col">
               {[...counted, ...other].map(r => {
                 const i = data.byId.get(r.id)
                 return (
                   <li key={r.costId}>
-                    <DrillRowButton onOpen={() => onOpen(r.id)} row={{ key: r.costId, id: r.id, title: i?.title ?? 'A thing', sub: join([r.label, formatDate(r.day)]), amount: r.amount, muted: r.kind === 'other' }} />
+                    <DrillRowButton onOpen={() => onOpen(r.id)} row={{ key: r.costId, id: r.id, title: i?.title ?? 'A thing', sub: join([r.label, formatDate(r.day)]), amount: r.amount, muted: r.kind === 'other' || r.kind === 'discount' }} />
                   </li>
                 )
               })}

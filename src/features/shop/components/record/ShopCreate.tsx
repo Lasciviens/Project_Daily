@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, SkipForward } from 'lucide-react'
 import { ModalShell } from '../../../../shared/modals/ModalShell'
 import { useEntityModal } from '../../../../shared/modals'
@@ -8,7 +8,10 @@ import { todayStr } from '../../../../shared/utils/dateUtils'
 import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import { useCreateShopItem, useShopCategories, useShopItems } from '../../hooks/useShop'
 import { useQuietCheck } from '../../hooks/useShopPrices'
-import { useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
+import { useCreateCostsForThing, useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
+import { useProductPicture } from '../../hooks/useProductPicture'
+import { pictureFact, type PagePicture } from '../../productPicture'
+import { formatMoney } from '../../../settings/subscriptionRules'
 import { useShopStores } from '../../hooks/useShopStores'
 import { isPossession } from '../../ownModel'
 import { categoryPath, currencyOf, listOf } from '../../shopModel'
@@ -21,7 +24,7 @@ import { STATE_PILL } from './useShopRecord'
 import { isNewCategory, newCategoryMissing, newPickOf, NEW_CATEGORY, type RecordDraftApi } from './useRecordDraft'
 import { useSaveCategory } from './useSaveCategory'
 import {
-  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withReceipt, withShopPatch,
+  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withPagePicture, withReceipt, withShopPatch,
   type CreateBatch, type CreateSpec, type CreateState,
 } from './createDraft'
 import { middayIso } from '../../../media/watchedWhen'
@@ -63,6 +66,8 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const check = useQuietCheck()
   const fillRates = useFillRatesNow()
   const saveCategory = useSaveCategory()
+  const costsOf = useCreateCostsForThing()
+  const readPicture = useProductPicture()
   const count = batch ? batch.fills.length : 1
   // Seeded once: a background refetch never overwrites what is being typed.
   const [states, setStates] = useState<CreateState[]>(() => Array.from({ length: count }, (_, i) => {
@@ -82,6 +87,31 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const [open, setOpen] = useState({ facts: true, money: true })
   const [added, setAdded] = useState<string[]>([])
   const st = states[index]
+  // The product's picture: the receipt line's page (a link the AI's own search returned) is read through shop-price, once per
+  // page; the picture is a fact "product page (host)" the owner sees and can untick. No picture says why, in the shared words.
+  const pictures = useRef(new Map<string, PagePicture>())
+  const reading = useRef(new Set<string>())
+  const [pictureNotes, setPictureNotes] = useState<Record<number, string>>({})
+  const pageUrls = st.receipt?.pageUrls
+  const pageKey = pageUrls?.join(' ') ?? ''
+  const hasPageFact = st.facts.some(f => f.source.origin === 'page')
+  const hasPicture = !!st.draft.image_url
+  useEffect(() => {
+    if (!pageUrls?.length || st.savedId || st.skipped || hasPageFact) return
+    const at = index
+    const apply = (p: PagePicture) => {
+      const fact = pictureFact(p, new Date().toISOString())
+      setStates(all => all.map((s, i) => (i === at && s.receipt?.pageUrls?.join(' ') === pageKey ? withPagePicture(spec, s, categories, fact) : s)))
+      setPictureNotes(n => ({ ...n, [at]: p.note ?? '' }))
+    }
+    const known = pictures.current.get(pageKey)
+    if (known) { if (known.image && !hasPicture) apply(known); return }
+    // A picture the owner already has (or typed) is never read over.
+    if (hasPicture || reading.current.has(pageKey)) return
+    reading.current.add(pageKey)
+    void readPicture(pageUrls, st.draft.title?.trim() || batch?.labels[index] || '', st.receipt?.pageNamed).then(p => { pictures.current.set(pageKey, p); reading.current.delete(pageKey); apply(p) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the pages and the picture decide; the title only names the product being matched
+  }, [pageKey, hasPageFact, hasPicture, index, st.savedId, st.skipped, spec, categories, readPicture])
   // The latest drafts, for what runs after an await (an answer that lands while a save is out must not be overwritten).
   const latest = useRef(states)
   useLayoutEffect(() => { latest.current = states }, [states])
@@ -160,7 +190,7 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     try {
       // A suggested or new category is made now, with the save (the record's way).
       const categoryId = await saveCategory.resolve(s.draft.category_id, s.draft, categories)
-      row = await create.mutateAsync({ quiet: quietSave(spec, another), note: madeCategory(s), input: inputOf(spec, s, categoryId, categories) })
+      row = await create.mutateAsync({ quiet: quietSave(spec, another), note: [madeCategory(s), s.costs.some(c => c.on) ? `${s.costs.filter(c => c.on).length} extra ${s.costs.filter(c => c.on).length === 1 ? 'cost' : 'costs'}` : undefined].filter(Boolean).join(' · ') || undefined, input: inputOf(spec, s, categoryId, categories) })
     } catch { setSaving(false); return }
     try {
       // Only to what the popup itself offers (a preset or an old draft may name a thing that is gone, sold again or not a target).
@@ -179,9 +209,14 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
         }
       } catch { /* the hook toasted it; the thing itself is saved */ }
     }
+    // The receipt's extra costs ticked on this draft: written with the thing, on its day; a failure toasts, the thing stays saved.
+    const wanted = s.costs.filter(c => c.on)
+    if (wanted.length) {
+      try { await costsOf.mutateAsync(wanted.map(c => ({ item_id: row.id, label: c.label, amount: c.amount, currency: c.currency as ShopCurrency, spent_on: s.draft.bought_day || today }))) } catch { /* the hook toasted it */ }
+    }
     onSaved?.(row)
     if (row.url && row.list !== 'quick') check([row.id])
-    if (currencyOf(row) !== 'NOK' || (s.had && s.draft.sale_currency && s.draft.sale_currency !== 'NOK')) fillRates()
+    if (currencyOf(row) !== 'NOK' || wanted.some(c => c.currency !== 'NOK') || (s.had && s.draft.sale_currency && s.draft.sale_currency !== 'NOK')) fillRates()
     batch?.onSaved?.(at, row, { ...s, savedId: row.id })
     setSaving(false)
     if (another) {
@@ -196,10 +231,21 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
     if (next === null) finish(); else setIndex(next)
   }
 
+  /** Moves a receipt cost to another draft (the owner decides which thing it belongs to); it keeps its tick. */
+  function moveCost(id: string, to: number) {
+    if (to === index) return
+    setStates(all => {
+      const cost = all[index]?.costs.find(c => c.id === id)
+      if (!cost) return all
+      return all.map((s, i) => (i === index ? { ...s, costs: s.costs.filter(c => c.id !== id) } : i === to ? { ...s, costs: [...s.costs, { ...cost, id: `m:${id}` }] } : s))
+    })
+  }
+
   function skip() {
     const at = index
-    setStates(all => all.map((x, i) => (i === at ? { ...x, skipped: true } : x)))
     const next = nextOpen(latest.current.map((x, i) => (i === at ? { ...x, skipped: true } : x)), at)
+    // The receipt's costs on a skipped line go on to the next open draft (the owner moves them from there): none is lost with a skip.
+    setStates(all => all.map((x, i) => (i === at ? { ...x, skipped: true, costs: [] } : i === next ? { ...x, costs: [...x.costs, ...all[at].costs.map(c => ({ ...c, id: `m:${c.id}` }))] } : x)))
     if (next === null) finish(); else setIndex(next)
   }
 
@@ -245,7 +291,26 @@ function CreateBody({ spec, batch, onSaved, onClose, categories }: { spec: Creat
   const side = showAutofill || (owns && !batch) ? (
     <div className={cx('flex min-w-0 flex-col gap-3 order-2 @[46rem]:order-1')}>
       {showAutofill && <ShopAutofill draft={view} onChange={onChange} update={update} categories={categories} collapsible={narrow} />}
-      {owns && !batch && <ReceiptPhoto stores={stores} onFill={fromReceipt} />}
+      {owns && !batch && <ReceiptPhoto stores={stores} onFill={fromReceipt} handoff onHandoff={() => { if (!isDirty(st)) onClose() }} />}
+      {pictureNotes[index] && <p className="text-meta text-fg-muted" role="status">{pictureNotes[index]}</p>}
+      {st.costs.length > 0 && !st.savedId && (
+        <section aria-label="Extra costs from the receipt" className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-3">
+          <h3 className="text-body font-semibold text-fg">Extra costs from the receipt</h3>
+          {st.costs.map(c => (
+            <div key={c.id} className="flex items-center gap-2 border-t border-line pt-1.5 first:border-t-0 first:pt-0">
+              <Toggle checked={c.on} onChange={x => patch(s => ({ ...s, costs: s.costs.map(k => (k.id === c.id ? { ...k, on: x } : k)) }))}>
+                <span className="min-w-0">{c.label} · <span className={cx('tabular-nums', c.amount < 0 && 'text-success')}>{formatMoney(c.amount, c.currency)}</span></span>
+              </Toggle>
+              {count > 1 && (
+                <select value={index} onChange={e => moveCost(c.id, Number(e.target.value))} className="select input-sm ml-auto w-auto min-w-0 max-w-[45%] shrink" aria-label={`Attach ${c.label} to`}>
+                  {states.map((x, i) => (!x.savedId && !x.skipped) || i === index
+                    ? <option key={i} value={i}>{x.draft.title?.trim() || batch?.labels[i] || `Line ${i + 1}`}</option> : null)}
+                </select>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
       {st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch && (
         <Toggle checked={st.withOthers} onChange={x => patch(s => ({ ...s, withOthers: x }))}>
           Add the other {st.receipt.others.length === 1 ? 'line' : `${st.receipt.others.length} lines`} as {st.receipt.others.length === 1 ? 'an accessory' : 'accessories'}

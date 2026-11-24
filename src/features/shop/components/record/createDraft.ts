@@ -5,7 +5,7 @@
 // blank row, so the same facts (`RecordFacts`, `factList`) edit it and a new thing looks like a record. The link reader,
 // barcode scan and "Filled in for you" list (`ShopAutofill`) work on the add form's `ShopDraft`; `shopDraftOf` and
 // `withShopPatch` translate between the two, so what they fill lands in the same fields.
-import type { ReceiptFill } from '../../../ai/claude/featureRules'
+import type { ReceiptCostFill, ReceiptFill } from '../../../ai/claude/featureRules'
 import { middayIso } from '../../../media/watchedWhen'
 import { fieldsAfter, mergeFacts, type Fact } from '../../autofillModel'
 import { factsToSave } from '../../factsKept'
@@ -37,6 +37,8 @@ export interface CreateState {
   /** A read receipt line that started it: its other lines can be added as accessories. */
   receipt: ReceiptFill | null
   withOthers: boolean
+  /** The receipt's extra costs this draft carries (shipping, an extended warranty, a discount…): each ticked one is saved with the thing as a cost of it. */
+  costs: DraftCost[]
   /** "Paid with money from" and "Money went to": the money links of a thing you own or had. */
   paidFrom: string
   moneyTo: string
@@ -48,6 +50,9 @@ export interface CreateState {
   /** The draft as it started, to tell what was changed. */
   start: string
 }
+
+/** One extra cost of a draft: the receipt's own words and signed amount (money off is negative), ticked unless the owner unticks it. */
+export interface DraftCost extends ReceiptCostFill { id: string; on: boolean }
 
 /** What a line of a read receipt starts with beyond its own facts. */
 export interface LinePreset {
@@ -82,7 +87,7 @@ export function stateOf(spec: CreateSpec, had: boolean, general = false): 'buy' 
   return had ? 'gone' : 'mine'
 }
 
-const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers])
+const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers' | 'costs'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers, s.costs])
 
 /** A blank draft for the preset, with what its place already knows (the parent's day, category and store). */
 export function blankState(spec: CreateSpec, categories: readonly ShopCategory[], today: string): CreateState {
@@ -106,7 +111,7 @@ export function blankState(spec: CreateSpec, categories: readonly ShopCategory[]
       draft.approx_dates = !!parent.approx_dates
     }
   }
-  const state: CreateState = { had: preset === 'had', general: preset === 'general', draft, facts: [], receipt: null, withOthers: false, paidFrom: '', moneyTo: '', savedId: null, skipped: false, needSale: false, start: '' }
+  const state: CreateState = { had: preset === 'had', general: preset === 'general', draft, facts: [], receipt: null, withOthers: false, costs: [], paidFrom: '', moneyTo: '', savedId: null, skipped: false, needSale: false, start: '' }
   return { ...state, start: snapshot(state) }
 }
 
@@ -149,6 +154,7 @@ export function shopDraftOf(spec: CreateSpec, s: CreateState, categories: readon
     notes: v.notes ?? '', price: v.price, currency: currencyOf(v), platform: v.platform ?? '', url: v.url ?? '', priority: v.priority,
     region: v.region ?? '', plannedDate: v.planned_date ?? '', status: v.status, general: v.kind === 'general',
     priceMin: v.price_min ?? null, priceMax: v.price_max ?? null, requirements: v.requirements ?? '', reason: v.reason ?? '', image: v.image_url ?? null,
+    discountAmount: v.discount_amount ?? null, discountReason: v.discount_reason ?? null,
     facts: s.facts,
   }
 }
@@ -165,6 +171,8 @@ export function withShopPatch(spec: CreateSpec, s: CreateState, categories: read
   if ('platform' in patch) draft.platform = (patch.platform as string) || null
   if ('url' in patch) draft.url = (patch.url as string) || null
   if ('image' in patch) draft.image_url = (patch.image as string | null) || null
+  if ('discountAmount' in patch) draft.discount_amount = (patch.discountAmount as number | null) ?? null
+  if ('discountReason' in patch) draft.discount_reason = (patch.discountReason as ShopDraft['discountReason']) ?? null
   if ('region' in patch) draft.region = (patch.region as ShopDraft['region']) || null
   if ('priority' in patch) draft.priority = patch.priority as ShopDraft['priority']
   if ('topId' in patch || 'subId' in patch) {
@@ -201,7 +209,7 @@ export function applyPreset(s: CreateState, preset: LinePreset | undefined): Cre
  * the condition printed is what it was sold as. What stays is the name, brand, model and category.
  */
 export const hadFill = (fill: ReceiptFill): ReceiptFill => ({
-  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined,
+  ...fill, price: undefined, currency: undefined, day: undefined, storeId: null, storeName: null, storeLabel: null, channel: undefined, condition: undefined, warrantyUntil: undefined, before: undefined, discount: undefined, discountReason: undefined, costs: [],
 })
 
 /**
@@ -212,10 +220,18 @@ export function linksAtSave(s: Pick<CreateState, 'paidFrom' | 'moneyTo'>, money:
   return { from: s.paidFrom && sources.has(s.paidFrom) ? s.paidFrom : null, to: money && s.moneyTo && targets.has(s.moneyTo) ? s.moneyTo : null }
 }
 
+/** The draft after the picture its product page gave (or none): a fact of its own origin, filling the picture only while the field is empty or still the page's. */
+export function withPagePicture(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[], fact: Fact | null): CreateState {
+  const before = shopDraftOf(spec, s, categories)
+  const facts = mergeFacts(s.facts, 'page', fact ? [fact] : [])
+  return withShopPatch(spec, s, categories, { facts, ...fieldsAfter(before, s.facts, facts) })
+}
+
 /** What a read receipt line gives a draft (the add sheet's path): facts with their source, the day and the note — never over what was typed. */
 export function withReceipt(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[], fill: ReceiptFill, nowIso: string): CreateState {
   const before = shopDraftOf(spec, s, categories)
-  const facts = mergeFacts(s.facts, 'receipt', receiptFacts(fill, nowIso, categories))
+  // A new pick drops the picture an earlier pick's page gave; the new line's page is read again (ShopCreate).
+  const facts = mergeFacts(mergeFacts(s.facts, 'page', []), 'receipt', receiptFacts(fill, nowIso, categories))
   let next = withShopPatch(spec, s, categories, { facts, ...fieldsAfter(before, s.facts, facts) })
   const draft: RecordDraft = { ...next.draft }
   const note = fill.note && !(draft.notes ?? '').includes(fill.note) ? ((draft.notes ?? '').trim() ? `${(draft.notes ?? '').trim()}\n${fill.note}` : fill.note) : null
@@ -224,7 +240,14 @@ export function withReceipt(spec: CreateSpec, s: CreateState, categories: readon
   const was = s.receipt?.day ?? ''
   if (fill.day && (!draft.bought_day || draft.bought_day === was) && OWNS_KIND(spec, s)) { draft.bought_day = fill.day; draft.approx_dates = false }
   if (fill.condition === 'used' && OWNS_KIND(spec, s)) draft.used = true
-  next = { ...next, draft, receipt: fill }
+  // The discount's other half: what it cost before. Only into an empty field or the earlier receipt's own (never over what was typed).
+  const wasBefore = s.receipt?.before
+  if (fill.before !== undefined && fill.currency && (draft.market_price == null || draft.market_price === wasBefore)) { draft.market_price = fill.before; draft.market_currency = fill.currency as ShopCurrency }
+  else if (fill.before === undefined && wasBefore !== undefined && draft.market_price === wasBefore) { draft.market_price = null; draft.market_currency = undefined }
+  // The receipt's extra costs: this pick's replace the earlier pick's (a cost the owner moved here from another draft stays).
+  const mine = s.costs.filter(c => !c.id.startsWith('r:'))
+  const costs = [...mine, ...(fill.costs ?? []).map((c, i) => ({ ...c, id: `r:${i}`, on: true }))]
+  next = { ...next, draft, receipt: fill, costs }
   return next
 }
 
@@ -293,6 +316,7 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
     got_as_gift: !!v.got_as_gift, used: !!v.used, for_resale: !!v.for_resale, ...(v.kept === false ? { kept: false } : {}),
     ...(v.fx_nok != null && currencyOf(v) !== 'NOK' ? { fx_nok: v.fx_nok, fx_source: v.fx_source ?? 'manual' } : {}),
     ...(v.market_price != null ? { market_price: v.market_price, market_currency: v.market_currency ?? currencyOf(v) } : {}),
+    ...(v.discount_amount != null && v.discount_reason ? { discount_amount: v.discount_amount, discount_reason: v.discount_reason } : {}),
     ...(v.serial ? { serial: v.serial } : {}),
   }
   if (kind === 'mine' && v.value_now != null) {

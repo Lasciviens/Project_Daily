@@ -665,14 +665,14 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : opts.results?.[other.name] ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
+      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : (typeof opts.results?.[other.name] === 'function' ? opts.results[other.name](body.input, calls.length) : opts.results?.[other.name]) ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
         const job = realFindJob(other.name)
         const prepared = job.prepare(body.input, now)
         if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
-        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0 })
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0, searchUrls: opts.searchUrls ?? [] })
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }

@@ -1,6 +1,6 @@
 import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
-import { createShopCost, NEEDS_191_ITEM } from './shopApi'
+import { createShopCost, NEEDS_191_ITEM, NEEDS_203_ITEM } from './shopApi'
 import type { ShopCurrency, ShopItem, ShopItemCost, UpdateShopItemInput } from '../types'
 
 // A purchase's facts (Just bought, Arrived, the receipt note) and a marketplace search noted on a wish — the
@@ -12,7 +12,8 @@ import type { ShopCurrency, ShopItem, ShopItemCost, UpdateShopItemInput } from '
 const NEW_191 = ['bought_channel', 'arrived_on', 'extra_warranty_until', 'receipt_note', 'search_opened_on'] as const
 
 export type PurchasePatch = Pick<UpdateShopItemInput,
-  'price' | 'currency' | 'platform' | 'bought_at' | 'return_by' | 'warranty_until' | 'bought_channel' | 'arrived_on' | 'extra_warranty_until' | 'receipt_note' | 'search_opened_on'>
+  'price' | 'currency' | 'platform' | 'bought_at' | 'return_by' | 'warranty_until' | 'bought_channel' | 'arrived_on' | 'extra_warranty_until' | 'receipt_note' | 'search_opened_on'
+  | 'market_price' | 'market_currency' | 'discount_amount' | 'discount_reason'>
 
 type PgError = { code?: string; message?: string }
 const missingColumn = (e: PgError) => e.code === '42703' || e.code === 'PGRST204'
@@ -21,6 +22,8 @@ export interface PurchaseWrite {
   /** The written columns as they were (Undo writes them back). */
   before:  PurchasePatch
   after:   ShopItem
+  /** The extra costs written with it (a receipt's shipping, warranty, discount): its Undo takes them off again. */
+  costIds?: string[]
 }
 
 /** Write a purchase's facts; answers the values before (only the columns written) and the row after. */
@@ -34,6 +37,7 @@ export async function savePurchase(id: string, patch: PurchasePatch): Promise<Pu
   const before = Object.fromEntries(keys.map(k => [k, was[k] ?? null])) as PurchasePatch
   const { data, error: writeError } = await supabase.from('shop_items').update(patch).eq('id', id).eq('user_id', user.id).select()
   if (writeError && missingColumn(writeError) && keys.some(k => (NEW_191 as readonly string[]).includes(k))) throw new Error(NEEDS_191_ITEM)
+  if (writeError && missingColumn(writeError) && keys.some(k => k === 'discount_amount' || k === 'discount_reason')) throw new Error(NEEDS_203_ITEM)
   if (writeError) throw writeError
   if (!data?.length) throw new Error('Not saved — this item is not there any more.')
   return { before, after: data[0] as ShopItem }
