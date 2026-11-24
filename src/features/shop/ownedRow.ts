@@ -152,33 +152,50 @@ export function rowStacks(widthRem: number | null): number {
 /** How many columns a category's subcategories are dealt into: as many as there are room for, never more than there are subcategories. */
 export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
 
-/** The widest a subcategory's big-picture cards go (the card's own cap, 12rem, and the gap): its cards flow into one block this wide at most. */
+/**
+ * Every big-picture card on the page is one size (owner, 24.11.2026: "Every box should have the same exact size!"): from a
+ * list 40rem wide, exactly this wide — a fixed grid track, never `minmax` (a 9.5–12rem track made cards of different widths)
+ * — and on a phone half the row. Its height is fixed by its parts (`OwnedCard`).
+ */
 export const PICTURE_CARD_REM = 12
-export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * 0.5
-/** The gap between two blocks of cards on a line, and between the cards in one. */
-export const PICTURE_BLOCK_GAP_REM = 1.5
-export const PICTURE_CARD_GAP_REM = 0.5
+/**
+ * One gap between cards, inside a block and between blocks (the Wishlist's tiles' 2.5): the blocks then sit on one column
+ * grid, so the cards of every subcategory and category line up; the subcategory's label above its block tells them apart.
+ */
+export const PICTURE_CARD_GAP_REM = 0.625
+/** Below this list width the cards are two to a row (half the row each); from it they are `PICTURE_CARD_REM` wide. */
+export const PICTURE_PACK_MIN_REM = 40
+/**
+ * The big pictures' grid — every subcategory's and the Gone fold's: two equal columns on a phone, fixed 12rem tracks from a
+ * 40rem page, one 0.625rem gap (`gap-2.5`). Literal for Tailwind; verify-shop-record checks it against the numbers above.
+ */
+export const PICTURE_GRID = 'grid grid-cols-2 gap-2.5 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]'
+/** A category's blocks side by side: the same gap across as between cards, so every block starts on the column grid. */
+export const PICTURE_BLOCKS = 'flex flex-wrap items-start gap-x-2.5 gap-y-3'
+export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * PICTURE_CARD_GAP_REM
+/** How many card columns a width holds. */
+export const pictureLineColumns = (widthRem: number): number =>
+  Math.max(0, Math.floor((widthRem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))
 
 /**
  * How many card columns each subcategory's block gets, so a line of blocks uses the whole width (owner, 23.11.2026: a strip of
- * 410px stayed empty at 1920): blocks are packed in order; a block that does not fit what is left of the line takes the
- * columns that are left (two at least — its own cards then wrap into more rows) and a block that cannot even have two starts
- * the next line. Never more columns than cards, never more than a line holds. Not measured yet: every block its full width.
+ * 410px stayed empty at 1920): blocks are packed in order on one column grid; a block that does not fit what is left of the
+ * line takes the columns that are left (two at least — its own cards then wrap into more rows) and a block that cannot even
+ * have two starts the next line. Never more columns than cards, never more than a line holds. Not measured yet: every block
+ * its full width.
  */
 export function pictureColumns(cards: readonly number[], widthRem: number | null): number[] {
-  const cols = (rem: number) => Math.max(0, Math.floor((rem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))
   if (widthRem == null || widthRem <= 0) return cards.map(n => Math.max(1, n))
-  const line = Math.max(1, cols(widthRem))
+  const line = Math.max(1, pictureLineColumns(widthRem))
   let used = 0
   return cards.map(n => {
     const want = Math.max(1, Math.min(n, line))
-    const free = widthRem - used - (used ? PICTURE_BLOCK_GAP_REM : 0)
-    const fit = cols(free)
+    const fit = line - used
     if (used > 0 && fit < want) {
-      if (fit >= 2) { used = widthRem; return fit }
+      if (fit >= 2) { used = line; return fit }
       used = 0
     }
-    used += (used ? PICTURE_BLOCK_GAP_REM : 0) + pictureBlockRem(want)
+    used += want
     return want
   })
 }

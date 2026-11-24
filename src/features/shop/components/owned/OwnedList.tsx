@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { dealByIndex } from '../../../projects/projectBoard'
-import { pictureBlockRem, pictureColumns, rowStacks, subColumns } from '../../ownedRow'
+import { PICTURE_BLOCKS, PICTURE_GRID, PICTURE_PACK_MIN_REM, pictureBlockRem, pictureColumns, rowStacks, subColumns } from '../../ownedRow'
 import { categoryPath, type CategoryGroup, type SubGroup } from '../../shopModel'
 import type { MoneyCtx } from '../../ownModel'
 import { CategorySection } from '../CategorySection'
@@ -91,15 +91,18 @@ function SubLists({ id, subs, row, layout, columns, widthRem }: {
   id: string; subs: readonly SubGroup[]; row: (item: ShopItem) => ReactNode; layout: OwnedLayout; columns: number; widthRem: number | null
 }) {
   const labelled = subs.some(s => s.title)
-  // Under 40rem the cards are two to a row (their own rule); above it the blocks are packed.
-  const packed = layout === 'pictures' && widthRem != null && widthRem >= 40 ? pictureColumns(subs.map(s => s.items.length), widthRem) : null
+  // Under 40rem the cards are two to a row, each block the whole width (so a block of one card is half the row like every
+  // other card); above it the blocks are packed on one column grid (the same gap between blocks as between cards).
+  const pictures = layout === 'pictures'
+  const packed = pictures && widthRem != null && widthRem >= PICTURE_PACK_MIN_REM ? pictureColumns(subs.map(s => s.items.length), widthRem) : null
   const block = (sub: SubGroup, i = 0) => (
-    <div key={sub.key} className="flex min-w-0 flex-col gap-1" style={packed ? { width: `${pictureBlockRem(packed[i])}rem`, maxWidth: '100%' } : undefined}>
+    <div key={sub.key} className={cx('flex min-w-0 flex-col gap-1', pictures && !packed && 'w-full')}
+      style={packed ? { width: `${pictureBlockRem(packed[i])}rem`, maxWidth: '100%' } : undefined}>
       {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
       <ThingsBox layout={layout}>{sub.items.map(row)}</ThingsBox>
     </div>
   )
-  if (layout === 'pictures') return <div id={id} className="flex flex-wrap items-start gap-x-6 gap-y-3">{subs.map((sub, i) => block(sub, i))}</div>
+  if (pictures) return <div id={id} className={PICTURE_BLOCKS}>{subs.map((sub, i) => block(sub, i))}</div>
   const stacks = dealByIndex([...subs], subColumns(subs.length, columns))
   if (stacks.length <= 1) return <div id={id} className="flex flex-col gap-1.5">{subs.map(sub => block(sub))}</div>
   return (
@@ -109,10 +112,10 @@ function SubLists({ id, subs, row, layout, columns, widthRem }: {
   )
 }
 
-/** A subcategory's things: rows and lines in one card, big pictures as a grid of cards (W2: content-width columns). */
+/** A subcategory's things: rows and lines in one card, big pictures as a grid of cards of one fixed size (`PICTURE_GRID`). */
 function ThingsBox({ layout, children, className }: { layout: OwnedLayout; children: ReactNode; className?: string }) {
   return layout === 'pictures'
-    ? <ul className={cx('grid grid-cols-2 gap-2 @[40rem]/page:grid-cols-[repeat(auto-fill,minmax(9.5rem,12rem))]', className)}>{children}</ul>
+    ? <ul className={cx(PICTURE_GRID, className)}>{children}</ul>
     : <ul className={cx('card divide-y divide-line overflow-hidden', className)}>{children}</ul>
 }
 

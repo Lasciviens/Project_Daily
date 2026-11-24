@@ -119,20 +119,59 @@ check('before it is measured: one', R.rowStacks(null) === 1)
 check('a category\'s subcategories fill at most the columns there are, and never more than there are subcategories', R.subColumns(5, 4) === 4 && R.subColumns(2, 4) === 2 && R.subColumns(1, 4) === 1 && R.subColumns(0, 3) === 1)
 {
   // Electronics 14 in 5 subcategories (4, 3, 2, 3, 2 cards) at 1920 (≈ 100rem of list) and 2450 (≈ 131rem): the lines are full, never a strip left.
-  const lineRem = (cols, n) => cols.slice(0, n).reduce((a, c, i) => a + R.pictureBlockRem(c) + (i ? 1.5 : 0), 0)
+  const G = R.PICTURE_CARD_GAP_REM, PITCH = R.PICTURE_CARD_REM + G
+  const lineRem = (cols, n) => cols.slice(0, n).reduce((a, c, i) => a + R.pictureBlockRem(c) + (i ? G : 0), 0)
   const at1920 = R.pictureColumns([4, 3, 2, 3, 2], 100)
-  check('big pictures at 1920: 4 + 3 cards share the first line (49.5 + 1.5 + 37 of 100rem: under one card left), and a block that cannot have two columns of what is left starts the next line', at1920.join() === '4,3,2,3,2' && lineRem(at1920, 2) <= 100 && 100 - lineRem(at1920, 2) < 12.5)
-  check('big pictures: a block shrinks into what is left of a line when two columns fit (3 + 3 cards at 63rem: the second takes the 2 columns left)', R.pictureColumns([3, 3], 63).join() === '3,2')
+  check('big pictures at 1920 (100rem, 7 columns): 4 + 3 cards share the first line (under one card left), and a block that cannot have two columns of what is left starts the next line', at1920.join() === '4,3,2,3,2' && lineRem(at1920, 2) <= 100 && 100 - lineRem(at1920, 2) < PITCH)
+  check('big pictures: a block shrinks into what is left of a line when two columns fit (3 + 3 cards at 63rem, 5 columns: the second takes the 2 left)', R.pictureColumns([3, 3], 63).join() === '3,2')
   check('big pictures: never more columns than a block has cards or a line holds, and a block with no room for two starts the next line', R.pictureColumns([20], 30).every(c => c === 2) && R.pictureColumns([3, 1], 40)[1] === 1 && R.pictureColumns([3, 3], 38.5).join() === '3,3' && R.pictureColumns([1], 100)[0] === 1)
-  check('big pictures: not measured yet — every block its full width; the lines never hold more than the width', R.pictureColumns([4, 3], null).join() === '4,3' && [30, 41, 73, 100, 131].every(w => { const c = R.pictureColumns([4, 3, 2, 3, 2, 5, 1], w); return c.every(x => x >= 1) }))
+  // The blocks as the page lays them out (flex-wrap, PICTURE_BLOCKS' gap): every block starts on the one column grid, so the
+  // cards of every subcategory line up, and no line is wider than the list.
+  const layout = (cols, w) => {
+    let x = 0; const starts = []; let wide = 0
+    for (const c of cols) {
+      const bw = R.pictureBlockRem(c)
+      if (x > 0 && x + G + bw > w + 1e-9) x = 0
+      const at = x > 0 ? x + G : 0
+      starts.push(at); x = at + bw; wide = Math.max(wide, x)
+    }
+    return { starts, wide }
+  }
+  const widths = [41, 48.3, 52.6, 63, 73, 94.2, 100, 106, 131]
+  const subsets = [[4, 3, 2, 3, 2], [4, 3, 2, 3, 2, 5, 1], [1, 1, 1, 1, 1, 1, 1, 1], [9, 2], [2, 7, 1, 3]]
+  check('big pictures: every block starts on the one column grid (a whole number of card widths and gaps), at every width', widths.every(w => subsets.every(s => layout(R.pictureColumns(s, w), w).starts.every(st => Math.abs(st / PITCH - Math.round(st / PITCH)) < 1e-9))))
+  check('big pictures: a line of blocks is never wider than the list', widths.every(w => subsets.every(s => layout(R.pictureColumns(s, w), w).wide <= w + 1e-9)))
+  check('big pictures: not measured yet — every block its full width', R.pictureColumns([4, 3], null).join() === '4,3')
 }
-check('big pictures: a subcategory\'s block is as wide as its cards at their cap (12rem and a 0.5rem gap)', R.pictureBlockRem(1) === 12 && R.pictureBlockRem(4) === 49.5 && R.pictureBlockRem(0) === 0)
+check('big pictures: a subcategory\'s block is exactly its cards and the gaps between them (12rem, 0.625rem)', R.pictureBlockRem(1) === 12 && R.pictureBlockRem(4) === 49.875 && R.pictureBlockRem(0) === 0)
 check('1469 main (48rem) and a phone sideways (52rem): two', R.rowStacks(48.3) === 2 && R.rowStacks(52.6) === 2)
 check('1920 (75rem): three; 2450 (106rem): four', R.rowStacks(75.5) === 3 && R.rowStacks(106) === 4)
 check('a stack is never narrower than 21rem', [23, 43, 44, 48, 66, 75, 90, 106, 131].every(w => {
   const k = R.rowStacks(w)
   return (w - (k - 1) * R.ROW_GAP_REM) / k >= R.ROW_MIN_REM
 }))
+
+console.log('big pictures: one card size on the whole page (owner, 24.11.2026: "Every box should have the same exact size!")')
+{
+  const fs = require('fs'), path = require('path')
+  const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  check('the card width is one constant: 12rem', R.PICTURE_CARD_REM === 12)
+  check('the grid\'s tracks are exactly that width — a fixed track, never minmax (a 9.5–12rem track made cards of different widths)',
+    R.PICTURE_GRID.includes(`grid-cols-[repeat(auto-fill,${R.PICTURE_CARD_REM}rem)]`) && !/minmax|1fr|auto-fit/.test(R.PICTURE_GRID.replace('grid-cols-2', '')))
+  check('on a phone two equal columns; the switch at the same width the blocks start packing', R.PICTURE_GRID.includes('grid-cols-2 ') && R.PICTURE_GRID.includes(`@[${R.PICTURE_PACK_MIN_REM}rem]/page:`))
+  check('one gap between cards and between blocks, equal to PICTURE_CARD_GAP_REM (Tailwind steps are 0.25rem)',
+    R.PICTURE_GRID.includes(` gap-${R.PICTURE_CARD_GAP_REM * 4} `) && R.PICTURE_BLOCKS.includes(`gap-x-${R.PICTURE_CARD_GAP_REM * 4} `))
+  check('a block of n columns holds exactly n fixed tracks', [1, 2, 3, 4, 5, 7, 10].every(c => R.pictureLineColumns(R.pictureBlockRem(c)) === c))
+  const list = src('src/features/shop/components/owned/OwnedList.tsx')
+  check('every big-picture grid (each subcategory\'s and the Gone fold\'s) is ThingsBox with PICTURE_GRID, the blocks PICTURE_BLOCKS', /className=\{cx\(PICTURE_GRID, className\)\}/.test(list) && /className=\{PICTURE_BLOCKS\}/.test(list) && !/minmax\(9\.5rem/.test(list))
+  check('on a phone each block is the whole width, so a block of one card is half the row like every other card', /pictures && !packed && 'w-full'/.test(list))
+  const views = src('src/features/shop/components/owned/OwnedViews.tsx')
+  const card = views.slice(views.indexOf('export function OwnedCard'), views.indexOf('function CardAccessories'))
+  check('the card\'s height comes from fixed parts: the square picture, the name in two lines (h-10, cut by Truncate) and one 20px line for the price and tag',
+    card.includes('size="fill"') && /<Truncate as="span" lines=\{2\} className="h-10 /.test(card) && card.includes('flex h-5 min-w-0 items-center') && !card.includes('flex-wrap') && !card.includes('mt-auto'))
+  check('the tag is cut, never wrapped, and the accessories are a count on the picture (never lines that make one card taller)',
+    /<TonePill[^>]*min-w-0[^>]*><Truncate as="span">\{tag\.text\}<\/Truncate><\/TonePill>/.test(card) && !card.includes('AccessoryLines') && card.includes('<CardAccessories'))
+}
 
 console.log('the Story')
 {
