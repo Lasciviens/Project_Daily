@@ -106,7 +106,8 @@ export function PageHeader({ title, subtitle, actions, children, className, show
               {heading}
               {hasSubtitle && <p className={cx('text-body text-fg-muted', showTitle && 'mt-0.5')}>{subtitle}</p>}
             </div>
-            {hasActions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+            {/* A steady header's actions take their own full row on a phone, so a full-width switcher spans it. */}
+            {hasActions && <div className={cx('flex flex-wrap items-center gap-2', steady && 'max-sm:w-full')}>{actions}</div>}
           </div>
           {hasChildren && <div className={art ? 'mt-3' : 'mt-4'}>{children}</div>}
         </>,
