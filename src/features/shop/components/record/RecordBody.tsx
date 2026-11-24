@@ -141,28 +141,29 @@ export function RecordBody(props: RecordBodyProps) {
     </div>
   )
 
-  const head = (
+  const head = (r || picture) && (
     <div className="flex items-start gap-3">
       {/* Only a real picture: an empty box took 80px beside the actions. A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
       {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's). */}
-        {r && mode === 'open' && ((props.mode === 'open' && props.pill === 'phone' && r.pill) || (state === 'mine' && from)) && (
+        {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's) — and
+            with Find picture, so it costs no line of its own. Adding, Find picture sits in the line of the switch above. */}
+        {r && (((props.mode === 'open' && props.pill === 'phone' && r.pill) || (mode === 'open' && state === 'mine' && from)) || finder) && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
             {props.mode === 'open' && props.pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
-            {state === 'mine' && from && <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>}
+            {mode === 'open' && state === 'mine' && from && <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>}
+            {finder && <div className="-my-1 ml-auto">{finder}</div>}
           </div>
         )}
         {r && mode === 'open' && r.parent && <ParentLink item={item} parent={r.parent} />}
         {actions}
-        {finder}
       </div>
     </div>
   )
 
   return (
     <div ref={rootRef} className="@container flex flex-col gap-3">
-      {c && <AddBar c={c} />}
+      {c && <AddBar c={c} finder={finder} />}
       {/* Nothing is editable while a save is out: what it writes is what was on screen when it was tapped. */}
       <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
         {head}
@@ -211,7 +212,7 @@ function OpenLines({ r, sections }: { r: ShopRecordModel; sections: ReturnType<t
 }
 
 /** Adding: a read receipt's lines "1 of 3 ‹ ›" (a saved line shows ✓) and the switch of what is made. */
-function AddBar({ c }: { c: CreateRecordModel }) {
+function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
   const { spec, st, count, index } = c
   const stepper = count > 1 && (
     <div className="flex items-center gap-1">
@@ -229,8 +230,8 @@ function AddBar({ c }: { c: CreateRecordModel }) {
     <SegmentedControl<'one' | 'any'> size="sm" value={st.general ? 'any' : 'one'} onChange={x => c.patch(s => ({ ...s, general: x === 'any' }))}
       options={[{ value: 'one', label: <span title="One product">One</span> }, { value: 'any', label: <span title="Any model that fits">Any model</span> }]} />
   ) : null
-  if (!stepper && !switches) return null
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}</div>
+  if (!stepper && !switches && !finder) return null
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}{finder && <div className="ml-auto">{finder}</div>}</div>
 }
 
 /** The sections, each once; a mode hides the ones it has no use for. */
@@ -279,8 +280,9 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
     : c && c.st.costs.length ? `${c.st.costs.filter(x => x.on).length} extra cost${c.st.costs.filter(x => x.on).length === 1 ? '' : 's'}` : undefined
 
   // Purchase: a saved thing's facts (open: shown, edited in place; bought: the editor), or a thing being added (its own part, optional).
+  // Just bought is the Purchase part alone (the popup's title names it): no fold of its own.
   const purchase = mode === 'bought' && p
-    ? box('purchase', 'Purchase', undefined, null, bought
+    ? (bought
       ? <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={today} />
       : <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p>)
     : open && state === 'mine'
@@ -297,7 +299,7 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
     <div className="flex min-w-0 flex-col gap-2">
       {open && state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
         <RecordModels wish={item} models={r.models} watches={r.watches} />)}
-      {purchase}
+      {!c && purchase}
       {open && (item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
         <PriceCheckButton item={item} watch={watch} />, <>
           {item.url && <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />}
@@ -315,6 +317,7 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
           create={c ? { without: state === 'general' ? [] : ['link'] } : undefined} />
         {r && !item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={r.accessories} ctx={r.ctx} canAdd={state === 'mine'} />}
       </>)}
+      {c && purchase}
       {(moneyOpen || moneyAdd) && box('money', 'Money', moneySummary, r && <MoneyChainButton item={item} chain={r.chain} />, <>
         {r && hasMoneyLinks(item) && <RecordMoney item={item} items={r.items} links={r.links} ctx={r.ctx} chain={r.chain} />}
         {c && <DraftLinks c={c} />}
