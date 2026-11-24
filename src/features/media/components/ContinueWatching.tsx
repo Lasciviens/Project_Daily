@@ -9,6 +9,7 @@ import { libraryKey } from '../listModel'
 import { useRemoveTraktPlayback, useTraktPlayback } from '../trakt/useTraktExtras'
 import type { TraktPlaybackItem } from '../trakt/traktApi'
 import type { OpenMediaDetail } from '../types'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 function Tile({ item, posters, inLibrary, onOpen, onRemove }: {
   item: TraktPlaybackItem
@@ -82,13 +83,13 @@ export function ContinueWatching({ posters, onOpenDetail }: { posters: Map<strin
           </button>
         )}
       </div>
-      <div className="scroll-x flex gap-2.5 pb-1">
+      <PagedStrip noun="titles" className="flex gap-2.5 pb-1">
         {items.map(i => (
           <Tile key={i.id} item={i} posters={posters} inLibrary={!!entry(i)}
             onOpen={() => onOpenDetail(i.tmdb!, i.type === 'movie' ? 'movie' : 'tv', sequence)}
             onRemove={() => void confirmDelete({ title: `Remove “${i.title}” from Continue watching?`, message: 'Its paused spot is deleted on Trakt.', confirmLabel: 'Remove', remove: () => remove.mutateAsync(i.id), done: 'Removed from Continue watching' })} />
         ))}
-      </div>
+      </PagedStrip>
     </section>
   )
 }

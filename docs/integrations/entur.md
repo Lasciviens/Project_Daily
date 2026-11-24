@@ -1,6 +1,6 @@
 # Entur (Ruter data)
 
-Checked: 26.10.2026 against Entur's developer portal (developer.entur.no → Geocoder → "Migration from v2 to v3", and the Journey Planner page) and one live answer per search kind, saved trimmed in `scripts/fixtures/entur/`. Re-checked 23.11.2026 for the Ask AI tool (below): the header and endpoint pages, and one live answer each for departures, a trip and a nearest-stop question (`journey-departures.json`, `journey-trip.json`).
+Checked: 26.10.2026 against Entur's developer portal (developer.entur.no → Geocoder → "Migration from v2 to v3", and the Journey Planner page) and one live answer per search kind, saved trimmed in `scripts/fixtures/entur/`. Re-checked 23.11.2026 for the Ask AI tool (below): the header and endpoint pages, and one live answer each for departures, a trip and a nearest-stop question (`journey-departures.json`, `journey-trip.json`). Re-checked 24.11.2026 for the stop kinds: `stopPlaceTypes` on live answers for Oslo S, Oslo lufthavn, Aker brygge, Holmenkollen, Bergen busstasjon, Fløibanen, Moss ferjekai and Oslo bussterminal (the table below).
 
 Two Entur services feed Home's transit card, Settings → Places and the assistant's trip planning: the **Journey Planner** (GraphQL: departures, trips, nearest stops) and the **geocoder** (place search: a typed name → stops and places). This page covers the geocoder in full; the Journey Planner's GraphQL fields are verified live by introspection before code reads them (`.claude/rules/home.md`) and described in `docs/features/home.md` (Transit).
 
@@ -51,10 +51,30 @@ Called from the `claude` function (`supabase/claude-src/transit-lookup.ts`), onl
 | `properties.names.default` (fallback `names.display`) | `"Jernbanetorget"`, `"Karl Johans gate 1"` | `GeoPlace.name` |
 | `properties.address.locality` (fallback `address.county`) | `"Oslo"` | `GeoPlace.locality` |
 | `properties.layer` | `stopPlace`, `address`, `street`, `poi`, `place`, `groupOfStopPlaces` | `GeoPlace.layer`: a stop → `venue`; `street` → `street`; the others → `address` (the app's names since v1, so the screens didn't change) |
-| `properties.stopPlaceTypes` | `["onstreetBus","onstreetTram","metroStation"]` (stops only) | `GeoPlace.category`, joined with ", " |
+| `properties.stopPlaceTypes` | `["onstreetBus","onstreetTram","metroStation"]` (stops only) | `GeoPlace.category` in plain words (`stopKinds`, the table below): the two most important, joined with ", ": "Metro station, Tram stop" |
 | `geometry.coordinates` | `[lon, lat]` (GeoJSON order) | `GeoPlace.lat` / `lon`; a place that isn't a stop is kept only with a point. An item's place keeps them (6 decimals) for Apple's map pin (`items/itemPlace.placeFromGeo`) |
 
 Nothing is written to Entur. Saved stops (`user_transit_stops`) keep their `NSR:StopPlace` ids, which v3 did not change.
+
+## Stop kinds (`stopPlaceTypes` → words)
+The search list shows a stop's town and kinds ("Oslo · Train station, Bus stop"), never Entur's codes (owner, 24.11.2026: the list showed "onstreetBus, railStation"). This table is the source of truth: `STOP_KIND` in `enturGeocoder.ts` holds the same rows in the same order (the order the words are shown), and `verify-entur-geocoder` compares the two. A code not on it (and `other`) is dropped, so a stop with only those shows its town alone. At most the first two words are shown (a phone's list has room for two): Oslo lufthavn reads "Airport, Train station". A trimmed live answer for Oslo S and Oslo lufthavn is `scripts/fixtures/entur/geocoder-v3-stop-kinds.json`. The values are NeTEx's stop types; "live" marks the ones seen in an answer on 24.11.2026, the others are from the same list and not yet seen.
+
+| Code | Shown as | Seen |
+|---|---|---|
+| `airport` | Airport | live (Oslo lufthavn) |
+| `railStation` | Train station | live (Oslo S) |
+| `metroStation` | Metro station | live (Holmenkollen) |
+| `tramStation` | Tram station | — |
+| `busStation` | Bus station | live (Oslo bussterminal) |
+| `coachStation` | Coach station | — |
+| `ferryPort` | Ferry port | — |
+| `harbourPort` | Ferry terminal | live (Moss ferjekai) |
+| `ferryStop` | Ferry stop | live (Aker brygge) |
+| `liftStation` | Cable car | — |
+| `vehicleRailInterchange` | Car train | — |
+| `onstreetTram` | Tram stop | live (Aker brygge) |
+| `onstreetBus` | Bus stop | live (Oslo S) |
+| `other` | (dropped) | live (Fløibanen) |
 
 ## Fields we deliberately don't use
 `names.label`, `source`, `stopPlaceRole`, `transportModes`, `fareZones`, `categories` (OSM tags), the `address.*Id` fields, `metadata` and `bbox`: nothing on screen needs them. `custom-poi` results are skipped (unknown layer).
@@ -67,5 +87,8 @@ Nothing is written to Entur. Saved stops (`user_transit_stops`) keep their `NSR:
 - `sources=nsr` was too strict for partial stop names in v1; v3 search uses no `sources` filter.
 
 ## Log
+### 24.11.2026 — readable stop kinds
+The stop search showed the raw `stopPlaceTypes` ("onstreetBus, railStation") and its list was cut off by the card around the field. The parser now maps the codes to words from the table above; the list is anchored (portalled) so it is never clipped.
+
 ### 26.10.2026 — geocoder v1 → v3
 v1/v2 deprecated on 12.06.2026 (no end date announced). Moved the browser's stop search (and the old `ai-proxy`'s two searches, removed in AI phase 5) to v3 through one pure block (`enturGeocoder.ts`), checked against live answers for a stop and an address. Saved stops are unaffected (same NSR ids).

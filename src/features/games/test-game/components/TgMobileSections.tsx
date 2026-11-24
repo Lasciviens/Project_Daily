@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useScrollEdges } from '../../../../shared/hooks/useScrollEdges'
+import { PagedStrip } from '../../../../shared/ui/ScrollPager'
 import { useTestGameStore } from '../testGameStore'
 import { TG_SECTION_ENTRIES, sectionCount, type TgNavCounts } from './tgSections'
 
@@ -34,10 +35,14 @@ export function TgMobileSections({ counts, actions }: { counts: TgNavCounts; act
 
   return (
     <div className="flex items-center gap-1 pr-[max(0.5rem,env(safe-area-inset-right))] pt-1.5">
-      <nav
-        ref={navRef}
+      <PagedStrip
+        look="games"
+        noun="sections"
+        as="nav"
+        trackRef={navRef}
         aria-label="Game Library sections"
-        className={`tg-scroll-x flex min-w-0 flex-1 gap-1.5 py-1 pl-[max(1rem,env(safe-area-inset-left))] pr-2 scroll-pl-[max(1rem,env(safe-area-inset-left))] scroll-pr-8 ${fade}`}
+        wrapClassName="flex-1"
+        className={`flex gap-1.5 py-1 pl-[max(1rem,env(safe-area-inset-left))] pr-2 scroll-pl-[max(1rem,env(safe-area-inset-left))] scroll-pr-8 ${fade}`}
       >
         {TG_SECTION_ENTRIES.map(e => {
           const active = section === e.key
@@ -62,7 +67,7 @@ export function TgMobileSections({ counts, actions }: { counts: TgNavCounts; act
             </button>
           )
         })}
-      </nav>
+      </PagedStrip>
       {actions}
     </div>
   )

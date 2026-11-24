@@ -13,6 +13,7 @@ import { GlanceCarousel, type GlanceScreen } from './GlanceCarousel'
 import { GamesGlanceArt } from './glanceMotifs'
 import { TileDetail } from './TileDetail'
 import { useTilePopup } from '../hooks/useTilePopup'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 
 function CoverThumb({ game }: { game: Game }) {
@@ -88,9 +89,9 @@ function GamesSummary({ enabled }: { enabled: boolean }) {
           {playing.length > 0 && (
             <div className="border-t border-line pt-3">
               <p className="section-label mb-2">Playing</p>
-              <div className="scroll-x flex gap-2 pb-1">
+              <PagedStrip noun="games" className="flex gap-2 pb-1">
                 {playing.map(g => <CoverThumb key={g.id} game={g} />)}
-              </div>
+              </PagedStrip>
             </div>
           )}
         </div>

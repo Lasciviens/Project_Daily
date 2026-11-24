@@ -20,6 +20,7 @@ import { npssoLifetime, npssoLifetimeLabel } from '../api/psnTokenLifetime'
 import { formatPlaytime } from '../api/playtimeFormat'
 import type { ProviderGameInput } from '../api/gamesApi'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 // PlayStation integration — the community npsso-cookie flow (Sony has no
 // official API; see docs/features/games.md's research note).
@@ -291,7 +292,7 @@ function ConnectedView() {
                       show hours because Steam actually sends them.
                     </InfoBubble>
                   </h3>
-                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
+                  <PagedStrip noun="games" className="flex gap-2 pb-1">
                     {recentGames.map(g => (
                       <button key={g.titleId} onClick={() => setOpenGame(g)}
                         className="flex-shrink-0 w-32 rounded-xl border border-ink-200 bg-cream-50 overflow-hidden text-left hover:border-accent-300 transition-colors press-feedback">
@@ -306,7 +307,7 @@ function ConnectedView() {
                         </div>
                       </button>
                     ))}
-                  </div>
+                  </PagedStrip>
                 </div>
               )}
               <div className="flex items-center gap-2 mb-3 flex-wrap">

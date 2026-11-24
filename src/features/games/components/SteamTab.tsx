@@ -12,6 +12,7 @@ import type { ProviderGameInput } from '../api/gamesApi'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { useLibraryGames } from '../hooks/useGames'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 // Steam integration — read-only proxy through the `steam-api` edge function
 // (personal Web API key + SteamID64 in Vault). Everything about the user is a
@@ -87,7 +88,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
   return (
     <div className="mb-5">
       <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mb-2">Last 2 weeks</h3>
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none scroll-fade-x">
+      <PagedStrip noun="games" className="flex gap-2 pb-1">
         {games.map(g => (
           <button key={g.appid} onClick={() => onOpen(g)}
             className="flex-shrink-0 w-44 rounded-xl border border-ink-200 bg-cream-50 overflow-hidden text-left hover:border-accent-300 transition-colors press-feedback">
@@ -100,7 +101,7 @@ function RecentStrip({ games, onOpen }: { games: SteamGame[]; onOpen: (g: SteamG
             </div>
           </button>
         ))}
-      </div>
+      </PagedStrip>
     </div>
   )
 }

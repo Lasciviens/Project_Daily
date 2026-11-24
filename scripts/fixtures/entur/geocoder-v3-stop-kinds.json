@@ -1,0 +1,66 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.753051,
+          59.910357
+        ]
+      },
+      "properties": {
+        "id": "NSR:StopPlace:59872",
+        "names": {
+          "default": "Oslo S",
+          "display": "Oslo S, Oslo"
+        },
+        "layer": "stopPlace",
+        "source": "nsr",
+        "address": {
+          "locality": "Oslo",
+          "county": "Oslo",
+          "countryCode": "no"
+        },
+        "stopPlaceTypes": [
+          "onstreetBus",
+          "railStation"
+        ],
+        "stopPlaceRole": "parent"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.097887,
+          60.193361
+        ]
+      },
+      "properties": {
+        "id": "NSR:StopPlace:58211",
+        "names": {
+          "default": "Oslo lufthavn",
+          "label": "Gardermoen",
+          "display": "Oslo lufthavn, Ullensaker"
+        },
+        "layer": "stopPlace",
+        "source": "nsr",
+        "address": {
+          "locality": "Ullensaker",
+          "county": "Akershus",
+          "countryCode": "no"
+        },
+        "stopPlaceTypes": [
+          "railStation",
+          "onstreetBus",
+          "busStation",
+          "airport"
+        ],
+        "stopPlaceRole": "parent"
+      }
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { Briefcase, Home, MapPin, MapPinOff, Pencil, X } from 'lucide-react'
 import { Truncate } from '../../ui'
 import { placeFromGeo, placeFromSaved, placeFromText, placeLabel, type ItemPlace } from '../../../features/items/itemPlace'
 import { useStopSearch } from '../../../features/home/hooks/useTransitQueries'
+import { placeLine } from '../../../features/home/api/enturGeocoder'
 import { useTransitStops } from '../../../features/home/hooks/useTransitStops'
 import { findPlace, PLACE_LABEL, type PlaceKind } from '../../../features/home/transitPlaces'
 
@@ -84,7 +85,7 @@ function PlaceSearch({ onPick, onClose, autoFocus }: { onPick: (p: ItemPlace) =>
       const label = place ? placeLabel(place).toLowerCase() : ''
       if (!place || seen.has(label)) continue
       seen.add(label)
-      choices.push({ key: `found-${g.id}`, place, label: place.name, sub: g.locality, kind: 'found' })
+      choices.push({ key: `found-${g.id}`, place, label: place.name, sub: placeLine(g), kind: 'found' })
     }
   }
   const typed = placeFromText(query)
