@@ -2261,11 +2261,16 @@ export function readbackChangeOf(ics: string, entity: 'slot' | 'plan', uid: stri
 //  is left out: never applied, never guessed. apply_icloud_readback checks every value again (193).
 
 /** One VALARM as a signed minute count from the start ("-60" = an hour before, "540" = 09:00 on an all-day event's
- *  day), "NONE" for Apple's no-alert marker, or null when the app can't read it. */
+ *  day), "NONE" for Apple's no-alert marker, "DEFAULT" for a default alert, or null when the app can't read it. A default
+ *  alert is one iCloud or a device added from the account's default (`X-APPLE-DEFAULT-ALARM:TRUE` — Apple's
+ *  CalendarServer addAlarms): nobody's choice for this item, so the read-back never makes it the item's own alert
+ *  (owner, 24.11.2026: "Default alert on apple calendar should be none on everything"; icloud-caldav.md → Default
+ *  alerts). */
 export function alarmToken(block: readonly string[]): string | null {
   const action = block.find(l => /^ACTION[;:]/i.test(l))?.replace(/^[^:]*:/, '').trim().toUpperCase()
   const trigger = block.find(l => /^TRIGGER[;:]/i.test(l))
   if (action === 'NONE') return 'NONE'
+  if (block.some(l => /^X-APPLE-DEFAULT-ALARM[;:]/i.test(l) && /^\s*TRUE\s*$/i.test(l.slice(l.lastIndexOf(':') + 1)))) return 'DEFAULT'
   if (!trigger || trigger.indexOf(':') < 0) return null
   const params = trigger.slice(0, trigger.indexOf(':'))
   const value = trigger.slice(trigger.indexOf(':') + 1).trim()
@@ -2340,12 +2345,16 @@ export function fieldsChangeOf(ics: string, uid: string, row: FieldsRow, area: P
   const alarms = masterAlarms(ics, uid)
   if (!master || !alarms) return {}
   const out: Record<string, unknown> = { showAs: /^TRANSP[^:]*:TRANSPARENT\s*$/i.test(master.get('TRANSP')?.[0] ?? '') ? 'free' : 'busy' }
-  // Alerts: the same tokens as the app's own (Apple's no-alert marker is no alert), as a set.
+  // Alerts: the same tokens as the app's own (Apple's no-alert marker is no alert), as a set. A default alert is left
+  // out (never the item's own), so an alert set on the iPhone beside a leftover default still comes back; an event
+  // whose only alerts are defaults says nothing about the item's own; an unreadable alert stops the read of them all.
   const tokens = (blocks: string[][]) => blocks.map(alarmToken)
-  const seen = tokens(alarms)
+  const read = tokens(alarms)
+  const seen = read.filter(t => t !== 'DEFAULT')
   const mine = tokens(linesAsAlarms(itemAlarmLines(row.alerts, timed, '', area, look.allDayAlert)))
   const key = (t: (string | null)[]) => JSON.stringify(t.filter(x => x !== 'NONE').sort())
-  if (key(seen) !== key(mine) && !seen.includes(null)) {
+  const onlyDefaults = read.length > 0 && seen.length === 0
+  if (key(seen) !== key(mine) && !seen.includes(null) && !onlyDefaults) {
     const byToken = new Map<string, number>()
     for (const m of ALERT_MINUTES) { const t = alarmToken([`TRIGGER:${alertTrigger(m, timed)}`]); if (t && !byToken.has(t)) byToken.set(t, m) }
     const minutes = seen.filter((t): t is string => t !== null && t !== 'NONE').map(t => byToken.get(t))
