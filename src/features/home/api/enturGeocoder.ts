@@ -14,7 +14,7 @@ interface GeoPlace {
   id: string
   name: string
   locality?: string
-  /** A stop's NeTEx types, e.g. "onstreetBus, metroStation". */
+  /** A stop's kinds in plain words, e.g. "Bus stop, Metro station" (`stopKinds`); never Entur's codes. */
   category?: string
   /** 'venue' = a transit stop; 'address' / 'street' = anywhere else (the app's names since v1). */
   layer: 'venue' | 'address' | 'street'
@@ -27,6 +27,24 @@ function geocoderQuery(text: string, limit: number): string {
   return new URLSearchParams({
     q: text, lang: 'no', limit: String(limit), layers: 'stopPlace,address,street,poi,place', countries: 'no',
   }).toString()
+}
+
+/**
+ * Entur's stop types (NeTEx `stopPlaceTypes`) in plain words, most important first.
+ * The list is docs/integrations/entur.md's table; a type not on it (and "other") is dropped, never shown raw.
+ */
+const STOP_KIND: ReadonlyArray<readonly [string, string]> = [
+  ['airport', 'Airport'], ['railStation', 'Train station'], ['metroStation', 'Metro station'],
+  ['tramStation', 'Tram station'], ['busStation', 'Bus station'], ['coachStation', 'Coach station'],
+  ['ferryPort', 'Ferry port'], ['harbourPort', 'Harbour'], ['ferryStop', 'Ferry stop'],
+  ['liftStation', 'Cable car'], ['vehicleRailInterchange', 'Car train'],
+  ['onstreetTram', 'Tram stop'], ['onstreetBus', 'Bus stop'],
+]
+
+/** A stop's types as one readable line ("Train station, Bus stop"), or undefined when none is known. */
+function stopKinds(types: readonly string[]): string | undefined {
+  const words = STOP_KIND.filter(([code]) => types.includes(code)).map(([, word]) => word)
+  return words.length ? words.join(', ') : undefined
 }
 
 const PLACE_LAYER: Record<string, GeoPlace['layer']> = {
@@ -56,7 +74,7 @@ function parseGeocoderPlaces(json: unknown): GeoPlace[] {
     const types = Array.isArray(p.stopPlaceTypes) ? p.stopPlaceTypes.filter((t): t is string => typeof t === 'string') : []
     out.push({
       id: p.id, name, locality, layer,
-      category: isStop && types.length ? types.join(', ') : undefined,
+      category: isStop ? stopKinds(types) : undefined,
       lat: point?.[1], lon: point?.[0],
     })
   }
@@ -64,5 +82,10 @@ function parseGeocoderPlaces(json: unknown): GeoPlace[] {
 }
 // </entur-geocoder>
 
-export { GEOCODER_V3, geocoderQuery, parseGeocoderPlaces }
+/** A search result's second line: its town, and for a stop its kinds ("Oslo · Train station, Bus stop"). */
+function placeLine(p: Pick<GeoPlace, 'locality' | 'category'>): string | undefined {
+  return [p.locality, p.category].filter(Boolean).join(' · ') || undefined
+}
+
+export { GEOCODER_V3, geocoderQuery, parseGeocoderPlaces, placeLine, stopKinds }
 export type { GeoPlace }

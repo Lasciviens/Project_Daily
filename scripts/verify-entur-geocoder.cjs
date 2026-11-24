@@ -10,6 +10,8 @@
  *    keep their coordinates; anything odd is skipped, never thrown.
  * 3. Nothing calls the old v1 address any more (ai-proxy, which carried a
  *    verbatim copy of the block, was removed in AI phase 5).
+ * 4. A stop's kinds are words, never Entur's codes (owner, 24.11.2026): the
+ *    parser's list is docs/integrations/entur.md's table, row for row.
  *
  *   Run:  node scripts/verify-entur-geocoder.cjs
  */
@@ -43,7 +45,7 @@ console.log('\n2 · the live answers (26.10.2026)')
   check('the stop is found by its NSR id', !!stop, stops.map(p => p.id))
   check('its name is names.default, its town address.locality', stop?.name === 'Jernbanetorget' && stop?.locality === 'Oslo', stop)
   check('a stop is a "venue" (the layer name the screens use)', stop?.layer === 'venue')
-  check('its stop types read as one line', stop?.category === 'onstreetBus, onstreetTram, metroStation', stop?.category)
+  check('its stop types read as words, most important first', stop?.category === 'Metro station, Tram stop, Bus stop', stop?.category)
   check('it keeps its coordinates (lat, lon — GeoJSON is lon, lat)', typeof stop?.lat === 'number' && stop.lat > 59 && stop.lat < 60 && stop.lon > 10 && stop.lon < 11, stop)
   check('streets and places of interest come as "address", with coordinates', stops.filter(p => p.layer !== 'venue').every(p => p.layer === 'address' && typeof p.lat === 'number'), stops)
   check('a place that isn\'t a stop has no stop types', stops.filter(p => p.layer !== 'venue').every(p => p.category === undefined))
@@ -73,7 +75,33 @@ console.log('\n3 · odd answers are skipped, never thrown')
   check('the county stands in for a missing town', out[1]?.locality === 'Oslo' && out[1]?.layer === 'street')
 }
 
-console.log('\n4 · v1 is gone')
+console.log('\n4 · stop kinds in words (docs/integrations/entur.md is the source)')
+{
+  const doc = fs.readFileSync(path.join(ROOT, 'docs/integrations/entur.md'), 'utf8')
+  const section = doc.split('## Stop kinds')[1]?.split('\n## ')[0] ?? ''
+  const rows = [...section.matchAll(/^\| `(\w+)` \| ([^|]+?) \|/gm)].map(m => [m[1], m[2].trim()])
+  check('the doc has the table', rows.length >= 13, rows.length)
+  for (const [code, word] of rows) {
+    const got = G.stopKinds([code])
+    check(`${code} → ${word}`, word === '(dropped)' ? got === undefined : got === word, got)
+  }
+  const shown = rows.filter(([, w]) => w !== '(dropped)')
+  const all = G.stopKinds(shown.map(([c]) => c).reverse())
+  check('words come in the table\'s order, whatever order Entur sends', all === shown.map(([, w]) => w).join(', '), all)
+  check('an unknown code and "other" are dropped, never shown raw', G.stopKinds(['other', 'spaceport']) === undefined)
+  check('a repeated code is said once', G.stopKinds(['onstreetBus', 'onstreetBus']) === 'Bus stop')
+  check('Oslo S reads "Train station, Bus stop"', G.stopKinds(['onstreetBus', 'railStation']) === 'Train station, Bus stop')
+  const odd = G.parseGeocoderPlaces({ features: [{ properties: { id: 'NSR:StopPlace:2', names: { default: 'Fjellheis' }, layer: 'stopPlace', stopPlaceTypes: ['other', 42] } }] })
+  check('a stop with only unknown kinds has no kind line', odd[0]?.category === undefined, odd[0])
+  check('the second line: town · kinds', G.placeLine({ locality: 'Oslo', category: 'Train station, Bus stop' }) === 'Oslo · Train station, Bus stop')
+  check('the second line without a kind or a town', G.placeLine({ locality: 'Oslo' }) === 'Oslo' && G.placeLine({}) === undefined)
+  const screens = ['src/features/home/components/ruter/StopSearchInput.tsx', 'src/shared/components/plan-modal/PlaceRow.tsx']
+  check('both place searches show placeLine (the transit card and the Add sheet\'s Location)', screens.every(f => /placeLine\(/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))))
+  const list = fs.readFileSync(path.join(ROOT, screens[0]), 'utf8')
+  check('the stop list is anchored (portalled), so the card around the field never clips it', /<ComboboxOptions modal=\{false\} anchor=\{\{ to: 'bottom start'/.test(list) && !/ComboboxOptions className="[^"]*\babsolute\b/.test(list))
+}
+
+console.log('\n5 · v1 is gone')
 {
   const callers = ['src/features/home/api/ruterApi.ts', 'src/features/home/api/enturGeocoder.ts']
   check('nobody calls geocoder v1 or sends v1 parameters', callers.every(f => !/geocoder\/v1|boundary\.country|'venue,address'/.test(fs.readFileSync(path.join(ROOT, f), 'utf8'))))

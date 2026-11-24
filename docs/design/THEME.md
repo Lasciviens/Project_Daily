@@ -300,7 +300,8 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Detail on demand (W5 peek) | `<HoverPeek trigger label? panelClassName>` (`shared/components`) — a button whose panel opens on hover with a mouse (and stays while the pointer moves into it), on tap, click or Enter; Esc or a press elsewhere closes. The panel renders only while open, through Headless UI's `Portal`. A value that opens one wears a dotted underline (Food's macro totals) |
 | Contain a render crash | `<ErrorBoundary label action>` around surfaces whose data shape isn't guaranteed |
 | Dates | `DateInput`, `DateNav` (prev / next / pick), `WindowChips` (season chips) in `shared/components` |
-| Scrolling strips | `.scroll-x` (no scrollbar) / `.scroll-y` (thin), `.scrollbar-none`, `.snap-x-mandatory` + `snap-start` children |
+| Scrolling strips | `.scroll-x` (no scrollbar on touch, a thin one with a mouse) / `.scroll-y` (thin), `.snap-x-mandatory` + `snap-start` children. A strip with its bar hidden is a `<PagedStrip noun>` (`shared/ui/ScrollPager.tsx`): round ‹ › over its edges on a mouse or trackpad, shown only while there is more that way — a mouse without a sideways wheel can't swipe (owner, 24.11.2026). Never a bare `overflow-x-auto scrollbar-none` (`verify-scroll-pager`) |
+| Pages side by side (a glance tile) | `<ScrollPager track noun="screen" paged placement="inline">` around the dots: 16px ‹ › on a mouse or trackpad, dimmed (aria-disabled) at an end, ←/→ on them; touch keeps its swipe |
 | Press feedback on a custom tappable | `.press-feedback` |
 | Keyboard hint | `.kbd` (`⌘K`) |
 | Popups | §8 |

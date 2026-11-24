@@ -7,6 +7,7 @@ import { steamGameHeaderUrl, type SteamGame } from '../api/steamApi'
 import { formatPlaytime } from '../api/playtimeFormat'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 // Detail popup for one owned Steam game — the anchor piece of the Steam tab
 // (the user asked for a popup showing a game's details). Pulls together
@@ -193,12 +194,12 @@ export function SteamGameModal({ game, onClose, className }: {
         {(d?.screenshots?.length ?? 0) > 0 && (
           <div className="pt-1 border-t border-ink-100">
             <h3 className="text-xs font-bold uppercase tracking-wider text-ink-400 mt-3 mb-2">Screenshots</h3>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <PagedStrip noun="screenshots" className="flex gap-2 pb-1">
               {d!.screenshots!.slice(0, 8).map(s => (
                 <img key={s.id} src={s.path_thumbnail} alt="" loading="lazy"
                   className="h-28 rounded-lg border border-ink-200 flex-shrink-0" />
               ))}
-            </div>
+            </PagedStrip>
           </div>
         )}
 

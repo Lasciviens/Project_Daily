@@ -14,7 +14,7 @@ export interface StopResult {
   id:        string   // NSR:StopPlace:... for transit stops, or address provider id
   name:      string
   locality?: string   // city/municipality e.g. "Oslo"
-  category?: string   // onstreetBus, metroStation, railStation, etc.
+  category?: string   // the stop's kinds in plain words: "Train station, Bus stop" (enturGeocoder.stopKinds)
   layer?:    string   // 'venue' = transit stop, 'address' / 'street' = address
   lat?:      number
   lon?:      number
