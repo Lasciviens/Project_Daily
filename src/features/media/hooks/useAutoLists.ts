@@ -3,8 +3,10 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { qk, STALE } from '../../../shared/query'
 import { addFollow, checkFollowsNow, fetchFollows, removeFollow, updateFollow, type FollowKind, type MediaFollow } from '../api/followsApi'
-import { addToTraktList, createTraktList, deleteTraktList, fetchTraktLists } from '../trakt/traktApi'
+import { addToTraktList, createTraktList, deleteTraktList, fetchTraktLists, type TraktList } from '../trakt/traktApi'
 import { useTraktStatus } from '../trakt/useTrakt'
+import { findQueueList } from '../queue/queueModel'
+import { QUEUE_NAME_TAKEN, isQueueName } from '../trakt/traktQueue'
 import { fetchSmart } from './useSmartLists'
 
 // Every list lives on Trakt. A list that fills itself is a normal Trakt list
@@ -30,7 +32,7 @@ async function fillList(qc: QueryClient, kind: FollowKind, tmdbId: number, listI
   // Trakt takes one write per second; one request carries up to CHUNK films.
   for (let i = 0; i < ids.length; i += CHUNK) {
     if (i) await wait(1100)
-    await addToTraktList(listId, ids.slice(i, i + CHUNK).map(tmdb => ({ type: 'movie' as const, tmdb })))
+    await addToTraktList(listId, ids.slice(i, i + CHUNK).map(tmdb => ({ type: 'movie' as const, tmdb })), { fill: true })
   }
   return { added: ids.length, capped: r.capped, total: r.total }
 }
@@ -50,15 +52,19 @@ export function useCreateAutoList() {
     action: 'media_auto_list_create',
     loadingMessage: v => (connected ? `Putting “${v.name}” on Trakt…` : undefined),
     mutationFn: async (v: AutoListInput) => {
+      // A ✦ rule never takes the Queue's name (it would become, or fill, the Queue — 207).
+      if (isQueueName(v.name)) throw new Error(QUEUE_NAME_TAKEN)
       if (!connected) {
         if (!v.follow) { await addFollow({ kind: v.kind, tmdb_id: v.tmdbId, name: v.name }); await checkFollowsNow().catch(() => null) }
         return { pending: true as const }
       }
       // Reuse a Trakt list of the same name that no rule fills yet (e.g. a
-      // franchise saved by hand earlier) instead of making a twin of it.
+      // franchise saved by hand earlier) instead of making a twin of it —
+      // never the Queue, which no rule may fill (207).
       const [lists, follows] = await Promise.all([fetchTraktLists(), fetchFollows()])
       const linked = new Set(follows.map(f => f.trakt_list_id).filter(Boolean))
-      const same = lists.find(l => !linked.has(l.id) && l.name.trim().toLowerCase() === v.name.trim().toLowerCase())
+      const queueId = findQueueList(lists)?.id
+      const same = lists.find(l => l.id !== queueId && !linked.has(l.id) && l.name.trim().toLowerCase() === v.name.trim().toLowerCase())
       const list = same ?? await createTraktList(v.name, `Fills itself from the ${KIND_LABEL[v.kind]} “${v.name}” on TMDB.`)
       // Link first: if filling fails half-way, the list and its rule still belong together.
       if (v.follow) await updateFollow(v.follow.id, { trakt_list_id: list.id })
@@ -80,8 +86,8 @@ export function useDeleteAutoList() {
   return useMutationWithFeedback({
     action: 'media_auto_list_delete',
     loadingMessage: 'Deleting list…',
-    mutationFn: async (v: { follow: MediaFollow; listId: number | null }) => {
-      if (v.listId) await deleteTraktList(v.listId)
+    mutationFn: async (v: { follow: MediaFollow; list: Pick<TraktList, 'id' | 'queue'> | null }) => {
+      if (v.list) await deleteTraktList(v.list)
       await removeFollow(v.follow.id)
       return true
     },

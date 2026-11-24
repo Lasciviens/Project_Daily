@@ -27,7 +27,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
       title: `Delete “${list.name}”?`,
       message: follow ? 'The list is deleted on Trakt and stops filling itself. The titles stay in your library.' : 'The list is deleted on Trakt too. The titles stay in your library.',
       confirmLabel: 'Delete list',
-      remove: () => (follow ? delAuto.mutateAsync({ follow, listId: list.id }) : delList.mutateAsync(list.id)),
+      remove: () => (follow ? delAuto.mutateAsync({ follow, list }) : delList.mutateAsync(list)),
       done: 'List deleted',
     })
     if (result === 'deleted' || result === 'gone') onGone()
@@ -50,7 +50,8 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
             <Button size="sm" variant="ghost" icon={<Unlink />} title="Stop filling — keep the list on Trakt but stop adding new films"
               loading={stop.busy} onClick={() => { void stop.run(follow) }}>Stop filling</Button>
           )}
-          <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
+          {/* The Queue is never deleted (owner, 24.11.2026): trakt-api and the database refuse it too (207). */}
+          {!isQueue && <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>}
         </div>
       </header>
       {follow && <FollowListNotice follow={follow} />}
