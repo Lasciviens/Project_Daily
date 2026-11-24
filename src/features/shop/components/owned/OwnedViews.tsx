@@ -1,6 +1,6 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CornerDownRight, ShieldCheck, Undo2 } from 'lucide-react'
-import { TonePill, Truncate, cx } from '../../../../shared/ui'
+import { Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { DISPOSAL_LABEL } from '../../ownModel'
 import { cardTag, rowPrice, rowTag, type CardTag } from '../../ownedRow'
 import { initialsOf, tintOf } from '../../wishTile'
@@ -60,18 +60,18 @@ export function OwnedLine({ item, accessories, watch, listing, today, topId, ico
 
 /**
  * One thing as a card with a big picture, the same size as every other card on the page (owner, 24.11.2026: "Every box
- * should have the same exact size!"): its width is the grid's fixed track (`PICTURE_CARD_REM`; half the row on a phone)
- * and its height comes from fixed parts only — the square picture (a ribbon when it left), the name in two lines (cut
- * by `Truncate`; a short name keeps the second line's room) and one line with what was paid and its tag (the tag cut,
- * never wrapped; the line keeps its room without one). The accessories are a count on the picture's corner that lists
- * them, so a thing with three of them is no taller than one with none.
+ * should have the same exact size!"): its width is the tiles' fixed track (`wishTile.TILE_REM`; half the row on a phone,
+ * laid out by `PictureBlocks`) and its height comes from fixed parts only — the square picture (a ribbon when it left), the
+ * name in two lines (cut by `Truncate`; a short name keeps the second line's room) and one line with what was paid and its
+ * tag (the tag cut, never wrapped; the line keeps its room without one). The accessories are a count on the picture's
+ * corner that lists them, so a thing with three of them is no taller than one with none.
  */
 export function OwnedCard({ item, accessories, watch, listing, today, topId, icon, onOpen }: OwnedRowProps) {
   const tag = cardTag(item, watch, today, listing)
   const price = rowPrice(item)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
   return (
-    <li className="card relative flex min-w-0 flex-col overflow-hidden">
+    <div className="card relative flex min-w-0 flex-col overflow-hidden">
       <button type="button" onClick={() => onOpen(item.id)}
         className="flex min-w-0 flex-col gap-2 p-2 text-left transition-colors hover:bg-surface-hover">
         <RowPicture size="fill" src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)}
@@ -86,7 +86,18 @@ export function OwnedCard({ item, accessories, watch, listing, today, topId, ico
         </span>
       </button>
       {accessories.length > 0 && <CardAccessories accessories={accessories} together={together} onOpen={onOpen} />}
-    </li>
+    </div>
+  )
+}
+
+/** A card's loading copy from the card's own fixed parts: the square picture, the two-line name, the price line. */
+export function OwnedCardSkeleton() {
+  return (
+    <div aria-hidden className="card flex flex-col gap-2 p-2">
+      <Skeleton rounded="rounded-row" className="aspect-square w-full" />
+      <span className="flex h-10 flex-col justify-center gap-1.5"><Skeleton className="h-3.5 w-11/12" /><Skeleton className="h-3.5 w-2/3" /></span>
+      <span className="flex h-5 items-center"><Skeleton className="h-4 w-1/2" /></span>
+    </div>
   )
 }
 
@@ -113,9 +124,11 @@ function CardAccessories({ accessories, together, onOpen }: {
   accessories: OwnedRowProps['accessories']; together: OwnedRowProps['accessories']; onOpen: (id: string) => void
 }) {
   const names = accessories.map(a => a.title).join(', ')
+  const label = `${accessories.length} ${accessories.length === 1 ? 'accessory' : 'accessories'}: ${names}`
+  // After the card's own button in the page's order: the thing first, then its accessories (its corner is only where it sits).
   return (
     <Menu>
-      <MenuButton title={`Accessories: ${names}`}
+      <MenuButton title={label} aria-label={label}
         className="absolute left-3 top-3 inline-flex h-6 items-center gap-1 rounded-full border border-line bg-surface px-2 text-meta font-semibold tabular-nums text-fg-2 shadow-float transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-surface-hover">
         <CornerDownRight aria-hidden className="h-3.5 w-3.5 text-fg-muted" />
         {accessories.length}

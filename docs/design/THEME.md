@@ -502,17 +502,20 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
 - **Picture tiles** (Shop's Wishlist and Owned's big pictures; smaller than cards, so they have their own rule):
   **every tile on a page is one size** (owner, 24.11.2026: "Every box should have the same exact size!"). Width: two
   equal ones a row on a list under 40rem (a phone), else fixed 12rem tracks (`wishTile.TILE_GRID` =
-  `grid-cols-2 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]`, measured `tileTrack`) — never `minmax` or `1fr`,
+  `grid-cols-2 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]`, measured `tileBlocks`) — never `minmax` or `1fr`,
   which made tiles of different widths in grids of different widths — with one 0.625rem gap. Height: fixed parts
   only. A Wishlist tile is the 4:3 picture well (`bg-well`, §2.1; with no picture, the category's default picture or
-  the initials, §3) with one belt (§3), a title two lines tall (`TILE_TITLE`), three one-line lines (`TileLines`:
-  price, facts, one note or the price history — each cut by `Truncate`, an empty one keeping its room), and one
-  action row (`TILE_ACTIONS`: the one-tap action + ⋯). The loading copy has the same parts. The tiles wait for their
-  own reads and the default pictures' chunk, so nothing appears under a drawn tile (§5). Inside a section,
-  sub-groups pack into shared rows when they fit (`wishTile.packGroups`: a group is never split to fill a gap; each
-  is named once, above its own tiles; one grid, so a row's tiles line up). A wide list deals its sections into
-  column stacks by its own width (`categoryColumns`: three tiles a stack at least — one on a phone and at 1469, two
-  at 1795, three at 2450), each stack exactly its whole tiles wide (`stackRem`).
+  the initials, §3) with one belt (§3), a title two lines tall (`TILE_TITLE`), then `TileLines` — the price with
+  where it was read (one line; a shop link cuts its address inside itself and keeps its ↗), the facts (one line),
+  the price history (its own line), the notes (two lines) — each cut by `Truncate`, an empty one keeping its room,
+  and one action row (`TILE_ACTIONS`: the one-tap action + ⋯). The loading copy has the same parts. The tiles wait
+  for their own reads and the default pictures' chunk, so nothing appears under a drawn tile (§5). **One layout for
+  every picture view** (`tileKit.PictureBlocks`): the sections (categories) at full width, each sub-group a block
+  named once above its own tiles, the blocks laid in lines from the list's own width (`wishTile.pictureLines`): a
+  block shares a line only when all its tiles fit in what is left (so a line has no hole under a shorter block),
+  each goes on the first line it fits (a small block fills the end of an earlier line; two one-tile groups share a
+  phone's row), and a block of a line's tiles or more has a line of its own. The gap between blocks is the tiles'
+  gap, so every tile sits on one column grid.
 - **Compact rows** (Shop's Owned): a collection read as a list — one row per thing, the same two lines every
   time (a 40px picture square — `RowPicture`, the tiles' well at a row's size — then the name and the number on
   the first line; the facts, cut at the end, and at most one `TonePill` on the second, which is always as tall as

@@ -49,11 +49,11 @@ console.log('a row\'s one tag')
 {
   const tag = (i, w) => R.rowTag(i, w ?? null, TODAY)
   check('a thing gone wears no tag: how it left is its picture\'s banner or badge (owner, 23.11.2026)', tag(mine({ disposal: 'sold', disposed_on: day(-3) })) === null && tag(mine({ disposal: 'given', disposed_on: day(-3), return_by: day(5) })) === null)
-  check('return today: danger', eq(tag(mine({ return_by: TODAY })), { text: 'Return today', tone: 'danger' }))
-  check('return tomorrow: danger', eq(tag(mine({ return_by: day(1) })), { text: 'Return tomorrow', tone: 'danger' }))
-  check('return in 3 days: warn', eq(tag(mine({ return_by: day(3) })), { text: 'Return in 3 days', tone: 'warn' }))
-  check('return in 10 days: info, counted down', eq(tag(mine({ return_by: day(10) })), { text: 'Return in 10 days', tone: 'info' }))
-  check('return past two weeks: its day, neutral', eq(tag(mine({ return_by: '2027-01-15' })), { text: 'Return by 15.01.2027', tone: 'neutral' }))
+  check('return today: danger', eq(tag(mine({ return_by: TODAY })), { kind: 'return_soon', text: 'Return today', tone: 'danger' }))
+  check('return tomorrow: danger', eq(tag(mine({ return_by: day(1) })), { kind: 'return_soon', text: 'Return tomorrow', tone: 'danger' }))
+  check('return in 3 days: warn', eq(tag(mine({ return_by: day(3) })), { kind: 'return_soon', text: 'Return in 3 days', tone: 'warn' }))
+  check('return in 10 days: info, counted down', eq(tag(mine({ return_by: day(10) })), { kind: 'return_soon', text: 'Return in 10 days', tone: 'info' }))
+  check('return past two weeks: its day, neutral', eq(tag(mine({ return_by: '2027-01-15' })), { kind: 'return_by', day: '2027-01-15', text: 'Return by 15.01.2027', tone: 'neutral' }))
   check('a passed return window wears no tag', tag(mine({ return_by: day(-1) })) === null)
   const hp = mine({ url: 'https://www.elkjop.no/p/1', price: 3490, return_by: day(5) })
   check('cheaper now while returnable: the money to claim, warn', sp(tag(hp, watch(hp, 3190)).text) === '300 NOK cheaper' && tag(hp, watch(hp, 3190)).tone === 'warn')
@@ -63,19 +63,19 @@ console.log('a row\'s one tag')
   check('… never from a failed check (a kept price)', tag(hp, watch(hp, 3190, { status: 'blocked' })).text === 'Return in 5 days')
   check('… never in another currency', tag(hp, watch(hp, 3190, { currency: 'EUR' })).text === 'Return in 5 days')
   check('… never a price for another link', tag(hp, { ...watch(hp, 3190), url: 'https://www.power.no/p/2' }).text === 'Return in 5 days')
-  check('complaint right ending within 60 days: info with its day', eq(tag(mine({ warranty_until: day(40) })), { text: 'Complaint until 20.12.2026', tone: 'info' }))
+  check('complaint right ending within 60 days: info with its day', eq(tag(mine({ warranty_until: day(40) })), { kind: 'complaint', day: day(40), text: 'Complaint until 20.12.2026', tone: 'info' }))
   check('complaint right ending tomorrow: danger', tag(mine({ warranty_until: day(1) })).tone === 'danger')
   check('a complaint right further out wears no tag (the record says it)', tag(mine({ warranty_until: day(61) })) === null)
   check('a return window comes before the complaint right', tag(mine({ return_by: day(4), warranty_until: day(2) })).text === 'Return in 4 days')
-  check('an estimate over six months old: "Old estimate", info', eq(tag(mine({ value_now: 500, value_on: day(-200) })), { text: 'Old estimate', tone: 'info' }))
+  check('an estimate over six months old: "Old estimate", info', eq(tag(mine({ value_now: 500, value_on: day(-200) })), { kind: 'estimate', text: 'Old estimate', tone: 'info' }))
   // Step C: the open listing's tag, from the listing's facts only.
   const lst = (i, p) => ({ id: `l${++n}`, user_id: 'u', item_id: i.id, marketplace: 'finn.no', ad_url: null, status: 'for_sale', listed_on: day(-13),
     for_sale_on: day(-12), ended_on: null, currency: 'NOK', prices: [{ on: day(-13), price: 2400 }], ad_text: null, closed_by_sale: false,
     created_at: at(-13), updated_at: at(-13), ...p })
   const forSale = mine({ value_now: 500, value_on: day(-200) })
-  check('for sale 12 days: "For sale · 12 days", info — before an old estimate', eq(R.rowTag(forSale, null, TODAY, lst(forSale)), { text: 'For sale · 12 days', tone: 'info' }))
+  check('for sale 12 days: "For sale · 12 days", info — before an old estimate', eq(R.rowTag(forSale, null, TODAY, lst(forSale)), { kind: 'listing', text: 'For sale · 12 days', tone: 'info' }))
   check('… "For sale · today" on the day it went up', R.rowTag(forSale, null, TODAY, lst(forSale, { for_sale_on: TODAY, listed_on: TODAY })).text === 'For sale · today')
-  check('the ad written, not up: "Listed", neutral', eq(R.rowTag(forSale, null, TODAY, lst(forSale, { status: 'listed', for_sale_on: null })), { text: 'Listed', tone: 'neutral' }))
+  check('the ad written, not up: "Listed", neutral', eq(R.rowTag(forSale, null, TODAY, lst(forSale, { status: 'listed', for_sale_on: null })), { kind: 'listing', text: 'Listed', tone: 'neutral' }))
   check('a listing taken down wears no listing tag', R.rowTag(forSale, null, TODAY, lst(forSale, { status: 'withdrawn', ended_on: day(-1) })).text === 'Old estimate')
   check('another thing\'s listing is never this row\'s tag', R.rowTag(forSale, null, TODAY, lst(mine({}))).text === 'Old estimate')
   check('a return window still comes first', R.rowTag(mine({ return_by: day(3) }), null, TODAY, lst(forSale)).text !== 'For sale · 12 days')
@@ -118,33 +118,6 @@ console.log('column stacks of rows')
 check('a phone (23rem): one stack', R.rowStacks(23.1) === 1)
 check('before it is measured: one', R.rowStacks(null) === 1)
 check('a category\'s subcategories fill at most the columns there are, and never more than there are subcategories', R.subColumns(5, 4) === 4 && R.subColumns(2, 4) === 2 && R.subColumns(1, 4) === 1 && R.subColumns(0, 3) === 1)
-{
-  // Electronics 14 in 5 subcategories (4, 3, 2, 3, 2 cards) at 1920 (≈ 100rem of list) and 2450 (≈ 131rem): the lines are full, never a strip left.
-  const G = R.PICTURE_CARD_GAP_REM, PITCH = R.PICTURE_CARD_REM + G
-  const lineRem = (cols, n) => cols.slice(0, n).reduce((a, c, i) => a + R.pictureBlockRem(c) + (i ? G : 0), 0)
-  const at1920 = R.pictureColumns([4, 3, 2, 3, 2], 100)
-  check('big pictures at 1920 (100rem, 7 columns): 4 + 3 cards share the first line (under one card left), and a block that cannot have two columns of what is left starts the next line', at1920.join() === '4,3,2,3,2' && lineRem(at1920, 2) <= 100 && 100 - lineRem(at1920, 2) < PITCH)
-  check('big pictures: a block shrinks into what is left of a line when two columns fit (3 + 3 cards at 63rem, 5 columns: the second takes the 2 left)', R.pictureColumns([3, 3], 63).join() === '3,2')
-  check('big pictures: never more columns than a block has cards or a line holds, and a block with no room for two starts the next line', R.pictureColumns([20], 30).every(c => c === 2) && R.pictureColumns([3, 1], 40)[1] === 1 && R.pictureColumns([3, 3], 38.5).join() === '3,3' && R.pictureColumns([1], 100)[0] === 1)
-  // The blocks as the page lays them out (flex-wrap, PICTURE_BLOCKS' gap): every block starts on the one column grid, so the
-  // cards of every subcategory line up, and no line is wider than the list.
-  const layout = (cols, w) => {
-    let x = 0; const starts = []; let wide = 0
-    for (const c of cols) {
-      const bw = R.pictureBlockRem(c)
-      if (x > 0 && x + G + bw > w + 1e-9) x = 0
-      const at = x > 0 ? x + G : 0
-      starts.push(at); x = at + bw; wide = Math.max(wide, x)
-    }
-    return { starts, wide }
-  }
-  const widths = [41, 48.3, 52.6, 63, 73, 94.2, 100, 106, 131]
-  const subsets = [[4, 3, 2, 3, 2], [4, 3, 2, 3, 2, 5, 1], [1, 1, 1, 1, 1, 1, 1, 1], [9, 2], [2, 7, 1, 3]]
-  check('big pictures: every block starts on the one column grid (a whole number of card widths and gaps), at every width', widths.every(w => subsets.every(s => layout(R.pictureColumns(s, w), w).starts.every(st => Math.abs(st / PITCH - Math.round(st / PITCH)) < 1e-9))))
-  check('big pictures: a line of blocks is never wider than the list', widths.every(w => subsets.every(s => layout(R.pictureColumns(s, w), w).wide <= w + 1e-9)))
-  check('big pictures: not measured yet — every block its full width', R.pictureColumns([4, 3], null).join() === '4,3')
-}
-check('big pictures: a subcategory\'s block is exactly its cards and the gaps between them (12rem, 0.625rem)', R.pictureBlockRem(1) === 12 && R.pictureBlockRem(4) === 49.875 && R.pictureBlockRem(0) === 0)
 check('1469 main (48rem) and a phone sideways (52rem): two', R.rowStacks(48.3) === 2 && R.rowStacks(52.6) === 2)
 check('1920 (75rem): three; 2450 (106rem): four', R.rowStacks(75.5) === 3 && R.rowStacks(106) === 4)
 check('a stack is never narrower than 21rem', [23, 43, 44, 48, 66, 75, 90, 106, 131].every(w => {
@@ -156,25 +129,24 @@ console.log('big pictures: one card size on the whole page (owner, 24.11.2026: "
 {
   const fs = require('fs'), path = require('path')
   const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
-  check('the card width is one constant: 12rem', R.PICTURE_CARD_REM === 12)
-  check('the grid\'s tracks are exactly that width — a fixed track, never minmax (a 9.5–12rem track made cards of different widths)',
-    R.PICTURE_GRID.includes(`grid-cols-[repeat(auto-fill,${R.PICTURE_CARD_REM}rem)]`) && !/minmax|1fr|auto-fit/.test(R.PICTURE_GRID.replace('grid-cols-2', '')))
-  check('on a phone two equal columns; the switch at the same width the blocks start packing', R.PICTURE_GRID.includes('grid-cols-2 ') && R.PICTURE_GRID.includes(`@[${R.PICTURE_PACK_MIN_REM}rem]/page:`))
-  check('one gap between cards and between blocks, equal to PICTURE_CARD_GAP_REM (Tailwind steps are 0.25rem)',
-    R.PICTURE_GRID.includes(` gap-${R.PICTURE_CARD_GAP_REM * 4} `) && R.PICTURE_BLOCKS.includes(`gap-x-${R.PICTURE_CARD_GAP_REM * 4} `))
-  check('a block of n columns holds exactly n fixed tracks', [1, 2, 3, 4, 5, 7, 10].every(c => R.pictureLineColumns(R.pictureBlockRem(c)) === c))
   const list = src('src/features/shop/components/owned/OwnedList.tsx')
-  check('every big-picture grid (each subcategory\'s and the Gone fold\'s) is ThingsBox with PICTURE_GRID, the blocks PICTURE_BLOCKS', /className=\{cx\(PICTURE_GRID, className\)\}/.test(list) && /className=\{PICTURE_BLOCKS\}/.test(list) && !/minmax\(9\.5rem/.test(list))
-  check('on a phone each block is the whole width, so a block of one card is half the row like every other card', /pictures && !packed && 'w-full'/.test(list))
+  check('Big pictures and the Gone fold use the Wishlist\'s own layout (PictureBlocks: one size, packed lines, no holes) — no grid of their own',
+    (list.match(/<PictureBlocks /g) || []).length === 2 && !/auto-fill|PICTURE_|9\.5rem/.test(list))
+  check('Big pictures load as cards drawn from the card\'s own parts, never as rows', /if \(layout === 'pictures'\)[\s\S]*?<OwnedCardSkeleton/.test(list)
+    && src('src/features/shop/components/owned/OwnedView.tsx').includes('<OwnedListSkeleton key="loading" layout={layout} />'))
   const views = src('src/features/shop/components/owned/OwnedViews.tsx')
-  const card = views.slice(views.indexOf('export function OwnedCard'), views.indexOf('function CardAccessories'))
+  const skel = views.slice(views.indexOf('export function OwnedCardSkeleton'), views.indexOf('function CardTagPill'))
+  check('the card skeleton has the card\'s parts: the square picture, the two-line name (h-10), the 20px price line', skel.includes('aspect-square') && skel.includes('h-10') && skel.includes('h-5'))
+  const card = views.slice(views.indexOf('export function OwnedCard('), views.indexOf('export function OwnedCardSkeleton'))
   check('the card\'s height comes from fixed parts: the square picture, the name in two lines (h-10, cut by Truncate) and one 20px line for the price and tag',
     card.includes('size="fill"') && /<Truncate as="span" lines=\{2\} className="h-10 /.test(card) && card.includes('flex h-5 min-w-0 items-center') && !card.includes('flex-wrap') && !card.includes('mt-auto'))
   const pill = views.slice(views.indexOf('function CardTagPill'), views.indexOf('function CardAccessories'))
   check('the tag is cut, never wrapped, and the accessories are a count on the picture (never lines that make one card taller)',
     card.includes('cardTag(item, watch, today, listing)') && card.includes('<CardTagPill') && /<TonePill[^>]*min-w-0/.test(pill) && pill.includes('<Truncate as="span">{tag.text}</Truncate>')
     && !card.includes('AccessoryLines') && card.includes('<CardAccessories'))
-  check('the big pictures use the Wishlist tile\'s width, gap and grid (one constant for both)', R.PICTURE_CARD_REM === W.TILE_REM && R.PICTURE_CARD_GAP_REM === W.TILE_GAP_REM && R.PICTURE_GRID === W.TILE_GRID)
+  const acc = views.slice(views.indexOf('function CardAccessories'))
+  check('the accessories chip is named by its words, not its number ("1 accessory: Laptop sleeve"), after the card\'s own button',
+    acc.includes("accessories.length === 1 ? 'accessory' : 'accessories'") && acc.includes('aria-label={label}') && card.indexOf('<button') < card.indexOf('<CardAccessories'))
 }
 
 console.log('a card\'s tag: a date tag as an icon and its whole date (a 12rem card cut "Return by 03.01.2027")')
@@ -182,11 +154,16 @@ console.log('a card\'s tag: a date tag as an icon and its whole date (a 12rem ca
   const mine = p => item({ status: 'bought', bought_at: day(-100), price: 1000, ...p })
   const ret = R.cardTag(mine({ return_by: day(40) }), null, TODAY)
   check('a return window counted by its date: the return icon, the date whole (DD.MM.YYYY), the row\'s words kept for the title',
-    ret && ret.icon === 'return' && ret.short === '20.12.2026' && ret.text === 'Return by 20.12.2026' && eq(R.rowTag(mine({ return_by: day(40) }), null, TODAY), { text: ret.text, tone: ret.tone }))
+    ret && ret.icon === 'return' && ret.short === '20.12.2026' && ret.text === 'Return by 20.12.2026' && eq(R.rowTag(mine({ return_by: day(40) }), null, TODAY), { kind: 'return_by', day: day(40), text: ret.text, tone: ret.tone }))
   const soon = R.cardTag(mine({ return_by: day(5) }), null, TODAY)
   check('a return counted in days is short already: unchanged', soon && soon.text === 'Return in 5 days' && !soon.icon && !soon.short)
   const comp = R.cardTag(mine({ warranty_until: day(30) }), null, TODAY)
   check('the complaint right ending: the shield and its whole date', comp && comp.icon === 'complaint' && comp.short === '10.12.2026' && comp.text === 'Complaint until 10.12.2026')
+  const rowSrc = require('fs').readFileSync(require('path').join(__dirname, '../src/features/shop/ownedRow.ts'), 'utf8')
+  const cardSrc = rowSrc.slice(rowSrc.indexOf('export function cardTag'), rowSrc.indexOf('/** How long'))
+  check('cardTag branches on the tag\'s kind, never on its shown words', cardSrc.includes("tag.kind === 'return_by'") && cardSrc.includes("tag.kind === 'complaint'") && !cardSrc.includes('tag.text'))
+  check('every tag says its kind', [mine({ return_by: day(3) }), mine({ return_by: day(40) }), mine({ warranty_until: day(30) }), mine({ value_now: 500, value_on: day(-200) })]
+    .map(i => R.rowTag(i, null, TODAY).kind).join() === 'return_soon,return_by,complaint,estimate')
   check('no tag: none; every short form is a whole DD.MM.YYYY date', R.cardTag(mine({}), null, TODAY) === null && [ret, comp].every(t => /^\d{2}\.\d{2}\.\d{4}$/.test(t.short)))
 }
 

@@ -165,12 +165,17 @@ export const TILE_GAP_REM = 0.625
 /** Below this list width the tiles are two to a row (a phone); from it they are `TILE_REM` wide. */
 export const TILE_NARROW_REM = 40
 /**
- * The tile grid before it is measured (and the loading copy's): two equal columns on a phone, fixed 12rem tracks from a
- * 40rem page, `gap-2.5` (`TILE_GAP_REM`). Literal for Tailwind; verify-shop-record checks it against the numbers above.
+ * The tile grid before it is measured (and the loading copies'): two equal columns on a phone, fixed 12rem tracks from a
+ * 40rem page, `gap-2.5` (`TILE_GAP_REM`). Literal for Tailwind; verify-shop-suggestions checks it against the numbers above.
  */
 export const TILE_GRID = 'grid grid-cols-2 items-start gap-2.5 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]'
-/** The gap between two stacks of categories. */
-export const STACK_GAP_REM = 1.5
+/**
+ * A category's subcategory blocks side by side: the same gap across as between tiles, so every block starts on one column
+ * grid and the tiles of every subcategory line up; the subcategory's label above its block tells them apart.
+ */
+export const TILE_LINE = 'flex items-start gap-2.5'
+/** The lines of blocks, one under the other. */
+export const TILE_LINES = 'flex flex-col gap-3'
 
 /** How wide `n` tiles are with the gaps between them. */
 export const tilesRem = (n: number): number => n * TILE_REM + Math.max(0, n - 1) * TILE_GAP_REM
@@ -180,70 +185,36 @@ export function tileColumns(widthRem: number): number {
   return Math.max(1, Math.floor((widthRem + TILE_GAP_REM) / (TILE_REM + TILE_GAP_REM)))
 }
 
-/** A tile grid's columns and template: two equal columns on a narrow list, else as many fixed tracks as `widthRem` holds. */
-export function tileTrack(widthRem: number, narrow: boolean): { cols: number; template: string } {
-  if (narrow) return { cols: 2, template: 'repeat(2, minmax(0, 1fr))' }
-  const cols = tileColumns(widthRem)
-  return { cols, template: `repeat(${cols}, ${TILE_REM}rem)` }
-}
+/** How many tile columns a subcategory's block takes on a line of `line` columns: its tiles, at most a line. */
+export const pictureColumns = (cards: number, line: number): number => Math.max(1, Math.min(cards, Math.floor(line)))
 
 /**
- * How many column stacks the category sections are dealt into, by the list's
- * own width in rem (W2: sections of different heights stack, never a row
- * grid). A stack keeps room for three tiles (37.25rem with their gaps) and
- * 1.5rem between stacks: one on a phone and a 1469 laptop, two at 1795 and
- * 1920, three at 2450. Unmeasured: one.
+ * The lines of a category's blocks (each line the indexes of its blocks, in order) on a line of `line` columns — the one
+ * layout of every picture view (the Wishlist, Owned's big pictures, the Gone fold). A block shares a line only when ALL its
+ * tiles fit in what is left of it, so every shared line is one row of tiles and has no hole under a shorter block. Each
+ * block goes on the first line it fits (first fit: a small block fills the end of an earlier line rather than leaving it
+ * empty, owner-critic 24.11.2026: "no empty strips"); a block with as many tiles as a line holds, or more, takes a line of
+ * its own (its tiles wrap).
  */
-export function categoryColumns(widthRem: number | null): number {
-  if (widthRem == null || !Number.isFinite(widthRem)) return 1
-  return Math.max(1, Math.floor((widthRem + STACK_GAP_REM) / (tilesRem(3) + STACK_GAP_REM)))
-}
-
-/** One stack's width: the whole tiles its share of the list holds, so its tiles fill it and every stack is as wide. */
-export function stackRem(widthRem: number, stacks: number): number {
-  const share = (widthRem - (stacks - 1) * STACK_GAP_REM) / Math.max(1, stacks)
-  return tilesRem(tileColumns(share))
-}
-
-/** One placed piece of a packed category: a subcategory's label over its first tiles, or a tile. */
-export interface Placed { group: number; line: number; col: number; span: number; label: boolean; index: number }
-
-/**
- * The subcategories of one category packed into rows of `cols` tiles, so a
- * small one doesn't leave the rest of its row empty: a group shares the row
- * of the one before when it fits in the cells left, else it starts a row (a
- * group is never split to fill a gap); a group longer than a row fills whole
- * rows. Each group's label gets a line above its first tiles, spanning them.
- * Lines are 1-based grid rows; every tile of a row is on the same line, so
- * the row's tiles line up.
- */
-export function packGroups(counts: readonly number[], cols: number): Placed[] {
-  const out: Placed[] = []
-  const rows: { labels: Placed[]; tiles: Placed[] }[] = []
-  let row = { labels: [] as Placed[], tiles: [] as Placed[] }
-  let col = 0
-  const close = () => { if (row.tiles.length) rows.push(row); row = { labels: [], tiles: [] }; col = 0 }
-  counts.forEach((n, group) => {
-    if (n <= 0) return
-    if (col > 0 && n > cols - col) close()
-    let index = 0
-    while (index < n) {
-      const take = Math.min(n - index, cols - col)
-      if (index === 0) row.labels.push({ group, line: 0, col, span: take, label: true, index: 0 })
-      for (let k = 0; k < take; k++) row.tiles.push({ group, line: 0, col: col + k, span: 1, label: false, index: index + k })
-      index += take
-      col += take
-      if (col >= cols) close()
-    }
+export function pictureLines(cards: readonly number[], line: number): number[][] {
+  const width = Math.max(1, Math.floor(line))
+  const lines: { left: number; blocks: number[] }[] = []
+  cards.forEach((raw, i) => {
+    const n = Math.max(1, raw)
+    const open = n < width ? lines.find(l => l.left >= n) : undefined
+    if (open) { open.blocks.push(i); open.left -= n } else lines.push({ left: Math.max(0, width - n), blocks: [i] })
   })
-  close()
-  let line = 1
-  for (const r of rows) {
-    if (r.labels.length) { for (const l of r.labels) out.push({ ...l, line }); line++ }
-    for (const t of r.tiles) out.push({ ...t, line })
-    line++
-  }
-  return out
+  return lines.map(l => l.blocks)
+}
+
+/**
+ * A category's blocks in a list `widthRem` wide: under 40rem (a phone) two equal columns — a block of one tile is half the
+ * row, so two one-tile subcategories share a row — else fixed 12rem columns, as many as the width holds.
+ */
+export function tileBlocks(cards: readonly number[], widthRem: number): { narrow: boolean; line: number; lines: number[][] } {
+  const narrow = widthRem < TILE_NARROW_REM
+  const line = narrow ? 2 : tileColumns(widthRem)
+  return { narrow, line, lines: pictureLines(cards, line) }
 }
 
 /**

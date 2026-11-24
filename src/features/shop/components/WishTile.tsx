@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
@@ -69,21 +70,20 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
   const own = priceLabel(item)
   const shown = now ?? (item.price != null ? { amount: item.price, currency: cur } : null)
   const approx = shown && shown.currency !== 'NOK' ? approxOther(shown.amount, shown.currency, rates) : null
-  // The price read from the link says where it was read; a typed price says where to buy it.
+  // The price read from the link says where it was read; a typed price says where to buy it. The shop's address is cut
+  // inside its link (its ↗ stays), a typed store at the end.
+  const at = (word: string, what: ReactNode) => <><span className="shrink-0">{word}</span>{what}</>
   const where = now
-    ? (read?.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>)
-    : webUrl(item.url) ? <>at <SiteLink url={item.url} /></> : item.platform ? <>at {item.platform}</> : null
+    ? at(read?.source === 'prisjakt' ? 'on' : 'at', <SiteLink url={item.url} className="min-w-0">{read?.source === 'prisjakt' ? 'Prisjakt' : undefined}</SiteLink>)
+    : webUrl(item.url) ? at('at', <SiteLink url={item.url} className="min-w-0" />)
+      : item.platform ? at('at', <Truncate as="span" className="min-w-0">{item.platform}</Truncate>) : null
   const target = item.target_price == null ? null : now && now.currency !== cur ? money(item.target_price, cur) : num(item.target_price)
-  // The tile's last line holds one of these, the first there is (each cut at the end); the words after it join the facts'
-  // line, so every tile keeps one height. The price history is in the record too.
+  // Every tile keeps one height: the price history has its own line, the notes share two lines (cut at the end, the whole in
+  // the title and the record).
   const history = span && now && read && isClean(read) && now.currency === span.currency ? <HistoryBar now={now.amount} span={span} /> : null
   const sale = afterSale && complete(afterSale.needed) ? `After selling ${afterSale.from}: ${money(Math.max(0, afterSale.needed.nok))} more` : null
   const dealNote = item.wait_for_deal && item.deal_note ? item.deal_note : null
-  const words = (text: string, className = 'text-fg-muted') => <Truncate as="span" className={cx('min-w-0 flex-1', className)}>{text}</Truncate>
-  const first = note ? words(note.text, note.warn ? 'text-warn' : 'text-fg-muted')
-    : history ? <span className="min-w-0 flex-1">{history}</span>
-      : sale ? words(sale) : dealNote ? words(dealNote) : null
-  const later = [note || history ? sale : null, note || history || sale ? dealNote : null].filter((x): x is string => !!x)
+  const notes = [note && <span key="n" className={note.warn ? 'text-warn' : undefined}>{note.text}</span>, sale, dealNote].filter(Boolean)
 
   return (
     <div className="card flex flex-col p-1.5">
@@ -102,14 +102,13 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           <span className={cx('shrink-0 text-ui tabular-nums', now || own ? 'font-semibold text-fg' : 'text-fg-muted')}>
             {now ? money(now.amount, now.currency) : own ?? 'No price yet'}
           </span>
-          {/* From the link (or typed): of any length, so it is cut at the end — never a second line. */}
-          {(where || approx) && (
-            <Truncate as="span" className="min-w-0 flex-1">
-              {where}{mixed}{item.region === 'TR' && <span title="Buy it in Turkey"> 🇹🇷</span>}{approx && <span className="tabular-nums"> {approx}</span>}
-            </Truncate>
-          )}
+          {where}
+          {item.region === 'TR' && <span className="shrink-0" title="Buy it in Turkey">🇹🇷</span>}
         </>}
         meta={<Truncate as="span" className="min-w-0 flex-1"><MetaLine as="span" items={[
+          // What the price is first: a Prisjakt figure that may be a used one, and the NOK it comes to.
+          mixed && mixed.replace(/^,\s*/, ''),
+          approx && <span key="a" className="tabular-nums">{approx}</span>,
           change != null && (
             <span key="c" data-tone={change < 0 ? 'success' : 'warn'} className="tone-text" title={read?.prev_at ? `Since ${formatDate(read.prev_at)}` : undefined}>
               {change < 0 ? '↓' : '↑'} {num(Math.abs(change))}<span className="sr-only"> since the last read</span>
@@ -122,9 +121,13 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           item.task_id && (taskDone ? 'Task done' : `Task${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
           note && now && read && `read ${formatDate(read.last_ok_at ?? read.checked_at)}`,
           read && read.status === 'ok' && read.in_stock === false && <span key="s" className="text-warn">out of stock</span>,
-          ...later,
         ]} /></Truncate>}
-        extra={first} />
+        history={history && <span className="min-w-0 flex-1">{history}</span>}
+        notes={notes.length > 0 && (
+          <Truncate as="span" lines={2} reveal="popover" className="min-w-0 flex-1">
+            {notes.map((n, i) => <Fragment key={i}>{i > 0 && ' · '}{n}</Fragment>)}
+          </Truncate>
+        )} />
 
       <div className={TILE_ACTIONS}>
         <button type="button" onClick={onBought} className={cx('btn-ghost btn-sm min-w-0 flex-1 justify-center', taskDone && 'text-success')}>

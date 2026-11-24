@@ -12,7 +12,7 @@ import {
   type MoneyCtx,
 } from './ownModel'
 import { currencyOf } from './shopModel'
-import { cleanPrice, TILE_GAP_REM, TILE_GRID, TILE_NARROW_REM, TILE_REM, tilesRem } from './wishTile'
+import { cleanPrice } from './wishTile'
 import { listingTag } from './sellingModel'
 import type { ShopListing } from './resaleTypes'
 import type { ShopItem, ShopPriceWatch } from './types'
@@ -22,7 +22,12 @@ export const RETURN_COUNT_DAYS = 14
 /** A complaint right ending shows from 60 days ahead (Needs a look's `COMPLAINT_SOON_DAYS`). */
 export const COMPLAINT_TAG_DAYS = 60
 
-export interface RowTag { text: string; tone: Tone }
+/**
+ * Which fact a tag tells: money to claim, a return counted in days or by its date, an open listing, the complaint right
+ * ending, an old estimate. `day` is the date a `return_by` or `complaint` tag counts to.
+ */
+export type RowTagKind = 'cheaper' | 'return_soon' | 'return_by' | 'listing' | 'complaint' | 'estimate'
+export interface RowTag { kind: RowTagKind; text: string; tone: Tone; day?: string }
 /** One fact of a row's second line; `tone` colours a result (a profit is green on every screen). */
 export interface RowFact { text: string; tone?: 'success' }
 
@@ -61,18 +66,21 @@ export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, to
     const left = daysBetween(today, i.return_by)
     const now = watch?.status === 'ok' ? cleanPrice(i, watch) : null
     if (now && i.price != null && now.currency === currencyOf(i) && now.amount < i.price) {
-      return { text: `${money(i.price - now.amount, now.currency)} cheaper`, tone: deadlineTone(left, 'warn') }
+      return { kind: 'cheaper', text: `${money(i.price - now.amount, now.currency)} cheaper`, tone: deadlineTone(left, 'warn') }
     }
-    return { text: returnWords(left, i.return_by), tone: deadlineTone(left, left <= RETURN_COUNT_DAYS ? 'info' : 'neutral') }
+    const tone = deadlineTone(left, left <= RETURN_COUNT_DAYS ? 'info' : 'neutral')
+    return left > RETURN_COUNT_DAYS
+      ? { kind: 'return_by', day: i.return_by, text: returnWords(left, i.return_by), tone }
+      : { kind: 'return_soon', text: returnWords(left, i.return_by), tone }
   }
   const selling = listing && listing.item_id === i.id ? listingTag(listing, today) : null
-  if (selling) return selling
+  if (selling) return { kind: 'listing', ...selling }
   if (i.warranty_until && i.warranty_until >= today) {
     const left = daysBetween(today, i.warranty_until)
-    if (left <= COMPLAINT_TAG_DAYS) return { text: `Complaint until ${formatDate(i.warranty_until)}`, tone: deadlineTone(left, 'info') }
+    if (left <= COMPLAINT_TAG_DAYS) return { kind: 'complaint', day: i.warranty_until, text: `Complaint until ${formatDate(i.warranty_until)}`, tone: deadlineTone(left, 'info') }
   }
   const age = valueAgeDays(i, today)
-  if (i.value_now != null && age != null && age > VALUE_STALE_DAYS) return { text: 'Old estimate', tone: 'info' }
+  if (i.value_now != null && age != null && age > VALUE_STALE_DAYS) return { kind: 'estimate', text: 'Old estimate', tone: 'info' }
   return null
 }
 
@@ -87,10 +95,8 @@ export interface CardTag extends RowTag { icon?: 'return' | 'complaint'; short?:
 export function cardTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string, listing?: ShopListing | null): CardTag | null {
   const tag = rowTag(i, watch, today, listing)
   if (!tag) return null
-  if (i.return_by && tag.text === returnWords(daysBetween(today, i.return_by), i.return_by) && tag.text.startsWith('Return by ')) {
-    return { ...tag, icon: 'return', short: formatDate(i.return_by) }
-  }
-  if (i.warranty_until && tag.text === `Complaint until ${formatDate(i.warranty_until)}`) return { ...tag, icon: 'complaint', short: formatDate(i.warranty_until) }
+  if (tag.kind === 'return_by' && tag.day) return { ...tag, icon: 'return', short: formatDate(tag.day) }
+  if (tag.kind === 'complaint' && tag.day) return { ...tag, icon: 'complaint', short: formatDate(tag.day) }
   return tag
 }
 
@@ -170,50 +176,6 @@ export function rowStacks(widthRem: number | null): number {
 /** How many columns a category's subcategories are dealt into: as many as there are room for, never more than there are subcategories. */
 export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
 
-/**
- * Every big-picture card on the page is one size, the Wishlist's tile size (`wishTile.TILE_REM`; owner, 24.11.2026: "Every
- * box should have the same exact size!"): from a list 40rem wide, exactly this wide — a fixed grid track, never `minmax` (a
- * 9.5–12rem track made cards of different widths) — and on a phone half the row. Its height is fixed by its parts (`OwnedCard`).
- */
-export const PICTURE_CARD_REM = TILE_REM
-/**
- * One gap between cards, inside a block and between blocks (the Wishlist's tiles' gap): the blocks then sit on one column
- * grid, so the cards of every subcategory and category line up; the subcategory's label above its block tells them apart.
- */
-export const PICTURE_CARD_GAP_REM = TILE_GAP_REM
-/** Below this list width the cards are two to a row (half the row each); from it they are `PICTURE_CARD_REM` wide. */
-export const PICTURE_PACK_MIN_REM = TILE_NARROW_REM
-/** The big pictures' grid — every subcategory's and the Gone fold's — is the tiles' grid (`wishTile.TILE_GRID`). */
-export const PICTURE_GRID = TILE_GRID
-/** A category's blocks side by side: the same gap across as between cards, so every block starts on the column grid. */
-export const PICTURE_BLOCKS = 'flex flex-wrap items-start gap-x-2.5 gap-y-3'
-export const pictureBlockRem = tilesRem
-/** How many card columns a width holds. */
-export const pictureLineColumns = (widthRem: number): number =>
-  Math.max(0, Math.floor((widthRem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))
-
-/**
- * How many card columns each subcategory's block gets, so a line of blocks uses the whole width (owner, 23.11.2026: a strip of
- * 410px stayed empty at 1920): blocks are packed in order on one column grid; a block that does not fit what is left of the
- * line takes the columns that are left (two at least — its own cards then wrap into more rows) and a block that cannot even
- * have two starts the next line. Never more columns than cards, never more than a line holds. Not measured yet: every block
- * its full width.
- */
-export function pictureColumns(cards: readonly number[], widthRem: number | null): number[] {
-  if (widthRem == null || widthRem <= 0) return cards.map(n => Math.max(1, n))
-  const line = Math.max(1, pictureLineColumns(widthRem))
-  let used = 0
-  return cards.map(n => {
-    const want = Math.max(1, Math.min(n, line))
-    const fit = line - used
-    if (used > 0 && fit < want) {
-      if (fit >= 2) { used = line; return fit }
-      used = 0
-    }
-    used += want
-    return want
-  })
-}
 
 // ── The filter bar's one row ─────────────────────────────────────────────────
 // The bar above Owned's things is ONE line wherever it can be (owner, 23.11.2026): it measures its own width and
