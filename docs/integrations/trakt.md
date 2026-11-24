@@ -42,6 +42,8 @@ older endpoints for completeness. How the feature works: `docs/features/media.md
 | `GET /sync/watched/movies`, `/sync/watched/shows?extended=progress` | `snapshot` | every pull (the watched summary: plays and last date per item) | paginated since 03.07.2026 |
 | `GET /sync/last_activities` | `runSync` | every sync | |
 | ratings, watchlist, favorites, hidden/dropped, playback, calendar, lists, notes | `trakt-api` | see `docs/trakt/REFERENCE.md` §2 and §12 | |
+| `GET /users/me/lists`; `GET /users/me/lists/{id}/items/movie` (paged; items `{rank, id, listed_at, type, movie: {ids}}`); `POST /users/me/lists/{id}/items/remove` `{movies: [{ids: {tmdb}}]}` → `{deleted, not_found}` | `sweepQueue` (207) | every sync: films watched since they were queued leave the Queue (read `listed_at`, `movie.ids.tmdb`; `notes` and `rank` unused here) | checked against the API blueprint ("List Items", "Remove List Items") on 24.11.2026 |
+| `DELETE /users/me/lists/{id}` → 204 | `list_delete` | never for the Queue or any marked id (207: 403 `queue_protected`). Trakt itself has no way to lock a list: deleting it on trakt.tv can't be stopped from here — the app then makes a new Queue on the next "+ Queue" and marks it too | blueprint, 24.11.2026 |
 
 Not called: `POST /shows/{id}/progress/watched/reset` (and its `DELETE`) — **VIP only** (426 for other
 accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds stay in the app

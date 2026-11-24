@@ -144,7 +144,10 @@ reach Trakt and come back here through the normal history sync.
   film's franchise strip (TMDB `belongs_to_collection` → `/collection/{id}`, release order).
   Private by default. Free accounts have a small list/item allowance (Trakt 420).
 - **The Queue** is a private Trakt list named "Queue"; its order is saved on Trakt with
-  `list_reorder` (§12).
+  `list_reorder` (§12). It is known by its Trakt list id in `trakt_queue_lists` (207) and is never
+  deleted: `list_delete` answers 403 `queue_protected` for it, and the database refuses to delete
+  or change a mark. Each sync ends by taking films watched since they were queued off the list
+  (`sweepQueue`, `POST …/items/remove`); see `docs/features/media.md` → The Queue.
 - **Follows (migration `119`, 30.09.2026):** follow a franchise (TMDB collection), studio
   (company), director or actor from a movie's page (**Follow** menu), or a keyword through
   New list → "Fill automatically" (migration 120). `media_follows`
@@ -191,7 +194,7 @@ plans in `src/features/media/trakt/` are GENERATED into the function by
 | `sync` | yes | outbox drain → mirror (only when `last_activities` moved; `full`/`force` flags) → notes comparison; refuses before the import |
 | `playback`, `playback_remove` | yes | Continue watching, and removing one paused item |
 | `calendar` | yes | my upcoming episodes |
-| `lists`, `list_items`, `list_create`, `list_delete`, `list_add`, `list_remove`, `list_reorder` | yes | personal lists, the Queue and follows' lists |
+| `lists`, `list_items`, `list_create`, `list_delete`, `list_add`, `list_remove`, `list_reorder` | yes | personal lists, the Queue and follows' lists; `lists` flags the Queue (`queue`), `list_delete` never deletes it (207) |
 
 One sync at a time (`trakt_sync_state.sync_started_at`, stale after 5 minutes). The cron job
 `lascis-trakt-sync` runs at :07 and :37; an edit in the app triggers a silent sync 4 s later.

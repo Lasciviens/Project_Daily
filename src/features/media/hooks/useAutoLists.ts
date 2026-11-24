@@ -5,6 +5,7 @@ import { qk, STALE } from '../../../shared/query'
 import { addFollow, checkFollowsNow, fetchFollows, removeFollow, updateFollow, type FollowKind, type MediaFollow } from '../api/followsApi'
 import { addToTraktList, createTraktList, deleteTraktList, fetchTraktLists } from '../trakt/traktApi'
 import { useTraktStatus } from '../trakt/useTrakt'
+import { findQueueList } from '../queue/queueModel'
 import { fetchSmart } from './useSmartLists'
 
 // Every list lives on Trakt. A list that fills itself is a normal Trakt list
@@ -55,10 +56,12 @@ export function useCreateAutoList() {
         return { pending: true as const }
       }
       // Reuse a Trakt list of the same name that no rule fills yet (e.g. a
-      // franchise saved by hand earlier) instead of making a twin of it.
+      // franchise saved by hand earlier) instead of making a twin of it —
+      // never the Queue, which no rule may fill (207).
       const [lists, follows] = await Promise.all([fetchTraktLists(), fetchFollows()])
       const linked = new Set(follows.map(f => f.trakt_list_id).filter(Boolean))
-      const same = lists.find(l => !linked.has(l.id) && l.name.trim().toLowerCase() === v.name.trim().toLowerCase())
+      const queueId = findQueueList(lists)?.id
+      const same = lists.find(l => l.id !== queueId && !linked.has(l.id) && l.name.trim().toLowerCase() === v.name.trim().toLowerCase())
       const list = same ?? await createTraktList(v.name, `Fills itself from the ${KIND_LABEL[v.kind]} “${v.name}” on TMDB.`)
       // Link first: if filling fails half-way, the list and its rule still belong together.
       if (v.follow) await updateFollow(v.follow.id, { trakt_list_id: list.id })

@@ -201,6 +201,8 @@ export interface TraktList {
   privacy: string
   itemCount: number
   updatedAt: string | null
+  /** The Queue (207): trakt-api flags it by the list id the database keeps. */
+  queue?: boolean
 }
 
 export interface TraktListItem {
@@ -223,7 +225,11 @@ export const fetchTraktCalendar = () => invoke<{ items: TraktCalendarItem[] }>('
 export const fetchTraktLists = () => invoke<{ lists: TraktList[] }>('lists').then(r => r.lists)
 export const fetchTraktListItems = (listId: number) => invoke<{ items: TraktListItem[] }>('list_items', { listId }).then(r => r.items)
 export const createTraktList = (name: string, description?: string) => invoke<{ list: TraktList }>('list_create', { name, description }).then(r => r.list)
-export const deleteTraktList = (listId: number) => invoke<{ deleted: true }>('list_delete', { listId })
+/** Deletes a list on Trakt — never the Queue, which trakt-api flags; the function and the database refuse it too (207). */
+export async function deleteTraktList(listId: number) {
+  if ((await fetchTraktLists()).some(l => l.id === listId && l.queue)) throw new Error('The Queue can\'t be deleted')
+  return invoke<{ deleted: true }>('list_delete', { listId })
+}
 export const addToTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_add', { listId, items })
 export const removeFromTraktList = (listId: number, items: ListItemRef[]) => invoke<{ notFound: number }>('list_remove', { listId, items })
 /** Every list item id of the list, in the new order. */

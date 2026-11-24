@@ -1848,6 +1848,57 @@ function followListPending(a: FollowListAttempt, stillNew: Set<number>): number[
   return [...new Set(left)]
 }
 
+// ── traktQueue.ts ──
+// The Queue's server rules (migration 207), pure: GENERATED into trakt-api by
+// scripts/sync-trakt-shared.mjs and checked by scripts/verify-media-queue.cjs.
+//
+// The Queue is one private Trakt list. Which one is decided by its Trakt list
+// id, kept in `trakt_queue_lists` (written only by trakt-api; the database
+// refuses to delete or change a row) — never by its name alone, which anyone
+// can change on Trakt. It can never be deleted (owner, 24.11.2026).
+
+const QUEUE_LIST_NAME = 'Queue'
+
+const isQueueName = (name: string | null | undefined) =>
+  (name ?? '').trim().toLowerCase() === QUEUE_LIST_NAME.toLowerCase()
+
+/**
+ * Which of the account's lists is the Queue: the oldest one the database
+ * marks; with none marked, the oldest named "Queue" — `adopt` says it must be
+ * marked now. Null: the account has no Queue (yet).
+ */
+function queueListOf<T extends { id: number | null; name: string }>(
+  lists: readonly T[], marked: ReadonlySet<number>,
+): { id: number; adopt: boolean } | null {
+  const ids = (pick: (l: T) => boolean) => lists.filter(l => typeof l.id === 'number' && l.id > 0 && pick(l)).map(l => l.id as number).sort((a, b) => a - b)
+  const known = ids(l => marked.has(l.id as number))
+  if (known.length) return { id: known[0], adopt: false }
+  const named = ids(l => isQueueName(l.name))
+  return named.length ? { id: named[0], adopt: true } : null
+}
+
+interface QueueMovieItem { tmdb: number | null; listedAt: string | null }
+/** A library film: its status, and when each of its watches was recorded here (`media_watches.created_at`). */
+interface QueueLibraryMovie { status: string; recordedAt: readonly string[] }
+
+/**
+ * The films that leave the Queue: Completed in the library, with a watch
+ * recorded since they were put in the Queue — however it came (marked in the
+ * app, on Trakt, a scrobble). A Completed film queued again to rewatch
+ * stays until that rewatch is recorded. Unknown dates keep the film.
+ */
+function queueMoviesWatched(items: readonly QueueMovieItem[], library: ReadonlyMap<number, QueueLibraryMovie>): number[] {
+  const out = new Set<number>()
+  for (const i of items) {
+    if (!i.tmdb || !i.listedAt) continue
+    const listed = Date.parse(i.listedAt)
+    const lib = library.get(i.tmdb)
+    if (!Number.isFinite(listed) || lib?.status !== 'completed') continue
+    if (lib.recordedAt.some(t => Date.parse(t) >= listed)) out.add(i.tmdb)
+  }
+  return [...out]
+}
+
 /* eslint-enable @typescript-eslint/no-unused-vars */
 // </trakt-shared>
 
@@ -3305,6 +3356,61 @@ async function readListItems(db: Db, token: string, id: unknown) {
 }
 
 
+// ── The Queue (migration 207) ────────────────────────────────────────────────
+// The Queue is one private Trakt list, known by its Trakt list id kept in
+// trakt_queue_lists — written only here, and the database refuses to delete or
+// change a row. It is never deleted (owner, 24.11.2026: "No deleting! Not from
+// trakt not from db not from app"); a film leaves it once it has been watched.
+const QUEUE_PROTECTED = 'The Queue can\'t be deleted — it is the list you watch from, here and on Trakt.'
+
+async function readMyLists(token: string) {
+  return ((await get('/users/me/lists', token)).data as AnyRec[] ?? []).map(mapList)
+}
+
+/** The account's Queue among `lists` and every list id ever marked as one; a "Queue" with no mark yet is marked now. Throws when the mark can't be read or written. */
+async function queueOf(db: Db, userId: string, lists: { id: number | null; name: string }[]) {
+  const { data, error } = await db.from('trakt_queue_lists').select('trakt_list_id').eq('user_id', userId)
+  if (error) throw new Error(`The Queue's mark could not be read: ${error.message}`)
+  const marked = new Set(((data ?? []) as AnyRec[]).map(r => Number(r.trakt_list_id)))
+  const pick = queueListOf(lists, marked)
+  if (pick?.adopt) {
+    const { error: e } = await db.from('trakt_queue_lists').upsert({ user_id: userId, trakt_list_id: pick.id }, { onConflict: 'user_id,trakt_list_id', ignoreDuplicates: true })
+    if (e) throw new Error(`The Queue could not be marked: ${e.message}`)
+    marked.add(pick.id)
+  }
+  return { id: pick?.id ?? null, marked }
+}
+
+/**
+ * Takes the films watched since they were queued out of the Queue (traktQueue.ts),
+ * through the same Trakt call as the app's own Remove. Every way a film is
+ * watched (the app, Trakt, a scrobble) ends as a watch here, and every
+ * sync runs this, so they all end the same way; the watch history is not touched.
+ */
+async function sweepQueue(db: Db, userId: string, token: string): Promise<{ removed: number }> {
+  const { id } = await queueOf(db, userId, await readMyLists(token))
+  if (!id) return { removed: 0 }
+  const rows = await getAll(`${listPath(id)}/items/movie`, token)
+  const items = rows.map(r => ({ tmdb: tmdbOfItem(r, 'movie'), listedAt: (r.listed_at as string) ?? null }))
+  const ids = [...new Set(items.map(i => i.tmdb).filter((t): t is number => !!t))]
+  if (!ids.length) return { removed: 0 }
+  const { data: entries, error } = await db.from('user_movie_entries').select('id, status, movie:movies!inner(tmdb_id)').eq('user_id', userId).in('movie.tmdb_id', ids)
+  if (error) throw error
+  const completed = ((entries ?? []) as AnyRec[]).filter(e => e.status === 'completed')
+  if (!completed.length) return { removed: 0 }
+  const { data: watches, error: wErr } = await db.from('media_watches').select('movie_entry_id, created_at').eq('user_id', userId).eq('kind', 'movie').in('movie_entry_id', completed.map(e => e.id))
+  if (wErr) throw wErr
+  const library = new Map<number, QueueLibraryMovie>()
+  for (const e of completed) {
+    const recordedAt = ((watches ?? []) as AnyRec[]).filter(w => w.movie_entry_id === e.id).map(w => String(w.created_at))
+    library.set(Number((e.movie as AnyRec).tmdb_id), { status: String(e.status), recordedAt })
+  }
+  const done = queueMoviesWatched(items, library)
+  if (!done.length) return { removed: 0 }
+  await post(`${listPath(id)}/items/remove`, token, listItemsBody(done.map(tmdb => ({ type: 'movie', tmdb }))))
+  return { removed: done.length }
+}
+
 // ── Follows: franchise / studio / director / actor (migration 119) ───────────
 // Once a day per follow (or on "Check now"): TMDB's titles for it; new ones
 // become 'new_title' events (and go onto the linked Trakt list), and a new
@@ -3480,6 +3586,12 @@ async function removeOnlyKeys(db: Db, userId: string, sentKeys: string[]): Promi
   return linkOnlyKeys(((data ?? []) as AnyRec[]).map(r => ({ op: String(r.op), item_key: String(r.item_key) })), sentKeys)
 }
 
+/** A Queue sweep never fails a sync — except a lost sign-in, which every step reports the same way. */
+function queueFailure(e: unknown): { error: string } {
+  if (e instanceof TraktError && e.status === 401) throw e
+  return { error: e instanceof Error ? e.message : String(e) }
+}
+
 async function runSync(db: Db, userId: string, token: string, username: string | null, opts: { full?: boolean; force?: boolean }) {
   const runStart = Date.now()
   const deadline = runStart + 90_000
@@ -3507,8 +3619,9 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   const notesDue = ns.ready && (!!opts.full || change.reset || !ns.syncedAt || notesActivity(prev) !== notesActivity(lastActivities))
   if (!opts.full && !change.changed && !historyDue && !picksChanged) {
     const notes = notesDue ? await runNotes(db, userId, token, await pendingKeys(db, userId, drained.sentKeys), runStart) : null
+    const queue = await sweepQueue(db, userId, token).catch(queueFailure)
     // Watch removals held back by an earlier read still wait for the owner.
-    return { pulled: false, drained: summary(drained), heldBack: Number((state as AnyRec | null)?.history_held_back ?? 0), lastActivities, scores, follows, notes }
+    return { pulled: false, drained: summary(drained), heldBack: Number((state as AnyRec | null)?.history_held_back ?? 0), lastActivities, scores, follows, notes, queue }
   }
   // A watched-progress reset on Trakt re-checks every show, like Sync now.
   const full = !!opts.full || change.reset
@@ -3542,9 +3655,11 @@ async function runSync(db: Db, userId: string, token: string, username: string |
   // A title that just came in from Trakt may already have a note there.
   const added = plan.movies.some(m => !local.movieEntry.has(m.tmdbId)) || plan.shows.some(s => !local.showEntry.has(s.tmdbId))
   const notes = notesDue || (ns.ready && added) ? await runNotes(db, userId, token, pending, runStart) : null
+  // After the watches came in: a film watched on Trakt leaves the Queue in the same run (207).
+  const queue = await sweepQueue(db, userId, token).catch(queueFailure)
   // The pick set this run used: the next run pulls again only when it changes (200).
   await storePickFingerprint(db, userId, fingerprint)
-  return { pulled: true, drained: summary(drained), applied, watches, favorites, heldBack, kept: plan.kept.length, unmatched, lastActivities, scores, follows, notes }
+  return { pulled: true, drained: summary(drained), applied, watches, favorites, heldBack, kept: plan.kept.length, unmatched, lastActivities, scores, follows, notes, queue }
 }
 
 /**
@@ -3817,17 +3932,44 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true })
     }
     if (action === 'calendar') return json({ items: await readCalendar(accessToken) })
-    if (action === 'lists') return json({ lists: ((await get('/users/me/lists', accessToken)).data as AnyRec[] ?? []).map(mapList) })
+    if (action === 'lists') {
+      const lists = await readMyLists(accessToken)
+      // The Queue is flagged by its marked id (207); if the mark can't be read, by its name.
+      const queueId = await queueOf(supabase, userId, lists).then(q => q.id, () => queueListOf(lists, new Set())?.id ?? null)
+      return json({ lists: lists.map(l => ({ ...l, queue: l.id !== null && l.id === queueId })) })
+    }
     if (action === 'list_items') return json({ items: await readListItems(supabase, accessToken, body.listId) })
     if (action === 'list_create') {
       const name = String(body.name ?? '').trim().slice(0, 100)
       if (!name) return json({ error: 'name required' }, 400)
+      // One Queue (207): asking for it again answers the one there is.
+      if (isQueueName(name)) {
+        const lists = await readMyLists(accessToken)
+        const q = (await queueOf(supabase, userId, lists)).id
+        const there = lists.find(l => l.id === q)
+        if (there) return json({ list: { ...there, queue: true } })
+      }
       const l = await post('/users/me/lists', accessToken, {
         name, description: String(body.description ?? '').slice(0, 500) || undefined, privacy: 'private', sort_by: 'rank', sort_how: 'asc',
       })
-      return json({ list: mapList(l) })
+      const list = mapList(l)
+      // A new Queue is marked at once, so it is protected from its first minute.
+      if (isQueueName(name)) {
+        const q = await queueOf(supabase, userId, [...(await readMyLists(accessToken)).filter(x => x.id !== list.id), list])
+        return json({ list: { ...list, queue: q.id === list.id } })
+      }
+      return json({ list })
     }
-    if (action === 'list_delete') { await del(listPath(body.listId), accessToken); return json({ deleted: true }) }
+    // Never the Queue (207): checked by its Trakt id against every mark, after a
+    // "Queue" with no mark yet is marked; a failed read refuses (nothing deleted).
+    if (action === 'list_delete') {
+      const listId = Number(body.listId)
+      if (!Number.isSafeInteger(listId) || listId <= 0) return json({ error: 'listId required' }, 400)
+      const q = await queueOf(supabase, userId, await readMyLists(accessToken))
+      if (listId === q.id || q.marked.has(listId)) return json({ error: QUEUE_PROTECTED, code: 'queue_protected' }, 403)
+      await del(listPath(listId), accessToken)
+      return json({ deleted: true })
+    }
     // POST /users/{id}/lists/{list_id}/items/reorder with every list item id in
     // the new order (API blueprint, "Reorder List Items"). Used by the Queue.
     if (action === 'list_reorder') {
