@@ -110,6 +110,34 @@ export async function removeCreatedRow(tool: string, id: string): Promise<void> 
   if (error) throw error
 }
 
+/** The columns a confirmed change may have written, by the names its stored proposal uses (chat-tools.ts `applyChange`). */
+const CHANGE_COLUMNS: Record<string, Record<string, string>> = {
+  update_food: { title: 'custom_title', calories: 'calories', protein_g: 'protein_g', carbs_g: 'carbs_g', fat_g: 'fat_g' },
+  update_task: { title: 'title' },
+}
+
+/**
+ * The card's Undo of a confirmed change: the owner's own row, by id, with the owner's rights, gets back what it said before,
+ * in the changed columns only (read from the stored proposal, never from the card). A value of the wrong type is refused.
+ */
+export async function restoreChangedRow(tool: string, id: string, before: Record<string, unknown>, changed: readonly string[]): Promise<void> {
+  const columns = CHANGE_COLUMNS[tool]
+  if (!columns) throw new Error('That change cannot be undone here.')
+  const user = await requireUser()
+  const patch: Record<string, unknown> = {}
+  for (const key of changed) {
+    const column = columns[key]
+    const value = before[key]
+    if (!column) continue
+    if (key === 'title' ? typeof value !== 'string' || !value.trim() : typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error('The old value could not be read, so nothing was changed.')
+    patch[column] = value
+  }
+  if (!Object.keys(patch).length) throw new Error('Nothing to put back.')
+  const table = tool === 'update_task' ? 'tasks' : 'food_log_entries'
+  const { error } = await supabase.from(table).update(patch).eq('id', id).eq('user_id', user.id)
+  if (error) throw error
+}
+
 /** Deletes a chat (softly: the function keeps it for 7 days, so Undo works) or brings it back. */
 export async function setChatDeleted(id: string, deleted: boolean): Promise<{ id: string; title: string }> {
   const { data, error } = await supabase.functions.invoke('claude', { body: { action: deleted ? 'chat_delete' : 'chat_restore', conversation_id: id } })

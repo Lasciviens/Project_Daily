@@ -460,6 +460,14 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 205 (Ask AI fixes): two new kinds of proposal (a change of a food line, a task's new title) and the
+      # `replaced` state, nothing else let in, the browser still writes no proposal, the new write tools never "on". 205 runs
+      # twice and changes only its three CHECKs.
+      - name: AI chat fixes database scenarios
+        run: node scripts/verify-db-ai-chat-fixes.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
       # Migration 199 (AI suggestions): the browser changes one column of an idea (state) and nothing else, writes no run and reads no
       # batch id; only the service role calls the writer and the counting; a dismissed idea never comes back; the caps; the
       # counting over the ledger; the check timer. 199 runs twice: the catalogue must not change.

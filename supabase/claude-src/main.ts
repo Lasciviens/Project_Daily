@@ -255,7 +255,9 @@ Deno.serve(async (req) => {
       page: { fetch, dnsLookup },
       // Only the owner's phone is ever pushed to: any other account's reports (a second allowed account) get no push.
       push: userId === Deno.env.get('HEVY_USER_ID') ? sendPush : null,
-      secrets: [apiKey, serviceKey(), publishableKey(), Deno.env.get('PUSH_CRON_SECRET')],
+      // Kassalapp's key (the same secret food-search reads): only Ask AI's find_food uses it, in a Bearer header.
+      foodKey: Deno.env.get('KASSALAPP_API_KEY') ?? '',
+      secrets: [apiKey, serviceKey(), publishableKey(), Deno.env.get('PUSH_CRON_SECRET'), Deno.env.get('KASSALAPP_API_KEY')],
       now: () => new Date(),
       newId: () => crypto.randomUUID(),
       report: line => console.error(`[claude] ${line}`),

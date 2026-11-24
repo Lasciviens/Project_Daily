@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, History, MessageSquarePlus, Sparkles, SendHorizontal, Square } from 'lucide-react'
+import { ArrowDown, Copy, Flag, History, MessageSquarePlus, Sparkles, SendHorizontal, Square } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '../../../app/store'
 import { confirmDelete } from '../../../shared/modals/deleteFlow'
@@ -13,6 +13,9 @@ import { useKeyboardInset, useStickToBottom } from '../hooks/useChatViewport'
 import { ChatHistory } from './ChatHistory'
 import { ChatTurnView } from './ChatTurnView'
 import { AttachPhoto, ChatSetupNote, MicButton, PhotoStrip } from './ChatExtras'
+import { ChatReportSheet } from './ChatReport'
+import { copyText } from './chatClipboard'
+import { chatCopyText } from './chatTranscript'
 import { chatIntro, CHAT_IMAGES_PER_CHAT, CHAT_IMAGES_PER_MESSAGE, CHAT_TEXT_MAX, joinSpoken, voiceTagOf } from './chatRules'
 import { useAskAi, useChatPhoto, useConversations, useDeleteChat, useRestoreChat } from './useAskAi'
 import { useSpeechInput, useVoiceLanguage } from './useSpeechInput'
@@ -58,6 +61,21 @@ export function AskAIPanel() {
   const conversations = useConversations(open && view === 'history')
   const { inset, visibleHeight } = useKeyboardInset(open)
   const { scrollRef, atBottom, onScroll, scrollToBottom } = useStickToBottom([chat.turns, chat.busy])
+  // Report: the whole chat (null) or one answer (its key), in a sheet with the owner's one line; it opens a Dev Request draft.
+  const [report, setReport] = useState<{ answerKey: string | null } | null>(null)
+  // Why text could not be selected on the iPhone: Headless UI's scroll lock (Dialog, iOS only) listens on the document and
+  // cancels every touchmove that is not inside a scroll area that can scroll right now — a short chat, a card, a bubble —
+  // and a cancelled touch also stops iOS's own text gestures (select, drag the handles, the Copy menu). Touches inside the
+  // chat stop here, before they reach that listener; the chat area contains its own overscroll (`scroll-y`), and the
+  // document behind never scrolls in this app (the shell's main is the scroller), so nothing behind moves.
+  const [chatBody, setChatBody] = useState<HTMLDivElement | null>(null)
+  const setChatArea = (el: HTMLDivElement | null) => { scrollRef.current = el; setChatBody(el) }
+  useEffect(() => {
+    if (!chatBody) return
+    const keep = (e: TouchEvent) => e.stopPropagation()
+    chatBody.addEventListener('touchmove', keep, { passive: true })
+    return () => chatBody.removeEventListener('touchmove', keep)
+  }, [chatBody])
   // What a chat has: a started chat shows what it began with (frozen); a new one shows what it WILL begin with, from Settings now.
   const about = useClaudeDescribe()
   const toolRows = useToolSettings()
@@ -114,6 +132,12 @@ export function AskAIPanel() {
         <>
           <IconButton label={view === 'history' ? 'Back to the chat' : 'Your chats'} aria-pressed={view === 'history'} onClick={() => setView(v => (v === 'history' ? 'chat' : 'history'))}><History strokeWidth={1.9} aria-hidden /></IconButton>
           <IconButton label="New chat" onClick={startNew} disabled={empty && view === 'chat'}><MessageSquarePlus strokeWidth={1.9} aria-hidden /></IconButton>
+          {view === 'chat' && (
+            <>
+              <IconButton label="Copy chat (the whole conversation as text)" onClick={() => copyText(chatCopyText(chat.turns, chat.conversationId))} disabled={empty}><Copy strokeWidth={1.9} aria-hidden /></IconButton>
+              <IconButton label="Report this chat (a Dev Request draft)" onClick={() => setReport({ answerKey: null })} disabled={empty || chat.busy}><Flag strokeWidth={1.9} aria-hidden /></IconButton>
+            </>
+          )}
         </>
       )}
     >
@@ -124,7 +148,7 @@ export function AskAIPanel() {
         </div>
       ) : (
         <>
-          <div ref={scrollRef} onScroll={onScroll} className="scroll-y relative min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5">
+          <div ref={setChatArea} onScroll={onScroll} className="scroll-y relative min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">
             {empty && chat.wall !== 'full' && (
               <div className="py-2">
                 {activeTools && <div className="mb-2"><ChatSetupNote mode={chat.mode} toolNames={activeTools} ownerInstructions={chat.setup ? chat.setup.ownerInstructions : words.data ?? ''} planned={!chat.setup} /></div>}
@@ -137,7 +161,7 @@ export function AskAIPanel() {
               </div>
             )}
             {!empty && chat.setup && <ChatSetupNote mode={chat.setup.mode} toolNames={chat.setup.toolNames} ownerInstructions={chat.setup.ownerInstructions} planned={false} />}
-            {chat.turns.map(t => <ChatTurnView key={t.key} turn={t} onDecide={(id, d, edits) => { void chat.decide(id, d, edits) }} onUndo={id => { void chat.undo(id) }} />)}
+            {chat.turns.map(t => <ChatTurnView key={t.key} turn={t} onDecide={(id, d, edits) => { void chat.decide(id, d, edits) }} onUndo={id => { void chat.undo(id) }} onReport={key => setReport({ answerKey: key })} />)}
             {failedLast && chat.lastText && (
               <div className="flex justify-start gap-2">
                 {chat.turns[chat.turns.length - 1].errorReason === 'declined'
@@ -192,6 +216,7 @@ export function AskAIPanel() {
           </div>
         </>
       )}
+      {report && <ChatReportSheet turns={chat.turns} chatId={chat.conversationId} answerKey={report.answerKey} onClose={() => setReport(null)} />}
     </SideDrawer>
   )
 }

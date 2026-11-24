@@ -9,11 +9,15 @@ import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { formatUsd } from '../claude/ledgerRules'
 import { SUGGESTION_LINE, type SuggestionKind } from '../claude/suggestRules'
-import { boldParts, cardStateLabel, citationTarget, proposalFields, type ChatCard, type ChatCitation, type ChatStep, type ChatTurn } from './chatRules'
+import { boldParts, cardStateLabel, citationTarget, isChangeTool, proposalFields, type ChatCard, type ChatCitation, type ChatStep, type ChatTurn } from './chatRules'
+import { messageCopyText } from './chatTranscript'
+import { CopyButton, ReportButton } from './ChatReport'
 
 // One turn of the chat: the person's message, or the answer with what it looked up (and the inputs it used), the rows it
 // cites (each a link to the owner's own row), the writes it proposes (a card that shows every field it would write, with
 // the title and the date editable, Confirm and Cancel) and what the answer cost (a link to its calls in Developer → AI).
+// Every message's text can be selected (select-text: an ancestor's no-select rule never reaches it) and copied; an answer
+// can be reported to Dev Requests.
 
 type Decide = (id: string, decision: 'confirm' | 'cancel', edits?: { title?: string; date?: string }) => void
 
@@ -72,10 +76,18 @@ function Steps({ steps, streaming }: { steps: ChatStep[]; streaming: boolean }) 
   )
 }
 
+/** What a card is called, waiting and once saved. */
+const CARD_WORDS: Record<ChatCard['tool'], [string, string]> = {
+  add_task: ['Proposed task', 'Task added'], log_food: ['Proposed food line', 'Food line logged'],
+  update_food: ['Proposed change to a food line', 'Food line changed'], update_task: ['Proposed new task title', 'Task renamed'],
+}
+
 function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: Decide; onUndo: (id: string) => void }) {
   const modal = useEntityModal()
   const waiting = card.state === 'pending'
   const args = card.args
+  // A change is confirmed as proposed; a food of the owner's own list keeps its own name. Only a new task or one-off line is edited here.
+  const editable = !isChangeTool(card.tool) && !(card.tool === 'log_food' && args?.basis === 'yours')
   const [title, setTitle] = useState<string | null>(null)
   const [date, setDate] = useState<string | null>(null)
   const storedTitle = typeof args?.title === 'string' ? args.title : ''
@@ -83,20 +95,20 @@ function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: De
   const shownTitle = title ?? storedTitle
   const shownDate = date ?? storedDate
   // What the card shows is what would be written: the stored fields, with the owner's edits laid over them.
-  const edited = args ? { ...args, title: shownTitle, ...(card.tool === 'add_task' ? { due_date: shownDate || null } : { date: shownDate }) } : null
+  const edited = args && editable ? { ...args, title: shownTitle, ...(card.tool === 'add_task' ? { due_date: shownDate || null } : { date: shownDate }) } : args
   const fields = edited ? proposalFields(card.tool, edited, todayStr()) : []
   const changed = shownTitle !== storedTitle || shownDate !== storedDate
-  const confirm = () => onDecide(card.id, 'confirm', changed ? { title: shownTitle, date: shownDate } : undefined)
+  const confirm = () => onDecide(card.id, 'confirm', editable && changed ? { title: shownTitle, date: shownDate } : undefined)
   const open = () => {
     if (!card.resultId) return
-    if (card.tool === 'add_task') modal.open({ kind: 'task', id: card.resultId })
+    if (card.tool === 'add_task' || card.tool === 'update_task') modal.open({ kind: 'task', id: card.resultId })
     else modal.open({ kind: 'food-log-edit', entryId: card.resultId, date: String(args?.date ?? todayStr()) })
   }
   const done = card.state === 'confirmed'
   return (
-    <div data-tone={done ? 'success' : card.state === 'failed' ? 'danger' : undefined} className={cx('w-full rounded-card border bg-surface px-3 py-2.5', done || card.state === 'failed' ? 'tone-soft border-transparent' : 'border-line')}>
-      <p className="text-meta font-semibold text-fg-muted">{done ? (card.tool === 'add_task' ? 'Task added' : 'Food line logged') : card.tool === 'add_task' ? 'Proposed task' : 'Proposed food line'}</p>
-      {waiting && args ? (
+    <div data-tone={done ? 'success' : card.state === 'failed' ? 'danger' : undefined} className={cx('w-full min-w-0 select-text rounded-card border bg-surface px-3 py-2.5', done || card.state === 'failed' ? 'tone-soft border-transparent' : 'border-line', card.state === 'replaced' && 'opacity-60')}>
+      <p className="text-meta font-semibold text-fg-muted">{CARD_WORDS[card.tool][done ? 1 : 0]}</p>
+      {waiting && args && editable ? (
         <div className="mt-1 flex flex-col gap-1.5">
           <input value={shownTitle} onChange={e => setTitle(e.target.value.slice(0, card.tool === 'add_task' ? 200 : 120))} aria-label="Title" className="input" />
           <DateInput compact value={shownDate} onChange={setDate} aria-label={card.tool === 'add_task' ? 'Due date' : 'Date'} placeholder={card.tool === 'add_task' ? 'No due date' : undefined} />
@@ -104,7 +116,7 @@ function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: De
       ) : null}
       {args ? (
         <dl className="mt-1.5 grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-0.5 text-meta">
-          {fields.filter(f => !(waiting && (f.label === 'Title' || f.label === 'Due date' || f.label === 'Date'))).map(f => (
+          {fields.filter(f => !(waiting && editable && (f.label === 'Title' || f.label === 'Due date' || f.label === 'Date'))).map(f => (
             <div key={f.label} className="contents"><dt className="text-fg-muted">{f.label}</dt><dd className="min-w-0 break-words text-fg">{f.value}</dd></div>
           ))}
         </dl>
@@ -113,7 +125,7 @@ function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: De
       )}
       {waiting && args && (
         <div className="mt-2 flex gap-2">
-          <Button variant="primary" size="sm" icon={<Check />} onClick={confirm} disabled={!shownTitle.trim() || (card.tool === 'log_food' && !shownDate)}>Confirm</Button>
+          <Button variant="primary" size="sm" icon={<Check />} onClick={confirm} disabled={editable && (!shownTitle.trim() || (card.tool === 'log_food' && !shownDate))}>Confirm</Button>
           <Button size="sm" icon={<X />} onClick={() => onDecide(card.id, 'cancel')}>Cancel</Button>
         </div>
       )}
@@ -155,15 +167,16 @@ function CostLine({ turn }: { turn: ChatTurn }) {
   return <button type="button" onClick={go} aria-label={`Cost ${text}: see this answer's calls in Developer`} className="px-1 py-0.5 text-micro tabular-nums text-fg-faint underline decoration-dotted underline-offset-2 [@media(hover:hover)]:hover:text-fg-2">{text}</button>
 }
 
-export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDecide: Decide; onUndo: (id: string) => void }) {
+export function ChatTurnView({ turn, onDecide, onUndo, onReport }: { turn: ChatTurn; onDecide: Decide; onUndo: (id: string) => void; onReport: (answerKey: string) => void }) {
   const [reasoning, setReasoning] = useState(false)
   if (turn.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="flex max-w-[85%] flex-col items-end gap-1">
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-1">
           {turn.photoUrls.length > 0 && <div className="flex gap-1.5">{turn.photoUrls.map((url, i) => <img key={i} src={url} alt={`Photo ${i + 1} of ${turn.photos}`} className="h-20 w-20 rounded-row border border-line object-cover" />)}</div>}
           {turn.photos > 0 && turn.photoUrls.length < turn.photos && <span className="inline-flex items-center gap-1 text-meta text-fg-muted"><ImageIcon className="h-3.5 w-3.5" aria-hidden />{turn.photos === 1 ? '1 photo' : `${turn.photos} photos`}</span>}
-          <p className="whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent">{turn.text}</p>
+          <p className="max-w-full select-text whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent [overflow-wrap:anywhere]">{turn.text}</p>
+          {turn.text && <CopyButton text={messageCopyText(turn)} label="Copy this message" />}
         </div>
       </div>
     )
@@ -173,7 +186,7 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
       <div className="flex min-w-0 max-w-[92%] flex-col items-start gap-1.5">
         {turn.steps.length > 0 && <Steps steps={turn.steps} streaming={turn.streaming} />}
         {turn.text ? (
-          <p className="whitespace-pre-wrap break-words rounded-card rounded-bl-md bg-surface-2 px-3.5 py-2 text-body leading-relaxed text-fg"><Bold text={turn.text} /></p>
+          <p className="max-w-full select-text whitespace-pre-wrap break-words rounded-card rounded-bl-md bg-surface-2 px-3.5 py-2 text-body leading-relaxed text-fg [overflow-wrap:anywhere]"><Bold text={turn.text} /></p>
         ) : turn.streaming && !turn.error ? (
           <div role="status" aria-label="Thinking" className="rounded-card rounded-bl-md bg-surface-2 px-4 py-3">
             <span className="flex items-center gap-1">
@@ -182,7 +195,7 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
           </div>
         ) : null}
         {turn.error && (
-          <p data-tone="danger" className="tone-soft tone-text rounded-row px-3 py-2 text-body">{turn.error}</p>
+          <p data-tone="danger" className="tone-soft tone-text select-text break-words rounded-row px-3 py-2 text-body">{turn.error}</p>
         )}
         {turn.citations.length > 0 && (
           <div className="flex flex-wrap gap-1.5" aria-label="Where this came from">
@@ -200,7 +213,13 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
           </div>
         )}
         {!turn.streaming && turn.suggestion && <SuggestionLine kind={turn.suggestion} />}
-        {!turn.streaming && <CostLine turn={turn} />}
+        {!turn.streaming && (
+          <div className="flex items-center gap-0.5">
+            <CostLine turn={turn} />
+            {(turn.text || turn.error) && <CopyButton text={messageCopyText(turn)} label="Copy this answer" />}
+            <ReportButton label="Report this answer (a Dev Request draft)" onClick={() => onReport(turn.key)} />
+          </div>
+        )}
       </div>
     </div>
   )

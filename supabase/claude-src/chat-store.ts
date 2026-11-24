@@ -13,6 +13,7 @@ import type { Block, ChatMessage } from './types.ts'
 import type { Db } from './ledger.ts'
 import { ownValue } from './guard.ts'
 import { ALL_TOOL_ORDER, cleanOwnerInstructions, messageDigest, toolModes, type ChatMode, type ToolMode } from './chat-rules.ts'
+import { PROPOSAL_TOOLS, type ProposalTool } from './chat-tools.ts'
 
 export interface ConversationRow {
   id: string
@@ -51,10 +52,11 @@ export interface ProposalRow {
   user_id: string
   conversation_id: string
   tool_use_id: string
-  tool: 'add_task' | 'log_food'
+  tool: ProposalTool
   args: unknown
   summary: string
-  status: 'pending' | 'confirmed' | 'cancelled' | 'failed'
+  /** `replaced`: a newer proposal for the same thing took its place (migration 205); it can no longer be decided. */
+  status: 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'replaced'
   created_at: string
   expires_at: string
   decided_at: string | null
@@ -198,13 +200,13 @@ function proposalOf(row: unknown): ProposalRow | null {
   const tool = ownValue(row, 'tool')
   const status = ownValue(row, 'status')
   if (!isUuid(id) || !isUuid(ownValue(row, 'user_id')) || !isUuid(ownValue(row, 'conversation_id'))) return null
-  if (tool !== 'add_task' && tool !== 'log_food') return null
-  if (status !== 'pending' && status !== 'confirmed' && status !== 'cancelled' && status !== 'failed') return null
+  if (!PROPOSAL_TOOLS.includes(tool as ProposalTool)) return null
+  if (status !== 'pending' && status !== 'confirmed' && status !== 'cancelled' && status !== 'failed' && status !== 'replaced') return null
   const text = (key: string) => String(ownValue(row, key) ?? '')
   const resultId = ownValue(row, 'result_id')
   return {
     id, user_id: ownValue(row, 'user_id') as string, conversation_id: ownValue(row, 'conversation_id') as string,
-    tool_use_id: text('tool_use_id'), tool, args: ownValue(row, 'args'), summary: text('summary'), status,
+    tool_use_id: text('tool_use_id'), tool: tool as ProposalTool, args: ownValue(row, 'args'), summary: text('summary'), status,
     created_at: text('created_at'), expires_at: text('expires_at'),
     decided_at: ownValue(row, 'decided_at') ? text('decided_at') : null, result_id: isUuid(resultId) ? resultId : null,
   }
@@ -213,7 +215,7 @@ function proposalOf(row: unknown): ProposalRow | null {
 const PROPOSAL_COLUMNS = 'id, user_id, conversation_id, tool_use_id, tool, args, summary, status, created_at, expires_at, decided_at, result_id'
 
 export async function insertProposal(
-  admin: Db, row: { id: string; user_id: string; conversation_id: string; tool_use_id: string; tool: 'add_task' | 'log_food'; args: Record<string, unknown>; summary: string; expires_at: string },
+  admin: Db, row: { id: string; user_id: string; conversation_id: string; tool_use_id: string; tool: ProposalTool; args: Record<string, unknown>; summary: string; expires_at: string },
 ): Promise<boolean> {
   try {
     const { error } = await admin.from('ai_chat_proposals').insert({ ...row })
@@ -241,6 +243,30 @@ export async function decideProposal(admin: Db, userId: string, id: string, stat
       .eq('id', id).eq('user_id', userId).eq('status', 'pending').select('id')
     return !error && Array.isArray(data) && data.length === 1
   } catch { return false }
+}
+
+/** The pending proposals of one chat of this user (a new proposal for the same thing replaces one of them). Null: they could not be read. */
+export async function pendingProposals(admin: Db, userId: string, conversationId: string): Promise<ProposalRow[] | null> {
+  try {
+    const { data, error } = await admin.from('ai_chat_proposals').select(PROPOSAL_COLUMNS)
+      .eq('conversation_id', conversationId).eq('user_id', userId).eq('status', 'pending').order('created_at', { ascending: true }).limit(50)
+    if (error || !Array.isArray(data)) return null
+    return data.map(proposalOf).filter((p): p is ProposalRow => p !== null)
+  } catch { return null }
+}
+
+/**
+ * Marks older pending proposals of this chat and user as `replaced`: only rows still pending (a decided one never changes),
+ * only these ids. It decides nothing else: no write, no Confirm, no Cancel. The ids that really changed come back.
+ */
+export async function replaceProposals(admin: Db, userId: string, conversationId: string, ids: readonly string[], nowIso: string): Promise<string[]> {
+  if (!ids.length) return []
+  try {
+    const { data, error } = await admin.from('ai_chat_proposals').update({ status: 'replaced', decided_at: nowIso })
+      .eq('conversation_id', conversationId).eq('user_id', userId).eq('status', 'pending').in('id', [...ids]).select('id')
+    if (error || !Array.isArray(data)) return []
+    return data.map(r => ownValue(r, 'id')).filter(isUuid)
+  } catch { return [] }
 }
 
 /** A confirmed proposal whose write failed is marked failed (only a confirmed one with no result: never a pending or a finished one). */

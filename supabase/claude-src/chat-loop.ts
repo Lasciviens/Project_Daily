@@ -32,14 +32,16 @@ import {
   canonicalJson, CHAT_JOB, CHAT_LIMITS, CHAT_VERSION, holdsNul, liveContextText, messageDigest, needsLiveContext, ownerInstructionsBlock, cleanOwnerInstructions, sha256Hex, systemFor,
   toolsForNewChat, type ChatMode,
 } from './chat-rules.ts'
-import { applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput } from './chat-tools.ts'
+import {
+  applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, PROPOSAL_TOOL_NAME, proposalSubjects, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput,
+} from './chat-tools.ts'
 import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
 import { chatNoteLesson, chatProposalCorrections, readChatNotes } from './learn-chat.ts'
 import { NOTE_LESSONS_PER_ANSWER } from './chat-learn-tools.ts'
 import {
-  appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, readConversation,
-  readChatControls, readMessages, readProposal, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
+  appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, pendingProposals, readConversation,
+  readChatControls, readMessages, readProposal, replaceProposals, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
 } from './chat-store.ts'
 
 /** The only events the app ever gets from a chat: our own small ones. */
@@ -50,8 +52,9 @@ export type ChatEvent =
   | { event: 'retract' }
   /** The tool call as the code understood it (checked inputs), after it ran: shown on its step. */
   | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
-  | { event: 'proposal'; id: string; tool: string; summary: string; expires_at: string }
-  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off'; prompt_tokens: number; thinking: string; suggestion: ChatSuggestionNote | null }
+  /** `replaces`: the older pending proposals of this chat it took the place of (their cards now say "replaced"). */
+  | { event: 'proposal'; id: string; tool: string; summary: string; expires_at: string; replaces: string[] }
+  | { event: 'done'; conversation_id: string; text: string; citations: ChatCitation[]; proposals: ChatProposalCard[]; replaced: string[]; rounds: number; cost_usd: number; wall: boolean; run_id: string; ending: 'complete' | 'cut_off'; prompt_tokens: number; thinking: string; suggestion: ChatSuggestionNote | null }
   | { event: 'error'; reason: ChatReason; message: string; conversation_id?: string; cost_usd?: number; run_id?: string }
 
 export type ChatReason = 'bad_input' | 'busy' | 'off' | 'not_configured' | 'budget' | 'wall' | 'stale' | 'changed' | 'not_found' | 'declined' | 'timeout' | 'conflict' | 'error'
@@ -59,7 +62,7 @@ export type ChatReason = 'bad_input' | 'busy' | 'off' | 'not_configured' | 'budg
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
 /** An idea this answer recorded in the Suggestions list: only its kind (the text is shown in the list, never here). */
 export interface ChatSuggestionNote { kind: SuggestKind }
-export interface ChatProposalCard { id: string; tool: string; summary: string; expires_at: string }
+export interface ChatProposalCard { id: string; tool: string; summary: string; expires_at: string; replaces: string[] }
 
 export type ChatResult = Extract<ChatEvent, { event: 'done' }> | Extract<ChatEvent, { event: 'error' }>
 
@@ -71,6 +74,9 @@ const STEP_LABELS: Record<string, string> = {
   ask_database: 'Asking the database',
   propose_add_task: 'Preparing a task for you to confirm',
   propose_log_food: 'Preparing a food line for you to confirm',
+  find_food: "Looking up the food's values",
+  propose_update_food: 'Preparing a change to a food line for you to confirm',
+  propose_update_task: 'Preparing a new task title for you to confirm',
   get_training_week: "Looking at the week's training",
   get_health_trends: "Looking at the week's health figures",
   get_pt_verdicts: "Reading the coach's saved verdicts",
@@ -81,6 +87,8 @@ const STEP_LABELS: Record<string, string> = {
 }
 
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
+/** A proposal's kind in the app's notice to the model: never its title (the owner may have edited it). */
+const PROPOSAL_WORDS: Readonly<Record<string, string>> = { add_task: 'add a task', log_food: 'log a food line', update_food: 'change a food line', update_task: 'rename a task' }
 const NO_ANSWER = 'The model gave no answer text.'
 
 /** A message from the person: control characters out (a new line stays), trimmed, 1 to 4000 characters, or null. */
@@ -274,7 +282,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     const decided = await decidedProposalsSince(ctx.adminDb, ctx.userId, conversation.id, last.created_at)
     if (decided.length) {
       // Only the kind of proposal and what happened: the owner's words (a title they may have edited) never go into this block.
-      blocks.push({ type: 'text', text: `<app_updates>${decided.map(p => `The proposal to ${p.tool === 'add_task' ? 'add a task' : 'log a food line'} was ${p.status === 'confirmed' ? 'confirmed by the person and saved' : p.status === 'cancelled' ? 'cancelled by the person (not saved)' : 'confirmed, but saving it failed (not saved)'}.`).join(' ')} This note comes from the app, not from the person.</app_updates>` })
+      blocks.push({ type: 'text', text: `<app_updates>${decided.map(p => `The proposal to ${PROPOSAL_WORDS[p.tool]} was ${p.status === 'confirmed' ? 'confirmed by the person and saved' : p.status === 'cancelled' ? 'cancelled by the person (not saved)' : p.status === 'replaced' ? 'replaced by a newer proposal (not saved)' : 'confirmed, but saving it failed (not saved)'}.`).join(' ')} This note comes from the app, not from the person.</app_updates>` })
     }
   }
   // Photos come before the words (Anthropic's advice), each its own block; the person's words are the last block.
@@ -305,6 +313,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const runId = ctx.newId()
   const toolsRun: ToolShape[] = []
   const proposals: ChatProposalCard[] = []
+  const replaced: string[] = []
   let suggestion: ChatSuggestionNote | null = null
   let notesTried = 0
   let lessonsTried = 0
@@ -515,7 +524,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       }
       return null
     })
-    const results = await Promise.all(toolCalls.map(async (call, index): Promise<{ block: Block; shape: ToolShape; proposal: ProposalCard | null }> => {
+    const ran = await Promise.all(toolCalls.map(async (call, index): Promise<{ name: string; id: string; output: ToolOutput; started: number; input: unknown }> => {
       const toolStarted = Date.now()
       const name = typeof call.name === 'string' ? call.name : ''
       const id = typeof call.id === 'string' && TOOL_USE_ID.test(call.id) ? call.id : ''
@@ -532,34 +541,44 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
             // A note about the person, checked against THEIR words of this message (learn-chat.ts); the profile, as data.
             noteLesson: (kind, note) => chatNoteLesson(ctx, kind, note, text, row.id),
             readNotes: () => readChatNotes(ctx),
+            kassalKey: ctx.foodKey ?? '',
           }),
           CHAT_LIMITS.toolTimeoutMs, timedOut,
         )
       stopTool.abort()
+      return { name, id, output, started: toolStarted, input: call.input }
+    }))
+    // Proposals are saved one after the other, in the order asked (never side by side): a newer one for the same thing
+    // replaces the older pending one, and two at once must not each replace the other.
+    const results: { block: Block; shape: ToolShape; proposal: ProposalCard | null }[] = []
+    for (const r of ran) {
+      const { name, id, output } = r
       let finalOutput = output
       let card: ProposalCard | null = null
       // Only a write tool can make a proposal.
       if (output.ok && output.proposal && chatToolKind(name) === 'write') {
         const made = await makeProposal(ctx, conversationId, id, output.proposal, now)
-        if (made) card = made
-        else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }
+        if (made) {
+          card = made
+          if (made.replaces.length) finalOutput = { ...output, text: `${output.text} It replaces your earlier proposal for the same thing (that card now says replaced).` }
+        } else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }
       }
       if (output.ok && output.noted && !suggestion) suggestion = { kind: output.noted.kind }
       if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
       const block = resultBlock(id, finalOutput)
       const bytes = JSON.stringify(block).length
-      const fields = call.input !== null && typeof call.input === 'object' ? Object.entries(call.input as Record<string, unknown>).filter(([, v]) => v !== '' && v !== 'any' && v !== null && v !== undefined).map(([k]) => k) : []
-      return {
+      const fields = r.input !== null && typeof r.input === 'object' ? Object.entries(r.input as Record<string, unknown>).filter(([, v]) => v !== '' && v !== 'any' && v !== null && v !== undefined).map(([k]) => k) : []
+      results.push({
         block,
         proposal: card,
-        shape: { name, fields, ok: finalOutput.ok, rows: output.ok ? output.rows ?? null : null, bytes, ms: Date.now() - toolStarted, ...(output.ok && output.fingerprint ? { fingerprint: output.fingerprint } : {}) },
-      }
-    }))
+        shape: { name, fields, ok: finalOutput.ok, rows: output.ok ? output.rows ?? null : null, bytes, ms: Date.now() - r.started, ...(output.ok && output.fingerprint ? { fingerprint: output.fingerprint } : {}) },
+      })
+    }
     const resultBlocks = results.map(r => r.block)
     for (const r of results) {
       toolsRunThisRound.push(r.shape)
       toolsRun.push(r.shape)
-      if (r.proposal) { proposals.push(r.proposal); emit({ event: 'proposal', ...r.proposal }) }
+      if (r.proposal) { proposals.push(r.proposal); replaced.push(...r.proposal.replaces); emit({ event: 'proposal', ...r.proposal }) }
       for (const inner of Array.isArray(r.block.content) ? r.block.content as Block[] : []) if (inner.type === 'search_result' && typeof inner.source === 'string') known.add(inner.source)
     }
     logRound()
@@ -583,7 +602,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   const wall = lastPrompt >= CHAT_LIMITS.wallTokens
   if (wall) await updateConversation(ctx.adminDb, ctx.userId, conversationId, { status: 'full' })
   return {
-    event: 'done', conversation_id: conversationId, text: endedWith.text, citations, proposals, rounds: answerMessages.length,
+    event: 'done', conversation_id: conversationId, text: endedWith.text, citations, proposals, replaced, rounds: answerMessages.length,
     cost_usd: Math.round(costTotal * 1_000_000) / 1_000_000, wall, run_id: runId, ending: endedWith.ending,
     prompt_tokens: lastPrompt, thinking: thinkingSummary, suggestion,
   }
@@ -591,20 +610,29 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
 
 type ProposalCard = ChatProposalCard
 
-/** Writes a proposal row for one tool call and returns the card; null when it could not be saved. One tool call makes one proposal. */
+/**
+ * Writes a proposal row for one tool call and returns the card; null when it could not be saved. One tool call makes one
+ * proposal. Once it is saved, the older PENDING proposals of this chat about the same thing (`proposalSubjects`) are marked
+ * replaced: that only closes their cards; it confirms, cancels and writes nothing else.
+ */
 async function makeProposal(ctx: RunContext, conversationId: string, toolUseId: string, draft: ProposalDraft, now: Date): Promise<ProposalCard | null> {
   if (!TOOL_USE_ID.test(toolUseId)) return null
   const id = ctx.newId()
   const expiresAt = new Date(now.getTime() + CHAT_LIMITS.proposalHours * 3_600_000).toISOString()
   const saved = await insertProposal(ctx.adminDb, { id, user_id: ctx.userId, conversation_id: conversationId, tool_use_id: toolUseId, tool: draft.tool, args: draft.args, summary: draft.summary, expires_at: expiresAt })
-  return saved ? { id, tool: draft.tool, summary: draft.summary, expires_at: expiresAt } : null
+  if (!saved) return null
+  const subjects = proposalSubjects(draft.tool, draft.args)
+  const older = subjects.length ? await pendingProposals(ctx.adminDb, ctx.userId, conversationId) : []
+  const same = (older ?? []).filter(p => p.id !== id && proposalSubjects(p.tool, p.args).some(k => subjects.includes(k))).map(p => p.id)
+  const replaces = await replaceProposals(ctx.adminDb, ctx.userId, conversationId, same, now.toISOString())
+  return { id, tool: draft.tool, summary: draft.summary, expires_at: expiresAt, replaces }
 }
 
 // ── The owner's tap ─────────────────────────────────────────────────────────
 
 export type ProposalDecision =
   | { ok: true; status: 'confirmed' | 'cancelled'; summary: string; result_id: string | null; tool: string; date?: string | null }
-  | { ok: false; reason: 'bad_input' | 'not_found' | 'already_decided' | 'expired' | 'failed' | 'off' | 'error'; message: string }
+  | { ok: false; reason: 'bad_input' | 'not_found' | 'already_decided' | 'replaced' | 'expired' | 'failed' | 'off' | 'error'; message: string }
 
 /**
  * Confirm or Cancel of a proposal. The proposal is read BY ID AND VERIFIED USER (a forged or another account's id finds
@@ -620,7 +648,7 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   if (found.error) return { ok: false, reason: 'error', message: 'The proposal could not be read. Try again in a moment.' }
   const proposal = found.proposal
   if (!proposal) return { ok: false, reason: 'not_found', message: 'That proposal was not found.' }
-  if (proposal.status !== 'pending') return { ok: false, reason: 'already_decided', message: `That proposal was already ${proposal.status === 'confirmed' ? 'confirmed' : proposal.status === 'cancelled' ? 'cancelled' : 'decided (saving it failed)'}.` }
+  if (proposal.status !== 'pending') return { ok: false, reason: proposal.status === 'replaced' ? 'replaced' : 'already_decided', message: `That proposal was already ${proposal.status === 'confirmed' ? 'confirmed' : proposal.status === 'cancelled' ? 'cancelled' : proposal.status === 'replaced' ? 'replaced by a newer one' : 'decided (saving it failed)'}.` }
   const now = ctx.now()
   // Fail closed: a date that cannot be read counts as expired.
   if (!(Date.parse(proposal.expires_at) > now.getTime())) {
@@ -630,7 +658,7 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   if (decision === 'cancel') {
     const won = await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
     // The owner's Cancel is a correction of the model's proposal (learn-chat.ts: the before is the stored args, never the browser's).
-    if (won) await chatProposalCorrections(ctx, proposal.tool, proposal.args, null, null)
+    if (won && (proposal.tool === 'add_task' || proposal.tool === 'log_food')) await chatProposalCorrections(ctx, proposal.tool, proposal.args, null, null)
     return won ? { ok: true, status: 'cancelled', summary: proposal.summary, result_id: null, tool: proposal.tool } : { ok: false, reason: 'already_decided', message: 'That proposal was already decided.' }
   }
   // The owner may edit the title and the date on the card; the edited values go through the same check as the proposal did.
@@ -641,6 +669,10 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     return { ok: false, reason: 'bad_input', message: 'The title and the date must be text.' }
   }
   const stored = proposal.args !== null && typeof proposal.args === 'object' && !Array.isArray(proposal.args) ? proposal.args as Record<string, unknown> : {}
+  // A change is confirmed as proposed (no edits on its card: Cancel and ask again); a food of the owner's own list keeps its own name.
+  const isChange = proposal.tool === 'update_food' || proposal.tool === 'update_task'
+  if (isChange && (editedTitle !== undefined || editedDate !== undefined)) return { ok: false, reason: 'bad_input', message: 'A change is confirmed as it was proposed. Cancel it and ask again to change it.' }
+  if (proposal.tool === 'log_food' && stored.basis === 'yours' && editedTitle !== undefined && editedTitle !== stored.title) return { ok: false, reason: 'bad_input', message: 'A food from your own list keeps its name. Cancel it and ask again for another one.' }
   const merged: Record<string, unknown> = {
     ...stored,
     ...(editedTitle !== undefined ? { title: editedTitle } : {}),
@@ -649,7 +681,7 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
   // The tool must still be "ask first": a tool the owner has since switched off writes nothing (the setting is read now, not when the chat began).
   const controls = await readChatControls(ctx.userDb, ctx.userId)
   if (!controls) return { ok: false, reason: 'error', message: 'Your Ask AI settings could not be read, so nothing was saved. Try again in a moment.' }
-  if (controls.modes[proposal.tool === 'add_task' ? 'propose_add_task' : 'propose_log_food'] !== 'ask') {
+  if (controls.modes[PROPOSAL_TOOL_NAME[proposal.tool]] !== 'ask') {
     await decideProposal(ctx.adminDb, ctx.userId, id, 'cancelled', now.toISOString())
     return { ok: false, reason: 'off', message: 'That kind of change is switched off for Ask AI, so nothing was saved.' }
   }
@@ -668,9 +700,9 @@ export async function decideChatProposal(ctx: RunContext, input: unknown): Promi
     return { ok: false, reason: 'failed', message: written.message }
   }
   await setProposalResult(ctx.adminDb, ctx.userId, id, written.id)
-  // What the owner kept or changed on the card (title, date), against the stored proposal.
-  await chatProposalCorrections(ctx, proposal.tool, proposal.args, rechecked.draft.args, null)
-  return { ok: true, status: 'confirmed', summary: rechecked.draft.summary, result_id: written.id, tool: proposal.tool, date: proposal.tool === 'log_food' ? String(rechecked.draft.args.date) : null }
+  // What the owner kept or changed on the card (title, date), against the stored proposal (a change has no edits to learn from).
+  if (!isChange) await chatProposalCorrections(ctx, proposal.tool, proposal.args, rechecked.draft.args, null)
+  return { ok: true, status: 'confirmed', summary: rechecked.draft.summary, result_id: written.id, tool: proposal.tool, date: proposal.tool === 'log_food' || proposal.tool === 'update_food' ? String(rechecked.draft.args.date) : null }
 }
 
 /** Deletes a chat softly (the Undo window; ai_chats_purge removes it for good later) or brings it back. */
