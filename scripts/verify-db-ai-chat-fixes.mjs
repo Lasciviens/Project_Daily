@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const FILE = '205_ai_chat_fixes.sql'
+const FILE_206 = '206_ai_chat_tool_count.sql'
 const fail = msg => { console.error(`verify-db-ai-chat-fixes: ${msg}`); process.exit(1) }
 const noComments = text => text.replace(/--.*$/gm, '')
 
@@ -34,6 +35,9 @@ const noComments = text => text.replace(/--.*$/gm, '')
   if (!/WRITE_TOOL_NAMES = \['propose_add_task', 'propose_log_food'\] as const/.test(rules) || !/FIX_TOOL_NAMES = \['propose_update_food', 'propose_update_task'\] as const/.test(rules)) problems.push('the function\'s write tools are not the four 205 names')
   if (!/PROPOSAL_TOOLS: readonly ProposalTool\[\] = \['add_task', 'log_food', 'update_food', 'update_task'\]/.test(tools)) problems.push('the function\'s proposal kinds are not the four 205 allows')
   if (problems.length) fail(`migration 205 has ${problems.join('; ')}`)
+  const s206 = noComments(readFileSync(mig(FILE_206), 'utf8'))
+  if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(s206) || /create table|grant |revoke |create policy|security definer|create or replace function|update |delete |insert /i.test(s206)) fail('migration 206 does more than replace one CHECK')
+  if (!/check \(cardinality\(tool_names\) <= 40 and pg_catalog\.array_to_string\(tool_names, ','\) ~ '\^\[a-z_,\]\*\$'\)/.test(s206)) fail('migration 206 does not keep 197\'s name check with the 40 cap')
 }
 
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
@@ -99,6 +103,18 @@ for (const s of suites) {
     }
     if (first !== second) throw Object.assign(new Error('not idempotent'), { stderr: 'ERROR: a second run of 205 changed the database' })
     done[s.key] = step(`${s.key}: scenarios`, () => runScenarios(target))
+    // 206: a new chat with every tool the code knows (18 since 205) is stored; 197's cap of 12 refused it (24.11.2026).
+    step(`${s.key}: ${FILE_206} twice`, () => { psql(target, ['-f', mig(FILE_206)]); psql(target, ['-f', mig(FILE_206)]) })
+    const insertChat = (id, n) => `set role service_role; insert into public.ai_conversations (id, user_id, title, model, effort, tools_hash, system_hash, tool_names) values ('${id}', '00000000-0000-0000-0000-000000000001', 'Tools', 'claude-haiku-5-5', 'medium', repeat('a', 64), repeat('b', 64), array(select 'tool_' || chr(96 + (i % 26) + 1) from generate_series(1, ${n}) i))`
+    step(`${s.key}: 206 stores a chat with 18 tools`, () => psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000018', 18)]))
+    step(`${s.key}: 206 stores a chat with 40 tools`, () => psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000040', 40)]))
+    let refused = false
+    try { psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000041', 41)]) } catch (e) { refused = /23514|violates check constraint/.test(String(e.stderr)) }
+    if (!refused) throw Object.assign(new Error('206 cap'), { stderr: 'ERROR: 206 let a chat store 41 tool names' })
+    let badName = false
+    try { psql(target, ['-c', `set role service_role; insert into public.ai_conversations (id, user_id, title, model, effort, tools_hash, system_hash, tool_names) values ('c6000000-0000-4000-8000-000000000099', '00000000-0000-0000-0000-000000000001', 'Tools', 'claude-haiku-5-5', 'medium', repeat('a', 64), repeat('b', 64), array['Get-Plan'])`]) } catch (e) { badName = /23514|violates check constraint/.test(String(e.stderr)) }
+    if (!badName) throw Object.assign(new Error('206 names'), { stderr: 'ERROR: 206 let a tool name outside [a-z_] in' })
+    done[s.key] += 4
   } catch (e) {
     code = 1
     if (e.stderr) console.error(e.stderr.toString())
@@ -108,4 +124,4 @@ for (const s of suites) {
   if (code) break
 }
 if (code) process.exit(code)
-console.log(`verify-db-ai-chat-fixes: 205 ran twice on two databases, changed only its three CHECKs and left each as its first run did; ${done.old} scenarios passed with the old default grants and ${done.now} without them`)
+console.log(`verify-db-ai-chat-fixes: 205 ran twice on two databases (then 206 twice: 18 and 40 tools stored, 41 and a bad name refused), changed only its three CHECKs and left each as its first run did; ${done.old} scenarios passed with the old default grants and ${done.now} without them`)
