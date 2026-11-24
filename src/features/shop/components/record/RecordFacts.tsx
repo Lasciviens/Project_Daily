@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CardHeader } from '../../../../shared/ui'
-import { Fact, FactChips, FactField, Toggle } from './factKit'
+import { Fact, FactChips, FactField } from './factKit'
+import { Toggle } from '../shopEditors'
 import { buyFacts, commonFacts, generalFacts, goneFacts, ownFacts, type FactCtx, type FactDef } from './factList'
 import type { RecordDraft, RecordDraftApi } from './useRecordDraft'
 import type { RecordState } from './recordState'
@@ -16,7 +17,7 @@ const RESALE_GONE = ['how', 'left', 'soldTo', 'got', 'saleRate']
  * Resale section (what it could sell for, bought to sell — or how it left).
  * A thing still yours shows its store and its return and complaint days in Purchase, never here too.
  */
-export function RecordFacts({ item, d, state, categories, today, parents, section = 'facts', create }: {
+export function RecordFacts({ item, d, state, categories, today, parents, section = 'facts', create, without: hidden = [] }: {
   item: ShopItem
   d: RecordDraftApi
   state: RecordState
@@ -30,6 +31,8 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
    * the record lists them; `without` names facts shown elsewhere in the popup (the link, which the link reader has).
    */
   create?: { without?: readonly string[] }
+  /** Facts another part of the body edits (a saved thing's link is the autofill's link field there). */
+  without?: readonly string[]
 }) {
   const [added, setAdded] = useState<Set<string>>(new Set())
   const v = { ...item, ...d.draft } as ShopItem & RecordDraft
@@ -45,10 +48,11 @@ export function RecordFacts({ item, d, state, categories, today, parents, sectio
     // A general wish has a priority at creation (the add form always had one), though its record shows none.
     ...(create && state === 'general' ? buyFacts(ctx).filter(f => f.id === 'priority') : []),
   ]) byId.set(f.id, f)
-  const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter((f): f is FactDef => !!f)
-  const bought = ['title', 'category', 'parent', 'bought', 'paid', 'rate', ...(state === 'mine' ? [] : ['store']), 'region', 'saved', 'serial', 'link', 'notes', 'picture', 'kept']
-  const without = new Set(create?.without ?? [])
-  // A thing not yet saved names its store here (a record of a thing still yours names it in Purchase).
+  const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter((f): f is FactDef => !!f && !without.has(f.id))
+  // The day and the store are edited here only (the Purchase editor shows them, never edits them twice — guardian, 24.11.2026).
+  const bought = ['title', 'category', 'parent', 'bought', 'paid', 'rate', 'store', 'region', 'saved', 'serial', 'link', 'notes', 'picture', 'kept']
+  const without = new Set([...(create?.without ?? []), ...hidden])
+  // What it is and where and when it was bought: the store and the day are Facts in every mode.
   const boughtAt = ['title', 'category', 'parent', 'bought', 'paid', 'rate', 'store', 'region', 'saved', 'serial', 'link', 'notes', 'picture', 'kept']
   // Created, a thing carries all of its facts at once: what it is and how it was bought, and — for something that has
   // left — how it went (the record keeps those two in Facts and Resale).

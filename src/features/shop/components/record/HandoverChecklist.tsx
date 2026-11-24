@@ -27,7 +27,7 @@ export function HandoverChecklist({ item, categories }: { item: ShopItem; catego
     <div>
       <CardHeader title="Before you hand it over" variant="label" className="mb-1"
         subtitle={list && !editing ? `${done} of ${steps.length}${list.category !== names[0] ? ` · ${list.category}` : ''}` : undefined}
-        action={!editing && <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>{list ? 'Edit steps' : `Make one for ${names[0]}`}</Button>} />
+        action={!editing && <Button size="sm" variant="ghost" onClick={() => setEditing(true)} tip={list ? 'Edit the steps' : `Make a checklist for ${names[0]}`}>{list ? 'Edit' : 'Make one'}</Button>} />
       {editing ? (
         <StepsEditor checklist={list} category={names[0]} steps={steps} onDone={() => setEditing(false)} />
       ) : list ? (

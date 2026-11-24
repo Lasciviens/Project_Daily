@@ -3,6 +3,11 @@ import type { ReactNode } from 'react'
 export type SegmentedOption<T extends string> = {
   value: T
   label: ReactNode
+  /**
+   * The full words of a short or icon label ("Gone" → "Sold or gone"): its title, accessible name and long-press bubble on
+   * touch (`app/longPressTips.ts`, owner 24.11.2026: short buttons). Start it with the label's own word.
+   */
+  tip?: string
 }
 
 type SegmentedControlProps<T extends string> = {
@@ -51,6 +56,9 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={isActive}
+            title={option.tip}
+            aria-label={option.tip}
+            data-tip={option.tip}
             onClick={() => onChange(option.value)}
             className={[
               'seg-btn flex items-center justify-center gap-1.5 whitespace-nowrap',

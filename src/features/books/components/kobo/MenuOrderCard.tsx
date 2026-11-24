@@ -88,7 +88,7 @@ export function MenuOrderCard() {
                 {expanded && (
                   <ol className="flex flex-col gap-0.5 pb-2">
                     {overrides?.[tab] && (
-                      <li className="pb-1"><Button size="sm" icon={<RotateCcw />} disabled={save.isPending} onClick={() => resetList(tab)}>Undo my changes to this list</Button></li>
+                      <li className="pb-1"><Button size="sm" icon={<RotateCcw />} disabled={save.isPending} onClick={() => resetList(tab)} tip="Undo my changes to this list">Undo</Button></li>
                     )}
                     {rows.map(({ id, index: i }) => (
                       <li key={`${id}-${i}`} className="flex items-center gap-1">

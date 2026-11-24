@@ -62,9 +62,9 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
         {handoff
-          ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => { modal.open({ kind: 'shop-receipt', files }); onHandoff?.() }}>From a receipt</PhotoButton>
-          : <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>}
-        {!data && <span className="text-meta text-fg-muted">{handoff ? 'AI reads up to 5 photos or PDFs; one draft per product' : 'AI reads a photo or PDF; you check it'}</span>}
+          ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => { modal.open({ kind: 'shop-receipt', files }); onHandoff?.() }} tip="Receipt — AI reads up to 5 photos or PDFs, one draft per product">Receipt</PhotoButton>
+          : <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending} tip={data ? 'Another receipt' : 'Receipt — AI reads a photo or PDF; you check it'}>{data ? 'Another' : 'Receipt'}</PhotoButton>}
+        {/* What it does is the button's tip (short buttons, 24.11.2026): the row keeps room for what shares it. */}
       </div>
       {data && fill && (
         <>
@@ -77,7 +77,7 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false
               {lines.map((l, i) => (
                 <ChoiceChip key={i} on={pick === i} onClick={() => setPick(i)}>{l.name}{l.price != null ? ` · ${l.price}` : ''}</ChoiceChip>
               ))}
-              <ChoiceChip on={pick === 'total'} onClick={() => setPick('total')}>Use the total</ChoiceChip>
+              <ChoiceChip on={pick === 'total'} onClick={() => setPick('total')}>Total</ChoiceChip>
             </div>
           )}
           {pickLines && fill.left.map(l => <p key={l} className="text-meta text-warn">{l}</p>)}

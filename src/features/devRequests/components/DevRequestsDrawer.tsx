@@ -294,10 +294,10 @@ export function DevRequestsDrawer() {
                   icon={<Trash2 />}
                   onClick={() => void handleDeleteAllClosed()}
                   disabled={remove.busy}
-                  title="Delete every done + dismissed request"
+                  tip="Delete all closed — every done and dismissed request"
                   className="text-fg-muted hover:!text-danger"
                 >
-                  Delete all closed
+                  Delete closed
                 </Button>
               </div>
               {showDone && (

@@ -79,7 +79,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
           s.clearEditDraft(target.id)
           s.beginNewDraft(readPage(), pageOptionFor(pathname))
           s.openComposer({ kind: 'new' })
-        }}>Write a new request</Button>
+        }} tip="New — write a new request">New</Button>
       </div>
     )
   }
@@ -140,7 +140,7 @@ export function ComposerRequestView({ target, readPage, onPick, onQuote, mouse, 
     <>
       <Button size="sm" variant="ghost" icon={<Sparkles />} loading={draftAi.isPending} disabled={isDraftEmpty(fields) || marked} onClick={() => { void tidyUp() }}
         title={marked ? 'Off while the request has Pick links or review marks: the AI never reads or changes them' : 'AI: turn what you wrote or dictated into a title, page, category, priority and points (English). Your words stay under "Said:", Undo puts everything back'}>Tidy up</Button>
-      <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} title={`Point at something on the page: a link to it goes where the caret is${mouse ? ' (or Alt-click anything while this window is open)' : ''}`}>Pick on page</Button>
+      <Button size="sm" variant="ghost" icon={<Crosshair />} onClick={onPick} tip={`Pick — point at something on the page: a link to it goes where the caret is${mouse ? ' (or Alt-click anything while this window is open)' : ''}`}>Pick</Button>
       {onQuote && (
         // mousedown would clear the page selection before the click reads it.
         <Button size="sm" variant="ghost" icon={<Quote />} onMouseDown={e => e.preventDefault()} onClick={onQuote}>Quote selection</Button>
@@ -230,7 +230,7 @@ function RecheckHeader({ recheck }: { recheck: RecheckOf }) {
     <button
       type="button"
       onClick={() => open(recheck.of)}
-      title="Open the request these points first came from"
+      title="Re-check of These points went to Claude before and the fix did not work. — open the request these points first came from"
       data-tone="info"
       className="tone-soft flex w-full min-w-0 items-start gap-2.5 rounded-row border border-[rgb(var(--tone)/0.35)] px-3 py-2.5 text-left transition-colors [@media(hover:hover)]:hover:border-[rgb(var(--tone)/0.6)]"
     >
@@ -275,11 +275,11 @@ function ReviewBar({ points, sending, onSend, onMarkDone }: {
       {(notFixed.length > 0 || (resolved && onMarkDone)) && (
         <div className="flex flex-wrap items-center gap-2">
           {notFixed.length > 0 && (
-            <Button size="sm" icon={<Send />} loading={sending} onClick={() => onSend(notFixed)} title="Collect the Not fixed points into one re-check request">
-              Send {notFixed.length} not fixed to re-check
+            <Button size="sm" icon={<Send />} loading={sending} onClick={() => onSend(notFixed)} tip={`Re-check — send the ${notFixed.length} not fixed points as one re-check request`}>
+              Re-check · {notFixed.length}
             </Button>
           )}
-          {resolved && onMarkDone && <Button size="sm" icon={<CheckCheck />} onClick={onMarkDone}>Mark request done</Button>}
+          {resolved && onMarkDone && <Button size="sm" icon={<CheckCheck />} onClick={onMarkDone} tip="Done — mark the request done">Done</Button>}
         </div>
       )}
     </section>

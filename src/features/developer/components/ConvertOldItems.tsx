@@ -38,8 +38,8 @@ export function ConvertOldItemsButton() {
   const count = p?.futureStandaloneBlocks ?? 0
   return (
     <>
-      <Button size="sm" icon={<ArrowRightLeft />} onClick={show} title="Make slots from before the change into items Daily can tick — shows what changes first">
-        Convert old items
+      <Button size="sm" icon={<ArrowRightLeft />} onClick={show} tip="Convert — make slots from before the change into items Daily can tick; shows what changes first">
+        Convert
       </Button>
       <ModalShell
         open={open}

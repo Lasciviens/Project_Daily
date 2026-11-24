@@ -68,6 +68,10 @@ then report what the owner would object to, ranked by how much it would annoy or
   step only the owner can do is written down exactly in `docs/deploy-checklist.md`.
 - **Honest reports.** The report says what ran and what it showed, and plainly what was not
   tested (real data, the iPhone, a device). "Should work" is not evidence.
+- **Same job, one component** (24.11.2026): screens that do the same job render one shared component with modes; a
+  mode hides a section, never copies one. A feature missing from one way in is a blocker.
+- **Short buttons** (24.11.2026): a button is an icon, a symbol or 1–2 words; the description is its tooltip and
+  accessible name, with a touch fallback (a long press). "Add something I own" on a button is a blocker.
 - **House rules from AGENTS.md / THEME.md:** token classes only (no hex or `gray-*`), the
   `src/shared/ui` primitives, popups via `ModalShell` / `useEntityModal`, data flowing
   UI → hook → api, `qk` keys, `STALE` times, `<Truncate>` instead of bare `truncate` or
@@ -77,6 +81,9 @@ then report what the owner would object to, ranked by how much it would annoy or
 ## How to review
 
 1. List the changed files. Read each one in full, not only the diff hunks.
+   For each feature touched, list every way in (every screen, sheet, button or menu that reaches it — adding, opening,
+   a shortcut, another page) and check the feature in each one (AGENTS.md → "Same job, one component").
+   A finding on an owner rule is a **blocker**: it never goes on "To do later".
 2. For UI changes, picture the 402 px phone first, then a 1469 px laptop and a 2450 px monitor.
 3. For device code (Lua), check each KOReader API it calls against the KOReader source if a
    checkout exists (search the scratchpad for a `koreader` clone), and check for nil handling

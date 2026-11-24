@@ -69,7 +69,7 @@ export function WeightDetail({ hero, onViewDay }: Props) {
       <PlainAim plain={TILE_PLAIN.weight} better={BETTER_LABEL.range} aim={hero.aims.weight} />
       {/* The goal weight is set in the one goal editor (the `day-targets` popup). */}
       <Button size="sm" variant="secondary" className="self-start" icon={<Pencil aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
-        {hero.goalWeightKg != null ? 'Edit goal' : 'Set a goal weight'}
+        {hero.goalWeightKg != null ? 'Edit goal' : 'Set goal'}
       </Button>
       {!isDay && (
         <DailyTrend series={w.series} from={F} to={A} kind="line" rolling={rollingFor(hero.days)} label="weigh-in" unit="kg"

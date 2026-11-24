@@ -61,7 +61,7 @@ export default function WeekSheet({ tasks, onClose }: { tasks: Task[]; onClose: 
     <ModalShell onClose={onClose} title="Write my week" subtitle={`${formatDateRange(new Date(`${start}T00:00:00`), new Date(`${end}T00:00:00`))} · ${facts}`} size="md" compact
       footer={
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={() => run(true)} disabled={loading || nothing || write.isPending} title="A second AI call: the text you have now is kept for Undo">Write again</Button>
+          <Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={() => run(true)} disabled={loading || nothing || write.isPending} title="Write again — a second AI call: the text you have now is kept for Undo">Write again</Button>
           <Button size="sm" variant="ghost" onClick={onClose} className="ml-auto">Close</Button>
           <Button size="sm" variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!text.trim()}>Copy</Button>
         </div>
@@ -77,7 +77,7 @@ export default function WeekSheet({ tasks, onClose }: { tasks: Task[]; onClose: 
           <textarea value={text} onChange={e => setText(e.target.value)} rows={9} maxLength={1500} aria-label="The week's status text" className="input w-full resize-y py-2" aria-busy={write.isPending || undefined} />
           <p className="text-meta text-fg-muted">
             Written by AI{costNote(cost) ? ` (${costNote(cost)})` : ''} from your closed and open tasks, goals and notes — read it before you send it. Not saved.
-            {replaced !== null && <> <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => { setText(replaced); setReplaced(null) }}>Undo the rewrite</button></>}
+            {replaced !== null && <> <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => { setText(replaced); setReplaced(null) }} title="Undo the rewrite">Undo</button></>}
           </p>
         </div>
       )}

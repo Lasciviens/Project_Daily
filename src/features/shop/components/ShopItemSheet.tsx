@@ -1,12 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals/ModalShell'
+import { useEntityModal } from '../../../shared/modals'
 import { Button, Skeleton } from '../../../shared/ui'
 import { useCreateShopCategory, useCreateShopItem, useDeleteShopItems, useShopCategories, useUpdateShopItem } from '../hooks/useShop'
 import { useQuietCheck } from '../hooks/useShopPrices'
 import { useResolveCategory } from '../hooks/useCategorySuggestions'
-import { currencyOf, isSuggested, listOf } from '../shopModel'
-import { factsToSave } from '../factsKept'
+import { categoryIdOf, currencyOf, isSuggested, listOf } from '../shopModel'
 import { NEW_CATEGORY, ShopItemForm, type ShopDraft } from './ShopItemForm'
 import type { ShopCategory, ShopItem, ShopList } from '../types'
 
@@ -76,11 +76,20 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   const [draft, setDraft] = useState<ShopDraft>(seed)
   const [saving, setSaving] = useState(false)
   const editing = !!item
-  // The autofill's answers land later: worked out from the draft as it is then; nothing changed is no new draft.
-  const update = useCallback((change: (d: ShopDraft) => Partial<ShopDraft>) => setDraft(d => {
-    const patch = change(d)
-    return Object.keys(patch).length ? { ...d, ...patch } : d
-  }), [])
+  const modal = useEntityModal()
+  // A new row that is to be a wish is added in the one body (RecordBody, mode add), with what was typed here.
+  function asWish() {
+    const top = draft.topId && !isSuggested(draft.topId) && draft.topId !== NEW_CATEGORY ? draft.topId : ''
+    const sub = draft.subId && !isSuggested(draft.subId) && draft.subId !== NEW_CATEGORY ? draft.subId : ''
+    const categoryId = top ? categoryIdOf({ topId: top, subId: sub }) ?? undefined : undefined
+    onClose()
+    // Everything typed here goes with it (critic, 24.11.2026): the wish starts where the errand left off.
+    modal.open({ kind: 'shop-item', defaults: {
+      list: 'wishlist', title: draft.title.trim() || undefined, categoryId, platform: draft.platform.trim() || undefined,
+      price: draft.price, currency: draft.currency, url: draft.url.trim() || undefined, notes: draft.notes.trim() || undefined,
+      priority: draft.priority, plannedDate: draft.plannedDate || undefined, region: draft.region || undefined,
+    } })
+  }
 
   async function resolveCategory(): Promise<string | null> {
     // A suggestion picked in the form is made now, with the save (never on the pick).
@@ -135,20 +144,9 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
             ...(draft.price !== item.price ? { price_source: draft.price != null ? 'manual' : null } : {}),
           },
         })
-      } else if (draft.general && draft.list === 'wishlist') {
-        await createItem.mutateAsync({ input: {
-          ...fields, kind: 'general', price: null, currency: draft.currency, platform: null, url: null, planned_date: null,
-          price_min: draft.priceMin, price_max: draft.priceMax, requirements: draft.requirements.trim() || null, reason: draft.reason || null,
-        } })
       } else {
-        // The facts the owner kept, with their sources; the EAN in its own column.
-        const kept = draft.list === 'wishlist' ? factsToSave(draft.facts, draft) : { ean: null, facts: null }
-        const row = await createItem.mutateAsync({ input: {
-          ...fields, currency: draft.price != null ? draft.currency : null,
-          ...(draft.list === 'wishlist' ? { reason: draft.reason || null, image_url: draft.image } : {}),
-          ...(kept.ean ? { ean: kept.ean } : {}),
-          ...(kept.facts ? { facts: kept.facts } : {}),
-        } })
+        // A new row here is an errand (a wish is added in the one body): what, where, a note.
+        const row = await createItem.mutateAsync({ input: { ...fields, currency: draft.price != null ? draft.currency : null } })
         if (row.url && row.list !== 'quick') check([row.id])
       }
       onClose()
@@ -171,7 +169,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
   return (
     <ModalShell
       onClose={onClose}
-      title={editing ? 'Edit item' : draft.list === 'quick' ? 'Add to the quick list' : draft.general ? 'Add a wish' : 'Add to the wishlist'}
+      title={editing ? 'Edit item' : 'Add to the quick list'}
       size="md"
       dismissible={!saving}
       footer={
@@ -181,7 +179,7 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
           )}
           <Button onClick={onClose} disabled={saving} className="ml-auto">Cancel</Button>
           <Button variant="primary" onClick={() => { void save() }} loading={saving} disabled={!draft.title.trim() || newTopMissing || newSubMissing}>
-            {editing ? 'Save' : draft.general ? 'Add wish' : 'Add item'}
+            {editing ? 'Save' : 'Add'}
           </Button>
         </div>
       }
@@ -189,9 +187,9 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
       <ShopItemForm
         draft={draft}
         onChange={patch => setDraft(d => ({ ...d, ...patch }))}
-        update={update}
         categories={categories}
         editing={editing}
+        onWish={asWish}
       />
     </ModalShell>
   )

@@ -51,8 +51,8 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   if (kind === 'library') {
     return (
       <StateCard icon={<LibraryBig {...ICON} />} title="Your library is empty" actions={<>
-        <button type="button" className="tg-btn tg-btn-primary" onClick={() => useTgAddGame.getState().setOpen(true)}>
-          <Plus size={17} strokeWidth={2} />Add a game
+        <button title="Add a game" type="button" className="tg-btn tg-btn-primary" onClick={() => useTgAddGame.getState().setOpen(true)}>
+          <Plus size={17} strokeWidth={2} />Add
         </button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('steam')}>Open Steam</button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('playstation')}>Open PlayStation</button>
@@ -67,8 +67,8 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
     const clear = () => { const s = act(); s.setSearch(''); s.clearFilters() }
     return (
       <StateCard icon={<SearchX {...ICON} />} title="No games match your search or filters" actions={
-        <button type="button" className="tg-btn tg-btn-primary" onClick={clear}>
-          <FilterX size={17} strokeWidth={2} />Clear search &amp; filters
+        <button title="Clear search and filters" type="button" className="tg-btn tg-btn-primary" onClick={clear}>
+          <FilterX size={17} strokeWidth={2} />Clear
         </button>
       }>
         {search.trim() ? `Nothing here matches “${search.trim()}”. ` : ''}Clear them to see every game again.
@@ -89,7 +89,7 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   const narrowed = section === 'library' && statuses.length > 0
   return (
     <StateCard icon={<Inbox {...ICON} />} title="Nothing here yet" actions={narrowed && (
-      <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setStatus('all')}>Show all games</button>
+      <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setStatus('all')} title="All games — show all games">All games</button>
     )}>
       {sectionHint(section, statuses)}
     </StateCard>

@@ -37,10 +37,10 @@ export function PickedUpToday({ items }: { items: readonly ShopItem[] }) {
   const [open, setOpen] = useState(false)
   return (
     <section className="max-w-2xl">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+      <button title="Picked up today" type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
         className="flex min-h-[44px] items-center gap-1.5 text-body font-semibold text-fg-muted transition-colors hover:text-fg-2">
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', open && 'rotate-180')} />
-        Picked up today <span className="count-badge">{items.length}</span>
+        Picked up <span className="count-badge">{items.length}</span>
       </button>
       {open && (
         <ul className="mt-1 divide-y divide-line rounded-card border border-line bg-surface">

@@ -125,7 +125,7 @@ export function TransitCard() {
         )}
         <div className="mt-3 border-t border-line pt-3">
           {showDepartures || !tripPlace
-            ? <Button size="sm" onClick={() => openPlanner(null)} block>{stops.length ? 'Plan a trip' : 'Add a stop'}</Button>
+            ? <Button size="sm" onClick={() => openPlanner(null)} block tip={stops.length ? 'Plan a trip' : 'Add a stop'}>{stops.length ? 'Plan trip' : 'Add stop'}</Button>
             : <Button size="sm" onClick={() => openPlanner(tripPlace.id)} block>More options</Button>}
         </div>
       </WidgetShell>

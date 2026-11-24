@@ -70,7 +70,7 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
       )}
       {pick?.source === 'least_recent' && routine && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="primary" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine, { date: today })}>Plan this session</Button>
+          <Button size="sm" variant="primary" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine, { date: today })} tip="Plan this session">Plan</Button>
         </div>
       )}
     </Card>
@@ -207,7 +207,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
       ),
       note: plan.needsCurrentProgram && (
         <p className="max-w-2xl text-meta text-fg-muted">
-          Targets need a current program. <button type="button" className="font-semibold text-accent-600" onClick={() => onGoTo('program')}>Pick it on the Program tab</button>.
+          Targets need a current program — pick it on the <button type="button" className="font-semibold text-accent-600" onClick={() => onGoTo('program')}>Program tab</button>.
         </p>
       ),
     }} />

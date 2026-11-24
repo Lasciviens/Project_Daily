@@ -383,7 +383,7 @@ export function ownedFilterCount(f: OwnedFilters): number {
 
 export type OwnedSort = 'recent' | 'price' | 'month' | 'title' | 'kept'
 export const OWNED_SORT_LABEL: Record<OwnedSort, string> = {
-  recent: 'Newest first', price: 'Paid, most first', month: 'Per month, most first', title: 'A–Z', kept: 'Kept longest',
+  recent: 'Newest', price: 'Paid most', month: 'Per month', title: 'A–Z', kept: 'Kept longest',
 }
 
 export function sortOwned(list: readonly ShopItem[], sort: OwnedSort, ctx: MoneyCtx, today: string, acc: Map<string, ShopItem[]>): ShopItem[] {

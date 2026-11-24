@@ -398,7 +398,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
             {canStartRewatch && (
               // The hook says which round ("Watching again · round 3", "· from …" when it picked up a pass under way).
               <Button size="sm" variant="ghost" icon={<Repeat />} disabled={updating} loading={startRewatch.isPending} onClick={() => { void handleWatchAgain() }}
-                title="Watch it again from the start: progress follows the new round until every episode is watched again">
+                title="Start rewatch — watch it again from the start: progress follows the new round until every episode is watched again">
                 Start rewatch
               </Button>
             )}
@@ -474,7 +474,7 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         {isMovie && <PlanThisButton entryId={entryId} title={movie!.title} runtimeMinutes={movie!.runtime} />}
         {tvEntry?.status === 'watching' && (
           <Button size="sm" icon={<SkipForward />} onClick={handleNextEpisode} loading={markWatched.isPending}
-            title="Record the next episode as watched">
+            title="Next episode — record the next episode as watched">
             Next episode
           </Button>
         )}

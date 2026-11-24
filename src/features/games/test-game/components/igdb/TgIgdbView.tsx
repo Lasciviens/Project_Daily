@@ -113,11 +113,11 @@ export function TgIgdbView({ games, counted, loading }: { games: TgGame[]; count
 
         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {running && progress ? (
-            <button type="button" onClick={runner.stop} className="tg-btn tg-btn-secondary"><Square className="h-4 w-4" aria-hidden /> Stop after this batch</button>
+            <button title="Stop after this batch" type="button" onClick={runner.stop} className="tg-btn tg-btn-secondary"><Square className="h-4 w-4" aria-hidden /> Stop</button>
           ) : (
-            <button type="button" onClick={() => void runner.run(pending)} disabled={!pending.length || running} className="tg-btn tg-btn-secondary">
+            <button title={pending.length ? `Match ${pending.length.toLocaleString('en-GB')} game${pending.length === 1 ? '' : 's'}` : 'All shown games looked up'} type="button" onClick={() => void runner.run(pending)} disabled={!pending.length || running} className="tg-btn tg-btn-secondary">
               <Search className="h-4 w-4" aria-hidden />
-              {pending.length ? `Match ${pending.length.toLocaleString('en-GB')} game${pending.length === 1 ? '' : 's'}` : 'All shown games looked up'}
+              {pending.length ? `Match · ${pending.length.toLocaleString('en-GB')}` : 'All matched'}
             </button>
           )}
           <button type="button" onClick={() => void runner.saveTicked(list)} disabled={!tickedGames.length || running} className="tg-btn tg-btn-primary">
@@ -126,16 +126,16 @@ export function TgIgdbView({ games, counted, loading }: { games: TgGame[]; count
         </div>
         <div className="mt-1 flex flex-wrap gap-x-4">
           {likely.length > 0 && (
-            <button type="button" onClick={() => set({ ticked: { ...ticked, ...Object.fromEntries(likely.map(g => [g.id, true])) } })}
+            <button title={`Tick all ${likely.length} likely`} type="button" onClick={() => set({ ticked: { ...ticked, ...Object.fromEntries(likely.map(g => [g.id, true])) } })}
               className="inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)]">
-              <CheckCheck className="h-4 w-4" aria-hidden /> Tick all {likely.length} likely
+              <CheckCheck className="h-4 w-4" aria-hidden /> Tick likely · {likely.length}
             </button>
           )}
           {cover.matched > 0 && (
             <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending || running}
-              title="Ratings and lengths change as IGDB members submit them"
+              title="Refresh scores and lengths — ratings and lengths change as IGDB members submit them"
               className="inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)] disabled:opacity-50">
-              <RefreshCw className={`h-4 w-4 ${refresh.isPending ? 'animate-spin' : ''}`} aria-hidden /> Refresh scores and lengths
+              <RefreshCw className={`h-4 w-4 ${refresh.isPending ? 'animate-spin' : ''}`} aria-hidden /> Refresh
             </button>
           )}
         </div>
@@ -152,7 +152,7 @@ export function TgIgdbView({ games, counted, loading }: { games: TgGame[]; count
           ))}
           {list.length > shown && (
             <li className="py-2 text-center">
-              <button type="button" onClick={() => setShown(n => n + PAGE)} className="tg-btn tg-btn-secondary">Show {Math.min(PAGE, list.length - shown)} more of {list.length - shown}</button>
+              <button type="button" onClick={() => setShown(n => n + PAGE)} className="tg-btn tg-btn-secondary" title={`Show ${Math.min(PAGE, list.length - shown)} more of ${list.length - shown}`}>More · {Math.min(PAGE, list.length - shown)}</button>
             </li>
           )}
         </ul>

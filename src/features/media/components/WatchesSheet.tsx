@@ -81,7 +81,7 @@ export function WatchesSheet({ title, target, watches, editable, traktWaits = fa
       footer={
         <div className="flex justify-between gap-2">
           {editable && editing !== 'new'
-            ? <Button variant="ghost" icon={<Plus />} disabled={busy} onClick={() => setEditing('new')}>Add a watch</Button>
+            ? <Button variant="ghost" icon={<Plus />} disabled={busy} onClick={() => setEditing('new')} tip="Watch — add one">Watch</Button>
             : <span />}
           <Button variant="primary" onClick={onClose}>Done</Button>
         </div>

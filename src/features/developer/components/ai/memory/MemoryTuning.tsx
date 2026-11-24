@@ -107,7 +107,7 @@ export function MemoryTuning() {
     <>
       <section className="card flex flex-col gap-2 p-3">
         <p className="text-meta text-fg-2">Every Monday after the weekly report. {list.length ? `${list.length} ${list.length === 1 ? 'run' : 'runs'} kept, ${formatUsd(total)} in all.` : ''}</p>
-        <div><Button size="sm" icon={<FlaskConical />} loading={make.isPending} disabled={waiting} onClick={() => make.mutate()}>Run the self-test now</Button></div>
+        <div><Button size="sm" icon={<FlaskConical />} loading={make.isPending} disabled={waiting} onClick={() => make.mutate()} tip="Self-test — run it now">Self-test</Button></div>
       </section>
       <Champions jobs={jobs.data ?? []} />
       <ReadState query={runs} what="the self-tests" count={list.length} empty="No self-test yet. A job needs 4 saved cases in its test share and new fixes since the last run — with only a few cases that can take weeks, and nothing can win until then." />

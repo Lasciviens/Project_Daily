@@ -197,8 +197,8 @@ export function TimeSection({
               <TimeWheel label="Ends" value={end.time}
                 onChange={time => patch(withEnd({ date, time: form.time }, endOnWheel(showDate ? end.date : date, form.time ?? time, time, showDate)))} />
               <div className="flex justify-center">
-                <button type="button" onClick={() => { patch({ duration: null, badEnd: null }); toggle(null) }} className={chipClass('remove')}>
-                  No end · doesn&apos;t block time
+                <button type="button" onClick={() => { patch({ duration: null, badEnd: null }); toggle(null) }} className={chipClass('remove')} title="No end — doesn't block time">
+                  No end
                 </button>
               </div>
             </Panel>

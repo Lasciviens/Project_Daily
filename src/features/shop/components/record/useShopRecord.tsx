@@ -1,6 +1,6 @@
 import type { RecordFact } from '../../shopSuggestions'
-import { useMemo, type ReactNode } from 'react'
-import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, ListX, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -19,9 +19,14 @@ import type { ShopDisposal, ShopItem } from '../../types'
 
 /** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone). */
 export interface RecordAction {
-  key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
-  /** An icon button: the label is its accessible name and its title (a hover says what it does). */
+  key: string
+  /** The button's own words: 1–2 words, or none for an icon (owner, 24.11.2026: short buttons). */
+  label: string
+  icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
+  /** An icon button: the tip (or the label) is its accessible name and its title. */
   iconOnly?: boolean
+  /** The full description: its accessible name, a hover's title, a long press's bubble on touch, and its line behind ⋯. */
+  tip?: string
 }
 
 /** What Undo takes back, in words, for the confirm. */
@@ -41,7 +46,7 @@ export const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
  * (Save only when something changed; closing with changes asks first), and
  * its one row of actions.
  */
-export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, onClose: () => void) {
+export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, onClose: () => void, openSection?: 'money' | 'purchase') {
   const modal = useEntityModal()
   const today = todayStr()
   const { data: items = [] } = useShopItems()
@@ -55,8 +60,14 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
-  // Bought on a wish opens Just bought over the record (online or in a shop, the store, the return date and its reason).
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
+  // Bought on a wish opens the record's own Purchase editor in place (owner, 24.11.2026: one screen — never a second popup on
+  // top); the Just bought popup is only for the ways in that have no record open (a tile, Needs a look, Daily).
+  const [purchaseEditing, setPurchaseEditing] = useState(openSection === 'purchase')
+  // The in-place Purchase editor's unsaved edits: closing asks about them too.
+  const [purchaseDirty, setPurchaseDirty] = useState(false)
+  const buy = useBuyNow(() => setPurchaseEditing(true), { thenDetails: true })
+  // A model bought from this general wish: its own record takes this one's place, its Purchase open (never a popup on top).
+  const buyModelNow = useBuyNow(id => { onClose(); modal.open({ kind: 'shop-item', id, section: 'purchase' }) }, { thenDetails: true })
   const d = useRecordDraft(item, openFact ?? null)
   const state = recordState(item)
   const owned = state === 'mine' || state === 'gone'
@@ -95,7 +106,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
 
   /** Close, asking first when there are changes; false when the owner kept them. */
   async function close(): Promise<boolean> {
-    if (d.dirty && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return false
+    if ((d.dirty || purchaseDirty) && !(await modal.confirm({ title: 'Discard your changes?', message: 'They are not saved yet.', confirmLabel: 'Discard', destructive: true }))) return false
     onClose()
     return true
   }
@@ -116,30 +127,30 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   // One row of actions. Where the record is narrow it keeps one line: the first ones as buttons, the rest behind ⋯.
   const actions: RecordAction[] = []
   if (state === 'buy') {
-    actions.push({ key: 'bought', label: 'Bought', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
+    actions.push({ key: 'bought', label: 'Bought', tip: 'Bought — fill in how and where', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
     actions.push(item.task_id
-      ? { key: 'task', label: 'Open the task', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
-      : { key: 'plan', label: 'Plan it', icon: <CalendarPlus />, onClick: then(plan) })
+      ? { key: 'task', label: 'Task', tip: 'Task — open it', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
+      : { key: 'plan', label: 'Plan', tip: 'Plan it — a task in the calendar', icon: <CalendarPlus />, onClick: then(plan) })
     if (!item.option_for && !item.accessory_of) {
-      actions.push({ key: 'errand', label: item.errand ? 'Off the errand list' : 'On the next errand', icon: <ListPlus />, ghost: true, more: true,
+      actions.push({ key: 'errand', label: 'Errand', tip: item.errand ? 'Errand — off the errand list' : 'Errand — on the next one', icon: item.errand ? <ListX /> : <ListPlus />, iconOnly: true, ghost: true, more: true,
         onClick: then(() => update.mutate({ id: item.id, patch: { errand: !item.errand }, quiet: true })) })
     }
-    actions.push({ key: 'drop', label: item.option_for ? 'Not chosen' : 'Not any more', icon: <Ban />, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'drop', label: 'Drop', tip: item.option_for ? 'Drop — not chosen' : 'Drop — not any more', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'general' && item.status === 'wishlist') {
-    actions.push({ key: 'model', label: 'Add a model', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
-    actions.push({ key: 'drop', label: 'Not any more', icon: <Ban />, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'model', label: 'Model', tip: 'Model — add one', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
+    actions.push({ key: 'drop', label: 'Drop', tip: 'Drop — not any more', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'mine') {
-    actions.push({ key: 'sell', label: 'Sell', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
-    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
-    actions.push({ key: 'wrong', label: 'Something\'s wrong', icon: <TriangleAlert />, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
+    actions.push({ key: 'sell', label: 'Sell', tip: 'Sell or give away', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
+    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', tip: 'Accessory — add one', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
+    actions.push({ key: 'wrong', label: 'Problem', tip: 'Problem — something\'s wrong: complain or claim money back', icon: <TriangleAlert />, iconOnly: true, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
-  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy up info', icon: <Sparkles />, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
+  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy', tip: 'Tidy up info with AI — name, brand, model, category', icon: <Sparkles />, iconOnly: true, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
   if (state === 'gone' || item.disposal === 'returned') {
     // Asks first (owner, 23.11.2026): an icon is easy to hit by mistake, and the sale's money goes with it.
     const what = item.disposal ? UNDO_WORD[item.disposal] : 'this'
-    actions.push({ key: 'undo', label: 'Undo: still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
+    actions.push({ key: 'undo', label: 'Undo', tip: 'Undo — still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
       void modal.confirm({
         title: 'Still yours?',
         message: `This takes back ${what}${item.disposed_on ? ` on ${formatDate(item.disposed_on)}` : ''}.`,
@@ -147,11 +158,17 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
       }).then(ok => { if (ok) undoSale.mutate(item.id) })
     } })
   }
-  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
+  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Put back', tip: 'Put back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 
   return {
     item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,
     pill, subtitle, actions, save, close, del, saving: update.isPending, buy: () => buy(item),
+    purchaseEditing, setPurchaseEditing, purchaseDirty, setPurchaseDirty,
+    /**
+     * A model of this general wish bought, the record's own way (critic, 24.11.2026): the wish's draft is saved first, as Bought
+     * does — a failed save stops it, so no edit is lost — then the model's record takes this one's place with its Purchase open.
+     */
+    buyModel: (model: ShopItem) => { void then(() => buyModelNow(model))() },
   }
 }
 

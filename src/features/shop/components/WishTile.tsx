@@ -128,14 +128,14 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           </MenuButton>
           <MenuItems anchor="bottom end" transition
             className="menu w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-            <MenuItem><button type="button" onClick={onOpen} className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Open and edit</button></MenuItem>
+            <MenuItem><button type="button" onClick={onOpen} title="Open and edit" className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Open</button></MenuItem>
             <MenuItem>
               {item.task_id
-                ? <button type="button" onClick={onOpenTask} className="menu-item"><ArrowRight aria-hidden className="h-4 w-4" /> Open the task</button>
-                : <button type="button" onClick={onPlan} className="menu-item"><CalendarPlus aria-hidden className="h-4 w-4" /> Plan it as a task</button>}
+                ? <button type="button" onClick={onOpenTask} title="Task — open the task" className="menu-item"><ArrowRight aria-hidden className="h-4 w-4" /> Task</button>
+                : <button type="button" onClick={onPlan} title="Plan it as a task" className="menu-item"><CalendarPlus aria-hidden className="h-4 w-4" /> Plan</button>}
             </MenuItem>
-            <MenuItem><button type="button" onClick={onMoveToQuick} className="menu-item"><ListPlus aria-hidden className="h-4 w-4" /> Move to the quick list</button></MenuItem>
-            <MenuItem><button type="button" onClick={onDrop} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Not any more</button></MenuItem>
+            <MenuItem><button type="button" onClick={onMoveToQuick} title="Quick list — move to the quick list" className="menu-item"><ListPlus aria-hidden className="h-4 w-4" /> Quick list</button></MenuItem>
+            <MenuItem><button type="button" onClick={onDrop} title="Drop — not any more" className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Drop</button></MenuItem>
             <div className="menu-sep" />
             <MenuItem><button type="button" onClick={onDelete} className="menu-item is-danger"><Trash2 aria-hidden className="h-4 w-4" /> Delete</button></MenuItem>
           </MenuItems>

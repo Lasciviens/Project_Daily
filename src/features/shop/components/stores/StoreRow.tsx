@@ -108,9 +108,9 @@ export function StoreRow({ store, stores, rules, policyHosts, open, onToggle, on
             </ul>
           )}
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" icon={<Plus />} onClick={() => onRule(null)}>Rule</Button>
+            <Button size="sm" icon={<Plus />} onClick={() => onRule(null)} tip="Rule — add one">Rule</Button>
             {store.owner_edited && store.source && (
-              <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => reset.mutate({ id: store.id })}>Reset to its source</Button>
+              <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => reset.mutate({ id: store.id })} tip="Reset to its source">Reset</Button>
             )}
             <Button size="sm" variant="ghost" icon={store.hidden ? <Eye /> : <EyeOff />} className="ml-auto"
               onClick={() => edit.mutate({ id: store.id, patch: { hidden: !store.hidden }, done: store.hidden ? `${store.name} shown again` : `${store.name} hidden` })}>

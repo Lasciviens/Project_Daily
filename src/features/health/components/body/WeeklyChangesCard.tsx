@@ -134,7 +134,7 @@ export function WeeklyChangesCard({ range }: { range: HealthRange }) {
       {!isLoading && rows.length > FOLD_AT && (
         <Button size="sm" variant="ghost" aria-expanded={all} onClick={() => setAll(a => !a)} className="-ml-2 gap-1 self-start px-2 text-meta"
           icon={<ChevronDown className={`transition-transform ${all ? 'rotate-180' : ''}`} />}>
-          {all ? 'Show fewer weeks' : `Show ${rows.length - FOLD_AT} earlier weeks`}
+          {all ? 'Fewer weeks' : `Earlier · ${rows.length - FOLD_AT}`}
         </Button>
       )}
       {!isLoading && anyReading && firstReading && (

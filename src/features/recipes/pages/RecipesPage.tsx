@@ -81,7 +81,7 @@ export function RecipesPage() {
             library: (
               <div className="flex items-center justify-end gap-2">
                 {/* Never a bare "+" beside Log food on a phone: it says what it adds. */}
-                <Button size="sm" icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>
+                <Button size="sm" icon={<Plus />} onClick={addRecipe} aria-label="Add recipe" title="Recipe Add recipe — add recipe"><span className="sm:hidden">Recipe</span><span className="max-sm:hidden">Add recipe</span></Button>
                 {logButton}
               </div>
             ),

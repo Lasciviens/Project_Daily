@@ -19,6 +19,11 @@ captureTraktCallback()
 // The opened page's code loads beside the shell's, not after the shell has drawn (signed in only).
 if (storedSessionUserId()) preloadOpenedPage(window.location.hash)
 
+// A short button's description on a long press (touch has no hover): one listener, loaded in idle time — the first
+// download carries none of it.
+const tips = () => { void import('./app/longPressTips').then(m => m.installLongPressTips()) }
+if ('requestIdleCallback' in window) window.requestIdleCallback(tips); else setTimeout(tips, 1500)
+
 // A render error while answers kept from an earlier start are on screen may be an answer an update reshaped:
 // they are dropped and read fresh (shared/query/persist.ts). The error itself is reported as before.
 createRoot(document.getElementById('root')!, {

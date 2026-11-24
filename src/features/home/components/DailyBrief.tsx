@@ -160,7 +160,7 @@ export function DailyBrief() {
             aria-expanded={expanded}
             className="mt-2 inline-flex min-h-[44px] items-center text-meta font-semibold text-accent-600"
           >
-            {expanded ? 'Show less' : `Show all (${hidden} more)`}
+            {expanded ? 'Show less' : `All · ${hidden} more`}
           </button>
         )}
       </div>

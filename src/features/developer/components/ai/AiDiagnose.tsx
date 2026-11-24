@@ -38,8 +38,8 @@ export function AiDiagnose() {
         Is a slow or failed call the connection, the key, the shape of the request or Anthropic’s own answer time? Four checks, each timed, using ✨’s request as the example, then a fifth: the chat’s own first request (its real tools). The last three are real calls: together they cost a fraction of a cent.
       </p>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Button variant="secondary" icon={<Stethoscope />} loading={diagnose.isPending} onClick={() => diagnose.mutate()}>
-          {steps ? 'Check again' : 'Check the connection'}
+        <Button variant="secondary" icon={<Stethoscope />} loading={diagnose.isPending} onClick={() => diagnose.mutate()} tip={steps ? 'Check the connection again' : 'Check the connection'}>
+          {steps ? 'Check again' : 'Check'}
         </Button>
         {diagnose.isPending && <p role="status" className="text-meta text-fg-muted">Checking… this can take up to 4 minutes.</p>}
       </div>

@@ -1,7 +1,7 @@
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { EntityModalPending, useFirstLoaded } from '../../../shared/modals'
 import { useShopItem } from '../hooks/useShop'
-import { JustBoughtSheet } from '../components/purchase/JustBoughtSheet'
+import { JustBought } from '../components/record/JustBought'
 import { ClaimSheet } from '../components/purchase/ClaimSheet'
 import type { ShopItem } from '../types'
 
@@ -16,7 +16,7 @@ export function ShopJustBoughtModal({ request, onClose }: EntityModalProps<'shop
   const { query, item } = useRow(request.id)
   if (!item) return <EntityModalPending query={query} what="item" onClose={onClose} />
   // The form is seeded once; whether it is still bought follows the live row (Bought's Undo while it is open).
-  return <JustBoughtSheet item={item} bought={(query.data ?? item).status === 'bought'} receipt={request.receipt} onClose={onClose} />
+  return <JustBought item={item} live={query.data ?? item} bought={(query.data ?? item).status === 'bought'} receipt={request.receipt} onClose={onClose} />
 }
 
 export function ShopClaimModal({ request, onClose }: EntityModalProps<'shop-claim'>) {

@@ -1,47 +1,13 @@
-import { Suspense, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { SegmentedControl, Skeleton, cx } from '../../../shared/ui'
+import { SegmentedControl, cx } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
-import { lazyWithReload } from '../../../shared/utils/lazyWithReload'
-import { DecimalInput } from '../../recipes/components/foodLogKit'
-import { SHOP_CURRENCIES, defaultCurrencyFor } from '../shopModel'
+import { defaultCurrencyFor } from '../shopModel'
 import type { Fact } from '../autofillModel'
 import type { ShopCategory, ShopCurrency, ShopDiscountReason, ShopList, ShopPriority, ShopReason, ShopRegion, ShopStatus } from '../types'
-import type { DraftUpdate } from './autofill/AutofillPanel'
 import { CategoryPicker } from './CategoryPicker'
-import { MoneyEditor } from './record/factKit'
+import { MoneyEditor } from './shopEditors'
 import { StoreNameField } from './shopPickers'
-
-// The add sheet's autofill loads in its own chunk (the reader's rules, the facts, the scanner): only a new
-// one-product wish shows it, and the Shop page stays within its budget.
-const AutofillPanel = lazyWithReload('shop-autofill', () => import('./autofill/AutofillPanel').then(m => m.default), AutofillUnavailable)
-
-function AutofillUnavailable() {
-  return <p className="text-meta text-fg-muted">Couldn't load the link reader — reload the page to paste a link.</p>
-}
-
-/** The link row's room while the autofill loads: the same label, field and buttons, so nothing moves when it lands. */
-function AutofillLoading() {
-  return (
-    <div aria-hidden>
-      <span className="field-label">Link</span>
-      <div className="flex max-w-xl gap-2">
-        <div className="input min-w-0 flex-1" />
-        <Skeleton className="h-10 w-[4.75rem] shrink-0 rounded-control [@media(pointer:coarse)]:h-11" />
-        <Skeleton className="h-10 w-10 shrink-0 rounded-control [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" />
-      </div>
-    </div>
-  )
-}
-
-/** The link reader, barcode scan, facts and duplicate warning — the one autofill every Shop add screen shows. */
-export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean }) {
-  return (
-    <Suspense fallback={<AutofillLoading />}>
-      <AutofillPanel {...props} />
-    </Suspense>
-  )
-}
 
 export const NEW_CATEGORY = '__new__'
 
@@ -83,20 +49,19 @@ const PRIORITIES: { value: ShopPriority; label: string }[] = [
 ]
 
 /**
- * The item form for both lists. The quick list keeps to what an errand needs
- * (what, where, a note); everything else folds under More details there,
- * while the wishlist shows its planning fields up front.
+ * The quick list's errand form (`ShopItemSheet`): what, where, a note — the rest under More details. An errand is not a
+ * thing: a wish or something you own is added in the one body (RecordBody, mode add), never here. The List switch moves
+ * an errand to the wishlist; on a new row the sheet hands "Wishlist" over to that body (`onWish`).
  */
-export function ShopItemForm({ draft, onChange, update, categories, editing }: {
+export function ShopItemForm({ draft, onChange, categories, editing, onWish }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
-  /** A change worked out from the draft as it is then (the autofill's answers land later). */
-  update: DraftUpdate
   categories: readonly ShopCategory[]
   editing: boolean
+  /** A new row asked to be a wish: the sheet opens the one body with what was typed. */
+  onWish?: () => void
 }) {
   const id = useId()
-  const quick = draft.list === 'quick'
   const [more, setMore] = useState(false)
 
   // The owner's own categories, then suggested ones (picking one adds it at once); a typed new one is made on save.
@@ -129,8 +94,8 @@ export function ShopItemForm({ draft, onChange, update, categories, editing }: {
   const store = (
     <div>
       <span className="field-label">Store</span>
-      <StoreNameField label="Store" value={draft.platform} onChange={platform => onChange({ platform })} typing={quick}
-        placeholder={quick ? 'Pick a store' : 'Where to buy it'} />
+      <StoreNameField label="Store" value={draft.platform} onChange={platform => onChange({ platform })} typing
+        placeholder="Pick a store" />
     </div>
   )
 
@@ -150,9 +115,9 @@ export function ShopItemForm({ draft, onChange, update, categories, editing }: {
 
   const notes = (
     <div>
-      <label htmlFor={`${id}-notes`} className="field-label">{quick ? 'Amount or note' : 'Notes'}</label>
+      <label htmlFor={`${id}-notes`} className="field-label">Amount or note</label>
       <textarea id={`${id}-notes`} value={draft.notes} onChange={e => onChange({ notes: e.target.value })}
-        placeholder={quick ? '2 packs, the lactose-free one…' : 'Optional'} rows={2} className="input resize-none" />
+        placeholder="2 packs, the lactose-free one…" rows={2} className="input resize-none" />
     </div>
   )
 
@@ -179,57 +144,21 @@ export function ShopItemForm({ draft, onChange, update, categories, editing }: {
     </div>
   )
 
-  const reason = !quick && (
-    <div>
-      <span className="field-label">Why</span>
-      <SegmentedControl<ShopReason | ''> size="sm" value={draft.reason} onChange={r => onChange({ reason: r })}
-        options={[{ value: 'need', label: 'Need it' }, { value: 'fun', label: 'Just for fun' }, { value: '', label: 'Not set' }]} />
-    </div>
-  )
-
   return (
     <div className="flex flex-col gap-3">
       <div>
         <label htmlFor={`${id}-title`} className="field-label">Item</label>
         <input id={`${id}-title`} value={draft.title} onChange={e => onChange({ title: e.target.value })}
-          placeholder={quick ? 'Milk, batteries, a gift card…' : draft.general ? 'A tablet with a pen for notes' : 'What do you want to buy?'} autoFocus={!editing} className="input" />
+          placeholder="Milk, batteries, a gift card…" autoFocus={!editing} className="input" />
       </div>
 
       {draft.status === 'wishlist' && <div>
         <span className="field-label">List</span>
-        <SegmentedControl<ShopList> size="sm" value={draft.list} onChange={l => onChange({ list: l })}
+        <SegmentedControl<ShopList> size="sm" value={draft.list} onChange={l => (l === 'wishlist' && !editing && onWish ? onWish() : onChange({ list: l }))}
           options={[{ value: 'wishlist', label: 'Wishlist' }, { value: 'quick', label: 'Quick list' }]} />
       </div>}
 
-      {!quick && !editing && (
-        <SegmentedControl<'one' | 'any'> size="sm" value={draft.general ? 'any' : 'one'} onChange={v => onChange({ general: v === 'any' })}
-          options={[{ value: 'one', label: 'One product' }, { value: 'any', label: 'Any model that fits' }]} />
-      )}
-
-      {!quick && !editing && !draft.general && (
-        <ShopAutofill draft={draft} onChange={onChange} update={update} categories={categories} />
-      )}
-
-      {quick ? <>{store}{notes}</> : draft.general ? <>
-        {category}
-        <div>
-          <span className="field-label">Price range</span>
-          <div className="flex max-w-sm items-center gap-2">
-            <DecimalInput value={draft.priceMin} onValue={v => onChange({ priceMin: v })} placeholder="From" aria-label="From" className="input min-w-0 flex-1 tabular-nums" />
-            <span className="text-fg-faint">–</span>
-            <DecimalInput value={draft.priceMax} onValue={v => onChange({ priceMax: v })} placeholder="To" aria-label="To" className="input min-w-0 flex-1 tabular-nums" />
-            <select value={draft.currency} onChange={e => onChange({ currency: e.target.value as ShopCurrency })} aria-label="Currency" className="select w-[6rem] shrink-0">
-              {SHOP_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label htmlFor={`${id}-req`} className="field-label">Must have <span className="font-normal text-fg-muted">(one per line)</span></label>
-          <textarea id={`${id}-req`} value={draft.requirements} onChange={e => onChange({ requirements: e.target.value })} rows={3}
-            placeholder={'Pen support\n11 inch or bigger'} className="input resize-none" />
-        </div>
-        {reason}{priority}{notes}
-      </> : <>{category}<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{price}{store}</div>{reason}{priority}{buyOn}{notes}</>}
+      {store}{notes}
 
       <div>
         <button type="button" aria-expanded={more} onClick={() => setMore(m => !m)}
@@ -238,8 +167,8 @@ export function ShopItemForm({ draft, onChange, update, categories, editing }: {
         </button>
         {more && (
           <div className="mt-1 flex flex-col gap-3 rounded-row border border-line bg-surface-2 p-3">
-            {quick ? <>{category}{price}{priority}{buyOn}</> : null}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{region}{(quick || editing || draft.general) && link}</div>
+            {category}{price}{priority}{buyOn}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{region}{link}</div>
           </div>
         )}
       </div>

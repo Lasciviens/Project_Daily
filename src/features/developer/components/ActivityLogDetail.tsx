@@ -75,10 +75,10 @@ export function DiffView({ log }: { log: AuditLog }) {
   )
 }
 
-/** The small "Undo this save" link (a group header, under a diff, the pane). */
+/** The small "Undo" link ("Undo this save" on hover) (a group header, under a diff, the pane). */
 export function UndoSaveButton({ onClick, className }: { onClick: () => void; className?: string }) {
   return (
-    <button
+    <button title="Undo this save"
       type="button"
       onClick={onClick}
       className={cx(
@@ -87,7 +87,7 @@ export function UndoSaveButton({ onClick, className }: { onClick: () => void; cl
         className,
       )}
     >
-      <Undo2 aria-hidden className="h-3.5 w-3.5" /> Undo this save
+      <Undo2 aria-hidden className="h-3.5 w-3.5" /> Undo
     </button>
   )
 }

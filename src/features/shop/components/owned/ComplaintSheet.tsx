@@ -13,7 +13,7 @@ import { useLawRules, useShopStores, useStoreRules } from '../../hooks/useShopSt
 import { complaintLetter, letterFacts, storePageOf } from '../../complaintModel'
 import { boughtDayOf, dateSource, deadlinesOf, type StoreCtx } from '../../purchaseModel'
 import { currencyOf } from '../../shopModel'
-import { MoneyEditor } from '../record/factKit'
+import { MoneyEditor } from '../shopEditors'
 import { DateFact, DeadlineWords } from '../purchase/purchaseKit'
 import { SiteLink } from '../shopKit'
 import { money } from '../shopFormat'
@@ -126,7 +126,7 @@ export function ComplaintSheet({ item: first, onClose }: { item: ShopItem; onClo
             <div className="flex items-center gap-2">
               <span className="field-label flex-1">The letter, in Norwegian</span>
               {edited != null && (
-                <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setEdited(null)}>Fill in again</Button>
+                <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => setEdited(null)} tip="Refill — fill the letter in again">Refill</Button>
               )}
               <Button size="sm" variant="primary" icon={<Copy />} onClick={() => { void copy() }}>Copy</Button>
             </div>
@@ -141,8 +141,8 @@ export function ComplaintSheet({ item: first, onClose }: { item: ShopItem; onClo
             <p className="text-meta text-fg-muted">When it can&apos;t be fixed. What came back counts as saved in Stats.</p>
             <div className="flex flex-wrap items-center gap-2">
               <MoneyEditor label="Money back" amount={amount} currency={currency} onAmount={setAmount} onCurrency={setCurrency} />
-              <Button size="sm" onClick={gotBack} loading={back.isPending} disabled={!amount || amount <= 0}>
-                {amount && amount > 0 ? `Got ${money(amount, currency)} back` : 'Got money back'}
+              <Button size="sm" onClick={gotBack} loading={back.isPending} disabled={!amount || amount <= 0} tip={amount && amount > 0 ? `Money back — got ${money(amount, currency)} back` : 'Money back — got some back'}>
+                Money back
               </Button>
             </div>
           </Step>

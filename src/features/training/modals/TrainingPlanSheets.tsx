@@ -123,9 +123,9 @@ export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'tr
   }
 
   const instead = plan
-    ? <Button block className="sm:w-auto" icon={<CalendarClock />} disabled={busy} onClick={() => { onClose(); actions.openMove(plan) }}>Move it instead</Button>
+    ? <Button block className="sm:w-auto" icon={<CalendarClock />} disabled={busy} onClick={() => { onClose(); actions.openMove(plan) }} tip="Move it instead">Move</Button>
     : missed
-      ? <Button block className="sm:w-auto" icon={<CalendarPlus />} disabled={busy} onClick={() => { onClose(); openPlanRoutine({ id: missed.routineId, title: missed.title }, { date: todayStr() }) }}>Plan it instead</Button>
+      ? <Button block className="sm:w-auto" icon={<CalendarPlus />} disabled={busy} onClick={() => { onClose(); openPlanRoutine({ id: missed.routineId, title: missed.title }, { date: todayStr() }) }} tip="Plan it instead">Plan</Button>
       : null
 
   return (

@@ -72,7 +72,7 @@ export function AiCalls() {
           {CALL_OUTCOMES.map(o => <option key={o} value={o}>{OUTCOME_META[o].label}</option>)}
           <option value={STOPPED_FILTER}>Stopped</option>
         </select>
-        {filter.runId && <div className="basis-full"><Button size="sm" onClick={clearRun}>One answer · Show all</Button></div>}
+        {filter.runId && <div className="basis-full"><Button size="sm" onClick={clearRun} tip="Show all — this shows one answer">Show all</Button></div>}
         <IconButton label="Refresh" className="ml-auto" onClick={() => { void refetch() }} disabled={isFetching}>
           <RefreshCw aria-hidden className={isFetching ? 'animate-spin' : undefined} />
         </IconButton>

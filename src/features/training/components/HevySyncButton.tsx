@@ -44,8 +44,8 @@ export function HevySyncButton() {
           <div>
             <p className="text-body font-semibold text-fg">Full re-sync</p>
             <p className="mb-2 text-meta text-fg-muted">Imports all data from scratch — takes about 30 s.</p>
-            <Button block loading={initialSync.isPending} disabled={anyPending} onClick={() => initialSync.mutate()}>
-              Import all from Hevy
+            <Button block loading={initialSync.isPending} disabled={anyPending} onClick={() => initialSync.mutate()} tip="Import all from Hevy">
+              Import all
             </Button>
           </div>
         </PopoverPanel>

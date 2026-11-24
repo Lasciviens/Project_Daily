@@ -85,8 +85,8 @@ export function CardSubscriptions({ service }: { service: string }) {
           {mine.map(s => <SubscriptionRow key={s.id} sub={s} today={today} rates={rates} onEdit={() => edit({ sub: s })} />)}
         </ul>
       )}
-      <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => edit({ sub: null, service })}>
-        {mine.length ? 'Add another subscription' : 'Add subscription'}
+      <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => edit({ sub: null, service })} tip={mine.length ? 'Add another subscription' : 'Add a subscription'}>
+        {mine.length ? 'Add another' : 'Add'}
       </Button>
       {sheet}
     </div>

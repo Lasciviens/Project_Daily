@@ -42,7 +42,7 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
     <div className="flex flex-col gap-1 border-t border-line pt-3">
       <div className="flex min-h-[36px] flex-wrap items-center justify-between gap-2">
         <p className="text-body font-semibold text-fg">{heading}{dateStr === todayStr && <span className="font-normal text-fg-muted"> · Today</span>}</p>
-        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)}>Plan a session</Button>}
+        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)} tip="Plan a session">Plan</Button>}
       </div>
 
       {entries.map(e => {

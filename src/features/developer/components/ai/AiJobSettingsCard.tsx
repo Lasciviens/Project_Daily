@@ -97,7 +97,7 @@ export function AiJobSettingsCard({ job, stored, about }: { job: DescribeJob; st
         </Field>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {changed && <Button size="sm" variant="ghost" onClick={backToDefaults}>Back to defaults</Button>}
+        {changed && <Button size="sm" variant="ghost" onClick={backToDefaults} tip="Defaults — back to the job's defaults">Defaults</Button>}
         <Button size="sm" disabled={!dirty || !valid} loading={save.isPending} onClick={() => save.mutate({ input: next, title: job.title })}>Save</Button>
       </div>
     </Card>

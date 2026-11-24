@@ -39,8 +39,8 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
               </MenuButton>
               <MenuItems anchor="bottom end" transition className="menu w-48 [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0">
                 <MenuItem>
-                  <button type="button" className="menu-item" onClick={() => modal.open({ kind: 'project-block', projectId: block.project_id, id: block.id })}>
-                    <Pencil aria-hidden className="h-4 w-4" /> {block.kind === 'table' ? 'Name and columns' : 'Rename'}
+                  <button title={block.kind === 'table' ? 'Columns — the name and columns' : 'Rename'} type="button" className="menu-item" onClick={() => modal.open({ kind: 'project-block', projectId: block.project_id, id: block.id })}>
+                    <Pencil aria-hidden className="h-4 w-4" /> {block.kind === 'table' ? 'Columns' : 'Rename'}
                   </button>
                 </MenuItem>
                 {up && (

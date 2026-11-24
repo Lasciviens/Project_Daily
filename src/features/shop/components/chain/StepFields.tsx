@@ -4,7 +4,7 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { DecimalInput } from '../../../recipes/components/foodLogKit'
 import { complete, DISPOSAL_LABEL, type Amount } from '../../ownModel'
 import { LEAVE_WAYS, takesMoney, type DraftStep, type ProblemField, type StepProblem } from '../../chainDraft'
-import { MoneyEditor, Toggle } from '../record/factKit'
+import { MoneyEditor, Toggle } from '../shopEditors'
 import { money } from '../shopFormat'
 import { ChoiceChips, StoreNameField } from '../shopPickers'
 import type { ShopCurrency } from '../../types'
@@ -41,7 +41,7 @@ export function NokLine({ amount, currency, day, typed, onTyped, loading, label 
           : 'NOK rate missing — Norges Bank\'s rate for that day hasn\'t come in'}
         {!typing && (
           <button type="button" onClick={() => setTyping(true)} className="ml-2 inline-flex items-center font-semibold text-accent-600 hover:underline [@media(pointer:coarse)]:min-h-[44px]">
-            Type a rate
+            Type rate
           </button>
         )}
       </p>
@@ -79,8 +79,8 @@ export function StepBuy({ s, set, paid, problems, sameDay, today, loading }: {
         <div className="flex flex-wrap items-center gap-2">
           <DateInput value={s.boughtOn} onChange={boughtOn => set({ boughtOn })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
           {sameDay && sameDay !== s.boughtOn && (
-            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip tabular-nums hover:bg-surface-hover">
-              The day it sold · {formatDate(sameDay)}
+            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip tabular-nums hover:bg-surface-hover" title="Sale day · — the day it sold">
+              Sale day · {formatDate(sameDay)}
             </button>
           )}
         </div>

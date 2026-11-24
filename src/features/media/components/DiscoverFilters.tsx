@@ -53,8 +53,8 @@ function HideChecklist<T extends string | number>({ label, options, picked, onCh
       </PopoverButton>
       <PopoverPanel anchor="bottom start" className="z-popover mt-1 max-h-80 w-60 overflow-y-auto rounded-row border border-line bg-surface p-1 shadow-lg">
         {picked.length > 0 && (
-          <button type="button" onClick={() => onChange([])} className="mb-1 min-h-[40px] w-full rounded-control px-2 text-left text-meta font-semibold text-accent-600 hover:bg-surface-hover">
-            Show all again
+          <button title="Show all again" type="button" onClick={() => onChange([])} className="mb-1 min-h-[40px] w-full rounded-control px-2 text-left text-meta font-semibold text-accent-600 hover:bg-surface-hover">
+            Show all
           </button>
         )}
         {options.map(o => (

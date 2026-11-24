@@ -207,8 +207,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
               aria-label="Log date" className="input input-sm h-8 w-[8.5rem] tabular-nums" />
             <ChipSelect label="Meal slot" value={logSlot} onChange={setLogSlot} options={LOG_SLOTS.map(s => ({ value: s.slot, label: s.label }))} />
             <Button variant="primary" size="sm" icon={<UtensilsCrossed />} onClick={handleLog} loading={logFood.isPending} disabled={ate <= 0}
-              className="ml-auto" title="Log what you ate to the diary">
-              I ate this
+              className="ml-auto" tip="Ate it — log what you ate to the diary">
+              Ate it
             </Button>
           </div>
         </section>
@@ -261,8 +261,8 @@ export function RecipeDetail({ recipe, onClose, onEdit }: Props) {
                 )
               })}
             </ul>
-            <Button size="sm" block className="mt-2" icon={<ShoppingBag />} onClick={handleAddMissingToShop} loading={addToShop.isPending}>
-              Add missing to Shop
+            <Button size="sm" block className="mt-2" icon={<ShoppingBag />} onClick={handleAddMissingToShop} loading={addToShop.isPending} tip="To Shop — add what is missing">
+              To Shop
             </Button>
           </section>
         )}

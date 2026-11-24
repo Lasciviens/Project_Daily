@@ -112,9 +112,9 @@ export function MealPlanWeek() {
             <span className="inline-flex items-center gap-1 text-success"><Check aria-hidden className="h-3.5 w-3.5" />Eaten</span>
             <span className="inline-flex items-center gap-1"><CircleCheck aria-hidden className="h-3.5 w-3.5" />Mark eaten</span>
           </p>
-          <Button size="sm" icon={<ShoppingBag />} aria-label="Add the week's groceries to Shop" disabled={groceries.length === 0} loading={addGroceries.isPending}
+          <Button size="sm" icon={<ShoppingBag />} tip="To Shop — add the week's groceries" disabled={groceries.length === 0} loading={addGroceries.isPending}
             onClick={() => addGroceries.mutate({ lines: groceries, what: `Week ${getISOWeek(weekStart)}` })}>
-            Week to Shop
+            To Shop
           </Button>
         </div>
       </div>
@@ -183,8 +183,8 @@ export function MealPlanWeek() {
                     ))}
                   </ul>
                 ) : (
-                  <button type="button" onClick={() => openAdd(dateStr, slot)} className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
-                    Plan a meal
+                  <button title="+ Meal — plan a meal" type="button" onClick={() => openAdd(dateStr, slot)} className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    + Meal
                   </button>
                 )}
               </Card>

@@ -112,7 +112,7 @@ export function RecipeBuilder({ onClose, onMoreFields }: {
       bodyClassName="flex flex-col gap-3 px-4 pb-4"
       headerActions={
         <Button variant="ghost" size="sm" icon={<ListPlus />} onClick={() => onMoreFields(draft())}
-          title="Instructions, photo, typed macros or paste a recipe with AI">
+          title="All fields — instructions, photo, typed macros or paste a recipe with AI">
           All fields
         </Button>
       }

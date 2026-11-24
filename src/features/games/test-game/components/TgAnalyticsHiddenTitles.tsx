@@ -46,12 +46,12 @@ export function TgAnalyticsHiddenTitles({ hidden, className = '' }: {
             Hidden titles are left out of the counts, charts and play time in Analytics.{hidden.auto > 0 && ` ${HIDDEN_AUTO_NOTE}`}
           </p>
           <div className="mt-auto pt-4">
-            <button
+            <button title="Hidden titles — show them"
               type="button"
               onClick={() => { const b = handoff.base; if (b) handoff.open('Hidden', hiddenGames(b.games, b.library), { status: 'hidden', wholeLibrary: true }) }}
               className="tg-btn tg-btn-secondary min-h-[36px] w-full px-3 text-[13px] @[22rem]:w-auto [@media(pointer:coarse)]:min-h-[44px]"
             >
-              Show hidden titles
+              Hidden titles
               <ChevronRight size={14} strokeWidth={2.2} aria-hidden />
             </button>
           </div>

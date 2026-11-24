@@ -132,6 +132,8 @@ export interface Nudge {
   action: NudgeAction
   /** For a 'fix' (a tidy-up reason) or an old estimate: the fact whose editor opens. */
   fact?: RecordFact | null
+  /** The rest of the words, for the line's tooltip (owner, 24.11.2026: short, the description on hover). */
+  tip?: string
 }
 
 /**
@@ -156,7 +158,7 @@ export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string):
     return { key: 'tidy_up', kind: 'tidy_up', tone: 'info', facts: ['To tidy up', ...tidy.facts], where: null, action: tidy.fact ? 'fix' : null, fact: tidy.fact ?? null }
   }
   if (isMine(item) && item.value_now == null && !item.accessory_of) {
-    return { key: 'no_value', kind: 'old_value', tone: 'info', facts: ['What could it sell for?', 'it gives the cost per month'], where: null, action: 'value', fact: 'value' }
+    return { key: 'no_value', kind: 'old_value', tone: 'info', facts: ['Could sell for?'], where: null, action: 'value', fact: 'value', tip: 'What could it sell for? It gives the cost per month.' }
   }
   return null
 }

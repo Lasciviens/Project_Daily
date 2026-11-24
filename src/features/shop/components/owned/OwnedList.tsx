@@ -122,10 +122,10 @@ export function GoneFold({ gone, rows, onOpen, layout }: { gone: readonly ShopIt
   if (!gone.length) return null
   return (
     <section className={layout === 'pictures' ? undefined : STACK_CAP}>
-      <button type="button" aria-expanded={show} onClick={() => setShow(s => !s)}
+      <button title="Gone — sold or gone" type="button" aria-expanded={show} onClick={() => setShow(s => !s)}
         className="flex min-h-[44px] items-center gap-1.5 text-body font-semibold text-fg-muted transition-colors hover:text-fg-2">
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', show && 'rotate-180')} />
-        Sold or gone <span className="count-badge">{gone.length}</span>
+        Gone <span className="count-badge">{gone.length}</span>
       </button>
       {show && <ThingsBox layout={layout} className="mt-1">{gone.map(i => <OwnedThing key={i.id} item={i} rows={rows} onOpen={onOpen} layout={layout} />)}</ThingsBox>}
     </section>

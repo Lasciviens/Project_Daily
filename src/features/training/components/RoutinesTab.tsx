@@ -108,7 +108,7 @@ function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; type
                   className="flex min-h-[44px] items-center gap-1 text-left text-meta font-semibold text-accent-600"
                 >
                   <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${showAllExercises ? 'rotate-180' : ''}`} />
-                  {showAllExercises ? 'Show less' : `Show all ${exerciseCount} exercises`}
+                  {showAllExercises ? 'Show less' : `All · ${exerciseCount}`}
                 </button>
               )}
             </>

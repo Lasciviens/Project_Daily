@@ -81,7 +81,7 @@ export function GoalsSection({ report, settings, fromDevice, card }: {
   return (
     <GoalBlock title="Body targets" card={card} action={(
       <Button variant="ghost" size="sm" icon={<Pencil className="h-4 w-4" aria-hidden />} onClick={() => modal.open({ kind: 'day-targets' })}>
-        {rows.length || settings.phaseStartDate ? 'Edit goal' : 'Set body targets'}
+        {rows.length || settings.phaseStartDate ? 'Edit goal' : 'Set targets'}
       </Button>
     )}>
       {rows.length === 0 && (
