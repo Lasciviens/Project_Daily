@@ -4,8 +4,8 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { invalidate, qk, STALE } from '../../../shared/query'
 import { shrinkPhoto } from '../claude/photoShrink'
 import type { PhotoInput } from '../claude/featureRules'
-import { ChatError, decideProposal, fetchChatSetup, fetchConversationRows, fetchConversations, fetchProposalArgs, removeCreatedRow, setChatDeleted, streamChat, type ChatSetup } from './chatApi'
-import { applyChatEvent, CHAT_PHOTO_MAX_BYTES, newTurn, turnsFromStored, wallState, type CardState, type ChatEvent, type ChatMode, type ChatTurn } from './chatRules'
+import { ChatError, decideProposal, fetchChatSetup, fetchConversationRows, fetchConversations, fetchProposalArgs, removeCreatedRow, restoreChangedRow, setChatDeleted, streamChat, type ChatSetup } from './chatApi'
+import { applyChatEvent, CHAT_PHOTO_MAX_BYTES, isChangeTool, newTurn, replacedIn, turnsFromStored, wallState, type CardState, type ChatCard, type ChatEvent, type ChatMode, type ChatTurn } from './chatRules'
 
 // Ask AI's state: the chat on screen (its turns, streamed in as they are written), the list of chats, the owner's Confirm /
 // Cancel of a proposed write, and deleting a chat. The chat itself lives in the database (the function stores every message):
@@ -24,18 +24,28 @@ export function useDecideProposal() {
       if (!out.ok) throw new ChatError(out.reason, out.message)
       return out
     },
-    successMessage: r => (r.status === 'cancelled' ? 'Cancelled' : r.tool === 'add_task' ? 'Task added' : 'Food line logged'),
+    successMessage: r => (r.status === 'cancelled' ? 'Cancelled' : DONE_WORDS[r.tool] ?? 'Saved'),
     // A confirmed write changes the owner's own tables (tasks, food), and the chat's proposals.
     invalidates: (r) => (r?.status === 'confirmed' ? ['aiWrite', 'aiChat'] : ['aiChat']),
   })
 }
 
-/** The card's Undo: takes back the row a confirmed proposal made. */
+/** What a confirmed card says it did. */
+export const DONE_WORDS: Record<string, string> = { add_task: 'Task added', log_food: 'Food line logged', update_food: 'Food line changed', update_task: 'Task renamed' }
+
+/** The card's Undo: takes back the row a confirmed proposal made, or puts back what a confirmed change replaced. */
 export function useUndoCreated() {
-  return useMutationWithFeedback<void, { tool: string; id: string }>({
+  return useMutationWithFeedback<void, { card: ChatCard }>({
     action: 'ai_chat_undo_created',
-    mutationFn: ({ tool, id }) => removeCreatedRow(tool, id),
-    successMessage: 'Removed',
+    mutationFn: ({ card }) => {
+      if (!card.resultId) throw new Error('Nothing to undo.')
+      if (!isChangeTool(card.tool)) return removeCreatedRow(card.tool, card.resultId)
+      const before = card.args?.before
+      const changes = card.args?.changes
+      if (!before || typeof before !== 'object' || !changes || typeof changes !== 'object') throw new Error('The old values could not be read, so nothing was changed.')
+      return restoreChangedRow(card.tool, card.resultId, before as Record<string, unknown>, changes as Record<string, unknown>)
+    },
+    successMessage: (_done, { card }) => (isChangeTool(card.tool) ? 'Put back' : 'Removed'),
     invalidates: ['aiWrite'],
   })
 }
@@ -154,6 +164,9 @@ export function useAskAi(): AskAi {
           setWall(event.wall ? 'full' : wallState(event.promptTokens, 'open'))
         }
         if (event.event === 'proposal') void loadCard(event.card.id)
+        // A newer card for the same thing closes the older one, wherever it is in the chat.
+        const replaced = event.event === 'proposal' ? event.replaces : event.event === 'done' ? event.replaced : []
+        if (replaced.length) setTurns(list => list.map(t => (t.cards.some(c => replaced.includes(c.id)) ? { ...t, cards: replacedIn(t.cards, replaced) } : t)))
         if (event.event === 'error' && event.reason === 'wall') {
           // The function refused before storing anything: the message and its empty answer leave the chat.
           hitWall = true
@@ -252,7 +265,7 @@ export function useAskAi(): AskAi {
     } catch (error) {
       // The mutation toasted the reason. A card that was already decided or has expired shows that; any other failure can be tried again.
       const reason = error instanceof ChatError ? error.reason : 'error'
-      patchCard(cardId, { state: reason === 'expired' ? 'expired' : reason === 'already_decided' ? 'confirmed' : reason === 'failed' ? 'failed' : 'pending' })
+      patchCard(cardId, { state: reason === 'expired' ? 'expired' : reason === 'replaced' ? 'replaced' : reason === 'already_decided' ? 'confirmed' : reason === 'failed' ? 'failed' : 'pending' })
     }
   }, [decideMutation, patchCard])
 
@@ -260,7 +273,7 @@ export function useAskAi(): AskAi {
     const card = turnsRef.current.flatMap(t => t.cards).find(c => c.id === cardId)
     if (!card?.resultId) return
     try {
-      await undoMutation.mutateAsync({ tool: card.tool, id: card.resultId })
+      await undoMutation.mutateAsync({ card })
       patchCard(cardId, { state: 'undone' })
     } catch { /* the mutation said why; the card stays */ }
   }, [patchCard, undoMutation])

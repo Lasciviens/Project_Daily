@@ -3,7 +3,8 @@
  * Verification — the assistant's guardrails (security audit 10.10.2026; rebuilt on the `claude` function in AI phase 4,
  * the old ai-proxy checks were removed with it in phase 5). Static checks on the `claude` function's tool part and its
  * migrations; the behaviour (a forged, another account's, an expired, a repeated Confirm) is in verify-claude-chat.cjs:
- *   - the assistant never writes by itself: two inserts of a confirmed proposal, with the owner's own client;
+ *   - the assistant never writes by itself: one insert (a task, a food line) or one update (a food line's or a task's
+ *     named fields, migration 205) per confirmed proposal, with the owner's own client;
  *   - a confirmed proposal writes no column that links a row to an outside account (the latest app_undo_links);
  *   - the browser reads its proposals and writes none; the phone's tools are reads;
  *   - the app's 'aiWrite' refresh reaches every table a confirmed proposal writes.
@@ -23,6 +24,7 @@ function checkClaudeConfirm() {
   const tools = fs.readFileSync(`${REPO}/supabase/claude-src/chat-tools.ts`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   const loop = fs.readFileSync(`${REPO}/supabase/claude-src/chat-loop.ts`, 'utf8').replace(/\/\/.*$/gm, '')
   const rules = fs.readFileSync(`${REPO}/supabase/claude-src/chat-rules.ts`, 'utf8')
+  const store = fs.readFileSync(`${REPO}/supabase/claude-src/chat-store.ts`, 'utf8').replace(/\/\/.*$/gm, '')
   const mig = fs.readFileSync(`${REPO}/supabase/migrations/197_ai_chat.sql`, 'utf8').replace(/--.*$/gm, '')
   const migDir = `${REPO}/supabase/migrations`
   const latest = fs.readdirSync(migDir).filter(f => /^\d+_.*\.sql$/.test(f)).sort().map(f => fs.readFileSync(`${migDir}/${f}`, 'utf8'))
@@ -31,15 +33,30 @@ function checkClaudeConfirm() {
   const links = [...new Set([...body.slice(0, body.indexOf('$$;')).matchAll(/'([a-z_]+)'/g)].map(m => m[1]).filter(c => /_(id|area|href)$/.test(c) && !/^(tasks|time_blocks|schedule_blocks|user_[a-z_]+)$/.test(c)))]
   const apply = tools.slice(tools.indexOf('export async function applyProposal'))
   const written = [...apply.slice(apply.indexOf('const row'), apply.indexOf('const table')).matchAll(/\b([a-z_]+): /g)].map(m => m[1])
-  const hits = written.filter(c => links.includes(c))
-  check(`the columns a confirmed proposal writes (${written.length}) include none of the outside-account links Undo knows (${links.length})`, links.length >= 5 && written.length >= 15 && !hits.length, hits.join(', '))
-  check('the only writes in the assistant\'s tool part are the two inserts of a confirmed proposal: no update, delete or upsert, and no table named outside tasks and food_log_entries', (apply.match(/\.insert\(/g) || []).length === 1 && !/\.(update|delete|upsert)\(/.test(tools) && !/\.insert\(/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))) && /const table = tool === 'add_task' \? 'tasks' : 'food_log_entries'/.test(apply))
-  check('the write tools are proposals only and the proposal tools are exactly the two the database allows', /WRITE_TOOL_NAMES = \['propose_add_task', 'propose_log_food'\]/.test(rules) && /check \(tool in \('add_task', 'log_food'\)\)/.test(mig))
-  check('a write tool can never be "on": its modes are ask and off only, and the model\'s tool run never calls applyProposal', /\['ask', 'off'\] : \['on', 'off'\]/.test(rules) && !/applyProposal/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))))
+  // The changes (migration 205): the columns of the food line's patch and of the task's one update.
+  const change = apply.slice(apply.indexOf('async function applyChange'))
+  const patched = [...change.slice(change.indexOf('const patch'), change.indexOf("let q = db.from('food_log_entries').update(")).matchAll(/\{ ([a-z_]+): changes\./g)].map(m => m[1])
+  const taskPatch = /db\.from\('tasks'\)\.update\(\{ title: changes\.title \}\)/.test(change) ? ['title'] : []
+  const hits = [...written, ...patched, ...taskPatch].filter(c => links.includes(c))
+  check(`the columns a confirmed proposal writes (${written.length} inserted, ${patched.length + taskPatch.length} changed) include none of the outside-account links Undo knows (${links.length})`, links.length >= 5 && written.length >= 15 && !hits.length, hits.join(', '))
+  check('a confirmed change names only a food line\'s title and four figures, or a task\'s title — never its day, meal, status or a link', JSON.stringify(patched) === JSON.stringify(['custom_title', 'calories', 'protein_g', 'carbs_g', 'fat_g']) && taskPatch.length === 1)
+  const updates = change.match(/\.update\(/g) || []
+  check('the only writes in the assistant\'s tool part are a confirmed proposal\'s: one insert, and two updates (a food line, a task), each filtered by the row AND the verified user; no delete or upsert; no table outside tasks and food_log_entries', (apply.match(/\.insert\(/g) || []).length === 1 && updates.length === 2 && (tools.match(/\.update\(/g) || []).length === 2 && !/\.(delete|upsert)\(/.test(tools) && !/\.(insert|update)\(/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))) && /const table = tool === 'add_task' \? 'tasks' : 'food_log_entries'/.test(apply)
+    && /\.update\(patch\)\.eq\('id', String\(a\.entry_id\)\)\.eq\('user_id', userId\)\.eq\('date', String\(a\.date\)\)\.gte\('date', window\.from\)\.lte\('date', window\.to\)\s*\.eq\('status', 'eaten'\)\.eq\('meal_slot', String\(a\.meal\)\)\.neq\('meal_slot', 'supplement'\)\s*\.is\('library_ingredient_id', null\)\.is\('recipe_id', null\)\.is\('supplement_schedule_id', null\)\s*\.eq\('custom_title', String\(before\.title\)\)/.test(change)
+    && /\.update\(\{ title: changes\.title \}\)\.eq\('id', String\(a\.task_id\)\)\.eq\('user_id', userId\)\.eq\('title', String\(before\.title\)\)\.select\('id'\)/.test(change))
+  check('a confirmed change is ONE update that is its own check (guardian 3): no read before it, every value it was proposed against in its filter (the four figures, null as null), and zero rows means "changed since", nothing written', !/\.select\('[^']*'\)\.eq\('id'/.test(change) && !/changeableFoodLine|maybeSingle/.test(change) && /for \(const key of FOOD_FIELDS\) q = before\[key\] === null \? q\.is\(key, null\) : q\.eq\(key, before\[key\] as number\)/.test(change) && /await q\.select\('id'\)/.test(change) && /data\.length === 0 \? \{ ok: false as const, message: CHANGED_SINCE \}/.test(change) && /const CHANGED_SINCE = 'It was changed since; nothing was changed\. Ask again\.'/.test(tools))
+  // The card's Undo of a change (guardian 2): the browser writes the before-values back only while the row still holds what the change wrote.
+  const api = fs.readFileSync(`${REPO}/src/features/ai/chat/chatApi.ts`, 'utf8')
+  const undo = api.slice(api.indexOf('export async function restoreChangedRow'), api.indexOf('/** Deletes a chat'))
+  check('Undo of a change is exact (guardian 2): its update is filtered by the row, the owner, EVERY changed column\'s written value and, for a food line, that it is still a one-off line; zero rows throws "It was changed since; nothing was put back."', /\.update\(patch\)\.eq\('id', id\)\.eq\('user_id', user\.id\)/.test(undo) && /for \(const \[column, value\] of written\) q = q\.eq\(column, value as string \| number\)/.test(undo) && /if \(tool === 'update_food'\) q = q\.is\('library_ingredient_id', null\)\.is\('recipe_id', null\)/.test(undo) && /await q\.select\('id'\)/.test(undo) && /data\.length !== 1\) throw new Error\(PUT_BACK_CHANGED\)/.test(undo) && /PUT_BACK_CHANGED = 'It was changed since; nothing was put back\.'/.test(api) && /update_food: \{ title: 'custom_title', calories: 'calories', protein_g: 'protein_g', carbs_g: 'carbs_g', fat_g: 'fat_g' \},\s*update_task: \{ title: 'title' \}/.test(api))
+  check('a food of the owner\'s own list is linked only after its id is read back as the owner\'s', /db\.from\('recipe_ingredient_library'\)\.select\('id'\)\.eq\('id', ownFood\.id\)\.eq\('user_id', userId\)/.test(apply))
+  const mig205 = fs.readFileSync(`${REPO}/supabase/migrations/205_ai_chat_fixes.sql`, 'utf8').replace(/--.*$/gm, '')
+  check('the write tools are proposals only and the proposal kinds are exactly the four the database allows (197, widened by 205)', /WRITE_TOOL_NAMES = \['propose_add_task', 'propose_log_food'\]/.test(rules) && /FIX_TOOL_NAMES = \['propose_update_food', 'propose_update_task'\]/.test(rules) && /check \(tool in \('add_task', 'log_food'\)\)/.test(mig) && /check \(tool in \('add_task', 'log_food', 'update_food', 'update_task'\)\)/.test(mig205) && /PROPOSAL_TOOL_NAME: Readonly<Record<ProposalTool, string>> = \{ add_task: 'propose_add_task', log_food: 'propose_log_food', update_food: 'propose_update_food', update_task: 'propose_update_task' \}/.test(tools))
+  check('a write tool can never be "on": its modes are ask and off only, and the model\'s tool run never calls applyProposal', /ALL_WRITE_TOOL_NAMES\.includes\(name\) \? \['ask', 'off'\] : \['on', 'off'\]/.test(rules) && /ALL_WRITE_TOOL_NAMES: readonly string\[\] = \[\.\.\.WRITE_TOOL_NAMES, \.\.\.FIX_TOOL_NAMES\]/.test(rules) && !/applyProposal/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))))
+  check('a card that is replaced by a newer one is only closed: the store marks it once (pending only), and Confirm refuses it', /status: 'replaced'/.test(store) && /\.eq\('status', 'pending'\)\.in\('id', \[\.\.\.ids\]\)/.test(store) && /proposal\.status !== 'pending'/.test(loop))
   check('applyProposal is called from one place only, the owner\'s Confirm (decideChatProposal), with the owner\'s own client', (loop.match(/applyProposal\(/g) || []).length === 1 && /applyProposal\(ctx\.userDb, ctx\.userId,/.test(loop))
   check('the browser can read its proposals and write none: one select policy, one select grant, no browser write', /grant select on public\.ai_chat_proposals to authenticated;/.test(mig) && !/grant [^;]*(insert|update|delete)[^;]* on public\.ai_chat_proposals to authenticated/.test(mig) && (mig.match(/create policy [^;]*on public\.ai_chat_proposals/g) || []).length === 1)
   // phase 4b: the owner's controls and the phone's tools
-  const store = fs.readFileSync(`${REPO}/supabase/claude-src/chat-store.ts`, 'utf8').replace(/\/\/.*$/gm, '')
   const phone = fs.readFileSync(`${REPO}/supabase/claude-src/phone-ask.ts`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   const mig198 = fs.readFileSync(`${REPO}/supabase/migrations/198_ai_chat_controls.sql`, 'utf8').replace(/--.*$/gm, '')
   const phoneTools = tools.slice(tools.indexOf('export const PHONE_TOOL_NAMES'), tools.indexOf('export async function applyProposal'))
@@ -69,6 +86,7 @@ function checkAiWriteGroup() {
     tasks: [qk.tasks.day(d, d), qk.tasks.projects()],
     food_log_entries: [qk.foodLog.day(d), qk.mealPlan.dayNutrition(d), qk.health.cutDiary('2026-10-26', d), qk.supplements.facts('2026-10-26', d)],
   }
+  // A change (205) touches the same two tables: a renamed task shows on the same screens.
   const tools = fs.readFileSync(`${REPO}/supabase/claude-src/chat-tools.ts`, 'utf8')
   const apply = tools.slice(tools.indexOf('export async function applyProposal'))
   const written = [...apply.matchAll(/'(tasks|food_log_entries)'/g)].map(m => m[1])

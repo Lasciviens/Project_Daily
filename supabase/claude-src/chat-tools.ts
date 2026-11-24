@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · Ask AI, the tools
 //
-//  Thirteen tools: eleven read (the coach's three, the note tool and get_transit among them; get_transit reads a public
-//  service and none of the owner's rows but their saved places) and two PROPOSE a write, each a reviewed, named,
+//  Eighteen tools: fourteen read (the coach's three, the note tool, get_transit and find_food among them; get_transit and
+//  find_food also read public services) and four PROPOSE a write (add a task, log a food line, change one of today's
+//  food lines, rename a task), each a reviewed, named,
 //  parameterised query (AI last: code prepares the answer, the model only reads it); nothing here writes to the owner's tables except `applyProposal`, which only
 //  runs after the owner's Confirm.
 //
@@ -28,6 +29,7 @@ import { readWeekFacts } from './week-data.ts'
 import { checkedIdea, SUGGEST_COMPLEXITY, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
 import type { AddResult } from './suggest-store.ts'
 import { transitLookup, TRANSIT_ACTIONS, TRANSIT_MODES, TRANSIT_TIME_MEANS } from './transit-lookup.ts'
+import { checkedFoodRef, checkedPer100, findFood, foodByRef, foodHitLine, foodName, FOOD_LIMITS, FOOD_SOURCE_NAMES, portionOf, type FoodHit, type FoodSource } from './food-lookup.ts'
 import { ALL_TOOL_ORDER, APP_SCREENS, CHAT_LIMITS, CHAT_TOOL_ORDER, COACH_TOOL_ORDER, TOOL_DEFAULTS, type ToolMode } from './chat-rules.ts'
 import {
   checkedNote, NOTE_LESSON_DESCRIPTION, noteResultText, recallNotesOutput, SEARCH_DOCS_DESCRIPTION, searchDocsOutput,
@@ -43,10 +45,17 @@ type Field =
 type Args = Record<string, string | number>
 
 /** What a write tool proposes: the checked values, ready for `applyProposal`, and the sentence the Confirm card shows. */
+export type ProposalTool = 'add_task' | 'log_food' | 'update_food' | 'update_task'
+export const PROPOSAL_TOOLS: readonly ProposalTool[] = ['add_task', 'log_food', 'update_food', 'update_task']
+/** The write tool each kind of proposal comes from (its mode is the owner's switch at Confirm). */
+export const PROPOSAL_TOOL_NAME: Readonly<Record<ProposalTool, string>> = { add_task: 'propose_add_task', log_food: 'propose_log_food', update_food: 'propose_update_food', update_task: 'propose_update_task' }
+
 export interface ProposalDraft {
-  tool: 'add_task' | 'log_food'
+  tool: ProposalTool
   args: Record<string, unknown>
   summary: string
+  /** log_food only: the id of an earlier PENDING proposal of this chat this one corrects (the loop checks it before saving). */
+  replaces?: string
 }
 
 export type ToolOutput =
@@ -73,6 +82,8 @@ export interface ToolContext {
   noteLesson?: (kind: 'fact' | 'preference', text: string) => Promise<NoteResult>
   /** The person's notes for the chat that are on (get_about_me; the loop reads them with the service role, naming the verified user). */
   readNotes?: () => Promise<ProfileNote[] | null>
+  /** Kassalapp's key (main.ts, from the server's environment), for find_food; '' or absent: Kassalapp is not asked. Never in a result. */
+  kassalKey?: string
 }
 
 interface ToolDef {
@@ -203,7 +214,8 @@ const GET_DAY_PLAN: ToolDef = {
     const lines = [
       `Day: ${dmy(day)} (${TOOL_WEEKDAYS[(new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7]})${day === today ? ', today' : ''}`,
       `Tasks on that day's list: ${Math.min(taskRows.length, 80)}${taskRows.length > 80 ? ' (more than 80: only the first 80 are shown)' : ''}`,
-      ...taskRows.slice(0, 80).map(t => `- ${dataLine(t.status, 20)} · ${when(t)} · ${dataLine(t.title, 80)} · ${dataLine(t.priority, 10)}`),
+      // The chat's own ref of a task (propose_update_task takes it); the phone has no write, so no ref.
+      ...taskRows.slice(0, 80).map(t => `- ${dataLine(t.status, 20)} · ${when(t)} · ${dataLine(t.title, 80)} · ${dataLine(t.priority, 10)}${ctx.readAs === 'owner' && typeof t.id === 'string' && TOOL_UUID.test(t.id) ? ` · ref task:${t.id.toLowerCase()}` : ''}`),
       `Scheduled blocks that day: ${Math.min(blockRows.length, 40)}${blockRows.length > 40 ? ' (more than 40: only the first 40 are shown)' : ''}`,
       ...blockRows.slice(0, 40).map(b => `- ${time(b.start_time)}${typeof b.duration_minutes === 'number' ? ` (${b.duration_minutes} min)` : ''} ${dataLine(b.title, 80)} [${dataLine(b.category, 20)}]`),
       'A task that has a scheduled slot also appears as a block.',
@@ -268,7 +280,7 @@ const GET_FOOD_DAY: ToolDef = {
     const day = dayArg(args.date as string, ctx.now)
     if (!day) return fail(BAD_DAY)
     const [food, water, targets] = await Promise.all([
-      ctx.db.from('food_log_entries').select('meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g').eq('user_id', ctx.userId).eq('date', day).eq('status', 'eaten').limit(200),
+      ctx.db.from('food_log_entries').select('id, meal_slot, custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, library_ingredient_id, recipe_id, supplement_schedule_id').eq('user_id', ctx.userId).eq('date', day).eq('status', 'eaten').limit(200),
       ctx.db.from('water_log_entries').select('amount_ml').eq('user_id', ctx.userId).eq('date', day).limit(200),
       ctx.db.from('day_targets').select('calories, protein_g, water_ml').eq('user_id', ctx.userId).maybeSingle(),
     ])
@@ -286,11 +298,26 @@ const GET_FOOD_DAY: ToolDef = {
       `Protein: ${grp(sum('protein_g'))} g${vs(sum('protein_g'), target('protein_g'), ' g')}`,
       `Carbs: ${grp(sum('carbs_g'))} g; fat: ${grp(sum('fat_g'))} g`,
       `Water: ${grp(waterMl)} ml${vs(waterMl, target('water_ml'), ' ml')}`,
-      ...rows.slice(0, 40).map(r => `- ${dataLine(r.meal_slot, 12)} · ${dataLine(r.custom_title ?? 'a saved food or recipe', 60)} · ${grp(num(r.calories))} kcal`),
+      ...rows.slice(0, 40).map(r => `- ${dataLine(r.meal_slot, 12)} · ${dataLine(r.custom_title ?? 'a saved food or recipe', 60)} · ${grp(num(r.calories))} kcal, protein ${grp(num(r.protein_g))} g, carbs ${grp(num(r.carbs_g))} g, fat ${grp(num(r.fat_g))} g${foodLineRef(r, day, ctx)}`),
       ...(rows.length > 40 ? [`(${rows.length - 40} more lines not shown)`] : []),
     ]
     return { ok: true, text: cutResult(lines.join('\n')), rows: rows.length }
   },
+}
+
+/** The days a food line may be logged on or changed by Ask AI: the last 60 days and tomorrow (Oslo), as log_food has always had. */
+export function foodWindow(today: string): { from: string; to: string } {
+  return { from: shiftDay(today, -60), to: shiftDay(today, 1) }
+}
+const inFoodWindow = (day: unknown, today: string): boolean => { const w = foodWindow(today); return typeof day === 'string' && realDay(day) !== null && day >= w.from && day <= w.to }
+
+/**
+ * The chat's ref of a food line propose_update_food may change (a day in the fix window): only a one-off line can change; a
+ * line from a saved food, recipe or supplement follows its source, so it says so instead. The phone has no write: no ref there.
+ */
+function foodLineRef(r: Record<string, unknown>, day: string, ctx: ToolContext): string {
+  if (ctx.readAs !== 'owner' || !inFoodWindow(day, osloDay(ctx.now)) || typeof r.id !== 'string' || !TOOL_UUID.test(r.id)) return ''
+  return r.library_ingredient_id || r.recipe_id || r.supplement_schedule_id || r.meal_slot === 'supplement' ? ' · (follows a saved food, recipe or supplement: change it in Food)' : ` · ref entry:${r.id.toLowerCase()}`
 }
 
 /** Where a citation points: `lasci:task:<id>` or `lasci:diary:<id>`. The id is the row's own. */
@@ -488,6 +515,40 @@ const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 const oneLine = (value: unknown): string => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '')
 const round1 = (n: number) => Math.round(n * 10) / 10
 
+/** The bases a food line's figures may have: the person's own saved figures (by name), a database value (by ref), or the model's estimate. */
+const NAME_BASES = ['preset', 'recipe', 'diary'] as const
+const REF_BASES: readonly FoodSource[] = ['yours', 'kassalapp', 'openfoodfacts']
+const REF_KIND: Readonly<Record<FoodSource, 'food' | 'kassal' | 'off'>> = { yours: 'food', kassalapp: 'kassal', openfoodfacts: 'off' }
+const FOOD_NUMS: Readonly<Record<string, [number, number]>> = { calories: [0, 5000], protein_g: [0, 500], carbs_g: [0, 1000], fat_g: [0, 500] }
+const FOOD_FIELDS = ['calories', 'protein_g', 'carbs_g', 'fat_g'] as const
+
+/**
+ * A database value as stored with a proposal: the ref, the grams, the per-100 g values and the food's name. The portion is
+ * worked out here again from them (code, never the model), so the stored figures can only be what the source says × grams.
+ */
+function checkedFromSource(get: (key: string) => unknown, basis: FoodSource): { ok: true; values: Record<string, number>; extra: Record<string, unknown> } | { ok: false; message: string } {
+  const ref = checkedFoodRef(get('food_ref'))
+  const grams = get('grams')
+  const per100 = checkedPer100(get('per100'))
+  const sourceName = foodName(get('source_name'), 120)
+  if (!ref || ref.kind !== REF_KIND[basis]) return { ok: false, message: 'The food reference does not fit its source.' }
+  if (typeof grams !== 'number' || !Number.isFinite(grams) || grams < 1 || grams > FOOD_LIMITS.gramsMax) return { ok: false, message: `grams must be a number from 1 to ${FOOD_LIMITS.gramsMax}.` }
+  if (!per100 || !sourceName) return { ok: false, message: 'The values per 100 g are missing.' }
+  // The figures are kept as the database keeps a food line's (migration 106: two decimals), never rounded again for the card:
+  // the card shows exactly what is saved (150 g × 4.3 g = 6.45 g).
+  const g = round1(grams)
+  const portion = portionOf(per100, g)
+  const values: Record<string, number> = {}
+  for (const key of FOOD_FIELDS) values[key] = portion[key]
+  return { ok: true, values, extra: { food_ref: `${ref.kind}:${ref.id}`, grams: g, per100, source_name: sourceName } }
+}
+
+/** A figure as it is saved (two decimals at most, never rounded again): the card, the summary and the row say the same number. */
+const saved = (n: number): string => String(Math.round(n * 100) / 100)
+
+const sourceWords = (basis: string, extra: Record<string, unknown>) =>
+  REF_BASES.includes(basis as FoodSource) ? ` (from ${FOOD_SOURCE_NAMES[basis as FoodSource]}: ${[...String(extra.source_name)].slice(0, 60).join('')}, ${grp(Number(extra.grams))} g)` : ''
+
 /**
  * The one check every proposal passes, when it is made and again when it is confirmed: the stored arguments are input
  * (the table is only written by the function, but "our code wrote it" is not trust). Returns the arguments in their one
@@ -511,27 +572,151 @@ export function checkedProposal(tool: string, raw: unknown, today: string): { ok
     const title = oneLine(get('title'))
     const meal = get('meal')
     const date = get('date')
-    const nums: Record<string, [number, number]> = { calories: [0, 5000], protein_g: [0, 500], carbs_g: [0, 1000], fat_g: [0, 500] }
     if (!title || [...title].length > 120) return { ok: false, message: 'The food title must be 1 to 120 characters.' }
     if (!(MEALS as readonly string[]).includes(meal as string)) return { ok: false, message: `The meal must be one of: ${MEALS.join(', ')}.` }
     if (realDay(date) === null) return { ok: false, message: BAD_DAY.replace('"" (today) or ', '') }
     const within = (date as string) >= shiftDay(today, -60) && (date as string) <= shiftDay(today, 1)
     if (!within) return { ok: false, message: 'The date must be within the last 60 days (or tomorrow).' }
-    const values: Record<string, number> = {}
-    for (const [key, [min, max]] of Object.entries(nums)) {
-      const v = get(key)
-      if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) return { ok: false, message: `${key} must be a number from ${min} to ${max}.` }
-      values[key] = round1(v)
+    const basisRaw = get('basis')
+    let values: Record<string, number> = {}
+    let extra: Record<string, unknown> = {}
+    let basis: string
+    if (REF_BASES.includes(basisRaw as FoodSource)) {
+      // A database value: the figures are worked out here from the stored per-100 g values and grams, whatever else the row says.
+      const from = checkedFromSource(get, basisRaw as FoodSource)
+      if (!from.ok) return from
+      values = from.values
+      extra = from.extra
+      basis = basisRaw as string
+    } else {
+      for (const [key, [min, max]] of Object.entries(FOOD_NUMS)) {
+        const v = get(key)
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) return { ok: false, message: `${key} must be a number from ${min} to ${max}.` }
+        values[key] = round1(v)
+      }
+      basis = (NAME_BASES as readonly unknown[]).includes(basisRaw) ? basisRaw as string : 'estimate'
+    }
+    for (const [key, [, max]] of Object.entries(FOOD_NUMS)) if (values[key] > max) return { ok: false, message: `${key} must be at most ${max}.` }
+    // A card this one corrects (log_food's `replaces`): only a proposal id; the loop checks what it names.
+    const replaces = get('replaces')
+    if (replaces !== undefined && replaces !== null && (typeof replaces !== 'string' || !TOOL_UUID.test(replaces))) return { ok: false, message: 'replaces must be the ref of an earlier card (proposal:…), or "".' }
+    const args = { title, meal, date, ...values, basis, ...extra }
+    const from = basis === 'estimate' ? ' (estimated)' : REF_BASES.includes(basis as FoodSource) ? sourceWords(basis, extra) : ` (your own ${basis === 'preset' ? 'saved preset' : basis === 'recipe' ? 'recipe' : 'earlier diary line'})`
+    return { ok: true, draft: { tool, args, summary: `Log "${[...title].slice(0, 80).join('')}" as ${meal as string} on ${dmy(date as string)}: ${saved(values.calories)} kcal, protein ${saved(values.protein_g)} g, carbs ${saved(values.carbs_g)} g, fat ${saved(values.fat_g)} g${from}`.slice(0, 300), ...(typeof replaces === 'string' ? { replaces: replaces.toLowerCase() } : {}) } }
+  }
+  if (tool === 'update_food') {
+    // One eaten one-off food line of the fix window (the last 60 days and tomorrow): only the named fields of title and the
+    // four figures, never its meal, day or links. `before` is the row as it was read, exactly (the raw title, null figures as
+    // null): the update's own filter requires it, so a row that changed since is never touched.
+    const entryId = get('entry_id')
+    const date = get('date')
+    const meal = get('meal')
+    const before = ownValue(raw, 'before')
+    const changes = ownValue(raw, 'changes')
+    if (typeof entryId !== 'string' || !TOOL_UUID.test(entryId)) return { ok: false, message: 'That is not a food line of the person.' }
+    if (!inFoodWindow(date, today)) return { ok: false, message: 'Only a food line of the last 60 days (or tomorrow) can be changed here.' }
+    if (!(MEALS as readonly string[]).includes(meal as string)) return { ok: false, message: 'The line\'s meal is unknown.' }
+    const beforeTitle = ownValue(before, 'title')
+    const beforeNums: Record<string, number | null> = {}
+    for (const key of FOOD_FIELDS) {
+      const v = ownValue(before, key)
+      if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) return { ok: false, message: 'The line\'s saved values could not be read.' }
+      beforeNums[key] = v as number | null
+    }
+    if (typeof beforeTitle !== 'string' || !beforeTitle.trim() || [...beforeTitle].length > 500) return { ok: false, message: 'The line\'s saved title could not be read.' }
+    if (changes === null || typeof changes !== 'object' || Array.isArray(changes)) return { ok: false, message: 'Nothing would change.' }
+    const keys = Object.keys(changes as object)
+    if (keys.some(k => k !== 'title' && !(FOOD_FIELDS as readonly string[]).includes(k))) return { ok: false, message: 'Only the title and the four figures can change.' }
+    const out: Record<string, string | number> = {}
+    if (keys.includes('title')) {
+      const title = oneLine(ownValue(changes, 'title'))
+      if (!title || [...title].length > 120) return { ok: false, message: 'The new title must be 1 to 120 characters.' }
+      out.title = title
     }
     const basisRaw = get('basis')
-    const basis = basisRaw === 'preset' || basisRaw === 'recipe' || basisRaw === 'diary' ? basisRaw : 'estimate'
-    const args = { title, meal, date, ...values, basis }
-    return { ok: true, draft: { tool, args, summary: `Log "${[...title].slice(0, 80).join('')}" as ${meal as string} on ${dmy(date as string)}: ${grp(values.calories)} kcal, protein ${grp(values.protein_g)} g, carbs ${grp(values.carbs_g)} g, fat ${grp(values.fat_g)} g${basis === 'estimate' ? ' (estimated)' : ` (your own ${basis === 'preset' ? 'saved preset' : basis === 'recipe' ? 'recipe' : 'earlier diary line'})`}` } }
+    let extra: Record<string, unknown> = {}
+    let basis = 'estimate'
+    if (REF_BASES.includes(basisRaw as FoodSource)) {
+      const from = checkedFromSource(get, basisRaw as FoodSource)
+      if (!from.ok) return from
+      for (const key of FOOD_FIELDS) out[key] = from.values[key]
+      extra = from.extra
+      basis = basisRaw as string
+    } else {
+      for (const key of FOOD_FIELDS) {
+        if (!keys.includes(key)) continue
+        const v = ownValue(changes, key)
+        const [min, max] = FOOD_NUMS[key]
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) return { ok: false, message: `${key} must be a number from ${min} to ${max}.` }
+        out[key] = round1(v)
+      }
+    }
+    // Only what really changes is kept: the card lists it and the update names only those columns.
+    for (const [k, v] of Object.entries(out)) if (k === 'title' ? v === beforeTitle : v === beforeNums[k]) delete out[k]
+    if (!Object.keys(out).length) return { ok: false, message: 'Nothing would change: the line already says that.' }
+    const args = { entry_id: entryId.toLowerCase(), date, meal, before: { title: beforeTitle, ...beforeNums }, changes: out, basis, ...extra }
+    const what = Object.entries(out).map(([k, v]) => (k === 'title' ? `title to "${[...String(v)].slice(0, 60).join('')}"` : `${k.replace('_g', '')} to ${saved(Number(v))}`)).join(', ')
+    return { ok: true, draft: { tool, args, summary: `Change the ${meal as string} line of ${dmy(date as string)} "${[...oneLine(beforeTitle)].slice(0, 60).join('')}": ${what}${sourceWords(basis, extra)}`.slice(0, 300) } }
+  }
+  if (tool === 'update_task') {
+    // One task's title, nothing else (its day, links and status stay).
+    const taskId = get('task_id')
+    const changes = ownValue(raw, 'changes')
+    const rawBefore = ownValue(ownValue(raw, 'before'), 'title')
+    const beforeTitle = typeof rawBefore === 'string' && [...rawBefore].length <= 1000 ? oneLine(rawBefore) : ''
+    const title = oneLine(ownValue(changes, 'title'))
+    if (typeof taskId !== 'string' || !TOOL_UUID.test(taskId)) return { ok: false, message: 'That is not a task of the person.' }
+    if (changes === null || typeof changes !== 'object' || Array.isArray(changes) || Object.keys(changes).some(k => k !== 'title')) return { ok: false, message: 'Only a task\'s title can change.' }
+    if (!beforeTitle) return { ok: false, message: 'The task\'s saved title could not be read.' }
+    if (!title || [...title].length > 200) return { ok: false, message: 'The new title must be 1 to 200 characters.' }
+    if (title === beforeTitle) return { ok: false, message: 'Nothing would change: the task already has that title.' }
+    const inGoogle = ownValue(raw, 'in_google') === true
+    const args = { task_id: taskId.toLowerCase(), before: { title: rawBefore }, changes: { title }, in_google: inGoogle }
+    return { ok: true, draft: { tool, args, summary: `Rename the task "${[...beforeTitle].slice(0, 60).join('')}" to "${[...title].slice(0, 80).join('')}"`.slice(0, 300) } }
   }
   return { ok: false, message: 'That is not a proposal this app knows.' }
 }
 
 const PROPOSED = (summary: string) => `Proposed (not saved): ${summary}. The person now sees a card in the app and it is saved only if they tap Confirm.`
+
+/** The letters and digits of a title, folded: two titles that differ only in case, spaces or signs name the same thing ("Week 1" and "Week 2" do not). */
+const subjectLetters = (v: unknown): string => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, '')
+
+/**
+ * What a proposal is ABOUT, as keys: a newer pending proposal with a key in common replaces the older one (owner,
+ * 24.11.2026: "never two live cards for one thing"). A task by its title; a food line by day, meal and title or its food
+ * ref; a change by the row it changes. Made from the checked arguments only.
+ */
+export function proposalSubjects(tool: string, args: unknown): string[] {
+  const a = (k: string) => ownValue(args, k)
+  if (tool === 'add_task') { const t = subjectLetters(a('title')); return t ? [`task:${t}`] : [] }
+  if (tool === 'log_food') {
+    const at = `${String(a('date'))}|${String(a('meal'))}`
+    const t = subjectLetters(a('title'))
+    return [...(t ? [`food:${at}:${t}`] : []), ...(typeof a('food_ref') === 'string' ? [`food:${at}:ref:${String(a('food_ref'))}`] : [])]
+  }
+  if (tool === 'update_food') return typeof a('entry_id') === 'string' ? [`entry:${String(a('entry_id'))}`] : []
+  if (tool === 'update_task') return typeof a('task_id') === 'string' ? [`taskrow:${String(a('task_id'))}`] : []
+  return []
+}
+
+/**
+ * Whether a newer proposal is about the same thing as an older one. A food line: the same day and meal, and the same food
+ * ref, or one title's letters and digits holding the other's ("Cottage cheese" and "Cottage cheese 4.3 %"; never "Coffee"
+ * and "Banana": two foods at one meal are two cards). Everything else: a subject in common (`proposalSubjects`).
+ */
+export function sameThing(newer: { tool: string; args: unknown }, older: { tool: string; args: unknown }): boolean {
+  if (newer.tool !== older.tool) return false
+  if (newer.tool === 'log_food') {
+    const n = (k: string) => ownValue(newer.args, k), o = (k: string) => ownValue(older.args, k)
+    if (n('date') !== o('date') || n('meal') !== o('meal')) return false
+    if (typeof n('food_ref') === 'string' && n('food_ref') === o('food_ref')) return true
+    const a = subjectLetters(n('title')), b = subjectLetters(o('title'))
+    return a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a))
+  }
+  const keys = proposalSubjects(newer.tool, newer.args)
+  return proposalSubjects(older.tool, older.args).some(k => keys.includes(k))
+}
 
 const PROPOSE_ADD_TASK: ToolDef = {
   name: 'propose_add_task', kind: 'write',
@@ -550,29 +735,154 @@ const PROPOSE_ADD_TASK: ToolDef = {
   },
 }
 
+/** A database value as a proposal's stored part: the ref, the grams, the per-100 g values, the name. */
+const sourcePart = (hit: FoodHit, grams: number) => ({ basis: hit.source, food_ref: hit.ref, grams, per100: hit.per100, source_name: hit.name })
+const foodIo = (ctx: ToolContext) => ({ db: ctx.db, userId: ctx.userId, kassalKey: ctx.kassalKey ?? '', signal: ctx.signal, requestMs: ctx.requestMs })
+
 const PROPOSE_LOG_FOOD: ToolDef = {
   name: 'propose_log_food', kind: 'write',
-  description: "Proposes one food diary line. Code first uses the person's own saved figures for that exact name (preset, recipe, earlier line); your estimate is only the fallback. Nothing is saved: the person taps Confirm or Cancel.",
+  description: "Proposes one food diary line. With a find_food ref and grams, code works out the figures from that database. Without a ref, code uses the person's own saved figures for that exact name (preset, recipe, earlier line); your estimate is only the fallback. Nothing is saved: the person taps Confirm or Cancel.",
   fields: {
-    title: { type: 'string', max: 120, description: 'What was eaten, in the words the person used.' },
+    title: { type: 'string', max: 120, description: 'What was eaten, in English (a brand or place name as written).' },
     meal: { type: 'string', max: 10, enum: MEALS, description: 'breakfast, lunch, dinner or snack.' },
     date: { type: 'string', max: 10, description: 'The day as YYYY-MM-DD, or "" for today.' },
-    calories: { type: 'number', min: 0, max: 5000, description: 'Estimated kilocalories of the whole portion.' },
-    protein_g: { type: 'number', min: 0, max: 500, description: 'Estimated protein in grams.' },
-    carbs_g: { type: 'number', min: 0, max: 1000, description: 'Estimated carbohydrates in grams.' },
-    fat_g: { type: 'number', min: 0, max: 500, description: 'Estimated fat in grams.' },
+    calories: { type: 'number', min: 0, max: 5000, description: 'Estimated kilocalories of the whole portion; 0 with a food_ref.' },
+    protein_g: { type: 'number', min: 0, max: 500, description: 'Estimated protein in grams; 0 with a food_ref.' },
+    carbs_g: { type: 'number', min: 0, max: 1000, description: 'Estimated carbohydrates in grams; 0 with a food_ref.' },
+    fat_g: { type: 'number', min: 0, max: 500, description: 'Estimated fat in grams; 0 with a food_ref.' },
+    food_ref: { type: 'string', max: 60, description: 'A ref find_food returned, or "" when none fits.' },
+    grams: { type: 'number', min: 0, max: FOOD_LIMITS.gramsMax, description: 'The portion in grams with a food_ref; 0 without one.' },
+    replaces: { type: 'string', max: 60, description: 'The ref of an earlier pending card this one corrects (a new title, a combined line split up), or "".' },
   },
   async run(args, ctx) {
     const today = osloDay(ctx.now)
+    const date = args.date === '' ? today : args.date
+    const replaces = args.replaces === '' ? null : refId(String(args.replaces).replace(/^proposal:/i, ''), 'proposal')
+    if (args.replaces !== '' && !replaces) return fail('replaces must be the ref of an earlier card (proposal:…), or "".')
+    const corrects = replaces ? { replaces } : {}
+    if (args.food_ref !== '') {
+      // AI last: the values are the database's, read again here by the ref; the portion is code's arithmetic.
+      if (!((args.grams as number) >= 1)) return fail('With a food_ref, give the portion in grams (1 or more). Call propose_log_food again.')
+      const found = await foodByRef(args.food_ref, foodIo(ctx))
+      if (!found.ok) return fail(found.message)
+      // A food of the person's own list is saved as THAT food (its name, its live values), never a copy.
+      const title = found.hit.source === 'yours' ? found.hit.name : args.title
+      const checked = checkedProposal('log_food', { title, meal: args.meal, date, ...sourcePart(found.hit, args.grams as number), ...corrects }, today)
+      if (!checked.ok) return fail(`${checked.message} Fix it and call propose_log_food again.`)
+      return { ok: true, text: `${PROPOSED(checked.draft.summary)} Code worked out the figures from ${FOOD_SOURCE_NAMES[found.hit.source]}; copy them, never recalculate.`, proposal: checked.draft }
+    }
     // AI last: code looks for the person's own figures first (the same matching as Food's quick guess: the title equals a
     // saved preset, else a saved recipe, else an earlier one-off diary line, case and spaces ignored). The model's estimate
     // is only the fallback, and the card says which one it is.
     const known = await knownFood(ctx, args.title as string)
     const own = known ? { calories: known.calories, protein_g: known.protein_g, carbs_g: known.carbs_g, fat_g: known.fat_g, basis: known.basis } : { basis: 'estimate' }
-    const checked = checkedProposal('log_food', { ...args, ...own, date: args.date === '' ? today : args.date }, today)
+    const checked = checkedProposal('log_food', { title: args.title, meal: args.meal, date, calories: args.calories, protein_g: args.protein_g, carbs_g: args.carbs_g, fat_g: args.fat_g, ...own, ...corrects }, today)
     if (!checked.ok) return fail(`${checked.message} Fix it and call propose_log_food again.`)
-    const note = known ? ` Code matched the person's own ${known.basis === 'preset' ? 'saved preset' : known.basis === 'recipe' ? 'recipe' : 'earlier diary line'} "${dataLine(known.title, 60)}" and used its exact figures, not an estimate.` : ''
+    const note = known ? ` Code matched the person's own ${known.basis === 'preset' ? 'saved preset' : known.basis === 'recipe' ? 'recipe' : 'earlier diary line'} "${dataLine(known.title, 60)}" and used its exact figures, not an estimate.` : ' The card marks these figures as your estimate.'
     return { ok: true, text: PROPOSED(checked.draft.summary) + note, proposal: checked.draft }
+  },
+}
+
+const FIND_FOOD: ToolDef = {
+  name: 'find_food', kind: 'read',
+  description: "A food's values per 100 g: the person's own foods first, then Kassalapp (Norwegian groceries) and Open Food Facts. Each hit has a ref for propose_log_food and propose_update_food. Search with product words as on the pack, one food at a time (\"cottage cheese\", \"Tine cottage cheese\", \"jordbærsyltetøy\").",
+  fields: { query: { type: 'string', max: 80, description: 'The food\'s name or product words.' } },
+  async run(args, ctx) {
+    const found = await findFood(args.query as string, foodIo(ctx))
+    if (!found.ok) return fail(found.message)
+    const notes = found.notes.length ? `\n${found.notes.join(' ')}` : ''
+    if (!found.hits.length) return { ok: true, text: `Nothing with complete values per 100 g matched. Try other or fewer words, the Norwegian name, or estimate (food_ref "").${notes}`, rows: 0 }
+    return { ok: true, text: cutResult(`Foods (data, values per 100 g; pick the closest, then give its ref and the grams):\n${found.hits.map(foodHitLine).join('\n')}${notes}`), rows: found.hits.length }
+  },
+}
+
+/** A ref of the chat's own (`entry:<id>` / `task:<id>` / `proposal:<id>`, or a find_text source) or a bare id, as the id; null for anything else. */
+function refId(value: unknown, kind: 'entry' | 'task' | 'proposal'): string | null {
+  if (typeof value !== 'string') return null
+  let v = value.trim().toLowerCase()
+  if (kind === 'task' && v.startsWith('lasci:task:')) v = v.slice('lasci:task:'.length)
+  if (v.startsWith(`${kind}:`)) v = v.slice(kind.length + 1)
+  return TOOL_UUID.test(v) ? v : null
+}
+
+/** The columns of a food line the fix tool reads and compares (it writes only the named ones of them). */
+const FOOD_LINE_COLUMNS = 'id, date, status, meal_slot, custom_title, calories, protein_g, carbs_g, fat_g, library_ingredient_id, recipe_id, supplement_schedule_id'
+
+/** One of the owner's food lines that the fix tool may change: theirs, of the fix window, eaten, a one-off line (no saved food, recipe or dose, not the supplement meal). */
+async function changeableFoodLine(db: Db, userId: string, id: string, today: string): Promise<{ ok: true; row: Record<string, unknown> } | { ok: false; message: string }> {
+  const { data, error } = await db.from('food_log_entries').select(FOOD_LINE_COLUMNS).eq('id', id).eq('user_id', userId).maybeSingle()
+  if (error) return { ok: false, message: READ_PROBLEM }
+  const row = data !== null && typeof data === 'object' ? data as Record<string, unknown> : null
+  if (!row) return { ok: false, message: 'There is no food line with that ref. Call get_food_day and copy a ref.' }
+  if (!inFoodWindow(row.date, today)) return { ok: false, message: 'Only a food line of the last 60 days (or tomorrow) can be changed here. Tell the person to change it in Food.' }
+  if (row.status !== 'eaten') return { ok: false, message: 'That line is planned, not eaten. Tell the person to change it in Food.' }
+  if (typeof row.custom_title !== 'string' || !row.custom_title.trim()) return { ok: false, message: 'That line has no title of its own. Tell the person to change it in Food.' }
+  if (row.library_ingredient_id || row.recipe_id || row.supplement_schedule_id || row.meal_slot === 'supplement') return { ok: false, message: 'That line follows a saved food, recipe or supplement; its values come from there. Tell the person to change it in Food.' }
+  return { ok: true, row }
+}
+
+/** A stored figure as it is: a number (numeric text read as one), or null for an empty one. */
+const figureOrNull = (v: unknown): number | null => { const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v; return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null }
+/** What a food line says now, exactly, in the shape a change's `before` keeps (the card's "from", the update's own filter, Undo's values). */
+const lineNow = (r: Record<string, unknown>) => ({ title: typeof r.custom_title === 'string' ? r.custom_title : '', calories: figureOrNull(r.calories), protein_g: figureOrNull(r.protein_g), carbs_g: figureOrNull(r.carbs_g), fat_g: figureOrNull(r.fat_g) })
+
+const PROPOSE_UPDATE_FOOD: ToolDef = {
+  name: 'propose_update_food', kind: 'write',
+  description: "Proposes a change to ONE eaten one-off food line of the last 60 days: its title (for example in English) and/or its values. Values: a find_food ref and grams (code works them out), or your figures. Nothing else changes. Nothing is saved: the person taps Confirm or Cancel.",
+  fields: {
+    entry_ref: { type: 'string', max: 50, description: 'The line\'s ref from get_food_day (entry:…).' },
+    title: { type: 'string', max: 120, description: 'The new title in English, or "" to keep it.' },
+    food_ref: { type: 'string', max: 60, description: 'A ref find_food returned for the new values, or "".' },
+    grams: { type: 'number', min: 0, max: FOOD_LIMITS.gramsMax, description: 'The portion in grams with a food_ref; 0 without one.' },
+    calories: { type: 'number', min: -1, max: 5000, description: 'New kilocalories without a food_ref, or -1 to keep.' },
+    protein_g: { type: 'number', min: -1, max: 500, description: 'New protein in grams without a food_ref, or -1 to keep.' },
+    carbs_g: { type: 'number', min: -1, max: 1000, description: 'New carbohydrates in grams without a food_ref, or -1 to keep.' },
+    fat_g: { type: 'number', min: -1, max: 500, description: 'New fat in grams without a food_ref, or -1 to keep.' },
+  },
+  async run(args, ctx) {
+    if (ctx.readAs !== 'owner') return fail('Changes can only be proposed in the app.')
+    const today = osloDay(ctx.now)
+    const id = refId(args.entry_ref, 'entry')
+    if (!id) return fail('entry_ref must be a ref from get_food_day (entry:…). Call get_food_day for today.')
+    const line = await changeableFoodLine(ctx.db, ctx.userId, id, today)
+    if (!line.ok) return fail(line.message)
+    const changes: Record<string, string | number> = {}
+    if (args.title !== '') changes.title = args.title as string
+    let source: Record<string, unknown> = {}
+    if (args.food_ref !== '') {
+      if (!((args.grams as number) >= 1)) return fail('With a food_ref, give the portion in grams (1 or more).')
+      const found = await foodByRef(args.food_ref, foodIo(ctx))
+      if (!found.ok) return fail(found.message)
+      source = sourcePart(found.hit, args.grams as number)
+    } else {
+      for (const key of FOOD_FIELDS) if ((args[key] as number) >= 0) changes[key] = args[key] as number
+    }
+    const checked = checkedProposal('update_food', { entry_id: id, date: line.row.date, meal: line.row.meal_slot, before: lineNow(line.row), changes, ...source }, today)
+    if (!checked.ok) return fail(`${checked.message} Fix it and call propose_update_food again, or tell the person.`)
+    return { ok: true, text: PROPOSED(checked.draft.summary), proposal: checked.draft }
+  },
+}
+
+const PROPOSE_UPDATE_TASK: ToolDef = {
+  name: 'propose_update_task', kind: 'write',
+  description: "Proposes a new title for ONE of the person's tasks. Nothing else changes (day, status, links). Nothing is saved: the person taps Confirm or Cancel.",
+  fields: {
+    task_ref: { type: 'string', max: 60, description: 'The task\'s ref from get_day_plan (task:…), or a find_text task source.' },
+    title: { type: 'string', max: 200, description: 'The new title.' },
+  },
+  async run(args, ctx) {
+    if (ctx.readAs !== 'owner') return fail('Changes can only be proposed in the app.')
+    const id = refId(args.task_ref, 'task')
+    if (!id) return fail('task_ref must be a ref from get_day_plan (task:…) or a find_text task source.')
+    const { data, error } = await ctx.db.from('tasks').select('id, title, google_task_id').eq('id', id).eq('user_id', ctx.userId).maybeSingle()
+    if (error) return fail(READ_PROBLEM)
+    const row = data !== null && typeof data === 'object' ? data as Record<string, unknown> : {}
+    if (typeof row.title !== 'string') return fail('There is no task with that ref. Look it up again.')
+    // Only whether Google Tasks has it (the card says the title changes there too); the link itself is never read into the proposal.
+    const inGoogle = typeof row.google_task_id === 'string' && row.google_task_id !== ''
+    const checked = checkedProposal('update_task', { task_id: id, before: { title: row.title }, changes: { title: args.title }, in_google: inGoogle }, osloDay(ctx.now))
+    if (!checked.ok) return fail(`${checked.message} Fix it and call propose_update_task again.`)
+    return { ok: true, text: PROPOSED(checked.draft.summary), proposal: checked.draft }
   },
 }
 
@@ -587,8 +897,10 @@ async function knownFood(ctx: ToolContext, title: string): Promise<{ basis: 'pre
     for (const r of Array.isArray(rows) ? rows as Record<string, unknown>[] : []) {
       if (typeof r[name] !== 'string' || fold(r[name] as string) !== key) continue
       const [calories, protein_g, carbs_g, fat_g] = [figure(r.calories), figure(r.protein_g), figure(r.carbs_g), figure(r.fat_g)]
-      // A one-off line is read back to one portion (a "×2" line is two portions).
-      const per = basis === 'diary' && figure(r.quantity) ? (figure(r.quantity) as number) : 1
+      // A one-off line is read back to one portion (a "×2" line is two portions); a line in grams or ml (a database food's
+      // portion, 24.11.2026) is one portion as it is — its figures are never per gram.
+      const weighed = typeof r.unit === 'string' && /^(g|gram|grams|ml|milliliter|milliliters|millilitre|millilitres)$/i.test(r.unit.trim())
+      const per = basis === 'diary' && !weighed && figure(r.quantity) ? (figure(r.quantity) as number) : 1
       if (calories === null || calories <= 0) continue
       return { basis, title: r[name] as string, calories: calories / per, protein_g: (protein_g ?? 0) / per, carbs_g: (carbs_g ?? 0) / per, fat_g: (fat_g ?? 0) / per }
     }
@@ -601,7 +913,7 @@ async function knownFood(ctx: ToolContext, title: string): Promise<{ basis: 'pre
     const recipes = await ctx.db.from('recipes').select('title, calories, protein_g, carbs_g, fat_g').eq('user_id', ctx.userId).limit(500)
     const fromRecipe = recipes.error ? null : pick(recipes.data, 'title', 'recipe')
     if (fromRecipe) return fromRecipe
-    const lines = await ctx.db.from('food_log_entries').select('custom_title, quantity, calories, protein_g, carbs_g, fat_g, library_ingredient_id, recipe_id')
+    const lines = await ctx.db.from('food_log_entries').select('custom_title, quantity, unit, calories, protein_g, carbs_g, fat_g, library_ingredient_id, recipe_id')
       .eq('user_id', ctx.userId).eq('status', 'eaten').is('library_ingredient_id', null).is('recipe_id', null).not('custom_title', 'is', null)
       .order('created_at', { ascending: false }).limit(300)
     return lines.error ? null : pick(lines.data, 'custom_title', 'diary')
@@ -678,7 +990,7 @@ const NOTE_LESSON: ToolDef = {
 
 // ── The list, the permission wall and the run ───────────────────────────────
 
-const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT, GET_TRANSIT, SEARCH_DOCS, NOTE_LESSON]
+const TOOL_DEFS: readonly ToolDef[] = [GET_DAY_PLAN, GET_WEEK_FIGURES, GET_FOOD_DAY, FIND_TEXT, GET_ABOUT_ME, ASK_DATABASE, PROPOSE_ADD_TASK, PROPOSE_LOG_FOOD, GET_TRAINING_WEEK, GET_HEALTH_TRENDS, GET_PT_VERDICTS, NOTE_SHORTCUT, GET_TRANSIT, SEARCH_DOCS, NOTE_LESSON, FIND_FOOD, PROPOSE_UPDATE_FOOD, PROPOSE_UPDATE_TASK]
 const TOOLS_BY_NAME: ReadonlyMap<string, ToolDef> = new Map(TOOL_DEFS.map(def => [def.name, def]))
 
 /** Every tool's definition, in the fixed order (the same set and order the permission wall names). */
@@ -772,10 +1084,21 @@ export async function runPhoneTool(name: unknown, input: unknown, allowed: reado
 
 // ── Making a confirmed proposal real ────────────────────────────────────────
 
+const SAVE_FAILED = 'The row could not be saved. Nothing was changed.'
+
+/** The one row a write touched, by its id, or the fixed failure. */
+function oneRow(data: unknown, error: unknown): { ok: true; id: string } | { ok: false; message: string } {
+  const row = Array.isArray(data) ? (data.length === 1 ? data[0] : null) : data
+  const id = ownValue(row, 'id')
+  return error || typeof id !== 'string' || !TOOL_UUID.test(id) ? { ok: false, message: SAVE_FAILED } : { ok: true, id }
+}
+
 /**
  * Writes what the owner confirmed, with the OWNER'S rights (`ctx.db` carries their sign-in token, so row level security
- * applies) and the verified user id. The stored arguments are checked again first. The columns are the fixed list below:
- * no link column, no id from the model.
+ * applies) and the verified user id. The stored arguments are checked again first. ONE insert or ONE update per Confirm.
+ * The columns are the fixed lists below: no column that links to an outside account, no id from the model that is not
+ * read again here with the owner's id. A food of the owner's own list is linked by its id (the database then works its
+ * values out from the food, migration 106) only after that id is read back as the owner's.
  */
 export async function applyProposal(
   db: Db, userId: string, tool: string, storedArgs: unknown, today: string,
@@ -783,19 +1106,70 @@ export async function applyProposal(
   const checked = checkedProposal(tool, storedArgs, today)
   if (!checked.ok) return { ok: false, message: checked.message }
   const a = checked.draft.args
+  if (tool === 'update_food' || tool === 'update_task') return applyChange(db, userId, tool, a, today)
+  const ownFood = tool === 'log_food' && a.basis === 'yours' ? checkedFoodRef(a.food_ref) : null
+  if (tool === 'log_food' && a.basis === 'yours') {
+    if (!ownFood || ownFood.kind !== 'food') return { ok: false, message: SAVE_FAILED }
+    const mine = await db.from('recipe_ingredient_library').select('id').eq('id', ownFood.id).eq('user_id', userId).maybeSingle()
+    if (mine.error || !mine.data) return { ok: false, message: 'That food is not in your list any more. Nothing was saved.' }
+  }
   const row: Record<string, unknown> = tool === 'add_task'
     ? {
         user_id: userId, title: a.title, description: a.description === '' ? null : a.description, domain: 'personal',
         section: a.due_date === today ? 'today' : a.due_date ? 'backlog' : 'inbox', status: 'open', priority: a.priority,
         due_date: a.due_date, source_type: 'ai',
       }
-    : {
-        user_id: userId, date: a.date, meal_slot: a.meal, status: 'eaten', custom_title: a.title, quantity: 1, unit: 'serving',
-        calories: a.calories, protein_g: a.protein_g, carbs_g: a.carbs_g, fat_g: a.fat_g,
-      }
+    : ownFood
+      ? {
+          user_id: userId, date: a.date, meal_slot: a.meal, status: 'eaten', library_ingredient_id: ownFood.id, quantity: a.grams, unit: 'g',
+          calories: a.calories, protein_g: a.protein_g, carbs_g: a.carbs_g, fat_g: a.fat_g,
+        }
+      : {
+          // A one-off line. From an outside database it is the grams eaten (its figures are that portion; a one-off line's
+          // figures are its own, migration 106 leaves them), else one serving of an estimate or a saved figure.
+          user_id: userId, date: a.date, meal_slot: a.meal, status: 'eaten', custom_title: a.title,
+          quantity: a.basis === 'kassalapp' || a.basis === 'openfoodfacts' ? a.grams : 1, unit: a.basis === 'kassalapp' || a.basis === 'openfoodfacts' ? 'g' : 'serving',
+          calories: a.calories, protein_g: a.protein_g, carbs_g: a.carbs_g, fat_g: a.fat_g,
+        }
   const table = tool === 'add_task' ? 'tasks' : 'food_log_entries'
   const { data, error } = await db.from(table).insert(row).select('id').single()
-  const id = ownValue(data, 'id')
-  if (error || typeof id !== 'string' || !TOOL_UUID.test(id)) return { ok: false, message: 'The row could not be saved. Nothing was changed.' }
-  return { ok: true, id }
+  return oneRow(data, error)
+}
+
+const CHANGED_SINCE = 'It was changed since; nothing was changed. Ask again.'
+
+/**
+ * A confirmed change, in ONE update that is its own check (guardian review, 24.11.2026): the filter names the row, the
+ * verified user, the stored day and meal, eaten, no saved food, recipe or dose, not the supplement meal, the fix window
+ * (worked out now, at Confirm) and EVERY value the change was proposed against (the raw title, the four figures, null as
+ * null), and the update names only the changed columns. A row that changed in between matches nothing: zero rows is
+ * "changed since", and nothing is written. No read before the write, so there is no gap between a check and the write.
+ */
+async function applyChange(db: Db, userId: string, tool: 'update_food' | 'update_task', a: Record<string, unknown>, today: string): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  const changes = (a.changes ?? {}) as Record<string, unknown>
+  const before = (a.before ?? {}) as Record<string, unknown>
+  const has = (k: string) => Object.prototype.hasOwnProperty.call(changes, k)
+  const written = (data: unknown, error: unknown) => {
+    if (error) return { ok: false as const, message: SAVE_FAILED }
+    return Array.isArray(data) && data.length === 0 ? { ok: false as const, message: CHANGED_SINCE } : oneRow(data, error)
+  }
+  if (tool === 'update_food') {
+    const window = foodWindow(today)
+    const patch: Record<string, unknown> = {
+      ...(has('title') ? { custom_title: changes.title } : {}),
+      ...(has('calories') ? { calories: changes.calories } : {}),
+      ...(has('protein_g') ? { protein_g: changes.protein_g } : {}),
+      ...(has('carbs_g') ? { carbs_g: changes.carbs_g } : {}),
+      ...(has('fat_g') ? { fat_g: changes.fat_g } : {}),
+    }
+    let q = db.from('food_log_entries').update(patch).eq('id', String(a.entry_id)).eq('user_id', userId).eq('date', String(a.date)).gte('date', window.from).lte('date', window.to)
+      .eq('status', 'eaten').eq('meal_slot', String(a.meal)).neq('meal_slot', 'supplement')
+      .is('library_ingredient_id', null).is('recipe_id', null).is('supplement_schedule_id', null)
+      .eq('custom_title', String(before.title))
+    for (const key of FOOD_FIELDS) q = before[key] === null ? q.is(key, null) : q.eq(key, before[key] as number)
+    const { data, error } = await q.select('id')
+    return written(data, error)
+  }
+  const { data, error } = await db.from('tasks').update({ title: changes.title }).eq('id', String(a.task_id)).eq('user_id', userId).eq('title', String(before.title)).select('id')
+  return written(data, error)
 }

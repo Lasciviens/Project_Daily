@@ -52,6 +52,8 @@ export interface RunContext {
   providerName: string
   /** The network and the name lookup for a job that reads an outside page (page-fetch.ts). */
   page: PageEnv
+  /** Kassalapp's key for Ask AI's find_food (main.ts, from the server's environment); '' or absent: Kassalapp is not asked. */
+  foodKey?: string
   /** The secrets this function holds, to keep out of every message. */
   secrets: readonly (string | null | undefined)[]
   now: () => Date

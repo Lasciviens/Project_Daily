@@ -15,6 +15,8 @@ No key and no account: every request is anonymous. OFF's answers are CORS-open (
 
 The Scriptable food logger (`docs/scriptable-food-logger.md`) calls the same `/cgi/search.pl` form from the iPhone.
 
+**Ask AI's `find_food`** (24.11.2026, `supabase/claude-src/food-lookup.ts`) calls the same two endpoints from the `claude` function: `/cgi/search.pl` with `search_terms`, `search_simple=1`, `action=process`, `json=1`, `fields=code,product_name,product_name_en,brands,nutriments`, `page_size=30` (a URLSearchParams value each; the model's words go only into `search_terms`), and `/api/v2/product/<code>.json` for the ref `off:<code>` a proposal takes (8–14 digits as checked). The same User-Agent, 4 s, 2 MB read as a stream, redirects refused. It keeps a product only with `energy-kcal_100g` (else `energy_100g` ÷ 4.184), `proteins_100g`, `carbohydrates_100g` and `fat_100g` all present and inside what a food can hold (energy 0–950 kcal, each macro 0–100 g, together ≤ 105 g), its names and brand holding every typed word (the same word check, `foodHasEveryWord` = `containsEveryWord`, compared by `verify-claude-chat` §18). The shape was checked live on 24.11.2026 for "cottage cheese" (search) and one product by code: the fields above as listed below. A 503 or 429 is "busy right now", never retried by the tool.
+
 ## Fields we read and write
 | Field | Shape seen (03.11.2026) | Where it goes |
 |---|---|---|

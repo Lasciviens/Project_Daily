@@ -35,6 +35,9 @@ export const TOOL_LABELS: Record<string, { label: string; what: string }> = {
   get_transit: { label: 'Bus and train times', what: "Looks up live public transport from Entur (open data): departures from a stop, or a trip from A to B. Your saved places (home, work) are sent to Entur only as a stop or a position." },
   search_docs: { label: 'Search the app docs', what: "Searches the app's own documentation (built when the app is deployed). It is shown to the assistant as data, never as instructions." },
   note_lesson: { label: 'Note about you', what: "Proposes one short note about you from your own words. Only a plain fact in your words turns on by itself; anything else waits for you in Developer → AI → Learned → Notes." },
+  find_food: { label: 'Find a food', what: "Looks up a food's values per 100 g: your own foods first, then Kassalapp and Open Food Facts. The app works out the portion itself." },
+  propose_update_food: { label: 'Fix a food line', what: "Proposes a change to one of today's food lines (its title or its values). Nothing is saved until you tap Confirm; Undo puts it back." },
+  propose_update_task: { label: 'Rename a task', what: 'Proposes a new title for one task. Nothing is saved until you tap Confirm; Undo puts it back.' },
 }
 export const toolLabel = (name: string): string => TOOL_LABELS[name]?.label ?? name
 
@@ -79,7 +82,7 @@ export function chatIntro(mode: ChatMode, tools: readonly string[]): { text: str
     }
   }
   const reads = [has('get_day_plan') && 'plan', has('get_week_figures') && 'week', has('get_food_day') && 'food', has('find_text') && 'tasks and diary', has('get_about_me') && 'notes about you', has('ask_database') && 'data (a database question as a last resort)'].filter(Boolean) as string[]
-  const writes = [has('propose_add_task') && 'a task', has('propose_log_food') && 'a food line'].filter(Boolean) as string[]
+  const writes = [has('propose_add_task') && 'a task', has('propose_log_food') && 'a food line', has('propose_update_food') && 'a fix to a saved food line', has('propose_update_task') && 'a new task title'].filter(Boolean) as string[]
   const suggestions = [
     has('get_day_plan') && 'What is on my plan today?',
     has('get_week_figures') && 'How is my week going so far?',
@@ -103,7 +106,14 @@ export function joinSpoken(typed: string, spoken: string): string {
 
 export interface ChatCitation { kind: 'task' | 'diary'; id: string; title: string; day: string | null }
 
-export type CardState = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired' | 'busy' | 'undone'
+export type CardState = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expired' | 'busy' | 'undone' | 'replaced'
+
+/** The kinds of proposal: two that add a row, two that change one (the function's `PROPOSAL_TOOLS`). */
+export type ProposalTool = 'add_task' | 'log_food' | 'update_food' | 'update_task'
+export const PROPOSAL_TOOLS: readonly ProposalTool[] = ['add_task', 'log_food', 'update_food', 'update_task']
+const isProposalTool = (v: unknown): v is ProposalTool => PROPOSAL_TOOLS.includes(v as ProposalTool)
+/** A change of an existing row (its card shows before → after; Undo writes the before back). */
+export const isChangeTool = (tool: ProposalTool): boolean => tool === 'update_food' || tool === 'update_task'
 
 /**
  * A proposed write waiting for the owner's tap. `args` is what is stored in ai_chat_proposals (read from the table, never
@@ -111,7 +121,7 @@ export type CardState = 'pending' | 'confirmed' | 'cancelled' | 'failed' | 'expi
  */
 export interface ChatCard {
   id: string
-  tool: 'add_task' | 'log_food'
+  tool: ProposalTool
   summary: string
   expiresAt: string
   state: CardState
@@ -160,17 +170,20 @@ export type ChatEvent =
   | { event: 'step'; name: string; label: string }
   | { event: 'retract' }
   | { event: 'detail'; name: string; input: Record<string, string | number>; ok: boolean }
-  | { event: 'proposal'; card: ChatCard }
-  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; costUsd: number; wall: boolean; cutOff: boolean; promptTokens: number; runId: string | null; thinking: string; suggestion: string | null }
+  /** `replaces`: older cards of this chat it took the place of (they now say "Replaced"). */
+  | { event: 'proposal'; card: ChatCard; replaces: string[] }
+  | { event: 'done'; conversationId: string; text: string; citations: ChatCitation[]; cards: ChatCard[]; replaced: string[]; costUsd: number; wall: boolean; cutOff: boolean; promptTokens: number; runId: string | null; thinking: string; suggestion: string | null }
   | { event: 'error'; reason: string; message: string; conversationId: string | null; costUsd: number; runId: string | null }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
 const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '')
+/** A list of card ids from the stream: uuids only, at most 50. */
+const uuids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && UUID.test(x)).slice(0, 50) : [])
 
 function readCard(v: unknown): ChatCard | null {
   if (!isObject(v) || typeof v.id !== 'string' || !UUID.test(v.id)) return null
-  if (v.tool !== 'add_task' && v.tool !== 'log_food') return null
+  if (!isProposalTool(v.tool)) return null
   const summary = str(v.summary, 300)
   if (!summary) return null
   return { id: v.id, tool: v.tool, summary, expiresAt: str(v.expires_at ?? v.expiresAt, 40), state: 'pending', args: null, resultId: null }
@@ -207,14 +220,14 @@ export function readChatEvent(name: string, data: unknown): ChatEvent | null {
     }
     case 'proposal': {
       const card = readCard(data)
-      return card ? { event: 'proposal', card } : null
+      return card ? { event: 'proposal', card, replaces: uuids(data.replaces) } : null
     }
     case 'done': {
       if (typeof data.conversation_id !== 'string' || !UUID.test(data.conversation_id)) return null
       const cost = typeof data.cost_usd === 'number' && Number.isFinite(data.cost_usd) && data.cost_usd >= 0 ? data.cost_usd : 0
       return {
         event: 'done', conversationId: data.conversation_id, text: str(data.text, 40_000), citations: readCitations(data.citations),
-        cards: (Array.isArray(data.proposals) ? data.proposals : []).map(readCard).filter((c): c is ChatCard => c !== null).slice(0, 10),
+        cards: (Array.isArray(data.proposals) ? data.proposals : []).map(readCard).filter((c): c is ChatCard => c !== null).slice(0, 10), replaced: uuids(data.replaced),
         costUsd: cost, wall: data.wall === true, cutOff: data.ending === 'cut_off',
         promptTokens: typeof data.prompt_tokens === 'number' && Number.isFinite(data.prompt_tokens) && data.prompt_tokens >= 0 ? data.prompt_tokens : 0,
         runId: typeof data.run_id === 'string' && UUID.test(data.run_id) ? data.run_id : null, thinking: str(data.thinking, 8000),
@@ -275,13 +288,16 @@ export function applyChatEvent(turn: ChatTurn, event: ChatEvent): ChatTurn {
     }
     case 'retract':
       return { ...turn, text: '' }
-    case 'proposal':
-      return { ...turn, cards: turn.cards.some(c => c.id === event.card.id) ? turn.cards : [...turn.cards, event.card] }
+    case 'proposal': {
+      // A newer card for the same thing closes the older one (the function marked it replaced; it can no longer be decided).
+      const cards = replacedIn(turn.cards, event.replaces)
+      return { ...turn, cards: cards.some(c => c.id === event.card.id) ? cards : [...cards, event.card] }
+    }
     case 'done':
       return {
         ...turn, text: event.text || turn.text, citations: event.citations, costUsd: event.costUsd, runId: event.runId, thinking: event.thinking, suggestion: event.suggestion,
         // The cards already shown keep what has been read for them; a card the stream did not announce is added.
-        cards: [...turn.cards, ...event.cards.filter(c => !turn.cards.some(x => x.id === c.id))],
+        cards: replacedIn([...turn.cards, ...event.cards.filter(c => !turn.cards.some(x => x.id === c.id))], event.replaced),
         streaming: false, cutOff: event.cutOff, error: null, errorReason: null,
       }
     case 'error':
@@ -291,9 +307,15 @@ export function applyChatEvent(turn: ChatTurn, event: ChatEvent): ChatTurn {
   }
 }
 
+/** The cards with the named ones marked replaced (only a card still waiting: a decided one never changes). */
+export function replacedIn(cards: readonly ChatCard[], ids: readonly string[]): ChatCard[] {
+  if (!ids.length) return [...cards]
+  return cards.map(c => (ids.includes(c.id) && c.state === 'pending' ? { ...c, state: 'replaced' as const } : c))
+}
+
 // ── What a step shows, and what a card shows ────────────────────────────────
 
-const INPUT_LABELS: Record<string, string> = { date: 'Date', week: 'Week', section: 'Part', query: 'Words', kind: 'Kind', sql: 'SQL', title: 'Title', note: 'Note', due_date: 'Due date', priority: 'Priority', meal: 'Meal', why: 'Why' }
+const INPUT_LABELS: Record<string, string> = { date: 'Date', week: 'Week', section: 'Part', query: 'Words', kind: 'Kind', sql: 'SQL', title: 'Title', note: 'Note', due_date: 'Due date', priority: 'Priority', meal: 'Meal', why: 'Why', food_ref: 'Food', grams: 'Grams', entry_ref: 'Line', task_ref: 'Task' }
 
 /** "2026-11-24" as "24.11.2026"; anything else as it is. */
 export function dmy(value: string): string {
@@ -305,7 +327,8 @@ export function dmy(value: string): string {
 export function describeInput(input: Record<string, unknown>): ChatStep['input'] {
   const out: NonNullable<ChatStep['input']> = []
   for (const [key, raw] of Object.entries(input).slice(0, 12)) {
-    if ((typeof raw !== 'string' && typeof raw !== 'number') || raw === '' || raw === 'any') continue
+    // "" and "any" mean "not given"; so do the number fields' 0 (grams) and -1 (keep).
+    if ((typeof raw !== 'string' && typeof raw !== 'number') || raw === '' || raw === 'any' || (typeof raw === 'number' && (raw === -1 || (raw === 0 && key === 'grams')))) continue
     const value = typeof raw === 'number' ? String(raw) : /date/.test(key) ? dmy(raw) : raw
     out.push({ key, label: INPUT_LABELS[key] ?? key, value: value.slice(0, 1500), long: key === 'sql' })
   }
@@ -314,7 +337,23 @@ export function describeInput(input: Record<string, unknown>): ChatStep['input']
 
 const PRIORITY_WORDS: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' }
 const MEAL_WORDS: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
-const BASIS_WORDS: Record<string, string> = { preset: 'Your own saved preset (exact figures)', recipe: 'Your own recipe (per serving)', diary: 'Your earlier diary line (one portion)', estimate: 'The AI\'s estimate' }
+const BASIS_WORDS: Record<string, string> = { preset: 'Your own saved preset (exact figures)', recipe: 'Your own recipe (per serving)', diary: 'Your earlier diary line (one portion)', estimate: 'Estimate (the AI\'s, no database value)' }
+const SOURCE_WORDS: Record<string, string> = { yours: 'your foods', kassalapp: 'Kassalapp', openfoodfacts: 'Open Food Facts' }
+const FIGURE_LABELS: Record<string, string> = { title: 'Title', calories: 'Calories', protein_g: 'Protein', carbs_g: 'Carbs', fat_g: 'Fat' }
+/** A stored figure as the card shows it: the saved number itself (two decimals at most, as the database keeps a food line), or "–" when empty. */
+const figure = (key: string, v: unknown): string => (key === 'title' ? `“${typeof v === 'string' ? v : ''}”` : typeof v === 'number' && Number.isFinite(v) ? `${Math.round(v * 100) / 100} ${key === 'calories' ? 'kcal' : 'g'}` : '–')
+/** A food line's figures from a database are the grams eaten (the saved row says so: quantity grams, unit g). */
+const inGrams = (args: Record<string, unknown>) => args.basis === 'yours' || args.basis === 'kassalapp' || args.basis === 'openfoodfacts'
+
+/** Where a food's figures come from, in words: a database (by name, grams × per 100 g) or the estimate. */
+function figuresFrom(args: Record<string, unknown>): string {
+  const basis = typeof args.basis === 'string' ? args.basis : 'estimate'
+  const source = SOURCE_WORDS[basis]
+  if (!source) return BASIS_WORDS[basis] ?? BASIS_WORDS.estimate
+  const name = typeof args.source_name === 'string' ? args.source_name : ''
+  const grams = typeof args.grams === 'number' ? args.grams : 0
+  return `From ${source}: ${name} — ${grams} g × its values per 100 g${basis === 'yours' ? ' (the line follows your food)' : ''}`
+}
 
 /**
  * Every field a confirmed proposal would write, as label and value, from the stored arguments: nothing is cut. The
@@ -337,17 +376,32 @@ export function proposalFields(tool: string, args: Record<string, unknown>, toda
       { label: 'Source', value: 'Added by Ask AI' },
     ]
   }
+  if (tool === 'update_food' || tool === 'update_task') {
+    // A change: the row as it is, then each changed field as before → after; nothing else is written.
+    const before = isObject(args.before) ? args.before : {}
+    const changes = isObject(args.changes) ? args.changes : {}
+    const row = tool === 'update_task'
+      ? { label: 'Task', value: typeof before.title === 'string' ? before.title : '' }
+      : { label: 'Line', value: `${typeof before.title === 'string' ? before.title : ''} · ${MEAL_WORDS[text('meal')] ?? text('meal')} · ${dmy(text('date'))}` }
+    return [
+      row,
+      ...Object.keys(changes).filter(k => FIGURE_LABELS[k]).map(k => ({ label: FIGURE_LABELS[k], value: `${figure(k, before[k])} → ${figure(k, changes[k])}` })),
+      ...(tool === 'update_food' && Object.keys(changes).some(k => k !== 'title') ? [{ label: 'Figures from', value: figuresFrom(args) }] : []),
+      // Google Tasks keeps the task's title in step (its own sync), so the card says where else it changes.
+      ...(tool === 'update_task' && args.in_google === true ? [{ label: 'Google Tasks', value: 'Also renamed in Google Tasks' }] : []),
+    ]
+  }
   return [
     { label: 'Title', value: text('title') },
     { label: 'Meal', value: MEAL_WORDS[text('meal')] ?? text('meal') },
     { label: 'Date', value: dmy(text('date')) },
-    { label: 'Amount', value: '1 serving' },
+    { label: 'Amount', value: inGrams(args) ? `${typeof args.grams === 'number' ? args.grams : '?'} g` : '1 serving' },
     { label: 'Calories', value: `${num('calories')} kcal` },
     { label: 'Protein', value: `${num('protein_g')} g` },
     { label: 'Carbs', value: `${num('carbs_g')} g` },
     { label: 'Fat', value: `${num('fat_g')} g` },
     { label: 'Status', value: 'Eaten' },
-    { label: 'Figures from', value: BASIS_WORDS[text('basis')] ?? BASIS_WORDS.estimate },
+    { label: 'Figures from', value: figuresFrom(args) },
   ]
 }
 
@@ -370,11 +424,12 @@ function typedText(content: unknown): string | null {
 const STEP_WORDS: Record<string, string> = {
   get_day_plan: "Looking at the day's plan", get_week_figures: "Looking up the week's figures", get_food_day: "Looking up the day's food",
   find_text: 'Searching your tasks and diary', ask_database: 'Asking the database', propose_add_task: 'Preparing a task for you to confirm', propose_log_food: 'Preparing a food line for you to confirm',
+  find_food: "Looking up the food's values", propose_update_food: 'Preparing a change to a food line for you to confirm', propose_update_task: 'Preparing a new task title for you to confirm',
   get_training_week: "Looking at the week's training", get_health_trends: "Looking at the week's health figures", get_pt_verdicts: "Reading the coach's saved verdicts", note_shortcut: 'Noting a suggestion', get_transit: 'Looking up bus and train times',
 }
 
 function cardState(status: string, expiresAt: string, now: number): CardState {
-  if (status === 'confirmed' || status === 'cancelled' || status === 'failed') return status
+  if (status === 'confirmed' || status === 'cancelled' || status === 'failed' || status === 'replaced') return status
   // Fail closed: a time that cannot be read counts as past.
   return Date.parse(expiresAt) > now ? 'pending' : 'expired'
 }
@@ -405,7 +460,7 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
       const input = isObject(b.input) ? describeInput(b.input) : []
       answer.steps.push({ name: b.name, label: STEP_WORDS[b.name] ?? 'Working on it', input })
       const p = proposals.find(x => x.tool_use_id === b.id)
-      if (p && (p.tool === 'add_task' || p.tool === 'log_food') && !answer.cards.some(c => c.id === p.id)) {
+      if (p && isProposalTool(p.tool) && !answer.cards.some(c => c.id === p.id)) {
         answer.cards.push({ id: p.id, tool: p.tool, summary: p.summary, expiresAt: p.expires_at, state: cardState(p.status, p.expires_at, now), args: isObject(p.args) ? p.args : null, resultId: typeof p.result_id === 'string' ? p.result_id : null })
       }
     }
@@ -434,7 +489,7 @@ export function citationTarget(c: ChatCitation): { kind: 'task'; id: string } | 
 
 /** The words for a card that is not waiting any more. */
 export function cardStateLabel(state: CardState): string {
-  return state === 'confirmed' ? 'Saved' : state === 'cancelled' ? 'Cancelled' : state === 'expired' ? 'Expired' : state === 'failed' ? 'Could not be saved' : state === 'busy' ? 'Working…' : ''
+  return state === 'confirmed' ? 'Saved' : state === 'cancelled' ? 'Cancelled' : state === 'expired' ? 'Expired' : state === 'failed' ? 'Could not be saved' : state === 'busy' ? 'Working…' : state === 'replaced' ? 'Replaced by a newer card' : ''
 }
 
 /** A reply's `**bold**` markers as parts (no markdown library: the model is told to use only this). */
