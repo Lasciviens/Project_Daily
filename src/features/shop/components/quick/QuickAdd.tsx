@@ -1,5 +1,5 @@
-import { useCallback, useId, useRef, useState, type FormEvent } from 'react'
-import { Plus, ScanBarcode } from 'lucide-react'
+import { Suspense, useCallback, useId, useRef, useState, type FormEvent } from 'react'
+import { Plus, ScanBarcode, Sparkles } from 'lucide-react'
 import { Button, Card, IconButton } from '../../../../shared/ui'
 import { toast } from '../../../../app/store'
 import { BarcodeScanner } from '../../../recipes/components/BarcodeScanner'
@@ -7,6 +7,12 @@ import { useCreateShopItem, useScanAdd } from '../../hooks/useShop'
 import { scanEan, scanMatch } from '../../groceryModel'
 import { quickAddInput } from '../../shopModel'
 import { useScanLookup } from '../../hooks/useGrocery'
+import { useAddBatchToQuickList } from '../../hooks/useQuickBatch'
+import { quickListSplit, quickReviewInputs, quickReviewRows } from '../../quickParseRules'
+import { lazyPart } from '../../../../shared/utils/lazyPage'
+
+// ✨ Sort out is its own chunk, loaded when it is first opened: the quick list's first download never carries it.
+const QuickAiSheet = lazyPart('shop-quick-ai', () => import('./QuickAiSheet').then(m => m.QuickAiSheet))
 
 /**
  * Always visible; only the item clears after Add, so a run of things for one
@@ -18,18 +24,28 @@ import { useScanLookup } from '../../hooks/useGrocery'
 export function QuickAdd({ stores }: { stores: readonly string[] }) {
   const id = useId()
   const { mutate: addRow, isPending } = useCreateShopItem()
+  const batch = useAddBatchToQuickList()
   const lookUp = useScanLookup()
   const { add: addScanned } = useScanAdd()
   const [title, setTitle] = useState('')
   const [store, setStore] = useState('')
   const [noRush, setNoRush] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
   const [looking, setLooking] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
   function submit(e: FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
+    // "milk, bread, eggs" that code splits cleanly is three rows: the batch add (duplicates skipped and named, one Undo). No AI, no sheet; anything else is one row, as ever.
+    const split = quickListSplit(title)
+    if (split) {
+      batch.mutate({ inputs: quickReviewInputs(quickReviewRows(split), store, noRush), what: 'from your text' }, {
+        onSuccess: () => { setTitle(''); setNoRush(false); input.current?.focus() },
+      })
+      return
+    }
     addRow({ input: quickAddInput({ title, store, noRush }), quiet: true }, {
       onSuccess: () => { setTitle(''); setNoRush(false); input.current?.focus() },
     })
@@ -66,7 +82,10 @@ export function QuickAdd({ stores }: { stores: readonly string[] }) {
               ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
               : <ScanBarcode aria-hidden />}
           </IconButton>
-          <Button type="submit" variant="primary" icon={<Plus />} loading={isPending} disabled={!title.trim()} aria-label="Add">
+          <IconButton bordered label="Sort out a list with AI" onClick={() => setSortOpen(true)}>
+            <Sparkles aria-hidden />
+          </IconButton>
+          <Button type="submit" variant="primary" icon={<Plus />} loading={isPending || batch.isPending} disabled={!title.trim()} aria-label="Add">
             <span className="max-sm:hidden">Add</span>
           </Button>
         </div>
@@ -81,6 +100,11 @@ export function QuickAdd({ stores }: { stores: readonly string[] }) {
         </div>
         <datalist id={`${id}-stores`}>{stores.map(s => <option key={s} value={s} />)}</datalist>
       </form>
+      {sortOpen && (
+        <Suspense fallback={null}>
+          <QuickAiSheet open initialText={title} store={store} noRush={noRush} onAdded={() => { setTitle(''); setNoRush(false) }} onClose={() => setSortOpen(false)} />
+        </Suspense>
+      )}
       <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={onDetected} />
     </Card>
   )
