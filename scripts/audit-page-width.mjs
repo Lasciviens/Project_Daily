@@ -10,10 +10,10 @@
 //
 // Runs against the mocked app harness (the real app on a mock Supabase):
 //   node scripts/audit-page-width.mjs --harness <dir with mock-server.cjs> \
-//        [--base http://127.0.0.1:5371] [--routes home,daily,daily:week] [--widths 402,1469,2450] \
+//        [--base http://127.0.0.1:5371] [--routes home,daily,daily:month] [--widths 402,1469,2450] \
 //        [--theme light|dark] [--shots <dir>] [--json] [--glance]
-// A route `daily:week` opens /daily and then picks the "Week" tab (same for
-// month/tasks). `--glance` instead checks Daily's glance board at every width:
+// A route `daily:month` opens /daily and then picks the "Month" tab (same for
+// tasks/diary). `--glance` instead checks Daily's glance board at every width:
 // each cell's x and width must be identical on a full day and an empty one
 // (docs/features/daily.md, "boxes never change position"). The harness is
 // scripts/harness (its README says how to start the app); nothing here talks to a real backend.
@@ -30,7 +30,7 @@ if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
   process.exit(2)
 }
 const BASE = opt('base', 'http://127.0.0.1:5371')
-const ROUTES = opt('routes', 'home,daily,daily:week,daily:month,daily:tasks,recipes,shop,media,work,projects,training,health,wishes,developer').split(',')
+const ROUTES = opt('routes', 'home,daily,daily:month,daily:tasks,recipes,shop,media,work,projects,training,health,wishes,developer').split(',')
 const WIDTHS = opt('widths', '402,1469,2450').split(',').map(Number)
 const HEIGHT = { 402: 874, 1469: 680, 2450: 1130 }
 const THEME = opt('theme', 'light')

@@ -28,7 +28,7 @@ import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
 import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
 import { refreshSeriesSoon, refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
-import { dayTasks, openOnDay, sectionForDay, weekCounts } from '../taskRules'
+import { dayTasks, openOnDay, sectionForDay } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
 import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
@@ -91,15 +91,6 @@ export function useOpenOnDay(tasks: readonly Task[]): (day: string) => number {
   const today = todayStr()
   const todayOpen = useDayTasks(today).counts.open
   return useCallback((day: string) => (day === today ? todayOpen : openOnDay(tasks, day, today)), [tasks, today, todayOpen])
-}
-
-/** A week's open / done / % (taskRules.weekCounts) over the week read and today's list. */
-export function useWeekCounts(weekTasks: readonly Task[], from: string, to: string) {
-  const today = todayStr()
-  const todayList = useDayTasks(today)
-  return useMemo(() => weekCounts({
-    weekTasks, todayTasks: todayList.open, from, to, today,
-  }), [weekTasks, todayList.open, from, to, today])
 }
 
 export function useTasksByWeek(weekStart: Date, weekEnd: Date) {

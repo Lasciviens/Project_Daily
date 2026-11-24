@@ -12,6 +12,7 @@ import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
 import { Card, TonePill, cx } from '../../../shared/ui'
 import { useRepeatDays } from '../hooks/useSchedule'
+import { CalendarFilter } from '../../calendar/components/CalendarFilter'
 
 interface Props {
   onDayClick?:    (date: Date) => void
@@ -76,7 +77,10 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
           isToday={isSameMonth(viewDate, new Date())}
           labelClassName="min-w-[120px] text-lead font-semibold text-fg"
         />
-        {openCount > 0 && <TonePill tone="accent">{openCount} open</TonePill>}
+        <div className="flex items-center gap-1">
+          {openCount > 0 && <TonePill tone="accent">{openCount} open</TonePill>}
+          <CalendarFilter />
+        </div>
       </div>
 
       <div className="mb-1 grid grid-cols-7">

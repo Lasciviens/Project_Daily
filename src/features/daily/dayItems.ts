@@ -298,10 +298,3 @@ export function repeatsToDoBetween(templates: readonly RecurringBlockLike[], fro
   for (let d = 0; d <= days; d++) n += repeatsToDoOn(templates, addDaysIso(from, d), today, asTasks)
   return n
 }
-
-/** A week's open / done / % with its repeat days still to do counted as open. */
-export function withRepeats(counts: { open: number; done: number }, repeatsToDo: number): { open: number; done: number; percent: number } {
-  const open = counts.open + repeatsToDo
-  const total = open + counts.done
-  return { open, done: counts.done, percent: total ? Math.round((counts.done / total) * 100) : 0 }
-}

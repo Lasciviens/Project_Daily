@@ -5,7 +5,6 @@ import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
 import { DayQuickRail } from '../components/DayQuickRail'
-import { WeekWidget } from '../components/WeekWidget'
 import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
 import { DayLine } from '../components/summary/DayLine'
@@ -19,29 +18,26 @@ import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
 import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
-import { DAY_BOARD, MONTH_BOARD, WEEK_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
+import { DAY_BOARD, MONTH_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 import { DiaryView } from '../../diary/components/DiaryView'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage — one header: ‹ date › + context on the left, the period switcher
-//  on the right (wraps under on phones). Yesterday/Today/Tomorrow are one
-//  DaySection whose highlight is DERIVED from the viewed date; phones drop the
-//  Yesterday/Tomorrow cells (reachable via ‹ ›) so the switcher fits.
+//  on the right (wraps under on phones). Today · Month · Tasks · Diary at every
+//  width; another day is reached with ‹ › or a day in the week strip or the
+//  month (the Yesterday, Tomorrow and Week tabs went, owner 23.11.2026).
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Mode = 'day' | 'week' | 'month' | 'tasks' | 'diary'
-type Period = 'yesterday' | 'today' | 'tomorrow' | 'week' | 'month' | 'tasks' | 'diary' | 'other'
+type Mode = 'day' | 'month' | 'tasks' | 'diary'
+/** The switcher's cell: Today lights only on today's day view; another day lights none. */
+type Period = 'today' | 'month' | 'tasks' | 'diary' | 'other'
 
-const DESKTOP_PERIODS: SegmentedOption<Period>[] = [
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'today',     label: 'Today' },
-  { value: 'tomorrow',  label: 'Tomorrow' },
-  { value: 'week',      label: 'Week' },
-  { value: 'month',     label: 'Month' },
-  { value: 'tasks',     label: 'Tasks' },
-  { value: 'diary',     label: 'Diary' },
+const PERIODS: SegmentedOption<Period>[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'month', label: 'Month' },
+  { value: 'tasks', label: 'Tasks' },
+  { value: 'diary', label: 'Diary' },
 ]
-const PHONE_PERIODS = DESKTOP_PERIODS.filter(o => o.value !== 'yesterday' && o.value !== 'tomorrow')
 
 /** `?date=yyyy-MM-dd` (Home's week strip links here) → that local day, else null. */
 function dateFromParam(raw: string | null): Date | null {
@@ -70,17 +66,11 @@ export function DailyPage() {
     setMode('day')
   }
 
-  const period: Period =
-    mode !== 'day' ? mode
-      : isYesterday(viewDate) ? 'yesterday'
-      : isToday(viewDate)     ? 'today'
-      : isTomorrow(viewDate)  ? 'tomorrow'
-      : 'other'
+  const period: Period = mode !== 'day' ? mode : isToday(viewDate) ? 'today' : 'other'
 
   function pickPeriod(p: Period) {
-    if (p === 'week' || p === 'month' || p === 'tasks' || p === 'diary') { setMode(p); return }
-    const offset = p === 'yesterday' ? -1 : p === 'tomorrow' ? 1 : 0
-    setViewDate(addDays(new Date(), offset))
+    if (p === 'month' || p === 'tasks' || p === 'diary') { setMode(p); return }
+    setViewDate(new Date())
     setMode('day')
   }
 
@@ -111,7 +101,7 @@ export function DailyPage() {
             size="md"
             label={formatWeekdayDate(viewDate)}
             // One width for every day (the widest, "Wed 04.11.2026", is 7.84em; "Fri" is 6.9em): the arrows and
-            // Today never move when Yesterday / Today / Tomorrow switch the date.
+            // Today never move when ‹ › change the date.
             labelClassName="w-[7.9em] text-head font-bold tracking-tight text-fg sm:text-page"
             onPrev={() => { setViewDate(d => addDays(d, -1)); setMode(m => (m === 'diary' ? m : 'day')) }}
             onNext={() => { setViewDate(d => addDays(d,  1)); setMode(m => (m === 'diary' ? m : 'day')) }}
@@ -123,18 +113,17 @@ export function DailyPage() {
         actions={
           <>
             <div className="w-full sm:hidden">
-              <SegmentedControl fullWidth options={PHONE_PERIODS} value={period} onChange={pickPeriod} />
+              <SegmentedControl fullWidth options={PERIODS} value={period} onChange={pickPeriod} />
             </div>
             <div className="hidden max-w-full overflow-x-auto scrollbar-none sm:block">
-              <SegmentedControl options={DESKTOP_PERIODS} value={period} onChange={pickPeriod} />
+              <SegmentedControl options={PERIODS} value={period} onChange={pickPeriod} />
             </div>
           </>
         }
       />
 
       {mode === 'day' && <DaySection date={viewDate} onDayClick={handleDayClick} onOpenTasks={() => setMode('tasks')} />}
-      {mode === 'week' && <PickerSection kind="week" onDayClick={handleDayClick} selectedDate={viewDate} />}
-      {mode === 'month' && <PickerSection kind="month" onDayClick={handleDayClick} selectedDate={viewDate} />}
+      {mode === 'month' && <MonthSection onDayClick={handleDayClick} selectedDate={viewDate} />}
       {mode === 'tasks' && <TasksPanel />}
       {mode === 'diary' && <DiaryView day={formatLocalDate(viewDate)} />}
       </div>
@@ -184,18 +173,15 @@ function DayHero({ date, onDayClick }: { date: Date; onDayClick: (d: Date) => vo
   )
 }
 
-// Week and Month — a picker plus the picked day's editable schedule IN PLACE
+// Month — the calendar plus the picked day's editable schedule IN PLACE
 // (picking a day does not navigate away; "Open day" does). With no day
 // picked, the pane lists upcoming activities; on a wide page both show at
-// once and the picked day defaults to today (month) or the viewed day (week).
-// On a narrow page the week strip keeps its old job: a tap opens the day.
-function PickerSection({ kind, onDayClick, selectedDate }: { kind: 'week' | 'month'; onDayClick: (d: Date) => void; selectedDate: Date }) {
-  const [picked, setPicked] = useState<Date | null>(kind === 'month' && !isToday(selectedDate) ? selectedDate : null)
-  const focus = picked ?? (kind === 'week' ? selectedDate : new Date())
+// once and the picked day defaults to today.
+function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => void; selectedDate: Date }) {
+  const [picked, setPicked] = useState<Date | null>(!isToday(selectedDate) ? selectedDate : null)
+  const focus = picked ?? new Date()
 
-  const picker = kind === 'week'
-    ? <WeekPicker highlightDate={picked ?? selectedDate} onPick={setPicked} onOpenDay={onDayClick} />
-    : <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
+  const picker = <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
   const pickedOrUpcoming = picked
     ? <PickedDay date={picked} onOpenDay={() => onDayClick(picked)} onShowUpcoming={() => setPicked(null)} />
     : <UpcomingActivities onPick={setPicked} />
@@ -213,12 +199,7 @@ function PickerSection({ kind, onDayClick, selectedDate }: { kind: 'week' | 'mon
     picked: <PickedDay date={focus} onOpenDay={() => onDayClick(focus)} />,
     upcoming: <UpcomingActivities onPick={setPicked} />,
   }
-  return <PageBoard sections={sections} layout={kind === 'week' ? WEEK_BOARD : MONTH_BOARD} />
-}
-
-function WeekPicker({ highlightDate, onPick, onOpenDay }: { highlightDate: Date; onPick: (d: Date) => void; onOpenDay: (d: Date) => void }) {
-  const inPlace = useBoardStep() >= 2
-  return <WeekWidget className={inPlace ? '' : undefined} highlightDate={highlightDate} onDayClick={inPlace ? onPick : onOpenDay} />
+  return <PageBoard sections={sections} layout={MONTH_BOARD} />
 }
 
 // The header row of a picked-day card: the day (or what the card holds) and

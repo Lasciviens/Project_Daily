@@ -9,8 +9,8 @@ import { useRepeatDays } from '../hooks/useSchedule'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  WeekStrip — the hero surface's top band: 7 fixed day cells for the week
-//  containing the viewed date. Replaces the separate WeekWidget column in the
-//  Day view (the full WeekWidget still lives under the Week tab). Chevrons
+//  containing the viewed date — the one week view since the Week tab and its
+//  week card went (owner, 23.11.2026). Chevrons
 //  browse weeks WITHOUT changing the viewed day; clicking a cell commits it.
 //  Fixed-slot by construction: always 7 cells, always the same geometry.
 // ─────────────────────────────────────────────────────────────────────────────

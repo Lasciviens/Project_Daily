@@ -29,10 +29,11 @@ export function glanceInColumn(step: PageStep): boolean {
   return l.tracks > 1 && l.columns.some(c => c.stack.includes('glance'))
 }
 
-// ── Week and Month ──────────────────────────────────────────────────────────
-// A picker (week strip / month calendar) plus the picked day, in place:
-//   1  week: the picker alone (a tap opens the day); month: calendar and the
-//      picked day / upcoming side by side once the page is 56rem wide.
+// ── Month ───────────────────────────────────────────────────────────────────
+// The month calendar (the picker) plus the picked day, in place (the Week tab
+// that shared these layouts went on 23.11.2026):
+//   1  calendar and the picked day / upcoming side by side once the page is
+//      56rem wide (`pair`).
 //   2  picker + one pane: the picked day, else Upcoming.
 //   3  picker + the picked day (its one list) + Upcoming.
 //   4  the same, the picked day two tracks wide (its list is ONE list since
@@ -43,14 +44,12 @@ export const PICKER_SECTIONS = ['pair', 'picker', 'pickedOrUpcoming', 'picked', 
 export type PickerSection = typeof PICKER_SECTIONS[number]
 
 const PICKER_MAIN = '40rem'
-const PICKER_WIDE = {
+export const MONTH_BOARD: BoardLayouts<PickerSection> = {
+  1: ['pair'],
   2: { main: PICKER_MAIN, columns: [['picker'], ['pickedOrUpcoming']] },
   3: { main: PICKER_MAIN, columns: [['picker'], ['picked'], ['upcoming']] },
   4: { main: PICKER_MAIN, columns: [['picker'], { stack: ['picked'], span: 2 }, ['upcoming']] },
-} as const
-
-export const WEEK_BOARD: BoardLayouts<PickerSection> = { 1: ['picker'], ...PICKER_WIDE }
-export const MONTH_BOARD: BoardLayouts<PickerSection> = { 1: ['pair'], ...PICKER_WIDE }
+}
 
 // ── Diary ───────────────────────────────────────────────────────────────────
 // The day's own words and what happened that day (owner, 29.10.2026):
