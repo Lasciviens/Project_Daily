@@ -460,6 +460,7 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
+      # Migration 206 runs in the same script after 205: a new chat with 18 and 40 tools is stored, 41 or a bad name refused.
       # Migration 205 (Ask AI fixes): two new kinds of proposal (a change of a food line, a task's new title) and the
       # `replaced` state, nothing else let in, the browser still writes no proposal, the new write tools never "on". 205 runs
       # twice and changes only its three CHECKs.

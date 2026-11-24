@@ -189,7 +189,7 @@ export async function fetchChatSetup(id: string): Promise<ChatSetup | null> {
   let { data, error } = await supabase.from('ai_conversations').select('mode, tool_names, owner_instructions').eq('id', id).maybeSingle()
   if (isMissingColumn(error)) ({ data, error } = await supabase.from('ai_conversations').select('tool_names').eq('id', id).maybeSingle() as unknown as { data: typeof data; error: typeof error })
   if (error || !data) return null
-  const names = Array.isArray(data.tool_names) ? data.tool_names.filter((n: unknown): n is string => typeof n === 'string').slice(0, 20) : []
+  const names = Array.isArray(data.tool_names) ? data.tool_names.filter((n: unknown): n is string => typeof n === 'string').slice(0, 40) : [] // tool_names' cap (206; verify-claude-chat §1 compares)
   return { mode: data.mode === 'coach' ? 'coach' : 'chat', toolNames: names, ownerInstructions: typeof data.owner_instructions === 'string' ? data.owner_instructions.slice(0, 1000) : '' }
 }
 
