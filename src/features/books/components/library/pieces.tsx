@@ -114,7 +114,7 @@ export function AddBook() {
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
   const create = useCreateBook()
-  if (!open) return <Button size="sm" icon={<Plus />} onClick={() => setOpen(true)}>Add a book</Button>
+  if (!open) return <Button size="sm" icon={<Plus />} onClick={() => setOpen(true)} tip="Add a book">Add</Button>
   const submit = () => {
     if (!title.trim()) return
     create.mutate({ title: title.trim(), author: author.trim() || null, read_status: 'want' }, {

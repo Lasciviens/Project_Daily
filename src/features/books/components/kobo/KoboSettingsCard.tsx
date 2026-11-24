@@ -45,8 +45,8 @@ export function KoboSettingsCard() {
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search, e.g. “font size” or “battery”" className="input min-h-[44px] w-full pl-9" />
           </label>
           <SegmentedControl size="sm" options={[...LEVELS]} value={level} onChange={v => setLevel(v as LevelFilter)} />
-          <button type="button" aria-pressed={changedOnly} onClick={() => setChangedOnly(v => !v)} className="pill-tab shrink-0">
-            Changed by me <span className="tabular-nums opacity-70">{changedTotal}</span>
+          <button type="button" aria-pressed={changedOnly} onClick={() => setChangedOnly(v => !v)} title="Changed by me" className="pill-tab shrink-0">
+            Changed <span className="tabular-nums opacity-70">{changedTotal}</span>
           </button>
         </div>
         <p className="text-meta text-fg-muted">

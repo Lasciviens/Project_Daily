@@ -70,7 +70,7 @@ export function TgAnalyticsIdle({ breakdown, windowed, className = '' }: {
             aria-label={`Show all ${fmtInt(stale.length)} idle Playing games in the library`}
             className="tg-btn tg-btn-secondary min-h-[36px] px-3 text-[12.5px] [@media(pointer:coarse)]:min-h-[44px]"
           >
-            Show all {fmtInt(stale.length)} idle
+            All idle · {fmtInt(stale.length)}
           </button>
         </div>
       )}

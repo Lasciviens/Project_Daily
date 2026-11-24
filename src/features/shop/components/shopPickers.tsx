@@ -6,9 +6,9 @@ import { storeNames } from '../shopModel'
 import type { ShopStoreKind } from '../types'
 
 /** A choice chip (a radio), picked or not: the one look for every Shop choice row (how it left, 2 / 5 years, online / in a shop). */
-export function ChoiceChip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+export function ChoiceChip({ on, onClick, children, tip }: { on: boolean; onClick: () => void; children: ReactNode; /** The full words of a short chip (title, accessible name, long press). */ tip?: string }) {
   return (
-    <button type="button" role="radio" aria-checked={on} onClick={onClick}
+    <button type="button" role="radio" aria-checked={on} onClick={onClick} title={tip} aria-label={tip} data-tip={tip}
       className={cx('chip px-3', on ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
       {children}
     </button>
@@ -18,13 +18,13 @@ export function ChoiceChip({ on, onClick, children }: { on: boolean; onClick: ()
 /** A row of `ChoiceChip`s for one value. */
 export function ChoiceChips<T extends string>({ value, options, onChange, label }: {
   value: T
-  options: readonly { value: T; label: ReactNode }[]
+  options: readonly { value: T; label: ReactNode; tip?: string }[]
   onChange: (v: T) => void
   label: string
 }) {
   return (
     <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
-      {options.map(o => <ChoiceChip key={o.value} on={value === o.value} onClick={() => onChange(o.value)}>{o.label}</ChoiceChip>)}
+      {options.map(o => <ChoiceChip key={o.value} on={value === o.value} onClick={() => onChange(o.value)} tip={o.tip}>{o.label}</ChoiceChip>)}
     </div>
   )
 }

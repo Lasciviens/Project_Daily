@@ -2,7 +2,7 @@ import { Check, CircleHelp, Plus, X } from 'lucide-react'
 import { Button, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useBuyNow, useUpdateShopItem } from '../../hooks/useShop'
+import { useUpdateShopItem } from '../../hooks/useShop'
 import { priceNow } from '../../shopModel'
 import { bestMatch, cycleMeets, meetsOf, metCount, requirementsOf } from '../../wishModel'
 import { money } from '../shopFormat'
@@ -13,7 +13,7 @@ import { useOpenRecord } from './recordOpen'
 export function AddModelButton({ wish }: { wish: ShopItem }) {
   const modal = useEntityModal()
   if (wish.status !== 'wishlist') return null
-  return <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })}>Model</Button>
+  return <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })} tip="Model — add one">Model</Button>
 }
 
 /**
@@ -21,12 +21,9 @@ export function AddModelButton({ wish }: { wish: ShopItem }) {
  * has one), ✓ / ✗ / ? per must-have (one tap cycles), the best match, and
  * Buy this model / Not chosen. A row per model reads the same on a phone.
  */
-export function RecordModels({ wish, models, watches }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch> }) {
-  const modal = useEntityModal()
+export function RecordModels({ wish, models, watches, onBuy }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch>; /** Bought, the record's way: its draft saved first, then the model's record in its place. */ onBuy: (model: ShopItem) => void }) {
   const openRecord = useOpenRecord()
   const update = useUpdateShopItem()
-  // A model bought is the wish bought: Just bought opens over the record, as for any wish.
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
   const reqs = requirementsOf(wish)
   const price = (m: ShopItem) => priceNow(m, watches.get(m.id))
   const best = bestMatch(wish, models, price)
@@ -78,12 +75,12 @@ export function RecordModels({ wish, models, watches }: { wish: ShopItem; models
                 )}
                 {!out && open && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => buy(m)} icon={<Check />}>Buy this model</Button>
+                    <Button size="sm" variant="ghost" onClick={() => onBuy(m)} icon={<Check />} tip="Bought this model">Bought</Button>
                     <Button size="sm" variant="ghost" onClick={() => update.mutate({ id: m.id, patch: { status: 'dropped' }, quiet: true })} className="text-fg-muted">Not chosen</Button>
                   </div>
                 )}
                 {m.status === 'dropped' && (
-                  <Button size="sm" variant="ghost" className="mt-1" onClick={() => update.mutate({ id: m.id, patch: { status: 'wishlist' }, quiet: true })}>Back in the running</Button>
+                  <Button size="sm" variant="ghost" className="mt-1" onClick={() => update.mutate({ id: m.id, patch: { status: 'wishlist' }, quiet: true })} tip="Put back in the running">Put back</Button>
                 )}
               </li>
             )

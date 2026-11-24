@@ -253,7 +253,7 @@ export function FootballMatchModal({ request, onClose }: EntityModalProps<'footb
   const m = d.match
   const { date, time } = osloParts(m.kickoff)
   const footer = taskId ? (
-    <Button icon={<CalendarCheck />} onClick={() => modal.open({ kind: 'task', id: taskId })}>In your day</Button>
+    <Button icon={<CalendarCheck />} onClick={() => modal.open({ kind: 'task', id: taskId })} tip="Planned — open it in your day">Planned</Button>
   ) : m.state === 'pre' && m.league ? (
     <Button variant="primary" icon={<CalendarPlus />} onClick={() => { void planIt(m) }}>Plan it</Button>
   ) : undefined

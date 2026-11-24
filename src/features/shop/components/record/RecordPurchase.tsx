@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
-import { PackageCheck, ReceiptText } from 'lucide-react'
+import { PackageCheck } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import { Button, MetaLine, Truncate } from '../../../../shared/ui'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useLawRules, useShopStores, useStoreRules } from '../../hooks/useShopStores'
 import { useSavePurchase } from '../../hooks/usePurchase'
 import { complaintYearsOf, dateSource, deadlinesOf, protectionNoteOf, protectionOf, type StoreCtx } from '../../purchaseModel'
-import { DateFact, DeadlineWords } from './purchaseKit'
+import { DateFact, DeadlineWords } from '../purchase/purchaseKit'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
 import type { Deadline } from '../../storeRules'
 import type { ShopItem } from '../../types'
@@ -19,12 +19,6 @@ function Why({ stored, rules, notes = [] }: { stored: string | null | undefined;
     return <p className="text-meta text-fg-muted">Your own date{rules ? ` — the rules give ${formatDate(rules.day)}: ${rules.words.replace(/^\S+ by \S+ — /, '')}` : ''}.</p>
   }
   return rules ? <p className="text-meta text-fg-muted">Not set — the rules give {formatDate(rules.day)}: {rules.words.replace(/^\S+ by \S+ — /, '')}.</p> : null
-}
-
-/** The Purchase section's action: Just bought again, to change how and where it was bought. */
-export function PurchaseDetailsButton({ item }: { item: ShopItem }) {
-  const modal = useEntityModal()
-  return <Button size="sm" variant="ghost" icon={<ReceiptText />} onClick={() => modal.open({ kind: 'shop-just-bought', id: item.id })}>Details</Button>
 }
 
 /**
@@ -64,14 +58,14 @@ export function RecordPurchase({ item, today }: { item: ShopItem; today: string 
       {protection && (
         <p className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           <span>Price protection to {formatDate(protection.until)} — {protection.words}</span>
-          <button type="button" onClick={() => modal.open({ kind: 'shop-claim', id: item.id })} className="font-semibold text-accent-600 hover:underline">Got money back</button>
+          <button type="button" onClick={() => modal.open({ kind: 'shop-claim', id: item.id })} title="Money back — got money back — note it" className="font-semibold text-accent-600 hover:underline">Money back</button>
         </p>
       )}
       {protectionNote && <p className="text-meta text-fg-muted">{protectionNote.words} — to {formatDate(protectionNote.until)} if it holds</p>}
       {how.length > 0 && <MetaLine className="text-meta text-fg-muted" items={how} />}
       {item.bought_channel === 'online' && !item.arrived_on && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" icon={<PackageCheck />} onClick={arrivedToday} loading={save.isPending}>Arrived today</Button>
+          <Button size="sm" icon={<PackageCheck />} onClick={arrivedToday} loading={save.isPending} tip="Arrived today">Arrived</Button>
           <span className="text-meta text-fg-muted">Until then every day counts from the purchase day.</span>
         </div>
       )}

@@ -11,7 +11,7 @@ function CameraAi() {
   return <span className="relative inline-flex"><Camera aria-hidden /><Sparkles aria-hidden className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" /></span>
 }
 
-export function PhotoButton({ children, onFile, onFiles, multiple, loading, disabled, icon, variant = 'secondary', className, iconOnly, accept = 'image/*' }: {
+export function PhotoButton({ children, onFile, onFiles, multiple, loading, disabled, icon, variant = 'secondary', className, iconOnly, accept = 'image/*', tip }: {
   children: ReactNode
   onFile?: (file: File) => void
   /** With `multiple`: every file picked at once, in the order the picker gave them. The caller limits and checks them. */
@@ -26,6 +26,8 @@ export function PhotoButton({ children, onFile, onFiles, multiple, loading, disa
   iconOnly?: boolean
   /** What the picker offers: photos by default; a receipt also takes a PDF. */
   accept?: string
+  /** The full description of a short label (title, accessible name, long press on touch). */
+  tip?: string
 }) {
   const input = useRef<HTMLInputElement>(null)
   return (
@@ -46,8 +48,8 @@ export function PhotoButton({ children, onFile, onFiles, multiple, loading, disa
         }}
       />
       {iconOnly ? (
-        <IconButton label={String(children)} className={className} disabled={disabled || loading} aria-busy={loading || undefined} onClick={() => input.current?.click()}>{icon ?? <CameraAi />}</IconButton>
-      ) : <Button size="sm" variant={variant} className={className} icon={icon ?? <CameraAi />} loading={loading} disabled={disabled} onClick={() => input.current?.click()}>
+        <IconButton label={tip ?? String(children)} className={className} disabled={disabled || loading} aria-busy={loading || undefined} onClick={() => input.current?.click()}>{icon ?? <CameraAi />}</IconButton>
+      ) : <Button size="sm" variant={variant} className={className} icon={icon ?? <CameraAi />} loading={loading} disabled={disabled} tip={tip} onClick={() => input.current?.click()}>
         {children}
       </Button>}
     </>

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { MoreHorizontal, Trash2 } from 'lucide-react'
-import { Button, IconButton, TonePill, cx } from '../../../../shared/ui'
+import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Button, IconButton, SegmentedControl, TonePill, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
@@ -10,6 +10,7 @@ import { boughtOn, DISPOSAL_LABEL, durationLabel } from '../../ownModel'
 import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
 import { ItemThumb } from '../shopKit'
+import { Toggle } from '../shopEditors'
 import { imageOf } from '../shopFormat'
 import { fitActions } from './recordActions'
 import { RecordFacts } from './RecordFacts'
@@ -28,37 +29,63 @@ import { openListingOf } from '../../sellingModel'
 import { RecordSection } from './RecordSection'
 import { hasMoneyLinks, marketSummary, priceSummary, purchaseSummary, resaleSummary, useOpenSections, type SectionId } from './recordSections'
 import { RecordStory } from './RecordStory'
-import { PurchaseDetailsButton, RecordPurchase } from '../purchase/RecordPurchase'
+import { RecordPurchase } from './RecordPurchase'
+import { PurchaseEditor } from './PurchaseEditor'
+import { withDraftDayAndStore } from './purchaseDraft'
+import { boughtDayOf } from '../../purchaseModel'
+import { usePurchaseEdit, type PurchaseEditModel } from './usePurchaseEdit'
+import { FindPicture } from './FindPicture'
+import { useSavePicture } from './useFindPicture'
+import { ShopAutofill } from './ShopAutofill'
+import { recordAutofillPatch, recordShopDraft } from './recordAutofill'
+import type { Fact } from '../../autofillModel'
+import type { ShopDraft } from '../ShopItemForm'
+import { ReceiptPhoto } from './ReceiptPhoto'
 import { LookElsewhere } from '../purchase/LookElsewhere'
 import { useMarketSearches } from '../../hooks/useShopStores'
 import { useOpenRecord } from './recordOpen'
 import { newCategoryMissing } from './useRecordDraft'
 import { sectionOfFact, type RecordFact } from '../../shopSuggestions'
 import type { ShopRecordModel } from './useShopRecord'
+import type { ReceiptFill } from '../../../ai/claude/featureRules'
+import type { CreateRecordModel } from './useCreateRecord'
+import type { PagePicture } from '../../productPicture'
+import type { ShopItem, ShopPriceWatch } from '../../types'
 
 /**
- * The record as a life story (step A, 10.11.2026) in the popup:
- * what it is and its one row of actions, the money
- * strip, one nudge line (the most useful next step), its Story, then the
- * sections that open in place — Price · Resale · Facts · Money (a general
- * wish's Models first). Narrow (a phone) it is one column; in the
- * wide popup the Story sits beside the sections. `pill`: where the state pill
- * shows in the body — on a phone, where the popup's header has no room.
+ * How the one body is used (owner, 24.11.2026: "One screen, different ways to use it"):
+ *   · `open`   — a saved thing (ShopRecord): its actions, money strip, nudge, Story and every section, edited in place;
+ *   · `add`    — a thing being made (ShopCreate): the same Facts with every editor open, the autofill, the receipt, the
+ *                Purchase and Money parts, a read receipt's lines "1 of 3"; nothing is written until Save;
+ *   · `bought` — Just bought (JustBought): the same Purchase editor, opened, on the thing just bought.
+ * A mode hides a section or renames a label; it never has a copy of one. Every part of a thing — its facts, picture finding,
+ * the receipt, the purchase facts, extra costs, money links — lives here, never in a frame.
  */
-export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money'; pill: 'phone' | 'none' }) {
-  const { item, state, d, today, owned } = r
-  const modal = useEntityModal()
-  const openRecord = useOpenRecord()
-  const watch = r.watches.get(item.id) ?? null
-  const { looks, loading: looksLoading } = useNeedsALook(r.items, false)
-  // Only once its reads have answered: a nudge from part of the data would come and go as the rest lands.
-  const nudge = useMemo(() => (looksLoading ? null : nudgeFor(item, looks, today)), [looksLoading, item, looks, today])
-  const itemCosts = useMemo(() => r.ctx.costs.get(item.id) ?? r.costs.filter(c => c.item_id === item.id), [r.ctx.costs, r.costs, item.id])
-  const story = useMemo(() => storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }), [item, r.items, r.links, itemCosts, today])
-  const resale = state === 'mine' || state === 'gone'
-  const { data: listings = [] } = useListings()
-  const listing = resale ? openListingOf(listings, item.id) : null
-  const sections = useOpenSections(state === 'general' ? ['models'] : [], openFact ? sectionOfFact(openFact, state) : openSection ?? null)
+export type RecordBodyProps =
+  | { mode: 'open'; r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money' | 'purchase'; pill: 'phone' | 'none' }
+  | { mode: 'bought'; r: ShopRecordModel; p: PurchaseEditModel; bought: boolean; /** Opened from Read a receipt: its photo is not offered again. */ fromReceipt?: boolean }
+  | { mode: 'add'; c: CreateRecordModel }
+
+export function RecordBody(props: RecordBodyProps) {
+  const { mode } = props
+  const r = props.mode === 'add' ? null : props.r
+  const c = props.mode === 'add' ? props.c : null
+  const p = props.mode === 'bought' ? props.p : null
+  const openFact = props.mode === 'open' ? props.openFact : undefined
+  // The thing as it stands: the saved row, or the draft's view while adding.
+  const item: ShopItem = r ? r.item : (c as CreateRecordModel).v
+  const state = r ? r.state : (c as CreateRecordModel).kind
+  const today = r ? r.today : (c as CreateRecordModel).today
+  const categories = r ? r.categories : (c as CreateRecordModel).categories
+  const d = r ? r.d : (c as CreateRecordModel).draftApi
+  const watch: ShopPriceWatch | null = r ? r.watches.get(item.id) ?? null : null
+  const owned = state === 'mine' || state === 'gone'
+  const sections = useOpenSections(
+    mode === 'open' ? (state === 'general' ? ['models'] : []) : mode === 'add' ? ['facts', 'money'] : ['purchase'],
+    openFact ? sectionOfFact(openFact, state) : props.mode === 'open' ? props.openSection ?? null : null,
+    mode === 'open',
+  )
+  const savePicture = useSavePicture()
   // Opened at a fact from the Needs a look sheet: the sheet's close hands the focus back to the header's button while it
   // fades; once that is done the fact's editor takes it (only from the page's body or that button — never from where
   // the owner moved it).
@@ -72,36 +99,35 @@ export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordMo
     const timers = [450, 900].map(ms => window.setTimeout(take, ms))
     return () => timers.forEach(window.clearTimeout)
   }, [openFact])
-  const picture = imageOf(item, watch)
+  const picture = r ? imageOf(item, watch) : item.image_url ?? null
   const from = boughtOn(item)
-  // "Look on FINN / Tise" while it is still to buy, on the marketplaces that are rows (191).
-  const searches = useMarketSearches(item)
-  // New vs used vs refurbished while it is to buy, whenever its numbers say something — with a link or without.
-  const ownership = useOwnership(item, { items: r.items, categories: r.categories, watch, ctx: r.ctx, on: state === 'buy' })
+  const busy = c ? c.saving : p ? p.saving : false
 
-  /** Open a fact's editor in its section (a nudge's action). */
-  const edit = (fact: string, section: SectionId) => { sections.show(section); d.setEditing(fact) }
-  const onNudge = () => {
-    if (nudge?.action === 'bought') r.buy()
-    else if (nudge?.action === 'value' || nudge?.action === 'fix') {
-      const fact = nudge.fact ?? 'value'
-      edit(fact, sectionOfFact(fact, state))
-    }
-    else if (nudge?.action === 'claim') modal.open({ kind: 'shop-claim', id: item.id })
+  // Find picture, every mode: free from the thing's own pages first, the AI's search on a second tap (its cost on the button).
+  const pages = useMemo(() => [...(c?.st.receipt?.pageUrls ?? []), ...(item.url ? [item.url] : [])], [c?.st.receipt?.pageUrls, item.url])
+  /** Resolves once the picture is taken (adding: at once; a saved thing: when the write answered), so Use dismisses only then. */
+  const onPicture = (pic: PagePicture): Promise<boolean> => {
+    if (!pic.image) return Promise.resolve(false)
+    if (c) { c.takePicture(pic); return Promise.resolve(true) }
+    return savePicture.mutateAsync({ item, image: pic.image }).then(() => true, () => false)
   }
+  const finder = !picture && (mode !== 'bought' || props.mode === 'bought' && props.bought) && (
+    <FindPicture key={pages.join(' ')} item={item} pages={pages} named={c ? c.st.receipt?.pageNamed ?? true : true} categories={categories} onUse={onPicture}
+      saving={savePicture.isPending} disabled={busy} />
+  )
 
-  // One line at every width: the buttons that fit in the room the row has, the rest behind ⋯ (recordActions.ts).
+  // One line at every width (open): the buttons that fit in the room the row has, the rest behind ⋯ (recordActions.ts).
   const { ref: actionsRef, width: actionsRoom } = useElementWidthRem<HTMLDivElement>()
-  const { shown, more } = fitActions(actionsRoom, r.actions)
-  const actions = r.actions.length > 0 && (
+  // One column below 46rem: the add's "Filled in for you" list folds to a line there.
+  const { ref: rootRef, width: rootWidth } = useElementWidthRem<HTMLDivElement>()
+  const { shown, more } = fitActions(actionsRoom, r && mode === 'open' ? r.actions : [])
+  const actions = r && mode === 'open' && r.actions.length > 0 && (
     <div ref={actionsRef} className="min-w-0">
       <div className="flex flex-nowrap items-center gap-1.5">
         {shown.map(a => a.iconOnly
-          ? (
-            <IconButton key={a.key} bordered size="sm" label={a.label} onClick={a.onClick}>{a.icon}</IconButton>
-          )
+          ? <IconButton key={a.key} bordered size="sm" label={a.tip ?? a.label} onClick={a.onClick}>{a.icon}</IconButton>
           : (
-            <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick} className="shrink-0">
+            <Button key={a.key} size="sm" variant={a.primary ? 'primary' : a.ghost ? 'ghost' : 'secondary'} icon={a.icon} onClick={a.onClick} tip={a.tip} className="shrink-0">
               {a.label}
             </Button>
           ))}
@@ -113,7 +139,7 @@ export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordMo
             <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
               {more.map(a => (
                 <MenuItem key={a.key}>
-                  <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
+                  <button type="button" onClick={a.onClick} title={a.tip} aria-label={a.tip} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
                 </MenuItem>
               ))}
             </MenuItems>
@@ -123,77 +149,330 @@ export function RecordBody({ r, openFact, openSection, pill }: { r: ShopRecordMo
     </div>
   )
 
-  const box = (id: SectionId, title: string, summary: string | undefined, action: ReactNode, body: ReactNode, keepAction = false) => (
-    <RecordSection id={id} title={title} summary={summary} open={sections.open.has(id)} onToggle={() => sections.toggle(id)} action={action} keepAction={keepAction}>{body}</RecordSection>
+  const head = ((r && mode === 'open') || picture) && (
+    <div className="flex items-start gap-3">
+      {/* Only a real picture: an empty box took 80px beside the actions. A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
+      {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's) — and
+            with Find picture, so it costs no line of its own. Adding, Find picture sits in the line of the switch above. */}
+        {r && mode === 'open' && (((props.pill === 'phone' && r.pill) || (state === 'mine' && from)) || finder) && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
+            {props.mode === 'open' && props.pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
+            {mode === 'open' && state === 'mine' && from && <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>}
+            {finder && <div className="-my-1 ml-auto">{finder}</div>}
+          </div>
+        )}
+        {r && mode === 'open' && r.parent && <ParentLink item={item} parent={r.parent} />}
+        {actions}
+      </div>
+    </div>
   )
+
+  return (
+    <div ref={rootRef} className="@container flex flex-col gap-3">
+      {c && <AddBar c={c} finder={finder} />}
+      {/* Nothing is editable while a save is out: what it writes is what was on screen when it was tapped. */}
+      <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+        {head}
+        {r && mode === 'open' && <OpenLines r={r} sections={sections} />}
+        <Sections mode={mode} r={r} c={c} p={p} bought={props.mode === 'bought' ? props.bought : true} fromReceipt={props.mode === 'bought' && !!props.fromReceipt}
+          item={item} state={state} today={today} owned={owned} watch={watch} sections={sections} d={d} narrow={rootWidth != null && rootWidth < 46}
+          finder={mode === 'bought' ? finder : null} />
+        {/* Delete (asks, then Undo) ends a saved record: the footer shows only with changes to save, so the Story keeps its room. */}
+        {r && mode === 'open' && <Button variant="ghost" size="sm" icon={<Trash2 />} className="-ml-2 w-fit text-danger" onClick={() => { void r.del() }}>Delete</Button>}
+      </fieldset>
+    </div>
+  )
+}
+
+function ParentLink({ item, parent }: { item: ShopItem; parent: ShopItem }) {
+  const openRecord = useOpenRecord()
+  return (
+    <button type="button" onClick={() => openRecord(parent.id)} className="w-fit text-left text-meta text-fg-muted hover:text-fg-2">
+      {item.accessory_of ? 'Accessory of' : 'Model of'} <span className="font-semibold text-accent-600 hover:underline">{parent.title}</span>
+    </button>
+  )
+}
+
+/** A saved thing's money strip and its one nudge line (Needs a look's own row for it, once its reads answered). */
+function OpenLines({ r, sections }: { r: ShopRecordModel; sections: ReturnType<typeof useOpenSections> }) {
+  const modal = useEntityModal()
+  const { item, state, today } = r
+  const watch = r.watches.get(item.id) ?? null
+  const { looks, loading } = useNeedsALook(r.items, false)
+  // Only once its reads have answered: a nudge from part of the data would come and go as the rest lands.
+  const nudge = useMemo(() => (loading ? null : nudgeFor(item, looks, today)), [loading, item, looks, today])
+  const onNudge = () => {
+    if (nudge?.action === 'bought') r.buy()
+    else if (nudge?.action === 'value' || nudge?.action === 'fix') {
+      const fact = nudge.fact ?? 'value'
+      sections.show(sectionOfFact(fact, state))
+      r.d.setEditing(fact)
+    }
+    else if (nudge?.action === 'claim') modal.open({ kind: 'shop-claim', id: item.id })
+  }
+  return (
+    <>
+      <RecordStrip item={item} state={state} ctx={r.ctx} chain={r.chain} watch={watch} models={r.models} watches={r.watches} accessories={r.accessories} today={today} />
+      {nudge && <RecordNudge nudge={nudge} onAction={onNudge} />}
+    </>
+  )
+}
+
+/** Adding: a read receipt's lines "1 of 3 ‹ ›" (a saved line shows ✓) and the switch of what is made. */
+function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
+  const { spec, st, count, index } = c
+  const stepper = count > 1 && (
+    <div className="flex items-center gap-1">
+      <IconButton bordered size="sm" label="Previous line" disabled={c.saving} onClick={() => c.setIndex((index - 1 + count) % count)}><ChevronLeft aria-hidden /></IconButton>
+      <span className="min-w-[4.5rem] text-center text-body font-medium tabular-nums text-fg">
+        {index + 1} of {count}{st.savedId ? <span className="text-success"> ✓</span> : st.skipped ? <span className="text-fg-muted"> –</span> : null}
+      </span>
+      <IconButton bordered size="sm" label="Next line" disabled={c.saving} onClick={() => c.setIndex((index + 1) % count)}><ChevronRight aria-hidden /></IconButton>
+    </div>
+  )
+  const switches = (spec.preset === 'own' || spec.preset === 'had') && !st.needSale ? (
+    <SegmentedControl<'own' | 'had'> size="sm" value={st.had ? 'had' : 'own'} onChange={x => c.patch(s => ({ ...s, had: x === 'had' }))}
+      options={[{ value: 'own', label: 'I have it' }, { value: 'had', label: 'I had it' }]} />
+  ) : (spec.preset === 'wish' || spec.preset === 'general') ? (
+    <SegmentedControl<'one' | 'any'> size="sm" value={st.general ? 'any' : 'one'} onChange={x => c.patch(s => ({ ...s, general: x === 'any' }))}
+      options={[{ value: 'one', label: 'One', tip: 'One product' }, { value: 'any', label: 'Any model', tip: 'Any model that fits' }]} />
+  ) : null
+  if (!stepper && !switches && !finder) return null
+  return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}{finder && <div className="ml-auto">{finder}</div>}</div>
+}
+
+/** The sections, each once; a mode hides the ones it has no use for. */
+function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owned, watch, sections, d, narrow, finder }: {
+  mode: RecordBodyProps['mode']
+  r: ShopRecordModel | null
+  c: CreateRecordModel | null
+  p: PurchaseEditModel | null
+  bought: boolean
+  fromReceipt: boolean
+  finder: ReactNode
+  item: ShopItem
+  state: ShopRecordModel['state']
+  today: string
+  owned: boolean
+  watch: ShopPriceWatch | null
+  sections: ReturnType<typeof useOpenSections>
+  d: ShopRecordModel['d']
+  narrow: boolean
+}) {
+  const open = mode === 'open' && r
+  const resale = open && (state === 'mine' || state === 'gone')
+  const { data: listings = [] } = useListings()
+  const listing = resale ? openListingOf(listings, item.id) : null
+  const searches = useMarketSearches(item)
+  // New vs used vs refurbished while it is to buy, whenever its numbers say something — with a link or without.
+  const ownership = useOwnership(item, { items: r?.items ?? [], categories: r?.categories ?? c?.categories ?? [], watch, ctx: r?.ctx ?? EMPTY_CTX, on: !!open && state === 'buy' })
+  // Open: the Purchase section edits in place — the ✎, and Bought on a wish in this record (never a second popup).
+  const editPurchase = !!r?.purchaseEditing
+  const setEditPurchase = (on: boolean) => { r?.setPurchaseEditing(on); if (!on) r?.setPurchaseDirty(false) }
+  const { show } = sections
+  useEffect(() => { if (editPurchase) show('purchase') }, [editPurchase, show])
+  const itemCosts = useMemo(() => (r ? r.ctx.costs.get(item.id) ?? r.costs.filter(x => x.item_id === item.id) : []), [r, item.id])
+  const story = useMemo(() => (r && open ? storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }) : []), [r, open, item, itemCosts, today])
+
+  const toggle = (id: SectionId) => {
+    // Adding: the Purchase part starts its form on first opening (an untouched Purchase writes nothing).
+    if (c && id === 'purchase') c.openPurchase()
+    sections.toggle(id)
+  }
+  const box = (id: SectionId, title: string, summary: string | undefined, action: ReactNode, body: ReactNode, keepAction = false) => (
+    <RecordSection id={id} title={title} summary={summary} open={sections.open.has(id)} onToggle={() => toggle(id)} action={action} keepAction={keepAction}>{body}</RecordSection>
+  )
+  const from = boughtOn(item)
   // A thing still yours names its store in Purchase.
-  const factsSummary = [state !== 'mine' && item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
+  const factsSummary = [state !== 'mine' && item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r && r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
     .filter(Boolean).join(' · ') || undefined
-  const money = hasMoneyLinks(item) || owned || item.status === 'bought'
-  const moneySummary = r.chain && r.chain.nodes.length > 1 ? chainTitle(r.chain)
-    : itemCosts.length ? `${itemCosts.length} extra cost${itemCosts.length === 1 ? '' : 's'}` : undefined
+  // Just bought has no Money section (guardian, 24.11.2026): its costs are the receipt's, in the Purchase editor.
+  const moneyOpen = !!open && (hasMoneyLinks(item) || owned || item.status === 'bought')
+  const moneyAdd = !!c && c.owns
+  const moneySummary = r?.chain && r.chain.nodes.length > 1 ? chainTitle(r.chain)
+    : itemCosts.length ? `${itemCosts.length} extra cost${itemCosts.length === 1 ? '' : 's'}`
+    : c && c.st.costs.length ? `${c.st.costs.filter(x => x.on).length} extra cost${c.st.costs.filter(x => x.on).length === 1 ? '' : 's'}` : undefined
+
+  // Purchase: a saved thing's facts (open: shown, edited in place; bought: the editor), or a thing being added (its own part, optional).
+  // Just bought is the Purchase part alone (the popup's title names it): no fold of its own.
+  const purchase = mode === 'bought' && p
+    ? (bought
+      ? <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={today}
+        receipt={!fromReceipt} beside={finder} />
+      : <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p>)
+    : open && state === 'mine'
+      ? box('purchase', 'Purchase', purchaseSummary(item, today),
+        !editPurchase && <IconButton size="sm" label="Edit how it was bought" onClick={() => setEditPurchase(true)}><Pencil aria-hidden /></IconButton>,
+        editPurchase
+          ? <PurchaseInPlace r={r} onDone={() => setEditPurchase(false)}
+            onReceiptFacts={f => d.set({ ...(f.day && f.day <= today ? { bought_day: f.day } : {}), ...(f.storeLabel ? { platform: f.storeLabel } : {}) })} />
+          : <RecordPurchase item={item} today={today} />)
+      : c && state === 'mine'
+        ? box('purchase', 'Purchase', c.purchaseForm ? undefined : 'optional', null, c.purchaseForm && c.purchase
+          ? <PurchaseEditor item={c.purchaseItem} form={c.purchaseForm} onForm={c.setPurchase} view={c.purchase} stores={c.stores} storesLoading={c.storesLoading} today={today}
+            dayAndStore={false} receipt={false} noDay={!c.st.draft.bought_day} />
+          : null)
+        : null
 
   const parts = (
     <div className="flex min-w-0 flex-col gap-2">
-      {state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
-        <RecordModels wish={item} models={r.models} watches={r.watches} />)}
-      {state === 'mine' && box('purchase', 'Purchase', purchaseSummary(item, today), <PurchaseDetailsButton item={item} />,
-        <RecordPurchase item={item} today={today} />)}
-      {(item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
+      {open && state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
+        <RecordModels wish={item} models={r.models} watches={r.watches} onBuy={r.buyModel} />)}
+      {!c && purchase}
+      {open && (item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
         <PriceCheckButton item={item} watch={watch} />, <>
           {item.url && <RecordPriceWatch item={item} watch={watch} owned={owned} today={today} />}
           {ownership && <RecordOwnership item={item} categories={r.categories} ownership={ownership} />}
         </>)}
-      {state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
+      {open && state === 'buy' && searches.length > 0 && box('market', 'Used market', marketSummary(item, searches), null,
         <LookElsewhere item={item} today={today} searches={searches} />)}
       {resale && box('resale', 'Resale', resaleSummary(item, r.ctx, today, listing), null, <>
         <RecordFacts item={item} d={d} state={state} categories={r.categories} today={today} section="resale" />
         <RecordResale r={r} watch={watch} />
       </>)}
-      {box('facts', 'Facts', factsSummary, null, <>
-        <RecordFacts item={item} d={d} state={state} categories={r.categories} today={today} parents={r.parents} />
-        {!item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={r.accessories} ctx={r.ctx} canAdd={state === 'mine'} />}
+      {mode !== 'bought' && box('facts', 'Facts', c ? undefined : factsSummary, null, <>
+        {/* The link reader, scan and "Filled in for you" on a saved thing too (owner, 24.11.2026): the same autofill, onto the record's draft. */}
+        {r && state !== 'general' && <OpenAutofill r={r} narrow={narrow} />}
+        {/* One list of facts for every mode: adding opens every editor (`create`); the link is the autofill's (but a general wish's). */}
+        <RecordFacts item={c ? c.base : item} d={d} state={state} categories={r?.categories ?? c?.categories ?? []} today={today} parents={r ? r.parents : c?.parents}
+          create={c ? { without: state === 'general' ? [] : ['link'] } : undefined} without={r && state !== 'general' ? ['link'] : []} />
+        {r && !item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={r.accessories} ctx={r.ctx} canAdd={state === 'mine'} />}
       </>)}
-      {money && box('money', 'Money', moneySummary, <MoneyChainButton item={item} chain={r.chain} />, <>
-        {hasMoneyLinks(item) && <RecordMoney item={item} items={r.items} links={r.links} ctx={r.ctx} chain={r.chain} />}
-        {(owned || item.status === 'bought') && <RecordCosts itemId={item.id} costs={itemCosts} />}
-      </>, true)}
+      {c && purchase}
+      {(moneyOpen || moneyAdd) && box('money', 'Money', moneySummary, r && <MoneyChainButton item={item} chain={r.chain} />, <>
+        {r && hasMoneyLinks(item) && <RecordMoney item={item} items={r.items} links={r.links} ctx={r.ctx} chain={r.chain} />}
+        {c && <DraftLinks c={c} />}
+        {r && (owned || item.status === 'bought') && <RecordCosts itemId={item.id} costs={itemCosts} />}
+        {c && <RecordCosts drafts={c.st.costs} onDrafts={c.setCosts}
+          moveTo={c.costTargets.length > 1 ? { current: c.index, options: c.costTargets, onMove: c.moveCost } : undefined} />}
+      </>, !!r)}
     </div>
   )
 
+  // Adding something you own has tools beside its facts (the autofill, a receipt), so two columns from 46rem; a wish is one
+  // column with the link reader on top. Narrow, the facts come first (name and category on the first screen). A saved thing
+  // has its Story beside the sections.
+  const side = c ? <AddTools c={c} narrow={narrow} /> : open && story.length > 0 ? <RecordStory steps={story} today={today} /> : null
+  const two = c ? c.owns : story.length > 0
   return (
-    <div className="@container flex flex-col gap-3">
-      <div className="flex items-start gap-3">
-        {/* Only a real picture: an empty box took 80px beside the actions. */}
-        {/* A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
-        {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's). */}
-          {((pill === 'phone' && r.pill) || (state === 'mine' && from)) && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
-              {pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
-              {state === 'mine' && from && (
-                <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>
-              )}
-            </div>
-          )}
-          {r.parent && (
-            <button type="button" onClick={() => openRecord((r.parent as NonNullable<typeof r.parent>).id)} className="w-fit text-left text-meta text-fg-muted hover:text-fg-2">
-              {item.accessory_of ? 'Accessory of' : 'A model of'} <span className="font-semibold text-accent-600 hover:underline">{r.parent.title}</span>
-            </button>
-          )}
-          {actions}
-        </div>
-      </div>
-      <RecordStrip item={item} state={state} ctx={r.ctx} chain={r.chain} watch={watch} models={r.models} watches={r.watches} accessories={r.accessories} today={today} />
-      {nudge && <RecordNudge nudge={nudge} onAction={onNudge} />}
-      <div className={cx('grid items-start gap-3', story.length > 0 && '@[46rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @[46rem]:gap-5')}>
-        <RecordStory steps={story} today={today} />
-        {parts}
-      </div>
-      {/* Delete (asks, then Undo) ends the record: the footer shows only with changes to save, so the Story keeps its room. */}
-      <Button variant="ghost" size="sm" icon={<Trash2 />} className="-ml-2 w-fit text-danger" onClick={() => { void r.del() }}>Delete</Button>
+    <div className={cx('grid items-start gap-3', two && '@[46rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @[46rem]:gap-5')}>
+      {side}
+      <div className={cx('min-w-0', c && 'order-1 @[46rem]:order-2')}>{parts}</div>
     </div>
+  )
+}
+
+const EMPTY_CTX = { costs: new Map() } as unknown as ShopRecordModel['ctx']
+
+/**
+ * A saved thing's purchase facts, edited in place (open): the same editor as Just bought, its own Save and Cancel. The day
+ * and the store are the record's Facts (one editor each) — shown here as one line; a receipt's day and store go there, into
+ * the record's draft. The deadlines count from the day as it stands in that draft (a receipt's day, a Facts edit), and the one
+ * Save writes both: the record's draft first, then the purchase (critic, 24.11.2026: one Save for one change — the record's
+ * footer hides while this editor is open). With no purchase day nothing is counted or written.
+ */
+function PurchaseInPlace({ r, onDone, onReceiptFacts }: { r: ShopRecordModel; onDone: () => void; onReceiptFacts: (fill: ReceiptFill) => void }) {
+  const { item, d } = r
+  const seen = useMemo(() => withDraftDayAndStore(item, d.draft), [item, d.draft])
+  const p = usePurchaseEdit(item, undefined, { inPlace: true, seen })
+  const { setPurchaseDirty } = r
+  useEffect(() => { setPurchaseDirty(p.dirty) }, [p.dirty, setPurchaseDirty])
+  const [busy, setBusy] = useState(false)
+  const noDay = !seen.bought_at
+  async function saveBoth() {
+    if (noDay || busy) return
+    setBusy(true)
+    try {
+      if (d.dirty && !(await r.save())) return
+      p.submit(onDone)
+    } finally { setBusy(false) }
+  }
+  const day = boughtDayOf(seen)
+  const line = [day ? `Bought ${formatDate(day)}` : 'No purchase day yet', seen.platform].filter(Boolean).join(' · ')
+  return (
+    <fieldset disabled={p.saving || busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+      <PurchaseEditor item={seen} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={p.today}
+        dayAndStore={false} onReceiptFacts={onReceiptFacts} noDay={noDay} factsLine={`${line} — edit it in Facts`} />
+      <div className="flex gap-2">
+        <Button size="sm" variant="primary" onClick={() => { void saveBoth() }} loading={p.saving || busy} disabled={!p.valid || noDay}
+          tip={d.dirty ? 'Save — the Facts changes and the purchase' : 'Save the purchase'}>Save</Button>
+        <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+      </div>
+    </fieldset>
+  )
+}
+
+/**
+ * A saved thing's link reader, scan and "Filled in for you": the add's autofill on the record's draft (`recordAutofill.ts`) —
+ * it fills only empty fields and writes nothing; the record's Save does. Its facts list starts again after a save.
+ */
+function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
+  const [facts, setFacts] = useState<Fact[]>([])
+  const latest = useRef({ item: r.item, draft: r.d.draft, facts })
+  useEffect(() => { latest.current = { item: r.item, draft: r.d.draft, facts } })
+  // A save (the row's new stamp) starts the list again — worked out while rendering, React's way to follow a prop.
+  const saved = r.item.updated_at
+  const [seenSaved, setSeenSaved] = useState(saved)
+  if (seenSaved !== saved) { setSeenSaved(saved); setFacts([]) }
+  const { set } = r.d
+  const categories = r.categories
+  const apply = (patch: Partial<ShopDraft>) => {
+    const now = latest.current
+    if (patch.facts) setFacts(patch.facts)
+    set(recordAutofillPatch(now.item, now.draft, categories, now.facts, patch))
+  }
+  const update = (change: (d: ShopDraft) => Partial<ShopDraft>) => {
+    const now = latest.current
+    apply(change(recordShopDraft(now.item, now.draft, categories, now.facts)))
+  }
+  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} />
+}
+
+/** Adding: the link reader, scan and "Filled in for you"; a receipt (handed to Read a receipt); the receipt's other lines. */
+function AddTools({ c, narrow }: { c: CreateRecordModel; narrow: boolean }) {
+  const { st, kind, owns, batch } = c
+  const showAutofill = (kind as string) !== 'general'
+  if (!showAutofill && !(owns && !batch) && !c.pictureNote && !(st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch)) return null
+  return (
+    <div className="order-2 flex min-w-0 flex-col gap-3 @[46rem]:order-1">
+      {showAutofill && <ShopAutofill draft={c.view} onChange={c.onChange} update={c.update} categories={c.categories} collapsible={narrow} />}
+      {owns && !batch && <ReceiptPhoto stores={c.stores} onFill={c.fromReceipt} handoff onHandoff={c.closeIfClean} />}
+      {c.pictureNote && <p className="text-meta text-fg-muted" role="status">{c.pictureNote}</p>}
+      {st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch && (
+        <Toggle checked={st.withOthers} onChange={x => c.patch(s => ({ ...s, withOthers: x }))}>
+          Add the other {st.receipt.others.length === 1 ? 'line' : `${st.receipt.others.length} lines`} as {st.receipt.others.length === 1 ? 'an accessory' : 'accessories'}
+        </Toggle>
+      )}
+    </div>
+  )
+}
+
+/** Adding something you own or had: "Paid with money from" and "Money went to" — only to what this popup offers. */
+function DraftLinks({ c }: { c: CreateRecordModel }) {
+  const { st, sources, targets, money } = c
+  return (
+    <>
+      {sources.length > 0 && (
+        <div>
+          <label htmlFor="create-from" className="field-label">Paid with money from <span className="font-normal text-fg-muted">(optional)</span></label>
+          <select id="create-from" value={st.paidFrom} onChange={e => { const v = e.target.value; c.patch(s => ({ ...s, paidFrom: v })) }} className="select">
+            <option value="">Nothing I sold</option>
+            {sources.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+          </select>
+        </div>
+      )}
+      {money && targets.length > 0 && (
+        <div>
+          <label htmlFor="create-to" className="field-label">Money went to <span className="font-normal text-fg-muted">(optional)</span></label>
+          <select id="create-to" value={st.moneyTo} onChange={e => { const v = e.target.value; c.patch(s => ({ ...s, moneyTo: v })) }} className="select">
+            <option value="">Nothing in particular</option>
+            {targets.map(t => <option key={t.id} value={t.id}>{t.title}{t.status === 'wishlist' ? ' (to buy)' : ''}</option>)}
+          </select>
+        </div>
+      )}
+    </>
   )
 }
 

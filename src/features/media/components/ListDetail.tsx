@@ -47,7 +47,7 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {follow && (
-            <Button size="sm" variant="ghost" icon={<Unlink />} title="Keep the list on Trakt but stop adding new films"
+            <Button size="sm" variant="ghost" icon={<Unlink />} title="Stop filling — keep the list on Trakt but stop adding new films"
               loading={stop.busy} onClick={() => { void stop.run(follow) }}>Stop filling</Button>
           )}
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
@@ -84,7 +84,7 @@ export function PendingListDetail({ follow, connected, onOpen, onGone }: { follo
         <div className="flex flex-wrap items-center gap-2">
           {connected
             ? <Button size="sm" variant="primary" icon={<CloudUpload />} loading={put.isPending}
-                onClick={() => put.mutate({ kind: follow.kind, tmdbId: follow.tmdb_id, name: follow.name, follow })}>Put on Trakt</Button>
+                onClick={() => put.mutate({ kind: follow.kind, tmdbId: follow.tmdb_id, name: follow.name, follow })} tip="Trakt — put the list on Trakt">Trakt</Button>
             : <Link to="/settings?tab=subscriptions" className="btn-ghost btn-sm">Connect Trakt</Link>}
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
         </div>

@@ -61,8 +61,8 @@ export function MatchList({ matches, planned, featured, keep = 3, days = 6 }: {
         </section>
       ))}
       {grouped.length > days && (
-        <Button variant="ghost" size="sm" className="self-start" onClick={() => setAll(v => !v)}>
-          {all ? 'Show fewer days' : `Show all ${grouped.length} days`}
+        <Button variant="ghost" size="sm" className="self-start" onClick={() => setAll(v => !v)} tip={all ? 'Fewer — show fewer days' : `All — show all ${grouped.length} days`}>
+          {all ? 'Fewer' : `All · ${grouped.length}`}
         </Button>
       )}
     </div>

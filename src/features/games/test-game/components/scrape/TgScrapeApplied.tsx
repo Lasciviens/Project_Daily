@@ -111,9 +111,9 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
             <Undo2 className="h-4 w-4" aria-hidden /> {undo.isPending ? 'Undoing…' : 'Undo'}
           </button>
         )}
-        <button type="button" onClick={openGame} className="tg-btn tg-btn-primary">Open the game</button>
+        <button type="button" onClick={openGame} className="tg-btn tg-btn-primary" title="Open the game">Open game</button>
         {onBack ? (
-          <button type="button" onClick={onBack} className="tg-btn tg-btn-secondary">Back to results</button>
+          <button type="button" onClick={onBack} className="tg-btn tg-btn-secondary" title="Back to the results">Back</button>
         ) : (
           <button type="button" onClick={onAgain} className="tg-btn tg-btn-secondary">Review again</button>
         )}

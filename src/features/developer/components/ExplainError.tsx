@@ -67,7 +67,7 @@ function ExplainSheet({ log, onClose }: { log: ErrorLog; onClose: () => void }) 
         <div className="flex items-center gap-2">
           {answer && <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={explain.isPending} onClick={run}>Explain again</Button>}
           <Button size="sm" variant="ghost" onClick={onClose} className="ml-auto">Close</Button>
-          {answer && <Button size="sm" variant="primary" icon={<Plus />} onClick={createRequest}>Create Dev Request</Button>}
+          {answer && <Button size="sm" variant="primary" icon={<Plus />} onClick={createRequest} tip="Request — create a Dev Request">Request</Button>}
         </div>
       }>
       <div className="flex flex-col gap-3">

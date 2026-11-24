@@ -11,7 +11,7 @@ export function WriteWeek({ tasks }: { tasks: Task[] }) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={() => setOpen(true)} className="mt-2 -ml-2">Write my week</Button>
+      <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={() => setOpen(true)} className="mt-2 -ml-2" tip="Write my week">Write</Button>
       {open && <Suspense fallback={null}><WeekSheet tasks={tasks} onClose={() => setOpen(false)} /></Suspense>}
     </>
   )

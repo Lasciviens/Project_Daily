@@ -49,7 +49,7 @@ export function TargetOverrideEditor({ templateId, title, current, fallback, onD
           Save target
         </Button>
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
-        {current && <Button size="sm" variant="ghost" loading={del.busy} onClick={() => void remove()}>Use routine&apos;s range</Button>}
+        {current && <Button size="sm" variant="ghost" loading={del.busy} onClick={() => void remove()} tip="Routine — use the routine's range">Routine</Button>}
       </div>
     </div>
   )

@@ -27,13 +27,13 @@ export function GoogleTasksSyncButtons() {
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           size="sm" icon={<RefreshCw />} loading={sync.isPending} onClick={() => sync.mutate()}
-          title="Send waiting changes and read every Google Tasks list now"
+          title="Sync now — send waiting changes and read every Google Tasks list now"
         >Sync now</Button>
         <Button
           size="sm" icon={<ArrowUpFromLine />} loading={push.isPending} onClick={() => push.mutate(tasks)}
           title="Push tasks not yet in Google Tasks (e.g. created before Google was connected)"
         >Push</Button>
-        <Button size="sm" icon={<ListTree />} onClick={() => setListsOpen(true)} title="Manage Google Task lists">
+        <Button size="sm" icon={<ListTree />} onClick={() => setListsOpen(true)} title="Lists — manage Google Task lists">
           Lists
         </Button>
       </div>

@@ -65,7 +65,7 @@ export function StoresCard({ rows: given, scores, year, onPick }: { rows: StoreR
             </ul>
             {rows.length > SHOWN && (
               <button type="button" onClick={() => setAll(v => !v)} className="mt-1 self-start text-meta font-semibold text-accent-600 [@media(pointer:coarse)]:min-h-[44px]">
-                {all ? 'Show fewer' : `Show all ${rows.length} stores`}
+                {all ? 'Show fewer' : `All · ${rows.length}`}
               </button>
             )}
           </>

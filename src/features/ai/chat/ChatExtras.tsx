@@ -31,7 +31,7 @@ export function PhotoStrip({ photos, onRemove, firstInChat, days }: { photos: re
 export function AttachPhoto({ onFile, loading, disabled, why }: { onFile: (file: File) => void; loading: boolean; disabled: boolean; why: string | null }) {
   return (
     <span title={why ?? undefined} className="inline-flex">
-      <PhotoButton iconOnly icon={<Camera aria-hidden />} onFile={onFile} loading={loading} disabled={disabled}>{why ?? 'Add a photo'}</PhotoButton>
+      <PhotoButton iconOnly icon={<Camera aria-hidden />} onFile={onFile} loading={loading} disabled={disabled} tip={why ?? 'Add a photo'}>Photo</PhotoButton>
     </span>
   )
 }

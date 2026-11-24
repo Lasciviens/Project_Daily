@@ -26,9 +26,9 @@ export function FoodDateNav({ value, onChange }: { value: string; onChange: (iso
               className="z-toast rounded-menu border border-line-strong bg-surface p-2 shadow-menu [--anchor-gap:6px] [--anchor-padding:8px]">
               <DateCalendar value={value} onPick={iso => { onChange(iso); close() }} />
               {!isToday && (
-                <button type="button" onClick={() => { onChange(todayStr()); close() }}
+                <button title="Today — back to today" type="button" onClick={() => { onChange(todayStr()); close() }}
                   className="mt-1 min-h-[44px] w-full rounded-control text-meta font-semibold text-accent-600 hover:bg-accent-50">
-                  Back to today
+                  Today
                 </button>
               )}
             </PopoverPanel>

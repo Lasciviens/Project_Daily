@@ -131,7 +131,7 @@ export function DealDaysList() {
                     </button>
                   </MenuItem>
                   {r.own && r.source && (
-                    <MenuItem><button type="button" onClick={() => reset.mutate({ slug: r.slug, name })} className="menu-item"><RotateCcw aria-hidden className="h-4 w-4" /> Back to the app's rule</button></MenuItem>
+                    <MenuItem><button type="button" onClick={() => reset.mutate({ slug: r.slug, name })} title="Reset — back to the app's rule" className="menu-item"><RotateCcw aria-hidden className="h-4 w-4" /> Reset</button></MenuItem>
                   )}
                 </MenuItems>
               </Menu>

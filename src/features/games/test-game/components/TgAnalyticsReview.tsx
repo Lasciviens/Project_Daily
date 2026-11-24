@@ -42,12 +42,12 @@ export function TgAnalyticsReview({ review, className = '' }: {
       </ul>
       {overlap && <p className="mt-2 text-[12px] leading-relaxed text-[var(--tg-muted)]">{overlap}</p>}
       <div className="mt-auto pt-4">
-        <button
+        <button title="Needs review — open Needs review"
           type="button"
           onClick={openNeedsReview}
           className="tg-btn tg-btn-secondary min-h-[36px] w-full px-3 text-[13px] @[22rem]:w-auto [@media(pointer:coarse)]:min-h-[44px]"
         >
-          Open Needs review
+          Needs review
           <ChevronRight size={14} strokeWidth={2.2} aria-hidden />
         </button>
       </div>

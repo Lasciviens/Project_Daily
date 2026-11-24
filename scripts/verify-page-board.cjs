@@ -290,7 +290,7 @@ console.log('steady page headers (owner, 31.10.2026 and 03.11.2026: a section sw
   const ALLOWED = {
     'src/features/shop/pages/ShopPage.tsx': [
       /\{view === 'owned' && !isPhone && ownedTabs\(false\)\}/g, // Things | Stats: the same height as the view switch beside it
-      /\{view === 'owned' && !isPhone && <>/g, // Owned's other ways in, at the right end of the same row
+      /\{view === 'owned' && !isPhone && ownedWays\}/g, // Owned's other ways in (two icons), at the right end of the same row
     ],
   }
   const pages = fs.readdirSync(path.join(root, 'src/features')).flatMap(feature => {

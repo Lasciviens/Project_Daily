@@ -163,7 +163,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   ) : all.length === 0 && dropped.length === 0 ? (
     <EmptyState bordered className="max-w-md" icon={<ShoppingBag />} title="Nothing on the wishlist yet"
       description="Things you want to buy someday — with a price, where to buy them and when."
-      action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })}>Add item</Button>} />
+      action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })} tip="Add to the wishlist">Add</Button>} />
   ) : (
     <div key="list" ref={listRef} className="flex flex-col gap-4">
       {all.length > 0 && (
@@ -183,10 +183,10 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       )}
       {dropped.length > 0 && (
         <section>
-          <button type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}
+          <button title="Dropped — not any more" type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}
             className="flex min-h-[44px] items-center gap-1.5 text-body font-semibold text-fg-muted transition-colors hover:text-fg-2">
             <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', showDropped && 'rotate-180')} />
-            Not any more <span className="count-badge">{dropped.length}</span>
+            Dropped <span className="count-badge">{dropped.length}</span>
           </button>
           {showDropped && (
             <ul className="mt-1 flex max-w-2xl flex-col divide-y divide-line rounded-card border border-line bg-surface">

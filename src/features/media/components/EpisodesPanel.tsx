@@ -372,11 +372,11 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
             )
           })}
         </div>
-        <Button size="sm" variant="ghost" icon={<CalendarRange />} onClick={() => setSpread({ mode: 'watched' })} disabled={marking} title="Mark a run of episodes watched across a period you remember — with breaks">
-          <span className="hidden sm:inline">Spread</span><span className="sr-only sm:hidden">Spread watched dates</span>
+        <Button size="sm" variant="ghost" icon={<CalendarRange />} onClick={() => setSpread({ mode: 'watched' })} disabled={marking} tip="Spread watched dates — mark a run of episodes watched across a period you remember, with breaks">
+          <span className="hidden sm:inline">Spread</span>
         </Button>
         {watched.length > 0 && (
-          <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Change the watched date of every watched episode — e.g. each to its release date">
+          <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Dates — change the watched date of every watched episode — e.g. each to its release date">
             Dates
           </Button>
         )}
@@ -416,7 +416,7 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
               </>
             )}
             {selected.size === 1 && (
-              <Button size="sm" onClick={() => { void watchUpTo(Math.max(...selected)) }} disabled={marking} icon={<ListChecks />}>Up to here</Button>
+              <Button size="sm" onClick={() => { void watchUpTo(Math.max(...selected)) }} disabled={marking} icon={<ListChecks />} tip="Up to here — watched to this episode">Up to</Button>
             )}
             {selected.size === 1 && selectedWatched.length === 1 && (
               <Button size="sm" variant="ghost" onClick={() => setWatchesFor(selectedWatched[0])} disabled={marking} icon={<History />}>Watches</Button>

@@ -83,7 +83,7 @@ export function QuickBasketCard({ rows, prices, today, loading, error, onRetry }
       {lines.length > SHOWN && (
         <button type="button" onClick={() => setAll(a => !a)} aria-expanded={all}
           className="mt-1 inline-flex min-h-[36px] items-center text-meta font-semibold text-accent-600 hover:underline [@media(pointer:coarse)]:min-h-[44px]">
-          {all ? 'Show fewer chains' : `Show all ${lines.length} chains`}
+          {all ? 'Fewer' : `All chains · ${lines.length}`}
         </button>
       )}
     </>

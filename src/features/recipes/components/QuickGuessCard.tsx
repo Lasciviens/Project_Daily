@@ -11,7 +11,7 @@ import { GuessAskPopover, GuessAskSheet, type AskedGuess } from './QuickGuessAsk
 import { DescribeGuessSheet } from './DescribeGuessSheet'
 
 type FactorValue = `${typeof GUESS_FACTORS[number]}`
-const FACTORS = GUESS_FACTORS.map(f => ({ value: String(f) as FactorValue, label: <span title={`${factorLabel(f)} portion`}>{factorLabel(f)}</span> }))
+const FACTORS = GUESS_FACTORS.map(f => ({ value: String(f) as FactorValue, label: factorLabel(f), tip: `${factorLabel(f)} portion` }))
 
 const macroText = (m: GuessMacros) => [`${m.protein} g protein`, `${m.carbs} g carbs`, `${m.fat} g fat`].join(' · ')
 

@@ -1,11 +1,10 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, Link2, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag, Waypoints } from 'lucide-react'
+import { FileText, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag, Waypoints } from 'lucide-react'
 import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
-import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useShopCategories, useShopItems } from '../hooks/useShop'
@@ -75,41 +74,39 @@ export function ShopPage() {
     if (view === 'owned') modal.open({ kind: 'shop-own' })
     else modal.open({ kind: 'shop-item', defaults: { list: view === 'quick' ? 'quick' : 'wishlist' } })
   }
+  // Short buttons (owner, 24.11.2026): "+" with its words in the tooltip, the accessible name and a long press on touch.
+  // Owned's + adds what you own or had: "I have it | I had it" is the popup's first switch (critic, 24.11.2026: one way in, not two icons).
+  const addWords = view === 'owned' ? 'Add something I own or had (the switch is inside)' : view === 'quick' ? 'Add to the quick list' : 'Add to the wishlist'
+  // Owned's other way in: a new money chain — its icon and one word, in the bar from a tablet, beside Things | Stats on a phone.
+  const ownedWays = (
+    <Button size="sm" variant="secondary" icon={<Waypoints />} onClick={() => modal.open({ kind: 'shop-chain-builder' })} tip="Chain — a new money chain" className="shrink-0">Chain</Button>
+  )
 
   const ownedTabs = (fullWidth: boolean) => (
     <SegmentedControl<OwnedTab> size="sm" fullWidth={fullWidth} value={ownedTab} onChange={t => set('owned', t)}
       options={[{ value: 'things', label: 'Things' }, { value: 'stats', label: 'Stats' }]} />
   )
-  // Owned's other ways in show as buttons where the row has room for them. The ⋯ menu is drawn outside the page
-  // (a portal), where the page's width can't reach it: it leaves out the ways in while their buttons show — their
-  // group has a width only then.
-  const { ref: waysRef, width: waysWidth } = useElementWidthRem<HTMLDivElement>()
-  const waysShown = view === 'owned' && !isPhone && (waysWidth ?? 0) > 0
   // "Add the suggested categories (34)" while the pickers have any: one tap, then "34 categories added · Undo".
   const suggested = useAddSuggestedCategories(categories)
   const suggestKnown = !catsLoading && !catsError && suggested.count != null
   // The header's one ⋯ on every view (the bar keeps its shape): Stores and rules, the suggested categories while
-  // there are any, and on Owned its other ways in where the row has no room for their buttons, and the insurance list.
+  // there are any, the money chains, and on Owned the insurance list.
   const moreMenu = (
     <Menu as="div">
       <MenuButton className="icon-btn-bordered h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" aria-label="More in Shop" title="More in Shop">
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Read a receipt</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up product info</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores and rules</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} title="Receipts — read a receipt" className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Receipts</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} title="Tidy up product info (AI)" className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} title="Stores and rules" className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores</button></MenuItem>
         {suggestKnown && (suggested.count ?? 0) > 0 && (
           <MenuItem disabled={suggested.busy}>
-            <button type="button" onClick={() => { void suggested.add() }} className="menu-item data-[disabled]:opacity-50">
-              <Tag aria-hidden className="h-4 w-4" /> Add the suggested categories ({suggested.count})
+            <button type="button" onClick={() => { void suggested.add() }} title="Add the suggested categories" className="menu-item data-[disabled]:opacity-50">
+              <Tag aria-hidden className="h-4 w-4" /> Add categories · {suggested.count}
             </button>
           </MenuItem>
         )}
-        {view === 'owned' && !waysShown && <>
-          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-own', had: true })} className="menu-item"><History aria-hidden className="h-4 w-4" /> Something I had</button></MenuItem>
-          <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chain-builder' })} className="menu-item"><Link2 aria-hidden className="h-4 w-4" /> New money chain</button></MenuItem>
-        </>}
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-chains' })} className="menu-item"><Waypoints aria-hidden className="h-4 w-4" /> Money chains</button></MenuItem>
         {view === 'owned' && (
           <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-insurance' })} className="menu-item"><FileText aria-hidden className="h-4 w-4" /> Insurance list</button></MenuItem>
@@ -144,24 +141,17 @@ export function ShopPage() {
           </div>
           {view === 'owned' && !isPhone && ownedTabs(false)}
           <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
-            {view === 'owned' && !isPhone && <>
-              {/* Owned's other ways in: buttons where the row has room, lines in the ⋯ menu where it has not. */}
-              <div ref={waysRef} className="hidden items-center gap-2 @[72rem]/page:flex">
-                <Button size="sm" variant="ghost" icon={<History />} onClick={() => modal.open({ kind: 'shop-own', had: true })}>Something I had</Button>
-                <Button size="sm" variant="ghost" icon={<Link2 />} onClick={() => modal.open({ kind: 'shop-chain-builder' })}>New money chain</Button>
-              </div>
-            </>}
+            {view === 'owned' && !isPhone && ownedWays}
             <ShopNeedsALook items={items} isLoading={isLoading} openThing={openThing} />
             {moreMenu}
-            <Button size="sm" variant="primary" icon={<Plus />} aria-label={view === 'owned' ? 'Add something you own' : 'Add item'} onClick={add}>
-              <span className="max-sm:hidden">{view === 'owned' ? 'Add something I own' : 'Add item'}</span>
-            </Button>
+            <Button size="sm" variant="primary" icon={<Plus />} tip={addWords} onClick={add} />
           </div>
         </div>
       </PageHeader>
       {view === 'owned' && isPhone && (
         <div className="mb-3 flex items-center gap-2 sm:mb-4">
           <div className="min-w-0 flex-1">{ownedTabs(true)}</div>
+          {ownedWays}
         </div>
       )}
 

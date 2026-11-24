@@ -117,7 +117,7 @@ export function ShopTidyModal({ request, onClose }: EntityModalProps<'shop-tidy'
           {running && <Button onClick={stop}>Stop</Button>}
           <Button onClick={close} className="ml-auto" disabled={apply.isPending}>{reviewed.length ? 'Cancel' : 'Close'}</Button>
           {reviewed.length > 0 && !running && (
-            <Button variant="primary" onClick={save} loading={apply.isPending} disabled={tickedCount === 0}>Save {tickedCount} {tickedCount === 1 ? 'change' : 'changes'}</Button>
+            <Button variant="primary" onClick={save} loading={apply.isPending} disabled={tickedCount === 0} tip={`Save ${tickedCount} ${tickedCount === 1 ? 'change' : 'changes'}`}>Save · {tickedCount}</Button>
           )}
         </div>
       }>

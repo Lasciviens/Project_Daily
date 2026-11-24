@@ -40,7 +40,7 @@ export function StatsScopeBar({ scope, options, onChange, onOpen }: {
         }
         return mine.map(c => chip(`${c.section}:${c.key}`, c.word, c.label, `Remove filter: ${c.word} ${c.label}`, () => onChange(toggleScope(scope, c.section, c.key))))
       })}
-      {count > 0 && <Button size="sm" variant="ghost" onClick={() => onChange(NO_SCOPE)}>Clear filters</Button>}
+      {count > 0 && <Button size="sm" variant="ghost" onClick={() => onChange(NO_SCOPE)} tip="Clear filters">Clear</Button>}
     </div>
   )
 }

@@ -56,7 +56,7 @@ export function ResetPasswordPage() {
           <p className="text-body text-fg-2">
             This reset link is invalid or has expired. Request a new one from the sign-in page.
           </p>
-          <Button variant="primary" block onClick={() => navigate('/login')}>Back to sign in</Button>
+          <Button variant="primary" block onClick={() => navigate('/login')} tip="Sign in — back to the sign-in page">Sign in</Button>
         </>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -88,7 +88,7 @@ export function ResetPasswordPage() {
           </div>
           {error && <AuthNotice tone="danger">{error}</AuthNotice>}
           <Button type="submit" variant="primary" block loading={saving}>
-            {saving ? 'Saving…' : 'Set new password'}
+            {saving ? 'Saving…' : 'Set password'}
           </Button>
         </form>
       )}

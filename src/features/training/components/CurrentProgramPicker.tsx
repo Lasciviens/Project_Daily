@@ -73,7 +73,7 @@ export function CurrentProgramPicker({ onSaved }: { onSaved?: () => void } = {})
         disabled={!isDirty}
         onClick={() => save.mutate([...checked], { onSuccess: () => { setDraft(null); onSaved?.() } })}
       >
-        Save current program
+        Save program
       </Button>
     </div>
   )

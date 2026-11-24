@@ -90,7 +90,7 @@ export function OwnedView({ items, categories, isLoading }: {
   ) : !anything ? (
     <EmptyState key="empty" bordered className="max-w-md" icon={<PackagePlus />} title="Start with what you use every day"
       description="Your phone, your console, the TV — with what they cost and when. Mark a wish bought and it lands here too."
-      action={<Button icon={<PackagePlus />} onClick={() => modal.open({ kind: 'shop-own' })}>Add something I own</Button>} />
+      action={<Button icon={<PackagePlus />} onClick={() => modal.open({ kind: 'shop-own' })} tip="Add something I own">Add</Button>} />
   ) : (
     <div key="list" className="flex flex-col gap-4">
       {shown.length === 0 && (filtered

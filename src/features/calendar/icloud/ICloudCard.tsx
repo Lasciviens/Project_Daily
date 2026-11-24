@@ -65,7 +65,7 @@ function ConnectForm({ renew, onDone }: { renew?: boolean; onDone?: () => void }
       {!renew && <input className="input" type="email" autoComplete="username" placeholder="Apple ID email" value={appleId} onChange={e => setAppleId(e.target.value)} />}
       <input className="input" type="password" autoComplete="off" spellCheck={false} placeholder="App-specific password (abcd-efgh-ijkl-mnop)" value={password} onChange={e => setPassword(e.target.value)} />
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" variant="primary" loading={connect.isPending} disabled={(!renew && !appleId.trim()) || !password.trim()}>{renew ? 'Save the new password' : 'Connect iCloud'}</Button>
+        <Button type="submit" variant="primary" loading={connect.isPending} disabled={(!renew && !appleId.trim()) || !password.trim()} tip={renew ? 'Save the new password' : 'Connect iCloud'}>{renew ? 'Save' : 'Connect'}</Button>
         {renew && <Button variant="ghost" onClick={onDone}>Cancel</Button>}
       </div>
       <p className="text-meta text-fg-muted">Only the server keeps the password (never this browser), and it is used only for your calendars. Revoke it any time at account.apple.com.</p>
@@ -276,21 +276,21 @@ export function ICloudCard() {
       ) : !connected ? <ConnectForm /> : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" onClick={runCheck} loading={check.isPending}>{result?.events ? 'Run the check again' : 'Run the Apple check'}</Button>
+            <Button variant="primary" onClick={runCheck} loading={check.isPending} tip={result?.events ? 'Run the check again' : 'Run the Apple check'}>{result?.events ? 'Run again' : 'Run check'}</Button>
             {hasTest && (
               <Button size="sm" icon={<RefreshCw />} onClick={() => changes.mutate()} loading={changes.isPending}>Check changes</Button>
             )}
             {hasTest && (
-              <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending}>{s?.testIsApps === false ? 'Remove test events' : 'Remove test calendar'}</Button>
+              <Button size="sm" icon={<Trash2 />} onClick={removeTest} loading={remove.isPending} tip={s?.testIsApps === false ? 'Remove the test events' : 'Remove the test calendar'}>Remove test</Button>
             )}
-            <Button size="sm" icon={<CalendarSearch />} onClick={() => read.mutate()} loading={read.isPending}>Read my calendars</Button>
+            <Button size="sm" icon={<CalendarSearch />} onClick={() => read.mutate()} loading={read.isPending} tip="Read my calendars">Read</Button>
             <Button size="sm" icon={<Unplug />} onClick={disconnectICloud} loading={disconnect.isPending}>Disconnect</Button>
           </div>
           {s?.lastError && <p role="alert" className="mt-2 text-meta text-danger">Last problem: {s.lastError}</p>}
           {(canRenew || renewing) && (
             <div className="mt-2">
               {renewing ? <ConnectForm renew onDone={() => setRenewing(false)} />
-                : <Button size="sm" icon={<KeyRound />} onClick={() => setRenewing(true)}>New app password</Button>}
+                : <Button size="sm" icon={<KeyRound />} onClick={() => setRenewing(true)} tip="New app password">New password</Button>}
             </div>
           )}
           {s?.notSent && (

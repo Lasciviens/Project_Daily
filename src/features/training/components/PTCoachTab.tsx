@@ -123,7 +123,7 @@ export function PTCoachTab() {
               {generate.isPending ? 'Assessing…' : current ? 'Re-assess' : 'Assess'}
             </Button>
             {/* Ask AI in coach mode: the same chat, with the coach's own instructions and tools (it changes nothing). */}
-            <Button variant="secondary" icon={<MessageCircle />} onClick={openCoachChat}>Chat with the coach</Button>
+            <Button variant="secondary" icon={<MessageCircle />} onClick={openCoachChat} tip="Chat with the coach">Chat</Button>
             {lastAssessed && <span className="text-meta text-fg-muted">Last assessed {formatDate(lastAssessed)}</span>}
           </div>
 

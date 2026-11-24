@@ -21,7 +21,7 @@ function OpenAppleWorkout({ id }: { id: string }) {
   return (
     <Button size="sm" variant="ghost" className="-ml-2 gap-0.5"
       onClick={() => (back ? modal.close() : modal.open({ kind: 'health-workout', id }))}>
-      {back ? 'Back to the Apple workout' : 'Open Apple workout'}
+      <span title={back ? 'Back to the Apple workout' : 'Open the Apple workout'}>{back ? 'Back' : 'Apple workout'}</span>
       <ChevronRight aria-hidden className="h-4 w-4" />
     </Button>
   )

@@ -103,7 +103,7 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
       subtitle={`Logs to ${slotName} after you check it`}
       footer={
         <div className="flex items-center gap-2">
-          {draft && <Button size="sm" className="mr-auto" onClick={saveAsPreset} disabled={busy}>Save as preset</Button>}
+          {draft && <Button size="sm" className="mr-auto" onClick={saveAsPreset} disabled={busy} tip="Preset — save as a preset">Preset</Button>}
           <Button size="sm" variant="ghost" className={draft ? '' : 'ml-auto'} onClick={onClose} disabled={log.isPending}>Cancel</Button>
           <Button size="sm" type="submit" form={FORM_ID} variant="primary" loading={draft ? log.isPending : describe.isPending} icon={draft ? undefined : <Sparkles />}>
             {draft ? `Log ${draft.kcal ?? 0} kcal` : 'Estimate'}
@@ -115,8 +115,8 @@ export function DescribeGuessSheet({ initialText = '', date, slot, onClose }: { 
         <div className="flex flex-col gap-1">
           <div className="flex items-end justify-between gap-2">
             <label htmlFor={textId} className="field-label mb-0">What did you have?</label>
-            <PhotoButton variant="ghost" iconOnly={!!draft} className="-my-1.5 ml-auto" onFile={f => { void fromPhoto(f) }} loading={photo.isPending} disabled={describe.isPending || log.isPending}>
-              From a photo
+            <PhotoButton variant="ghost" iconOnly={!!draft} className="-my-1.5 ml-auto" onFile={f => { void fromPhoto(f) }} loading={photo.isPending} disabled={describe.isPending || log.isPending} tip="Photo — describe it from a photo">
+              Photo
             </PhotoButton>
             {draft && (
               <button type="button" className={chipClass('quiet', '-my-1.5 -mr-1.5')} disabled={describe.isPending} aria-busy={describe.isPending || undefined}

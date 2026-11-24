@@ -36,7 +36,7 @@ export function FactList({ facts, fields, onToggle, onEdit, collapsible = false 
   return (
     <div className="rounded-row border border-line bg-surface-2 px-2.5 py-1.5" data-testid="shop-facts">
       {collapsible
-        ? <button type="button" onClick={() => setOpen(false)} aria-expanded className="section-label py-1 text-left">Filled in for you · untick what's wrong · hide</button>
+        ? <button type="button" onClick={() => setOpen(false)} aria-expanded title="Filled in for you — untick what's wrong; tap to hide" className="section-label py-1 text-left">Filled in</button>
         : <p className="section-label py-1">Filled in for you · untick what's wrong</p>}
       <ul className="divide-y divide-line">
         {facts.map(f => (

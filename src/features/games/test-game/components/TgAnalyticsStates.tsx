@@ -74,7 +74,7 @@ export function TgAnalyticsScopeEmpty({ range, windowed, filtered, onAllTime, on
         No game in this view was played, started or finished in this period. A longer window, or every library, will have numbers to show.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        {windowed && <button type="button" className="tg-btn tg-btn-primary" onClick={onAllTime}>Show all time</button>}
+        {windowed && <button type="button" className="tg-btn tg-btn-primary" onClick={onAllTime} title="All time — show all time">All time</button>}
         {filtered && <button type="button" className="tg-btn tg-btn-secondary" onClick={onAllLibraries}>All libraries</button>}
       </div>
     </div>

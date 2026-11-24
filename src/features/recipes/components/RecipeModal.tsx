@@ -328,7 +328,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
                   aria-label="Recipe text" className="input resize-none" />
                 <div className="flex gap-2">
                   <Button variant="ghost" block onClick={() => setPasteOpen(false)}>Cancel</Button>
-                  <Button variant="primary" block onClick={handleParsePaste} loading={parsing} disabled={!pasteText.trim()}>Parse with AI</Button>
+                  <Button variant="primary" block onClick={handleParsePaste} loading={parsing} disabled={!pasteText.trim()} tip="Parse it with AI">Parse</Button>
                 </div>
               </>
             ) : (
@@ -337,7 +337,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
                 <input value={urlInput} onChange={e => setUrlInput(e.target.value)} type="url" placeholder="https://…" aria-label="Recipe URL" className="input" />
                 <div className="flex gap-2">
                   <Button variant="ghost" block onClick={() => setPasteOpen(false)}>Cancel</Button>
-                  <Button variant="primary" block onClick={handleParseUrl} loading={parsing} disabled={!urlInput.trim()}>Fetch and parse</Button>
+                  <Button variant="primary" block onClick={handleParseUrl} loading={parsing} disabled={!urlInput.trim()} tip="Fetch the page and parse it">Fetch</Button>
                 </div>
               </>
             )}
@@ -421,7 +421,7 @@ export function RecipeModal({ open = true, onClose, recipe, draft }: Props) {
               {canComputeFromIngredients(ingredients) && (
                 <p className="mb-2 flex flex-wrap items-center gap-2 text-meta text-fg-muted">
                   Every ingredient is linked by weight, so the macros can follow them.
-                  <Button size="sm" variant="ghost" onClick={() => setMacroMode('from_ingredients')}>Calculate from ingredients</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setMacroMode('from_ingredients')} tip="Calculate from the ingredients">Calculate</Button>
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

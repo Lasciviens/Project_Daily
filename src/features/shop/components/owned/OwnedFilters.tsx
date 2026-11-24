@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { LayoutGrid, LayoutList, List, Search, SlidersHorizontal, X } from 'lucide-react'
+import { LayoutGrid, LayoutList, List, Search, SlidersHorizontal, Tag, X } from 'lucide-react'
 import { Button, SegmentedControl, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { NO_OWNED_FILTERS, OWNED_SORT_LABEL, ownedFilterCount, type OwnedFilters, type OwnedShow, type OwnedSort } from '../../ownModel'
@@ -46,7 +46,8 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
   const showMore = !behind || (open ?? picked > 0)
   const tops = categories.filter(c => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name))
   // Content-sized (W3), up to a cap: the long "Electronics › Computers & Laptops" never takes the row.
-  const select = cx('select input-bar w-auto max-w-[12rem]', (mode === 'roomy' || mode === 'narrow') && 'w-full max-w-none')
+  // Folded, the selects share one wrapping row with To sell (a select grows, so the toggle never takes a line alone).
+  const select = cx('select input-bar w-auto max-w-[12rem]', (mode === 'roomy' || mode === 'narrow') && 'min-w-0 max-w-none flex-1 basis-40')
   // Folded: `order` puts the icons beside the search though they come last in the markup.
   const o = mode === 'narrow'
     ? { search: 'order-1', group: 'order-2', seg: 'order-3 w-full', sort: 'order-4', filters: 'order-5', more: 'order-6', clear: 'order-7' }
@@ -55,10 +56,10 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
       : { search: '', group: '', seg: '', sort: '', filters: '', more: '', clear: '' }
   const views = (
     <SegmentedControl<OwnedLayout> size="sm" label="How to show your things" value={layout} onChange={onLayout}
-      options={LAYOUTS.map(l => ({ value: l.value, label: <span title={l.label} className="flex items-center">{l.icon}<span className="sr-only">{l.label}</span></span> }))} />
+      options={LAYOUTS.map(l => ({ value: l.value, tip: l.label, label: <span className="flex items-center">{l.icon}</span> }))} />
   )
   const extras = (
-    <div className={cx(mode === 'full' ? 'contents' : mode === 'line' ? 'mt-2 flex flex-wrap items-center gap-2' : cx('flex w-full flex-col gap-2', o.more))}>
+    <div className={cx(mode === 'full' ? 'contents' : mode === 'line' ? 'mt-2 flex flex-wrap items-center gap-2' : cx('flex w-full flex-wrap items-center gap-2', o.more))}>
       <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={select}>
         <option value="all">All categories</option>
         {tops.map(t => [
@@ -70,14 +71,13 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
       </select>
       {chains.length > 0 && (
         <select value={filters.chain} onChange={e => set({ chain: e.target.value })} aria-label="Money chain" className={select}>
-          <option value="all">All money chains</option>
+          <option value="all">All chains</option>
           {chains.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
       )}
-      <label className="flex min-h-[36px] shrink-0 items-center gap-2 whitespace-nowrap text-body text-fg-2 [@media(pointer:coarse)]:min-h-[44px]">
-        <input type="checkbox" checked={filters.resaleOnly} onChange={e => set({ resaleOnly: e.target.checked })} className="h-[18px] w-[18px] accent-accent-500" />
-        Bought to sell
-      </label>
+      {/* A switch as a short word (owner, 24.11.2026: short buttons; critic: an icon alone was unclear): its words in the tooltip. */}
+      <Button size="sm" icon={<Tag />} aria-pressed={filters.resaleOnly} onClick={() => set({ resaleOnly: !filters.resaleOnly })} tip="To sell — only things bought to sell"
+        className={cx('shrink-0', filters.resaleOnly && '!border-accent-500 !bg-accent-50 !text-accent-600')}>To sell</Button>
     </div>
   )
   return (
@@ -86,11 +86,11 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
         <label className={cx('relative block min-w-0', mode === 'narrow' || mode === 'roomy' ? 'flex-1 basis-40' : 'flex-[0_1_16rem]', o.search)}>
           <span className="sr-only">Search your things</span>
           <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-          <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search things" className="input input-bar pl-8" />
+          <input type="search" value={filters.q} onChange={e => set({ q: e.target.value })} placeholder="Search" className="input input-bar pl-8" />
         </label>
         <div className={cx('shrink-0', o.seg)}>
           <SegmentedControl<OwnedShow> size="sm" fullWidth={mode === 'narrow'} value={filters.show} onChange={show => set({ show })}
-            options={[{ value: 'mine', label: 'Mine' }, { value: 'gone', label: 'Sold or gone' }, { value: 'all', label: 'All' }]} />
+            options={[{ value: 'mine', label: 'Mine', tip: 'Mine — still yours' }, { value: 'gone', label: 'Gone', tip: 'Gone — sold or gone' }, { value: 'all', label: 'All', tip: 'All — yours and gone' }]} />
         </div>
         <SortSelect value={sort} labels={OWNED_SORT_LABEL} onChange={onSort} className={cx(oneLine ? 'w-auto shrink-0' : 'min-w-0 flex-1 basis-32', o.sort)} />
         {behind && (
@@ -101,9 +101,9 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
         )}
         {showMore && mode !== 'line' && extras}
         {cleared && (
-          <button type="button" onClick={() => onChange({ ...NO_OWNED_FILTERS, show: filters.show })}
+          <button type="button" onClick={() => onChange({ ...NO_OWNED_FILTERS, show: filters.show })} title="Clear filters" aria-label="Clear filters"
             className={cx('flex min-h-[36px] w-fit shrink-0 items-center gap-1 whitespace-nowrap text-meta font-medium text-fg-muted transition-colors hover:text-fg-2 [@media(pointer:coarse)]:min-h-[44px]', o.clear)}>
-            <X aria-hidden className="h-4 w-4" /> Clear filters
+            <X aria-hidden className="h-4 w-4" /> Clear
           </button>
         )}
         <div className={cx('flex shrink-0 items-center gap-2', oneLine ? 'ml-auto' : o.group)}>

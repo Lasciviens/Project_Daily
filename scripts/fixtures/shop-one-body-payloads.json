@@ -1,0 +1,483 @@
+{
+  "made": "origin/main f207a3a1 (24.11.2026): ShopCreate's inputOf, the record's patchOf, JustBoughtSheet's submit — by running the old code on scripts/fixtures/shop-one-body-scenarios.cjs",
+  "add": {
+    "add · wish with a price, store and link": {
+      "title": "Demo Lamp",
+      "list": "wishlist",
+      "category_id": "c3",
+      "notes": null,
+      "platform": "Jernia",
+      "region": null,
+      "reason": "need",
+      "price": 499,
+      "currency": "NOK",
+      "url": "https://example.com/lamp",
+      "image_url": null,
+      "priority": "high",
+      "planned_date": null,
+      "wait_for_deal": false,
+      "deal_note": null,
+      "target_price": null,
+      "errand": false
+    },
+    "add · wish, any model that fits": {
+      "title": "A tablet with a pen",
+      "list": "wishlist",
+      "category_id": "c1",
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "kind": "general",
+      "price": null,
+      "currency": "NOK",
+      "url": null,
+      "planned_date": null,
+      "priority": "medium",
+      "price_min": 3000,
+      "price_max": 6000,
+      "requirements": "Pen\n11 inch"
+    },
+    "add · general wish": {
+      "title": "A rain jacket",
+      "list": "wishlist",
+      "category_id": null,
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "kind": "general",
+      "price": null,
+      "currency": "NOK",
+      "url": null,
+      "planned_date": null,
+      "priority": "medium",
+      "price_min": null,
+      "price_max": 1500,
+      "requirements": null
+    },
+    "add · something I own, NOK": {
+      "title": "Demo Kettle",
+      "list": "wishlist",
+      "category_id": "c3",
+      "notes": null,
+      "platform": "Power",
+      "region": null,
+      "reason": null,
+      "price": 799,
+      "currency": "NOK",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2026-11-02T11:00:00.000Z",
+      "approx_dates": false,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false
+    },
+    "add · something I own, EUR with a typed rate": {
+      "title": "Demo Camera",
+      "list": "wishlist",
+      "category_id": "c1",
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "price": 400,
+      "currency": "EUR",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2026-06-02T10:00:00.000Z",
+      "approx_dates": true,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false,
+      "fx_nok": 11.5,
+      "fx_source": "manual",
+      "serial": "SN-1"
+    },
+    "add · something I own, a gift, used, to sell": {
+      "title": "Demo Bike",
+      "list": "wishlist",
+      "category_id": null,
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "price": 0,
+      "currency": "NOK",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2025-05-01T10:00:00.000Z",
+      "approx_dates": true,
+      "got_as_gift": true,
+      "used": true,
+      "for_resale": true,
+      "value_now": 1200,
+      "value_currency": "NOK",
+      "value_on": "2026-11-20"
+    },
+    "add · something I had, sold": {
+      "title": "Old Phone",
+      "list": "wishlist",
+      "category_id": null,
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "price": 5000,
+      "currency": "NOK",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2022-01-10T11:00:00.000Z",
+      "approx_dates": true,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false,
+      "disposal": "sold",
+      "disposed_on": "2026-09-01",
+      "sold_to": "A neighbour",
+      "sale_price": 1500,
+      "sale_currency": "NOK"
+    },
+    "add · something I had, given away": {
+      "title": "Old Chair",
+      "list": "wishlist",
+      "category_id": null,
+      "notes": null,
+      "platform": null,
+      "region": null,
+      "reason": null,
+      "price": null,
+      "currency": null,
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2020-01-10T11:00:00.000Z",
+      "approx_dates": true,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false,
+      "disposal": "given",
+      "disposed_on": "2026-03-01",
+      "sold_to": null
+    },
+    "add · accessory of something I own": {
+      "title": "Controller",
+      "list": "wishlist",
+      "category_id": "c1",
+      "notes": null,
+      "platform": "Demo Elektro",
+      "region": "NO",
+      "reason": null,
+      "accessory_of": "p1",
+      "price": 59,
+      "currency": "EUR",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2026-10-01T10:00:00.000Z",
+      "approx_dates": true,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false
+    },
+    "add · model of a general wish": {
+      "title": "Demo Tab 11",
+      "list": "wishlist",
+      "category_id": "c2",
+      "notes": null,
+      "platform": null,
+      "region": "NO",
+      "reason": null,
+      "option_for": "g1",
+      "price": 4990,
+      "currency": "NOK",
+      "url": "https://example.com/tab",
+      "image_url": null,
+      "priority": "medium",
+      "planned_date": null,
+      "wait_for_deal": false,
+      "deal_note": null,
+      "target_price": null,
+      "errand": false
+    },
+    "add · own from a receipt line": {
+      "title": "Demo Speaker",
+      "list": "wishlist",
+      "category_id": "c1",
+      "notes": "Receipt 99",
+      "platform": "Elkjøp",
+      "region": null,
+      "reason": null,
+      "facts": {
+        "brand": {
+          "value": "Demo",
+          "source": "the receipt",
+          "confidence": "likely"
+        },
+        "model": {
+          "value": "S1",
+          "source": "the receipt",
+          "confidence": "likely"
+        }
+      },
+      "price": 1290,
+      "currency": "NOK",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2026-11-18T11:00:00.000Z",
+      "approx_dates": false,
+      "got_as_gift": false,
+      "used": false,
+      "for_resale": false
+    },
+    "add · own from a receipt line with a discount and before price": {
+      "title": "Demo Speaker",
+      "list": "wishlist",
+      "category_id": "c1",
+      "notes": "Receipt 99",
+      "platform": "Elkjøp",
+      "region": null,
+      "reason": null,
+      "facts": {
+        "brand": {
+          "value": "Demo",
+          "source": "the receipt",
+          "confidence": "likely"
+        },
+        "model": {
+          "value": "S1",
+          "source": "the receipt",
+          "confidence": "likely"
+        },
+        "condition": {
+          "value": "used",
+          "source": "the receipt",
+          "confidence": "likely"
+        }
+      },
+      "price": 1290,
+      "currency": "NOK",
+      "url": null,
+      "image_url": null,
+      "priority": "medium",
+      "status": "bought",
+      "bought_at": "2026-11-18T11:00:00.000Z",
+      "approx_dates": false,
+      "got_as_gift": false,
+      "used": true,
+      "for_resale": false,
+      "market_price": 1590,
+      "market_currency": "NOK",
+      "discount_amount": 300,
+      "discount_reason": "campaign"
+    }
+  },
+  "open": {
+    "open · rename": {
+      "title": "Demo Headphones X5 (black)"
+    },
+    "open · a new price is the owner's own": {
+      "price": 3290,
+      "price_source": "manual"
+    },
+    "open · price cleared": {
+      "price": null,
+      "price_source": null
+    },
+    "open · could sell for, typed today with its day": {
+      "value_now": 2000,
+      "value_on": "2026-11-23",
+      "value_currency": "NOK"
+    },
+    "open · the day bought": {
+      "bought_at": "2026-11-18T11:00:00.000Z"
+    },
+    "open · category and store": {
+      "category_id": "c1",
+      "platform": "Power"
+    },
+    "open · picture": {
+      "image_url": "https://example.com/x5.jpg"
+    }
+  },
+  "bought": {
+    "just bought · untouched": {
+      "patch": {
+        "bought_channel": null,
+        "arrived_on": null,
+        "return_by": null,
+        "warranty_until": "2028-11-20",
+        "extra_warranty_until": null,
+        "receipt_note": null
+      },
+      "costs": [],
+      "done": "Purchase saved"
+    },
+    "just bought · online at a store, arrived": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": "2026-11-22",
+        "return_by": "2027-01-06",
+        "warranty_until": "2031-11-22",
+        "extra_warranty_until": null,
+        "receipt_note": null
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 06.01.2027"
+    },
+    "just bought · in a shop, another store typed, own return date": {
+      "patch": {
+        "bought_channel": "in_store",
+        "arrived_on": null,
+        "return_by": "2026-12-01",
+        "warranty_until": "2028-11-20",
+        "extra_warranty_until": "2028-11-20",
+        "receipt_note": "Box in the attic",
+        "platform": "Corner Shop"
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 01.12.2026"
+    },
+    "just bought · another day, 5 years": {
+      "patch": {
+        "bought_channel": null,
+        "arrived_on": null,
+        "return_by": "2027-02-13",
+        "warranty_until": "2031-11-15",
+        "extra_warranty_until": null,
+        "receipt_note": null,
+        "bought_at": "2026-11-15T11:00:00.000Z"
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 13.02.2027"
+    },
+    "just bought · keeps a typed complaint day": {
+      "patch": {
+        "bought_channel": null,
+        "arrived_on": null,
+        "return_by": null,
+        "warranty_until": "2027-03-01",
+        "extra_warranty_until": null,
+        "receipt_note": null
+      },
+      "costs": [],
+      "done": "Purchase saved"
+    },
+    "just bought · a receipt, its price used": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": "2027-01-03",
+        "warranty_until": "2031-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "price": 2990,
+        "currency": "NOK",
+        "discount_amount": 500,
+        "discount_reason": "member",
+        "market_price": 3490,
+        "market_currency": "NOK",
+        "platform": "Elkjøp",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [
+        {
+          "label": "Shipping",
+          "amount": 99,
+          "currency": "NOK",
+          "spent_on": "2026-11-19"
+        }
+      ],
+      "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · a receipt, the receipt's warranty": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": "2027-01-03",
+        "warranty_until": "2028-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "discount_amount": 500,
+        "discount_reason": "member",
+        "market_price": 3490,
+        "market_currency": "NOK",
+        "platform": "Elkjøp",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · a receipt with no matching line": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": "2027-01-03",
+        "warranty_until": "2031-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "platform": "Elkjøp",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [
+        {
+          "label": "Shipping",
+          "amount": 99,
+          "currency": "NOK",
+          "spent_on": "2026-11-19"
+        }
+      ],
+      "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · a receipt with only a total, its price used": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": "2027-01-03",
+        "warranty_until": "2031-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "price": 3290,
+        "currency": "NOK",
+        "platform": "Elkjøp",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · from Read a receipt (the hand-off), the store not one of yours": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": null,
+        "warranty_until": "2028-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "platform": "Corner Shop",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [
+        {
+          "label": "Shipping",
+          "amount": 99,
+          "currency": "NOK",
+          "spent_on": "2026-11-19"
+        }
+      ],
+      "done": "Purchase saved"
+    }
+  }
+}

@@ -47,7 +47,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
               {wish.status === 'dropped' ? (
                 <button type="button" onClick={() => onStatus('idea')} className="menu-item"><Undo2 aria-hidden className="h-4 w-4" /> Put back</button>
               ) : (
-                <button type="button" onClick={() => onStatus('dropped')} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Not any more</button>
+                <button title="Drop — not any more" type="button" onClick={() => onStatus('dropped')} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Drop</button>
               )}
             </MenuItem>
             <div className="menu-sep" />
@@ -81,7 +81,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
           {isDone ? <><Undo2 aria-hidden className="h-4 w-4" /> Not done yet</> : <><Check aria-hidden className="h-4 w-4" /> Done</>}
         </button>
         {!isClosed && (
-          <button type="button" onClick={onPlan} title="Turn it into a real task — the wish stays on this list"
+          <button type="button" onClick={onPlan} title="Plan it — turn it into a real task — the wish stays on this list"
             className="btn-ghost btn-sm flex-1 justify-center text-accent-600">
             <CalendarPlus aria-hidden className="h-4 w-4" /> Plan it
           </button>

@@ -60,7 +60,7 @@ export function HealthHero({ hero, onViewDay, onOpenSection }: {
   const viewDay = (date: string) => { setOpen(null); onViewDay(date) }
   const target = open ? HEALTH_SECTIONS.find(s => s.id === TILE_SECTION[open]) : undefined
   const footer = open && target && onOpenSection
-    ? <Button className="w-full sm:w-auto" onClick={() => { setOpen(null); onOpenSection(target.id) }}>Open the {target.label} tab</Button>
+    ? <Button className="w-full sm:w-auto" onClick={() => { setOpen(null); onOpenSection(target.id) }} tip={`Open the ${target.label} tab`}>Open {target.label}</Button>
     : undefined
   const { sleep, steps, exercise, rhr, weight, vitals } = hero
   const band = (c: { label: string; tone: 'danger' | 'warn' | 'neutral' | 'success' | 'info' } | null, prefix = '') =>

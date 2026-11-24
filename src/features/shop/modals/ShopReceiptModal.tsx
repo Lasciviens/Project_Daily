@@ -59,7 +59,7 @@ export function ShopReceiptModal({ request, onClose }: EntityModalProps<'shop-re
         {queue.rows.length === 0 && (
           <div className="flex flex-col items-start gap-2">
             <p className="text-body text-fg-muted">Pick up to {RECEIPT_FILES_MAX} photos or PDFs of receipts (a till slip, an invoice, an order, a payout). AI reads each one and lists what was bought or sold; you then add each line yourself. The files are not kept.</p>
-            <PhotoButton accept={ACCEPT} multiple variant="primary" onFiles={queue.add}>Choose photos or PDFs</PhotoButton>
+            <PhotoButton accept={ACCEPT} multiple variant="primary" onFiles={queue.add} tip="Choose photos or PDFs">Choose</PhotoButton>
           </div>
         )}
         {queue.note && <p className="text-meta text-warn">{queue.note}</p>}
@@ -67,7 +67,7 @@ export function ShopReceiptModal({ request, onClose }: EntityModalProps<'shop-re
         {queue.waiting > 0 && !queue.running && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {/* One file may be read without the estimate; several files need it, so the owner sees the most they could cost first. */}
-            <Button variant="primary" onClick={() => queue.start()} disabled={queue.estimate == null && queue.waiting > 1}>Read {queue.waiting} {queue.waiting === 1 ? 'file' : 'files'}</Button>
+            <Button variant="primary" onClick={() => queue.start()} disabled={queue.estimate == null && queue.waiting > 1} tip={`Read ${queue.waiting} ${queue.waiting === 1 ? 'file' : 'files'}`}>Read · {queue.waiting}</Button>
             <span className="text-meta text-fg-muted">
               {queue.estimate != null ? `Up to ≈ $${queue.estimate.toFixed(2)} in all; usually far less.` : queue.estimateFailed ? (queue.waiting > 1 ? "The cost couldn't be worked out — try again later." : "The most it could cost couldn't be worked out.") : 'Working out the cost…'}
             </span>

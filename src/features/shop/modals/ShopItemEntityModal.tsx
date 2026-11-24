@@ -21,7 +21,7 @@ export function ShopItemEntityModal({ request, onClose }: EntityModalProps<'shop
   return <ShopItemByIdModal id={request.id} fact={request.fact} section={request.section} onClose={onClose} />
 }
 
-function ShopItemByIdModal({ id, fact, section, onClose }: { id: string; fact?: RecordFact; section?: 'money'; onClose: () => void }) {
+function ShopItemByIdModal({ id, fact, section, onClose }: { id: string; fact?: RecordFact; section?: 'money' | 'purchase'; onClose: () => void }) {
   const query = useShopItem(id)
   const first = useFirstLoaded(query.data, query)
   const item = query.data ?? first

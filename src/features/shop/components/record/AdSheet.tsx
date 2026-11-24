@@ -10,7 +10,7 @@ import { isPrice, RESALE_CONDITIONS, twoDecimals } from '../../resaleRows'
 import { categoryNamesOf, fillAd, templateFor, unknownFields, AD_FIELDS } from '../../resaleTexts'
 import { adClipboardText, adFactsOf, adPriceOf, marketplaceLink, marketplacesOf } from '../../sellingModel'
 import { boughtOn, isMine } from '../../ownModel'
-import { MoneyEditor, Toggle } from './factKit'
+import { MoneyEditor, Toggle } from '../shopEditors'
 import { useImproveAd } from '../../../ai/claude/hooks/useAiFeatures'
 import { costNote } from '../../../ai/claude/featureRules'
 import { AddressLink } from './AddressLink'
@@ -101,11 +101,11 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
       footer={
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={onClose} variant="ghost">Close</Button>
-          <Button className="ml-auto" onClick={keep} disabled={!listing && !listable} loading={create.isPending || change.isPending}
-            title={!listing && !listable ? 'Add an asking price (below a billion, at most two decimals) to list it' : undefined}>
-            {listing ? 'Save to the listing' : 'Mark it listed'}
+          <Button className="ml-auto" onClick={keep} disabled={!listing && !listable} loading={create.isPending || change.isPending} aria-label={listing ? 'Save to the listing' : 'Mark it listed'}
+            title={!listing && !listable ? 'Add an asking price (below a billion, at most two decimals) to list it' : listing ? 'Save to the listing' : 'Mark it listed'}>
+            {listing ? 'Save' : 'Listed'}
           </Button>
-          <Button variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!body.trim()}>Copy the ad</Button>
+          <Button variant="primary" icon={<Copy />} onClick={() => void copy()} disabled={!body.trim()} tip="Copy the ad">Copy</Button>
         </div>
       }>
       <div className="flex flex-col gap-3">
@@ -146,7 +146,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         {isLoading ? null : !template ? (
           <div className="flex flex-wrap items-center gap-2 text-meta text-fg-muted">
             <span>No ad template{where ? ` for ${where}` : ''}.</span>
-            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending}>Put back the default texts</Button>
+            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending} tip="Defaults — put back the default texts">Defaults</Button>
           </div>
         ) : null}
         <label className="flex flex-col gap-1">
@@ -161,12 +161,12 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
           <input value={condNotes} onChange={e => keepNotes(e.target.value)} maxLength={1000} placeholder="Condition in your words: scratches, what is included…"
             aria-label="Condition, in your words" className="input input-sm min-w-0 flex-1" />
           <Button size="sm" icon={<Sparkles />} loading={improve.isPending} disabled={!condNotes.trim() || !body.trim()} onClick={() => { void improveIt() }}
-            title="AI call: rewrites the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
+            title="Improve — aI call: rewrites the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}
-          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()}>Fill in again</button>}
-          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)}>Edit the template</button>}
+          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()} title="Refill — fill the ad in again">Refill</button>}
+          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)} title="Template — edit it">Template</button>}
         </div>
         {filled && filled.unknown.length > 0 && <p className="text-meta text-warn">The template names {filled.unknown.map(f => `{${f}}`).join(', ')}, which the app doesn't fill.</p>}
         {template && editingTemplate && <TemplateEditor id={template.id} title={template.title} body={template.body} onDone={() => { setEditingTemplate(false); resetText() }} />}
@@ -196,7 +196,7 @@ function TemplateEditor({ id, title: t0, body: b0, onDone }: { id: string; title
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
         <Button size="sm" variant="primary" loading={save.isPending} disabled={!title.trim() || !body.trim()}
-          onClick={() => save.mutate({ id, patch: { title, body } }, { onSuccess: onDone })}>Save the template</Button>
+          onClick={() => save.mutate({ id, patch: { title, body } }, { onSuccess: onDone })} tip="Save the template">Save</Button>
       </div>
     </div>
   )

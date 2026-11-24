@@ -32,8 +32,9 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
           <Button
             size="sm" variant="ghost" icon={<ListPlus />} loading={create.isPending}
             onClick={() => create.mutate({ kind: 'collection', tmdbId: col.id, name: data.name, follow: follows.find(f => f.kind === 'collection' && f.tmdb_id === col.id) ?? null })}
+            tip="Save as a list"
           >
-            Save as list
+            Save list
           </Button>
         )}
       </div>

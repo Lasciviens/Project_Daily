@@ -53,6 +53,10 @@ export function samePage(pageName: string | null | undefined, product: string): 
   return shared.some(w => /\d/.test(w)) || shared.length >= 2
 }
 
+/** What Find picture writes on a saved thing (only the picture), and what its Undo writes back (exactly the one before). */
+export const picturePatch = (image: string): { image_url: string } => ({ image_url: image })
+export const pictureUndoPatch = (item: { image_url?: string | null }): { image_url: string | null } => ({ image_url: item.image_url ?? null })
+
 /** The fact the picture is: ticked, "check" (a page found by a search is a guess), its source the page's own host. */
 export function pictureFact(p: PagePicture, at: string): Fact | null {
   if (!p.image) return null

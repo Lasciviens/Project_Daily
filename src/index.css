@@ -692,6 +692,27 @@ select:focus-visible,
   outline: none;
 }
 
+/* ── A short button's description on a long press (app/longPressTips.ts) ───
+   The class is set only at runtime → outside @layer. The tokens of a chart's
+   tooltip box: surface, the strong line, the menu shadow. */
+.long-press-tip {
+  position: fixed;
+  z-index: var(--z-toast);
+  transform: translateX(-50%);
+  max-width: 12rem;
+  padding: 6px 10px;
+  border: 1px solid rgb(var(--ink-300));
+  border-radius: 8px;
+  background: rgb(var(--cream-50));
+  box-shadow: var(--shadow-menu);
+  color: rgb(var(--ink-900));
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* ── Status tones by data attribute (runtime values → outside @layer) ──────
    <span data-tone="success" class="tone-dot" />, .tone-text, .tone-pill.
    One mechanism for every status map (task priority, project status, sync

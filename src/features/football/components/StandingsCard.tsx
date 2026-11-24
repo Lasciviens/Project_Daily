@@ -39,7 +39,7 @@ export function StandingsCard({ league, followed }: { league: string; followed: 
       <div className="mt-2 flex flex-wrap gap-2">
         {(hidden > 0 || tables.some(t => t.rows.length > tableSlice(t.rows, followed).filter(Boolean).length)) && (
           <Button size="sm" variant="ghost" onClick={() => setWhole(v => !v)}>
-            {whole ? 'Show less' : hidden > 0 ? `Show all · ${hidden} more ${hidden === 1 ? 'group' : 'groups'}` : 'Show all'}
+            {whole ? 'Show less' : hidden > 0 ? `All · ${hidden} more` : 'Show all'}
           </Button>
         )}
       </div>

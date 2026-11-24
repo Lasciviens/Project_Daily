@@ -274,8 +274,9 @@ Use the React primitive when one exists; the CSS class is for places a component
 | A panel | `<Card>` (`.card`, renders a `<section>`, `p-4 sm:p-5` unless `padded={false}`), interactive `<Card as="button" interactive>` (`.card-interactive`) |
 | Card heading | `<CardHeader title icon subtitle action />`, dense: `variant="label"`; `wrap` lets a long title/subtitle wrap (and the action drop below it on a phone) instead of being cut off — use it wherever the text is user data (a routine name) or a sentence that must be read |
 | Eyebrow label | `<SectionLabel>` (`.section-label`) |
-| Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block>` — default `secondary`; `sm` is 36px with a mouse, 44px on touch (`.btn-*`, `.btn-sm`) |
-| Icon-only button | `<IconButton label="…" bordered?>` (label is required: it's the accessible name; `.icon-btn`, `.icon-btn-bordered`) |
+| Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block tip>` — default `secondary`; `sm` is 36px with a mouse, 44px on touch (`.btn-*`, `.btn-sm`); `tip` is the full description of a short button (its `title` and accessible name); an `icon` with a `tip` and no words is a square button |
+| Icon-only button | `<IconButton label="…" bordered?>` (label is required: it's the accessible name and the hover `title`; `.icon-btn`, `.icon-btn-bordered`) |
+| A short button's description on touch | nothing to add: `app/longPressTips.ts` (one listener, loaded in idle time) shows, while a finger rests on a control (575 ms) — a button, link, label, tab, chip or menu line — its nearest `data-tip` or `title`, else its accessible name, in a bubble; that press does not tap, a quick tap still taps, a key ends a held press, and a text field (input, textarea, select, contenteditable) is never touched. Give a short label its words: `Button tip`, `IconButton label`, a `SegmentedControl` option's `tip`, a chip's `tip`, a plain button's `title` |
 | KPI tile | `<StatTile label value unit hint icon tone onClick />` |
 | Page frame | `<PageContainer width="narrow|wide|full">` (caps `max-w-3xl` · `max-w-[135rem]`, the default = the widest board · none; `@container/page`) + `<PageHeader title subtitle actions showTitle>{tabs}</PageHeader>` |
 | Page layout | `<PageBoard sections layout />` (§6.3) |
@@ -308,8 +309,19 @@ Use the React primitive when one exists; the CSS class is for places a component
 
 **Button rules.** One primary per view (the action the screen exists for). Secondary for everything
 else; ghost for tertiary/inline actions; danger only for the final destructive step (inside a
-confirm). Label = verb + object ("Log food", "Save target"), never "OK"/"Submit". A button that
-starts async work shows `loading` and its hook shows the result toast (§10).
+confirm). Never "OK"/"Submit". A button that starts async work shows `loading` and its hook shows
+the result toast (§10).
+
+**Short buttons** (owner, 24.11.2026: "Button names should be short!!!! An icon, a symbol, an image, a
+small text but not the whole description … If you need the description; show it when mouse is on it"; app-wide). A button —
+a `Button`, a plain button, a menu line, a chip, a segment — is an icon, a symbol or 1–2 words; the full description is its
+tooltip and accessible name, starting with the button's own word ("Sell" → "Sell or give away"), and a long press shows it on
+touch. Keep one word beside the icon where the icon alone is unclear ("Accessory", "To sell", "Chain"). A count follows a "·"
+("Save · 3"). Example (Shop → Owned): "+ Add something I own" → `<Button variant="primary" icon={<Plus />} tip="Add something I
+own or had (the switch is inside)" />`; "Sort: Newest first" → ⇅ Newest; "Mine · Sold or gone · All" → `options={[…, { value:
+'gone', label: 'Gone', tip: 'Gone — sold or gone' }]}`. A disclosure's summary of what is folded, a sentence's own link and a
+chip that is its data are not labels (`scripts/verify-short-buttons.mjs` names each exception and its reason; it reads every
+button in `src`).
 
 **Card anatomy.** `CardHeader` (icon chip · title · subtitle · right action) → body → optional footer
 row separated by `border-t border-line pt-3`. Link-outs in a header are `text-accent-600 text-meta
@@ -917,7 +929,7 @@ chrome. English in the product (`AGENTS.md`).
 - Touch targets: the primitives grow on touch screens (`[@media(pointer:coarse)]:min-h-[44px]`); a custom control never grows if that pushes its row onto a new line — compact wins.
 - Visible keyboard focus (`:focus-visible` accent outline following the control's radius); inputs use
   the accent halo instead.
-- Icon-only buttons have a label; decorative icons are `aria-hidden`.
+- Icon-only buttons have a label; decorative icons are `aria-hidden`. A hover tooltip (`title`) always has a touch path: the long press (`app/longPressTips.ts`, §5) or a word beside the icon.
 - Colour is never the only signal: a status also has a label or icon.
 - Contrast: body text ≥ 4.5:1 on its surface in both themes (`fg-faint` is decoration only).
 - Tab rows and segmented controls use proper roles (`tablist`/`tab`, `aria-selected` / `aria-pressed`).

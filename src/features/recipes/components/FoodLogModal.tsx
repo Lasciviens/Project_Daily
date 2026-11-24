@@ -365,8 +365,8 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                       As meal
                     </label>
                   )}
-                  <Button variant="ghost" size="sm" icon={<Save />} onClick={() => setSaveMealOpen(v => !v)} aria-expanded={saveMealOpen}>
-                    Save as meal
+                  <Button variant="ghost" size="sm" icon={<Save />} onClick={() => setSaveMealOpen(v => !v)} aria-expanded={saveMealOpen} tip="Meal — save as a meal">
+                    Meal
                   </Button>
                 </div>
               </div>

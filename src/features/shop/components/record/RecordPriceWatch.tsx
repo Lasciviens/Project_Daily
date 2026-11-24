@@ -13,7 +13,7 @@ export function PriceCheckButton({ item, watch }: { item: ShopItem; watch: ShopP
   const check = useCheckPrices()
   const current = watch && watch.url === item.url ? watch : null
   if (!item.url || current?.status === 'not_allowed') return null
-  return <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])}>Check now</Button>
+  return <Button size="sm" variant="ghost" icon={<RefreshCw />} loading={check.isPending} onClick={() => check.mutate([item.id])} tip="Check the price now">Check</Button>
 }
 
 /**

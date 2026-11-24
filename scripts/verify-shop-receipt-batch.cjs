@@ -170,7 +170,7 @@ const flow = src('src/features/shop/components/receipt/useReceiptFlow.ts')
 check('Undo all takes a sale back only while the row still looks like the one this popup made (way, day and group), one stale sale never stops the links and the deleted things, and the deleted things come back with an Undo', /it\.disposal === s\.done\.how && it\.disposed_on === s\.done\.on/.test(flow) && /groupSeen\.current\[s\.id\]/.test(flow) && /try \{ await undoSale\(s\.id\) \} catch \{ skipped\+\+ \}/.test(flow) && /restoreShopItems\(snapshot\)/.test(flow) && /toast\.undo\(words/.test(flow))
 check('a planned first link is settled by the write whatever target was saved, so a changed or cleared target is never linked again', /handle\(next, \[\.\.\.plannedPairs\(key\)/.test(flow) && /handle\(next, \[\.\.\.plannedPairs\(k\)/.test(flow))
 check('what the screen shows as written follows the live data (things, sales and links that are still there), and Undo all un-buys the wishes bought here', /const live = useMemo/.test(flow) && /status: 'wishlist'/.test(flow))
-const create = src('src/features/shop/components/record/ShopCreate.tsx')
+const create = src('src/features/shop/components/record/useCreateRecord.ts')
 check('the create popup links only through linksAtSave (to what it offers)', /linksAtSave\(s, hasMoney\(spec, s\)/.test(create) && !/if \(s\.paidFrom\) await link/.test(create))
 
 console.log('\nthe sale sheet\'s start')

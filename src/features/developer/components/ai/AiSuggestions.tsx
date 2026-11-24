@@ -61,7 +61,7 @@ function Card({ s, onState, busy }: { s: AiSuggestion; onState: (state: Suggesti
       <div className="flex flex-wrap gap-1.5">
         {s.state === 'new' && <Button size="sm" icon={<Check />} disabled={busy} onClick={() => onState('kept')}>Keep</Button>}
         {(s.state === 'new' || s.state === 'kept') && <Button size="sm" variant="ghost" icon={<X />} disabled={busy} onClick={() => onState('dismissed')}>Dismiss</Button>}
-        {s.state !== 'dismissed' && s.state !== 'built' && <Button size="sm" variant="ghost" icon={<Send />} onClick={sendToDevRequests}><span className="sm:hidden">To Dev Requests</span><span className="hidden sm:inline">Send to Dev Requests</span></Button>}
+        {s.state !== 'dismissed' && s.state !== 'built' && <Button size="sm" variant="ghost" icon={<Send />} onClick={sendToDevRequests} tip="Request — send to Dev Requests">Request</Button>}
         {s.state === 'kept' && <Button size="sm" variant="ghost" icon={<Check />} disabled={busy} onClick={() => onState('built')}>Mark built</Button>}
         {(s.state === 'dismissed' || s.state === 'built') && <Button size="sm" variant="ghost" icon={<Undo2 />} disabled={busy} onClick={() => onState('new')}>Bring back</Button>}
       </div>
@@ -99,7 +99,7 @@ export function AiSuggestions() {
         </div>
         <p className="text-meta text-fg-muted">{runs.isLoading ? 'Reading the last look…' : runSentence((runs.data ?? [])[0] ?? null, iso => formatDate(iso))}</p>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" icon={<RefreshCw />} loading={look.isPending} disabled={waiting} onClick={() => look.mutate()}>Look for suggestions now</Button>
+          <Button size="sm" icon={<RefreshCw />} loading={look.isPending} disabled={waiting} onClick={() => look.mutate()} tip="Look for suggestions now">Look now</Button>
         </div>
       </section>
       {suggestions.isLoading && <Skeleton rounded="rounded-card" className="h-24 w-full" />}

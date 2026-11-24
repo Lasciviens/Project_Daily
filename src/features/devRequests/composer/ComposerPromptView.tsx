@@ -121,9 +121,9 @@ export function ComposerPromptView({ textareaRef }: { textareaRef?: Ref<HTMLText
           icon={<RotateCcw />}
           disabled={!canReset}
           onClick={reset}
-          title={prompt.from ? 'Throw your edits away and build the prompt again from the request as written now' : 'Throw your edits away and build the prompt again from the picked requests'}
+          tip={prompt.from ? 'Reset — throw your edits away and build the prompt again from the request as written now' : 'Reset — throw your edits away and build the prompt again from the picked requests'}
         >
-          Reset to generated
+          Reset
         </Button>
         <Button variant="primary" size="sm" icon={<Copy />} disabled={!prompt.text.trim()} onClick={() => void copy()} className="ml-auto">
           Copy prompt

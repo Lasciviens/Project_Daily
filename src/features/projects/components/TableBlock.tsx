@@ -39,7 +39,7 @@ export function TableBlockBody({ block, rows, onAdd }: { block: ProjectBlock; ro
     return (
       <div className="flex flex-col items-start gap-2">
         <p className="text-meta text-fg-muted">No rows yet. Columns: {settings.columns.map(c => c.label).join(' · ')}.</p>
-        <Button size="sm" onClick={onAdd}>Add a row</Button>
+        <Button size="sm" onClick={onAdd} tip="Add a row">Add row</Button>
       </div>
     )
   }
@@ -62,8 +62,8 @@ export function TableBlockBody({ block, rows, onAdd }: { block: ProjectBlock; ro
 
       {toBuy.length > 0 && (
         <div>
-          <Button size="sm" icon={<ShoppingBag />} loading={shop.isPending} onClick={() => shop.send(block, toBuy, projectName)}>
-            Send {toBuy.length} to Shop
+          <Button size="sm" icon={<ShoppingBag />} loading={shop.isPending} onClick={() => shop.send(block, toBuy, projectName)} tip={`Shop — send ${toBuy.length} to Shop`}>
+            Shop · {toBuy.length}
           </Button>
         </div>
       )}
