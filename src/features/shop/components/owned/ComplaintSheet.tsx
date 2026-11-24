@@ -13,7 +13,7 @@ import { useLawRules, useShopStores, useStoreRules } from '../../hooks/useShopSt
 import { complaintLetter, letterFacts, storePageOf } from '../../complaintModel'
 import { boughtDayOf, dateSource, deadlinesOf, type StoreCtx } from '../../purchaseModel'
 import { currencyOf } from '../../shopModel'
-import { MoneyEditor } from '../record/factKit'
+import { MoneyEditor } from '../shopEditors'
 import { DateFact, DeadlineWords } from '../purchase/purchaseKit'
 import { SiteLink } from '../shopKit'
 import { money } from '../shopFormat'

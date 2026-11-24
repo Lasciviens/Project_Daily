@@ -10,7 +10,8 @@ import type { ShopItem } from '../../types'
  * its life as a story — the actions, the money strip, the nudge, the Story
  * and the sections that open in place (RecordBody). Every screen opens this
  * popup — Owned's rows, the lists, the chains, the links inside a record
- * (owner, 23.11.2026: no side pane). `ShopCreate` is the same popup for a new one.
+ * (owner, 23.11.2026: no side pane). It is one of the one body's three frames (mode open); `ShopCreate` (add) and
+ * `JustBought` (bought) are the others — a frame holds no field, picture or finder of its own (`verify-shop-one-body`).
  */
 export function ShopRecord({ item, openFact, openSection, onClose }: { item: ShopItem; openFact?: RecordFact; openSection?: 'money'; onClose: () => void }) {
   const r = useShopRecord(item, openFact, onClose)
@@ -26,7 +27,7 @@ export function ShopRecord({ item, openFact, openSection, onClose }: { item: Sho
       dismissible={!r.saving}
       footer={r.d.dirty ? <RecordFooter r={r} /> : undefined}
     >
-      <RecordBody r={r} openFact={openFact} openSection={openSection} pill="phone" />
+      <RecordBody mode="open" r={r} openFact={openFact} openSection={openSection} pill="phone" />
     </ModalShell>
   )
 }

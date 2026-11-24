@@ -1,6 +1,6 @@
 import type { RecordFact } from '../../shopSuggestions'
 import { useMemo, type ReactNode } from 'react'
-import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
+import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, ListX, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -19,9 +19,14 @@ import type { ShopDisposal, ShopItem } from '../../types'
 
 /** One of the record's actions; `more` ones sit behind ⋯ where the record is narrow (a phone). */
 export interface RecordAction {
-  key: string; label: string; icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
-  /** An icon button: the label is its accessible name and its title (a hover says what it does). */
+  key: string
+  /** The button's own words: 1–2 words, or none for an icon (owner, 24.11.2026: short buttons). */
+  label: string
+  icon: ReactNode; onClick: () => void; primary?: boolean; ghost?: boolean; more?: boolean
+  /** An icon button: the tip (or the label) is its accessible name and its title. */
   iconOnly?: boolean
+  /** The full description: its accessible name, a hover's title, a long press's bubble on touch, and its line behind ⋯. */
+  tip?: string
 }
 
 /** What Undo takes back, in words, for the confirm. */
@@ -116,30 +121,30 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   // One row of actions. Where the record is narrow it keeps one line: the first ones as buttons, the rest behind ⋯.
   const actions: RecordAction[] = []
   if (state === 'buy') {
-    actions.push({ key: 'bought', label: 'Bought', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
+    actions.push({ key: 'bought', label: 'Bought', tip: 'Bought — fill in how and where', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
     actions.push(item.task_id
-      ? { key: 'task', label: 'Open the task', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
-      : { key: 'plan', label: 'Plan it', icon: <CalendarPlus />, onClick: then(plan) })
+      ? { key: 'task', label: 'Task', tip: 'Open the task', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
+      : { key: 'plan', label: 'Plan', tip: 'Plan it — a task in the calendar', icon: <CalendarPlus />, onClick: then(plan) })
     if (!item.option_for && !item.accessory_of) {
-      actions.push({ key: 'errand', label: item.errand ? 'Off the errand list' : 'On the next errand', icon: <ListPlus />, ghost: true, more: true,
+      actions.push({ key: 'errand', label: 'Errand', tip: item.errand ? 'Off the errand list' : 'On the next errand', icon: item.errand ? <ListX /> : <ListPlus />, iconOnly: true, ghost: true, more: true,
         onClick: then(() => update.mutate({ id: item.id, patch: { errand: !item.errand }, quiet: true })) })
     }
-    actions.push({ key: 'drop', label: item.option_for ? 'Not chosen' : 'Not any more', icon: <Ban />, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'drop', label: 'Drop', tip: item.option_for ? 'Not chosen — drop this model' : 'Not any more — drop the wish', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'general' && item.status === 'wishlist') {
-    actions.push({ key: 'model', label: 'Add a model', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
-    actions.push({ key: 'drop', label: 'Not any more', icon: <Ban />, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'model', label: 'Model', tip: 'Add a model', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
+    actions.push({ key: 'drop', label: 'Drop', tip: 'Not any more — drop the wish', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'mine') {
-    actions.push({ key: 'sell', label: 'Sell', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
-    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
-    actions.push({ key: 'wrong', label: 'Something\'s wrong', icon: <TriangleAlert />, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
+    actions.push({ key: 'sell', label: 'Sell', tip: 'Sell or give away', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
+    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', tip: 'Add an accessory', icon: <Plus />, iconOnly: true, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
+    actions.push({ key: 'wrong', label: 'Problem', tip: 'Something\'s wrong — complain or claim money back', icon: <TriangleAlert />, iconOnly: true, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
-  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy up info', icon: <Sparkles />, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
+  if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy', tip: 'Tidy up info with AI — name, brand, model, category', icon: <Sparkles />, iconOnly: true, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
   if (state === 'gone' || item.disposal === 'returned') {
     // Asks first (owner, 23.11.2026): an icon is easy to hit by mistake, and the sale's money goes with it.
     const what = item.disposal ? UNDO_WORD[item.disposal] : 'this'
-    actions.push({ key: 'undo', label: 'Undo: still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
+    actions.push({ key: 'undo', label: 'Undo', tip: 'Undo: still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
       void modal.confirm({
         title: 'Still yours?',
         message: `This takes back ${what}${item.disposed_on ? ` on ${formatDate(item.disposed_on)}` : ''}.`,
@@ -147,7 +152,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
       }).then(ok => { if (ok) undoSale.mutate(item.id) })
     } })
   }
-  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
+  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Put back', tip: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 
   return {
     item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,

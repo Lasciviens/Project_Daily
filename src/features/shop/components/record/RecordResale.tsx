@@ -14,7 +14,7 @@ import { isPrice, marketplaceOf, normalizeAdUrl, RESALE_CONDITIONS } from '../..
 import { endedListingsOf, estimateHistory, HANDED_OVER, hasOldEstimate, listingWords, marketplacesOf, oldEstimates } from '../../sellingModel'
 import { money, moneyRange, num } from '../shopFormat'
 import { StoreNameField } from '../shopPickers'
-import { MoneyEditor } from './factKit'
+import { MoneyEditor } from '../shopEditors'
 import { WENT_TO } from './factList'
 import { AddressLink } from './AddressLink'
 import { RecordListing } from './RecordListing'

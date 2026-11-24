@@ -33,20 +33,20 @@ function read(): Set<SectionId> | null {
  * The open sections: what the owner left open last time on this device
  * (none remembered: `fallback` — a general wish's models), plus `force` — the
  * one a record opened at (an old "Could sell for": Resale) — open, but not
- * remembered until it is toggled.
+ * remembered until it is toggled. `remember` false (a thing being added, Just bought): the mode's own sections open, not remembered.
  */
-export function useOpenSections(fallback: readonly SectionId[], force: SectionId | null) {
+export function useOpenSections(fallback: readonly SectionId[], force: SectionId | null, remember = true) {
   const [open, setOpen] = useState<Set<SectionId>>(() => {
-    const s = read() ?? new Set(fallback)
+    const s = (remember ? read() : null) ?? new Set(fallback)
     if (force) s.add(force)
     return s
   })
   const toggle = useCallback((id: SectionId) => setOpen(prev => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id); else next.add(id)
-    try { localStorage.setItem(KEY, JSON.stringify([...next])) } catch { /* storage unavailable: kept for this record */ }
+    if (remember) try { localStorage.setItem(KEY, JSON.stringify([...next])) } catch { /* storage unavailable: kept for this record */ }
     return next
-  }), [])
+  }), [remember])
   /** Open one (a nudge that edits a fact in it); never folds one. */
   const show = useCallback((id: SectionId) => setOpen(prev => (prev.has(id) ? prev : new Set(prev).add(id))), [])
   return { open, toggle, show }

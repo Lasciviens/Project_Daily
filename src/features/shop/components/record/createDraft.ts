@@ -1,4 +1,4 @@
-// A new Shop thing in the record's own popup (`ShopCreate`): its draft, worked out by code — pure, so
+// A new Shop thing in the one body (`RecordBody`, mode add; its frame `ShopCreate`): its draft, worked out by code — pure, so
 // scripts/verify-shop-create.cjs runs it against the real module.
 //
 // The draft is the record's own (`RecordDraft`: columns, `bought_day`, the names typed for a new category) on top of a
@@ -14,6 +14,7 @@ import { categoryIdOf, currencyOf, localDay, pickOf } from '../../shopModel'
 import type { CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem } from '../../types'
 import type { ShopDraft } from '../ShopItemForm'
 import { isNewCategory, newCategoryId, newCategoryMissing, newPickOf, type RecordDraft } from './useRecordDraft'
+import type { PurchaseForm } from './purchaseDraft'
 
 /** What is being made: a wish (one product), a general wish, a thing you own, one you had, an accessory, a model of a general wish. */
 export type CreatePreset = 'wish' | 'general' | 'own' | 'had' | 'accessory' | 'model'
@@ -47,6 +48,11 @@ export interface CreateState {
   skipped: boolean
   /** A sold line of a read receipt that matches none of your things: "I had it" with the day it left and what it sold for REQUIRED. */
   needSale: boolean
+  /**
+   * The Purchase part of a thing you own being added (how it was bought, Arrived, the return and complaint days, the extra
+   * warranty, the receipt note): null until the owner opens it — an untouched Purchase writes nothing (`purchaseAtCreate`).
+   */
+  purchase?: PurchaseForm | null
   /** The draft as it started, to tell what was changed. */
   start: string
 }
@@ -87,7 +93,7 @@ export function stateOf(spec: CreateSpec, had: boolean, general = false): 'buy' 
   return had ? 'gone' : 'mine'
 }
 
-const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers' | 'costs'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers, s.costs])
+const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers' | 'costs' | 'purchase'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers, s.costs, s.purchase ?? null])
 
 /** A blank draft for the preset, with what its place already knows (the parent's day, category and store). */
 export function blankState(spec: CreateSpec, categories: readonly ShopCategory[], today: string): CreateState {

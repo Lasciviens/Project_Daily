@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CardHeader } from '../../../../shared/ui'
-import { Fact, FactChips, FactField, Toggle } from './factKit'
+import { Fact, FactChips, FactField } from './factKit'
+import { Toggle } from '../shopEditors'
 import { buyFacts, commonFacts, generalFacts, goneFacts, ownFacts, type FactCtx, type FactDef } from './factList'
 import type { RecordDraft, RecordDraftApi } from './useRecordDraft'
 import type { RecordState } from './recordState'
