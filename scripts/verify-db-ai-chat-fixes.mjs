@@ -104,8 +104,11 @@ for (const s of suites) {
     if (first !== second) throw Object.assign(new Error('not idempotent'), { stderr: 'ERROR: a second run of 205 changed the database' })
     done[s.key] = step(`${s.key}: scenarios`, () => runScenarios(target))
     // 206: a new chat with every tool the code knows (18 since 205) is stored; 197's cap of 12 refused it (24.11.2026).
-    step(`${s.key}: ${FILE_206} twice`, () => { psql(target, ['-f', mig(FILE_206)]); psql(target, ['-f', mig(FILE_206)]) })
     const insertChat = (id, n) => `set role service_role; insert into public.ai_conversations (id, user_id, title, model, effort, tools_hash, system_hash, tool_names) values ('${id}', '00000000-0000-0000-0000-000000000001', 'Tools', 'claude-haiku-5-5', 'medium', repeat('a', 64), repeat('b', 64), array(select 'tool_' || chr(96 + (i % 26) + 1) from generate_series(1, ${n}) i))`
+    let cap12 = false
+    try { psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000013', 13)]) } catch (e) { cap12 = /23514|violates check constraint/.test(String(e.stderr)) }
+    if (!cap12) throw Object.assign(new Error('197 cap'), { stderr: 'ERROR: before 206, a chat with 13 tools was stored (197 should refuse it: the bug 206 fixes)' })
+    step(`${s.key}: ${FILE_206} twice`, () => { psql(target, ['-f', mig(FILE_206)]); psql(target, ['-f', mig(FILE_206)]) })
     step(`${s.key}: 206 stores a chat with 18 tools`, () => psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000018', 18)]))
     step(`${s.key}: 206 stores a chat with 40 tools`, () => psql(target, ['-c', insertChat('c6000000-0000-4000-8000-000000000040', 40)]))
     let refused = false
@@ -114,7 +117,7 @@ for (const s of suites) {
     let badName = false
     try { psql(target, ['-c', `set role service_role; insert into public.ai_conversations (id, user_id, title, model, effort, tools_hash, system_hash, tool_names) values ('c6000000-0000-4000-8000-000000000099', '00000000-0000-0000-0000-000000000001', 'Tools', 'claude-haiku-5-5', 'medium', repeat('a', 64), repeat('b', 64), array['Get-Plan'])`]) } catch (e) { badName = /23514|violates check constraint/.test(String(e.stderr)) }
     if (!badName) throw Object.assign(new Error('206 names'), { stderr: 'ERROR: 206 let a tool name outside [a-z_] in' })
-    done[s.key] += 4
+    done[s.key] += 5
   } catch (e) {
     code = 1
     if (e.stderr) console.error(e.stderr.toString())
@@ -124,4 +127,4 @@ for (const s of suites) {
   if (code) break
 }
 if (code) process.exit(code)
-console.log(`verify-db-ai-chat-fixes: 205 ran twice on two databases (then 206 twice: 18 and 40 tools stored, 41 and a bad name refused), changed only its three CHECKs and left each as its first run did; ${done.old} scenarios passed with the old default grants and ${done.now} without them`)
+console.log(`verify-db-ai-chat-fixes: 205 ran twice on two databases (197 alone refuses 13 tools; then 206 twice: 18 and 40 tools stored, 41 and a bad name refused), changed only its three CHECKs and left each as its first run did; ${done.old} scenarios passed with the old default grants and ${done.now} without them`)

@@ -286,6 +286,8 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
       .filter(x => x.m)
     const cap = caps.length ? Number(caps[caps.length - 1].m[1]) : 0
     check('a new chat\'s tool list fits the database: the newest tool_names CHECK allows every tool the code knows', cap > 0 && probe.ALL_TOOL_ORDER.length <= cap, { cap, from: caps.length ? caps[caps.length - 1].f : null, tools: probe.ALL_TOOL_ORDER.length })
+    const appMax = Number((fs.readFileSync(path.join(REPO, 'src/features/ai/chat/chatApi.ts'), 'utf8').match(/tool_names\.filter\([^\n]*\.slice\(0, (\d+)\)/) || [])[1])
+    check('the app shows every tool name the database can hold (fetchChatSetup keeps as many names as the cap)', appMax === cap, { appMax, cap })
   }
   check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.ALL_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.ALL_TOOL_ORDER].sort()) && same(probe.ALL_TOOL_ORDER.slice(0, 8), [...probe.READ_TOOL_NAMES, ...probe.WRITE_TOOL_NAMES]) && same(probe.ALL_TOOL_ORDER.slice(-7), ['note_shortcut', 'get_transit', 'search_docs', 'note_lesson', 'find_food', 'propose_update_food', 'propose_update_task']), probe.KNOWN_TOOL_NAMES)
   check('the coach chat has no write tool and no SQL tool', probe.COACH_TOOL_ORDER.every(n => probe.chatToolKind(n) === 'read' && n !== 'ask_database') && same(probe.COACH_TOOL_ORDER, ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut']))

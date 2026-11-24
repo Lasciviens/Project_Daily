@@ -11,3 +11,12 @@
 alter table public.ai_conversations drop constraint if exists ai_conversations_tool_names_check;
 alter table public.ai_conversations add constraint ai_conversations_tool_names_check
   check (cardinality(tool_names) <= 40 and pg_catalog.array_to_string(tool_names, ',') ~ '^[a-z_,]*$');
+
+-- If the old CHECK had another name, the drop above skipped it and the cap of 12 would stay: fail the deploy out loud.
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_constraint where conrelid = 'public.ai_conversations'::regclass and contype = 'c'
+             and conname <> 'ai_conversations_tool_names_check' and pg_catalog.pg_get_constraintdef(oid) like '%tool_names%') then
+    raise exception 'ai_conversations has another CHECK on tool_names: 206 cannot lift the cap';
+  end if;
+end $$;
