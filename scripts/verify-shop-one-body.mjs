@@ -106,6 +106,15 @@ for (const [name, [item, changes, extra]] of Object.entries(S.boughtScenarios)) 
     !C.isDirty(s.costs.length ? C.blankState(spec, S.CATS, S.TODAY) : s) && !C.isDirty({ ...C.blankState(spec, S.CATS, S.TODAY), purchase: P.purchaseFormOf(S.row(), S.ctx), purchaseSeed: P.purchaseFormOf(S.row(), S.ctx) }))
 }
 {
+  // An errand switched to Wishlist hands over everything typed (critic, 24.11.2026): the wish starts where the errand left off.
+  const spec = { preset: 'wish', defaults: { title: 'Batteries', platform: 'Jernia', price: 89, currency: 'NOK', url: 'https://example.com/aa', notes: '4 × AA', priority: 'high', plannedDate: '2026-12-01', region: 'NO' } }
+  const s = C.blankState(spec, S.CATS, S.TODAY)
+  const got = C.inputOf(spec, s, null, S.CATS)
+  check('the errand\'s price, link, note, priority, day and region reach the wish it becomes', got.title === 'Batteries' && got.platform === 'Jernia' && got.price === 89 && got.currency === 'NOK'
+    && got.url === 'https://example.com/aa' && got.notes === '4 × AA' && got.priority === 'high' && got.planned_date === '2026-12-01' && got.region === 'NO', JSON.stringify(got))
+  check('and an errand without them adds nothing (a plain add is as before)', same(C.inputOf({ preset: 'wish' }, C.blankState({ preset: 'wish', defaults: {} }, S.CATS, S.TODAY), null, S.CATS), C.inputOf({ preset: 'wish' }, C.blankState({ preset: 'wish' }, S.CATS, S.TODAY), null, S.CATS)))
+}
+{
   // Find picture on a saved thing: only the picture, and its Undo writes back exactly the one before.
   const F = require('../src/features/shop/productPicture')
   check('Find picture writes only image_url; Undo writes back the one before (none → null)', same(F.picturePatch('https://example.com/a.jpg'), { image_url: 'https://example.com/a.jpg' })

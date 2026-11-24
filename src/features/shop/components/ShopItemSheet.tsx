@@ -83,7 +83,12 @@ function ShopItemEditor({ item, defaults = {}, onClose, categories }: Props & { 
     const sub = draft.subId && !isSuggested(draft.subId) && draft.subId !== NEW_CATEGORY ? draft.subId : ''
     const categoryId = top ? categoryIdOf({ topId: top, subId: sub }) ?? undefined : undefined
     onClose()
-    modal.open({ kind: 'shop-item', defaults: { list: 'wishlist', title: draft.title.trim() || undefined, categoryId, platform: draft.platform.trim() || undefined } })
+    // Everything typed here goes with it (critic, 24.11.2026): the wish starts where the errand left off.
+    modal.open({ kind: 'shop-item', defaults: {
+      list: 'wishlist', title: draft.title.trim() || undefined, categoryId, platform: draft.platform.trim() || undefined,
+      price: draft.price, currency: draft.currency, url: draft.url.trim() || undefined, notes: draft.notes.trim() || undefined,
+      priority: draft.priority, plannedDate: draft.plannedDate || undefined, region: draft.region || undefined,
+    } })
   }
 
   async function resolveCategory(): Promise<string | null> {

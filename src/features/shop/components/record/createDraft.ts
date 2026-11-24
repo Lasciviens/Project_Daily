@@ -11,7 +11,7 @@ import { fieldsAfter, mergeFacts, type Fact } from '../../autofillModel'
 import { factsToSave } from '../../factsKept'
 import { receiptFacts } from '../../receiptFacts'
 import { categoryIdOf, currencyOf, localDay, pickOf } from '../../shopModel'
-import type { CreateShopCostInput, CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem } from '../../types'
+import type { CreateShopCostInput, CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem, ShopPriority, ShopRegion } from '../../types'
 import type { ShopDraft } from '../ShopItemForm'
 import { isNewCategory, newCategoryId, newCategoryMissing, newPickOf, type RecordDraft } from './useRecordDraft'
 import { purchaseTouched, type PurchaseForm } from './purchaseDraft'
@@ -19,12 +19,21 @@ import { purchaseTouched, type PurchaseForm } from './purchaseDraft'
 /** What is being made: a wish (one product), a general wish, a thing you own, one you had, an accessory, a model of a general wish. */
 export type CreatePreset = 'wish' | 'general' | 'own' | 'had' | 'accessory' | 'model'
 
+/**
+ * What a wish added from another place already knows: a title, a category, a store — and from the quick list's errand sheet
+ * (its "Wishlist" switch) everything typed there: price, link, note, priority, the day to buy it and the region.
+ */
+export interface WishDefaults {
+  title?: string; categoryId?: string; platform?: string
+  price?: number | null; currency?: ShopCurrency; url?: string; notes?: string; priority?: ShopPriority; plannedDate?: string; region?: ShopRegion
+}
+
 export interface CreateSpec {
   preset: CreatePreset
   /** The thing an accessory belongs to, or the general wish a model is of. */
   parent?: ShopItem
   /** A wish added from a place that knows more (a title, a category, a store). */
-  defaults?: { title?: string; categoryId?: string; platform?: string }
+  defaults?: WishDefaults
 }
 
 /** One draft: the record's edits over the blank row, what the autofill kept, and what only a created thing has. */
@@ -106,6 +115,12 @@ export function blankState(spec: CreateSpec, categories: readonly ShopCategory[]
   if (owns) { draft.approx_dates = true; draft.bought_day = '' }
   if (defaults?.title) draft.title = defaults.title
   if (defaults?.platform) draft.platform = defaults.platform
+  if (defaults?.price != null) { draft.price = defaults.price; if (defaults.currency) draft.currency = defaults.currency }
+  if (defaults?.url) draft.url = defaults.url
+  if (defaults?.notes) draft.notes = defaults.notes
+  if (defaults?.priority && defaults.priority !== 'medium') draft.priority = defaults.priority
+  if (defaults?.plannedDate) draft.planned_date = defaults.plannedDate
+  if (defaults?.region) draft.region = defaults.region
   if (defaults?.categoryId && categories.some(c => c.id === defaults.categoryId)) draft.category_id = defaults.categoryId
   if (parent) {
     draft.category_id = parent.category_id
