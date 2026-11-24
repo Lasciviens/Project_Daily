@@ -24,6 +24,8 @@ export const FOOD_LIMITS = {
   fetchMs: 4000, responseMax: 2_000_000 /* bytes */,
   /** Hits per source and in all. */
   perSource: 4, results: 8,
+  /** Kassalapp name hits without nutrition (its lighter answer) that are asked again by EAN. */
+  nutritionLookups: 2,
   /** The most grams a portion may be. */
   gramsMax: 3000,
   /** The owner's foods read for one search (a name match first, then the word check in code). */
@@ -235,12 +237,20 @@ async function kassalSearch(query: string, io: FoodIo): Promise<FoodHit[] | Food
   if (!answer.ok) return answer
   const rows = ffObj(answer.json)?.data
   const out: FoodHit[] = []
+  const bare: string[] = []
   for (const item of Array.isArray(rows) ? rows : []) {
     const p = ffObj(item)
     if (!p || typeof p.name !== 'string' || !foodHasEveryWord(`${p.name} ${typeof p.brand === 'string' ? p.brand : ''}`, query)) continue
     const hit = kassalHit(p)
     if (hit && !out.some(h => h.ref === hit.ref)) out.push(hit)
+    // The name search may send a lighter product with no nutrition at all: its EAN is asked again (below), never estimated.
+    else if (!hit && (!Array.isArray(p.nutrition) || !p.nutrition.length) && typeof p.ean === 'string' && /^\d{8,14}$/.test(p.ean.trim()) && !bare.includes(p.ean.trim())) bare.push(p.ean.trim())
     if (out.length >= FOOD_LIMITS.perSource) break
+  }
+  // The top two hits without nutrition: their full product by EAN, with every guard of a lookup by ref (foodByRef).
+  if (out.length < FOOD_LIMITS.perSource && bare.length) {
+    const more = await Promise.all(bare.slice(0, FOOD_LIMITS.nutritionLookups).map(ean => foodByRef(`kassal:${ean}`, io)))
+    for (const m of more) if (m.ok && !out.some(h => h.ref === m.hit.ref) && out.length < FOOD_LIMITS.perSource) out.push(m.hit)
   }
   return out
 }

@@ -34,10 +34,10 @@ function plan(text, store, mode) {
     return {
       kind: 'proposal', steps: ["Looking up the food's values", "Looking up the food's values", 'Preparing a food line for you to confirm', 'Preparing a food line for you to confirm'], tool_name: 'find_food',
       proposals: [
-        lunchCard('Cottage cheese 4.3%', { calories: 147, protein_g: 19.5, carbs_g: 3.9, fat_g: 6.5 }, { basis: 'kassalapp', food_ref: 'kassal:7038010009457', grams: 150, per100: { calories: 98, protein_g: 13, carbs_g: 2.6, fat_g: 4.3 }, source_name: 'Cottage Cheese 4,3%' }),
-        lunchCard('Strawberry jam', { calories: 31.8, protein_g: 0.1, carbs_g: 7.6, fat_g: 0 }, { basis: 'openfoodfacts', food_ref: 'off:5701234000017', grams: 20, per100: { calories: 159, protein_g: 0.4, carbs_g: 38, fat_g: 0.1 }, source_name: 'Strawberry jam' }),
+        lunchCard('Cottage cheese 4.3%', { calories: 147, protein_g: 19.5, carbs_g: 3.9, fat_g: 6.45 }, { basis: 'kassalapp', food_ref: 'kassal:7038010009457', grams: 150, per100: { calories: 98, protein_g: 13, carbs_g: 2.6, fat_g: 4.3 }, source_name: 'Cottage Cheese 4,3%' }),
+        lunchCard('Strawberry jam', { calories: 31.8, protein_g: 0.08, carbs_g: 7.6, fat_g: 0.02 }, { basis: 'openfoodfacts', food_ref: 'off:5701234000017', grams: 20, per100: { calories: 159, protein_g: 0.4, carbs_g: 38, fat_g: 0.1 }, source_name: 'Strawberry jam' }),
       ],
-      reply: 'From the databases: **150 g cottage cheese** is 147 kcal with **6.5 g fat** (Kassalapp), and **20 g jam** is 31.8 kcal (Open Food Facts). The new cards replace the estimated ones; each is saved only after you tap Confirm.',
+      reply: 'From the databases: **150 g cottage cheese** is 147 kcal with **6.45 g fat** (Kassalapp), and **20 g jam** is 31.8 kcal (Open Food Facts). The new cards replace the estimated ones; each is saved only after you tap Confirm.',
     }
   }
   if (/\blunch\b/.test(lower)) {
@@ -192,7 +192,7 @@ function confirmAnswer(body, store) {
   if (typeof body.date === 'string') proposal.args = { ...proposal.args, [proposal.tool === 'add_task' ? 'due_date' : 'date']: body.date === '' ? null : body.date }
   if (!String(proposal.args.title).trim()) return { ok: false, reason: 'bad_input', message: 'The title must be 1 to 200 characters.' }
   if (proposal.tool === 'add_task') (store.tables.tasks ??= []).push({ id, user_id: owner, title: proposal.args.title, description: null, domain: 'personal', section: 'backlog', status: 'open', priority: proposal.args.priority, due_date: proposal.args.due_date, source_type: 'ai', created_at: now, updated_at: now })
-  else (store.tables.food_log_entries ??= []).push({ id, user_id: owner, date: now.slice(0, 10), meal_slot: proposal.args.meal, status: 'eaten', custom_title: proposal.args.title, quantity: 1, unit: 'serving', calories: proposal.args.calories, protein_g: proposal.args.protein_g, carbs_g: proposal.args.carbs_g, fat_g: proposal.args.fat_g, created_at: now })
+  else (store.tables.food_log_entries ??= []).push({ id, user_id: owner, date: now.slice(0, 10), meal_slot: proposal.args.meal, status: 'eaten', custom_title: proposal.args.title, quantity: ['kassalapp', 'openfoodfacts'].includes(proposal.args.basis) ? proposal.args.grams : 1, unit: ['kassalapp', 'openfoodfacts'].includes(proposal.args.basis) ? 'g' : 'serving', calories: proposal.args.calories, protein_g: proposal.args.protein_g, carbs_g: proposal.args.carbs_g, fat_g: proposal.args.fat_g, created_at: now })
   Object.assign(proposal, { status: 'confirmed', decided_at: now, result_id: id })
   return { ok: true, status: 'confirmed', summary: proposal.summary, result_id: id, tool: proposal.tool, date: proposal.tool === 'log_food' ? now.slice(0, 10) : null }
 }

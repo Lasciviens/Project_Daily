@@ -132,7 +132,7 @@ function ProposalCard({ card, onDecide, onUndo }: { card: ChatCard; onDecide: De
       {!waiting && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <p className={cx('flex items-center gap-1.5 text-meta', done || card.state === 'failed' ? 'tone-text' : 'text-fg-muted')}>
-            {card.state === 'busy' && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />}{card.state === 'undone' ? 'Removed' : cardStateLabel(card.state)}
+            {card.state === 'busy' && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />}{card.state === 'undone' ? (isChangeTool(card.tool) ? 'Put back' : 'Removed') : cardStateLabel(card.state)}
           </p>
           {done && card.resultId && <Button size="sm" onClick={open}>Open</Button>}
           {done && card.resultId && <Button size="sm" onClick={() => onUndo(card.id)}>Undo</Button>}
@@ -167,7 +167,7 @@ function CostLine({ turn }: { turn: ChatTurn }) {
   return <button type="button" onClick={go} aria-label={`Cost ${text}: see this answer's calls in Developer`} className="px-1 py-0.5 text-micro tabular-nums text-fg-faint underline decoration-dotted underline-offset-2 [@media(hover:hover)]:hover:text-fg-2">{text}</button>
 }
 
-export function ChatTurnView({ turn, onDecide, onUndo, onReport }: { turn: ChatTurn; onDecide: Decide; onUndo: (id: string) => void; onReport: (answerKey: string) => void }) {
+export function ChatTurnView({ turn, onDecide, onUndo, onReport, reportOff }: { turn: ChatTurn; onDecide: Decide; onUndo: (id: string) => void; onReport: (answerKey: string) => void; reportOff: boolean }) {
   const [reasoning, setReasoning] = useState(false)
   if (turn.role === 'user') {
     return (
@@ -175,8 +175,11 @@ export function ChatTurnView({ turn, onDecide, onUndo, onReport }: { turn: ChatT
         <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-1">
           {turn.photoUrls.length > 0 && <div className="flex gap-1.5">{turn.photoUrls.map((url, i) => <img key={i} src={url} alt={`Photo ${i + 1} of ${turn.photos}`} className="h-20 w-20 rounded-row border border-line object-cover" />)}</div>}
           {turn.photos > 0 && turn.photoUrls.length < turn.photos && <span className="inline-flex items-center gap-1 text-meta text-fg-muted"><ImageIcon className="h-3.5 w-3.5" aria-hidden />{turn.photos === 1 ? '1 photo' : `${turn.photos} photos`}</span>}
-          <p className="max-w-full select-text whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent [overflow-wrap:anywhere]">{turn.text}</p>
-          {turn.text && <CopyButton text={messageCopyText(turn)} label="Copy this message" />}
+          {/* The Copy icon sits beside the bubble, on its last line: no extra line under every message. */}
+          <div className="flex min-w-0 max-w-full items-end gap-1">
+            {turn.text && <CopyButton text={messageCopyText(turn)} label="Copy this message" />}
+            <p className="min-w-0 select-text whitespace-pre-wrap break-words rounded-card rounded-br-md bg-accent-500 px-3.5 py-2 text-body text-on-accent [overflow-wrap:anywhere]">{turn.text}</p>
+          </div>
         </div>
       </div>
     )
@@ -217,7 +220,7 @@ export function ChatTurnView({ turn, onDecide, onUndo, onReport }: { turn: ChatT
           <div className="flex items-center gap-0.5">
             <CostLine turn={turn} />
             {(turn.text || turn.error) && <CopyButton text={messageCopyText(turn)} label="Copy this answer" />}
-            <ReportButton label="Report this answer (a Dev Request draft)" onClick={() => onReport(turn.key)} />
+            <ReportButton label="Report this answer (a Dev Request draft)" onClick={() => onReport(turn.key)} disabled={reportOff} />
           </div>
         )}
       </div>

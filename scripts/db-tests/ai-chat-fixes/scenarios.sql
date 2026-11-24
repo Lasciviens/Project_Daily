@@ -20,6 +20,9 @@ select public.t_ok((select count(*) = 1 from pg_constraint where conrelid = 'pub
 select public.t_ok(has_table_privilege('authenticated', 'public.ai_chat_proposals', 'select') and not has_table_privilege('authenticated', 'public.ai_chat_proposals', 'insert, update, delete')
   and not has_any_column_privilege('authenticated', 'public.ai_chat_proposals', 'insert, update'), '205: the browser still reads proposals and writes none');
 
+select public.t_ok((select mode = 'ask' from public.ai_tool_settings where user_id = '00000000-0000-0000-0000-000000000002' and tool = 'propose_update_task'),
+  '205: a stray "on" row of a new write tool saved before 205 is "ask" after it');
+
 -- 2 · the function writes
 select set_config('test.uid', 'none', false);
 set role service_role;

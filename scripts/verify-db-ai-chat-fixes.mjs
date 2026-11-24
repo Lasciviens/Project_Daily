@@ -26,6 +26,8 @@ const noComments = text => text.replace(/--.*$/gm, '')
   if (!/check \(tool in \('add_task', 'log_food', 'update_food', 'update_task'\)\)/.test(sql)) problems.push('the proposal kinds are not exactly the four')
   if (!/check \(status in \('pending', 'confirmed', 'cancelled', 'failed', 'replaced'\)\)/.test(sql)) problems.push('the proposal states are not exactly the five')
   if (!/check \(not \(tool in \('propose_add_task', 'propose_log_food', 'propose_update_food', 'propose_update_task'\) and mode = 'on'\)\)/.test(sql)) problems.push('a write tool can be stored as on')
+  const strayFix = sql.indexOf("update public.ai_tool_settings set mode = 'ask' where tool in ('propose_update_food', 'propose_update_task') and mode = 'on';")
+  if (strayFix < 0 || strayFix > sql.indexOf('add constraint ai_tool_settings_write_never_on')) problems.push('a stray "on" row of a new write tool is not made "ask" before the CHECK is added')
   // The function's lists say the same (chat-rules.ts, chat-tools.ts).
   const rules = readFileSync(join(root, 'supabase/claude-src/chat-rules.ts'), 'utf8')
   const tools = readFileSync(join(root, 'supabase/claude-src/chat-tools.ts'), 'utf8')
@@ -83,6 +85,8 @@ for (const s of suites) {
     if (s.before.length) step(`${s.key}: old default grants`, () => psql(target, s.before))
     for (const f of ['194_ai_ledger.sql', '195_ai_controls.sql', '197_ai_chat.sql', '198_ai_chat_controls.sql']) step(`${s.key}: ${f}`, () => psql(target, ['-f', mig(f)]))
     const before = psql(target, ['-At', '-c', FINGERPRINT])
+    // A row saved before 205 that says "on" for a new write tool (198's CHECK did not know the name): 205 must make it "ask".
+    step(`${s.key}: a stray "on" row`, () => psql(target, ['-c', "insert into public.ai_tool_settings (user_id, tool, mode) values ('00000000-0000-0000-0000-000000000002', 'propose_update_task', 'on')"]))
     step(`${s.key}: ${FILE}`, () => psql(target, ['-f', mig(FILE)]))
     const first = step(`${s.key}: fingerprint`, () => psql(target, ['-At', '-c', FINGERPRINT]))
     step(`${s.key}: 205 again`, () => psql(target, ['-f', mig(FILE)]))

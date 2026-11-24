@@ -43,7 +43,7 @@ export function useUndoCreated() {
       const before = card.args?.before
       const changes = card.args?.changes
       if (!before || typeof before !== 'object' || !changes || typeof changes !== 'object') throw new Error('The old values could not be read, so nothing was changed.')
-      return restoreChangedRow(card.tool, card.resultId, before as Record<string, unknown>, Object.keys(changes))
+      return restoreChangedRow(card.tool, card.resultId, before as Record<string, unknown>, changes as Record<string, unknown>)
     },
     successMessage: (_done, { card }) => (isChangeTool(card.tool) ? 'Put back' : 'Removed'),
     invalidates: ['aiWrite'],

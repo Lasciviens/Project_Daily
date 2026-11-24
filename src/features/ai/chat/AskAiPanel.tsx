@@ -13,7 +13,7 @@ import { useKeyboardInset, useStickToBottom } from '../hooks/useChatViewport'
 import { ChatHistory } from './ChatHistory'
 import { ChatTurnView } from './ChatTurnView'
 import { AttachPhoto, ChatSetupNote, MicButton, PhotoStrip } from './ChatExtras'
-import { ChatReportSheet } from './ChatReport'
+import { openChatReport } from './reportDraft'
 import { copyText } from './chatClipboard'
 import { chatCopyText } from './chatTranscript'
 import { chatIntro, CHAT_IMAGES_PER_CHAT, CHAT_IMAGES_PER_MESSAGE, CHAT_TEXT_MAX, joinSpoken, voiceTagOf } from './chatRules'
@@ -61,8 +61,8 @@ export function AskAIPanel() {
   const conversations = useConversations(open && view === 'history')
   const { inset, visibleHeight } = useKeyboardInset(open)
   const { scrollRef, atBottom, onScroll, scrollToBottom } = useStickToBottom([chat.turns, chat.busy])
-  // Report: the whole chat (null) or one answer (its key), in a sheet with the owner's one line; it opens a Dev Request draft.
-  const [report, setReport] = useState<{ answerKey: string | null } | null>(null)
+  // Report: the whole chat (null) or one answer (its key, marked in the draft) straight into the Dev Requests window.
+  const report = (answerKey: string | null) => { openChatReport({ turns: chat.turns, chatId: chat.conversationId, answerKey, closeAI: close }) }
   // Why text could not be selected on the iPhone: Headless UI's scroll lock (Dialog, iOS only) listens on the document and
   // cancels every touchmove that is not inside a scroll area that can scroll right now — a short chat, a card, a bubble —
   // and a cancelled touch also stops iOS's own text gestures (select, drag the handles, the Copy menu). Touches inside the
@@ -135,7 +135,7 @@ export function AskAIPanel() {
           {view === 'chat' && (
             <>
               <IconButton label="Copy chat (the whole conversation as text)" onClick={() => copyText(chatCopyText(chat.turns, chat.conversationId))} disabled={empty}><Copy strokeWidth={1.9} aria-hidden /></IconButton>
-              <IconButton label="Report this chat (a Dev Request draft)" onClick={() => setReport({ answerKey: null })} disabled={empty || chat.busy}><Flag strokeWidth={1.9} aria-hidden /></IconButton>
+              <IconButton label="Report this chat (a Dev Request draft)" onClick={() => report(null)} disabled={empty || chat.busy}><Flag strokeWidth={1.9} aria-hidden /></IconButton>
             </>
           )}
         </>
@@ -164,7 +164,7 @@ export function AskAIPanel() {
               </div>
             )}
             {!empty && chat.setup && <ChatSetupNote mode={chat.setup.mode} toolNames={chat.setup.toolNames} ownerInstructions={chat.setup.ownerInstructions} planned={false} />}
-            {chat.turns.map(t => <ChatTurnView key={t.key} turn={t} onDecide={(id, d, edits) => { void chat.decide(id, d, edits) }} onUndo={id => { void chat.undo(id) }} onReport={key => setReport({ answerKey: key })} />)}
+            {chat.turns.map(t => <ChatTurnView key={t.key} turn={t} onDecide={(id, d, edits) => { void chat.decide(id, d, edits) }} onUndo={id => { void chat.undo(id) }} onReport={report} reportOff={chat.busy} />)}
             {failedLast && chat.lastText && (
               <div className="flex justify-start gap-2">
                 {chat.turns[chat.turns.length - 1].errorReason === 'declined'
@@ -174,7 +174,7 @@ export function AskAIPanel() {
             )}
           </div>
           {!atBottom && !empty && (
-            <button type="button" onClick={() => scrollToBottom('smooth')} aria-label="Jump to newest message" title="Jump to newest message"
+            <button type="button" onClick={() => scrollToBottom('smooth')} aria-label="Newest message" title="Newest message"
               className="absolute bottom-3 right-4 z-10 flex items-center gap-1 rounded-full border border-line-strong bg-surface px-3 py-2 text-meta font-semibold text-fg-2 shadow-float">
               <ArrowDown className="h-3.5 w-3.5" aria-hidden />Newest
             </button>
@@ -224,7 +224,6 @@ export function AskAIPanel() {
           </div>
         </>
       )}
-      {report && <ChatReportSheet turns={chat.turns} chatId={chat.conversationId} answerKey={report.answerKey} onClose={() => setReport(null)} />}
     </SideDrawer>
   )
 }

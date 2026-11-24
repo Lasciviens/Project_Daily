@@ -82,7 +82,7 @@ export function chatIntro(mode: ChatMode, tools: readonly string[]): { text: str
     }
   }
   const reads = [has('get_day_plan') && 'plan', has('get_week_figures') && 'week', has('get_food_day') && 'food', has('find_text') && 'tasks and diary', has('get_about_me') && 'notes about you', has('ask_database') && 'data (a database question as a last resort)'].filter(Boolean) as string[]
-  const writes = [has('propose_add_task') && 'a task', has('propose_log_food') && 'a food line'].filter(Boolean) as string[]
+  const writes = [has('propose_add_task') && 'a task', has('propose_log_food') && 'a food line', has('propose_update_food') && 'a fix to a saved food line', has('propose_update_task') && 'a new task title'].filter(Boolean) as string[]
   const suggestions = [
     has('get_day_plan') && 'What is on my plan today?',
     has('get_week_figures') && 'How is my week going so far?',
@@ -340,7 +340,10 @@ const MEAL_WORDS: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lun
 const BASIS_WORDS: Record<string, string> = { preset: 'Your own saved preset (exact figures)', recipe: 'Your own recipe (per serving)', diary: 'Your earlier diary line (one portion)', estimate: 'Estimate (the AI\'s, no database value)' }
 const SOURCE_WORDS: Record<string, string> = { yours: 'your foods', kassalapp: 'Kassalapp', openfoodfacts: 'Open Food Facts' }
 const FIGURE_LABELS: Record<string, string> = { title: 'Title', calories: 'Calories', protein_g: 'Protein', carbs_g: 'Carbs', fat_g: 'Fat' }
-const figure = (key: string, v: unknown): string => (key === 'title' ? `“${typeof v === 'string' ? v : ''}”` : typeof v === 'number' && Number.isFinite(v) ? `${Math.round(v * 10) / 10} ${key === 'calories' ? 'kcal' : 'g'}` : '?')
+/** A stored figure as the card shows it: the saved number itself (two decimals at most, as the database keeps a food line), or "–" when empty. */
+const figure = (key: string, v: unknown): string => (key === 'title' ? `“${typeof v === 'string' ? v : ''}”` : typeof v === 'number' && Number.isFinite(v) ? `${Math.round(v * 100) / 100} ${key === 'calories' ? 'kcal' : 'g'}` : '–')
+/** A food line's figures from a database are the grams eaten (the saved row says so: quantity grams, unit g). */
+const inGrams = (args: Record<string, unknown>) => args.basis === 'yours' || args.basis === 'kassalapp' || args.basis === 'openfoodfacts'
 
 /** Where a food's figures come from, in words: a database (by name, grams × per 100 g) or the estimate. */
 function figuresFrom(args: Record<string, unknown>): string {
@@ -384,15 +387,15 @@ export function proposalFields(tool: string, args: Record<string, unknown>, toda
       row,
       ...Object.keys(changes).filter(k => FIGURE_LABELS[k]).map(k => ({ label: FIGURE_LABELS[k], value: `${figure(k, before[k])} → ${figure(k, changes[k])}` })),
       ...(tool === 'update_food' && Object.keys(changes).some(k => k !== 'title') ? [{ label: 'Figures from', value: figuresFrom(args) }] : []),
-      { label: 'Nothing else', value: tool === 'update_task' ? 'Its day, status and links stay' : 'Its meal, day and time stay' },
+      // Google Tasks keeps the task's title in step (its own sync), so the card says where else it changes.
+      ...(tool === 'update_task' && args.in_google === true ? [{ label: 'Google Tasks', value: 'Also renamed in Google Tasks' }] : []),
     ]
   }
-  const own = args.basis === 'yours'
   return [
     { label: 'Title', value: text('title') },
     { label: 'Meal', value: MEAL_WORDS[text('meal')] ?? text('meal') },
     { label: 'Date', value: dmy(text('date')) },
-    { label: 'Amount', value: own ? `${typeof args.grams === 'number' ? args.grams : '?'} g` : '1 serving' },
+    { label: 'Amount', value: inGrams(args) ? `${typeof args.grams === 'number' ? args.grams : '?'} g` : '1 serving' },
     { label: 'Calories', value: `${num('calories')} kcal` },
     { label: 'Protein', value: `${num('protein_g')} g` },
     { label: 'Carbs', value: `${num('carbs_g')} g` },

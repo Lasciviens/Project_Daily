@@ -116,26 +116,37 @@ const CHANGE_COLUMNS: Record<string, Record<string, string>> = {
   update_task: { title: 'title' },
 }
 
+/** What Undo says when the row no longer holds what the change wrote. */
+export const PUT_BACK_CHANGED = 'It was changed since; nothing was put back.'
+
 /**
- * The card's Undo of a confirmed change: the owner's own row, by id, with the owner's rights, gets back what it said before,
- * in the changed columns only (read from the stored proposal, never from the card). A value of the wrong type is refused.
+ * The card's Undo of a confirmed change (guardian review, 24.11.2026): the owner's own row gets back what it said before, in
+ * the changed columns only — and only while it still holds exactly what the change wrote. The update's own filter names
+ * the row, the owner and every changed column's written value (for a food line also that it is still a one-off line), and
+ * asks for the rows it changed: none means the row was changed since, and nothing is put back. Before and after are read
+ * from the stored proposal, never from the card; a value of the wrong type is refused.
  */
-export async function restoreChangedRow(tool: string, id: string, before: Record<string, unknown>, changed: readonly string[]): Promise<void> {
+export async function restoreChangedRow(tool: string, id: string, before: Record<string, unknown>, after: Record<string, unknown>): Promise<void> {
   const columns = CHANGE_COLUMNS[tool]
   if (!columns) throw new Error('That change cannot be undone here.')
   const user = await requireUser()
+  const isValue = (key: string, v: unknown, empty: boolean) => (key === 'title' ? typeof v === 'string' && v.trim() !== '' : (empty && v === null) || (typeof v === 'number' && Number.isFinite(v) && v >= 0))
   const patch: Record<string, unknown> = {}
-  for (const key of changed) {
+  const written: [string, unknown][] = []
+  for (const key of Object.keys(after)) {
     const column = columns[key]
-    const value = before[key]
     if (!column) continue
-    if (key === 'title' ? typeof value !== 'string' || !value.trim() : typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error('The old value could not be read, so nothing was changed.')
-    patch[column] = value
+    if (!isValue(key, before[key], true) || !isValue(key, after[key], false)) throw new Error('The old value could not be read, so nothing was changed.')
+    patch[column] = before[key]
+    written.push([column, after[key]])
   }
-  if (!Object.keys(patch).length) throw new Error('Nothing to put back.')
-  const table = tool === 'update_task' ? 'tasks' : 'food_log_entries'
-  const { error } = await supabase.from(table).update(patch).eq('id', id).eq('user_id', user.id)
+  if (!written.length) throw new Error('Nothing to put back.')
+  let q = supabase.from(tool === 'update_task' ? 'tasks' : 'food_log_entries').update(patch).eq('id', id).eq('user_id', user.id)
+  for (const [column, value] of written) q = q.eq(column, value as string | number)
+  if (tool === 'update_food') q = q.is('library_ingredient_id', null).is('recipe_id', null)
+  const { data, error } = await q.select('id')
   if (error) throw error
+  if (!Array.isArray(data) || data.length !== 1) throw new Error(PUT_BACK_CHANGED)
 }
 
 /** Deletes a chat (softly: the function keeps it for 7 days, so Undo works) or brings it back. */

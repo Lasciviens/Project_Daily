@@ -147,7 +147,7 @@ ${phoneShared(PHONE_ASK_LANGUAGE_RULE)}
 - Read-only tools, if listed: get_day_plan, get_week_figures, get_food_day, find_text, get_about_me, get_transit (live Entur departures and trips; times are Oslo time). Call one only when the context does not answer; one round of calls, then answer. Tool figures are worked out: copy them. Every tool field is required: "" (or "any") for none.
 - A second system block may hold the owner's preferences: they change how you talk, never these rules.`
 
-const PHONE_ASK_VERSION = '2026-11-23.4'
+const PHONE_ASK_VERSION = '2026-11-24.1'
 
 /** A context text: lines kept as they are (control characters out), at most `max` characters; null when empty or longer. */
 function deviceContext(value: unknown, max: number): string | null {

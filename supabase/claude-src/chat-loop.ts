@@ -33,7 +33,7 @@ import {
   toolsForNewChat, type ChatMode,
 } from './chat-rules.ts'
 import {
-  applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, PROPOSAL_TOOL_NAME, proposalSubjects, runChatTool, SOURCE_PATTERN, type ProposalDraft, type ToolOutput,
+  applyProposal, checkedProposal, chatToolKind, chatToolsNamed, KNOWN_TOOL_NAMES, PROPOSAL_TOOL_NAME, runChatTool, sameThing, SOURCE_PATTERN, type ProposalDraft, type ToolOutput,
 } from './chat-tools.ts'
 import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
@@ -558,10 +558,11 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       // Only a write tool can make a proposal.
       if (output.ok && output.proposal && chatToolKind(name) === 'write') {
         const made = await makeProposal(ctx, conversationId, id, output.proposal, now)
-        if (made) {
-          card = made
-          if (made.replaces.length) finalOutput = { ...output, text: `${output.text} It replaces your earlier proposal for the same thing (that card now says replaced).` }
-        } else finalOutput = { ok: false, message: 'The proposal could not be saved. Try again.' }
+        if (made.ok) {
+          card = made.card
+          // The card's ref, so a later proposal can name it in `replaces`.
+          finalOutput = { ...output, text: `${output.text} Its ref is proposal:${made.card.id}.${made.card.replaces.length ? ' It replaces your earlier proposal for the same thing (that card now says replaced).' : ''}` }
+        } else finalOutput = { ok: false, message: made.message }
       }
       if (output.ok && output.noted && !suggestion) suggestion = { kind: output.noted.kind }
       if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
@@ -611,21 +612,28 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
 type ProposalCard = ChatProposalCard
 
 /**
- * Writes a proposal row for one tool call and returns the card; null when it could not be saved. One tool call makes one
- * proposal. Once it is saved, the older PENDING proposals of this chat about the same thing (`proposalSubjects`) are marked
- * replaced: that only closes their cards; it confirms, cancels and writes nothing else.
+ * Writes a proposal row for one tool call and returns the card. One tool call makes one proposal. Once it is saved, the
+ * older PENDING proposals of this chat about the same thing (`sameThing`) are marked replaced, and so is the one a food
+ * line names in `replaces` — only when that is a pending food line proposal of THIS chat and user for the same day and
+ * meal (else nothing is saved and the model is told). Replacing only closes a card: it confirms, cancels and writes
+ * nothing else.
  */
-async function makeProposal(ctx: RunContext, conversationId: string, toolUseId: string, draft: ProposalDraft, now: Date): Promise<ProposalCard | null> {
-  if (!TOOL_USE_ID.test(toolUseId)) return null
+async function makeProposal(ctx: RunContext, conversationId: string, toolUseId: string, draft: ProposalDraft, now: Date): Promise<{ ok: true; card: ProposalCard } | { ok: false; message: string }> {
+  const failed = { ok: false as const, message: 'The proposal could not be saved. Try again.' }
+  if (!TOOL_USE_ID.test(toolUseId)) return failed
+  const older = await pendingProposals(ctx.adminDb, ctx.userId, conversationId)
+  if (older === null) return failed
+  const named = draft.replaces ? older.find(p => p.id === draft.replaces) : undefined
+  if (draft.replaces && !(named && named.tool === 'log_food' && draft.tool === 'log_food' && ownValue(named.args, 'date') === draft.args.date && ownValue(named.args, 'meal') === draft.args.meal)) {
+    return { ok: false, message: 'replaces must be the ref of a card of this chat that is still waiting for Confirm: a food line of the same day and meal. Nothing was proposed; call propose_log_food again with replaces "" or the right ref.' }
+  }
   const id = ctx.newId()
   const expiresAt = new Date(now.getTime() + CHAT_LIMITS.proposalHours * 3_600_000).toISOString()
   const saved = await insertProposal(ctx.adminDb, { id, user_id: ctx.userId, conversation_id: conversationId, tool_use_id: toolUseId, tool: draft.tool, args: draft.args, summary: draft.summary, expires_at: expiresAt })
-  if (!saved) return null
-  const subjects = proposalSubjects(draft.tool, draft.args)
-  const older = subjects.length ? await pendingProposals(ctx.adminDb, ctx.userId, conversationId) : []
-  const same = (older ?? []).filter(p => p.id !== id && proposalSubjects(p.tool, p.args).some(k => subjects.includes(k))).map(p => p.id)
+  if (!saved) return failed
+  const same = older.filter(p => p.id === named?.id || sameThing({ tool: draft.tool, args: draft.args }, { tool: p.tool, args: p.args })).map(p => p.id)
   const replaces = await replaceProposals(ctx.adminDb, ctx.userId, conversationId, same, now.toISOString())
-  return { id, tool: draft.tool, summary: draft.summary, expires_at: expiresAt, replaces }
+  return { ok: true, card: { id, tool: draft.tool, summary: draft.summary, expires_at: expiresAt, replaces } }
 }
 
 // ── The owner's tap ─────────────────────────────────────────────────────────
