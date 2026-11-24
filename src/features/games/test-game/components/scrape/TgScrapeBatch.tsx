@@ -10,6 +10,7 @@ import { TgDropdown } from '../TgDropdown'
 import { TgCover } from '../TgCover'
 import { TgBasisBadges, TgCandidateCover, TgChip, TgFlagChips, TgScrapeCard } from './TgScrapeParts'
 import { isScraped, primaryVariant } from './tgScrapeModel'
+import { PagedStrip } from '../../../../../shared/ui/ScrollPager'
 import { Truncate } from '../../../../../shared/ui/Truncate'
 
 type Filter = ScrapeBatchState['filter']
@@ -145,14 +146,14 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: {
   return (
     <div className="flex flex-col gap-4">
       <TgScrapeCard title="Which games">
-        <div role="group" aria-label="Show" className="tg-scroll-x -mx-1 flex gap-1.5 px-1">
+        <PagedStrip look="games" noun="filters" role="group" aria-label="Show" className="-mx-1 flex gap-1.5 px-1">
           {FILTERS.map(f => (
             <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => update({ filter: f.key })}
               className={`tg-tab min-h-[44px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}>
               {f.label}
             </button>
           ))}
-        </div>
+        </PagedStrip>
         <div className="mt-3 flex items-center justify-between gap-3 text-[13px]">
           <span className="font-medium">System</span>
           <TgDropdown

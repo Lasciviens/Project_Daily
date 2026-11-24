@@ -11,6 +11,7 @@ import { TgLibraryMenu } from './TgLibraryMenu'
 import { TgRandomButton } from './TgRandomButton'
 import { TgProviderSync } from './TgProviderSync'
 import type { TgNavCounts } from './tgSections'
+import { PagedStrip } from '../../../../shared/ui/ScrollPager'
 
 // The shell's 16px phone gutter, clearing a landscape notch. The chip row's
 // scroll padding repeats it so a chip scrolled into view keeps the gutter.
@@ -166,7 +167,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
       )}
 
       {(section === 'advanced' || (section === 'scrape' && !scrapeReviewing)) && header.tabs.length > 0 && (
-        <div className={`tg-scroll-x flex gap-2 pb-2 ${GUTTER} ${SCROLL_GUTTER}`}>
+        <PagedStrip look="games" noun="views" className={`flex gap-2 pb-2 ${GUTTER} ${SCROLL_GUTTER}`}>
           {header.tabs.map(t => {
             const active = t.key === header.activeTab
             return (
@@ -182,7 +183,7 @@ export function TgMobileHeader({ groups, counts, genres, studios, statusCounts, 
               </button>
             )
           })}
-        </div>
+        </PagedStrip>
       )}
     </header>
   )

@@ -51,13 +51,13 @@ Called from the `claude` function (`supabase/claude-src/transit-lookup.ts`), onl
 | `properties.names.default` (fallback `names.display`) | `"Jernbanetorget"`, `"Karl Johans gate 1"` | `GeoPlace.name` |
 | `properties.address.locality` (fallback `address.county`) | `"Oslo"` | `GeoPlace.locality` |
 | `properties.layer` | `stopPlace`, `address`, `street`, `poi`, `place`, `groupOfStopPlaces` | `GeoPlace.layer`: a stop → `venue`; `street` → `street`; the others → `address` (the app's names since v1, so the screens didn't change) |
-| `properties.stopPlaceTypes` | `["onstreetBus","onstreetTram","metroStation"]` (stops only) | `GeoPlace.category` in plain words (`stopKinds`, the table below), most important first, joined with ", ": "Metro station, Tram stop, Bus stop" |
+| `properties.stopPlaceTypes` | `["onstreetBus","onstreetTram","metroStation"]` (stops only) | `GeoPlace.category` in plain words (`stopKinds`, the table below): the two most important, joined with ", ": "Metro station, Tram stop" |
 | `geometry.coordinates` | `[lon, lat]` (GeoJSON order) | `GeoPlace.lat` / `lon`; a place that isn't a stop is kept only with a point. An item's place keeps them (6 decimals) for Apple's map pin (`items/itemPlace.placeFromGeo`) |
 
 Nothing is written to Entur. Saved stops (`user_transit_stops`) keep their `NSR:StopPlace` ids, which v3 did not change.
 
 ## Stop kinds (`stopPlaceTypes` → words)
-The search list shows a stop's town and kinds ("Oslo · Train station, Bus stop"), never Entur's codes (owner, 24.11.2026: the list showed "onstreetBus, railStation"). This table is the source of truth: `STOP_KIND` in `enturGeocoder.ts` holds the same rows in the same order (the order the words are shown), and `verify-entur-geocoder` compares the two. A code not on it (and `other`) is dropped, so a stop with only those shows its town alone. The values are NeTEx's stop types; "live" marks the ones seen in an answer on 24.11.2026, the others are from the same list and not yet seen.
+The search list shows a stop's town and kinds ("Oslo · Train station, Bus stop"), never Entur's codes (owner, 24.11.2026: the list showed "onstreetBus, railStation"). This table is the source of truth: `STOP_KIND` in `enturGeocoder.ts` holds the same rows in the same order (the order the words are shown), and `verify-entur-geocoder` compares the two. A code not on it (and `other`) is dropped, so a stop with only those shows its town alone. At most the first two words are shown (a phone's list has room for two): Oslo lufthavn reads "Airport, Train station". A trimmed live answer for Oslo S and Oslo lufthavn is `scripts/fixtures/entur/geocoder-v3-stop-kinds.json`. The values are NeTEx's stop types; "live" marks the ones seen in an answer on 24.11.2026, the others are from the same list and not yet seen.
 
 | Code | Shown as | Seen |
 |---|---|---|
@@ -68,7 +68,7 @@ The search list shows a stop's town and kinds ("Oslo · Train station, Bus stop"
 | `busStation` | Bus station | live (Oslo bussterminal) |
 | `coachStation` | Coach station | — |
 | `ferryPort` | Ferry port | — |
-| `harbourPort` | Harbour | live (Moss ferjekai) |
+| `harbourPort` | Ferry terminal | live (Moss ferjekai) |
 | `ferryStop` | Ferry stop | live (Aker brygge) |
 | `liftStation` | Cable car | — |
 | `vehicleRailInterchange` | Car train | — |

@@ -211,14 +211,14 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
 
       {count > 1 && !loading && (
         // The chevrons (a mouse or trackpad only) are no taller than the name's line, so the tile keeps its height.
-        <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+        <div className="mt-1.5 flex min-w-0 items-center gap-1">
           {/* A screen with its own fact here (the Money tile's day change) shows it in the name's place; the name stays in the tile's label for a screen reader. */}
           <span aria-hidden className="flex min-w-0 flex-1">
             {screen?.nameExtra != null
               ? <span className="min-w-0 flex-1">{screen.nameExtra}</span>
               : <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>}
           </span>
-          <ScrollPager track={track} noun="screen" paged placement="inline">
+          <ScrollPager track={track} noun="screen" paged placement="inline" className="-mr-1.5 [@media(pointer:coarse)]:mr-0">
             <span aria-hidden className="flex shrink-0 gap-1">
               {screens.map((s, i) => (
                 <span key={s.key} className={cx('h-1.5 rounded-full transition-[width,background-color] duration-200', i === current ? 'w-3.5 bg-accent-500' : 'w-1.5 bg-line-strong')} />

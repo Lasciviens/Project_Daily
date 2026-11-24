@@ -1,18 +1,19 @@
-// The pure half of ScrollPager (THEME.md §5): which ways a horizontal track can
-// still go, and how far one press moves it. `verify-scroll-pager` tests these.
+// The pure half of ScrollPager and useScrollEdges (THEME.md §5): which ways a
+// horizontal track can still go, and how far one press moves it.
+// `verify-scroll-pager` tests these.
 
 export interface ScrollEdges {
   /** There is more to the left. */
-  back: boolean
+  left: boolean
   /** There is more to the right. */
-  forward: boolean
+  right: boolean
 }
 
 /** A pixel of slack: a fractional scroll position never leaves a button showing at the end. */
 const SLACK = 1
 
-export function scrollEdges(left: number, width: number, scrollWidth: number): ScrollEdges {
-  return { back: left > SLACK, forward: left + width < scrollWidth - SLACK }
+export function scrollEdges(scrollLeft: number, width: number, scrollWidth: number): ScrollEdges {
+  return { left: scrollLeft > SLACK, right: scrollLeft + width < scrollWidth - SLACK }
 }
 
 /**

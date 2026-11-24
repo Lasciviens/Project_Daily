@@ -3,6 +3,7 @@ import { libraryKey } from '../listModel'
 import { PosterTile } from './PosterTile'
 import { useSimilarMovies, useSimilarTV } from '../hooks/useTMDB'
 import { SectionLabel, Skeleton } from '../../../shared/ui'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 import type { MediaType, TMDBSearchMovie, TMDBSearchTV, OpenMediaDetail } from '../types'
 
 interface Props {
@@ -22,7 +23,7 @@ export function SimilarRow({ tmdbId, mediaType, onOpenDetail }: Props) {
   return (
     <div>
       <SectionLabel className="mb-2">More like this</SectionLabel>
-      <div className="scroll-x flex gap-2.5 pb-1">
+      <PagedStrip noun="titles" className="flex gap-2.5 pb-1">
         {isLoading
           ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} rounded="rounded-md" className="aspect-[2/3] w-24 shrink-0" />)
           : data!.map((item: TMDBSearchMovie | TMDBSearchTV) => {
@@ -43,7 +44,7 @@ export function SimilarRow({ tmdbId, mediaType, onOpenDetail }: Props) {
                 </div>
               )
             })}
-      </div>
+      </PagedStrip>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { SectionLabel, Truncate } from '../../../shared/ui'
 import type { TMDBMovieFull, TMDBTVFull, TMDBCastMember, TMDBWatchProvider, TMDBVideo } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { languageName } from '../discoverModel'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 function formatRuntime(mins: number): string {
   const h = Math.floor(mins / 60)
@@ -120,9 +121,9 @@ export function MediaDetailInfo({ detail, isMovie, afterMeta }: { detail: TMDBMo
       {cast.length > 0 && (
         <div>
           <SectionLabel className="mb-2">Cast</SectionLabel>
-          <div className="scroll-x snap-x-mandatory scroll-fade-x flex gap-3 pb-1">
+          <PagedStrip noun="cast" className="snap-x-mandatory flex gap-3 pb-1">
             {cast.map(m => <CastMember key={m.id} member={m} />)}
-          </div>
+          </PagedStrip>
         </div>
       )}
 

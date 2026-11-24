@@ -321,6 +321,12 @@
   transition: opacity 150ms ease, background-color 120ms ease;
 }
 @media (pointer: coarse) { .tg-chevron-btn { width: 44px; height: 44px; } }
+/* ScrollPager's Games look (PagedStrip look="games"): for a mouse or trackpad only — touch
+   keeps its swipe; at an end it stays mounted (a focused one keeps the focus), invisible. */
+.tg-pager-btn:hover { background: var(--tg-chevron-hover); }
+.tg-pager-btn[aria-disabled="true"] { opacity: 0; pointer-events: none; }
+.tg-pager-btn[aria-disabled="true"]:focus-visible { opacity: 0.4; }
+@media (pointer: coarse) { .tg-pager-btn { display: none; } }
 
 /* ─── Scrolling ───────────────────────────────────────────────────────────── */
 

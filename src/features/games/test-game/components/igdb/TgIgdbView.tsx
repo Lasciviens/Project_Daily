@@ -8,6 +8,7 @@ import { TgDropdown } from '../TgDropdown'
 import { TgScrapeCard } from '../scrape/TgScrapeParts'
 import { TgIgdbRow } from './TgIgdbRow'
 import { TgIgdbSetup } from './TgIgdbSetup'
+import { PagedStrip } from '../../../../../shared/ui/ScrollPager'
 import { igdbCandidates, igdbCoverage, igdbFilterCounts, igdbRowMatches, igdbScopes, isIgdbMatched, libraryMatches, needsReview, toLookUp } from './tgIgdbModel'
 
 const FILTERS: { key: IgdbFilter; label: string }[] = [
@@ -80,14 +81,14 @@ export function TgIgdbView({ games, counted, loading }: { games: TgGame[]; count
         <TgDropdown value={library} options={scopes} onChange={v => { set({ library: v }); setShown(PAGE); resetStay() }}
           buttonLabel={scopes.find(l => l.value === library)?.label ?? 'All games'} ariaLabel="Library or system" align="end" />
       }>
-        <div role="group" aria-label="Show" className="tg-scroll-x -mx-1 flex gap-1.5 px-1">
+        <PagedStrip look="games" noun="filters" role="group" aria-label="Show" className="-mx-1 flex gap-1.5 px-1">
           {FILTERS.map(f => (
             <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => { set({ filter: f.key, focusId: null }); setShown(PAGE); resetStay() }}
               className={`tg-tab min-h-[44px] shrink-0 !px-3 !text-[12.5px] ${filter === f.key ? 'is-active' : 'bg-[var(--tg-panel-2)]'}`}>
               {f.label}{counts[f.key] ? <span className="tg-tab-count ml-1">{counts[f.key].toLocaleString('en-GB')}</span> : null}
             </button>
           ))}
-        </div>
+        </PagedStrip>
         <p className="mt-3 text-[12.5px] leading-snug tg-muted">
           {loading ? 'Loading…' : <>
             <b className="font-semibold text-[var(--tg-text)]">{cover.matched.toLocaleString('en-GB')} of {cover.total.toLocaleString('en-GB')}</b> matched ({pct(cover.matched, cover.total)})

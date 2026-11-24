@@ -8,6 +8,7 @@ import { useTraktStatus } from '../trakt/useTrakt'
 import { useFollows } from '../hooks/useFollows'
 import { useCreateAutoList } from '../hooks/useAutoLists'
 import type { TMDBMovieFull, OpenMediaDetail } from '../types'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 /**
  * A film's franchise (TMDB collection) in release order, with one tap to save
@@ -38,7 +39,7 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
           </Button>
         )}
       </div>
-      <div className="scroll-x flex gap-2.5 pb-1 pt-1">
+      <PagedStrip noun="films" className="flex gap-2.5 pb-1 pt-1">
         {parts.map((p, i) => {
           const lib = index.get(libraryKey('movie', p.id))
           return (
@@ -57,7 +58,7 @@ export function CollectionListButton({ movie, onOpenDetail }: { movie: TMDBMovie
             </div>
           )
         })}
-      </div>
+      </PagedStrip>
     </div>
   )
 }

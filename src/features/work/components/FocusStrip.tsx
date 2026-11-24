@@ -1,6 +1,7 @@
 import { Check, X, Zap } from 'lucide-react'
 import type { Task } from '../../todo/types'
 import { Button, IconButton } from '../../../shared/ui'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 
 interface Props {
@@ -23,7 +24,7 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
   }
 
   return (
-    <div className="scroll-x -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 px-4 pb-1 sm:mx-0 sm:scroll-px-0 sm:px-0">
+    <PagedStrip noun="focus tasks" className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 px-4 pb-1 sm:mx-0 sm:scroll-px-0 sm:px-0">
       {tasks.map(task => (
         <article
           key={task.id}
@@ -57,6 +58,6 @@ export default function FocusStrip({ tasks, onMarkDone, onClearFocus, onEdit }: 
           </div>
         </article>
       ))}
-    </div>
+    </PagedStrip>
   )
 }

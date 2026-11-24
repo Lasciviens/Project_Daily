@@ -14,7 +14,7 @@ interface GeoPlace {
   id: string
   name: string
   locality?: string
-  /** A stop's kinds in plain words, e.g. "Bus stop, Metro station" (`stopKinds`); never Entur's codes. */
+  /** A stop's two most important kinds in plain words, e.g. "Metro station, Tram stop" (`stopKinds`); never Entur's codes. */
   category?: string
   /** 'venue' = a transit stop; 'address' / 'street' = anywhere else (the app's names since v1). */
   layer: 'venue' | 'address' | 'street'
@@ -36,14 +36,17 @@ function geocoderQuery(text: string, limit: number): string {
 const STOP_KIND: ReadonlyArray<readonly [string, string]> = [
   ['airport', 'Airport'], ['railStation', 'Train station'], ['metroStation', 'Metro station'],
   ['tramStation', 'Tram station'], ['busStation', 'Bus station'], ['coachStation', 'Coach station'],
-  ['ferryPort', 'Ferry port'], ['harbourPort', 'Harbour'], ['ferryStop', 'Ferry stop'],
+  ['ferryPort', 'Ferry port'], ['harbourPort', 'Ferry terminal'], ['ferryStop', 'Ferry stop'],
   ['liftStation', 'Cable car'], ['vehicleRailInterchange', 'Car train'],
   ['onstreetTram', 'Tram stop'], ['onstreetBus', 'Bus stop'],
 ]
 
+/** At most this many kinds on a result's line: the most important (a phone's list has room for two). */
+const STOP_KINDS_SHOWN = 2
+
 /** A stop's types as one readable line ("Train station, Bus stop"), or undefined when none is known. */
 function stopKinds(types: readonly string[]): string | undefined {
-  const words = STOP_KIND.filter(([code]) => types.includes(code)).map(([, word]) => word)
+  const words = STOP_KIND.filter(([code]) => types.includes(code)).map(([, word]) => word).slice(0, STOP_KINDS_SHOWN)
   return words.length ? words.join(', ') : undefined
 }
 

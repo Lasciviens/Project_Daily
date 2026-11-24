@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type RefObject } from 'react'
 import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
 import { MapPin, Signpost, X } from 'lucide-react'
 import type { StopResult } from '../../api/ruterApi'
@@ -20,6 +20,31 @@ interface StopSearchInputProps {
   autoFocus?:   boolean
   favorites?:   FavoriteStop[]
   stopsOnly?:   boolean
+  /**
+   * The list is as wide as this box (Routes' From/Via/To card), inset from its right edge as
+   * far as the field is from its left — not only the field, which shares its row with buttons.
+   */
+  widthFrom?:   RefObject<HTMLElement | null>
+}
+
+/** The list's width under `box`, or undefined to follow the field (`--input-width`). */
+function useListWidth(input: RefObject<HTMLElement | null>, box?: RefObject<HTMLElement | null>): number | undefined {
+  const [width, setWidth] = useState<number>()
+  useEffect(() => {
+    const field = input.current
+    const outer = box?.current
+    if (!field || !outer) return
+    const measure = () => {
+      const b = outer.getBoundingClientRect()
+      const inset = field.getBoundingClientRect().left - b.left
+      setWidth(Math.max(0, Math.round(b.width - 2 * inset)))
+    }
+    const ro = new ResizeObserver(measure)
+    ro.observe(outer)
+    ro.observe(field)
+    return () => ro.disconnect()
+  }, [input, box])
+  return width
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -34,7 +59,9 @@ function PlaceText({ name, line }: { name: string; line?: string }) {
   )
 }
 
-export function StopSearchInput({ placeholder = 'Search stop or address…', onSelect, autoFocus, favorites, stopsOnly }: StopSearchInputProps) {
+export function StopSearchInput({ placeholder = 'Search stop or address…', onSelect, autoFocus, favorites, stopsOnly, widthFrom }: StopSearchInputProps) {
+  const field = useRef<HTMLInputElement>(null)
+  const listWidth = useListWidth(field, widthFrom)
   const [q, setQ]                 = useState('')
   const [debounced, setDebounced] = useState('')
 
@@ -67,6 +94,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
       <div className="relative">
         <div className="flex items-center gap-1.5">
           <ComboboxInput
+            ref={field}
             autoFocus={autoFocus}
             value={q}
             onChange={e => setQ(e.target.value)}
@@ -84,6 +112,7 @@ export function StopSearchInput({ placeholder = 'Search stop or address…', onS
         {/* Anchored (portalled, placed by Floating UI): the field sits in a card that clips (overflow-hidden) inside a
             popup that scrolls, so an absolute list was cut off over the fields below it (owner, 24.11.2026). */}
         <ComboboxOptions modal={false} anchor={{ to: 'bottom start', gap: 4, padding: 12 }}
+          style={listWidth ? { width: listWidth } : undefined}
           className="menu z-toast max-h-72 w-[var(--input-width)] min-w-[15rem] overflow-y-auto empty:hidden">
 
           {/* ── Favorites (shown when input is focused, before typing) ── */}
