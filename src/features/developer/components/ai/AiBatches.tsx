@@ -75,7 +75,7 @@ export function AiBatches() {
           <p className="min-w-0 text-body text-fg-2">Made Monday 05:00 at <span className="font-medium text-fg">half price</span> (a batch), pushed at 07:00.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" size="sm" loading={make.isPending} onClick={() => make.mutate()}>Make this week’s report now</Button>
+          <Button variant="primary" size="sm" loading={make.isPending} onClick={() => make.mutate()} tip="Report — make this week’s report now">Report now</Button>
           <Button size="sm" icon={<RefreshCw />} loading={check.isPending} disabled={!waiting} onClick={() => check.mutate()}>Check now</Button>
         </div>
       </section>

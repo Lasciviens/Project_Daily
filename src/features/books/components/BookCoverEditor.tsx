@@ -29,9 +29,9 @@ export function BookCoverEditor({ book }: { book: Book }) {
       {book.cover_url && book.cover_source && <p className="text-center text-micro text-fg-muted">{SOURCE_LABEL[book.cover_source] ?? ''}</p>}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only"
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) upload.mutate({ bookId: book.id, file: f, previous: book.cover_source === 'upload' || book.cover_source === 'device' ? book.cover_url : null }) }} />
-      <Button size="sm" icon={<ImagePlus />} loading={upload.isPending} onClick={() => input.current?.click()}>Upload a cover</Button>
+      <Button size="sm" icon={<ImagePlus />} loading={upload.isPending} onClick={() => input.current?.click()} tip="Upload a cover">Upload</Button>
       {link === null ? (
-        <Button size="sm" icon={<Link2 />} onClick={() => setLink('')}>Cover from a link</Button>
+        <Button size="sm" icon={<Link2 />} onClick={() => setLink('')} tip="Link — a cover from a web address">Link</Button>
       ) : (
         <form className="flex gap-1" onSubmit={e => { e.preventDefault(); saveLink() }}>
           <input autoFocus className="input min-h-[44px] min-w-0 flex-1" placeholder="https://…" value={link} aria-label="Cover link"
@@ -40,8 +40,8 @@ export function BookCoverEditor({ book }: { book: Book }) {
         </form>
       )}
       {linkError && <p className="text-micro text-danger">{linkError}</p>}
-      <Button size="sm" icon={<Search />} loading={lookup.isPending} onClick={() => lookup.mutate(book.id)}>
-        {book.meta_checked_at ? 'Look up details again' : 'Find cover and details'}
+      <Button size="sm" icon={<Search />} loading={lookup.isPending} onClick={() => lookup.mutate(book.id)} tip={book.meta_checked_at ? 'Look up details again' : 'Find cover and details'}>
+        {book.meta_checked_at ? 'Look up' : 'Find'}
       </Button>
     </div>
   )

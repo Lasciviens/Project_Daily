@@ -41,7 +41,7 @@ function CreateFrame(props: { spec: CreateSpec; batch?: CreateBatch; onSaved?: (
       </span>
       {count > 1 && !st.savedId && <Button icon={<SkipForward />} onClick={c.skip} disabled={saving} tip="Skip this line">Skip</Button>}
       <Button onClick={() => { void c.close() }} disabled={saving}>{c.added.length || st.savedId ? 'Done' : 'Cancel'}</Button>
-      {c.spec.preset === 'accessory' && <Button onClick={() => { void c.save(true) }} disabled={!!missing} loading={saving} tip="Save and add another accessory">Another</Button>}
+      {c.spec.preset === 'accessory' && <Button onClick={() => { void c.save(true) }} disabled={!!missing} loading={saving} tip="Another — save and add another accessory">Another</Button>}
       <Button variant="primary" onClick={() => { void c.save() }} disabled={!!missing || !!st.savedId || !!newCategoryMissing(st.draft)} loading={saving || c.categoryBusy}
         tip={c.hasNext ? 'Save and go to the next line' : undefined}>
         {c.hasNext ? 'Save, next' : 'Save'}

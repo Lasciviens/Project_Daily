@@ -102,7 +102,7 @@ export function InsuranceSheet({ onClose }: { onClose: () => void }) {
       footer={rows.length > 0 && (
         <div className="flex items-center gap-2">
           <Button icon={<Printer />} onClick={() => window.print()}>Print</Button>
-          <Button variant="primary" icon={<Download />} className="ml-auto" onClick={() => saveCsv(rows, today)} tip="Save as CSV">CSV</Button>
+          <Button variant="primary" icon={<Download />} className="ml-auto" onClick={() => saveCsv(rows, today)} tip="Save as CSV">Save CSV</Button>
         </div>
       )}>
       {isLoading ? <p className="px-2 py-6 text-center text-body text-fg-muted">Loading…</p>

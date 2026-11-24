@@ -112,7 +112,7 @@ export function SendReviewItem({ opened, draft, onChange, onSend, onRemove, know
             ) : opened.problem && <p className="text-micro text-fg-muted">{opened.problem}</p>}
           </div>
           <div className="flex justify-end">
-            <Button variant="primary" icon={<Send />} loading={sending} disabled={!draft.title.trim()} onClick={onSend}>Send to Kobo</Button>
+            <Button variant="primary" icon={<Send />} loading={sending} disabled={!draft.title.trim()} onClick={onSend} tip="Send to Kobo">Send</Button>
           </div>
         </div>
       </div>

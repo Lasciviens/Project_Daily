@@ -55,8 +55,8 @@ function GatingCard() {
           <div className="flex flex-wrap gap-2">
             {suggestedRoutines.map(r => <span key={r.id} className="chip text-body">{r.title}</span>)}
           </div>
-          <Button variant="primary" className="mt-1 self-start" loading={setProgram.isPending} onClick={() => setProgram.mutate(suggestedRoutines.map(r => r.id))}>
-            Use these as my current program
+          <Button variant="primary" className="mt-1 self-start" loading={setProgram.isPending} onClick={() => setProgram.mutate(suggestedRoutines.map(r => r.id))} tip="Use these as my current program">
+            Use these
           </Button>
         </div>
       )}

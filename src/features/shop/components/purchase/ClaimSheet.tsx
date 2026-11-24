@@ -59,8 +59,8 @@ export function ClaimSheet({ item, onClose }: { item: ShopItem; onClose: () => v
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onClose} className="ml-auto">Not now</Button>
           <Button variant="primary" size="sm" onClick={submit} disabled={amount == null || amount <= 0} loading={got.isPending}
-            tip={`Got ${amount != null && amount > 0 ? formatMoney(amount, currency) : 'it'} back`}>
-            Got it
+            tip={`Money back — got ${amount != null && amount > 0 ? formatMoney(amount, currency) : 'it'} back`}>
+            Money back
           </Button>
         </div>
       }>

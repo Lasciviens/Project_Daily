@@ -42,7 +42,7 @@ export function ChainsCard({ chains: all, period, onOpen, onNew }: { chains: Cha
           </ul>
         )}
       <div className="border-t border-line pt-2">
-        <Button size="sm" variant="ghost" icon={<Plus />} onClick={onNew} tip="New money chain">Chain</Button>
+        <Button size="sm" variant="ghost" icon={<Plus />} onClick={onNew} tip="Chain — a new money chain">Chain</Button>
       </div>
     </StatsCard>
   )

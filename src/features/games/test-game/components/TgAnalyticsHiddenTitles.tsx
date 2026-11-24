@@ -51,7 +51,7 @@ export function TgAnalyticsHiddenTitles({ hidden, className = '' }: {
               onClick={() => { const b = handoff.base; if (b) handoff.open('Hidden', hiddenGames(b.games, b.library), { status: 'hidden', wholeLibrary: true }) }}
               className="tg-btn tg-btn-secondary min-h-[36px] w-full px-3 text-[13px] @[22rem]:w-auto [@media(pointer:coarse)]:min-h-[44px]"
             >
-              Show hidden titles
+              <span title="Show the hidden titles">Hidden</span>
               <ChevronRight size={14} strokeWidth={2.2} aria-hidden />
             </button>
           </div>

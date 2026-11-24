@@ -188,7 +188,7 @@ function ParentLink({ item, parent }: { item: ShopItem; parent: ShopItem }) {
   const openRecord = useOpenRecord()
   return (
     <button type="button" onClick={() => openRecord(parent.id)} className="w-fit text-left text-meta text-fg-muted hover:text-fg-2">
-      {item.accessory_of ? 'Accessory of' : 'A model of'} <span className="font-semibold text-accent-600 hover:underline">{parent.title}</span>
+      {item.accessory_of ? 'Accessory of' : 'Model of'} <span className="font-semibold text-accent-600 hover:underline">{parent.title}</span>
     </button>
   )
 }
@@ -235,7 +235,7 @@ function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
       options={[{ value: 'own', label: 'I have it' }, { value: 'had', label: 'I had it' }]} />
   ) : (spec.preset === 'wish' || spec.preset === 'general') ? (
     <SegmentedControl<'one' | 'any'> size="sm" value={st.general ? 'any' : 'one'} onChange={x => c.patch(s => ({ ...s, general: x === 'any' }))}
-      options={[{ value: 'one', label: <span title="One product">One</span> }, { value: 'any', label: <span title="Any model that fits">Any model</span> }]} />
+      options={[{ value: 'one', label: 'One', tip: 'One product' }, { value: 'any', label: 'Any model', tip: 'Any model that fits' }]} />
   ) : null
   if (!stepper && !switches && !finder) return null
   return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}{finder && <div className="ml-auto">{finder}</div>}</div>

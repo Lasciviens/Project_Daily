@@ -56,7 +56,7 @@ export function RecordCosts({ itemId, costs = [], drafts, onDrafts, canAdd = tru
     <div>
       <CardHeader title="Extra costs" variant="label" className="mb-1"
         subtitle={costs.length > 0 ? <>in all <AmountText amount={total} /></> : undefined}
-        action={!open && canAdd && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setOpen(true)} tip="Add an extra cost">Cost</Button>} />
+        action={!open && canAdd && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setOpen(true)} tip="Cost — add an extra cost">Cost</Button>} />
       {drafts && drafts.length > 0 && (
         <ul aria-label="Extra costs to save" className="flex flex-col">
           {drafts.map(c => (
@@ -111,7 +111,7 @@ export function RecordCosts({ itemId, costs = [], drafts, onDrafts, canAdd = tru
               For:
               {(['match', 'claim'] as const).map(k => (
                 <button key={k} type="button" onClick={() => setLabel(REBATE_LABEL[k])} aria-pressed={label === REBATE_LABEL[k]}
-                  className={cx('chip', label === REBATE_LABEL[k] && 'text-accent-600')}>{k === 'match' ? 'A price match' : 'A complaint'}</button>
+                  className={cx('chip', label === REBATE_LABEL[k] && 'text-accent-600')}>{k === 'match' ? 'Price match' : 'Complaint'}</button>
               ))}
             </div>
           )}

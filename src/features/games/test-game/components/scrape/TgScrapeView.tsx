@@ -144,7 +144,7 @@ export function TgScrapeView({ games, counted, loading, layout }: {
       </p>
       <button type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[13px]">
         <Settings2 aria-hidden className="h-4 w-4" strokeWidth={2} />
-        What to save
+        <span title="What to save">Save what</span>
       </button>
     </div>
   )
@@ -180,7 +180,7 @@ export function TgScrapeView({ games, counted, loading, layout }: {
   const batchBack = fromBatch && mode === 'search' ? (
     <button type="button" onClick={() => window.history.back()} className="tg-btn tg-btn-secondary self-start !px-3 !text-[13px]">
       <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={2} />
-      Back to Many games
+      <span title="Back to Many games">Many games</span>
     </button>
   ) : null
 

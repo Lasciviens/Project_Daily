@@ -141,7 +141,7 @@ export function AskAIPanel() {
             {failedLast && chat.lastText && (
               <div className="flex justify-start gap-2">
                 {chat.turns[chat.turns.length - 1].errorReason === 'declined'
-                  ? <Button size="sm" onClick={editQuestion}>Edit your question</Button>
+                  ? <Button size="sm" onClick={editQuestion} tip="Edit your question">Edit</Button>
                   : <Button size="sm" onClick={retry}>Try again</Button>}
               </div>
             )}

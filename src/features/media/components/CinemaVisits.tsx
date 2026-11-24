@@ -65,7 +65,7 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
           disabled={save.isPending || del.busy}
           className="pill-tab press-feedback border border-line aria-pressed:border-transparent"
         >
-          <Ticket aria-hidden className="h-4 w-4" /> {marked ? 'Watched at a cinema' : 'Watched at a cinema?'}
+          <Ticket aria-hidden className="h-4 w-4" /> <span title={marked ? 'Watched at a cinema' : 'Watched at a cinema?'}>{marked ? 'Cinema' : 'Cinema?'}</span>
         </button>
         {marked && (
           <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setEditing('new')}>Another visit</Button>

@@ -60,7 +60,7 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
       <section className="flex flex-col gap-1 border-t border-[var(--tg-border)] pt-2.5">
         <h3 className="tg-section-label">IGDB</h3>
         <p className="text-[12.5px] tg-muted">Not matched yet — IGDB adds how long it takes, member and critic scores, and a link to its page.</p>
-        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">Find on IGDB</button>
+        <button type="button" onClick={() => openIgdbFor(game.id)} className="inline-flex min-h-[32px] [@media(pointer:coarse)]:min-h-[44px] items-center self-start text-[12.5px] font-semibold text-[var(--tg-accent)]" title="Find on IGDB">IGDB</button>
       </section>
     )
   }
@@ -142,7 +142,7 @@ export function TgDetailIgdb({ game, settled = true }: { game: TgGame; settled?:
                 <li key={s.id} className="flex min-h-[30px] items-center [@media(pointer:coarse)]:min-h-[44px] gap-2 text-[12.5px]">
                   <Truncate className="min-w-0 flex-1">{s.name}</Truncate>
                   {mine ? (
-                    <button type="button" onClick={() => openDetail(mine.id)} className="shrink-0 font-semibold text-[var(--tg-green)]">In your library</button>
+                    <button type="button" onClick={() => openDetail(mine.id)} className="shrink-0 font-semibold text-[var(--tg-green)]" title="In your library — open it">Yours</button>
                   ) : s.slug ? (
                     <a href={`https://www.igdb.com/games/${s.slug}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 tg-muted" aria-label={`${s.name} on IGDB`}>
                       IGDB <ExternalLink className="h-3 w-3" aria-hidden />

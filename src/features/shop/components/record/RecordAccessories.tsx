@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import { CardHeader, IconButton, Truncate } from '../../../../shared/ui'
+import { Button, CardHeader, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { add, boughtOn, costOf, DISPOSAL_LABEL, type MoneyCtx } from '../../ownModel'
@@ -21,7 +21,7 @@ export function RecordAccessories({ item, accessories, ctx, canAdd }: { item: Sh
     <div>
       <CardHeader title="Accessories" variant="label" className="mb-1"
         subtitle={accessories.some(a => a.status === 'bought') ? <>with them <AmountText amount={add(costOf(item, ctx), total)} /> in all</> : undefined}
-        action={canAdd && <IconButton size="sm" label="Add an accessory" onClick={() => modal.open({ kind: 'shop-accessory', itemId: item.id })}><Plus aria-hidden /></IconButton>} />
+        action={canAdd && <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-accessory', itemId: item.id })} tip="Accessory — add one">Accessory</Button>} />
       {accessories.length === 0 ? (
         <p className="text-meta text-fg-muted">A case, a memory card, a controller — add what came with it or was bought for it. When you sell it, you choose which go along.</p>
       ) : (

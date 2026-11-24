@@ -18,9 +18,9 @@ export function AddPlansToCalendarButton() {
   return (
     <Button
       size="sm" icon={<CalendarPlus />} loading={add.isPending} onClick={() => add.mutate(rows)}
-      title="Add every repeating plan that isn't on Google Calendar yet — each starts there today"
+      tip="Add every repeating plan that isn't on Google Calendar yet — each starts there today"
     >
-      Add {count} plan{count === 1 ? '' : 's'} to Calendar
+      Add · {count}
     </Button>
   )
 }

@@ -57,7 +57,7 @@ function OneDose({ dose, now, onClose }: { dose: Dose; now: LocalNow; onClose: (
         <div className="flex flex-col gap-3">
           <Button variant="primary" icon={<Check />} block disabled={busy}
             onClick={() => run(take.mutateAsync({ doses: [dose] }))}>
-            {today ? 'Taken now' : `Taken at its time (${dose.time})`}
+            {today ? 'Taken now' : `Taken · ${dose.time}`}
           </Button>
           <div className="flex flex-col gap-1.5 rounded-control border border-line p-2.5">
             <span className="text-meta text-fg-muted">Taken earlier</span>

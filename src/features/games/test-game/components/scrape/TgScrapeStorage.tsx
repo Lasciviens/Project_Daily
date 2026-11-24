@@ -81,7 +81,7 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
       <div className="flex flex-wrap items-center gap-2">
         {!preview ? (
           <button type="button" onClick={findLeftovers} disabled={cleanup.isPending} className="tg-btn tg-btn-secondary !px-3 !text-[12.5px]">
-            <Trash2 className="h-4 w-4" aria-hidden /> {cleanup.isPending ? 'Checking…' : 'Find unused ScreenScraper copies'}
+            <Trash2 className="h-4 w-4" aria-hidden /> <span title="Find unused ScreenScraper copies">{cleanup.isPending ? 'Checking…' : 'Find unused'}</span>
           </button>
         ) : preview.files === 0 ? (
           <p className="text-[12.5px] tg-muted">Nothing unused to delete.</p>
@@ -98,7 +98,7 @@ export function TgScrapeStorage({ budgetMb, enabled }: { budgetMb: number; enabl
       <p className="flex flex-wrap items-center gap-x-2 text-[12px] tabular-nums tg-muted">
         {status.data ? `${status.data.systems_known.toLocaleString('en-GB')} ScreenScraper systems known` : 'ScreenScraper systems'}
         <button type="button" onClick={() => refreshSystems.mutate()} disabled={refreshSystems.isPending} className="inline-flex min-h-[44px] items-center font-semibold text-[var(--tg-accent)]">
-          {refreshSystems.isPending ? 'Refreshing…' : 'Refresh the list'}
+          <span title="Refresh the list">{refreshSystems.isPending ? 'Refreshing…' : 'Refresh'}</span>
         </button>
       </p>
       {account && (

@@ -254,7 +254,7 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
                 onClick={() => setBreaks(bs => [...bs, { from: '', to: '' }])}
                 className="flex min-h-[44px] w-fit items-center gap-1.5 rounded-control px-1 text-body text-fg-muted transition-colors hover:text-accent-600"
               >
-                <Plus className="h-4 w-4" /> Add a break
+                <Plus className="h-4 w-4" /> <span title="Add a break">Break</span>
               </button>
             </div>
           </Field>

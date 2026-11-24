@@ -47,7 +47,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
               {wish.status === 'dropped' ? (
                 <button type="button" onClick={() => onStatus('idea')} className="menu-item"><Undo2 aria-hidden className="h-4 w-4" /> Put back</button>
               ) : (
-                <button type="button" onClick={() => onStatus('dropped')} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Not any more</button>
+                <button type="button" onClick={() => onStatus('dropped')} className="menu-item"><Ban aria-hidden className="h-4 w-4" /> <span title="Not any more">Drop</span></button>
               )}
             </MenuItem>
             <div className="menu-sep" />

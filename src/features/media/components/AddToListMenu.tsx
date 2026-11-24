@@ -45,7 +45,7 @@ export function AddToListMenu({ type, tmdb, title }: { type: 'movie' | 'show'; t
             className="menu-item w-full"
             onClick={() => setNaming(true)}
           >
-            <Plus aria-hidden className="h-4 w-4" /> New list with “{title}”
+            <Plus aria-hidden className="h-4 w-4" /> <span title={`New list with “${title}”`}>New list</span>
           </button>
         </MenuItem>
       </MenuItems>

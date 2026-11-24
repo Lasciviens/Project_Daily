@@ -84,7 +84,7 @@ export function PendingListDetail({ follow, connected, onOpen, onGone }: { follo
         <div className="flex flex-wrap items-center gap-2">
           {connected
             ? <Button size="sm" variant="primary" icon={<CloudUpload />} loading={put.isPending}
-                onClick={() => put.mutate({ kind: follow.kind, tmdbId: follow.tmdb_id, name: follow.name, follow })}>Put on Trakt</Button>
+                onClick={() => put.mutate({ kind: follow.kind, tmdbId: follow.tmdb_id, name: follow.name, follow })} tip="Trakt — put the list on Trakt">Trakt</Button>
             : <Link to="/settings?tab=subscriptions" className="btn-ghost btn-sm">Connect Trakt</Link>}
           <Button size="sm" variant="ghost" icon={<Trash2 />} className="text-danger" onClick={() => { void remove() }}>Delete list</Button>
         </div>

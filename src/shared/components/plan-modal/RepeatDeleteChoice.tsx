@@ -21,7 +21,7 @@ export function RepeatDeleteChoice({ open, title, date, onPick, onClose }: {
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <Button variant="ghost" size="sm" onClick={onClose} className="mr-auto -ml-2">Cancel</Button>
           <Button variant="danger" size="sm" onClick={() => onPick('day')}>Only {formatDate(date)}</Button>
-          <Button variant="danger" size="sm" onClick={() => onPick('all')}>Every day it repeats</Button>
+          <Button variant="danger" size="sm" onClick={() => onPick('all')} tip="Every day — every day it repeats">Every day</Button>
         </div>
       }
     >

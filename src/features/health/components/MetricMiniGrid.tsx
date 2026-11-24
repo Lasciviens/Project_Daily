@@ -67,7 +67,7 @@ export function MetricMiniGrid({ title, metrics, window, onViewDay, hideWhenEmpt
               <button type="button" aria-expanded={showEmpty} onClick={() => setShowEmpty(s => !s)}
                 className="btn-ghost btn-sm gap-1 self-start px-2 text-meta">
                 <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${showEmpty ? 'rotate-180' : ''}`} />
-                Not recorded in this window ({empty.length})
+                <span title="Not recorded in this window">Not recorded · {empty.length}</span>
               </button>
               {showEmpty && <div className="grid grid-cols-2 items-start gap-2 @[36rem]:grid-cols-4">{empty.map(render)}</div>}
             </>

@@ -78,7 +78,7 @@ export function CardioFitnessSection({ range, extras = true }: { range: HealthRa
             <div>
               <button type="button" aria-expanded={planOpen} onClick={() => setPlanOpen(o => !o)} className="btn-ghost btn-sm -ml-2 gap-1 px-2 text-meta">
                 <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${planOpen ? 'rotate-180' : ''}`} />
-                What it means and how to raise it
+                <span title="What it means and how to raise it">How to raise it</span>
               </button>
               {planOpen && (
                 <div className="mt-2 flex flex-col gap-3 text-meta">

@@ -146,7 +146,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         {isLoading ? null : !template ? (
           <div className="flex flex-wrap items-center gap-2 text-meta text-fg-muted">
             <span>No ad template{where ? ` for ${where}` : ''}.</span>
-            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending} tip="Put back the default texts">Defaults</Button>
+            <Button size="sm" variant="ghost" onClick={() => defaults.mutate()} loading={defaults.isPending} tip="Defaults — put back the default texts">Defaults</Button>
           </div>
         ) : null}
         <label className="flex flex-col gap-1">
@@ -165,8 +165,8 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
         </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}
-          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()} title="Fill the ad in again">Refill</button>}
-          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)} title="Edit the template">Template</button>}
+          {edited && filled && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => resetText()} title="Refill — fill the ad in again">Refill</button>}
+          {template && !editingTemplate && <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => setEditingTemplate(true)} title="Template — edit it">Template</button>}
         </div>
         {filled && filled.unknown.length > 0 && <p className="text-meta text-warn">The template names {filled.unknown.map(f => `{${f}}`).join(', ')}, which the app doesn't fill.</p>}
         {template && editingTemplate && <TemplateEditor id={template.id} title={template.title} body={template.body} onDone={() => { setEditingTemplate(false); resetText() }} />}

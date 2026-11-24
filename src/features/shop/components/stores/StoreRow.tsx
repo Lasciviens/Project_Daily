@@ -108,7 +108,7 @@ export function StoreRow({ store, stores, rules, policyHosts, open, onToggle, on
             </ul>
           )}
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" icon={<Plus />} onClick={() => onRule(null)} tip="Add a rule">Rule</Button>
+            <Button size="sm" icon={<Plus />} onClick={() => onRule(null)} tip="Rule — add one">Rule</Button>
             {store.owner_edited && store.source && (
               <Button size="sm" variant="ghost" icon={<RotateCcw />} onClick={() => reset.mutate({ id: store.id })} tip="Reset to its source">Reset</Button>
             )}

@@ -308,7 +308,7 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
               onClick={() => setShowAllDirections(v => !v)}
               className="min-h-[44px] font-semibold text-accent-600"
             >
-              {showAllDirections ? 'Show saved direction only' : 'Show all directions'}
+              <span title={showAllDirections ? 'Show the saved direction only' : 'Show all directions'}>{showAllDirections ? 'Saved only' : 'All directions'}</span>
             </button>
           )}
         </div>

@@ -101,7 +101,7 @@ export function MediaSearchResults({ query, pending, mediaType, onOpenDetail, on
             {[6, 7, 8].map(r => <option key={r} value={r}>{r}+</option>)}
           </select>
           <button type="button" aria-pressed={filters.notInLibrary} onClick={() => set({ notInLibrary: !filters.notInLibrary })}
-            className="pill-tab min-h-[36px] shrink-0 border border-line aria-pressed:border-transparent">Not in library</button>
+            title="Not in the library" className="pill-tab min-h-[36px] shrink-0 border border-line aria-pressed:border-transparent">Not mine</button>
         </div>
       )}
 
@@ -141,7 +141,7 @@ export function MediaSearchResults({ query, pending, mediaType, onOpenDetail, on
           {active.hasNextPage && (
             <div className="mt-3 flex justify-center">
               <Button onClick={() => { void active.fetchNextPage() }} loading={active.isFetchingNextPage}>
-                {left > 0 ? `Show more (${left.toLocaleString('en-GB')} left)` : 'Show more'}
+                {left > 0 ? `More · ${left.toLocaleString('en-GB')}` : 'Show more'}
               </Button>
             </div>
           )}

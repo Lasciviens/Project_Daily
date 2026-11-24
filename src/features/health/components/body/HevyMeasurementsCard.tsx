@@ -91,7 +91,7 @@ export function HevyMeasurementsCard({ anchor }: { anchor: string }) {
               <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
                 className="flex min-h-[44px] w-full items-center gap-2 rounded-row text-left text-body font-semibold text-fg-2 hover:text-fg">
                 <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-                {open ? 'Hide earlier entries' : `Show earlier entries (${rest.length})`}
+                {open ? 'Hide earlier' : `Earlier · ${rest.length}`}
               </button>
               {open && <ul>{shown.map(r => <HevyMeasurementRow key={r.date} row={r} onEdit={() => edit(r.date)} />)}</ul>}
               {open && rest.length > SHOW && (

@@ -158,7 +158,7 @@ export function TgScrapeRecord({ candidate: c, storedRaw }: {
       </dl>
       <button type="button" onClick={loadRaw} aria-expanded={!!raw} className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 self-start text-[12.5px] font-semibold text-[var(--tg-accent)]">
         <ChevronDown className={`h-4 w-4 transition-transform ${raw ? 'rotate-180' : ''}`} aria-hidden />
-        {rawState === 'loading' ? 'Loading their full answer…' : raw ? 'Hide the full answer' : storedRaw ? 'Show the full saved record (raw)' : 'Show their full answer (raw)'}
+        <span title={raw ? 'Hide the full answer' : storedRaw ? 'Show the full saved record (raw)' : 'Show their full answer (raw)'}>{rawState === 'loading' ? 'Loading…' : raw ? 'Hide raw' : 'Raw answer'}</span>
       </button>
       {rawState === 'error' && <p className="text-[12px] text-[var(--tg-red)]">Could not load it — the server function may need redeploying.</p>}
       {raw != null && (

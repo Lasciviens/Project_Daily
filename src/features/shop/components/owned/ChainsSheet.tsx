@@ -28,7 +28,7 @@ export function ChainsSheet({ onClose }: { onClose: () => void }) {
     <ModalShell onClose={onClose} title="Money chains" subtitle="Sold one thing, paid the next with the money" size="md"
       footer={
         <div className="flex items-center gap-2">
-          <Button variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-chain-builder' })} tip="New money chain">Chain</Button>
+          <Button variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-chain-builder' })} tip="Chain — a new money chain">Chain</Button>
           <Button onClick={onClose} className="ml-auto">Close</Button>
         </div>
       }>

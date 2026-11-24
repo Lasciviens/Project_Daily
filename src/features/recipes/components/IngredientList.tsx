@@ -105,7 +105,7 @@ export function IngredientList({ library, isLoading, onEdit, onDelete, editingId
         {shown.length > limit && (
           <button type="button" onClick={() => setLimit(l => l + PAGE)}
             className="min-h-[44px] w-full border-t border-line px-4 text-meta font-medium text-accent-600 hover:bg-surface-hover">
-            Show {Math.min(PAGE, shown.length - limit)} more ({shown.length - limit} left)
+            <span title={`Show ${Math.min(PAGE, shown.length - limit)} more (${shown.length - limit} left)`}>More · {shown.length - limit}</span>
           </button>
         )}
       </Card>

@@ -13,7 +13,7 @@ export function SleepRawRows({ points }: { points: HealthMetric[] }) {
     <div className="border-t border-line pt-2">
       <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} className="btn-ghost btn-sm gap-1 px-2 text-meta">
         {open ? <ChevronDown className="h-3.5 w-3.5 rotate-180" aria-hidden /> : <Search className="h-3.5 w-3.5" aria-hidden />}
-        {open ? 'Hide raw data' : `Raw data (${points.length} rows)`}
+        {open ? 'Hide raw' : `Raw · ${points.length}`}
       </button>
       {open && (
         <div className="mt-1 flex max-h-64 flex-col gap-1 overflow-y-auto">

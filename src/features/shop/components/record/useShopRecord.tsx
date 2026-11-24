@@ -128,28 +128,28 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   if (state === 'buy') {
     actions.push({ key: 'bought', label: 'Bought', tip: 'Bought — fill in how and where', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
     actions.push(item.task_id
-      ? { key: 'task', label: 'Task', tip: 'Open the task', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
+      ? { key: 'task', label: 'Task', tip: 'Task — open it', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
       : { key: 'plan', label: 'Plan', tip: 'Plan it — a task in the calendar', icon: <CalendarPlus />, onClick: then(plan) })
     if (!item.option_for && !item.accessory_of) {
-      actions.push({ key: 'errand', label: 'Errand', tip: item.errand ? 'Off the errand list' : 'On the next errand', icon: item.errand ? <ListX /> : <ListPlus />, iconOnly: true, ghost: true, more: true,
+      actions.push({ key: 'errand', label: 'Errand', tip: item.errand ? 'Errand — off the errand list' : 'Errand — on the next one', icon: item.errand ? <ListX /> : <ListPlus />, iconOnly: true, ghost: true, more: true,
         onClick: then(() => update.mutate({ id: item.id, patch: { errand: !item.errand }, quiet: true })) })
     }
-    actions.push({ key: 'drop', label: 'Drop', tip: item.option_for ? 'Not chosen — drop this model' : 'Not any more — drop the wish', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'drop', label: 'Drop', tip: item.option_for ? 'Drop — not chosen' : 'Drop — not any more', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'general' && item.status === 'wishlist') {
-    actions.push({ key: 'model', label: 'Model', tip: 'Add a model', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
-    actions.push({ key: 'drop', label: 'Drop', tip: 'Not any more — drop the wish', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
+    actions.push({ key: 'model', label: 'Model', tip: 'Model — add one', icon: <Plus />, primary: true, onClick: () => modal.open({ kind: 'shop-model', wishId: item.id }) })
+    actions.push({ key: 'drop', label: 'Drop', tip: 'Drop — not any more', icon: <Ban />, iconOnly: true, ghost: true, more: true, onClick: then(() => update.mutate({ id: item.id, patch: { status: 'dropped' } })) })
   }
   if (state === 'mine') {
     actions.push({ key: 'sell', label: 'Sell', tip: 'Sell or give away', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
-    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', tip: 'Add an accessory', icon: <Plus />, iconOnly: true, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
-    actions.push({ key: 'wrong', label: 'Problem', tip: 'Something\'s wrong — complain or claim money back', icon: <TriangleAlert />, iconOnly: true, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
+    if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', tip: 'Accessory — add one', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
+    actions.push({ key: 'wrong', label: 'Problem', tip: 'Problem — something\'s wrong: complain or claim money back', icon: <TriangleAlert />, iconOnly: true, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
   if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy', tip: 'Tidy up info with AI — name, brand, model, category', icon: <Sparkles />, iconOnly: true, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })
   if (state === 'gone' || item.disposal === 'returned') {
     // Asks first (owner, 23.11.2026): an icon is easy to hit by mistake, and the sale's money goes with it.
     const what = item.disposal ? UNDO_WORD[item.disposal] : 'this'
-    actions.push({ key: 'undo', label: 'Undo', tip: 'Undo: still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
+    actions.push({ key: 'undo', label: 'Undo', tip: 'Undo — still mine', icon: <Undo2 />, iconOnly: true, onClick: () => {
       void modal.confirm({
         title: 'Still yours?',
         message: `This takes back ${what}${item.disposed_on ? ` on ${formatDate(item.disposed_on)}` : ''}.`,
@@ -157,7 +157,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
       }).then(ok => { if (ok) undoSale.mutate(item.id) })
     } })
   }
-  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Put back', tip: 'Back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
+  if (item.status === 'dropped') actions.push({ key: 'back', label: 'Put back', tip: 'Put back on the wishlist', icon: <Undo2 />, onClick: () => update.mutate({ id: item.id, patch: { status: 'wishlist' } }) })
 
   return {
     item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,

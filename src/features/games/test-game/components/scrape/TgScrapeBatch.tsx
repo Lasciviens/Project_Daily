@@ -173,7 +173,7 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: {
         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <button type="button" onClick={() => findNext()} disabled={!next.length || finding} className="tg-btn tg-btn-secondary">
             <Search className={`h-4 w-4 ${finding ? 'animate-pulse' : ''}`} aria-hidden />
-            {finding ? 'Looking…' : next.length ? `Find matches for the next ${next.length}` : 'All shown games looked up'}
+            <span title={next.length ? `Find matches for the next ${next.length}` : 'All shown games looked up'}>{finding ? 'Looking…' : next.length ? `Find · ${next.length}` : 'All matched'}</span>
           </button>
           <button type="button" onClick={saveTicked} disabled={!toSave.length || saving} className="tg-btn tg-btn-primary">
             <Wand2 className={`h-4 w-4 ${saving ? 'animate-pulse' : ''}`} aria-hidden />
@@ -182,7 +182,7 @@ export function TgScrapeBatch({ games, loading, onOpenGame }: {
         </div>
         {earlierMisses.length > 0 && (
           <button type="button" onClick={() => findNext(earlierMisses.slice(0, FIND_CHUNK).map(g => g.id))} disabled={finding} className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-[12.5px] font-semibold text-[var(--tg-accent)]">
-            <RotateCcw className="h-4 w-4" aria-hidden /> Try the earlier misses again ({Math.min(earlierMisses.length, FIND_CHUNK)})
+            <RotateCcw className="h-4 w-4" aria-hidden /> <span title="Try the earlier misses again">Retry misses · {Math.min(earlierMisses.length, FIND_CHUNK)}</span>
           </button>
         )}
         {runId && savedIds.length > 0 && (

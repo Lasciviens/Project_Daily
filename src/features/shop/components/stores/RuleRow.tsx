@@ -43,7 +43,7 @@ export function RuleRow({ rule, store, stores, onEdit }: { rule: ShopStoreRule; 
           <MenuItems anchor="bottom end" transition className="menu z-toast w-56 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
             <MenuItem><button type="button" onClick={onEdit} className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Edit</button></MenuItem>
             {canReset && (
-              <MenuItem><button type="button" onClick={() => reset.mutate({ id: rule.id })} className="menu-item"><RotateCcw aria-hidden className="h-4 w-4" /> Reset to its source</button></MenuItem>
+              <MenuItem><button type="button" onClick={() => reset.mutate({ id: rule.id })} title="Reset to its source" className="menu-item"><RotateCcw aria-hidden className="h-4 w-4" /> Reset</button></MenuItem>
             )}
             <MenuItem>
               <button type="button" className="menu-item"
@@ -61,7 +61,7 @@ export function RuleRow({ rule, store, stores, onEdit }: { rule: ShopStoreRule; 
       {conflict && (
         <p data-tone="warn" className="tone-soft flex flex-wrap items-center gap-x-2 rounded-row px-2 py-1 text-meta">
           <span className="tone-text">{conflict} — yours says {ruleFacts(rule, stores)[0]}.</span>
-          <button type="button" onClick={() => reset.mutate({ id: rule.id })} className="font-semibold text-accent-600 hover:underline">Use the source's</button>
+          <button type="button" onClick={() => reset.mutate({ id: rule.id })} title="Use the source's words" className="font-semibold text-accent-600 hover:underline">Use source</button>
         </p>
       )}
     </li>

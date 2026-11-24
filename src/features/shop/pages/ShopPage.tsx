@@ -1,8 +1,8 @@
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { FileText, History, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag, Waypoints } from 'lucide-react'
-import { Button, IconButton, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
+import { FileText, ListChecks, MoreHorizontal, Plus, Receipt, Sparkles, Tag, Waypoints } from 'lucide-react'
+import { Button, PageContainer, PageHeader, SegmentedControl, SkeletonTab } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
@@ -15,7 +15,6 @@ import { WishlistView } from '../components/WishlistView'
 import { ShopNeedsALook } from '../components/ShopNeedsALook'
 import type { RecordFact } from '../shopSuggestions'
 import { ShopHeroArt } from '../components/ShopHeroArt'
-import { LinkPlus } from '../components/shopKit'
 import { useAddSuggestedCategories } from '../hooks/useAddSuggestedCategories'
 import type { StatsScope } from '../statsModel'
 
@@ -76,13 +75,11 @@ export function ShopPage() {
     else modal.open({ kind: 'shop-item', defaults: { list: view === 'quick' ? 'quick' : 'wishlist' } })
   }
   // Short buttons (owner, 24.11.2026): "+" with its words in the tooltip, the accessible name and a long press on touch.
-  const addWords = view === 'owned' ? 'Add something I own' : view === 'quick' ? 'Add to the quick list' : 'Add to the wishlist'
-  // Owned's other ways in: two icons, in the bar from a tablet, beside Things | Stats on a phone — a way in shows once.
+  // Owned's + adds what you own or had: "I have it | I had it" is the popup's first switch (critic, 24.11.2026: one way in, not two icons).
+  const addWords = view === 'owned' ? 'Add something I own or had (the switch is inside)' : view === 'quick' ? 'Add to the quick list' : 'Add to the wishlist'
+  // Owned's other way in: a new money chain — its icon and one word, in the bar from a tablet, beside Things | Stats on a phone.
   const ownedWays = (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <IconButton bordered size="sm" label="Add something I had" onClick={() => modal.open({ kind: 'shop-own', had: true })}><History aria-hidden /></IconButton>
-      <IconButton bordered size="sm" label="New money chain" onClick={() => modal.open({ kind: 'shop-chain-builder' })}><LinkPlus /></IconButton>
-    </div>
+    <Button size="sm" variant="secondary" icon={<Waypoints />} onClick={() => modal.open({ kind: 'shop-chain-builder' })} tip="Chain — a new money chain" className="shrink-0">Chain</Button>
   )
 
   const ownedTabs = (fullWidth: boolean) => (
@@ -100,13 +97,13 @@ export function ShopPage() {
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Read a receipt</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up product info</button></MenuItem>
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores and rules</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} title="Read a receipt" className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Receipts</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} title="Tidy up product info (AI)" className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} title="Stores and rules" className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores</button></MenuItem>
         {suggestKnown && (suggested.count ?? 0) > 0 && (
           <MenuItem disabled={suggested.busy}>
-            <button type="button" onClick={() => { void suggested.add() }} className="menu-item data-[disabled]:opacity-50">
-              <Tag aria-hidden className="h-4 w-4" /> Add the suggested categories ({suggested.count})
+            <button type="button" onClick={() => { void suggested.add() }} title="Add the suggested categories" className="menu-item data-[disabled]:opacity-50">
+              <Tag aria-hidden className="h-4 w-4" /> Add categories · {suggested.count}
             </button>
           </MenuItem>
         )}

@@ -262,7 +262,7 @@ export function EditFoodLogModal({ entry, onClose }: Props) {
                 <span>Calories don't match protein, carbs and fat — {check.deltaPct}% off.</span>
               </div>
             )}
-            <button type="button" onClick={() => setGuessOpen(true)} className={chipClass('quiet', 'self-start')}>+ Save as Quick guess</button>
+            <button type="button" onClick={() => setGuessOpen(true)} className={chipClass('quiet', 'self-start')} title="Save as a Quick guess">+ Quick guess</button>
           </div>
         )}
 

@@ -124,7 +124,7 @@ function HiddenLooks({ hidden, onShowAgain }: { hidden: readonly Look[]; onShowA
       <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
         className="flex min-h-[36px] items-center gap-1 text-meta font-medium text-fg-muted transition-colors hover:text-fg-2">
         <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', open && 'rotate-180')} />
-        {hidden.length} snoozed or put away
+        <span title={`${hidden.length} snoozed or put away`}>Put away · {hidden.length}</span>
       </button>
       {open && (
         <ul className="-mx-2 flex flex-col">

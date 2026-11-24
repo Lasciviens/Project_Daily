@@ -21,7 +21,7 @@ export function MoneyChainButton({ item, chain }: { item: ShopItem; chain: Chain
   if (!isPossession(item) || item.accessory_of) return null
   return (
     <Button size="sm" variant="ghost" icon={<ArrowRightLeft />} onClick={() => modal.open({ kind: 'shop-chain', id: item.id })}
-      tip={chain && chain.nodes.length > 1 ? 'Open the money chain' : 'Try other prices — what if it cost or sold for more or less'}>
+      tip={chain && chain.nodes.length > 1 ? 'Chain — open the money chain' : 'What if — try other prices: it cost or sold for more or less'}>
       {chain && chain.nodes.length > 1 ? 'Chain' : 'What if'}
     </Button>
   )

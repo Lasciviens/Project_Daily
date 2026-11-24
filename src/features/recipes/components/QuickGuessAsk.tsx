@@ -88,8 +88,8 @@ function AskFooter({ ask, preset, onLog, onDescribe }: { ask: Ask; preset: Guess
   return (
     <div className="flex items-center justify-between gap-2">
       <button type="button" onClick={() => onDescribe(describeText(ask, preset))} className={chipClass('quiet', '-ml-1.5')}
-        title="Type what you had: the AI estimates it and you check the numbers before logging">
-        <Sparkles aria-hidden /> Describe it instead… <span className="text-fg-faint">AI</span>
+        title="Describe it instead — type what you had: the AI estimates it and you check the numbers before logging">
+        <Sparkles aria-hidden /> Describe <span className="text-fg-faint">AI</span>
       </button>
       <Button size="sm" variant="primary" onClick={onLog}>Log {ask.result.kcal} kcal</Button>
     </div>

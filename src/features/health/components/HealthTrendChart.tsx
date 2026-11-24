@@ -167,7 +167,7 @@ export function HealthTrendChart({
           onClose={close}
           title={pinned.title ?? (pinned.date ? fmtDayLong(pinned.date) : pinned.label)}
           actions={pinned.date
-            ? [...(onViewDay ? [{ label: 'View this day →', onClick: () => onViewDay(pinned.date as string) }] : []),
+            ? [...(onViewDay ? [{ label: 'This day →', onClick: () => onViewDay(pinned.date as string) }] : []),
                ...(extraActions?.(pinned.date) ?? [])]
             : []}
         >

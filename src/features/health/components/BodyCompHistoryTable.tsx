@@ -26,7 +26,7 @@ export function BodyCompHistoryTable({ reports }: { reports: BodyCompositionRepo
         className="btn-ghost btn-sm gap-1 self-start px-2 text-meta"
       >
         <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        {open ? 'Hide' : 'Show'} all scans ({reports.length})
+        <span title={`${open ? 'Hide' : 'Show'} all scans`}>Scans · {reports.length}</span>
       </button>
       {open && (
         <div className="overflow-x-auto -mx-3 sm:mx-0">

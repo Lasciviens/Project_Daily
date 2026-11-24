@@ -94,7 +94,7 @@ export function QuickRow({ item, price, onFindPrice }: { item: ShopItem; price: 
           </MenuItem>
           <MenuItem>
             <button type="button" className="menu-item" onClick={() => onFindPrice(item.id)}>
-              <Search aria-hidden className={MENU_ICON} /> {item.ean ? 'Change product' : 'Find a price'}
+              <Search aria-hidden className={MENU_ICON} /> {item.ean ? 'Change product' : 'Find price'}
             </button>
           </MenuItem>
           <MenuItem>

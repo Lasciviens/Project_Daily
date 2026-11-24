@@ -77,7 +77,7 @@ export default function WeekSheet({ tasks, onClose }: { tasks: Task[]; onClose: 
           <textarea value={text} onChange={e => setText(e.target.value)} rows={9} maxLength={1500} aria-label="The week's status text" className="input w-full resize-y py-2" aria-busy={write.isPending || undefined} />
           <p className="text-meta text-fg-muted">
             Written by AI{costNote(cost) ? ` (${costNote(cost)})` : ''} from your closed and open tasks, goals and notes — read it before you send it. Not saved.
-            {replaced !== null && <> <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => { setText(replaced); setReplaced(null) }}>Undo the rewrite</button></>}
+            {replaced !== null && <> <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => { setText(replaced); setReplaced(null) }} title="Undo the rewrite">Undo</button></>}
           </p>
         </div>
       )}

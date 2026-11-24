@@ -68,7 +68,7 @@ export function TraktCard() {
         {s?.connected && heldBack > 0 && (
           <div className="flex w-fit flex-col gap-2 rounded-control bg-surface-2 px-3 py-2 text-meta text-fg" data-tone="warn">
             <p>{heldBack} removal{heldBack === 1 ? '' : 's'} from Trakt are waiting — more than a sync makes on its own.</p>
-            <Button size="sm" variant="secondary" className="w-fit" onClick={applyRemovals} disabled={sync.isPending}>Review and apply</Button>
+            <Button size="sm" variant="secondary" className="w-fit" onClick={applyRemovals} disabled={sync.isPending} tip="Review and apply">Review</Button>
           </div>
         )}
         {s?.connected && s.tmdbToken === false && (

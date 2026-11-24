@@ -47,7 +47,7 @@ export function TgAnalyticsReview({ review, className = '' }: {
           onClick={openNeedsReview}
           className="tg-btn tg-btn-secondary min-h-[36px] w-full px-3 text-[13px] @[22rem]:w-auto [@media(pointer:coarse)]:min-h-[44px]"
         >
-          Open Needs review
+          <span title="Open Needs review">Needs review</span>
           <ChevronRight size={14} strokeWidth={2.2} aria-hidden />
         </button>
       </div>

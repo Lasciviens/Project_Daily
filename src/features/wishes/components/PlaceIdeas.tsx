@@ -23,7 +23,7 @@ export function PlaceIdeas({ title, city, country, notes, onNotes }: { title: st
     <div className="flex flex-col gap-2">
       <div>
         <Button size="sm" icon={<Sparkles />} loading={ask.isPending} disabled={!place} onClick={() => { void run() }}
-          title={place ? `Ideas for ${place}` : 'Name the city or the wish first'}>Ideas for this place</Button>
+          tip={place ? `Ideas for ${place}` : 'Ideas — name the city or the wish first'}>Ideas</Button>
       </div>
       {shown && (
         <div className="rounded-row border border-line bg-surface-2 p-3">
@@ -36,7 +36,7 @@ export function PlaceIdeas({ title, city, country, notes, onNotes }: { title: st
             {shown.ideas.map(i => <li key={i} className="break-words">{i}</li>)}
           </ul>
           <Button size="sm" variant="primary" icon={<Plus />} className="mt-2"
-            onClick={() => { onNotes(notesWithIdeas(notes, ideasBlock(shown.ideas, shown.fromSearch))); setShown(null) }}>Add to notes</Button>
+            onClick={() => { onNotes(notesWithIdeas(notes, ideasBlock(shown.ideas, shown.fromSearch))); setShown(null) }} tip="Add to the notes">Add</Button>
         </div>
       )}
     </div>

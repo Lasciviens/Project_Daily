@@ -162,7 +162,7 @@ export function QuickAiSheet({ open, initialText, store, noRush, onAdded, onClos
           )}
           {source?.kind === 'code' && rows.length > 0 && (
             <div className="pt-1">
-              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown || touched} tip="Check spelling with AI"
+              <Button size="sm" variant="ghost" icon={<Sparkles />} onClick={sortWithAi} loading={parse.isPending} disabled={!costKnown || touched} tip="Spelling — check it with AI"
                 title={touched ? 'You changed the list: the AI would start over. Put it back, or add first.' : 'The app kept your words as typed; the AI also fixes obvious typos.'}>
                 {costKnown ? `Spelling · ${upTo(worst)}` : 'Spelling'}
               </Button>

@@ -52,7 +52,7 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
     return (
       <StateCard icon={<LibraryBig {...ICON} />} title="Your library is empty" actions={<>
         <button type="button" className="tg-btn tg-btn-primary" onClick={() => useTgAddGame.getState().setOpen(true)}>
-          <Plus size={17} strokeWidth={2} />Add a game
+          <Plus size={17} strokeWidth={2} /><span title="Add a game">Add</span>
         </button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('steam')}>Open Steam</button>
         <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setAdvancedTab('playstation')}>Open PlayStation</button>
@@ -68,7 +68,7 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
     return (
       <StateCard icon={<SearchX {...ICON} />} title="No games match your search or filters" actions={
         <button type="button" className="tg-btn tg-btn-primary" onClick={clear}>
-          <FilterX size={17} strokeWidth={2} />Clear search &amp; filters
+          <FilterX size={17} strokeWidth={2} /><span title="Clear search and filters">Clear</span>
         </button>
       }>
         {search.trim() ? `Nothing here matches “${search.trim()}”. ` : ''}Clear them to see every game again.
@@ -89,7 +89,7 @@ export function TgEmptyState({ kind }: { kind: 'library' | 'filtered' | 'queue' 
   const narrowed = section === 'library' && statuses.length > 0
   return (
     <StateCard icon={<Inbox {...ICON} />} title="Nothing here yet" actions={narrowed && (
-      <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setStatus('all')}>Show all games</button>
+      <button type="button" className="tg-btn tg-btn-secondary" onClick={() => act().setStatus('all')} title="Show all games">All games</button>
     )}>
       {sectionHint(section, statuses)}
     </StateCard>

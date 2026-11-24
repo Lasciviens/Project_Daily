@@ -140,7 +140,7 @@ export function RuleSheet({ store, stores, rule, onClose }: { store: ShopStore; 
               {(['listed', 'any'] as const).map(a => (
                 <button key={a} type="button" role="radio" aria-checked={against === a} onClick={() => setAgainst(a)}
                   className={cx('chip px-3', against === a ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
-                  {a === 'any' ? 'Any shop in its country' : 'These stores'}
+                  <span title={a === 'any' ? 'Any shop in its country' : 'These stores'}>{a === 'any' ? 'Any shop' : 'These stores'}</span>
                 </button>
               ))}
             </div>

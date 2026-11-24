@@ -44,7 +44,7 @@ export function RecordListing({ r }: { r: ShopRecordModel }) {
   return (
     <div>
       <CardHeader title="Selling" variant="label" className="mb-1"
-        action={!open && !isLoading && <Button size="sm" variant="ghost" icon={<PenLine />} onClick={() => setWriting(true)} tip="Write the ad">Ad</Button>} />
+        action={!open && !isLoading && <Button size="sm" variant="ghost" icon={<PenLine />} onClick={() => setWriting(true)} tip="Ad — write it">Ad</Button>} />
       {!open && !isLoading && (
         <p className="text-meta text-fg-muted">Write the ad from your template for the marketplace, copy it and post it yourself — the app never posts anything. Then mark it listed here.</p>
       )}
@@ -74,17 +74,17 @@ export function RecordListing({ r }: { r: ShopRecordModel }) {
           {!pricing && (
             <div className="flex flex-wrap items-center gap-1.5">
               {open.status === 'listed'
-                ? <Button size="sm" icon={<Send />} onClick={() => set(open, { status: 'for_sale', for_sale_on: today }, `For sale${open.marketplace ? ` on ${open.marketplace}` : ''}`)} loading={change.isPending} tip="It's up for sale">For sale</Button>
+                ? <Button size="sm" icon={<Send />} onClick={() => set(open, { status: 'for_sale', for_sale_on: today }, `For sale${open.marketplace ? ` on ${open.marketplace}` : ''}`)} loading={change.isPending} tip="For sale — it's up now">For sale</Button>
                 : <Button size="sm" icon={<HandCoins />} onClick={() => modal.open({ kind: 'shop-sell', id: item.id })}>Sold</Button>}
-              <Button size="sm" variant="ghost" icon={<TrendingDown />} onClick={() => setPricing(true)} tip="Change the asking price">Price</Button>
+              <Button size="sm" variant="ghost" icon={<TrendingDown />} onClick={() => setPricing(true)} tip="Price — change the asking price">Price</Button>
               <Menu as="div" className="ml-auto">
                 <MenuButton className="icon-btn" aria-label="More for this listing" title="More">
                   <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
                 </MenuButton>
                 <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
-                  <MenuItem><button type="button" className="menu-item" onClick={() => setWriting(true)}>Edit the ad</button></MenuItem>
-                  {!open.ad_url && <MenuItem><button type="button" className="menu-item" onClick={() => setLinking(true)}>Add the ad's link</button></MenuItem>}
-                  <MenuItem><button type="button" className="menu-item text-danger" onClick={() => set(open, { status: 'withdrawn', ended_on: today }, `Taken down · ${item.title}`)}>Take it down</button></MenuItem>
+                  <MenuItem><button type="button" className="menu-item" onClick={() => setWriting(true)} title="Edit the ad">Edit ad</button></MenuItem>
+                  {!open.ad_url && <MenuItem><button type="button" className="menu-item" onClick={() => setLinking(true)} title="Add the ad's link">Ad link</button></MenuItem>}
+                  <MenuItem><button type="button" className="menu-item text-danger" onClick={() => set(open, { status: 'withdrawn', ended_on: today }, `Taken down · ${item.title}`)} title="Take it down">Take down</button></MenuItem>
                 </MenuItems>
               </Menu>
             </div>

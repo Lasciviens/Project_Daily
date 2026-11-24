@@ -110,8 +110,8 @@ export function SupplementDosesCard({ date, meals, renderRows, renderHeader, emp
       {(due.length > 1 || refill.length > 0 || paused.length > 0 || elsewhere.length > 0) && (
         <div className="flex flex-col gap-1.5 border-t border-line px-4 py-2">
           {due.length > 1 && (
-            <Button size="sm" icon={<Check />} disabled={busy} onClick={() => take.mutate({ doses: due })} className="self-start">
-              Take all due ({due.length})
+            <Button size="sm" icon={<Check />} disabled={busy} onClick={() => take.mutate({ doses: due })} className="self-start" tip="Take all the doses that are due">
+              Take all · {due.length}
             </Button>
           )}
           {refill.map(s => {

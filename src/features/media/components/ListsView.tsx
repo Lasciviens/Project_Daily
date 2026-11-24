@@ -71,7 +71,7 @@ export function ListsView({ onOpenDetail }: { onOpenDetail: OpenMediaDetail }) {
       {connected && pending.length > 0 && (
         <div data-tone="warn" className="tone-soft flex w-fit max-w-full flex-wrap items-center gap-3 rounded-row px-3 py-2 text-body">
           <span>{pending.length} list{pending.length === 1 ? ' is' : 's are'} only in this app, so Trakt can't see {pending.length === 1 ? 'it' : 'them'}.</span>
-          <Button size="sm" variant="primary" icon={<CloudUpload />} loading={putting} onClick={() => { void putAllOnTrakt() }}>Put {pending.length === 1 ? 'it' : 'all'} on Trakt</Button>
+          <Button size="sm" variant="primary" icon={<CloudUpload />} loading={putting} onClick={() => { void putAllOnTrakt() }} tip={`Trakt — put ${pending.length === 1 ? 'it' : 'all'} on Trakt`}>Trakt</Button>
         </div>
       )}
       <div className="grid grid-cols-1 items-start gap-4 @[56rem]:grid-cols-[17rem_minmax(0,1fr)]">

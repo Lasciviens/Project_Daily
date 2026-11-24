@@ -88,7 +88,7 @@ export function TgMergeDialog({ games, onClose }: Props) {
       <button type="button" onClick={onClose} className="tg-btn tg-btn-secondary">Cancel</button>
       {plan.offerHide && drop.play_status !== 'hidden' && (
         <button type="button" disabled={busy} onClick={() => hide.mutate({ id: drop.id, status: 'hidden' }, { onSuccess: onClose })} className="tg-btn tg-btn-secondary">
-          Hide the {LIBRARY_LABEL[drop.library] ?? drop.library} copy
+          <span title={`Hide the ${LIBRARY_LABEL[drop.library] ?? drop.library} copy`}>Hide copy</span>
         </button>
       )}
       <button type="button" disabled={!!plan.blocked || busy} onClick={() => setConfirm(true)} className="tg-btn tg-btn-primary disabled:opacity-50">

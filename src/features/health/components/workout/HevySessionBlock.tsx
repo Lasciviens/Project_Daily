@@ -67,7 +67,7 @@ export function HevySessionBlock({ workout, request, onClose }: {
           {/* The same formatter as the Apple duration above ("1h 05m"). */}
           <span className="font-normal text-fg-muted"> · {fmtDuration(hevySeconds)}</span>
         </p>
-        <Button size="sm" onClick={open}>{back ? 'Back to the Training session' : 'Open in Training'}</Button>
+        <Button size="sm" onClick={open} tip={back ? 'Back to the Training session' : 'Open in Training'}>{back ? 'Back' : 'Training'}</Button>
       </div>
       {stats ? (
         <>

@@ -91,8 +91,8 @@ function ResaleEvidence({ r, watch }: { r: ShopRecordModel; watch: ShopPriceWatc
         <CardHeader title="Evidence" variant="label" className="mb-1"
           action={!adding && (
             <span className="flex gap-1">
-              <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setAdding('ad')} tip="Note an ad you saw (its price)">Ad</Button>
-              <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setAdding('quote')} tip="Note a trade-in quote">Quote</Button>
+              <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setAdding('ad')} tip="Ad — note one you saw (its price)">Ad</Button>
+              <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setAdding('quote')} tip="Quote — note a trade-in quote">Quote</Button>
             </span>
           )} />
         {adding === 'ad' && <AdNoteForm itemId={item.id} known={marketplacesOf(templates)} onDone={() => setAdding(null)} />}
@@ -114,7 +114,7 @@ function ResaleEvidence({ r, watch }: { r: ShopRecordModel; watch: ShopPriceWatc
       {old.length > 0 && hasOldEstimate(item, today) && (
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           <span>{old.length === 1 ? 'This estimate is over six months old.' : `This and ${old.length - 1} more estimate${old.length === 2 ? ' are' : 's are'} over six months old.`}</span>
-          <Button size="sm" variant="ghost" icon={<RefreshCw />} className="text-accent-600" onClick={() => setUpdating(true)} tip="Update what they could sell for">Update</Button>
+          <Button size="sm" variant="ghost" icon={<RefreshCw />} className="text-accent-600" onClick={() => setUpdating(true)} tip="Update what it could sell for">Update</Button>
         </div>
       )}
       {updating && (

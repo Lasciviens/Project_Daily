@@ -127,8 +127,9 @@ export function BookSheet({ book, onClose }: { book: Book; onClose: () => void }
           </dl>
           {/* News issues live under Library → News; a book filed there by mistake comes back with one tap. */}
           <Button size="sm" disabled={update.isPending}
-            onClick={() => update.mutate({ id: book.id, patch: { kind: book.kind === 'news' ? 'book' : 'news' } })}>
-            {book.kind === 'news' ? 'This is a book, not news' : 'This is a news issue'}
+            onClick={() => update.mutate({ id: book.id, patch: { kind: book.kind === 'news' ? 'book' : 'news' } })}
+            tip={book.kind === 'news' ? 'A book — this is a book, not news' : 'News — this is a news issue'}>
+            {book.kind === 'news' ? 'A book' : 'News'}
           </Button>
         </div>
         <div className="flex min-w-0 flex-col gap-4">

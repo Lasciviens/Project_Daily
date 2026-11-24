@@ -186,7 +186,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}
             className="flex min-h-[44px] items-center gap-1.5 text-body font-semibold text-fg-muted transition-colors hover:text-fg-2">
             <ChevronDown aria-hidden className={cx('h-4 w-4 transition-transform', showDropped && 'rotate-180')} />
-            Not any more <span className="count-badge">{dropped.length}</span>
+            <span title="Not any more">Dropped</span> <span className="count-badge">{dropped.length}</span>
           </button>
           {showDropped && (
             <ul className="mt-1 flex max-w-2xl flex-col divide-y divide-line rounded-card border border-line bg-surface">

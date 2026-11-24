@@ -76,11 +76,11 @@ export function LoginPage() {
           {emailField}
           {error && <AuthNotice tone="danger">{error}</AuthNotice>}
           {notice && <AuthNotice tone="success">{notice}</AuthNotice>}
-          <Button type="submit" variant="primary" block loading={loading}>
-            {loading ? 'Sending…' : 'Send reset link'}
+          <Button type="submit" variant="primary" block loading={loading} tip="Send the reset link">
+            {loading ? 'Sending…' : 'Send link'}
           </Button>
-          <Button variant="ghost" icon={<ArrowLeft />} onClick={() => switchMode('signin')}>
-            Back to sign in
+          <Button variant="ghost" icon={<ArrowLeft />} onClick={() => switchMode('signin')} tip="Back to sign in">
+            Back
           </Button>
         </form>
       </AuthFrame>

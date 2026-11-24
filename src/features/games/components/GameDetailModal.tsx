@@ -520,9 +520,9 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                 <p className="text-base font-bold text-accent-600 mt-2">★ {game.rating} <span className="text-[10px] text-ink-400 font-normal">my rating</span></p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={handleQueueToggle}
+                <button onClick={handleQueueToggle} title={game.play_order != null ? 'Remove from the queue' : 'Add to the queue'}
                   className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-danger-soft text-danger hover:brightness-95' : 'bg-accent-50 text-accent-700 hover:bg-accent-100'}`}>
-                  {game.play_order != null ? `✕ Remove from Queue (#${game.play_order})` : '🎮 Add to Queue'}
+                  {game.play_order != null ? `✕ Queue #${game.play_order}` : '🎮 Queue'}
                 </button>
                 <button onClick={() => entityModal.open({ kind: 'time-block', defaults: { title: game.title, category: 'games', color: 'blue' } })} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
                 <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>

@@ -1,15 +1,32 @@
 // A short button's description on touch (owner, 24.11.2026: "Button names should be short … If you need the description;
-// show it when mouse is on it"). A mouse sees a button's `title`; a finger has no hover, so a finger RESTING on a button
-// (or a link or label with a `title`, or anything with `data-tip`) shows the same words in a small bubble above it, and
-// that press does not tap it. A quick tap still taps. One listener for the whole app, installed in idle time after the
+// show it when mouse is on it"). A mouse sees a control's `title`; a finger has no hover, so a finger RESTING on a control —
+// a button, link, label, tab, chip or menu line — shows its words (the nearest `data-tip` or `title`, else its accessible
+// name) in a small bubble above it, and that press does not tap it. A quick tap still taps; a text field is never touched. One listener for the whole app, installed in idle time after the
 // first paint (main.tsx), so it costs the first download nothing; every `IconButton` and every `Button tip` is covered.
 // Pure DOM, no React: scripts/verify-short-buttons.mjs checks the selector and the click guard.
 
-/** What a long press explains: a control with a title, or anything marked with data-tip. */
-export const TIP_TARGET = 'button[title], a[title], label[title], [role="button"][title], [data-tip]'
-/** How long a finger rests before the description shows, and how long it stays. */
-export const HOLD_MS = 450
+/** A control a long press may explain: a button, a link, a label, a tab, a chip, a menu line. */
+export const TIP_CONTROL = 'button, a, label, [role="button"], [role="tab"], [role="radio"], [role="menuitem"], .chip'
+/** Where the words are: the nearest `data-tip` or `title` at or around the press (inside the control, or the control itself). */
+export const TIP_SOURCE = '[data-tip], [title]'
+/** Never in a text field: a long press there selects, pastes or moves the caret (critic, 24.11.2026). */
+export const TIP_NEVER = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+/** How long a finger rests before the description shows (longer than a tap, shorter than iOS's own press menu), and how long it stays. */
+export const HOLD_MS = 575
 const SHOW_MS = 2500
+
+/**
+ * The element whose words a long press shows, or null: the press must be on a control and not in a text field; the words are
+ * the nearest `data-tip` / `title` inside that control (a tab's label span, an icon's button) or the control's own.
+ */
+export function tipTarget(target: Element | null): Element | null {
+  if (!target || target.closest(TIP_NEVER)) return null
+  const control = target.closest(TIP_CONTROL)
+  if (!control) return null
+  const source = target.closest(TIP_SOURCE)
+  if (source && (control.contains(source) || source.contains(control))) return source
+  return control.hasAttribute('aria-label') ? control : null
+}
 
 /** The words a long press shows for an element: its data-tip, else its title, else its accessible name. */
 export function tipOf(el: Element): string | null {
@@ -47,9 +64,9 @@ export function installLongPressTips(doc: Document = document): () => void {
     hide()
     held = null
     if (e.pointerType === 'mouse') return
-    const el = (e.target as Element | null)?.closest?.(TIP_TARGET)
+    const el = tipTarget(e.target instanceof Element ? e.target : null)
     const words = el ? tipOf(el) : null
-    if (!el || !words || (el as HTMLButtonElement).disabled) return
+    if (!el || !words || (el.closest('button') as HTMLButtonElement | null)?.disabled) return
     stop()
     timer = window.setTimeout(() => { timer = null; held = el; show(el, words) }, HOLD_MS)
   }
@@ -60,12 +77,15 @@ export function installLongPressTips(doc: Document = document): () => void {
   }
   const menu = (e: Event) => { if (held || timer != null) e.preventDefault() }
   const scrolled = () => { stop(); hide() }
+  // A key (a hardware keyboard, Enter on the control) ends a held press: the next click is the keyboard's, never swallowed.
+  const key = () => { held = null; stop(); hide() }
   doc.addEventListener('pointerdown', down, true)
   doc.addEventListener('pointerup', stop, true)
   doc.addEventListener('pointercancel', stop, true)
   doc.addEventListener('scroll', scrolled, true)
   doc.addEventListener('click', click, true)
   doc.addEventListener('contextmenu', menu, true)
+  doc.addEventListener('keydown', key, true)
   return () => {
     stop(); hide()
     doc.removeEventListener('pointerdown', down, true)
@@ -74,5 +94,6 @@ export function installLongPressTips(doc: Document = document): () => void {
     doc.removeEventListener('scroll', scrolled, true)
     doc.removeEventListener('click', click, true)
     doc.removeEventListener('contextmenu', menu, true)
+    doc.removeEventListener('keydown', key, true)
   }
 }

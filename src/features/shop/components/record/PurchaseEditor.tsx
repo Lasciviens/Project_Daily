@@ -71,7 +71,7 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1.5" role="radiogroup" aria-label="How it was bought">
           <ChoiceChip on={f.channel === 'online'} onClick={() => set({ channel: 'online' })}>Online</ChoiceChip>
-          <ChoiceChip on={f.channel === 'in_store'} onClick={() => set({ channel: 'in_store' })}>In a shop</ChoiceChip>
+          <ChoiceChip on={f.channel === 'in_store'} onClick={() => set({ channel: 'in_store' })} tip="In store — bought in a shop">In store</ChoiceChip>
         </div>
         {dayAndStore && (
           <select value={v.storeId} onChange={e => set({ storePick: e.target.value })} aria-label="Store" disabled={storesLoading}
@@ -98,7 +98,7 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
               Arrived
               {f.arrived
                 ? <DateInput value={f.arrived} onChange={d => set({ arrived: d })} min={f.day} max={today} aria-label="Arrived on" className="input input-sm w-[8.5rem] tabular-nums" />
-                : <Button size="sm" onClick={() => set({ arrived: today })} tip="Arrived today">Today</Button>}
+                : <Button size="sm" onClick={() => set({ arrived: today })} tip="Today — it arrived today">Today</Button>}
             </span>
           )}
         </div>
@@ -109,8 +109,8 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
       ) : <div className="flex flex-col gap-2 rounded-row border border-line bg-surface-2 p-3">
         <DateFact label="Return by" day={v.returnBy} today={today}
           action={v.returnOwn
-            ? <button type="button" onClick={() => set({ ownReturn: null })} title="Use the rules' date" className="text-meta font-semibold text-accent-600 hover:underline">Rules' date</button>
-            : <button type="button" onClick={() => set({ ownReturn: v.returnBy ?? f.day })} title="Set my own return date" className="text-meta font-semibold text-accent-600 hover:underline">Set my own</button>}>
+            ? <button type="button" onClick={() => set({ ownReturn: null })} title="Rules' date — use it" className="text-meta font-semibold text-accent-600 hover:underline">Rules' date</button>
+            : <button type="button" onClick={() => set({ ownReturn: v.returnBy ?? f.day })} title="Own date — set my own return date" className="text-meta font-semibold text-accent-600 hover:underline">Own date</button>}>
           {v.returnOwn
             ? <>
               <DateInput value={v.returnOwn} onChange={d => set({ ownReturn: d || null })} min={f.day} aria-label="Return by" className="input input-sm w-[8.5rem] tabular-nums" />

@@ -144,7 +144,7 @@ function DeadlineRows({ form, patch, open, toggle, config, today, goes }: {
                 <DateCalendar compact value={form.startDate || today} selected={form.startDate ? [form.startDate] : []} max={due} onPick={startDate => { patch({ startDate }); toggle(null) }} />
                 <p className="text-meta text-fg-muted">The earliest day to start; the deadline stays {displayDate(due)}.</p>
                 {form.startDate && (
-                  <button type="button" onClick={() => { patch({ startDate: '' }); toggle(null) }} className={chipClass('remove')}>Any time before</button>
+                  <button type="button" onClick={() => { patch({ startDate: '' }); toggle(null) }} title="Any time before" className={chipClass('remove')}>Any time</button>
                 )}
               </div>
             </Panel>

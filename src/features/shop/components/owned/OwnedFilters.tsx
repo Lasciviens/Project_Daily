@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { LayoutGrid, LayoutList, List, Search, SlidersHorizontal, Tag, X } from 'lucide-react'
-import { Button, IconButton, SegmentedControl, cx } from '../../../../shared/ui'
+import { Button, SegmentedControl, cx } from '../../../../shared/ui'
 import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { NO_OWNED_FILTERS, OWNED_SORT_LABEL, ownedFilterCount, type OwnedFilters, type OwnedShow, type OwnedSort } from '../../ownModel'
 import { filterRowMode } from '../../ownedRow'
@@ -46,7 +46,8 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
   const showMore = !behind || (open ?? picked > 0)
   const tops = categories.filter(c => !c.parent_id).sort((a, b) => a.name.localeCompare(b.name))
   // Content-sized (W3), up to a cap: the long "Electronics › Computers & Laptops" never takes the row.
-  const select = cx('select input-bar w-auto max-w-[12rem]', (mode === 'roomy' || mode === 'narrow') && 'w-full max-w-none')
+  // Folded, the selects share one wrapping row with To sell (a select grows, so the toggle never takes a line alone).
+  const select = cx('select input-bar w-auto max-w-[12rem]', (mode === 'roomy' || mode === 'narrow') && 'min-w-0 max-w-none flex-1 basis-40')
   // Folded: `order` puts the icons beside the search though they come last in the markup.
   const o = mode === 'narrow'
     ? { search: 'order-1', group: 'order-2', seg: 'order-3 w-full', sort: 'order-4', filters: 'order-5', more: 'order-6', clear: 'order-7' }
@@ -55,10 +56,10 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
       : { search: '', group: '', seg: '', sort: '', filters: '', more: '', clear: '' }
   const views = (
     <SegmentedControl<OwnedLayout> size="sm" label="How to show your things" value={layout} onChange={onLayout}
-      options={LAYOUTS.map(l => ({ value: l.value, label: <span title={l.label} className="flex items-center">{l.icon}<span className="sr-only">{l.label}</span></span> }))} />
+      options={LAYOUTS.map(l => ({ value: l.value, tip: l.label, label: <span className="flex items-center">{l.icon}</span> }))} />
   )
   const extras = (
-    <div className={cx(mode === 'full' ? 'contents' : mode === 'line' ? 'mt-2 flex flex-wrap items-center gap-2' : cx('flex w-full flex-col gap-2', o.more))}>
+    <div className={cx(mode === 'full' ? 'contents' : mode === 'line' ? 'mt-2 flex flex-wrap items-center gap-2' : cx('flex w-full flex-wrap items-center gap-2', o.more))}>
       <select value={filters.category} onChange={e => set({ category: e.target.value })} aria-label="Category" className={select}>
         <option value="all">All categories</option>
         {tops.map(t => [
@@ -74,9 +75,9 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
           {chains.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
       )}
-      {/* A switch as one icon (owner, 24.11.2026: short buttons): its words in the tooltip and the accessible name. */}
-      <IconButton bordered size="sm" label="Only things bought to sell" aria-pressed={filters.resaleOnly} onClick={() => set({ resaleOnly: !filters.resaleOnly })}
-        className={cx('shrink-0', filters.resaleOnly && 'border-accent-500 bg-accent-50 text-accent-600')}><Tag aria-hidden /></IconButton>
+      {/* A switch as a short word (owner, 24.11.2026: short buttons; critic: an icon alone was unclear): its words in the tooltip. */}
+      <Button size="sm" icon={<Tag />} aria-pressed={filters.resaleOnly} onClick={() => set({ resaleOnly: !filters.resaleOnly })} tip="To sell — only things bought to sell"
+        className={cx('shrink-0', filters.resaleOnly && '!border-accent-500 !bg-accent-50 !text-accent-600')}>To sell</Button>
     </div>
   )
   return (
@@ -89,7 +90,7 @@ export function OwnedFiltersCard({ filters, onChange, sort, onSort, categories, 
         </label>
         <div className={cx('shrink-0', o.seg)}>
           <SegmentedControl<OwnedShow> size="sm" fullWidth={mode === 'narrow'} value={filters.show} onChange={show => set({ show })}
-            options={[{ value: 'mine', label: 'Mine' }, { value: 'gone', label: <span title="Sold or gone">Gone</span> }, { value: 'all', label: 'All' }]} />
+            options={[{ value: 'mine', label: 'Mine', tip: 'Mine — still yours' }, { value: 'gone', label: 'Gone', tip: 'Gone — sold or gone' }, { value: 'all', label: 'All', tip: 'All — yours and gone' }]} />
         </div>
         <SortSelect value={sort} labels={OWNED_SORT_LABEL} onChange={onSort} className={cx(oneLine ? 'w-auto shrink-0' : 'min-w-0 flex-1 basis-32', o.sort)} />
         {behind && (

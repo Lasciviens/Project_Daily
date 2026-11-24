@@ -52,8 +52,8 @@ export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose, class
   return (
     <div className={className}>
       {task.parent_task_id && (
-        <Button block icon={<X />} onClick={() => choose(null)} disabled={setParent.isPending} className="mb-3">
-          Remove from parent (make top-level)
+        <Button block icon={<X />} onClick={() => choose(null)} disabled={setParent.isPending} className="mb-3" tip="Top-level — remove it from its parent">
+          Top-level
         </Button>
       )}
 

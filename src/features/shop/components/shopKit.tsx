@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
-import { ArrowUpDown, ChevronDown, ExternalLink, Link2, Package, Plus } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ExternalLink, Package } from 'lucide-react'
 import { Truncate, cx } from '../../../shared/ui'
 import { complete, type Amount } from '../ownModel'
 import { DisposalRibbon } from './DisposalRibbon'
@@ -59,16 +59,6 @@ export function SiteLink({ url, children, className }: { url: string | null | un
  * the native select lies invisible over it (the phone's own picker, the keys),
  * so the box keeps the row's text size — a visible select is 16px on touch.
  */
-/** "Link plus": a new money chain (lucide has no such icon — the link with a small plus at its corner). */
-export function LinkPlus() {
-  return (
-    <span aria-hidden className="relative inline-flex">
-      <Link2 className="h-[18px] w-[18px]" />
-      <Plus className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" strokeWidth={3} />
-    </span>
-  )
-}
-
 /** A sort as one short control: an icon and the order's own word; "Sort: …" in its title and accessible name. */
 export function SortSelect<T extends string>({ value, labels, onChange, className }: {
   value: T

@@ -20,7 +20,7 @@ export function ReceiptSession({ flow, onChain }: { flow: Flow; onChain: (id: st
       <p className="text-meta text-fg-muted"><span className="font-medium text-success">Saved: </span>{parts}</p>
       {flow.linkNote && <p className="mt-1 text-meta text-warn">{flow.linkNote}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {flow.chainId && <Button size="sm" icon={<Workflow />} onClick={() => onChain(flow.chainId as string)} tip="Open the money chain">Chain</Button>}
+        {flow.chainId && <Button size="sm" icon={<Workflow />} onClick={() => onChain(flow.chainId as string)} tip="Chain — open the money chain">Chain</Button>}
         <Button size="sm" variant="ghost" icon={<Undo2 />} loading={flow.undoing} onClick={() => { void flow.undoAll() }} tip="Undo all from these receipts">Undo all</Button>
       </div>
     </section>

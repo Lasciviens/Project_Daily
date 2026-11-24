@@ -37,7 +37,7 @@ export function BodyScaleCard({ range }: { range: HealthRange }) {
       <div className="border-t border-line pt-2">
         <button type="button" aria-expanded={scaleOpen} onClick={() => setScaleOpen(o => !o)} className="btn-ghost btn-sm -ml-2 gap-1 px-2 text-meta">
           <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${scaleOpen ? 'rotate-180' : ''}`} />
-          More from the scale
+          <span title="More from the scale">Scale details</span>
         </button>
         {scaleOpen && <BodyCompositionPanel from={win.from} to={anchor} />}
       </div>

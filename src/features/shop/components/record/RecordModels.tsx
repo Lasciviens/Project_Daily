@@ -13,7 +13,7 @@ import { useOpenRecord } from './recordOpen'
 export function AddModelButton({ wish }: { wish: ShopItem }) {
   const modal = useEntityModal()
   if (wish.status !== 'wishlist') return null
-  return <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })} tip="Add a model">Model</Button>
+  return <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => modal.open({ kind: 'shop-model', wishId: wish.id })} tip="Model — add one">Model</Button>
 }
 
 /**
@@ -83,7 +83,7 @@ export function RecordModels({ wish, models, watches, onBought }: { wish: ShopIt
                   </div>
                 )}
                 {m.status === 'dropped' && (
-                  <Button size="sm" variant="ghost" className="mt-1" onClick={() => update.mutate({ id: m.id, patch: { status: 'wishlist' }, quiet: true })} tip="Back in the running">Put back</Button>
+                  <Button size="sm" variant="ghost" className="mt-1" onClick={() => update.mutate({ id: m.id, patch: { status: 'wishlist' }, quiet: true })} tip="Put back in the running">Put back</Button>
                 )}
               </li>
             )
