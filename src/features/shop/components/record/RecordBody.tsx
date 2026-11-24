@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { Button, IconButton, SegmentedControl, TonePill, cx } from '../../../../shared/ui'
@@ -35,6 +35,9 @@ import { usePurchaseEdit, type PurchaseEditModel } from './usePurchaseEdit'
 import { FindPicture } from './FindPicture'
 import { useSavePicture } from './useFindPicture'
 import { ShopAutofill } from './ShopAutofill'
+import { recordAutofillPatch, recordShopDraft } from './recordAutofill'
+import type { Fact } from '../../autofillModel'
+import type { ShopDraft } from '../ShopItemForm'
 import { ReceiptPhoto } from './ReceiptPhoto'
 import { LookElsewhere } from '../purchase/LookElsewhere'
 import { useMarketSearches } from '../../hooks/useShopStores'
@@ -42,6 +45,7 @@ import { useOpenRecord } from './recordOpen'
 import { newCategoryMissing } from './useRecordDraft'
 import { sectionOfFact, type RecordFact } from '../../shopSuggestions'
 import type { ShopRecordModel } from './useShopRecord'
+import type { ReceiptFill } from '../../../ai/claude/featureRules'
 import type { CreateRecordModel } from './useCreateRecord'
 import type { PagePicture } from '../../productPicture'
 import type { ShopItem, ShopPriceWatch } from '../../types'
@@ -56,8 +60,8 @@ import type { ShopItem, ShopPriceWatch } from '../../types'
  * the receipt, the purchase facts, extra costs, money links — lives here, never in a frame.
  */
 export type RecordBodyProps =
-  | { mode: 'open'; r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money'; pill: 'phone' | 'none' }
-  | { mode: 'bought'; r: ShopRecordModel; p: PurchaseEditModel; bought: boolean }
+  | { mode: 'open'; r: ShopRecordModel; openFact?: RecordFact; openSection?: 'money' | 'purchase'; pill: 'phone' | 'none' }
+  | { mode: 'bought'; r: ShopRecordModel; p: PurchaseEditModel; bought: boolean; /** Opened from Read a receipt: its photo is not offered again. */ fromReceipt?: boolean }
   | { mode: 'add'; c: CreateRecordModel }
 
 export function RecordBody(props: RecordBodyProps) {
@@ -99,13 +103,15 @@ export function RecordBody(props: RecordBodyProps) {
 
   // Find picture, every mode: free from the thing's own pages first, the AI's search on a second tap (its cost on the button).
   const pages = useMemo(() => [...(c?.st.receipt?.pageUrls ?? []), ...(item.url ? [item.url] : [])], [c?.st.receipt?.pageUrls, item.url])
-  const onPicture = (pic: PagePicture) => {
-    if (!pic.image) return
-    if (c) c.takePicture(pic)
-    else savePicture.mutate({ item, image: pic.image })
+  /** Resolves once the picture is taken (adding: at once; a saved thing: when the write answered), so Use dismisses only then. */
+  const onPicture = (pic: PagePicture): Promise<boolean> => {
+    if (!pic.image) return Promise.resolve(false)
+    if (c) { c.takePicture(pic); return Promise.resolve(true) }
+    return savePicture.mutateAsync({ item, image: pic.image }).then(() => true, () => false)
   }
-  const finder = !item.image_url && !item.disposal && (mode !== 'bought' || props.mode === 'bought' && props.bought) && (
-    <FindPicture item={item} pages={pages} named={c ? c.st.receipt?.pageNamed ?? true : true} categories={categories} onUse={onPicture} saving={savePicture.isPending} />
+  const finder = !picture && (mode !== 'bought' || props.mode === 'bought' && props.bought) && (
+    <FindPicture key={pages.join(' ')} item={item} pages={pages} named={c ? c.st.receipt?.pageNamed ?? true : true} categories={categories} onUse={onPicture}
+      saving={savePicture.isPending} disabled={busy} />
   )
 
   // One line at every width (open): the buttons that fit in the room the row has, the rest behind ⋯ (recordActions.ts).
@@ -131,7 +137,7 @@ export function RecordBody(props: RecordBodyProps) {
             <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
               {more.map(a => (
                 <MenuItem key={a.key}>
-                  <button type="button" onClick={a.onClick} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.tip ?? a.label}</button>
+                  <button type="button" onClick={a.onClick} title={a.tip} aria-label={a.tip} className="menu-item"><span aria-hidden className="[&_svg]:h-4 [&_svg]:w-4">{a.icon}</span> {a.label}</button>
                 </MenuItem>
               ))}
             </MenuItems>
@@ -141,14 +147,14 @@ export function RecordBody(props: RecordBodyProps) {
     </div>
   )
 
-  const head = (r || picture) && (
+  const head = ((r && mode === 'open') || picture) && (
     <div className="flex items-start gap-3">
       {/* Only a real picture: an empty box took 80px beside the actions. A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
       {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's) — and
             with Find picture, so it costs no line of its own. Adding, Find picture sits in the line of the switch above. */}
-        {r && (((props.mode === 'open' && props.pill === 'phone' && r.pill) || (mode === 'open' && state === 'mine' && from)) || finder) && (
+        {r && mode === 'open' && (((props.pill === 'phone' && r.pill) || (state === 'mine' && from)) || finder) && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 empty:hidden">
             {props.mode === 'open' && props.pill === 'phone' && r.pill && <TonePill tone={r.pill.tone} className="w-fit sm:hidden">{r.pill.label}</TonePill>}
             {mode === 'open' && state === 'mine' && from && <p className="text-meta tabular-nums text-fg-muted">Yours for {item.approx_dates ? '≈ ' : ''}{durationLabel(from, today)}</p>}
@@ -168,8 +174,9 @@ export function RecordBody(props: RecordBodyProps) {
       <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
         {head}
         {r && mode === 'open' && <OpenLines r={r} sections={sections} />}
-        <Sections mode={mode} r={r} c={c} p={p} bought={props.mode === 'bought' ? props.bought : true} item={item} state={state} today={today} owned={owned}
-          watch={watch} sections={sections} d={d} narrow={rootWidth != null && rootWidth < 46} />
+        <Sections mode={mode} r={r} c={c} p={p} bought={props.mode === 'bought' ? props.bought : true} fromReceipt={props.mode === 'bought' && !!props.fromReceipt}
+          item={item} state={state} today={today} owned={owned} watch={watch} sections={sections} d={d} narrow={rootWidth != null && rootWidth < 46}
+          finder={mode === 'bought' ? finder : null} />
         {/* Delete (asks, then Undo) ends a saved record: the footer shows only with changes to save, so the Story keeps its room. */}
         {r && mode === 'open' && <Button variant="ghost" size="sm" icon={<Trash2 />} className="-ml-2 w-fit text-danger" onClick={() => { void r.del() }}>Delete</Button>}
       </fieldset>
@@ -235,12 +242,14 @@ function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
 }
 
 /** The sections, each once; a mode hides the ones it has no use for. */
-function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sections, d, narrow }: {
+function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owned, watch, sections, d, narrow, finder }: {
   mode: RecordBodyProps['mode']
   r: ShopRecordModel | null
   c: CreateRecordModel | null
   p: PurchaseEditModel | null
   bought: boolean
+  fromReceipt: boolean
+  finder: ReactNode
   item: ShopItem
   state: ShopRecordModel['state']
   today: string
@@ -257,7 +266,11 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
   const searches = useMarketSearches(item)
   // New vs used vs refurbished while it is to buy, whenever its numbers say something — with a link or without.
   const ownership = useOwnership(item, { items: r?.items ?? [], categories: r?.categories ?? c?.categories ?? [], watch, ctx: r?.ctx ?? EMPTY_CTX, on: !!open && state === 'buy' })
-  const [editPurchase, setEditPurchase] = useState(false)
+  // Open: the Purchase section edits in place — the ✎, and Bought on a wish in this record (never a second popup).
+  const editPurchase = !!r?.purchaseEditing
+  const setEditPurchase = (on: boolean) => { r?.setPurchaseEditing(on); if (!on) r?.setPurchaseDirty(false) }
+  const { show } = sections
+  useEffect(() => { if (editPurchase) show('purchase') }, [editPurchase, show])
   const itemCosts = useMemo(() => (r ? r.ctx.costs.get(item.id) ?? r.costs.filter(x => x.item_id === item.id) : []), [r, item.id])
   const story = useMemo(() => (r && open ? storyOf(item, { items: r.items, links: r.links, costs: itemCosts, today }) : []), [r, open, item, itemCosts, today])
 
@@ -273,7 +286,8 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
   // A thing still yours names its store in Purchase.
   const factsSummary = [state !== 'mine' && item.platform, from && `${item.approx_dates ? '≈ ' : ''}${formatDate(from)}`, r && r.accessories.length > 0 && `${r.accessories.length} accessor${r.accessories.length === 1 ? 'y' : 'ies'}`]
     .filter(Boolean).join(' · ') || undefined
-  const moneyOpen = !!r && (hasMoneyLinks(item) || owned || item.status === 'bought')
+  // Just bought has no Money section (guardian, 24.11.2026): its costs are the receipt's, in the Purchase editor.
+  const moneyOpen = !!open && (hasMoneyLinks(item) || owned || item.status === 'bought')
   const moneyAdd = !!c && c.owns
   const moneySummary = r?.chain && r.chain.nodes.length > 1 ? chainTitle(r.chain)
     : itemCosts.length ? `${itemCosts.length} extra cost${itemCosts.length === 1 ? '' : 's'}`
@@ -283,22 +297,27 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
   // Just bought is the Purchase part alone (the popup's title names it): no fold of its own.
   const purchase = mode === 'bought' && p
     ? (bought
-      ? <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={today} />
+      ? <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={today}
+        receipt={!fromReceipt} beside={finder} />
       : <p className="text-body text-fg-muted">It's on the wishlist again — nothing to fill in.</p>)
     : open && state === 'mine'
       ? box('purchase', 'Purchase', purchaseSummary(item, today),
         !editPurchase && <IconButton size="sm" label="Edit how it was bought" onClick={() => setEditPurchase(true)}><Pencil aria-hidden /></IconButton>,
-        editPurchase ? <PurchaseInPlace item={item} onDone={() => setEditPurchase(false)} /> : <RecordPurchase item={item} today={today} />)
+        editPurchase
+          ? <PurchaseInPlace item={item} onDone={() => setEditPurchase(false)} onDirty={r.setPurchaseDirty}
+            onReceiptFacts={f => d.set({ ...(f.day && f.day <= today ? { bought_day: f.day } : {}), ...(f.storeLabel ? { platform: f.storeLabel } : {}) })} />
+          : <RecordPurchase item={item} today={today} />)
       : c && state === 'mine'
         ? box('purchase', 'Purchase', c.purchaseForm ? undefined : 'optional', null, c.purchaseForm && c.purchase
-          ? <PurchaseEditor item={c.purchaseItem} form={c.purchaseForm} onForm={c.setPurchase} view={c.purchase} stores={c.stores} storesLoading={c.storesLoading} today={today} add />
+          ? <PurchaseEditor item={c.purchaseItem} form={c.purchaseForm} onForm={c.setPurchase} view={c.purchase} stores={c.stores} storesLoading={c.storesLoading} today={today}
+            dayAndStore={false} receipt={false} noDay={!c.st.draft.bought_day} />
           : null)
         : null
 
   const parts = (
     <div className="flex min-w-0 flex-col gap-2">
       {open && state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
-        <RecordModels wish={item} models={r.models} watches={r.watches} />)}
+        <RecordModels wish={item} models={r.models} watches={r.watches} onBought={id => r.replaceWith(id, 'purchase')} />)}
       {!c && purchase}
       {open && (item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
         <PriceCheckButton item={item} watch={watch} />, <>
@@ -312,9 +331,11 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
         <RecordResale r={r} watch={watch} />
       </>)}
       {mode !== 'bought' && box('facts', 'Facts', c ? undefined : factsSummary, null, <>
-        {/* One list of facts for every mode: adding opens every editor (`create`), the link is the autofill's. */}
+        {/* The link reader, scan and "Filled in for you" on a saved thing too (owner, 24.11.2026): the same autofill, onto the record's draft. */}
+        {r && state !== 'general' && <OpenAutofill r={r} narrow={narrow} />}
+        {/* One list of facts for every mode: adding opens every editor (`create`); the link is the autofill's (but a general wish's). */}
         <RecordFacts item={c ? c.base : item} d={d} state={state} categories={r?.categories ?? c?.categories ?? []} today={today} parents={r ? r.parents : c?.parents}
-          create={c ? { without: state === 'general' ? [] : ['link'] } : undefined} />
+          create={c ? { without: state === 'general' ? [] : ['link'] } : undefined} without={r && state !== 'general' ? ['link'] : []} />
         {r && !item.accessory_of && state !== 'general' && <RecordAccessories item={item} accessories={r.accessories} ctx={r.ctx} canAdd={state === 'mine'} />}
       </>)}
       {c && purchase}
@@ -343,18 +364,49 @@ function Sections({ mode, r, c, p, bought, item, state, today, owned, watch, sec
 
 const EMPTY_CTX = { costs: new Map() } as unknown as ShopRecordModel['ctx']
 
-/** A saved thing's purchase facts, edited in place (open): the same editor as Just bought, its own Save and Cancel. */
-function PurchaseInPlace({ item, onDone }: { item: ShopItem; onDone: () => void }) {
-  const p = usePurchaseEdit(item)
+/**
+ * A saved thing's purchase facts, edited in place (open): the same editor as Just bought, its own Save and Cancel. The day
+ * and the store are the record's Facts (one editor each); a receipt's day and store go there, into the record's draft.
+ */
+function PurchaseInPlace({ item, onDone, onDirty, onReceiptFacts }: { item: ShopItem; onDone: () => void; onDirty: (dirty: boolean) => void; onReceiptFacts: (fill: ReceiptFill) => void }) {
+  const p = usePurchaseEdit(item, undefined, { inPlace: true })
+  useEffect(() => { onDirty(p.dirty) }, [p.dirty, onDirty])
   return (
     <fieldset disabled={p.saving} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
-      <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={p.today} />
+      <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={p.today}
+        dayAndStore={false} onReceiptFacts={onReceiptFacts} />
       <div className="flex gap-2">
         <Button size="sm" variant="primary" onClick={() => p.submit(onDone)} loading={p.saving} disabled={!p.valid}>Save</Button>
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
       </div>
     </fieldset>
   )
+}
+
+/**
+ * A saved thing's link reader, scan and "Filled in for you": the add's autofill on the record's draft (`recordAutofill.ts`) —
+ * it fills only empty fields and writes nothing; the record's Save does. Its facts list starts again after a save.
+ */
+function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
+  const [facts, setFacts] = useState<Fact[]>([])
+  const latest = useRef({ item: r.item, draft: r.d.draft, facts })
+  useEffect(() => { latest.current = { item: r.item, draft: r.d.draft, facts } })
+  // A save (the row's new stamp) starts the list again — worked out while rendering, React's way to follow a prop.
+  const saved = r.item.updated_at
+  const [seenSaved, setSeenSaved] = useState(saved)
+  if (seenSaved !== saved) { setSeenSaved(saved); setFacts([]) }
+  const { set } = r.d
+  const categories = r.categories
+  const apply = (patch: Partial<ShopDraft>) => {
+    const now = latest.current
+    if (patch.facts) setFacts(patch.facts)
+    set(recordAutofillPatch(now.item, now.draft, categories, now.facts, patch))
+  }
+  const update = (change: (d: ShopDraft) => Partial<ShopDraft>) => {
+    const now = latest.current
+    apply(change(recordShopDraft(now.item, now.draft, categories, now.facts)))
+  }
+  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} />
 }
 
 /** Adding: the link reader, scan and "Filled in for you"; a receipt (handed to Read a receipt); the receipt's other lines. */

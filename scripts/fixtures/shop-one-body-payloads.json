@@ -441,6 +441,43 @@
         }
       ],
       "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · a receipt with only a total, its price used": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": "2027-01-03",
+        "warranty_until": "2031-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "price": 3290,
+        "currency": "NOK",
+        "platform": "Elkjøp",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [],
+      "done": "Purchase saved — return by 03.01.2027"
+    },
+    "just bought · from Read a receipt (the hand-off), the store not one of yours": {
+      "patch": {
+        "bought_channel": "online",
+        "arrived_on": null,
+        "return_by": null,
+        "warranty_until": "2028-11-19",
+        "extra_warranty_until": null,
+        "receipt_note": "Order 1234",
+        "platform": "Corner Shop",
+        "bought_at": "2026-11-19T11:00:00.000Z"
+      },
+      "costs": [
+        {
+          "label": "Shipping",
+          "amount": 99,
+          "currency": "NOK",
+          "spent_on": "2026-11-19"
+        }
+      ],
+      "done": "Purchase saved"
     }
   }
 }

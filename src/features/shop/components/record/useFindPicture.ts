@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../../../../app/store'
 import { useMutationWithFeedback } from '../../../../shared/hooks/useMutationWithFeedback'
@@ -8,10 +8,11 @@ import { describeClaude } from '../../../ai/claude/claudeApi'
 import { tidyThing } from '../../../ai/claude/featureJobs'
 import { ClaudeJobError } from '../../../ai/claude/claudeApi'
 import { updateShopItem } from '../../api/shopApi'
+import { useReportAiSave } from '../../../ai/claude/hooks/useReportAiSave'
 import { usePreferredHosts, useProductPicture } from '../../hooks/useProductPicture'
 import { categoryPath } from '../../shopModel'
 import { readTidySuggestion, tidyCategories, tidyInputFor, tidyWorstCost } from '../../tidyModel'
-import type { PagePicture } from '../../productPicture'
+import { picturePatch, pictureUndoPatch, type PagePicture } from '../../productPicture'
 import type { ShopCategory, ShopItem } from '../../types'
 
 /**
@@ -34,6 +35,9 @@ export function useFindPicture({ item, pages, named = true, categories }: {
 }) {
   const readPicture = useProductPicture()
   const preferred = usePreferredHosts()
+  const learn = useReportAiSave()
+  // The AI search's call: what the owner did with its picture goes back to the learn loop (as Tidy up's saves do).
+  const callId = useRef<string | null>(null)
   const [state, setState] = useState<'idle' | 'reading' | 'searching' | 'done'>('idle')
   const [found, setFound] = useState<PagePicture | null>(null)
   const [freeTried, setFreeTried] = useState(false)
@@ -70,8 +74,9 @@ export function useFindPicture({ item, pages, named = true, categories }: {
     setState('searching')
     try {
       const hosts = await preferred()
-      const { result, costUsd: cost } = await tidyThing({ ...tidyInputFor(item, cats, pathOf), ...(hosts.length ? { preferred_hosts: hosts } : {}) })
+      const { result, costUsd: cost, callId: id } = await tidyThing({ ...tidyInputFor(item, cats, pathOf), ...(hosts.length ? { preferred_hosts: hosts } : {}) })
       setCostUsd(cost)
+      callId.current = id
       const s = readTidySuggestion(result, item, new Set(cats.map(c => c.id)))
       if (!s?.page_urls?.length) setFound({ image: null, host: null, note: 'The search found no product page — no picture.' })
       else setFound(await readPicture(s.page_urls, item.title, s.page_named))
@@ -84,7 +89,14 @@ export function useFindPicture({ item, pages, named = true, categories }: {
   return {
     /** What the button does next: read the thing's own pages (free) or search with the AI (costs). */
     free, worstUsd, costUsd, busy: state === 'reading' || state === 'searching', searching: state === 'searching',
-    found, find, dismiss: () => setFound(null),
+    found, find,
+    /** The owner took the picture (true) or said No: the suggestion goes, and an AI search's call learns which. */
+    done: (used: boolean) => {
+      const id = callId.current
+      callId.current = null
+      setFound(null)
+      if (id) learn.mutate(used ? { callId: id, saved: { picture: true } } : { callId: id, saved: {}, dismissed: true })
+    },
   }
 }
 
@@ -94,17 +106,17 @@ export function useSavePicture() {
   const put = useMutationWithFeedback({
     action: 'undo_shop_picture',
     successMessage: 'Picture put back',
-    mutationFn: ({ id, image }: { id: string; image: string | null }) => updateShopItem(id, { image_url: image }),
+    mutationFn: ({ id, patch }: { id: string; patch: { image_url: string | null } }) => updateShopItem(id, patch),
     onSuccess: (row: ShopItem) => putRowsInCache(qc, qk.shop.items(), [row]),
     invalidates: [qk.shop.items()],
   })
   return useMutationWithFeedback({
     action: 'save_shop_picture',
     silent: 'its own toast reports it with Undo ("Picture saved · Undo")',
-    mutationFn: ({ item, image }: { item: ShopItem; image: string }) => updateShopItem(item.id, { image_url: image }),
+    mutationFn: ({ item, image }: { item: ShopItem; image: string }) => updateShopItem(item.id, picturePatch(image)),
     onSuccess: (row: ShopItem, { item }) => {
       mapRowsInCache<ShopItem>(qc, qk.shop.items(), new Set([row.id]), () => row)
-      toast.undo('Picture saved', () => put.mutate({ id: item.id, image: item.image_url ?? null }))
+      toast.undo('Picture saved', () => put.mutate({ id: item.id, patch: pictureUndoPatch(item) }))
     },
     invalidates: [qk.shop.items()],
   })

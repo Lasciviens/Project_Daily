@@ -13,9 +13,9 @@ import { categoryPath, currencyOf, listOf } from '../../shopModel'
 import { STATE_PILL } from './useShopRecord'
 import { isNewCategory, newPickOf, NEW_CATEGORY, type RecordDraftApi } from './useRecordDraft'
 import { useSaveCategory } from './useSaveCategory'
-import { purchaseAtCreate, purchaseFormOf, purchaseView, type PurchaseForm } from './purchaseDraft'
+import { purchaseAtCreate, purchaseFormOf, purchaseTouched, purchaseView, type PurchaseForm } from './purchaseDraft'
 import {
-  applyDraftPatch, applyPreset, baseItem, blankState, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withPagePicture, withReceipt, withShopPatch,
+  applyDraftPatch, applyPreset, baseItem, blankState, costsAtSave, hadFill, linksAtSave, hasMoney, inputOf, isDirty, missingFor, quietSave, shopDraftOf, stateOf, viewOf, withPagePicture, withReceipt, withShopPatch,
   type CreateBatch, type CreateSpec, type CreateState, type DraftCost,
 } from './createDraft'
 import { middayIso } from '../../../media/watchedWhen'
@@ -126,7 +126,13 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
   const purchaseForm: PurchaseForm | null = st.purchase ? { ...st.purchase, day: st.draft.bought_day || today } : null
   const purchase = purchaseForm ? purchaseView(purchaseItem, purchaseForm, purchaseCtx) : null
   const setPurchase = (f: PurchaseForm | null) => patch(s => ({ ...s, purchase: f }))
-  const openPurchase = () => { if (!st.purchase) setPurchase(purchaseFormOf(purchaseItem, purchaseCtx)) }
+  const openPurchase = () => {
+    if (st.purchase) return
+    const seed = purchaseFormOf(purchaseItem, purchaseCtx)
+    patch(s => ({ ...s, purchase: seed, purchaseSeed: seed }))
+  }
+  // A changed Purchase that does not hold (an arrival before the purchase day, a note too long) holds Save back.
+  const purchaseWrong = kind === 'mine' && !!purchase && purchaseTouched(purchaseForm, st.purchaseSeed ?? null) && !purchase.valid
 
   const path = categoryPath(v.category_id && !v.category_id.startsWith('new:') ? v.category_id : null, categories)
   const named = v.title.trim()
@@ -137,7 +143,7 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
   const subtitle = [batch ? `${named ? label : batch.labels[index]}` : named ? label : null,
     spec.parent && spec.preset !== 'wish' ? `${spec.preset === 'model' ? 'A model of' : 'Accessory of'} ${spec.parent.title}` : null,
     path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null].filter(Boolean).join(' · ') || undefined
-  const missing = missingFor(spec, st, today)
+  const missing = missingFor(spec, st, today) ?? (purchaseWrong ? 'an arrival on or after the day it was bought' : null)
   const unsaved = (s: CreateState) => !s.savedId && !s.skipped && isDirty(s)
 
   /** The next line that is neither saved nor skipped, after this one first and then from the start; null when none is left. */
@@ -177,7 +183,7 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
       const categoryId = await saveCategory.resolve(s.draft.category_id, s.draft, categories)
       const n = s.costs.filter(c => c.on).length
       // The Purchase part only when the owner opened it, and only for a thing still owned (one that left has no deadlines to keep).
-      const bought = kind === 'mine' ? purchaseAtCreate(purchaseForm, purchase) : {}
+      const bought = kind === 'mine' ? purchaseAtCreate(purchaseForm, purchase, s.purchaseSeed ?? null) : {}
       row = await create.mutateAsync({ quiet: quietSave(spec, another), note: [madeCategory(s), n ? `${n} extra ${n === 1 ? 'cost' : 'costs'}` : undefined].filter(Boolean).join(' · ') || undefined, input: { ...inputOf(spec, s, categoryId, categories), ...bought } })
     } catch { setSaving(false); return }
     try {
@@ -200,7 +206,7 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
     // The extra costs ticked on this draft (a receipt's, or typed): written with the thing, on its day; a failure toasts, the thing stays saved.
     const wanted = s.costs.filter(c => c.on)
     if (wanted.length) {
-      try { await costsOf.mutateAsync(wanted.map(c => ({ item_id: row.id, label: c.label, amount: c.amount, currency: c.currency as ShopCurrency, spent_on: s.draft.bought_day || today }))) } catch { /* the hook toasted it */ }
+      try { await costsOf.mutateAsync(costsAtSave(s, row.id, today)) } catch { /* the hook toasted it */ }
     }
     onSaved?.(row)
     if (row.url && row.list !== 'quick') check([row.id])

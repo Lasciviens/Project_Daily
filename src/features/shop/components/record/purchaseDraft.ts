@@ -28,6 +28,12 @@ export interface PurchaseForm {
   channel: Channel | null
   arrived: string
   years: 2 | 5
+  /**
+   * The owner chose the complaint day: tapped 2 / 5 years, Keep or the receipt's date. Until then the years follow the
+   * thing's category as it is now (a category picked after the form opened never leaves stale years), and an add writes no
+   * complaint day of its own (critic, 24.11.2026).
+   */
+  complainSet: boolean
   keepComplain: boolean
   /** The owner's own return date; null = the rules' date; undefined = as the row had it. */
   ownReturn: string | null | undefined
@@ -59,7 +65,7 @@ export function purchaseFormOf(item: ShopItem, ctx: Pick<PurchaseCtx, 'categorie
   const complainOwn = storedYears == null && item.warranty_until ? item.warranty_until : null
   return {
     storePick: null, otherName: null, day: boughtDayOf(item) ?? ctx.today, channel: item.bought_channel ?? null, arrived: item.arrived_on ?? '',
-    years: storedYears ?? suggested, keepComplain: complainOwn != null, ownReturn: undefined, extra: item.extra_warranty_until ?? '', note: item.receipt_note ?? '',
+    years: storedYears ?? suggested, complainSet: false, keepComplain: complainOwn != null, ownReturn: undefined, extra: item.extra_warranty_until ?? '', note: item.receipt_note ?? '',
     rd: null, usePaid: false, useReceiptComplain: false, costOff: [], last: { store: null, day: null, other: null },
   }
 }
@@ -80,7 +86,9 @@ export function purchaseView(item: ShopItem, f: PurchaseForm, ctx: PurchaseCtx) 
   const storedYears = complaintYearsOf(item)
   // The deadlines as the form stands; a date the owner set before stays theirs (shown beside the rules' one).
   const draft = { ...item, bought_at: middayIso(f.day), bought_channel: f.channel, arrived_on: f.channel === 'online' ? f.arrived || null : null }
-  const facts = factsOf(draft, store, f.years)
+  // The years as chosen, else the row's own, else what the category suggests now.
+  const years = f.complainSet ? f.years : storedYears ?? suggestedYears
+  const facts = factsOf(draft, store, years)
   const dl: PurchaseDeadlines | null = facts ? purchaseDeadlines(facts, { store, rules, law }) : null
   const firstFacts = factsOf(item, first)
   const initial = firstFacts ? purchaseDeadlines(firstFacts, { store: first, rules, law }) : null
@@ -100,7 +108,7 @@ export function purchaseView(item: ShopItem, f: PurchaseForm, ctx: PurchaseCtx) 
   const complainBy = f.useReceiptComplain && rd?.fill.warrantyUntil ? rd.fill.warrantyUntil : f.keepComplain && complainOwn ? complainOwn : dl?.complaintBy?.day ?? null
   const valid = !!f.day && f.day <= today && (!f.arrived || f.channel !== 'online' || f.arrived >= f.day) && f.note.length <= NOTE_MAX
   return {
-    pickable, storeId, store, other, boughtDay, suggestedYears, dl, returnOwn, complainOwn, returnBy, complainBy,
+    pickable, storeId, store, other, boughtDay, suggestedYears, years, dl, returnOwn, complainOwn, returnBy, complainBy,
     paid, paidCur, noLine, line, costs, costOn: (c: { label: string; amount: number }) => !f.costOff.includes(costKey(c)), receiptWarranty, valid,
   }
 }
@@ -163,17 +171,35 @@ export function purchaseWrite(item: ShopItem, f: PurchaseForm, v: PurchaseView):
 }
 
 /**
- * The purchase facts a thing being ADDED carries, only when the owner opened its Purchase part and set them (`touched`): how it was
- * bought, Arrived, the return and complaint days and the extra warranty and receipt note — the day, the store and the price are the
- * add's own facts, never written twice. An untouched Purchase writes nothing, so an add saves exactly what it saved before.
+ * The form the open record's in-place editor works on: the row's own day and no store pick — the record's Facts own both, so
+ * a Facts edit made meanwhile is never written back from a stale form (guardian, 24.11.2026).
  */
-export function purchaseAtCreate(f: PurchaseForm | null, v: PurchaseView | null): Partial<Pick<ShopItem, 'bought_channel' | 'arrived_on' | 'return_by' | 'warranty_until' | 'extra_warranty_until' | 'receipt_note'>> {
-  if (!f || !v) return {}
-  const out: Partial<Pick<ShopItem, 'bought_channel' | 'arrived_on' | 'return_by' | 'warranty_until' | 'extra_warranty_until' | 'receipt_note'>> = {}
+export function inPlaceForm(f: PurchaseForm, item: ShopItem, today: string): PurchaseForm {
+  return { ...f, day: boughtDayOf(item) ?? today, storePick: null, otherName: null }
+}
+
+/** The parts of a form the owner sets (never the day or the store — an add's own facts — nor what is worked out from them). */
+const chosen = (f: PurchaseForm) => JSON.stringify([f.channel, f.arrived, f.ownReturn ?? null, f.complainSet, f.complainSet ? f.years : null, f.keepComplain, f.useReceiptComplain, f.extra, f.note])
+
+/** Whether the owner changed anything on the form since it opened (`seed`). */
+export const purchaseTouched = (f: PurchaseForm | null, seed: PurchaseForm | null): boolean => !!f && !!seed && chosen(f) !== chosen(seed)
+
+type CreatePurchase = Partial<Pick<ShopItem, 'bought_channel' | 'arrived_on' | 'return_by' | 'warranty_until' | 'extra_warranty_until' | 'receipt_note'>>
+
+/**
+ * The purchase facts a thing being ADDED carries — never made up (guardian and critic, 24.11.2026): nothing unless the owner
+ * changed the form since it opened (`seed`; opening and closing it writes nothing) and the form holds (`v.valid`); then how it
+ * was bought, Arrived, a return day only when the owner set their own, a complaint day only when they chose one (years, Keep or
+ * the receipt's), the extra warranty and the receipt note. The rules' dates are shown, never stored for an add: they would be
+ * worked out from facts typed on the same screen and freeze a guess. The day, the store and the price are the add's own facts.
+ */
+export function purchaseAtCreate(f: PurchaseForm | null, v: PurchaseView | null, seed: PurchaseForm | null): CreatePurchase {
+  if (!f || !v || !purchaseTouched(f, seed) || !v.valid) return {}
+  const out: CreatePurchase = {}
   if (f.channel) out.bought_channel = f.channel
   if (f.channel === 'online' && f.arrived) out.arrived_on = f.arrived
-  if (v.returnBy) out.return_by = v.returnBy
-  if (v.complainBy) out.warranty_until = v.complainBy
+  if (typeof f.ownReturn === 'string' && f.ownReturn) out.return_by = f.ownReturn
+  if (f.complainSet && v.complainBy) out.warranty_until = v.complainBy
   if (f.extra) out.extra_warranty_until = f.extra
   if (f.note.trim()) out.receipt_note = f.note.trim()
   return out

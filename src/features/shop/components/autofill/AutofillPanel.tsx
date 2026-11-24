@@ -37,15 +37,18 @@ const TITLE_REST_MS = 500
  * anything else offers "Find it" with its digits; a title asks only the owner's own history. Possible duplicates
  * are named, never a block on Add.
  */
-export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false }: {
+export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   update: DraftUpdate
   categories: readonly ShopCategory[]
   /** The "Filled in for you" list folds to one line (a narrow screen). */
   collapsible?: boolean
+  /** A saved thing's own id (the open record): it is never its own duplicate, nor its own history. */
+  selfId?: string
 }) {
-  const { data: items = [] } = useShopItems()
+  const { data: allItems = [] } = useShopItems()
+  const items = useMemo(() => (selfId ? allItems.filter(i => i.id !== selfId) : allItems), [allItems, selfId])
   const { data: storeRows } = useShopStores()
   // The stores and marketplaces are rows (191): a link's store and "Find it"'s search links come from them.
   const stores = useMemo(() => storeRowsOf(storeRows ?? []), [storeRows])

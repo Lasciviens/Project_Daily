@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Button } from '../../../../shared/ui'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { formatDate } from '../../../../shared/utils/dateFormat'
@@ -6,16 +7,18 @@ import { ChoiceChip } from '../shopPickers'
 import { ReceiptPhoto } from './ReceiptPhoto'
 import { RecordCosts } from './RecordCosts'
 import { NOTE_MAX, OTHER_STORE, withReceiptOnForm, type PurchaseForm, type PurchaseView } from './purchaseDraft'
+import type { ReceiptFill, ReceiptRead } from '../../../ai/claude/featureRules'
 import type { ShopItem, ShopStore } from '../../types'
 
 /**
  * The one body's Purchase editor (every mode where a thing is yours): online or in a shop, where, the day, Arrived, the return
  * and complaint days with their reasons (the store's rules and Norway's law — each date explains itself, the earlier one when
  * unsure), "Set my own", the complaint years, an extra warranty, the receipt as a note, and what a read receipt adds (the
- * paid price as a chip, the warranty's day, its extra costs ticked). `add`: a thing being added names its store and day in
- * its Facts, so they are not asked twice here. Until Arrived is tapped every count starts on the purchase day.
+ * paid price as a chip, the warranty's day, its extra costs ticked). `dayAndStore` false: the day and the store are the
+ * thing's Facts (adding, and a saved record — one editor each, guardian 24.11.2026), so they are shown there, never edited twice.
+ * Until Arrived is tapped every count starts on the purchase day.
  */
-export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesLoading, today, add = false, receipt = true }: {
+export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesLoading, today, dayAndStore = true, receipt = true, noDay = false, beside, onReceiptFacts }: {
   item: ShopItem
   form: PurchaseForm
   onForm: (next: PurchaseForm) => void
@@ -23,16 +26,31 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
   stores: readonly ShopStore[]
   storesLoading?: boolean
   today: string
-  add?: boolean
+  /** The store and the day edited here (Just bought); false where the Facts hold them. */
+  dayAndStore?: boolean
   /** Offer "From a receipt" (one file fills this form). */
   receipt?: boolean
+  /** No purchase day yet (a thing being added): the deadlines wait for it instead of counting from a guess. */
+  noDay?: boolean
+  /** What shares the receipt's row (Find picture), so it takes no line of its own. */
+  beside?: ReactNode
+  /** Where the Facts hold the day and the store: the receipt's day and store go there (the record's draft, saved with its Save). */
+  onReceiptFacts?: (fill: ReceiptFill) => void
 }) {
   const set = (p: Partial<PurchaseForm>) => onForm({ ...f, ...p })
   const rd = f.rd
   return (
     <div className="flex flex-col gap-3">
-      {receipt && !add && (
-        <ReceiptPhoto stores={stores} pickLines={false} onFill={(fill, read) => onForm(withReceiptOnForm(f, fill, read, v.boughtDay, today))} />
+      {(receipt || beside) && (
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          {receipt && (
+            <ReceiptPhoto stores={stores} pickLines={false} onFill={(fill: ReceiptFill, read: ReceiptRead) => {
+              onForm(withReceiptOnForm(f, fill, read, v.boughtDay, today))
+              if (!dayAndStore) onReceiptFacts?.(fill)
+            }} />
+          )}
+          {beside && <div className="ml-auto">{beside}</div>}
+        </div>
       )}
       {rd && (
         <div className="flex flex-col gap-1.5">
@@ -55,7 +73,7 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
           <ChoiceChip on={f.channel === 'online'} onClick={() => set({ channel: 'online' })}>Online</ChoiceChip>
           <ChoiceChip on={f.channel === 'in_store'} onClick={() => set({ channel: 'in_store' })}>In a shop</ChoiceChip>
         </div>
-        {!add && (
+        {dayAndStore && (
           <select value={v.storeId} onChange={e => set({ storePick: e.target.value })} aria-label="Store" disabled={storesLoading}
             className="select input-sm w-auto min-w-0 max-w-[14rem] flex-1">
             <option value="">Which store?</option>
@@ -64,12 +82,12 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
           </select>
         )}
       </div>
-      {!add && v.storeId === OTHER_STORE && (
+      {dayAndStore && v.storeId === OTHER_STORE && (
         <input value={v.other} onChange={e => set({ otherName: e.target.value })} placeholder="The store's name" aria-label="Store name" className="input input-sm max-w-sm" />
       )}
-      {(!add || f.channel === 'online') && (
+      {(dayAndStore || f.channel === 'online') && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {!add && (
+          {dayAndStore && (
             <label className="flex items-center gap-2 text-meta font-medium text-fg-muted">
               Bought on
               <DateInput value={f.day} onChange={d => d && set({ day: d })} max={today} aria-label="Bought on" className="input input-sm w-[8.5rem] tabular-nums" />
@@ -86,7 +104,9 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
         </div>
       )}
 
-      <div className="flex flex-col gap-2 rounded-row border border-line bg-surface-2 p-3">
+      {noDay ? (
+        <p className="text-meta text-fg-muted">The return and complaint days show once the day it was bought is set (Facts).</p>
+      ) : <div className="flex flex-col gap-2 rounded-row border border-line bg-surface-2 p-3">
         <DateFact label="Return by" day={v.returnBy} today={today}
           action={v.returnOwn
             ? <button type="button" onClick={() => set({ ownReturn: null })} title="Use the rules' date" className="text-meta font-semibold text-accent-600 hover:underline">Rules' date</button>
@@ -103,17 +123,17 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
         <DateFact label="Complain by" day={v.complainBy} today={today}>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Complaint years">
             {([2, 5] as const).map(y => (
-              <ChoiceChip key={y} on={!f.keepComplain && !f.useReceiptComplain && f.years === y} onClick={() => set({ years: y, keepComplain: false, useReceiptComplain: false })}>
+              <ChoiceChip key={y} on={!f.keepComplain && !f.useReceiptComplain && v.years === y} onClick={() => set({ years: y, complainSet: true, keepComplain: false, useReceiptComplain: false })}>
                 <span title={`${y} years${y === 5 ? ' — meant to last' : ''}${y === v.suggestedYears ? ' (suggested)' : ''}`}>{y} years{y === v.suggestedYears ? ' ✓' : ''}</span>
               </ChoiceChip>
             ))}
-            {v.complainOwn && <ChoiceChip on={f.keepComplain && !f.useReceiptComplain} onClick={() => set({ keepComplain: true, useReceiptComplain: false })}>Keep {formatDate(v.complainOwn)}</ChoiceChip>}
-            {v.receiptWarranty && <ChoiceChip on={f.useReceiptComplain} onClick={() => set({ useReceiptComplain: true, keepComplain: false })}>{formatDate(v.receiptWarranty)} (receipt)</ChoiceChip>}
+            {v.complainOwn && <ChoiceChip on={f.keepComplain && !f.useReceiptComplain} onClick={() => set({ keepComplain: true, complainSet: true, useReceiptComplain: false })}>Keep {formatDate(v.complainOwn)}</ChoiceChip>}
+            {v.receiptWarranty && <ChoiceChip on={f.useReceiptComplain} onClick={() => set({ useReceiptComplain: true, complainSet: true, keepComplain: false })}>{formatDate(v.receiptWarranty)} (receipt)</ChoiceChip>}
           </div>
           {!f.keepComplain && !f.useReceiptComplain && <DeadlineWords deadline={v.dl?.complaintBy ?? null} />}
           <p className="text-meta text-fg-muted">5 years for things meant to last{v.suggestedYears === 5 ? ' — suggested for this one' : ''}.</p>
         </DateFact>
-      </div>
+      </div>}
 
       <label className="flex flex-wrap items-center gap-2 text-meta font-medium text-fg-muted">
         Extra warranty until

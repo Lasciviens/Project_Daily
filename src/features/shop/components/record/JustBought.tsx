@@ -23,7 +23,7 @@ export function JustBought({ item, live, bought, receipt, onClose }: { item: Sho
           {!gone && <Button variant="primary" size="sm" onClick={() => p.submit(onClose)} disabled={!p.valid} loading={p.saving}>Save</Button>}
         </div>
       }>
-      <RecordBody mode="bought" r={r} p={p} bought={bought} />
+      <RecordBody mode="bought" r={r} p={p} bought={bought} fromReceipt={!!receipt} />
     </ModalShell>
   )
 }

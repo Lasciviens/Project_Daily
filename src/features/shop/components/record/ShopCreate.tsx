@@ -52,8 +52,8 @@ function CreateFrame(props: { spec: CreateSpec; batch?: CreateBatch; onSaved?: (
     <ModalShell onClose={c.close} title={c.title} subtitle={c.subtitle} wrapTitle size="xl" mobile="fullscreen" dismissible={!saving}
       headerActions={<TonePill tone={c.pill.tone} className="shrink-0 max-sm:hidden">{c.pill.label}</TonePill>}
       footer={footer}>
-      {/* A line of a read receipt is its own draft: the body starts again when the owner moves to another line. */}
-      <RecordBody key={c.index} mode="add" c={c} />
+      {/* A line of a read receipt is its own draft, and "Another" starts a fresh one: the body starts again on either. */}
+      <RecordBody key={`${c.index}:${c.added.length}`} mode="add" c={c} />
     </ModalShell>
   )
 }

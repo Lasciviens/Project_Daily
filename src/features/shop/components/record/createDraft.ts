@@ -11,10 +11,10 @@ import { fieldsAfter, mergeFacts, type Fact } from '../../autofillModel'
 import { factsToSave } from '../../factsKept'
 import { receiptFacts } from '../../receiptFacts'
 import { categoryIdOf, currencyOf, localDay, pickOf } from '../../shopModel'
-import type { CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem } from '../../types'
+import type { CreateShopCostInput, CreateShopItemInput, ShopCategory, ShopCurrency, ShopItem } from '../../types'
 import type { ShopDraft } from '../ShopItemForm'
 import { isNewCategory, newCategoryId, newCategoryMissing, newPickOf, type RecordDraft } from './useRecordDraft'
-import type { PurchaseForm } from './purchaseDraft'
+import { purchaseTouched, type PurchaseForm } from './purchaseDraft'
 
 /** What is being made: a wish (one product), a general wish, a thing you own, one you had, an accessory, a model of a general wish. */
 export type CreatePreset = 'wish' | 'general' | 'own' | 'had' | 'accessory' | 'model'
@@ -53,6 +53,8 @@ export interface CreateState {
    * warranty, the receipt note): null until the owner opens it — an untouched Purchase writes nothing (`purchaseAtCreate`).
    */
   purchase?: PurchaseForm | null
+  /** The Purchase form as it opened: only a change from it is written (`purchaseAtCreate`) or asked about on close. */
+  purchaseSeed?: PurchaseForm | null
   /** The draft as it started, to tell what was changed. */
   start: string
 }
@@ -93,7 +95,8 @@ export function stateOf(spec: CreateSpec, had: boolean, general = false): 'buy' 
   return had ? 'gone' : 'mine'
 }
 
-const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers' | 'costs' | 'purchase'>) => JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers, s.costs, s.purchase ?? null])
+const snapshot = (s: Pick<CreateState, 'draft' | 'facts' | 'had' | 'general' | 'paidFrom' | 'moneyTo' | 'withOthers' | 'costs' | 'purchase' | 'purchaseSeed'>) =>
+  JSON.stringify([s.draft, s.facts, s.had, s.general, s.paidFrom, s.moneyTo, s.withOthers, s.costs, purchaseTouched(s.purchase ?? null, s.purchaseSeed ?? null) ? s.purchase : null])
 
 /** A blank draft for the preset, with what its place already knows (the parent's day, category and store). */
 export function blankState(spec: CreateSpec, categories: readonly ShopCategory[], today: string): CreateState {
@@ -153,7 +156,14 @@ export function applyDraftPatch(draft: RecordDraft, p: RecordDraft): RecordDraft
 
 /** The add form's draft of a created thing, for the link reader, the scan and the "Filled in for you" list. */
 export function shopDraftOf(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[]): ShopDraft {
-  const v = viewOf(spec, s)
+  return shopDraftOfView(viewOf(spec, s), s.facts, categories)
+}
+
+/**
+ * The autofill's draft of any thing as it stands — a draft being added, or a saved row with the record's edits on top (the
+ * open record's Facts: `recordAutofill.ts`). One mapping, so the autofill fills the same fields in every mode.
+ */
+export function shopDraftOfView(v: ShopItem & RecordDraft, facts: Fact[], categories: readonly ShopCategory[]): ShopDraft {
   const pick = isNewCategory(v.category_id) ? newPickOf(v.category_id) : pickOf(v.category_id, categories)
   return {
     title: v.title, list: 'wishlist', topId: pick.topId, newTop: v.new_top ?? '', subId: pick.subId, newSub: v.new_sub ?? '',
@@ -161,15 +171,20 @@ export function shopDraftOf(spec: CreateSpec, s: CreateState, categories: readon
     region: v.region ?? '', plannedDate: v.planned_date ?? '', status: v.status, general: v.kind === 'general',
     priceMin: v.price_min ?? null, priceMax: v.price_max ?? null, requirements: v.requirements ?? '', reason: v.reason ?? '', image: v.image_url ?? null,
     discountAmount: v.discount_amount ?? null, discountReason: v.discount_reason ?? null,
-    facts: s.facts,
+    facts,
   }
 }
 
 /** A change of the add form's draft, put on the record's draft: the same fields, the facts alongside. */
 export function withShopPatch(spec: CreateSpec, s: CreateState, categories: readonly ShopCategory[], patch: Partial<ShopDraft>): CreateState {
   if (!Object.keys(patch).length) return s
-  const was = shopDraftOf(spec, s, categories)
-  const draft: RecordDraft = { ...s.draft }
+  const draft = draftWithShopPatch(s.draft, shopDraftOf(spec, s, categories), patch)
+  return { ...s, draft, facts: patch.facts ?? s.facts }
+}
+
+/** The record's draft after a change of the autofill's draft (`was`: the autofill's draft before it): the same columns in every mode. */
+export function draftWithShopPatch(before: RecordDraft, was: ShopDraft, patch: Partial<ShopDraft>): RecordDraft {
+  const draft: RecordDraft = { ...before }
   if ('title' in patch) draft.title = patch.title as string
   if ('notes' in patch) draft.notes = (patch.notes as string) || null
   if ('price' in patch) draft.price = patch.price as number | null
@@ -187,7 +202,7 @@ export function withShopPatch(spec: CreateSpec, s: CreateState, categories: read
     if (made) draft.category_id = made
     else { draft.category_id = categoryIdOf(p); delete draft.new_top; delete draft.new_sub }
   }
-  return { ...s, draft, facts: patch.facts ?? s.facts }
+  return draft
 }
 
 /**
@@ -340,6 +355,11 @@ export function inputOf(spec: CreateSpec, s: CreateState, categoryId: string | n
     })
   }
   return out
+}
+
+/** The extra costs a saved add writes: the ticked drafts (a receipt's or typed), each on the thing's own day (today when it has none). */
+export function costsAtSave(s: Pick<CreateState, 'costs' | 'draft'>, itemId: string, today: string): CreateShopCostInput[] {
+  return s.costs.filter(c => c.on).map(c => ({ item_id: itemId, label: c.label, amount: c.amount, currency: c.currency as ShopCurrency, spent_on: s.draft.bought_day || today }))
 }
 
 /** Only an accessory's "Add another" is quiet (the popup says "Added: …"); every plain Save names the thing, with Undo. */

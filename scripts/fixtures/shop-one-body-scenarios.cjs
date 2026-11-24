@@ -93,6 +93,8 @@ const boughtScenarios = {
   'just bought · a receipt, its price used': [row({ price: 3490 }), { usePaid: true }, { receipt: receipt() }],
   'just bought · a receipt, the receipt\'s warranty': [row({ price: 2990 }), { useReceiptComplain: true, costOff: ['Shipping99'] }, { receipt: receipt() }],
   'just bought · a receipt with no matching line': [row({ title: 'Something else entirely' }), {}, { receipt: receipt() }],
+  'just bought · a receipt with only a total, its price used': [row({ price: 3490 }), { usePaid: true }, { receipt: receipt({ fill: { lines: [], costs: [] }, read: { items: [], total: 3290 } }) }],
+  'just bought · from Read a receipt (the hand-off), the store not one of yours': [row(), {}, { receipt: receipt({ fill: { storeId: null, storeName: 'Corner Shop', storeLabel: 'Corner Shop' } }) }],
 }
 
 module.exports = { TODAY, NOW, CATS, ctx, row, addScenarios, openScenarios, boughtScenarios }

@@ -21,12 +21,12 @@ export function AddModelButton({ wish }: { wish: ShopItem }) {
  * has one), ✓ / ✗ / ? per must-have (one tap cycles), the best match, and
  * Buy this model / Not chosen. A row per model reads the same on a phone.
  */
-export function RecordModels({ wish, models, watches }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch> }) {
-  const modal = useEntityModal()
+export function RecordModels({ wish, models, watches, onBought }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch>; /** The model bought: its record takes this one's place, its Purchase open in place. */ onBought: (id: string) => void }) {
   const openRecord = useOpenRecord()
   const update = useUpdateShopItem()
-  // A model bought is the wish bought: Just bought opens over the record, as for any wish.
-  const buy = useBuyNow(id => modal.open({ kind: 'shop-just-bought', id }), { thenDetails: true })
+  // A model bought is the wish bought: the model's own record takes this one's place with its Purchase open (one screen, never
+  // a second popup on top — owner, 24.11.2026).
+  const buy = useBuyNow(onBought, { thenDetails: true })
   const reqs = requirementsOf(wish)
   const price = (m: ShopItem) => priceNow(m, watches.get(m.id))
   const best = bestMatch(wish, models, price)
