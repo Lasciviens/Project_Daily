@@ -387,9 +387,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
           tools_hash: hashes.tools, system_hash: hashes.system, tool_names: toolNames, mode: chatMode, owner_instructions: frozenInstructions,
         })
         if (problem) {
-          row.outcome = 'error'; row.error = 'The chat could not be started.'
+          row.outcome = 'error'; row.error = cutChars(`The chat could not be started (${problem}).`, RUN_ERROR_MAX)
           await finishCall(ctx.adminDb, row)
-          return fail('error', 'The chat could not be started. Try again in a moment.')
+          // A refused row (a CHECK) fails the same way every time: retrying cannot help, the app needs a fix.
+          return fail('error', problem.endsWith('23514') ? 'The chat could not be started: the app needs an update. Developer → AI → Calls has the reason.' : 'The chat could not be started. Try again in a moment.')
         }
         createdNow = true
         emit({ event: 'start', conversation_id: conversationId, is_new: true })

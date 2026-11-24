@@ -277,6 +277,18 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   section('1 · the tools')
   const tools = allChatTools()
   check('at most 20 tools (Anthropic\'s strict limit): fifteen in the everyday chat (eight + the note tool + transit + the two learning tools + find_food and the two fix tools), six in the coach chat, eighteen the code knows', tools.length === 18 && tools.filter(t => probe.CHAT_TOOL_ORDER.includes(t.name)).length === 15 && probe.COACH_TOOL_ORDER.length === 6 && tools.length <= 20, tools.map(t => t.name))
+  {
+    // A new chat stores its tool list in ai_conversations.tool_names, whose CHECK caps the count: 205 outgrew 197's 12 and
+    // every new chat was refused (24.11.2026). The newest migration that sets that CHECK must hold every tool the code knows.
+    const dir = path.join(REPO, 'supabase/migrations')
+    const caps = fs.readdirSync(dir).filter(f => /^\d+_.*\.sql$/.test(f)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
+      .map(f => ({ f, m: fs.readFileSync(path.join(dir, f), 'utf8').replace(/--.*$/gm, '').match(/cardinality\(tool_names\)\s*<=\s*(\d+)/) }))
+      .filter(x => x.m)
+    const cap = caps.length ? Number(caps[caps.length - 1].m[1]) : 0
+    check('a new chat\'s tool list fits the database: the newest tool_names CHECK allows every tool the code knows', cap > 0 && probe.ALL_TOOL_ORDER.length <= cap, { cap, from: caps.length ? caps[caps.length - 1].f : null, tools: probe.ALL_TOOL_ORDER.length })
+    const appMax = Number((fs.readFileSync(path.join(REPO, 'src/features/ai/chat/chatApi.ts'), 'utf8').match(/tool_names\.filter\([^\n]*\.slice\(0, (\d+)\)/) || [])[1])
+    check('the app shows every tool name the database can hold (fetchChatSetup keeps as many names as the cap)', appMax === cap, { appMax, cap })
+  }
   check('the tool names are the permission wall\'s names, in its order', same(tools.map(t => t.name), probe.ALL_TOOL_ORDER) && same([...probe.KNOWN_TOOL_NAMES].sort(), [...probe.ALL_TOOL_ORDER].sort()) && same(probe.ALL_TOOL_ORDER.slice(0, 8), [...probe.READ_TOOL_NAMES, ...probe.WRITE_TOOL_NAMES]) && same(probe.ALL_TOOL_ORDER.slice(-7), ['note_shortcut', 'get_transit', 'search_docs', 'note_lesson', 'find_food', 'propose_update_food', 'propose_update_task']), probe.KNOWN_TOOL_NAMES)
   check('the coach chat has no write tool and no SQL tool', probe.COACH_TOOL_ORDER.every(n => probe.chatToolKind(n) === 'read' && n !== 'ask_database') && same(probe.COACH_TOOL_ORDER, ['get_day_plan', 'get_about_me', 'get_training_week', 'get_health_trends', 'get_pt_verdicts', 'note_shortcut']))
   check('six read tools and two write tools, and the write tools are the two proposals', same(probe.READ_TOOL_NAMES, ['get_day_plan', 'get_week_figures', 'get_food_day', 'find_text', 'get_about_me', 'ask_database']) && same(probe.WRITE_TOOL_NAMES, ['propose_add_task', 'propose_log_food']) && probe.WRITE_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'write') && probe.READ_TOOL_NAMES.every(n => probe.chatToolKind(n) === 'read'))
