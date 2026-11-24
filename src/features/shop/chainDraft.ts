@@ -270,7 +270,7 @@ export function draftRows(draft: ChainDraft, base: Copied | null, o: DraftRowsOp
         kind: 'item', price_min: null, price_max: null, requirements: null, option_for: null, meets: null, accessory_of: null,
         reason: null, wait_for_deal: false, target_price: null, deal_note: null, errand: false, image_url: null, ean: null,
         fx_nok: priced != null ? buyRate.fx : null, fx_source: priced != null ? buyRate.source : null,
-        market_price: null, market_currency: null, used: s.used, got_as_gift: s.gift, for_resale: s.forResale, kept: true,
+        market_price: null, market_currency: null, discount_amount: null, discount_reason: null, used: s.used, got_as_gift: s.gift, for_resale: s.forResale, kept: true,
         approx_dates: s.approx, serial: null, warranty_until: null, return_by: null,
         value_now: null, value_currency: null, value_on: null,
         disposed_on: s.left ? s.leftOn || null : null, disposal: s.left ? s.disposal : null,

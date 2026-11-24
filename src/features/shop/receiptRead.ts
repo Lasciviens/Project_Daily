@@ -101,3 +101,18 @@ export function lineFacts(line: ReceiptLine): string {
   return [line.brand, line.model, line.condition === 'outlet' ? 'Outlet' : line.condition, line.quantity && line.quantity > 1 ? `×${line.quantity}` : null]
     .filter((p): p is string => !!p && foldName(p) !== foldName(line.name)).join(' · ')
 }
+
+/**
+ * The receipt's extra costs belong to ONE thing, not to every line: the dearest BOUGHT line of each receipt carries them (the first
+ * when prices are equal), the others carry none; a sold line never does (a sale describes the sale). The owner moves a cost to another
+ * draft in the popup. `fills[i]` came from `reads[i]`; `bought[i]` is whether line i is made as something bought.
+ */
+export function placeCosts(fills: readonly ReceiptFill[], reads: readonly ReceiptRead[], prices: readonly (number | null)[], bought: readonly boolean[]): ReceiptFill[] {
+  const carrier = new Map<ReceiptRead, number>()
+  fills.forEach((_, i) => {
+    if (!bought[i]) return
+    const at = carrier.get(reads[i])
+    if (at === undefined || (prices[i] ?? -1) > (prices[at] ?? -1)) carrier.set(reads[i], i)
+  })
+  return fills.map((f, i) => (carrier.get(reads[i]) === i ? f : { ...f, costs: [] }))
+}

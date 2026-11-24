@@ -44,7 +44,7 @@ const PARTS = [
   'learn-text.ts', 'learn-pick.ts', 'learn-score.ts', 'learn-specs.ts', 'learn-diff.ts', 'docs-snapshot.ts', 'docs-search.ts',
   'provider-anthropic.ts', 'ledger.ts', 'learn-store.ts',
   RULES,
-  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-photo.ts', 'job-dev-drafts.ts', 'job-text-features.ts', 'job-shop-tidy.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'chat-rules.ts', 'suggest-rules.ts', 'suggest-store.ts', 'transit-lookup.ts', 'chat-learn-tools.ts', 'chat-tools.ts', 'job-suggest-weekly.ts', 'job-learn-eval.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'learn-run.ts', 'run.ts', 'learn-save.ts', 'learn-chat.ts', 'batch.ts', 'suggest-batch.ts', 'learn-eval.ts', 'chat-store.ts', 'chat-loop.ts', 'phone-ask.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
+  'job-item-fill.ts', 'job-recipes.ts', 'job-quick-guess.ts', 'job-photo.ts', 'job-dev-drafts.ts', 'job-text-features.ts', 'job-shop-tidy.ts', 'job-quick-list.ts', 'job-coach.ts', 'job-device.ts', 'job-weekly-report.ts', 'week-facts.ts', 'week-data.ts', 'report-store.ts', 'chat-rules.ts', 'suggest-rules.ts', 'suggest-store.ts', 'transit-lookup.ts', 'chat-learn-tools.ts', 'chat-tools.ts', 'job-suggest-weekly.ts', 'job-learn-eval.ts', 'job-test-bench.ts', 'job-diagnose.ts', 'jobs.ts', 'learn-run.ts', 'run.ts', 'learn-save.ts', 'learn-chat.ts', 'batch.ts', 'suggest-batch.ts', 'learn-eval.ts', 'chat-store.ts', 'chat-loop.ts', 'phone-ask.ts', 'diagnose.ts', 'describe.ts', 'main.ts',
 ]
 
 function stop(message) {

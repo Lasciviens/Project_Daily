@@ -29,10 +29,12 @@ export const RECEIPT_CATEGORIES_MAX = 200
 export type ReceiptInput = { image: PhotoInput } | { document: PdfInput }
 
 /** Shop → "Read a receipt" / "From a receipt": a photo or a PDF → what is printed on it, checked again. Throws when nothing usable was read. */
-export async function readReceiptInput(input: ReceiptInput, today: string, categories: readonly ReceiptCategory[] = []): Promise<ReceiptRead & { costUsd: number | null; callId: string | null }> {
+export async function readReceiptInput(input: ReceiptInput, today: string, categories: readonly ReceiptCategory[] = [], preferredHosts: readonly string[] = []): Promise<ReceiptRead & { costUsd: number | null; callId: string | null }> {
   // The owner's own categories go with the file, so a line may come back with one (by number, mapped to an id by the function).
   const sent: ReceiptCategory[] = categories.slice(0, RECEIPT_CATEGORIES_MAX)
-  const { result, call } = await runClaudeJob<unknown>('receipt_read', sent.length ? { ...input, categories: sent } : input)
+  // The sites that worked for this owner before (at most 3 host names): a hint for its search, as data.
+  const hint = preferredHosts.length ? { preferred_hosts: preferredHosts.slice(0, 3) } : {}
+  const { result, call } = await runClaudeJob<unknown>('receipt_read', { ...input, ...(sent.length ? { categories: sent } : {}), ...hint })
   const read = readReceipt(result, today, new Set(sent.map(c => c.id)))
   if (!read) throw new Error("That didn't read as a receipt — try a flatter, brighter photo or another PDF")
   return { ...read, costUsd: costOf(call), callId: call?.id ?? null }

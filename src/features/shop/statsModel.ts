@@ -721,6 +721,8 @@ export interface SavedIn {
   matches: Amount
   /** Other money back (cashback, a gift card…) — listed, not counted as saved. */
   other: Amount
+  /** A receipt's own discount (a negative cost made at the purchase): listed, never counted as saved or as money back. */
+  discounts: Amount
   rows: SavedRow[]
 }
 
@@ -739,7 +741,7 @@ export function savedIn(items: readonly ShopItem[], ctx: MoneyCtx, p: Pick<Perio
   rows.sort((a, b) => b.day.localeCompare(a.day) || a.costId.localeCompare(b.costId))
   const sum = (k: RebateKind) => add(...rows.filter(r => r.kind === k).map(r => r.amount))
   const claims = sum('claim'), matches = sum('match')
-  return { saved: add(claims, matches), claims, matches, other: sum('other'), rows }
+  return { saved: add(claims, matches), claims, matches, other: sum('other'), discounts: sum('discount'), rows }
 }
 
 export interface Between { spent: Amount; got: Amount; net: Amount; purchases: number; saved: Amount }
@@ -894,7 +896,7 @@ export function storeScores(items: readonly ShopItem[], ctx: MoneyCtx, p: Period
     if (i.disposal === 'returned') s.returned++
     for (const c of ctx.costs.get(i.id) ?? []) {
       const kind = c.amount < 0 ? rebateKind(c.label) : 'other'
-      if (kind === 'other') continue
+      if (kind !== 'claim' && kind !== 'match') continue
       if (kind === 'claim') s.claims++; else s.matches++
       s.back = add(s.back, nokAt(-c.amount, c.currency, c.fx_nok))
     }

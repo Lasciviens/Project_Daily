@@ -126,6 +126,8 @@ export interface ModelAnswer {
   sent: SentRequest | null
   /** How many web searches the provider ran for this answer (each one is billed on its own). */
   webSearches: number
+  /** The addresses the searches returned (https only, each at most 2 048 characters, at most 40): the only links a job may keep from the model's answer. */
+  searchUrls?: string[]
 }
 
 /** The call failed. Nothing here is the provider's raw error: `message` and `detail` are already scrubbed. */
@@ -298,6 +300,8 @@ export interface AnswerDetails {
   servedModel: string | null
   /** How many web searches the answer is based on (0: the model's own knowledge). */
   webSearches: number
+  /** The addresses those searches returned, as the provider reported them (never the model's text). */
+  searchUrls?: string[]
 }
 
 /** A job's reading of the model's text: its checked result, or why the text can't be used. */

@@ -20,7 +20,7 @@ async function fetchQuickTitles(): Promise<string[]> {
   return rows.map(r => r.title)
 }
 
-export interface QuickBatchResult { added: ShopItem[]; skipped: number }
+export interface QuickBatchResult { added: ShopItem[]; skipped: number; /** The titles left out, as the owner wrote them (for the toast). */ skippedTitles: string[] }
 
 /** Adds the rows that are not on the list yet. A row that fails stops the add, and the ones already made are taken off again. */
 export async function addBatchToQuickList(wanted: readonly CreateShopItemInput[]): Promise<QuickBatchResult> {
@@ -32,7 +32,7 @@ export async function addBatchToQuickList(wanted: readonly CreateShopItemInput[]
     if (added.length) await deleteShopItems(added.map(r => r.id)).catch(() => undefined)
     throw err
   }
-  return { added, skipped: skipped.length }
+  return { added, skipped: skipped.length, skippedTitles: skipped.map(s => s.title) }
 }
 
 /** Takes a batch off again (the Undo): rows made a moment ago have nothing hanging on them. */

@@ -508,3 +508,6 @@ export function planDefaults(item: Pick<ShopItem, 'title' | 'planned_date' | 'no
 export function deleteScope(items: readonly ShopItem[], item: Pick<ShopItem, 'id'>): string[] {
   return [item.id, ...items.filter(i => i.accessory_of === item.id && i.status === 'bought').map(i => i.id)]
 }
+
+/** How a stored discount reads on screen ("−500 NOK member discount"); the words of migration 203's CHECK. */
+export const DISCOUNT_WORD: Readonly<Record<NonNullable<ShopItem['discount_reason']>, string>> = { points: 'points discount', member: 'member discount', campaign: 'campaign discount', coupon: 'coupon discount', staff: 'staff discount', other: 'discount' }

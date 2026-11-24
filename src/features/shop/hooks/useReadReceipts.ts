@@ -1,6 +1,7 @@
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { ClaudeJobError } from '../../ai/claude/claudeApi'
+import { usePreferredHosts } from './useProductPicture'
 import { readReceiptInput, type ReceiptCategory } from '../../ai/claude/featureJobs'
 import type { ReceiptRead } from '../../ai/claude/featureRules'
 import { receiptInputOf } from '../../ai/claude/photoShrink'
@@ -45,12 +46,14 @@ export interface ReceiptRunResult {
 
 /** Reads each file with the AI, one at a time. Every answer is checked again by `readReceiptInput`; nothing is saved. */
 export function useReceiptRun() {
+  const preferred = usePreferredHosts()
   return useMutationWithFeedback<ReceiptRunResult, ReceiptRunInput>({
     action: 'read_receipts',
     silent: 'each file\'s row shows its own result or the function\'s own sentence',
     logPayload: false,
     mutationFn: async ({ jobs, categories, signal, onReading, onRead, onFailed }) => {
       let read = 0, failed = 0, costUsd = 0, stopped = false, halted: string | null = null, inARow = 0
+      const hosts = await preferred()
       const untried: number[] = []
       for (let i = 0; i < jobs.length; i++) {
         const { id, file } = jobs[i]
@@ -59,7 +62,7 @@ export function useReceiptRun() {
         onReading(id, i, jobs.length)
         for (let attempt = 1; ; attempt++) {
           try {
-            const r = await readReceiptInput(await receiptInputOf(file), todayStr(), categories)
+            const r = await readReceiptInput(await receiptInputOf(file), todayStr(), categories, hosts)
             costUsd += r.costUsd ?? 0
             inARow = 0
             read++

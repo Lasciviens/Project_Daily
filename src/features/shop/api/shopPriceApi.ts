@@ -27,8 +27,9 @@ function notDeployed(error: unknown): boolean {
 const NOT_DEPLOYED = 'Price checks need the shop-price function — deploy it first (see the PR\'s steps).'
 
 /** The price on a link right now (or as read within the last hour: `reused`); nothing is stored. Throws a plain sentence on failure. */
-export async function readPriceLink(url: string): Promise<PriceReadResult> {
-  const { data, error } = await supabase.functions.invoke('shop-price', { body: { action: 'read', url } })
+export async function readPriceLink(url: string, opts: { forPicture?: boolean } = {}): Promise<PriceReadResult> {
+  // `for: 'picture'` lets shop-price count how the read went on that host (the picture memory); the answer is the same.
+  const { data, error } = await supabase.functions.invoke('shop-price', { body: { action: 'read', url, ...(opts.forPicture ? { for: 'picture' } : {}) } })
   if (error) throw new Error(notDeployed(error) ? NOT_DEPLOYED : 'Could not check the price — try again in a moment.')
   if (data?.error) throw new Error(String(data.error))
   return data.result as PriceReadResult

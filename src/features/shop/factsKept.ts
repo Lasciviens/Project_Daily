@@ -7,7 +7,7 @@ import type { Fact, FactFields, FactKey } from './autofillModel'
 import type { ShopFactKey, ShopItemFacts } from './types'
 
 /** The facts that are a field of the form too: the field holds the value, the fact says where it came from. */
-export const FORM_FACTS: ReadonlySet<FactKey> = new Set<FactKey>(['title', 'price', 'image', 'store', 'category'])
+export const FORM_FACTS: ReadonlySet<FactKey> = new Set<FactKey>(['title', 'price', 'discount', 'image', 'store', 'category'])
 
 /** Whether the form's field holds the fact's value now (a form fact the owner typed over is not used). */
 export function fieldHolds(f: Fact, d: FactFields): boolean {
@@ -15,6 +15,7 @@ export function fieldHolds(f: Fact, d: FactFields): boolean {
     case 'title': return d.title.trim() === f.value.trim()
     case 'price': return d.price === f.value.amount && d.currency === f.value.currency
     case 'image': return d.image === f.value
+    case 'discount': return d.discountAmount === f.value.amount && d.discountReason === f.value.reason
     case 'store': return d.platform.trim() === f.value
     case 'category': return d.topId === f.value.topId && d.subId === f.value.subId
     default: return f.on

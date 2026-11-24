@@ -31,6 +31,17 @@ export function readNote(r: PriceReadResult): string {
 }
 
 /**
+ * What is said under a draft when the product's page (a link the AI's own search returned) gave no picture, in the one
+ * vocabulary of what a site refuses: "finn.no doesn't let apps read its pages — no picture". Null when there is a picture.
+ */
+export function pictureNote(r: Pick<PriceReadResult, 'status' | 'reason'>, hasPicture: boolean): string | null {
+  if (hasPicture) return null
+  if (r.status === 'not_allowed') return `${r.reason ?? 'That site doesn\'t let apps read its pages'} — no picture.`
+  if (r.status === 'blocked') return `${r.reason ?? 'That site blocks apps with a browser check'} — no picture.`
+  return 'The product page has no picture.'
+}
+
+/**
  * What Check now says, in one toast that fits a phone's line: a price read is the result; a site's answer without
  * one (a bot check, no price, a refusal) is a warning in its own words — "Already checked at 06:23 — …" when it is
  * the check from the last hour. A failed check is not here: its error is the mutation's own.

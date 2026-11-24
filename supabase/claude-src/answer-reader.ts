@@ -119,6 +119,59 @@ export function checkedLine(value: unknown, max: number): string | null {
   return text.length >= 1 && [...text].length <= max ? text : null
 }
 
+/** The longest page link a job keeps. */
+export const PRODUCT_PAGE_LINK_MAX = 2_048
+
+/**
+ * A product's page link the model named: kept only when it is one of the addresses THIS call's web search returned
+ * (`results`, from the provider's own search blocks, never from the model's text), compared whole and exactly. Also https,
+ * at most 2 048 characters, no white space, control or invisible character, no user name, password or port. The model
+ * never types a link that is kept: one it changed by a character, or invented, is dropped. Nothing is fetched here.
+ */
+export function checkedPageLink(value: unknown, results: readonly string[] | undefined): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > PRODUCT_PAGE_LINK_MAX) return null
+  // eslint-disable-next-line no-control-regex -- control and invisible characters are exactly what is refused
+  if (!/^https:\/\/[^\s\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]+$/.test(value)) return null
+  let url: URL
+  try { url = new URL(value) } catch { return null }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return null
+  return results?.includes(value) ? value : null
+}
+
+/**
+ * The pages to try for a product's picture, best first: the one the model named (kept only when this call's search returned it),
+ * then up to two more addresses from the same search results on other hosts. When the model named none that is kept, the first
+ * three results on separate hosts are the candidates and `named` is false: the app then requires every one to show the same product
+ * (a search result is any page a search engine indexed, not a trusted one). Code picks them from the search blocks, never from the
+ * model's text; nothing is fetched here — the app reads them one after another through shop-price, which checks each (site
+ * policies, robots.txt, address and redirect checks).
+ */
+export function pageCandidates(named: unknown, results: readonly string[] | undefined): { urls: string[]; named: boolean } {
+  const first = checkedPageLink(named, results)
+  const hosts = new Set<string>()
+  const out: string[] = []
+  const take = (u: string) => {
+    const host = new URL(u).hostname.toLowerCase()
+    if (out.length >= 3 || hosts.has(host)) return
+    hosts.add(host)
+    out.push(u)
+  }
+  if (first) take(first)
+  for (const u of results ?? []) { const ok = checkedPageLink(u, results); if (ok) take(ok) }
+  return { urls: out, named: !!first }
+}
+
+/** The sites that worked for this owner before (at most 3 host names, checked): lines for an escaped tag, none when nothing clean is sent. */
+export function preferredHostLines(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const h of raw) {
+    if (typeof h === 'string' && h.length <= 253 && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(h) && !/^\d+(\.\d+){3}$/.test(h) && !out.includes(h)) out.push(h)
+    if (out.length >= 3) break
+  }
+  return out
+}
+
 /**
  * A model's free-text answer: control characters out, each line's ends trimmed, three or more line breaks in a row
  * made two. With `bold: false` the markdown marks a small screen cannot show (**, a leading #) are taken out too;

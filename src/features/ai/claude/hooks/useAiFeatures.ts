@@ -25,12 +25,12 @@ export function usePhotoGuess() {
 }
 
 /** Shop → "Read a receipt" and "From a receipt": a photo (shrunk here) or a PDF. */
-export function useReadReceipt(categories: readonly ReceiptCategory[] = []) {
+export function useReadReceipt(categories: readonly ReceiptCategory[] = [], preferredHosts: readonly string[] = []) {
   return useMutationWithFeedback<ReceiptRead & { costUsd: number | null }, File>({
     action: 'read_receipt',
     silent: 'the receipt fills the form, which you check before saving',
     logPayload: false,
-    mutationFn: async file => readReceiptInput(await receiptInputOf(file), todayStr(), categories),
+    mutationFn: async file => readReceiptInput(await receiptInputOf(file), todayStr(), categories, preferredHosts),
   })
 }
 

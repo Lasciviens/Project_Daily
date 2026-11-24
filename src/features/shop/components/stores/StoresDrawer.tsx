@@ -6,6 +6,7 @@ import { useShopStores, useSitePolicyHosts, useStoreRules } from '../../hooks/us
 import { StoreRow } from './StoreRow'
 import { RuleSheet } from './RuleSheet'
 import { DealDaysList } from './DealDaysList'
+import { PictureSources } from './PictureSources'
 import type { ShopStore, ShopStoreKind, ShopStoreRule } from '../../types'
 
 const KIND_ORDER: Record<ShopStoreKind, number> = { shop: 0, refurbisher: 1, marketplace: 2, price_site: 3 }
@@ -74,7 +75,7 @@ export function StoresDrawer({ onClose }: { onClose: () => void }) {
         </div>
       }>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
-        {tab === 'stores' ? <StoresList /> : <DealDaysList />}
+        {tab === 'stores' ? <><StoresList /><PictureSources /></> : <DealDaysList />}
       </div>
     </SideDrawer>
   )

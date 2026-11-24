@@ -38,7 +38,7 @@ begin
 end $$;
 
 -- A signed-in caller may change `state` and nothing else (the column grant says so; this keeps the bookkeeping): the day it
--- changed is stamped. 204 re-creates the same trigger function for its tables; whichever runs last leaves the same guard.
+-- changed is stamped.
 create or replace function public.ai_source_stats_state() returns trigger
 language plpgsql set search_path = '' as $$
 begin
@@ -61,10 +61,15 @@ begin
   values (p_user, p_job, lower(p_host), case when p_ok then 1 else 0 end, case when p_ok then 0 else 1 end,
           case when p_ok then now() end, case when p_ok then null else now() end, p_reason)
   on conflict (user_id, job, host) do update set
-    ok_count = least(public.ai_source_stats.ok_count + case when p_ok then 1 else 0 end, 100000000),
-    fail_count = least(public.ai_source_stats.fail_count + case when p_ok then 0 else 1 end, 100000000),
-    last_ok_at = case when p_ok then now() else public.ai_source_stats.last_ok_at end,
-    last_fail_at = case when p_ok then public.ai_source_stats.last_fail_at else now() end,
+    -- A cleared host (ignored) comes back on with this read as its first: counts restart, nothing old decides again.
+    ok_count = case when public.ai_source_stats.state = 'ignored' then case when p_ok then 1 else 0 end
+                    else least(public.ai_source_stats.ok_count + case when p_ok then 1 else 0 end, 100000000) end,
+    fail_count = case when public.ai_source_stats.state = 'ignored' then case when p_ok then 0 else 1 end
+                      else least(public.ai_source_stats.fail_count + case when p_ok then 0 else 1 end, 100000000) end,
+    last_ok_at = case when p_ok then now() when public.ai_source_stats.state = 'ignored' then null else public.ai_source_stats.last_ok_at end,
+    last_fail_at = case when not p_ok then now() when public.ai_source_stats.state = 'ignored' then null else public.ai_source_stats.last_fail_at end,
+    state_changed_at = case when public.ai_source_stats.state = 'ignored' then now() else public.ai_source_stats.state_changed_at end,
+    state = 'on',
     last_reason = p_reason, updated_at = now();
 end $$;
 revoke all on function public.ai_source_note(uuid, text, text, boolean, text) from public, anon, authenticated;

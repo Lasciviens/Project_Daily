@@ -76,12 +76,13 @@ export function complaintLetter(input: LetterInput): string {
 // ── Money back ───────────────────────────────────────────────────────────────
 
 /** What money back is for: a claim (a complaint), a price match (or price protection), or something else. */
-export type RebateKind = 'claim' | 'match' | 'other'
+export type RebateKind = 'claim' | 'match' | 'discount' | 'other'
 
 /** The label each flow writes on its rebate, so the record's Story says it and Stats counts it. */
 export const REBATE_LABEL: Readonly<Record<RebateKind, string>> = {
   claim: 'Complaint: money back',
   match: 'Price match: money back',
+  discount: 'Discount',
   other: 'Money back',
 }
 
@@ -95,5 +96,7 @@ export function rebateKind(label: string): RebateKind {
   if (t.startsWith(REBATE_LABEL.match.toLocaleLowerCase('nb'))) return 'match'
   if (/price\s*(match|protection|guarantee|drop)|pris\s*(match|garanti|fall|justering)|prismatch/.test(t)) return 'match'
   if (/complaint|reklamasjon|warranty claim/.test(t)) return 'claim'
+  // A receipt's own discount (a negative cost made when the thing was bought): a purchase discount, never money back.
+  if (/^(points |member |campaign |coupon |staff )?discount\b/.test(t)) return 'discount'
   return 'other'
 }

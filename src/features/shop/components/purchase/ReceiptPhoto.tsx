@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEntityModal } from '../../../../shared/modals'
 import { PhotoButton } from '../../../ai/claude/components/PhotoButton'
 import { useReadReceipt } from '../../../ai/claude/hooks/useAiFeatures'
 import { costNote, receiptFill, type ReceiptFill, type ReceiptRead } from '../../../ai/claude/featureRules'
@@ -16,12 +17,21 @@ import type { ShopStore } from '../../types'
  * list, so nothing the owner typed is overwritten). A receipt with several lines asks which one was bought when the
  * caller needs a line (`pickLines`), never guesses. The photo is not kept.
  */
-export function ReceiptPhoto({ stores, onFill, pickLines = true }: {
+export function ReceiptPhoto({ stores, onFill, pickLines = true, handoff = false, onHandoff }: {
   stores: readonly ShopStore[]
   onFill: (fill: ReceiptFill, read: ReceiptRead) => void
   /** Offer the item lines to pick from (a form with a name and a price); Just bought has neither and matches by name itself. */
   pickLines?: boolean
+  /**
+   * The button takes up to 5 photos or PDFs in one pick and hands them to Read a receipt (one draft per product line, "1 of 3 ‹ ›").
+   * Used where a thing is being made from scratch: nothing here may fold two products into one draft. Without it (Just bought: the
+   * wish being bought is the one product) one file fills the sheet.
+   */
+  handoff?: boolean
+  /** Called after the files were handed over (the create popup closes itself when nothing was typed in it). */
+  onHandoff?: () => void
 }) {
+  const modal = useEntityModal()
   // The owner's own categories go with the file only where a line's category is used (the create popup), so a line may come back with one.
   const { data: cats } = useShopCategories()
   const read = useReadReceipt(useMemo(() => (pickLines ? tidyCategories(cats ?? [], RECEIPT_CATEGORIES_MAX) : []), [cats, pickLines]))
@@ -51,8 +61,10 @@ export function ReceiptPhoto({ stores, onFill, pickLines = true }: {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>
-        {!data && <span className="text-meta text-fg-muted">AI reads a photo or PDF; you check it</span>}
+        {handoff
+          ? <PhotoButton accept="image/*,application/pdf" multiple onFiles={files => { modal.open({ kind: 'shop-receipt', files }); onHandoff?.() }}>From a receipt</PhotoButton>
+          : <PhotoButton accept="image/*,application/pdf" onFile={f => { void onFile(f) }} loading={read.isPending}>{data ? 'Another receipt' : 'From a receipt'}</PhotoButton>}
+        {!data && <span className="text-meta text-fg-muted">{handoff ? 'AI reads up to 5 photos or PDFs; one draft per product' : 'AI reads a photo or PDF; you check it'}</span>}
       </div>
       {data && fill && (
         <>

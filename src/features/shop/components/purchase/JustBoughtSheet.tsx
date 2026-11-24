@@ -16,6 +16,8 @@ import { DateFact, DeadlineWords } from './purchaseKit'
 import { ReceiptPhoto } from './ReceiptPhoto'
 import { matchLine, RECEIPT_CURRENCIES, type ReceiptFill, type ReceiptRead } from '../../../ai/claude/featureRules'
 import { ChoiceChip } from '../shopPickers'
+import { Toggle } from '../record/factKit'
+import { formatMoney } from '../../../settings/subscriptionRules'
 import type { PurchasePatch } from '../../api/shopPurchaseApi'
 import type { ShopCurrency, ShopItem, ShopStore } from '../../types'
 
@@ -109,6 +111,10 @@ export function JustBoughtSheet({ item, bought, receipt, onClose }: { item: Shop
   const paid = !rd ? null : lineAt !== null ? rd.read.items?.[lineAt]?.price ?? null : rd.read.items?.length ? null : rd.read.total ?? null
   const paidCur = rd?.read.currency && RECEIPT_CURRENCIES.includes(rd.read.currency) ? rd.read.currency as ShopCurrency : null
   const noLine = !!rd && !!rd.read.items?.length && lineAt === null
+  // The matched line's normal price and discount, and the receipt's extra costs for this thing: written with it, ticked here.
+  const line = rd && lineAt !== null ? rd.read.items?.[lineAt] ?? null : null
+  const [costOff, setCostOff] = useState<ReadonlySet<string>>(new Set())
+  const costs = rd?.fill.costs ?? []
   const receiptWarranty = rd?.fill.warrantyUntil ?? null
   const complainBy = useReceiptComplain && rd?.fill.warrantyUntil ? rd.fill.warrantyUntil : keepComplain && complainOwn ? complainOwn : dl?.complaintBy?.day ?? null
 
@@ -127,9 +133,20 @@ export function JustBoughtSheet({ item, bought, receipt, onClose }: { item: Shop
       receipt_note: note.trim() || null,
     }
     if (usePaid && paid != null && paidCur) { patch.price = paid; patch.currency = paidCur }
+    // What the receipt says about this line's discount (and the normal price it prints), only while the thing has none and its paid
+    // price is the receipt's own: never over what is there, never subtracted from the price.
+    const paidIsReceipts = paid != null && paidCur != null && ((usePaid) || (item.price === paid && item.currency === paidCur))
+    if (line && paidIsReceipts && paidCur) {
+      if (line.discount !== undefined && item.discount_amount == null) { patch.discount_amount = line.discount; patch.discount_reason = line.discount_reason ?? 'other' }
+      if (line.before !== undefined && item.market_price == null) { patch.market_price = line.before; patch.market_currency = paidCur }
+    }
+    const written = costs.filter(c => !costOff.has(c.label + c.amount))
     if (storePick !== null || otherName !== null) patch.platform = name
     if (day !== boughtDay) patch.bought_at = middayIso(day)
-    save.mutate({ id: item.id, patch, done: returnBy ? `Purchase saved — return by ${formatDate(returnBy)}` : 'Purchase saved' }, { onSuccess: onClose })
+    save.mutate({
+      id: item.id, patch, done: returnBy ? `Purchase saved — return by ${formatDate(returnBy)}` : 'Purchase saved',
+      costs: written.map(c => ({ label: c.label, amount: c.amount, currency: c.currency as ShopCurrency, spent_on: day })),
+    }, { onSuccess: onClose })
   }
 
   return (
@@ -150,6 +167,17 @@ export function JustBoughtSheet({ item, bought, receipt, onClose }: { item: Shop
                   <ChoiceChip on={usePaid} onClick={() => setUsePaid(v => !v)}>Paid {paid} {paidCur} — use it</ChoiceChip>
                   <span className="text-meta text-fg-muted">{item.price != null ? `now ${item.price} ${item.currency ?? 'NOK'}` : 'no price saved yet'}; the NOK rate of the day is set when you save</span>
                 </div>
+              )}
+              {costs.length > 0 && (
+                <section aria-label="Extra costs from the receipt" className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-3">
+                  <h3 className="text-body font-semibold text-fg">Extra costs from the receipt</h3>
+                  {costs.map(c => (
+                    <Toggle key={c.label + c.amount} checked={!costOff.has(c.label + c.amount)}
+                      onChange={x => setCostOff(s => { const n = new Set(s); if (x) n.delete(c.label + c.amount); else n.add(c.label + c.amount); return n })}>
+                      <span className="min-w-0">{c.label} · <span className={c.amount < 0 ? 'tabular-nums text-success' : 'tabular-nums'}>{formatMoney(c.amount, c.currency)}</span></span>
+                    </Toggle>
+                  ))}
+                </section>
               )}
               {noLine && <p className="text-meta text-warn">No line on the receipt looks like “{item.title}” — check that it is the right receipt.</p>}
             </div>
