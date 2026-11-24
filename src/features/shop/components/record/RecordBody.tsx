@@ -31,6 +31,7 @@ import { hasMoneyLinks, marketSummary, priceSummary, purchaseSummary, resaleSumm
 import { RecordStory } from './RecordStory'
 import { RecordPurchase } from './RecordPurchase'
 import { PurchaseEditor } from './PurchaseEditor'
+import { withDraftDayAndStore } from './purchaseDraft'
 import { usePurchaseEdit, type PurchaseEditModel } from './usePurchaseEdit'
 import { FindPicture } from './FindPicture'
 import { useSavePicture } from './useFindPicture'
@@ -304,7 +305,7 @@ function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owne
       ? box('purchase', 'Purchase', purchaseSummary(item, today),
         !editPurchase && <IconButton size="sm" label="Edit how it was bought" onClick={() => setEditPurchase(true)}><Pencil aria-hidden /></IconButton>,
         editPurchase
-          ? <PurchaseInPlace item={item} onDone={() => setEditPurchase(false)} onDirty={r.setPurchaseDirty}
+          ? <PurchaseInPlace r={r} onDone={() => setEditPurchase(false)}
             onReceiptFacts={f => d.set({ ...(f.day && f.day <= today ? { bought_day: f.day } : {}), ...(f.storeLabel ? { platform: f.storeLabel } : {}) })} />
           : <RecordPurchase item={item} today={today} />)
       : c && state === 'mine'
@@ -317,7 +318,7 @@ function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owne
   const parts = (
     <div className="flex min-w-0 flex-col gap-2">
       {open && state === 'general' && box('models', 'Models', `${r.models.filter(m => m.status === 'wishlist').length} in the running`, <AddModelButton wish={item} />,
-        <RecordModels wish={item} models={r.models} watches={r.watches} onBought={id => r.replaceWith(id, 'purchase')} />)}
+        <RecordModels wish={item} models={r.models} watches={r.watches} onBuy={r.buyModel} />)}
       {!c && purchase}
       {open && (item.url || ownership) && box('price', 'Price', item.url ? priceSummary(item, watch) : ownership ? ownershipSummary(ownership) : undefined,
         <PriceCheckButton item={item} watch={watch} />, <>
@@ -366,17 +367,36 @@ const EMPTY_CTX = { costs: new Map() } as unknown as ShopRecordModel['ctx']
 
 /**
  * A saved thing's purchase facts, edited in place (open): the same editor as Just bought, its own Save and Cancel. The day
- * and the store are the record's Facts (one editor each); a receipt's day and store go there, into the record's draft.
+ * and the store are the record's Facts (one editor each) — shown here as one line; a receipt's day and store go there, into
+ * the record's draft. The deadlines count from the day as it stands in that draft (a receipt's day, a Facts edit), and the one
+ * Save writes both: the record's draft first, then the purchase (critic, 24.11.2026: one Save for one change — the record's
+ * footer hides while this editor is open). With no purchase day nothing is counted or written.
  */
-function PurchaseInPlace({ item, onDone, onDirty, onReceiptFacts }: { item: ShopItem; onDone: () => void; onDirty: (dirty: boolean) => void; onReceiptFacts: (fill: ReceiptFill) => void }) {
-  const p = usePurchaseEdit(item, undefined, { inPlace: true })
-  useEffect(() => { onDirty(p.dirty) }, [p.dirty, onDirty])
+function PurchaseInPlace({ r, onDone, onReceiptFacts }: { r: ShopRecordModel; onDone: () => void; onReceiptFacts: (fill: ReceiptFill) => void }) {
+  const { item, d } = r
+  const seen = useMemo(() => withDraftDayAndStore(item, d.draft), [item, d.draft])
+  const p = usePurchaseEdit(seen, undefined, { inPlace: true })
+  const { setPurchaseDirty } = r
+  useEffect(() => { setPurchaseDirty(p.dirty) }, [p.dirty, setPurchaseDirty])
+  const [busy, setBusy] = useState(false)
+  const noDay = !seen.bought_at
+  async function saveBoth() {
+    if (noDay || busy) return
+    setBusy(true)
+    try {
+      if (d.dirty && !(await r.save())) return
+      p.submit(onDone)
+    } finally { setBusy(false) }
+  }
+  const day = boughtOn(seen)
+  const line = [day ? `Bought ${formatDate(day)}` : 'No purchase day yet', seen.platform].filter(Boolean).join(' · ')
   return (
-    <fieldset disabled={p.saving} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
-      <PurchaseEditor item={item} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={p.today}
-        dayAndStore={false} onReceiptFacts={onReceiptFacts} />
+    <fieldset disabled={p.saving || busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+      <PurchaseEditor item={seen} form={p.form} onForm={p.setForm} view={p.view} stores={p.stores} storesLoading={p.storesLoading} today={p.today}
+        dayAndStore={false} onReceiptFacts={onReceiptFacts} noDay={noDay} factsLine={`${line} — edit it in Facts`} />
       <div className="flex gap-2">
-        <Button size="sm" variant="primary" onClick={() => p.submit(onDone)} loading={p.saving} disabled={!p.valid}>Save</Button>
+        <Button size="sm" variant="primary" onClick={() => { void saveBoth() }} loading={p.saving || busy} disabled={!p.valid || noDay}
+          tip={d.dirty ? 'Save — the Facts changes and the purchase' : 'Save the purchase'}>Save</Button>
         <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
       </div>
     </fieldset>

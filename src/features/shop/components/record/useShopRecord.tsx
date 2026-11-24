@@ -60,13 +60,14 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   const remove = useDeleteShopItems()
   const undoSale = useUndoSale()
   const fillNow = useFillRatesNow()
-  // Bought on a wish opens Just bought over the record (online or in a shop, the store, the return date and its reason).
   // Bought on a wish opens the record's own Purchase editor in place (owner, 24.11.2026: one screen — never a second popup on
   // top); the Just bought popup is only for the ways in that have no record open (a tile, Needs a look, Daily).
   const [purchaseEditing, setPurchaseEditing] = useState(openSection === 'purchase')
   // The in-place Purchase editor's unsaved edits: closing asks about them too.
   const [purchaseDirty, setPurchaseDirty] = useState(false)
   const buy = useBuyNow(() => setPurchaseEditing(true), { thenDetails: true })
+  // A model bought from this general wish: its own record takes this one's place, its Purchase open (never a popup on top).
+  const buyModelNow = useBuyNow(id => { onClose(); modal.open({ kind: 'shop-item', id, section: 'purchase' }) }, { thenDetails: true })
   const d = useRecordDraft(item, openFact ?? null)
   const state = recordState(item)
   const owned = state === 'mine' || state === 'gone'
@@ -163,8 +164,11 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,
     pill, subtitle, actions, save, close, del, saving: update.isPending, buy: () => buy(item),
     purchaseEditing, setPurchaseEditing, purchaseDirty, setPurchaseDirty,
-    /** Another thing's record in this one's place (a model bought from its wish): never a popup on top. */
-    replaceWith: (id: string, section?: 'money' | 'purchase') => { onClose(); modal.open(section ? { kind: 'shop-item', id, section } : { kind: 'shop-item', id }) },
+    /**
+     * A model of this general wish bought, the record's own way (critic, 24.11.2026): the wish's draft is saved first, as Bought
+     * does — a failed save stops it, so no edit is lost — then the model's record takes this one's place with its Purchase open.
+     */
+    buyModel: (model: ShopItem) => { void then(() => buyModelNow(model))() },
   }
 }
 

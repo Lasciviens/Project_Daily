@@ -93,6 +93,17 @@ for (const [name, [item, changes, extra]] of Object.entries(S.boughtScenarios)) 
   const used = P.inPlaceForm(stale, row, S.ctx.today)
   const w = P.purchaseWrite(row, used, P.purchaseView(row, used, S.ctx))
   check('in place: the row\'s own day and no store — a Facts edit made meanwhile is never written back', w && !('bought_at' in w.patch) && !('platform' in w.patch) && w.patch.bought_channel === 'in_store', JSON.stringify(w?.patch))
+  // A receipt read in place (or a Facts edit) puts a new day in the record's draft: the deadlines count from it, never from the old one.
+  const old = S.row({ platform: 'Power', bought_at: '2026-11-01T11:00:00.000Z' })
+  const seen = P.withDraftDayAndStore(old, { bought_day: '2026-11-15' })
+  const f2 = P.inPlaceForm({ ...P.purchaseFormOf(old, S.ctx), channel: 'in_store' }, seen, S.ctx.today)
+  const fromNew = P.purchaseWrite(seen, f2, P.purchaseView(seen, f2, S.ctx))
+  const f3 = P.inPlaceForm({ ...P.purchaseFormOf(old, S.ctx), channel: 'in_store' }, old, S.ctx.today)
+  const fromOld = P.purchaseWrite(old, f3, P.purchaseView(old, f3, S.ctx))
+  check('in place: a day in the record\'s draft moves the deadlines with it (return by counts from 15.11, not 01.11), still without writing the day',
+    fromNew.patch.return_by !== fromOld.patch.return_by && fromNew.patch.return_by > fromOld.patch.return_by && !('bought_at' in fromNew.patch), JSON.stringify([fromNew.patch.return_by, fromOld.patch.return_by]))
+  check('in place: a store in the record\'s draft is the store the deadlines count with', P.withDraftDayAndStore(old, { platform: 'Elkjøp' }).platform === 'Elkjøp' && P.withDraftDayAndStore(old, {}).platform === 'Power')
+  check('in place: no purchase day → no day to count from (the editor says so and its Save waits)', P.withDraftDayAndStore(old, { bought_day: '' }).bought_at === null)
 }
 {
   // Typed extra costs while adding: each ticked draft on the thing's own day (today when it has none), its sign kept.

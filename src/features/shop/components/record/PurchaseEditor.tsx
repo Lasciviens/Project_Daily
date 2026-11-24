@@ -18,7 +18,7 @@ import type { ShopItem, ShopStore } from '../../types'
  * thing's Facts (adding, and a saved record — one editor each, guardian 24.11.2026), so they are shown there, never edited twice.
  * Until Arrived is tapped every count starts on the purchase day.
  */
-export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesLoading, today, dayAndStore = true, receipt = true, noDay = false, beside, onReceiptFacts }: {
+export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesLoading, today, dayAndStore = true, receipt = true, noDay = false, beside, onReceiptFacts, factsLine }: {
   item: ShopItem
   form: PurchaseForm
   onForm: (next: PurchaseForm) => void
@@ -36,6 +36,8 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
   beside?: ReactNode
   /** Where the Facts hold the day and the store: the receipt's day and store go there (the record's draft, saved with its Save). */
   onReceiptFacts?: (fill: ReceiptFill) => void
+  /** Where the Facts hold the day and the store: them as one read-only line ("Bought 08.11.2026 · Elkjøp — edit it in Facts"). */
+  factsLine?: string
 }) {
   const set = (p: Partial<PurchaseForm>) => onForm({ ...f, ...p })
   const rd = f.rd
@@ -68,6 +70,7 @@ export function PurchaseEditor({ item, form: f, onForm, view: v, stores, storesL
           {v.noLine && <p className="text-meta text-warn">No line on the receipt looks like “{item.title}” — check that it is the right receipt.</p>}
         </div>
       )}
+      {factsLine && <p className="text-meta tabular-nums text-fg-muted">{factsLine}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1.5" role="radiogroup" aria-label="How it was bought">
           <ChoiceChip on={f.channel === 'online'} onClick={() => set({ channel: 'online' })}>Online</ChoiceChip>

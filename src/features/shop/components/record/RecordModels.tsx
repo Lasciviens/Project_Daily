@@ -2,7 +2,7 @@ import { Check, CircleHelp, Plus, X } from 'lucide-react'
 import { Button, TonePill, Truncate, cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useBuyNow, useUpdateShopItem } from '../../hooks/useShop'
+import { useUpdateShopItem } from '../../hooks/useShop'
 import { priceNow } from '../../shopModel'
 import { bestMatch, cycleMeets, meetsOf, metCount, requirementsOf } from '../../wishModel'
 import { money } from '../shopFormat'
@@ -21,12 +21,9 @@ export function AddModelButton({ wish }: { wish: ShopItem }) {
  * has one), ✓ / ✗ / ? per must-have (one tap cycles), the best match, and
  * Buy this model / Not chosen. A row per model reads the same on a phone.
  */
-export function RecordModels({ wish, models, watches, onBought }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch>; /** The model bought: its record takes this one's place, its Purchase open in place. */ onBought: (id: string) => void }) {
+export function RecordModels({ wish, models, watches, onBuy }: { wish: ShopItem; models: ShopItem[]; watches: ReadonlyMap<string, ShopPriceWatch>; /** Bought, the record's way: its draft saved first, then the model's record in its place. */ onBuy: (model: ShopItem) => void }) {
   const openRecord = useOpenRecord()
   const update = useUpdateShopItem()
-  // A model bought is the wish bought: the model's own record takes this one's place with its Purchase open (one screen, never
-  // a second popup on top — owner, 24.11.2026).
-  const buy = useBuyNow(onBought, { thenDetails: true })
   const reqs = requirementsOf(wish)
   const price = (m: ShopItem) => priceNow(m, watches.get(m.id))
   const best = bestMatch(wish, models, price)
@@ -78,7 +75,7 @@ export function RecordModels({ wish, models, watches, onBought }: { wish: ShopIt
                 )}
                 {!out && open && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => buy(m)} icon={<Check />} tip="Bought this model">Bought</Button>
+                    <Button size="sm" variant="ghost" onClick={() => onBuy(m)} icon={<Check />} tip="Bought this model">Bought</Button>
                     <Button size="sm" variant="ghost" onClick={() => update.mutate({ id: m.id, patch: { status: 'dropped' }, quiet: true })} className="text-fg-muted">Not chosen</Button>
                   </div>
                 )}

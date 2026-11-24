@@ -178,6 +178,18 @@ export function inPlaceForm(f: PurchaseForm, item: ShopItem, today: string): Pur
   return { ...f, day: boughtDayOf(item) ?? today, storePick: null, otherName: null }
 }
 
+/**
+ * The row as the open record's draft has it: its purchase day and store (a receipt read in Purchase, a Facts edit), not saved
+ * yet — so the in-place editor counts the deadlines from the day the one Save will write (critic, 24.11.2026).
+ */
+export function withDraftDayAndStore(item: ShopItem, draft: { bought_day?: string; platform?: string | null }): ShopItem {
+  return {
+    ...item,
+    ...(draft.bought_day !== undefined ? { bought_at: draft.bought_day ? middayIso(draft.bought_day) : null } : {}),
+    ...('platform' in draft ? { platform: draft.platform ?? null } : {}),
+  }
+}
+
 /** The parts of a form the owner sets (never the day or the store — an add's own facts — nor what is worked out from them). */
 const chosen = (f: PurchaseForm) => JSON.stringify([f.channel, f.arrived, f.ownReturn ?? null, f.complainSet, f.complainSet ? f.years : null, f.keepComplain, f.useReceiptComplain, f.extra, f.note])
 

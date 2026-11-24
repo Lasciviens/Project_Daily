@@ -25,7 +25,7 @@ export function ShopRecord({ item, openFact, openSection, onClose }: { item: Sho
       size="xl"
       mobile="fullscreen"
       dismissible={!r.saving}
-      footer={r.d.dirty ? <RecordFooter r={r} /> : undefined}
+      footer={r.d.dirty && !r.purchaseEditing ? <RecordFooter r={r} /> : undefined}
     >
       <RecordBody mode="open" r={r} openFact={openFact} openSection={openSection} pill="phone" />
     </ModalShell>
