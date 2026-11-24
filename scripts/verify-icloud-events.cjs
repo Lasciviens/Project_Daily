@@ -148,6 +148,38 @@ const timedNone = E.slotEvent(slot, { ...look({}), area: { ...DEFAULT_AREAS.foot
 eq([timedNone.includes('ACTION:NONE'), timedNone.includes('ACTION:DISPLAY')], [true, false], 'an area with alert "None" writes Apple\'s no-alert marker (the iPhone adds no default alert)')
 eq(trig({ allDayAlert: { dayBefore: false, time: '25:99' } }), 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'a time that isn\'t one gives no alert, never a broken line')
 
+console.log('\n== No alert by default, on every event (owner, 24.11.2026: "Default alert on apple calendar should be none on everything") ==')
+{
+  // Without any VALARM, iCloud adds the calendar's default alert on a create (Apple's CalendarServer: processAlarms →
+  // addAlarms, only to a component with no VALARM; the iPhone does the same): so "no alert" must be Apple's marker,
+  // exactly one, never an empty event (docs/integrations/icloud-caldav.md → Default alerts).
+  const alarms = (ics) => { const u = unfold(ics); return [...u.matchAll(/BEGIN:VALARM\r\n([\s\S]*?)\r\nEND:VALARM/g)].map(m => m[1].split('\r\n')) }
+  const isMarker = (ics) => JSON.stringify(alarms(ics)) === JSON.stringify([E.NO_ALERT.slice(1, -1)])
+  eq(E.NO_ALERT, ['BEGIN:VALARM', 'ACTION:NONE', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'END:VALARM'],
+    "Apple's no-alert marker: ACTION:NONE at 01.04.1976 00:55:45 UTC (RFC 9074 §8's ignored trigger), no X-APPLE-DEFAULT-ALARM (that flag would mark it as the default to replace)")
+  const areas = Object.keys(DEFAULT_AREAS)
+  eq(areas.filter(k => DEFAULT_AREAS[k].alertMinutes !== null), [], 'no area has an alert of its own by default')
+  const lookNone = { ...base, done: false, look: { notes: 'notes+link', allDayAlert: null } }
+  const events = []
+  for (const k of areas) {
+    const area = DEFAULT_AREAS[k]
+    events.push([`${k}: a timed slot`, E.slotEvent({ id: 'n1', date: '2026-11-03', start_time: '18:00', duration_minutes: 60, title: 'Match', busy: true }, { ...lookNone, area })])
+    events.push([`${k}: a slot with no length`, E.slotEvent({ id: 'n2', date: '2026-11-03', start_time: '18:00', duration_minutes: null, title: 'Call', busy: false }, { ...lookNone, area })])
+    events.push([`${k}: an all-day slot`, E.slotEvent({ id: 'n3', date: '2026-11-03', start_time: null, duration_minutes: null, title: 'Birthday', busy: true }, { ...lookNone, area })])
+    events.push([`${k}: a slot whose alerts are "Default" (none of its own)`, E.slotEvent({ id: 'n4', date: '2026-11-03', start_time: '09:00', duration_minutes: 30, title: 'A', busy: true, alerts: null }, { ...lookNone, area })])
+    events.push([`${k}: a slot whose alert is "None"`, E.slotEvent({ id: 'n5', date: '2026-11-03', start_time: '09:00', duration_minutes: 30, title: 'A', busy: true, alerts: [] }, { ...lookNone, area: { ...area, alertMinutes: 30 } })])
+    events.push([`${k}: a timed repeat`, E.planEvent(weekly, { ...base, look: lookNone.look, area, today: '2026-10-30' })])
+    events.push([`${k}: an all-day repeat`, E.planEvent({ ...weekly, id: 'p3', start_time: null, end_time: null, except_dates: [] }, { ...base, look: lookNone.look, area, today: '2026-10-30' })])
+  }
+  events.push(['a workout (even in an area with an alert)', E.workoutEvent({ key: 'a7d5c2f0-1b2c-4d3e-8f9a-0b1c2d3e4f50', title: 'Lower B', start_time: '2026-10-21T16:30:00Z', end_time: null },
+    { area: training60, look: lookNone.look, appUrl: base.appUrl, now })])
+  const wrong = events.filter(([, ev]) => !ev || !isMarker(ev.ics)).map(([name]) => name)
+  eq(wrong, [], `every event with no alert picked carries exactly Apple's no-alert marker — never no VALARM, never a display alert (${events.length} events)`)
+  eq(events.every(([, ev]) => (unfold(ev.ics).match(/^BEGIN:VEVENT$/gm) || []).length === 1), true, 'one VEVENT per object (iCloud adds a default to every component without a VALARM, an override day too)')
+  eq(isMarker(E.slotEvent({ id: 'n6', date: '2026-11-03', start_time: '09:00', duration_minutes: 30, title: 'A', busy: true }, { ...lookNone, area: training60 }).ics), false,
+    'an alert the owner set (the area\'s, in Settings → Calendar) is still written — only the default is none')
+}
+
 console.log('\n== Hostile text (security review, 30.10.2026) ==')
 eq([E.icsEscape('Lunch\u2028ATTENDEE:mailto:ola@example.com'), E.icsEscape('Lunch\u0085X'), E.icsEscape('Lunch\u2029X')],
   ['LunchATTENDEE:mailto:ola@example.com', 'LunchX', 'LunchX'], 'U+0085 and U+2028/2029 (line ends to some parsers) are dropped too')
