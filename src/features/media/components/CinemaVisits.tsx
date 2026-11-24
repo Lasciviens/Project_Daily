@@ -58,14 +58,14 @@ export function CinemaVisits({ entry }: { entry: UserMovieEntry }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        <button title={marked ? 'Cinema — watched at a cinema' : 'Cinema? — watched at a cinema?'}
           type="button"
           aria-pressed={marked}
           onClick={() => { void toggle() }}
           disabled={save.isPending || del.busy}
           className="pill-tab press-feedback border border-line aria-pressed:border-transparent"
         >
-          <Ticket aria-hidden className="h-4 w-4" /> <span title={marked ? 'Watched at a cinema' : 'Watched at a cinema?'}>{marked ? 'Cinema' : 'Cinema?'}</span>
+          <Ticket aria-hidden className="h-4 w-4" /> {marked ? 'Cinema' : 'Cinema?'}
         </button>
         {marked && (
           <Button size="sm" variant="ghost" icon={<Plus />} onClick={() => setEditing('new')}>Another visit</Button>

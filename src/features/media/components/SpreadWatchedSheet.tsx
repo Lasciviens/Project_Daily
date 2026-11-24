@@ -249,12 +249,12 @@ export function SpreadWatchedSheet({ tvId, tvName, tvEntryId, seasons, defaultRu
                   <IconButton label="Remove break" onClick={() => setBreaks(bs => bs.filter((_, j) => j !== i))} className="text-fg-faint hover:text-fg-2"><X /></IconButton>
                 </div>
               ))}
-              <button
+              <button title="Break — add a break"
                 type="button"
                 onClick={() => setBreaks(bs => [...bs, { from: '', to: '' }])}
                 className="flex min-h-[44px] w-fit items-center gap-1.5 rounded-control px-1 text-body text-fg-muted transition-colors hover:text-accent-600"
               >
-                <Plus className="h-4 w-4" /> <span title="Add a break">Break</span>
+                <Plus className="h-4 w-4" /> Break
               </button>
             </div>
           </Field>

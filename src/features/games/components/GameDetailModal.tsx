@@ -136,7 +136,7 @@ function PlatformRow({ platform, gameId }: { platform: GamePlatform; gameId: str
           <div className="ml-auto flex items-center gap-1">
             {!platform.is_primary_variant && (
               <button onClick={() => setPrimary.mutate({ gameId, platformId: platform.id })} disabled={setPrimary.isPending}
-                title="Make primary" className="min-h-[36px] px-2 text-[11px] text-accent-600 hover:bg-accent-100 rounded-lg">★ Primary</button>
+                title="★ Primary — make primary" className="min-h-[36px] px-2 text-[11px] text-accent-600 hover:bg-accent-100 rounded-lg">★ Primary</button>
             )}
             <button onClick={() => setEditing(true)} title="Edit" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-500 hover:text-accent-600 rounded-lg">✎</button>
             <button onClick={() => setConfirmDelete(true)} title="Delete" className="min-w-[36px] min-h-[36px] flex items-center justify-center text-ink-500 hover:text-danger rounded-lg">×</button>
@@ -520,7 +520,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                 <p className="text-base font-bold text-accent-600 mt-2">★ {game.rating} <span className="text-[10px] text-ink-400 font-normal">my rating</span></p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={handleQueueToggle} title={game.play_order != null ? 'Remove from the queue' : 'Add to the queue'}
+                <button onClick={handleQueueToggle} title={game.play_order != null ? 'Queue — remove it from the queue' : 'Queue — add it to the queue'}
                   className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-danger-soft text-danger hover:brightness-95' : 'bg-accent-50 text-accent-700 hover:bg-accent-100'}`}>
                   {game.play_order != null ? `✕ Queue #${game.play_order}` : '🎮 Queue'}
                 </button>

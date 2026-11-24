@@ -183,8 +183,8 @@ export function MealPlanWeek() {
                     ))}
                   </ul>
                 ) : (
-                  <button type="button" onClick={() => openAdd(dateStr, slot)} className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
-                    <span title="Plan a meal">+ Meal</span>
+                  <button title="+ Meal — plan a meal" type="button" onClick={() => openAdd(dateStr, slot)} className="flex min-h-[44px] w-full items-center px-4 text-left text-body text-fg-faint transition-colors hover:text-accent-600">
+                    + Meal
                   </button>
                 )}
               </Card>

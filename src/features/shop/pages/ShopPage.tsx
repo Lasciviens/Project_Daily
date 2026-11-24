@@ -97,7 +97,7 @@ export function ShopPage() {
         <MoreHorizontal aria-hidden className="h-[18px] w-[18px]" />
       </MenuButton>
       <MenuItems anchor="bottom end" transition className="menu w-72 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0">
-        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} title="Read a receipt" className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Receipts</button></MenuItem>
+        <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-receipt' })} title="Receipts — read a receipt" className="menu-item"><Receipt aria-hidden className="h-4 w-4" /> Receipts</button></MenuItem>
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-tidy' })} title="Tidy up product info (AI)" className="menu-item"><Sparkles aria-hidden className="h-4 w-4" /> Tidy up</button></MenuItem>
         <MenuItem><button type="button" onClick={() => modal.open({ kind: 'shop-stores' })} title="Stores and rules" className="menu-item"><ListChecks aria-hidden className="h-4 w-4" /> Stores</button></MenuItem>
         {suggestKnown && (suggested.count ?? 0) > 0 && (

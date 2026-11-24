@@ -87,8 +87,8 @@ export function TgMergeDialog({ games, onClose }: Props) {
     <div className="flex flex-wrap items-center justify-end gap-2">
       <button type="button" onClick={onClose} className="tg-btn tg-btn-secondary">Cancel</button>
       {plan.offerHide && drop.play_status !== 'hidden' && (
-        <button type="button" disabled={busy} onClick={() => hide.mutate({ id: drop.id, status: 'hidden' }, { onSuccess: onClose })} className="tg-btn tg-btn-secondary">
-          <span title={`Hide the ${LIBRARY_LABEL[drop.library] ?? drop.library} copy`}>Hide copy</span>
+        <button title={`Hide the ${LIBRARY_LABEL[drop.library] ?? drop.library} copy`} type="button" disabled={busy} onClick={() => hide.mutate({ id: drop.id, status: 'hidden' }, { onSuccess: onClose })} className="tg-btn tg-btn-secondary">
+          Hide copy
         </button>
       )}
       <button type="button" disabled={!!plan.blocked || busy} onClick={() => setConfirm(true)} className="tg-btn tg-btn-primary disabled:opacity-50">

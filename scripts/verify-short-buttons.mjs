@@ -37,6 +37,8 @@ const EXCEPTIONS = {
   'src/features/ai/chat/ChatExtras.tsx::toolNames.length': 'a disclosure\'s summary line: it states what is folded (the chat, its tool count, your instructions) — content, not an action',
   'src/features/books/components/library/pieces.tsx::look like the same book': 'a warning that opens its own list: the sentence is the warning',
   'src/features/media/components/stats/MediaStatsView.tsx::with an unknown date': 'a link inside a sentence that explains a count: its words are the sentence',
+  'src/features/books/components/library/pieces.tsx::BookCover': 'a book\'s row (cover, title, author): its words are the book, not a label',
+  'src/features/home/components/ruter/QuaySavePanel.tsx::All directions': 'a choice card: its words name the choice and what it covers',
   'src/features/shop/components/stats/MoneyChart.tsx::spent ·': 'a chip that is one month\'s figures (spent and got back): its words are the data it opens',
 }
 
@@ -115,14 +117,30 @@ export function shownWords(children, { nested = true } = {}) {
       const close = tagEnd(children, i + 1)
       const self = close > 0 && children[close - 1] === '/'
       const name = children.slice(i + 1).match(/^[\w.]+/)?.[0]
-      // A plain button (a row, a card, a disclosure): the text inside its nested elements is content, not its label.
+      // A plain button (a row, a card, a disclosure): the text inside its nested layout elements is content, not its label —
+      // but a label wrapped in a plain span (no layout class) is still its label and counts.
       if (!nested && name && !self) {
         const end = children.indexOf(`</${name}>`, close)
+        const open = children.slice(i, close + 1)
+        if (name === 'span' && labelSpan(open) && end > 0) plain += ' ' + spanText(children.slice(close + 1, end)) + ' '
         i = end < 0 ? children.length : end + name.length + 3
       } else i = close < 0 ? children.length : close + 1
     } else { plain += children[i]; i++ }
   }
   return wordsIn(plain) + most
+}
+
+/** Layout classes: a span with one of them holds a row's content (a title, a figure), not a label. */
+const LAYOUT = /\b(block|flex|grid|inline-flex|min-w-0|flex-1|w-\d+|h-\d+|absolute|relative|truncate|line-clamp-\d|sr-only|count-badge|tone-pill|section-label|tabular-nums|text-right|hidden)\b/
+/** A span that wraps a plain button's label: one with a title, or none of the classes a row's content wears. */
+const labelSpan = open => /\stitle=/.test(open) || !/className=/.test(open) || (/className="([^"]*)"/.test(open) && !LAYOUT.test(open.match(/className="([^"]*)"/)[1]) && !/\b(font-|text-(body|meta|fg)|tg-)/.test(open.match(/className="([^"]*)"/)[1]))
+/** A label span's words: its text, and the longest string of each expression in it. */
+const spanText = inner => {
+  const lits = [...inner.matchAll(/'([^']*)'|`([^`]*)`/g)].map(x => (x[1] ?? x[2]).replace(/\$\{[^}]*\}/g, ''))
+  const longest = lits.sort((a, b) => wordsIn(b) - wordsIn(a))[0] ?? ''
+  let text = '', depth = 0
+  for (const ch of inner) { if (ch === '{') depth++; else if (ch === '}') depth--; else if (!depth) text += ch }
+  return `${text.replace(/<[^>]*>/g, ' ')} ${longest}`
 }
 
 /** A label's text with every `{…}` (at any depth) and every tag taken out. */
@@ -192,9 +210,14 @@ function problemsIn(file, src) {
     const n = shownWords(b.children, { nested: b.tag !== 'button' })
     const text = b.children.replace(/\s+/g, ' ').trim()
     if (n > 2 && !excepted(file, text)) long.push(`${file}:${b.at} <${b.tag}> (${n} words: ${text.slice(0, 70)})`)
-    const tip = propOf(b.open, 'tip')
+    // The description: a `tip` (Button), else the button's own `title`; a `title` on a span inside is in the wrong place.
+    const tip = propOf(b.open, 'tip') ?? propOf(b.open, 'title')
     const first = firstWord(b.children)
     if (tip && first && wordList(tip)[0]?.toLowerCase() !== first) tips.push(`${file}:${b.at} "${first}…" has the tip "${tip}"`)
+    // A label wrapped in a <span title> (the button holds nothing else but icons): the description belongs on the button.
+    const spanTip = b.children.match(/<span\b[^>]*\stitle=[^>]*>[\s\S]*?<\/span>/)
+    if (b.tag === 'button' && spanTip && !/<(?!\/)[^>]*[^/]>/.test(b.children.replace(spanTip[0], '').replace(/<[^>]*\/>/g, '')))
+      tips.push(`${file}:${b.at} the description sits on a <span title> inside the button — put it on the button`)
   }
   for (const o of optionLabelsOf(src)) {
     if (wordsIn(o.label) > 2 && !excepted(file, o.label)) long.push(`${file}:${o.at} option "${o.label}"`)
@@ -248,6 +271,10 @@ check('the scanner reads props with arrows, a multi-line label and a plain butto
   && buttonsOf('<button type="button" onClick={() => f()}>Clear all the filters</button>')[0]?.children === 'Clear all the filters')
 const probe = problemsIn('x.tsx', `const O = [{ value: 'a', label: 'Sold or gone' }]\n<SegmentedControl options={O} />\n<Button tip="Open the task">Task</Button>\n{ key: 'k', label: 'Off the errand list', onClick: f }`)
 check('a long segment, a long action label and a tip that starts elsewhere fail', probe.long.length === 2 && probe.tips.length === 1, JSON.stringify(probe))
+
+const probe2 = problemsIn('y.tsx', `<button type="button" title="Show the hidden titles" onClick={f}>Hidden</button>\n<button type="button" onClick={f}><Undo2 aria-hidden /> <span title="Undo this save">Undo</span></button>\n<button type="button" onClick={f}><span>Add a new list now</span></button>`)
+check('a plain button\'s title is read as its tip, a description on a <span title> is flagged, and a label wrapped in a plain span counts',
+  probe2.tips.some(t => t.includes('Show the hidden titles')) && probe2.tips.some(t => t.includes('<span title>')) && probe2.long.length === 1, JSON.stringify(probe2))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

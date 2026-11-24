@@ -125,9 +125,9 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
 
       {form && <ManualSleepForm key={form.date} initialDate={form.date} initialHours={form.hours} onClose={() => setForm(null)} />}
       {!form && (
-        <button type="button" onClick={() => openForm(isDay ? anchor : todayStr())}
+        <button title={isDay && manual.has(anchor) ? 'Fix — correct this night by hand' : 'Add night — add a night by hand'} type="button" onClick={() => openForm(isDay ? anchor : todayStr())}
           className="btn-ghost btn-sm self-start px-2 text-meta">
-          <span title={isDay && manual.has(anchor) ? 'Correct this night by hand' : 'Add a night by hand'}>{isDay && manual.has(anchor) ? 'Correct' : 'Add night'}</span>
+          {isDay && manual.has(anchor) ? 'Fix' : 'Add night'}
         </button>
       )}
 
@@ -143,7 +143,7 @@ export function SleepSection({ range, extras = true }: { range: HealthRange; ext
           formatValue={fmtHrs}
           refLines={[{ y: 7, label: '7 h' }]}
           onViewDay={viewDay}
-          extraActions={date => [{ label: 'Correct', onClick: () => openForm(date) }]}
+          extraActions={date => [{ label: 'Fix', onClick: () => openForm(date) }]}
           describe={p => {
             const src = p.date ? sources.get(p.date) : null
             return src && src.size ? <p className="text-fg-muted">{[...src].join(', ')}</p> : null

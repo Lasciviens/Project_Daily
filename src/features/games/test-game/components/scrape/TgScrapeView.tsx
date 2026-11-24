@@ -142,9 +142,9 @@ export function TgScrapeView({ games, counted, loading, layout }: {
       <p className="min-w-0 text-[12px] leading-snug tg-muted" title="Each review starts from these defaults; change them per game there, or here under What to save.">
         Default for ScreenScraper's {counts.store + counts.on_demand + counts.skip} picture kinds: {counts.store} copied to your storage · {counts.on_demand} shown online (no storage) · {counts.skip} ignored{prefs.snapshot ? ' · their raw answer kept' : ''}
       </p>
-      <button type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[13px]">
+      <button title="Fields — what to save from a scrape" type="button" onClick={() => setSettingsOpen(true)} className="tg-btn tg-btn-secondary shrink-0 !px-3 !text-[13px]">
         <Settings2 aria-hidden className="h-4 w-4" strokeWidth={2} />
-        <span title="What to save">Save what</span>
+        Fields
       </button>
     </div>
   )
@@ -178,9 +178,9 @@ export function TgScrapeView({ games, counted, loading, layout }: {
   )
 
   const batchBack = fromBatch && mode === 'search' ? (
-    <button type="button" onClick={() => window.history.back()} className="tg-btn tg-btn-secondary self-start !px-3 !text-[13px]">
+    <button title="Back to Many games" type="button" onClick={() => window.history.back()} className="tg-btn tg-btn-secondary self-start !px-3 !text-[13px]">
       <ArrowLeft aria-hidden className="h-4 w-4" strokeWidth={2} />
-      <span title="Back to Many games">Many games</span>
+      Back
     </button>
   ) : null
 

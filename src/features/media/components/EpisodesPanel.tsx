@@ -376,7 +376,7 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
           <span className="hidden sm:inline">Spread</span>
         </Button>
         {watched.length > 0 && (
-          <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Change the watched date of every watched episode — e.g. each to its release date">
+          <Button size="sm" variant="ghost" icon={<CalendarDays />} onClick={() => { void changeAllDates() }} disabled={marking} title="Dates — change the watched date of every watched episode — e.g. each to its release date">
             Dates
           </Button>
         )}

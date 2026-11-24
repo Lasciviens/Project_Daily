@@ -84,9 +84,9 @@ function LocationAge({ now }: { now: number }) {
   // The phone is never asked on opening the app: a tap asks it (and its prompt, once).
   if (geo && geo.source !== 'gps') {
     return (
-      <button type="button" onClick={() => void askLocation()} disabled={isFetching}
+      <button title="Use my location" type="button" onClick={() => void askLocation()} disabled={isFetching}
         className="ml-auto inline-flex min-h-[44px] items-center gap-1 px-2 text-micro font-semibold text-accent-600 disabled:opacity-50">
-        <MapPin aria-hidden className="h-3 w-3" /><span title="Use my location">{isFetching ? 'Locating…' : 'My location'}</span>
+        <MapPin aria-hidden className="h-3 w-3" />{isFetching ? 'Locating…' : 'My location'}
       </button>
     )
   }

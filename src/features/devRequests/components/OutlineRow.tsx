@@ -188,7 +188,7 @@ export const OutlineRow = memo(function OutlineRow(p: Props) {
               type="button"
               onClick={() => p.review?.review?.to && p.review.onOpenRequest(p.review.review.to)}
               disabled={!p.review.review?.to}
-              title="Open the re-check request"
+              title="Moved to re-check — open the re-check request"
               className="flex min-h-[28px] items-center self-start [@media(pointer:coarse)]:min-h-[44px]"
             >
               <span data-tone="info" className="tone-pill gap-1">Moved to re-check<ArrowUpRight aria-hidden className="h-3 w-3 shrink-0" /></span>

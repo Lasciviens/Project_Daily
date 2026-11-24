@@ -113,7 +113,7 @@ export function TgScrapeApplied({ game, runId, result, rows, onBack, onAgain }: 
         )}
         <button type="button" onClick={openGame} className="tg-btn tg-btn-primary" title="Open the game">Open game</button>
         {onBack ? (
-          <button type="button" onClick={onBack} className="tg-btn tg-btn-secondary" title="Back to the results">Results</button>
+          <button type="button" onClick={onBack} className="tg-btn tg-btn-secondary" title="Back to the results">Back</button>
         ) : (
           <button type="button" onClick={onAgain} className="tg-btn tg-btn-secondary">Review again</button>
         )}

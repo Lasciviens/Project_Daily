@@ -158,7 +158,7 @@ export function SteamGameModal({ game, onClose, className }: {
         {/* Live player count — explicit tap only, never on open */}
         <div className="flex items-center gap-2 flex-wrap">
           {!wantPlayers ? (
-            <button onClick={() => setWantPlayers(true)} title="How many are playing right now?"
+            <button onClick={() => setWantPlayers(true)} title="🟢 Players now — how many are playing right now?"
               className="min-h-[44px] px-3 text-sm rounded-lg border border-ink-200 bg-ink-50 text-ink-600 hover:border-accent-300 transition-colors">
               🟢 Players now
             </button>

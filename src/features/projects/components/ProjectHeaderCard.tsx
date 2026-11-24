@@ -103,8 +103,8 @@ export function ProjectHeaderCard({ project, summary, current, logBlock, onNewTa
               </button>
             </MenuItem>
             <MenuItem>
-              <button type="button" className="menu-item" onClick={() => modal.open({ kind: 'project-phase', projectId: project.id })}>
-                <Plus aria-hidden className="h-4 w-4" /> <span title="Add a phase">Phase</span>
+              <button title="Phase — add a phase" type="button" className="menu-item" onClick={() => modal.open({ kind: 'project-phase', projectId: project.id })}>
+                <Plus aria-hidden className="h-4 w-4" /> Phase
               </button>
             </MenuItem>
             <div className="menu-sep" />
@@ -130,7 +130,7 @@ export function ProjectHeaderCard({ project, summary, current, logBlock, onNewTa
               {project.notes && <ProseText text={project.notes} className="border-t border-line pt-1.5" />}
               {!project.description && !project.notes && (
                 <button type="button" onClick={() => modal.open({ kind: 'project', id: project.id })}
-                  title="Add what it is" className="self-start text-meta font-semibold text-accent-600">Describe it</button>
+                  title="Describe it — add what it is" className="self-start text-meta font-semibold text-accent-600">Describe it</button>
               )}
             </DisclosurePanel>
           </div>

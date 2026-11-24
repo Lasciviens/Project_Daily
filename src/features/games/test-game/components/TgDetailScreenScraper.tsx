@@ -153,8 +153,8 @@ function ProviderBlock({ game, data, again }: { game: TgGame; data: GameScrapeDa
           </button>
         )}
         {data.undoableRun && (
-          <button type="button" onClick={() => setConfirmUndo(true)} disabled={undo.isPending} className="inline-flex min-h-[44px] items-center gap-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">
-            <Undo2 className="h-3.5 w-3.5" aria-hidden /> <span title="Undo the last scrape">{undo.isPending ? 'Undoing…' : 'Undo'}</span>
+          <button title="Undo the last scrape" type="button" onClick={() => setConfirmUndo(true)} disabled={undo.isPending} className="inline-flex min-h-[44px] items-center gap-1.5 text-[12px] font-semibold text-[var(--tg-accent)]">
+            <Undo2 className="h-3.5 w-3.5" aria-hidden /> {undo.isPending ? 'Undoing…' : 'Undo'}
           </button>
         )}
       </div>

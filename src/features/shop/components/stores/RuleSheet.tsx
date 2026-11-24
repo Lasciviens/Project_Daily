@@ -138,9 +138,9 @@ export function RuleSheet({ store, stores, rule, onClose }: { store: ShopStore; 
           <Row label="Matches">
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Matches whom">
               {(['listed', 'any'] as const).map(a => (
-                <button key={a} type="button" role="radio" aria-checked={against === a} onClick={() => setAgainst(a)}
+                <button title={a === 'any' ? 'Any shop in its country' : 'These stores'} key={a} type="button" role="radio" aria-checked={against === a} onClick={() => setAgainst(a)}
                   className={cx('chip px-3', against === a ? 'border-accent-500 bg-accent-50 font-semibold text-accent-700' : 'hover:bg-surface-hover')}>
-                  <span title={a === 'any' ? 'Any shop in its country' : 'These stores'}>{a === 'any' ? 'Any shop' : 'These stores'}</span>
+                  {a === 'any' ? 'Any shop' : 'These stores'}
                 </button>
               ))}
             </div>

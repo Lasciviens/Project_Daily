@@ -161,7 +161,7 @@ export function AdSheet({ r, listing, onClose }: { r: ShopRecordModel; listing: 
           <input value={condNotes} onChange={e => keepNotes(e.target.value)} maxLength={1000} placeholder="Condition in your words: scratches, what is included…"
             aria-label="Condition, in your words" className="input input-sm min-w-0 flex-1" />
           <Button size="sm" icon={<Sparkles />} loading={improve.isPending} disabled={!condNotes.trim() || !body.trim()} onClick={() => { void improveIt() }}
-            title="AI call: rewrites the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
+            title="Improve — aI call: rewrites the text with your condition words, in their language — you read and edit it; nothing is added that you did not say">Improve</Button>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           {template && <span>{template.language === 'nb' ? 'In Norwegian' : 'In English'}, from your template{template.marketplace ? ` for ${template.marketplace}` : ''}.</span>}

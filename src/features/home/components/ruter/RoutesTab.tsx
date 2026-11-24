@@ -567,9 +567,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
             {((!draftVia && !showVia) || (draftFrom && draftTo)) && (
               <div className="flex items-center justify-between gap-2 px-3">
                 {!draftVia && !showVia ? (
-                  <button type="button" onClick={() => setShowVia(true)}
+                  <button title="Via stop — add a via stop" type="button" onClick={() => setShowVia(true)}
                     className="flex min-h-[44px] items-center gap-1.5 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600">
-                    <Plus aria-hidden className="h-3.5 w-3.5" /> <span title="Add a via stop">Via stop</span>
+                    <Plus aria-hidden className="h-3.5 w-3.5" /> Via stop
                   </button>
                 ) : <span />}
                 {draftFrom && draftTo && (
@@ -695,14 +695,14 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
 
           {/* Save as favorite — available as soon as both stops are NSR stops */}
           {draftCanSave && !draftAlreadySaved && !showSaveForm && (
-            <button
+            <button title="Favourite — save as a favourite route"
               onClick={() => {
                 setSaveLabel(suggestLabel(draftFrom!, draftTo!))
                 setShowSaveForm(true)
               }}
               className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
             >
-              <Save aria-hidden className="mr-1 h-3.5 w-3.5" /> <span title="Save as a favourite route">Favourite</span>
+              <Save aria-hidden className="mr-1 h-3.5 w-3.5" /> Favourite
             </button>
           )}
           {draftCanSave && !draftAlreadySaved && showSaveForm && (
@@ -730,9 +730,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
           <div className="flex items-center justify-between gap-2">
             <span className="text-micro tabular-nums text-fg-muted">{dataUpdatedAt ? `Updated ${fmtLastUpdated(dataUpdatedAt)}` : ''}</span>
             {canSave && !alreadySaved && !showSaveForm && (
-              <button onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
+              <button title="Save this route" onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
                 className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
-                <span title="Save this route">+ Save</span>
+                + Save
               </button>
             )}
           </div>

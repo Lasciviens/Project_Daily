@@ -58,7 +58,7 @@ export function RecordPurchase({ item, today }: { item: ShopItem; today: string 
       {protection && (
         <p className="flex flex-wrap items-center gap-x-2 text-meta text-fg-muted">
           <span>Price protection to {formatDate(protection.until)} — {protection.words}</span>
-          <button type="button" onClick={() => modal.open({ kind: 'shop-claim', id: item.id })} title="Got money back — note it" className="font-semibold text-accent-600 hover:underline">Money back</button>
+          <button type="button" onClick={() => modal.open({ kind: 'shop-claim', id: item.id })} title="Money back — got money back — note it" className="font-semibold text-accent-600 hover:underline">Money back</button>
         </p>
       )}
       {protectionNote && <p className="text-meta text-fg-muted">{protectionNote.words} — to {formatDate(protectionNote.until)} if it holds</p>}

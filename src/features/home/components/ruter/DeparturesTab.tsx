@@ -304,11 +304,11 @@ export function DeparturesTab({ active, now }: DeparturesTabProps) {
                 : 'Saved direction not found in current departures — showing all'}
           </span>
           {(scopeActive || showAllDirections) && (
-            <button
+            <button title={showAllDirections ? 'Saved only — show the saved direction only' : 'All directions — show them all'}
               onClick={() => setShowAllDirections(v => !v)}
               className="min-h-[44px] font-semibold text-accent-600"
             >
-              <span title={showAllDirections ? 'Show the saved direction only' : 'Show all directions'}>{showAllDirections ? 'Saved only' : 'All directions'}</span>
+              {showAllDirections ? 'Saved only' : 'All directions'}
             </button>
           )}
         </div>

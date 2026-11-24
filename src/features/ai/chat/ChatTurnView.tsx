@@ -193,8 +193,8 @@ export function ChatTurnView({ turn, onDecide, onUndo }: { turn: ChatTurn; onDec
         {!turn.streaming && turn.cutOff && <p className="px-1 text-meta text-fg-muted">The answer was cut off. Ask for a shorter one.</p>}
         {!turn.streaming && turn.thinking && (
           <div className="px-1">
-            <button type="button" onClick={() => setReasoning(r => !r)} aria-expanded={reasoning} className="inline-flex items-center gap-0.5 text-micro font-semibold text-accent-600 hover:text-accent-700">
-              <ChevronRight className={cx('h-3 w-3 transition-transform', reasoning && 'rotate-90')} aria-hidden /><span title="How it reasoned">Reasoning</span>
+            <button title="Reasoning — how it reasoned" type="button" onClick={() => setReasoning(r => !r)} aria-expanded={reasoning} className="inline-flex items-center gap-0.5 text-micro font-semibold text-accent-600 hover:text-accent-700">
+              <ChevronRight className={cx('h-3 w-3 transition-transform', reasoning && 'rotate-90')} aria-hidden />Reasoning
             </button>
             {reasoning && <p className="mt-1 whitespace-pre-wrap break-words rounded-control border border-line bg-surface-2 px-2.5 py-1.5 text-meta text-fg-2">{turn.thinking}</p>}
           </div>

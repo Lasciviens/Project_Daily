@@ -131,11 +131,11 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
             <MenuItem><button type="button" onClick={onOpen} title="Open and edit" className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Open</button></MenuItem>
             <MenuItem>
               {item.task_id
-                ? <button type="button" onClick={onOpenTask} title="Open the task" className="menu-item"><ArrowRight aria-hidden className="h-4 w-4" /> Task</button>
+                ? <button type="button" onClick={onOpenTask} title="Task — open the task" className="menu-item"><ArrowRight aria-hidden className="h-4 w-4" /> Task</button>
                 : <button type="button" onClick={onPlan} title="Plan it as a task" className="menu-item"><CalendarPlus aria-hidden className="h-4 w-4" /> Plan</button>}
             </MenuItem>
-            <MenuItem><button type="button" onClick={onMoveToQuick} title="Move to the quick list" className="menu-item"><ListPlus aria-hidden className="h-4 w-4" /> Quick list</button></MenuItem>
-            <MenuItem><button type="button" onClick={onDrop} title="Not any more" className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Drop</button></MenuItem>
+            <MenuItem><button type="button" onClick={onMoveToQuick} title="Quick list — move to the quick list" className="menu-item"><ListPlus aria-hidden className="h-4 w-4" /> Quick list</button></MenuItem>
+            <MenuItem><button type="button" onClick={onDrop} title="Drop — not any more" className="menu-item"><Ban aria-hidden className="h-4 w-4" /> Drop</button></MenuItem>
             <div className="menu-sep" />
             <MenuItem><button type="button" onClick={onDelete} className="menu-item is-danger"><Trash2 aria-hidden className="h-4 w-4" /> Delete</button></MenuItem>
           </MenuItems>

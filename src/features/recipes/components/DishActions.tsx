@@ -184,8 +184,8 @@ export function DishItemMenu({ entryId, item, dish, date }: { entryId: string; i
           </button>
         </MenuItem>
         <MenuItem>
-          <button type="button" className="menu-item" onClick={() => moveOut.mutate({ entryId, item, dish })}>
-            <CornerUpLeft className={ICON} aria-hidden /><span title="Move out of the meal">Move out</span>
+          <button title="Move out of the meal" type="button" className="menu-item" onClick={() => moveOut.mutate({ entryId, item, dish })}>
+            <CornerUpLeft className={ICON} aria-hidden />Move out
           </button>
         </MenuItem>
       </MenuItems>

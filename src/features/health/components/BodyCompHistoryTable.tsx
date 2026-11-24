@@ -19,14 +19,14 @@ export function BodyCompHistoryTable({ reports }: { reports: BodyCompositionRepo
 
   return (
     <div className="flex flex-col gap-2">
-      <button
+      <button title={`Scans — ${open ? 'hide' : 'show'} all scans`}
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         className="btn-ghost btn-sm gap-1 self-start px-2 text-meta"
       >
         <ChevronDown aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-        <span title={`${open ? 'Hide' : 'Show'} all scans`}>Scans · {reports.length}</span>
+        Scans · {reports.length}
       </button>
       {open && (
         <div className="overflow-x-auto -mx-3 sm:mx-0">

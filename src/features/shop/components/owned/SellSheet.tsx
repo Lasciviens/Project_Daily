@@ -145,15 +145,15 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
             <span className="field-label">{how === 'returned' ? 'Refunded' : 'Got'}</span>
             <MoneyEditor label="Got" amount={got} currency={currency} onAmount={setGot} onCurrency={setCurrency} />
             {asking && how === 'sold' && (got !== asking.amount || currency !== asking.currency) && (
-              <button type="button" onClick={() => { setGot(asking.amount); setCurrency(asking.currency) }}
+              <button title="Asking — use the asking price" type="button" onClick={() => { setGot(asking.amount); setCurrency(asking.currency) }}
                 className="chip mt-2 mr-1.5 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">
-                <span title="Use the asking price">Asking</span> {moneyText(asking.amount, asking.currency)}
+                Asking {moneyText(asking.amount, asking.currency)}
               </button>
             )}
             {estimate && how !== 'returned' && (got !== estimate.amount || currency !== estimate.currency) && (
-              <button type="button" onClick={() => { setGot(estimate.amount); setCurrency(estimate.currency) }}
+              <button title="Estimate — use your estimate" type="button" onClick={() => { setGot(estimate.amount); setCurrency(estimate.currency) }}
                 className="chip mt-2 min-h-[36px] gap-1 px-3 tabular-nums hover:bg-surface-hover">
-                <span title="Use your estimate">Estimate</span> {moneyText(estimate.amount, estimate.currency)}
+                Estimate {moneyText(estimate.amount, estimate.currency)}
               </button>
             )}
             {got == null && <p className="mt-1 text-meta text-fg-muted">Without an amount the result stays Unknown — you can add it later.</p>}

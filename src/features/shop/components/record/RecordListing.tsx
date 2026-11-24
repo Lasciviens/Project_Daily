@@ -83,7 +83,7 @@ export function RecordListing({ r }: { r: ShopRecordModel }) {
                 </MenuButton>
                 <MenuItems anchor={{ to: 'bottom end', gap: 4, padding: 12 }} className="menu z-toast w-56">
                   <MenuItem><button type="button" className="menu-item" onClick={() => setWriting(true)} title="Edit the ad">Edit ad</button></MenuItem>
-                  {!open.ad_url && <MenuItem><button type="button" className="menu-item" onClick={() => setLinking(true)} title="Add the ad's link">Ad link</button></MenuItem>}
+                  {!open.ad_url && <MenuItem><button type="button" className="menu-item" onClick={() => setLinking(true)} title="Ad link — add the ad's link">Ad link</button></MenuItem>}
                   <MenuItem><button type="button" className="menu-item text-danger" onClick={() => set(open, { status: 'withdrawn', ended_on: today }, `Taken down · ${item.title}`)} title="Take it down">Take down</button></MenuItem>
                 </MenuItems>
               </Menu>

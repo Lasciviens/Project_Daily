@@ -230,7 +230,7 @@ function RecheckHeader({ recheck }: { recheck: RecheckOf }) {
     <button
       type="button"
       onClick={() => open(recheck.of)}
-      title="Open the request these points first came from"
+      title="Re-check of These points went to Claude before and the fix did not work. — open the request these points first came from"
       data-tone="info"
       className="tone-soft flex w-full min-w-0 items-start gap-2.5 rounded-row border border-[rgb(var(--tone)/0.35)] px-3 py-2.5 text-left transition-colors [@media(hover:hover)]:hover:border-[rgb(var(--tone)/0.6)]"
     >

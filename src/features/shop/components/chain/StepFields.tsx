@@ -79,7 +79,7 @@ export function StepBuy({ s, set, paid, problems, sameDay, today, loading }: {
         <div className="flex flex-wrap items-center gap-2">
           <DateInput value={s.boughtOn} onChange={boughtOn => set({ boughtOn })} max={today} aria-label="Bought on" className="input w-[10rem] tabular-nums" />
           {sameDay && sameDay !== s.boughtOn && (
-            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip tabular-nums hover:bg-surface-hover" title="The day it sold">
+            <button type="button" onClick={() => set({ boughtOn: sameDay })} className="chip tabular-nums hover:bg-surface-hover" title="Sale day · — the day it sold">
               Sale day · {formatDate(sameDay)}
             </button>
           )}
