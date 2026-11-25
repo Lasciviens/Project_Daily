@@ -293,6 +293,10 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
         episodeInfo: selectedEpisodes.length === 1
           ? { seasonNumber: season, episodeNumber: selectedEpisodes[0].episode_number }
           : undefined,
+        // The task's link (210): one episode, or the show for a batch.
+        link: selectedEpisodes.length === 1
+          ? { kind: 'tv', id: tvEntryId, season, episode: selectedEpisodes[0].episode_number }
+          : { kind: 'tv', id: tvEntryId },
       },
     })
     setSelected(new Set())

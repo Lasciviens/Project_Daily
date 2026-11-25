@@ -5,6 +5,8 @@ export type LiveTaskSection = Exclude<TaskSection, 'tomorrow' | 'this_week'>
 export type TaskStatus    = 'open' | 'in_progress' | 'waiting' | 'done' | 'cancelled'
 export type TaskPriority  = 'low' | 'medium' | 'high'
 export type TaskSourceType = 'manual' | 'movie' | 'tv_series' | 'media' | 'calendar' | 'ai' | 'training_session' | 'project_item'
+  // 210: the label of a task's link (the trigger writes it from the link column)
+  | 'shop_item' | 'wish' | 'football' | 'game' | 'book'
 
 export interface Task {
   id:                       string

@@ -310,6 +310,7 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     blockSource: src?.sourceType
       ? { type: src.sourceType, id: src.sourceId ?? null, seasonNumber: src.episodeInfo?.seasonNumber, episodeNumber: src.episodeInfo?.episodeNumber }
       : null,
+    ...(src?.link ? { link: src.link } : {}),
   }
 }
 

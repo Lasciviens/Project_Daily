@@ -8,6 +8,8 @@ import { supabase } from '../../integrations/supabase/client'
 import type { ConvertPreview, ConvertResult, ItemInput } from './itemTypes'
 
 export const ITEMS_NOT_MIGRATED = 'Saving items needs migration 155 — migration 155 not applied yet.'
+/** A save with a link (app_save_item's p_link) on a database without 210. Remove once 210 has been live a while. */
+export const TASK_LINKS_NOT_MIGRATED = 'Planning this needs migration 210 — migration 210 not applied yet.'
 
 interface PgError { code?: string; message?: string; details?: string; hint?: string }
 
@@ -69,13 +71,18 @@ export interface SaveItemContext { section: string | null; today: string; google
 
 /** What app_save_item receives — also what a save that wraps it passes on (163's app_football_plan). */
 export function itemPayload(input: ItemInput, ctx: SaveItemContext): Record<string, unknown> {
-  return { ...input, section: ctx.section, today: ctx.today, googleConnected: ctx.googleConnected }
+  // The link travels as its own argument (p_link), never inside the item.
+  const item: Record<string, unknown> = { ...input }
+  delete item.link
+  return { ...item, section: ctx.section, today: ctx.today, googleConnected: ctx.googleConnected }
 }
 
-/** THE item save (app_save_item). `section`: itemRules.sectionForItem; `today`: the device's day. */
+/** THE item save (app_save_item). `section`: itemRules.sectionForItem; `today`: the device's day. A link goes with
+ *  it as p_link (210): the task and its link in one transaction, the thing checked as the caller's own. */
 export async function saveItem(input: ItemInput, ctx: SaveItemContext): Promise<SaveItemAnswer> {
-  const { data, error } = await supabase.rpc('app_save_item', { p_item: itemPayload(input, ctx) })
-  if (error) throw rpcError(error)
+  const p_item = itemPayload(input, ctx)
+  const { data, error } = await supabase.rpc('app_save_item', input.link ? { p_item, p_link: input.link } : { p_item })
+  if (error) throw input.link && isMissingRpc(error) ? new Error(TASK_LINKS_NOT_MIGRATED) : rpcError(error)
   return saveAnswerOf(data)
 }
 

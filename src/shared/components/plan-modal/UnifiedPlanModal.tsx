@@ -21,6 +21,12 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-25 · v30 · A task's link (Phase 3 step A1, migration 210): a
+//                    caller's `source.link` ({kind, id[, season, episode]})
+//                    goes with the one save as app_save_item's p_link
+//                    (planForm.inputFromForm → ItemInput.link → saveItem), so
+//                    the task and its link are one transaction — Shop and
+//                    Wishes no longer write a back-pointer in onSaved.
 //  2026-11-25 · v29 · Marks as banners (owner, 24.11.2026: "those small images
 //                    are a bit ugly.. Use them as banner instead. And like a
 //                    bit shadow" — the "Peeking logo"): a titled card's rows

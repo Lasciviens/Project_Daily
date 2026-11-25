@@ -88,7 +88,8 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     modal.open({
       kind: 'task',
       defaults: { ...planDefaults(item), domain: 'personal' },
-      onSaved: r => { if (r.taskId) update.mutate({ id: item.id, patch: { task_id: r.taskId }, quiet: true }) },
+      // The task and its link in one save (210); the database keeps shop_items.task_id in step.
+      source: { link: { kind: 'shop_item', id: item.id } },
     })
   }
 

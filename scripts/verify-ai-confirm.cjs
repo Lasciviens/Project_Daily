@@ -39,6 +39,10 @@ function checkClaudeConfirm() {
   const taskPatch = /db\.from\('tasks'\)\.update\(\{ title: changes\.title \}\)/.test(change) ? ['title'] : []
   const hits = [...written, ...patched, ...taskPatch].filter(c => links.includes(c))
   check(`the columns a confirmed proposal writes (${written.length} inserted, ${patched.length + taskPatch.length} changed) include none of the outside-account links Undo knows (${links.length})`, links.length >= 5 && written.length >= 15 && !hits.length, hits.join(', '))
+  // 210's links from a task to the thing it plans (and 141's routine): never written by a confirmed proposal.
+  const taskLinks = [...fs.readFileSync(`${migDir}/210_task_links.sql`, 'utf8').matchAll(/add column if not exists ([a-z_]+)/g)].map(m => m[1]).concat('hevy_routine_id')
+  const linkHits = [...written, ...patched, ...taskPatch].filter(c => taskLinks.includes(c))
+  check(`the columns a confirmed proposal writes include none of a task's links to the thing it plans (${taskLinks.length}, 210)`, taskLinks.length === 10 && !linkHits.length, linkHits.join(', '))
   check('a confirmed change names only a food line\'s title and four figures, or a task\'s title — never its day, meal, status or a link', JSON.stringify(patched) === JSON.stringify(['custom_title', 'calories', 'protein_g', 'carbs_g', 'fat_g']) && taskPatch.length === 1)
   const updates = change.match(/\.update\(/g) || []
   check('the only writes in the assistant\'s tool part are a confirmed proposal\'s: one insert, and two updates (a food line, a task), each filtered by the row AND the verified user; no delete or upsert; no table outside tasks and food_log_entries', (apply.match(/\.insert\(/g) || []).length === 1 && updates.length === 2 && (tools.match(/\.update\(/g) || []).length === 2 && !/\.(delete|upsert)\(/.test(tools) && !/\.(insert|update)\(/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))) && /const table = tool === 'add_task' \? 'tasks' : 'food_log_entries'/.test(apply)
