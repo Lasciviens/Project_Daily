@@ -277,7 +277,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block tip>` — default `secondary`; `sm` is 36px with a mouse, 44px on touch (`.btn-*`, `.btn-sm`); `tip` is the full description of a short button (its `title` and accessible name); an `icon` with a `tip` and no words is a square button |
 | Icon-only button | `<IconButton label="…" bordered?>` (label is required: it's the accessible name and the hover `title`; `.icon-btn`, `.icon-btn-bordered`) |
 | A short button's description on touch | nothing to add: `app/longPressTips.ts` (one listener, loaded in idle time) shows, while a finger rests on a control (575 ms) — a button, link, label, tab, chip or menu line — its nearest `data-tip` or `title`, else its accessible name, in a bubble; that press does not tap, a quick tap still taps, a key ends a held press, and a text field (input, textarea, select, contenteditable) is never touched. Give a short label its words: `Button tip`, `IconButton label`, a `SegmentedControl` option's `tip`, a chip's `tip`, a plain button's `title` |
-| KPI tile | `<StatTile label value unit hint icon tone onClick />` |
+| KPI tile | `<StatTile label value unit hint change icon tone onClick inset />` — `change` sits on the number's line after the unit (the weekly report's "↗ +55 %", a tone); `inset` is a compact recessed tile inside a card (`bg-surface-2`, no border or shadow, a `text-lead` number), never a card in a card |
 | Page frame | `<PageContainer width="narrow|wide|full">` (caps `max-w-3xl` · `max-w-[135rem]`, the default = the widest board · none; `@container/page`) + `<PageHeader title subtitle actions showTitle>{tabs}</PageHeader>` |
 | Page layout | `<PageBoard sections layout />` (§6.3) |
 | Page header art | `<PageHeader art={<XHeroArt />}>` — the page's drawing behind its header band; Home: `<PageHeroArt>` in its first card (§6.5) |
@@ -612,6 +612,7 @@ Reference screens: phone 402×874 (iPhone 16/17 Pro) and the same phone sideways
 | Route change | 180–220ms slide/crossfade (View Transitions), else the `.page-in` rise (300ms) |
 | Phone content entrance | `.stagger-in` (≤ 639px): children cascade in 35ms steps from 25ms, capped at the 8th |
 | Active tab icon | `animate-tabPop` (300ms overshoot) |
+| A small chart's bars | `motion-safe:animate-barGrow` / `barGrowX` (500ms from the baseline, once, 30–40ms apart; the weekly report) |
 | Drag-to-close release | 220ms settle |
 
 Count-ups (`AnimatedNumber`) keep the number on screen while a new value loads (`ready={false}`) and

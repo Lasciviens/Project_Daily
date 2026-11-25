@@ -18,7 +18,8 @@
 //  worst case in the ledger (the safe side) and says why in the row. The only thing a check repeats is asking again
 //  while Anthropic has not finished.
 //
-//  The model's text is data: it goes through `readWeeklyReport` (length, five fixed headings, no link or markup), and
+//  The model's text is data: it goes through `readWeeklyReport` (length, five fixed headings, no link or markup, no
+//  number that is in none of the figures it read), and
 //  nothing it says is ever used as an id, an address or a target. The batch id comes only from the report row.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -300,7 +301,7 @@ async function checkOne(ctx: RunContext, report: ReportRow): Promise<'ready' | '
   const logText = stored ? settingsFor(WEEKLY_REPORT_JOB, stored.account, stored.job).logText : false
 
   const failure = answerProblem(answer)
-  const check = failure ? null : readWeeklyReport(answer.text)
+  const check = failure ? null : readWeeklyReport(answer.text, report.figures_sent)
   const bad = failure ?? (check && !check.ok ? `The model's answer could not be used: ${check.problem}.` : null)
   // The real numbers, at the batch price. A model that is not on the price list is charged as the dearest one.
   const price = costOf(answer.usage, answer.servedModel ?? WEEKLY_REPORT_JOB.defaults.model, 'batch')

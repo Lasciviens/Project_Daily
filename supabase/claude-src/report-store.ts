@@ -28,9 +28,11 @@ export interface ReportRow {
   pushed_at: string | null
   /** A push is owed for this finished report (the real report of an owner's week): sent from 07:00, once. */
   push_due: boolean
+  /** The figures the model read (`facts.sent_text`), for the answer's number check; '' when there are none. */
+  figures_sent: string
 }
 
-const COLUMNS = 'id, user_id, week_start, made_by, status, batch_id, call_id, claimed_at, created_at, pushed_at, push_due'
+const COLUMNS = 'id, user_id, week_start, made_by, status, batch_id, call_id, claimed_at, created_at, pushed_at, push_due, facts'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function reportOf(value: unknown): ReportRow | null {
@@ -41,7 +43,9 @@ function reportOf(value: unknown): ReportRow | null {
   const madeBy = r.made_by === 'schedule' || r.made_by === 'app' ? r.made_by : null
   const status = r.status === 'queued' || r.status === 'ready' || r.status === 'failed' ? r.status : null
   if (!id || !UUID.test(id) || !userId || !weekStart || !madeBy || !status) return null
-  return { id, user_id: userId, week_start: weekStart, made_by: madeBy, status, batch_id: text('batch_id'), call_id: text('call_id'), claimed_at: text('claimed_at'), created_at: text('created_at') ?? '', pushed_at: text('pushed_at'), push_due: r.push_due === true }
+  const facts = r.facts !== null && typeof r.facts === 'object' && !Array.isArray(r.facts) ? r.facts as Record<string, unknown> : {}
+  const figuresSent = typeof facts.sent_text === 'string' ? facts.sent_text.slice(0, 20_000) : ''
+  return { id, user_id: userId, week_start: weekStart, made_by: madeBy, status, batch_id: text('batch_id'), call_id: text('call_id'), claimed_at: text('claimed_at'), created_at: text('created_at') ?? '', pushed_at: text('pushed_at'), push_due: r.push_due === true, figures_sent: figuresSent }
 }
 
 /** The report of a week and a maker: the row, null when there is none, undefined when it could not be read. */
