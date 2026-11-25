@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
@@ -10,7 +11,7 @@ import { beltOf, dealOn, initialsOf, isClean, readPrice, spanOf, tintOf, type Pr
 import { mixedWords, watchNote } from '../watchWords'
 import { SiteLink } from './shopKit'
 import { imageOf, money, num, webUrl } from './shopFormat'
-import { HistoryBar, PictureWell } from './tileKit'
+import { HistoryBar, PictureWell, TILE_ACTIONS, TILE_TITLE, TileLines } from './tileKit'
 import type { ShopItem, ShopPriceWatch } from '../types'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import type { Task } from '../../todo/types'
@@ -47,7 +48,8 @@ interface Props {
  * how it moved since the last read, the target, and today's place between the
  * lowest and highest seen. A check that read no price now says why in the
  * shared words (watchWords.watchNote): a refusal shows no price from the link. Bought is one tap; everything else is in ⋯. The
- * picture and the title open the record.
+ * picture and the title open the record. Every tile is one size (owner, 24.11.2026): its lines are fixed (`TileLines`), each
+ * cut at the end, never wrapped.
  */
 export function WishTile({ item, topId, icon, task, today, rates, watch, facts, afterSale, onOpen, onBought, onPlan, onOpenTask, onMoveToQuick, onDrop, onDelete }: Props) {
   const read = watch && watch.url === item.url ? watch : null
@@ -68,11 +70,20 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
   const own = priceLabel(item)
   const shown = now ?? (item.price != null ? { amount: item.price, currency: cur } : null)
   const approx = shown && shown.currency !== 'NOK' ? approxOther(shown.amount, shown.currency, rates) : null
-  // The price read from the link says where it was read; a typed price says where to buy it.
+  // The price read from the link says where it was read; a typed price says where to buy it. The shop's address is cut
+  // inside its link (its ↗ stays), a typed store at the end.
+  const at = (word: string, what: ReactNode) => <><span className="shrink-0">{word}</span>{what}</>
   const where = now
-    ? (read?.source === 'prisjakt' ? <>on <SiteLink url={item.url}>Prisjakt</SiteLink></> : <>at <SiteLink url={item.url} /></>)
-    : webUrl(item.url) ? <>at <SiteLink url={item.url} /></> : item.platform ? <>at {item.platform}</> : null
+    ? at(read?.source === 'prisjakt' ? 'on' : 'at', <SiteLink url={item.url} className="min-w-0">{read?.source === 'prisjakt' ? 'Prisjakt' : undefined}</SiteLink>)
+    : webUrl(item.url) ? at('at', <SiteLink url={item.url} className="min-w-0" />)
+      : item.platform ? at('at', <Truncate as="span" className="min-w-0">{item.platform}</Truncate>) : null
   const target = item.target_price == null ? null : now && now.currency !== cur ? money(item.target_price, cur) : num(item.target_price)
+  // Every tile keeps one height: the price history has its own line, the notes share two lines (cut at the end, the whole in
+  // the title and the record).
+  const history = span && now && read && isClean(read) && now.currency === span.currency ? <HistoryBar now={now.amount} span={span} /> : null
+  const sale = afterSale && complete(afterSale.needed) ? `After selling ${afterSale.from}: ${money(Math.max(0, afterSale.needed.nok))} more` : null
+  const dealNote = item.wait_for_deal && item.deal_note ? item.deal_note : null
+  const notes = [note && <span key="n" className={note.warn ? 'text-warn' : undefined}>{note.text}</span>, sale, dealNote].filter(Boolean)
 
   return (
     <div className="card flex flex-col p-1.5">
@@ -81,21 +92,23 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           corner={item.priority !== 'medium' && (
             <TonePill tone={SHOP_PRIORITY_TONE[item.priority]}>{item.priority === 'high' ? 'High' : 'Low'}<span className="sr-only"> priority</span></TonePill>
           )} />
-        <Truncate as="span" lines={2} className="mx-1.5 mt-2 min-h-10 text-body font-semibold text-fg">
+        <Truncate as="span" lines={2} className={TILE_TITLE}>
           {item.title}
           {item.source_type === 'ai' && <Sparkles aria-label="Added by the AI" className="ml-1 inline h-3.5 w-3.5 align-[-2px] text-fg-faint" />}
         </Truncate>
       </button>
-      <div className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
-        <p className="flex flex-wrap items-baseline gap-x-1 text-meta text-fg-muted">
-          <span className={cx('whitespace-nowrap text-ui tabular-nums', now || own ? 'font-semibold text-fg' : 'text-fg-muted')}>
+      <TileLines
+        price={<>
+          <span className={cx('shrink-0 text-ui tabular-nums', now || own ? 'font-semibold text-fg' : 'text-fg-muted')}>
             {now ? money(now.amount, now.currency) : own ?? 'No price yet'}
           </span>
-          {/* From the link (or typed): of any length, so it may wrap — never out of the tile. */}
-          {where && <span className="min-w-0 break-words">{where}{mixed}{item.region === 'TR' && <span title="Buy it in Turkey"> 🇹🇷</span>}</span>}
-          {approx && <span className="whitespace-nowrap tabular-nums">{approx}</span>}
-        </p>
-        <MetaLine className="text-meta tabular-nums text-fg-muted" items={[
+          {where}
+          {item.region === 'TR' && <span className="shrink-0" title="Buy it in Turkey">🇹🇷</span>}
+        </>}
+        meta={<Truncate as="span" className="min-w-0 flex-1"><MetaLine as="span" items={[
+          // What the price is first: a Prisjakt figure that may be a used one, and the NOK it comes to.
+          mixed && mixed.replace(/^,\s*/, ''),
+          approx && <span key="a" className="tabular-nums">{approx}</span>,
           change != null && (
             <span key="c" data-tone={change < 0 ? 'success' : 'warn'} className="tone-text" title={read?.prev_at ? `Since ${formatDate(read.prev_at)}` : undefined}>
               {change < 0 ? '↓' : '↑'} {num(Math.abs(change))}<span className="sr-only"> since the last read</span>
@@ -108,17 +121,15 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           item.task_id && (taskDone ? 'Task done' : `Task${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
           note && now && read && `read ${formatDate(read.last_ok_at ?? read.checked_at)}`,
           read && read.status === 'ok' && read.in_stock === false && <span key="s" className="text-warn">out of stock</span>,
-        ]} />
-        {/* Why there is no price now: a sentence, so it wraps on its own line (a MetaLine piece never breaks). */}
-        {note && <p className={cx('break-words text-meta', note.warn ? 'text-warn' : 'text-fg-muted')}>{note.text}</p>}
-        {item.wait_for_deal && item.deal_note && <Truncate as="p" className="text-meta text-fg-muted">{item.deal_note}</Truncate>}
-        {afterSale && complete(afterSale.needed) && (
-          <p className="break-words text-meta text-fg-muted">After selling {afterSale.from}: {money(Math.max(0, afterSale.needed.nok))} more</p>
-        )}
-        {span && now && read && isClean(read) && now.currency === span.currency && <span className="mt-1"><HistoryBar now={now.amount} span={span} /></span>}
-      </div>
+        ]} /></Truncate>}
+        history={history && <span className="min-w-0 flex-1">{history}</span>}
+        notes={notes.length > 0 && (
+          <Truncate as="span" lines={2} reveal="popover" className="min-w-0 flex-1">
+            {notes.map((n, i) => <Fragment key={i}>{i > 0 && ' · '}{n}</Fragment>)}
+          </Truncate>
+        )} />
 
-      <div className="mt-auto flex items-center gap-1 border-t border-line pt-1">
+      <div className={TILE_ACTIONS}>
         <button type="button" onClick={onBought} className={cx('btn-ghost btn-sm min-w-0 flex-1 justify-center', taskDone && 'text-success')}>
           <Check aria-hidden className="h-4 w-4" /> Bought
         </button>

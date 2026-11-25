@@ -10,7 +10,7 @@ The full guide is `docs/design/THEME.md` — read the section you need before a 
 
 - Layout width (THEME §6.6):
   - W1 Anything placed by PageBoard sizes itself on its own width (`@container`), never the viewport's `sm:`/`lg:`.
-  - W2 Collections flow into content-width columns: `repeat(auto-fill, minmax(MIN, MAX))`; one content row never wider than 40rem; items of different heights are dealt into column stacks, not a row grid.
+  - W2 Collections flow into content-width columns: `repeat(auto-fill, minmax(MIN, MAX))`; one content row never wider than 40rem; items of different heights are dealt into column stacks, not a row grid. The exception: picture tiles (the Shop's Wishlist and Big pictures) are one size on a page — fixed 12rem tracks, two equal ones on a phone (THEME §6 "Picture tiles").
   - W3 Controls are content-sized: text inputs ≤ `max-w-md`.
   - W4 Charts keep their aspect ratio and a role-based cap (`max-w-2xl` / `max-w-4xl`).
   - W5 Secondary detail lives in a hover/tap peek (`HoverPeek`, never a hover-only tooltip).
