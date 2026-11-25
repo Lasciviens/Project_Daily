@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk } from '../../../shared/query/keys'
 import { addToTraktList, createTraktList, fetchTraktLists, removeFromTraktList, reorderTraktList, type ListItemRef, type TraktListItem } from '../trakt/traktApi'
@@ -38,21 +39,47 @@ export function useToggleQueue() {
   })
 }
 
-/** Saves a new order (optimistic; rolls back if Trakt refuses). */
+/**
+ * Saves a new order. It shows at once; while a save is on its way, further
+ * moves go on the shown order and only the newest order is sent when that
+ * save is done (one call, never two racing). A refused save puts back the
+ * last order Trakt took and drops what waited; the hook's toast says why.
+ */
 export function useReorderQueue(listId: number | null) {
   const qc = useQueryClient()
   const key = qk.trakt.listItems(listId ?? 0)
-  return useMutationWithFeedback({
+  const ranked = (order: TraktListItem[]) => order.map((i, n) => ({ ...i, rank: n + 1 }))
+  const saved = useRef<TraktListItem[] | undefined>(undefined) // the order Trakt has
+  const sending = useRef(false)
+  const waiting = useRef<TraktListItem[] | null>(null)
+  const m = useMutationWithFeedback({
     action: 'media_queue_reorder',
-    successMessage: 'Queue order saved',
+    // Rows Trakt skipped are said as a warning (onSuccess), never as a plain "saved".
+    successMessage: r => (r.skipped.length ? undefined : 'Queue order saved'),
     mutationFn: (ordered: TraktListItem[]) => reorderTraktList(listId!, ordered.map(i => i.listItemId)),
-    onMutate: async (ordered: TraktListItem[]) => {
-      await qc.cancelQueries({ queryKey: key })
-      const prev = qc.getQueryData<TraktListItem[]>(key)
-      qc.setQueryData<TraktListItem[]>(key, ordered.map((i, n) => ({ ...i, rank: n + 1 })))
-      return { prev }
+    onMutate: async () => { await qc.cancelQueries({ queryKey: key }) },
+    onSuccess: (r, ordered) => {
+      saved.current = ranked(ordered)
+      if (r.skipped.length) toast.warning(`Queue order saved · Trakt skipped ${r.skipped.length} title${r.skipped.length === 1 ? '' : 's'}`)
     },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(key, ctx.prev) },
-    onSettled: () => { void qc.invalidateQueries({ queryKey: key }) },
+    onError: () => {
+      waiting.current = null
+      if (saved.current) qc.setQueryData(key, saved.current)
+    },
+    onSettled: () => {
+      const next = waiting.current
+      waiting.current = null
+      if (next) { m.mutate(next); return }
+      sending.current = false
+      void qc.invalidateQueries({ queryKey: key })
+    },
   })
+  const save = (order: TraktListItem[]) => {
+    if (!sending.current) saved.current = qc.getQueryData<TraktListItem[]>(key)
+    qc.setQueryData<TraktListItem[]>(key, ranked(order))
+    if (sending.current) { waiting.current = order; return }
+    sending.current = true
+    m.mutate(order)
+  }
+  return { save, saving: m.isPending }
 }
